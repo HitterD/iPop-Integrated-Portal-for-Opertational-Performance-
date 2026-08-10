@@ -1,0 +1,52 @@
+@inject IJSRuntime JS
+
+<div class="backdrop @(Person is not null ? "on" : "")" @onclick="Close"></div>
+<div class="drawer @(Person is not null ? "on" : "")" role="dialog" aria-label="Employee profile">
+    <div class="tray">
+        <div class="core">
+            <div class="drawer-head">
+                Profile
+                <button class="drawer-close" @onclick="Close"><i data-lucide="x"></i></button>
+            </div>
+            @if (Person is not null)
+            {
+                @* Keyed per person: lucide swaps <i> for <svg>, so reusing the
+                   subtree across profiles would patch detached nodes. *@
+                <div class="drawer-body" @key="Person.Nik">
+                    <div class="p-hero">
+                        <div class="avatar" style="background:@Person.Color">
+                            @Person.Initials
+                            <span class="presence-ring @Person.Status"></span>
+                        </div>
+                        <div class="n">@Person.Name</div>
+                        <div class="p">@Person.Position</div>
+                        <div class="org-line"><i data-lucide="network"></i> @Person.Department · @Person.Site · reports to @Person.Manager</div>
+                    </div>
+                    <div class="p-rows">
+                        <div class="p-row"><i data-lucide="badge-check"></i><span class="k">Employee ID</span><span class="v mono">@Person.Nik</span></div>
+                        <div class="p-row"><i data-lucide="at-sign"></i><span class="k">Email</span><span class="v">@Person.Email</span></div>
+                        <div class="p-row"><i data-lucide="phone"></i><span class="k">Extension</span><span class="v mono">@Person.Extension</span></div>
+                        <div class="p-row"><i data-lucide="map-pin"></i><span class="k">Location</span><span class="v">@Person.Location</span></div>
+                        <div class="p-row"><i data-lucide="circle-dot"></i><span class="k">Status</span><span class="v"><span class="dot @Person.Status">@Person.StatusLabel</span></span></div>
+                    </div>
+                    <div class="actions">
+                        <button disabled><i data-lucide="message-circle"></i> Chat</button>
+                        <button disabled><i data-lucide="mail"></i> Mail</button>
+                        <button disabled><i data-lucide="phone"></i> Call</button>
+                        <span class="hint">Activates as each module ships.</span>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public Employee? Person { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private async Task Close() => await OnClose.InvokeAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+        => await JS.InvokeVoidAsync("ipop.icons");
+}

@@ -1,0 +1,44 @@
+@inject AuthState Auth
+@inject NavigationManager Nav
+
+@* Guard runs before the page renders: OnNavigateAsync is awaited by the Router.
+   Restore happens once — after that the in-memory token answers. *@
+<Router AppAssembly="@typeof(App).Assembly" NotFoundPage="typeof(Pages.NotFound)" OnNavigateAsync="Guard">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)"/>
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+</Router>
+
+@code {
+    private bool restored;
+
+    private static readonly string[] AuthPages = ["", "login"];
+
+    private async Task Guard(NavigationContext ctx)
+    {
+        if (!restored)
+        {
+            restored = true;
+            await Auth.TryRestoreAsync();
+        }
+
+        var path = ctx.Path.Trim('/').ToLowerInvariant();
+        var isAuthPage = AuthPages.Contains(path);
+
+        if (!Auth.IsAuthenticated)
+        {
+            if (!isAuthPage) Nav.NavigateTo("/login", replace: true);
+            return;
+        }
+
+        // Signed in but still on the default password: only /set-password is reachable.
+        if (Auth.MustChangePassword)
+        {
+            if (path != "set-password") Nav.NavigateTo("/set-password", replace: true);
+            return;
+        }
+
+        if (isAuthPage || path == "set-password") Nav.NavigateTo("/directory", replace: true);
+    }
+}

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IPop</title>
+    <base href="/" />
+    <link rel="preload" id="webassembly" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/ipop.css" />
+    <link rel="stylesheet" href="_content/Radzen.Blazor/css/default.css" />
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
+    <script src="js/ipop.js"></script>
+    <script>ipop.restoreTheme();</script>
+</head>
+
+<body>
+    <div id="app">
+        <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--ink-3);font-size:13px">
+            Loading IPop…
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss" title="Dismiss">&times;</span>
+    </div>
+    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+</body>
+
+</html>

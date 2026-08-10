@@ -1,0 +1,26 @@
+@page "/not-found"
+@layout MainLayout
+@inject IJSRuntime JS
+
+<PageTitle>Not found — IPop</PageTitle>
+
+<div class="content" style="grid-template-columns:1fr">
+    <div class="tray rise rise-1">
+        <div class="core">
+            <div class="tree-empty" style="padding:48px">
+                <i data-lucide="compass"></i>
+                <p style="margin:12px 0 4px">This page does not exist.</p>
+                <a href="/dashboard" style="color:var(--accent-ink)">Back to dashboard</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+
+    protected override void OnInitialized() => Layout.SetHeader("Not found");
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+        => await JS.InvokeVoidAsync("ipop.icons");
+}

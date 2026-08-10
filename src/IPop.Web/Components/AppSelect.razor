@@ -1,0 +1,119 @@
+@* Outside-click close is handled by JS (positionSelect) — the backdrop
+   approach blocks other dropdown triggers on the same page. *@
+@using Microsoft.AspNetCore.Components.Web
+@inject IJSRuntime JS
+
+<div class="app-select @CssClass @(open ? "open" : "")" style="@Style" @ref="wrap">
+    <button type="button" class="app-select-trigger" @ref="trigger"
+            aria-haspopup="listbox" aria-expanded="@open" aria-label="@(Label ?? "Select")"
+            @onclick="Toggle" @onkeydown="OnKeyDown" @onblur="OnBlur">
+        <span class="app-select-label">@selectedLabel</span>
+        <i class="chev" data-lucide="@(open ? "chevron-up" : "chevron-down")"></i>
+    </button>
+    <div class="app-select-pop @(open ? "on" : "")" role="listbox" aria-activedescendant="@activeId" @ref="popRef">
+        @for (var i = 0; i < Options.Count; i++)
+        {
+            var idx = i;
+            var o = Options[i];
+            <button type="button" class="app-select-opt @(o.Value == Value ? "sel" : "")"
+                    role="option" aria-selected="@(o.Value == Value)"
+                    id="@($"{effectiveId}-opt-{idx}")"
+                    @onmousedown="() => Pick(o)" @onmousemove="() => activeIdx = idx">
+                <span>@o.Label</span>
+                @if (o.Value == Value) { <i data-lucide="check" class="tick"></i> }
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public List<AppOption> Options { get; set; } = [];
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public string Style { get; set; } = "";
+
+    private ElementReference wrap;
+    private ElementReference trigger;
+    private ElementReference popRef;
+    private bool open;
+    private int activeIdx;
+
+    private string effectiveId => string.IsNullOrEmpty(Id) ? "aselect" : Id!;
+    private string activeId => $"{effectiveId}-opt-{activeIdx}";
+    private string selectedLabel =>
+        Options.FirstOrDefault(o => o.Value == Value)?.Label ?? (Options.Count > 0 ? Options[0].Label : "");
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender) _ = JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task Toggle()
+    {
+        if (open) { await Close(); return; }
+        open = true;
+        activeIdx = Math.Max(0, Options.FindIndex(o => o.Value == Value));
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+        await Task.Delay(30); // let the pop render, then anchor it
+        await JS.InvokeVoidAsync("ipop.positionSelect", trigger, popRef);
+    }
+
+    private async Task Close()
+    {
+        if (!open) return;
+        open = false;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.closeSelect");
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task OnBlur(FocusEventArgs e)
+    {
+        // defer the close so a mousedown on an option fires first
+        await Task.Delay(120);
+        await Close();
+    }
+
+    private async Task Pick(AppOption o)
+    {
+        if (Value != o.Value) await ValueChanged.InvokeAsync(o.Value);
+        open = false;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.closeSelect");
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Enter" or " ":
+                if (open) { await Close(); return; }
+                open = true; activeIdx = Math.Max(0, Options.FindIndex(o => o.Value == Value));
+                break;
+            case "Escape":
+                await Close();
+                return;
+            case "ArrowDown" when open:
+                activeIdx = (activeIdx + 1) % Options.Count;
+                break;
+            case "ArrowUp" when open:
+                activeIdx = (activeIdx - 1 + Options.Count) % Options.Count;
+                break;
+            case "Home" when open:
+                activeIdx = 0;
+                break;
+            case "End" when open:
+                activeIdx = Options.Count - 1;
+                break;
+            default: return;
+        }
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+        if (open) { await Task.Delay(30); await JS.InvokeVoidAsync("ipop.positionSelect", trigger, popRef); }
+    }
+}

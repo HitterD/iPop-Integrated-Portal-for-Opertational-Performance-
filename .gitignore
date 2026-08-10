@@ -1,0 +1,20 @@
+## .NET
+bin/
+obj/
+*.user
+
+## Logs / local run artifacts
+*.log
+
+## Screenshots / scratch captures at repo root
+*.png
+
+## Reference/inspiration photo dumps (not app assets)
+/inspirasi/
+/login picture/
+
+## Tooling scratch dirs
+.impeccable/
+.playwright-mcp/
+.superpowers/
+/graphify-out/

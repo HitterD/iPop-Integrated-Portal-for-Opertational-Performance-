@@ -1,0 +1,52 @@
+@using Radzen.Blazor
+@using Radzen.Documents.Spreadsheet
+
+<div class="excel-viewer">
+    <div class="excel-viewer-head">
+        <span class="excel-viewer-title">
+            <i data-lucide="table"></i>
+            <span class="mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@FileName</span>
+        </span>
+        @if (Workbook is not null)
+        {
+            <span class="meta">@Workbook.Sheets.Count sheet@(Workbook.Sheets.Count == 1 ? "" : "s")</span>
+        }
+    </div>
+    @if (Workbook is null)
+    {
+        <div class="tree-empty" style="padding:28px">Loading spreadsheet...</div>
+    }
+    else
+    {
+        <RadzenSpreadsheet Workbook="@Workbook"
+                           ReadOnly="true"
+                           ShowToolbar="true"
+                           ShowFormulaBar="true"
+                           ShowSheetTabs="true"
+                           AllowEditing="false"
+                           AllowCharts="false"
+                           AllowImages="false"
+                           AllowHyperlinks="false"
+                           AllowTables="false"
+                           AllowConditionalFormatting="false"
+                           Style="height: calc(100dvh - 180px); width: 100%" />
+    }
+</div>
+
+@code {
+    [Parameter] public string FileName { get; set; } = "workbook.xlsx";
+    [Parameter] public byte[]? Bytes { get; set; }
+
+    private Workbook? Workbook { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Bytes is null) return;
+        using var stream = new MemoryStream(Bytes);
+        // Radzen parses XLSX (OOXML) and CSV natively; legacy .xls goes through the
+        // existing SheetJS path in ipop.js instead of this component.
+        Workbook = FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)
+            ? Workbook.LoadFromCsv(stream)
+            : Workbook.LoadFromStream(stream);
+    }
+}

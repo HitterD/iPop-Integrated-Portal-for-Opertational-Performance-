@@ -1,0 +1,221 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject AuthState Auth
+
+<div class="shell @(collapsed ? "collapsed" : "")" id="shell">
+    <aside class="sidebar">
+        <div class="side-head">
+            <img class="mark" src="img/logo.png" alt="IPop" style="width:34px;height:34px" />
+            <div class="txt"><div class="t">IPop</div><div class="s">Operational portal</div></div>
+            <button class="collapse-btn" title="Collapse sidebar ( [ )" @onclick="ToggleSidebar"><i data-lucide="panel-left-close"></i></button>
+        </div>
+        <NavLink class="nav-item" href="/dashboard" data-tip="Dashboard" Match="NavLinkMatch.All"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></NavLink>
+        <NavLink class="nav-item" href="/directory" data-tip="Directory"><i data-lucide="users"></i><span class="lbl">Directory</span></NavLink>
+        <NavLink class="nav-item" href="/files" data-tip="Files"><i data-lucide="folder"></i><span class="lbl">Files</span></NavLink>
+        @if (Auth.IsAdmin)
+        {
+            <NavLink class="nav-item" href="/admin" data-tip="Administration"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administration</span></NavLink>
+        }
+        @* Locked modules are buttons, not links: nothing to navigate to, and a disabled
+           <a> is unreachable by keyboard. aria-disabled keeps them announced but inert. *@
+        @foreach (var m in Locked)
+        {
+            <button type="button" class="nav-item locked" data-tip="@(m.Label) — coming soon" aria-disabled="true">
+                <i data-lucide="@m.Icon"></i><span class="lbl">@m.Label</span><i data-lucide="lock" class="lock"></i>
+            </button>
+        }
+        <div class="sidebar-foot">
+            <div class="avatar" style="background:var(--accent)">@Initials</div>
+            <div class="who"><div class="n">@UserName</div><div class="r">@UserRole</div></div>
+            <button class="out" title="Sign out" @onclick="SignOut"><i data-lucide="log-out"></i></button>
+        </div>
+    </aside>
+
+    <div class="main">
+        <header class="topbar">
+            <h1>@PageTitle</h1>
+            @if (!string.IsNullOrEmpty(Crumb))
+            {
+                <span class="crumb">@Crumb</span>
+            }
+            @if (ShowSearch)
+            {
+                <div class="search">
+                    <i data-lucide="search"></i>
+                    <input type="text" placeholder="Search people by name or ID" @bind="SearchQuery" @bind:event="oninput" @bind:after="NotifySearchChanged" />
+                </div>
+            }
+            <div class="topbar-right">
+                @if (Auth.Me is not null)
+                {
+                    <button class="presence-toggle" title="@(Auth.MyStatus == "busy" ? "Clear busy status" : "Set busy status")"
+                            @onclick="ToggleBusy">
+                        <span class="dot @Auth.MyStatus">@StatusLabel</span>
+                    </button>
+                }
+                <button class="theme-btn" title="@(IsDark ? "Switch to light mode" : "Switch to dark mode")" @onclick="ToggleTheme">
+                    <i data-lucide="@(IsDark ? "sun" : "moon")"></i>
+                </button>
+                <div class="bell-wrap">
+                    <button class="bell-btn" title="Notifications" @onclick="ToggleNotif" @onclick:stopPropagation>
+                        <i data-lucide="bell"></i>
+                    </button>
+                    @* Real system status, not a mock feed — the notification stream itself
+                       arrives with the Chat module. *@
+                    <div class="notif-pop @(notifOpen ? "on" : "")">
+                        <div class="tray"><div class="core" style="padding:6px">
+                    <div class="notif-item">
+                        <div class="ic" style="background:var(--accent-soft);color:var(--accent-ink)"><i data-lucide="refresh-cw"></i></div>
+                        <div>
+                            <div class="t">Directory synced from HRIS</div>
+                            <div class="s">@SyncCaption</div>
+                        </div>
+                    </div>
+                    <div class="notif-item">
+                        <div class="ic" style="background:var(--tray);color:var(--ink-2)"><i data-lucide="bell-off"></i></div>
+                        <div><div class="t">No other notifications</div><div class="s">Alerts arrive with the Chat module</div></div>
+                    </div>
+                </div></div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <CascadingValue Value="this">
+            @Body
+        </CascadingValue>
+    </div>
+</div>
+
+@code {
+    private bool collapsed, notifOpen;
+    private DotNetObjectReference<MainLayout>? selfRef;
+
+    private record Module(string Label, string Icon);
+
+    private static readonly Module[] Locked =
+    [
+        new("Chat", "message-circle"),
+        new("Mail", "mail"),
+        new("Projects", "square-kanban"),
+        new("News & Memos", "newspaper"),
+        new("Calls", "phone"),
+    ];
+
+    private string UserName => Auth.Me?.Name ?? "…";
+    private string UserRole => Auth.Me is null ? "" : $"{Auth.Me.Department} · {Auth.Me.Position}";
+    private string Initials => Auth.Me is null
+        ? "·"
+        : string.Concat(Auth.Me.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                                    .Select(w => w[0]).Take(2)).ToUpperInvariant();
+
+    private string SyncCaption => syncedAt is null
+        ? "Waiting for the first sync"
+        : $"{syncCount} records · {syncedAt:HH:mm}";
+
+    private DateTime? syncedAt;
+    private int syncCount;
+
+    public string PageTitle { get; private set; } = "Dashboard";
+    public string Crumb { get; private set; } = "";
+    public bool ShowSearch { get; private set; }
+    public string? SearchQuery { get; set; }
+    public event Action? SearchChanged;
+
+    /// Raised when Escape is pressed anywhere. Pages use it to close overlays.
+    public event Action? EscapePressed;
+
+    public void SetHeader(string title, string crumb = "", bool showSearch = false)
+    {
+        PageTitle = title; Crumb = crumb; ShowSearch = showSearch;
+        StateHasChanged();
+    }
+
+    private void NotifySearchChanged() => SearchChanged?.Invoke();
+
+    private void OnPresenceChanged(string nik, string status)
+        => _ = InvokeAsync(StateHasChanged);
+
+    private void ToggleSidebar() => collapsed = !collapsed;
+    private void ToggleNotif() => notifOpen = !notifOpen;
+
+    private bool IsDark { get; set; }
+
+    private async Task ToggleTheme()
+    {
+        IsDark = await JS.InvokeAsync<string>("ipop.toggleTheme") == "dark";
+        await InvokeAsync(StateHasChanged);
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private string StatusLabel => Auth.MyStatus switch
+    {
+        "on" => "Online",
+        "away" => "Away",
+        "busy" => "Busy",
+        _ => "Offline"
+    };
+
+    private async Task ToggleBusy()
+    {
+        await Auth.SetBusyAsync(Auth.MyStatus != "busy");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SignOut()
+    {
+        await Auth.SignOutAsync();
+        Nav.NavigateTo("/login", replace: true);
+    }
+
+    [JSInvokable]
+    public void OnEscape()
+    {
+        EscapePressed?.Invoke();
+        if (notifOpen) notifOpen = false;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnToggleSidebar() { collapsed = !collapsed; StateHasChanged(); }
+
+    [JSInvokable]
+    public void OnClickAway()
+    {
+        if (!notifOpen) return;
+        notifOpen = false;
+        StateHasChanged();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Auth.PresenceChanged += OnPresenceChanged;
+        await Auth.LoadMeAsync();
+        await Auth.StartPresenceAsync();
+        var s = await Auth.GetAsync<SyncStatusDto>("/api/admin/hris/status");
+        if (s is not null) { syncedAt = s.LastSyncedAt?.ToLocalTime(); syncCount = s.EmployeeCount; }
+    }
+
+    private record SyncStatusDto(DateTime? LastSyncedAt, int EmployeeCount);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("ipop.shortcuts", selfRef);
+            IsDark = await JS.InvokeAsync<string>("ipop.theme") == "dark";
+            StateHasChanged();
+        }
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    public void Dispose()
+    {
+        selfRef?.Dispose();
+        Auth.PresenceChanged -= OnPresenceChanged;
+        _ = JS.InvokeVoidAsync("ipop.shortcutsOff");
+    }
+}

@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/IPop.Api/IPop.Api.csproj" />
+    <Project Path="src/IPop.Application/IPop.Application.csproj" />
+    <Project Path="src/IPop.Core/IPop.Core.csproj" />
+    <Project Path="src/IPop.Infrastructure/IPop.Infrastructure.csproj" />
+    <Project Path="src/IPop.Web/IPop.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/IPop.Tests/IPop.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,63 @@
+@page "/dashboard"
+@inject IJSRuntime JS
+
+<PageTitle>Dashboard — IPop</PageTitle>
+
+<div class="content" style="grid-template-columns:1fr">
+    <div class="tray rise rise-1">
+        <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head">
+                <i data-lucide="layout-grid"></i> <span>Modules</span>
+                <span class="meta">1 of 8 available</span>
+            </div>
+            <div class="emp-grid">
+                <a class="emp-card rise" href="/directory" style="animation-delay:0s;text-decoration:none;color:inherit">
+                    <div class="top">
+                        <div class="avatar" style="background:var(--accent)"><i data-lucide="users"></i></div>
+                        <div><div class="n">Directory</div><div class="p">Search people across the organization</div></div>
+                    </div>
+                    <div class="foot">
+                        <span class="mono">412 records</span>
+                        <span class="dot on">Available</span>
+                    </div>
+                </a>
+                @foreach (var (m, i) in Pending.Select((m, i) => (m, i)))
+                {
+                    <div class="emp-card rise" style="animation-delay:@((i + 1) * 0.05)s;opacity:.62;cursor:default">
+                        <div class="top">
+                            <div class="avatar" style="background:var(--tray);color:var(--ink-3)"><i data-lucide="@m.Icon"></i></div>
+                            <div><div class="n">@m.Name</div><div class="p">@m.Caption</div></div>
+                        </div>
+                        <div class="foot">
+                            <span class="mono">Not deployed</span>
+                            <span class="dot off">Coming soon</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+
+    private record Module(string Name, string Caption, string Icon);
+
+    private static readonly Module[] Pending =
+    [
+        new("Chat", "Direct and group messaging", "message-circle"),
+        new("Mail", "Corporate mailbox", "mail"),
+        new("Projects", "Task boards and tracking", "square-kanban"),
+        new("News & Memos", "Company announcements", "newspaper"),
+        new("Calls", "Voice and video", "phone"),
+        new("Files", "Shared document storage", "folder"),
+        new("Administration", "Users, roles, and audit", "sliders-horizontal"),
+    ];
+
+    protected override void OnInitialized()
+        => Layout.SetHeader("Dashboard", "Foundation release");
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+        => await JS.InvokeVoidAsync("ipop.icons");
+}

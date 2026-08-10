@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPop — Foundation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  :root {
+    --bg: #f7f6f3;
+    --surface: #ffffff;
+    --tray: #efede8;
+    --line: #e5e2da;
+    --line-soft: #eceae3;
+    --ink: #3f3f3a;
+    --ink-2: #6f6f66;
+    --ink-3: #a3a39a;
+    --accent: #2e7d5b;
+    --accent-ink: #256b4d;
+    --accent-soft: #e8f3ee;
+    --danger: #b3462f;
+    --danger-soft: #f9ece7;
+    --radius-tray: 20px;
+    --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; }
+  body {
+    font-family: "Figtree", "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 14px;
+    letter-spacing: -0.004em;
+  }
+  .lucide { width: 17px; height: 17px; stroke-width: 1.6; }
+
+  body::after {
+    content: ""; position: fixed; inset: 0; z-index: 90; pointer-events: none;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8px; }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(16px); filter: blur(4px); }
+    to   { opacity: 1; transform: translateY(0);    filter: blur(0); }
+  }
+  .rise { animation: rise 0.8s var(--ease) both; }
+  .rise-1 { animation-delay: 0.05s; } .rise-2 { animation-delay: 0.12s; }
+  .rise-3 { animation-delay: 0.19s; } .rise-4 { animation-delay: 0.26s; }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-7px); } 40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); } 80% { transform: translateX(3px); }
+  }
+  .shake { animation: shake 0.5s var(--ease); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  @keyframes kenburns {
+    from { transform: scale(1); } to { transform: scale(1.07); }
+  }
+  @keyframes shimmer {
+    from { background-position: -400px 0; } to { background-position: 400px 0; }
+  }
+
+  /* ---- mockup switcher ---- */
+  .switcher {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 100;
+    background: rgba(63,63,58,0.92); color: #e8e6e0;
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 7px; border-radius: 999px; font-size: 12px;
+    backdrop-filter: blur(12px); box-shadow: 0 10px 32px rgba(63,63,58,0.2);
+  }
+  .switcher span { color: #b3b1a8; margin: 0 8px 0 10px; font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; }
+  .switcher button {
+    background: transparent; color: #cfcdc4; border: none;
+    padding: 6px 13px; border-radius: 999px; cursor: pointer; font-size: 12px;
+    font-family: inherit; transition: all 0.35s var(--ease);
+  }
+  .switcher button.active { background: var(--surface); color: var(--ink); }
+  .screen { display: none; min-height: 100vh; }
+  .screen.active { display: block; }
+
+  /* ============ AUTH ============ */
+  .auth-wrap {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden; padding: 24px;
+  }
+  .slides { position: absolute; inset: 0; }
+  .slides .slide {
+    position: absolute; inset: 0; background-size: cover; background-position: center;
+    opacity: 0; transition: opacity 1.8s var(--ease);
+  }
+  .slides .slide.on { opacity: 1; animation: kenburns 8s linear forwards; }
+  .slides::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(247,246,243,0.55), rgba(247,246,243,0.78));
+  }
+  .auth-card { position: relative; z-index: 2; width: 100%; max-width: 408px; }
+  .tray {
+    background: rgba(239,237,232,0.82); border: 1px solid rgba(255,255,255,0.75);
+    border-radius: var(--radius-tray); padding: 6px;
+    backdrop-filter: blur(16px);
+    box-shadow: 0 1px 2px rgba(63,63,58,0.05), 0 24px 64px -24px rgba(63,63,58,0.28), 0 2px 8px rgba(63,63,58,0.04);
+  }
+  .core {
+    background: var(--surface); border-radius: calc(var(--radius-tray) - 6px);
+    padding: 32px 30px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
+  }
+  .brand-row { display: flex; align-items: center; gap: 11px; margin-bottom: 22px; }
+  .mark {
+    width: 36px; height: 36px; border-radius: 11px; background: var(--accent); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 15px; letter-spacing: -0.02em;
+  }
+  .brand-row .t { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+  .brand-row .s { font-size: 11.5px; color: var(--ink-3); }
+  .core h2 { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 3px; }
+  .core .sub { color: var(--ink-2); font-size: 13px; margin-bottom: 24px; }
+  .field { margin-bottom: 15px; }
+  .field label { display: block; font-weight: 600; font-size: 12.5px; margin-bottom: 7px; color: var(--ink-2); }
+  .field input {
+    width: 100%; padding: 11px 14px; font-size: 14px; font-family: inherit;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink);
+    transition: border-color 0.3s var(--ease), box-shadow 0.3s var(--ease);
+  }
+  .field input:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3.5px rgba(46,125,91,0.13);
+  }
+  .field input::placeholder { color: var(--ink-3); }
+  .btn {
+    width: 100%; padding: 11px 14px 11px 20px; font-size: 14px; font-weight: 600; font-family: inherit;
+    background: var(--accent); color: #fff; border: none; border-radius: 999px; cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between;
+    transition: transform 0.25s var(--ease), background 0.25s var(--ease);
+    margin-top: 8px;
+  }
+  .btn:hover { background: var(--accent-ink); }
+  .btn:active { transform: scale(0.985); }
+  .btn .orb {
+    width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,0.18);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.35s var(--ease);
+  }
+  .btn:hover .orb { transform: translateX(3px); }
+  .btn .orb .lucide { width: 14px; height: 14px; }
+  .note {
+    margin-top: 18px; padding: 11px 13px; border-radius: 13px;
+    background: var(--tray); color: var(--ink-2); font-size: 12.5px; line-height: 1.55;
+    display: flex; gap: 9px; align-items: flex-start;
+  }
+  .note .lucide { flex-shrink: 0; margin-top: 1px; width: 14.5px; height: 14.5px; color: var(--ink-3); }
+  .note.err { background: var(--danger-soft); color: var(--danger); }
+  .note.err .lucide { color: var(--danger); }
+  .req { margin: 4px 0 16px 0; padding: 0; list-style: none; }
+  .req li { display: flex; gap: 8px; align-items: center; color: var(--ink-2); font-size: 12.5px; padding: 3px 0; transition: color 0.3s var(--ease); }
+  .req li .lucide { width: 13px; height: 13px; }
+  .req li.ok { color: var(--accent-ink); }
+  .req li.ok .lucide { color: var(--accent); }
+
+  /* ============ SHELL ============ */
+  .shell { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; transition: grid-template-columns 0.45s var(--ease); }
+  .shell.collapsed { grid-template-columns: 68px 1fr; }
+  .sidebar {
+    background: var(--surface); border-right: 1px solid var(--line-soft);
+    display: flex; flex-direction: column; padding: 18px 12px 14px;
+    position: sticky; top: 0; height: 100vh; overflow: hidden;
+  }
+  .side-head { display: flex; align-items: center; gap: 11px; padding: 0 8px 16px; margin-bottom: 12px; border-bottom: 1px solid var(--line-soft); }
+  .side-head .txt { overflow: hidden; white-space: nowrap; transition: opacity 0.3s var(--ease); }
+  .side-head .t { font-size: 15.5px; font-weight: 700; letter-spacing: -0.02em; }
+  .side-head .s { font-size: 11px; color: var(--ink-3); }
+  .shell.collapsed .side-head .txt { opacity: 0; width: 0; }
+  .shell.collapsed .side-head {
+    flex-direction: column; justify-content: center; gap: 10px;
+    padding-left: 0; padding-right: 0;
+  }
+  .side-head .mark { flex-shrink: 0; }
+  .collapse-btn {
+    margin-left: auto; width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink-2);
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    transition: all 0.3s var(--ease);
+  }
+  .shell.collapsed .collapse-btn { margin-left: 0; margin-right: 0; }
+  .collapse-btn:hover { background: var(--tray); }
+  .collapse-btn .lucide { width: 14px; height: 14px; transition: transform 0.4s var(--ease); }
+  .shell.collapsed .collapse-btn .lucide { transform: rotate(180deg); }
+  .nav-item {
+    display: flex; align-items: center; gap: 11px;
+    padding: 9px 12px; border-radius: 11px; margin-bottom: 2px;
+    color: var(--ink-2); font-weight: 500; font-size: 13.5px; cursor: pointer;
+    white-space: nowrap; transition: all 0.3s var(--ease); position: relative;
+    text-decoration: none;
+  }
+  .nav-item .lbl { overflow: hidden; transition: opacity 0.25s var(--ease); }
+  .shell.collapsed .nav-item .lbl { opacity: 0; width: 0; }
+  .shell.collapsed .nav-item { justify-content: center; padding: 9px 0; gap: 0; }
+  .nav-item:hover { background: var(--tray); color: var(--ink); }
+  .nav-item.active { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+  .nav-item.locked { color: var(--ink-3); cursor: default; }
+  .nav-item.locked:hover { background: transparent; color: var(--ink-3); }
+  .nav-item .lock { margin-left: auto; }
+  .nav-item .lock.lucide { width: 12.5px; height: 12.5px; }
+  .shell.collapsed .nav-item .lock { display: none; }
+  .shell.collapsed .nav-item::after {
+    content: attr(data-tip); position: absolute; left: calc(100% + 10px); top: 50%;
+    transform: translateY(-50%) translateX(-4px); background: var(--ink); color: #f7f6f3;
+    font-size: 11.5px; font-weight: 600; padding: 5px 10px; border-radius: 7px;
+    white-space: nowrap; opacity: 0; pointer-events: none;
+    transition: opacity 0.25s var(--ease), transform 0.25s var(--ease); z-index: 80;
+  }
+  .shell.collapsed .nav-item:hover::after { opacity: 1; transform: translateY(-50%) translateX(0); }
+  button.nav-item { width: 100%; font-family: inherit; text-align: left; background: none; border: none; }
+  .sidebar-foot {
+    margin-top: auto; padding: 12px 8px 2px; border-top: 1px solid var(--line-soft);
+    display: flex; align-items: center; gap: 10px; white-space: nowrap;
+  }
+  .avatar {
+    width: 32px; height: 32px; border-radius: 50%; color: #fff;
+    font-size: 11.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .sidebar-foot .who { overflow: hidden; transition: opacity 0.25s var(--ease); }
+  .shell.collapsed .sidebar-foot .who { opacity: 0; width: 0; }
+  .shell.collapsed .sidebar-foot { justify-content: center; padding-left: 0; padding-right: 0; }
+  .sidebar-foot .n { font-weight: 600; font-size: 13px; }
+  .sidebar-foot .r { color: var(--ink-3); font-size: 11.5px; }
+  .sidebar-foot .out { margin-left: auto; color: var(--ink-3); cursor: pointer; transition: color 0.3s var(--ease); background:none;border:none;padding:4px; }
+  .shell.collapsed .sidebar-foot .out { display: none; }
+  .sidebar-foot .out:hover { color: var(--ink); }
+
+  .main { display: flex; flex-direction: column; min-width: 0; }
+  .topbar {
+    height: 64px; background: rgba(247,246,243,0.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line-soft);
+    display: flex; align-items: center; gap: 18px; padding: 0 26px;
+    position: sticky; top: 0; z-index: 40;
+  }
+  .topbar h1 { font-size: 16.5px; font-weight: 700; letter-spacing: -0.015em; }
+  .topbar .crumb { color: var(--ink-3); font-size: 12.5px; }
+  .search { position: relative; flex: 0 1 360px; margin-left: 6px; }
+  .search .lucide {
+    position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+    width: 15px; height: 15px; color: var(--ink-3);
+  }
+  .search input {
+    width: 100%; padding: 9px 14px 9px 37px; font-size: 13px; font-family: inherit;
+    border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink);
+    transition: all 0.3s var(--ease);
+  }
+  .search input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3.5px rgba(46,125,91,0.1); }
+  .search input::placeholder { color: var(--ink-3); }
+  .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 14px; color: var(--ink-2); }
+  .presence-toggle {
+    display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line);
+    border-radius: 999px; padding: 7px 11px; background: var(--surface); color: var(--ink-2);
+    font: 600 11.5px/1 inherit; cursor: pointer; transition: all 0.3s var(--ease);
+  }
+  .presence-toggle:hover { background: var(--tray); color: var(--ink); }
+  .presence-toggle .dot::before { width: 7px; height: 7px; }
+  .bell-btn {
+    position: relative; width: 34px; height: 34px; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink-2);
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    transition: all 0.3s var(--ease);
+  }
+  .bell-btn:hover { background: var(--tray); }
+  .dot { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+  .dot::before { content: ""; width: 7px; height: 7px; border-radius: 50%; }
+  .dot.on { color: var(--accent-ink); } .dot.on::before { background: var(--accent); }
+  .dot.away { color: var(--ink-2); } .dot.away::before { background: #d9d6cd; }
+  .dot.busy { color: var(--danger); } .dot.busy::before { background: var(--danger); }
+  .dot.off { color: var(--ink-3); } .dot.off::before { background: #e5e2da; }
+  .mono { font-variant-numeric: tabular-nums; }
+
+  .notif-pop {
+    position: absolute; top: 56px; right: 26px; z-index: 50; width: 320px;
+    opacity: 0; transform: translateY(-8px); pointer-events: none;
+    transition: opacity 0.3s var(--ease), transform 0.3s var(--ease);
+  }
+  .notif-pop.on { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .notif-item {
+    display: flex; gap: 11px; padding: 12px 14px; border-bottom: 1px solid var(--line-soft);
+    transition: background 0.2s var(--ease); cursor: pointer;
+  }
+  .notif-item:last-child { border-bottom: none; }
+  .notif-item:hover { background: var(--bg); }
+  .notif-item .ic {
+    width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .notif-item .ic .lucide { width: 14px; height: 14px; }
+  .notif-item .t { font-size: 12.5px; font-weight: 600; line-height: 1.35; }
+  .notif-item .s { font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }
+
+  .content {
+    padding: 24px 26px 40px; display: grid; gap: 20px;
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+  .content-dir { grid-template-columns: 1fr; }
+
+  /* ---- employee cards grid ---- */
+  .panel-head {
+    padding: 14px 18px; border-bottom: 1px solid var(--line-soft);
+    font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 9px;
+  }
+  .panel-head .lucide { width: 15px; height: 15px; color: var(--ink-3); }
+  .panel-head .meta { margin-left: auto; font-weight: 500; color: var(--ink-3); font-size: 12px; }
+  .emp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; padding: 14px; }
+  .emp-card {
+    background: var(--surface); border: 1px solid var(--line-soft); border-radius: 14px;
+    padding: 14px; cursor: pointer;
+    transition: all 0.3s var(--ease);
+  }
+  .emp-card:hover { border-color: var(--line); box-shadow: 0 6px 20px -10px rgba(63,63,58,0.18); transform: translateY(-2px); }
+  .emp-card .top { display: flex; align-items: center; gap: 11px; margin-bottom: 10px; }
+  .emp-card .avatar { width: 38px; height: 38px; font-size: 13px; border-radius: 12px; }
+  .emp-card .n { font-weight: 700; font-size: 13.5px; letter-spacing: -0.01em; }
+  .emp-card .p { color: var(--ink-2); font-size: 12px; margin-top: 1px; }
+  .emp-card .foot { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: var(--ink-3); }
+  .tree-empty { padding: 18px 12px; text-align: center; color: var(--ink-3); font-size: 12.5px; }
+
+  .skel {
+    border-radius: 14px; height: 92px;
+    background: linear-gradient(90deg, var(--tray) 25%, #f6f4ef 50%, var(--tray) 75%);
+    background-size: 800px 100%; animation: shimmer 1.3s linear infinite;
+  }
+
+  /* ---- filter bar ---- */
+  .filter-bar {
+    display: flex; gap: 8px; padding: 12px 14px;
+    border-bottom: 1px solid var(--line-soft); flex-wrap: wrap;
+  }
+  .filter-bar .search { flex: 1 1 240px; margin: 0; }
+  .filter-select {
+    padding: 8px 12px; font-size: 12.5px; font-family: inherit;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
+    transition: border-color 0.3s var(--ease); min-width: 140px;
+  }
+  .filter-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(46,125,91,0.12); }
+
+  /* ---- profile drawer ---- */
+  .backdrop {
+    position: fixed; inset: 0; z-index: 60; background: rgba(63,63,58,0.32);
+    opacity: 0; pointer-events: none; transition: opacity 0.4s var(--ease);
+    backdrop-filter: blur(3px);
+  }
+  .backdrop.on { opacity: 1; pointer-events: auto; }
+  .drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 70; width: 380px; max-width: 92vw;
+    transform: translateX(105%); transition: transform 0.5s var(--ease);
+    padding: 14px;
+  }
+  .drawer.on { transform: translateX(0); }
+  .drawer .tray { height: 100%; display: flex; background: rgba(239,237,232,0.95); }
+  .drawer .core { flex: 1; padding: 0; overflow-y: auto; display: flex; flex-direction: column; }
+  .drawer-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 18px; border-bottom: 1px solid var(--line-soft);
+    font-weight: 700; font-size: 13px; position: sticky; top: 0;
+    background: rgba(255,255,255,0.9); backdrop-filter: blur(8px); z-index: 2;
+  }
+  .drawer-close {
+    width: 30px; height: 30px; border-radius: 9px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--ink-2); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.3s var(--ease);
+  }
+  .drawer-close:hover { background: var(--tray); }
+  .drawer-close .lucide { width: 14px; height: 14px; }
+  .drawer-body { padding: 22px 20px; }
+  .p-hero {
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    padding: 8px 0 20px; border-bottom: 1px solid var(--line-soft);
+  }
+  .p-hero .avatar { width: 68px; height: 68px; font-size: 20px; border-radius: 22px; margin-bottom: 12px; position: relative; }
+  .p-hero .avatar .presence-ring {
+    position: absolute; bottom: -1px; right: -1px; width: 15px; height: 15px;
+    border-radius: 50%; border: 3px solid var(--surface); background: #e5e2da;
+  }
+  .p-hero .avatar .presence-ring.on { background: var(--accent); }
+  .p-hero .avatar .presence-ring.busy { background: var(--danger); }
+  .p-hero .avatar .presence-ring.away { background: #d9d6cd; }
+  .p-hero .n { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
+  .p-hero .p { color: var(--ink-2); font-size: 13px; margin-top: 3px; }
+  .p-hero .org-line {
+    margin-top: 9px; font-size: 11.5px; color: var(--ink-3);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .p-hero .org-line .lucide { width: 12px; height: 12px; }
+  .p-rows { margin-top: 6px; }
+  .p-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10.5px 0; border-bottom: 1px solid var(--line-soft); font-size: 12.5px;
+  }
+  .p-row .lucide { width: 14px; height: 14px; color: var(--ink-3); flex-shrink: 0; }
+  .p-row .k { color: var(--ink-3); width: 96px; flex-shrink: 0; }
+  .p-row .v { font-weight: 600; margin-left: auto; text-align: right; word-break: break-all; }
+  .actions { display: flex; gap: 8px; margin-top: 20px; }
+  .actions button {
+    flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 9px; font-size: 12.5px; font-weight: 600; font-family: inherit;
+    border: 1px solid var(--line); border-radius: 999px;
+    background: var(--surface); color: var(--ink-2); cursor: pointer;
+    transition: all 0.3s var(--ease);
+  }
+  .actions button:hover:not(:disabled) { background: var(--tray); color: var(--ink); }
+  .actions button:disabled { color: var(--ink-3); cursor: not-allowed; opacity: 0.7; }
+  .actions button .lucide { width: 14px; height: 14px; }
+  .actions .hint { flex-basis: 100%; text-align: center; font-size: 11px; color: var(--ink-3); margin-top: 4px; }
+
+  /* ---- toast ---- */
+  .toast {
+    position: fixed; bottom: 22px; left: 50%; z-index: 100; pointer-events: none;
+    display: flex; align-items: center; gap: 9px;
+    padding: 11px 18px; border-radius: 999px;
+    background: var(--ink); color: #f7f6f3;
+    font-size: 12.5px; font-weight: 600;
+    box-shadow: 0 12px 30px -12px rgba(63,63,58,0.5);
+    opacity: 0; transform: translate(-50%, 14px);
+    transition: opacity 0.45s var(--ease), transform 0.45s var(--ease);
+  }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+  .toast .lucide { width: 14px; height: 14px; }
+
+  /* ---- admin tabs ---- */
+  .admin-tabs { display: flex; gap: 4px; flex-wrap: wrap; padding: 0 0 16px; }
+  .admin-tab {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border-radius: 11px; border: none; cursor: pointer;
+    background: transparent; color: var(--ink-2); font: inherit; font-weight: 500; font-size: 13px;
+    transition: all 0.3s var(--ease);
+  }
+  .admin-tab:hover { background: var(--tray); color: var(--ink); }
+  .admin-tab.active {
+    background: var(--surface); color: var(--accent-ink); font-weight: 600;
+    box-shadow: inset 0 0 0 1px var(--line), 0 1px 2px rgba(63,63,58,.05);
+  }
+  .admin-tab .lucide { width: 15px; height: 15px; }
+
+  /* ---- admin tables ---- */
+  .u-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .u-table th {
+    text-align: left; padding: 10px 18px 8px; font-size: 11px; font-weight: 700;
+    color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .u-table td { padding: 10px 18px; border-bottom: 1px solid var(--line-soft); vertical-align: middle; }
+  .u-table tbody tr { transition: background 0.2s var(--ease); }
+  .u-table tbody tr:hover { background: var(--bg); }
+  .u-table .acts { white-space: nowrap; text-align: right; }
+  .u-table .acts button {
+    width: 27px; height: 27px; border-radius: 8px; margin-left: 4px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; transition: all 0.25s var(--ease);
+  }
+  .u-table .acts button:hover { background: var(--tray); color: var(--ink); }
+  .u-table .acts .lucide { width: 13px; height: 13px; }
+  .tag {
+    display: inline-block; padding: 2px 8px; border-radius: 6px;
+    font-size: 11px; font-weight: 500; font-family: "JetBrains Mono", monospace;
+    background: var(--tray); color: var(--ink-2);
+  }
+
+  /* ---- admin org ---- */
+  .org-input, .org-select {
+    flex: 1; min-width: 0; padding: 8px 12px; font-size: 12.5px; font-family: inherit;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink);
+    transition: border-color 0.3s var(--ease);
+  }
+  .org-input:focus, .org-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(46,125,91,0.12); }
+  .org-add {
+    width: 32px; height: 32px; border-radius: 9px; border: none; flex-shrink: 0;
+    background: var(--accent); color: #fff; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: background 0.25s var(--ease);
+  }
+  .org-add:hover { background: var(--accent-ink); }
+  .org-add .lucide { width: 14px; height: 14px; }
+  .org-row {
+    display: flex; align-items: center; gap: 9px; padding: 7px 2px;
+    border-bottom: 1px solid var(--line-soft); font-size: 12.5px;
+  }
+  .org-row:last-child { border-bottom: none; }
+  .org-act {
+    margin-left: auto; width: 26px; height: 26px; border-radius: 8px; flex-shrink: 0;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: all 0.25s var(--ease);
+  }
+  .org-act:hover:not(:disabled) { background: var(--tray); color: var(--ink); }
+  .org-act:disabled { opacity: 0.4; cursor: default; }
+  .org-act .lucide { width: 12.5px; height: 12.5px; }
+
+  /* ---- dashboard module cards ---- */
+  .module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; padding: 14px; }
+  .module-card {
+    background: var(--surface); border: 1px solid var(--line-soft); border-radius: 14px;
+    padding: 14px; cursor: default;
+    transition: all 0.3s var(--ease);
+  }
+  .module-card:hover { border-color: var(--line); box-shadow: 0 6px 20px -10px rgba(63,63,58,0.18); transform: translateY(-2px); }
+  .module-card a { text-decoration: none; color: inherit; display: block; }
+  .module-card .top { display: flex; align-items: center; gap: 11px; margin-bottom: 10px; }
+  .module-card .avatar { width: 38px; height: 38px; font-size: 13px; border-radius: 12px; }
+  .module-card .n { font-weight: 700; font-size: 13.5px; letter-spacing: -0.01em; }
+  .module-card .p { color: var(--ink-2); font-size: 12px; margin-top: 1px; }
+  .module-card .foot { display: flex; align-items: center; justify-content: space-between; font-size: 11.5px; color: var(--ink-3); }
+  .module-card.avail { cursor: pointer; }
+  .module-card.avail:hover { border-color: var(--accent); }
+  .module-card.pending { opacity: 0.62; }
+
+  @media (max-width: 980px) {
+    .content { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="switcher">
+  <span>IPop · Foundation</span>
+  <button class="active" data-screen="login">Sign in</button>
+  <button data-screen="password">Set password</button>
+  <button data-screen="dashboard">Dashboard</button>
+  <button data-screen="directory">Directory</button>
+  <button data-screen="files">Files</button>
+  <button data-screen="admin">Administration</button>
+</div>
+
+<!-- ============ SCREEN 1: SIGN IN ============ -->
+<div class="screen active" id="screen-login">
+  <div class="auth-wrap">
+    <div class="slides" id="slides">
+      <div class="slide on" style="background-image:url('https://picsum.photos/seed/ipop-office-1/1920/1080')"></div>
+      <div class="slide" style="background-image:url('https://picsum.photos/seed/ipop-office-2/1920/1080')"></div>
+      <div class="slide" style="background-image:url('https://picsum.photos/seed/ipop-office-3/1920/1080')"></div>
+      <div class="slide" style="background-image:url('https://picsum.photos/seed/ipop-office-4/1920/1080')"></div>
+    </div>
+    <div class="auth-card tray rise rise-1" id="login-card">
+      <div class="core">
+        <div class="brand-row">
+          <div class="mark">iP</div>
+          <div><div class="t">IPop</div><div class="s">Internal operations portal</div></div>
+        </div>
+        <h2>Sign in</h2>
+        <p class="sub">Use your employee ID and password</p>
+        <form id="login-form">
+          <div class="field">
+            <label for="nik">Employee ID</label>
+            <input id="nik" type="text" placeholder="e.g. 20140312" autocomplete="username">
+          </div>
+          <div class="field">
+            <label for="pwd">Password</label>
+            <input id="pwd" type="password" placeholder="Your password" autocomplete="current-password">
+          </div>
+          <button class="btn" type="submit">Sign in <span class="orb"><i data-lucide="arrow-right"></i></span></button>
+        </form>
+        <div class="note" id="login-note">
+          <i data-lucide="info"></i>
+          <span>First time? Sign in with the default password from HR, then set your own.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SCREEN 2: SET PASSWORD ============ -->
+<div class="screen" id="screen-password">
+  <div class="auth-wrap">
+    <div class="slides">
+      <div class="slide on" style="background-image:url('https://picsum.photos/seed/ipop-office-2/1920/1080')"></div>
+    </div>
+    <div class="auth-card tray rise rise-1">
+      <div class="core">
+        <div class="brand-row">
+          <div class="mark">iP</div>
+          <div><div class="t">IPop</div><div class="s">Internal operations portal</div></div>
+        </div>
+        <h2>Set your password</h2>
+        <p class="sub">Required before you can continue</p>
+        <form id="pwd-form">
+          <div class="field">
+            <label for="np">New password</label>
+            <input id="np" type="password" autocomplete="new-password">
+          </div>
+          <div class="field">
+            <label for="cp">Confirm new password</label>
+            <input id="cp" type="password" autocomplete="new-password">
+          </div>
+          <ul class="req">
+            <li id="r1"><i data-lucide="circle"></i> At least 8 characters</li>
+            <li id="r2"><i data-lucide="circle"></i> One uppercase letter and one number</li>
+            <li id="r3"><i data-lucide="circle"></i> Different from the default password</li>
+            <li id="r4"><i data-lucide="circle"></i> Both fields match</li>
+          </ul>
+          <button class="btn" type="submit">Update password <span class="orb"><i data-lucide="arrow-right"></i></span></button>
+        </form>
+        <div class="note">
+          <i data-lucide="shield"></i>
+          <span>Changing your password signs out every other device using this account.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SCREEN 3: DASHBOARD ============ -->
+<div class="screen" id="screen-dashboard">
+  <div class="shell" id="shell">
+    <aside class="sidebar">
+      <div class="side-head">
+        <div class="mark" style="width:34px;height:34px;font-size:14px">iP</div>
+        <div class="txt"><div class="t">IPop</div><div class="s">Operational portal</div></div>
+        <button class="collapse-btn" id="collapse-btn" title="Collapse sidebar"><i data-lucide="panel-left-close"></i></button>
+      </div>
+      <div class="nav-item active" data-tip="Dashboard"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></div>
+      <div class="nav-item" data-tip="Directory"><i data-lucide="users"></i><span class="lbl">Directory</span></div>
+      <div class="nav-item" data-tip="Administration"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administration</span></div>
+      <button type="button" class="nav-item locked" data-tip="Chat - coming soon" aria-disabled="true"><i data-lucide="message-circle"></i><span class="lbl">Chat</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="Mail - coming soon" aria-disabled="true"><i data-lucide="mail"></i><span class="lbl">Mail</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="Projects - coming soon" aria-disabled="true"><i data-lucide="square-kanban"></i><span class="lbl">Projects</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="News &amp; Memos - coming soon" aria-disabled="true"><i data-lucide="newspaper"></i><span class="lbl">News &amp; Memos</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="Calls - coming soon" aria-disabled="true"><i data-lucide="phone"></i><span class="lbl">Calls</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="Files - coming soon" aria-disabled="true"><i data-lucide="folder"></i><span class="lbl">Files</span><i data-lucide="lock" class="lock"></i></button>
+      <div class="sidebar-foot">
+        <div class="avatar" style="background:#2e7d5b">BA</div>
+        <div class="who"><div class="n">Bagas Arif</div><div class="r">IT &middot; Infrastructure</div></div>
+        <button class="out" title="Sign out"><i data-lucide="log-out"></i></button>
+      </div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <h1>Dashboard</h1>
+        <span class="crumb">Foundation release</span>
+        <div class="topbar-right">
+          <button class="presence-toggle"><span class="dot on">Online</span></button>
+          <button class="bell-btn" id="bell-btn1" title="Notifications"><i data-lucide="bell"></i></button>
+        </div>
+        <div class="notif-pop" id="notif-pop1">
+          <div class="tray"><div class="core" style="padding:6px">
+            <div class="notif-item">
+              <div class="ic" style="background:var(--accent-soft);color:var(--accent-ink)"><i data-lucide="refresh-cw"></i></div>
+              <div><div class="t">Directory synced from HRIS</div><div class="s">4,754 records &middot; 09:36</div></div>
+            </div>
+            <div class="notif-item">
+              <div class="ic" style="background:var(--tray);color:var(--ink-2)"><i data-lucide="bell-off"></i></div>
+              <div><div class="t">No other notifications</div><div class="s">Alerts arrive with the Chat module</div></div>
+            </div>
+          </div></div>
+        </div>
+      </header>
+      <div class="content">
+        <div class="tray rise rise-1">
+          <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head"><i data-lucide="layout-grid"></i> <span>Modules</span><span class="meta">1 of 8 available</span></div>
+            <div class="module-grid">
+              <div class="module-card avail">
+                <a href="#">
+                  <div class="top">
+                    <div class="avatar" style="background:var(--accent)"><i data-lucide="users"></i></div>
+                    <div><div class="n">Directory</div><div class="p">Search people across the organization</div></div>
+                  </div>
+                  <div class="foot"><span class="mono">412 records</span><span class="dot on">Available</span></div>
+                </a>
+              </div>
+              <div class="module-card pending">
+                <div class="top">
+                  <div class="avatar" style="background:var(--tray);color:var(--ink-3)"><i data-lucide="message-circle"></i></div>
+                  <div><div class="n">Chat</div><div class="p">Direct and group messaging</div></div>
+                </div>
+                <div class="foot"><span class="mono">Not deployed</span><span class="dot off">Coming soon</span></div>
+              </div>
+              <div class="module-card pending">
+                <div class="top">
+                  <div class="avatar" style="background:var(--tray);color:var(--ink-3)"><i data-lucide="mail"></i></div>
+                  <div><div class="n">Mail</div><div class="p">Corporate mailbox</div></div>
+                </div>
+                <div class="foot"><span class="mono">Not deployed</span><span class="dot off">Coming soon</span></div>
+              </div>
+              <div class="module-card pending">
+                <div class="top">
+                  <div class="avatar" style="background:var(--tray);color:var(--ink-3)"><i data-lucide="square-kanban"></i></div>
+                  <div><div class="n">Projects</div><div class="p">Task boards and tracking</div></div>
+                </div>
+                <div class="foot"><span class="mono">Not deployed</span><span class="dot off">Coming soon</span></div>
+              </div>
+              <div class="module-card pending">
+                <div class="top">
+                  <div class="avatar" style="background:var(--tray);color:var(--ink-3)"><i data-lucide="newspaper"></i></div>
+                  <div><div class="n">News &amp; Memos</div><div class="p">Company announcements</div></div>
+                </div>
+                <div class="foot"><span class="mono">Not deployed</span><span class="dot off">Coming soon</span></div>
+              </div>
+              <div class="module-card pending">
+                <div class="top">
+                  <div class="avatar" style="background:var(--tray);color:var(--ink-3)"><i data-lucide="phone"></i></div>
+                  <div><div class="n">Calls</div><div class="p">Voice and video</div></div>
+                </div>
+                <div class="foot"><span class="mono">Not deployed</span><span class="dot off">Coming soon</span></div>
+              </div>
+              <div class="module-card pending">
+                <div class="top">
+                  <div class="avatar" style="background:var(--tray);color:var(--ink-3)"><i data-lucide="folder"></i></div>
+                  <div><div class="n">Files</div><div class="p">Shared document storage</div></div>
+                </div>
+                <div class="foot"><span class="mono">Not deployed</span><span class="dot off">Coming soon</span></div>
+              </div>
+              <div class="module-card pending">
+                <div class="top">
+                  <div class="avatar" style="background:var(--tray);color:var(--ink-3)"><i data-lucide="sliders-horizontal"></i></div>
+                  <div><div class="n">Administration</div><div class="p">Users, roles, and audit</div></div>
+                </div>
+                <div class="foot"><span class="mono">Not deployed</span><span class="dot off">Coming soon</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SCREEN 4: DIRECTORY ============ -->
+<div class="screen" id="screen-directory">
+  <div class="shell" id="shell2">
+    <aside class="sidebar">
+      <div class="side-head">
+        <div class="mark" style="width:34px;height:34px;font-size:14px">iP</div>
+        <div class="txt"><div class="t">IPop</div><div class="s">Operational portal</div></div>
+        <button class="collapse-btn" title="Collapse sidebar"><i data-lucide="panel-left-close"></i></button>
+      </div>
+      <div class="nav-item" data-tip="Dashboard"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></div>
+      <div class="nav-item active" data-tip="Directory"><i data-lucide="users"></i><span class="lbl">Directory</span></div>
+      <div class="nav-item" data-tip="Administration"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administration</span></div>
+      <button type="button" class="nav-item locked" data-tip="Chat - coming soon" aria-disabled="true"><i data-lucide="message-circle"></i><span class="lbl">Chat</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="Mail - coming soon" aria-disabled="true"><i data-lucide="mail"></i><span class="lbl">Mail</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="Projects - coming soon" aria-disabled="true"><i data-lucide="square-kanban"></i><span class="lbl">Projects</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="News &amp; Memos - coming soon" aria-disabled="true"><i data-lucide="newspaper"></i><span class="lbl">News &amp; Memos</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="Calls - coming soon" aria-disabled="true"><i data-lucide="phone"></i><span class="lbl">Calls</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="Files - coming soon" aria-disabled="true"><i data-lucide="folder"></i><span class="lbl">Files</span><i data-lucide="lock" class="lock"></i></button>
+      <div class="sidebar-foot">
+        <div class="avatar" style="background:#2e7d5b">BA</div>
+        <div class="who"><div class="n">Bagas Arif</div><div class="r">IT &middot; Infrastructure</div></div>
+        <button class="out" title="Sign out"><i data-lucide="log-out"></i></button>
+      </div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <h1>Directory</h1>
+        <span class="crumb">People</span>
+        <div class="search"><i data-lucide="search"></i>
+          <input type="text" id="emp-search" placeholder="Search by name or ID">
+        </div>
+        <div class="topbar-right">
+          <button class="presence-toggle"><span class="dot on">Online</span></button>
+          <button class="bell-btn" id="bell-btn2" title="Notifications"><i data-lucide="bell"></i></button>
+        </div>
+        <div class="notif-pop" id="notif-pop2">
+          <div class="tray"><div class="core" style="padding:6px">
+            <div class="notif-item">
+              <div class="ic" style="background:var(--accent-soft);color:var(--accent-ink)"><i data-lucide="refresh-cw"></i></div>
+              <div><div class="t">Directory synced from HRIS</div><div class="s">4,754 records &middot; 09:36</div></div>
+            </div>
+            <div class="notif-item">
+              <div class="ic" style="background:var(--tray);color:var(--ink-2)"><i data-lucide="bell-off"></i></div>
+              <div><div class="t">No other notifications</div><div class="s">Alerts arrive with the Chat module</div></div>
+            </div>
+          </div></div>
+        </div>
+      </header>
+      <div class="content">
+        <div class="tray rise rise-1">
+          <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head"><i data-lucide="users"></i> <span>Everyone</span><span class="meta">4,754 people</span><span class="meta">Live</span></div>
+            <div class="filter-bar">
+              <div class="search" style="flex:1 1 240px;margin:0">
+                <i data-lucide="search"></i>
+                <input placeholder="Search by name or ID">
+              </div>
+              <select class="filter-select"><option>All departments</option><option>Information Technology</option><option>Finance</option><option>Operations</option></select>
+              <select class="filter-select"><option>All sites</option><option>Head Office</option><option>Plant Cikarang</option></select>
+              <select class="filter-select"><option>All presence</option><option>Online</option><option>Away</option><option>Offline</option></select>
+            </div>
+            <div class="emp-grid" id="emp-grid">
+              <div class="emp-card rise" style="animation-delay:0s" tabindex="0" role="button">
+                <div class="top">
+                  <div class="avatar" style="background:#2e7d5b">BA</div>
+                  <div><div class="n">Bagas Arif</div><div class="p">Infrastructure Engineer</div></div>
+                </div>
+                <div class="foot"><span class="mono">ID 20140312</span><span class="dot on">Online</span></div>
+              </div>
+              <div class="emp-card rise" style="animation-delay:0.05s" tabindex="0" role="button">
+                <div class="top">
+                  <div class="avatar" style="background:#4f6d8f">DW</div>
+                  <div><div class="n">Dewi Prasetyo</div><div class="p">Network Administrator</div></div>
+                </div>
+                <div class="foot"><span class="mono">ID 20160987</span><span class="dot away">Away</span></div>
+              </div>
+              <div class="emp-card rise" style="animation-delay:0.1s" tabindex="0" role="button">
+                <div class="top">
+                  <div class="avatar" style="background:#8a6d3b">RS</div>
+                  <div><div class="n">Rizky Saputra</div><div class="p">System Administrator</div></div>
+                </div>
+                <div class="foot"><span class="mono">ID 20181204</span><span class="dot on">Online</span></div>
+              </div>
+              <div class="emp-card rise" style="animation-delay:0.15s" tabindex="0" role="button">
+                <div class="top">
+                  <div class="avatar" style="background:#7d5ba6">AN</div>
+                  <div><div class="n">Ayu Ningrum</div><div class="p">IT Manager</div></div>
+                </div>
+                <div class="foot"><span class="mono">ID 20110543</span><span class="dot off">Offline</span></div>
+              </div>
+              <div class="emp-card rise" style="animation-delay:0.2s" tabindex="0" role="button">
+                <div class="top">
+                  <div class="avatar" style="background:#b3543f">FW</div>
+                  <div><div class="n">Fajar Wibowo</div><div class="p">Security Analyst</div></div>
+                </div>
+                <div class="foot"><span class="mono">ID 20200318</span><span class="dot on">Online</span></div>
+              </div>
+              <div class="emp-card rise" style="animation-delay:0.25s" tabindex="0" role="button">
+                <div class="top">
+                  <div class="avatar" style="background:#2e7d5b">SM</div>
+                  <div><div class="n">Sinta Maharani</div><div class="p">Frontend Developer</div></div>
+                </div>
+                <div class="foot"><span class="mono">ID 20190772</span><span class="dot on">Online</span></div>
+              </div>
+            </div>
+            <div style="padding:0 14px 14px"><button class="btn" style="width:auto;margin:0 auto;padding:10px 22px">Show more (4,748 remaining)</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="backdrop on" id="dir-backdrop"></div>
+  <div class="drawer on" id="dir-drawer" role="dialog" aria-label="Employee profile">
+    <div class="tray">
+      <div class="core">
+        <div class="drawer-head">Profile <button class="drawer-close" id="dir-drawer-close"><i data-lucide="x"></i></button></div>
+        <div class="drawer-body">
+          <div class="p-hero">
+            <div class="avatar" style="background:#2e7d5b">BA<span class="presence-ring on"></span></div>
+            <div class="n">Bagas Arif</div>
+            <div class="p">Infrastructure Engineer</div>
+            <div class="org-line"><i data-lucide="network"></i> Infrastructure &middot; HQ &middot; reports to Ayu Ningrum</div>
+          </div>
+          <div class="p-rows">
+            <div class="p-row"><i data-lucide="badge-check"></i><span class="k">Employee ID</span><span class="v mono">20140312</span></div>
+            <div class="p-row"><i data-lucide="at-sign"></i><span class="k">Email</span><span class="v">bagas.arif@company.com</span></div>
+            <div class="p-row"><i data-lucide="phone"></i><span class="k">Extension</span><span class="v mono">114</span></div>
+            <div class="p-row"><i data-lucide="map-pin"></i><span class="k">Location</span><span class="v">HQ &middot; Floor 3</span></div>
+            <div class="p-row"><i data-lucide="circle-dot"></i><span class="k">Status</span><span class="v"><span class="dot on">Online</span></span></div>
+          </div>
+          <div class="actions">
+            <button disabled><i data-lucide="message-circle"></i> Chat</button>
+            <button disabled><i data-lucide="mail"></i> Mail</button>
+            <button disabled><i data-lucide="phone"></i> Call</button>
+            <span class="hint">Activates as each module ships.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SCREEN 5: ADMINISTRATION ============ -->
+<div class="screen" id="screen-admin">
+  <div class="shell" id="shell3">
+    <aside class="sidebar">
+      <div class="side-head">
+        <div class="mark" style="width:34px;height:34px;font-size:14px">iP</div>
+        <div class="txt"><div class="t">IPop</div><div class="s">Operational portal</div></div>
+        <button class="collapse-btn" title="Collapse sidebar"><i data-lucide="panel-left-close"></i></button>
+      </div>
+      <div class="nav-item" data-tip="Dashboard"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></div>
+      <div class="nav-item" data-tip="Directory"><i data-lucide="users"></i><span class="lbl">Directory</span></div>
+      <div class="nav-item active" data-tip="Administration"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administration</span></div>
+      <button type="button" class="nav-item locked" data-tip="Chat - coming soon" aria-disabled="true"><i data-lucide="message-circle"></i><span class="lbl">Chat</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="Mail - coming soon" aria-disabled="true"><i data-lucide="mail"></i><span class="lbl">Mail</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="Projects - coming soon" aria-disabled="true"><i data-lucide="square-kanban"></i><span class="lbl">Projects</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="News &amp; Memos - coming soon" aria-disabled="true"><i data-lucide="newspaper"></i><span class="lbl">News &amp; Memos</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="Calls - coming soon" aria-disabled="true"><i data-lucide="phone"></i><span class="lbl">Calls</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="Files - coming soon" aria-disabled="true"><i data-lucide="folder"></i><span class="lbl">Files</span><i data-lucide="lock" class="lock"></i></button>
+      <div class="sidebar-foot">
+        <div class="avatar" style="background:#2e7d5b">IA</div>
+        <div class="who"><div class="n">IPop Administrator</div><div class="r">Admin</div></div>
+        <button class="out" title="Sign out"><i data-lucide="log-out"></i></button>
+      </div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <h1>Administration</h1>
+        <span class="crumb">Settings</span>
+        <div class="topbar-right">
+          <button class="presence-toggle"><span class="dot on">Online</span></button>
+          <button class="bell-btn" id="bell-btn3" title="Notifications"><i data-lucide="bell"></i></button>
+        </div>
+        <div class="notif-pop" id="notif-pop3">
+          <div class="tray"><div class="core" style="padding:6px">
+            <div class="notif-item">
+              <div class="ic" style="background:var(--accent-soft);color:var(--accent-ink)"><i data-lucide="refresh-cw"></i></div>
+              <div><div class="t">Directory synced from HRIS</div><div class="s">4,754 records &middot; 09:36</div></div>
+            </div>
+            <div class="notif-item">
+              <div class="ic" style="background:var(--tray);color:var(--ink-2)"><i data-lucide="bell-off"></i></div>
+              <div><div class="t">No other notifications</div><div class="s">Alerts arrive with the Chat module</div></div>
+            </div>
+          </div></div>
+        </div>
+      </header>
+      <div class="content">
+        <div class="admin-tabs">
+          <button class="admin-tab active" data-tab="0"><i data-lucide="refresh-cw"></i> HRIS sync</button>
+          <button class="admin-tab" data-tab="1"><i data-lucide="laptop"></i> Sessions</button>
+          <button class="admin-tab" data-tab="2"><i data-lucide="scroll-text"></i> Audit trail</button>
+          <button class="admin-tab" data-tab="3"><i data-lucide="building-2"></i> Organization</button>
+          <button class="admin-tab" data-tab="4"><i data-lucide="users"></i> Users</button>
+        </div>
+
+        <!-- Tab 0: HRIS sync -->
+        <div class="admin-tab-content" data-tab="0">
+          <div class="tray rise rise-1">
+            <div class="core" style="padding:0;overflow:hidden">
+              <div class="panel-head"><i data-lucide="refresh-cw"></i> <span>HRIS sync</span><span class="meta">4,754 employees &middot; last 09 Aug 09:36</span></div>
+              <div style="display:flex;align-items:center;gap:14px;padding:14px 18px">
+                <p style="margin:0;color:var(--ink-2);font-size:12.5px;flex:1;line-height:1.5">Pulls employee profiles from HRIS. New hires appear in the directory automatically. Departments and sites are not touched &mdash; those are assigned here.</p>
+                <button class="btn" style="width:auto;margin:0;padding:10px 20px">Sync now <span class="orb"><i data-lucide="download"></i></span></button>
+              </div>
+            </div>
+          </div>
+          <div class="tray rise rise-2">
+            <div class="core" style="padding:0;overflow:hidden">
+              <div class="panel-head"><i data-lucide="history"></i><span>Recent syncs</span><span class="meta">1 runs</span></div>
+              <table class="u-table">
+                <thead><tr><th>Started</th><th>Inserted</th><th>Updated</th><th>Deactivated</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">08 Aug 23:41</td><td class="mono" style="color:var(--accent-ink)">0</td><td class="mono" style="color:var(--ink-2)">0</td><td class="mono" style="color:var(--danger)">0</td><td><span class="dot on">Success</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 1: Sessions -->
+        <div class="admin-tab-content" data-tab="1" style="display:none">
+          <div class="tray rise rise-2">
+            <div class="core" style="padding:0;overflow:hidden">
+              <div class="panel-head"><i data-lucide="laptop"></i><span>Active sessions</span><span class="meta">19</span><button class="org-act" title="Refresh sessions"><i data-lucide="refresh-cw"></i></button></div>
+              <table class="u-table">
+                <thead><tr><th>User</th><th>IP address</th><th>Device</th><th>Expires</th><th></th></tr></thead>
+                <tbody>
+                  <tr><td style="font-weight:600">IPop Administrator</td><td class="mono">::1</td><td class="mono" style="font-size:11px;color:var(--ink-3)">Chrome|Windows|desktop</td><td class="mono">14 d left</td><td class="acts"><button title="Revoke session"><i data-lucide="log-out"></i></button></td></tr>
+                  <tr><td style="font-weight:600">'IZZUDDIN 'ULWAN</td><td class="mono">::1</td><td class="mono" style="font-size:11px;color:var(--ink-3)">&mdash;</td><td class="mono">14 d left</td><td class="acts"><button title="Revoke session"><i data-lucide="log-out"></i></button></td></tr>
+                  <tr><td style="font-weight:600">Budi Hartono</td><td class="mono">::1</td><td class="mono" style="font-size:11px;color:var(--ink-3)">&mdash;</td><td class="mono">14 d left</td><td class="acts"><button title="Revoke session"><i data-lucide="log-out"></i></button></td></tr>
+                  <tr><td style="font-weight:600">Dewi Prasetyo</td><td class="mono">::1</td><td class="mono" style="font-size:11px;color:var(--ink-3)">&mdash;</td><td class="mono">14 d left</td><td class="acts"><button title="Revoke session"><i data-lucide="log-out"></i></button></td></tr>
+                  <tr><td style="font-weight:600">Ayu Ningrum</td><td class="mono">::1</td><td class="mono" style="font-size:11px;color:var(--ink-3)">&mdash;</td><td class="mono">13 d left</td><td class="acts"><button title="Revoke session"><i data-lucide="log-out"></i></button></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Audit trail -->
+        <div class="admin-tab-content" data-tab="2" style="display:none">
+          <div class="tray rise rise-2">
+            <div class="core" style="padding:0;overflow:hidden">
+              <div class="panel-head"><i data-lucide="scroll-text"></i><span>Audit trail</span><span class="meta">149 records</span></div>
+              <table class="u-table">
+                <thead><tr><th>Timestamp</th><th>Action</th><th>Actor</th><th>Entity</th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">09 Aug 09:39</td><td><span class="tag">auth.login</span></td><td>ipopadmin</td><td class="mono" style="color:var(--ink-2)">ipopadmin</td></tr>
+                  <tr><td class="mono">09 Aug 09:38</td><td><span class="tag">auth.password_changed</span></td><td>ipopadmin</td><td class="mono" style="color:var(--ink-2)">ipopadmin</td></tr>
+                  <tr><td class="mono">09 Aug 09:36</td><td><span class="tag">hris.sync</span></td><td>system</td><td class="mono" style="color:var(--ink-2)">1</td></tr>
+                  <tr><td class="mono">08 Aug 23:22</td><td><span class="tag">admin.user.reactivate</span></td><td>ipopadmin</td><td class="mono" style="color:var(--ink-2)">DEVI RORO</td></tr>
+                  <tr><td class="mono">08 Aug 23:22</td><td><span class="tag">admin.user.deactivate</span></td><td>ipopadmin</td><td class="mono" style="color:var(--ink-2)">DEVI RORO</td></tr>
+                  <tr><td class="mono">08 Aug 21:25</td><td><span class="tag">admin.org.dept.purge</span></td><td>ipopadmin</td><td class="mono" style="color:var(--ink-2)">*</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Organization -->
+        <div class="admin-tab-content" data-tab="3" style="display:none">
+          <div class="tray rise rise-2">
+            <div class="core" style="padding:0;overflow:hidden">
+              <div class="panel-head"><i data-lucide="building-2"></i> <span>Organization</span><span class="meta">0 departments &middot; 1 sites</span></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+                <div style="padding:14px 18px;border-right:1px solid var(--line-soft)">
+                  <div style="display:flex;gap:8px;margin-bottom:12px">
+                    <input class="org-input" placeholder="Code">
+                    <input class="org-input" placeholder="Department name">
+                    <button class="org-add"><i data-lucide="plus"></i></button>
+                  </div>
+                  <div class="tree-empty">No departments yet &mdash; add the first one above.</div>
+                </div>
+                <div style="padding:14px 18px">
+                  <div style="display:flex;gap:8px;margin-bottom:12px">
+                    <input class="org-input" placeholder="Code">
+                    <input class="org-input" placeholder="Site name">
+                    <button class="org-add"><i data-lucide="plus"></i></button>
+                  </div>
+                  <div class="org-row"><span class="mono" style="color:var(--ink-3);font-size:11px">SJA-1</span><span style="font-weight:600">Surabaya Plant 1</span><button class="org-act" title="Deactivate"><i data-lucide="eye-off"></i></button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 4: Users -->
+        <div class="admin-tab-content" data-tab="4" style="display:none">
+          <div class="tray rise rise-3">
+            <div class="core" style="padding:0;overflow:hidden">
+              <div class="panel-head"><i data-lucide="users"></i> <span>Users</span><span class="meta">4,754 total</span></div>
+              <div style="display:flex;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line-soft);align-items:center">
+                <div class="search" style="flex:0 1 320px;margin:0"><i data-lucide="search"></i><input type="text" placeholder="Search by name or ID"></div>
+                <button class="btn" style="width:auto;margin:0 0 0 auto;padding:9px 18px">Add user <span class="orb"><i data-lucide="plus"></i></span></button>
+              </div>
+              <table class="u-table">
+                <thead><tr><th>ID</th><th>Name</th><th>Position</th><th>Role</th><th>Active</th><th>Presence</th><th></th></tr></thead>
+                <tbody>
+                  <tr><td class="mono">00067938</td><td style="font-weight:600">'IZZUDDIN 'ULWAN</td><td>PACKING MACHINE OPERATOR</td><td>&mdash;</td><td>Yes</td><td><span class="dot off">Offline</span></td>
+                    <td class="acts"><button title="Edit"><i data-lucide="pencil"></i></button><button title="Reset password"><i data-lucide="key-round"></i></button><button title="Deactivate"><i data-lucide="user-x"></i></button></td></tr>
+                  <tr><td class="mono">00056028</td><td style="font-weight:600">A'AN ARDIAN</td><td>PACKING MACHINE OPERATOR</td><td>&mdash;</td><td>Yes</td><td><span class="dot off">Offline</span></td>
+                    <td class="acts"><button title="Edit"><i data-lucide="pencil"></i></button><button title="Reset password"><i data-lucide="key-round"></i></button><button title="Deactivate"><i data-lucide="user-x"></i></button></td></tr>
+                  <tr><td class="mono">00046141</td><td style="font-weight:600">A'INUR ROHMAH</td><td>WAREHOUSE ADMIN STAFF</td><td>&mdash;</td><td>Yes</td><td><span class="dot off">Offline</span></td>
+                    <td class="acts"><button title="Edit"><i data-lucide="pencil"></i></button><button title="Reset password"><i data-lucide="key-round"></i></button><button title="Deactivate"><i data-lucide="user-x"></i></button></td></tr>
+                  <tr><td class="mono">00016603</td><td style="font-weight:600">A. MALIK MUSLIK</td><td>PMW CHECKER</td><td>&mdash;</td><td>Yes</td><td><span class="dot off">Offline</span></td>
+                    <td class="acts"><button title="Edit"><i data-lucide="pencil"></i></button><button title="Reset password"><i data-lucide="key-round"></i></button><button title="Deactivate"><i data-lucide="user-x"></i></button></td></tr>
+                  <tr><td class="mono">00059274</td><td style="font-weight:600">A.R DIMAS BUDI S</td><td>KOMANDAN REGU SECURITY</td><td>&mdash;</td><td>Yes</td><td><span class="dot off">Offline</span></td>
+                    <td class="acts"><button title="Edit"><i data-lucide="pencil"></i></button><button title="Reset password"><i data-lucide="key-round"></i></button><button title="Deactivate"><i data-lucide="user-x"></i></button></td></tr>
+                </tbody>
+              </table>
+              <div style="display:flex;gap:10px;align-items:center;justify-content:center;padding:12px">
+                <button class="org-act" disabled><i data-lucide="chevron-left"></i></button>
+                <span style="font-size:12px;color:var(--ink-2)">Page 1 of 96</span>
+                <button class="org-act"><i data-lucide="chevron-right"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ SCREEN 6: FILES ============ -->
+<div class="screen" id="screen-files">
+  <div class="shell" id="shell-files">
+    <aside class="sidebar">
+      <div class="side-head">
+        <div class="mark" style="width:34px;height:34px;font-size:14px">iP</div>
+        <div class="txt"><div class="t">IPop</div><div class="s">Operational portal</div></div>
+        <button class="collapse-btn" title="Collapse sidebar"><i data-lucide="panel-left-close"></i></button>
+      </div>
+      <div class="nav-item" data-tip="Dashboard"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></div>
+      <div class="nav-item" data-tip="Directory"><i data-lucide="users"></i><span class="lbl">Directory</span></div>
+      <div class="nav-item active" data-tip="Files"><i data-lucide="folder"></i><span class="lbl">Files</span></div>
+      <div class="nav-item" data-tip="Administration"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administration</span></div>
+      <button type="button" class="nav-item locked" data-tip="Chat — coming soon" aria-disabled="true"><i data-lucide="message-circle"></i><span class="lbl">Chat</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="Mail — coming soon" aria-disabled="true"><i data-lucide="mail"></i><span class="lbl">Mail</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="Projects — coming soon" aria-disabled="true"><i data-lucide="square-kanban"></i><span class="lbl">Projects</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="News & Memos — coming soon" aria-disabled="true"><i data-lucide="newspaper"></i><span class="lbl">News &amp; Memos</span><i data-lucide="lock" class="lock"></i></button>
+      <button type="button" class="nav-item locked" data-tip="Calls — coming soon" aria-disabled="true"><i data-lucide="phone"></i><span class="lbl">Calls</span><i data-lucide="lock" class="lock"></i></button>
+      <div class="sidebar-foot">
+        <div class="avatar" style="background:#2e7d5b">BA</div>
+        <div class="who"><div class="n">Bagas Arif</div><div class="r">IT · Infrastructure</div></div>
+        <button class="out" title="Sign out"><i data-lucide="log-out"></i></button>
+      </div>
+    </aside>
+    <div class="main">
+      <header class="topbar">
+        <h1>Files</h1>
+        <span class="crumb">Synology · pass-through</span>
+        <div class="topbar-right">
+          <button class="presence-toggle"><span class="dot on">Online</span></button>
+          <button class="bell-btn" title="Notifications"><i data-lucide="bell"></i></button>
+        </div>
+      </header>
+      <div class="admin-tabs" id="files-servers">
+        <button class="admin-tab active" data-server="spj"><i data-lucide="hard-drive"></i> SPJ <span class="mono" style="font-size:10px; opacity:0.6; margin-left:4px">192.168.2.16</span></button>
+        <button class="admin-tab" data-server="krw"><i data-lucide="hard-drive"></i> KRW <span class="mono" style="font-size:10px; opacity:0.6; margin-left:4px">10.12.2.6</span></button>
+        <button class="admin-tab" data-server="jtb"><i data-lucide="hard-drive"></i> JTB <span class="mono" style="font-size:10px; opacity:0.6; margin-left:4px">10.11.2.6</span></button>
+        <button class="admin-tab" data-server="smg"><i data-lucide="hard-drive"></i> SMG <span class="mono" style="font-size:10px; opacity:0.6; margin-left:4px">10.14.2.16</span></button>
+      </div>
+      <div class="content" style="grid-template-columns: 1fr">
+        <div class="tray rise rise-1"><div class="core" style="padding:0; overflow:hidden">
+          <div class="panel-head" style="gap:10px"><i data-lucide="folder"></i> <span>Files</span><span class="meta" id="files-meta">SPJ · 4 shares</span><span class="meta" style="margin-left:4px; display:inline-flex; gap:6px; align-items:center"><span style="width:6px;height:6px;border-radius:50%;background:var(--accent); display:inline-block"></span> Live · pass-through</span><button class="btn" id="files-open-cred" style="width:auto; margin:0 0 0 auto; padding:7px 12px; font-size:12px; background:var(--surface); color:var(--ink); border:1px solid var(--line)"><i data-lucide="plug-zap" style="margin-right:6px; width:14px;height:14px"></i> Connect</button></div>
+          <div class="filter-bar" style="gap:8px; align-items:center; flex-wrap:wrap; padding:10px 14px">
+            <div class="search" style="flex:1 1 220px; margin:0"><i data-lucide="search"></i><input id="files-search" placeholder="Search name…"></div>
+            <select class="filter-select" id="files-type" style="min-width:128px"><option value="">All types</option><option value="pdf">PDF</option><option value="image">Images</option><option value="sheet">Excel</option><option value="word">Word</option><option value="slide">Slides</option><option value="archive">Archives</option><option value="other">Other</option></select>
+            <select class="filter-select" id="files-sort" style="min-width:128px"><option value="name">Name A–Z</option><option value="name-desc">Name Z–A</option><option value="modified-desc">Newest</option><option value="modified">Oldest</option><option value="size-desc">Largest</option><option value="size">Smallest</option></select>
+            <button class="btn" id="files-clear" style="width:auto; margin:0; padding:7px 12px; font-size:12px; background:var(--surface); color:var(--ink); border:1px solid var(--line); display:none"><i data-lucide="x" style="margin-right:4px; width:12px;height:12px"></i> Clear</button>
+            <button class="btn" id="files-upload" style="width:auto; margin:0; padding:7px 12px; font-size:12px; background:var(--accent); color:#fff; border:none"><i data-lucide="upload" style="margin-right:6px; width:14px;height:14px"></i> Upload</button>
+          </div>
+          <div style="display:grid; grid-template-columns: 240px 1fr; min-height:420px">
+            <div style="border-right:1px solid var(--line-soft); padding:10px; display:grid; gap:6px; align-content:start">
+              <div style="font-size:11px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-3); padding:4px 6px">Shares</div>
+              <button class="org-row" data-share="homes/alice" style="border:1px solid var(--line); background:var(--accent-soft); border-color:rgba(46,125,91,0.25)">
+                <i data-lucide="home"></i> homes/alice
+                <i data-lucide="chevron-right" style="margin-left:auto; width:14px; height:14px"></i>
+              </button>
+              <button class="org-row" data-share="team-infra"><i data-lucide="users" style="color:var(--ink-3)"></i> team-infra <i data-lucide="chevron-right" style="margin-left:auto; width:14px; height:14px; color:var(--ink-3)"></i></button>
+              <button class="org-row" data-share="corp-docs"><i data-lucide="building-2" style="color:var(--ink-3)"></i> corp-docs <i data-lucide="chevron-right" style="margin-left:auto; width:14px; height:14px; color:var(--ink-3)"></i></button>
+              <div class="note" style="margin-top:8px"><i data-lucide="shield-check"></i><span>Same ACLs as File Explorer.</span></div>
+            </div>
+            <div style="display:flex; flex-direction:column; min-width:0">
+              <div style="display:flex; align-items:center; gap:6px; padding:10px 14px; border-bottom:1px solid var(--line-soft); font-size:13px">
+                <a class="org-act" data-path="/" style="width:auto; padding:5px 10px; border-radius:999px; font-size:12px; margin:0">/</a>
+                <i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--ink-3)"></i>
+                <span style="padding:5px 10px; border-radius:999px; background:var(--tray); border:1px solid var(--line); font-size:12px; font-weight:600" id="files-crumb">homes/alice</span>
+                <span class="meta" style="margin-left:8px; font-size:11px; color:var(--ink-3)" id="files-count">5 items</span>
+                <button class="btn" id="files-up" style="width:auto; margin-left:auto; padding:6px 10px; font-size:12px">Up</button>
+              </div>
+              <div style="display:grid; grid-template-columns:1fr 100px 130px 80px; gap:8px; padding:8px 14px; background:var(--bg); border-bottom:1px solid var(--line-soft); font-size:10.5px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-3)">
+                <button data-sort="name" class="files-sort" style="background:none; border:none; font:inherit; color:inherit; text-align:left; cursor:pointer; display:flex; gap:4px; align-items:center">Name <i data-lucide="arrow-up-down" style="width:12px;height:12px"></i></button>
+                <button data-sort="size" class="files-sort" style="background:none; border:none; font:inherit; color:inherit; text-align:left; cursor:pointer; display:flex; gap:4px; align-items:center">Size <i data-lucide="arrow-up-down" style="width:12px;height:12px"></i></button>
+                <button data-sort="modified" class="files-sort" style="background:none; border:none; font:inherit; color:inherit; text-align:left; cursor:pointer; display:flex; gap:4px; align-items:center">Modified <i data-lucide="arrow-up-down" style="width:12px;height:12px"></i></button>
+                <span style="text-align:right">Action</span>
+              </div>
+              <div style="flex:1; overflow:auto" id="files-list">
+                <div class="u-table-row file-row" data-name="Projects" data-kind="dir" data-size="0" data-mtime="Today 09:41" style="display:grid; grid-template-columns:1fr 100px 130px 80px; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line-soft); align-items:center">
+                  <span style="display:flex; gap:8px; align-items:center; font-weight:600; font-size:13px"><span style="width:28px;height:28px;border-radius:8px;background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center"><i data-lucide="folder"></i></span>Projects <span class="tag">12</span></span>
+                  <span style="color:var(--ink-3); font-size:12px">—</span><span style="color:var(--ink-3); font-size:12px">Today 09:41</span><span style="text-align:right"><i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--ink-3)"></i></span>
+                </div>
+                <div class="u-table-row file-row" data-name="Invoices 2026" data-kind="dir" data-size="0" data-mtime="Yesterday" style="display:grid; grid-template-columns:1fr 100px 130px 80px; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line-soft); align-items:center">
+                  <span style="display:flex; gap:8px; align-items:center; font-weight:600; font-size:13px"><span style="width:28px;height:28px;border-radius:8px;background:var(--tray);display:grid;place-items:center"><i data-lucide="folder"></i></span>Invoices 2026 <span class="tag">34</span></span>
+                  <span style="color:var(--ink-3); font-size:12px">—</span><span style="color:var(--ink-3); font-size:12px">Yesterday</span><span style="text-align:right"><i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--ink-3)"></i></span>
+                </div>
+                <div class="u-table-row file-row" data-preview="pdf" data-name="Q3-budget.xlsx" data-kind="sheet" data-size="2516582" data-mtime="Aug 08" style="display:grid; grid-template-columns:1fr 100px 130px 80px; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line-soft); align-items:center; cursor:pointer" title="Click to preview — eye to open">
+                  <span style="display:flex; gap:8px; align-items:center; font-weight:600; font-size:13px"><span style="width:28px;height:28px;border-radius:8px;background:#e8f5e9;color:#1b7a3d;display:grid;place-items:center"><i data-lucide="table"></i></span> Q3-budget.xlsx <span class="tag" style="background:#e8f5e9; color:#1b7a3d">XLSX</span> <span class="tag" style="background:var(--accent-soft); color:var(--accent-ink); border:1px solid rgba(46,125,91,0.12)">Preview</span></span>
+                  <span class="mono" style="font-size:12px">2.4 MB</span><span style="color:var(--ink-3); font-size:12px">Aug 08</span><span style="text-align:right; display:flex; gap:6px; justify-content:flex-end"><button class="org-act preview-btn" data-preview="pdf" data-name="Q3-budget.xlsx" style="margin:0" title="Preview"><i data-lucide="eye"></i></button><button class="org-act" style="margin:0" title="Download"><i data-lucide="download"></i></button></span>
+                </div>
+                <div class="u-table-row file-row" data-preview="image" data-name="site-visit.jpg" data-kind="image" data-size="8493465" data-mtime="Aug 08" style="display:grid; grid-template-columns:1fr 100px 130px 80px; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line-soft); align-items:center; cursor:pointer" title="Click to preview — eye to open">
+                  <span style="display:flex; gap:8px; align-items:center; font-weight:600; font-size:13px"><span style="width:28px;height:28px;border-radius:8px;background:#f3e8ff;color:#7c3aed;display:grid;place-items:center"><i data-lucide="image"></i></span> site-visit.jpg <span class="tag" style="background:#f3e8ff; color:#7c3aed">JPG</span> <span class="tag" style="background:var(--accent-soft); color:var(--accent-ink); border:1px solid rgba(46,125,91,0.12)">Preview</span></span>
+                  <span class="mono" style="font-size:12px">8.1 MB</span><span style="color:var(--ink-3); font-size:12px">Aug 08</span><span style="text-align:right; display:flex; gap:6px; justify-content:flex-end"><button class="org-act preview-btn" data-preview="image" data-name="site-visit.jpg" style="margin:0" title="Preview"><i data-lucide="eye"></i></button><button class="org-act" style="margin:0" title="Download"><i data-lucide="download"></i></button></span>
+                </div>
+                <div class="u-table-row file-row" data-preview="pdf" data-name="NDA — Vendor 12.pdf" data-kind="pdf" data-size="421888" data-mtime="Aug 05" style="display:grid; grid-template-columns:1fr 100px 130px 80px; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line-soft); align-items:center; cursor:pointer" title="Click to preview — eye to open">
+                  <span style="display:flex; gap:8px; align-items:center; font-weight:600; font-size:13px"><span style="width:28px;height:28px;border-radius:8px;background:#f9ece7;color:#b3462f;display:grid;place-items:center"><i data-lucide="file-text"></i></span> NDA — Vendor 12.pdf <span class="tag" style="background:var(--danger-soft); color:var(--danger)">PDF</span> <span class="tag" style="background:var(--accent-soft); color:var(--accent-ink); border:1px solid rgba(46,125,91,0.12)">Preview</span></span>
+                  <span class="mono" style="font-size:12px">412 KB</span><span style="color:var(--ink-3); font-size:12px">Aug 05</span><span style="text-align:right; display:flex; gap:6px; justify-content:flex-end"><button class="org-act preview-btn" data-preview="pdf" data-name="NDA — Vendor 12.pdf" style="margin:0" title="Preview"><i data-lucide="eye"></i></button><button class="org-act" style="margin:0" title="Download"><i data-lucide="download"></i></button></span>
+                </div>
+                <div class="u-table-row file-row" data-name="SOP — Onboarding.docx" data-kind="word" data-size="880640" data-mtime="Aug 04" style="display:grid; grid-template-columns:1fr 100px 130px 80px; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line-soft); align-items:center; cursor:pointer" title="Click to preview">
+                  <span style="display:flex; gap:8px; align-items:center; font-weight:600; font-size:13px"><span style="width:28px;height:28px;border-radius:8px;background:#e3f2fd;color:#1a56c4;display:grid;place-items:center"><i data-lucide="file-text"></i></span> SOP — Onboarding.docx <span class="tag" style="background:#e3f2fd; color:#1a56c4">DOCX</span> <span class="tag" style="background:var(--accent-soft); color:var(--accent-ink); border:1px solid rgba(46,125,91,0.12)">Preview</span></span>
+                  <span class="mono" style="font-size:12px">860 KB</span><span style="color:var(--ink-3); font-size:12px">Aug 04</span><span style="text-align:right; display:flex; gap:6px; justify-content:flex-end"><button class="org-act preview-btn" data-preview="docx" data-name="SOP — Onboarding.docx" style="margin:0" title="Preview"><i data-lucide="eye"></i></button><button class="org-act" style="margin:0" title="Open in Explorer"><i data-lucide="folder-open"></i></button><button class="org-act" style="margin:0" title="Download"><i data-lucide="download"></i></button></span>
+                </div>
+                <div class="u-table-row file-row" data-name="Townhall — Q3.pptx" data-kind="slide" data-size="13002342" data-mtime="Jul 30" style="display:grid; grid-template-columns:1fr 100px 130px 80px; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line-soft); align-items:center; cursor:pointer" title="Click to preview">
+                  <span style="display:flex; gap:8px; align-items:center; font-weight:600; font-size:13px"><span style="width:28px;height:28px;border-radius:8px;background:#fff3e0;color:#c2410c;display:grid;place-items:center"><i data-lucide="presentation"></i></span> Townhall — Q3.pptx <span class="tag" style="background:#fff3e0; color:#c2410c">PPTX</span> <span class="tag" style="background:var(--accent-soft); color:var(--accent-ink); border:1px solid rgba(46,125,91,0.12)">Preview</span></span>
+                  <span class="mono" style="font-size:12px">12.4 MB</span><span style="color:var(--ink-3); font-size:12px">Jul 30</span><span style="text-align:right; display:flex; gap:6px; justify-content:flex-end"><button class="org-act preview-btn" data-preview="pptx" data-name="Townhall — Q3.pptx" style="margin:0" title="Preview"><i data-lucide="eye"></i></button><button class="org-act" style="margin:0" title="Open in Explorer"><i data-lucide="folder-open"></i></button><button class="org-act" style="margin:0" title="Download"><i data-lucide="download"></i></button></span>
+                </div>
+              </div>
+              <div style="padding:8px 14px; background:var(--bg); border-top:1px solid var(--line-soft); display:flex; gap:8px; align-items:center; font-size:11px; color:var(--ink-3)">
+                <span style="width:6px;height:6px;border-radius:50%;background:var(--accent)"></span> Live pass-through — no index
+                <span id="files-sorted-label">· Sorted by name</span>
+                <span style="margin-left:auto; display:flex; gap:6px; align-items:center"><i data-lucide="eye" style="width:12px;height:12px"></i> Click eye to preview PDF / image, then Print</span>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      </div>
+    </div>
+  </div>
+  <!-- preview drawer (mock) -->
+  <div class="backdrop" id="files-preview-backdrop"></div>
+  <div class="drawer" id="files-preview" role="dialog" aria-label="Preview" style="width:720px; max-width:96vw">
+    <div class="tray"><div class="core" style="display:flex; flex-direction:column; height:100%">
+      <div class="drawer-head">
+        <span style="display:flex; gap:8px; align-items:center; min-width:0"><i data-lucide="eye"></i> <span id="files-preview-title" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Preview</span> <span class="tag" id="files-preview-tag">PDF</span></span>
+        <span style="display:flex; gap:6px; align-items:center">
+          <button class="org-act" title="Open in Explorer"><i data-lucide="folder-open"></i></button>
+          <button class="org-act" title="Print" onclick="window.print()"><i data-lucide="printer"></i></button>
+          <button class="org-act" title="Download"><i data-lucide="download"></i></button>
+          <button class="drawer-close" id="files-preview-close"><i data-lucide="x"></i></button>
+        </span>
+      </div>
+      <div style="flex:1; overflow:auto; padding:14px; background:var(--bg); display:grid; place-items:center">
+        <div id="files-preview-body" style="width:100%; display:grid; place-items:center">
+          <div class="note"><i data-lucide="file-text"></i><span>Mock preview — in the app this loads the file from FileStation and prints via the browser.</span></div>
+        </div>
+      </div>
+      <div style="padding:12px 14px; border-top:1px solid var(--line-soft); display:flex; gap:8px; background:var(--surface)">
+        <button class="btn" style="flex:1; margin:0" onclick="window.print()"><i data-lucide="printer" style="margin-right:6px"></i> Print</button>
+        <button class="btn" style="width:auto; margin:0; background:var(--surface); color:var(--ink); border:1px solid var(--line)">Download</button>
+      </div>
+    </div></div>
+  </div>
+  <!-- credential drawer for this screen -->
+  <div class="backdrop" id="files-backdrop"></div>
+  <div class="drawer" id="files-drawer" role="dialog" aria-label="Connect Synology">
+    <div class="tray"><div class="core" style="display:flex; flex-direction:column; height:100%">
+      <div class="drawer-head">Connect Synology <button class="drawer-close" id="files-drawer-close"><i data-lucide="x"></i></button></div>
+      <div class="drawer-body" style="flex:1; overflow:auto">
+        <div class="note err" id="files-invalid-banner" style="display:none"><i data-lucide="alert-triangle"></i><span>Stored credential was rejected — please re-enter it.</span></div>
+        <div class="field" style="margin-top:14px"><label>Synology username</label><input id="files-cred-user" placeholder="alice"></div>
+        <div class="field"><label>Password</label><input id="files-cred-pass" type="password" placeholder="••••••••"></div>
+        <div class="note"><i data-lucide="shield"></i><span>Validated live before storage. Wrong credentials never get saved. Sealed with Data Protection, key in Postgres.</span></div>
+        <div class="note err" id="files-cred-error" style="display:none"></div>
+      </div>
+      <div style="padding:14px 18px; border-top:1px solid var(--line-soft); display:flex; gap:8px; background:var(--bg)">
+        <button class="btn" id="files-save-cred" style="flex:1; margin:0">Save &amp; connect <span class="orb"><i data-lucide="arrow-right"></i></span></button>
+        <button class="btn" id="files-clear-cred" style="width:auto; margin:0; background:var(--surface); color:var(--ink); border:1px solid var(--line)">Clear</button>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<script>
+  /* ---------- switcher ---------- */
+  document.querySelectorAll(".switcher button").forEach(b =>
+    b.addEventListener("click", () => {
+      document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+      document.querySelectorAll(".switcher button").forEach(x => x.classList.remove("active"));
+      b.classList.add("active");
+      document.getElementById("screen-" + b.dataset.screen).classList.add("active");
+      document.querySelectorAll(".rise").forEach(n => { n.style.animation = "none"; n.offsetHeight; n.style.animation = ""; });
+      lucide.createIcons();
+    })
+  );
+
+  /* ---------- slideshow ---------- */
+  let slideIdx = 0;
+  setInterval(() => {
+    const slides = document.querySelectorAll("#slides .slide");
+    if (!slides.length) return;
+    slides[slideIdx].classList.remove("on");
+    slideIdx = (slideIdx + 1) % slides.length;
+    slides[slideIdx].classList.add("on");
+  }, 6000);
+
+  /* ---------- admin tabs + files servers ---------- */
+  document.querySelectorAll(".admin-tab").forEach(btn => {
+    // servers row has its own handler; don't let the generic admin-tab handler clear other sections
+    if (btn.closest("#files-servers")) return;
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".admin-tab").forEach(b => { if(!b.closest("#files-servers")) b.classList.remove("active"); });
+      document.querySelectorAll(".admin-tab-content").forEach(c => c.style.display = "none");
+      btn.classList.add("active");
+      const tab = document.querySelector(`.admin-tab-content[data-tab="${btn.dataset.tab}"]`);
+      if (tab) tab.style.display = "";
+    });
+  });
+  document.querySelectorAll("#files-servers .admin-tab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#files-servers .admin-tab").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const id = btn.getAttribute("data-server");
+      const label = btn.textContent.trim().split(/\s+/)[0];
+      const meta = document.getElementById("files-meta");
+      if (meta) meta.textContent = label + " · 3 shares · Live";
+    });
+  });
+
+  /* ---------- sidebar toggle ---------- */
+  document.querySelectorAll(".collapse-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      btn.closest(".shell").classList.toggle("collapsed");
+    });
+  });
+
+  /* ---------- bell toggle ---------- */
+  document.querySelectorAll(".bell-btn").forEach(btn => {
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      const pop = btn.parentElement.nextElementSibling;
+      if (pop && pop.classList.contains("notif-pop")) pop.classList.toggle("on");
+    });
+  });
+  document.addEventListener("click", () => {
+    document.querySelectorAll(".notif-pop.on").forEach(p => p.classList.remove("on"));
+  });
+
+  /* ---------- login mock ---------- */
+  let fails = 0, locked = false;
+  document.getElementById("login-form").addEventListener("submit", e => {
+    e.preventDefault();
+    if (locked) return;
+    const nik = document.getElementById("nik").value.trim();
+    const pwd = document.getElementById("pwd").value;
+    const note = document.getElementById("login-note");
+    const card = document.getElementById("login-card");
+    if (!nik || !pwd) {
+      note.className = "note err";
+      note.innerHTML = '<i data-lucide="alert-circle"></i><span>Enter your employee ID and password.</span>';
+      card.classList.remove("shake"); card.offsetHeight; card.classList.add("shake");
+      lucide.createIcons();
+    } else if (pwd === "1234") {
+      document.querySelector(".switcher button[data-screen=password]").click();
+    } else if (pwd === "demo") {
+      document.querySelector(".switcher button[data-screen=dashboard]").click();
+    } else {
+      fails++;
+      if (fails >= 5) {
+        locked = true;
+        note.className = "note err";
+        note.innerHTML = '<i data-lucide="lock"></i><span>Too many attempts. This account is locked for 15 minutes.</span>';
+      } else {
+        note.className = "note err";
+        note.innerHTML = `<i data-lucide="alert-circle"></i><span>Incorrect ID or password. ${5 - fails} attempt${5 - fails === 1 ? "" : "s"} left.</span>`;
+      }
+      lucide.createIcons();
+    }
+  });
+
+  /* ---------- password rules ---------- */
+  function checkRules() {
+    const np = document.getElementById("np").value, cp = document.getElementById("cp").value;
+    const rules = [
+      ["r1", np.length >= 8],
+      ["r2", /[A-Z]/.test(np) && /[0-9]/.test(np)],
+      ["r3", np !== "1234" && np.length > 0],
+      ["r4", np === cp && np.length > 0],
+    ];
+    rules.forEach(([id, ok]) => {
+      const li = document.getElementById(id);
+      li.classList.toggle("ok", ok);
+      li.querySelector("i, svg").outerHTML = `<i data-lucide="${ok ? "check-circle-2" : "circle"}"></i>`;
+    });
+    lucide.createIcons();
+    return rules.every(([, ok]) => ok);
+  }
+  document.getElementById("np").addEventListener("input", checkRules);
+  document.getElementById("cp").addEventListener("input", checkRules);
+  document.getElementById("pwd-form").addEventListener("submit", e => {
+    e.preventDefault();
+    if (checkRules()) document.querySelector(".switcher button[data-screen=dashboard]").click();
+  });
+
+  /* ---------- files: filter/sort/preview + cred drawers ---------- */
+  (function(){
+    // mock data for client-side filter/sort
+    const rows = [
+      { name: "Projects", isDir: true, size: 0, mtime: "Today 09:41", kind: "dir" },
+      { name: "Invoices 2026", isDir: true, size: 0, mtime: "Yesterday", kind: "dir" },
+      { name: "Q3-budget.xlsx", isDir: false, size: "2.4 MB", bytes: 2.4*1024*1024, mtime: "Aug 08", kind: "sheet" },
+      { name: "site-visit.jpg", isDir: false, size: "8.1 MB", bytes: 8.1*1024*1024, mtime: "Aug 08", kind: "image" },
+      { name: "NDA — Vendor 12.pdf", isDir: false, size: "412 KB", bytes: 412*1024, mtime: "Aug 05", kind: "pdf" },
+      { name: "SOP — Onboarding.docx", isDir: false, size: "860 KB", bytes: 860*1024, mtime: "Aug 04", kind: "word" },
+      { name: "Townhall — Q3.pptx", isDir: false, size: "12.4 MB", bytes: 12.4*1024*1024, mtime: "Jul 30", kind: "slide" },
+    ];
+    let q = "", type = "", sort = "name";
+    const searchEl = document.getElementById("files-search");
+    const typeEl = document.getElementById("files-type");
+    const sortEl = document.getElementById("files-sort");
+    function render(){
+      let list = rows.filter(r => {
+        if (q && !r.name.toLowerCase().includes(q.toLowerCase())) return false;
+        if (type && type !== "" && r.kind !== type && !(type === "other" && !["pdf","image","sheet","word","slide","archive"].includes(r.kind))) return false;
+        if (type && r.isDir) return false; // hide folders when filtering by type
+        return true;
+      });
+      // keep folders first? no — when filtering, hide folders; otherwise folders first
+      const isFiltered = q || type;
+      list = list.slice().sort((a,b) => {
+        if (!isFiltered) { if (a.isDir !== b.isDir) return a.isDir ? -1 : 1; }
+        if (sort === "name") return a.name.localeCompare(b.name);
+        if (sort === "name-desc") return b.name.localeCompare(a.name);
+        if (sort === "modified") return a.mtime.localeCompare(b.mtime);
+        if (sort === "modified-desc") return b.mtime.localeCompare(a.mtime);
+        if (sort === "size") return (a.bytes||0) - (b.bytes||0);
+        if (sort === "size-desc") return (b.bytes||0) - (a.bytes||0);
+        return 0;
+      });
+      // rebuild container (keep first two dir rows as-is when not filtered? simpler: rebuild all)
+      const container = document.querySelector("#screen-files .core > div:last-of-type > div:nth-child(3)");
+      // fallback: find by file-row parent
+      const parent = document.querySelector("#screen-files")?.querySelector("div[style*='flex:1; overflow:auto']");
+      if (!parent) return;
+      // clear existing file rows
+      parent.querySelectorAll(".file-row").forEach(n => n.remove());
+      // re-create from list (skip dirs already rendered? just render all)
+      // we removed all, so render filtered
+      list.forEach(r => {
+        const div = document.createElement("div");
+        div.className = "file-row";
+        div.setAttribute("data-preview", r.kind === "image" ? "image" : "pdf");
+        div.setAttribute("data-name", r.name);
+        div.style.cssText = "display:grid; grid-template-columns:1fr 100px 130px 80px; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line-soft); align-items:center; cursor:pointer";
+        div.title = r.isDir ? "Open folder" : "Click to preview — eye to open";
+        const icon = r.isDir ? '<span style="width:28px;height:28px;border-radius:8px;background:var(--accent-soft);color:var(--accent-ink);display:grid;place-items:center"><i data-lucide="folder"></i></span>'
+          : r.kind === "sheet" ? '<span style="width:28px;height:28px;border-radius:8px;background:#e8f5e9;color:#1b7a3d;display:grid;place-items:center"><i data-lucide="table"></i></span>'
+          : r.kind === "image" ? '<span style="width:28px;height:28px;border-radius:8px;background:#f3e8ff;color:#7c3aed;display:grid;place-items:center"><i data-lucide="image"></i></span>'
+          : r.kind === "pdf" ? '<span style="width:28px;height:28px;border-radius:8px;background:#f9ece7;color:#b3462f;display:grid;place-items:center"><i data-lucide="file-text"></i></span>'
+          : r.kind === "word" ? '<span style="width:28px;height:28px;border-radius:8px;background:#e3f2fd;color:#1a56c4;display:grid;place-items:center"><i data-lucide="file-text"></i></span>'
+          : r.kind === "slide" ? '<span style="width:28px;height:28px;border-radius:8px;background:#fff3e0;color:#c2410c;display:grid;place-items:center"><i data-lucide="presentation"></i></span>'
+          : '<i data-lucide="file"></i>';
+        const tag = r.isDir ? '<span class="tag">dir</span>' : '<span class="tag" style="background:' + (r.kind==="sheet"?"#e8f5e9":r.kind==="pdf"?"var(--danger-soft)":r.kind==="image"?"#f3e8ff":r.kind==="word"?"#e3f2fd":r.kind==="slide"?"#fff3e0":"var(--tray)") + '; color:' + (r.kind==="sheet"?"#1b7a3d":r.kind==="pdf"?"var(--danger)":r.kind==="image"?"#7c3aed":r.kind==="word"?"#1a56c4":r.kind==="slide"?"#c2410c":"var(--ink-2)") + '">' + (r.isDir?"DIR":r.kind.toUpperCase()) + '</span>';
+        const previewTag = !r.isDir && (r.kind==="pdf"||r.kind==="image") ? ' <span class="tag" style="background:var(--accent-soft); color:var(--accent-ink); border:1px solid rgba(46,125,91,0.12)">Preview</span>' : '';
+        div.innerHTML = '<span style="display:flex; gap:8px; align-items:center; font-weight:600; font-size:13px">' + icon + ' ' + r.name + ' ' + tag + previewTag + '</span><span style="color:var(--ink-3); font-size:12px" class="mono">' + (r.isDir?"—":r.size) + '</span><span style="color:var(--ink-3); font-size:12px">' + r.mtime + '</span><span style="text-align:right; display:flex; gap:6px; justify-content:flex-end">' + (r.isDir?'<i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--ink-3)"></i>':(r.kind==="pdf"||r.kind==="image"?'<button class="org-act preview-btn" style="margin:0" title="Preview"><i data-lucide="eye"></i></button><button class="org-act" style="margin:0" title="Download"><i data-lucide="download"></i></button>':'<button class="org-act" style="margin:0 0 0 auto" title="Download"><i data-lucide="download"></i></button>')) + '</span>';
+        parent.appendChild(div);
+      });
+      // empty state with Clear when filtered
+      if (list.length === 0 && (q || type)) {
+        const empty = document.createElement("div");
+        empty.className = "tree-empty";
+        empty.style.padding = "28px";
+        empty.innerHTML = 'No matching files. <button id="files-clear-mock" class="btn" style="width:auto; display:inline-flex; margin-left:8px; padding:6px 12px; font-size:12px">Clear filters</button>';
+        parent.appendChild(empty);
+        document.getElementById("files-clear-mock")?.addEventListener("click", () => {
+          q = ""; type = ""; sort = "name";
+          if (searchEl) searchEl.value = "";
+          if (typeEl) typeEl.value = "";
+          if (sortEl) sortEl.value = "name";
+          render();
+        });
+      }
+      // toggle Clear button visibility
+      const clearBtn = document.getElementById("files-clear");
+      if (clearBtn) clearBtn.style.display = (q || type) ? "" : "none";
+      lucide.createIcons();
+      // re-bind preview clicks
+      document.querySelectorAll("#screen-files .file-row, #screen-files .preview-btn").forEach(el => {
+        el.addEventListener("click", e => {
+          e.stopPropagation();
+          const row = el.closest(".file-row") || el;
+          const kind = row.getAttribute("data-preview") || el.getAttribute("data-preview") || "pdf";
+          const name = row.getAttribute("data-name") || el.getAttribute("data-name") || "file";
+          openPreview(name, kind);
+        });
+      });
+    }
+    if (searchEl) searchEl.addEventListener("input", e => { q = e.target.value; render(); });
+    if (typeEl) typeEl.addEventListener("change", e => { type = e.target.value; render(); });
+    if (sortEl) sortEl.addEventListener("change", e => { sort = e.target.value; render(); });
+    document.getElementById("files-clear")?.addEventListener("click", () => {
+      q = ""; type = ""; sort = "name";
+      if (searchEl) searchEl.value = "";
+      if (typeEl) typeEl.value = "";
+      if (sortEl) sortEl.value = "name";
+      render();
+    });
+    document.querySelectorAll("#screen-files .core > div:last-of-type > div:nth-child(2) button").forEach(btn => {
+      // header sort buttons (Name/Size/Modified) — cycle asc/desc
+      btn.addEventListener("click", () => {
+        const key = btn.textContent.trim().toLowerCase().includes("name") ? "name" : btn.textContent.trim().toLowerCase().includes("size") ? "size" : "modified";
+        sort = sort === key ? key + "-desc" : sort === key + "-desc" ? key : key;
+        if (sortEl) sortEl.value = sort;
+        render();
+      });
+    });
+    const openBtn = document.getElementById("files-open-cred");
+    const backdrop = document.getElementById("files-backdrop");
+    const drawer = document.getElementById("files-drawer");
+    const closeBtn = document.getElementById("files-drawer-close");
+    function open(){ backdrop.classList.add("on"); drawer.classList.add("on"); }
+    function close(){ backdrop.classList.remove("on"); drawer.classList.remove("on"); }
+    if(openBtn) openBtn.addEventListener("click", open);
+    if(closeBtn) closeBtn.addEventListener("click", close);
+    if(backdrop) backdrop.addEventListener("click", close);
+    // preview
+    const pBackdrop = document.getElementById("files-preview-backdrop");
+    const pDrawer = document.getElementById("files-preview");
+    const pClose = document.getElementById("files-preview-close");
+    const pTitle = document.getElementById("files-preview-title");
+    const pTag = document.getElementById("files-preview-tag");
+    const pBody = document.getElementById("files-preview-body");
+    function openPreview(name, kind){
+      if(pTitle) pTitle.textContent = name;
+      if(pTag) pTag.textContent = kind === "image" ? "IMAGE" : "PDF";
+      if(pBody){
+        pBody.innerHTML = kind === "image"
+          ? '<img src="https://picsum.photos/seed/' + encodeURIComponent(name) + '/900/600" alt="' + name.replace(/"/g,'') + '" style="max-width:100%; max-height:68vh; object-fit:contain; border-radius:12px; border:1px solid var(--line-soft); background:var(--surface)">'
+          : '<div style="width:100%; height:68vh; border:1px solid var(--line-soft); border-radius:12px; background:var(--surface); display:grid; place-items:center; padding:18px; text-align:center"><div><div style="font-weight:700">' + name.replace(/</g,'&lt;') + '</div><div style="font-size:12px; color:var(--ink-2); margin-top:4px">PDF preview — in the app this is an iframe from the NAS with Print.</div><div class="tag" style="margin-top:10px; display:inline-block">Print via browser</div></div></div>';
+      }
+      pBackdrop.classList.add("on"); pDrawer.classList.add("on"); lucide.createIcons();
+    }
+    function closePreview(){ pBackdrop.classList.remove("on"); pDrawer.classList.remove("on"); }
+    if(pClose) pClose.addEventListener("click", closePreview);
+    if(pBackdrop) pBackdrop.addEventListener("click", closePreview);
+    document.querySelectorAll(".file-row, .preview-btn").forEach(el => {
+      el.addEventListener("click", e => {
+        e.stopPropagation();
+        const row = el.closest(".file-row") || el;
+        const kind = row.getAttribute("data-preview") || el.getAttribute("data-preview") || "pdf";
+        const name = row.getAttribute("data-name") || el.getAttribute("data-name") || "file";
+        openPreview(name, kind);
+      });
+    });
+    const saveBtn = document.getElementById("files-save-cred");
+    const clearBtn = document.getElementById("files-clear-cred");
+    const errEl = document.getElementById("files-cred-error");
+    if(saveBtn) saveBtn.addEventListener("click", () => {
+      const u = document.getElementById("files-cred-user").value.trim();
+      const p = document.getElementById("files-cred-pass").value;
+      if(!u || !p){ errEl.textContent="Username and password are required."; errEl.style.display=""; return; }
+      errEl.style.display="none";
+      errEl.textContent="Would call PUT /api/files/credential — validated live, then sealed.";
+      errEl.className="note"; errEl.style.display="";
+      errEl.style.background="var(--accent-soft)"; errEl.style.color="var(--accent-ink)";
+    });
+    if(clearBtn) clearBtn.addEventListener("click", () => {
+      document.getElementById("files-cred-user").value="";
+      document.getElementById("files-cred-pass").value="";
+      errEl.textContent="DELETE /api/files/credential — credential and session dropped.";
+      errEl.className="note"; errEl.style.display="";
+    });
+  })();
+
+  lucide.createIcons();
+</script>
+</body>
+</html>

@@ -1,0 +1,581 @@
+@page "/admin"
+@implements IDisposable
+@inject IJSRuntime JS
+@inject AuthState Auth
+
+<PageTitle>Administration — IPop</PageTitle>
+
+@if (!loaded)
+{
+    <div class="content" style="grid-template-columns:1fr">
+        <div class="tray"><div class="core"><div class="skel"></div></div></div>
+    </div>
+}
+else if (!Auth.IsAdmin)
+{
+    <div class="content" style="grid-template-columns:1fr">
+        <div class="tray rise rise-1"><div class="core" style="padding:34px">
+            <div class="tree-empty">This page is only available to administrators.</div>
+        </div></div>
+    </div>
+}
+else
+{
+<div class="content" style="grid-template-columns:1fr">
+
+    @* ---- Tab bar: each admin concern is one view, not one long scroll ---- *@
+    <div class="admin-tabs rise" role="tablist" aria-label="Administration sections">
+        <button class="admin-tab @(Tab == 0 ? "active" : "")" role="tab" aria-selected="@(Tab == 0)" @onclick="() => tab = 0"><i data-lucide="refresh-cw"></i> HRIS sync</button>
+        <button class="admin-tab @(Tab == 1 ? "active" : "")" role="tab" aria-selected="@(Tab == 1)" @onclick="() => tab = 1"><i data-lucide="laptop"></i> Sessions</button>
+        <button class="admin-tab @(Tab == 2 ? "active" : "")" role="tab" aria-selected="@(Tab == 2)" @onclick="() => tab = 2"><i data-lucide="scroll-text"></i> Audit trail</button>
+        <button class="admin-tab @(Tab == 3 ? "active" : "")" role="tab" aria-selected="@(Tab == 3)" @onclick="() => tab = 3"><i data-lucide="building-2"></i> Organization</button>
+        <button class="admin-tab @(Tab == 4 ? "active" : "")" role="tab" aria-selected="@(Tab == 4)" @onclick="() => tab = 4"><i data-lucide="users"></i> Users</button>
+    </div>
+
+    @if (Tab == 0)
+    {
+        @* ---- HRIS sync card ---- *@
+        <div class="tray rise rise-1">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head">
+                    <i data-lucide="refresh-cw"></i> <span>HRIS sync</span>
+                    <span class="meta">@SyncCaption</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:14px;padding:14px 18px">
+                    <p style="margin:0;color:var(--ink-2);font-size:12.5px;flex:1;line-height:1.5">
+                        Pulls employee profiles from HRIS. New hires appear in the directory automatically.
+                        Departments and sites are not touched — those are assigned here.
+                    </p>
+                    <button class="btn" style="width:auto;margin:0;padding:10px 20px" disabled="@syncing" @onclick="SyncNow">
+                        @(syncing ? "Syncing..." : "Sync now")
+                        <span class="orb"><i data-lucide="download"></i></span>
+                    </button>
+                </div>
+                @if (syncResult is not null)
+                {
+                    <div class="note" style="margin:0 14px 14px;border-radius:10px">
+                        <i data-lucide="check-circle-2"></i>
+                        <span>@syncResult</span>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="tray rise rise-2">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head"><i data-lucide="history"></i><span>Recent syncs</span><span class="meta">@syncHistory.Items.Length runs</span></div>
+                <table class="u-table">
+                    <thead>
+                        <tr><th>Started</th><th>Inserted</th><th>Updated</th><th>Deactivated</th><th>Status</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var run in syncHistory.Items)
+                        {
+                            <tr>
+                                <td class="mono">@run.StartedAt.ToLocalTime():dd MMM HH:mm</td>
+                                <td class="mono" style="color:var(--accent-ink)">@run.Inserted</td>
+                                <td class="mono" style="color:var(--ink-2)">@run.Updated</td>
+                                <td class="mono" style="color:var(--danger)">@run.Deactivated</td>
+                                <td><span class="dot @(run.Succeeded ? "on" : "busy")">@(run.Succeeded ? "Success" : "Failed")</span></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+                @if (syncHistory.Items.Length == 0) { <div class="tree-empty" style="padding:14px">No sync runs yet.</div> }
+            </div>
+        </div>
+    }
+
+    @if (Tab == 1)
+    {
+        <div class="tray rise rise-2">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head"><i data-lucide="laptop"></i><span>Active sessions</span><span class="meta">@sessions.Count</span>
+                    <button class="org-act" title="Refresh sessions" @onclick="LoadSessions"><i data-lucide="refresh-cw"></i></button>
+                </div>
+                @if (sessions.Count == 0)
+                {
+                    <div class="tree-empty" style="padding:14px">No active sessions.</div>
+                }
+                else
+                {
+                    <table class="u-table">
+                        <thead>
+                            <tr><th>User</th><th>IP address</th><th>Device</th><th>Expires</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var session in sessions)
+                            {
+                                <tr>
+                                    <td style="font-weight:600">@session.Name</td>
+                                    <td class="mono">@(session.IpAddress ?? "—")</td>
+                                    <td class="mono" style="font-size:11px;color:var(--ink-3)">@(session.DeviceFingerprint ?? "—")</td>
+                                    <td><span class="mono">@(TimeUntil(session.ExpiresAt))</span></td>
+                                    <td class="acts">
+                                        <button title="Revoke session" @onclick="() => RevokeSession(session)"><i data-lucide="log-out"></i></button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    }
+
+    @if (Tab == 2)
+    {
+        <div class="tray rise rise-2">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head"><i data-lucide="scroll-text"></i><span>Audit trail</span><span class="meta">@audit?.Total.ToString("N0") records</span></div>
+                @if (audit is null)
+                {
+                    <div style="padding:14px"><div class="skel"></div></div>
+                }
+                else
+                {
+                    <table class="u-table">
+                        <thead>
+                            <tr><th>Timestamp</th><th>Action</th><th>Actor</th><th>Entity</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in audit.Items)
+                            {
+                                <tr>
+                                    <td class="mono">@row.CreatedAt.ToLocalTime():dd MMM HH:mm</td>
+                                    <td><span class="tag">@row.Action</span></td>
+                                    <td>@(row.ActorNik ?? "system")</td>
+                                    <td class="mono" style="color:var(--ink-2)">@(row.EntityId ?? "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    }
+
+    @if (Tab == 3)
+    {
+        <div class="tray rise rise-2">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head">
+                    <i data-lucide="building-2"></i> <span>Organization</span>
+                    <span class="meta">@org.Departments.Length departments · @org.Sites.Length sites</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+                    <div style="padding:14px 18px;border-right:1px solid var(--line-soft)">
+                        <div style="display:flex;gap:8px;margin-bottom:12px">
+                            <input class="org-input" placeholder="Code" @bind="newDeptCode" />
+                            <input class="org-input" placeholder="Department name" @bind="newDeptName" />
+                            <button class="org-add" @onclick="AddDepartment"><i data-lucide="plus"></i></button>
+                        </div>
+                        @foreach (var d in org.Departments.OrderBy(x => x.Name))
+                        {
+                            <div class="org-row">
+                                <span class="mono" style="color:var(--ink-3);font-size:11px">@d.Code</span>
+                                <span style="font-weight:600">@d.Name</span>
+                                @if (!d.IsActive) { <span style="color:var(--danger);font-size:11px">inactive</span> }
+                                <button class="org-act" title="@(d.IsActive ? "Deactivate" : "Reactivate")"
+                                        @onclick="() => ToggleDepartment(d)">
+                                    <i data-lucide="@(d.IsActive ? "eye-off" : "eye")"></i>
+                                </button>
+                            </div>
+                        }
+                        @if (org.Departments.Length == 0) { <div class="tree-empty">No departments yet — add the first one above.</div> }
+                    </div>
+                    <div style="padding:14px 18px">
+                        <div style="display:flex;gap:8px;margin-bottom:12px">
+                            <input class="org-input" placeholder="Code" @bind="newSiteCode" />
+                            <input class="org-input" placeholder="Site name" @bind="newSiteName" />
+                            <button class="org-add" @onclick="AddSite"><i data-lucide="plus"></i></button>
+                        </div>
+                        @foreach (var s in org.Sites.OrderBy(x => x.Name))
+                        {
+                            <div class="org-row">
+                                <span class="mono" style="color:var(--ink-3);font-size:11px">@s.Code</span>
+                                <span style="font-weight:600">@s.Name</span>
+                                @if (!s.IsActive) { <span style="color:var(--danger);font-size:11px">inactive</span> }
+                                <button class="org-act" title="@(s.IsActive ? "Deactivate" : "Reactivate")"
+                                        @onclick="() => ToggleSite(s)">
+                                    <i data-lucide="@(s.IsActive ? "eye-off" : "eye")"></i>
+                                </button>
+                            </div>
+                        }
+                        @if (org.Sites.Length == 0) { <div class="tree-empty">No sites yet — add the first one above.</div> }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (Tab == 4)
+    {
+        <div class="tray rise rise-3">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head">
+                    <i data-lucide="users"></i> <span>Users</span>
+                    <span class="meta">@($"{page?.Total:N0} total")</span>
+                </div>
+                <div style="display:flex;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line-soft);align-items:center">
+                    <div class="search" style="flex:0 1 320px;margin:0">
+                        <i data-lucide="search"></i>
+                        <input type="text" placeholder="Search by name or ID" @bind="query" @bind:event="oninput" @bind:after="() => ReloadUsers(1)" />
+                    </div>
+                    <button class="btn" style="width:auto;margin:0 0 0 auto;padding:9px 18px" @onclick="OpenCreate">
+                        Add user <span class="orb"><i data-lucide="plus"></i></span>
+                    </button>
+                </div>
+
+                @if (usersError is not null)
+                {
+                    <div class="tree-empty">@usersError</div>
+                }
+                else if (page is null)
+                {
+                    <div style="padding:14px"><div class="skel"></div></div>
+                }
+                else
+                {
+                    <table class="u-table">
+                        <thead>
+                            <tr><th>ID</th><th>Name</th><th>Position</th><th>Role</th><th>Active</th><th>Presence</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var u in page.Items)
+                            {
+                                <tr @key="u.Nik" class="@(u.IsActive ? "" : "inactive")">
+                                    <td class="mono">@u.Nik</td>
+                                    <td style="font-weight:600">@u.Name</td>
+                                    <td>@(u.Position ?? "—")</td>
+                                    <td>@(u.Roles.Length == 0 ? "—" : string.Join(", ", u.Roles))</td>
+                                    <td>@(u.IsActive ? "Yes" : "No")</td>
+                                    <td><span class="dot @u.Status">@StatusLabel(u.Status)</span></td>
+                                    <td class="acts">
+                                        <button title="Edit" @onclick="() => OpenEdit(u)"><i data-lucide="pencil"></i></button>
+                                        <button title="Reset password to default flow" @onclick="() => ResetPassword(u)"><i data-lucide="key-round"></i></button>
+                                        <button title="@(u.IsActive ? "Deactivate" : "Reactivate")" @onclick="() => ToggleActive(u)">
+                                            <i data-lucide="@(u.IsActive ? "user-x" : "user-check")"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    @if (page is { } pg && TotalPages > 1)
+                    {
+                        <div style="display:flex;gap:10px;align-items:center;justify-content:center;padding:12px">
+                            <button class="org-act" disabled="@(pg.Page <= 1)" @onclick="() => ReloadUsers(pg.Page - 1)"><i data-lucide="chevron-left"></i></button>
+                            <span style="font-size:12px;color:var(--ink-2)">Page @pg.Page of @TotalPages</span>
+                            <button class="org-act" disabled="@(pg.Page >= TotalPages)" @onclick="() => ReloadUsers(pg.Page + 1)"><i data-lucide="chevron-right"></i></button>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@* ---- user drawer: create / edit share one shell ---- *@
+<div class="backdrop @(drawer is not null ? "on" : "")" @onclick="CloseDrawer"></div>
+<div class="drawer @(drawer is not null ? "on" : "")" role="dialog" aria-label="User">
+    <div class="tray">
+        <div class="core">
+            <div class="drawer-head">
+                @(drawer?.IsCreate == true ? "Add user" : $"Edit {drawer?.Nik}")
+                <button class="drawer-close" @onclick="CloseDrawer"><i data-lucide="x"></i></button>
+            </div>
+            @if (drawer is not null)
+            {
+                <div class="drawer-body">
+                    @if (drawer.IsCreate)
+                    {
+                        <div class="field"><label>Employee ID</label><input @bind="drawer.Nik" placeholder="e.g. 20140312" /></div>
+                    }
+                    <div class="field"><label>Name</label><input @bind="drawer.Name" /></div>
+                    <div class="field"><label>Email</label><input @bind="drawer.Email" /></div>
+                    <div class="field"><label>Position</label><input @bind="drawer.Position" /></div>
+                    <div class="field">
+                        <label>Department</label>
+                        <AppSelect Label="Department" Value="@drawer.DepartmentCode" ValueChanged="v => drawer.DepartmentCode = v"
+                                   Options="@DeptOptions" />
+                    </div>
+                    <div class="field">
+                        <label>Site</label>
+                        <AppSelect Label="Site" Value="@drawer.SiteCode" ValueChanged="v => drawer.SiteCode = v"
+                                   Options="@SiteOptions" />
+                    </div>
+                    @if (!drawer.IsCreate)
+                    {
+                        <div class="field">
+                            <label>Roles</label>
+                            <label style="display:flex;gap:8px;align-items:center;font-weight:500;text-transform:none">
+                                <input type="checkbox" style="width:auto" @bind="drawer.IsAdmin" /> Administrator
+                            </label>
+                        </div>
+                    }
+                    <div class="note">
+                        <i data-lucide="info"></i>
+                        <span>@(drawer.IsCreate
+                            ? "The new user signs in with the default password 1234 and must set their own at first login."
+                            : "Profile edits are protected from the next HRIS sync.")</span>
+                    </div>
+                    @if (drawer.Error is not null)
+                    {
+                        <div class="note err"><i data-lucide="alert-circle"></i><span>@drawer.Error</span></div>
+                    }
+                    <button class="btn" style="margin-top:14px" disabled="@drawer.Saving" @onclick="SaveDrawer">
+                        @(drawer.Saving ? "Saving..." : drawer.IsCreate ? "Create user" : "Save changes")
+                        <span class="orb"><i data-lucide="check"></i></span>
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+}
+
+@code {
+    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+
+    private bool loaded, syncing;
+    private string query = "";
+    private string? usersError, syncResult;
+    private AdminUserPageDto? page;
+    private OrgViewDto org = new([], []);
+    private HrisSyncStatusDto? syncStatus;
+    private DrawerState? drawer;
+
+    private List<AppOption> DeptOptions => [new("", "(none)"), .. org.Departments.Where(x => x.IsActive).OrderBy(x => x.Name).Select(d => new AppOption(d.Code, d.Name))];
+    private List<AppOption> SiteOptions => [new("", "(none)"), .. org.Sites.Where(x => x.IsActive).OrderBy(x => x.Name).Select(s => new AppOption(s.Code, s.Name))];
+
+    private string newDeptCode = "", newDeptName = "", newSiteCode = "", newSiteName = "";
+
+    private int tab;
+    private int Tab => tab;
+
+    private int TotalPages => page is null ? 1 : (int)Math.Ceiling(page.Total / (double)page.PageSize);
+
+    private string SyncCaption => syncStatus?.LastSyncedAt is null
+        ? "Never synced"
+        : $"{syncStatus.EmployeeCount:N0} employees · last {syncStatus.LastSyncedAt.Value.ToLocalTime():dd MMM HH:mm}";
+
+    private static string StatusLabel(string s) => s switch
+        { "on" => "Online", "away" => "Away", "busy" => "Busy", _ => "Offline" };
+
+    private static string TimeUntil(DateTime expiresUtc)
+    {
+        var delta = expiresUtc - DateTime.UtcNow;
+        return delta.TotalMinutes < 1 ? "Expiring"
+            : delta.TotalHours < 1 ? $"{Math.Ceiling(delta.TotalMinutes)} min left"
+            : delta.TotalDays < 1 ? $"{Math.Ceiling(delta.TotalHours)} h left"
+            : $"{Math.Ceiling(delta.TotalDays)} d left";
+    }
+
+    protected override void OnInitialized()
+    {
+        Layout.SetHeader("Administration", "Settings", showSearch: false);
+        Layout.EscapePressed += CloseDrawer;
+        Auth.DirectoryChanged += OnDirectoryChanged;
+        Auth.AuditChanged += OnAuditChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.LoadMeAsync();
+        loaded = true;
+        if (!Auth.IsAdmin) return;
+        await Task.WhenAll(ReloadUsers(1), ReloadOrg(), ReloadSyncStatus(), LoadSyncHistory(), LoadSessions(), LoadAudit());
+        _pollTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadSessions();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    private void OnDirectoryChanged() => _ = InvokeAsync(async () =>
+    {
+        await Task.WhenAll(ReloadUsers(page?.Page ?? 1), ReloadOrg(), ReloadSyncStatus(), LoadSyncHistory(), LoadSessions(), LoadAudit());
+        StateHasChanged();
+    });
+
+    private async Task ReloadOrg()
+        => org = await Auth.GetAsync<OrgViewDto>("/api/admin/org") ?? new([], []);
+
+    private async Task ReloadSyncStatus()
+        => syncStatus = await Auth.GetAsync<HrisSyncStatusDto>("/api/admin/hris/status");
+
+    private async Task LoadSyncHistory()
+        => syncHistory = await Auth.GetAsync<SyncHistoryDto>("/api/admin/hris/history?page=1&pageSize=20") ?? new([], 1, 20);
+
+    private List<AdminSessionRowDto> sessions = [];
+    private SyncHistoryDto syncHistory = new(Array.Empty<HrisSyncRunDto>(), 1, 20);
+    private AuditPageDto? audit;
+    private System.Threading.Timer? _pollTimer;
+
+    private async Task LoadSessions()
+        => sessions = await Auth.GetAsync<List<AdminSessionRowDto>>("/api/admin/users/sessions") ?? [];
+
+    private async Task LoadAudit()
+        => audit = await Auth.GetAsync<AuditPageDto>("/api/admin/audit?page=1&pageSize=20");
+
+    private void OnAuditChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAudit();
+        StateHasChanged();
+    });
+
+    private async Task RevokeSession(AdminSessionRowDto session)
+    {
+        if ((await Auth.SendAsync(HttpMethod.Post, $"/api/admin/users/sessions/{session.Id}/revoke")).IsSuccessStatusCode)
+            await LoadSessions();
+    }
+
+    private record SyncHistoryDto(HrisSyncRunDto[] Items, int Page, int PageSize);
+    private record HrisSyncRunDto(Guid Id, DateTime StartedAt, DateTime FinishedAt, int Inserted,
+        int Updated, int Deactivated, bool Succeeded, string? Error);
+
+    private record HrisSyncStatusDto(DateTime? LastSyncedAt, int EmployeeCount);
+
+    private async Task SyncNow()
+    {
+        syncing = true;
+        syncResult = null;
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/hris/sync");
+        if (res.IsSuccessStatusCode)
+        {
+            var r = await res.Content.ReadFromJsonAsync<SyncResultDto>();
+            syncResult = r is null ? "Sync finished."
+                : $"Sync finished: {r.Inserted} added, {r.Updated} updated, {r.Deactivated} deactivated.";
+        }
+        else syncResult = "Sync failed — the gateway may be rate-limited. Try again in a minute.";
+        syncing = false;
+        await ReloadSyncStatus();
+    }
+    private record SyncResultDto(int Inserted, int Updated, int Deactivated, DateTime SyncedAt);
+
+    private async Task ReloadUsers(int p)
+    {
+        var url = $"/api/admin/users?page={p}&pageSize=50" + (string.IsNullOrWhiteSpace(query) ? "" : $"&q={Uri.EscapeDataString(query.Trim())}");
+        page = await Auth.GetAsync<AdminUserPageDto>(url);
+        usersError = page is null ? "Could not load users." : null;
+    }
+
+    private void OpenCreate() => drawer = new DrawerState { IsCreate = true };
+    private void OpenEdit(AdminUserRowDto u) => drawer = new DrawerState
+    {
+        Nik = u.Nik, Name = u.Name, Email = u.Email, Position = u.Position ?? "",
+        DepartmentCode = u.DepartmentCode, SiteCode = u.SiteCode,
+        IsAdmin = u.Roles.Contains("Admin"),
+    };
+    private void CloseDrawer() { drawer = null; StateHasChanged(); }
+
+    private async Task SaveDrawer()
+    {
+        if (drawer is null) return;
+        drawer.Saving = true;
+        drawer.Error = null;
+
+        HttpResponseMessage res;
+        if (drawer.IsCreate)
+        {
+            res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/users",
+                new { nik = drawer.Nik, name = drawer.Name, email = drawer.Email, position = drawer.Position,
+                    location = (string?)null, departmentCode = drawer.DepartmentCode, siteCode = drawer.SiteCode });
+        }
+        else
+        {
+            res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/users/{Uri.EscapeDataString(drawer.Nik)}",
+                new { name = drawer.Name, email = drawer.Email, position = drawer.Position,
+                    location = (string?)null, departmentCode = drawer.DepartmentCode, siteCode = drawer.SiteCode });
+        }
+
+        if (!res.IsSuccessStatusCode)
+        {
+            drawer.Error = res.StatusCode == System.Net.HttpStatusCode.Conflict
+                ? "A user with this ID already exists." : "Save failed — check the fields.";
+            drawer.Saving = false;
+            return;
+        }
+
+        // Roles remain a separate admin action because the user row is created first.
+        if (!drawer.IsCreate)
+        {
+            var wantedRoles = drawer.IsAdmin ? new[] { "Admin" } : Array.Empty<string>();
+            await Auth.SendAsync(HttpMethod.Put, $"/api/admin/users/{Uri.EscapeDataString(drawer.Nik)}/roles",
+                new { roles = wantedRoles });
+        }
+
+        drawer.Saving = false;
+        drawer = null;
+        await ReloadUsers(page?.Page ?? 1);
+    }
+
+    private async Task ToggleActive(AdminUserRowDto u)
+    {
+        var action = u.IsActive ? "deactivate" : "reactivate";
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/admin/users/{Uri.EscapeDataString(u.Nik)}/{action}");
+        if (res.IsSuccessStatusCode) await ReloadUsers(page?.Page ?? 1);
+        else usersError = res.StatusCode == System.Net.HttpStatusCode.BadRequest
+            ? "You cannot deactivate your own account." : usersError;
+    }
+
+    private async Task ResetPassword(AdminUserRowDto u)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/admin/users/{Uri.EscapeDataString(u.Nik)}/reset-password");
+        if (res.IsSuccessStatusCode) await ReloadUsers(page?.Page ?? 1);
+    }
+
+    private async Task AddDepartment()
+    {
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/org/departments",
+            new { code = newDeptCode, name = newDeptName, isActive = (bool?)null });
+        if (res.IsSuccessStatusCode) { newDeptCode = ""; newDeptName = ""; await ReloadOrg(); }
+    }
+
+    private async Task ToggleDepartment(OrgDepartmentRowDto d)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org/departments/{Uri.EscapeDataString(d.Code)}",
+            new { code = d.Code, name = (string?)null, isActive = !d.IsActive });
+        if (res.IsSuccessStatusCode) await ReloadOrg();
+    }
+
+    private async Task AddSite()
+    {
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/org/sites",
+            new { code = newSiteCode, name = newSiteName, isActive = (bool?)null });
+        if (res.IsSuccessStatusCode) { newSiteCode = ""; newSiteName = ""; await ReloadOrg(); }
+    }
+
+    private async Task ToggleSite(OrgSiteRowDto s)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org/sites/{Uri.EscapeDataString(s.Code)}",
+            new { code = s.Code, name = (string?)null, isActive = !s.IsActive });
+        if (res.IsSuccessStatusCode) await ReloadOrg();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Auth.IsAdmin)
+            await Task.WhenAll(LoadSyncHistory(), LoadSessions());
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    public void Dispose()
+    {
+        _pollTimer?.Dispose();
+        Layout.EscapePressed -= CloseDrawer;
+        Auth.DirectoryChanged -= OnDirectoryChanged;
+        Auth.AuditChanged -= OnAuditChanged;
+    }
+
+    private sealed class DrawerState
+    {
+        public bool IsCreate, IsAdmin, Saving;
+        public string Nik = "", Name = "", Email = "", Position = "";
+        public string? DepartmentCode, SiteCode, Error;
+    }
+}

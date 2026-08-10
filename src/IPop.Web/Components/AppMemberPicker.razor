@@ -1,0 +1,130 @@
+@* Inline combobox: type a name or NIK, suggestions load live from
+   /api/directory/member-search and drop down below the input (no modal).
+   Picking emits ValueChanged(MemberSearchRow). Dropdown is position:fixed
+   to escape drawer overflow:auto. *@
+@inject AuthState Auth
+@inject IJSRuntime JS
+
+<div class="member-picker" @ref="wrap">
+    <div class="member-picker-input">
+        <i data-lucide="search"></i>
+        <input placeholder="@(Placeholder ?? "Type a name or NIK...")"
+               @oninput="OnInput" @onkeydown="OnKeyDown"
+               @ref="inputRef" aria-label="Search people" aria-expanded="@(results.Count > 0)" />
+        @if (loading)
+        {
+            <span class="member-picker-spin"><i data-lucide="loader-2" class="spin"></i></span>
+        }
+    </div>
+
+    @if (results.Count > 0)
+    {
+        <div class="member-picker-pop" @ref="popRef" style="position:fixed;z-index:100" role="listbox" aria-label="People">
+            @for (var i = 0; i < results.Count; i++)
+            {
+                var idx = i;
+                var r = results[i];
+                <button type="button" class="member-picker-opt @(activeIdx == idx ? "active" : "")" role="option" aria-selected="@(activeIdx == idx)"
+                        @onmousemove="() => activeIdx = idx" @onmousedown="() => Pick(r)">
+                    <span class="avatar" style="background:@(r.AvatarColor)">@(r.Initials)</span>
+                    <span class="txt"><span class="n">@r.Name</span><span class="s">@r.PositionLabel</span></span>
+                    <span class="mono" style="font-size:10.5px;color:var(--ink-3)">@r.Nik</span>
+                </button>
+            }
+        </div>
+    }
+    else if (searched && query.Trim().Length >= 2 && !loading && Error is null)
+    {
+        <div class="member-picker-empty" style="position:relative;z-index:100">No one matches. Try a name or ID.</div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public EventCallback<MemberSearchRow> ValueChanged { get; set; }
+
+    private string query = "";
+    private List<MemberSearchRow> results = [];
+    private bool loading, searched;
+    private string? Error;
+    private int activeIdx;
+    private ElementReference inputRef;
+    private ElementReference wrap;
+    private ElementReference popRef;
+    private System.Threading.CancellationTokenSource? cts;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+        if (results.Count > 0)
+        {
+            await JS.InvokeVoidAsync("ipop.positionPopup", inputRef, popRef);
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("ipop.closePopup");
+        }
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        query = e.Value?.ToString() ?? "";
+        cts?.Cancel();
+        cts?.Dispose();
+        var token = new CancellationTokenSource();
+        cts = token;
+        var q = query.Trim();
+        if (q.Length < 2)
+        {
+            results = [];
+            loading = false;
+            searched = false;
+            StateHasChanged();
+            return;
+        }
+        loading = true; Error = null; searched = true;
+        StateHasChanged();
+        try { await Task.Delay(180, token.Token); } catch (TaskCanceledException) { return; }
+        if (token.IsCancellationRequested) return;
+        var res = await Auth.GetAsync<MemberSearchRow[]>($"/api/directory/member-search?q={Uri.EscapeDataString(q)}");
+        if (token.IsCancellationRequested) return;
+        results = res?.ToList() ?? [];
+        activeIdx = 0;
+        loading = false;
+        StateHasChanged();
+    }
+
+    private async Task Pick(MemberSearchRow r)
+    {
+        await ValueChanged.InvokeAsync(r);
+        query = "";
+        results = [];
+        searched = false;
+        activeIdx = 0;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.focus", inputRef);
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                if (results.Count > 0) { activeIdx = (activeIdx + 1) % results.Count; StateHasChanged(); }
+                break;
+            case "ArrowUp":
+                if (results.Count > 0) { activeIdx = (activeIdx - 1 + results.Count) % results.Count; StateHasChanged(); }
+                break;
+            case "Enter":
+                if (results.Count > 0)
+                {
+                    var r = results[Math.Clamp(activeIdx, 0, results.Count - 1)];
+                    await Pick(r);
+                }
+                break;
+            case "Escape":
+                query = ""; results = []; searched = false; StateHasChanged();
+                break;
+        }
+    }
+}

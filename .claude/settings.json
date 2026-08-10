@@ -1,0 +1,9 @@
+{
+  "enabledPlugins": {
+    "context7@claude-plugins-official": true,
+    "mattpocock-skills@mattpocock": true,
+    "ponytail@ponytail": true,
+    "impeccable@impeccable": true,
+    "playwright@claude-plugins-official": true
+  }
+}

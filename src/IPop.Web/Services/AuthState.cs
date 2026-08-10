@@ -1,0 +1,222 @@
+using System.Net;
+using System.Net.Http.Json;
+using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.JSInterop;
+
+namespace IPop.Web.Services;
+
+/// Client auth state for Blazor WASM. Access token lives in memory only;
+/// refresh token persists in localStorage (survives reload, dies with the tab's origin).
+/// ponytail: refresh in localStorage — move to HttpOnly cookie when hosting consolidates
+/// to single origin; localStorage is XSS-readable, accepted for the dev phase.
+public class AuthState(HttpClient http, IJSRuntime js)
+{
+    private const string RefreshKey = "ipop.refresh";
+    private string? _accessToken;
+    private HubConnection? _presence;
+    private Timer? _heartbeat;
+
+    public bool MustChangePassword { get; private set; }
+    public bool IsAuthenticated => _accessToken is not null;
+    public string MyStatus { get; private set; } = "off";
+    public event Action<string, string>? PresenceChanged;
+    public event Action? DirectoryChanged;
+    public event Action? AuditChanged;
+
+    /// The signed-in user's own directory row, loaded lazily by the shell.
+    public DirectoryEmployeeDto? Me { get; private set; }
+
+    /// Roles ride along on /api/directory/me — no extra round-trip just to gate the Admin nav.
+    public bool IsAdmin => Me?.Roles.Contains("Admin") == true;
+
+    public async Task<DirectoryEmployeeDto?> LoadMeAsync()
+        => Me ??= await GetAsync<DirectoryEmployeeDto>("/api/directory/me");
+
+    /// Bearer + one silent-refresh retry on 401 — the public form of PostWithAuth for pages
+    /// that PATCH/PUT/POST, so Admin never has to reach past Send itself.
+    public async Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, object? body = null)
+    {
+        var res = await Send(method, url, body);
+        if (res.StatusCode == HttpStatusCode.Unauthorized && await TryRestoreAsync())
+            res = await Send(method, url, body);
+        return res;
+    }
+
+    /// Starts the real-time presence connection and a 60-second visible-tab heartbeat.
+    public async Task StartPresenceAsync()
+    {
+        if (!IsAuthenticated || _presence is not null) return;
+        var hubUrl = new Uri(new Uri(http.BaseAddress!, "/"), "hubs/presence");
+        _presence = new HubConnectionBuilder()
+            .WithUrl(hubUrl, o => o.AccessTokenProvider = () => Task.FromResult(_accessToken))
+            .WithAutomaticReconnect()
+            .Build();
+        _presence.On<string, string>("presenceChanged", (nik, status) =>
+        {
+            if (Me?.Nik == nik) MyStatus = status;
+            PresenceChanged?.Invoke(nik, status);
+        });
+        _presence.On("directoryChanged", () => DirectoryChanged?.Invoke());
+        _presence.On("auditChanged", () => AuditChanged?.Invoke());
+        _presence.Reconnecting += _ => Task.CompletedTask;
+        _presence.Reconnected += _ =>
+        {
+            DirectoryChanged?.Invoke();
+            return Task.CompletedTask;
+        };
+        try { await _presence.StartAsync(); } catch { await _presence.DisposeAsync(); _presence = null; }
+        if (_presence is not null) await BeatWhenVisibleAsync();
+
+        if (_presence is not null)
+            _heartbeat = new Timer(_ => _ = BeatWhenVisibleAsync(), null, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
+    }
+
+    public async Task SetBusyAsync(bool busy)
+    {
+        var res = await PostWithAuth("/api/presence/status", new { status = busy ? "busy" : (string?)null });
+        if (!res.IsSuccessStatusCode) return;
+        var body = await res.Content.ReadFromJsonAsync<PresenceDto>();
+        if (body is not null) { MyStatus = body.Status; PresenceChanged?.Invoke(Me?.Nik ?? "", MyStatus); }
+    }
+
+    private async Task BeatWhenVisibleAsync()
+    {
+        try
+        {
+            if (await js.InvokeAsync<string>("ipop.visibility") == "visible") await BeatAsync();
+        }
+        catch { /* presence must never take down the shell */ }
+    }
+
+    private async Task BeatAsync()
+    {
+        var res = await PostWithAuth("/api/presence/beat", new { });
+        if (!res.IsSuccessStatusCode) return;
+        var body = await res.Content.ReadFromJsonAsync<PresenceDto>();
+        if (body is not null) MyStatus = body.Status;
+    }
+
+    public async Task<(bool Ok, string? Error, bool Locked)> LoginAsync(string nik, string password, string? fingerprint)
+    {
+        var res = await http.PostAsJsonAsync("/api/auth/login", new { nik, password, deviceFingerprint = fingerprint });
+        if (!res.IsSuccessStatusCode)
+        {
+            var err = await ReadError(res);
+            return (false, err?.Message ?? "Sign-in failed.", err?.Code == "locked");
+        }
+        var body = (await res.Content.ReadFromJsonAsync<LoginDto>())!;
+        _accessToken = body.AccessToken;
+        MustChangePassword = body.MustChangePassword;
+        await js.InvokeVoidAsync("localStorage.setItem", RefreshKey, body.RefreshToken);
+        if (!MustChangePassword) await StartPresenceAsync();
+        return (true, null, false);
+    }
+
+    public async Task<(bool Ok, Dictionary<string, string[]>? Fields, string? Error)> ChangePasswordAsync(string newPassword, string confirm)
+    {
+        var res = await PostWithAuth("/api/auth/change-password", new { newPassword, confirmPassword = confirm });
+        if (!res.IsSuccessStatusCode)
+        {
+            var err = await ReadError(res);
+            return (false, err?.Fields, err?.Message ?? "Could not update the password.");
+        }
+        // Global invalidation server-side killed all sessions — drop ours too.
+        await ClearAsync();
+        return (true, null, null);
+    }
+
+    /// Restore session from the stored refresh token on app start. False → go to /login.
+    public async Task<bool> TryRestoreAsync()
+    {
+        var refresh = await js.InvokeAsync<string?>("localStorage.getItem", RefreshKey);
+        if (string.IsNullOrEmpty(refresh)) return false;
+
+        HttpResponseMessage res;
+        try { res = await http.PostAsJsonAsync("/api/auth/refresh", new { refreshToken = refresh }); }
+        catch { return false; } // API down — stay signed out rather than crash the router
+        if (!res.IsSuccessStatusCode)
+        {
+            await js.InvokeVoidAsync("localStorage.removeItem", RefreshKey);
+            return false;
+        }
+        var body = (await res.Content.ReadFromJsonAsync<RefreshDto>())!;
+        _accessToken = body.AccessToken;
+        MustChangePassword = body.MustChangePassword;
+        await js.InvokeVoidAsync("localStorage.setItem", RefreshKey, body.RefreshToken);
+        if (!MustChangePassword) await StartPresenceAsync();
+        return true;
+    }
+
+    /// GET with bearer + one silent refresh retry on 401 (spec §3.2).
+    public async Task<T?> GetAsync<T>(string url)
+    {
+        var res = await Send(HttpMethod.Get, url, null);
+        if (res.StatusCode == HttpStatusCode.Unauthorized && await TryRestoreAsync())
+            res = await Send(HttpMethod.Get, url, null);
+        if (!res.IsSuccessStatusCode) return default;
+        return await res.Content.ReadFromJsonAsync<T>();
+    }
+
+    public async Task SignOutAsync()
+    {
+        var refresh = await js.InvokeAsync<string?>("localStorage.getItem", RefreshKey);
+        if (!string.IsNullOrEmpty(refresh))
+            try { await http.PostAsJsonAsync("/api/auth/logout", new { refreshToken = refresh }); } catch { /* best-effort */ }
+        await ClearAsync();
+    }
+
+    private async Task ClearAsync()
+    {
+        _heartbeat?.Dispose();
+        _heartbeat = null;
+        if (_presence is not null) await _presence.DisposeAsync();
+        _presence = null;
+        await js.InvokeVoidAsync("localStorage.removeItem", RefreshKey);
+        _accessToken = null;
+        MustChangePassword = false;
+        MyStatus = "off";
+        Me = null;
+    }
+
+    private async Task<HttpResponseMessage> PostWithAuth(string url, object body)
+    {
+        var res = await Send(HttpMethod.Post, url, body);
+        if (res.StatusCode == HttpStatusCode.Unauthorized && await TryRestoreAsync())
+            res = await Send(HttpMethod.Post, url, body);
+        return res;
+    }
+
+    public async Task<HttpResponseMessage> SendMultipartAsync(string url, MultipartFormDataContent content)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+        if (_accessToken is not null) req.Headers.Authorization = new("Bearer", _accessToken);
+        var res = await http.SendAsync(req);
+        if (res.StatusCode == HttpStatusCode.Unauthorized && await TryRestoreAsync())
+        {
+            var retry = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+            if (_accessToken is not null) retry.Headers.Authorization = new("Bearer", _accessToken);
+            res = await http.SendAsync(retry);
+        }
+        return res;
+    }
+
+    private async Task<HttpResponseMessage> Send(HttpMethod method, string url, object? body)
+    {
+        var req = new HttpRequestMessage(method, url);
+        if (body is not null) req.Content = JsonContent.Create(body);
+        if (_accessToken is not null) req.Headers.Authorization = new("Bearer", _accessToken);
+        return await http.SendAsync(req);
+    }
+
+    /// The API returns AuthError as JSON, but a 500/proxy failure returns HTML — don't let that throw.
+    private static async Task<ApiError?> ReadError(HttpResponseMessage res)
+    {
+        try { return await res.Content.ReadFromJsonAsync<ApiError>(); }
+        catch { return null; }
+    }
+
+    private record LoginDto(string AccessToken, string RefreshToken, DateTime AccessTokenExpiresAt, bool MustChangePassword);
+    private record RefreshDto(string AccessToken, string RefreshToken, DateTime AccessTokenExpiresAt, bool MustChangePassword);
+    private record PresenceDto(string Status);
+    private record ApiError(string? Code, string? Message, Dictionary<string, string[]>? Fields);
+}

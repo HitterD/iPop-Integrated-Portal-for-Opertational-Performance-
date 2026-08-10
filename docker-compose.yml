@@ -1,0 +1,21 @@
+# Dev-only database. HA (Patroni primary-secondary) is a deployment-phase concern, per spec §5.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: ipop-postgres
+    environment:
+      POSTGRES_USER: ipop
+      POSTGRES_PASSWORD: ipop_dev_only
+      POSTGRES_DB: ipop
+    ports:
+      - "5433:5432"  # host port 5433 — avoids clashing with any local Postgres on 5432
+    volumes:
+      - ipop-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ipop -d ipop"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  ipop-pgdata:
