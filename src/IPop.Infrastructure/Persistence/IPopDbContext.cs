@@ -8,6 +8,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
 {
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<Site> Sites => Set<Site>();
+    public DbSet<Division> Divisions => Set<Division>();
     public DbSet<OrgNode> OrgNodes => Set<OrgNode>();
     public DbSet<UserOrgNode> UserOrgNodes => Set<UserOrgNode>();
     public DbSet<DirGroup> DirGroups => Set<DirGroup>();
@@ -33,12 +34,19 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasOne(x => x.Parent).WithMany().HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<Site>(e => e.HasIndex(x => x.Code).IsUnique());
+        b.Entity<Division>(e =>
+        {
+            e.HasIndex(x => x.Code).IsUnique();
+            e.HasOne(x => x.Department).WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Site).WithMany().HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.Restrict);
+        });
         b.Entity<User>(e =>
         {
             e.HasIndex(x => x.Nik).IsUnique();
             e.Property(x => x.Email).HasMaxLength(320);
             e.HasOne(x => x.Department).WithMany(d => d.Members).HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.Site).WithMany().HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.Division).WithMany().HasForeignKey(x => x.DivisionId).OnDelete(DeleteBehavior.SetNull);
         });
         b.Entity<AuthSession>(e =>
         {

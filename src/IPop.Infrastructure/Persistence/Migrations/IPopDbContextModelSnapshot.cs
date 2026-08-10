@@ -151,6 +151,41 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("DirGroups");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.Division", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("SiteId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("SiteId");
+
+                    b.ToTable("Divisions");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.HrisSyncRun", b =>
                 {
                     b.Property<Guid>("Id")
@@ -373,6 +408,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("DepartmentId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("DivisionId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(320)
@@ -434,6 +472,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("DepartmentId");
+
+                    b.HasIndex("DivisionId");
 
                     b.HasIndex("Nik")
                         .IsUnique();
@@ -559,6 +599,23 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Parent");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.Division", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("IPop.Core.Entities.Site", "Site")
+                        .WithMany()
+                        .HasForeignKey("SiteId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Department");
+
+                    b.Navigation("Site");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.OrgNode", b =>
                 {
                     b.HasOne("IPop.Core.Entities.Department", "Department")
@@ -623,12 +680,19 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasForeignKey("DepartmentId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("IPop.Core.Entities.Division", "Division")
+                        .WithMany()
+                        .HasForeignKey("DivisionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("IPop.Core.Entities.Site", "Site")
                         .WithMany()
                         .HasForeignKey("SiteId")
                         .OnDelete(DeleteBehavior.SetNull);
 
                     b.Navigation("Department");
+
+                    b.Navigation("Division");
 
                     b.Navigation("Site");
                 });

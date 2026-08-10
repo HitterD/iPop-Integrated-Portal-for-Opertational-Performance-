@@ -348,6 +348,101 @@ public static class AdminEndpoints
             return Results.Ok();
         });
 
+        // Divisions — admin-owned bundles of one Department + one Site backing the Directory tree.
+        org.MapGet("/divisions", async (IPopDbContext db, CancellationToken ct) =>
+        {
+            var divs = await db.Divisions
+                .Include(d => d.Department).Include(d => d.Site).AsNoTracking()
+                .OrderBy(d => d.Code).ToListAsync(ct);
+            var counts = await db.Users.Where(u => u.DivisionId != null)
+                .GroupBy(u => u.DivisionId)
+                .Select(g => new { Id = g.Key, Total = g.Count(), Active = g.Count(u => u.IsActive) })
+                .ToListAsync(ct);
+            return Results.Ok(divs.Select(d =>
+            {
+                var c = counts.FirstOrDefault(x => x.Id == d.Id);
+                return new AdminDivisionRow(d.Id, d.Code, d.Name, d.Department?.Code, d.Department?.Name,
+                    d.Site?.Code, d.Site?.Name, d.IsActive, c?.Total ?? 0, c?.Active ?? 0);
+            }));
+        });
+
+        org.MapPost("/divisions", async (UpsertDivisionRequest req, IPopDbContext db,
+            HttpContext http, CancellationToken ct) =>
+        {
+            var code = req.Code.Trim();
+            if (code.Length == 0 || string.IsNullOrWhiteSpace(req.Name))
+                return Results.BadRequest(new { code = "invalid_request", message = "Code and name are required." });
+            if (await db.Divisions.AnyAsync(d => d.Code == code, ct))
+                return Results.Conflict(new { code = "duplicate_code", message = "A division with this code already exists." });
+            var div = new Division { Id = Guid.NewGuid(), Code = code, Name = req.Name.Trim(), IsActive = true };
+            var parentError = await ApplyDivisionParents(div, req.DepartmentCode, req.SiteCode, db, ct);
+            if (parentError is not null) return parentError;
+            db.Divisions.Add(div);
+            Audit(db, CallerNik(http), "admin.org.division.create", code, DateTime.UtcNow);
+            await db.SaveChangesAsync(ct);
+            return Results.Created($"/api/admin/org/divisions/{code}", new { code });
+        });
+
+        org.MapPatch("/divisions/{code}", async (string code, UpsertDivisionRequest req,
+            IPopDbContext db, HttpContext http, CancellationToken ct) =>
+        {
+            var div = await db.Divisions.FirstOrDefaultAsync(d => d.Code == code, ct);
+            if (div is null) return Results.NotFound();
+            if (req.Name?.Trim() is { Length: > 0 } name) div.Name = name;
+            if (req.IsActive is { } active) div.IsActive = active;
+            var parentError = await ApplyDivisionParents(div, req.DepartmentCode, req.SiteCode, db, ct);
+            if (parentError is not null) return parentError;
+            Audit(db, CallerNik(http), "admin.org.division.edit", code, DateTime.UtcNow);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { code });
+        });
+
+        // Delete sets member DivisionId to null (no cascade) and preserves Site/Department.
+        org.MapDelete("/divisions/{code}", async (string code, IPopDbContext db,
+            HttpContext http, CancellationToken ct) =>
+        {
+            var div = await db.Divisions.FirstOrDefaultAsync(d => d.Code == code, ct);
+            if (div is null) return Results.NotFound();
+            await db.Users.Where(u => u.DivisionId == div.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.DivisionId, (Guid?)null), ct);
+            db.Divisions.Remove(div);
+            Audit(db, CallerNik(http), "admin.org.division.delete", code, DateTime.UtcNow);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { code });
+        });
+
+        // Assign a user to a Division — syncs Site/Department from the Division's parents.
+        org.MapPut("/users/{nik}/division", async (string nik, SetUserDivisionRequest req,
+            IPopDbContext db, HttpContext http, CancellationToken ct) =>
+        {
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Nik == nik, ct);
+            if (user is null) return Results.NotFound();
+            var div = await db.Divisions.Include(d => d.Department).Include(d => d.Site)
+                .SingleOrDefaultAsync(d => d.Code == req.DivisionCode.Trim() && d.IsActive, ct);
+            if (div is null)
+                return Results.BadRequest(new { code = "unknown_division", message = "Division does not exist or is inactive." });
+            user.DivisionId = div.Id;
+            user.DepartmentId = div.DepartmentId;     // sync from the Division's parents
+            user.SiteId = div.SiteId;
+            user.UpdatedAt = DateTime.UtcNow;
+            Audit(db, CallerNik(http), "admin.user.division.assign", nik, user.UpdatedAt);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { nik, divisionCode = div.Code });
+        });
+
+        // Unassign — clears only DivisionId; Site/Department are preserved.
+        org.MapDelete("/users/{nik}/division", async (string nik, IPopDbContext db,
+            HttpContext http, CancellationToken ct) =>
+        {
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Nik == nik, ct);
+            if (user is null) return Results.NotFound();
+            user.DivisionId = null;
+            user.UpdatedAt = DateTime.UtcNow;
+            Audit(db, CallerNik(http), "admin.user.division.unassign", nik, user.UpdatedAt);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok();
+        });
+
         var dir = app.MapGroup("/api/admin/dir-groups").RequireAuthorization("AdminOnly");
         dir.AddEndpointFilter(async (context, next) =>
         {
@@ -681,6 +776,37 @@ public static class AdminEndpoints
         return null;
     }
 
+    // Resolves the Division's parent Department/Site, rejecting inactive parents.
+    private static async Task<IResult?> ApplyDivisionParents(Division div, string? departmentCode,
+        string? siteCode, IPopDbContext db, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(departmentCode))
+        {
+            var dept = await db.Departments.SingleOrDefaultAsync(
+                d => d.Code == departmentCode.Trim() && d.IsActive, ct);
+            if (dept is null)
+                return Results.BadRequest(new { code = "unknown_department", message = "Department does not exist or is inactive." });
+            div.DepartmentId = dept.Id;
+        }
+        else
+        {
+            div.DepartmentId = null;
+        }
+        if (!string.IsNullOrWhiteSpace(siteCode))
+        {
+            var site = await db.Sites.SingleOrDefaultAsync(
+                s => s.Code == siteCode.Trim() && s.IsActive, ct);
+            if (site is null)
+                return Results.BadRequest(new { code = "unknown_site", message = "Site does not exist or is inactive." });
+            div.SiteId = site.Id;
+        }
+        else
+        {
+            div.SiteId = null;
+        }
+        return null;
+    }
+
     private static async Task<IResult?> ApplyDirGroupParent(DirGroup group, Guid? parentId,
         IPopDbContext db, CancellationToken ct)
     {
@@ -760,6 +886,12 @@ public static class AdminEndpoints
         string? ParentCode = null);
     public record UpsertSiteRequest(string Code, string? Name, bool? IsActive);
     public record SetPlacementRequest(string? DepartmentCode, string? SiteCode);
+    public record AdminDivisionRow(Guid Id, string Code, string Name, string? DepartmentCode,
+        string? DepartmentName, string? SiteCode, string? SiteName, bool IsActive,
+        int MemberCount, int ActiveMemberCount);
+    public record UpsertDivisionRequest(string Code, string? Name, string? DepartmentCode,
+        string? SiteCode, bool? IsActive);
+    public record SetUserDivisionRequest(string DivisionCode);
     public record UpsertDirGroupRequest(string? Name, Guid? ParentId, int? SortOrder, bool? IsActive);
     public record DirGroupMemberRequest(string Nik);
     public record DirGroupMembersRequest(string[] Niks);

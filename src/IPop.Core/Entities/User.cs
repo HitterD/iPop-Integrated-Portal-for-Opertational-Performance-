@@ -15,6 +15,7 @@ public class User
     public string? Position { get; set; }
     public Guid? DepartmentId { get; set; }
     public Guid? SiteId { get; set; }            // admin-assigned; HRIS never touches it
+    public Guid? DivisionId { get; set; }        // admin-assigned; syncs Site/Department from the Division's parents
     public string? ManagerNik { get; set; }
     public string? Extension { get; set; }
     public string? Location { get; set; }
@@ -38,6 +39,7 @@ public class User
 
     public Department? Department { get; set; }
     public Site? Site { get; set; }
+    public Division? Division { get; set; }
     public ICollection<AuthSession> Sessions { get; set; } = [];
     public ICollection<UserRole> UserRoles { get; set; } = [];
 }
