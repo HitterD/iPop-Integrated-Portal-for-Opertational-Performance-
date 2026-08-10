@@ -1,15 +1,15 @@
-using System.Security.Claims;
+using IPop.Api.Endpoints;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Authorization.Infrastructure;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace IPop.Tests;
 
 /// Division admin behavior — same seam as DirectoryTreeTests: SQLite in-memory via TestDb,
-/// asserting persisted state. Mirrors the operations the admin endpoints perform.
+/// asserting persisted state. Guard/audit tests call the production helpers directly
+/// (InternalsVisibleTo) since there is no WebApplicationFactory harness.
 public class DivisionAdminTests
 {
     private static (Guid deptId, Guid siteId) SeedDeptSite(TestDb t, bool deptActive = true, bool siteActive = true)
@@ -42,22 +42,56 @@ public class DivisionAdminTests
     }
 
     [Fact]
-    public async Task Create_Division_Rejects_InactiveDepartment()
+    public async Task Guard_Accepts_ActiveDepartmentAndSite()
     {
         using var t = new TestDb();
-        var (deptId, _) = SeedDeptSite(t, deptActive: false);
-        // Endpoint guard: only an active department is accepted.
-        var ok = await t.Db.Departments.AnyAsync(d => d.Id == deptId && d.IsActive);
-        Assert.False(ok, "inactive department must fail the IsActive guard");
+        SeedDeptSite(t);
+        var div = new Division { Id = Guid.NewGuid(), Code = "DV1", Name = "x" };
+        var err = await AdminEndpoints.ApplyDivisionParents(div, "D1", "S1", t.Db, default);
+
+        Assert.Null(err);                         // no error — parents accepted
+        var dept = await t.Db.Departments.SingleAsync();
+        var site = await t.Db.Sites.SingleAsync();
+        Assert.Equal(dept.Id, div.DepartmentId);
+        Assert.Equal(site.Id, div.SiteId);
     }
 
     [Fact]
-    public async Task Create_Division_Rejects_InactiveSite()
+    public async Task Guard_Rejects_InactiveDepartment()
     {
         using var t = new TestDb();
-        var (_, siteId) = SeedDeptSite(t, siteActive: false);
-        var ok = await t.Db.Sites.AnyAsync(s => s.Id == siteId && s.IsActive);
-        Assert.False(ok, "inactive site must fail the IsActive guard");
+        SeedDeptSite(t, deptActive: false);
+        var div = new Division { Id = Guid.NewGuid(), Code = "DV1", Name = "x" };
+        var err = await AdminEndpoints.ApplyDivisionParents(div, "D1", null, t.Db, default);
+
+        Assert.NotNull(err);
+        var bad = Assert.IsAssignableFrom<IStatusCodeHttpResult>(err);
+        Assert.Equal(400, bad.StatusCode);
+        Assert.Null(div.DepartmentId);            // rejected — parent not set
+    }
+
+    [Fact]
+    public async Task Guard_Rejects_InactiveSite()
+    {
+        using var t = new TestDb();
+        SeedDeptSite(t, siteActive: false);
+        var div = new Division { Id = Guid.NewGuid(), Code = "DV1", Name = "x" };
+        var err = await AdminEndpoints.ApplyDivisionParents(div, null, "S1", t.Db, default);
+
+        Assert.NotNull(err);
+        var bad = Assert.IsAssignableFrom<IStatusCodeHttpResult>(err);
+        Assert.Equal(400, bad.StatusCode);
+        Assert.Null(div.SiteId);                 // rejected — parent not set
+    }
+
+    [Fact]
+    public async Task Guard_Rejects_UnknownDepartment()
+    {
+        using var t = new TestDb();
+        var div = new Division { Id = Guid.NewGuid(), Code = "DV1", Name = "x" };
+        var err = await AdminEndpoints.ApplyDivisionParents(div, "NOPE", null, t.Db, default);
+        Assert.NotNull(err);
+        Assert.Null(div.DepartmentId);
     }
 
     [Fact]
@@ -181,33 +215,13 @@ public class DivisionAdminTests
         Assert.Equal("A", active[0].Code);
     }
 
-    // Admin authorization: the AdminOnly policy requires the Admin role — a non-admin gets 403.
+    // Exercises the production Audit helper (InternalsVisibleTo) — asserts the audit row
+    // a Division mutation actually writes, including Entity = "Division".
     [Fact]
-    public void AdminOnly_Policy_DeniesNonAdmin()
-    {
-        var policy = new AuthorizationPolicyBuilder().RequireRole("Admin").Build();
-        Assert.Contains(policy.Requirements,
-            r => r is RolesAuthorizationRequirement roles && roles.AllowedRoles.Contains("Admin"));
-
-        var admin = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Role, "Admin")], "test"));
-        var employee = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Role, "Employee")], "test"));
-        Assert.True(admin.IsInRole("Admin"));        // admin passes the AdminOnly guard
-        Assert.False(employee.IsInRole("Admin"));    // non-admin is denied (403)
-    }
-
-    [Fact]
-    public async Task Audit_Entry_Created_On_DivisionMutation()
+    public async Task Audit_Writes_DivisionEntity_ForDivisionMutation()
     {
         using var t = new TestDb();
-        var (deptId, siteId) = SeedDeptSite(t);
-        var div = new Division { Id = Guid.NewGuid(), Code = "DV1", Name = "Eng@HQ",
-            DepartmentId = deptId, SiteId = siteId };
-        t.Db.Divisions.Add(div);
-        t.Db.AuditLogs.Add(new AuditLog
-        {
-            ActorNik = "admin", Action = "admin.org.division.create", Entity = "Division",
-            EntityId = "DV1", DetailJson = "{}", CreatedAt = DateTime.UtcNow
-        });
+        AdminEndpoints.Audit(t.Db, "admin", "admin.org.division.create", "DV1", DateTime.UtcNow, "Division");
         await t.Db.SaveChangesAsync();
         t.Db.ChangeTracker.Clear();
 
@@ -216,5 +230,21 @@ public class DivisionAdminTests
         Assert.Equal("DV1", entry.EntityId);
         Assert.Equal("admin", entry.ActorNik);
         Assert.Equal("Division", entry.Entity);
+        Assert.Equal("{}", entry.DetailJson);
+    }
+
+    // Guards the default-entity contract: the helper still defaults to "User" for the
+    // existing user-mutation call sites that do not pass an entity.
+    [Fact]
+    public async Task Audit_Defaults_To_UserEntity_WhenEntityNotProvided()
+    {
+        using var t = new TestDb();
+        AdminEndpoints.Audit(t.Db, "admin", "admin.user.edit", "20080115", DateTime.UtcNow);
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        var entry = await t.Verify().AuditLogs.AsNoTracking()
+            .FirstAsync(a => a.Action == "admin.user.edit");
+        Assert.Equal("User", entry.Entity);
     }
 }

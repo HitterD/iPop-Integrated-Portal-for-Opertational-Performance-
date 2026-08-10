@@ -22,4 +22,8 @@
     <ProjectReference Include="..\IPop.Application\IPop.Application.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="IPop.Tests" />
+  </ItemGroup>
+
 </Project>

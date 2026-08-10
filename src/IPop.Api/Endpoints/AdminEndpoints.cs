@@ -228,7 +228,7 @@ public static class AdminEndpoints
         org.AddEndpointFilter(async (context, next) =>
         {
             var result = await next(context);
-            if (context.HttpContext.Request.Method is "POST" or "PUT" or "PATCH"
+            if (context.HttpContext.Request.Method is "POST" or "PUT" or "PATCH" or "DELETE"
                 && result is IStatusCodeHttpResult { StatusCode: >= 200 and < 300 })
                 await context.HttpContext.RequestServices.GetRequiredService<IDirectoryChangeNotifier>()
                     .NotifyAsync(context.HttpContext.RequestAborted);
@@ -378,7 +378,7 @@ public static class AdminEndpoints
             var parentError = await ApplyDivisionParents(div, req.DepartmentCode, req.SiteCode, db, ct);
             if (parentError is not null) return parentError;
             db.Divisions.Add(div);
-            Audit(db, CallerNik(http), "admin.org.division.create", code, DateTime.UtcNow);
+            Audit(db, CallerNik(http), "admin.org.division.create", code, DateTime.UtcNow, "Division");
             await db.SaveChangesAsync(ct);
             return Results.Created($"/api/admin/org/divisions/{code}", new { code });
         });
@@ -392,7 +392,7 @@ public static class AdminEndpoints
             if (req.IsActive is { } active) div.IsActive = active;
             var parentError = await ApplyDivisionParents(div, req.DepartmentCode, req.SiteCode, db, ct);
             if (parentError is not null) return parentError;
-            Audit(db, CallerNik(http), "admin.org.division.edit", code, DateTime.UtcNow);
+            Audit(db, CallerNik(http), "admin.org.division.edit", code, DateTime.UtcNow, "Division");
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { code });
         });
@@ -406,7 +406,7 @@ public static class AdminEndpoints
             await db.Users.Where(u => u.DivisionId == div.Id)
                 .ExecuteUpdateAsync(s => s.SetProperty(u => u.DivisionId, (Guid?)null), ct);
             db.Divisions.Remove(div);
-            Audit(db, CallerNik(http), "admin.org.division.delete", code, DateTime.UtcNow);
+            Audit(db, CallerNik(http), "admin.org.division.delete", code, DateTime.UtcNow, "Division");
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { code });
         });
@@ -777,7 +777,7 @@ public static class AdminEndpoints
     }
 
     // Resolves the Division's parent Department/Site, rejecting inactive parents.
-    private static async Task<IResult?> ApplyDivisionParents(Division div, string? departmentCode,
+    internal static async Task<IResult?> ApplyDivisionParents(Division div, string? departmentCode,
         string? siteCode, IPopDbContext db, CancellationToken ct)
     {
         if (!string.IsNullOrWhiteSpace(departmentCode))
@@ -860,10 +860,10 @@ public static class AdminEndpoints
         .Where(s => s.UserId == userId && s.RevokedAt == null)
         .ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, now), ct);
 
-    private static void Audit(IPopDbContext db, string? actor, string action,
-        string entityId, DateTime now) => db.AuditLogs.Add(new AuditLog
+    internal static void Audit(IPopDbContext db, string? actor, string action,
+        string entityId, DateTime now, string entity = "User") => db.AuditLogs.Add(new AuditLog
         {
-            ActorNik = actor, Action = action, Entity = "User", EntityId = entityId,
+            ActorNik = actor, Action = action, Entity = entity, EntityId = entityId,
             DetailJson = "{}", CreatedAt = now
         });
 

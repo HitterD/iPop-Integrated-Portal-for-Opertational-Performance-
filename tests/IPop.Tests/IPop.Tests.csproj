@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\IPop.Api\IPop.Api.csproj" />
     <ProjectReference Include="..\..\src\IPop.Infrastructure\IPop.Infrastructure.csproj" />
   </ItemGroup>
 
