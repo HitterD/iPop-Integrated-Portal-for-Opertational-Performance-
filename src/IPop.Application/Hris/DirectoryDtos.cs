@@ -23,3 +23,13 @@ public record OrgNodeDto(Guid Id, string Name, string? Title, Guid? ParentId, Gu
     bool IsActive, OrgNodeMemberDto[] Members);
 public record OrgNodeMemberDto(string Nik, string Name, string? Position, string? Department,
     string? Site, string Status);
+
+/// Site ▸ Department ▸ Division browse tree for /api/directory/structure, plus the
+/// "No Division" safety node (active users with DivisionId == null).
+public record DirectoryStructure(DirectorySiteNode[] Sites, int NoDivisionCount);
+public record DirectorySiteNode(string Code, string Name, int MemberCount, DirectoryDepartmentNode[] Departments);
+public record DirectoryDepartmentNode(string Code, string Name, int MemberCount, DirectoryDivisionNode[] Divisions);
+public record DirectoryDivisionNode(string Code, string Name, int MemberCount);
+
+/// A division matching a /api/directory/divisions?q= search, with its per-division match count.
+public record DirectoryDivisionMatch(string Code, string Name, int MatchCount);

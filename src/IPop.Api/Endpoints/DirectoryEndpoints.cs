@@ -43,8 +43,8 @@ public static class DirectoryEndpoints
         }).RequireAuthorization();
 
         app.MapGet("/api/directory/employees", async (HttpContext http, string? q, string? departmentCode,
-            string? siteCode, string? presence, string? sort, bool? desc, int? page, int? pageSize,
-            IPopDbContext db, CancellationToken ct) =>
+            string? siteCode, string? divisionCode, string? presence, string? sort, bool? desc, int? page,
+            int? pageSize, IPopDbContext db, CancellationToken ct) =>
         {
             var p = Math.Max(1, page ?? 1);
             var size = Math.Clamp(pageSize ?? 120, 1, 200);
@@ -60,6 +60,8 @@ public static class DirectoryEndpoints
                 query = query.Where(u => u.Department != null && u.Department.Code == departmentCode.Trim());
             if (!string.IsNullOrWhiteSpace(siteCode))
                 query = query.Where(u => u.Site != null && u.Site.Code == siteCode.Trim());
+            if (!string.IsNullOrWhiteSpace(divisionCode))
+                query = query.Where(u => u.Division != null && u.Division.Code == divisionCode.Trim());
 
             var now = DateTime.UtcNow;
             var rows = await query.Select(u => new
@@ -82,6 +84,39 @@ public static class DirectoryEndpoints
                 x.User.ManagerNik is not null && names.TryGetValue(x.User.ManagerNik, out var manager) ? manager : null,
                 x.User.Email, x.User.Extension, x.User.Location, x.Status, null, x.User.PhotoPath)).ToArray();
             return Results.Ok(new DirectoryPage(total, p, size, items));
+        }).RequireAuthorization().RequirePermission("directory.read");
+
+        // Structure tree: Site ▸ Department ▸ Division with live member counts, for the
+        // Directory master-detail nav. A (Site, Department) pairing only appears if an active
+        // Division links them — a Department can thus appear under more than one Site.
+        app.MapGet("/api/directory/structure", async (IPopDbContext db, CancellationToken ct) =>
+        {
+            var divisions = await db.Divisions.Include(d => d.Department).Include(d => d.Site)
+                .AsNoTracking().Where(d => d.IsActive
+                    && d.Department != null && d.Department.IsActive
+                    && d.Site != null && d.Site.IsActive)
+                .ToListAsync(ct);
+            var counts = await db.Users.Where(u => u.IsActive && u.DivisionId != null)
+                .GroupBy(u => u.DivisionId!.Value)
+                .Select(g => new { Id = g.Key, N = g.Count() }).ToListAsync(ct);
+            var byDivision = counts.ToDictionary(c => c.Id, c => c.N);
+            var noDivisionCount = await db.Users.CountAsync(u => u.IsActive && u.DivisionId == null, ct);
+
+            return Results.Ok(BuildStructure(divisions, byDivision, noDivisionCount));
+        }).RequireAuthorization().RequirePermission("directory.read");
+
+        // Division search: which divisions contain a name/NIK match, with per-division match
+        // counts. Same ILIKE-escaping as /employees and /member-search.
+        app.MapGet("/api/directory/divisions", async (string? q, IPopDbContext db, CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(q)) return Results.Ok(Array.Empty<DirectoryDivisionMatch>());
+            var term = q.Trim();
+            var pat = $"%{term.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_")}%";
+            var matches = await db.Users.AsNoTracking()
+                .Where(u => u.IsActive && u.Division != null && u.Division.IsActive)
+                .Where(u => EF.Functions.ILike(u.Name, pat, @"\") || EF.Functions.ILike(u.Nik, pat, @"\"))
+                .Select(u => new { u.Division!.Code, u.Division.Name }).ToListAsync(ct);
+            return Results.Ok(AggregateDivisionMatches(matches.Select(m => (m.Code, m.Name))));
         }).RequireAuthorization().RequirePermission("directory.read");
 
         // Member picker: admin add-by-name on dir-group / org-node drawers.
@@ -138,4 +173,33 @@ public static class DirectoryEndpoints
     }
 
     public record MemberSearchRow(string Nik, string Name, string? Position, string? Department);
+
+    // Pure aggregation step of /api/directory/structure — split out from the DB query so the
+    // Site/Department grouping and count roll-up is unit-testable without EF translation concerns.
+    internal static DirectoryStructure BuildStructure(IEnumerable<Core.Entities.Division> activeDivisions,
+        IReadOnlyDictionary<Guid, int> memberCountByDivisionId, int noDivisionCount)
+    {
+        var sites = activeDivisions.GroupBy(d => d.Site!.Code).Select(siteGroup =>
+        {
+            var depts = siteGroup.GroupBy(d => d.Department!.Code).Select(deptGroup =>
+            {
+                var divs = deptGroup.Select(d => new DirectoryDivisionNode(
+                    d.Code, d.Name, memberCountByDivisionId.GetValueOrDefault(d.Id))).OrderBy(x => x.Name).ToArray();
+                return new DirectoryDepartmentNode(deptGroup.Key, deptGroup.First().Department!.Name,
+                    divs.Sum(x => x.MemberCount), divs);
+            }).OrderBy(x => x.Name).ToArray();
+            return new DirectorySiteNode(siteGroup.Key, siteGroup.First().Site!.Name,
+                depts.Sum(x => x.MemberCount), depts);
+        }).OrderBy(x => x.Name).ToArray();
+        return new DirectoryStructure(sites, noDivisionCount);
+    }
+
+    // Pure aggregation step of /api/directory/divisions — split out so it's testable without
+    // going through EF.Functions.ILike, which is Npgsql-only and doesn't translate on SQLite
+    // (the TestDb seam). ponytail: no SQLite-testable ILIKE path exists yet; add one if the
+    // search endpoint's SQL filtering itself needs a regression test.
+    internal static DirectoryDivisionMatch[] AggregateDivisionMatches(IEnumerable<(string Code, string Name)> matchedUserDivisions) =>
+        matchedUserDivisions.GroupBy(x => x.Code)
+            .Select(g => new DirectoryDivisionMatch(g.Key, g.First().Name, g.Count()))
+            .OrderBy(x => x.Name).ToArray();
 }
