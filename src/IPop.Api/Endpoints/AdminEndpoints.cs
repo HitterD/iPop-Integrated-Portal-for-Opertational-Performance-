@@ -282,10 +282,14 @@ public static class AdminEndpoints
         {
             var dept = await db.Departments.FirstOrDefaultAsync(d => d.Code == code, ct);
             if (dept is null) return Results.NotFound();
+            var deactivating = req.IsActive is false && dept.IsActive;
             if (req.Name?.Trim() is { Length: > 0 } name) dept.Name = name;
             if (req.IsActive is { } active) dept.IsActive = active;
             var parentError = await ApplyParent(dept, req.ParentCode, db, ct);
             if (parentError is not null) return parentError;
+            if (deactivating)
+                await db.Users.Where(u => u.Division != null && u.Division.DepartmentId == dept.Id)
+                    .ExecuteUpdateAsync(s => s.SetProperty(u => u.DivisionId, (Guid?)null), ct);
             Audit(db, CallerNik(http), "admin.org.dept.edit", code, DateTime.UtcNow);
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { code });
@@ -310,8 +314,12 @@ public static class AdminEndpoints
         {
             var site = await db.Sites.FirstOrDefaultAsync(s => s.Code == code, ct);
             if (site is null) return Results.NotFound();
+            var deactivating = req.IsActive is false && site.IsActive;
             if (req.Name?.Trim() is { Length: > 0 } name) site.Name = name;
             if (req.IsActive is { } active) site.IsActive = active;
+            if (deactivating)
+                await db.Users.Where(u => u.Division != null && u.Division.SiteId == site.Id)
+                    .ExecuteUpdateAsync(s => s.SetProperty(u => u.DivisionId, (Guid?)null), ct);
             Audit(db, CallerNik(http), "admin.org.site.edit", code, DateTime.UtcNow);
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { code });
@@ -429,8 +437,8 @@ public static class AdminEndpoints
             if (div is null)
                 return Results.BadRequest(new { code = "unknown_division", message = "Division does not exist or is inactive." });
             user.DivisionId = div.Id;
-            user.DepartmentId = div.DepartmentId;     // sync from the Division's parents
-            user.SiteId = div.SiteId;
+            if (div.DepartmentId is not null) user.DepartmentId = div.DepartmentId;
+            if (div.SiteId is not null) user.SiteId = div.SiteId;
             user.UpdatedAt = DateTime.UtcNow;
             Audit(db, CallerNik(http), "admin.user.division.assign", nik, user.UpdatedAt);
             await db.SaveChangesAsync(ct);

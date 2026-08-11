@@ -67,3 +67,36 @@
 
 ### Deferred findings (not in scope for this round per constraints)
 - The dynamic fallback at ~line 744, (none)/"" vs null normalization, missing OrderBy on the divisions table, CloseDrawer Escape behavior, and the removed AddNodeMember path -- left as-is for final review.
+
+## Final-review fix round (2026-08-11, on top of def9c14 -> b990c08)
+
+### Finding 1 — Department/Site PATCH deactivation now cascades to descendant Divisions
+- `src/IPop.Api/Endpoints/AdminEndpoints.cs:280-296` (Department PATCH): added `deactivating = req.IsActive is false && dept.IsActive` capture before mutation, then after the `ApplyParent` error check and before `Audit`/`SaveChangesAsync`:
+  `await db.Users.Where(u => u.Division != null && u.Division.DepartmentId == dept.Id).ExecuteUpdateAsync(s => s.SetProperty(u => u.DivisionId, (Guid?)null), ct)` when deactivating. Mirrors the existing Division PATCH pattern at 394-409.
+- `src/IPop.Api/Endpoints/AdminEndpoints.cs:312-326` (Site PATCH): same pattern scoped to SiteId:
+  `await db.Users.Where(u => u.Division != null && u.Division.SiteId == site.Id).ExecuteUpdateAsync(...)` between field-apply and Audit/SaveChanges (no parent check for Site).
+- Order is deliberate: apply fields -> parent-error check (Department only) -> ExecuteUpdateAsync -> Audit -> SaveChangesAsync, so the cascade participates in the same SaveChanges unit as the Audit row.
+- Without this, GetStructureCore (filters `d.IsActive && d.Department.IsActive && d.Site.IsActive`) hid the Division but its members kept a non-null DivisionId, dropping out of both the /structure tree and NoDivisionCount silently.
+
+### Finding 2 — Parentless Division assignment no longer wipes existing Site/Department
+- `src/IPop.Api/Endpoints/AdminEndpoints.cs:439-441` (`MapPut "/users/{nik}/division"`): replaced unconditional
+  `user.DepartmentId = div.DepartmentId; user.SiteId = div.SiteId;`
+  with guarded
+  `if (div.DepartmentId is not null) user.DepartmentId = div.DepartmentId;`
+  `if (div.SiteId is not null) user.SiteId = div.SiteId;`
+  `user.DivisionId = div.Id` remains unconditional; `UpdatedAt` + Audit unchanged.
+
+### Tests
+- `tests/IPop.Tests/DivisionAdminTests.cs` — 8 new tests, inline handler replication via TestDb (no WebApplicationFactory), following `Patch_Division_Deactivate_ClearsMemberDivisionId` pattern:
+  - `Patch_Department_Deactivate_ClearsMemberDivisionId` / `Patch_Site_Deactivate_ClearsMemberDivisionId` — deactivation nulls DivisionId; entity IsActive becomes false.
+  - `Patch_Department_NameOnly_DoesNotClearMemberDivisionId` / `Patch_Site_NameOnly_DoesNotClearMemberDivisionId` — IsActive=null leaves DivisionId untouched.
+  - `Assign_User_Division_Parentless_NoDepartment_PreservesExistingDepartment` / `NoSite` / `NoParents` / `BothParents_OverwritesBoth` — guarded assignment preserves non-null parents, overwrites when Division provides them. Covers the 2x2 matrix for Finding 2.
+
+### Verification
+- `dotnet build IPop.slnx` -> Build succeeded, 0 errors, 4 warnings (all pre-existing: MSB3277 EF Relational unification, NU1903 SQLitePCLRaw advisory, CS8625 null-literal in MapMember; no new warnings).
+- `dotnet test tests/IPop.Tests/IPop.Tests.csproj --no-build` -> 76/76 passed (68 existing + 8 new).
+- Commit: b990c08 fix(org): cascade deactivation to descendant divisions; guard parentless division assignment
+- No API contracts, DTOs, or authorization changed. No new dependencies.
+
+### Deferred / out of scope
+- Nothing deferred from this round; both findings addressed verbatim to the fix patterns specified in the review.

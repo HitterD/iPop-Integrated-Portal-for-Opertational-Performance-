@@ -339,4 +339,233 @@ public class DivisionAdminTests
             .FirstAsync(a => a.Action == "admin.user.edit");
         Assert.Equal("User", entry.Entity);
     }
+
+    // ---- Finding 1: Department/Site deactivation must cascade to descendant Divisions ----
+
+    [Fact]
+    public async Task Patch_Department_Deactivate_ClearsMemberDivisionId()
+    {
+        using var t = new TestDb();
+        var (deptId, siteId) = SeedDeptSite(t);
+        var div = new Division { Id = Guid.NewGuid(), Code = "DV1", Name = "Eng@HQ",
+            DepartmentId = deptId, SiteId = siteId, IsActive = true };
+        t.Db.Divisions.Add(div);
+        var user = t.AddUser("20080115");
+        user.DivisionId = div.Id;
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        bool? requestedIsActive = false;
+        var dept = await t.Db.Departments.FirstAsync(d => d.Code == "D1");
+        var deactivating = requestedIsActive is false && dept.IsActive;
+        if (requestedIsActive is { } active) dept.IsActive = active;
+        if (deactivating)
+            await t.Db.Users.Where(u => u.Division != null && u.Division.DepartmentId == dept.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.DivisionId, (Guid?)null));
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        Assert.Null((await t.Verify().Users.FirstAsync(u => u.Nik == "20080115")).DivisionId);
+        Assert.False((await t.Verify().Departments.FirstAsync(d => d.Code == "D1")).IsActive);
+    }
+
+    [Fact]
+    public async Task Patch_Site_Deactivate_ClearsMemberDivisionId()
+    {
+        using var t = new TestDb();
+        var (deptId, siteId) = SeedDeptSite(t);
+        var div = new Division { Id = Guid.NewGuid(), Code = "DV1", Name = "Eng@HQ",
+            DepartmentId = deptId, SiteId = siteId, IsActive = true };
+        t.Db.Divisions.Add(div);
+        var user = t.AddUser("20080115");
+        user.DivisionId = div.Id;
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        bool? requestedIsActive = false;
+        var site = await t.Db.Sites.FirstAsync(s => s.Code == "S1");
+        var deactivating = requestedIsActive is false && site.IsActive;
+        if (requestedIsActive is { } active) site.IsActive = active;
+        if (deactivating)
+            await t.Db.Users.Where(u => u.Division != null && u.Division.SiteId == site.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.DivisionId, (Guid?)null));
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        Assert.Null((await t.Verify().Users.FirstAsync(u => u.Nik == "20080115")).DivisionId);
+        Assert.False((await t.Verify().Sites.FirstAsync(s => s.Code == "S1")).IsActive);
+    }
+
+    [Fact]
+    public async Task Patch_Department_NameOnly_DoesNotClearMemberDivisionId()
+    {
+        using var t = new TestDb();
+        var (deptId, siteId) = SeedDeptSite(t);
+        var div = new Division { Id = Guid.NewGuid(), Code = "DV1", Name = "Old",
+            DepartmentId = deptId, SiteId = siteId, IsActive = true };
+        t.Db.Divisions.Add(div);
+        var user = t.AddUser("20080115");
+        user.DivisionId = div.Id;
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        bool? requestedIsActive = null;
+        var dept = await t.Db.Departments.FirstAsync(d => d.Code == "D1");
+        dept.Name = "NewName";
+        var deactivating = requestedIsActive is false && dept.IsActive;
+        if (requestedIsActive is { } active) dept.IsActive = active;
+        if (deactivating)
+            await t.Db.Users.Where(u => u.Division != null && u.Division.DepartmentId == dept.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.DivisionId, (Guid?)null));
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        Assert.Equal(div.Id, (await t.Verify().Users.FirstAsync(u => u.Nik == "20080115")).DivisionId);
+    }
+
+    [Fact]
+    public async Task Patch_Site_NameOnly_DoesNotClearMemberDivisionId()
+    {
+        using var t = new TestDb();
+        var (deptId, siteId) = SeedDeptSite(t);
+        var div = new Division { Id = Guid.NewGuid(), Code = "DV1", Name = "Old",
+            DepartmentId = deptId, SiteId = siteId, IsActive = true };
+        t.Db.Divisions.Add(div);
+        var user = t.AddUser("20080115");
+        user.DivisionId = div.Id;
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        bool? requestedIsActive = null;
+        var site = await t.Db.Sites.FirstAsync(s => s.Code == "S1");
+        site.Name = "NewName";
+        var deactivating = requestedIsActive is false && site.IsActive;
+        if (requestedIsActive is { } active) site.IsActive = active;
+        if (deactivating)
+            await t.Db.Users.Where(u => u.Division != null && u.Division.SiteId == site.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.DivisionId, (Guid?)null));
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        Assert.Equal(div.Id, (await t.Verify().Users.FirstAsync(u => u.Nik == "20080115")).DivisionId);
+    }
+
+    // ---- Finding 2: parentless Division assignment must not null existing Site/Department ----
+
+    [Fact]
+    public async Task Assign_User_Division_Parentless_NoDepartment_PreservesExistingDepartment()
+    {
+        using var t = new TestDb();
+        var (deptId, siteId) = SeedDeptSite(t);
+        var div = new Division { Id = Guid.NewGuid(), Code = "DV1", Name = "NoDept",
+            DepartmentId = null, SiteId = siteId, IsActive = true };
+        t.Db.Divisions.Add(div);
+        var user = t.AddUser("20080115");
+        user.DepartmentId = deptId;
+        user.SiteId = siteId;
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        var loaded = await t.Db.Users.FirstAsync(u => u.Nik == "20080115");
+        var d = await t.Db.Divisions.SingleAsync(x => x.Code == "DV1" && x.IsActive);
+        loaded.DivisionId = d.Id;
+        if (d.DepartmentId is not null) loaded.DepartmentId = d.DepartmentId;
+        if (d.SiteId is not null) loaded.SiteId = d.SiteId;
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        var check = await t.Verify().Users.FirstAsync(u => u.Nik == "20080115");
+        Assert.Equal(div.Id, check.DivisionId);
+        Assert.Equal(deptId, check.DepartmentId); // preserved — division had no department
+        Assert.Equal(siteId, check.SiteId);
+    }
+
+    [Fact]
+    public async Task Assign_User_Division_Parentless_NoSite_PreservesExistingSite()
+    {
+        using var t = new TestDb();
+        var (deptId, siteId) = SeedDeptSite(t);
+        var div = new Division { Id = Guid.NewGuid(), Code = "DV2", Name = "NoSite",
+            DepartmentId = deptId, SiteId = null, IsActive = true };
+        t.Db.Divisions.Add(div);
+        var user = t.AddUser("20080115");
+        user.DepartmentId = deptId;
+        user.SiteId = siteId;
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        var loaded = await t.Db.Users.FirstAsync(u => u.Nik == "20080115");
+        var d = await t.Db.Divisions.SingleAsync(x => x.Code == "DV2" && x.IsActive);
+        loaded.DivisionId = d.Id;
+        if (d.DepartmentId is not null) loaded.DepartmentId = d.DepartmentId;
+        if (d.SiteId is not null) loaded.SiteId = d.SiteId;
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        var check = await t.Verify().Users.FirstAsync(u => u.Nik == "20080115");
+        Assert.Equal(div.Id, check.DivisionId);
+        Assert.Equal(deptId, check.DepartmentId);
+        Assert.Equal(siteId, check.SiteId); // preserved — division had no site
+    }
+
+    [Fact]
+    public async Task Assign_User_Division_Parentless_NoParents_PreservesBoth()
+    {
+        using var t = new TestDb();
+        var (deptId, siteId) = SeedDeptSite(t);
+        var div = new Division { Id = Guid.NewGuid(), Code = "DV3", Name = "Orphan",
+            DepartmentId = null, SiteId = null, IsActive = true };
+        t.Db.Divisions.Add(div);
+        var user = t.AddUser("20080115");
+        user.DepartmentId = deptId;
+        user.SiteId = siteId;
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        var loaded = await t.Db.Users.FirstAsync(u => u.Nik == "20080115");
+        var d = await t.Db.Divisions.SingleAsync(x => x.Code == "DV3" && x.IsActive);
+        loaded.DivisionId = d.Id;
+        if (d.DepartmentId is not null) loaded.DepartmentId = d.DepartmentId;
+        if (d.SiteId is not null) loaded.SiteId = d.SiteId;
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        var check = await t.Verify().Users.FirstAsync(u => u.Nik == "20080115");
+        Assert.Equal(div.Id, check.DivisionId);
+        Assert.Equal(deptId, check.DepartmentId);
+        Assert.Equal(siteId, check.SiteId);
+    }
+
+    [Fact]
+    public async Task Assign_User_Division_BothParents_OverwritesBoth()
+    {
+        using var t = new TestDb();
+        var (deptId1, siteId1) = SeedDeptSite(t);
+        var dept2 = new Department { Id = Guid.NewGuid(), Code = "D2", Name = "Ops", IsActive = true };
+        var site2 = new Site { Id = Guid.NewGuid(), Code = "S2", Name = "Branch", IsActive = true };
+        t.Db.Departments.Add(dept2);
+        t.Db.Sites.Add(site2);
+        await t.Db.SaveChangesAsync();
+        var div = new Division { Id = Guid.NewGuid(), Code = "DV4", Name = "Ops@Branch",
+            DepartmentId = dept2.Id, SiteId = site2.Id, IsActive = true };
+        t.Db.Divisions.Add(div);
+        var user = t.AddUser("20080115");
+        user.DepartmentId = deptId1;
+        user.SiteId = siteId1;
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        var loaded = await t.Db.Users.FirstAsync(u => u.Nik == "20080115");
+        var d = await t.Db.Divisions.SingleAsync(x => x.Code == "DV4" && x.IsActive);
+        loaded.DivisionId = d.Id;
+        if (d.DepartmentId is not null) loaded.DepartmentId = d.DepartmentId;
+        if (d.SiteId is not null) loaded.SiteId = d.SiteId;
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        var check = await t.Verify().Users.FirstAsync(u => u.Nik == "20080115");
+        Assert.Equal(div.Id, check.DivisionId);
+        Assert.Equal(dept2.Id, check.DepartmentId);
+        Assert.Equal(site2.Id, check.SiteId);
+    }
 }
