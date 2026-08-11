@@ -6,11 +6,11 @@
 
 <PageTitle>Directory — IPop</PageTitle>
 
-<div class="content" style="grid-template-columns: 1fr">
-    @* ---- Tab bar: Everyone | Directory Tree | Organization Tree ---- *@
+<div class="content">
+    @* ---- Tab bar: Directory | Directory Tree | Organization Tree ---- *@
     <div class="admin-tabs" role="tablist" aria-label="Directory views">
         <button class="admin-tab @(Tab == 0 ? "active" : "")" role="tab" aria-selected="@(Tab == 0)" @onclick="() => SwitchTab(0)">
-            <i data-lucide="users"></i> Everyone
+            <i data-lucide="users"></i> Directory
         </button>
         <button class="admin-tab @(Tab == 1 ? "active" : "")" role="tab" aria-selected="@(Tab == 1)" @onclick="() => SwitchTab(1)">
             <i data-lucide="folder-tree"></i> Directory Tree
@@ -22,53 +22,132 @@
 
     @if (Tab == 0)
     {
-        <div class="tray rise rise-1">
-            <div class="core" style="padding:0; overflow:hidden">
-                <div class="panel-head">
-                    <i data-lucide="users"></i> <span>Everyone</span>
-                    <span class="meta">@(loading ? "Loading..." : $"{total:N0} people")</span>
-                    <span class="meta">@ConnectionLabel</span>
-                </div>
-                <div style="display:flex;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line-soft);flex-wrap:wrap">
-                    <div class="search" style="flex:1 1 240px;margin:0">
-                        <i data-lucide="search"></i>
-                        <input placeholder="Search by name or ID" @bind="search" @bind:event="oninput" @bind:after="ResetQuery" />
+        <div class="tree-pane @(treeOpen ? "open" : "")">
+            <button class="hamburger" @onclick="ToggleTree" aria-label="Toggle directory tree">
+                <i data-lucide="menu"></i>
+            </button>
+            <div class="tree-backdrop @(treeOpen ? "on" : "")" @onclick="ToggleTree"></div>
+            <div class="tray rise rise-1">
+                <div class="core" style="padding:0; overflow:hidden">
+                    <div class="panel-head">
+                        <i data-lucide="folder-tree"></i> <span>Structure</span>
+                        <span class="meta">@(structureLoading ? "Loading..." : $"{TotalDivisions:N0} divisions")</span>
+                        <button class="tree-close" @onclick="ToggleTree" aria-label="Close tree">
+                            <i data-lucide="x"></i>
+                        </button>
                     </div>
-                    <AppSelect Style="width:auto" Label="Department" Value="@departmentCode" ValueChanged="async v => { departmentCode = v; await ResetQuery(); }"
-                               Options="@DeptOptions" />
-                    <AppSelect Style="width:auto" Label="Site" Value="@siteCode" ValueChanged="async v => { siteCode = v; await ResetQuery(); }"
-                               Options="@SiteOptions" />
-                    <AppSelect Style="width:auto" Label="Presence" Value="@presence" ValueChanged="async v => { presence = v; await ResetQuery(); }"
-                               Options="@PresenceOptions" />
-                </div>
-                <div class="emp-grid">
-                    @if (loading)
+                    @if (structureLoading)
                     {
                         @for (var i = 0; i < 8; i++) { <div class="skel"></div> }
                     }
-                    else if (people.Count == 0)
+                    else if (dirStructure is null)
                     {
-                        <div class="tree-empty" style="grid-column:1/-1;padding:34px">@(loadError ?? "No one matches your search.")</div>
+                        <div class="tree-empty">Could not load the directory structure.</div>
                     }
                     else
                     {
-                        @foreach (var (p, i) in people.Select((p, i) => (p, i)))
-                        {
-                            <div @key="p.Nik" class="emp-card rise" style="animation-delay:@(Math.Min(i, 12) * 0.05)s" tabindex="0" role="button"
-                                 aria-label="View profile of @p.Name" @onclick="() => selected = p" @onkeydown="e => OnCardKey(e, p)">
-                                <div class="top">
-                                    <div class="avatar" style="background:@p.Color">@p.Initials</div>
-                                    <div><div class="n">@p.Name</div><div class="p">@p.Position</div></div>
+                        <div class="tree dir-tree">
+                            @foreach (var site in dirStructure.Sites)
+                            {
+                                <details open>
+                                    <summary>
+                                        <i data-lucide="chevron-right" class="chev"></i>
+                                        <span class="node-name">@site.Name</span>
+                                        <span class="count">@site.MemberCount</span>
+                                    </summary>
+                                    <div class="children">
+                                        @foreach (var dept in site.Departments)
+                                        {
+                                            <details open>
+                                                <summary>
+                                                    <i data-lucide="chevron-right" class="chev"></i>
+                                                    <span class="node-name">@dept.Name</span>
+                                                    <span class="count">@dept.MemberCount</span>
+                                                </summary>
+                                                <div class="children">
+                                                    @foreach (var div in dept.Divisions)
+                                                    {
+                                                        <button type="button" class="div-row @(selectedDivision?.Code == div.Code ? "sel" : "")"
+                                                                @onclick="() => SelectDivision(div)">
+                                                            <span class="node-name">@div.Name</span>
+                                                            <span class="count">@div.MemberCount</span>
+                                                        </button>
+                                                    }
+                                                </div>
+                                            </details>
+                                        }
+                                    </div>
+                                </details>
+                            }
+                            @if (dirStructure.NoDivisionCount > 0)
+                            {
+                                <div class="div-row" style="cursor:default;opacity:0.75">
+                                    <span class="node-name">No Division</span>
+                                    <span class="count">@dirStructure.NoDivisionCount</span>
                                 </div>
-                                <div class="foot"><span class="mono">ID @p.Nik · @p.Site</span><span class="dot @p.Status">@p.StatusLabel</span></div>
-                            </div>
-                        }
+                            }
+                        </div>
                     }
                 </div>
-                @if (!loading && page < TotalPages)
-                {
-                    <div style="padding:0 14px 14px"><button class="btn" style="width:auto;margin:0 auto;padding:10px 22px" @onclick="LoadMore">Show more (@(total - people.Count) remaining)</button></div>
-                }
+            </div>
+        </div>
+
+        <div class="grid-pane">
+            <div class="tray rise rise-1">
+                <div class="core" style="padding:0;overflow:hidden">
+                    <div class="panel-head">
+                        <i data-lucide="users"></i> <span>@(selectedDivision?.Name ?? "Directory")</span>
+                        <span class="meta">@(loading ? "Loading..." : $"{total:N0} people")</span>
+                        <span class="meta">@ConnectionLabel</span>
+                    </div>
+                    @if (notice is not null)
+                    {
+                        <div class="module-notice">
+                            <div class="note @(noticeIsError ? "err" : "")">
+                                <i data-lucide="info"></i><span>@notice</span>
+                                <button class="note-x" @onclick="DismissNotice" aria-label="Dismiss">
+                                    <i data-lucide="x"></i>
+                                </button>
+                            </div>
+                        </div>
+                    }
+                    <div class="emp-grid">
+                        @if (loading || structureLoading)
+                        {
+                            @for (var i = 0; i < 8; i++) { <div class="skel"></div> }
+                        }
+                        else if (people.Count == 0)
+                        {
+                            <div class="tree-empty" style="grid-column:1/-1;padding:34px">@(loadError ?? "No one in this division yet.")</div>
+                        }
+                        else
+                        {
+                            @foreach (var (p, i) in people.Select((p, i) => (p, i)))
+                            {
+                                <div @key="p.Nik" class="emp-card rise" style="animation-delay:@(Math.Min(i, 12) * 0.05)s" tabindex="0" role="button"
+                                     aria-label="View profile of @p.Name" @onclick="() => selected = p" @onkeydown="e => OnCardKey(e, p)">
+                                    <div class="top">
+                                        <div class="avatar" style="background:@p.Color">@p.Initials</div>
+                                        <div><div class="n">@p.Name</div><div class="p">@p.Position</div></div>
+                                    </div>
+                                    <div class="foot"><span class="mono">ID @p.Nik · @p.Site</span><span class="dot @p.Status">@p.StatusLabel</span></div>
+                                    <div class="card-actions">
+                                        <button type="button" class="ca-btn" @onclick='() => ShowModuleNotice("Chat")' @onclick:stopPropagation="true">
+                                            <i data-lucide="message-circle"></i> Chat
+                                        </button>
+                                        <button type="button" class="ca-btn" @onclick='() => ShowModuleNotice("Call")' @onclick:stopPropagation="true">
+                                            <i data-lucide="phone"></i> Call
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                    @if (!loading && page < TotalPages)
+                    {
+                        <div style="padding:0 14px 14px"><button class="btn" style="width:auto;margin:0 auto;padding:10px 22px" @onclick="LoadMore">Show more (@(total - people.Count) remaining)</button></div>
+                    }
+                </div>
             </div>
         </div>
     }
@@ -261,18 +340,19 @@
     private bool loading = true;
     private string? loadError;
     private int page = 1, total;
-    private string search = "", departmentCode = "", siteCode = "", presence = "";
     private Employee? selected;
     private List<Employee> people = [];
-    private List<DirectoryDepartmentDto> departments = [];
-    private List<DirectorySiteDto> sites = [];
-    private List<AppOption> DeptOptions => [new("", "All departments"), .. departments.Select(d => new AppOption(d.Code, d.Name))];
-    private List<AppOption> SiteOptions => [new("", "All sites"), .. sites.Select(s => new AppOption(s.Code, s.Name))];
-    private static readonly List<AppOption> PresenceOptions =
-        [new("", "All presence"), new("on", "Online"), new("away", "Away"), new("busy", "Busy"), new("off", "Offline")];
     private DirectoryConnectionState connection = DirectoryConnectionState.Connecting;
-    private System.Threading.CancellationTokenSource? searchCts;
     private int TotalPages => total == 0 ? 1 : (int)Math.Ceiling(total / (double)PageSize);
+
+    // Master-detail tree state
+    private DirectoryStructureNodeDto? dirStructure;
+    private bool structureLoading = true;
+    private DirectoryDivisionNodeDto? selectedDivision;
+    private bool treeOpen;
+    private string? notice;
+    private bool noticeIsError;
+    private int TotalDivisions => dirStructure?.Sites.Sum(s => s.Departments.Sum(d => d.Divisions.Length)) ?? 0;
     private string ConnectionLabel => connection switch { DirectoryConnectionState.Live => "Live", DirectoryConnectionState.Reconnecting => "Reconnecting...", DirectoryConnectionState.Connecting => "Connecting...", _ => "Offline" };
 
     private int tab;
@@ -305,12 +385,41 @@
 
     protected override async Task OnInitializedAsync()
     {
-        departments = await Auth.GetAsync<List<DirectoryDepartmentDto>>("/api/directory/departments") ?? [];
-        sites = await Auth.GetAsync<List<DirectorySiteDto>>("/api/directory/sites") ?? [];
         if (Auth.IsAdmin) await LoadAdminOrg();
+        await LoadStructure();
         await Reload(1, replace: true);
         await LoadDirGroups();
         await LoadOrgNodes();
+    }
+
+    private async Task LoadStructure()
+    {
+        structureLoading = true;
+        dirStructure = await Auth.GetAsync<DirectoryStructureNodeDto>("/api/directory/structure");
+        structureLoading = false;
+        if (dirStructure is not null)
+        {
+            // Auto-select the first division (deepest first in traversal order).
+            if (selectedDivision is null)
+                selectedDivision = dirStructure.Sites.SelectMany(s => s.Departments).SelectMany(d => d.Divisions).FirstOrDefault();
+        }
+        StateHasChanged();
+    }
+
+    private async Task SelectDivision(DirectoryDivisionNodeDto d)
+    {
+        if (selectedDivision?.Code == d.Code) return;
+        selectedDivision = d;
+        treeOpen = false;
+        await Reload(1, replace: true);
+    }
+
+    private void ToggleTree() => treeOpen = !treeOpen;
+    private void DismissNotice() => notice = null;
+    private void ShowModuleNotice(string module)
+    {
+        notice = $"{module} isn't available yet — it activates as the module ships.";
+        noticeIsError = false;
     }
     private OrgViewDto adminOrg = new([], []);
     private async Task LoadAdminOrg()
@@ -733,7 +842,7 @@
     private async Task Reload(int requestedPage, bool replace)
     {
         loading = true;
-        var url = $"/api/directory/employees?page={requestedPage}&pageSize={PageSize}&q={Uri.EscapeDataString(search.Trim())}&departmentCode={Uri.EscapeDataString(departmentCode)}&siteCode={Uri.EscapeDataString(siteCode)}&presence={Uri.EscapeDataString(presence)}";
+        var url = $"/api/directory/employees?page={requestedPage}&pageSize={PageSize}&divisionCode={Uri.EscapeDataString(selectedDivision?.Code ?? "")}";
         var result = await Auth.GetAsync<DirectoryPageDto>(url);
         loading = false;
         if (result is null) { loadError = "Could not load the directory."; return; }
@@ -745,18 +854,12 @@
         StateHasChanged();
     }
 
-    private async Task ResetQuery()
-    {
-        searchCts?.Cancel();
-        searchCts?.Dispose();
-        var cts = new System.Threading.CancellationTokenSource();
-        searchCts = cts;
-        try { await Task.Delay(240, cts.Token); } catch (TaskCanceledException) { return; }
-        if (cts.IsCancellationRequested) return;
-        await Reload(1, replace: true);
-    }
     private Task LoadMore() => Reload(page + 1, replace: false);
-    private void OnDirectoryChanged() => _ = InvokeAsync(() => Reload(1, replace: true));
+    private void OnDirectoryChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadStructure();
+        await Reload(1, replace: true);
+    });
 
     private void OnPresenceChanged(string nik, string status) => _ = InvokeAsync(() =>
     {
@@ -771,7 +874,7 @@
     private void CloseDrawer() { selected = null; selectedDirMember = null; }
     private void OnCardKey(KeyboardEventArgs e, Employee p) { if (e.Key is "Enter" or " ") selected = p; }
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
-    public void Dispose() { searchCts?.Cancel(); searchCts?.Dispose(); Layout.EscapePressed -= CloseDrawer; Auth.PresenceChanged -= OnPresenceChanged; Auth.DirectoryChanged -= OnDirectoryChanged; }
+    public void Dispose() { Layout.EscapePressed -= CloseDrawer; Auth.PresenceChanged -= OnPresenceChanged; Auth.DirectoryChanged -= OnDirectoryChanged; }
 
     private enum PickerKind { None, Group, Node }
 

@@ -431,6 +431,59 @@
   .dept-card .count { margin-left: auto; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
   .tree-empty { padding: 18px 12px; text-align: center; color: var(--ink-3); font-size: 12.5px; }
 
+  /* ---- Directory master-detail: structure tree + division tree rows ---- */
+  .tree-pane, .grid-pane { min-width: 0; }
+  .hamburger {
+    display: none; width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink-2);
+    align-items: center; justify-content: center; cursor: pointer;
+    transition: all 0.3s var(--ease);
+  }
+  .hamburger:hover { background: var(--tray); color: var(--ink); }
+  .hamburger .lucide { width: 15px; height: 15px; }
+  .tree-close { display: none; }
+  .dir-tree summary .node-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dir-tree summary .count { margin-left: auto; }
+  .dir-tree .count {
+    font-size: 11px; font-weight: 600; color: var(--ink-3);
+    font-variant-numeric: tabular-nums; background: var(--tray);
+    border-radius: 999px; padding: 1px 7px; flex-shrink: 0;
+  }
+  .dir-tree .div-row {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 7px 9px; margin: 2px 0; border: none; border-radius: 10px;
+    background: transparent; font: inherit; font-size: 13px; color: var(--ink-2);
+    text-align: left; cursor: pointer; transition: all 0.25s var(--ease);
+  }
+  .dir-tree .div-row:hover { background: var(--tray); color: var(--ink); }
+  .dir-tree .div-row.sel { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+  .dir-tree .div-row .node-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dir-tree .div-row .count { margin-left: auto; }
+  .dir-tree .div-row.sel .count { background: var(--surface); color: var(--accent-ink); }
+  .card-actions {
+    display: flex; gap: 6px; margin-top: 10px;
+    border-top: 1px solid var(--line-soft); padding-top: 10px;
+  }
+  .card-actions .ca-btn {
+    flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    padding: 6px 8px; font: inherit; font-size: 11.5px; font-weight: 600;
+    border: 1px solid var(--line); border-radius: 999px;
+    background: var(--surface); color: var(--ink-2); cursor: pointer;
+    transition: all 0.25s var(--ease);
+  }
+  .card-actions .ca-btn:hover { background: var(--tray); color: var(--ink); border-color: var(--line-soft); }
+  .card-actions .ca-btn .lucide { width: 13px; height: 13px; }
+  .module-notice { margin: 10px 14px 0; }
+  .module-notice .note { margin-top: 0; }
+  .note-x {
+    margin-left: auto; flex-shrink: 0; width: 22px; height: 22px; border-radius: 7px;
+    border: none; background: transparent; color: var(--ink-3); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: color 0.2s var(--ease);
+  }
+  .note-x:hover { color: var(--ink); }
+  .note-x .lucide { width: 13px; height: 13px; margin: 0; }
+  .tree-backdrop { display: none; }
+
   /* ---- employee cards grid ---- */
   .panel-head {
     padding: 14px 18px; border-bottom: 1px solid var(--line-soft);
@@ -806,6 +859,30 @@
 
   @media (max-width: 980px) {
     .content { grid-template-columns: 1fr; }
+    .hamburger { display: inline-flex; }
+    .tree-backdrop {
+      display: block; position: fixed; inset: 0; z-index: 74;
+      background: rgba(63,63,58,0.32); backdrop-filter: blur(3px);
+      opacity: 0; pointer-events: none; transition: opacity 0.4s var(--ease);
+    }
+    [data-theme="dark"] .tree-backdrop { background: rgba(0,0,0,0.55); }
+    .tree-backdrop.on { opacity: 1; pointer-events: auto; }
+    .tree-pane .tray {
+      position: fixed; top: 0; bottom: 0; left: 0; z-index: 75;
+      width: 300px; max-width: 84vw;
+      transform: translateX(-105%); transition: transform 0.5s var(--ease);
+      border-radius: 0 calc(var(--radius-tray) - 6px) calc(var(--radius-tray) - 6px) 0;
+    }
+    .tree-pane .tray .core { height: 100%; overflow-y: auto; border-radius: 0 calc(var(--radius-tray) - 6px) calc(var(--radius-tray) - 6px) 0; }
+    .tree-pane.open .tray { transform: translateX(0); }
+    .tree-close {
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+      width: 28px; height: 28px; border-radius: 8px;
+      border: 1px solid var(--line); background: var(--surface); color: var(--ink-2);
+      cursor: pointer; transition: all 0.25s var(--ease);
+    }
+    .tree-close:hover { background: var(--tray); color: var(--ink); }
+    .tree-close .lucide { width: 14px; height: 14px; }
   }
   @media (max-width: 720px) {
     .files-shell { grid-template-columns: 1fr; }
