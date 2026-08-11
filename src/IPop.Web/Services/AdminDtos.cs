@@ -13,6 +13,11 @@ public record OrgDepartmentRowDto(Guid Id, string Code, string Name, string? Par
 public record OrgSiteRowDto(Guid Id, string Code, string Name, bool IsActive,
     int MemberCount, int ActiveMemberCount);
 public record OrgViewDto(OrgDepartmentRowDto[] Departments, OrgSiteRowDto[] Sites);
+public record AdminDivisionRowDto(Guid Id, string Code, string Name, string? DepartmentCode,
+    string? DepartmentName, string? SiteCode, string? SiteName, bool IsActive,
+    int MemberCount, int ActiveMemberCount);
+public record UpsertDivisionRequest(string Code, string? Name, string? DepartmentCode,
+    string? SiteCode, bool? IsActive);
 public record AdminSessionRowDto(Guid Id, string Nik, string Name, string? DeviceFingerprint,
     string? IpAddress, DateTime CreatedAt, DateTime ExpiresAt);
 

@@ -1,342 +1,146 @@
 @page "/directory"
 @implements IDisposable
-@using Microsoft.AspNetCore.Components.Rendering
 @inject IJSRuntime JS
 @inject AuthState Auth
 
 <PageTitle>Directory — IPop</PageTitle>
 
 <div class="content">
-    @* ---- Tab bar: Directory | Directory Tree | Organization Tree ---- *@
-    <div class="admin-tabs" role="tablist" aria-label="Directory views">
-        <button class="admin-tab @(Tab == 0 ? "active" : "")" role="tab" aria-selected="@(Tab == 0)" @onclick="() => SwitchTab(0)">
-            <i data-lucide="users"></i> Directory
+    <div class="tree-pane @(treeOpen ? "open" : "")">
+        <button class="hamburger" @onclick="ToggleTree" aria-label="Toggle directory tree">
+            <i data-lucide="menu"></i>
         </button>
-        <button class="admin-tab @(Tab == 1 ? "active" : "")" role="tab" aria-selected="@(Tab == 1)" @onclick="() => SwitchTab(1)">
-            <i data-lucide="folder-tree"></i> Directory Tree
-        </button>
-        <button class="admin-tab @(Tab == 2 ? "active" : "")" role="tab" aria-selected="@(Tab == 2)" @onclick="() => SwitchTab(2)">
-            <i data-lucide="network"></i> Organization Tree
-        </button>
+        <div class="tree-backdrop @(treeOpen ? "on" : "")" @onclick="ToggleTree"></div>
+        <div class="tray rise rise-1">
+            <div class="core" style="padding:0; overflow:hidden">
+                <div class="panel-head">
+                    <i data-lucide="folder-tree"></i> <span>Structure</span>
+                    <span class="meta">@(structureLoading ? "Loading..." : $"{TotalDivisions:N0} divisions")</span>
+                    <button class="tree-close" @onclick="ToggleTree" aria-label="Close tree">
+                        <i data-lucide="x"></i>
+                    </button>
+                </div>
+                @if (structureLoading)
+                {
+                    @for (var i = 0; i < 8; i++) { <div class="skel"></div> }
+                }
+                else if (dirStructure is null)
+                {
+                    <div class="tree-empty">Could not load the directory structure.</div>
+                }
+                else
+                {
+                    <div class="tree dir-tree">
+                        @foreach (var site in dirStructure.Sites)
+                        {
+                            <details open>
+                                <summary>
+                                    <i data-lucide="chevron-right" class="chev"></i>
+                                    <span class="node-name">@site.Name</span>
+                                    <span class="count">@site.MemberCount</span>
+                                </summary>
+                                <div class="children">
+                                    @foreach (var dept in site.Departments)
+                                    {
+                                        <details open>
+                                            <summary>
+                                                <i data-lucide="chevron-right" class="chev"></i>
+                                                <span class="node-name">@dept.Name</span>
+                                                <span class="count">@dept.MemberCount</span>
+                                            </summary>
+                                            <div class="children">
+                                                @foreach (var div in dept.Divisions)
+                                                {
+                                                    <button type="button" class="div-row @(selectedDivision?.Code == div.Code ? "sel" : "")"
+                                                            @onclick="() => SelectDivision(div)">
+                                                        <span class="node-name">@div.Name</span>
+                                                        <span class="count">@div.MemberCount</span>
+                                                        @if (divHitCount(div) is { } hit)
+                                                        {
+                                                            <span class="badge hit">@hit</span>
+                                                        }
+                                                    </button>
+                                                }
+                                            </div>
+                                        </details>
+                                    }
+                                </div>
+                            </details>
+                        }
+                        @if (dirStructure.NoDivisionCount > 0)
+                        {
+                            <div class="div-row" style="cursor:default;opacity:0.75">
+                                <span class="node-name">No Division</span>
+                                <span class="count">@dirStructure.NoDivisionCount</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
     </div>
 
-    @if (Tab == 0)
-    {
-        <div class="tree-pane @(treeOpen ? "open" : "")">
-            <button class="hamburger" @onclick="ToggleTree" aria-label="Toggle directory tree">
-                <i data-lucide="menu"></i>
-            </button>
-            <div class="tree-backdrop @(treeOpen ? "on" : "")" @onclick="ToggleTree"></div>
-            <div class="tray rise rise-1">
-                <div class="core" style="padding:0; overflow:hidden">
-                    <div class="panel-head">
-                        <i data-lucide="folder-tree"></i> <span>Structure</span>
-                        <span class="meta">@(structureLoading ? "Loading..." : $"{TotalDivisions:N0} divisions")</span>
-                        <button class="tree-close" @onclick="ToggleTree" aria-label="Close tree">
-                            <i data-lucide="x"></i>
-                        </button>
+    <div class="grid-pane">
+        <div class="tray rise rise-1">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head">
+                    <i data-lucide="users"></i> <span>@(selectedDivision?.Name ?? "Directory")</span>
+                    <span class="meta">@(loading ? "Loading..." : $"{total:N0} people")</span>
+                    <span class="meta">@ConnectionLabel</span>
+                </div>
+                @if (notice is not null)
+                {
+                    <div class="module-notice">
+                        <div class="note @(noticeIsError ? "err" : "")">
+                            <i data-lucide="info"></i><span>@notice</span>
+                            <button class="note-x" @onclick="DismissNotice" aria-label="Dismiss">
+                                <i data-lucide="x"></i>
+                            </button>
+                        </div>
                     </div>
-                    @if (structureLoading)
+                }
+                <div class="emp-grid">
+                    @if (loading || structureLoading)
                     {
                         @for (var i = 0; i < 8; i++) { <div class="skel"></div> }
                     }
-                    else if (dirStructure is null)
+                    else if (people.Count == 0)
                     {
-                        <div class="tree-empty">Could not load the directory structure.</div>
+                        <div class="tree-empty" style="grid-column:1/-1;padding:34px">@(loadError ?? "No one in this division yet.")</div>
                     }
                     else
                     {
-                        <div class="tree dir-tree">
-                            @foreach (var site in dirStructure.Sites)
-                            {
-                                <details open>
-                                    <summary>
-                                        <i data-lucide="chevron-right" class="chev"></i>
-                                        <span class="node-name">@site.Name</span>
-                                        <span class="count">@site.MemberCount</span>
-                                    </summary>
-                                    <div class="children">
-                                        @foreach (var dept in site.Departments)
-                                        {
-                                            <details open>
-                                                <summary>
-                                                    <i data-lucide="chevron-right" class="chev"></i>
-                                                    <span class="node-name">@dept.Name</span>
-                                                    <span class="count">@dept.MemberCount</span>
-                                                </summary>
-                                                <div class="children">
-                                                    @foreach (var div in dept.Divisions)
-                                                    {
-                                                        <button type="button" class="div-row @(selectedDivision?.Code == div.Code ? "sel" : "")"
-                                                                @onclick="() => SelectDivision(div)">
-                                                            <span class="node-name">@div.Name</span>
-                                                            <span class="count">@div.MemberCount</span>
-                                                            @if (divHitCount(div) is { } hit)
-                                                            {
-                                                                <span class="badge hit">@hit</span>
-                                                            }
-                                                        </button>
-                                                    }
-                                                </div>
-                                            </details>
-                                        }
-                                    </div>
-                                </details>
-                            }
-                            @if (dirStructure.NoDivisionCount > 0)
-                            {
-                                <div class="div-row" style="cursor:default;opacity:0.75">
-                                    <span class="node-name">No Division</span>
-                                    <span class="count">@dirStructure.NoDivisionCount</span>
+                        @foreach (var (p, i) in people.Select((p, i) => (p, i)))
+                        {
+                            <div @key="p.Nik" class="emp-card rise @(IsSearching ? "hit" : "")" style="animation-delay:@(Math.Min(i, 12) * 0.05)s" tabindex="0" role="button"
+                                 aria-label="View profile of @p.Name" @onclick="() => selected = p" @onkeydown="e => OnCardKey(e, p)">
+                                <div class="top">
+                                    <div class="avatar" style="background:@p.Color">@p.Initials</div>
+                                    <div><div class="n">@p.Name</div><div class="p">@p.Position</div></div>
                                 </div>
-                            }
-                        </div>
-                    }
-                </div>
-            </div>
-        </div>
-
-        <div class="grid-pane">
-            <div class="tray rise rise-1">
-                <div class="core" style="padding:0;overflow:hidden">
-                    <div class="panel-head">
-                        <i data-lucide="users"></i> <span>@(selectedDivision?.Name ?? "Directory")</span>
-                        <span class="meta">@(loading ? "Loading..." : $"{total:N0} people")</span>
-                        <span class="meta">@ConnectionLabel</span>
-                    </div>
-                    @if (notice is not null)
-                    {
-                        <div class="module-notice">
-                            <div class="note @(noticeIsError ? "err" : "")">
-                                <i data-lucide="info"></i><span>@notice</span>
-                                <button class="note-x" @onclick="DismissNotice" aria-label="Dismiss">
-                                    <i data-lucide="x"></i>
-                                </button>
+                                <div class="foot"><span class="mono">ID @p.Nik · @p.Site</span><span class="dot @p.Status">@p.StatusLabel</span></div>
+                                <div class="card-actions">
+                                    <button type="button" class="ca-btn" @onclick='() => ShowModuleNotice("Chat")' @onclick:stopPropagation="true">
+                                        <i data-lucide="message-circle"></i> Chat
+                                    </button>
+                                    <button type="button" class="ca-btn" @onclick='() => ShowModuleNotice("Call")' @onclick:stopPropagation="true">
+                                        <i data-lucide="phone"></i> Call
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    }
-                    <div class="emp-grid">
-                        @if (loading || structureLoading)
-                        {
-                            @for (var i = 0; i < 8; i++) { <div class="skel"></div> }
                         }
-                        else if (people.Count == 0)
-                        {
-                            <div class="tree-empty" style="grid-column:1/-1;padding:34px">@(loadError ?? "No one in this division yet.")</div>
-                        }
-                        else
-                        {
-                            @foreach (var (p, i) in people.Select((p, i) => (p, i)))
-                            {
-                                <div @key="p.Nik" class="emp-card rise @(IsSearching ? "hit" : "")" style="animation-delay:@(Math.Min(i, 12) * 0.05)s" tabindex="0" role="button"
-                                     aria-label="View profile of @p.Name" @onclick="() => selected = p" @onkeydown="e => OnCardKey(e, p)">
-                                    <div class="top">
-                                        <div class="avatar" style="background:@p.Color">@p.Initials</div>
-                                        <div><div class="n">@p.Name</div><div class="p">@p.Position</div></div>
-                                    </div>
-                                    <div class="foot"><span class="mono">ID @p.Nik · @p.Site</span><span class="dot @p.Status">@p.StatusLabel</span></div>
-                                    <div class="card-actions">
-                                        <button type="button" class="ca-btn" @onclick='() => ShowModuleNotice("Chat")' @onclick:stopPropagation="true">
-                                            <i data-lucide="message-circle"></i> Chat
-                                        </button>
-                                        <button type="button" class="ca-btn" @onclick='() => ShowModuleNotice("Call")' @onclick:stopPropagation="true">
-                                            <i data-lucide="phone"></i> Call
-                                        </button>
-                                    </div>
-                                </div>
-                            }
-                        }
-                    </div>
-                    @if (!loading && page < TotalPages)
-                    {
-                        <div style="padding:0 14px 14px"><button class="btn" style="width:auto;margin:0 auto;padding:10px 22px" @onclick="LoadMore">Show more (@(total - people.Count) remaining)</button></div>
                     }
                 </div>
-            </div>
-        </div>
-    }
-
-    @if (Tab == 1)
-    {
-        <div class="tray rise rise-1">
-            <div class="core" style="padding:0;overflow:hidden">
-                <div class="panel-head">
-                    <i data-lucide="folder-tree"></i> <span>Directory Tree</span>
-                    <span class="meta">@(dirGroupsLoading ? "Loading..." : $"{dirGroups.Length} groups")</span>
-                    @if (Auth.IsAdmin)
-                    {
-                        <button class="btn btn-sm accent" style="margin-left:auto" @onclick="() => OpenGroupEditor(null)">
-                            <i data-lucide="plus" style="width:13px;height:13px"></i> New group
-                        </button>
-                    }
-                </div>
-                @if (dirGroupsLoading)
+                @if (!loading && page < TotalPages)
                 {
-                    <div style="padding:14px"><div class="skel"></div></div>
-                }
-                else if (dirGroups.Length == 0)
-                {
-                    <div class="tree-empty">No directory groups yet.@(Auth.IsAdmin ? " Create one above." : "")</div>
-                }
-                else
-                {
-                    <div class="tree">
-                        @RenderDirTree(dirGroups.Where(g => g.ParentId == null).OrderBy(g => g.SortOrder).ToArray(), 0)
-                    </div>
+                    <div style="padding:0 14px 14px"><button class="btn" style="width:auto;margin:0 auto;padding:10px 22px" @onclick="LoadMore">Show more (@(total - people.Count) remaining)</button></div>
                 }
             </div>
         </div>
-    }
-
-    @if (Tab == 2)
-    {
-        <div class="tray rise rise-1">
-            <div class="core" style="padding:0;overflow:hidden">
-                <div class="panel-head">
-                    <i data-lucide="network"></i> <span>Organization Tree</span>
-                    <span class="meta">@(orgNodesLoading ? "Loading..." : $"{orgNodes.Length} nodes")</span>
-                    @if (Auth.IsAdmin)
-                    {
-                        <button class="btn btn-sm accent" style="margin-left:auto" @onclick="() => OpenNodeEditor(null)">
-                            <i data-lucide="plus" style="width:13px;height:13px"></i> New node
-                        </button>
-                    }
-                </div>
-                @if (orgNodesLoading)
-                {
-                    <div style="padding:14px"><div class="skel"></div></div>
-                }
-                else if (orgNodes.Length == 0)
-                {
-                    <div class="tree-empty">No organization nodes yet.@(Auth.IsAdmin ? " Create one above." : "")</div>
-                }
-                else
-                {
-                    <div class="chart">
-                        @RenderOrgChart(orgNodes.Where(n => n.ParentId == null).OrderBy(n => n.SortOrder).ToArray(), 0)
-                    </div>
-                }
-            </div>
-        </div>
-    }
+    </div>
 </div>
 
-@if (groupEditor is not null)
-{
-    <div class="backdrop on" @onclick="CloseGroupEditor"></div>
-    <div class="drawer on" role="dialog" aria-label="Edit group">
-        <div class="tray"><div class="core" style="display:flex; flex-direction:column; height:100%">
-            <div class="drawer-head">
-                @(groupEditor.IsCreate ? "New group" : $"Edit {groupEditor.Name}")
-                <button class="drawer-close" @onclick="CloseGroupEditor"><i data-lucide="x"></i></button>
-            </div>
-            <div class="drawer-body">
-                <div class="field"><label>Name</label><input @bind="groupEditor.Name" placeholder="e.g. Engineering" /></div>
-                <div class="field">
-                    <label>Parent group</label>
-                    <AppSelect Label="Parent" Value="@groupEditor.ParentIdString" ValueChanged="v => groupEditor.ParentIdString = v"
-                               Options="@GroupParentOptions(groupEditor.Id)" />
-                </div>
-                @if (groupEditor.Error is not null)
-                {
-                    <div class="note err"><i data-lucide="alert-circle"></i><span>@groupEditor.Error</span></div>
-                }
-                @if (!groupEditor.IsCreate && groupEditor.Members.Length > 0)
-                {
-                    <div class="field">
-                        <label>Members (@groupEditor.Members.Length)</label>
-                        <div class="member-list">
-                            @foreach (var m in groupEditor.Members)
-                            {
-                                <div class="member-row">
-                                    <span>@m.Name <span class="mono" style="opacity:0.6">@m.Nik</span></span>
-                                    <button class="org-act" title="Remove member" @onclick="() => RemoveMember(groupEditor, m.Nik)"><i data-lucide="x"></i></button>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                }
-                <div class="field">
-                    <label>Add member</label>
-                    <AppMemberPicker Placeholder="Search by name or NIK..." ValueChanged="r => OnPickMember(r, PickerKind.Group)" />
-                </div>
-                @if (!groupEditor.IsCreate)
-                {
-                    <button class="btn" style="margin-top:14px;width:100%;background:var(--danger-soft);color:var(--danger);border:1px solid var(--danger-soft)" @onclick="() => DeleteGroup(groupEditor)">
-                        Delete group
-                    </button>
-                }
-                <button class="btn" style="margin-top:14px;width:100%" disabled="@groupEditor.Saving" @onclick="SaveGroup">
-                    @(groupEditor.Saving ? "Saving..." : groupEditor.IsCreate ? "Create group" : "Save changes")
-                    <span class="orb"><i data-lucide="check"></i></span>
-                </button>
-            </div>
-        </div></div>
-    </div>
-}
-
-@if (nodeEditor is not null)
-{
-    <div class="backdrop on" @onclick="CloseNodeEditor"></div>
-    <div class="drawer on" role="dialog" aria-label="Edit node">
-        <div class="tray"><div class="core" style="display:flex; flex-direction:column; height:100%">
-            <div class="drawer-head">
-                @(nodeEditor.IsCreate ? "New node" : $"Edit {nodeEditor.Name}")
-                <button class="drawer-close" @onclick="CloseNodeEditor"><i data-lucide="x"></i></button>
-            </div>
-            <div class="drawer-body">
-                <div class="field"><label>Name</label><input @bind="nodeEditor.Name" placeholder="e.g. Engineering Manager" /></div>
-                <div class="field"><label>Title (optional)</label><input @bind="nodeEditor.Title" placeholder="e.g. VP Engineering" /></div>
-                <div class="field">
-                    <label>Parent node</label>
-                    <AppSelect Label="Parent" Value="@nodeEditor.ParentIdString" ValueChanged="v => nodeEditor.ParentIdString = v"
-                               Options="@NodeParentOptions(nodeEditor.Id)" />
-                </div>
-                <div class="field">
-                    <label>Department</label>
-                    <AppSelect Label="Department" Value="@nodeEditor.DepartmentIdString" ValueChanged="v => nodeEditor.DepartmentIdString = v"
-                               Options="@NodeDeptOptions" />
-                </div>
-                @if (nodeEditor.Error is not null)
-                {
-                    <div class="note err"><i data-lucide="alert-circle"></i><span>@nodeEditor.Error</span></div>
-                }
-                @if (!nodeEditor.IsCreate && nodeEditor.Members.Length > 0)
-                {
-                    <div class="field">
-                        <label>Members (@nodeEditor.Members.Length)</label>
-                        <div class="member-list">
-                            @foreach (var m in nodeEditor.Members)
-                            {
-                                <div class="member-row">
-                                    <span>@m.Name <span class="mono" style="opacity:0.6">@m.Nik</span></span>
-                                    <button class="org-act" title="Remove member" @onclick="() => RemoveNodeMember(nodeEditor, m.Nik)"><i data-lucide="x"></i></button>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                }
-                <div class="field">
-                    <label>Add member</label>
-                    <AppMemberPicker Placeholder="Search by name or NIK..." ValueChanged="r => OnPickMember(r, PickerKind.Node)" />
-                </div>
-                @if (!nodeEditor.IsCreate)
-                {
-                    <button class="btn" style="margin-top:14px;width:100%;background:var(--danger-soft);color:var(--danger);border:1px solid var(--danger-soft)" @onclick="() => DeleteNode(nodeEditor)">
-                        Delete node
-                    </button>
-                }
-                <button class="btn" style="margin-top:14px;width:100%" disabled="@nodeEditor.Saving" @onclick="SaveNode">
-                    @(nodeEditor.Saving ? "Saving..." : nodeEditor.IsCreate ? "Create node" : "Save changes")
-                    <span class="orb"><i data-lucide="check"></i></span>
-                </button>
-            </div>
-        </div></div>
-    </div>
-}
-
 <ProfileDrawer Person="selected" OnClose="() => selected = null" />
-<ProfileDrawer Person="selectedDirMember" OnClose="() => selectedDirMember = null" />
 
 @code {
     [CascadingParameter] public MainLayout Layout { get; set; } = default!;
@@ -365,30 +169,9 @@
     private int TotalDivisions => dirStructure?.Sites.Sum(s => s.Departments.Sum(d => d.Divisions.Length)) ?? 0;
     private string ConnectionLabel => connection switch { DirectoryConnectionState.Live => "Live", DirectoryConnectionState.Reconnecting => "Reconnecting...", DirectoryConnectionState.Connecting => "Connecting...", _ => "Offline" };
 
-    private int tab;
-    private int Tab => tab;
-
-    // Directory tree
-    private DirGroupDto[] dirGroups = [];
-    private bool dirGroupsLoading = true;
-    private Employee? selectedDirMember;
-    private Guid? DragGroupId;      // id being dragged
-    private Guid? DragTarget;       // hover target for reparent
-
-    // Org tree
-    private OrgNodeDto[] orgNodes = [];
-    private bool orgNodesLoading = true;
-    private Guid? OrgDragGroupId;
-    private Guid? OrgDragTarget;
-
-    // Drawer editors
-    private GroupEditorState? groupEditor;
-    private NodeEditorState? nodeEditor;
-
     protected override void OnInitialized()
     {
         Layout.SetHeader("Directory", "People", showSearch: true);
-        Layout.EscapePressed += CloseDrawer;
         Layout.SearchChanged += OnSearchChanged;
         Auth.PresenceChanged += OnPresenceChanged;
         Auth.DirectoryChanged += OnDirectoryChanged;
@@ -396,11 +179,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        if (Auth.IsAdmin) await LoadAdminOrg();
         await LoadStructure();
         await Reload(1, replace: true);
-        await LoadDirGroups();
-        await LoadOrgNodes();
     }
 
     private async Task LoadStructure()
@@ -452,423 +232,8 @@
         notice = $"{module} isn't available yet — it activates as the module ships.";
         noticeIsError = false;
     }
-    private OrgViewDto adminOrg = new([], []);
-    private async Task LoadAdminOrg()
-        => adminOrg = await Auth.GetAsync<OrgViewDto>("/api/admin/org") ?? adminOrg;
 
-    private async Task SwitchTab(int newTab)
-    {
-        tab = newTab;
-        if (newTab == 1 && dirGroups.Length == 0 && !dirGroupsLoading) await LoadDirGroups();
-        if (newTab == 2 && orgNodes.Length == 0 && !orgNodesLoading) await LoadOrgNodes();
-        StateHasChanged();
-    }
-
-    private async Task LoadDirGroups()
-    {
-        dirGroupsLoading = true;
-        dirGroups = await Auth.GetAsync<DirGroupDto[]>("/api/directory/dir-groups") ?? [];
-        dirGroupsLoading = false;
-        StateHasChanged();
-    }
-    private async Task LoadOrgNodes()
-    {
-        orgNodesLoading = true;
-        orgNodes = await Auth.GetAsync<OrgNodeDto[]>("/api/directory/org-tree") ?? [];
-        orgNodesLoading = false;
-        StateHasChanged();
-    }
-
-    private static Employee MapMember(string name, string? position, string nik, string? department,
-        string? site, string status) => new(
-        name, position ?? "—", nik, "—", department ?? "—", department ?? "—", null,
-        site ?? "—", null, "—", null, status,
-        AvatarPalette.For(nik), null);
-    private static Employee MapMember(DirGroupMemberDto m) => MapMember(m.Name, m.Position, m.Nik, m.Department, m.Site, m.Status);
-    private static Employee MapMember(OrgNodeMemberDto m) => MapMember(m.Name, m.Position, m.Nik, m.Department, m.Site, m.Status);
     private static Employee Map(DirectoryEmployeeDto d) => new(d.Name, d.Position ?? "—", d.Nik, d.Extension ?? "—", d.Location ?? "—", d.Department ?? "—", d.DepartmentCode, d.Site ?? "—", d.SiteCode, d.Manager ?? "—", d.Email, d.Status, AvatarPalette.For(d.Nik), d.PhotoPath);
-
-    // ---- Classic nested tree (Directory tab) ----
-    private RenderFragment RenderDirTree(DirGroupDto[] nodes, int depth) => builder =>
-    {
-        foreach (var g in nodes)
-        {
-            var children = dirGroups.Where(x => x.ParentId == g.Id).OrderBy(x => x.SortOrder).ToArray();
-            var hasChildren = children.Length > 0;
-            var key = g.Id.ToString("N");
-
-            builder.OpenElement(0, "details");
-            if (hasChildren) builder.AddAttribute(1, "open", true);
-            builder.AddAttribute(2, "data-group-id", key);
-
-            builder.OpenElement(3, "summary");
-            builder.AddAttribute(4, "class", DragTarget == g.Id ? "drag-over" : "");
-            builder.AddAttribute(5, "ondragover", EventCallback.Factory.Create<DragEventArgs>(this, e => OnGroupDragOver(e, g)));
-            builder.AddAttribute(6, "ondragover:preventDefault", true);
-            builder.AddAttribute(7, "ondrop", EventCallback.Factory.Create<DragEventArgs>(this, e => OnGroupDrop(e, g)));
-            if (hasChildren)
-            {
-                builder.OpenElement(6, "i");
-                builder.AddAttribute(7, "data-lucide", "chevron-right");
-                builder.AddAttribute(8, "class", "chev");
-                builder.CloseElement();
-            }
-            builder.AddContent(9, $" {g.Name}");
-            builder.AddContent(10, (MarkupString)$"<span class=\"meta\" style=\"margin-left:8px;font-size:10.5px\">{g.Members.Length} members</span>");
-            if (Auth.IsAdmin)
-            {
-                builder.OpenElement(11, "span");
-                builder.AddAttribute(12, "class", "tree-actions");
-                builder.AddAttribute(13, "onclick", EventCallback.Factory.Create(this, e => { }));
-                builder.OpenElement(14, "button");
-                builder.AddAttribute(15, "type", "button");
-                builder.AddAttribute(16, "class", "org-act");
-                builder.AddAttribute(17, "title", "Edit group");
-                builder.AddAttribute(18, "onclick", EventCallback.Factory.Create(this, () => OpenGroupEditor(g)));
-                builder.AddAttribute(19, "onclick:stopPropagation", true);
-                builder.AddAttribute(20, "onmousedown:preventDefault", true);
-                builder.OpenElement(21, "i");
-                builder.AddAttribute(21, "data-lucide", "pencil");
-                builder.CloseElement();
-                builder.CloseElement();
-                builder.OpenElement(22, "button");
-                builder.AddAttribute(23, "type", "button");
-                builder.AddAttribute(24, "class", "org-act");
-                builder.AddAttribute(25, "title", "Drag to move");
-                builder.AddAttribute(26, "draggable", "true");
-                builder.AddAttribute(27, "ondragstart", EventCallback.Factory.Create<DragEventArgs>(this, e => OnGroupDragStart(e, g)));
-                builder.AddAttribute(28, "ondragend", EventCallback.Factory.Create<DragEventArgs>(this, e => OnGroupDragEnd()));
-                builder.AddAttribute(29, "onclick", EventCallback.Factory.Create(this, e => { }));
-                builder.AddAttribute(30, "onmousedown:preventDefault", true);
-                builder.OpenElement(31, "i");
-                builder.AddAttribute(32, "data-lucide", "grip-vertical");
-                builder.CloseElement();
-                builder.CloseElement();
-                builder.CloseElement();
-            }
-            builder.CloseElement(); // summary
-
-            builder.OpenElement(33, "div");
-            builder.AddAttribute(34, "class", "children");
-
-            foreach (var m in g.Members)
-            {
-                var emp = MapMember(m);
-                builder.OpenElement(35, "div");
-                builder.AddAttribute(36, "class", "emp-card");
-                builder.AddAttribute(37, "tabindex", "0");
-                builder.AddAttribute(38, "role", "button");
-                builder.AddAttribute(39, "onclick", EventCallback.Factory.Create(this, () => selectedDirMember = emp));
-                builder.AddAttribute(40, "aria-label", $"View profile of {m.Name}");
-                builder.AddContent(41, (MarkupString)$"<div class=\"top\"><div class=\"avatar\" style=\"background:{emp.Color}\">{emp.Initials}</div><div><div class=\"n\">{m.Name}</div><div class=\"p\">{m.Position ?? "—"}</div></div></div>");
-                builder.AddContent(42, (MarkupString)$"<div class=\"foot\"><span class=\"mono\">ID {m.Nik}</span><span class=\"dot {m.Status}\">{m.Status switch { "on" => "Online", "away" => "Away", "busy" => "Busy", _ => "Offline" }}</span></div>");
-                builder.CloseElement();
-            }
-
-            if (hasChildren) builder.AddContent(43, RenderDirTree(children, depth + 1));
-            builder.CloseElement(); // .children
-            builder.CloseElement(); // details
-        }
-    };
-
-    // ---- Top-down Visio chart (Organization tab) ----
-    // Builds a level grid: roots → level 0, children → level 1, etc.
-    // Each level is a flex row of node cards. Cards connect downward via CSS.
-    private RenderFragment RenderOrgChart(OrgNodeDto[] roots, int depth) => builder =>
-    {
-        if (roots.Length == 0) return;
-        var levelOf = new Dictionary<Guid, int>();
-        void Assign(OrgNodeDto n, int lv)
-        {
-            levelOf[n.Id] = lv;
-            foreach (var c in orgNodes.Where(x => x.ParentId == n.Id).OrderBy(x => x.SortOrder))
-                Assign(c, lv + 1);
-        }
-        foreach (var r in roots) Assign(r, depth);
-        var max = levelOf.Values.Max();
-        RenderLevels(builder, orgNodes, levelOf, 0, max, n => n.Id, n => n.ParentId, n => n.Name, n => n.Members,
-            (n, e) => OnNodeDragStart(e, n), (n, e) => OnNodeDragOver(e, n), (n, e) => OnNodeDrop(e, n),
-            OnNodeDragEnd, OpenNodeEditor);
-    };
-
-    // ponytail: two parallel RenderLevels+RenderNodeCard calls (one per tree type) instead of
-    // a generic RenderFragment<TNode> — avoids dynamic/object[] boxing. Add when a third tree type appears.
-    private void RenderLevels<TNode>(RenderTreeBuilder builder, TNode[] all,
-        Dictionary<Guid, int> levelOf, int from, int to, Func<TNode, Guid> getId,
-        Func<TNode, Guid?> getParentId, Func<TNode, string> getName, Func<TNode, object> getMembers,
-        Action<TNode, DragEventArgs> onDragStart, Action<TNode, DragEventArgs> onDragOver,
-        Func<TNode, DragEventArgs, Task> onDrop, Action onDragEnd,
-        Action<TNode> onEdit)
-    {
-        builder.OpenElement(0, "div");
-        builder.AddAttribute(1, "class", "chart-levels");
-        for (var lv = from; lv <= to; lv++)
-        {
-            var nodes = all.Where(n => levelOf.GetValueOrDefault(getId(n)) == lv).ToArray();
-            if (nodes.Length == 0) continue;
-            builder.OpenElement(2, "div");
-            builder.AddAttribute(3, "class", "chart-level");
-            builder.AddAttribute(4, "data-level", lv.ToString());
-            foreach (var node in nodes)
-            {
-                var id = getId(node);
-                RenderNodeCard(builder, node, id, getName(node), getMembers(node),
-                    all.Any(n => getParentId(n) == id), lv > from,
-                    onDragStart, onDragOver, onDrop, onDragEnd, onEdit);
-            }
-            builder.CloseElement(); // chart-level
-        }
-        builder.CloseElement(); // chart-levels
-    }
-
-    private void RenderNodeCard<TNode>(RenderTreeBuilder builder, TNode node, Guid id, string name,
-        object membersObj, bool hasChildren, bool hasParent,
-        Action<TNode, DragEventArgs> onDragStart, Action<TNode, DragEventArgs> onDragOver,
-        Func<TNode, DragEventArgs, Task> onDrop, Action onDragEnd,
-        Action<TNode> onEdit)
-    {
-        static string HtmlEncode(string s) => System.Net.WebUtility.HtmlEncode(s);
-
-        var isDragOver = DragTarget == id || OrgDragTarget == id;
-        var cls = "chart-node" + (hasChildren ? " has-children" : "") + (hasParent ? " has-parent" : "");
-
-        // node wrapper (stems and bus drawn in CSS via ::before/::after)
-        builder.OpenElement(5, "div");
-        builder.AddAttribute(6, "class", cls);
-        builder.AddAttribute(7, "ondragover", EventCallback.Factory.Create<DragEventArgs>(this, e => onDragOver(node, e)));
-        builder.AddAttribute(8, "ondragover:preventDefault", true);
-        builder.AddAttribute(9, "ondrop", EventCallback.Factory.Create<DragEventArgs>(this, e => onDrop(node, e)));
-
-        // card
-        builder.OpenElement(10, "div");
-        builder.AddAttribute(11, "class", isDragOver ? "chart-card drag-over" : "chart-card");
-        builder.AddAttribute(12, "draggable", "true");
-        builder.AddAttribute(13, "ondragstart", EventCallback.Factory.Create<DragEventArgs>(this, e => onDragStart(node, e)));
-        builder.AddAttribute(14, "ondragend", EventCallback.Factory.Create<DragEventArgs>(this, e => onDragEnd()));
-        builder.AddContent(15, (MarkupString)$"<div class=\"chart-card-name\">{HtmlEncode(name)}</div>");
-
-        // custom title (optional) — shown under the name on the card
-        var title = node is OrgNodeDto on ? on.Title : null;
-        if (!string.IsNullOrWhiteSpace(title))
-            builder.AddContent(16, (MarkupString)$"<div class=\"chart-card-title\">{HtmlEncode(title)}</div>");
-
-        // members count
-        var members = membersObj as Array;
-        var count = members?.Length ?? 0;
-        builder.AddContent(17, (MarkupString)$"<div class=\"chart-card-meta\">{count} member{(count == 1 ? "" : "s")}</div>");
-
-        if (Auth.IsAdmin)
-        {
-            builder.OpenElement(18, "span");
-            builder.AddAttribute(19, "class", "tree-actions");
-            builder.OpenElement(20, "button");
-            builder.AddAttribute(21, "type", "button");
-            builder.AddAttribute(22, "class", "org-act");
-            builder.AddAttribute(23, "title", "Edit");
-            builder.AddAttribute(24, "onclick", EventCallback.Factory.Create(this, () => onEdit(node)));
-            builder.AddAttribute(25, "onclick:stopPropagation", true);
-            builder.AddAttribute(26, "onmousedown:preventDefault", true);
-            builder.OpenElement(27, "i");
-            builder.AddAttribute(27, "data-lucide", "pencil");
-            builder.CloseElement();
-            builder.CloseElement();
-            builder.CloseElement();
-        }
-        builder.CloseElement(); // chart-card
-
-        // member chips
-        if (members is not null && members.Length > 0)
-        {
-            builder.OpenElement(28, "div");
-            builder.AddAttribute(29, "class", "chart-chips");
-            foreach (var m in members)
-            {
-                Employee emp;
-                if (m is DirGroupMemberDto dgm) emp = MapMember(dgm);
-                else if (m is OrgNodeMemberDto onm) emp = MapMember(onm);
-                else emp = MapMember((m as dynamic)!.Name, (m as dynamic)!.Position, (m as dynamic)!.Nik, (m as dynamic)!.Department, (m as dynamic)!.Site, (m as dynamic)!.Status);
-
-                builder.OpenElement(30, "button");
-                builder.AddAttribute(31, "type", "button");
-                builder.AddAttribute(32, "class", "member-chip");
-                builder.AddAttribute(33, "title", $"{emp.Name} - {emp.Position}");
-                builder.AddAttribute(34, "onclick", EventCallback.Factory.Create(this, () => selectedDirMember = emp));
-                builder.AddContent(35, (MarkupString)$"<span class=\"avatar\" style=\"background:{emp.Color}\">{emp.Initials}</span>");
-                builder.AddContent(36, (MarkupString)$"<span class=\"chip-name\">{HtmlEncode(emp.Name)}</span>");
-                builder.CloseElement();
-            }
-            builder.CloseElement(); // chart-chips
-        }
-        builder.CloseElement(); // chart-node
-    }
-
-    // ---- Dir tree drag-and-drop ----
-    private void OnGroupDragStart(DragEventArgs e, DirGroupDto g) { DragGroupId = g.Id; DragTarget = null; StateHasChanged(); }
-    private void OnGroupDragEnd() { DragGroupId = null; DragTarget = null; StateHasChanged(); }
-    private void OnGroupDragOver(DragEventArgs e, DirGroupDto g)
-    {
-        if (DragGroupId is { } id && id != g.Id && DragTarget != g.Id) { DragTarget = g.Id; StateHasChanged(); }
-    }
-    private Task OnGroupDrop(DragEventArgs e, DirGroupDto g) => MoveGroup(g.Id, DragGroupId);
-    private async Task MoveGroup(Guid targetId, Guid? draggedId)
-    {
-        if (draggedId is null || draggedId == targetId) return;
-        DragGroupId = null; DragTarget = null;
-        var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/dir-groups/{draggedId.Value}", new UpsertDirGroupRequest(null, targetId, null, null));
-        if (res.IsSuccessStatusCode) await LoadDirGroups();
-    }
-
-    // ---- Org node drag-and-drop ----
-    private void OnNodeDragStart(DragEventArgs e, OrgNodeDto n) { OrgDragGroupId = n.Id; OrgDragTarget = null; StateHasChanged(); }
-    private void OnNodeDragEnd() { OrgDragGroupId = null; OrgDragTarget = null; StateHasChanged(); }
-    private void OnNodeDragOver(DragEventArgs e, OrgNodeDto n)
-    {
-        if (OrgDragGroupId is { } id && id != n.Id && OrgDragTarget != n.Id) { OrgDragTarget = n.Id; StateHasChanged(); }
-    }
-    private Task OnNodeDrop(DragEventArgs e, OrgNodeDto n) => MoveNode(n.Id, OrgDragGroupId);
-    private async Task MoveNode(Guid targetId, Guid? draggedId)
-    {
-        if (draggedId is null || draggedId == targetId) return;
-        OrgDragGroupId = null; OrgDragTarget = null;
-        var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org-nodes/{draggedId.Value}", new UpsertOrgNodeRequest(null, null, targetId, null, null, null));
-        if (res.IsSuccessStatusCode) await LoadOrgNodes();
-    }
-
-    // ---- Dir group editor ----
-    private List<AppOption> GroupParentOptions(Guid selfId) =>
-        [new("", "(root)"), .. dirGroups.Where(x => x.Id != selfId).OrderBy(x => x.Name).Select(g => new AppOption(g.Id.ToString(), g.Name))];
-    private void OpenGroupEditor(DirGroupDto? g)
-    {
-        groupEditor = new GroupEditorState
-        {
-            IsCreate = g is null,
-            Id = g?.Id ?? Guid.Empty,
-            Name = g?.Name ?? "",
-            ParentIdString = g?.ParentId?.ToString() ?? "",
-            Members = g?.Members.Select(m => new AdminDirGroupMemberDto(m.Nik, m.Name, m.Position, m.Department, m.Site)).ToArray() ?? [],
-        };
-    }
-    private void CloseGroupEditor() => groupEditor = null;
-    private async Task SaveGroup()
-    {
-        if (groupEditor is null) return;
-        groupEditor.Saving = true; groupEditor.Error = null;
-        Guid? parent = Guid.TryParse(groupEditor.ParentIdString, out var p) ? p : null;
-        var url = groupEditor.IsCreate ? "/api/admin/dir-groups" : $"/api/admin/dir-groups/{groupEditor.Id}";
-        var method = groupEditor.IsCreate ? HttpMethod.Post : HttpMethod.Patch;
-        var res = await Auth.SendAsync(method, url, new UpsertDirGroupRequest(groupEditor.Name, parent, null, null));
-        if (!res.IsSuccessStatusCode) { groupEditor.Error = "Could not save the group."; groupEditor.Saving = false; StateHasChanged(); return; }
-        groupEditor.Saving = false;
-        CloseGroupEditor();
-        await LoadDirGroups();
-    }
-    private async Task DeleteGroup(GroupEditorState g)
-    {
-        var ok = await JS.InvokeAsync<bool>("confirm", $"Delete \"{g.Name}\"? Its sub-groups are moved up one level.");
-        if (!ok) return;
-        g.Saving = true; g.Error = null;
-        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/dir-groups/{g.Id}", null);
-        if (!res.IsSuccessStatusCode) { g.Error = "Could not delete the group."; g.Saving = false; StateHasChanged(); return; }
-        g.Saving = false;
-        CloseGroupEditor();
-        await LoadDirGroups();
-    }
-    private async Task RemoveMember(GroupEditorState g, string nik)
-    {
-        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/dir-groups/{g.Id}/members/{Uri.EscapeDataString(nik)}", null);
-        if (res.IsSuccessStatusCode) await RefreshGroupMembers(g);
-        else { g.Error = "Could not remove member."; StateHasChanged(); }
-    }
-    private async Task RefreshGroupMembers(GroupEditorState g)
-    {
-        var groups = await Auth.GetAsync<AdminDirGroupRowDto[]>("/api/admin/dir-groups") ?? [];
-        var updated = groups.FirstOrDefault(x => x.Id == g.Id);
-        if (updated is not null) g.Members = updated.Members;
-        StateHasChanged();
-    }
-    private async Task OnPickMember(MemberSearchRow r, PickerKind kind)
-    {
-        if (kind == PickerKind.Group && groupEditor is not null)
-        {
-            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/admin/dir-groups/{groupEditor.Id}/members/by-name", new DirGroupMemberRequest(r.Name));
-            if (res.IsSuccessStatusCode) await RefreshGroupMembers(groupEditor);
-            else groupEditor.Error = "Could not add that person.";
-        }
-        else if (kind == PickerKind.Node && nodeEditor is not null)
-        {
-            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/admin/org-nodes/{nodeEditor.Id}/members/by-name", new DirGroupMemberRequest(r.Name));
-            if (res.IsSuccessStatusCode) await RefreshNodeMembers(nodeEditor);
-            else nodeEditor.Error = "Could not add that person.";
-        }
-        StateHasChanged();
-    }
-
-    // ---- Org node editor ----
-    private List<AppOption> NodeParentOptions(Guid selfId) =>
-        [new("", "(root)"), .. orgNodes.Where(x => x.Id != selfId).OrderBy(x => x.Name).Select(n => new AppOption(n.Id.ToString(), n.Name))];
-    private List<AppOption> NodeDeptOptions =>
-        [new("", "(none)"), .. adminOrg.Departments.Where(d => d.IsActive).OrderBy(d => d.Name).Select(d => new AppOption(d.Id.ToString(), d.Name))];
-    private void OpenNodeEditor(OrgNodeDto? n)
-    {
-        nodeEditor = new NodeEditorState
-        {
-            IsCreate = n is null,
-            Id = n?.Id ?? Guid.Empty,
-            Name = n?.Name ?? "",
-            Title = n?.Title ?? "",
-            ParentIdString = n?.ParentId?.ToString() ?? "",
-            DepartmentIdString = n?.DepartmentId?.ToString() ?? "",
-            Members = n?.Members.Select(m => new AdminOrgNodeMemberDto(m.Nik, m.Name, m.Position, m.Department, m.Site)).ToArray() ?? [],
-        };
-    }
-    private void CloseNodeEditor() => nodeEditor = null;
-    private async Task SaveNode()
-    {
-        if (nodeEditor is null) return;
-        nodeEditor.Saving = true; nodeEditor.Error = null;
-        Guid? parent = Guid.TryParse(nodeEditor.ParentIdString, out var p) ? p : null;
-        Guid? dept = Guid.TryParse(nodeEditor.DepartmentIdString, out var d) ? d : null;
-        var url = nodeEditor.IsCreate ? "/api/admin/org-nodes" : $"/api/admin/org-nodes/{nodeEditor.Id}";
-        var method = nodeEditor.IsCreate ? HttpMethod.Post : HttpMethod.Patch;
-        var res = await Auth.SendAsync(method, url, new UpsertOrgNodeRequest(nodeEditor.Name, nodeEditor.Title, parent, dept, null, null));
-        if (!res.IsSuccessStatusCode) { nodeEditor.Error = "Could not save the node."; nodeEditor.Saving = false; StateHasChanged(); return; }
-        nodeEditor.Saving = false;
-        CloseNodeEditor();
-        await LoadOrgNodes();
-    }
-    private async Task DeleteNode(NodeEditorState n)
-    {
-        var ok = await JS.InvokeAsync<bool>("confirm", $"Delete \"{n.Name}\"? Its sub-nodes are moved up one level.");
-        if (!ok) return;
-        n.Saving = true; n.Error = null;
-        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/org-nodes/{n.Id}", null);
-        if (!res.IsSuccessStatusCode) { n.Error = "Could not delete the node."; n.Saving = false; StateHasChanged(); return; }
-        n.Saving = false;
-        CloseNodeEditor();
-        await LoadOrgNodes();
-    }
-    private async Task AddNodeMember(NodeEditorState n)
-    {
-        var nik = n.NewMemberNik.Trim();
-        if (nik.Length == 0) return;
-        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/admin/org-nodes/{n.Id}/members", new DirGroupMemberRequest(nik));
-        if (!res.IsSuccessStatusCode) { n.Error = "Could not add member - check the NIK."; StateHasChanged(); return; }
-        n.NewMemberNik = ""; n.Error = null;
-        await RefreshNodeMembers(n);
-    }
-    private async Task RemoveNodeMember(NodeEditorState n, string nik)
-    {
-        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/org-nodes/{n.Id}/members/{Uri.EscapeDataString(nik)}", null);
-        if (res.IsSuccessStatusCode) await RefreshNodeMembers(n);
-        else { n.Error = "Could not remove member."; StateHasChanged(); }
-    }
-    private async Task RefreshNodeMembers(NodeEditorState n)
-    {
-        var nodes = await Auth.GetAsync<AdminOrgNodeRowDto[]>("/api/admin/org-nodes") ?? [];
-        var updated = nodes.FirstOrDefault(x => x.Id == n.Id);
-        if (updated is not null) n.Members = updated.Members;
-        StateHasChanged();
-    }
 
     private async Task Reload(int requestedPage, bool replace)
     {
@@ -906,27 +271,7 @@
         StateHasChanged();
     });
 
-    private void CloseDrawer() { selected = null; selectedDirMember = null; }
     private void OnCardKey(KeyboardEventArgs e, Employee p) { if (e.Key is "Enter" or " ") selected = p; }
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
-    public void Dispose() { Layout.EscapePressed -= CloseDrawer; Layout.SearchChanged -= OnSearchChanged; Auth.PresenceChanged -= OnPresenceChanged; Auth.DirectoryChanged -= OnDirectoryChanged; }
-
-    private enum PickerKind { None, Group, Node }
-
-    private sealed class GroupEditorState
-    {
-        public bool IsCreate, Saving;
-        public Guid Id;
-        public string Name = "", ParentIdString = "", NewMemberNik = "";
-        public string? Error;
-        public AdminDirGroupMemberDto[] Members = [];
-    }
-    private sealed class NodeEditorState
-    {
-        public bool IsCreate, Saving;
-        public Guid Id;
-        public string Name = "", Title = "", ParentIdString = "", DepartmentIdString = "", NewMemberNik = "";
-        public string? Error;
-        public AdminOrgNodeMemberDto[] Members = [];
-    }
+    public void Dispose() { Layout.SearchChanged -= OnSearchChanged; Auth.PresenceChanged -= OnPresenceChanged; Auth.DirectoryChanged -= OnDirectoryChanged; }
 }
