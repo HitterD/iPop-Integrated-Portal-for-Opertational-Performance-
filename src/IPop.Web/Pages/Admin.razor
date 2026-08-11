@@ -216,6 +216,10 @@ else
                             <i data-lucide="plus" style="width:13px;height:13px"></i> New division
                         </button>
                     </div>
+                    @if (divisionError is not null)
+                    {
+                        <div class="note err" style="margin-bottom:12px"><i data-lucide="alert-circle"></i><span>@divisionError</span></div>
+                    }
                     @if (divisionsLoading)
                     {
                         <div class="skel"></div>
@@ -635,6 +639,7 @@ else
     private AdminDivisionRowDto[] divisions = [];
     private bool divisionsLoading = true;
     private DivisionEditorState? divisionEditor;
+    private string? divisionError;
 
     private List<AppOption> DeptOptions => [new("", "(none)"), .. org.Departments.Where(x => x.IsActive).OrderBy(x => x.Name).Select(d => new AppOption(d.Code, d.Name))];
     private List<AppOption> SiteOptions => [new("", "(none)"), .. org.Sites.Where(x => x.IsActive).OrderBy(x => x.Name).Select(s => new AppOption(s.Code, s.Name))];
@@ -676,7 +681,7 @@ else
         loaded = true;
         if (!Auth.IsAdmin) return;
         await Task.WhenAll(ReloadUsers(1), ReloadOrg(), ReloadSyncStatus(), LoadSyncHistory(), LoadSessions(), LoadAudit(),
-            LoadDirGroups(), LoadOrgNodes(), LoadDivisions());
+            LoadDirGroups(), LoadOrgNodes());
         _pollTimer = new System.Threading.Timer(async _ =>
         {
             await InvokeAsync(async () =>
@@ -1305,6 +1310,7 @@ else
             return;
         }
         divisionEditor.Saving = false;
+        divisionError = null;
         CloseDivisionEditor();
         await ReloadOrg();
     }
@@ -1312,14 +1318,16 @@ else
     {
         var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org/divisions/{Uri.EscapeDataString(d.Code)}",
             new UpsertDivisionRequest(d.Code, d.Name, d.DepartmentCode, d.SiteCode, !d.IsActive));
-        if (res.IsSuccessStatusCode) await ReloadOrg();
+        if (res.IsSuccessStatusCode) { divisionError = null; await ReloadOrg(); }
+        else { divisionError = "Could not update the division — it may be inactive or missing a parent."; StateHasChanged(); }
     }
     private async Task DeleteDivision(AdminDivisionRowDto d)
     {
         var ok = await JS.InvokeAsync<bool>("confirm", $"Delete \"{d.Name}\"? Its members move to \"No Division\" — their site and department are kept.");
         if (!ok) return;
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/org/divisions/{Uri.EscapeDataString(d.Code)}", null);
-        if (res.IsSuccessStatusCode) await ReloadOrg();
+        if (res.IsSuccessStatusCode) { divisionError = null; await ReloadOrg(); }
+        else { divisionError = "Could not delete the division."; StateHasChanged(); }
     }
 
     public void Dispose()
