@@ -90,34 +90,15 @@ public static class DirectoryEndpoints
         // Directory master-detail nav. A (Site, Department) pairing only appears if an active
         // Division links them — a Department can thus appear under more than one Site.
         app.MapGet("/api/directory/structure", async (IPopDbContext db, CancellationToken ct) =>
-        {
-            var divisions = await db.Divisions.Include(d => d.Department).Include(d => d.Site)
-                .AsNoTracking().Where(d => d.IsActive
-                    && d.Department != null && d.Department.IsActive
-                    && d.Site != null && d.Site.IsActive)
-                .ToListAsync(ct);
-            var counts = await db.Users.Where(u => u.IsActive && u.DivisionId != null)
-                .GroupBy(u => u.DivisionId!.Value)
-                .Select(g => new { Id = g.Key, N = g.Count() }).ToListAsync(ct);
-            var byDivision = counts.ToDictionary(c => c.Id, c => c.N);
-            var noDivisionCount = await db.Users.CountAsync(u => u.IsActive && u.DivisionId == null, ct);
-
-            return Results.Ok(BuildStructure(divisions, byDivision, noDivisionCount));
-        }).RequireAuthorization().RequirePermission("directory.read");
+            Results.Ok(await GetStructureCore(db, ct))
+        ).RequireAuthorization().RequirePermission("directory.read");
 
         // Division search: which divisions contain a name/NIK match, with per-division match
-        // counts. Same ILIKE-escaping as /employees and /member-search.
+        // counts. Same ILIKE-escaping as /employees and /member-search. Npgsql-only ILike;
+        // see SearchDivisionsCore for why this path is untestable on the SQLite TestDb seam.
         app.MapGet("/api/directory/divisions", async (string? q, IPopDbContext db, CancellationToken ct) =>
-        {
-            if (string.IsNullOrWhiteSpace(q)) return Results.Ok(Array.Empty<DirectoryDivisionMatch>());
-            var term = q.Trim();
-            var pat = $"%{term.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_")}%";
-            var matches = await db.Users.AsNoTracking()
-                .Where(u => u.IsActive && u.Division != null && u.Division.IsActive)
-                .Where(u => EF.Functions.ILike(u.Name, pat, @"\") || EF.Functions.ILike(u.Nik, pat, @"\"))
-                .Select(u => new { u.Division!.Code, u.Division.Name }).ToListAsync(ct);
-            return Results.Ok(AggregateDivisionMatches(matches.Select(m => (m.Code, m.Name))));
-        }).RequireAuthorization().RequirePermission("directory.read");
+            Results.Ok(await SearchDivisionsCore(q, db, ct))
+        ).RequireAuthorization().RequirePermission("directory.read");
 
         // Member picker: admin add-by-name on dir-group / org-node drawers.
         // Public so any directory.read caller can reuse it; admins drive it via the picker.
@@ -174,8 +155,33 @@ public static class DirectoryEndpoints
 
     public record MemberSearchRow(string Nik, string Name, string? Position, string? Department);
 
-    // Pure aggregation step of /api/directory/structure — split out from the DB query so the
-    // Site/Department grouping and count roll-up is unit-testable without EF translation concerns.
+    // Full /api/directory/structure query: pulls active Divisions whose Department+Site are both
+    // active, aggregates active-user counts per Division, counts active users with no Division,
+    // then nests. Member counts filter to DivisionId != null but do NOT filter by division active
+    // state — a Division's user count is its live headcount regardless of whether the Division row
+    // itself is currently active. However, since the tree only renders active Divisions, users on
+    // an inactive Division are silently absent from the tree AND not counted in NoDivisionCount
+    // (they have a non-null DivisionId). ponytail: if this matters, restrict the user-count query
+    // to active Divisions so the counts and the visible tree stay consistent.
+    internal static async Task<DirectoryStructure> GetStructureCore(IPopDbContext db, CancellationToken ct)
+    {
+        var divisions = await db.Divisions.Include(d => d.Department).Include(d => d.Site)
+            .AsNoTracking().Where(d => d.IsActive
+                && d.Department != null && d.Department.IsActive
+                && d.Site != null && d.Site.IsActive)
+            .ToListAsync(ct);
+        var counts = await db.Users.Where(u => u.IsActive && u.DivisionId != null)
+            .GroupBy(u => u.DivisionId!.Value)
+            .Select(g => new { Id = g.Key, N = g.Count() }).ToListAsync(ct);
+        var byDivision = counts.ToDictionary(c => c.Id, c => c.N);
+        var noDivisionCount = await db.Users.CountAsync(u => u.IsActive && u.DivisionId == null, ct);
+        return BuildStructure(divisions, byDivision, noDivisionCount);
+    }
+
+    // Pure nesting step — Site ▸ Department ▸ Division with count roll-up. Internal so tests can
+    // exercise tree shape directly without the DB query. A Department appears once per Site that
+    // hosts one of its Divisions (grouping is by Site.Code then Department.Code derived from the
+    // Division rows themselves, not a Site×Department cross join).
     internal static DirectoryStructure BuildStructure(IEnumerable<Core.Entities.Division> activeDivisions,
         IReadOnlyDictionary<Guid, int> memberCountByDivisionId, int noDivisionCount)
     {
@@ -194,10 +200,32 @@ public static class DirectoryEndpoints
         return new DirectoryStructure(sites, noDivisionCount);
     }
 
-    // Pure aggregation step of /api/directory/divisions — split out so it's testable without
-    // going through EF.Functions.ILike, which is Npgsql-only and doesn't translate on SQLite
-    // (the TestDb seam). ponytail: no SQLite-testable ILIKE path exists yet; add one if the
-    // search endpoint's SQL filtering itself needs a regression test.
+    // Full /api/directory/divisions?q= query. Empty/whitespace q → [] immediately (200, not 404).
+    // Otherwise: same ILIKE-escape pattern as /employees and /member-search; scopes to active
+    // users whose Division is active AND whose Department+Site are active (mirrors /structure).
+    // EF.Functions.ILike is Npgsql-only — it throws at translation time on SQLite, so the ILIKE
+    // branch is not exercisable via TestDb (the repo's only test seam). The blank-query early
+    // return and the No-Division-active-filtering of the count are unit-testable; the ILIKE
+    // predicate itself is a one-line pass-through identical to the already-untested /employees
+    // and /member-search call sites. ponytail: add a Postgres-backed integration test to cover the
+    // ILIKE branch if search-filter regressions ever surface.
+    internal static async Task<DirectoryDivisionMatch[]> SearchDivisionsCore(string? q, IPopDbContext db, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(q)) return [];
+        var term = q.Trim();
+        var pat = $"%{term.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_")}%";
+        var matches = await db.Users.AsNoTracking()
+            .Where(u => u.IsActive && u.Division != null && u.Division.IsActive
+                && u.Division.Department != null && u.Division.Department.IsActive
+                && u.Division.Site != null && u.Division.Site.IsActive)
+            .Where(u => EF.Functions.ILike(u.Name, pat, @"\") || EF.Functions.ILike(u.Nik, pat, @"\"))
+            .Select(u => new { u.Division!.Code, u.Division.Name }).ToListAsync(ct);
+        return AggregateDivisionMatches(matches.Select(m => (m.Code, m.Name)));
+    }
+
+    // Pure aggregation step of SearchDivisionsCore — group matched (Code,Name) pairs by division
+    // code with a per-division match count. Internal so tests can exercise grouping/counting
+    // without the EF.Functions.ILike call that can't translate on SQLite.
     internal static DirectoryDivisionMatch[] AggregateDivisionMatches(IEnumerable<(string Code, string Name)> matchedUserDivisions) =>
         matchedUserDivisions.GroupBy(x => x.Code)
             .Select(g => new DirectoryDivisionMatch(g.Key, g.First().Name, g.Count()))
