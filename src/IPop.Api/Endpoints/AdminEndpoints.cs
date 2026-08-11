@@ -389,9 +389,16 @@ public static class AdminEndpoints
             var div = await db.Divisions.FirstOrDefaultAsync(d => d.Code == code, ct);
             if (div is null) return Results.NotFound();
             if (req.Name?.Trim() is { Length: > 0 } name) div.Name = name;
+            var deactivating = req.IsActive is false && div.IsActive;
             if (req.IsActive is { } active) div.IsActive = active;
             var parentError = await ApplyDivisionParents(div, req.DepartmentCode, req.SiteCode, db, ct);
             if (parentError is not null) return parentError;
+            // Deactivating a Division must clear DivisionId on its members, same as delete —
+            // otherwise they'd keep a non-null DivisionId pointing at a now-inactive Division and
+            // silently vanish from both the /structure tree and NoDivisionCount.
+            if (deactivating)
+                await db.Users.Where(u => u.DivisionId == div.Id)
+                    .ExecuteUpdateAsync(s => s.SetProperty(u => u.DivisionId, (Guid?)null), ct);
             Audit(db, CallerNik(http), "admin.org.division.edit", code, DateTime.UtcNow, "Division");
             await db.SaveChangesAsync(ct);
             return Results.Ok(new { code });

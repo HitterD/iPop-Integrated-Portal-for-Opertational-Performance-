@@ -116,6 +116,98 @@ public class DivisionAdminTests
         Assert.False(check.IsActive);
     }
 
+    // Patch-to-inactive must clear member DivisionId the same way Delete does — otherwise a
+    // deactivated Division's members keep a non-null DivisionId pointing nowhere-visible and
+    // silently drop out of both the /structure tree and NoDivisionCount. Replicates the exact
+    // PATCH handler logic (deactivating flag + conditional ExecuteUpdateAsync) since there is no
+    // WebApplicationFactory harness in this repo (see class doc comment).
+    [Fact]
+    public async Task Patch_Division_Deactivate_ClearsMemberDivisionId()
+    {
+        using var t = new TestDb();
+        var (deptId, siteId) = SeedDeptSite(t);
+        var div = new Division { Id = Guid.NewGuid(), Code = "DV1", Name = "Eng@HQ",
+            DepartmentId = deptId, SiteId = siteId, IsActive = true };
+        t.Db.Divisions.Add(div);
+        var user = t.AddUser("20080115");
+        user.DivisionId = div.Id;
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        // PATCH body: { IsActive: false } — mirrors org.MapPatch("/divisions/{code}") in AdminEndpoints.
+        bool? requestedIsActive = false;
+        var loaded = await t.Db.Divisions.FirstAsync(d => d.Code == "DV1");
+        var deactivating = requestedIsActive is false && loaded.IsActive;
+        if (requestedIsActive is { } active) loaded.IsActive = active;
+        if (deactivating)
+            await t.Db.Users.Where(u => u.DivisionId == loaded.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.DivisionId, (Guid?)null));
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        var check = await t.Verify().Users.FirstAsync(u => u.Nik == "20080115");
+        Assert.Null(check.DivisionId);
+        Assert.False((await t.Verify().Divisions.FirstAsync(d => d.Code == "DV1")).IsActive);
+    }
+
+    [Fact]
+    public async Task Patch_Division_NameOnly_DoesNotClearMemberDivisionId()
+    {
+        using var t = new TestDb();
+        var (deptId, siteId) = SeedDeptSite(t);
+        var div = new Division { Id = Guid.NewGuid(), Code = "DV1", Name = "Old",
+            DepartmentId = deptId, SiteId = siteId, IsActive = true };
+        t.Db.Divisions.Add(div);
+        var user = t.AddUser("20080115");
+        user.DivisionId = div.Id;
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        // PATCH body: { Name: "New" } — IsActive left unspecified (null), so deactivating is false.
+        bool? requestedIsActive = null;
+        var loaded = await t.Db.Divisions.FirstAsync(d => d.Code == "DV1");
+        loaded.Name = "New";
+        var deactivating = requestedIsActive is false && loaded.IsActive;
+        if (requestedIsActive is { } active) loaded.IsActive = active;
+        if (deactivating)
+            await t.Db.Users.Where(u => u.DivisionId == loaded.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.DivisionId, (Guid?)null));
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        var check = await t.Verify().Users.FirstAsync(u => u.Nik == "20080115");
+        Assert.Equal(div.Id, check.DivisionId);   // untouched
+    }
+
+    [Fact]
+    public async Task Patch_Division_Reactivate_DoesNotClearMemberDivisionId()
+    {
+        using var t = new TestDb();
+        var (deptId, siteId) = SeedDeptSite(t);
+        var div = new Division { Id = Guid.NewGuid(), Code = "DV1", Name = "Eng@HQ",
+            DepartmentId = deptId, SiteId = siteId, IsActive = false };
+        t.Db.Divisions.Add(div);
+        var user = t.AddUser("20080115");
+        user.DivisionId = div.Id;
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        // PATCH body: { IsActive: true } — reactivation, not deactivation.
+        bool? requestedIsActive = true;
+        var loaded = await t.Db.Divisions.FirstAsync(d => d.Code == "DV1");
+        var deactivating = requestedIsActive is false && loaded.IsActive;
+        if (requestedIsActive is { } active) loaded.IsActive = active;
+        if (deactivating)
+            await t.Db.Users.Where(u => u.DivisionId == loaded.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.DivisionId, (Guid?)null));
+        await t.Db.SaveChangesAsync();
+        t.Db.ChangeTracker.Clear();
+
+        var check = await t.Verify().Users.FirstAsync(u => u.Nik == "20080115");
+        Assert.Equal(div.Id, check.DivisionId);   // untouched
+        Assert.True((await t.Verify().Divisions.FirstAsync(d => d.Code == "DV1")).IsActive);
+    }
+
     [Fact]
     public async Task Delete_Division_SetsMemberDivisionIdNull_PreservesSiteDept()
     {

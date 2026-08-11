@@ -23,9 +23,9 @@ namespace IPop.Tests;
 ///   the ILIKE filter is covered via AggregateDivisionMatches tests. No production behavior
 ///   change is made for SQLite — prod keeps EF.Functions.ILike against Npgsql as the ticket
 ///   requires; this is a pre-existing testability gap shared with /employees and /member-search.
-/// - /api/directory/employees?divisionCode=: the divisionCode filter predicate is exercised via
-///   the exact EF query the handler runs. No HTTP harness exists in this repo, so the handler
-///   body is not invoked directly; the filter predicate itself is what's under test.
+/// - /api/directory/employees?divisionCode=: exercised end-to-end via EmployeesCore (the exact
+///   handler body) against TestDb — the divisionCode filter narrows to the matching Division's
+///   active members.
 /// - Authorization: directory.read is asserted via PermissionEvaluator (the gate
 ///   RequirePermission calls); AdminOnly is asserted via the actual AuthorizationPolicy
 ///   ("AdminOnly", RequireRole("Admin")) evaluated by IAuthorizationService against a non-admin
@@ -207,13 +207,12 @@ public class DirectoryReadEndpointsTests
         t.AddUser("20080116");    // no division -> filtered out
         t.Db.SaveChanges();
 
-        // This is the exact EF query predicate the handler applies for divisionCode.
-        var filtered = await t.Db.Users.AsNoTracking()
-            .Where(u => u.IsActive && u.Division != null && u.Division.Code == "DV1")
-            .ToListAsync();
+        var result = await DirectoryEndpoints.EmployeesCore(null, null, null, "DV1", null, null, null,
+            null, null, t.Db, default);
 
-        Assert.Single(filtered);
-        Assert.Equal("20080115", filtered[0].Nik);
+        var item = Assert.Single(result.Items);
+        Assert.Equal("20080115", item.Nik);
+        Assert.Equal(1, result.Total);
     }
 
     // --- Authorization (real application mechanisms, not IsInRole stubs) ---

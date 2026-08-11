@@ -42,49 +42,14 @@ public static class DirectoryEndpoints
                     me.UserRoles.Select(ur => ur.Role.Name).ToArray(), me.PhotoPath));
         }).RequireAuthorization();
 
+        // Employee directory listing: name/NIK search, department/site/division filters, presence
+        // filter, sort, and paging. Same ILIKE-escape pattern as /divisions and /member-search.
         app.MapGet("/api/directory/employees", async (HttpContext http, string? q, string? departmentCode,
             string? siteCode, string? divisionCode, string? presence, string? sort, bool? desc, int? page,
             int? pageSize, IPopDbContext db, CancellationToken ct) =>
-        {
-            var p = Math.Max(1, page ?? 1);
-            var size = Math.Clamp(pageSize ?? 120, 1, 200);
-            var query = db.Users.Include(u => u.Department).Include(u => u.Site)
-                .AsNoTracking().Where(u => u.IsActive);
-            if (!string.IsNullOrWhiteSpace(q))
-            {
-                var term = q.Trim();
-                var pat = $"%{term.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_")}%";
-                query = query.Where(u => EF.Functions.ILike(u.Name, pat, @"\") || EF.Functions.ILike(u.Nik, pat, @"\"));
-            }
-            if (!string.IsNullOrWhiteSpace(departmentCode))
-                query = query.Where(u => u.Department != null && u.Department.Code == departmentCode.Trim());
-            if (!string.IsNullOrWhiteSpace(siteCode))
-                query = query.Where(u => u.Site != null && u.Site.Code == siteCode.Trim());
-            if (!string.IsNullOrWhiteSpace(divisionCode))
-                query = query.Where(u => u.Division != null && u.Division.Code == divisionCode.Trim());
-
-            var now = DateTime.UtcNow;
-            var rows = await query.Select(u => new
-            {
-                User = u,
-                Status = PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now),
-            }).ToListAsync(ct);
-            if (!string.IsNullOrWhiteSpace(presence)) rows = rows.Where(x => x.Status == presence.Trim()).ToList();
-            var names = rows.ToDictionary(x => x.User.Nik, x => x.User.Name);
-            var ordered = (sort?.ToLowerInvariant()) switch
-            {
-                "nik" => desc == true ? rows.OrderByDescending(x => x.User.Nik) : rows.OrderBy(x => x.User.Nik),
-                "status" => desc == true ? rows.OrderByDescending(x => x.Status).ThenBy(x => x.User.Nik) : rows.OrderBy(x => x.Status).ThenBy(x => x.User.Nik),
-                _ => desc == true ? rows.OrderByDescending(x => x.User.Name).ThenBy(x => x.User.Nik) : rows.OrderBy(x => x.User.Name).ThenBy(x => x.User.Nik),
-            };
-            var total = ordered.Count();
-            var items = ordered.Skip((p - 1) * size).Take(size).Select(x => new DirectoryEmployee(
-                x.User.Nik, x.User.Name, x.User.Position, x.User.Department?.Name, x.User.Department?.Code,
-                x.User.Site?.Name, x.User.Site?.Code,
-                x.User.ManagerNik is not null && names.TryGetValue(x.User.ManagerNik, out var manager) ? manager : null,
-                x.User.Email, x.User.Extension, x.User.Location, x.Status, null, x.User.PhotoPath)).ToArray();
-            return Results.Ok(new DirectoryPage(total, p, size, items));
-        }).RequireAuthorization().RequirePermission("directory.read");
+            Results.Ok(await EmployeesCore(q, departmentCode, siteCode, divisionCode, presence, sort, desc,
+                page, pageSize, db, ct))
+        ).RequireAuthorization().RequirePermission("directory.read");
 
         // Structure tree: Site ▸ Department ▸ Division with live member counts, for the
         // Directory master-detail nav. A (Site, Department) pairing only appears if an active
@@ -105,8 +70,7 @@ public static class DirectoryEndpoints
         app.MapGet("/api/directory/member-search", async (string? q, IPopDbContext db, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2) return Results.Ok(Array.Empty<MemberSearchRow>());
-            var term = q.Trim();
-            var pat = $"%{term.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_")}%";
+            var pat = LikePattern(q);
             return Results.Ok(await db.Users.AsNoTracking().Where(u => u.IsActive)
                 .Where(u => EF.Functions.ILike(u.Name, pat, @"\") || EF.Functions.ILike(u.Nik, pat, @"\"))
                 .OrderBy(u => u.Name).Take(8)
@@ -154,6 +118,52 @@ public static class DirectoryEndpoints
     }
 
     public record MemberSearchRow(string Nik, string Name, string? Position, string? Department);
+
+    // Full /api/directory/employees query: name/NIK search (same ILIKE-escape pattern as
+    // /divisions and /member-search) plus department/site/division exact-code filters, presence
+    // filter (applied in-memory since ComputeStatus isn't translatable), sort, and paging.
+    internal static async Task<DirectoryPage> EmployeesCore(string? q, string? departmentCode, string? siteCode,
+        string? divisionCode, string? presence, string? sort, bool? desc, int? page, int? pageSize,
+        IPopDbContext db, CancellationToken ct)
+    {
+        var p = Math.Max(1, page ?? 1);
+        var size = Math.Clamp(pageSize ?? 120, 1, 200);
+        var query = db.Users.Include(u => u.Department).Include(u => u.Site)
+            .AsNoTracking().Where(u => u.IsActive);
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var pat = LikePattern(q);
+            query = query.Where(u => EF.Functions.ILike(u.Name, pat, @"\") || EF.Functions.ILike(u.Nik, pat, @"\"));
+        }
+        if (!string.IsNullOrWhiteSpace(departmentCode))
+            query = query.Where(u => u.Department != null && u.Department.Code == departmentCode.Trim());
+        if (!string.IsNullOrWhiteSpace(siteCode))
+            query = query.Where(u => u.Site != null && u.Site.Code == siteCode.Trim());
+        if (!string.IsNullOrWhiteSpace(divisionCode))
+            query = query.Where(u => u.Division != null && u.Division.Code == divisionCode.Trim());
+
+        var now = DateTime.UtcNow;
+        var rows = await query.Select(u => new
+        {
+            User = u,
+            Status = PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now),
+        }).ToListAsync(ct);
+        if (!string.IsNullOrWhiteSpace(presence)) rows = rows.Where(x => x.Status == presence.Trim()).ToList();
+        var names = rows.ToDictionary(x => x.User.Nik, x => x.User.Name);
+        var ordered = (sort?.ToLowerInvariant()) switch
+        {
+            "nik" => desc == true ? rows.OrderByDescending(x => x.User.Nik) : rows.OrderBy(x => x.User.Nik),
+            "status" => desc == true ? rows.OrderByDescending(x => x.Status).ThenBy(x => x.User.Nik) : rows.OrderBy(x => x.Status).ThenBy(x => x.User.Nik),
+            _ => desc == true ? rows.OrderByDescending(x => x.User.Name).ThenBy(x => x.User.Nik) : rows.OrderBy(x => x.User.Name).ThenBy(x => x.User.Nik),
+        };
+        var total = ordered.Count();
+        var items = ordered.Skip((p - 1) * size).Take(size).Select(x => new DirectoryEmployee(
+            x.User.Nik, x.User.Name, x.User.Position, x.User.Department?.Name, x.User.Department?.Code,
+            x.User.Site?.Name, x.User.Site?.Code,
+            x.User.ManagerNik is not null && names.TryGetValue(x.User.ManagerNik, out var manager) ? manager : null,
+            x.User.Email, x.User.Extension, x.User.Location, x.Status, null, x.User.PhotoPath)).ToArray();
+        return new DirectoryPage(total, p, size, items);
+    }
 
     // Full /api/directory/structure query: pulls active Divisions whose Department+Site are both
     // active, aggregates active-user counts per Division, counts active users with no Division,
@@ -212,8 +222,7 @@ public static class DirectoryEndpoints
     internal static async Task<DirectoryDivisionMatch[]> SearchDivisionsCore(string? q, IPopDbContext db, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(q)) return [];
-        var term = q.Trim();
-        var pat = $"%{term.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_")}%";
+        var pat = LikePattern(q);
         var matches = await db.Users.AsNoTracking()
             .Where(u => u.IsActive && u.Division != null && u.Division.IsActive
                 && u.Division.Department != null && u.Division.Department.IsActive
@@ -230,4 +239,10 @@ public static class DirectoryEndpoints
         matchedUserDivisions.GroupBy(x => x.Code)
             .Select(g => new DirectoryDivisionMatch(g.Key, g.First().Name, g.Count()))
             .OrderBy(x => x.Name).ToArray();
+
+    // Builds a "%escaped%" ILIKE pattern, escaping ILIKE's own metacharacters (\, %, _) with a
+    // \ escape char so search terms containing them are matched literally. Shared by /employees,
+    // /divisions, and /member-search.
+    internal static string LikePattern(string term) =>
+        $"%{term.Trim().Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_")}%";
 }
