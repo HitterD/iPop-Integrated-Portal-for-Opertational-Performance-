@@ -872,11 +872,13 @@
 
     private async Task Reload(int requestedPage, bool replace)
     {
+        var qAtStart = searchQ;
         loading = true;
         var divCode = selectedDivision?.Code ?? "";
         var q = searchQ is null ? "" : $"&q={Uri.EscapeDataString(searchQ)}";
         var url = $"/api/directory/employees?page={requestedPage}&pageSize={PageSize}&divisionCode={Uri.EscapeDataString(divCode)}{q}";
         var result = await Auth.GetAsync<DirectoryPageDto>(url);
+        if (qAtStart != searchQ) return; // superseded by a keystroke or clear
         loading = false;
         if (result is null) { loadError = "Could not load the directory."; return; }
         total = result.Total; page = result.Page;
