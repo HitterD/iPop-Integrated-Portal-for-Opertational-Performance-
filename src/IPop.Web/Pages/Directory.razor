@@ -71,6 +71,10 @@
                                                                 @onclick="() => SelectDivision(div)">
                                                             <span class="node-name">@div.Name</span>
                                                             <span class="count">@div.MemberCount</span>
+                                                            @if (divHitCount(div) is { } hit)
+                                                            {
+                                                                <span class="badge hit">@hit</span>
+                                                            }
                                                         </button>
                                                     }
                                                 </div>
@@ -124,7 +128,7 @@
                         {
                             @foreach (var (p, i) in people.Select((p, i) => (p, i)))
                             {
-                                <div @key="p.Nik" class="emp-card rise" style="animation-delay:@(Math.Min(i, 12) * 0.05)s" tabindex="0" role="button"
+                                <div @key="p.Nik" class="emp-card rise @(IsSearching ? "hit" : "")" style="animation-delay:@(Math.Min(i, 12) * 0.05)s" tabindex="0" role="button"
                                      aria-label="View profile of @p.Name" @onclick="() => selected = p" @onkeydown="e => OnCardKey(e, p)">
                                     <div class="top">
                                         <div class="avatar" style="background:@p.Color">@p.Initials</div>
@@ -352,6 +356,12 @@
     private bool treeOpen;
     private string? notice;
     private bool noticeIsError;
+
+    // Topbar search: non-empty trimmed query → fetch division matches for tree badges, then
+    // reload the grid with q so only matching cards show. Blank query → restore pre-search state.
+    private string? searchQ;
+    private Dictionary<string, int> divMatches = []; // division code → match count
+    private bool IsSearching => searchQ is not null;
     private int TotalDivisions => dirStructure?.Sites.Sum(s => s.Departments.Sum(d => d.Divisions.Length)) ?? 0;
     private string ConnectionLabel => connection switch { DirectoryConnectionState.Live => "Live", DirectoryConnectionState.Reconnecting => "Reconnecting...", DirectoryConnectionState.Connecting => "Connecting...", _ => "Offline" };
 
@@ -377,8 +387,9 @@
 
     protected override void OnInitialized()
     {
-        Layout.SetHeader("Directory", "People", showSearch: false);
+        Layout.SetHeader("Directory", "People", showSearch: true);
         Layout.EscapePressed += CloseDrawer;
+        Layout.SearchChanged += OnSearchChanged;
         Auth.PresenceChanged += OnPresenceChanged;
         Auth.DirectoryChanged += OnDirectoryChanged;
     }
@@ -411,6 +422,26 @@
         if (selectedDivision?.Code == d.Code) return;
         selectedDivision = d;
         treeOpen = false;
+        await Reload(1, replace: true);
+    }
+
+    private int? divHitCount(DirectoryDivisionNodeDto div)
+        => IsSearching && divMatches.TryGetValue(div.Code, out var n) ? n : null;
+
+    private async void OnSearchChanged()
+    {
+        var q = Layout.SearchQuery?.Trim();
+        if (string.IsNullOrEmpty(q))
+        {
+            searchQ = null;
+            divMatches = [];
+            await Reload(page, replace: true);
+            return;
+        }
+        searchQ = q;
+        var matches = await Auth.GetAsync<DirectoryDivisionMatchDto[]>($"/api/directory/divisions?q={Uri.EscapeDataString(q)}");
+        if (searchQ != q) return; // superseded by a newer keystroke or a clear
+        divMatches = matches?.ToDictionary(m => m.Code, m => m.MatchCount) ?? [];
         await Reload(1, replace: true);
     }
 
@@ -842,7 +873,9 @@
     private async Task Reload(int requestedPage, bool replace)
     {
         loading = true;
-        var url = $"/api/directory/employees?page={requestedPage}&pageSize={PageSize}&divisionCode={Uri.EscapeDataString(selectedDivision?.Code ?? "")}";
+        var divCode = selectedDivision?.Code ?? "";
+        var q = searchQ is null ? "" : $"&q={Uri.EscapeDataString(searchQ)}";
+        var url = $"/api/directory/employees?page={requestedPage}&pageSize={PageSize}&divisionCode={Uri.EscapeDataString(divCode)}{q}";
         var result = await Auth.GetAsync<DirectoryPageDto>(url);
         loading = false;
         if (result is null) { loadError = "Could not load the directory."; return; }
@@ -874,7 +907,7 @@
     private void CloseDrawer() { selected = null; selectedDirMember = null; }
     private void OnCardKey(KeyboardEventArgs e, Employee p) { if (e.Key is "Enter" or " ") selected = p; }
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
-    public void Dispose() { Layout.EscapePressed -= CloseDrawer; Auth.PresenceChanged -= OnPresenceChanged; Auth.DirectoryChanged -= OnDirectoryChanged; }
+    public void Dispose() { Layout.EscapePressed -= CloseDrawer; Layout.SearchChanged -= OnSearchChanged; Auth.PresenceChanged -= OnPresenceChanged; Auth.DirectoryChanged -= OnDirectoryChanged; }
 
     private enum PickerKind { None, Group, Node }
 

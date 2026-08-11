@@ -13,6 +13,10 @@ public record DirectoryDepartmentDto(string Code, string Name, string? ParentCod
 public record DirectorySiteDto(string Code, string Name);
 public record DirectoryPageDto(int Total, int Page, int PageSize, DirectoryEmployeeDto[] Items);
 
+/// Mirrors the API's DirectoryDivisionMatch (camelCase JSON both ways). MatchCount is how many
+/// PEOPLE matched in that division, not how many divisions matched.
+public record DirectoryDivisionMatchDto(string Code, string Name, int MatchCount);
+
 /// Mirrors the API's DirGroupDto / DirGroupMemberDto (camelCase JSON both ways).
 public record DirGroupDto(Guid Id, string Name, Guid? ParentId, int SortOrder, bool IsActive, DirGroupMemberDto[] Members);
 public record DirGroupMemberDto(string Nik, string Name, string? Position, string? Department, string? Site, string Status);
