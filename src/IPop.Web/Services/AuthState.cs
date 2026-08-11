@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using IPop.Web.Models;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.JSInterop;
 
@@ -19,6 +20,10 @@ public class AuthState(HttpClient http, IJSRuntime js)
     public bool MustChangePassword { get; private set; }
     public bool IsAuthenticated => _accessToken is not null;
     public string MyStatus { get; private set; } = "off";
+
+    /// Presence-hub link state, for the Directory page's status pill.
+    public DirectoryConnectionState ConnectionState { get; private set; } = DirectoryConnectionState.Connecting;
+    public event Action? ConnectionStateChanged;
     public event Action<string, string>? PresenceChanged;
     public event Action? DirectoryChanged;
     public event Action? AuditChanged;
@@ -58,13 +63,19 @@ public class AuthState(HttpClient http, IJSRuntime js)
         });
         _presence.On("directoryChanged", () => DirectoryChanged?.Invoke());
         _presence.On("auditChanged", () => AuditChanged?.Invoke());
-        _presence.Reconnecting += _ => Task.CompletedTask;
+        _presence.Reconnecting += _ => { SetConnectionState(DirectoryConnectionState.Reconnecting); return Task.CompletedTask; };
         _presence.Reconnected += _ =>
         {
             DirectoryChanged?.Invoke();
             return Task.CompletedTask;
         };
-        try { await _presence.StartAsync(); } catch { await _presence.DisposeAsync(); _presence = null; }
+        _presence.Closed += _ => { SetConnectionState(DirectoryConnectionState.Offline); return Task.CompletedTask; };
+        try
+        {
+            await _presence.StartAsync();
+            SetConnectionState(DirectoryConnectionState.Live);
+        }
+        catch { await _presence.DisposeAsync(); _presence = null; SetConnectionState(DirectoryConnectionState.Offline); }
         if (_presence is not null) await BeatWhenVisibleAsync();
 
         if (_presence is not null)
@@ -176,6 +187,14 @@ public class AuthState(HttpClient http, IJSRuntime js)
         MustChangePassword = false;
         MyStatus = "off";
         Me = null;
+        SetConnectionState(DirectoryConnectionState.Connecting);
+    }
+
+    private void SetConnectionState(DirectoryConnectionState state)
+    {
+        if (ConnectionState == state) return;
+        ConnectionState = state;
+        ConnectionStateChanged?.Invoke();
     }
 
     private async Task<HttpResponseMessage> PostWithAuth(string url, object body)

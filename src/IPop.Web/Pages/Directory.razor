@@ -86,7 +86,7 @@
                 <div class="panel-head">
                     <i data-lucide="users"></i> <span>@(selectedDivision?.Name ?? "Directory")</span>
                     <span class="meta">@(loading ? "Loading..." : $"{total:N0} people")</span>
-                    <span class="meta">@ConnectionLabel</span>
+                    <span class="meta conn" title="Real-time presence connection"><i data-lucide="plug-zap" style="width:12px;height:12px"></i> @ConnectionLabel</span>
                 </div>
                 @if (notice is not null)
                 {
@@ -150,7 +150,7 @@
     private int page = 1, total;
     private Employee? selected;
     private List<Employee> people = [];
-    private DirectoryConnectionState connection = DirectoryConnectionState.Connecting;
+    private DirectoryConnectionState ConnectionState => Auth.ConnectionState;
     private int TotalPages => total == 0 ? 1 : (int)Math.Ceiling(total / (double)PageSize);
 
     // Master-detail tree state
@@ -167,7 +167,7 @@
     private Dictionary<string, int> divMatches = []; // division code → match count
     private bool IsSearching => searchQ is not null;
     private int TotalDivisions => dirStructure?.Sites.Sum(s => s.Departments.Sum(d => d.Divisions.Length)) ?? 0;
-    private string ConnectionLabel => connection switch { DirectoryConnectionState.Live => "Live", DirectoryConnectionState.Reconnecting => "Reconnecting...", DirectoryConnectionState.Connecting => "Connecting...", _ => "Offline" };
+    private string ConnectionLabel => ConnectionState switch { DirectoryConnectionState.Live => "Live", DirectoryConnectionState.Reconnecting => "Reconnecting...", DirectoryConnectionState.Connecting => "Connecting...", _ => "Offline" };
 
     protected override void OnInitialized()
     {
@@ -175,6 +175,7 @@
         Layout.SearchChanged += OnSearchChanged;
         Auth.PresenceChanged += OnPresenceChanged;
         Auth.DirectoryChanged += OnDirectoryChanged;
+        Auth.ConnectionStateChanged += OnConnectionStateChanged;
     }
 
     protected override async Task OnInitializedAsync()
@@ -271,7 +272,8 @@
         StateHasChanged();
     });
 
+    private void OnConnectionStateChanged() => _ = InvokeAsync(StateHasChanged);
     private void OnCardKey(KeyboardEventArgs e, Employee p) { if (e.Key is "Enter" or " ") selected = p; }
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
-    public void Dispose() { Layout.SearchChanged -= OnSearchChanged; Auth.PresenceChanged -= OnPresenceChanged; Auth.DirectoryChanged -= OnDirectoryChanged; }
+    public void Dispose() { Layout.SearchChanged -= OnSearchChanged; Auth.PresenceChanged -= OnPresenceChanged; Auth.DirectoryChanged -= OnDirectoryChanged; Auth.ConnectionStateChanged -= OnConnectionStateChanged; }
 }
