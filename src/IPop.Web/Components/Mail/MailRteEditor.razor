@@ -1,0 +1,171 @@
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="rte-container">
+    <div class="rte-toolbar">
+        <button type="button" class="rte-btn" title="Undo (Ctrl+Z)" @onclick='() => Exec("undo")'>
+            <i data-lucide="undo-2"></i>
+        </button>
+        <button type="button" class="rte-btn" title="Redo (Ctrl+Y)" @onclick='() => Exec("redo")'>
+            <i data-lucide="redo-2"></i>
+        </button>
+        <div class="rte-sep"></div>
+
+        <select class="rte-select" @onchange="OnFormatBlockChange" title="Heading">
+            <option value="p">Normal text</option>
+            <option value="h1">Heading 1</option>
+            <option value="h2">Heading 2</option>
+            <option value="h3">Heading 3</option>
+        </select>
+
+        <select class="rte-select" @onchange="OnFontSizeChange" title="Font Size">
+            <option value="3">Normal (12pt)</option>
+            <option value="2">Small (10pt)</option>
+            <option value="4">Medium (14pt)</option>
+            <option value="5">Large (18pt)</option>
+            <option value="6">Huge (24pt)</option>
+        </select>
+        <div class="rte-sep"></div>
+
+        <button type="button" class="rte-btn" title="Bold (Ctrl+B)" @onclick='() => Exec("bold")'>
+            <i data-lucide="bold"></i>
+        </button>
+        <button type="button" class="rte-btn" title="Italic (Ctrl+I)" @onclick='() => Exec("italic")'>
+            <i data-lucide="italic"></i>
+        </button>
+        <button type="button" class="rte-btn" title="Underline (Ctrl+U)" @onclick='() => Exec("underline")'>
+            <i data-lucide="underline"></i>
+        </button>
+        <button type="button" class="rte-btn" title="Strikethrough" @onclick='() => Exec("strikeThrough")'>
+            <i data-lucide="strikethrough"></i>
+        </button>
+        <div class="rte-sep"></div>
+
+        <input type="color" title="Text Color" style="width:24px;height:24px;padding:0;border:none;background:transparent;cursor:pointer;"
+               @onchange="OnColorChange" value="#1f2937" />
+        <div class="rte-sep"></div>
+
+        <button type="button" class="rte-btn" title="Align Left" @onclick='() => Exec("justifyLeft")'>
+            <i data-lucide="align-left"></i>
+        </button>
+        <button type="button" class="rte-btn" title="Align Center" @onclick='() => Exec("justifyCenter")'>
+            <i data-lucide="align-center"></i>
+        </button>
+        <button type="button" class="rte-btn" title="Align Right" @onclick='() => Exec("justifyRight")'>
+            <i data-lucide="align-right"></i>
+        </button>
+        <div class="rte-sep"></div>
+
+        <button type="button" class="rte-btn" title="Bullet List" @onclick='() => Exec("insertUnorderedList")'>
+            <i data-lucide="list"></i>
+        </button>
+        <button type="button" class="rte-btn" title="Numbered List" @onclick='() => Exec("insertOrderedList")'>
+            <i data-lucide="list-ordered"></i>
+        </button>
+        <button type="button" class="rte-btn" title="Quote" @onclick='() => Exec("formatBlock", "blockquote")'>
+            <i data-lucide="quote"></i>
+        </button>
+        <div class="rte-sep"></div>
+
+        <button type="button" class="rte-btn" title="Insert Link" @onclick="InsertLink">
+            <i data-lucide="link"></i>
+        </button>
+        <button type="button" class="rte-btn" title="Insert Table (3x3)" @onclick="InsertTable">
+            <i data-lucide="table"></i>
+        </button>
+        <button type="button" class="rte-btn" title="Clear Formatting" @onclick='() => Exec("removeFormat")'>
+            <i data-lucide="remove-formatting"></i>
+        </button>
+    </div>
+
+    <div @ref="editorRef"
+         class="rte-editor"
+         contenteditable="true"
+         role="textbox"
+         aria-multiline="true"
+         @oninput="OnEditorInput">
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Write your message here…";
+
+    private ElementReference editorRef;
+    private string lastSyncedValue = "";
+    private bool initialized;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("ipop.rteSetHtml", editorRef, Value);
+            lastSyncedValue = Value ?? "";
+            initialized = true;
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+        else if (initialized && Value != lastSyncedValue)
+        {
+            await JS.InvokeVoidAsync("ipop.rteSetHtml", editorRef, Value);
+            lastSyncedValue = Value ?? "";
+        }
+    }
+
+    private async Task OnEditorInput()
+    {
+        var html = await JS.InvokeAsync<string>("ipop.rteGetHtml", editorRef);
+        lastSyncedValue = html;
+        await ValueChanged.InvokeAsync(html);
+    }
+
+    private async Task Exec(string command, string? value = null)
+    {
+        await JS.InvokeVoidAsync("ipop.rteFormat", editorRef, command, value);
+        await OnEditorInput();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task OnFormatBlockChange(ChangeEventArgs e)
+    {
+        var tag = e.Value?.ToString() ?? "p";
+        await Exec("formatBlock", tag);
+    }
+
+    private async Task OnFontSizeChange(ChangeEventArgs e)
+    {
+        var size = e.Value?.ToString() ?? "3";
+        await Exec("fontSize", size);
+    }
+
+    private async Task OnColorChange(ChangeEventArgs e)
+    {
+        var color = e.Value?.ToString() ?? "#000000";
+        await Exec("foreColor", color);
+    }
+
+    private async Task InsertLink()
+    {
+        var url = await JS.InvokeAsync<string>("prompt", "Enter URL:", "https://");
+        if (!string.IsNullOrWhiteSpace(url))
+        {
+            await Exec("createLink", url);
+        }
+    }
+
+    private async Task InsertTable()
+    {
+        await JS.InvokeVoidAsync("ipop.rteInsertTable", editorRef, 3, 3);
+        await OnEditorInput();
+    }
+
+    public async Task InsertImage(string src)
+    {
+        await JS.InvokeVoidAsync("ipop.rteInsertImage", editorRef, src);
+        await OnEditorInput();
+    }
+
+    public void Dispose()
+    {
+    }
+}

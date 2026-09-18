@@ -1,0 +1,584 @@
+@inject IJSRuntime JS
+@inject IPop.Web.Services.MailService MailSvc
+@inject IPop.Web.Services.ToastService Toasts
+@using IPop.Web.Components
+@using IPop.Web.Services
+@implements IDisposable
+
+@if (IsOpen)
+{
+    @if (dockState == ComposerDockState.Maximized)
+    {
+        <div class="composer-backdrop" @onclick="Restore"></div>
+    }
+
+    <div class="outlook-composer @GetStateClass()" role="dialog" aria-label="Mail Composer">
+        @* Header *@
+        <div class="composer-head" @onclick="OnHeadClick">
+            <span class="title">
+                <i data-lucide="mail"></i>
+                @(string.IsNullOrWhiteSpace(subject) ? "New message" : subject)
+            </span>
+            <span class="draft-status">@(draftSaving ? "Saving draft…" : draftSaved ? "Draft saved" : "")</span>
+            <div class="head-actions" @onclick:stopPropagation>
+                @if (dockState == ComposerDockState.Minimized)
+                {
+                    <button class="icon-btn" title="Restore" @onclick="Restore">
+                        <i data-lucide="maximize-2"></i>
+                    </button>
+                }
+                else
+                {
+                    <button class="icon-btn" title="Minimize" @onclick="Minimize">
+                        <i data-lucide="minus"></i>
+                    </button>
+                    @if (dockState == ComposerDockState.Maximized)
+                    {
+                        <button class="icon-btn" title="Restore size" @onclick="Restore">
+                            <i data-lucide="minimize-2"></i>
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="icon-btn" title="Maximize" @onclick="Maximize">
+                            <i data-lucide="square"></i>
+                        </button>
+                    }
+                }
+                <button class="icon-btn" title="Close" @onclick="Close">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+        </div>
+
+        @* Body *@
+        <div class="composer-body-wrap">
+            <div class="recipients-block">
+                @* To Row *@
+                <div class="recipient-row">
+                    <span class="recipient-label">To</span>
+                    <div class="recipient-input-wrap">
+                        <AppMemberPicker ValueChanged="OnToPick" Placeholder="Add recipients…" />
+                        <div class="chips">
+                            @foreach (var r in toRows)
+                            {
+                                <span class="chip">
+                                    @r.Name
+                                    <button type="button" class="chip-x" @onclick="() => toRows.Remove(r)">
+                                        <i data-lucide="x"></i>
+                                    </button>
+                                </span>
+                            }
+                        </div>
+                    </div>
+                    <div class="cc-bcc-toggles">
+                        @if (!showCc) { <button type="button" @onclick="() => showCc = true">Cc</button> }
+                        @if (!showBcc) { <button type="button" @onclick="() => showBcc = true">Bcc</button> }
+                    </div>
+                </div>
+
+                @* Cc Row *@
+                @if (showCc)
+                {
+                    <div class="recipient-row">
+                        <span class="recipient-label">Cc</span>
+                        <div class="recipient-input-wrap">
+                            <AppMemberPicker ValueChanged="OnCcPick" Placeholder="Add Cc recipients…" />
+                            <div class="chips">
+                                @foreach (var r in ccRows)
+                                {
+                                    <span class="chip">
+                                        @r.Name
+                                        <button type="button" class="chip-x" @onclick="() => ccRows.Remove(r)">
+                                            <i data-lucide="x"></i>
+                                        </button>
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+
+                @* Bcc Row *@
+                @if (showBcc)
+                {
+                    <div class="recipient-row">
+                        <span class="recipient-label">Bcc</span>
+                        <div class="recipient-input-wrap">
+                            <AppMemberPicker ValueChanged="OnBccPick" Placeholder="Add Bcc recipients…" />
+                            <div class="chips">
+                                @foreach (var r in bccRows)
+                                {
+                                    <span class="chip">
+                                        @r.Name
+                                        <button type="button" class="chip-x" @onclick="() => bccRows.Remove(r)">
+                                            <i data-lucide="x"></i>
+                                        </button>
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @* Subject and Importance *@
+            <div class="subject-row">
+                <input type="text"
+                       class="subject-input"
+                       placeholder="Add a subject"
+                       @bind="subject"
+                       @bind:event="oninput"
+                       @bind:after="OnContentChanged" />
+
+                <select class="importance-select" @bind="importance" title="Message Importance">
+                    <option value="normal">Normal Priority</option>
+                    <option value="high">❗ High Importance</option>
+                    <option value="low">↓ Low Importance</option>
+                </select>
+            </div>
+
+            @* Attachments Tray *@
+            @if (composerAtts.Count > 0)
+            {
+                <div class="composer-atts">
+                    @foreach (var a in composerAtts)
+                    {
+                        <span class="composer-att-chip">
+                            <i data-lucide="paperclip"></i>
+                            <span class="name">@a.FileName</span>
+                            <span class="size">(@HumanSize(a.FileSize))</span>
+                            <button type="button" class="del-btn" @onclick="() => composerAtts.Remove(a)">
+                                <i data-lucide="x"></i>
+                            </button>
+                        </span>
+                    }
+                </div>
+            }
+
+            @* Rich Text Editor *@
+            <MailRteEditor @ref="rteRef" Value="@body" ValueChanged="OnBodyChanged" />
+        </div>
+
+        @* Footer & Actions *@
+        <div class="composer-foot">
+            @* Split Send Button *@
+            <div class="split-send">
+                <button type="button" class="send-main" @onclick="SendNow" disabled="@sending">
+                    <i data-lucide="send"></i>
+                    @(sending ? "Sending…" : "Send")
+                </button>
+                <button type="button" class="send-arrow" @onclick="() => sendDropdownOpen = !sendDropdownOpen" title="Send options">
+                    <i data-lucide="chevron-down"></i>
+                </button>
+
+                @* Dropdown for Schedule Send *@
+                @if (sendDropdownOpen)
+                {
+                    <div class="send-dropdown" @onclick:stopPropagation>
+                        <button type="button" class="send-dropdown-item" @onclick="SendNow">
+                            <i data-lucide="send"></i>
+                            <span>Send now</span>
+                        </button>
+                        <button type="button" class="send-dropdown-item" @onclick="() => ScheduleSendPreset(1)">
+                            <i data-lucide="clock"></i>
+                            <span>Tomorrow morning</span>
+                            <span class="hint">08:00</span>
+                        </button>
+                        <button type="button" class="send-dropdown-item" @onclick="() => ScheduleSendPreset(2)">
+                            <i data-lucide="clock"></i>
+                            <span>Tomorrow afternoon</span>
+                            <span class="hint">13:00</span>
+                        </button>
+                        <button type="button" class="send-dropdown-item" @onclick="OpenCustomSchedule">
+                            <i data-lucide="calendar-clock"></i>
+                            <span>Custom date & time…</span>
+                        </button>
+                    </div>
+                }
+            </div>
+
+            @* Attachments Button & Dropdown *@
+            <div class="att-split-wrap">
+                <button type="button" class="att-btn" @onclick="() => attDropdownOpen = !attDropdownOpen">
+                    <i data-lucide="paperclip"></i>
+                    <span>Attach</span>
+                    <i data-lucide="chevron-down" style="width:12px;height:12px;margin-left:2px"></i>
+                </button>
+                <InputFile @ref="fileInputRef" OnChange="OnLocalFileSelected" style="display:none" multiple />
+
+                @if (attDropdownOpen)
+                {
+                    <div class="att-dropdown" @onclick:stopPropagation>
+                        <button type="button" @onclick="TriggerLocalUpload">
+                            <i data-lucide="laptop"></i>
+                            <span>Upload from Computer</span>
+                        </button>
+                        <button type="button" @onclick="OpenSynologyPicker">
+                            <i data-lucide="hard-drive"></i>
+                            <span>Browse iPop Files</span>
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <div style="flex:1"></div>
+
+            <button type="button" class="comp-btn danger" @onclick="DiscardDraft" title="Discard draft">
+                <i data-lucide="trash-2"></i>
+                <span>Discard</span>
+            </button>
+        </div>
+    </div>
+}
+
+@* Custom Schedule Datetime Modal *@
+@if (showCustomScheduleModal)
+{
+    <div class="syno-modal-overlay" @onclick="() => showCustomScheduleModal = false">
+        <div class="syno-picker-dialog" style="max-width:420px" @onclick:stopPropagation>
+            <div class="syno-picker-head">
+                <span class="title"><i data-lucide="calendar-clock"></i> Schedule Send</span>
+                <button type="button" class="icon-btn" @onclick="() => showCustomScheduleModal = false"><i data-lucide="x"></i></button>
+            </div>
+            <div class="syno-picker-body" style="min-height:auto;padding:20px">
+                <p style="font-size:12.5px;color:var(--ink-2);margin-bottom:12px">
+                    Choose when this email should be sent. It will be stored in your <b>Scheduled</b> folder until the delivery time.
+                </p>
+                <label style="display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:var(--ink)">
+                    Select Date & Time:
+                    <input type="datetime-local"
+                           @bind="customScheduleTime"
+                           min="@DateTime.Now.ToString("yyyy-MM-ddTHH:mm")"
+                           style="padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:13px;" />
+                </label>
+            </div>
+            <div class="syno-picker-foot">
+                <button type="button" class="comp-btn" @onclick="() => showCustomScheduleModal = false">Cancel</button>
+                <button type="button" class="btn" style="width:auto;margin:0" @onclick="ConfirmCustomSchedule">Set Schedule</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Synology File Picker Dialog *@
+<SynologyFilePickerDialog IsOpen="@showSynologyPicker"
+                          IsOpenChanged="v => showSynologyPicker = v"
+                          OnFilesSelected="OnSynologyFilesSelected" />
+
+@code {
+    public enum ComposerDockState { Docked, Minimized, Maximized }
+
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public EventCallback OnSent { get; set; }
+    [Parameter] public EventCallback OnDiscard { get; set; }
+
+    private ComposerDockState dockState = ComposerDockState.Docked;
+    private MailRteEditor? rteRef;
+    private InputFile? fileInputRef;
+
+    private string subject = "";
+    private string body = "";
+    private string importance = "normal";
+    private bool showCc;
+    private bool showBcc;
+    private List<MemberSearchRow> toRows = [];
+    private List<MemberSearchRow> ccRows = [];
+    private List<MemberSearchRow> bccRows = [];
+    private List<MailAttachment> composerAtts = [];
+
+    private Guid? editingDraftId;
+    private Guid? inReplyToId;
+    private Guid? threadRootId;
+
+    private bool sending;
+    private bool draftSaving;
+    private bool draftSaved;
+    private bool sendDropdownOpen;
+    private bool attDropdownOpen;
+    private bool showCustomScheduleModal;
+    private bool showSynologyPicker;
+    private DateTime customScheduleTime = DateTime.Now.AddHours(2);
+    private CancellationTokenSource? autosaveCts;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (IsOpen)
+        {
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    private string GetStateClass() => dockState switch
+    {
+        ComposerDockState.Minimized => "minimized",
+        ComposerDockState.Maximized => "maximized",
+        _ => "docked"
+    };
+
+    public void OpenNew(
+        Guid? inReplyTo = null,
+        Guid? threadRoot = null,
+        string? initialSubject = null,
+        string? initialBody = null,
+        List<MemberSearchRow>? initialTo = null)
+    {
+        editingDraftId = null;
+        inReplyToId = inReplyTo;
+        threadRootId = threadRoot;
+        subject = initialSubject ?? "";
+        body = initialBody ?? "";
+        importance = "normal";
+        toRows = initialTo ?? [];
+        ccRows = [];
+        bccRows = [];
+        composerAtts = [];
+        showCc = false;
+        showBcc = false;
+        dockState = ComposerDockState.Docked;
+        IsOpen = true;
+        IsOpenChanged.InvokeAsync(true);
+        StateHasChanged();
+    }
+
+    public void OpenDraft(MailDetail draft)
+    {
+        editingDraftId = draft.Id;
+        inReplyToId = draft.InReplyToId;
+        threadRootId = draft.ThreadRootId;
+        subject = draft.Subject ?? "";
+        body = draft.Body ?? "";
+        importance = draft.Importance ?? "normal";
+        toRows = draft.Recipients.Where(r => r.RecipientType == "to").Select(r => new MemberSearchRow(r.Nik, r.Name, null, null)).ToList();
+        ccRows = draft.Recipients.Where(r => r.RecipientType == "cc").Select(r => new MemberSearchRow(r.Nik, r.Name, null, null)).ToList();
+        bccRows = draft.Recipients.Where(r => r.RecipientType == "bcc").Select(r => new MemberSearchRow(r.Nik, r.Name, null, null)).ToList();
+        showCc = ccRows.Count > 0;
+        showBcc = bccRows.Count > 0;
+        composerAtts = draft.Attachments.ToList();
+        dockState = ComposerDockState.Docked;
+        IsOpen = true;
+        IsOpenChanged.InvokeAsync(true);
+        StateHasChanged();
+    }
+
+    private void Minimize() => dockState = ComposerDockState.Minimized;
+    private void Maximize() => dockState = ComposerDockState.Maximized;
+    private void Restore() => dockState = ComposerDockState.Docked;
+
+    private void OnHeadClick()
+    {
+        if (dockState == ComposerDockState.Minimized) Restore();
+    }
+
+    public void Close()
+    {
+        IsOpen = false;
+        IsOpenChanged.InvokeAsync(false);
+    }
+
+    private void OnToPick(MemberSearchRow r) { if (!toRows.Any(x => x.Nik == r.Nik)) toRows.Add(r); }
+    private void OnCcPick(MemberSearchRow r) { if (!ccRows.Any(x => x.Nik == r.Nik)) ccRows.Add(r); }
+    private void OnBccPick(MemberSearchRow r) { if (!bccRows.Any(x => x.Nik == r.Nik)) bccRows.Add(r); }
+
+    private void OnBodyChanged(string newBody)
+    {
+        body = newBody;
+        OnContentChanged();
+    }
+
+    private void OnContentChanged()
+    {
+        draftSaved = false;
+        autosaveCts?.Cancel();
+        autosaveCts = new CancellationTokenSource();
+        _ = AutosaveDebouncedAsync(autosaveCts.Token);
+    }
+
+    private async Task AutosaveDebouncedAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(15000, ct);
+            if (string.IsNullOrWhiteSpace(subject) && string.IsNullOrWhiteSpace(body) && toRows.Count == 0) return;
+
+            draftSaving = true;
+            StateHasChanged();
+
+            var req = new MailSendRequest(
+                Subject: subject,
+                Body: body,
+                To: toRows.Select(r => r.Nik).ToList(),
+                Cc: ccRows.Select(r => r.Nik).ToList(),
+                Bcc: bccRows.Select(r => r.Nik).ToList(),
+                AttachmentIds: composerAtts.Select(a => a.Id).ToList(),
+                InReplyToId: inReplyToId,
+                ThreadRootId: threadRootId,
+                Importance: importance);
+
+            if (editingDraftId.HasValue)
+            {
+                await MailSvc.UpdateDraftAsync(editingDraftId.Value, req, ct);
+            }
+            else
+            {
+                var res = await MailSvc.SaveDraftAsync(req, ct);
+                if (res?.Success == true) editingDraftId = res.MailId;
+            }
+
+            draftSaving = false;
+            draftSaved = true;
+            StateHasChanged();
+        }
+        catch (OperationCanceledException) { }
+        catch { draftSaving = false; }
+    }
+
+    private async Task SendNow()
+    {
+        sendDropdownOpen = false;
+        await DoSendAsync(null);
+    }
+
+    private async Task ScheduleSendPreset(int preset)
+    {
+        sendDropdownOpen = false;
+        var tomorrow = DateTime.Today.AddDays(1);
+        var targetTime = preset == 1
+            ? tomorrow.AddHours(8) // 08:00
+            : tomorrow.AddHours(13); // 13:00
+
+        await DoSendAsync(targetTime.ToUniversalTime());
+    }
+
+    private void OpenCustomSchedule()
+    {
+        sendDropdownOpen = false;
+        customScheduleTime = DateTime.Now.AddHours(2);
+        showCustomScheduleModal = true;
+    }
+
+    private async Task ConfirmCustomSchedule()
+    {
+        showCustomScheduleModal = false;
+        await DoSendAsync(customScheduleTime.ToUniversalTime());
+    }
+
+    private async Task DoSendAsync(DateTime? scheduledAt)
+    {
+        if (toRows.Count == 0 && ccRows.Count == 0 && bccRows.Count == 0)
+        {
+            Toasts.Show("Please add at least one recipient.");
+            return;
+        }
+
+        sending = true;
+        StateHasChanged();
+        try
+        {
+            var req = new MailSendRequest(
+                Subject: subject,
+                Body: body,
+                To: toRows.Select(r => r.Nik).ToList(),
+                Cc: ccRows.Select(r => r.Nik).ToList(),
+                Bcc: bccRows.Select(r => r.Nik).ToList(),
+                AttachmentIds: composerAtts.Select(a => a.Id).ToList(),
+                InReplyToId: inReplyToId,
+                ThreadRootId: threadRootId,
+                ScheduledAt: scheduledAt,
+                Importance: importance);
+
+            var res = await MailSvc.SendAsync(req);
+            if (res?.Success == true)
+            {
+                // If this was editing an existing draft, remove old draft
+                if (editingDraftId.HasValue)
+                {
+                    _ = MailSvc.DiscardDraftAsync(editingDraftId.Value);
+                }
+
+                Toasts.Show(scheduledAt.HasValue
+                    ? $"Email scheduled for {scheduledAt.Value.ToLocalTime():dd MMM yyyy HH:mm}."
+                    : "Email sent successfully.");
+
+                Close();
+                await OnSent.InvokeAsync();
+            }
+            else
+            {
+                Toasts.Show(res?.Error ?? "Failed to send email.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Toasts.Show(ex.Message);
+        }
+        finally
+        {
+            sending = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DiscardDraft()
+    {
+        if (editingDraftId.HasValue)
+        {
+            await MailSvc.DiscardDraftAsync(editingDraftId.Value);
+        }
+        Close();
+        await OnDiscard.InvokeAsync();
+    }
+
+    private async Task TriggerLocalUpload()
+    {
+        attDropdownOpen = false;
+        await JS.InvokeVoidAsync("ipop.triggerFileInput");
+    }
+
+    private void OpenSynologyPicker()
+    {
+        attDropdownOpen = false;
+        showSynologyPicker = true;
+    }
+
+    private async Task OnLocalFileSelected(InputFileChangeEventArgs e)
+    {
+        var files = e.GetMultipleFiles(5);
+        if (files.Count == 0) return;
+
+        using var content = new MultipartFormDataContent();
+        foreach (var file in files)
+        {
+            var streamContent = new StreamContent(file.OpenReadStream(50 * 1024 * 1024));
+            streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType ?? "application/octet-stream");
+            content.Add(streamContent, "files", file.Name);
+        }
+
+        var uploaded = await MailSvc.UploadAsync(content);
+        if (uploaded != null)
+        {
+            composerAtts.AddRange(uploaded);
+            StateHasChanged();
+        }
+    }
+
+    private void OnSynologyFilesSelected(List<MailAttachment> files)
+    {
+        composerAtts.AddRange(files);
+        StateHasChanged();
+    }
+
+    private static string HumanSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    public void Dispose()
+    {
+        autosaveCts?.Cancel();
+        autosaveCts?.Dispose();
+    }
+}

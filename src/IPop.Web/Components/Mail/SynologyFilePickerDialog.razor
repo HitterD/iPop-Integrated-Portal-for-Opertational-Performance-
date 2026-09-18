@@ -1,0 +1,308 @@
+@inject AuthState Auth
+@inject IJSRuntime JS
+@inject IPop.Web.Services.MailService MailSvc
+@inject IPop.Web.Services.ToastService Toasts
+@using IPop.Web.Services
+
+@if (IsOpen)
+{
+    <div class="syno-modal-overlay" @onclick="Close">
+        <div class="syno-picker-dialog" @onclick:stopPropagation>
+            <div class="syno-picker-head">
+                <span class="title">
+                    <i data-lucide="hard-drive"></i>
+                    <span>Attach from iPop Files (SynologyDrive)</span>
+                </span>
+                <button type="button" class="icon-btn" @onclick="Close">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+
+            <div class="syno-picker-body">
+                @* Server Switcher *@
+                <div style="display:flex;gap:6px;margin-bottom:10px;">
+                    @foreach (var s in Servers)
+                    {
+                        <button type="button"
+                                class="admin-tab @(server == s.Id ? "active" : "")"
+                                style="padding:4px 10px;font-size:11.5px;border-radius:6px;"
+                                @onclick="() => SwitchServer(s.Id)">
+                            @s.Label
+                        </button>
+                    }
+                </div>
+
+                @* Breadcrumbs *@
+                <div class="syno-breadcrumb">
+                    <button type="button" class="comp-btn" style="height:22px;padding:0 6px;font-size:11px" @onclick='() => NavigateTo("/")'>
+                        <i data-lucide="home" style="width:12px;height:12px"></i>
+                    </button>
+                    @if (currentPath != "/")
+                    {
+                        var segments = currentPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                        var build = "";
+                        foreach (var seg in segments)
+                        {
+                            build += "/" + seg;
+                            var target = build;
+                            <span>/</span>
+                            <button type="button" class="comp-btn" style="height:22px;padding:0 6px;font-size:11px" @onclick="() => NavigateTo(target)">
+                                @seg
+                            </button>
+                        }
+                    }
+                </div>
+
+                @if (loading)
+                {
+                    <div style="padding:30px;text-align:center;color:var(--ink-3);font-size:13px">
+                        <i data-lucide="loader-2" class="spin" style="width:20px;height:20px;margin-bottom:8px"></i>
+                        <div>Loading files…</div>
+                    </div>
+                }
+                else if (loadError != null)
+                {
+                    <div style="padding:20px;text-align:center;color:var(--danger);font-size:12.5px">
+                        @loadError
+                    </div>
+                }
+                else if (currentPath == "/")
+                {
+                    @* Root: Shares list *@
+                    <div class="syno-file-list">
+                        @if (shares?.Count > 0)
+                        {
+                            @foreach (var sh in shares)
+                            {
+                                <div class="syno-file-item" @onclick='() => NavigateTo("/" + sh)'>
+                                    <i data-lucide="folder" style="color:var(--accent)"></i>
+                                    <span class="name">@sh</span>
+                                    <i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--ink-3)"></i>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div style="padding:20px;text-align:center;color:var(--ink-3);font-size:12px">No shared folders found.</div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    @* Inside a folder *@
+                    <div class="syno-file-list">
+                        @if (items.Count > 0)
+                        {
+                            @foreach (var it in items)
+                            {
+                                var item = it;
+                                var isSel = selectedPaths.ContainsKey(item.Path);
+                                <div class="syno-file-item @(isSel ? "selected" : "")"
+                                     @onclick="() => OnItemClick(item)">
+                                    @if (item.IsDir)
+                                    {
+                                        <i data-lucide="folder" style="color:var(--accent)"></i>
+                                        <span class="name">@item.Name</span>
+                                        <i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--ink-3)"></i>
+                                    }
+                                    else
+                                    {
+                                        <input type="checkbox"
+                                               checked="@isSel"
+                                               @onclick:stopPropagation
+                                               @onchange="() => ToggleSelect(item)"
+                                               style="accent-color:var(--accent);cursor:pointer;" />
+                                        <i data-lucide="file-text" style="color:var(--ink-2)"></i>
+                                        <span class="name">@item.Name</span>
+                                        <span class="size">@HumanSize(item.Size)</span>
+                                    }
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div style="padding:20px;text-align:center;color:var(--ink-3);font-size:12px">Folder is empty.</div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="syno-picker-foot">
+                <span style="font-size:12px;color:var(--ink-2);margin-right:auto">
+                    @selectedPaths.Count file(s) selected
+                </span>
+                <button type="button" class="comp-btn" @onclick="Close">Cancel</button>
+                <button type="button"
+                        class="btn"
+                        style="width:auto;margin:0"
+                        disabled="@(selectedPaths.Count == 0 || downloading)"
+                        @onclick="AttachSelectedFiles">
+                    @(downloading ? "Attaching…" : "Attach Selected")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public EventCallback<List<MailAttachment>> OnFilesSelected { get; set; }
+
+    private record ServerInfo(string Id, string Label);
+    private static readonly ServerInfo[] Servers = [
+        new("spj", "SPJ (Head Office)"),
+        new("krw", "KRW (Plant)"),
+        new("jtb", "JTB"),
+        new("smg", "SMG"),
+    ];
+
+    private string server = "spj";
+    private string currentPath = "/";
+    private bool loading;
+    private bool downloading;
+    private string? loadError;
+    private List<string>? shares;
+    private List<SynoPickerItem> items = [];
+    private Dictionary<string, SynoPickerItem> selectedPaths = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && shares is null && !loading)
+        {
+            await LoadFolderAsync();
+        }
+    }
+
+    private void Close()
+    {
+        IsOpen = false;
+        IsOpenChanged.InvokeAsync(false);
+    }
+
+    private async Task SwitchServer(string s)
+    {
+        server = s;
+        currentPath = "/";
+        selectedPaths.Clear();
+        await LoadFolderAsync();
+    }
+
+    private async Task NavigateTo(string path)
+    {
+        currentPath = path;
+        await LoadFolderAsync();
+    }
+
+    private async Task LoadFolderAsync()
+    {
+        loading = true;
+        loadError = null;
+        shares = null;
+        items = [];
+        StateHasChanged();
+
+        try
+        {
+            if (currentPath == "/")
+            {
+                shares = await Auth.GetAsync<List<string>>($"/api/files/shares?server={server}") ?? [];
+            }
+            else
+            {
+                var res = await Auth.GetAsync<List<SynoPickerItem>>($"/api/files?server={server}&path={Uri.EscapeDataString(currentPath)}");
+                items = res ?? [];
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    private void OnItemClick(SynoPickerItem item)
+    {
+        if (item.IsDir)
+        {
+            _ = NavigateTo(item.Path);
+        }
+        else
+        {
+            ToggleSelect(item);
+        }
+    }
+
+    private void ToggleSelect(SynoPickerItem item)
+    {
+        if (selectedPaths.ContainsKey(item.Path))
+            selectedPaths.Remove(item.Path);
+        else
+            selectedPaths[item.Path] = item;
+    }
+
+    private async Task AttachSelectedFiles()
+    {
+        if (selectedPaths.Count == 0) return;
+
+        downloading = true;
+        StateHasChanged();
+
+        try
+        {
+            using var content = new MultipartFormDataContent();
+
+            foreach (var (path, item) in selectedPaths)
+            {
+                // Download from synology endpoint
+                var downloadUrl = $"/api/files/download?server={server}&path={Uri.EscapeDataString(path)}&inline=false";
+                var res = await Auth.SendAsync(HttpMethod.Get, downloadUrl);
+                if (res.IsSuccessStatusCode)
+                {
+                    var fileBytes = await res.Content.ReadAsByteArrayAsync();
+                    if (fileBytes != null && fileBytes.Length > 0)
+                    {
+                        var byteContent = new ByteArrayContent(fileBytes);
+                        byteContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+                        content.Add(byteContent, "files", item.Name);
+                    }
+                }
+            }
+
+            var uploaded = await MailSvc.UploadAsync(content);
+            if (uploaded != null && uploaded.Length > 0)
+            {
+                await OnFilesSelected.InvokeAsync(uploaded.ToList());
+                selectedPaths.Clear();
+                Close();
+            }
+            else
+            {
+                Toasts.Show("Could not attach selected files.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Toasts.Show(ex.Message);
+        }
+        finally
+        {
+            downloading = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string HumanSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    public record SynoPickerItem(string Path, string Name, bool IsDir, long Size, long Mtime);
+}

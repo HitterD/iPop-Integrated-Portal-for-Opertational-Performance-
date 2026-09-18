@@ -1,5 +1,13 @@
 // IPop UI helpers — called from Blazor components only.
 // Lucide must be re-run after every Blazor render that adds <i data-lucide>.
+// NEVER call lucide.createIcons() on the live DOM: it replaces each <i> with a
+// fresh <svg>, detaching the <i> nodes Blazor's renderer still tracks. When a
+// later render removes one of those <i>s (any @if toggling icon markup — e.g. the
+// Mail loader spinner), the renderer calls removeChild on a detached node and the
+// page dies with "Cannot read properties of null (reading 'removeChild')".
+// icons() renders each icon into a scratch container, then injects the SVG as the
+// inner markup of the ORIGINAL <i> — node identity survives re-renders and Blazor's
+// tree stays in sync.
 window.ipop = {
   // Theme: "light" | "dark". Applied as data-theme on <html>, persisted in
   // localStorage so the choice survives reloads. Default: light.
@@ -17,18 +25,15 @@ window.ipop = {
     return next;
   },
   syncThemeIcons(theme) {
-    // Replace whatever lucide rendered with a fresh <i> for the new icon,
-    // then let lucide render it. Avoids class accumulation on old <svg>.
+    // Same rule as icons(): never replace the <i> node Blazor owns — only swap
+    // the icon name and let icons() render the new glyph into the SAME node.
+    // (replaceWith detached a Blazor-owned node and could desync its render tree.)
     const icon = theme === "dark" ? "sun" : "moon";
     document.querySelectorAll(".theme-btn").forEach(btn => {
-      const i = btn.querySelector("i[data-lucide], svg.lucide");
-      if (i) {
-        const fresh = document.createElement("i");
-        fresh.setAttribute("data-lucide", icon);
-        i.replaceWith(fresh);
-      }
+      const i = btn.querySelector("i[data-lucide]");
+      if (i) { i.setAttribute("data-lucide", icon); delete i.__lucideDone; }
     });
-    if (window.lucide) lucide.createIcons();
+    this.icons();
   },
   restoreTheme() {
     let t = "light";
@@ -37,7 +42,37 @@ window.ipop = {
     return t;
   },
   icons() {
-    if (window.lucide) lucide.createIcons();
+    // Render every <i data-lucide> icon into its own element, then swap the SVG
+    // content into the ORIGINAL <i>. The <i> node itself is never touched by the
+    // icon library, so Blazor's renderer can still remove/update it later.
+    if (!window.lucide) return;
+    const toPascal = s => s.replace(/^([A-Z])|[\s-_]+(\w)/g, (_, a, b) => b ? b.toUpperCase() : a.toLowerCase()).replace(/^./, m => m.toUpperCase());
+    const iconMap = window.lucide.icons || window.lucide;
+    document.querySelectorAll("i[data-lucide]").forEach(i => {
+      const icon = i.getAttribute("data-lucide");
+      if (!icon || i.__lucideDone === icon) return;
+      const pascal = toPascal(icon);
+      const iconDef = iconMap[pascal] || iconMap[icon];
+      if (!iconDef) return;
+      let svg;
+      try { svg = window.lucide.createElement(iconDef); }
+      catch { return; } // unknown name / bad icon — leave the placeholder alone
+      if (!svg) return;
+      // createElement's raw svg carries NO class / data-lucide — the library's own
+      // createIcons adds those. Add class="lucide lucide-{name}" plus data-lucide so
+      // every CSS rule (.lucide, .member-picker-input > i > .lucide, .spin …) and the
+      // dedupe check keep matching exactly as before.
+      svg.setAttribute("data-lucide", icon);
+      svg.classList.add("lucide", "lucide-" + icon);
+      // Copy intent-relevant attrs the <i> carried (style, class) onto the SVG so
+      // rendering stays the same as before, then inject as the <i>'s content.
+      if (i.getAttribute("style")) svg.setAttribute("style", i.getAttribute("style"));
+      const cls = i.getAttribute("class");
+      if (cls) { const merged = Array.from(svg.classList); cls.trim().split(/\s+/).filter(Boolean).forEach(c => { if (!merged.includes(c)) svg.classList.add(c); }); }
+      i.textContent = "";
+      i.appendChild(svg);
+      i.__lucideDone = icon;
+    });
   },
   focus(el) {
     if (el) { el.focus(); el.select(); }
@@ -254,5 +289,668 @@ window.ipop = {
       if (p._ppHost && p._ppHost !== p.parentElement) p._ppHost.appendChild(p);
     });
     return true;
+  },
+  // Chat: scroll a container to its bottom (used after new message arrives)
+  scrollBottom(el) {
+    if (el) el.scrollTop = el.scrollHeight;
+  },
+  async authBlob(url, token) {
+    const res = await fetch(url, { headers: token ? { Authorization: "Bearer " + token } : {} });
+    if (!res.ok) return null;
+    return URL.createObjectURL(await res.blob());
+  },
+  async authDownload(url, token, filename) {
+    const res = await fetch(url, { headers: token ? { Authorization: "Bearer " + token } : {} });
+    if (!res.ok) return;
+    const href = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = filename || "download";
+    a.click();
+    URL.revokeObjectURL(href);
+  },
+  revokeBlob(url) { if (url) URL.revokeObjectURL(url); },
+  // Chat: trigger the hidden file input for attachment upload
+  triggerFileInput() {
+    var wrap = document.querySelector(".composer-wrap");
+    var input = wrap && wrap.querySelector('input[type="file"]');
+    if (input) input.click();
+  },
+  // Chat: clipboard paste + drag-drop for attachments (bound to composer wrap)
+  _chatPaste: null,
+  chatBindPaste(wrap, dotNet) {
+    if (!wrap || !dotNet) return;
+    if (wrap._ipopPaste) this.chatUnbindPaste(wrap);
+    const chunkB64 = buf => {
+      const bytes = new Uint8Array(buf);
+      const chunk = 0x8000;
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      return btoa(binary);
+    };
+    const toPayload = async files => {
+      const sliced = Array.from(files).filter(Boolean).slice(0, 5);
+      const out = [];
+      for (const f of sliced) {
+        if (!f.size) continue;
+        if (f.size > 50 * 1024 * 1024) continue;
+        const buf = await f.arrayBuffer();
+        out.push({ FileName: f.name || "pasted-image.png", ContentType: f.type || "application/octet-stream", Base64: chunkB64(buf), FileSize: f.size });
+      }
+      return out;
+    };
+    // Windows Snipping Tool / PrintScreen put the image on items, not files.
+    const filesFromClipboard = e => {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (items && items.length) {
+        const fromItems = Array.from(items).filter(i => i.kind === "file").map(i => i.getAsFile()).filter(Boolean);
+        if (fromItems.length) return fromItems;
+      }
+      return e.clipboardData && e.clipboardData.files ? Array.from(e.clipboardData.files) : [];
+    };
+    const onPaste = async e => {
+      const files = filesFromClipboard(e);
+      if (!files.length || !files.some(f => f.size > 0)) return;
+      e.preventDefault();
+      const payload = await toPayload(files);
+      if (payload.length) dotNet.invokeMethodAsync("OnPasteFiles", payload);
+    };
+    const onDrop = async e => {
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (!files || files.length === 0) return;
+      const hasFile = Array.from(files).some(f => f.size > 0);
+      if (!hasFile) return;
+      e.preventDefault();
+      wrap.classList.remove("drag-over");
+      const payload = await toPayload(files);
+      if (payload.length) dotNet.invokeMethodAsync("OnPasteFiles", payload);
+    };
+    const onDragOver = e => {
+      if (e.dataTransfer && e.dataTransfer.types && Array.from(e.dataTransfer.types).includes("Files")) {
+        e.preventDefault();
+        wrap.classList.add("drag-over");
+      }
+    };
+    const onDragLeave = e => {
+      if (!wrap.contains(e.relatedTarget)) wrap.classList.remove("drag-over");
+    };
+    wrap.addEventListener("paste", onPaste);
+    wrap.addEventListener("drop", onDrop);
+    wrap.addEventListener("dragover", onDragOver);
+    wrap.addEventListener("dragleave", onDragLeave);
+    wrap._ipopPaste = onPaste;
+    wrap._ipopDrop = onDrop;
+    wrap._ipopDragOver = onDragOver;
+    wrap._ipopDragLeave = onDragLeave;
+  },
+  chatUnbindPaste(wrap) {
+    if (!wrap || !wrap._ipopPaste) return;
+    wrap.removeEventListener("paste", wrap._ipopPaste);
+    wrap.removeEventListener("drop", wrap._ipopDrop);
+    wrap.removeEventListener("dragover", wrap._ipopDragOver);
+    wrap.removeEventListener("dragleave", wrap._ipopDragLeave);
+    wrap.classList.remove("drag-over");
+    delete wrap._ipopPaste;
+    delete wrap._ipopDrop;
+    delete wrap._ipopDragOver;
+    delete wrap._ipopDragLeave;
+  },
+
+  // ==========================================================================
+  // Chat attachments — preview, zoom, document rendering
+  // ==========================================================================
+
+  // Like authBlob, but also reports the server's Content-Type and byte length so
+  // the viewer can pick a renderer even when the DB row has a stale MIME type.
+  // `status` is always reported so the caller can tell an expired token (401 — retry after a
+  // refresh) from a genuinely absent file (404 — do not retry). status 0 means the request never
+  // reached the server (offline, DNS, CORS), which is also worth one retry.
+  async authBlob2(url, token) {
+    try {
+      const res = await fetch(url, { headers: token ? { Authorization: "Bearer " + token } : {} });
+      if (!res.ok) return { url: null, type: "", size: 0, status: res.status };
+      const blob = await res.blob();
+      return { url: URL.createObjectURL(blob), type: blob.type || res.headers.get("content-type") || "", size: blob.size, status: res.status };
+    } catch {
+      return { url: null, type: "", size: 0, status: 0 };
+    }
+  },
+
+  // Click a hidden <InputFile> by element reference. The old version hunted for
+  // `.composer-wrap input[type=file]` via querySelector, which broke whenever the
+  // composer markup moved.
+  clickFileInput(el) {
+    if (!el) return false;
+    const input = el.tagName === "INPUT" ? el : el.querySelector('input[type="file"]');
+    if (!input) return false;
+    input.value = "";  // re-selecting the same file must still raise onchange
+    input.click();
+    return true;
+  },
+
+  openBlobTab(url) {
+    if (url) window.open(url, "_blank", "noopener");
+  },
+
+  // ---- Image zoom / pan -----------------------------------------------------
+  // State lives on the element so multiple viewers cannot collide. Transform is
+  // applied directly (not through Blazor) to keep dragging at display framerate.
+  _zoomApply(el) {
+    const s = el._zoom;
+    el.style.transform = `translate(${s.x}px, ${s.y}px) scale(${s.scale})`;
+    el.style.cursor = s.scale > 1 ? (s.dragging ? "grabbing" : "grab") : "zoom-in";
+  },
+  _zoomClampPan(el) {
+    const s = el._zoom;
+    if (s.scale <= 1) { s.x = 0; s.y = 0; return; }
+    // Keep at least part of the image inside its frame.
+    const r = el.getBoundingClientRect();
+    const maxX = Math.max(0, (r.width - el.clientWidth) / 2 + el.clientWidth * 0.25);
+    const maxY = Math.max(0, (r.height - el.clientHeight) / 2 + el.clientHeight * 0.25);
+    s.x = Math.max(-maxX, Math.min(maxX, s.x));
+    s.y = Math.max(-maxY, Math.min(maxY, s.y));
+  },
+  zoomBind(el) {
+    if (!el || el._zoom) return 1;
+    el._zoom = { scale: 1, x: 0, y: 0, dragging: false, px: 0, py: 0 };
+    el.style.transformOrigin = "center center";
+    el.style.willChange = "transform";
+
+    const onWheel = e => {
+      e.preventDefault();
+      const s = el._zoom;
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      s.scale = Math.max(1, Math.min(8, s.scale * factor));
+      if (s.scale === 1) { s.x = 0; s.y = 0; }
+      window.ipop._zoomClampPan(el);
+      window.ipop._zoomApply(el);
+    };
+    const onDown = e => {
+      const s = el._zoom;
+      if (s.scale <= 1) return;
+      s.dragging = true; s.px = e.clientX; s.py = e.clientY;
+      el.setPointerCapture?.(e.pointerId);
+      window.ipop._zoomApply(el);
+    };
+    const onMove = e => {
+      const s = el._zoom;
+      if (!s.dragging) return;
+      s.x += e.clientX - s.px; s.y += e.clientY - s.py;
+      s.px = e.clientX; s.py = e.clientY;
+      window.ipop._zoomClampPan(el);
+      window.ipop._zoomApply(el);
+    };
+    const onUp = e => {
+      const s = el._zoom;
+      if (!s.dragging) return;
+      s.dragging = false;
+      el.releasePointerCapture?.(e.pointerId);
+      window.ipop._zoomApply(el);
+    };
+    const onDbl = e => { e.preventDefault(); window.ipop.zoomToggle(el); };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
+    el.addEventListener("dblclick", onDbl);
+    el._zoomHandlers = { onWheel, onDown, onMove, onUp, onDbl };
+    window.ipop._zoomApply(el);
+    return 1;
+  },
+  zoomUnbind(el) {
+    if (!el || !el._zoomHandlers) return;
+    const h = el._zoomHandlers;
+    el.removeEventListener("wheel", h.onWheel);
+    el.removeEventListener("pointerdown", h.onDown);
+    el.removeEventListener("pointermove", h.onMove);
+    el.removeEventListener("pointerup", h.onUp);
+    el.removeEventListener("pointercancel", h.onUp);
+    el.removeEventListener("dblclick", h.onDbl);
+    delete el._zoomHandlers;
+    delete el._zoom;
+  },
+  // step > 0 zooms in, < 0 zooms out. Returns the new scale so Blazor can label the UI.
+  zoomStep(el, step) {
+    if (!el || !el._zoom) return 1;
+    const s = el._zoom;
+    s.scale = Math.max(1, Math.min(8, s.scale * (step > 0 ? 1.4 : 1 / 1.4)));
+    if (s.scale === 1) { s.x = 0; s.y = 0; }
+    window.ipop._zoomClampPan(el);
+    window.ipop._zoomApply(el);
+    return s.scale;
+  },
+  zoomReset(el) {
+    if (!el || !el._zoom) return 1;
+    el._zoom.scale = 1; el._zoom.x = 0; el._zoom.y = 0;
+    window.ipop._zoomApply(el);
+    return 1;
+  },
+  zoomToggle(el) {
+    if (!el || !el._zoom) return 1;
+    return el._zoom.scale > 1 ? window.ipop.zoomReset(el) : window.ipop.zoomStep(el, 1);
+  },
+  zoomGet(el) { return el && el._zoom ? el._zoom.scale : 1; },
+
+  // ---- Lazy script loader --------------------------------------------------
+  _scripts: {},
+  loadScript(src) {
+    if (this._scripts[src]) return this._scripts[src];
+    this._scripts[src] = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.async = true;
+      s.onload = () => resolve(true);
+      s.onerror = () => reject(new Error("failed to load " + src));
+      document.head.appendChild(s);
+    });
+    return this._scripts[src];
+  },
+
+  // ---- DOCX preview --------------------------------------------------------
+  // docx-preview renders real OOXML layout (styles, tables, images) into a host
+  // element. It needs jszip alongside it. Both are pulled on first use only, so a
+  // user who never opens a Word file pays nothing.
+  async renderDocx(hostId, blobUrl) {
+    const host = document.getElementById(hostId);
+    if (!host || !blobUrl) return "no-host";
+    try {
+      if (!window.JSZip) await this.loadScript("https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js");
+      if (!window.docx) await this.loadScript("https://cdn.jsdelivr.net/npm/docx-preview@0.3.5/dist/docx-preview.min.js");
+      if (!window.docx || !window.docx.renderAsync) return "no-lib";
+      const blob = await (await fetch(blobUrl)).blob();
+      host.innerHTML = "";
+      await window.docx.renderAsync(blob, host, null, {
+        className: "docx",
+        inWrapper: true,
+        ignoreWidth: false,
+        ignoreHeight: true,
+        breakPages: true,
+        renderHeaders: true,
+        renderFooters: true,
+        useBase64URL: true
+      });
+      return "ok";
+    } catch (e) {
+      return "error:" + (e && e.message ? e.message : "unknown");
+    }
+  },
+
+  // ---- Legacy .xls preview -------------------------------------------------
+  // SheetJS is already loaded globally (index.html) and reads the old binary
+  // format that RadzenSpreadsheet cannot open.
+  async renderXls(hostId, blobUrl) {
+    const host = document.getElementById(hostId);
+    if (!host || !blobUrl) return "no-host";
+    try {
+      if (!window.XLSX) return "no-lib";
+      const buf = await (await fetch(blobUrl)).arrayBuffer();
+      const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
+      const draw = name => {
+        host.querySelector(".xls-sheet").innerHTML = XLSX.utils.sheet_to_html(wb.Sheets[name], { editable: false });
+        host.querySelectorAll(".xls-sheet table").forEach(t => { t.style.width = "100%"; t.style.borderCollapse = "collapse"; t.style.fontSize = "12px"; });
+        host.querySelectorAll(".xls-sheet td, .xls-sheet th").forEach(c => { c.style.border = "1px solid var(--line-soft)"; c.style.padding = "6px 8px"; });
+      };
+      const tabs = wb.SheetNames.map(n => `<button class="xls-tab" data-sheet="${n}">${n}</button>`).join("");
+      host.innerHTML = `<div class="xls-tabs">${tabs}</div><div class="xls-sheet"></div>`;
+      const buttons = Array.from(host.querySelectorAll(".xls-tab"));
+      buttons.forEach(b => b.addEventListener("click", () => {
+        buttons.forEach(x => x.classList.toggle("on", x === b));
+        draw(b.dataset.sheet);
+      }));
+      if (buttons[0]) buttons[0].classList.add("on");
+      draw(wb.SheetNames[0]);
+      return "ok";
+    } catch (e) {
+      return "error:" + (e && e.message ? e.message : "unknown");
+    }
+  },
+
+  // Print whatever the viewer currently shows.
+  printFrame(id) {
+    const f = document.getElementById(id);
+    if (f && f.contentWindow) { try { f.contentWindow.focus(); f.contentWindow.print(); return; } catch {} }
+    window.print();
+  },
+
+  // ---- Viewer keyboard shortcuts -------------------------------------------
+  // Esc / arrows are bound on document because the overlay is not focusable and
+  // clicks inside iframes (PDF) would otherwise swallow keydown.
+  bindViewerKeys(dotNet) {
+    if (this._viewerKeys) this.unbindViewerKeys();
+    this._viewerKeys = e => {
+      let name = null;
+      if (e.key === "Escape") name = "Escape";
+      else if (e.key === "ArrowRight") name = "Next";
+      else if (e.key === "ArrowLeft") name = "Prev";
+      else if (e.key === "+" || e.key === "=") name = "ZoomIn";
+      else if (e.key === "-" || e.key === "_") name = "ZoomOut";
+      else if (e.key === "0") name = "ZoomReset";
+      if (!name) return;
+      e.preventDefault();
+      dotNet.invokeMethodAsync("OnViewerKey", name);
+    };
+    document.addEventListener("keydown", this._viewerKeys);
+  },
+  unbindViewerKeys() {
+    if (!this._viewerKeys) return;
+    document.removeEventListener("keydown", this._viewerKeys);
+    this._viewerKeys = null;
+  },
+
+  // Scroll a message into view inside the chat list and flash it (jump from
+  // search results / pinned panel).
+  scrollToMessage(container, messageId) {
+    if (!container) return false;
+    const el = container.querySelector('[data-msg-id="' + messageId + '"]');
+    if (!el) return false;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.remove("highlighted");
+    void el.offsetWidth;   // force reflow so the animation restarts
+    el.classList.add("highlighted");
+    setTimeout(() => el.classList.remove("highlighted"), 1800);
+    return true;
+  },
+
+  // Scroll an element into view (deep links: /projects/{id}, /chat/{room}).
+  scrollIntoView(selector) {
+    const el = document.querySelector(selector);
+    if (!el) return false;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    return true;
+  },
+
+  // Distance from the bottom of a scroller, used to decide between auto-scroll
+  // and showing the "jump to latest" button.
+  scrollInfo(el) {
+    if (!el) return { fromBottom: 0, scrollTop: 0, scrollHeight: 0 };
+    return {
+      fromBottom: el.scrollHeight - el.scrollTop - el.clientHeight,
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight
+    };
+  },
+  setScrollTop(el, top) { if (el) el.scrollTop = top; },
+
+  // Watch a scroller and notify .NET only when it crosses `threshold` px from the
+  // bottom. A Blazor @onscroll handler fires on every scroll tick and each tick costs
+  // an interop round-trip plus a possible re-render, which saturates the main thread
+  // and makes the list feel stuck. Throttling to one rAF and reporting only state
+  // *changes* keeps scrolling on the compositor where it belongs.
+  bindScrollWatch(el, dotNet, threshold) {
+    if (!el || !dotNet) return;
+    if (el._ipopScroll) this.unbindScrollWatch(el);
+    let queued = false;
+    let last = null;
+    const evaluate = () => {
+      queued = false;
+      const away = (el.scrollHeight - el.scrollTop - el.clientHeight) > (threshold || 400);
+      if (away === last) return;
+      last = away;
+      dotNet.invokeMethodAsync("OnScrollStateChanged", away);
+    };
+    const onScroll = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(evaluate);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    el._ipopScroll = onScroll;
+    evaluate();
+  },
+  unbindScrollWatch(el) {
+    if (!el || !el._ipopScroll) return;
+    el.removeEventListener("scroll", el._ipopScroll);
+    delete el._ipopScroll;
+  },
+
+  // ipop-22: unbind project/task chip click delegation
+  unbindMentionChips(container) {
+    if (!container || !container._ipopMentionChip) return;
+    container.removeEventListener('click', container._ipopMentionChip);
+    delete container._ipopMentionChip;
+  },
+
+  // Auto-grow the composer textarea up to its CSS max-height.
+  autoGrow(el) {
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 140) + "px";
+  },
+
+  // ── DraftStore helpers (Req 18) ──
+  draftGet(roomId) { try { return localStorage.getItem("ipop.chat.draft." + roomId); } catch { return null; } },
+  draftSet(roomId, text, iso) { try { localStorage.setItem("ipop.chat.draft." + roomId, text); const idx = JSON.parse(localStorage.getItem("ipop.chat.drafts") || "{}"); idx[roomId] = iso; localStorage.setItem("ipop.chat.drafts", JSON.stringify(idx)); } catch(e) { throw e; } },
+  draftRemove(roomId) { try { localStorage.removeItem("ipop.chat.draft." + roomId); const idx = JSON.parse(localStorage.getItem("ipop.chat.drafts") || "{}"); delete idx[roomId]; localStorage.setItem("ipop.chat.drafts", JSON.stringify(idx)); } catch {} },
+  draftList() { try { return JSON.parse(localStorage.getItem("ipop.chat.drafts") || "{}"); } catch { return {}; } },
+
+  // ── Composer caret helpers (Req 2/3) ──
+  caretOf(el) { if (!el) return { start: 0, end: 0 }; return { start: el.selectionStart ?? 0, end: el.selectionEnd ?? 0 }; },
+  setCaret(el, start, end) { if (!el) return; el.focus(); try { el.setSelectionRange(start, end ?? start); } catch {} },
+  chatComposerSyncScroll(ta, overlay) { if (!ta || !overlay) return; overlay.scrollTop = ta.scrollTop; overlay.scrollLeft = ta.scrollLeft; },
+  scrollItemIntoView(container, itemId) { if (!container || !itemId) return; const el = container.querySelector("#" + CSS.escape(itemId)); if (el) el.scrollIntoView({ block: "nearest" }); },
+
+  // ipop-22: delegation for project/task mention chips rendered as <span class="mention project-chip" data-project-id="..."> or task-chip
+  bindMentionChips(container, dotNet) {
+    if (!container || !dotNet) return;
+    if (container._ipopMentionChip) container.removeEventListener('click', container._ipopMentionChip);
+    const h = (e) => {
+      const p = e.target.closest('.project-chip[data-project-id]');
+      if (p) {
+        const id = p.getAttribute('data-project-id');
+        if (id) { e.preventDefault(); dotNet.invokeMethodAsync('OnProjectChipClick', id); }
+        return;
+      }
+      const t = e.target.closest('.task-chip[data-task-id]');
+      if (t) {
+        const id = t.getAttribute('data-task-id');
+        if (id) { e.preventDefault(); dotNet.invokeMethodAsync('OnTaskChipClick', id); }
+        return;
+      }
+    };
+    container.addEventListener('click', h);
+    container._ipopMentionChip = h;
+  },
+
+  // Ctrl+K / Cmd+K quick switcher — global document listener so it fires from anywhere.
+  // We ignore the event when focus is already inside an input/textarea/contenteditable.
+  chatBindQuickSwitcher(dotNet) {
+    if (!dotNet) return;
+    if (document._ipopQs) this.chatUnbindQuickSwitcher();
+    const h = (e) => {
+      const isK = e.key.toLowerCase() === 'k';
+      if (!isK) return;
+      if (e.ctrlKey || e.metaKey) {
+        const tag = (e.target && e.target.tagName) || '';
+        const editable = e.target && (e.target.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
+        if (!editable) {
+          e.preventDefault();
+          dotNet.invokeMethodAsync('OnQuickSwitcher');
+        }
+      }
+    };
+    document.addEventListener('keydown', h, true);
+    document._ipopQs = h;
+  },
+  chatUnbindQuickSwitcher() {
+    if (!document._ipopQs) return;
+    document.removeEventListener('keydown', document._ipopQs, true);
+    delete document._ipopQs;
+  },
+
+  // Kanban: physical pointer drag tracking follower with iPop green accent
+  initKanbanDragFollower() {
+    if (window._ipopKanbanDragInited) return;
+    window._ipopKanbanDragInited = true;
+
+    const blankImg = new Image();
+    blankImg.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
+
+    let currentGhost = null;
+    let grabOffsetX = 0;
+    let grabOffsetY = 0;
+
+    document.addEventListener('dragstart', (e) => {
+      const card = e.target.closest && e.target.closest('.kanban-task-card');
+      if (!card) return;
+
+      const rect = card.getBoundingClientRect();
+      grabOffsetX = e.clientX - rect.left;
+      grabOffsetY = e.clientY - rect.top;
+
+      if (e.dataTransfer) {
+        try {
+          e.dataTransfer.setDragImage(blankImg, 0, 0);
+          e.dataTransfer.effectAllowed = 'move';
+        } catch {}
+      }
+
+      if (currentGhost) currentGhost.remove();
+      currentGhost = card.cloneNode(true);
+      currentGhost.classList.add('kanban-floating-ghost');
+      currentGhost.style.width = `${rect.width}px`;
+      currentGhost.style.left = `${e.clientX - grabOffsetX}px`;
+      currentGhost.style.top = `${e.clientY - grabOffsetY}px`;
+      document.body.appendChild(currentGhost);
+
+      card.classList.add('is-source-dragged');
+    });
+
+    document.addEventListener('dragover', (e) => {
+      if (currentGhost) {
+        currentGhost.style.left = `${e.clientX - grabOffsetX}px`;
+        currentGhost.style.top = `${e.clientY - grabOffsetY}px`;
+      }
+    });
+
+    document.addEventListener('dragend', () => {
+      if (currentGhost) {
+        currentGhost.remove();
+        currentGhost = null;
+      }
+      document.querySelectorAll('.kanban-task-card.is-source-dragged').forEach(c => {
+        c.classList.remove('is-source-dragged');
+      });
+    });
+  },
+
+  // ---- ONLYOFFICE Document Editor ------------------------------------------
+  _onlyOfficeInstances: {},
+
+  async initOnlyOffice(placeholderId, serverUrl, config, dotNetHelper) {
+    const el = document.getElementById(placeholderId);
+    if (!el) return false;
+
+    const scriptUrl = `${serverUrl.replace(/\/+$/, '')}/web-apps/apps/api/documents/api.js`;
+    if (!window.DocsAPI) {
+      try {
+        await this.loadScript(scriptUrl);
+      } catch (e) {
+        console.error("Gagal memuat OnlyOffice API script:", e);
+        return false;
+      }
+    }
+
+    if (!window.DocsAPI || !window.DocsAPI.DocEditor) {
+      console.error("DocsAPI.DocEditor tidak tersedia.");
+      return false;
+    }
+
+    if (this._onlyOfficeInstances[placeholderId]) {
+      try { this._onlyOfficeInstances[placeholderId].destroyEditor(); } catch {}
+      delete this._onlyOfficeInstances[placeholderId];
+    }
+
+    el.innerHTML = "";
+
+    // Hubungkan DocsAPI events ke Blazor jika dotNetHelper diberikan
+    if (dotNetHelper) {
+      config.events = config.events || {};
+      config.events.onDocumentReady = () => {
+        try { dotNetHelper.invokeMethodAsync("OnEditorReady"); } catch {}
+      };
+      config.events.onDocumentStateChange = (event) => {
+        try { dotNetHelper.invokeMethodAsync("OnDocumentStateChange", !!(event && event.data)); } catch {}
+      };
+      config.events.onError = (event) => {
+        try { dotNetHelper.invokeMethodAsync("OnEditorError", (event && event.data) ? String(event.data) : "Editor error"); } catch {}
+      };
+    }
+
+    try {
+      this._onlyOfficeInstances[placeholderId] = new window.DocsAPI.DocEditor(placeholderId, config);
+      return true;
+    } catch (err) {
+      console.error("Gagal inisialisasi DocEditor:", err);
+      return false;
+    }
+  },
+
+  destroyOnlyOffice(placeholderId) {
+    if (this._onlyOfficeInstances[placeholderId]) {
+      try { this._onlyOfficeInstances[placeholderId].destroyEditor(); } catch {}
+      delete this._onlyOfficeInstances[placeholderId];
+    }
+  },
+
+  closeOrNavigate(fallbackUrl) {
+    try {
+      window.close();
+    } catch {}
+    setTimeout(() => {
+      if (!window.closed) {
+        window.location.href = fallbackUrl || '/files';
+      }
+    }, 200);
+  },
+
+  // ---- Mail Rich Text Editor (RTE) -----------------------------------------
+  rteFormat(el, command, value) {
+    if (!el) return false;
+    el.focus();
+    document.execCommand(command, false, value || null);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  },
+
+  rteGetHtml(el) {
+    return el ? el.innerHTML : "";
+  },
+
+  rteSetHtml(el, html) {
+    if (!el) return;
+    if (el.innerHTML !== (html || "")) {
+      el.innerHTML = html || "";
+    }
+  },
+
+  rteInsertTable(el, rows, cols) {
+    if (!el) return;
+    el.focus();
+    let r = Math.max(1, parseInt(rows) || 2);
+    let c = Math.max(1, parseInt(cols) || 2);
+    let table = '<table style="width:100%;border-collapse:collapse;margin:8px 0;"><tbody>';
+    for (let i = 0; i < r; i++) {
+      table += '<tr>';
+      for (let j = 0; j < c; j++) {
+        table += '<td style="border:1px solid var(--line);padding:6px 8px;">&nbsp;</td>';
+      }
+      table += '</tr>';
+    }
+    table += '</tbody></table><p></p>';
+    document.execCommand("insertHTML", false, table);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  },
+
+  rteInsertImage(el, src) {
+    if (!el || !src) return;
+    el.focus();
+    const html = `<img src="${src}" style="max-width:100%;border-radius:6px;margin:6px 0;" alt="Image" /><p></p>`;
+    document.execCommand("insertHTML", false, html);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
   }
 };
+
