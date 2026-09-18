@@ -1,0 +1,64 @@
+@using IPop.Application.Chat
+@using IPop.Web.Services
+
+@if (IsOpen)
+{
+    <div class="backdrop on" @onclick="Close"></div>
+    <div class="drawer on forward-drawer">
+        <div class="tray-d">
+            <div class="core-d forward-core">
+                <div class="drawer-head">
+                    Forward to
+                    <button class="drawer-close" @onclick="Close"><i data-lucide="x"></i></button>
+                </div>
+                <div style="padding:0 0 8px 0;">
+                    <input type="text" placeholder="Search conversations…"
+                           @bind="query" @bind:event="oninput"
+                           style="width:100%;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12px;" />
+                </div>
+                <div style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:3px">
+                    @{
+                        var filtered = Rooms
+                            .Where(r => string.IsNullOrWhiteSpace(query) || GetRoomName(r).Contains(query, StringComparison.OrdinalIgnoreCase))
+                            .Take(25);
+                    }
+                    @foreach (var room in filtered)
+                    {
+                        var r = room;
+                        <div class="room-item forward-room-item" @onclick="() => SelectRoom(r.Id)">
+                            <div class="avatar forward-avatar" style="background:@GetRoomColor(r)">@GetRoomInitials(r)</div>
+                            <div class="info"><div class="name forward-name">@GetRoomName(r)</div></div>
+                            <i data-lucide="send" style="width:13px;height:13px;color:var(--accent);margin-left:auto"></i>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public IReadOnlyList<RoomListDto> Rooms { get; set; } = [];
+    [Parameter] public EventCallback<Guid> OnForward { get; set; }
+
+    [Parameter] public Func<RoomListDto, string> GetRoomName { get; set; } = _ => "";
+    [Parameter] public Func<RoomListDto, string> GetRoomInitials { get; set; } = _ => "";
+    [Parameter] public Func<RoomListDto, string> GetRoomColor { get; set; } = _ => "";
+
+    private string query = "";
+
+    private void Close()
+    {
+        query = "";
+        IsOpen = false;
+        IsOpenChanged.InvokeAsync(false);
+    }
+
+    private async Task SelectRoom(Guid roomId)
+    {
+        await OnForward.InvokeAsync(roomId);
+        Close();
+    }
+}

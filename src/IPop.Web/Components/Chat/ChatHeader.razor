@@ -1,0 +1,88 @@
+@using IPop.Application.Chat
+
+<div class="conv-header">
+    <button type="button" class="conv-back" title="Conversations" @onclick="OnBackMobile">
+        <i data-lucide="arrow-left"></i>
+    </button>
+    @if (Room.Type == "dm")
+    {
+        var dmMember = Room.Members.FirstOrDefault(m => m.Nik != CurrentUserNik);
+        <button type="button" class="avatar round avatar-btn" style="background:@RoomColor" title="View profile" @onclick="() => OnOpenProfile.InvokeAsync(dmMember?.Nik)">
+            @RoomInitials
+        </button>
+    }
+    else
+    {
+        <button type="button" class="avatar avatar-btn" style="background:@RoomColor" title="Group info" @onclick="() => OnToggleDrawer.InvokeAsync()">
+            @RoomInitials
+        </button>
+    }
+    <div class="info">
+        <div class="name">@RoomName</div>
+        <div class="meta">
+            @if (Room.Type == "dm")
+            {
+                var dmMember = Room.Members.FirstOrDefault(m => m.Nik != CurrentUserNik);
+                if (dmMember is not null)
+                {
+                    <span class="dot @(dmMember.PresenceStatus ?? "off")">@PresenceLabel(dmMember.PresenceStatus)</span>
+                }
+            }
+            else
+            {
+                <span>@Room.MemberCount members · @Room.OnlineCount online</span>
+            }
+        </div>
+    </div>
+    <div class="actions">
+        <button class="@(SearchOpen ? "on" : "")" title="Search messages" @onclick="OnToggleSearch">
+            <i data-lucide="search"></i>
+        </button>
+        @if (Room.Type == "dm")
+        {
+            var dmMember = Room.Members.FirstOrDefault(m => m.Nik != CurrentUserNik);
+            if (dmMember is not null)
+            {
+                <button type="button" title="Audio / Video call" @onclick="() => OnStartCall.InvokeAsync(dmMember.Nik)">
+                    <i data-lucide="phone"></i>
+                </button>
+            }
+        }
+        <button class="@(DrawerOpen && ActiveDrawerTab == 3 ? "on" : "")" title="Pinned messages" @onclick="OnOpenPinned">
+            <i data-lucide="pin"></i>
+        </button>
+        <button class="@(DrawerOpen && ActiveDrawerTab == 2 ? "on" : "")" title="Shared files & media" @onclick="OnOpenMedia">
+            <i data-lucide="paperclip"></i>
+        </button>
+        @if (Room.Type == "group")
+        {
+            <button class="@(DrawerOpen && ActiveDrawerTab == 1 ? "on" : "")" title="Members" @onclick="OnOpenMembers">
+                <i data-lucide="users"></i>
+            </button>
+        }
+        <button class="@(DrawerOpen && ActiveDrawerTab == 0 ? "on" : "")" title="Room details & settings" @onclick="OnToggleDrawer">
+            <i data-lucide="panel-right"></i>
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter] public ChatRoomDto Room { get; set; } = default!;
+    [Parameter] public string CurrentUserNik { get; set; } = "";
+    [Parameter] public string RoomName { get; set; } = "";
+    [Parameter] public string RoomInitials { get; set; } = "";
+    [Parameter] public string RoomColor { get; set; } = "";
+    [Parameter] public bool SearchOpen { get; set; }
+    [Parameter] public bool DrawerOpen { get; set; }
+    [Parameter] public int ActiveDrawerTab { get; set; }
+
+    [Parameter] public EventCallback OnBackMobile { get; set; }
+    [Parameter] public EventCallback<string?> OnOpenProfile { get; set; }
+    [Parameter] public EventCallback OnToggleSearch { get; set; }
+    [Parameter] public EventCallback<string> OnStartCall { get; set; }
+    [Parameter] public EventCallback OnOpenPinned { get; set; }
+    [Parameter] public EventCallback OnOpenMedia { get; set; }
+    [Parameter] public EventCallback OnOpenMembers { get; set; }
+    [Parameter] public EventCallback OnToggleDrawer { get; set; }
+    [Parameter] public Func<string?, string> PresenceLabel { get; set; } = _ => "";
+}

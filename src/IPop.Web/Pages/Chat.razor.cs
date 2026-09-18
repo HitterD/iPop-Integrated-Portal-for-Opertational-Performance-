@@ -88,7 +88,6 @@ public partial class Chat
     // ---- Forward State (Task 13.4) ----
     private bool forwardOpen;
     private Guid? forwardMsgId;
-    private string forwardSearch = "";
 
     // ---- Poll & Voice Recording State ----
     private bool pollModalOpen;
@@ -203,12 +202,7 @@ public partial class Chat
     private bool qsOpen;
     private string qsQuery = "";
     private int qsSel; // index into the filtered list below
-    private record PendingAtt(Guid Id, string FileName, long FileSize, string MimeType, string? PreviewUrl)
-    {
-        /// Lets the pending strip reuse the same icon/label/colour rules as sent messages.
-        public IPop.Application.Chat.AttachmentDto AsDto() => new(Id, FileName, FileSize, MimeType, null);
-    }
-    private List<PendingAtt> pendingAttachments = [];
+    private List<IPop.Web.Models.PendingAttachmentItem> pendingAttachments = [];
 
     // ---- Add Member State (Group Info) ----
     private bool addMemberOpen;

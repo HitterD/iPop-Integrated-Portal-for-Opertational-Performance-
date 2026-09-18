@@ -1,0 +1,191 @@
+@using IPop.Application.Chat
+@using IPop.Web.Services
+@using IPop.Web.Models
+@inject ChatState ChatSvc
+
+<div class="composer-wrap" @ref="wrapRef">
+    @* ---- Emoji/Sticker Picker Panel ---- *@
+    @if (PickerOpen)
+    {
+        <div class="picker-panel picker-fixed">
+            <div class="picker-tabs">
+                <button type="button" class="picker-tab @(pickerTab == "emoji" ? "active" : "")" @onclick='() => pickerTab = "emoji"'>Emoji</button>
+                <button type="button" class="picker-tab @(pickerTab == "stickers" ? "active" : "")" @onclick='() => pickerTab = "stickers"'>Stickers</button>
+            </div>
+            @if (pickerTab == "emoji")
+            {
+                <div class="picker-grid">
+                    @foreach (var emoji in EmojiGrid)
+                    {
+                        var e = emoji;
+                        <button type="button" class="picker-emoji" @onclick="() => OnInsertEmoji(e)" @onclick:stopPropagation>@e</button>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="picker-stickers">
+                    @foreach (var icon in StickerIcons)
+                    {
+                        var ic = icon;
+                        <button type="button" class="picker-sticker" @onclick="() => OnSendSticker(ic)" @onclick:stopPropagation>
+                            <i data-lucide="@ic"></i>
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(UploadError))
+    {
+        <div class="upload-error">@UploadError</div>
+    }
+
+    @* ---- Pending Attachments Strip ---- *@
+    @if (PendingAttachments.Count > 0)
+    {
+        <div class="pending-strip">
+            @foreach (var att in PendingAttachments)
+            {
+                var a = att;
+                var dto = a.AsDto();
+                <div class="pending-item @(a.PreviewUrl is not null ? "has-thumb" : "")" title="@a.FileName">
+                    @if (a.PreviewUrl is not null)
+                    {
+                        <img src="@a.PreviewUrl" alt="@a.FileName" />
+                    }
+                    else
+                    {
+                        <span class="ic attachment-icon" style="--attachment-accent:@ChatAttachments.Accent(dto)">
+                            <i data-lucide="@ChatAttachments.Icon(dto)"></i>
+                        </span>
+                        <span class="txt">
+                            <span class="nm">@a.FileName</span>
+                            <span class="sz">@ChatAttachments.TypeLabel(dto) · @ChatAttachments.FormatSize(a.FileSize)</span>
+                        </span>
+                    }
+                    <button type="button" class="rm" title="Remove" @onclick="() => OnRemovePending.InvokeAsync(a.Id)" @onclick:stopPropagation>
+                        <i data-lucide="x"></i>
+                    </button>
+                </div>
+            }
+            @if (Uploading)
+            {
+                <div class="pending-item uploading"><span class="att-skeleton"></span></div>
+            }
+        </div>
+    }
+
+    <div class="composer">
+        <button type="button" class="comp-btn @(Uploading ? "busy" : "")" title="Attach file" disabled="@Uploading" @onclick="OnTriggerUpload">
+            <i data-lucide="@(Uploading ? "loader" : "paperclip")"></i>
+        </button>
+        <button type="button" class="comp-btn @(PickerOpen ? "on" : "")" title="Emoji & Stickers" @onclick="OnTogglePicker">
+            <i data-lucide="smile-plus"></i>
+        </button>
+
+        @if (IsGroup)
+        {
+            <button type="button" class="comp-btn" title="Mention" @onclick="OnOpenMention"><i data-lucide="at-sign"></i></button>
+            <button type="button" class="comp-btn" title="Create Poll" @onclick="OnOpenPoll"><i data-lucide="bar-chart-2"></i></button>
+        }
+
+        @if (IsRecordingVoice)
+        {
+            <div class="voice-record-bar">
+                <span class="rec-dot"></span>
+                <span>Recording audio...</span>
+                <button type="button" class="cancel-btn" @onclick="OnCancelVoice">Cancel</button>
+            </div>
+            <button type="button" class="send-btn" title="Send Voice Message" @onclick="OnStopVoice">
+                <i data-lucide="send-horizontal"></i>
+            </button>
+        }
+        else
+        {
+            <textarea @ref="textareaRef" class="input-wrap"
+                      placeholder="Type a message…  (Enter to send, Shift+Enter for a new line)"
+                      value="@Text"
+                      @oninput="OnInput"
+                      @onkeydown="OnKeyDown"
+                      @onblur="OnBlur"
+                      rows="1"></textarea>
+            <button type="button" class="comp-btn" title="Record Voice Message" @onclick="OnStartVoice">
+                <i data-lucide="mic"></i>
+            </button>
+            <button type="button" class="send-btn @((string.IsNullOrWhiteSpace(Text) && PendingAttachments.Count == 0) ? "disabled" : "")"
+                    title="Send"
+                    @onclick="OnSend"
+                    disabled="@(string.IsNullOrWhiteSpace(Text) && PendingAttachments.Count == 0)">
+                <i data-lucide="send-horizontal"></i>
+            </button>
+        }
+
+        @if (IsGroupAdmin)
+        {
+            <button type="button" class="comp-btn danger-color" title="Emergency broadcast" @onclick="OnOpenEmergency"><i data-lucide="alert-triangle"></i></button>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Text { get; set; } = "";
+    [Parameter] public EventCallback<string> TextChanged { get; set; }
+    [Parameter] public bool IsGroup { get; set; }
+    [Parameter] public bool IsGroupAdmin { get; set; }
+    [Parameter] public bool Uploading { get; set; }
+    [Parameter] public string? UploadError { get; set; }
+    [Parameter] public IReadOnlyList<PendingAttachmentItem> PendingAttachments { get; set; } = [];
+    [Parameter] public bool PickerOpen { get; set; }
+    [Parameter] public bool IsRecordingVoice { get; set; }
+
+    [Parameter] public EventCallback OnTriggerUpload { get; set; }
+    [Parameter] public EventCallback OnTogglePicker { get; set; }
+    [Parameter] public EventCallback OnOpenMention { get; set; }
+    [Parameter] public EventCallback OnOpenPoll { get; set; }
+    [Parameter] public EventCallback OnStartVoice { get; set; }
+    [Parameter] public EventCallback OnStopVoice { get; set; }
+    [Parameter] public EventCallback OnCancelVoice { get; set; }
+    [Parameter] public EventCallback OnSend { get; set; }
+    [Parameter] public EventCallback OnOpenEmergency { get; set; }
+    [Parameter] public EventCallback<Guid> OnRemovePending { get; set; }
+    [Parameter] public EventCallback<ChangeEventArgs> OnComposerInput { get; set; }
+    [Parameter] public EventCallback<KeyboardEventArgs> OnComposerKeyDown { get; set; }
+    [Parameter] public EventCallback OnComposerBlur { get; set; }
+    [Parameter] public EventCallback<string> OnSendStickerSelected { get; set; }
+
+    private ElementReference wrapRef;
+    private ElementReference textareaRef;
+    public ElementReference WrapReference => wrapRef;
+    public ElementReference TextareaReference => textareaRef;
+
+    private string pickerTab = "emoji";
+    private static readonly string[] EmojiGrid = ["👍", "❤️", "😂", "🎉", "🔥", "👀", "✅", "💯", "🚀", "⭐", "💡", "🙏", "👏", "😊", "😎", "🤔", "😅", "☕", "🏆", "💪", "📌", "📎", "🎯", "⚡"];
+    private static readonly string[] StickerIcons = ["thumbs-up", "heart", "party-popper", "rocket", "flame", "coffee", "zap", "star", "check-circle", "alert-triangle", "lightbulb", "trophy", "hand-metal", "smile", "laugh", "frown", "badge-check", "brain", "target", "shield-check", "clock", "sparkles", "medal", "gift"];
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        await OnComposerInput.InvokeAsync(e);
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        await OnComposerKeyDown.InvokeAsync(e);
+    }
+
+    private async Task OnBlur()
+    {
+        await OnComposerBlur.InvokeAsync();
+    }
+
+    private async Task OnInsertEmoji(string em)
+    {
+        await TextChanged.InvokeAsync(Text + em);
+    }
+
+    private async Task OnSendSticker(string st)
+    {
+        await OnSendStickerSelected.InvokeAsync(st);
+    }
+}

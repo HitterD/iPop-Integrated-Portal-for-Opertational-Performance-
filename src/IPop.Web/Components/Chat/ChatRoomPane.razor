@@ -1,0 +1,221 @@
+@using IPop.Application.Chat
+@using IPop.Web.Services
+@inject ChatState ChatSvc
+
+<div class="room-pane rise rise-1">
+    <div class="room-head">
+        <span class="title">Messages</span>
+        <button type="button" class="room-pane-close" title="Close" @onclick="OnCloseMobile">
+            <i data-lucide="x"></i>
+        </button>
+        <div class="create-wrap">
+            <button class="new-btn" title="New conversation" @onclick="OnToggleCreate" @onclick:stopPropagation>
+                <i data-lucide="square-pen"></i>
+            </button>
+            <div class="create-dropdown @(CreateDropdownOpen ? "on" : "")">
+                <button @onclick="OnStartDm">
+                    <i data-lucide="user"></i>
+                    <div><div>New direct message</div><div class="desc">Chat with one person</div></div>
+                </button>
+                <button @onclick="OnStartGroup">
+                    <i data-lucide="users"></i>
+                    <div><div>New group chat</div><div class="desc">Create a group with multiple people</div></div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="room-search">
+        <i data-lucide="search"></i>
+        <input type="text" placeholder="Search conversations..." value="@SearchQuery" @oninput="OnSearchChanged" />
+    </div>
+
+    <div class="room-tabs">
+        <button class="room-tab @(ActiveTab == RoomTab.Direct ? "active" : "")" @onclick="() => OnSetTab.InvokeAsync(RoomTab.Direct)">
+            Direct
+            @if (DirectUnread > 0)
+            {
+                <span class="tab-badge">@DirectUnread</span>
+            }
+        </button>
+        <button class="room-tab @(ActiveTab == RoomTab.Groups ? "active" : "")" @onclick="() => OnSetTab.InvokeAsync(RoomTab.Groups)">
+            Groups
+            @if (HasGroupMention)
+            {
+                <i data-lucide="at-sign" class="ico-sm accent"></i>
+            }
+            @if (GroupUnread > 0)
+            {
+                <span class="tab-badge">@GroupUnread</span>
+            }
+        </button>
+    </div>
+
+    @if (ChatSvc.ArchivedRooms.Any() || ChatSvc.ArchivedCount > 0)
+    {
+        <button class="room-archived-toggle" @onclick="OnToggleArchived">
+            <i data-lucide="archive"></i> Archived (@ChatSvc.ArchivedCount) <i data-lucide="@(ArchivedOpen ? "chevron-up" : "chevron-down")"></i>
+        </button>
+        @if (ArchivedOpen)
+        {
+            @foreach (var ar in ChatSvc.ArchivedRooms)
+            {
+                var room = ar;
+                <div class="room-item" @onclick="() => OnUnarchive.InvokeAsync(room.Id)">
+                    <div class="avatar" style="background:@GetRoomColor(room)">@GetRoomInitials(room)</div>
+                    <div class="info"><div class="name">@GetRoomName(room)</div><div class="preview">@(room.LastMessage ?? "")</div></div>
+                    <button class="comp-btn room-unarchive-btn" @onclick="() => OnUnarchive.InvokeAsync(room.Id)" @onclick:stopPropagation>Unarchive</button>
+                </div>
+            }
+            @if (ChatSvc.HasMoreArchived)
+            {
+                <button type="button" class="room-load-more" @onclick="OnLoadMoreArchived">
+                    <i data-lucide="chevron-down"></i> Load more archived (@(ChatSvc.ArchivedTotal - ChatSvc.ArchivedRooms.Count) more)
+                </button>
+            }
+        }
+    }
+
+    <div class="room-list">
+        @{
+            var rooms = Rooms;
+            var pinned = rooms.Where(r => r.IsPinned).ToList();
+            var recent = rooms.Where(r => !r.IsPinned).ToList();
+        }
+
+        @if (pinned.Any())
+        {
+            <div class="room-section-head"><i data-lucide="pin"></i> Pinned</div>
+            @foreach (var room in pinned)
+            {
+                var isActiveP = room.Id == ChatSvc.ActiveRoomId;
+                <div class="room-item @(isActiveP ? "active" : "") @(isActiveP && ChatSvc.IsOpening ? "busy" : "")" @onclick="() => OnOpenRoom.InvokeAsync(room.Id)">
+                    <div class="avatar @(room.Type == "dm" ? "round" : "")" style="background:@GetRoomColor(room)">
+                        @GetRoomInitials(room)
+                        @if (room.Type == "dm")
+                        {
+                            <span class="presence-dot @(room.PresenceStatus ?? "")"></span>
+                        }
+                    </div>
+                    <div class="info">
+                        <div class="name">
+                            @GetRoomName(room)
+                            <span class="pin-icon"><i data-lucide="pin"></i></span>
+                        </div>
+                        <div class="preview @(room.HasUnreadMention ? "mention-hl" : "")">
+                            @(room.LastMessage ?? "")
+                            @if (room.HasUnreadMention) { <i data-lucide="at-sign" class="mention-icon"></i> }
+                        </div>
+                    </div>
+                    <div class="meta">
+                        <span class="time">@FormatTime(room.LastMessageAt)</span>
+                        @if (room.UnreadCount > 0)
+                        {
+                            <span class="unread">@room.UnreadCount</span>
+                        }
+                        @if (room.IsMuted)
+                        {
+                            <span class="muted"><i data-lucide="bell-off"></i></span>
+                        }
+                        <button class="comp-btn btn-pin @(room.IsPinned ? "pinned" : "unpinned")" title="@(room.IsPinned ? "Unpin" : "Pin")" @onclick="() => OnTogglePin.InvokeAsync(room)" @onclick:stopPropagation>
+                            <i data-lucide="pin"></i>
+                        </button>
+                    </div>
+                </div>
+            }
+        }
+
+        @if (recent.Any())
+        {
+            <div class="room-section-head @(pinned.Any() ? "mt-4" : "")"><i data-lucide="clock"></i> Recent</div>
+            @foreach (var room in recent)
+            {
+                var isActiveR = room.Id == ChatSvc.ActiveRoomId;
+                <div class="room-item @(isActiveR ? "active" : "") @(isActiveR && ChatSvc.IsOpening ? "busy" : "")" @onclick="() => OnOpenRoom.InvokeAsync(room.Id)">
+                    <div class="avatar @(room.Type == "dm" ? "round" : "")" style="background:@GetRoomColor(room)">
+                        @GetRoomInitials(room)
+                        @if (room.Type == "dm")
+                        {
+                            <span class="presence-dot @(room.PresenceStatus ?? "")"></span>
+                        }
+                    </div>
+                    <div class="info">
+                        <div class="name">@GetRoomName(room)</div>
+                        <div class="preview @(room.HasUnreadMention ? "mention-hl" : "")">
+                            @(room.LastMessage ?? "")
+                            @if (room.HasUnreadMention) { <i data-lucide="at-sign" class="mention-icon"></i> }
+                        </div>
+                    </div>
+                    <div class="meta">
+                        <span class="time">@FormatTime(room.LastMessageAt)</span>
+                        @if (room.UnreadCount > 0)
+                        {
+                            <span class="unread">@room.UnreadCount</span>
+                        }
+                        @if (room.IsMuted)
+                        {
+                            <span class="muted"><i data-lucide="bell-off"></i></span>
+                        }
+                        <button class="comp-btn btn-pin @(room.IsPinned ? "pinned" : "unpinned")" title="@(room.IsPinned ? "Unpin" : "Pin")" @onclick="() => OnTogglePin.InvokeAsync(room)" @onclick:stopPropagation>
+                            <i data-lucide="pin"></i>
+                        </button>
+                    </div>
+                </div>
+            }
+        }
+
+        @if (!rooms.Any())
+        {
+            <div class="empty-state">
+                <i data-lucide="message-circle"></i>
+                <div class="sub">@(SearchActive ? "No conversations match your search." : "No conversations yet")</div>
+            </div>
+        }
+
+        @if (!SearchActive)
+        {
+            @if (ActiveTab == RoomTab.Direct && ChatSvc.HasMoreDirectRooms)
+            {
+                <button type="button" class="room-load-more" @onclick="OnLoadMoreDirect">
+                    <i data-lucide="chevron-down"></i> Load more conversations
+                </button>
+            }
+            @if (ActiveTab == RoomTab.Groups && ChatSvc.HasMoreGroupRooms)
+            {
+                <button type="button" class="room-load-more" @onclick="OnLoadMoreGroups">
+                    <i data-lucide="chevron-down"></i> Load more groups
+                </button>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<RoomListDto> Rooms { get; set; } = [];
+    [Parameter] public RoomTab ActiveTab { get; set; } = RoomTab.Direct;
+    [Parameter] public EventCallback<RoomTab> OnSetTab { get; set; }
+    [Parameter] public string SearchQuery { get; set; } = "";
+    [Parameter] public bool SearchActive { get; set; }
+    [Parameter] public EventCallback<ChangeEventArgs> OnSearchChanged { get; set; }
+    [Parameter] public int DirectUnread { get; set; }
+    [Parameter] public int GroupUnread { get; set; }
+    [Parameter] public bool HasGroupMention { get; set; }
+    [Parameter] public bool ArchivedOpen { get; set; }
+    [Parameter] public EventCallback OnToggleArchived { get; set; }
+    [Parameter] public EventCallback<Guid> OnUnarchive { get; set; }
+    [Parameter] public EventCallback OnLoadMoreArchived { get; set; }
+    [Parameter] public EventCallback OnLoadMoreDirect { get; set; }
+    [Parameter] public EventCallback OnLoadMoreGroups { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpenRoom { get; set; }
+    [Parameter] public EventCallback<RoomListDto> OnTogglePin { get; set; }
+    [Parameter] public EventCallback OnCloseMobile { get; set; }
+    [Parameter] public bool CreateDropdownOpen { get; set; }
+    [Parameter] public EventCallback OnToggleCreate { get; set; }
+    [Parameter] public EventCallback OnStartDm { get; set; }
+    [Parameter] public EventCallback OnStartGroup { get; set; }
+
+    [Parameter] public Func<RoomListDto, string> GetRoomName { get; set; } = _ => "";
+    [Parameter] public Func<RoomListDto, string> GetRoomInitials { get; set; } = _ => "";
+    [Parameter] public Func<RoomListDto, string> GetRoomColor { get; set; } = _ => "";
+    [Parameter] public Func<DateTime?, string> FormatTime { get; set; } = _ => "";
+}

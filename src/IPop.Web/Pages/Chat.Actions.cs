@@ -95,7 +95,6 @@ public partial class Chat
         }
         forwardOpen = false;
         forwardMsgId = null;
-        forwardSearch = "";
     }
 
     private async Task OnPollCreated(string pollPayload)

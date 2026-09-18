@@ -957,32 +957,13 @@
             </div> @* end .conv-body *@
 
             @* ---- Forward Modal (Task 13.4) ---- *@
-            @if (forwardOpen)
-            {
-                <div class="backdrop on" @onclick="() => forwardOpen = false"></div>
-                <div class="drawer on forward-drawer">
-                    <div class="tray-d"><div class="core-d forward-core">
-                        <div class="drawer-head">Forward to<button class="drawer-close" @onclick="() => forwardOpen = false"><i data-lucide="x"></i></button></div>
-                        <div style="padding:0 0 8px 0;">
-                            <input type="text" placeholder="Search conversations…" @bind="forwardSearch" @bind:event="oninput"
-                                   style="width:100%;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12px;" />
-                        </div>
-                        <div style="max-height:360px;overflow-y:auto;display:flex;flex-direction:column;gap:3px">
-                            @foreach (var room in ChatSvc.DirectRooms.Concat(ChatSvc.GroupRooms)
-                                .Where(r => string.IsNullOrWhiteSpace(forwardSearch) || GetRoomName(r).Contains(forwardSearch, StringComparison.OrdinalIgnoreCase))
-                                .Take(25))
-                            {
-                                var r = room;
-                                <div class="room-item forward-room-item" @onclick="() => ForwardTo(r.Id)">
-                                    <div class="avatar forward-avatar" style="background:@GetRoomColor(r)">@GetRoomInitials(r)</div>
-                                    <div class="info"><div class="name forward-name">@GetRoomName(r)</div></div>
-                                    <i data-lucide="send" style="width:13px;height:13px;color:var(--accent);margin-left:auto"></i>
-                                </div>
-                            }
-                        </div>
-                    </div></div>
-                </div>
-            }
+            <ChatForwardDialog IsOpen="@forwardOpen"
+                               IsOpenChanged="v => forwardOpen = v"
+                               Rooms="ChatSvc.DirectRooms.Concat(ChatSvc.GroupRooms).ToList()"
+                               OnForward="ForwardTo"
+                               GetRoomName="GetRoomName"
+                               GetRoomInitials="GetRoomInitials"
+                               GetRoomColor="GetRoomColor" />
 
             @* ---- Create Poll Modal ---- *@
             <CreatePollDialog IsOpen="@pollModalOpen"

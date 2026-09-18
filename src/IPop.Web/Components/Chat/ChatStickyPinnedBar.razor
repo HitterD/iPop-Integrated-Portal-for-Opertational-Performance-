@@ -1,0 +1,28 @@
+@using IPop.Application.Chat
+
+@if (Pins.Count > 0)
+{
+    var latestPin = Pins.OrderByDescending(p => p.PinnedAt).First();
+    <div class="sticky-pinned-bar" @onclick="() => OnJumpToPin.InvokeAsync(latestPin.MessageId)">
+        <div class="pin-ic"><i data-lucide="pin"></i></div>
+        <div class="pin-body">
+            <span class="pin-tag">Pinned Message @(Pins.Count > 1 ? $"({Pins.Count})" : "")</span>
+            <span class="pin-text">@(!string.IsNullOrEmpty(latestPin.Content) ? Truncate(latestPin.Content, 90) : "Pinned announcement")</span>
+        </div>
+        <button type="button" class="pin-all-btn" @onclick="OnViewAll" @onclick:stopPropagation>
+            View all
+        </button>
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<PinnedMessageDto> Pins { get; set; } = [];
+    [Parameter] public EventCallback<Guid> OnJumpToPin { get; set; }
+    [Parameter] public EventCallback OnViewAll { get; set; }
+
+    private static string Truncate(string? val, int max)
+    {
+        if (string.IsNullOrEmpty(val)) return "";
+        return val.Length <= max ? val : val[..max] + "…";
+    }
+}
