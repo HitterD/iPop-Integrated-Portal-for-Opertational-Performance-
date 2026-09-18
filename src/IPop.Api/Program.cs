@@ -35,7 +35,8 @@ builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, relo
 
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<IPopDbContext>(o =>
-    o.UseNpgsql(builder.Configuration.GetConnectionString("IPopDb")));
+    o.UseNpgsql(builder.Configuration.GetConnectionString("IPopDb"))
+     .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 builder.Services.AddDataProtection().PersistKeysToDbContext<IPopDbContext>();
 
 builder.Services.AddScoped<IPasswordHasher, Argon2PasswordHasher>();
