@@ -2,6 +2,10 @@ using IPop.Core.Entities;
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
+// Alias: the sibling folder IPop.Infrastructure.Mail creates a namespace that shadows the Mail entity type
+// inside the IPop.Infrastructure tree. Pin the entity via an alias that wins for this file.
+using Mail = IPop.Core.Entities.Mail;
+
 namespace IPop.Infrastructure.Persistence;
 
 public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(options), IDataProtectionKeyContext
@@ -25,6 +29,48 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<SynologyCredential> SynologyCredentials => Set<SynologyCredential>();
     public DbSet<UserPermissionOverride> UserPermissionOverrides => Set<UserPermissionOverride>();
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
+
+    // Chat entities
+    public DbSet<ChatRoom> ChatRooms => Set<ChatRoom>();
+    public DbSet<ChatRoomMember> ChatRoomMembers => Set<ChatRoomMember>();
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<ChatMessageEdit> ChatMessageEdits => Set<ChatMessageEdit>();
+    public DbSet<ChatAttachment> ChatAttachments => Set<ChatAttachment>();
+    public DbSet<ChatReaction> ChatReactions => Set<ChatReaction>();
+    public DbSet<ChatReadReceipt> ChatReadReceipts => Set<ChatReadReceipt>();
+    public DbSet<ChatPinnedMessage> ChatPinnedMessages => Set<ChatPinnedMessage>();
+    public DbSet<ChatRoomUserSettings> ChatRoomUserSettings => Set<ChatRoomUserSettings>();
+    public DbSet<ChatMention> ChatMentions => Set<ChatMention>();
+    public DbSet<ChatMembershipAudit> ChatMembershipAudits => Set<ChatMembershipAudit>();
+
+    // Notification Gateway entities
+    public DbSet<NotificationGatewayClient> NotificationGatewayClients => Set<NotificationGatewayClient>();
+    public DbSet<NotificationRequest> NotificationRequests => Set<NotificationRequest>();
+    public DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
+
+    // Mail entities (use fully-qualified name to avoid shadowing by sibling namespace IPop.Infrastructure.Mail)
+    public DbSet<IPop.Core.Entities.Mail> Mails => Set<IPop.Core.Entities.Mail>();
+    public DbSet<MailRecipient> MailRecipients => Set<MailRecipient>();
+    public DbSet<MailAttachment> MailAttachments => Set<MailAttachment>();
+
+    // Projects entities
+    public DbSet<Project> Projects => Set<Project>();
+    public DbSet<ProjectTask> ProjectTasks => Set<ProjectTask>();
+    public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
+    public DbSet<ProjectTaskAssignee> ProjectTaskAssignees => Set<ProjectTaskAssignee>();
+    public DbSet<ProjectRoom> ProjectRooms => Set<ProjectRoom>();
+    public DbSet<WorkCalendarEntry> WorkCalendarEntries => Set<WorkCalendarEntry>();
+
+    // News & Memos entities (single table with type enum: news/announcement/memo)
+    public DbSet<NewsPost> NewsPosts => Set<NewsPost>();
+    public DbSet<NewsTarget> NewsTargets => Set<NewsTarget>();
+    public DbSet<NewsAcknowledgement> NewsAcknowledgements => Set<NewsAcknowledgement>();
+    public DbSet<NewsAudit> NewsAudits => Set<NewsAudit>();
+
+    // Calls stub entities (signaling only — no media transport this wave)
+    public DbSet<CallRoom> CallRooms => Set<CallRoom>();
+    public DbSet<CallParticipant> CallParticipants => Set<CallParticipant>();
+    public DbSet<CallHistory> CallHistories => Set<CallHistory>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -109,6 +155,310 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasKey(x => new { x.UserId, x.DirGroupId });
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.DirGroup).WithMany(g => g.Members).HasForeignKey(x => x.DirGroupId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Chat entities
+        b.Entity<ChatRoom>(e =>
+        {
+            e.HasIndex(x => x.LastMessageAt);
+            e.HasIndex(x => x.Type);
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.Description).HasMaxLength(500);
+        });
+
+        b.Entity<ChatRoomMember>(e =>
+        {
+            e.HasIndex(x => new { x.RoomId, x.UserId }).IsUnique().HasFilter("\"LeftAt\" IS NULL");
+            e.HasIndex(x => x.UserId);
+            e.HasOne(x => x.Room).WithMany(r => r.Members).HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ChatMessage>(e =>
+        {
+            e.HasIndex(x => new { x.RoomId, x.IdempotencyKey }).IsUnique();
+            e.HasIndex(x => new { x.RoomId, x.CreatedAt });
+            e.HasIndex(x => new { x.ThreadParentId, x.CreatedAt });
+            e.Property(x => x.Content).HasMaxLength(4000);
+            e.HasOne(x => x.Room).WithMany(r => r.Messages).HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Sender).WithMany().HasForeignKey(x => x.SenderId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.ReplyTo).WithMany().HasForeignKey(x => x.ReplyToId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.ThreadParent).WithMany().HasForeignKey(x => x.ThreadParentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<ChatMessageEdit>(e =>
+        {
+            e.HasIndex(x => x.MessageId);
+            e.HasOne(x => x.Message).WithMany(m => m.EditHistory).HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ChatAttachment>(e =>
+        {
+            e.HasIndex(x => x.MessageId);
+            e.HasIndex(x => new { x.CreatedAt, x.MessageId });
+            e.HasOne(x => x.Message).WithMany(m => m.Attachments).HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ChatReaction>(e =>
+        {
+            e.HasKey(x => new { x.MessageId, x.UserId, x.Emoji });
+            e.HasOne(x => x.Message).WithMany(m => m.Reactions).HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ChatReadReceipt>(e =>
+        {
+            e.HasKey(x => new { x.MessageId, x.UserId });
+            e.Property(x => x.DeliveredAt).IsRequired(false);
+            e.Property(x => x.ReadAt).IsRequired(false);
+            e.HasIndex(x => x.UserId);
+            e.HasOne(x => x.Message).WithMany(m => m.ReadReceipts).HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ChatPinnedMessage>(e =>
+        {
+            e.HasIndex(x => new { x.RoomId, x.MessageId }).IsUnique();
+            e.HasIndex(x => new { x.RoomId, x.PinnedAt });
+            e.HasOne(x => x.Room).WithMany(r => r.PinnedMessages).HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Message).WithMany().HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.PinnedByUser).WithMany().HasForeignKey(x => x.PinnedByUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<ChatRoomUserSettings>(e =>
+        {
+            e.HasKey(x => new { x.UserId, x.RoomId });
+            e.Property(x => x.ReadReceiptsEnabled).HasDefaultValue(true);
+            e.HasIndex(x => new { x.UserId, x.IsArchived });
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ChatMention>(e =>
+        {
+            e.HasIndex(x => new { x.MessageId, x.UserId }).IsUnique();
+            e.HasIndex(x => new { x.UserId, x.CreatedAt });
+            e.HasIndex(x => new { x.NotifiedAt, x.NextAttemptAt }).HasFilter("\"NotifiedAt\" IS NULL");
+            e.HasOne(x => x.Message).WithMany(m => m.Mentions).HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ChatMembershipAudit>(e =>
+        {
+            e.HasIndex(x => new { x.RoomId, x.CreatedAt, x.Id });
+            e.Property(x => x.Action).HasMaxLength(32);
+            e.Property(x => x.OldValue).HasMaxLength(200);
+            e.Property(x => x.NewValue).HasMaxLength(200);
+            e.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Actor).WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.TargetUser).WithMany().HasForeignKey(x => x.TargetUserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Mail entities (use FQN to avoid 'Mail' namespace shadowing from sibling folder IPop.Infrastructure.Mail)
+        b.Entity<IPop.Core.Entities.Mail>(e =>
+        {
+            e.HasIndex(x => new { x.SenderId, x.Status, x.CreatedAt });
+            e.HasIndex(x => new { x.Status, x.ScheduledAt });
+            e.HasIndex(x => new { x.ThreadRootId, x.ThreadCount });
+            e.HasIndex(x => new { x.InReplyToId, x.CreatedAt });
+            e.Property(x => x.Subject).HasMaxLength(500);
+            e.Property(x => x.Importance).HasMaxLength(16).HasDefaultValue("normal");
+            e.HasOne(x => x.Sender).WithMany().HasForeignKey(x => x.SenderId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.InReplyTo).WithMany().HasForeignKey(x => x.InReplyToId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.ThreadRoot).WithMany().HasForeignKey(x => x.ThreadRootId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        b.Entity<MailRecipient>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.Folder, x.CreatedAt });
+            e.HasIndex(x => new { x.UserId, x.Folder, x.IsPinned, x.CreatedAt });
+            e.HasIndex(x => new { x.MailId, x.UserId }).IsUnique();
+            e.HasIndex(x => x.DeliveredAt);
+            e.Property(x => x.RecipientType).HasMaxLength(8);
+            e.Property(x => x.Folder).HasMaxLength(16);
+            e.HasOne(x => x.Mail).WithMany(m => m.Recipients).HasForeignKey(x => x.MailId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<MailAttachment>(e =>
+        {
+            e.HasIndex(x => x.MailId);
+            e.HasOne(x => x.Mail).WithMany(m => m.Attachments).HasForeignKey(x => x.MailId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Projects entities
+        b.Entity<Project>(e =>
+        {
+            e.HasIndex(x => x.Year);
+            e.HasIndex(x => x.OwnerId);
+            e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.IsActive);
+            e.HasIndex(x => new { x.Year, x.Status });
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Description).HasMaxLength(4000);
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.Property(x => x.Risk).HasMaxLength(2000);
+            e.Property(x => x.Obstacle).HasMaxLength(2000);
+            e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<ProjectMember>(e =>
+        {
+            e.HasKey(x => new { x.ProjectId, x.UserId });
+            e.HasIndex(x => x.UserId);
+            e.Property(x => x.Role).HasMaxLength(32);
+            e.HasOne(x => x.Project).WithMany(p => p.Members).HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ProjectTask>(e =>
+        {
+            e.HasIndex(x => x.ProjectId);
+            e.HasIndex(x => x.ParentTaskId);
+            e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.DueDate);
+            e.HasIndex(x => new { x.ProjectId, x.Status, x.SortOrder });
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.Property(x => x.Description).HasMaxLength(4000);
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.Property(x => x.Priority).HasMaxLength(32);
+            e.Property(x => x.Dependencies).HasMaxLength(2000);
+            e.Property(x => x.RecurrenceRule).HasMaxLength(200);
+            e.HasOne(x => x.Project).WithMany(p => p.Tasks).HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.ParentTask).WithMany(t => t.Subtasks).HasForeignKey(x => x.ParentTaskId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.CreatedBy).WithMany().HasForeignKey(x => x.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<ProjectTaskAssignee>(e =>
+        {
+            e.HasKey(x => new { x.TaskId, x.UserId });
+            e.HasIndex(x => x.UserId);
+            e.Property(x => x.Role).HasMaxLength(32);
+            e.HasOne(x => x.Task).WithMany(t => t.Assignees).HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // ipop-21 PERFECTION: ProjectRoom (chat room per project) + WorkCalendarEntry
+        b.Entity<ProjectRoom>(e =>
+        {
+            e.HasKey(x => x.ProjectId);
+            e.HasIndex(x => x.RoomId).IsUnique();
+            e.HasOne(x => x.Project).WithOne().HasForeignKey<ProjectRoom>(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Room).WithOne().HasForeignKey<ProjectRoom>(x => x.RoomId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<WorkCalendarEntry>(e =>
+        {
+            e.HasIndex(x => new { x.ProjectId, x.Date }).IsUnique();
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Note).HasMaxLength(1000);
+            e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.CreatedBy).WithMany().HasForeignKey(x => x.CreatedById).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Notification Gateway entities
+        b.Entity<NotificationGatewayClient>(e =>
+        {
+            e.HasIndex(x => x.ClientId).IsUnique();
+            e.Property(x => x.ClientId).HasMaxLength(80);
+            e.Property(x => x.SecretHash).HasMaxLength(200);
+            e.Property(x => x.AllowedIps).HasMaxLength(400);
+            e.Property(x => x.AllowedEventTypes).HasMaxLength(400);
+        });
+
+        b.Entity<NotificationRequest>(e =>
+        {
+            e.HasIndex(x => new { x.ClientId, x.IdempotencyKey }).IsUnique();
+            e.HasIndex(x => new { x.Priority, x.Status, x.CreatedAt });
+            e.Property(x => x.IdempotencyKey).HasMaxLength(120);
+            e.Property(x => x.Priority).HasMaxLength(16);
+            e.Property(x => x.EventType).HasMaxLength(64);
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Body).HasMaxLength(4000);
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.Property(x => x.TargetEmployeeNik).HasMaxLength(64);
+            e.Property(x => x.TargetRole).HasMaxLength(64);
+            e.HasOne(x => x.Client).WithMany(c => c.Requests).HasForeignKey(x => x.ClientId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<NotificationDelivery>(e =>
+        {
+            e.HasIndex(x => new { x.RequestId, x.UserId }).IsUnique();
+            e.HasIndex(x => new { x.Status, x.NextAttemptAt });
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.Property(x => x.Channel).HasMaxLength(16);
+            e.Property(x => x.LastError).HasMaxLength(500);
+            e.HasOne(x => x.Request).WithMany(r => r.Deliveries).HasForeignKey(x => x.RequestId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // News & Memos (single table; type enum)
+        b.Entity<NewsPost>(e =>
+        {
+            e.HasIndex(x => x.Status);
+            e.HasIndex(x => x.Type);
+            e.HasIndex(x => x.IsPinned);
+            e.HasIndex(x => new { x.Status, x.PublishAt });
+            e.HasIndex(x => new { x.Type, x.Status, x.CreatedAt });
+            e.Property(x => x.Type).HasMaxLength(32);
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.Property(x => x.Body).HasMaxLength(20000);
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.Property(x => x.RejectionReason).HasMaxLength(2000);
+            e.HasOne(x => x.Author).WithMany().HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Approver).WithMany().HasForeignKey(x => x.ApproverId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<NewsTarget>(e =>
+        {
+            e.HasIndex(x => x.NewsPostId);
+            e.HasIndex(x => new { x.Kind, x.Value });
+            e.Property(x => x.Kind).HasMaxLength(32);
+            e.Property(x => x.Value).HasMaxLength(200);
+            e.HasOne(x => x.NewsPost).WithMany(p => p.Targets).HasForeignKey(x => x.NewsPostId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NewsAcknowledgement>(e =>
+        {
+            e.HasKey(x => new { x.NewsPostId, x.UserId });
+            e.HasOne(x => x.NewsPost).WithMany(p => p.Acknowledgements).HasForeignKey(x => x.NewsPostId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<NewsAudit>(e =>
+        {
+            e.HasIndex(x => new { x.NewsPostId, x.CreatedAt, x.Id });
+            e.Property(x => x.Action).HasMaxLength(32);
+            e.Property(x => x.Detail).HasMaxLength(2000);
+            e.HasOne(x => x.NewsPost).WithMany(p => p.Audits).HasForeignKey(x => x.NewsPostId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Actor).WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Calls stub — pure signaling; no media transport this wave.
+        b.Entity<CallRoom>(e =>
+        {
+            e.HasIndex(x => new { x.CreatorId, x.Status });
+            e.HasIndex(x => x.Status);
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.Quality).HasMaxLength(8);
+            e.HasOne(x => x.Creator).WithMany().HasForeignKey(x => x.CreatorId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<CallParticipant>(e =>
+        {
+            e.HasIndex(x => new { x.CallId, x.UserId });
+            e.HasIndex(x => x.UserId);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.HasOne(x => x.Call).WithMany(c => c.Participants).HasForeignKey(x => x.CallId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<CallHistory>(e =>
+        {
+            e.HasIndex(x => new { x.PerformerId, x.StartedAt });
+            e.Property(x => x.Direction).HasMaxLength(8);
+            e.Property(x => x.Result).HasMaxLength(16);
+            e.HasOne(x => x.Call).WithMany().HasForeignKey(x => x.CallId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Performer).WithMany().HasForeignKey(x => x.PerformerId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }
