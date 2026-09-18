@@ -1,4 +1,5 @@
 using IPop.Application.Mail;
+using IPop.Application.Notifications;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -10,7 +11,7 @@ using MailEntity = IPop.Core.Entities.Mail;
 
 namespace IPop.Infrastructure.Mail;
 
-public sealed class MailService(IPopDbContext db) : IMailService
+public sealed class MailService(IPopDbContext db, INotificationGatewayService? notificationGateway = null) : IMailService
 {
     private const int MaxRecipients = 100;
     private const int MaxSubjectLength = 500;
@@ -63,6 +64,40 @@ public sealed class MailService(IPopDbContext db) : IMailService
 
         mail.HasAttachment = await LinkAttachmentsAsync(mail.Id, req.AttachmentIds, ct);
         await db.SaveChangesAsync(ct);
+
+        if (!isScheduled && notificationGateway != null)
+        {
+            var recipientIds = recipientUsers
+                .Where(u => u.Id != senderId)
+                .Select(u => u.Id)
+                .Distinct()
+                .ToList();
+
+            if (recipientIds.Count > 0)
+            {
+                try
+                {
+                    var senderUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == senderId, ct);
+                    var senderDisplayName = senderUser?.Name ?? "Seseorang";
+                    var preview = Truncate(mail.Body, 120);
+
+                    await notificationGateway.PublishInternalAsync(
+                        clientSlug: "mail",
+                        eventType: "mail.new",
+                        title: $"Email baru dari {senderDisplayName}",
+                        message: string.IsNullOrWhiteSpace(preview) ? mail.Subject : $"{mail.Subject} — {preview}",
+                        target: new NotificationTarget(UserIds: recipientIds),
+                        priority: mail.Importance == "high" ? "high" : "normal",
+                        targetUrl: "/mail",
+                        ct: ct);
+                }
+                catch
+                {
+                    // Non-blocking notification delivery
+                }
+            }
+        }
+
         return new SendMailResult(true, mail.Id, null);
     }
 
