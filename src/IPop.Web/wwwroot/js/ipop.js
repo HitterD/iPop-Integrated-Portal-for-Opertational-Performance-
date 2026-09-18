@@ -951,6 +951,67 @@ window.ipop = {
     const html = `<img src="${src}" style="max-width:100%;border-radius:6px;margin:6px 0;" alt="Image" /><p></p>`;
     document.execCommand("insertHTML", false, html);
     el.dispatchEvent(new Event("input", { bubbles: true }));
+  },
+
+  // ---- Audio / Voice Note Recording -----------------------------------------
+  _mediaRecorder: null,
+  _audioChunks: [],
+  _audioStream: null,
+
+  async startAudioRecord() {
+    try {
+      this._audioChunks = [];
+      this._audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this._mediaRecorder = new MediaRecorder(this._audioStream);
+      this._mediaRecorder.ondataavailable = e => {
+        if (e.data && e.data.size > 0) this._audioChunks.push(e.data);
+      };
+      this._mediaRecorder.start(200);
+      return true;
+    } catch (e) {
+      console.warn("Audio record permission error:", e);
+      return false;
+    }
+  },
+
+  stopAudioRecord(dotNet) {
+    return new Promise(resolve => {
+      if (!this._mediaRecorder || this._mediaRecorder.state === "inactive") {
+        resolve(null);
+        return;
+      }
+      this._mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(this._audioChunks, { type: "audio/webm" });
+        if (this._audioStream) {
+          this._audioStream.getTracks().forEach(t => t.stop());
+          this._audioStream = null;
+        }
+        const buf = await audioBlob.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        const chunk = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+        }
+        const b64 = btoa(binary);
+        if (dotNet) {
+          dotNet.invokeMethodAsync("OnVoiceRecorded", b64, audioBlob.size);
+        }
+        resolve(b64);
+      };
+      this._mediaRecorder.stop();
+    });
+  },
+
+  cancelAudioRecord() {
+    if (this._mediaRecorder && this._mediaRecorder.state !== "inactive") {
+      this._mediaRecorder.stop();
+    }
+    if (this._audioStream) {
+      this._audioStream.getTracks().forEach(t => t.stop());
+      this._audioStream = null;
+    }
+    this._audioChunks = [];
   }
 };
 

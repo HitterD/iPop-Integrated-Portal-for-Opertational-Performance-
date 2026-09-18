@@ -1,0 +1,105 @@
+@using IPop.Web.Services
+@inject IJSRuntime JS
+
+@if (IsOpen)
+{
+    <div class="syno-modal-overlay" @onclick="Close">
+        <div class="syno-picker-dialog" style="max-width:440px" @onclick:stopPropagation>
+            <div class="syno-picker-head">
+                <span class="title"><i data-lucide="bar-chart-2"></i> Create Poll</span>
+                <button type="button" class="icon-btn" @onclick="Close"><i data-lucide="x"></i></button>
+            </div>
+            <div class="syno-picker-body" style="padding:16px;display:flex;flex-direction:column;gap:12px">
+                <label style="display:flex;flex-direction:column;gap:5px;font-size:12px;font-weight:600;color:var(--ink)">
+                    Poll Question
+                    <input type="text"
+                           placeholder="Ask a question…"
+                           @bind="question"
+                           style="padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:13px;" />
+                </label>
+
+                <div style="display:flex;flex-direction:column;gap:6px">
+                    <span style="font-size:12px;font-weight:600;color:var(--ink)">Options</span>
+                    @for (int i = 0; i < options.Count; i++)
+                    {
+                        var idx = i;
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <input type="text"
+                                   placeholder="@($"Option {idx + 1}")"
+                                   @bind="options[idx]"
+                                   style="flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12.5px;" />
+                            @if (options.Count > 2)
+                            {
+                                <button type="button" class="comp-btn" style="width:28px;height:28px;padding:0" @onclick="() => options.RemoveAt(idx)">
+                                    <i data-lucide="trash-2" style="width:12px;height:12px"></i>
+                                </button>
+                            }
+                        </div>
+                    }
+                    @if (options.Count < 6)
+                    {
+                        <button type="button" class="comp-btn" style="height:28px;font-size:11.5px;margin-top:4px" @onclick="() => options.Add(string.Empty)">
+                            <i data-lucide="plus" style="width:12px;height:12px;margin-right:4px"></i> Add Option
+                        </button>
+                    }
+                </div>
+
+                <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-2);cursor:pointer;margin-top:4px">
+                    <input type="checkbox" @bind="allowMultiple" style="accent-color:var(--accent)" />
+                    <span>Allow multiple answers</span>
+                </label>
+            </div>
+            <div class="syno-picker-foot">
+                <button type="button" class="comp-btn" @onclick="Close">Cancel</button>
+                <button type="button" class="btn" style="width:auto;margin:0" @onclick="SubmitPoll" disabled="@(!IsValid)">
+                    Create Poll
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public EventCallback<string> OnPollCreated { get; set; }
+
+    private string question = "";
+    private List<string> options = ["", ""];
+    private bool allowMultiple;
+
+    private bool IsValid => !string.IsNullOrWhiteSpace(question) && options.Count(o => !string.IsNullOrWhiteSpace(o)) >= 2;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (IsOpen) await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private void Close()
+    {
+        IsOpen = false;
+        IsOpenChanged.InvokeAsync(false);
+    }
+
+    private async Task SubmitPoll()
+    {
+        if (!IsValid) return;
+
+        var validOptions = options.Where(o => !string.IsNullOrWhiteSpace(o)).Select(o => o.Trim()).ToList();
+        var pollObj = new PollView.PollData
+        {
+            Question = question.Trim(),
+            Options = validOptions,
+            AllowMultiple = allowMultiple,
+            Votes = new()
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(pollObj);
+        await OnPollCreated.InvokeAsync("[poll]" + json);
+
+        question = "";
+        options = ["", ""];
+        allowMultiple = false;
+        Close();
+    }
+}

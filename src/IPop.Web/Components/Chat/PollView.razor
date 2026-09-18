@@ -1,0 +1,128 @@
+@using System.Text.Json
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject ChatState ChatSvc
+
+<div class="poll-card">
+    <div class="poll-question">📊 @Question</div>
+
+    <div class="poll-options">
+        @for (int i = 0; i < Options.Count; i++)
+        {
+            var idx = i;
+            var opt = Options[idx];
+            var voteCount = GetVoteCount(idx);
+            var pct = TotalVotes > 0 ? (int)Math.Round((double)voteCount / TotalVotes * 100) : 0;
+            var hasVoted = HasUserVoted(idx);
+
+            <div class="poll-opt @(hasVoted ? "voted" : "")" @onclick="() => ToggleVote(idx)">
+                <div class="poll-opt-progress" style="width:@(pct)%"></div>
+                <div class="poll-opt-text">
+                    <span>@(hasVoted ? "☑" : "☐")</span>
+                    <span>@opt</span>
+                </div>
+                <div class="poll-opt-pct">
+                    @pct% (@voteCount)
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="poll-meta">
+        <span>@(AllowMultiple ? "Multiple choice" : "Single choice")</span>
+        <span>@TotalVotes vote@(TotalVotes == 1 ? "" : "s")</span>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string PollJson { get; set; } = "";
+    [Parameter] public Guid MessageId { get; set; }
+
+    public class PollData
+    {
+        public string Question { get; set; } = "";
+        public List<string> Options { get; set; } = [];
+        public bool AllowMultiple { get; set; }
+        public Dictionary<string, List<string>> Votes { get; set; } = new(); // optionIndex -> list of userNiks
+    }
+
+    private PollData data = new();
+    private string Question => data.Question;
+    private List<string> Options => data.Options ?? [];
+    private bool AllowMultiple => data.AllowMultiple;
+
+    protected override void OnParametersSet()
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(PollJson))
+            {
+                data = JsonSerializer.Deserialize<PollData>(PollJson) ?? new();
+            }
+        }
+        catch
+        {
+            data = new();
+        }
+    }
+
+    private int TotalVotes
+    {
+        get
+        {
+            if (data.Votes == null) return 0;
+            var set = new HashSet<string>();
+            foreach (var list in data.Votes.Values)
+            {
+                foreach (var nik in list) set.Add(nik);
+            }
+            return set.Count;
+        }
+    }
+
+    private int GetVoteCount(int optionIndex)
+    {
+        var key = optionIndex.ToString();
+        return (data.Votes != null && data.Votes.TryGetValue(key, out var list)) ? list.Count : 0;
+    }
+
+    private bool HasUserVoted(int optionIndex)
+    {
+        var me = Auth.Me?.Nik;
+        if (me == null || data.Votes == null) return false;
+        var key = optionIndex.ToString();
+        return data.Votes.TryGetValue(key, out var list) && list.Contains(me);
+    }
+
+    private async Task ToggleVote(int optionIndex)
+    {
+        var me = Auth.Me?.Nik;
+        if (me == null || ChatSvc.ActiveRoomId == null) return;
+
+        data.Votes ??= new();
+        var key = optionIndex.ToString();
+        data.Votes.TryAdd(key, new List<string>());
+
+        if (!AllowMultiple)
+        {
+            // Remove user from all other options
+            foreach (var kv in data.Votes)
+            {
+                if (kv.Key != key) kv.Value.Remove(me);
+            }
+        }
+
+        if (data.Votes[key].Contains(me))
+        {
+            data.Votes[key].Remove(me);
+        }
+        else
+        {
+            data.Votes[key].Add(me);
+        }
+
+        var newContent = "[poll]" + JsonSerializer.Serialize(data);
+        await Auth.SendAsync(HttpMethod.Put, $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/messages/{MessageId}", new { content = newContent });
+        StateHasChanged();
+    }
+}
