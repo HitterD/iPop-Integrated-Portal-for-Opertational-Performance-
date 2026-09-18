@@ -259,44 +259,34 @@ Write-Host ""
 $apiJob = $null
 $webJob = $null
 try {
-    # Api: bind to 0.0.0.0 so LAN devices can reach it. Redirect output so startup
-    # failures (database, Redis, port binding) remain visible after the launcher exits.
-    $apiJob = Start-Process -PassThru -NoNewWindow -FilePath "dotnet" -ArgumentList "run --project src/IPop.Api/IPop.Api.csproj --no-build --urls http://0.0.0.0:$ApiPort" -RedirectStandardOutput (Join-Path $runLogDir "api.out.log") -RedirectStandardError (Join-Path $runLogDir "api.err.log")
-    Start-Sleep -Milliseconds 1500
-    if ($apiJob.HasExited) {
-        $details = if (Test-Path (Join-Path $runLogDir "api.err.log")) { Get-Content (Join-Path $runLogDir "api.err.log") -Raw } else { "No API error output was captured." }
-        Fail "API stopped during startup (exit $($apiJob.ExitCode)).`n$details"
+    function Start-VisibleProcess([string]$title, [string]$projectPath, [int]$port) {
+        $runCmd = "dotnet run --project $projectPath --no-build --urls http://0.0.0.0:$port"
+        $hasWt = [bool](Get-Command wt.exe -ErrorAction SilentlyContinue)
+        $started = $false
+        if ($hasWt) {
+            try {
+                & wt.exe -w 0 new-tab -d "$PSScriptRoot" --title "$title" cmd.exe /k "title $title && $runCmd"
+                if ($? -and $LASTEXITCODE -eq 0) { $started = $true }
+            } catch {
+                $started = $false
+            }
+        }
+        if (-not $started) {
+            Start-Process cmd.exe -ArgumentList "/k title $title && $runCmd" -WorkingDirectory $PSScriptRoot
+        }
     }
 
-    # Web: devserver bound to 0.0.0.0
-    $webJob = Start-Process -PassThru -NoNewWindow -FilePath "dotnet" -ArgumentList "run --project src/IPop.Web/IPop.Web.csproj --no-build --urls http://0.0.0.0:$WebPort" -RedirectStandardOutput (Join-Path $runLogDir "web.out.log") -RedirectStandardError (Join-Path $runLogDir "web.err.log")
-    Start-Sleep -Milliseconds 1500
-    if ($webJob.HasExited) {
-        $details = if (Test-Path (Join-Path $runLogDir "web.err.log")) { Get-Content (Join-Path $runLogDir "web.err.log") -Raw } else { "No Web error output was captured." }
-        Fail "Web stopped during startup (exit $($webJob.ExitCode)).`n$details"
-    }
+    Info "Opening visible console tabs for Backend and Frontend..."
+    Start-VisibleProcess "IPop API" "src/IPop.Api/IPop.Api.csproj" $ApiPort
+    Start-Sleep -Milliseconds 800
+
+    Start-VisibleProcess "IPop Web" "src/IPop.Web/IPop.Web.csproj" $WebPort
+    Start-Sleep -Milliseconds 800
 
     # Wait until either exits (Ctrl+C kills this script, finally block cleans up)
+    $startTime = [DateTime]::UtcNow
     while ($true) {
-        if ($apiJob.HasExited) {
-            Warn "Api exited with code $($apiJob.ExitCode)."
-            $errFile = Join-Path $runLogDir "api.err.log"
-            if (Test-Path $errFile) {
-                $err = (Get-Content $errFile -Raw).Trim()
-                if ($err) { Write-Host "`n--- Api Error Log ---`n$err`n" -ForegroundColor Red }
-            }
-            break
-        }
-        if ($webJob.HasExited) {
-            Warn "Web exited with code $($webJob.ExitCode)."
-            $errFile = Join-Path $runLogDir "web.err.log"
-            if (Test-Path $errFile) {
-                $err = (Get-Content $errFile -Raw).Trim()
-                if ($err) { Write-Host "`n--- Web Error Log ---`n$err`n" -ForegroundColor Red }
-            }
-            break
-        }
-        Start-Sleep -Milliseconds 700
+        Start-Sleep -Milliseconds 1000
         # Light liveness: show once when both are listening
         if (-not $shown) {
             $apiUp = $false; $webUp = $false
@@ -307,22 +297,22 @@ try {
                 }
             }
             try { $null = Invoke-WebRequest -UseBasicParsing "http://localhost:$WebPort/" -TimeoutSec 1; $webUp = $true } catch {}
-            if ($apiUp -and $webUp) { Ok "Both Api and Web are responding."; $shown = $true }
+            if ($apiUp -and $webUp) {
+                Ok "Both Api and Web are responding."
+                Ok "Live logs are streaming in 'IPop API' and 'IPop Web' tabs."
+                $shown = $true
+            } elseif (([DateTime]::UtcNow - $startTime).TotalSeconds -gt 45) {
+                if (-not $apiUp) { Warn "Api is taking longer than expected on port $ApiPort (check 'IPop API' tab)." }
+                if (-not $webUp) { Warn "Web is taking longer than expected on port $WebPort (check 'IPop Web' tab)." }
+                $startTime = [DateTime]::UtcNow
+            }
         }
     }
 } finally {
     Info "Shutting down..."
-    foreach ($j in @($webJob, $apiJob) | Where-Object { $_ -and -not $_.HasExited }) {
-        try { $j.Kill($true) } catch {}
-    }
-    # Kill any leftover child dotnet processes spawned by dotnet watch/devserver lineage
-    # (only those whose parent was one of our jobs - avoid killing unrelated dotnets)
     Start-Sleep -Milliseconds 400
-    foreach ($j in @($apiJob, $webJob)) {
-        if (-not $j) { continue }
-        Get-CimInstance Win32_Process -Filter "ParentProcessId=$($j.Id)" -ErrorAction SilentlyContinue | ForEach-Object {
-            try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {}
-        }
+    foreach ($o in @(Get-IPopOrphans)) {
+        try { Stop-Process -Id $o.ProcessId -Force -ErrorAction SilentlyContinue } catch {}
     }
     if ($patched -and $origApiBase -and (Test-Path $webSettings)) {
         try {
