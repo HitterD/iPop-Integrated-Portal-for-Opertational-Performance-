@@ -3,6 +3,7 @@ using IPop.Application.Files;
 using IPop.Infrastructure.Files;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -32,7 +33,8 @@ public class FileAccessTests
         var tdb = new TestDb();
         var gw = new StubGateway();
         var protector = new EphemeralDataProtectionProvider();
-        var svc = new FileAccessService(tdb.Db, gw, protector, NullLogger<FileAccessService>.Instance);
+        var cfg = new ConfigurationBuilder().Build();
+        var svc = new FileAccessService(tdb.Db, gw, protector, cfg, NullLogger<FileAccessService>.Instance);
         return (tdb, svc, gw);
     }
 
@@ -123,5 +125,71 @@ public class FileAccessTests
         var (foundKrw, _) = await svc.GetCredentialAsync(user.Id, "krw", default);
         Assert.False(foundSpj);
         Assert.True(foundKrw);
+    }
+
+    [Fact]
+    public async Task UploadAsync_FormatsQueryAndMultipartAccordingToSynologySpec()
+    {
+        string? capturedUri = null;
+        string? capturedBody = null;
+        var handler = new DelegateHttpMessageHandler(async req =>
+        {
+            capturedUri = req.RequestUri?.ToString();
+            capturedBody = req.Content is not null ? await req.Content.ReadAsStringAsync() : null;
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"success\":true,\"data\":{\"file\":\"doc.pdf\"}}", Encoding.UTF8, "application/json")
+            };
+        });
+        var http = new HttpClient(handler);
+        var cfg = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Synology:Servers:spj"] = "https://192.168.2.16:30001"
+        }).Build();
+
+        var gateway = new HttpSynologyGateway(http, cfg);
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes("sample pdf bytes"));
+
+        await gateway.UploadAsync("spj", "test-sid-123", "/home/chat/room1", "doc.pdf", stream, default);
+
+        Assert.NotNull(capturedUri);
+        Assert.Contains("api=SYNO.FileStation.Upload", capturedUri);
+        Assert.Contains("version=2", capturedUri);
+        Assert.Contains("method=upload", capturedUri);
+        Assert.Contains("_sid=test-sid-123", capturedUri);
+
+        Assert.NotNull(capturedBody);
+        Assert.Contains("name=\"path\"", capturedBody);
+        Assert.Contains("/home/chat/room1", capturedBody);
+        Assert.Contains("name=\"create_parents\"", capturedBody);
+        Assert.Contains("true", capturedBody);
+        Assert.Contains("name=\"overwrite\"", capturedBody);
+        Assert.Contains("name=\"file\"; filename=\"doc.pdf\"", capturedBody);
+        Assert.Contains("sample pdf bytes", capturedBody);
+    }
+
+    [Fact]
+    public async Task WordDocumentService_ConvertToPdf_ProducesValidPdfBytes()
+    {
+        var factory = new IPop.Infrastructure.Documents.DevExpressDocumentFactory();
+        var service = new IPop.Infrastructure.Documents.WordDocumentService(factory);
+        var docxBytes = await service.CreateSampleDocumentAsync("Test Doc", "This is content");
+
+        using var ms = new MemoryStream(docxBytes);
+        var pdfBytes = await service.ConvertToPdfAsync(ms);
+
+        Assert.NotNull(pdfBytes);
+        Assert.True(pdfBytes.Length > 0);
+        // PDF header magic bytes %PDF-
+        Assert.Equal((byte)'%', pdfBytes[0]);
+        Assert.Equal((byte)'P', pdfBytes[1]);
+        Assert.Equal((byte)'D', pdfBytes[2]);
+        Assert.Equal((byte)'F', pdfBytes[3]);
+    }
+
+    private sealed class DelegateHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => send(request);
     }
 }

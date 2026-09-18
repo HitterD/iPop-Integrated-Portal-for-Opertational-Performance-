@@ -1,22 +1,37 @@
 using System.Text;
+using IPop.Api.Chat;
 using IPop.Api.Endpoints;
 using IPop.Api.Presence;
 using IPop.Application.Auth;
+using IPop.Application.Chat;
 using IPop.Application.Files;
 using IPop.Application.Hris;
+using IPop.Application.Mail;
 using IPop.Application.Realtime;
 using IPop.Infrastructure.Auth;
+using IPop.Infrastructure.Chat;
 using IPop.Infrastructure.Files;
 using IPop.Infrastructure.Hris;
+using IPop.Infrastructure.Mail;
 using IPop.Infrastructure.Persistence;
 using IPop.Infrastructure.Rbac;
+using IPop.Infrastructure.Notifications;
+using IPop.Infrastructure.Sja;
+using IPop.Infrastructure.Documents;
 using IPop.Application.Rbac;
+using IPop.Application.Notifications;
+using IPop.Application.Sja;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Local-only secrets (NAS service account). Git-ignored, optional, and loaded last so it wins over
+// the committed appsettings files. In production these come from environment variables instead.
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<IPopDbContext>(o =>
@@ -75,11 +90,45 @@ builder.Services.AddCors(o => o.AddPolicy("web-dev", p => p
     .WithOrigins(webOrigins)
     .AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 
-builder.Services.AddSignalR();
+var redisConnection = builder.Configuration.GetConnectionString("Redis")
+    ?? throw new InvalidOperationException("ConnectionStrings:Redis is required");
+builder.Services.AddSignalR()
+    .AddStackExchangeRedis(
+        redisConnection,
+        options => { options.Configuration.ChannelPrefix = RedisChannel.Literal("ipop-chat"); });
 builder.Services.AddSingleton<PresenceBroadcaster>();
 builder.Services.AddSingleton<IDirectoryChangeNotifier, DirectoryChangeNotifier>();
 builder.Services.AddSingleton<IAuditChangeNotifier, AuditChangeNotifier>();
 builder.Services.AddHostedService<PresenceSweepWorker>();
+
+// Background service safety: an unhandled exception in background workers must not crash the whole host
+builder.Services.Configure<HostOptions>(options =>
+{
+    options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
+});
+
+// Chat module
+builder.Services.AddScoped<IChatService, ChatService>();
+builder.Services.AddScoped<IChatNotifier, ChatNotifier>();
+builder.Services.AddScoped<INotificationGateway, NotificationGateway>();
+builder.Services.AddHostedService<ChatAttachmentGcWorker>();
+builder.Services.AddHostedService<ChatMentionNotifyWorker>();
+
+// Mail module
+builder.Services.AddScoped<IMailService, MailService>();
+
+// Calls stub module (signaling only)
+builder.Services.AddScoped<IPop.Application.Calls.ICallService, IPop.Infrastructure.Calls.CallService>();
+
+// Projects module
+builder.Services.AddScoped<IPop.Application.Projects.IProjectService, IPop.Infrastructure.Projects.ProjectService>();
+
+builder.Services.AddScoped<INotificationGatewayService, NotificationGatewayService>();
+// Real-time notification push (SignalR) — broadcaster impl + hub registered with hubs below.
+builder.Services.AddSingleton<IPop.Application.Notifications.INotificationRealtimeBroadcaster, IPop.Api.Notifications.NotificationBroadcaster>();
+
+// News & Memos module (single table with type enum: news/announcement/memo)
+builder.Services.AddScoped<IPop.Application.News.INewsService, IPop.Infrastructure.News.NewsService>();
 
 builder.Services.AddScoped<IHrisSyncService, HrisSyncService>();
 // Adapter by config (spec §4): Production → HttpHrisGateway (Polly), otherwise JSON file.
@@ -88,6 +137,13 @@ if (builder.Configuration["Hris:Mode"] == "Production")
 else
     builder.Services.AddSingleton<IHrisGateway, JsonHrisGateway>();
 builder.Services.AddHostedService<HrisSyncWorker>();
+builder.Services.AddHostedService<MailScheduledDeliveryWorker>();
+
+// Pairing perangkat SJA Notifier lewat NIK (Sja:AppSecret wajib di user-secrets/env).
+builder.Services.AddHttpClient<ISjaGateway, HttpSjaGateway>();
+
+// DevExpress Office File API (Word, Excel, PDF, PowerPoint, Skia Cross-Platform)
+builder.Services.AddDevExpressDocumentServices();
 
 var app = builder.Build();
 
@@ -106,13 +162,25 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapAuth();
+app.MapDeviceLink();
 app.MapHris();
 app.MapAdmin();
 app.MapAudit();
 app.MapRbac();
 app.MapDirectory();
 app.MapFiles();
+app.MapOnlyOffice();
+app.MapChat();
+app.MapCalls();
+app.MapMail();
+app.MapProjects();
+app.MapNews();
+app.MapNotificationGateway();
 app.MapPresence();
+app.MapDocumentDemo();
 app.MapHub<PresenceHub>("/hubs/presence").RequireAuthorization();
+app.MapHub<ChatHub>("/hubs/chat").RequireAuthorization();
+app.MapHub<IPop.Api.Calls.CallHub>("/hubs/calls").RequireAuthorization();
+app.MapHub<IPop.Api.Notifications.NotificationHub>("/hubs/notification").RequireAuthorization();
 
 app.Run();
