@@ -1,0 +1,615 @@
+@page "/notifications"
+@using IPop.Web.Services
+@using System.Net.Http.Json
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject HttpClient Http
+@inject AuthState Auth
+
+<PageTitle>Notifications — IPop</PageTitle>
+
+<div class="notifications-page">
+    @* Header *@
+    <div class="page-header">
+        <h1 class="page-title">
+            <i data-lucide="bell"></i>
+            Notifications
+        </h1>
+        <div class="header-actions">
+            <button type="button" class="btn-secondary" @onclick="MarkAllRead">
+                <i data-lucide="check-check"></i>
+                Mark all read
+            </button>
+            <button type="button" class="btn-secondary" @onclick="OpenSettings">
+                <i data-lucide="settings"></i>
+                Preferences
+            </button>
+        </div>
+    </div>
+
+    @* Filter Tabs *@
+    <div class="filter-tabs">
+        <button type="button" class="filter-tab @(activeFilter == "all" ? "active" : "")" @onclick='() => SetFilter("all")'>
+            All
+            @if (unreadCount > 0)
+            {
+                <span class="badge">@unreadCount</span>
+            }
+        </button>
+        <button type="button" class="filter-tab @(activeFilter == "unread" ? "active" : "")" @onclick='() => SetFilter("unread")'>
+            Unread
+            @if (unreadCount > 0)
+            {
+                <span class="badge accent">@unreadCount</span>
+            }
+        </button>
+        <button type="button" class="filter-tab @(activeFilter == "chat" ? "active" : "")" @onclick='() => SetFilter("chat")'>
+            <i data-lucide="message-circle"></i>
+            Chat
+        </button>
+        <button type="button" class="filter-tab @(activeFilter == "mail" ? "active" : "")" @onclick='() => SetFilter("mail")'>
+            <i data-lucide="mail"></i>
+            Mail
+        </button>
+        <button type="button" class="filter-tab @(activeFilter == "task" ? "active" : "")" @onclick='() => SetFilter("task")'>
+            <i data-lucide="check-square"></i>
+            Tasks
+        </button>
+        <button type="button" class="filter-tab @(activeFilter == "system" ? "active" : "")" @onclick='() => SetFilter("system")'>
+            <i data-lucide="settings"></i>
+            System
+        </button>
+    </div>
+
+    @* Notification List *@
+    <div class="notifications-list">
+        @if (filteredNotifications.Count == 0)
+        {
+            <div class="empty-state">
+                <i data-lucide="bell-off"></i>
+                <h3>No notifications</h3>
+                <p>@(activeFilter == "unread" ? "All notifications have been read" : "No notifications to display")</p>
+            </div>
+        }
+        else
+        {
+            @foreach (var notif in filteredNotifications)
+            {
+                var n = notif;
+                <div class="notification-item @(n.IsRead ? "" : "unread")" @onclick="() => OpenNotification(n)">
+                    <div class="notif-icon" style="background:@GetTypeColor(n.Type)">
+                        <i data-lucide="@GetTypeIcon(n.Type)"></i>
+                    </div>
+                    <div class="notif-content">
+                        <div class="notif-title">@n.Title</div>
+                        <div class="notif-message">@n.Message</div>
+                        <div class="notif-meta">
+                            <span class="notif-time">@n.Time</span>
+                            @if (!string.IsNullOrEmpty(n.Source))
+                            {
+                                <span class="notif-source">@n.Source</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="notif-actions">
+                        @if (!n.IsRead)
+                        {
+                            <button type="button" class="notif-action" title="Mark read" @onclick="() => MarkRead(n.Id)" @onclick:stopPropagation>
+                                <i data-lucide="check"></i>
+                            </button>
+                        }
+                        <button type="button" class="notif-action" title="Delete" @onclick="() => DeleteNotification(n.Id)" @onclick:stopPropagation>
+                            <i data-lucide="x"></i>
+                        </button>
+                    </div>
+                    @if (!n.IsRead)
+                    {
+                        <div class="unread-indicator"></div>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    @* Load More *@
+    @if (hasMore)
+    {
+        <div class="load-more">
+            <button type="button" class="btn-secondary" @onclick="LoadMore">
+                <i data-lucide="chevron-down"></i>
+                Load more
+            </button>
+        </div>
+    }
+</div>
+
+<style>
+    .notifications-page {
+        padding: 24px;
+        max-width: 800px;
+        margin: 0 auto;
+    }
+
+    .page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 24px;
+    }
+
+    .page-title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--ink);
+        margin: 0;
+    }
+
+    .page-title .lucide {
+        width: 28px;
+        height: 28px;
+        color: var(--accent);
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 12px;
+    }
+
+    .btn-secondary {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--ink-2);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .btn-secondary:hover {
+        background: var(--tray);
+        color: var(--ink);
+    }
+
+    /* Filter Tabs */
+    .filter-tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 20px;
+        padding: 4px;
+        background: var(--tray);
+        border-radius: 10px;
+        overflow-x: auto;
+    }
+
+    .filter-tab {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--ink-2);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        white-space: nowrap;
+    }
+
+    .filter-tab:hover {
+        background: var(--surface);
+        color: var(--ink);
+    }
+
+    .filter-tab.active {
+        background: var(--surface);
+        color: var(--ink);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .filter-tab .badge {
+        background: var(--accent);
+        color: white;
+        font-size: 10px;
+        font-weight: 700;
+        min-width: 18px;
+        height: 18px;
+        border-radius: 99px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 5px;
+    }
+
+    .filter-tab .badge.accent {
+        background: var(--accent);
+    }
+
+    /* Notification List */
+    .notifications-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .notification-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 16px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        position: relative;
+    }
+
+    .notification-item:hover {
+        border-color: var(--accent);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .notification-item.unread {
+        background: var(--accent-soft);
+        border-color: var(--accent);
+    }
+
+    .unread-indicator {
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 4px;
+        height: 24px;
+        background: var(--accent);
+        border-radius: 0 4px 4px 0;
+    }
+
+    .notif-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        flex-shrink: 0;
+    }
+
+    .notif-icon .lucide {
+        width: 20px;
+        height: 20px;
+    }
+
+    .notif-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .notif-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--ink);
+        margin-bottom: 4px;
+    }
+
+    .notif-message {
+        font-size: 13px;
+        color: var(--ink-2);
+        line-height: 1.4;
+        margin-bottom: 8px;
+    }
+
+    .notif-meta {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 11px;
+        color: var(--ink-3);
+    }
+
+    .notif-source {
+        background: var(--tray);
+        padding: 2px 8px;
+        border-radius: 99px;
+    }
+
+    .notif-actions {
+        display: flex;
+        gap: 4px;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+    }
+
+    .notification-item:hover .notif-actions {
+        opacity: 1;
+    }
+
+    .notif-action {
+        width: 28px;
+        height: 28px;
+        border: none;
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--ink-3);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+    }
+
+    .notif-action:hover {
+        background: var(--accent);
+        color: white;
+    }
+
+    /* Empty State */
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 20px;
+        text-align: center;
+        color: var(--ink-3);
+    }
+
+    .empty-state .lucide {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 16px;
+        opacity: 0.4;
+    }
+
+    .empty-state h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+        color: var(--ink-2);
+    }
+
+    .empty-state p {
+        margin: 0;
+        font-size: 14px;
+    }
+
+    /* Load More */
+    .load-more {
+        display: flex;
+        justify-content: center;
+        margin-top: 24px;
+    }
+</style>
+
+@code {
+    private string activeFilter = "all";
+    private int unreadCount = 3;
+    private bool hasMore = true;
+    private int currentPage = 1;
+
+    private List<NotificationItem> notifications = [];
+    private List<NotificationItem> filteredNotifications => activeFilter switch
+    {
+        "unread" => notifications.Where(n => !n.IsRead).ToList(),
+        "chat" => notifications.Where(n => n.Type == "chat").ToList(),
+        "mail" => notifications.Where(n => n.Type == "mail").ToList(),
+        "task" => notifications.Where(n => n.Type == "project" || n.Type == "task").ToList(),
+        "system" => notifications.Where(n => n.Type == "system").ToList(),
+        _ => notifications
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadNotifications();
+    }
+
+    private async Task LoadNotifications(bool append = false)
+    {
+        try
+        {
+            var typeParam = activeFilter switch
+            {
+                "chat" => "chat",
+                "mail" => "mail",
+                "task" => "project",
+                "system" => "system",
+                _ => null
+            };
+            var statusParam = activeFilter == "unread" ? "unread" : null;
+
+            var url = $"/api/notifications/v1/inbox?page={currentPage}&pageSize=20";
+            if (typeParam is not null) url += $"&type={typeParam}";
+            if (statusParam is not null) url += $"&status={statusParam}";
+
+            var response = await Auth.GetAsync<InboxResponse>(url);
+            if (response is not null)
+            {
+                var newItems = response.Items.Select(MapToNotificationItem).ToList();
+                if (append)
+                {
+                    notifications.AddRange(newItems);
+                }
+                else
+                {
+                    notifications = newItems;
+                }
+                unreadCount = response.Unread;
+                hasMore = response.Items.Count >= 20;
+            }
+        }
+        catch
+        {
+            // Fallback to empty on error
+            if (!append) notifications = [];
+        }
+    }
+
+    private NotificationItem MapToNotificationItem(InboxItem item)
+    {
+        return new NotificationItem(
+            item.RequestId.ToString(),
+            item.Type,
+            item.Title,
+            item.Body,
+            FormatTime(item.DeliveredAt),
+            item.IsRead,
+            item.Source,
+            item.TargetUrl
+        );
+    }
+
+    private async Task SetFilter(string filter)
+    {
+        activeFilter = filter;
+        currentPage = 1;
+        await LoadNotifications();
+        StateHasChanged();
+    }
+
+    private async Task MarkAllRead()
+    {
+        try
+        {
+            await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/inbox/read-all", null);
+            foreach (var n in notifications)
+            {
+                n.IsRead = true;
+            }
+            unreadCount = 0;
+        }
+        catch { }
+    }
+
+    private async Task MarkRead(string id)
+    {
+        var notif = notifications.FirstOrDefault(n => n.Id == id);
+        if (notif is not null && Guid.TryParse(id, out var requestId))
+        {
+            try
+            {
+                await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{requestId}/read", null);
+                notif.IsRead = true;
+                unreadCount = notifications.Count(n => !n.IsRead);
+            }
+            catch { }
+        }
+    }
+
+    private void DeleteNotification(string id)
+    {
+        var notif = notifications.FirstOrDefault(n => n.Id == id);
+        if (notif is not null)
+        {
+            notifications.Remove(notif);
+            unreadCount = notifications.Count(n => !n.IsRead);
+        }
+    }
+
+    private void OpenNotification(NotificationItem notif)
+    {
+        if (!notif.IsRead)
+        {
+            _ = MarkRead(notif.Id);
+        }
+
+        // Navigate to source using TargetUrl if available
+        if (!string.IsNullOrEmpty(notif.TargetUrl))
+        {
+            Nav.NavigateTo(notif.TargetUrl);
+            return;
+        }
+
+        // Fallback to module-based navigation
+        var url = notif.Type switch
+        {
+            "chat" => "/chat",
+            "mail" => "/mail",
+            "task" => "/projects",
+            _ => null
+        };
+
+        if (url is not null)
+        {
+            Nav.NavigateTo(url);
+        }
+    }
+
+    private void OpenSettings()
+    {
+        Nav.NavigateTo("/notifications/settings");
+    }
+
+    private async Task LoadMore()
+    {
+        currentPage++;
+        await LoadNotifications(append: true);
+    }
+
+    private string GetTypeIcon(string type) => type switch
+    {
+        "chat" => "message-circle",
+        "mail" => "mail",
+        "task" => "check-square",
+        "system" => "settings",
+        _ => "bell"
+    };
+
+    private string GetTypeColor(string type) => type switch
+    {
+        "chat" => "#2e7d5b",
+        "mail" => "#2563eb",
+        "task" => "#7c3aed",
+        "system" => "#6b7280",
+        _ => "#6b7280"
+    };
+
+    private string FormatTime(DateTime dt)
+    {
+        var now = DateTime.Now;
+        var diff = now - dt;
+
+        if (diff.TotalMinutes < 1) return "Just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        return dt.ToString("dd MMM yyyy");
+    }
+
+    private class NotificationItem
+    {
+        public string Id { get; set; } = "";
+        public string Type { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Message { get; set; } = "";
+        public string Time { get; set; } = "";
+        public bool IsRead { get; set; }
+        public string Source { get; set; } = "";
+        public string? TargetUrl { get; set; }
+
+        public NotificationItem(string id, string type, string title, string message, string time, bool isRead, string source, string? targetUrl = null)
+        {
+            Id = id;
+            Type = type;
+            Title = title;
+            Message = message;
+            Time = time;
+            IsRead = isRead;
+            Source = source;
+            TargetUrl = targetUrl;
+        }
+    }
+
+    // API DTOs
+    private record InboxResponse(List<InboxItem> Items, int Total, int Unread, int Page, int PageSize);
+    private record InboxItem(Guid RequestId, string Type, string Title, string Body, string Source, DateTime DeliveredAt, bool IsRead, string? Priority, string? TargetUrl);
+}

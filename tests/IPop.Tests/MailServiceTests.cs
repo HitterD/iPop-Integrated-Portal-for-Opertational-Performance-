@@ -475,4 +475,98 @@ public class MailServiceTests
         Assert.Equal("Second (newer)", inbox.Items[1].Subject);
         Assert.False(inbox.Items[1].IsPinned);
     }
+
+    // ── Regression: thread discovery from the ROOT message ────────────────────
+    // The root of a thread has ThreadRootId == null (only replies carry it). Any caller that
+    // decides "does this message have a conversation?" by testing ThreadRootId != null will
+    // silently skip every root message, so the first mail in a thread never shows its replies.
+    // The reliable signal is ThreadCount; the thread key is (ThreadRootId ?? Id).
+
+    [Fact]
+    public async Task Root_message_has_null_ThreadRootId_but_still_reports_its_replies()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var svc = new MailService(t.Verify());
+
+        var root = await svc.SendAsync(a.Id, new ComposeMailRequest("Root", "<p>one</p>", [b.Nik], [], []), default);
+        await svc.SendAsync(b.Id, new ComposeMailRequest("Re: Root", "<p>two</p>", [a.Nik], [], [], InReplyToId: root.MailId), default);
+
+        var rootDetail = await svc.GetAsync(a.Id, root.MailId!.Value, default);
+        Assert.NotNull(rootDetail);
+
+        // The root genuinely has no ThreadRootId — this is what the buggy UI check tripped over.
+        Assert.Null(rootDetail.ThreadRootId);
+        // ...yet it has a conversation, and ThreadCount is the signal that says so.
+        Assert.Equal(1, rootDetail.ThreadCount);
+
+        // Resolving the thread key as (ThreadRootId ?? Id) finds the whole conversation.
+        var threadKey = rootDetail.ThreadRootId ?? rootDetail.Id;
+        var thread = await svc.GetThreadAsync(a.Id, threadKey, 1, 50, default);
+        Assert.Equal(2, thread.TotalCount);
+    }
+
+    [Fact]
+    public async Task Thread_key_resolves_to_the_same_conversation_from_root_and_from_reply()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var svc = new MailService(t.Verify());
+
+        var root = await svc.SendAsync(a.Id, new ComposeMailRequest("Root", "one", [b.Nik], [], []), default);
+        var reply = await svc.SendAsync(b.Id, new ComposeMailRequest("Re: Root", "two", [a.Nik], [], [], InReplyToId: root.MailId), default);
+
+        var rootDetail = await svc.GetAsync(a.Id, root.MailId!.Value, default);
+        var replyDetail = await svc.GetAsync(a.Id, reply.MailId!.Value, default);
+        Assert.NotNull(rootDetail);
+        Assert.NotNull(replyDetail);
+
+        var keyFromRoot = rootDetail.ThreadRootId ?? rootDetail.Id;
+        var keyFromReply = replyDetail.ThreadRootId ?? replyDetail.Id;
+        Assert.Equal(keyFromRoot, keyFromReply);
+
+        // Opening either message must surface the same two-message conversation.
+        var fromRoot = await svc.GetThreadAsync(a.Id, keyFromRoot, 1, 50, default);
+        var fromReply = await svc.GetThreadAsync(a.Id, keyFromReply, 1, 50, default);
+        Assert.Equal(2, fromRoot.TotalCount);
+        Assert.Equal(2, fromReply.TotalCount);
+    }
+
+    [Fact]
+    public async Task Standalone_message_with_no_replies_reports_no_conversation()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var svc = new MailService(t.Verify());
+
+        var solo = await svc.SendAsync(a.Id, new ComposeMailRequest("Solo", "only", [b.Nik], [], []), default);
+
+        var detail = await svc.GetAsync(b.Id, solo.MailId!.Value, default);
+        Assert.NotNull(detail);
+        Assert.Null(detail.ThreadRootId);
+        // ThreadCount 0 is what keeps the thread stack hidden for ordinary one-off mail.
+        Assert.Equal(0, detail.ThreadCount);
+    }
+
+    [Fact]
+    public async Task Thread_is_returned_oldest_first_for_chronological_stacking()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var svc = new MailService(t.Verify());
+
+        var root = await svc.SendAsync(a.Id, new ComposeMailRequest("Root", "one", [b.Nik], [], []), default);
+        var r1 = await svc.SendAsync(b.Id, new ComposeMailRequest("Re: Root", "two", [a.Nik], [], [], InReplyToId: root.MailId), default);
+        await svc.SendAsync(a.Id, new ComposeMailRequest("Re: Root", "three", [b.Nik], [], [], InReplyToId: r1.MailId), default);
+
+        var thread = await svc.GetThreadAsync(a.Id, root.MailId!.Value, 1, 50, default);
+
+        Assert.Equal(3, thread.Items.Count);
+        Assert.Equal(root.MailId.Value, thread.Items[0].Id);
+        Assert.Equal(r1.MailId!.Value, thread.Items[1].Id);
+    }
 }

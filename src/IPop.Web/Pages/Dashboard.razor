@@ -1,62 +1,406 @@
 @page "/dashboard"
 @inject IJSRuntime JS
+@inject AuthState Auth
 
 <PageTitle>Dashboard — IPop</PageTitle>
 
-<div class="content" style="grid-template-columns:1fr">
-    <div class="tray rise rise-1">
-        <div class="core" style="padding:0;overflow:hidden">
-            <div class="panel-head">
-                <i data-lucide="layout-grid"></i> <span>Modules</span>
-                <span class="meta">1 of 8 available</span>
+<div class="body">
+
+    <!-- KPI Strip (4 segments) -->
+    <div class="kpi-strip">
+        <div class="kpi">
+            <div class="kpi-ic"><i data-lucide="mail"></i></div>
+            <div>
+                <div class="kpi-label">Unread mail</div>
+                <div class="kpi-row"><span class="kpi-val">@(mail?.InboxUnread ?? 0)</span><span class="badge mute">@(mail?.InboxTotal ?? 0) inbox</span></div>
             </div>
-            <div class="emp-grid">
-                <a class="emp-card rise" href="/directory" style="animation-delay:0s;text-decoration:none;color:inherit">
-                    <div class="top">
-                        <div class="avatar" style="background:var(--accent)"><i data-lucide="users"></i></div>
-                        <div><div class="n">Directory</div><div class="p">Search people across the organization</div></div>
-                    </div>
-                    <div class="foot">
-                        <span class="mono">412 records</span>
-                        <span class="dot on">Available</span>
-                    </div>
-                </a>
-                @foreach (var (m, i) in Pending.Select((m, i) => (m, i)))
-                {
-                    <div class="emp-card rise" style="animation-delay:@((i + 1) * 0.05)s;opacity:.62;cursor:default">
-                        <div class="top">
-                            <div class="avatar" style="background:var(--tray);color:var(--ink-3)"><i data-lucide="@m.Icon"></i></div>
-                            <div><div class="n">@m.Name</div><div class="p">@m.Caption</div></div>
-                        </div>
-                        <div class="foot">
-                            <span class="mono">Not deployed</span>
-                            <span class="dot off">Coming soon</span>
-                        </div>
-                    </div>
-                }
+        </div>
+        <div class="kpi">
+            <div class="kpi-ic"><i data-lucide="kanban"></i></div>
+            <div>
+                <div class="kpi-label">Active projects</div>
+                <div class="kpi-row"><span class="kpi-val">@ActiveProjects()</span><span class="badge ok">@($"{AvgProgress():N0}% avg")</span></div>
+            </div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-ic"><i data-lucide="newspaper"></i></div>
+            <div>
+                <div class="kpi-label">Memos to read</div>
+                <div class="kpi-row"><span class="kpi-val">@(news?.AckPending ?? 0)</span><span class="badge warn">ack due</span></div>
+            </div>
+        </div>
+        <div class="kpi">
+            <div class="kpi-ic"><i data-lucide="bell"></i></div>
+            <div>
+                <div class="kpi-label">Failed notifications</div>
+                <div class="kpi-row"><span class="kpi-val">@(reqCounts?.Failed ?? 0)</span><span class="badge bad">dead-letter</span></div>
             </div>
         </div>
     </div>
+
+    <!-- Main 2-column Grid -->
+    <div class="cols main-rail">
+        <div class="col gap-14">
+
+            <!-- Card: Action required -->
+            <div class="card">
+                <div class="card-head">
+                    <div class="card-ic"><i data-lucide="circle-alert"></i></div>
+                    <div>
+                        <div class="card-title">Action required</div>
+                        <div class="card-meta">Items requiring immediate attention or action</div>
+                    </div>
+                </div>
+                <div class="row-list" style="border-top:1px solid var(--line)">
+                    @if ((news?.AckPending ?? 0) > 0)
+                    {
+                        <div class="row">
+                            <div class="av av-3"><i data-lucide="file-check" style="width:14px;height:14px"></i></div>
+                            <div class="row-main">
+                                <div class="row-t">@(news?.AckPending) corporate memos awaiting your acknowledgement</div>
+                                <div class="row-s">Open News &amp; Memos to acknowledge</div>
+                            </div>
+                            <a class="btn-primary" href="/news?requiresAck=true" style="padding:6px 13px;font-size:12.5px">Review</a>
+                        </div>
+                    }
+                    @if ((mail?.InboxUnread ?? 0) > 0)
+                    {
+                        <div class="row">
+                            <div class="av av-2"><i data-lucide="mail" style="width:14px;height:14px"></i></div>
+                            <div class="row-main">
+                                <div class="row-t">@(mail?.InboxUnread) new emails in your Inbox</div>
+                                <div class="row-s">Unread messages awaiting your reply</div>
+                            </div>
+                            <a class="ghost-btn" href="/mail">Open Mail</a>
+                        </div>
+                    }
+                    @if (recentDead.Count > 0)
+                    {
+                        <div class="row">
+                            <div class="av av-7"><i data-lucide="alert-triangle" style="width:14px;height:14px"></i></div>
+                            <div class="row-main">
+                                <div class="row-t">@recentDead.Count system notifications failed delivery (dead-letter)</div>
+                                <div class="row-s">Check the notification delivery queue</div>
+                            </div>
+                            <span class="badge bad">Failed</span>
+                        </div>
+                    }
+                    @if ((news?.AckPending ?? 0) == 0 && (mail?.InboxUnread ?? 0) == 0 && recentDead.Count == 0)
+                    {
+                        <div class="row">
+                            <div class="av av-2"><i data-lucide="check" style="width:14px;height:14px"></i></div>
+                            <div class="row-main">
+                                <div class="row-t">All tasks and messages are up to date</div>
+                                <div class="row-s">No urgent pending items</div>
+                            </div>
+                            <span class="badge ok">Completed</span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Card: Active projects -->
+            <div class="card">
+                <div class="card-head">
+                    <div class="card-ic"><i data-lucide="kanban"></i></div>
+                    <div>
+                        <div class="card-title">Active projects</div>
+                        <div class="card-meta">@($"{ActiveProjects()} active · {CompletedProjects()} completed")</div>
+                    </div>
+                    <div class="right">
+                        <a class="ghost-btn" href="/projects">View all<i data-lucide="arrow-right"></i></a>
+                    </div>
+                </div>
+                <table class="tbl">
+                    <thead>
+                        <tr>
+                            <th>Project</th>
+                            <th>Owner</th>
+                            <th style="width:150px">Progress</th>
+                            <th>Deadline</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (loading)
+                        {
+                            @for (var i = 0; i < 3; i++)
+                            {
+                                <tr><td colspan="4"><div class="skel" style="height:26px;border-radius:6px"></div></td></tr>
+                            }
+                        }
+                        else if (projects.Count == 0)
+                        {
+                            <tr><td colspan="4" style="text-align:center;padding:24px;color:var(--ink-3)">No active projects.</td></tr>
+                        }
+                        else
+                        {
+                            @foreach (var p in projects.Where(p => p.Status is "active" or "planning").Take(4))
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="strong">@p.Name</div>
+                                        <div class="t-12 dim mt-2">@p.TaskCount tasks · @p.MemberCount members</div>
+                                    </td>
+                                    <td>
+                                        <div class="cell-person">
+                                            <div class="av sm av-1">@(string.IsNullOrWhiteSpace(p.OwnerName) ? "P" : p.OwnerName[0].ToString().ToUpperInvariant())</div>
+                                            <span class="t-13">@p.OwnerName</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="between t-12 dim" style="margin-bottom:5px"><span>@p.Progress%</span></div>
+                                        <div class="meter"><i style="width:@p.Progress%"></i></div>
+                                    </td>
+                                    <td>
+                                        @if (p.Deadline.HasValue)
+                                        {
+                                            var isOver = p.Deadline.Value < DateTime.Now;
+                                            <span class="badge @(isOver ? "bad" : "ok")">
+                                                @p.Deadline.Value.ToString("dd MMM yyyy")
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge mute">—</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Callout -->
+            <div class="callout ok">
+                <div class="callout-ic"><i data-lucide="info"></i></div>
+                <div>
+                    <div class="t"><b>iPop Portal is operating normally.</b> All services are synchronized.</div>
+                    <div class="s mt-2">Attendance and directory synchronization is active in real-time.</div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Rail -->
+        <div class="col gap-14">
+
+            <!-- Recent activity -->
+            <div class="card card-pad">
+                <div class="between center" style="margin-bottom:14px">
+                    <div class="card-title">Recent activity</div>
+                </div>
+                <div class="col gap-14">
+                    @if (recentNews.Count == 0 && recentDead.Count == 0)
+                    {
+                        <div class="ui-empty" style="padding:16px">No recorded activity.</div>
+                    }
+                    @foreach (var n in recentNews.Take(3))
+                    {
+                        <div class="flex gap-10">
+                            <div class="av sm av-2"><i data-lucide="newspaper" style="width:12px;height:12px"></i></div>
+                            <div style="min-width:0">
+                                <div class="t-13"><b>@n.AuthorName</b> published <b>@n.Title</b></div>
+                                <div class="t-11 dim mt-2">@(n.PublishedAt?.ToLocalTime() is { } pt ? pt.ToString("dd MMM HH:mm") : "Just now")</div>
+                            </div>
+                        </div>
+                    }
+                    @foreach (var d in recentDead.Take(2))
+                    {
+                        <div class="flex gap-10">
+                            <div class="av sm av-7"><i data-lucide="alert-triangle" style="width:12px;height:12px"></i></div>
+                            <div style="min-width:0">
+                                <div class="t-13" style="color:var(--danger)"><b>Failed to send notification</b>: @d.LastError</div>
+                                <div class="t-11 dim mt-2">Client @d.ClientId · Attempt @d.AttemptCount</div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Messages summary -->
+            <div class="card card-pad">
+                <div class="card-title" style="margin-bottom:4px">Message summary</div>
+                <div class="card-meta" style="margin-bottom:16px">Mail and notifications</div>
+                <div class="big-num">@(mail?.InboxUnread ?? 0)</div>
+                <div class="share mt-14">
+                    <i style="width:60%;background:var(--accent)"></i>
+                    <i style="width:25%;background:var(--warn)"></i>
+                    <i style="width:15%;background:var(--info)"></i>
+                </div>
+                <div class="col gap-8 mt-14">
+                    <div class="between t-13"><span class="flex center gap-8"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent)"></span>Inbox</span><span class="dim num">@(mail?.InboxTotal ?? 0)</span></div>
+                    <div class="between t-13"><span class="flex center gap-8"><span style="width:7px;height:7px;border-radius:50%;background:var(--warn)"></span>Unread</span><span class="dim num">@(mail?.InboxUnread ?? 0)</span></div>
+                    <div class="between t-13"><span class="flex center gap-8"><span style="width:7px;height:7px;border-radius:50%;background:var(--info)"></span>Saved drafts</span><span class="dim num">@(mail?.DraftTotal ?? 0)</span></div>
+                </div>
+            </div>
+
+            <!-- Quick access -->
+            <div class="card card-pad">
+                <div class="card-title" style="margin-bottom:14px">Quick access</div>
+                <div class="col gap-8">
+                    <a class="ghost-btn" style="justify-content:flex-start;width:100%" href="/projects"><i data-lucide="square-pen"></i>New task</a>
+                    <a class="ghost-btn" style="justify-content:flex-start;width:100%" href="/news"><i data-lucide="plus"></i>Write memo</a>
+                    <a class="ghost-btn" style="justify-content:flex-start;width:100%" href="/directory"><i data-lucide="users"></i>Find people</a>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
 </div>
 
 @code {
     [CascadingParameter] public MainLayout Layout { get; set; } = default!;
 
-    private record Module(string Name, string Caption, string Icon);
+    private record Module(string Name, string Caption, string Icon, bool Live, string Href, string Delay, string Badge = "");
 
-    private static readonly Module[] Pending =
+    private List<Module> LiveModules =>
     [
-        new("Chat", "Direct and group messaging", "message-circle"),
-        new("Mail", "Corporate mailbox", "mail"),
-        new("Projects", "Task boards and tracking", "square-kanban"),
-        new("News & Memos", "Company announcements", "newspaper"),
-        new("Calls", "Voice and video", "phone"),
-        new("Files", "Shared document storage", "folder"),
-        new("Administration", "Users, roles, and audit", "sliders-horizontal"),
+        new("Mail", "Corporate mailbox", "mail", true, "/mail", "0.05s", MailBadge),
+        new("Directory", "Search people across the organization", "users", true, "/directory", "0.1s"),
+        new("Chat", "Direct and group messaging", "message-circle", true, "/chat", "0.15s", "Real-time"),
+        new("Files", "Shared document storage", "folder", true, "/files", "0.2s"),
+        new("Projects", "Task boards and tracking", "kanban", true, "/projects", "0.25s", ProjectsBadge),
+        new("News & Memos", "Company announcements", "newspaper", true, "/news", "0.3s", NewsBadge),
+        new("Administration", "Users, roles, and audit", "sliders-horizontal", Auth.IsAdmin, "/admin", "0.35s"),
     ];
 
-    protected override void OnInitialized()
-        => Layout.SetHeader("Dashboard", "Foundation release");
+    private List<Module> Modules => LiveModules;
+    private int LiveCount => LiveModules.Count;
+    private string MailBadge => mail is null ? "" : $"{mail.InboxUnread} unread";
+    private string ProjectsBadge => projects.Count > 0 ? $"{ActiveProjects()} active" : "";
+    private string NewsBadge => news is null ? "" : $"{news.Value.Published} published";
+
+    // ── data state ───────────────────────────────────────────────────────────
+    private bool loading = true;
+    private FolderCountsDto? mail;
+    private List<ProjectListDto> projects = [];
+    private NewsCounts? news;
+    private DeadLetterDto? gateway;
+    private RequestCounts? reqCounts;
+    private bool projectsFailed;
+
+    private List<NewsSummaryDto> recentNews = [];
+    private List<DeadLetterItem> recentDead = [];
+
+    private record FolderCountsDto(int InboxUnread, int InboxTotal, int SentTotal, int DraftTotal, int StarredTotal, int ArchiveTotal, int TrashTotal);
+    private record ProjectListDto(Guid Id, string Name, int Year, string OwnerName, string Status, int Progress, DateTime? Deadline, int MemberCount, int TaskCount, bool IsActive);
+    private record NewsSummaryDto(Guid Id, string Type, string Title, string Status, string AuthorName, string AuthorNik, DateTime? PublishAt, DateTime? PublishedAt, bool IsPinned, DateTime? PinnedAt, bool RequiresAcknowledgement, IReadOnlyList<NewsTargetDto> Targets, bool IsAcknowledged, DateTime CreatedAt, DateTime UpdatedAt);
+    private record NewsTargetDto(string Kind, string? Value);
+    private record PagedResult<T>(IReadOnlyList<T> Items, int TotalCount, int Page, int PageSize);
+    private record DeadLetterDto(IReadOnlyList<DeadLetterItem> Items, int Total, int Page, int PageSize);
+    private record DeadLetterItem(Guid Id, Guid RequestId, Guid UserId, string Status, string? Channel, int AttemptCount, string? LastError, DateTime? NextAttemptAt, DateTime UpdatedAt, string? ClientId);
+    private record struct NewsCounts(int TotalNews, int Published, int PendingApproval, int AckRequired, int AckPending);
+    private record struct RequestCounts(int Queued, int Failed, int Delivered, int Total);
+    private record ByStatusItem(string Status, int Count);
+    private record RequestsDto(IReadOnlyList<object> Items, int Total, IReadOnlyList<ByStatusItem> ByStatus, int Page, int PageSize);
+
+    // ── stat cards ───────────────────────────────────────────────────────────
+    private record StatCard(string Icon, string Label, string Value, string Sub, string Soft, string Ink, string ChartLabel, List<int> Bars, string Href);
+
+    private List<StatCard> Cards =>
+    [
+        new("mail", "Mail",
+            mail is null ? "—" : $"{mail.InboxUnread} unread",
+            mail is null ? (loading ? "Loading…" : "Unavailable") : $"{mail.InboxTotal} inbox · {mail.DraftTotal} drafts",
+            "var(--accent-soft)", "var(--accent-ink)",
+            "unread · total · sent · draft · star · arch · trash",
+            mail is null ? [] : [mail.InboxUnread, mail.InboxTotal - mail.InboxUnread, mail.SentTotal, mail.DraftTotal, mail.StarredTotal, mail.ArchiveTotal, mail.TrashTotal],
+            "/mail"),
+        new("kanban", "Projects",
+            projects.Count == 0 ? "—" : $"{ActiveProjects()} active",
+            projects.Count == 0 ? (projectsFailed ? "Unavailable" : "No projects yet") : $"{CompletedProjects()} completed · {AvgProgress():N0}% avg progress",
+            "var(--accent-soft)", "var(--accent-ink)",
+            "% done (active)",
+            projectsProgress,
+            "/projects"),
+        new("newspaper", "News & Memos",
+            news is null ? "—" : $"{news.Value.Published} published",
+            news is null ? (loading ? "Loading…" : "Unavailable") : $"{news.Value.PendingApproval} pending review · {news.Value.AckPending} ack due",
+            "var(--accent-soft)", "var(--accent-ink)",
+            "published · pending · ack-required",
+            news is null ? [] : [news.Value.Published, news.Value.PendingApproval, news.Value.AckRequired],
+            "/news"),
+        new("bell", "Notification Gateway",
+            reqCounts is null ? "—" : $"{reqCounts.Value.Failed} failed",
+            reqCounts is null ? (Auth.IsAdmin ? "Unavailable" : "Admin only") : $"{reqCounts.Value.Queued} queued · {reqCounts.Value.Delivered} delivered",
+            "var(--danger-soft)", "var(--danger)",
+            "failed · queued",
+            reqCounts is null ? [] : [reqCounts.Value.Failed, reqCounts.Value.Queued, reqCounts.Value.Delivered],
+            "/notifications"),
+    ];
+
+    private List<int> projectsProgress =>
+        projects.Where(p => p.Status is "active" or "planning").OrderBy(p => p.Progress).Select(p => p.Progress).ToList();
+
+    /// Sparkline bar height: relative to the largest bar so 1..N bars all stay visible.
+    private static int BarHeight(int v, List<int> bars)
+    {
+        var max = bars.Count == 0 ? 1 : bars.Max();
+        return max <= 0 ? 8 : Math.Clamp((int)Math.Round(v * 100.0 / max), 8, 100);
+    }
+
+    private int ActiveProjects() => projects.Count(p => p.Status is "active" or "planning" && p.IsActive);
+    private int CompletedProjects() => projects.Count(p => p.Status == "completed");
+    private double AvgProgress()
+    {
+        var act = projects.Where(p => p.Status is "active" or "planning").Select(p => p.Progress).ToList();
+        return act.Count == 0 ? 0 : act.Average();
+    }
+
+    protected override void OnInitialized() => Layout.SetHeader("Dashboard", "Overview");
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.LoadMeAsync();
+
+        var mailT = Auth.GetAsync<FolderCountsDto>("/api/mail/counts");
+        var projT = Auth.GetAsync<PagedResult<ProjectListDto>>("/api/projects?page=1&pageSize=200");
+        var newsT = Auth.GetAsync<PagedResult<NewsSummaryDto>>("/api/news?status=published&page=1&pageSize=5");
+        var newsAckT = Auth.GetAsync<PagedResult<NewsSummaryDto>>("/api/news?requiresAck=true&page=1&pageSize=100");
+        var newsAdminT = Auth.IsAdmin ? Auth.GetAsync<PagedResult<NewsSummaryDto>>("/api/news?status=pending&page=1&pageSize=100") : Task.FromResult<PagedResult<NewsSummaryDto>?>(null);
+        var gwT = Auth.GetAsync<DeadLetterDto>("/api/notifications/v1/dead-letter?page=1&pageSize=3");
+        var reqT = Auth.GetAsync<RequestsDto>("/api/notifications/v1/requests?page=1&pageSize=1");
+        await Task.WhenAll(mailT, projT, newsT, newsAckT, newsAdminT, gwT, reqT);
+
+        mail = mailT.Result;
+        if (projT.Result is { } p)
+        {
+            projects = p.Items.ToList();
+            projectsFailed = false;
+        }
+        else
+        {
+            projectsFailed = true;
+        }
+
+        var feed = newsT.Result;
+        var feedAll = newsAckT.Result;
+        var pending = newsAdminT.Result;
+        if (feed is not null)
+        {
+            var ackRequired = feedAll?.TotalCount ?? 0;
+            var ackDue = feedAll?.Items.Count(x => x.RequiresAcknowledgement && !x.IsAcknowledged) ?? 0;
+            news = new NewsCounts(feed.TotalCount, feed.TotalCount, pending?.TotalCount ?? 0, ackRequired, ackDue);
+            recentNews = feed.Items.Where(x => x.PublishedAt is not null).OrderByDescending(x => x.PublishedAt).Take(5).ToList();
+        }
+
+        gateway = gwT.Result;
+        recentDead = gateway?.Items.Take(3).ToList() ?? [];
+
+        if (reqT.Result is { } rq)
+        {
+            var by = rq.ByStatus.ToDictionary(x => x.Status, x => x.Count);
+            reqCounts = new RequestCounts(
+                by.TryGetValue("queued", out var q0) ? q0 : 0,
+                by.TryGetValue("failed", out var f0) ? f0 : 0,
+                by.TryGetValue("delivered", out var d0) ? d0 : 0,
+                rq.Total);
+        }
+
+        loading = false;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
         => await JS.InvokeVoidAsync("ipop.icons");

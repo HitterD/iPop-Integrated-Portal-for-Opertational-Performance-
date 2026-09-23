@@ -22,6 +22,15 @@ public sealed class PermissionEvaluator(IPopDbContext db) : IPermissionEvaluator
 
         var roleIds = await db.UserRoles.AsNoTracking().Where(x => x.UserId == userId)
             .Select(x => x.RoleId).ToListAsync(ct);
+        if (roleIds.Count == 0)
+        {
+            var defaultRoleId = await db.Roles.AsNoTracking()
+                .Where(r => r.Name == "Employee")
+                .Select(r => (Guid?)r.Id)
+                .FirstOrDefaultAsync(ct);
+            if (defaultRoleId is not null)
+                roleIds.Add(defaultRoleId.Value);
+        }
         var visited = new HashSet<Guid>();
         while (roleIds.Count > 0)
         {
@@ -29,14 +38,17 @@ public sealed class PermissionEvaluator(IPopDbContext db) : IPermissionEvaluator
                 .Select(r => new { r.Id, r.ParentRoleId }).ToListAsync(ct);
             foreach (var role in roles)
             {
-                if (!visited.Add(role.Id)) return false;
+                if (!visited.Add(role.Id)) continue;
                 var allowed = await db.RolePermissions.AsNoTracking().AnyAsync(x =>
                     x.RoleId == role.Id && x.PermissionId == permission.Id &&
                     (x.DepartmentCode == "" || x.DepartmentCode == departmentCode), ct);
                 if (allowed) return true;
             }
             roleIds = roles.Where(r => r.ParentRoleId is not null)
-                .Select(r => r.ParentRoleId!.Value).ToList();
+                .Select(r => r.ParentRoleId!.Value)
+                .Where(id => !visited.Contains(id))
+                .Distinct()
+                .ToList();
         }
         return false;
     }

@@ -1,0 +1,378 @@
+@using IPop.Application.Projects
+@inject IJSRuntime JS
+
+<div class="kanban-board-grid @(draggingTaskId.HasValue ? "is-dragging" : "")">
+    @RenderKanbanCol("todo", "To Do", "todo", "col-todo", Kanban?.Todo ?? [])
+    @RenderKanbanCol("doing", "In Progress", "doing", "col-doing", Kanban?.Doing ?? [])
+    @RenderKanbanCol("done", "Done", "done", "col-done", Kanban?.Done ?? [])
+</div>
+
+@code {
+    [Parameter] public KanbanBoardDto? Kanban { get; set; }
+    [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
+    [Parameter] public string SearchQuery { get; set; } = "";
+    [Parameter] public bool MyTasksOnly { get; set; }
+    [Parameter] public string? CurrentUserNik { get; set; }
+    [Parameter] public Guid? HighlightTaskId { get; set; }
+
+    [Parameter] public EventCallback<ProjectTaskDto> OnTaskClick { get; set; }
+    [Parameter] public EventCallback<(Guid TaskId, string TargetStatus)> OnTaskMove { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDto> OnToggleComplete { get; set; }
+    [Parameter] public EventCallback<(string Status, string Title)> OnQuickAdd { get; set; }
+    [Parameter] public EventCallback<(Guid TaskId, Guid UserId, bool IsAssigned)> OnToggleAssignee { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDto> OnRequestExtension { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDto> OnQuickViewTask { get; set; }
+
+    private string? dragOverColumn;
+    private Guid? draggingTaskId;
+    private Guid? dragOverTargetTaskId;
+    private string dragSlotPosition = "after";
+    private Guid? quickAssignTaskId;
+    private string? quickAddColumn;
+    private string quickColumnTitle = "";
+    private Guid? justMovedTaskId;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("ipop.initKanbanDragFollower");
+            }
+            catch { }
+        }
+    }
+
+    private void OnDragStart(Guid taskId, DragEventArgs e)
+    {
+        draggingTaskId = taskId;
+        dragOverTargetTaskId = null;
+        try
+        {
+            if (e.DataTransfer != null)
+            {
+                e.DataTransfer.EffectAllowed = "move";
+                e.DataTransfer.DropEffect = "move";
+            }
+        }
+        catch { }
+    }
+
+    private void OnCardDragOver(Guid taskId, DragEventArgs e)
+    {
+        if (draggingTaskId == taskId) return;
+        dragOverTargetTaskId = taskId;
+        dragSlotPosition = e.OffsetY < 60 ? "before" : "after";
+    }
+
+    private async Task OnDrop(string targetStatus, DragEventArgs e)
+    {
+        dragOverColumn = null;
+        dragOverTargetTaskId = null;
+        if (draggingTaskId is null) return;
+        var id = draggingTaskId.Value;
+        draggingTaskId = null;
+        justMovedTaskId = id;
+
+        await OnTaskMove.InvokeAsync((id, targetStatus));
+
+        var task = ClearJustMovedAfterDelay(id);
+    }
+
+    private async Task ClearJustMovedAfterDelay(Guid id)
+    {
+        await Task.Delay(1400);
+        if (justMovedTaskId == id)
+        {
+            justMovedTaskId = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void StartQuickAdd(string status)
+    {
+        quickAddColumn = status;
+        quickColumnTitle = "";
+    }
+
+    private async Task SubmitQuickAdd(string status)
+    {
+        if (string.IsNullOrWhiteSpace(quickColumnTitle))
+        {
+            quickAddColumn = null;
+            return;
+        }
+
+        var title = quickColumnTitle.Trim();
+        quickAddColumn = null;
+        quickColumnTitle = "";
+
+        await OnQuickAdd.InvokeAsync((status, title));
+    }
+
+    private void ToggleQuickAssign(Guid taskId)
+    {
+        quickAssignTaskId = quickAssignTaskId == taskId ? null : taskId;
+    }
+
+    private RenderFragment RenderKanbanCol(string statusKey, string title, string dotClass, string colThemeClass, IReadOnlyList<ProjectTaskDto> items)
+    {
+        var filteredItems = items.AsEnumerable();
+        if (MyTasksOnly)
+        {
+            filteredItems = filteredItems.Where(t => ProjectUiHelpers.IsAssignedToUser(t, CurrentUserNik));
+        }
+        if (!string.IsNullOrWhiteSpace(SearchQuery))
+        {
+            filteredItems = filteredItems.Where(t => t.Title.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)
+                || (t.Tags?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+        var taskList = filteredItems.ToList();
+
+        return @<div class="kanban-column @colThemeClass @(dragOverColumn == statusKey ? "drag-over" : "")"
+                     @ondragover:preventDefault="true"
+                     @ondragenter="() => dragOverColumn = statusKey"
+                     @ondragleave="() => { if (dragOverColumn == statusKey) { dragOverColumn = null; dragOverTargetTaskId = null; } }"
+                     @ondrop="e => OnDrop(statusKey, e)">
+            <div class="kanban-col-header">
+                <div class="col-title">
+                    <span class="col-dot @dotClass"></span>
+                    <span>@title</span>
+                </div>
+                <span class="col-count @dotClass">@taskList.Count</span>
+            </div>
+
+            <div class="kanban-cards-stream">
+                @if (taskList.Count == 0 && quickAddColumn != statusKey)
+                {
+                    <div style="padding:24px 12px;text-align:center;color:var(--ink-3);font-size:11.5px;border:1px dashed var(--line-soft);border-radius:10px;margin:4px 0">
+                        <i data-lucide="inbox" style="width:16px;height:16px;margin-bottom:4px"></i>
+                        <div>No tasks yet</div>
+                    </div>
+                }
+
+                @foreach (var t in taskList)
+                {
+                    var isOverdue = t.DueDate.HasValue && t.DueDate.Value < DateTime.UtcNow && t.Status != "done";
+                    var evidence = TaskEvidenceHelper.Parse(t.Description).Evidence;
+                    var isJustArrived = justMovedTaskId == t.Id;
+                    var isJustCreated = HighlightTaskId == t.Id;
+
+                    @if (draggingTaskId.HasValue && draggingTaskId.Value != t.Id && dragOverTargetTaskId == t.Id && dragSlotPosition == "before")
+                    {
+                        <div class="kanban-slot-gap"
+                             @ondragover:preventDefault="true"
+                             @ondrop="e => OnDrop(statusKey, e)">
+                        </div>
+                    }
+
+                    <div id="task-card-@t.Id"
+                         class="kanban-task-card @(t.Status == "done" ? "is-done" : "") @(draggingTaskId == t.Id ? "dragging" : "") @(isJustArrived ? "task-just-arrived" : "") @(isJustCreated ? "task-just-created" : "") @(HighlightTaskId == t.Id ? "task-highlight" : "")"
+                         draggable="true"
+                         @onclick="() => OnTaskClick.InvokeAsync(t)"
+                         @ondragstart="e => OnDragStart(t.Id, e)"
+                         @ondragover:preventDefault="true"
+                         @ondragover="e => OnCardDragOver(t.Id, e)"
+                         @ondragend="() => { draggingTaskId = null; dragOverColumn = null; dragOverTargetTaskId = null; }">
+                        <div class="task-card-top">
+                            <div style="display:flex;align-items:center;gap:8px">
+                                <div class="task-card-check @(t.Status == "done" ? "done" : "")"
+                                     @onclick="() => OnToggleComplete.InvokeAsync(t)"
+                                     @onclick:stopPropagation="true"
+                                     title="@(t.Status == "done" ? "Mark incomplete" : "Mark completed")">
+                                    @if (t.Status == "done")
+                                    {
+                                        <i data-lucide="check" style="width:11px;height:11px"></i>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(t.Priority))
+                                {
+                                    <span class="priority-badge @t.Priority.ToLower()">@t.Priority</span>
+                                }
+                            </div>
+
+                            <div style="display:flex;align-items:center;gap:4px">
+                                @if (isOverdue)
+                                {
+                                    <button type="button" class="btn-sm surface" style="padding:2px 6px;font-size:10px;border-radius:999px;color:#c2410c;border-color:#fed7aa;background:#fff7ed;display:inline-flex;align-items:center;gap:3px"
+                                            @onclick="() => OnRequestExtension.InvokeAsync(t)" @onclick:stopPropagation="true" title="Request deadline extension">
+                                        <i data-lucide="clock-alert" style="width:9px;height:9px"></i> Extend
+                                    </button>
+                                }
+                                <button type="button" class="btn-sm surface" style="padding:2px 5px;font-size:10px;border-radius:999px;opacity:0.85"
+                                        @onclick="() => OnQuickViewTask.InvokeAsync(t)" @onclick:stopPropagation="true" title="Open Quick Inspector">
+                                    <i data-lucide="panel-right-open" style="width:11px;height:11px"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <h4 class="task-card-title">@t.Title</h4>
+
+                        @if (!string.IsNullOrWhiteSpace(t.Tags))
+                        {
+                            <div class="task-card-tags">
+                                @foreach (var tag in t.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                                {
+                                    <span class="task-tag">@tag</span>
+                                }
+                            </div>
+                        }
+
+                        <div class="task-card-foot">
+                            <div class="task-card-metrics">
+                                @if (t.DueDate.HasValue)
+                                {
+                                    <span class="due-pill @(isOverdue ? "overdue" : "")">
+                                        <i data-lucide="calendar" style="width:11px;height:11px"></i>
+                                        @t.DueDate.Value.ToString("MMM dd")
+                                    </span>
+                                }
+                                @if (evidence.IsExtended)
+                                {
+                                    <span class="badge-extended" title="@evidence.LatestExtension?.Reason">
+                                        <i data-lucide="calendar-sync" style="width:9px;height:9px"></i> Diperpanjang
+                                    </span>
+                                }
+                                @if (t.SubtaskCount > 0)
+                                {
+                                    <span class="subtask-badge">
+                                        <i data-lucide="check-square" style="width:11px;height:11px"></i>
+                                        @t.SubtaskDoneCount/@t.SubtaskCount
+                                    </span>
+                                }
+                                @* Fase 2 — penanda diskusi tugas *@
+                                @if (t.CommentCount > 0)
+                                {
+                                    <span class="subtask-badge" title="@($"{t.CommentCount} comments")">
+                                        <i data-lucide="message-square" style="width:11px;height:11px"></i>
+                                        @t.CommentCount
+                                    </span>
+                                }
+                                @if (t.AttachmentCount > 0)
+                                {
+                                    <span class="subtask-badge" title="@($"{t.AttachmentCount} attachments")">
+                                        <i data-lucide="paperclip" style="width:11px;height:11px"></i>
+                                        @t.AttachmentCount
+                                    </span>
+                                }
+                                @if (t.HasReminder)
+                                {
+                                    <span class="subtask-badge" title="Due reminder active" style="color:var(--accent-ink)">
+                                        <i data-lucide="bell-ring" style="width:11px;height:11px"></i>
+                                    </span>
+                                }
+                                @if (t.EstimatedHours.HasValue)
+                                {
+                                    <span style="font-size:11px;color:var(--ink-3)">@t.EstimatedHours h</span>
+                                }
+                            </div>
+
+                            @* Assignee Avatars & Quick Assign Button *@
+                            <div class="task-card-assign-wrap">
+                                @foreach (var a in t.Assignees.Take(3))
+                                {
+                                    <div class="task-assignee-avatar" style="background:@ProjectUiHelpers.GetAvatarBg(a.Name)" title="@a.Name (@a.Nik)">
+                                        @ProjectUiHelpers.GetInitials(a.Name)
+                                    </div>
+                                }
+                                @if (t.Assignees.Count > 3)
+                                {
+                                    <div class="task-assignee-avatar more" title="+@(t.Assignees.Count - 3) more">
+                                        +@(t.Assignees.Count - 3)
+                                    </div>
+                                }
+                                <button type="button"
+                                        class="task-assign-btn-add @(t.Assignees.Count == 0 ? "empty" : "")"
+                                        @onclick="() => ToggleQuickAssign(t.Id)"
+                                        @onclick:stopPropagation="true"
+                                        title="Assign team member">
+                                    <i data-lucide="user-plus" style="width:11px;height:11px"></i>
+                                    @if (t.Assignees.Count == 0)
+                                    {
+                                        <span>Assign</span>
+                                    }
+                                </button>
+
+                                @* Quick Assign Popover *@
+                                @if (quickAssignTaskId == t.Id)
+                                {
+                                    <div class="quick-assign-popover" @onclick:stopPropagation="true">
+                                        <div class="quick-assign-popover-head">
+                                            <span>Assign Member</span>
+                                            <button type="button" style="background:none;border:none;cursor:pointer;padding:2px;color:var(--ink-3);display:flex;align-items:center" @onclick="() => quickAssignTaskId = null">
+                                                <i data-lucide="x" style="width:12px;height:12px"></i>
+                                            </button>
+                                        </div>
+                                        <div class="quick-assign-popover-list">
+                                            @if (Members.Count == 0)
+                                            {
+                                                <div class="quick-assign-empty">No team members in this project.</div>
+                                            }
+                                            else
+                                            {
+                                                @foreach (var m in Members)
+                                                {
+                                                    var isAssigned = t.Assignees.Any(a => a.UserId == m.UserId);
+                                                    <div class="quick-assign-item @(isAssigned ? "assigned" : "")"
+                                                         @onclick="() => OnToggleAssignee.InvokeAsync((t.Id, m.UserId, isAssigned))">
+                                                        <div class="team-avatar-circ" style="width:22px;height:22px;font-size:9.5px;background:@ProjectUiHelpers.GetAvatarBg(m.Name)">
+                                                            @ProjectUiHelpers.GetInitials(m.Name)
+                                                        </div>
+                                                        <div class="quick-assign-item-info">
+                                                            <div class="name">@m.Name</div>
+                                                            <div class="role">@m.Role · @m.Nik</div>
+                                                        </div>
+                                                        @if (isAssigned)
+                                                        {
+                                                            <i data-lucide="check" style="width:13px;height:13px;color:var(--accent);flex-shrink:0"></i>
+                                                        }
+                                                    </div>
+                                                }
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    @if (draggingTaskId.HasValue && draggingTaskId.Value != t.Id && dragOverTargetTaskId == t.Id && dragSlotPosition == "after")
+                    {
+                        <div class="kanban-slot-gap"
+                             @ondragover:preventDefault="true"
+                             @ondrop="e => OnDrop(statusKey, e)">
+                        </div>
+                    }
+                }
+
+                @if (dragOverColumn == statusKey && draggingTaskId.HasValue && dragOverTargetTaskId == null)
+                {
+                    <div class="kanban-drop-placeholder"
+                         @ondragover:preventDefault="true"
+                         @ondrop="e => OnDrop(statusKey, e)">
+                        <i data-lucide="arrow-down-circle" style="width:16px;height:16px"></i>
+                        <span>Drop task in @title</span>
+                    </div>
+                }
+
+                @if (quickAddColumn == statusKey)
+                {
+                    <div class="kanban-quick-add-box">
+                        <input class="org-input" style="font-size:12.5px;margin-bottom:8px" placeholder="Task title..." @bind="quickColumnTitle" @onkeydown="@(async e => { if (e.Key == "Enter") await SubmitQuickAdd(statusKey); if (e.Key == "Escape") quickAddColumn = null; })" autofocus />
+                        <div style="display:flex;justify-content:flex-end;gap:6px">
+                            <button type="button" class="btn-sm surface" style="padding:4px 12px;font-size:11.5px" @onclick="() => quickAddColumn = null">Cancel</button>
+                            <button type="button" class="btn-sm accent" style="padding:4px 12px;font-size:11.5px" @onclick="() => SubmitQuickAdd(statusKey)">Add</button>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="kanban-col-quick-add">
+                <button type="button" class="col-quick-btn" @onclick="() => StartQuickAdd(statusKey)">
+                    <i data-lucide="plus" style="width:13px;height:13px"></i> Add Task
+                </button>
+            </div>
+        </div>;
+    }
+}

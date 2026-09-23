@@ -1,4 +1,5 @@
 using IPop.Application.Hris;
+using IPop.Application.Notifications;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,7 @@ namespace IPop.Infrastructure.Hris;
 /// (IsManuallyEdited); auth fields (password_hash, must_change_password,
 /// failed_login_count, locked_until) and presence facts are never touched;
 /// statusAktif=false → soft deactivate + revoke sessions.
-public class HrisSyncService(IPopDbContext db, IHrisGateway gateway) : IHrisSyncService
+public class HrisSyncService(IPopDbContext db, IHrisGateway gateway, INotificationGatewayService? notificationGateway = null) : IHrisSyncService
 {
     public async Task<HrisSyncResult> RunAsync(CancellationToken ct)
     {
@@ -25,12 +26,17 @@ public class HrisSyncService(IPopDbContext db, IHrisGateway gateway) : IHrisSync
         {
             return await RunCoreAsync(state, run, startedAt, ct);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // Host is stopping
+            throw;
+        }
+        catch (Exception ex)
         {
             run.FinishedAt = DateTime.UtcNow;
             run.Succeeded = false;
             run.Error = ex.Message.Length > 1000 ? ex.Message[..1000] : ex.Message;
-            await db.SaveChangesAsync(ct);
+            try { await db.SaveChangesAsync(CancellationToken.None); } catch { }
             throw;
         }
     }
@@ -136,6 +142,27 @@ public class HrisSyncService(IPopDbContext db, IHrisGateway gateway) : IHrisSync
         run.Succeeded = true;
         run.FinishedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+
+        if (notificationGateway != null && (inserted > 0 || updated > 0 || deactivated > 0))
+        {
+            try
+            {
+                await notificationGateway.PublishInternalAsync(
+                    clientSlug: "system",
+                    eventType: "system.hris_sync",
+                    title: "Sinkronisasi HRIS Selesai",
+                    message: $"Sinkronisasi direktori berhasil: {inserted} baru, {updated} diubah, {deactivated} nonaktif.",
+                    target: new NotificationTarget(All: true),
+                    priority: "low",
+                    targetUrl: "/notifications/inbox",
+                    ct: ct);
+            }
+            catch
+            {
+                // Non-blocking notification delivery
+            }
+        }
+
         return new HrisSyncResult(inserted, updated, deactivated, now); // callers broadcast when any count > 0
     }
 }

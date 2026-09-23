@@ -14,4 +14,8 @@
     <PackageReference Include="Radzen.Blazor" Version="11.2.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\IPop.Application\IPop.Application.csproj" />
+  </ItemGroup>
+
 </Project>

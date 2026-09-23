@@ -1,0 +1,86 @@
+@namespace IPop.Web.Components.Projects
+@using IPop.Web.Components.Projects
+@inject IPop.Web.Services.ToastService Toasts
+
+@* Lampiran berkas tugas (Diskusi Tugas, Fase 2) — daftar berkas dari penyimpanan
+   NAS dengan aksi unduh dan hapus. Kontrak backend:
+   GET/POST/DELETE /api/projects/tasks/{taskId}/attachments. *@
+
+<div class="task-attachments">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:12.5px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:6px">
+            <i data-lucide="paperclip" style="width:14px;height:14px"></i>
+            Attachments (@Items.Count)
+        </span>
+        @if (CanEdit && OnAdd.HasDelegate)
+        {
+            <button type="button" class="btn-sm surface" style="padding:4px 10px;font-size:11.5px" @onclick="OnAdd">
+                <i data-lucide="plus" style="width:12px;height:12px"></i> Add file
+            </button>
+        }
+    </div>
+
+    @if (Items.Count == 0)
+    {
+        <div class="tree-empty" style="padding:16px">
+            <div class="meta" style="font-size:11.5px;color:var(--ink-3)">No attachments yet. Files are stored on the NAS.</div>
+        </div>
+    }
+    else
+    {
+        <div style="display:flex;flex-direction:column;gap:6px">
+            @foreach (var a in Items)
+            {
+                var att = a;
+                <div class="task-att-row" @key="att.Id">
+                    <i data-lucide="@FileIcon(att.Name)" class="task-att-ic"></i>
+                    <div style="flex:1;min-width:0">
+                        <div style="font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">@att.Name</div>
+                        <div style="font-size:10.5px;color:var(--ink-3)">@HumanSize(att.Size) · uploaded by @att.UploadedBy · @att.UploadedAt.ToLocalTime().ToString("dd MMM HH:mm")</div>
+                    </div>
+                    <button type="button" class="btn-sm surface" style="padding:3px 8px" title="Download" @onclick="() => OnDownload.InvokeAsync(att)">
+                        <i data-lucide="download" style="width:12px;height:12px"></i>
+                    </button>
+                    @if (CanEdit)
+                    {
+                        <button type="button" class="btn-sm surface danger" style="padding:3px 8px" title="Remove attachment" @onclick="() => OnDelete.InvokeAsync(att)">
+                            <i data-lucide="trash-2" style="width:12px;height:12px"></i>
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// Satu lampiran berkas tugas (tersimpan di NAS).
+    public sealed record TaskAttachmentItem(Guid Id, string Name, long Size, string UploadedBy, DateTime UploadedAt, string? DownloadPath);
+
+    [Parameter] public IReadOnlyList<TaskAttachmentItem> Items { get; set; } = [];
+    [Parameter] public bool CanEdit { get; set; } = true;
+    [Parameter] public EventCallback<TaskAttachmentItem> OnDownload { get; set; }
+    [Parameter] public EventCallback<TaskAttachmentItem> OnDelete { get; set; }
+    [Parameter] public EventCallback OnAdd { get; set; }
+
+    private static string FileIcon(string name)
+    {
+        var ext = System.IO.Path.GetExtension(name)?.ToLowerInvariant() ?? "";
+        return ext switch
+        {
+            ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" => "image",
+            ".pdf" => "file-text",
+            ".doc" or ".docx" => "file-type",
+            ".xls" or ".xlsx" or ".csv" => "file-spreadsheet",
+            ".zip" or ".rar" => "archive",
+            _ => "file"
+        };
+    }
+
+    private static string HumanSize(long bytes) => bytes switch
+    {
+        >= 1024 * 1024 => $"{bytes / 1024.0 / 1024.0:0.#} MB",
+        >= 1024 => $"{bytes / 1024.0:0.#} KB",
+        _ => $"{bytes} B"
+    };
+}

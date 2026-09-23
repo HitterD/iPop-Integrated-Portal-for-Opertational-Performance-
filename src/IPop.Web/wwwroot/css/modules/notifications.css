@@ -1,0 +1,581 @@
+/* Personal notification inbox (/notifications/inbox) — row list above the bell popover
+   rows: icon facet + title/source + body + time, unread dot on the right. */
+.notif-list { display:grid; }
+.notif-row {
+  display:flex;gap:12px;align-items:flex-start;padding:12px 14px;
+  border-bottom:1px solid var(--line-soft);transition:background 0.2s var(--ease);cursor:pointer;
+}
+.notif-row:last-child { border-bottom:none; }
+.notif-row:hover { background:var(--bg); }
+.notif-row-ic {
+  width:32px;height:32px;border-radius:10px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+}
+.notif-row-ic .lucide { width:15px;height:15px; }
+.notif-row-main { flex:1;min-width:0; }
+.notif-row-t { font-size:13px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:6px;flex-wrap:wrap; }
+.notif-row.unread .notif-row-t { font-weight:700; }
+.notif-row-s { font-size:12px;color:var(--ink-2);margin-top:2px;line-height:1.5; }
+.notif-row-meta { font-size:11px;color:var(--ink-3);margin-top:6px;display:flex;gap:5px;align-items:center;flex-wrap:wrap; }
+.notif-row-dot {
+  width:8px;height:8px;border-radius:99px;background:var(--danger);
+  flex-shrink:0;margin-top:7px;
+}
+/* selected row — same accent tint as .mail-row.sel */
+.notif-row.sel { background:var(--accent-soft); }
+/* "baru" chip for unread rows */
+.unread-chip {
+  font-size:9.5px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;
+  padding:1px 6px;border-radius:99px;background:var(--danger);color:#fff;
+}
+[data-theme="dark"] .unread-chip { color:#0e0d0b; }
+/* detail panel body */
+.notif-detail { padding:16px 20px 20px; }
+.notif-detail-title { font-size:17px;font-weight:700;letter-spacing:-0.02em;margin-bottom:10px; }
+.notif-detail-meta { display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:14px; }
+.notif-detail-body { font-size:13.5px;line-height:1.7;color:var(--ink-2);white-space:pre-wrap; }
+.notif-detail-foot {
+  display:flex;gap:6px;align-items:center;margin-top:18px;padding-top:12px;
+  border-top:1px solid var(--line-soft);font-size:11.5px;color:var(--ink-3);
+}
+
+/* Composer drawer */
+.mail-composer.overlay { position:fixed;inset:0;background:rgba(23,22,20,0.35);z-index:90;display:flex;justify-content:flex-end; }
+.composer-tray { width:min(520px,100%);height:100%;background:var(--surface);border-left:1px solid var(--line);display:flex;flex-direction:column;padding:16px;box-shadow:-12px 0 32px rgba(0,0,0,0.12); }
+.composer-head { display:flex;align-items:center;gap:8px;margin-bottom:14px; }
+.composer-head .title { font-size:15px;font-weight:700;letter-spacing:-0.02em; }
+.composer-head .draft-hint { margin-left:auto;font-size:11.5px;color:var(--ink-3); }
+.composer-head .icon-btn { width:28px;height:28px;border-radius:8px;border:none;background:none;color:var(--ink-3);cursor:pointer; }
+.composer-head .icon-btn:hover { color:var(--ink);background:var(--tray); }
+.field { display:flex;flex-direction:column;gap:6px;margin-bottom:10px; }
+.field .f-label { font-size:11px;font-weight:700;letter-spacing:0.05em;color:var(--ink-3); }
+.chips { display:flex;flex-wrap:wrap;gap:6px;margin-top:4px; }
+.chip { display:inline-flex;align-items:center;gap:5px;padding:3px 4px 3px 8px;border-radius:99px;background:var(--accent-soft);color:var(--accent-ink);font-size:11.5px;font-weight:600; }
+.chip-x { border:none;background:none;color:var(--accent-ink);cursor:pointer;width:16px;height:16px;display:flex;align-items:center;justify-content:center;border-radius:50%; }
+.chip-x:hover { background:rgba(0,0,0,0.08); }
+.chip-x .lucide { width:10px;height:10px; }
+.subject { padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:13.5px;font-weight:600;margin-bottom:10px; }
+.subject:focus { outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(46,125,91,0.12); }
+textarea.body { flex:1;min-height:180px;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit;font-size:13.5px;line-height:1.6;resize:none; }
+textarea.body:focus { outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(46,125,91,0.12); }
+.composer-foot { display:flex;align-items:center;gap:8px;margin-top:12px; }
+.att-upload { cursor:pointer;font-size:12px;color:var(--ink-2);display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--line);border-radius:9px; }
+.att-upload:hover { background:var(--tray); }
+.att-upload .lucide { width:14px;height:14px; }
+.att-preview { display:flex;flex-wrap:wrap;gap:6px; }
+.composer-foot .new-btn { margin-left:auto;width:auto;padding:0 14px;height:34px;font-size:12.5px;border-radius:10px;gap:6px; }
+.composer-foot .new-btn .lucide { width:14px;height:14px; }
+
+@media (max-width:900px) {
+  .mail-area { grid-template-columns:1fr;height:auto; }
+  .mail-list { border-top:1px solid var(--line); }
+}
+
+/* ==========================================================================
+   Apple Design Language: Global Notification System
+   - Apple Notification Center (Dropdown Tray)
+   - Realtime Floating Banner (macOS Style)
+   ========================================================================== */
+
+/* --- Apple Notification Center Popover Card --- */
+.apple-notif-pop-card {
+  display: flex;
+  flex-direction: column;
+  background: #ffffff !important;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.16), 0 2px 8px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  position: relative;
+  z-index: 1000;
+}
+
+[data-theme="dark"] .apple-notif-pop-card {
+  background: #1c1c1e !important;
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.apple-notif-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 16px 11px;
+  border-bottom: 1px solid var(--line-soft);
+  gap: 12px;
+}
+
+.apple-notif-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.apple-notif-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.apple-notif-unread-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: rgba(52, 199, 89, 0.15);
+  color: #1b7a3e;
+  letter-spacing: 0.03em;
+}
+
+[data-theme="dark"] .apple-notif-unread-badge {
+  background: rgba(52, 199, 89, 0.22);
+  color: #34c759;
+}
+
+.apple-notif-readall-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 550;
+  color: var(--accent);
+  background: rgba(52, 199, 89, 0.1);
+  border: none;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 99px;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  line-height: 1.2;
+  transition: all 0.15s var(--ease);
+}
+
+.apple-notif-readall-btn .lucide {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.apple-notif-readall-btn:hover {
+  background: rgba(52, 199, 89, 0.2);
+}
+
+.apple-notif-body {
+  max-height: 380px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+}
+
+.apple-notif-loading {
+  padding: 14px;
+}
+
+.apple-notif-empty {
+  padding: 36px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.apple-notif-empty-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--tray);
+  color: var(--ink-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.apple-notif-empty-icon .lucide {
+  width: 18px;
+  height: 18px;
+}
+
+.apple-notif-empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 3px;
+}
+
+.apple-notif-empty-sub {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+
+.apple-notif-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.apple-notif-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line-soft);
+  transition: background 0.15s var(--ease);
+  position: relative;
+}
+
+.apple-notif-row:last-child {
+  border-bottom: none;
+}
+
+.apple-notif-row:hover {
+  background: rgba(0, 0, 0, 0.035);
+}
+
+[data-theme="dark"] .apple-notif-row:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.apple-notif-row.unread {
+  background: rgba(46, 125, 91, 0.04);
+}
+
+[data-theme="dark"] .apple-notif-row.unread {
+  background: rgba(52, 199, 89, 0.06);
+}
+
+.apple-notif-ic {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.15s var(--ease);
+}
+
+.apple-notif-row:hover .apple-notif-ic {
+  transform: scale(1.05);
+}
+
+.apple-notif-ic .lucide {
+  width: 15px;
+  height: 15px;
+}
+
+/* Squircle Icon Palettes per Module */
+.apple-notif-ic.chat { background: rgba(52, 199, 89, 0.16); color: #1b7a3e; }
+.apple-notif-ic.mail { background: rgba(0, 122, 255, 0.16); color: #0062cc; }
+.apple-notif-ic.news { background: rgba(255, 149, 0, 0.16); color: #b25900; }
+.apple-notif-ic.project { background: rgba(175, 82, 222, 0.16); color: #782bb8; }
+.apple-notif-ic.system { background: rgba(142, 142, 147, 0.16); color: #48484a; }
+
+[data-theme="dark"] .apple-notif-ic.chat { background: rgba(52, 199, 89, 0.22); color: #34c759; }
+[data-theme="dark"] .apple-notif-ic.mail { background: rgba(10, 132, 255, 0.22); color: #5ac8fa; }
+[data-theme="dark"] .apple-notif-ic.news { background: rgba(255, 159, 10, 0.22); color: #ff9f0a; }
+[data-theme="dark"] .apple-notif-ic.project { background: rgba(191, 90, 242, 0.22); color: #bf5af2; }
+[data-theme="dark"] .apple-notif-ic.system { background: rgba(142, 142, 147, 0.22); color: #aeaeb2; }
+
+.apple-notif-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.apple-notif-row-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.apple-notif-row-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.apple-notif-row.unread .apple-notif-row-title {
+  font-weight: 700;
+}
+
+.apple-notif-row-time {
+  font-size: 10.5px;
+  color: var(--ink-3);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.apple-notif-row-desc {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.apple-notif-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  background: var(--accent);
+  flex-shrink: 0;
+  margin-top: 6px;
+  box-shadow: 0 0 6px rgba(46, 125, 91, 0.4);
+}
+
+.apple-notif-footer {
+  padding: 11px 16px;
+  border-top: 1px solid var(--line-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 0.15s var(--ease);
+}
+
+.apple-notif-footer .lucide {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.15s var(--ease);
+}
+
+.apple-notif-footer:hover {
+  background: rgba(0, 0, 0, 0.035);
+}
+
+[data-theme="dark"] .apple-notif-footer:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.apple-notif-footer:hover .lucide {
+  transform: translateX(3px);
+}
+
+/* --- Apple macOS Floating Banner Host & Items --- */
+.apple-banner-host {
+  position: fixed;
+  top: 18px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+  width: 350px;
+  max-width: calc(100vw - 36px);
+}
+
+.apple-banner {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.84);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 16px;
+  padding: 12px 14px;
+  box-shadow: 0 16px 36px -6px rgba(0, 0, 0, 0.18), 0 4px 12px -2px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  animation: apple-banner-in 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease);
+}
+
+[data-theme="dark"] .apple-banner {
+  background: rgba(30, 29, 27, 0.88);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.55), 0 4px 14px -2px rgba(0, 0, 0, 0.3);
+}
+
+.apple-banner:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 40px -6px rgba(0, 0, 0, 0.22), 0 6px 16px -2px rgba(0, 0, 0, 0.1);
+}
+
+@keyframes apple-banner-in {
+  from {
+    opacity: 0;
+    transform: translateX(40px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.apple-banner-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.apple-banner-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.apple-banner-icon .lucide {
+  width: 12px;
+  height: 12px;
+}
+
+.apple-banner-icon.chat { background: rgba(52, 199, 89, 0.16); color: #1b7a3e; }
+.apple-banner-icon.mail { background: rgba(0, 122, 255, 0.16); color: #0062cc; }
+.apple-banner-icon.news { background: rgba(255, 149, 0, 0.16); color: #b25900; }
+.apple-banner-icon.project { background: rgba(175, 82, 222, 0.16); color: #782bb8; }
+.apple-banner-icon.system { background: rgba(142, 142, 147, 0.16); color: #48484a; }
+
+[data-theme="dark"] .apple-banner-icon.chat { background: rgba(52, 199, 89, 0.22); color: #34c759; }
+[data-theme="dark"] .apple-banner-icon.mail { background: rgba(10, 132, 255, 0.22); color: #5ac8fa; }
+[data-theme="dark"] .apple-banner-icon.news { background: rgba(255, 159, 10, 0.22); color: #ff9f0a; }
+[data-theme="dark"] .apple-banner-icon.project { background: rgba(191, 90, 242, 0.22); color: #bf5af2; }
+[data-theme="dark"] .apple-banner-icon.system { background: rgba(142, 142, 147, 0.22); color: #aeaeb2; }
+
+.apple-banner-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+
+.apple-banner-app {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.apple-banner-dot {
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.apple-banner-time {
+  font-size: 10.5px;
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
+.apple-banner-close {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--ink-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+[data-theme="dark"] .apple-banner-close {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.apple-banner-close:hover {
+  background: rgba(0, 0, 0, 0.12);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .apple-banner-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.apple-banner-close .lucide {
+  width: 11px;
+  height: 11px;
+}
+
+.apple-banner-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.apple-banner-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+.apple-banner-desc {
+  font-size: 11.5px;
+  color: var(--ink-2);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+
+/* Preferensi notifikasi & jam senyap (Fase 4) */
+.notif-prefs {
+    padding: 12px 14px; border-bottom: 1px solid var(--line-soft);
+    display: grid; gap: 10px; background: var(--tray);
+}
+.notif-prefs-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.notif-pref-toggle {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 12px; color: var(--ink-2); cursor: pointer;
+    padding: 3px 10px; border: 1px solid var(--line-soft); border-radius: 999px;
+    background: var(--surface);
+}
+.notif-pref-toggle input { accent-color: var(--accent); }
+
+/* Tab Riwayat | Preferensi (Fase 4) */
+.notif-tabs { display: flex; gap: 2px; padding: 6px 14px 0; border-bottom: 1px solid var(--line-soft); }
+.notif-tab {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border: none; background: transparent; cursor: pointer;
+    font-size: 12.5px; font-weight: 600; color: var(--ink-3);
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.notif-tab i { width: 14px; height: 14px; }
+.notif-tab:hover { color: var(--ink); }
+.notif-tab.active { color: var(--accent-ink); border-bottom-color: var(--accent); }
+
+/* Penampil Kalender (Fase 3) */
+.cal-view-btn { border: none; background: transparent; padding: 5px 14px; font-size: 12px; font-weight: 600; color: var(--ink-3); cursor: pointer; }
+.cal-view-btn.active { background: var(--accent-soft); color: var(--accent-ink); }
+.cal-month { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--line-soft); padding: 1px; }
+.cal-mday { min-height: 84px; background: var(--surface); padding: 6px 8px; font-size: 12px; }
+.cal-mday.other { background: var(--tray); color: var(--ink-3); }
+.cal-mday.today .d { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; background: var(--accent); color: #fff; border-radius: 50%; font-weight: 700; }
+.cal-empty { padding: 48px 20px; text-align: center; color: var(--ink-3); }
+
+/* Event di kalender (Fase 3) */
+.cal-ev { font-size: 10.5px; padding: 1px 5px; border-radius: 4px; background: var(--accent-soft); color: var(--accent-ink); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-ev-more { font-size: 10px; color: var(--ink-3); margin-top: 2px; }
+.cal-agenda { padding: 10px 14px; display: grid; gap: 6px; }
+.cal-agenda-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 10px; background: var(--surface); }
+.cal-agenda-item .cal-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }

@@ -65,6 +65,16 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         mail.HasAttachment = await LinkAttachmentsAsync(mail.Id, req.AttachmentIds, ct);
         await db.SaveChangesAsync(ct);
 
+        // Fase 3 — aturan label otomatis: untuk tiap penerima non-pengirim, tempel label
+        // dari aturan aktif yang cocok dengan pengirim (nama/NIK/email).
+        if (!isScheduled)
+            await ApplyAutoRulesAsync(mail, recipientUsers, ct);
+
+        // Fase 3 — balasan otomatis (OOO): tiap penerima yang sedang OOO membalas sekali
+        // per hari per pengirim. Dijalankan setelah surat masuk tersimpan.
+        if (!isScheduled)
+            await SendAutoRepliesAsync(mail, recipientUsers, ct);
+
         if (!isScheduled && notificationGateway != null)
         {
             var recipientIds = recipientUsers
@@ -238,6 +248,21 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             if (search.StarredOnly == true) query = query.Where(r => r.IsStarred);
             if (search.UnreadOnly == true) query = query.Where(r => !r.IsRead);
             if (!string.IsNullOrWhiteSpace(search.SenderNik)) query = query.Where(r => r.Mail.Sender.Nik == search.SenderNik);
+            // Filter label (Fase 3): surat yang ditempel label bernama ini milik pengguna.
+            if (!string.IsNullOrWhiteSpace(search.Label))
+            {
+                var labelName = search.Label.Trim();
+                query = query.Where(r => db.MailLabelAssignments
+                    .Any(a => a.MailId == r.MailId && a.Label.UserId == userId && a.Label.Name == labelName));
+            }
+            // Rentang tanggal kirim (Surat Lanjutan).
+            if (search.DateFrom is { } from)
+                query = query.Where(r => (r.Mail.SentAt ?? r.Mail.CreatedAt) >= from);
+            if (search.DateTo is { } to)
+                query = query.Where(r => (r.Mail.SentAt ?? r.Mail.CreatedAt) <= to.AddDays(1));
+            // Punya lampiran (Surat Lanjutan).
+            if (search.HasAttachment == true)
+                query = query.Where(r => r.Mail.HasAttachment);
         }
 
         var totalCount = await query.CountAsync(ct);
@@ -251,7 +276,21 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             .Take(pageSize)
             .ToListAsync(ct);
 
-        var dtos = items.Select(ToSummary).ToList();
+        // Label per surat pada halaman ini (satu query untuk seluruh halaman).
+        var mailIds = items.Select(r => r.MailId).ToList();
+        var labelByMail = mailIds.Count == 0
+            ? new Dictionary<Guid, List<string>>()
+            : (await db.MailLabelAssignments.AsNoTracking()
+                .Where(a => mailIds.Contains(a.MailId) && a.Label.UserId == userId)
+                .Select(a => new { a.MailId, a.Label.Name })
+                .ToListAsync(ct))
+                .GroupBy(x => x.MailId)
+                .ToDictionary(g => g.Key, g => g.Select(x => x.Name).ToList());
+
+        var dtos = items.Select(r => ToSummary(r) with
+        {
+            Labels = labelByMail.TryGetValue(r.MailId, out var lbls) ? lbls : null
+        }).ToList();
         return new PagedResult<MailSummaryDto>(dtos, totalCount, page, pageSize);
     }
 
@@ -534,7 +573,8 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         var mail = await db.Mails.FindAsync([mailId], ct);
         if (mail is null) return new SendMailResult(false, null, "mail_not_found");
 
-        // PDF export stub: records the request only — real rendering lands with Wave-2.
+        // Catat permintaan ekspor (audit). Rendering sungguhan dilakukan endpoint via
+        // MailPdfRenderer (DevExpress Document Processing) — bukan stub lagi.
         mail.PdfExportRequestedBy = userId.ToString();
         mail.PdfExportRequestedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
@@ -740,6 +780,91 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         Id = Guid.NewGuid(), MailId = mailId, UserId = userId,
         RecipientType = type, Folder = folder, CreatedAt = now,
     };
+
+    /// Fase 3 — terapkan aturan label otomatis per penerima saat surat masuk.
+    private async Task ApplyAutoRulesAsync(MailEntity mail, IReadOnlyList<User> recipientUsers, CancellationToken ct)
+    {
+        var recipientIds = recipientUsers.Where(u => u.Id != mail.SenderId).Select(u => u.Id).ToList();
+        if (recipientIds.Count == 0) return;
+
+        var rules = await db.MailRules.AsNoTracking()
+            .Where(r => recipientIds.Contains(r.UserId) && r.IsEnabled)
+            .ToListAsync(ct);
+        if (rules.Count == 0) return;
+
+        var sender = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == mail.SenderId, ct);
+        var haystacks = new[] { sender?.Name, sender?.Nik, sender?.Email };
+
+        var toAdd = new List<IPop.Core.Entities.MailLabelAssignment>();
+        foreach (var rule in rules)
+        {
+            var needle = rule.SenderContains.Trim();
+            var match = haystacks.Any(h => h?.Contains(needle, StringComparison.OrdinalIgnoreCase) == true);
+            if (!match) continue;
+            var already = await db.MailLabelAssignments.AnyAsync(a => a.LabelId == rule.LabelId && a.MailId == mail.Id, ct);
+            if (!already)
+                toAdd.Add(new IPop.Core.Entities.MailLabelAssignment
+                {
+                    Id = Guid.NewGuid(), LabelId = rule.LabelId, MailId = mail.Id, CreatedAt = DateTime.UtcNow
+                });
+        }
+        if (toAdd.Count > 0)
+        {
+            db.MailLabelAssignments.AddRange(toAdd);
+            await db.SaveChangesAsync(ct);
+        }
+    }
+
+    /// Fase 3 — kirim balasan otomatis (OOO): untuk tiap penerima yang sedang aktif
+    /// OOO dan belum membalas pengirim ini hari ini, buat surat balasan otomatis.
+    private async Task SendAutoRepliesAsync(MailEntity original, IReadOnlyList<User> recipientUsers, CancellationToken ct)
+    {
+        var today = DateTime.UtcNow.Date;
+        var recipientIds = recipientUsers.Where(u => u.Id != original.SenderId).Select(u => u.Id).ToList();
+        if (recipientIds.Count == 0) return;
+
+        var settings = await db.MailAutoReplySettings.AsNoTracking()
+            .Where(s => recipientIds.Contains(s.UserId) && s.IsEnabled)
+            .Where(s => (s.FromDate == null || s.FromDate <= today) && (s.UntilDate == null || s.UntilDate >= today))
+            .ToListAsync(ct);
+        if (settings.Count == 0) return;
+
+        foreach (var s in settings)
+        {
+            try
+            {
+                // Satu balasan otomatis per (penerima OOO → pengirim asli) per hari.
+                // Dibedakan dari balasan MANUAL lewat marker Signature="auto-reply" —
+                // balasan manual yang kebetulan "Re: ..." tidak memblokir OOO berikutnya.
+                var alreadyToday = await db.Mails.AnyAsync(m =>
+                    m.SenderId == s.UserId &&
+                    m.Signature == "auto-reply" &&
+                    m.CreatedAt >= today &&
+                    m.Recipients.Any(r => r.UserId == original.SenderId && r.RecipientType == "to"), ct);
+                if (alreadyToday) continue;
+
+                var reply = new MailEntity
+                {
+                    Id = Guid.NewGuid(),
+                    SenderId = s.UserId,
+                    Subject = "Re: " + original.Subject,
+                    Body = s.Message ?? "Saya sedang tidak di tempat.",
+                    IsHtml = false,
+                    Signature = "auto-reply",
+                    InReplyToId = original.Id,
+                    ThreadRootId = original.ThreadRootId ?? original.Id,
+                    Status = "sent",
+                    CreatedAt = DateTime.UtcNow,
+                    SentAt = DateTime.UtcNow,
+                };
+                db.Mails.Add(reply);
+                db.MailRecipients.Add(MakeRecipient(reply.Id, s.UserId, "from", "sent", DateTime.UtcNow));
+                db.MailRecipients.Add(MakeRecipient(reply.Id, original.SenderId, "to", "inbox", DateTime.UtcNow));
+            }
+            catch { /* satu penerima gagal tidak menghentikan yang lain */ }
+        }
+        await db.SaveChangesAsync(ct);
+    }
 
     private static MailSummaryDto ToSummary(MailRecipient r)
         => ToSummaryFromMail(r.Mail, r.IsStarred, r.IsRead, r.IsPinned);

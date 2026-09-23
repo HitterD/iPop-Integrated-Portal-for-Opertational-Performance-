@@ -7,16 +7,80 @@
     <title>IPop</title>
     <base href="/" />
     <link rel="preload" id="webassembly" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/ipop.css" />
+    <!-- Inter is self-hosted (see css/core/typography.css @font-face).
+         No external Google Fonts request — required for intranet/offline use. -->
+    <!-- Tailwind CSS CDN for utility classes -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        accent: {
+                            50: '#f0f9f4',
+                            100: '#dcf2e5',
+                            200: '#bce5d0',
+                            300: '#8dd1b0',
+                            400: '#56b689',
+                            500: '#2e9d6b',
+                            600: '#228055',
+                            700: '#1d6646',
+                            800: '#1a523a',
+                            900: '#164431',
+                            950: '#0b261c',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'system-ui', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Modular CSS order: core -> shell -> Radzen base -> shared components -> modules -> overrides. -->
+    <link rel="stylesheet" href="css/core/tokens.css?v=20260922-modern" />
+    <link rel="stylesheet" href="css/core/reset.css?v=20260922-modern" />
+    <link rel="stylesheet" href="css/core/typography.css?v=20260923-apple" />
+    <link rel="stylesheet" href="css/core/accessibility.css?v=20260922-modern" />
+    <link rel="stylesheet" href="css/core/motion.css?v=20260922-modern" />
+    <link rel="stylesheet" href="css/shell/layout.css?v=20260922-modern" />
+    <link rel="stylesheet" href="css/shell/sidebar.css?v=20260923-apple2" />
+    <link rel="stylesheet" href="css/shell/topbar.css?v=20260923-apple2" />
     <link rel="stylesheet" href="_content/Radzen.Blazor/css/default.css" />
+    <link rel="stylesheet" href="css/components/shared-controls.css?v=20260923-apple2" />
+    <link rel="stylesheet" href="css/components/overlays.css?v=20260919-ctxfix" />
+    <link rel="stylesheet" href="css/components/attachments.css?v=20260918-compactdoc" />
+    <link rel="stylesheet" href="css/components/profile-drawer.css?v=20260923-apple2" />
+    <link rel="stylesheet" href="css/modules/auth.css?v=20260904-csssplit" />
+    <link rel="stylesheet" href="css/modules/directory.css?v=20260923-apple2" />
+    <link rel="stylesheet" href="css/modules/administration.css?v=20260904-csssplit" />
+    <link rel="stylesheet" href="css/modules/files.css?v=20260904-csssplit" />
+    <link rel="stylesheet" href="css/modules/chat/layout.css?v=20260923-apple2" />
+    <link rel="stylesheet" href="css/modules/chat/rooms.css?v=20260923-apple2" />
+    <link rel="stylesheet" href="css/modules/chat/messages.css?v=20260923-apple2" />
+    <link rel="stylesheet" href="css/modules/chat/composer.css?v=20260923-apple2" />
+    <link rel="stylesheet" href="css/modules/chat/drawer.css?v=20260923-apple2" />
+    <link rel="stylesheet" href="css/modules/chat/header.css?v=20260923-apple2" />
+    <link rel="stylesheet" href="css/modules/chat/interactions.css?v=20260922-modern" />
+    <link rel="stylesheet" href="css/modules/chat/states.css?v=20260922-modern" />
+    <link rel="stylesheet" href="css/modules/chat/dialogs.css?v=20260922-modern" />
+    <link rel="stylesheet" href="css/modules/mail.css?v=20260923-apple2" />
+    <link rel="stylesheet" href="css/modules/notifications.css?v=20260923-apple2" />
+    <link rel="stylesheet" href="css/modules/news.css?v=20260918-redesign" />
+    <link rel="stylesheet" href="css/modules/projects/workspace.css?v=20260905-execupdate" />
+    <link rel="stylesheet" href="css/modules/projects/kanban.css?v=20260905-execupdate" />
+    <link rel="stylesheet" href="css/modules/projects/task-drawer.css?v=20260905-execupdate" />
+    <link rel="stylesheet" href="css/modules/projects/timeline.css?v=20260905-execupdate" />
+    <link rel="stylesheet" href="css/components/third-party-overrides.css?v=20260904-csssplit" />
+    <link rel="stylesheet" href="css/legacy/compatibility.css?v=20260904-csssplit" />
     <link rel="icon" type="image/png" href="favicon.png" />
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Lucide icons: load local bundled UMD first (offline-ready for intranet), fallback to CDN if needed -->
+    <script src="js/lucide.min.js"></script>
+    <script>window.lucide || document.write('<script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"><\/script>')</script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
-    <script src="js/ipop.js"></script>
+    <script src="js/ipop.js?v=20260919-composerfix"></script>
+    <script src="js/webrtc-audio.js?v=20260917"></script>
     <script>ipop.restoreTheme();</script>
 </head>
 
@@ -32,7 +96,7 @@
         <a href="." class="reload">Reload</a>
         <span class="dismiss" title="Dismiss">&times;</span>
     </div>
-    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+    <script src="_framework/blazor.webassembly.js"></script>
 </body>
 
 </html>

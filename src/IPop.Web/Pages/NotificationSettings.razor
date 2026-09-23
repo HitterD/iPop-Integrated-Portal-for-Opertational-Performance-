@@ -1,0 +1,1139 @@
+@page "/notifications/settings"
+@using IPop.Web.Services
+@using System.Net.Http.Json
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject HttpClient Http
+@inject AuthState Auth
+@inject NotificationState Notifs
+
+<PageTitle>Notification Preferences — IPop</PageTitle>
+
+<div class="notification-settings-page">
+    @* Header *@
+    <div class="page-header">
+        <button type="button" class="back-btn" @onclick="GoBack" title="Back">
+            <i data-lucide="arrow-left"></i>
+        </button>
+        <h1 class="page-title">
+            <i data-lucide="settings"></i>
+            Notification Preferences
+        </h1>
+    </div>
+
+    @* Tab Navigation *@
+    <div class="settings-tabs">
+        <button type="button" class="settings-tab @(activeTab == "general" ? "active" : "")" @onclick='() => SetTab("general")'>
+            <i data-lucide="bell"></i>
+            General
+        </button>
+        <button type="button" class="settings-tab @(activeTab == "schedule" ? "active" : "")" @onclick='() => SetTab("schedule")'>
+            <i data-lucide="moon"></i>
+            Quiet Hours
+        </button>
+        <button type="button" class="settings-tab @(activeTab == "types" ? "active" : "")" @onclick='() => SetTab("types")'>
+            <i data-lucide="filter"></i>
+            Categories
+        </button>
+        <button type="button" class="settings-tab @(activeTab == "history" ? "active" : "")" @onclick='() => SetTab("history")'>
+            <i data-lucide="history"></i>
+            History
+        </button>
+    </div>
+
+    @* Tab Content *@
+    <div class="settings-content">
+        @if (activeTab == "general")
+        {
+            <div class="settings-panel">
+                <div class="setting-group">
+                    <h3 class="setting-title">General Settings</h3>
+                    <p class="setting-desc">Configure global notification behavior</p>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-name">Enable Notifications</div>
+                            <div class="setting-hint">Receive notifications from all sources</div>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" @bind="settings.EnableNotifications" />
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-name">Notification Sound</div>
+                            <div class="setting-hint">Play sound on incoming notification</div>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" @bind="settings.PlaySound" />
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-name">Taskbar Badge</div>
+                            <div class="setting-hint">Show unread count on application icon</div>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" @bind="settings.ShowBadge" />
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-name">Message Preview</div>
+                            <div class="setting-hint">Show message content in notifications</div>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" @bind="settings.ShowPreview" />
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (activeTab == "schedule")
+        {
+            <div class="settings-panel">
+                <div class="setting-group">
+                    <h3 class="setting-title">Quiet Hours</h3>
+                    <p class="setting-desc">Set times when notifications will not disturb you</p>
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-name">Enable Quiet Hours</div>
+                            <div class="setting-hint">Mute notifications during designated hours</div>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" @bind="settings.QuietHoursEnabled" />
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+
+                    @if (settings.QuietHoursEnabled)
+                    {
+                        <div class="setting-item time-range">
+                            <div class="setting-info">
+                                <div class="setting-name">Time Range</div>
+                                <div class="setting-hint">Notifications will be silenced during this period</div>
+                            </div>
+                            <div class="time-inputs">
+                                <div class="time-input">
+                                    <label>Start</label>
+                                    <input type="time" @bind="settings.QuietStart" />
+                                </div>
+                                <span class="time-sep">—</span>
+                                <div class="time-input">
+                                    <label>End</label>
+                                    <input type="time" @bind="settings.QuietEnd" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <div class="setting-name">Active Days</div>
+                                <div class="setting-hint">Select days for quiet hours</div>
+                            </div>
+                            <div class="day-chips">
+                                @foreach (var day in days)
+                                {
+                                    <button type="button"
+                                            class="day-chip @(settings.QuietDays.Contains(day.Value) ? "active" : "")"
+                                            @onclick="() => ToggleDay(day.Value)">
+                                        @day.Label
+                                    </button>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <div class="setting-name">Allow Exceptions</div>
+                                <div class="setting-hint">High priority notifications still alert</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" @bind="settings.AllowImportant" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else if (activeTab == "types")
+        {
+            <div class="settings-panel">
+                <div class="setting-group">
+                    <h3 class="setting-title">Notification Categories</h3>
+                    <p class="setting-desc">Choose which types of notifications you want to receive</p>
+
+                    @foreach (var type in notificationTypes)
+                    {
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <div class="setting-name">
+                                    <i data-lucide="@type.Icon"></i>
+                                    @type.Name
+                                </div>
+                                <div class="setting-hint">@type.Description</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" checked="@settings.EnabledTypes.Contains(type.Id)" @onchange="() => ToggleType(type.Id)" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else if (activeTab == "history")
+        {
+            <div class="settings-panel">
+                <div class="setting-group">
+                    <h3 class="setting-title">Notification History</h3>
+                    <p class="setting-desc">Review your past notifications</p>
+
+                    <div class="history-filters">
+                        <select class="filter-select" @bind="historyFilter">
+                            <option value="all">All</option>
+                            <option value="unread">Unread</option>
+                            <option value="read">Read</option>
+                        </select>
+                        <button type="button" class="btn-secondary" @onclick="LoadHistory">
+                            <i data-lucide="refresh-cw"></i>
+                            Refresh
+                        </button>
+                    </div>
+
+                    @if (historyLoading)
+                    {
+                        <div class="loading-state">
+                            <i data-lucide="loader"></i>
+                            <span>Loading history...</span>
+                        </div>
+                    }
+                    else if (historyItems.Count == 0)
+                    {
+                        <div class="empty-state">
+                            <i data-lucide="bell-off"></i>
+                            <p>No notification history</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="history-list">
+                            @foreach (var item in historyItems)
+                            {
+                                <div class="history-item @(item.IsRead ? "" : "unread")">
+                                    <div class="history-icon" style="background:@GetTypeColor(item.Type)">
+                                        <i data-lucide="@GetTypeIcon(item.Type)"></i>
+                                    </div>
+                                    <div class="history-content">
+                                        <div class="history-title">@item.Title</div>
+                                        <div class="history-message">@item.Body</div>
+                                        <div class="history-meta">
+                                            <span>@FormatTime(item.DeliveredAt)</span>
+                                            <span class="history-source">@item.Source</span>
+                                        </div>
+                                    </div>
+                                    @if (!item.IsRead)
+                                    {
+                                        <button type="button" class="mark-read-btn" @onclick="() => MarkHistoryRead(item.RequestId)">
+                                            <i data-lucide="check"></i>
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        @if (historyHasMore)
+                        {
+                            <button type="button" class="btn-secondary load-more-btn" @onclick="LoadMoreHistory">
+                                Load more
+                            </button>
+                        }
+                    }
+                </div>
+            </div>
+        }
+    </div>
+
+    @* Footer Actions *@
+    <div class="settings-footer">
+        <button type="button" class="btn-secondary" @onclick="ResetToDefault">
+            Reset to default
+        </button>
+        <div class="footer-right">
+            <button type="button" class="btn-secondary" @onclick="GoBack">
+                Cancel
+            </button>
+            <button type="button" class="btn-primary" @onclick="SaveSettings">
+                Save changes
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .notification-settings-page {
+        padding: 24px;
+        max-width: 700px;
+        margin: 0 auto;
+    }
+
+    .page-header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 24px;
+    }
+
+    .back-btn {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--ink-2);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+    }
+
+    .back-btn:hover {
+        background: var(--tray);
+        color: var(--ink);
+    }
+
+    .page-title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--ink);
+        margin: 0;
+    }
+
+    .page-title .lucide {
+        width: 28px;
+        height: 28px;
+        color: var(--accent);
+    }
+
+    /* Tabs */
+    .settings-tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 24px;
+        padding: 4px;
+        background: var(--tray);
+        border-radius: 12px;
+    }
+
+    .settings-tab {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 12px 16px;
+        border: none;
+        border-radius: 10px;
+        background: transparent;
+        color: var(--ink-2);
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .settings-tab:hover {
+        background: var(--surface);
+        color: var(--ink);
+    }
+
+    .settings-tab.active {
+        background: var(--surface);
+        color: var(--accent);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .settings-tab .lucide {
+        width: 18px;
+        height: 18px;
+    }
+
+    /* Settings Panel */
+    .settings-panel {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 24px;
+    }
+
+    .setting-group {
+        margin-bottom: 24px;
+    }
+
+    .setting-group:last-child {
+        margin-bottom: 0;
+    }
+
+    .setting-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--ink);
+        margin: 0 0 4px;
+    }
+
+    .setting-desc {
+        font-size: 13px;
+        color: var(--ink-3);
+        margin: 0 0 20px;
+    }
+
+    .setting-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 16px 0;
+        border-bottom: 1px solid var(--line-soft);
+    }
+
+    .setting-item:last-child {
+        border-bottom: none;
+    }
+
+    .setting-info {
+        flex: 1;
+    }
+
+    .setting-name {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--ink);
+        margin-bottom: 4px;
+    }
+
+    .setting-name .lucide {
+        width: 18px;
+        height: 18px;
+        color: var(--ink-3);
+    }
+
+    .setting-hint {
+        font-size: 12px;
+        color: var(--ink-3);
+    }
+
+    /* Toggle Switch */
+    .toggle {
+        position: relative;
+        width: 48px;
+        height: 26px;
+        flex-shrink: 0;
+    }
+
+    .toggle input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--line);
+        border-radius: 26px;
+        transition: 0.2s;
+    }
+
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 3px;
+        bottom: 3px;
+        background: white;
+        border-radius: 50%;
+        transition: 0.2s;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .toggle input:checked + .toggle-slider {
+        background: var(--accent);
+    }
+
+    .toggle input:checked + .toggle-slider:before {
+        transform: translateX(22px);
+    }
+
+    /* Time Range */
+    .time-range {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .time-inputs {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 12px;
+    }
+
+    .time-input {
+        flex: 1;
+    }
+
+    .time-input label {
+        display: block;
+        font-size: 12px;
+        color: var(--ink-3);
+        margin-bottom: 4px;
+    }
+
+    .time-input input {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--ink);
+        font-size: 14px;
+    }
+
+    .time-sep {
+        color: var(--ink-3);
+        padding-top: 20px;
+    }
+
+    /* Day Chips */
+    .day-chips {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+    }
+
+    .day-chip {
+        padding: 8px 16px;
+        border: 1px solid var(--line);
+        border-radius: 99px;
+        background: var(--surface);
+        color: var(--ink-2);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .day-chip:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+    }
+
+    .day-chip.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: white;
+    }
+
+    /* Footer */
+    .settings-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 24px;
+        padding-top: 24px;
+        border-top: 1px solid var(--line);
+    }
+
+    .footer-right {
+        display: flex;
+        gap: 12px;
+    }
+
+    .btn-primary {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 24px;
+        border: none;
+        border-radius: 8px;
+        background: var(--accent);
+        color: white;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .btn-primary:hover {
+        filter: brightness(1.1);
+    }
+
+    .btn-secondary {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 20px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--ink-2);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .btn-secondary:hover {
+        background: var(--tray);
+        color: var(--ink);
+    }
+
+    /* History Tab */
+    .history-filters {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 20px;
+        align-items: center;
+    }
+
+    .filter-select {
+        padding: 8px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--ink);
+        font-size: 13px;
+    }
+
+    .loading-state {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 40px;
+        color: var(--ink-3);
+    }
+
+    .loading-state .lucide {
+        animation: spin 1s linear infinite;
+    }
+
+    @@keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    .history-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .history-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 16px;
+        background: var(--tray);
+        border-radius: 12px;
+        position: relative;
+    }
+
+    .history-item.unread {
+        background: var(--accent-soft);
+        border-left: 3px solid var(--accent);
+    }
+
+    .history-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        flex-shrink: 0;
+    }
+
+    .history-icon .lucide {
+        width: 20px;
+        height: 20px;
+    }
+
+    .history-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .history-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--ink);
+        margin-bottom: 4px;
+    }
+
+    .history-message {
+        font-size: 13px;
+        color: var(--ink-2);
+        line-height: 1.4;
+        margin-bottom: 8px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+    .history-meta {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 11px;
+        color: var(--ink-3);
+    }
+
+    .history-source {
+        background: var(--surface);
+        padding: 2px 8px;
+        border-radius: 99px;
+    }
+
+    .mark-read-btn {
+        width: 32px;
+        height: 32px;
+        border: none;
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--ink-3);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: all 0.15s ease;
+    }
+
+    .mark-read-btn:hover {
+        background: var(--accent);
+        color: white;
+    }
+
+    .load-more-btn {
+        width: 100%;
+        margin-top: 16px;
+        justify-content: center;
+    }
+
+    .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px;
+        text-align: center;
+        color: var(--ink-3);
+    }
+
+    .empty-state .lucide {
+        width: 48px;
+        height: 48px;
+        margin-bottom: 12px;
+        opacity: 0.4;
+    }
+</style>
+
+@code {
+    private string activeTab = "general";
+    private NotificationPreferences settings = new();
+
+    private List<(string Value, string Label)> days = [
+        ("mon", "Mon"),
+        ("tue", "Tue"),
+        ("wed", "Wed"),
+        ("thu", "Thu"),
+        ("fri", "Fri"),
+        ("sat", "Sat"),
+        ("sun", "Sun"),
+    ];
+
+    private List<NotificationType> notificationTypes = [
+        new("chat", "Chat", "New messages and mentions", "message-circle"),
+        new("mail", "Mail", "Incoming emails and deliveries", "mail"),
+        new("task", "Tasks", "Assignments and deadlines", "check-square"),
+        new("call", "Calls", "Incoming and missed calls", "phone"),
+        new("system", "System", "Updates and maintenance", "settings"),
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadPreferences();
+        await LoadLocalPreferences();
+        await SyncBrowserTimezone();
+    }
+
+    /// Deteksi zona waktu browser dan simpan ke server bila berbeda — jam senyap
+    /// dievaluasi backend dalam zona waktu pengguna, bukan server.
+    private async Task SyncBrowserTimezone()
+    {
+        try
+        {
+            var tz = await JS.InvokeAsync<string>("eval", "Intl.DateTimeFormat().resolvedOptions().timeZone");
+            if (string.IsNullOrWhiteSpace(tz)) return;
+            // .NET di Windows memakai ID Windows ("SE Asia Standard Time"), browser memakai IANA ("Asia/Jakarta").
+            var windowsId = MapIanaToWindows(tz);
+            if (windowsId is null) return;
+            if (string.Equals(_serverTimeZone, windowsId, StringComparison.OrdinalIgnoreCase)) return;
+            var res = await Auth.SendAsync(HttpMethod.Put, "/api/notifications/v1/preferences/timezone", new { TimeZoneId = windowsId });
+            if (res.IsSuccessStatusCode) _serverTimeZone = windowsId;
+        }
+        catch { /* best-effort */ }
+    }
+
+    private string? _serverTimeZone;
+
+    private static string? MapIanaToWindows(string iana) => iana switch
+    {
+        "Asia/Jakarta" or "Asia/Pontianak" => "SE Asia Standard Time",
+        "Asia/Makassar" => "Singapore Standard Time", // WITA — closest Windows id at UTC+8
+        "Asia/Jayapura" => "Tokyo Standard Time",     // WIT — closest Windows id at UTC+9
+        _ => null // biarkan server default bila di luar Indonesia
+    };
+
+    private async Task LoadPreferences()
+    {
+        try
+        {
+            var response = await Auth.GetAsync<NotificationPreferenceDto>("/api/notifications/v1/preferences");
+            if (response is not null)
+            {
+                settings.QuietHoursEnabled = response.QuietHoursEnabled;
+                if (TimeOnly.TryParse(response.QuietStart, out var start)) settings.QuietStart = start;
+                if (TimeOnly.TryParse(response.QuietEnd, out var end)) settings.QuietEnd = end;
+
+                // Load QuietDays dan AllowImportant dari backend
+                if (!string.IsNullOrEmpty(response.QuietDays))
+                {
+                    settings.QuietDays = response.QuietDays.Split(',', StringSplitOptions.RemoveEmptyEntries).ToList();
+                }
+                settings.AllowImportant = response.AllowImportant;
+
+                // MutedTypes = types that are DISABLED (inverse of EnabledTypes)
+                if (!string.IsNullOrEmpty(response.MutedTypes))
+                {
+                    var muted = response.MutedTypes.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                    settings.EnabledTypes = notificationTypes
+                        .Where(t => !muted.Contains(t.Id))
+                        .Select(t => t.Id)
+                        .ToList();
+                }
+            }
+        }
+        catch
+        {
+            // Use defaults on error
+        }
+    }
+
+    private async Task SetTab(string tab)
+    {
+        activeTab = tab;
+        if (tab == "history" && historyItems.Count == 0)
+        {
+            await LoadHistory();
+        }
+    }
+
+    private void ToggleDay(string day)
+    {
+        if (settings.QuietDays.Contains(day))
+            settings.QuietDays.Remove(day);
+        else
+            settings.QuietDays.Add(day);
+    }
+
+    private void ToggleType(string typeId)
+    {
+        if (settings.EnabledTypes.Contains(typeId))
+            settings.EnabledTypes.Remove(typeId);
+        else
+            settings.EnabledTypes.Add(typeId);
+    }
+
+    private void GoBack()
+    {
+        Nav.NavigateTo("/notifications");
+    }
+
+    private void ResetToDefault()
+    {
+        settings = new NotificationPreferences();
+    }
+
+    // History tab state
+    private string historyFilter = "all";
+    private bool historyLoading;
+    private bool historyHasMore = true;
+    private int historyPage = 1;
+    private List<HistoryItem> historyItems = [];
+
+    private async Task LoadHistory()
+    {
+        historyLoading = true;
+        historyPage = 1;
+        historyItems = [];
+
+        try
+        {
+            var statusParam = historyFilter switch
+            {
+                "unread" => "unread",
+                "read" => "read",
+                _ => null
+            };
+
+            var url = $"/api/notifications/v1/inbox?page={historyPage}&pageSize=20";
+            if (statusParam is not null) url += $"&status={statusParam}";
+
+            var response = await Auth.GetAsync<InboxResponse>(url);
+            if (response is not null)
+            {
+                historyItems = response.Items.Select(MapToHistoryItem).ToList();
+                historyHasMore = response.Items.Count >= 20;
+            }
+        }
+        catch { }
+        finally
+        {
+            historyLoading = false;
+        }
+    }
+
+    private async Task LoadMoreHistory()
+    {
+        historyPage++;
+        historyLoading = true;
+
+        try
+        {
+            var statusParam = historyFilter switch
+            {
+                "unread" => "unread",
+                "read" => "read",
+                _ => null
+            };
+
+            var url = $"/api/notifications/v1/inbox?page={historyPage}&pageSize=20";
+            if (statusParam is not null) url += $"&status={statusParam}";
+
+            var response = await Auth.GetAsync<InboxResponse>(url);
+            if (response is not null)
+            {
+                historyItems.AddRange(response.Items.Select(MapToHistoryItem));
+                historyHasMore = response.Items.Count >= 20;
+            }
+        }
+        catch { }
+        finally
+        {
+            historyLoading = false;
+        }
+    }
+
+    private async Task MarkHistoryRead(Guid requestId)
+    {
+        try
+        {
+            await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{requestId}/read", null);
+            var item = historyItems.FirstOrDefault(x => x.RequestId == requestId);
+            if (item is not null) item.IsRead = true;
+        }
+        catch { }
+    }
+
+    private HistoryItem MapToHistoryItem(InboxItem item)
+    {
+        return new HistoryItem(
+            item.RequestId,
+            item.Type,
+            item.Title,
+            item.Body,
+            item.Source,
+            item.DeliveredAt,
+            item.IsRead
+        );
+    }
+
+    private string GetTypeIcon(string type) => type switch
+    {
+        "chat" => "message-circle",
+        "mail" => "mail",
+        "task" or "project" => "check-square",
+        "system" => "settings",
+        _ => "bell"
+    };
+
+    private string GetTypeColor(string type) => type switch
+    {
+        "chat" => "#2e7d5b",
+        "mail" => "#2563eb",
+        "task" or "project" => "#7c3aed",
+        "system" => "#6b7280",
+        _ => "#6b7280"
+    };
+
+    private string FormatTime(DateTime dt)
+    {
+        var now = DateTime.Now;
+        var diff = now - dt;
+
+        if (diff.TotalMinutes < 1) return "Just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        return dt.ToString("dd MMM yyyy");
+    }
+
+    private async Task SaveSettings()
+    {
+        try
+        {
+            // Map to API DTO — semua field yang didukung backend
+            var dto = new
+            {
+                QuietHoursEnabled = settings.QuietHoursEnabled,
+                QuietStart = settings.QuietStart?.ToString("HH:mm"),
+                QuietEnd = settings.QuietEnd?.ToString("HH:mm"),
+                QuietDays = string.Join(",", settings.QuietDays),
+                AllowImportant = settings.AllowImportant,
+                MutedTypes = string.Join(",", notificationTypes
+                    .Where(t => !settings.EnabledTypes.Contains(t.Id))
+                    .Select(t => t.Id))
+            };
+
+            var response = await Auth.SendAsync(HttpMethod.Put, "/api/notifications/v1/preferences", dto);
+            if (response.IsSuccessStatusCode)
+            {
+                // Simpan preferensi lokal yang tidak didukung backend ke localStorage,
+                // lalu muat ulang preferensi di NotificationState agar banner/toast/badge
+                // langsung mengikuti perubahan tanpa menunggu reload halaman.
+                await SaveLocalPreferences();
+                await Notifs.LoadPreferencesAsync();
+                Nav.NavigateTo("/notifications");
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", "Failed to save preferences. Please try again.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private async Task SaveLocalPreferences()
+    {
+        try
+        {
+            // Hanya simpan preferensi yang TIDAK didukung backend (EnableNotifications, PlaySound, ShowBadge, ShowPreview)
+            var local = new
+            {
+                settings.EnableNotifications,
+                settings.PlaySound,
+                settings.ShowBadge,
+                settings.ShowPreview
+            };
+            await JS.InvokeVoidAsync("localStorage.setItem", "notification-preferences", System.Text.Json.JsonSerializer.Serialize(local));
+        }
+        catch { }
+    }
+
+    private async Task LoadLocalPreferences()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string>("localStorage.getItem", "notification-preferences");
+            if (!string.IsNullOrEmpty(json))
+            {
+                var local = System.Text.Json.JsonSerializer.Deserialize<LocalPreferences>(json);
+                if (local is not null)
+                {
+                    settings.EnableNotifications = local.EnableNotifications;
+                    settings.PlaySound = local.PlaySound;
+                    settings.ShowBadge = local.ShowBadge;
+                    settings.ShowPreview = local.ShowPreview;
+                    // QuietDays dan AllowImportant sudah dari backend, tidak perlu di-override
+                }
+            }
+        }
+        catch { }
+    }
+
+    private class LocalPreferences
+    {
+        public bool EnableNotifications { get; set; } = true;
+        public bool PlaySound { get; set; } = true;
+        public bool ShowBadge { get; set; } = true;
+        public bool ShowPreview { get; set; } = true;
+    }
+
+    private class NotificationPreferences
+    {
+        public bool EnableNotifications { get; set; } = true;
+        public bool PlaySound { get; set; } = true;
+        public bool ShowBadge { get; set; } = true;
+        public bool ShowPreview { get; set; } = true;
+        public bool QuietHoursEnabled { get; set; }
+        public TimeOnly? QuietStart { get; set; } = new TimeOnly(22, 0);
+        public TimeOnly? QuietEnd { get; set; } = new TimeOnly(7, 0);
+        public List<string> QuietDays { get; set; } = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+        public bool AllowImportant { get; set; } = true;
+        public List<string> EnabledTypes { get; set; } = ["chat", "mail", "task", "call", "system"];
+    }
+
+    private record NotificationType(string Id, string Name, string Description, string Icon);
+    private record NotificationPreferenceDto(bool QuietHoursEnabled, string? QuietStart, string? QuietEnd, string? MutedTypes, string? QuietDays, bool AllowImportant);
+    private record InboxResponse(List<InboxItem> Items, int Total, int Unread, int Page, int PageSize);
+    private record InboxItem(Guid RequestId, string Type, string Title, string Body, string Source, DateTime DeliveredAt, bool IsRead, string? Priority, string? TargetUrl);
+    private class HistoryItem
+    {
+        public Guid RequestId { get; set; }
+        public string Type { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Body { get; set; } = "";
+        public string Source { get; set; } = "";
+        public DateTime DeliveredAt { get; set; }
+        public bool IsRead { get; set; }
+
+        public HistoryItem(Guid requestId, string type, string title, string body, string source, DateTime deliveredAt, bool isRead)
+        {
+            RequestId = requestId;
+            Type = type;
+            Title = title;
+            Body = body;
+            Source = source;
+            DeliveredAt = deliveredAt;
+            IsRead = isRead;
+        }
+    }
+}

@@ -1,0 +1,410 @@
+@using IPop.Application.Projects
+@using Microsoft.AspNetCore.Components.Forms
+@inject IJSRuntime JS
+
+@if (Task is not null)
+{
+    var currentIndex = AllTasks.FindIndex(t => t.Id == Task.Id);
+    var hasPrev = currentIndex > 0;
+    var hasNext = currentIndex >= 0 && currentIndex < AllTasks.Count - 1;
+    var isOverdue = Task.DueDate.HasValue && Task.DueDate.Value < DateTime.UtcNow && Task.Status != "done";
+
+    <div class="quick-viewer-docked" role="region" aria-label="Task Quick Inspector">
+        @* Quick Viewer Top Navigation Bar *@
+        <div class="quick-viewer-head">
+            <div class="quick-viewer-nav">
+                <button type="button" class="quick-viewer-nav-btn" disabled="@(!hasPrev)" @onclick="GoPrev" title="Previous task (Alt+Left)">
+                    <i data-lucide="chevron-left" style="width:14px;height:14px"></i>
+                </button>
+                <span class="quick-viewer-counter">
+                    @(currentIndex >= 0 ? $"{currentIndex + 1} / {AllTasks.Count}" : "1 / 1")
+                </span>
+                <button type="button" class="quick-viewer-nav-btn" disabled="@(!hasNext)" @onclick="GoNext" title="Next task (Alt+Right)">
+                    <i data-lucide="chevron-right" style="width:14px;height:14px"></i>
+                </button>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:6px">
+                <button type="button" class="btn-sm surface" style="padding:4px 8px;border-radius:999px" @onclick="() => OnOpenFullDrawer.InvokeAsync(Task)" title="Open Full Details (Drawer)">
+                    <i data-lucide="maximize-2" style="width:12px;height:12px"></i>
+                    <span style="font-size:11px">Details</span>
+                </button>
+                <button type="button" class="btn-sm surface" style="padding:4px 6px;border-radius:50%" @onclick="OnClose" title="Close Viewer">
+                    <i data-lucide="x" style="width:13px;height:13px"></i>
+                </button>
+            </div>
+        </div>
+
+        @* Quick Viewer Scrollable Content *@
+        <div class="quick-viewer-body">
+            @* Task Title *@
+            <div class="field" style="margin:0">
+                <input class="org-input" style="font-size:13.5px;font-weight:700" @bind="editTitle" placeholder="Task title..." />
+            </div>
+
+            @* Quick Status Pills *@
+            <div class="field" style="margin:0">
+                <label style="font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase">Status</label>
+                <div style="display:flex;gap:4px;margin-top:4px">
+                    <button type="button" class="quick-status-chip @(editStatus == "todo" ? "active todo" : "")" @onclick='() => editStatus = "todo"'>
+                        <span class="col-dot todo"></span> To Do
+                    </button>
+                    <button type="button" class="quick-status-chip @(editStatus == "doing" ? "active doing" : "")" @onclick='() => editStatus = "doing"'>
+                        <span class="col-dot doing"></span> In Progress
+                    </button>
+                    <button type="button" class="quick-status-chip @(editStatus == "done" ? "active done" : "")" @onclick='() => editStatus = "done"'>
+                        <span class="col-dot done"></span> Done
+                    </button>
+                </div>
+            </div>
+
+            @* Priority & Due Date Row *@
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                <div class="field" style="margin:0">
+                    <label style="font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase">Priority</label>
+                    <select class="filter-select" style="width:100%;height:30px;font-size:11.5px;margin-top:4px" @bind="editPriority">
+                        <option value="">(No Priority)</option>
+                        <option value="urgent">Urgent</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                </div>
+                <div class="field" style="margin:0">
+                    <div style="display:flex;align-items:center;justify-content:space-between">
+                        <label style="font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase">Due Date</label>
+                        <button type="button" class="btn-sm surface" style="padding:1px 8px;font-size:10.5px;border-radius:999px;color:#c2410c;border-color:#fed7aa;background:#fff7ed;display:inline-flex;align-items:center;gap:3px"
+                                @onclick="() => OnRequestExtension.InvokeAsync(Task)" title="Request deadline extension">
+                            <i data-lucide="clock-alert" style="width:10px;height:10px"></i> Extend
+                        </button>
+                    </div>
+                    <input type="date" class="org-input" style="width:100%;height:30px;font-size:11.5px;margin-top:4px"
+                           value="@(editDue?.ToString("yyyy-MM-dd"))"
+                           @onchange="e => editDue = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null" />
+                </div>
+            </div>
+
+            @* Overdue / Extension Notice Action *@
+            @if (isOverdue || evidence.IsExtended)
+            {
+                <div class="quick-viewer-extension-banner">
+                    <div style="display:flex;align-items:center;gap:6px">
+                        <i data-lucide="alert-circle" style="width:14px;height:14px;color:@(isOverdue ? "#dc2626" : "#d97706")"></i>
+                        <span style="font-size:11.5px;font-weight:700;color:@(isOverdue ? "#991b1b" : "#92400e")">
+                            @(isOverdue ? "Task Overdue!" : $"Task Extended ({evidence.ExtensionHistory.Count}x)")
+                        </span>
+                    </div>
+                    @if (evidence.LatestExtension is not null)
+                    {
+                        <div style="font-size:11px;color:var(--ink-2);margin-top:4px">
+                            <b>Obstacle Reason:</b> @evidence.LatestExtension.Reason
+                        </div>
+                    }
+                    <div style="margin-top:6px">
+                        <button type="button" class="btn-sm surface" style="font-size:11px;padding:3px 10px;border-radius:999px" @onclick="() => OnRequestExtension.InvokeAsync(Task)">
+                            <i data-lucide="clock" style="width:11px;height:11px"></i> Extend Deadline
+                        </button>
+                    </div>
+                </div>
+            }
+
+            @* Section: Aktivitas Progres & Bukti Lapangan *@
+            <div class="task-evidence-section" style="margin-top:4px;padding-top:10px">
+                <div class="task-evidence-head">
+                    <div class="task-evidence-title">
+                        <i data-lucide="activity" style="width:13px;height:13px;color:#d97706"></i>
+                        <span>Progress Breakdown & Field Evidence</span>
+                    </div>
+                    <span class="task-evidence-badge doing">In Progress</span>
+                </div>
+
+                @* Quick Add Step *@
+                <div style="display:flex;gap:4px;margin-bottom:6px">
+                    <input class="org-input" style="flex:1;height:28px;font-size:11.5px"
+                           placeholder="Add active progress step..."
+                           @bind="newStepText"
+                           @onkeydown="@(e => { if (e.Key == "Enter") AddStep(); })" />
+                    <button type="button" class="btn-sm accent" style="padding:2px 8px;font-size:11px" @onclick="AddStep">
+                        +
+                    </button>
+                </div>
+
+                @if (evidence.ProgressSteps.Count > 0)
+                {
+                    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px">
+                        @foreach (var step in evidence.ProgressSteps)
+                        {
+                            <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:var(--bg);border:1px solid var(--line-soft);border-radius:6px">
+                                <input type="checkbox" checked="@step.IsDone" @onchange="() => step.IsDone = !step.IsDone" style="cursor:pointer;accent-color:var(--accent)" />
+                                <span style="flex:1;font-size:11.5px;color:var(--ink);text-decoration:@(step.IsDone ? "line-through" : "none")">@step.Text</span>
+                                <button type="button" style="background:none;border:none;cursor:pointer;color:var(--ink-3);padding:1px" @onclick="() => evidence.ProgressSteps.Remove(step)">
+                                    <i data-lucide="x" style="width:11px;height:11px"></i>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @* Quick Upload Photo *@
+                <div>
+                    <label class="btn-sm surface" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:4px 10px;font-size:11px;border-radius:999px">
+                        <i data-lucide="camera" style="width:12px;height:12px"></i>
+                        <span>+ Field Photo</span>
+                        <InputFile OnChange="HandleUploadFieldPhoto" accept="image/*" multiple style="display:none" />
+                    </label>
+
+                    @if (evidence.FieldPhotos.Count > 0)
+                    {
+                        <div class="evidence-photo-grid" style="margin-top:6px">
+                            @foreach (var photo in evidence.FieldPhotos)
+                            {
+                                <div class="evidence-photo-thumb" style="width:58px;height:58px" title="@photo.Name">
+                                    @if (!string.IsNullOrEmpty(photo.DataUrl))
+                                    {
+                                        <img src="@photo.DataUrl" alt="@photo.Name" />
+                                    }
+                                    else
+                                    {
+                                        <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:9px;color:var(--ink-3)">
+                                            <i data-lucide="image" style="width:14px;height:14px"></i>
+                                        </div>
+                                    }
+                                    <button type="button" class="remove-thumb" @onclick="() => evidence.FieldPhotos.Remove(photo)">×</button>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* Section: Bukti Penyelesaian Pekerjaan (Done) *@
+            <div class="task-evidence-section" style="margin-top:4px;padding-top:10px">
+                <div class="task-evidence-head">
+                    <div class="task-evidence-title">
+                        <i data-lucide="file-check" style="width:13px;height:13px;color:#059669"></i>
+                        <span>Work Completion Evidence</span>
+                    </div>
+                    <span class="task-evidence-badge done">Done</span>
+                </div>
+
+                <div>
+                    <label class="btn-sm surface" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;padding:4px 10px;font-size:11px;border-radius:999px">
+                        <i data-lucide="paperclip" style="width:12px;height:12px"></i>
+                        <span>+ Deliverable / Document</span>
+                        <InputFile OnChange="HandleUploadDeliverable" multiple style="display:none" />
+                    </label>
+
+                    @if (evidence.CompletionDeliverables.Count > 0)
+                    {
+                        <div style="display:flex;flex-direction:column;gap:4px;margin-top:6px">
+                            @foreach (var item in evidence.CompletionDeliverables)
+                            {
+                                <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:var(--bg);border:1px solid var(--line-soft);border-radius:6px">
+                                    <i data-lucide="@(item.Type == "photo" ? "image" : "file-text")" style="width:12px;height:12px;color:var(--accent)"></i>
+                                    <span style="flex:1;font-size:11px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@item.Name</span>
+                                    <button type="button" style="background:none;border:none;cursor:pointer;color:var(--ink-3);padding:1px" @onclick="() => evidence.CompletionDeliverables.Remove(item)">
+                                        <i data-lucide="x" style="width:11px;height:11px"></i>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                <div class="field" style="margin:6px 0 0 0">
+                    <label style="font-size:10.5px;font-weight:600;color:var(--ink-3)">Completion Notes</label>
+                    <textarea class="org-input" style="min-height:50px;font-size:11.5px"
+                              placeholder="Summary of handover or testing deliverables..."
+                              @bind="evidence.CompletionNotes"></textarea>
+                </div>
+            </div>
+        </div>
+
+        @* Quick Viewer Foot Bar *@
+        <div class="quick-viewer-foot">
+            <span style="font-size:11px;color:var(--ink-3)">Auto-save ready</span>
+            <button type="button" class="btn-sm accent" style="border-radius:999px;padding:6px 16px" @onclick="HandleSave">
+                <i data-lucide="check" style="width:12px;height:12px"></i>
+                <span>Save Changes</span>
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public ProjectTaskDto? Task { get; set; }
+    [Parameter] public List<ProjectTaskDto> AllTasks { get; set; } = [];
+    [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
+
+    [Parameter] public EventCallback<ProjectTaskDto> OnSelectTask { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDrawer.TaskSaveModel> OnSave { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDto> OnOpenFullDrawer { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDto> OnRequestExtension { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string editTitle = "";
+    private string? editDesc;
+    private string editStatus = "todo";
+    private string? editPriority;
+    private DateTime? editStartDate;
+    private DateTime? editDue;
+    private decimal? editEstH;
+    private decimal? editActH;
+    private string? editTags;
+    private string newStepText = "";
+
+    private TaskEvidenceData evidence = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Task is not null)
+        {
+            editTitle = Task.Title;
+            var parsed = TaskEvidenceHelper.Parse(Task.Description);
+            editDesc = parsed.CleanDescription;
+            evidence = parsed.Evidence;
+            editStatus = Task.Status;
+            editPriority = Task.Priority;
+            editStartDate = Task.StartDate;
+            editDue = Task.DueDate;
+            editEstH = Task.EstimatedHours;
+            editActH = Task.ActualHours;
+            editTags = Task.Tags;
+            newStepText = "";
+
+            // Restore photos dataUrl from localStorage if available
+            foreach (var photo in evidence.FieldPhotos)
+            {
+                if (string.IsNullOrEmpty(photo.DataUrl))
+                {
+                    try
+                    {
+                        photo.DataUrl = await JS.InvokeAsync<string?>("localStorage.getItem", $"ipop_evidence_{photo.Id}");
+                    }
+                    catch {}
+                }
+            }
+            foreach (var item in evidence.CompletionDeliverables)
+            {
+                if (string.IsNullOrEmpty(item.DataUrl) && item.Type == "photo")
+                {
+                    try
+                    {
+                        item.DataUrl = await JS.InvokeAsync<string?>("localStorage.getItem", $"ipop_evidence_{item.Id}");
+                    }
+                    catch {}
+                }
+            }
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    private async Task GoPrev()
+    {
+        if (Task is null || AllTasks.Count == 0) return;
+        var idx = AllTasks.FindIndex(t => t.Id == Task.Id);
+        if (idx > 0)
+        {
+            await OnSelectTask.InvokeAsync(AllTasks[idx - 1]);
+        }
+    }
+
+    private async Task GoNext()
+    {
+        if (Task is null || AllTasks.Count == 0) return;
+        var idx = AllTasks.FindIndex(t => t.Id == Task.Id);
+        if (idx >= 0 && idx < AllTasks.Count - 1)
+        {
+            await OnSelectTask.InvokeAsync(AllTasks[idx + 1]);
+        }
+    }
+
+    private void AddStep()
+    {
+        if (string.IsNullOrWhiteSpace(newStepText)) return;
+        evidence.ProgressSteps.Add(new TaskProgressStep
+        {
+            Text = newStepText.Trim(),
+            IsDone = false
+        });
+        newStepText = "";
+    }
+
+    private async Task HandleUploadFieldPhoto(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(5))
+        {
+            if (file.Size > 4 * 1024 * 1024) continue;
+            try
+            {
+                var buffer = new byte[file.Size];
+                await file.OpenReadStream(4 * 1024 * 1024).ReadExactlyAsync(buffer);
+                var dataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(buffer)}";
+                var item = new TaskEvidenceItem
+                {
+                    Name = file.Name,
+                    Size = file.Size,
+                    Type = "photo",
+                    DataUrl = dataUrl
+                };
+                evidence.FieldPhotos.Add(item);
+                await JS.InvokeVoidAsync("localStorage.setItem", $"ipop_evidence_{item.Id}", dataUrl);
+            }
+            catch {}
+        }
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task HandleUploadDeliverable(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(5))
+        {
+            if (file.Size > 10 * 1024 * 1024) continue;
+            try
+            {
+                var isImage = file.ContentType.StartsWith("image/");
+                string? dataUrl = null;
+                if (isImage && file.Size <= 3 * 1024 * 1024)
+                {
+                    var buffer = new byte[file.Size];
+                    await file.OpenReadStream(3 * 1024 * 1024).ReadExactlyAsync(buffer);
+                    dataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(buffer)}";
+                }
+
+                var item = new TaskEvidenceItem
+                {
+                    Name = file.Name,
+                    Size = file.Size,
+                    Type = isImage ? "photo" : "file",
+                    DataUrl = dataUrl
+                };
+                evidence.CompletionDeliverables.Add(item);
+                if (!string.IsNullOrEmpty(dataUrl))
+                {
+                    await JS.InvokeVoidAsync("localStorage.setItem", $"ipop_evidence_{item.Id}", dataUrl);
+                }
+            }
+            catch {}
+        }
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task HandleSave()
+    {
+        if (Task is null || string.IsNullOrWhiteSpace(editTitle)) return;
+        var finalDesc = TaskEvidenceHelper.Serialize(editDesc, evidence);
+        var model = new ProjectTaskDrawer.TaskSaveModel(
+            Task.Id,
+            editTitle.Trim(),
+            finalDesc,
+            editStatus,
+            editPriority,
+            editStartDate,
+            editDue,
+            editEstH,
+            editActH,
+            editTags?.Trim()
+        );
+        await OnSave.InvokeAsync(model);
+    }
+}

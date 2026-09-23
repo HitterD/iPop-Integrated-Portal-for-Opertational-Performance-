@@ -1,0 +1,274 @@
+@page "/mail/advanced"
+@inject IJSRuntime JS
+@inject IPop.Web.Services.AuthState Auth
+@inject IPop.Web.Services.ToastService Toasts
+@inject NavigationManager Nav
+
+@* Advanced Mail (Phase 3) — management hub for labels, automated rules,
+   mail templates, and auto-reply (out of office). *@
+
+<PageTitle>Advanced Mail — IPop</PageTitle>
+
+<div class="content" style="grid-template-columns:1fr">
+
+    <div class="tray rise rise-1">
+        <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head" style="flex-wrap:wrap;gap:10px">
+                <i data-lucide="settings-2"></i> <span>Advanced Mail</span>
+                <span class="meta">labels · rules · templates · auto-reply</span>
+                <span style="margin-left:auto">
+                    <button class="btn-sm surface" @onclick='() => Nav.NavigateTo("/mail")'><i data-lucide="mail" style="width:13px;height:13px"></i> Back to Mail</button>
+                </span>
+            </div>
+
+            @* Navigation Tabs *@
+            <div class="filter-bar" style="padding:8px 14px;border-bottom:1px solid var(--line-soft)">
+                @foreach (var tab in new[] { ("labels", "Labels", "tag"), ("rules", "Rules", "filter"), ("templates", "Templates", "layout-template"), ("autoreply", "Auto-Reply", "reply") })
+                {
+                    var t = tab;
+                    var active = activeTab == t.Item1;
+                    <button class="btn-sm surface" style="padding:4px 12px;font-size:12px;@(active ? "background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent-soft)" : "")"
+                            @onclick="() => activeTab = t.Item1">
+                        <i data-lucide="@t.Item3" style="width:13px;height:13px"></i> @t.Item2
+                    </button>
+                }
+            </div>
+
+            @* ── LABELS ── *@
+            @if (activeTab == "labels")
+            {
+                <div style="padding:14px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                        <span style="font-size:12.5px;font-weight:700">Mail Labels (@labels.Count)</span>
+                        <button class="btn-sm accent" @onclick="() => labelFormOpen = !labelFormOpen"><i data-lucide="plus" style="width:12px;height:12px"></i> New label</button>
+                    </div>
+                    @if (labelFormOpen)
+                    {
+                        <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+                            <input class="org-input" style="flex:1;height:32px;font-size:12px" placeholder="Label name…" @bind="newLabelName" />
+                            <input type="color" @bind="newLabelColor" style="width:32px;height:32px;border:1px solid var(--line);border-radius:8px;padding:2px;cursor:pointer;" />
+                            <button class="btn-sm accent" disabled="@string.IsNullOrWhiteSpace(newLabelName)" @onclick="AddLabel">Save</button>
+                        </div>
+                    }
+                    @if (labels.Count == 0)
+                    {
+                        <div class="tree-empty" style="padding:24px"><div class="meta" style="font-size:12px;color:var(--ink-3)">No labels yet. Labels organize incoming mail manually or via rules.</div></div>
+                    }
+                    else
+                    {
+                        <div style="display:flex;flex-direction:column;gap:6px">
+                            @foreach (var l in labels)
+                            {
+                                <div class="syno-row" style="display:flex;align-items:center;gap:10px;padding:8px 12px">
+                                    <span style="width:14px;height:14px;border-radius:4px;background:@l.Color;flex-shrink:0"></span>
+                                    <span style="flex:1;font-size:12.5px;font-weight:600">@l.Name</span>
+                                    <span style="font-size:11px;color:var(--ink-3)">@l.Count messages</span>
+                                    <button class="btn-sm surface danger" style="padding:2px 8px" @onclick="() => labels.Remove(l)"><i data-lucide="trash-2" style="width:11px;height:11px"></i></button>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ── RULES ── *@
+            @if (activeTab == "rules")
+            {
+                <div style="padding:14px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                        <span style="font-size:12.5px;font-weight:700">Incoming Mail Rules (@rules.Count)</span>
+                        <button class="btn-sm accent" @onclick="() => ruleFormOpen = !ruleFormOpen"><i data-lucide="plus" style="width:12px;height:12px"></i> New rule</button>
+                    </div>
+                    @if (ruleFormOpen)
+                    {
+                        <div style="border:1px solid var(--line-soft);border-radius:10px;padding:12px;margin-bottom:12px;display:grid;gap:8px">
+                            <input class="org-input" style="height:32px;font-size:12px" placeholder="Rule name (e.g. HR mail to HR folder)…" @bind="newRuleName" />
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                                <span style="font-size:11.5px;color:var(--ink-3)">If sender contains</span>
+                                <input class="org-input" style="width:180px;height:30px;font-size:12px" placeholder="text…" @bind="newRuleSender" />
+                                <span style="font-size:11.5px;color:var(--ink-3)">→ apply label</span>
+                                <select class="filter-select" style="height:30px;font-size:12px" @bind="newRuleLabel">
+                                    @foreach (var l in labels)
+                                    {
+                                        <option value="@l.Name">@l.Name</option>
+                                    }
+                                </select>
+                            </div>
+                            <div><button class="btn-sm accent" disabled="@(string.IsNullOrWhiteSpace(newRuleName) || string.IsNullOrWhiteSpace(newRuleSender))" @onclick="AddRule">Save rule</button></div>
+                        </div>
+                    }
+                    @if (rules.Count == 0)
+                    {
+                        <div class="tree-empty" style="padding:24px"><div class="meta" style="font-size:12px;color:var(--ink-3)">No rules yet. Rules organize incoming mail automatically based on conditions.</div></div>
+                    }
+                    else
+                    {
+                        <div style="display:flex;flex-direction:column;gap:6px">
+                            @foreach (var r in rules)
+                            {
+                                <div class="syno-row" style="display:flex;align-items:center;gap:10px;padding:8px 12px">
+                                    <i data-lucide="filter" style="width:13px;height:13px;color:var(--accent-ink)"></i>
+                                    <div style="flex:1;min-width:0">
+                                        <div style="font-size:12.5px;font-weight:600">@r.Name</div>
+                                        <div style="font-size:11px;color:var(--ink-3)">Sender contains "@r.SenderContains" → label "@r.LabelName"</div>
+                                    </div>
+                                    <label class="syno-toggle"><input type="checkbox" checked="@r.Enabled" @onchange="() => r.Enabled = !r.Enabled" /><span style="font-size:11px">@(r.Enabled ? "Active" : "Inactive")</span></label>
+                                    <button class="btn-sm surface danger" style="padding:2px 8px" @onclick="() => rules.Remove(r)"><i data-lucide="trash-2" style="width:11px;height:11px"></i></button>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ── TEMPLATES ── *@
+            @if (activeTab == "templates")
+            {
+                <div style="padding:14px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                        <span style="font-size:12.5px;font-weight:700">Mail Templates (@templates.Count)</span>
+                        <button class="btn-sm accent" @onclick="() => tplFormOpen = !tplFormOpen"><i data-lucide="plus" style="width:12px;height:12px"></i> New template</button>
+                    </div>
+                    @if (tplFormOpen)
+                    {
+                        <div style="border:1px solid var(--line-soft);border-radius:10px;padding:12px;margin-bottom:12px;display:grid;gap:8px">
+                            <input class="org-input" style="height:32px;font-size:12px" placeholder="Template name…" @bind="newTplName" />
+                            <input class="org-input" style="height:32px;font-size:12px" placeholder="Email subject…" @bind="newTplSubject" />
+                            <textarea class="org-input" style="min-height:80px;font-size:12px;resize:vertical" placeholder="Email body…" @bind="newTplBody"></textarea>
+                            <div><button class="btn-sm accent" disabled="@(string.IsNullOrWhiteSpace(newTplName) || string.IsNullOrWhiteSpace(newTplSubject))" @onclick="AddTemplate">Save template</button></div>
+                        </div>
+                    }
+                    @if (templates.Count == 0)
+                    {
+                        <div class="tree-empty" style="padding:24px"><div class="meta" style="font-size:12px;color:var(--ink-3)">No templates yet. Save frequently used email formats to quickly use when composing.</div></div>
+                    }
+                    else
+                    {
+                        <div style="display:flex;flex-direction:column;gap:6px">
+                            @foreach (var tpl in templates)
+                            {
+                                <div class="syno-row" style="display:flex;align-items:center;gap:10px;padding:8px 12px">
+                                    <i data-lucide="layout-template" style="width:13px;height:13px;color:var(--accent-ink)"></i>
+                                    <div style="flex:1;min-width:0">
+                                        <div style="font-size:12.5px;font-weight:600">@tpl.Name</div>
+                                        <div style="font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">@tpl.Subject</div>
+                                    </div>
+                                    <button class="btn-sm surface" style="padding:2px 8px" title="Use this template to write an email" @onclick="() => UseTemplate(tpl)"><i data-lucide="pen-line" style="width:11px;height:11px"></i> Use</button>
+                                    <button class="btn-sm surface danger" style="padding:2px 8px" @onclick="() => templates.Remove(tpl)"><i data-lucide="trash-2" style="width:11px;height:11px"></i></button>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ── AUTO-REPLY (OOO) ── *@
+            @if (activeTab == "autoreply")
+            {
+                <div style="padding:14px;display:grid;gap:12px;max-width:560px">
+                    <label class="syno-toggle" style="display:flex;align-items:center;gap:8px">
+                        <input type="checkbox" @bind="oooEnabled" />
+                        <span style="font-size:13px;font-weight:600">@(oooEnabled ? "Auto-reply is ON" : "Auto-reply is OFF")</span>
+                    </label>
+                    @if (oooEnabled)
+                    {
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                            <div class="field" style="margin:0">
+                                <label style="font-size:11.5px;font-weight:700;color:var(--ink-2)">Start</label>
+                                <input type="date" class="org-input" @bind="oooFrom" />
+                            </div>
+                            <div class="field" style="margin:0">
+                                <label style="font-size:11.5px;font-weight:700;color:var(--ink-2)">End</label>
+                                <input type="date" class="org-input" @bind="oooUntil" />
+                            </div>
+                        </div>
+                        <div class="field" style="margin:0">
+                            <label style="font-size:11.5px;font-weight:700;color:var(--ink-2)">Auto-reply message</label>
+                            <textarea class="org-input" style="min-height:100px;font-size:12.5px;resize:vertical" @bind="oooMessage"
+                                      placeholder="Example: I am out of office until Sep 30. For urgent matters please contact…"></textarea>
+                        </div>
+                        <div style="font-size:11px;color:var(--ink-3)">During this period, senders will receive an auto-reply once per day.</div>
+                        <div><button class="btn-sm accent" @onclick="SaveOoo"><i data-lucide="check" style="width:12px;height:12px"></i> Save settings</button></div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+</div>
+
+@code {
+    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+
+    private string activeTab = "labels";
+
+    // Labels
+    private sealed class LabelItem { public string Name = ""; public string Color = "#2e7d5b"; public int Count; }
+    private List<LabelItem> labels =
+    [
+        new() { Name = "Important", Color = "#b3543f", Count = 4 },
+        new() { Name = "HR", Color = "#4f6d8f", Count = 12 },
+        new() { Name = "Projects", Color = "#2e7d5b", Count = 7 },
+    ];
+    private bool labelFormOpen;
+    private string newLabelName = "";
+    private string newLabelColor = "#2e7d5b";
+
+    // Rules
+    private sealed class RuleItem { public string Name = ""; public string SenderContains = ""; public string LabelName = ""; public bool Enabled = true; }
+    private List<RuleItem> rules =
+    [
+        new() { Name = "Auto HR mail", SenderContains = "hr@", LabelName = "HR" },
+    ];
+    private bool ruleFormOpen;
+    private string newRuleName = "";
+    private string newRuleSender = "";
+    private string newRuleLabel = "HR";
+
+    // Templates
+    private sealed class TemplateItem { public string Name = ""; public string Subject = ""; public string Body = ""; }
+    private List<TemplateItem> templates =
+    [
+        new() { Name = "Meeting Invitation", Subject = "Meeting Invitation: {topic}", Body = "Dear Team,\n\nYou are invited to attend the meeting…\n\nBest regards," },
+    ];
+    private bool tplFormOpen;
+    private string newTplName = "";
+    private string newTplSubject = "";
+    private string newTplBody = "";
+
+    // OOO
+    private bool oooEnabled;
+    private DateTime oooFrom = DateTime.Today;
+    private DateTime oooUntil = DateTime.Today.AddDays(7);
+    private string oooMessage = "";
+
+    protected override void OnInitialized() => Layout.SetHeader("Mail", "Advanced Mail");
+
+    private void AddLabel()
+    {
+        labels.Add(new LabelItem { Name = newLabelName.Trim(), Color = newLabelColor });
+        newLabelName = ""; labelFormOpen = false;
+        Toasts.Show("Label saved (local — endpoint to follow).", ToastKind.Success);
+    }
+
+    private void AddRule()
+    {
+        rules.Add(new RuleItem { Name = newRuleName.Trim(), SenderContains = newRuleSender.Trim(), LabelName = newRuleLabel });
+        newRuleName = ""; newRuleSender = ""; ruleFormOpen = false;
+        Toasts.Show("Rule saved (local — endpoint to follow).", ToastKind.Success);
+    }
+
+    private void AddTemplate()
+    {
+        templates.Add(new TemplateItem { Name = newTplName.Trim(), Subject = newTplSubject.Trim(), Body = newTplBody });
+        newTplName = ""; newTplSubject = ""; newTplBody = ""; tplFormOpen = false;
+        Toasts.Show("Template saved (local — endpoint to follow).", ToastKind.Success);
+    }
+
+    private void UseTemplate(TemplateItem tpl)
+        => Nav.NavigateTo($"/mail?shareSubject={Uri.EscapeDataString(tpl.Subject)}&shareBody={Uri.EscapeDataString(tpl.Body)}");
+
+    private void SaveOoo() => Toasts.Show("Auto-reply settings saved (local — endpoint to follow).", ToastKind.Success);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+}

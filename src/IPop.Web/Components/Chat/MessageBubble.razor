@@ -1,5 +1,6 @@
 @using IPop.Application.Chat
 @using IPop.Application.Chat.Mentions
+@using IPop.Web.Models
 @using IPop.Web.Services
 @inject ChatState ChatSvc
 @inject IJSRuntime JS
@@ -8,14 +9,17 @@
 <div class="@FullMessageClass" @oncontextmenu="(e) => OnCtx.InvokeAsync((Message.Id, e))" @oncontextmenu:preventDefault>
     @if (!isSent && Message.Type != "system" && Message.Type != "emergency" && ChatSvc.ActiveRoom?.Type == "group")
     {
-        <button type="button" class="msg-avatar avatar avatar-btn" style="background:@Color(Message.SenderNik)" @onclick="() => OnProfile.InvokeAsync(Message.SenderNik)">@Initials(Message.SenderName)</button>
+        <button type="button" class="msg-avatar avatar avatar-btn hover-lift" style="background:@Color(Message.SenderNik)" @onclick="() => OnProfile.InvokeAsync(Message.SenderNik)">
+            @Initials(Message.SenderName)
+            <span class="avatar-ring"></span>
+        </button>
     }
     <div class="bubble-wrap">
         @if (!isSent && Message.Type != "system" && Message.Type != "emergency" && ChatSvc.ActiveRoom?.Type == "group")
         {
             var senderMember = ChatSvc.ActiveRoom?.Members.FirstOrDefault(m => m.Nik == Message.SenderNik);
             <div class="sender">
-                @Message.SenderName
+                <span class="sender-name">@Message.SenderName</span>
                 @if (senderMember?.Role is "owner")
                 {
                     <span class="role-badge owner">Owner</span>
@@ -28,16 +32,31 @@
         }
         <div class="bubble @BubbleModifierClass">
             @if (Message.Type == "emergency") { <i data-lucide="alert-triangle"></i> }
-            @if (Message.Content?.StartsWith("[forwarded]") == true)
+            @if (IsForwarded)
             {
-                <div class="forwarded-tag"><i data-lucide="forward"></i> Forwarded</div>
+                <div class="forwarded-tag" title="@(string.IsNullOrEmpty(Message.ForwardedFromSenderName) ? "This message was forwarded from another conversation" : $"Forwarded from {Message.ForwardedFromSenderName}")">
+                    <i data-lucide="forward"></i> Forwarded@(string.IsNullOrEmpty(Message.ForwardedFromSenderName) ? "" : $" · {Message.ForwardedFromSenderName}")
+                </div>
             }
             @if (Message.ReplyPreview is not null)
             {
                 <div class="reply-quote"><div class="rq-name">@Message.ReplyPreview.SenderName</div>@Message.ReplyPreview.Content</div>
             }
-            @if (Message.IsDeleted) { <em>@Message.Content</em> }
+            @if (Message.IsDeleted) { <em class="deleted-text">@Message.Content</em> }
             else if (Message.Type == "sticker") { <div class="sticker-msg"><div class="sticker-big"><i data-lucide="@Message.Content"></i></div></div> }
+            else if (Message.Type == "event")
+            {
+                <div class="msg-event-card hover-lift" @onclick="() => OnEventOpen.InvokeAsync(Message.Id)" @onclick:stopPropagation>
+                    <div class="ev-icon">
+                        <i data-lucide="calendar-clock"></i>
+                    </div>
+                    <div class="ev-t">
+                        <div class="ev-title">@Message.Content</div>
+                        <div class="ev-when">@Message.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="ev-chev"></i>
+                </div>
+            }
             else if (IsPollMessage(Message))
             {
                 <PollView PollJson="@ExtractPollJson(Message.Content)" MessageId="Message.Id" />
@@ -56,13 +75,15 @@
                 }
                 @if (!string.IsNullOrWhiteSpace(Message.Content) && !IsAttachmentPlaceholder(Message))
                 {
-                    @((MarkupString)RenderedContent)
+                    <div class="message-text">
+                        @((MarkupString)RenderedContent)
+                    </div>
                 }
             }
             <span class="time">
                 @Message.CreatedAt.ToLocalTime().ToString("HH:mm")
                 @if (Message.EditedAt is not null) { <span class="edited">(edited)</span> }
-                @if (isSent)
+                @if (isSent && (ShowDeliveryStatus || isPending || isFailed))
                 {
                     var ds = Message.DeliveryStatus;
                     var statusLabel = isPending ? "Sending" : isFailed ? "Not sent" : ds == "read" ? "Read" : ds == "delivered" ? "Delivered" : "Sent";
@@ -82,17 +103,21 @@
                 @foreach (var r in Reactions)
                 {
                     var reaction = r;
-                    <span class="pill @(reaction.CurrentUserReacted ? "mine" : "")" @onclick="() => OnReact.InvokeAsync((Message.Id, reaction.Emoji))" @onclick:stopPropagation>@reaction.Emoji @reaction.Count</span>
+                    <span class="pill @(reaction.CurrentUserReacted ? "mine" : "") hover-pop" @onclick="() => OnReact.InvokeAsync((Message.Id, reaction.Emoji))" @onclick:stopPropagation>
+                        <span class="emoji">@reaction.Emoji</span>
+                        <span class="count">@reaction.Count</span>
+                    </span>
                 }
             </div>
         }
         @if (Message.ThreadReplyCount > 0)
         {
-            <div class="thread-link" @onclick="() => OnThread.InvokeAsync(Message.Id)" @onclick:stopPropagation>
-                <i data-lucide="messages-square"></i> @Message.ThreadReplyCount replies
+            <div class="thread-link hover-lift" @onclick="() => OnThread.InvokeAsync(Message.Id)" @onclick:stopPropagation>
+                <i data-lucide="messages-square"></i>
+                <span>@Message.ThreadReplyCount replies</span>
+                <i data-lucide="chevron-right" class="thread-arrow"></i>
             </div>
         }
-        @* SeenIndicator is rendered by the page only for the trailing own message in groups to avoid per-bubble fetches. *@
     </div>
 </div>
 
@@ -103,10 +128,17 @@
     [Parameter] public EventCallback<(Guid, string)> OnReact { get; set; }
     [Parameter] public EventCallback<Guid> OnThread { get; set; }
     [Parameter] public EventCallback<AttachmentDto> OnAttachmentOpen { get; set; }
+    [Parameter] public EventCallback<Guid> OnEventOpen { get; set; }
+    [Parameter] public bool ShowDeliveryStatus { get; set; } = false;
 
     private IReadOnlyList<AttachmentDto> Attachments => Message.Attachments ?? Array.Empty<AttachmentDto>();
     private IReadOnlyList<ReactionGroupDto> Reactions => Message.Reactions ?? Array.Empty<ReactionGroupDto>();
     private bool isSent => Message.SenderNik == Auth.Me?.Nik;
+
+    private bool IsForwarded =>
+        Message.ForwardedFromSenderName is not null ||
+        Message.Content?.StartsWith("[forwarded]") == true;
+
     private string FullMessageClass
     {
         get
@@ -152,7 +184,6 @@
             if (string.IsNullOrWhiteSpace(Message.Content) || IsAttachmentPlaceholder(Message))
                 return "";
             var text = Message.Content.StartsWith("[forwarded]") ? Message.Content.Substring("[forwarded]".Length).TrimStart() : Message.Content;
-            // Prefer MentionRenderer when group context is available; fallback to plain
             var dir = new SimpleDir(ChatSvc.ActiveRoom);
             var html = MentionRenderer.ToHtml(text, dir, ChatSvc.ActiveRoom?.Type == "group");
             return ChatFormatters.FormatMarkdown(html);
@@ -167,7 +198,15 @@
         private readonly Dictionary<Guid, (string nik, string name, bool active)> _map;
         public SimpleDir(ChatRoomDto? room)
         {
-            _map = (room?.MentionDirectory ?? Array.Empty<MentionUserDto>()).ToDictionary(x => x.UserId, x => (x.Nik, x.Name, x.IsActive));
+            var map = new Dictionary<Guid, (string nik, string name, bool active)>();
+            if (room?.MentionDirectory is not null)
+            {
+                foreach (var x in room.MentionDirectory)
+                {
+                    map[x.UserId] = (x.Nik, x.Name, x.IsActive);
+                }
+            }
+            _map = map;
         }
         public bool TryResolve(Guid userId, out string nik, out string name, out bool isActive)
         {
@@ -176,14 +215,11 @@
         }
     }
 
-    private static string Initials(string name)
+    private static string Initials(string? name)
     {
+        if (string.IsNullOrWhiteSpace(name)) return "—";
         var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
     }
-    private static string Color(string nik)
-    {
-        var colors = new[] { "#2e7d5b", "#7d5ba6", "#8a6d3b", "#b3543f", "#4f6d8f", "#5b7d2e" };
-        return colors[Math.Abs(nik.GetHashCode()) % colors.Length];
-    }
+    private static string Color(string? nik) => AvatarPalette.For(nik);
 }

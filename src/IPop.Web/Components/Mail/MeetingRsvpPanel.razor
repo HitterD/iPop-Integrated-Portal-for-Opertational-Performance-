@@ -1,0 +1,101 @@
+@namespace IPop.Web.Components.Mail
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject ToastService Toasts
+
+@* Meeting RSVP panel: displayed in the reading pane for messages carrying a meeting invitation.
+   Accept/Maybe/Decline buttons + note; calls RSVP endpoint or host callback. *@
+
+<div class="rsvp-panel">
+    <div class="rsvp-head">
+        <div class="kpi-ic"><i data-lucide="calendar-clock"></i></div>
+        <div class="rsvp-head-t">
+            <div class="t">@Meeting.Title</div>
+            <div class="s">@FormatRange(Meeting.StartAt, Meeting.EndAt) · @(string.IsNullOrEmpty(Meeting.Location) ? Meeting.Link : Meeting.Location)</div>
+        </div>
+        <span class="rsvp-status @CurrentResponse">@StatusLabel(CurrentResponse)</span>
+    </div>
+
+    <div class="rsvp-actions">
+        <button type="button" class="rsvp-btn accept @(CurrentResponse == "accept" ? "on" : "")" @onclick='() => Respond("accept")' disabled="@responding">
+            <i data-lucide="check"></i> Accept
+        </button>
+        <button type="button" class="rsvp-btn maybe @(CurrentResponse == "maybe" ? "on" : "")" @onclick='() => Respond("maybe")' disabled="@responding">
+            <i data-lucide="help-circle"></i> Maybe
+        </button>
+        <button type="button" class="rsvp-btn decline @(CurrentResponse == "decline" ? "on" : "")" @onclick='() => Respond("decline")' disabled="@responding">
+            <i data-lucide="x"></i> Decline
+        </button>
+    </div>
+
+    <textarea class="rsvp-note" placeholder="Note for organizer (optional)…" @bind="note" rows="2"></textarea>
+
+    @* Attendance summary (for organizer) *@
+    @if (ShowSummary && Attendees.Count > 0)
+    {
+        <div class="rsvp-summary">
+            <div class="rsvp-sum-head"><i data-lucide="users"></i> Attendance summary (@Attendees.Count attendees)</div>
+            <div class="rsvp-sum-bars">
+                <span class="rsvp-sum accept" title="Accepted">@CountOf("accept")</span>
+                <span class="rsvp-sum maybe" title="Maybe">@CountOf("maybe")</span>
+                <span class="rsvp-sum decline" title="Declined">@CountOf("decline")</span>
+                <span class="rsvp-sum pending" title="No response">@CountOf("pending")</span>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public MeetingModel Meeting { get; set; } = default!;
+    [Parameter] public string CurrentResponse { get; set; } = "pending";
+    [Parameter] public bool ShowSummary { get; set; }
+    [Parameter] public IReadOnlyList<AttendeeModel> Attendees { get; set; } = [];
+    [Parameter] public EventCallback<(string Response, string? Note)> OnRespond { get; set; }
+
+    private bool responding;
+    private string note = "";
+
+    public sealed record MeetingModel(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string? Location, string? Link);
+    public sealed record AttendeeModel(string Name, string Response);
+
+    private async Task Respond(string response)
+    {
+        if (responding) return;
+        responding = true;
+        try
+        {
+            if (OnRespond.HasDelegate)
+            {
+                await OnRespond.InvokeAsync((response, string.IsNullOrWhiteSpace(note) ? null : note));
+            }
+            else
+            {
+                var res = await Auth.SendAsync(HttpMethod.Post, $"/api/meetings/{Meeting.Id}/rsvp",
+                    new { response, note = string.IsNullOrWhiteSpace(note) ? null : note });
+                if (res.IsSuccessStatusCode)
+                {
+                    CurrentResponse = response;
+                    Toasts.Show($"Response \"{StatusLabel(response)}\" saved.", ToastKind.Success);
+                }
+                else
+                {
+                    Toasts.Show("Failed to save response.", ToastKind.Error);
+                }
+            }
+        }
+        finally { responding = false; }
+    }
+
+    private int CountOf(string r) => Attendees.Count(a => a.Response == r);
+
+    private static string StatusLabel(string r) => r switch
+    {
+        "accept" => "Accepted",
+        "decline" => "Declined",
+        "maybe" => "Maybe",
+        _ => "No response"
+    };
+
+    private static string FormatRange(DateTime s, DateTime e)
+        => $"{s.ToLocalTime():dd MMM yyyy, HH:mm}–{e.ToLocalTime():HH:mm}";
+}

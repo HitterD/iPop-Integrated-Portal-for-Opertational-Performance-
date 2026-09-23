@@ -1,0 +1,107 @@
+@using IPop.Application.Projects
+
+<aside class="proj-sidebar @(IsCollapsed ? "collapsed" : "")" aria-label="Project Navigator">
+    <div class="proj-sidebar-head">
+        @if (!IsCollapsed)
+        {
+            <div class="title">
+                <i data-lucide="kanban"></i>
+                <span>Projects</span>
+                <span class="badge">@Projects.Count</span>
+            </div>
+        }
+        <div class="proj-sidebar-actions" style="@(IsCollapsed ? "margin:0 auto;display:flex;justify-content:center;width:100%" : "display:flex;align-items:center;gap:6px")">
+            @if (!IsCollapsed)
+            {
+                <button class="proj-new-btn" @onclick="OnCreateClick" title="Create New Project">
+                    <i data-lucide="plus"></i> New
+                </button>
+            }
+            <button class="proj-sidebar-toggle" @onclick="OnToggleSidebar" title="@(IsCollapsed ? "Expand navigator" : "Collapse navigator")">
+                <i data-lucide="@(IsCollapsed ? "panel-left-open" : "panel-left-close")" style="width:14px;height:14px"></i>
+            </button>
+        </div>
+    </div>
+
+    @* Quick search projects *@
+    <div class="proj-search-wrap">
+        <i data-lucide="search" style="width:14px;height:14px;color:var(--ink-3)"></i>
+        <input class="proj-search-input" placeholder="Search project name..." value="@SearchQuery" @oninput="HandleSearchInput" />
+    </div>
+
+    @* Year filter chips *@
+    <div class="proj-year-chips">
+        <button class="year-chip @(SelectedYear == null ? "active" : "")" @onclick="() => OnYearChanged.InvokeAsync(null)">All</button>
+        @foreach (var y in AvailableYears)
+        {
+            <button class="year-chip @(SelectedYear == y ? "active" : "")" @onclick="() => OnYearChanged.InvokeAsync(y)">@y</button>
+        }
+    </div>
+
+    @* Projects stream list *@
+    <div class="proj-list">
+        @if (Loading)
+        {
+            @for (var i = 0; i < 5; i++)
+            {
+                <div class="skel" style="height:62px;border-radius:10px;margin-bottom:6px"></div>
+            }
+        }
+        else if (Projects.Count == 0)
+        {
+            <div class="tree-empty" style="padding:28px 12px;text-align:center">
+                <i data-lucide="folder-x" style="width:28px;height:28px;margin-bottom:8px;color:var(--ink-3)"></i>
+                <div style="font-size:12.5px;color:var(--ink-2)">No projects found.</div>
+                <button class="btn-sm accent" style="margin-top:10px" @onclick="OnCreateClick">Create new project</button>
+            </div>
+        }
+        else
+        {
+            @foreach (var p in Projects)
+            {
+                var isSel = p.Id == SelectedProjectId;
+                <div class="proj-nav-item @(isSel ? "active" : "")" @onclick="() => OnSelectProject.InvokeAsync(p)" title="@p.Name (@p.Status)">
+                    <div class="proj-nav-collapsed-icon">
+                        @(string.IsNullOrWhiteSpace(p.Name) ? "P" : p.Name.Trim().Substring(0, 1).ToUpper())
+                    </div>
+                    <div class="proj-nav-body">
+                        <div class="proj-nav-head">
+                            <span class="proj-nav-name" title="@p.Name">@p.Name</span>
+                            <span class="status-pill @p.Status.ToLower()" style="font-size:9.5px;padding:1px 6px">@p.Status</span>
+                        </div>
+                        <div class="proj-nav-sub">
+                            <span>@p.Year · @p.OwnerName</span>
+                            <span style="display:flex;align-items:center;gap:3px">
+                                <i data-lucide="check-square" style="width:11px;height:11px"></i> @p.TaskCount
+                            </span>
+                        </div>
+                        <div class="proj-nav-bar">
+                            <div class="proj-nav-bar-fill" style="width:@(Math.Clamp(p.Progress, 0, 100))%"></div>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</aside>
+
+@code {
+    [Parameter] public List<ProjectListDto> Projects { get; set; } = [];
+    [Parameter] public Guid SelectedProjectId { get; set; }
+    [Parameter] public int? SelectedYear { get; set; }
+    [Parameter] public List<int> AvailableYears { get; set; } = [];
+    [Parameter] public string SearchQuery { get; set; } = "";
+    [Parameter] public bool IsCollapsed { get; set; }
+    [Parameter] public bool Loading { get; set; }
+
+    [Parameter] public EventCallback<ProjectListDto> OnSelectProject { get; set; }
+    [Parameter] public EventCallback OnToggleSidebar { get; set; }
+    [Parameter] public EventCallback<int?> OnYearChanged { get; set; }
+    [Parameter] public EventCallback<string> OnSearchChanged { get; set; }
+    [Parameter] public EventCallback OnCreateClick { get; set; }
+
+    private async Task HandleSearchInput(ChangeEventArgs e)
+    {
+        await OnSearchChanged.InvokeAsync(e.Value?.ToString() ?? "");
+    }
+}

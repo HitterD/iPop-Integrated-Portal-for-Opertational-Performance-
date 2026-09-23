@@ -1,0 +1,162 @@
+@namespace IPop.Web.Components.News
+@using IPop.Web.Models
+
+@{
+    var isCondolence = Item.Type is "condolence" or "duka";
+    var isMemo = Item.Type == "memo";
+    var isAnnouncement = Item.Type == "announcement";
+    var cardVariantClass = isCondolence ? "card-condolence" : isMemo ? "card-memo" : isAnnouncement ? "card-announcement" : "card-news";
+}
+
+<button type="button" class="news-card-btn-wrapper" @onclick="() => OnClick.InvokeAsync(Item.Id)">
+    <div class="news-card @cardVariantClass @(Item.IsPinned ? "pinned" : "")">
+        @if (isCondolence)
+        {
+            <div class="card-header-row">
+                <span class="news-type-badge type-condolence">
+                    <i data-lucide="heart" style="width:12px;height:12px"></i> CONDOLENCE
+                </span>
+                @if (Item.IsPinned)
+                {
+                    <span class="badge-pin-tag"><i data-lucide="pin" style="width:11px;height:11px"></i> Pinned</span>
+                }
+                <span class="card-date-meta">@NewsUiHelper.FormatDate(Item.PublishedAt ?? Item.CreatedAt)</span>
+            </div>
+            <div class="condolence-crest-wrap">
+                <div class="condolence-sub-quote">With Deepest Sympathy</div>
+                <div class="card-main-title condolence-title">@Item.Title</div>
+            </div>
+            <div class="card-bottom-row">
+                <div class="card-author-info">
+                    <span class="author-avatar-chip"><i data-lucide="user" style="width:11px;height:11px"></i></span>
+                    <span class="author-name">@Item.AuthorName</span>
+                </div>
+                <div class="card-target-chips">
+                    @if (Item.Targets.Count == 0)
+                    {
+                        <span class="tag-target-chip all">All Employees</span>
+                    }
+                    else
+                    {
+                        @foreach (var t in Item.Targets.Take(2))
+                        {
+                            <span class="tag-target-chip">@t.Kind:@(t.Value ?? "all")</span>
+                        }
+                        @if (Item.Targets.Count > 2)
+                        {
+                            <span class="tag-target-chip">+@(Item.Targets.Count - 2)</span>
+                        }
+                    }
+                </div>
+                <span class="status-pill @Item.Status">@NewsUiHelper.StatusLabel(Item.Status)</span>
+            </div>
+        }
+        else if (isMemo)
+        {
+            <div class="card-header-row">
+                <span class="news-type-badge type-memo">
+                    <i data-lucide="file-text" style="width:12px;height:12px"></i> INTERNAL MEMO (IM)
+                </span>
+                @if (Item.RequiresAcknowledgement)
+                {
+                    @if (Item.IsAcknowledged)
+                    {
+                        <span class="badge-ack-status done"><i data-lucide="check-circle-2" style="width:11px;height:11px"></i> Read</span>
+                    }
+                    else
+                    {
+                        <span class="badge-ack-status pending"><i data-lucide="alert-circle" style="width:11px;height:11px"></i> Ack Required</span>
+                    }
+                }
+                @if (Item.IsPinned)
+                {
+                    <span class="badge-pin-tag"><i data-lucide="pin" style="width:11px;height:11px"></i> Pinned</span>
+                }
+                <span class="card-date-meta">@NewsUiHelper.FormatDate(Item.PublishedAt ?? Item.CreatedAt)</span>
+            </div>
+            <div class="card-main-title">@Item.Title</div>
+            <div class="memo-dispatch-info">
+                <span class="dispatch-item"><i data-lucide="user" style="width:11px;height:11px"></i> From: <strong>@Item.AuthorName</strong></span>
+                <span class="dispatch-dot">·</span>
+                <span class="dispatch-item"><i data-lucide="building" style="width:11px;height:11px"></i> To: @(Item.Targets.Count == 0 ? "All Employees" : string.Join(", ", Item.Targets.Take(2).Select(t => $"{t.Kind}: {t.Value ?? "all"}")))</span>
+            </div>
+            <div class="card-bottom-row">
+                <span style="font-size:11px;color:var(--ink-3);font-weight:600">Corporate Internal Memo</span>
+                <span class="status-pill @Item.Status" style="margin-left:auto">@NewsUiHelper.StatusLabel(Item.Status)</span>
+            </div>
+        }
+        else if (isAnnouncement)
+        {
+            <div class="card-header-row">
+                <span class="news-type-badge type-announcement">
+                    <i data-lucide="megaphone" style="width:12px;height:12px"></i> ANNOUNCEMENT
+                </span>
+                @if (Item.IsPinned)
+                {
+                    <span class="badge-pin-tag"><i data-lucide="pin" style="width:11px;height:11px"></i> Pinned</span>
+                }
+                @if (Item.RequiresAcknowledgement)
+                {
+                    @if (Item.IsAcknowledged) { <span class="badge-ack-status done">Read</span> }
+                    else { <span class="badge-ack-status pending">Ack Required</span> }
+                }
+                <span class="card-date-meta">@NewsUiHelper.FormatDate(Item.PublishedAt ?? Item.CreatedAt)</span>
+            </div>
+            <div class="card-main-title">@Item.Title</div>
+            <div class="card-bottom-row">
+                <div class="card-author-info">
+                    <span class="author-avatar-chip"><i data-lucide="user" style="width:11px;height:11px"></i></span>
+                    <span class="author-name">@Item.AuthorName</span>
+                </div>
+                <div class="card-target-chips">
+                    @if (Item.Targets.Count == 0) { <span class="tag-target-chip all">All</span> }
+                    else
+                    {
+                        @foreach (var t in Item.Targets.Take(2)) { <span class="tag-target-chip">@t.Kind:@(t.Value ?? "all")</span> }
+                        @if (Item.Targets.Count > 2) { <span class="tag-target-chip">+@(Item.Targets.Count - 2)</span> }
+                    }
+                </div>
+                <span class="status-pill @Item.Status">@NewsUiHelper.StatusLabel(Item.Status)</span>
+            </div>
+        }
+        else
+        {
+            <div class="card-header-row">
+                <span class="news-type-badge type-news">
+                    <i data-lucide="newspaper" style="width:12px;height:12px"></i> NEWS
+                </span>
+                @if (Item.IsPinned)
+                {
+                    <span class="badge-pin-tag"><i data-lucide="pin" style="width:11px;height:11px"></i> Pinned</span>
+                }
+                @if (Item.RequiresAcknowledgement)
+                {
+                    @if (Item.IsAcknowledged) { <span class="badge-ack-status done">Read</span> }
+                    else { <span class="badge-ack-status pending">Ack Required</span> }
+                }
+                <span class="card-date-meta">@NewsUiHelper.FormatDate(Item.PublishedAt ?? Item.CreatedAt) · @NewsUiHelper.ReadTime(Item.Title) min read</span>
+            </div>
+            <div class="card-main-title">@Item.Title</div>
+            <div class="card-bottom-row">
+                <div class="card-author-info">
+                    <span class="author-avatar-chip"><i data-lucide="user" style="width:11px;height:11px"></i></span>
+                    <span class="author-name">@Item.AuthorName</span>
+                </div>
+                <div class="card-target-chips">
+                    @if (Item.Targets.Count == 0) { <span class="tag-target-chip all">All</span> }
+                    else
+                    {
+                        @foreach (var t in Item.Targets.Take(2)) { <span class="tag-target-chip">@t.Kind:@(t.Value ?? "all")</span> }
+                        @if (Item.Targets.Count > 2) { <span class="tag-target-chip">+@(Item.Targets.Count - 2)</span> }
+                    }
+                </div>
+                <span class="status-pill @Item.Status">@NewsUiHelper.StatusLabel(Item.Status)</span>
+            </div>
+        }
+    </div>
+</button>
+
+@code {
+    [Parameter] public NewsSummaryDto Item { get; set; } = default!;
+    [Parameter] public EventCallback<Guid> OnClick { get; set; }
+}

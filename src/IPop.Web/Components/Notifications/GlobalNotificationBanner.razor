@@ -1,0 +1,96 @@
+@using IPop.Web.Services
+@inject NotificationState Notifs
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="apple-banner-host" aria-live="polite" aria-atomic="true" style="display: @(Notifs.CurrentEnableNotifications ? "block" : "none")">
+    @foreach (var banner in Notifs.ActiveBanners)
+    {
+        var b = banner;
+        var item = b.Item;
+        var icon = NotificationState.GetTypeIcon(item.Type);
+        var label = NotificationState.GetTypeLabel(item.Type);
+        var timeLabel = FormatTime(item.At);
+
+        <div class="apple-banner @item.Type"
+             role="alert"
+             @onmouseenter="() => Notifs.PauseBanner(b.Id)"
+             @onmouseleave="() => Notifs.ResumeBanner(b.Id)"
+             @onclick="() => HandleClick(b)">
+            <div class="apple-banner-head">
+                <div class="apple-banner-icon @item.Type">
+                    <i data-lucide="@icon"></i>
+                </div>
+                <div class="apple-banner-meta">
+                    <span class="apple-banner-app">iPop · @label</span>
+                    <span class="apple-banner-dot">·</span>
+                    <span class="apple-banner-time">@timeLabel</span>
+                </div>
+                <button type="button" class="apple-banner-close" title="Close" @onclick="() => Notifs.DismissBanner(b.Id)" @onclick:stopPropagation>
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+            <div class="apple-banner-body">
+                <div class="apple-banner-title">@item.Title</div>
+                @if (Notifs.CurrentShowPreview)
+                {
+                    <div class="apple-banner-desc">@item.Body</div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Notifs.BannersChanged += OnBannersChanged;
+        Notifs.PreferencesChanged += OnPreferencesChanged;
+    }
+
+    private void OnBannersChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                StateHasChanged();
+                await JS.InvokeVoidAsync("ipop.icons");
+            }
+            catch { }
+        });
+    }
+
+    private void OnPreferencesChanged()
+    {
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleClick(ShellNotificationBanner banner)
+    {
+        var targetUrl = NotificationState.GetRedirectUrl(banner.Item);
+        await Notifs.MarkReadAsync(banner.Id);
+        Nav.NavigateTo(targetUrl);
+    }
+
+    private static string FormatTime(DateTime dt)
+    {
+        var diff = DateTime.Now - dt;
+        if (diff.TotalSeconds < 60) return "Just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        return dt.ToString("dd MMM");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    public void Dispose()
+    {
+        Notifs.BannersChanged -= OnBannersChanged;
+        Notifs.PreferencesChanged -= OnPreferencesChanged;
+    }
+}

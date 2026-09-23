@@ -1,0 +1,220 @@
+@using IPop.Application.Chat
+@using IPop.Web.Services
+@inject ChatAttachments Att
+@inject IJSRuntime JS
+@implements IDisposable
+
+@{
+    var kind = ChatAttachments.Kind(Attachment);
+    var mime = ChatAttachments.Mime(Attachment);
+}
+
+@if (kind == AttachmentKind.Image)
+{
+    <button type="button" class="att-image @(imageFailed ? "failed" : "")"
+            title="@(imageFailed ? "Could not load image — click to try again" : Attachment.FileName)"
+            @onclick="OnImageClick" @onclick:stopPropagation>
+        @if (imageFailed)
+        {
+            <span class="att-image-fallback">
+                <i data-lucide="@(retrying ? "loader" : "image-off")"></i>
+                <span>@Attachment.FileName</span>
+                <span class="att-image-retry">@(retrying ? "Loading…" : "Tap to retry")</span>
+            </span>
+        }
+        else if (blobUrl is null)
+        {
+            <span class="att-skeleton" aria-label="Loading image"></span>
+        }
+        else
+        {
+            <img src="@blobUrl" alt="@Attachment.FileName" decoding="async" />
+            <span class="att-image-veil">
+                <i data-lucide="maximize-2"></i>
+            </span>
+        }
+    </button>
+}
+else if (kind == AttachmentKind.Video)
+{
+    <div class="att-media" @onclick:stopPropagation>
+        @if (blobUrl is null)
+        {
+            <span class="att-skeleton" aria-label="Loading video"></span>
+        }
+        else
+        {
+            <video src="@blobUrl" controls preload="metadata" playsinline></video>
+        }
+        <div class="att-media-bar">
+            <span class="nm" title="@Attachment.FileName">@Attachment.FileName</span>
+            <span class="sz">@ChatAttachments.FormatSize(Attachment.FileSize)</span>
+            <button type="button" title="Open full screen" @onclick="Open"><i data-lucide="maximize-2"></i></button>
+            <button type="button" title="Download" @onclick="Download"><i data-lucide="download"></i></button>
+        </div>
+    </div>
+}
+else if (kind == AttachmentKind.Audio)
+{
+    <div class="att-media audio" @onclick:stopPropagation>
+        <div class="att-audio-head">
+            <span class="ic" style="color:@ChatAttachments.Accent(Attachment)"><i data-lucide="music"></i></span>
+            <span class="nm" title="@Attachment.FileName">@Attachment.FileName</span>
+            <button type="button" title="Download" @onclick="Download"><i data-lucide="download"></i></button>
+        </div>
+        @if (blobUrl is null)
+        {
+            <span class="att-skeleton audio" aria-label="Loading audio"></span>
+        }
+        else
+        {
+            <audio src="@blobUrl" controls preload="metadata"></audio>
+        }
+    </div>
+}
+else
+{
+    @if (Layout == "row")
+    {
+        @* Documents, archives and unknown types: horizontal list card (e.g. for drawer) *@
+        <div class="att-card row @(ChatAttachments.CanPreview(Attachment) ? "previewable" : "")"
+             title="@(ChatAttachments.CanPreview(Attachment) ? "Click to preview" : Attachment.FileName)"
+             @onclick="OpenIfPreviewable" @onclick:stopPropagation>
+            <span class="ic" style="background:@Tint(ChatAttachments.Accent(Attachment));color:@ChatAttachments.Accent(Attachment)">
+                <i data-lucide="@ChatAttachments.Icon(Attachment)"></i>
+            </span>
+            <span class="meta">
+                <span class="nm">@Attachment.FileName</span>
+                <span class="sub">
+                    <span class="badge">@ChatAttachments.TypeLabel(Attachment)</span>
+                    @ChatAttachments.FormatSize(Attachment.FileSize)
+                </span>
+            </span>
+            <span class="acts">
+                @if (ChatAttachments.CanPreview(Attachment))
+                {
+                    <button type="button" title="Preview" @onclick="Open" @onclick:stopPropagation><i data-lucide="eye"></i></button>
+                }
+                <button type="button" title="Download" @onclick="Download" @onclick:stopPropagation><i data-lucide="download"></i></button>
+            </span>
+        </div>
+    }
+    else
+    {
+        @* Documents, archives and unknown types: compact thumbnail card for chat messages *@
+        <div class="att-card box @(ChatAttachments.CanPreview(Attachment) ? "previewable" : "")"
+             title="@(ChatAttachments.CanPreview(Attachment) ? "Click to preview" : Attachment.FileName)"
+             @onclick="OpenIfPreviewable" @onclick:stopPropagation>
+            <div class="att-card-preview" style="--att-accent:@ChatAttachments.Accent(Attachment);--att-tint:@Tint(ChatAttachments.Accent(Attachment))">
+                <div class="att-doc-sheet">
+                    <span class="att-doc-corner"></span>
+                    <span class="ic">
+                        <i data-lucide="@ChatAttachments.Icon(Attachment)"></i>
+                    </span>
+                    <span class="badge">@ChatAttachments.TypeLabel(Attachment)</span>
+                </div>
+                @if (ChatAttachments.CanPreview(Attachment))
+                {
+                    <span class="att-card-veil">
+                        <i data-lucide="maximize-2"></i>
+                    </span>
+                }
+            </div>
+            <div class="meta">
+                <span class="nm" title="@Attachment.FileName">@Attachment.FileName</span>
+                <div class="sub">
+                    <span class="sz">@ChatAttachments.FormatSize(Attachment.FileSize)</span>
+                    <button type="button" class="btn-att-dl" title="Download" @onclick="Download" @onclick:stopPropagation>
+                        <i data-lucide="download"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public AttachmentDto Attachment { get; set; } = default!;
+
+    /// Raised when the user asks to open this attachment in the full-screen viewer.
+    [Parameter] public EventCallback<AttachmentDto> OnOpen { get; set; }
+
+    /// Layout style: "box" (compact vertical card for chat) or "row" (horizontal list for drawer).
+    [Parameter] public string Layout { get; set; } = "box";
+
+    private string? blobUrl;
+    private bool imageFailed;
+    private bool retrying;
+    private Guid loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedFor == Attachment.Id) return;
+        loadedFor = Attachment.Id;
+        blobUrl = null;
+        imageFailed = false;
+        await LoadAsync();
+    }
+
+    /// Images use /thumbnail (which also triggers the server-side backfill for older
+    /// rows); video and audio need the real file to be playable.
+    private async Task LoadAsync()
+    {
+        var kind = ChatAttachments.Kind(Attachment);
+        if (kind is not (AttachmentKind.Image or AttachmentKind.Video or AttachmentKind.Audio)) return;
+
+        var id = Attachment.Id;
+        var url = kind == AttachmentKind.Image
+            ? await Att.GetAsync(id, thumb: true) ?? await Att.GetAsync(id, thumb: false)
+            : await Att.GetAsync(id, thumb: false);
+
+        // One silent retry absorbs a transient miss (a token that expired mid-flight, a dropped
+        // connection). Anything still failing after this gets the click-to-retry fallback rather
+        // than a silent retry loop against the server.
+        if (url is null && kind == AttachmentKind.Image && loadedFor == id)
+        {
+            Att.Forget(id);
+            url = await Att.GetAsync(id, thumb: true) ?? await Att.GetAsync(id, thumb: false);
+        }
+
+        if (loadedFor != id) return;   // component was reused for a different attachment
+        blobUrl = url;
+        if (url is null && kind == AttachmentKind.Image) imageFailed = true;
+        StateHasChanged();
+    }
+
+    /// A failed image tile reloads instead of opening the viewer — there is nothing to open yet.
+    private Task OnImageClick() => imageFailed ? RetryAsync() : Open();
+
+    private async Task RetryAsync()
+    {
+        if (retrying) return;
+        retrying = true;
+        StateHasChanged();
+
+        Att.Forget(Attachment.Id);     // drop the cached failure so the fetch actually re-runs
+        imageFailed = false;
+        blobUrl = null;
+        await LoadAsync();             // loadedFor already equals Attachment.Id, so the result applies
+
+        retrying = false;
+        StateHasChanged();
+    }
+
+    private Task Open() => OnOpen.InvokeAsync(Attachment);
+
+    private Task OpenIfPreviewable() =>
+        ChatAttachments.CanPreview(Attachment) ? OnOpen.InvokeAsync(Attachment) : Att.DownloadAsync(Attachment);
+
+    private Task Download() => Att.DownloadAsync(Attachment);
+
+    /// Low-opacity wash of the accent colour for the icon tile background.
+    private static string Tint(string hex) => $"color-mix(in srgb, {hex} 12%, transparent)";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
+
+    public void Dispose() { /* blob URLs are owned and revoked by ChatAttachments */ }
+}

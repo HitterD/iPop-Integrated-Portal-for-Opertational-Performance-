@@ -114,6 +114,8 @@ builder.Services.AddScoped<IChatNotifier, ChatNotifier>();
 builder.Services.AddScoped<INotificationGateway, NotificationGateway>();
 builder.Services.AddHostedService<ChatAttachmentGcWorker>();
 builder.Services.AddHostedService<ChatMentionNotifyWorker>();
+builder.Services.AddHostedService<IPop.Infrastructure.Projects.TaskReminderWorker>();
+builder.Services.AddHostedService<IPop.Infrastructure.Meetings.MeetingReminderWorker>();
 
 // Mail module
 builder.Services.AddScoped<IMailService, MailService>();
@@ -175,6 +177,7 @@ app.MapChat();
 app.MapCalls();
 app.MapMail();
 app.MapProjects();
+app.MapMeetings();
 app.MapNews();
 app.MapNotificationGateway();
 app.MapPresence();

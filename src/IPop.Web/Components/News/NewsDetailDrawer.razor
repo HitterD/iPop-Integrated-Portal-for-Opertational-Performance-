@@ -1,0 +1,241 @@
+@namespace IPop.Web.Components.News
+@using IPop.Web.Models
+
+@{
+    var isCondolence = Detail.Type is "condolence" or "duka";
+    var isMemo = Detail.Type == "memo";
+    var isAnnouncement = Detail.Type == "announcement";
+}
+
+<div class="backdrop on" @onclick="OnClose"></div>
+<div class="drawer on" role="dialog" aria-label="News detail" aria-modal="true">
+    <div class="tray"><div class="core" style="display:flex;flex-direction:column;height:100%;padding:0;overflow:hidden">
+        <!-- Drawer Head -->
+        <div class="drawer-head">
+            <span style="display:flex;align-items:center;gap:8px;min-width:0">
+                <i data-lucide="@NewsUiHelper.GetCategoryIcon(Detail.Type)"></i>
+                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700">@Detail.Title</span>
+            </span>
+            <span style="display:flex;gap:6px;align-items:center">
+                <button class="org-act" title="Copy link" @onclick="OnCopyLink"><i data-lucide="link-2"></i></button>
+                <button class="drawer-close" @onclick="OnClose" aria-label="Close"><i data-lucide="x"></i></button>
+            </span>
+        </div>
+
+        <!-- Drawer Body -->
+        <div class="drawer-body" style="flex:1;overflow:auto;padding:20px">
+            <!-- Status & Category Badges -->
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+                <span class="news-type-badge type-@Detail.Type">@NewsUiHelper.GetCategoryLabel(Detail.Type)</span>
+                <span class="status-pill @Detail.Status">@NewsUiHelper.StatusLabel(Detail.Status)</span>
+                @if (Detail.IsPinned)
+                {
+                    <span class="badge-pin-tag"><i data-lucide="pin" style="width:11px;height:11px"></i> Pinned</span>
+                }
+                @if (Detail.RequiresAcknowledgement)
+                {
+                    @if (Detail.IsAcknowledged)
+                    {
+                        <span class="badge-ack-pill done"><i data-lucide="check-circle-2" style="width:11px;height:11px"></i> Read Confirmed</span>
+                    }
+                    else
+                    {
+                        <span class="badge-ack-pill req"><i data-lucide="alert-circle" style="width:11px;height:11px"></i> Ack Required</span>
+                    }
+                }
+            </div>
+
+            <!-- Contextual Header Treatment -->
+            @if (isCondolence)
+            {
+                <div class="reader-condolence-banner">
+                    <div class="condolence-banner-icon"><i data-lucide="heart" style="width:22px;height:22px"></i></div>
+                    <div>
+                        <div class="condolence-arabic-verse">إِنَّا لِلَّٰهِ وَإِنَّا إِلَيْهِ رَاجِعُونَ</div>
+                        <div class="condolence-primary-headline">With Deepest Sympathy</div>
+                        <div class="condolence-banner-desc">The company extends its heartfelt condolences. May the departed rest in peace, and may the family find comfort and strength during this difficult time.</div>
+                    </div>
+                </div>
+            }
+            else if (isMemo)
+            {
+                <div class="reader-memo-letterhead">
+                    <div class="memo-head-title">INTERNAL MEMORANDUM</div>
+                    <div class="memo-head-grid">
+                        <div class="memo-row"><span class="lbl">TO:</span><span class="val">@(Detail.Targets.Count == 0 ? "All Staff" : string.Join(", ", Detail.Targets.Select(t => $"{t.Kind.ToUpper()}: {t.Value ?? "ALL"}")))</span></div>
+                        <div class="memo-row"><span class="lbl">FROM:</span><span class="val"><strong>@Detail.AuthorName</strong> (@Detail.AuthorNik)</span></div>
+                        <div class="memo-row"><span class="lbl">DATE:</span><span class="val">@NewsUiHelper.FormatDate(Detail.PublishedAt ?? Detail.CreatedAt)</span></div>
+                        <div class="memo-row full"><span class="lbl">SUBJECT:</span><span class="val perihal">@Detail.Title</span></div>
+                    </div>
+                </div>
+            }
+
+            <h1 class="reader-article-title">@Detail.Title</h1>
+
+            <!-- Article Metadata -->
+            <div class="reader-meta-row">
+                <span><i data-lucide="user" style="width:12px;height:12px;display:inline;vertical-align:middle"></i> @Detail.AuthorName (@Detail.AuthorNik)</span>
+                <span>·</span>
+                <span>@NewsUiHelper.FormatDate(Detail.PublishedAt ?? Detail.CreatedAt)</span>
+                <span>·</span>
+                <span>@NewsUiHelper.ReadTime(Detail.Body) min read</span>
+                @if (Detail.PublishAt is not null)
+                {
+                    <span>·</span>
+                    <span class="mono">Scheduled: @NewsUiHelper.FormatDate(Detail.PublishAt)</span>
+                }
+            </div>
+
+            <!-- Target Distribution -->
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
+                <span style="font-size:11.5px;color:var(--ink-3);display:flex;align-items:center;gap:4px"><i data-lucide="building" style="width:12px;height:12px"></i> Targets:</span>
+                @foreach (var t in Detail.Targets)
+                {
+                    <span class="tag-target-chip">@t.Kind:@(t.Value ?? "all")</span>
+                }
+                @if (Detail.Targets.Count == 0)
+                {
+                    <span class="tag-target-chip all">All Staff</span>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(Detail.RejectionReason))
+            {
+                <div class="note err" style="margin-top:14px"><i data-lucide="alert-circle"></i><span>Rejection Note: @Detail.RejectionReason</span></div>
+            }
+
+            <!-- Post Body Content -->
+            <div class="reader-body-content @(isCondolence ? "condolence-body" : isMemo ? "memo-body" : "")">@Detail.Body</div>
+
+            <!-- Mandatory Acknowledgement Box -->
+            @if (Detail.RequiresAcknowledgement)
+            {
+                <div class="reader-ack-box">
+                    <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700">
+                        <i data-lucide="check-circle-2" style="width:17px;height:17px;color:var(--accent)"></i>
+                        <span>Acknowledgement Confirmation</span>
+                        <span class="mono" style="margin-left:auto;font-size:11.5px;color:var(--ink-2);font-weight:600">
+                            @Detail.AckCount / @(Detail.AckTotal == 0 ? "—" : Detail.AckTotal.ToString()) (@NewsUiHelper.AckPercent(Detail)%)
+                        </span>
+                    </div>
+                    <div class="ack-progress-track">
+                        <div class="ack-progress-fill" style="width:@NewsUiHelper.AckPercent(Detail)%"></div>
+                    </div>
+                    @if (!Detail.IsAcknowledged)
+                    {
+                        <button class="btn" style="margin-top:12px;width:100%" @onclick="OnAcknowledge" disabled="@AckBusy">
+                            <span>@(AckBusy ? "Recording Confirmation…" : "I Have Read and Understood This Memo")</span>
+                            <span class="orb"><i data-lucide="check"></i></span>
+                        </button>
+                    }
+                    else
+                    {
+                        <div class="note" style="margin-top:12px;background:var(--accent-soft);color:var(--accent-ink)">
+                            <i data-lucide="check"></i>
+                            <span>You have confirmed reading this post.</span>
+                        </div>
+                    }
+                    @if (IsApprover && Detail.AckTotal > Detail.AckCount)
+                    {
+                        <button class="btn" style="margin-top:10px;background:var(--surface);color:var(--ink);border:1px solid var(--line);width:100%" @onclick="OnRemindAck">
+                            <i data-lucide="bell" style="width:13px;height:13px"></i> Send Reminder to Unacknowledged Employees
+                        </button>
+                    }
+                </div>
+            }
+
+            <!-- Action Workflow Bar -->
+            <div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--line-soft);padding-top:16px">
+                @if (CanEdit)
+                {
+                    <button class="org-act" style="width:auto;padding:8px 14px;font-size:12.5px" @onclick="OnEdit">
+                        <i data-lucide="pencil" style="width:13px;height:13px"></i> Edit
+                    </button>
+                }
+                @if (Detail.Status == "draft")
+                {
+                    <button class="btn" style="width:auto;margin:0;padding:8px 16px;font-size:12.5px" @onclick="OnSubmit">
+                        Submit for Approval
+                    </button>
+                }
+                @if (IsApprover && Detail.Status == "pending")
+                {
+                    <button class="btn" style="width:auto;margin:0;padding:8px 16px;font-size:12.5px" @onclick="OnApprove">
+                        <i data-lucide="check" style="width:13px;height:13px"></i> Approve & Publish
+                    </button>
+                    <button class="btn" style="width:auto;margin:0;padding:8px 16px;font-size:12.5px;background:var(--danger-soft);color:var(--danger);border:1px solid rgba(179,70,47,0.2)" @onclick="OnOpenReject">
+                        <i data-lucide="x" style="width:13px;height:13px"></i> Reject
+                    </button>
+                }
+                @if (IsApprover && Detail.Status == "published")
+                {
+                    <button class="btn" style="width:auto;margin:0;padding:8px 16px;font-size:12.5px;background:var(--surface);color:var(--ink);border:1px solid var(--line)" @onclick="OnUnpublish">
+                        Unpublish to Draft
+                    </button>
+                }
+                @if (IsApprover)
+                {
+                    <button class="org-act" style="width:auto;padding:8px 14px;font-size:12.5px" title="@(Detail.IsPinned ? "Unpin post" : "Pin to top")" @onclick="OnTogglePin">
+                        <i data-lucide="@(Detail.IsPinned ? "pin-off" : "pin")" style="width:13px;height:13px"></i> @(Detail.IsPinned ? "Unpin" : "Pin")
+                    </button>
+                }
+            </div>
+
+            <!-- Audit Trail Section -->
+            <div style="margin-top:24px">
+                <div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--ink-2);margin-bottom:10px">
+                    <i data-lucide="history" style="width:14px;height:14px"></i> Activity History & Audit Trail
+                </div>
+                @if (Audits is null)
+                {
+                    <div class="skel" style="height:60px"></div>
+                }
+                else if (Audits.Count == 0)
+                {
+                    <div class="tree-empty" style="padding:14px">No audit records yet.</div>
+                }
+                else
+                {
+                    <div style="display:grid;gap:8px">
+                        @foreach (var a in Audits)
+                        {
+                            <div class="audit-row-item">
+                                <span class="audit-icon"><i data-lucide="activity" style="width:13px;height:13px"></i></span>
+                                <div style="min-width:0;flex:1">
+                                    <div style="font-size:12.5px;font-weight:600">@NewsUiHelper.FormatAuditAction(a.Action) <span style="font-weight:400;color:var(--ink-3)">by @a.ActorName</span></div>
+                                    @if (!string.IsNullOrEmpty(a.Detail)) { <div style="font-size:11.5px;color:var(--ink-2);margin-top:2px">@a.Detail</div> }
+                                    <div style="font-size:11px;color:var(--ink-3);margin-top:2px">@a.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(DetailError))
+            {
+                <div class="note err" style="margin-top:14px"><i data-lucide="alert-circle"></i><span>@DetailError</span></div>
+            }
+        </div>
+    </div></div>
+</div>
+
+@code {
+    [Parameter] public NewsDetailDto Detail { get; set; } = default!;
+    [Parameter] public IReadOnlyList<NewsAuditDto>? Audits { get; set; }
+    [Parameter] public bool IsApprover { get; set; }
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public bool AckBusy { get; set; }
+    [Parameter] public string? DetailError { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnCopyLink { get; set; }
+    [Parameter] public EventCallback OnEdit { get; set; }
+    [Parameter] public EventCallback OnSubmit { get; set; }
+    [Parameter] public EventCallback OnApprove { get; set; }
+    [Parameter] public EventCallback OnOpenReject { get; set; }
+    [Parameter] public EventCallback OnUnpublish { get; set; }
+    [Parameter] public EventCallback OnTogglePin { get; set; }
+    [Parameter] public EventCallback OnAcknowledge { get; set; }
+    [Parameter] public EventCallback OnRemindAck { get; set; }
+}

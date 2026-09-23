@@ -1,0 +1,1038 @@
+@page "/projects"
+@page "/projects/{ProjectId:guid}"
+@using Microsoft.AspNetCore.Authorization
+@using IPop.Web.Services
+@using IPop.Application.Projects
+@using IPop.Web.Components.Projects
+@attribute [Authorize]
+@implements IDisposable
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Project Management - iPop</PageTitle>
+
+<div class="proj-workspace">
+    @* Left Project Navigator Sidebar *@
+    <ProjectSidebar
+        Projects="filteredProjects"
+        SelectedProjectId="selectedProjectId"
+        SelectedYear="selectedYear"
+        AvailableYears="availableYears"
+        SearchQuery="@searchProjectQuery"
+        IsCollapsed="sidebarCollapsed"
+        Loading="loading"
+        OnSelectProject="SelectProject"
+        OnToggleSidebar="() => sidebarCollapsed = !sidebarCollapsed"
+        OnYearChanged="SetYearFilter"
+        OnSearchChanged="HandleProjectSearch"
+        OnCreateClick="() => showCreateModal = true" />
+
+    @* Main Project Workspace Canvas *@
+    <main class="proj-canvas" id="project-detail" role="region" aria-label="Project Workspace">
+        @if (selectedProjectId == Guid.Empty || selectedProject is null)
+        {
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center">
+                <div style="width:64px;height:64px;border-radius:18px;background:var(--accent-soft);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;margin-bottom:16px">
+                    <i data-lucide="layers" style="width:32px;height:32px"></i>
+                </div>
+                <h3 style="font-size:18px;font-weight:700;margin:0 0 6px">Select or Create a Project</h3>
+                <p style="font-size:13px;color:var(--ink-2);max-width:380px;line-height:1.5;margin:0 0 20px">
+                    Manage team tasks with Kanban Boards, Structured Tables, Visual Timelines, and Workload Distribution.
+                </p>
+                <button class="btn-sm accent" style="padding:8px 16px;font-size:13px" @onclick="() => showCreateModal = true">
+                    <i data-lucide="plus"></i> Create New Project
+                </button>
+            </div>
+        }
+        else
+        {
+            @* Canvas Header *@
+            <ProjectHeader
+                Project="selectedProject"
+                Members="projectMembers"
+                OnOpenTeamModal="() => showTeamModal = true"
+                OnOpenEditModal="() => showEditModal = true"
+                OnOpenChatRoom="OpenProjectRoom"
+                OnExport="ExportSelected" />
+
+            @* Canvas View Switcher Bar (Dashboard / Board / Table / Timeline / Workload) *@
+            <div class="proj-canvas-bar">
+                <div class="proj-tabs">
+                    <button class="proj-tab-btn @(tab == 4 ? "active" : "")" @onclick="() => SwitchTab(4)" title="Executive Summary & Progress Monitoring">
+                        <i data-lucide="layout-dashboard"></i> Dashboard
+                    </button>
+                    <button class="proj-tab-btn @(tab == 0 ? "active" : "")" @onclick="() => SwitchTab(0)">
+                        <i data-lucide="kanban"></i> Board
+                    </button>
+                    <button class="proj-tab-btn @(tab == 1 ? "active" : "")" @onclick="() => SwitchTab(1)">
+                        <i data-lucide="table"></i> Table
+                    </button>
+                    <button class="proj-tab-btn @(tab == 2 ? "active" : "")" @onclick="() => SwitchTab(2)">
+                        <i data-lucide="clock"></i> Timeline
+                    </button>
+                    <button class="proj-tab-btn @(tab == 3 ? "active" : "")" @onclick="() => SwitchTab(3)">
+                        <i data-lucide="bar-chart-2"></i> Workload
+                    </button>
+                    <button class="proj-tab-btn @(tab == 5 ? "active" : "")" @onclick="() => SwitchTab(5)" title="Plans & Reports: templates, milestones, burndown, velocity">
+                        <i data-lucide="clipboard-list"></i> Plans &amp; Reports
+                    </button>
+                </div>
+
+                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                    @* Quick Inspector Toggle Button *@
+                    <button class="filter-pill-btn @(quickViewerTaskId.HasValue ? "active" : "")" @onclick="ToggleQuickViewerToolbar" title="Toggle Docked Quick Viewer">
+                        <i data-lucide="panel-right-open" style="width:13px;height:13px"></i>
+                        <span>Quick Viewer</span>
+                    </button>
+
+                    @* My Tasks quick filter pill *@
+                    <button class="filter-pill-btn @(myTasksOnly ? "active" : "")" @onclick="() => myTasksOnly = !myTasksOnly" title="Show only tasks assigned to me">
+                        <i data-lucide="user" style="width:13px;height:13px"></i>
+                        <span>My Tasks</span>
+                    </button>
+
+                    @* Search tasks within active project *@
+                    <div style="position:relative;display:flex;align-items:center">
+                        <i data-lucide="search" style="position:absolute;left:10px;width:13px;height:13px;color:var(--ink-3);pointer-events:none"></i>
+                        <input class="org-input" style="padding-left:28px;width:150px;height:32px;font-size:11.5px;border-radius:999px" placeholder="Filter tasks..." @bind="taskSearchQuery" @bind:event="oninput" />
+                    </div>
+
+                    @* Quick add primary button *@
+                    <button class="btn-sm accent" style="border-radius:999px;padding:6px 16px" @onclick='() => HandleQuickAdd(("todo", "New Task"))'>
+                        <i data-lucide="plus"></i> Add Task
+                    </button>
+                </div>
+            </div>
+
+            @* Canvas Body Content *@
+            <div class="proj-canvas-body">
+                @if (tab == 4)
+                {
+                    <ProjectExecutiveDashboard
+                        Project="selectedProject"
+                        AllTasks="AllCurrentTasks"
+                        Members="projectMembers"
+                        OnInspectTask="OpenQuickViewer"
+                        OnRequestExtension="OpenExtensionModal" />
+                }
+                else
+                {
+                    <div class="proj-canvas-split-container">
+                        <div class="proj-canvas-split-main">
+                            @if (tab == 0)
+                            {
+                                <ProjectKanbanBoard
+                                    Kanban="kanban"
+                                    Members="projectMembers"
+                                    SearchQuery="@taskSearchQuery"
+                                    MyTasksOnly="myTasksOnly"
+                                    CurrentUserNik="@currentUserNik"
+                                    HighlightTaskId="highlightTaskId"
+                                    OnTaskClick="OpenTaskEditor"
+                                    OnTaskMove="HandleTaskMove"
+                                    OnToggleComplete="ToggleTaskComplete"
+                                    OnQuickAdd="HandleQuickAdd"
+                                    OnToggleAssignee="HandleToggleAssignee"
+                                    OnRequestExtension="OpenExtensionModal"
+                                    OnQuickViewTask="OpenQuickViewer" />
+                            }
+                            else if (tab == 1)
+                            {
+                                <ProjectTableView
+                                    Tasks="taskList.Items.ToList()"
+                                    Members="projectMembers"
+                                    SearchQuery="@taskSearchQuery"
+                                    MyTasksOnly="myTasksOnly"
+                                    CurrentUserNik="@currentUserNik"
+                                    StatusFilter="@listStatusFilter"
+                                    OnTaskClick="OpenTaskEditor"
+                                    OnFilterChanged="s => listStatusFilter = s"
+                                    OnStatusChangeDirect="HandleStatusChangeDirect"
+                                    OnPriorityChangeDirect="HandlePriorityChangeDirect"
+                                    OnDueDateChangeDirect="HandleDueDateChangeDirect"
+                                    OnEstimateChangeDirect="HandleEstimateChangeDirect"
+                                    OnQuickAddSubtask="HandleQuickAddSubtask"
+                                    OnQuickAdd="HandleQuickAdd"
+                                    OnToggleAssignee="HandleToggleAssignee"
+                                    OnRequestExtension="OpenExtensionModal"
+                                    OnQuickViewTask="OpenQuickViewer" />
+                            }
+                            else if (tab == 2)
+                            {
+                                <ProjectTimelineView
+                                    Timeline="timeline"
+                                    AllTasks="AllCurrentTasks"
+                                    OnTaskClick="OpenTimelineTaskEditor"
+                                    OnAddTask='() => HandleQuickAdd(("todo", "New Task"))' />
+                            }
+                            else if (tab == 3)
+                            {
+                                <ProjectWorkloadView
+                                    Workload="workloadData"
+                                    AllTasks="AllCurrentTasks"
+                                    OnTaskClick="OpenTaskEditor" />
+                            }
+                            else if (tab == 5)
+                            {
+                                <ProjectReportsPanel Project="selectedProject" AllTasks="AllCurrentTasks" />
+                            }
+                        </div>
+
+                        @if (quickViewerTaskId.HasValue && quickViewerTask is not null)
+                        {
+                            <ProjectTaskQuickViewer
+                                Task="quickViewerTask"
+                                AllTasks="AllCurrentTasks"
+                                Members="projectMembers"
+                                OnSelectTask="SelectQuickViewerTask"
+                                OnSave="HandleSaveTask"
+                                OnOpenFullDrawer="OpenTaskEditor"
+                                OnRequestExtension="OpenExtensionModal"
+                                OnClose="() => quickViewerTaskId = null" />
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </main>
+</div>
+
+@* Modals & Drawers *@
+@if (showEvidenceModal && evidenceTask is not null)
+{
+    <ProjectStatusEvidenceModal
+        IsOpen="showEvidenceModal"
+        Task="evidenceTask"
+        TargetStatus="@evidenceTargetStatus"
+        OnConfirm="HandleEvidenceConfirm"
+        OnCancel="() => { showEvidenceModal = false; evidenceTask = null; }" />
+}
+
+@if (showExtensionModal && extensionTask is not null)
+{
+    <ProjectDeadlineExtensionModal
+        IsOpen="showExtensionModal"
+        Task="extensionTask"
+        OnConfirm="HandleExtensionConfirm"
+        OnCancel="() => { showExtensionModal = false; extensionTask = null; }" />
+}
+
+@if (showTaskEditor && editingTask is not null)
+{
+    <ProjectTaskDrawer
+        Task="editingTask"
+        Members="projectMembers"
+        Subtasks="subtasks"
+        OnClose="CloseTaskEditor"
+        OnSave="HandleSaveTask"
+        OnDelete="HandleDeleteTask"
+        OnToggleAssignee="HandleToggleAssignee"
+        OnAddSubtask="HandleAddSubtask"
+        OnToggleSubtask="HandleToggleSubtask"
+        OnDeleteSubtask="HandleDeleteSubtask" />
+}
+
+@if (showCreateModal)
+{
+    <ProjectCreateModal
+        OnClose="() => showCreateModal = false"
+        OnSubmit="HandleSubmitCreateProject" />
+}
+
+@if (showEditModal && selectedProject is not null)
+{
+    <ProjectEditModal
+        Project="selectedProject"
+        OnClose="() => showEditModal = false"
+        OnSubmit="HandleSubmitEditProject" />
+}
+
+@if (showTeamModal && selectedProject is not null)
+{
+    <ProjectTeamModal
+        Members="projectMembers"
+        OnClose="() => showTeamModal = false"
+        OnAddMember="HandleAddTeamMember"
+        OnRemoveMember="HandleRemoveTeamMember" />
+}
+
+@code {
+    [CascadingParameter] public MainLayout? Layout { get; set; }
+    [Parameter] public Guid? ProjectId { get; set; }
+
+    private bool loading = true;
+    private bool sidebarCollapsed = false;
+    private bool myTasksOnly = false;
+    private string? currentUserNik;
+
+    private List<ProjectListDto> projects = [];
+    private List<ProjectListDto> filteredProjects = [];
+    private int? selectedYear;
+    private List<int> availableYears = [];
+    private string searchProjectQuery = "";
+
+    private ProjectDto? selectedProject;
+    private Guid selectedProjectId;
+    private KanbanBoardDto? kanban;
+    private PagedResult<ProjectTaskDto> taskList = new([], 0, 1, 50);
+    private ProjectTimelineDto? timeline;
+    private ProjectWorkloadDto? workloadData;
+    private List<ProjectMemberDto> projectMembers = [];
+
+    private int tab = 0; // 0=Board, 1=Table, 2=Timeline, 3=Workload
+    private string taskSearchQuery = "";
+    private string listStatusFilter = "";
+    private Guid? highlightTaskId;
+
+    // Task Inspector Drawer state
+    private ProjectTaskDto? editingTask;
+    private bool showTaskEditor;
+    private List<ProjectTaskDto> subtasks = [];
+
+    // Task Evidence Modal state
+    private bool showEvidenceModal;
+    private ProjectTaskDto? evidenceTask;
+    private string evidenceTargetStatus = "doing";
+
+    // Quick Viewer state
+    private Guid? quickViewerTaskId;
+    private ProjectTaskDto? quickViewerTask => quickViewerTaskId.HasValue ? AllCurrentTasks.FirstOrDefault(t => t.Id == quickViewerTaskId.Value) : null;
+
+    // Deadline Extension Modal state
+    private bool showExtensionModal;
+    private ProjectTaskDto? extensionTask;
+
+    // Modals state
+    private bool showCreateModal;
+    private bool showEditModal;
+    private bool showTeamModal;
+
+    private List<ProjectTaskDto> AllCurrentTasks =>
+        taskList.Items.Concat(kanban?.Todo ?? []).Concat(kanban?.Doing ?? []).Concat(kanban?.Done ?? []).DistinctBy(x => x.Id).ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var me = await Auth.GetAsync<DirectoryEmployeeDto>("/api/directory/me");
+            if (me is not null) currentUserNik = me.Nik;
+        }
+        catch { }
+
+        await ReloadProjects();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ProjectId is not null && ProjectId != selectedProjectId)
+        {
+            var found = projects.FirstOrDefault(p => p.Id == ProjectId.Value);
+            if (found is not null)
+            {
+                await SelectProject(found);
+            }
+            else
+            {
+                var proj = await Auth.GetAsync<ProjectDto>($"/api/projects/{ProjectId.Value}");
+                if (proj is not null)
+                {
+                    selectedProjectId = ProjectId.Value;
+                    selectedProject = proj;
+                    await LoadMembers();
+                    await LoadKanban();
+                    await LoadTaskList();
+                    await LoadTimeline();
+                    StateHasChanged();
+                }
+                else
+                {
+                    Toasts.Show("Project not found or you are not a member.");
+                    Nav.NavigateTo("/projects", replace: true);
+                    return;
+                }
+            }
+
+            await Task.Delay(50);
+            await JS.InvokeVoidAsync("ipop.scrollIntoView", "project-detail");
+
+            var taskIdStr = QueryValue("task");
+            if (!string.IsNullOrEmpty(taskIdStr) && Guid.TryParse(taskIdStr, out var targetTask))
+            {
+                await HighlightTask(targetTask);
+                Nav.NavigateTo($"/projects/{ProjectId.Value}", replace: true);
+            }
+        }
+        else if (ProjectId is null)
+        {
+            highlightTaskId = null;
+            if (selectedProjectId == Guid.Empty && filteredProjects.Count > 0)
+            {
+                await SelectProject(filteredProjects[0]);
+            }
+        }
+    }
+
+    private async Task HighlightTask(Guid taskId)
+    {
+        var inKanban = (kanban?.Todo ?? []).Any(t => t.Id == taskId)
+            || (kanban?.Doing ?? []).Any(t => t.Id == taskId)
+            || (kanban?.Done ?? []).Any(t => t.Id == taskId);
+        if (!inKanban) return;
+
+        tab = 0;
+        highlightTaskId = taskId;
+        StateHasChanged();
+        await Task.Delay(80);
+        try { await JS.InvokeVoidAsync("ipop.scrollIntoView", $"task-card-{taskId}"); } catch { }
+
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(2000);
+            highlightTaskId = null;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private string? QueryValue(string key)
+    {
+        var q = Nav.ToAbsoluteUri(Nav.Uri).Query.TrimStart('?');
+        foreach (var part in q.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq < 0) continue;
+            if (!part[..eq].Equals(key, StringComparison.OrdinalIgnoreCase)) continue;
+            return Uri.UnescapeDataString(part[(eq + 1)..]);
+        }
+        return null;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender && Layout is not null)
+        {
+            Layout.SetHeader("Projects", "Workspace Terpadu • Kanban / Table / Timeline / Workload", showSearch: false);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task ReloadProjects()
+    {
+        loading = true;
+        StateHasChanged();
+
+        var url = "/api/projects?page=1&pageSize=200";
+        if (selectedYear.HasValue) url += $"&year={selectedYear.Value}";
+
+        var res = await Auth.GetAsync<PagedResult<ProjectListDto>>(url);
+        projects = res?.Items?.ToList() ?? [];
+        ApplyProjectFilter();
+
+        availableYears = projects.Select(p => p.Year).Distinct().OrderByDescending(y => y).ToList();
+
+        if (selectedProjectId == Guid.Empty && filteredProjects.Count > 0)
+        {
+            await SelectProject(filteredProjects[0]);
+        }
+
+        loading = false;
+        StateHasChanged();
+    }
+
+    private void SetYearFilter(int? year)
+    {
+        selectedYear = year;
+        ApplyProjectFilter();
+    }
+
+    private void HandleProjectSearch(string q)
+    {
+        searchProjectQuery = q;
+        ApplyProjectFilter();
+    }
+
+    private void ApplyProjectFilter()
+    {
+        var list = projects.AsEnumerable();
+        if (selectedYear.HasValue)
+            list = list.Where(p => p.Year == selectedYear.Value);
+        if (!string.IsNullOrWhiteSpace(searchProjectQuery))
+            list = list.Where(p => p.Name.Contains(searchProjectQuery, StringComparison.OrdinalIgnoreCase) || p.OwnerName.Contains(searchProjectQuery, StringComparison.OrdinalIgnoreCase));
+        filteredProjects = list.ToList();
+    }
+
+    private async Task SelectProject(ProjectListDto p)
+    {
+        selectedProjectId = p.Id;
+        var proj = await Auth.GetAsync<ProjectDto>($"/api/projects/{p.Id}");
+        if (p.Id != selectedProjectId) return;
+        selectedProject = proj;
+
+        await LoadMembers();
+        await LoadKanban();
+        await LoadTaskList();
+        await LoadTimeline();
+        if (tab == 3) await LoadWorkloadData();
+
+        StateHasChanged();
+    }
+
+    private async Task SwitchTab(int newTab)
+    {
+        tab = newTab;
+        if (tab == 3) await LoadWorkloadData();
+        StateHasChanged();
+    }
+
+    private async Task LoadWorkloadData()
+    {
+        if (selectedProjectId == Guid.Empty) return;
+        workloadData = await Auth.GetAsync<ProjectWorkloadDto>($"/api/projects/{selectedProjectId}/workload");
+        StateHasChanged();
+    }
+
+    private async Task OpenProjectRoom()
+    {
+        if (selectedProjectId == Guid.Empty) return;
+        var room = await Auth.GetAsync<ProjectChatRoomDto>($"/api/projects/{selectedProjectId}/chat-room");
+        if (room is null || room.RoomId == Guid.Empty)
+        {
+            Toasts.Show("Project chat room is unavailable.");
+            return;
+        }
+        if (!room.IsActive)
+        {
+            Toasts.Show("Project chat room is inactive.");
+            return;
+        }
+        Nav.NavigateTo($"/chat/{room.RoomId}");
+    }
+
+    private async Task LoadKanban()
+    {
+        if (selectedProjectId == Guid.Empty) return;
+        kanban = await Auth.GetAsync<KanbanBoardDto>($"/api/projects/{selectedProjectId}/kanban");
+    }
+
+    private async Task LoadTaskList()
+    {
+        if (selectedProjectId == Guid.Empty) return;
+        taskList = await Auth.GetAsync<PagedResult<ProjectTaskDto>>($"/api/projects/{selectedProjectId}/tasks/list?page=1&pageSize=100") ?? new([], 0, 1, 50);
+        if (!string.IsNullOrEmpty(listStatusFilter) && !taskList.Items.Any(t => t.Status == listStatusFilter))
+        {
+            listStatusFilter = "";
+        }
+    }
+
+    private async Task LoadTimeline()
+    {
+        if (selectedProjectId == Guid.Empty) return;
+        timeline = await Auth.GetAsync<ProjectTimelineDto>($"/api/projects/{selectedProjectId}/timeline");
+    }
+
+    private async Task LoadMembers()
+    {
+        if (selectedProjectId == Guid.Empty) { projectMembers = []; return; }
+        var m = await Auth.GetAsync<List<ProjectMemberDto>>($"/api/projects/{selectedProjectId}/members");
+        projectMembers = m ?? [];
+    }
+
+    private async Task ExportSelected()
+    {
+        if (selectedProjectId == Guid.Empty) return;
+        var exp = await Auth.GetAsync<ProjectExportDto>($"/api/projects/{selectedProjectId}/export");
+        if (exp is not null)
+        {
+            Toasts.Show($"Export ready: {exp.Project.Name} ({exp.Tasks.Count} tasks, {exp.Members.Count} members).");
+        }
+    }
+
+    private async Task HandleTaskMove((Guid TaskId, string TargetStatus) arg)
+    {
+        var task = AllCurrentTasks.FirstOrDefault(t => t.Id == arg.TaskId);
+        if (task != null && (arg.TargetStatus == "doing" || arg.TargetStatus == "done") && task.Status != arg.TargetStatus)
+        {
+            evidenceTask = task;
+            evidenceTargetStatus = arg.TargetStatus;
+            showEvidenceModal = true;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+            return;
+        }
+
+        await ExecuteTaskMove(arg.TaskId, arg.TargetStatus);
+    }
+
+    private async Task ExecuteTaskMove(Guid taskId, string targetStatus)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{taskId}/move", new TaskMoveRequest(targetStatus, null));
+        if (res.IsSuccessStatusCode)
+        {
+            await LoadKanban();
+            await LoadTaskList();
+            if (selectedProjectId != Guid.Empty)
+                selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+        else
+        {
+            var body = await res.Content.ReadAsStringAsync();
+            if (body.Contains("unmet_dependencies"))
+                Toasts.Show("Cannot move to Done — task dependencies are incomplete.");
+            else
+                Toasts.Show("Failed to move task.");
+        }
+    }
+
+    private async Task HandleEvidenceConfirm((ProjectTaskDto Task, string TargetStatus, TaskEvidenceData Evidence) arg)
+    {
+        showEvidenceModal = false;
+        var parsed = TaskEvidenceHelper.Parse(arg.Task.Description);
+        var newDesc = TaskEvidenceHelper.Serialize(parsed.CleanDescription, arg.Evidence);
+
+        var updateReq = new UpdateTaskRequest(
+            arg.Task.Title, newDesc, arg.TargetStatus, arg.Task.Priority, arg.Task.StartDate, arg.Task.DueDate,
+            arg.Task.EstimatedHours, arg.Task.ActualHours, null, arg.Task.Dependencies, null, null, null, arg.Task.Tags
+        );
+        await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{arg.Task.Id}", updateReq);
+        await ExecuteTaskMove(arg.Task.Id, arg.TargetStatus);
+        evidenceTask = null;
+        Toasts.Show(arg.TargetStatus == "doing"
+            ? "Task moved to In Progress with progress notes."
+            : "Task completed with deliverables evidence.");
+    }
+
+    private async Task ToggleTaskComplete(ProjectTaskDto t)
+    {
+        var targetStatus = t.Status == "done" ? "todo" : "done";
+        await HandleTaskMove((t.Id, targetStatus));
+    }
+
+    private async Task HandleStatusChangeDirect((ProjectTaskDto Task, string NewStatus) arg)
+    {
+        if (arg.Task.Status == arg.NewStatus) return;
+        if (arg.NewStatus == "doing" || arg.NewStatus == "done")
+        {
+            evidenceTask = arg.Task;
+            evidenceTargetStatus = arg.NewStatus;
+            showEvidenceModal = true;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+            return;
+        }
+        await ExecuteTaskMove(arg.Task.Id, arg.NewStatus);
+    }
+
+    private async Task HandlePriorityChangeDirect((ProjectTaskDto Task, string? Priority) arg)
+    {
+        var req = new UpdateTaskRequest(
+            arg.Task.Title, arg.Task.Description, arg.Task.Status, arg.Priority, arg.Task.StartDate, arg.Task.DueDate,
+            arg.Task.EstimatedHours, arg.Task.ActualHours, null, arg.Task.Dependencies, null, null, null, arg.Task.Tags
+        );
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{arg.Task.Id}", req);
+        if (res.IsSuccessStatusCode)
+        {
+            await LoadKanban();
+            await LoadTaskList();
+            Toasts.Show("Task priority updated.");
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    private async Task HandleDueDateChangeDirect((ProjectTaskDto Task, DateTime? DueDate) arg)
+    {
+        var req = new UpdateTaskRequest(
+            arg.Task.Title, arg.Task.Description, arg.Task.Status, arg.Task.Priority, arg.Task.StartDate, arg.DueDate,
+            arg.Task.EstimatedHours, arg.Task.ActualHours, null, arg.Task.Dependencies, null, null, null, arg.Task.Tags
+        );
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{arg.Task.Id}", req);
+        if (res.IsSuccessStatusCode)
+        {
+            await LoadKanban();
+            await LoadTaskList();
+            Toasts.Show("Task due date updated.");
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    private async Task HandleEstimateChangeDirect((ProjectTaskDto Task, decimal? EstimatedHours) arg)
+    {
+        var req = new UpdateTaskRequest(
+            arg.Task.Title, arg.Task.Description, arg.Task.Status, arg.Task.Priority, arg.Task.StartDate, arg.Task.DueDate,
+            arg.EstimatedHours, arg.Task.ActualHours, null, arg.Task.Dependencies, null, null, null, arg.Task.Tags
+        );
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{arg.Task.Id}", req);
+        if (res.IsSuccessStatusCode)
+        {
+            await LoadKanban();
+            await LoadTaskList();
+            Toasts.Show("Task estimated time updated.");
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    private async Task HandleQuickAddSubtask((Guid TaskId, string Title) arg)
+    {
+        if (selectedProjectId == Guid.Empty || string.IsNullOrWhiteSpace(arg.Title)) return;
+        var req = new CreateTaskRequest(selectedProjectId, arg.TaskId, arg.Title.Trim(), null, "todo", null, null, null, null, null, null);
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/tasks", req);
+        if (res.IsSuccessStatusCode)
+        {
+            await LoadKanban();
+            await LoadTaskList();
+            Toasts.Show("Subtask added successfully.");
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    private async Task HandleQuickAdd((string Status, string Title) arg)
+    {
+        if (selectedProjectId == Guid.Empty || string.IsNullOrWhiteSpace(arg.Title)) return;
+        var req = new CreateTaskRequest(selectedProjectId, null, arg.Title.Trim(), null, arg.Status, null, null, null, null, null, null);
+        var r = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/tasks", req);
+        if (r.IsSuccessStatusCode)
+        {
+            await LoadKanban();
+            await LoadTaskList();
+            if (selectedProjectId != Guid.Empty)
+                selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");
+            StateHasChanged();
+        }
+        else
+        {
+            Toasts.Show("Failed to add new task.");
+        }
+    }
+
+    private async Task HandleToggleAssignee((Guid TaskId, Guid UserId, bool IsAssigned) arg)
+    {
+        if (selectedProjectId == Guid.Empty) return;
+        HttpResponseMessage res = arg.IsAssigned
+            ? await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/tasks/{arg.TaskId}/assignees/{arg.UserId}")
+            : await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{arg.TaskId}/assignees", new AddProjectMemberRequest(arg.UserId, "assignee"));
+
+        if (res.IsSuccessStatusCode)
+        {
+            await LoadKanban();
+            await LoadTaskList();
+            await LoadTimeline();
+
+            if (editingTask != null && editingTask.Id == arg.TaskId)
+            {
+                var refreshed = AllCurrentTasks.FirstOrDefault(x => x.Id == arg.TaskId);
+                if (refreshed != null) editingTask = refreshed;
+            }
+
+            Toasts.Show(arg.IsAssigned ? "Member unassigned from task." : "Member assigned to task.");
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+        else
+        {
+            Toasts.Show("Failed to update task assignment.");
+        }
+    }
+
+    private async Task OpenTaskEditor(ProjectTaskDto t)
+    {
+        editingTask = t;
+        showTaskEditor = true;
+        await LoadSubtasks(t.Id);
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private void CloseTaskEditor()
+    {
+        showTaskEditor = false;
+        editingTask = null;
+        subtasks.Clear();
+        StateHasChanged();
+    }
+
+    private async Task OpenTimelineTaskEditor(TimelineTaskDto t)
+    {
+        var full = AllCurrentTasks.FirstOrDefault(x => x.Id == t.Id);
+        if (full is not null)
+        {
+            await OpenTaskEditor(full);
+        }
+        else
+        {
+            var fallback = new ProjectTaskDto(
+                t.Id, selectedProjectId, t.ParentTaskId, t.Title, null, t.Status, t.Priority,
+                t.StartDate, t.DueDate, t.EstimatedHours, t.ActualHours, 0, null, false, null, false, t.Tags,
+                Guid.Empty, "", [], t.SubtaskCount, t.SubtaskDoneCount, DateTime.UtcNow, DateTime.UtcNow
+            );
+            await OpenTaskEditor(fallback);
+        }
+    }
+
+    private async Task LoadSubtasks(Guid parentTaskId)
+    {
+        if (selectedProjectId == Guid.Empty) return;
+        var list = await Auth.GetAsync<List<ProjectTaskDto>>($"/api/projects/{selectedProjectId}/tasks?parentId={parentTaskId}");
+        subtasks = list ?? [];
+    }
+
+    private async Task HandleAddSubtask(string title)
+    {
+        if (editingTask is null || string.IsNullOrWhiteSpace(title) || selectedProjectId == Guid.Empty) return;
+        var req = new CreateTaskRequest(selectedProjectId, editingTask.Id, title, null, "todo", null, null, null, null, null, null);
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/tasks", req);
+        if (res.IsSuccessStatusCode)
+        {
+            await LoadSubtasks(editingTask.Id);
+            await LoadKanban();
+            await LoadTaskList();
+            StateHasChanged();
+        }
+        else
+        {
+            Toasts.Show("Failed to add subtask.");
+        }
+    }
+
+    private async Task HandleToggleSubtask(ProjectTaskDto st)
+    {
+        var newSt = st.Status == "done" ? "todo" : "done";
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{st.Id}/move", new TaskMoveRequest(newSt, null));
+        if (res.IsSuccessStatusCode)
+        {
+            await LoadSubtasks(editingTask!.Id);
+            await LoadKanban();
+            await LoadTaskList();
+            StateHasChanged();
+        }
+        else
+        {
+            Toasts.Show("Failed to update subtask status.");
+        }
+    }
+
+    private async Task HandleDeleteSubtask(Guid subtaskId)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/tasks/{subtaskId}");
+        if (res.IsSuccessStatusCode)
+        {
+            await LoadSubtasks(editingTask!.Id);
+            await LoadKanban();
+            await LoadTaskList();
+            StateHasChanged();
+        }
+        else
+        {
+            Toasts.Show("Failed to delete subtask.");
+        }
+    }
+
+    private async Task HandleSaveTask(ProjectTaskDrawer.TaskSaveModel m)
+    {
+        var targetTask = editingTask ?? AllCurrentTasks.FirstOrDefault(t => t.Id == m.Id);
+        if (targetTask is null) return;
+        var req = new UpdateTaskRequest(
+            m.Title, m.Description, m.Status, m.Priority, m.StartDate, m.DueDate,
+            m.EstimatedHours, m.ActualHours, null, targetTask.Dependencies, null, null, null, m.Tags
+        );
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{m.Id}", req);
+        if (res.IsSuccessStatusCode)
+        {
+            await LoadKanban();
+            await LoadTaskList();
+            if (selectedProjectId != Guid.Empty)
+                selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");
+            if (showTaskEditor) CloseTaskEditor();
+            Toasts.Show("Task saved successfully.");
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+        else
+        {
+            Toasts.Show("Failed to save task.");
+        }
+    }
+
+    private void OpenQuickViewer(ProjectTaskDto t)
+    {
+        quickViewerTaskId = t.Id;
+        StateHasChanged();
+    }
+
+    private void ToggleQuickViewerToolbar()
+    {
+        if (quickViewerTaskId.HasValue)
+        {
+            quickViewerTaskId = null;
+        }
+        else
+        {
+            var first = AllCurrentTasks.FirstOrDefault();
+            if (first is not null) quickViewerTaskId = first.Id;
+        }
+        StateHasChanged();
+    }
+
+    private void SelectQuickViewerTask(ProjectTaskDto t)
+    {
+        quickViewerTaskId = t.Id;
+        StateHasChanged();
+    }
+
+    private void OpenExtensionModal(ProjectTaskDto t)
+    {
+        extensionTask = t;
+        showExtensionModal = true;
+        StateHasChanged();
+    }
+
+    private async Task HandleExtensionConfirm((ProjectTaskDto Task, DateTime NewDueDate, string Reason, string? AttachmentName, string? AttachmentDataUrl) arg)
+    {
+        showExtensionModal = false;
+        var (task, newDue, reason, attName, attDataUrl) = arg;
+        var parsed = TaskEvidenceHelper.Parse(task.Description);
+        var extRecord = new TaskExtensionRecord
+        {
+            OriginalDueDate = task.DueDate,
+            NewDueDate = newDue,
+            Reason = reason,
+            AttachmentName = attName,
+            AttachmentDataUrl = attDataUrl,
+            RequestedAt = DateTime.UtcNow
+        };
+        parsed.Evidence.ExtensionHistory.Add(extRecord);
+
+        if (!string.IsNullOrEmpty(attDataUrl))
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("localStorage.setItem", $"ipop_evidence_{extRecord.Id}", attDataUrl);
+            }
+            catch {}
+        }
+
+        var newDesc = TaskEvidenceHelper.Serialize(parsed.CleanDescription, parsed.Evidence);
+        var req = new UpdateTaskRequest(
+            task.Title, newDesc, task.Status, task.Priority, task.StartDate, newDue,
+            task.EstimatedHours, task.ActualHours, null, task.Dependencies, null, null, null, task.Tags
+        );
+
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{task.Id}", req);
+        if (res.IsSuccessStatusCode)
+        {
+            await LoadKanban();
+            await LoadTaskList();
+            if (selectedProjectId != Guid.Empty)
+                selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");
+            Toasts.Show($"Deadline extended to {newDue:dd MMM yyyy}.");
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+        else
+        {
+            Toasts.Show("Failed to save deadline extension.");
+        }
+        extensionTask = null;
+    }
+
+    private async Task HandleDeleteTask(Guid taskId)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/tasks/{taskId}");
+        if (res.IsSuccessStatusCode)
+        {
+            CloseTaskEditor();
+            await LoadKanban();
+            await LoadTaskList();
+            if (selectedProjectId != Guid.Empty)
+                selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");
+            Toasts.Show("Task deleted.");
+        }
+        else
+        {
+            Toasts.Show("Failed to delete task.");
+        }
+    }
+
+    private async Task HandleSubmitCreateProject(ProjectCreateModal.CreateProjectModel m)
+    {
+        var create = new CreateProjectRequest(
+            m.Name, m.Description, m.Year, Guid.Empty,
+            null, m.Deadline, null, null, m.OwnerNik
+        );
+        var r = await Auth.SendAsync(HttpMethod.Post, "/api/projects", create);
+        if (r.IsSuccessStatusCode)
+        {
+            showCreateModal = false;
+            await ReloadProjects();
+            Toasts.Show("Project created successfully.");
+        }
+        else
+        {
+            Toasts.Show("Failed to create project (check permissions).");
+        }
+    }
+
+    private async Task HandleSubmitEditProject(ProjectEditModal.EditProjectModel m)
+    {
+        var upd = new UpdateProjectRequest(
+            m.Name, m.Description, m.Year, selectedProject?.OwnerId,
+            m.StartDate, m.Deadline, m.Status, selectedProject?.Risk, selectedProject?.Obstacle
+        );
+        var r = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{m.Id}", upd);
+        if (r.IsSuccessStatusCode)
+        {
+            showEditModal = false;
+            await ReloadProjects();
+            selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{m.Id}");
+            Toasts.Show("Project settings updated.");
+            StateHasChanged();
+        }
+        else
+        {
+            Toasts.Show("Failed to update project.");
+        }
+    }
+
+    private async Task HandleAddTeamMember(MemberSearchRow r)
+    {
+        if (selectedProjectId == Guid.Empty || string.IsNullOrWhiteSpace(r.Nik)) return;
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/members", new AddProjectMemberRequest(Guid.Empty, "member", r.Nik));
+        if (res.IsSuccessStatusCode)
+        {
+            await LoadMembers();
+            Toasts.Show($"Added {r.Name} to the project team.");
+        }
+        else
+        {
+            Toasts.Show("Failed to add member.");
+        }
+        StateHasChanged();
+    }
+
+    private async Task HandleRemoveTeamMember(Guid userId)
+    {
+        if (selectedProjectId == Guid.Empty) return;
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/{selectedProjectId}/members/{userId}");
+        if (res.IsSuccessStatusCode)
+        {
+            await LoadMembers();
+            Toasts.Show("Member removed from team.");
+            StateHasChanged();
+        }
+        else
+        {
+            Toasts.Show("Failed to remove member.");
+        }
+    }
+
+    public void Dispose() { }
+}

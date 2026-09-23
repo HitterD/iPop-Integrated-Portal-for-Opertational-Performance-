@@ -1,0 +1,1095 @@
+@using IPop.Application.Chat
+@using IPop.Web.Services
+@inject AuthState Auth
+
+<div class="chat-area-new @(MobileRoomsOpen ? "rooms-open" : "")">
+    @* ============ ROOM PANE (left 320px) ============ *@
+    <div class="room-pane rise rise-1">
+        <div class="room-head">
+            <div class="room-head-content">
+                <span class="title">Messages</span>
+                <span class="subtitle">@GetRoomCountText()</span>
+            </div>
+            <button type="button" class="room-pane-close" title="Close" @onclick="() => OnToggleMobileRooms.InvokeAsync(false)">
+                <i data-lucide="x"></i>
+            </button>
+            <div class="create-wrap">
+                <button class="new-btn" title="New conversation" @onclick="OnToggleCreate" @onclick:stopPropagation>
+                    <i data-lucide="square-pen"></i>
+                </button>
+                <div class="create-dropdown @(CreateDropdownOpen ? "on" : "")">
+                    <button @onclick="OnStartDm">
+                        <i data-lucide="user"></i>
+                        <div><div>New direct message</div><div class="desc">Chat with one person</div></div>
+                    </button>
+                    <button @onclick="OnStartGroup">
+                        <i data-lucide="users"></i>
+                        <div><div>New group chat</div><div class="desc">Create a group with multiple people</div></div>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="room-search">
+            <i data-lucide="search"></i>
+            <input type="text" placeholder="Search conversations..." value="@SearchQuery" @oninput="OnSearchChanged" />
+        </div>
+
+        <button type="button" class="room-archived-toggle" @onclick="OnNavigatePins">
+            <i data-lucide="pin"></i> Pinned messages <i data-lucide="chevron-right"></i>
+        </button>
+        <button type="button" class="room-archived-toggle" @onclick="OnNavigateSaved">
+            <i data-lucide="bookmark"></i> Saved messages <i data-lucide="chevron-right"></i>
+        </button>
+        <button type="button" class="room-archived-toggle" @onclick="OnNavigateSearch">
+            <i data-lucide="text-search"></i> Search all conversations <i data-lucide="chevron-right"></i>
+        </button>
+        <button type="button" class="room-archived-toggle" @onclick="OnNavigateMentions">
+            <i data-lucide="at-sign"></i> Unread mentions <i data-lucide="chevron-right"></i>
+        </button>
+
+        <div class="room-tabs">
+            <button class="room-tab @(ActiveTab == RoomTab.Direct ? "active" : "")" @onclick="() => OnSetTab.InvokeAsync(RoomTab.Direct)">
+                Direct
+                @if (DirectUnread > 0)
+                {
+                    <span class="tab-badge">@DirectUnread</span>
+                }
+            </button>
+            <button class="room-tab @(ActiveTab == RoomTab.Groups ? "active" : "")" @onclick="() => OnSetTab.InvokeAsync(RoomTab.Groups)">
+                Groups
+                @if (HasGroupMention)
+                {
+                    <i data-lucide="at-sign" class="ico-sm accent"></i>
+                }
+                @if (GroupUnread > 0)
+                {
+                    <span class="tab-badge">@GroupUnread</span>
+                }
+            </button>
+        </div>
+
+        @if (ArchivedRooms.Any() || ArchivedCount > 0)
+        {
+            <button class="room-archived-toggle" @onclick="OnToggleArchived">
+                <i data-lucide="archive"></i> Archived (@ArchivedCount) <i data-lucide="@(ArchivedOpen ? "chevron-up" : "chevron-down")"></i>
+            </button>
+            @if (ArchivedOpen)
+            {
+                @foreach (var ar in ArchivedRooms)
+                {
+                    var room = ar;
+                    <div class="room-item" @onclick="() => OnUnarchiveRoom.InvokeAsync(room.Id)" title="Open conversation history">
+                        <div class="avatar" style="background:@GetRoomColor(room)">@GetRoomInitials(room)</div>
+                        <div class="info">
+                            <div class="name">@GetRoomName(room)</div>
+                            <div class="preview">@(room.LastMessage ?? "")</div>
+                        </div>
+                        <button class="comp-btn room-unarchive-btn" title="Unarchive" @onclick="() => OnUnarchiveRoom.InvokeAsync(room.Id)" @onclick:stopPropagation>Unarchive</button>
+                    </div>
+                }
+                @if (HasMoreArchived)
+                {
+                    <button type="button" class="room-load-more" @onclick="OnLoadMoreArchived">
+                        <i data-lucide="chevron-down"></i> Load more archived (@(ArchivedTotal - ArchivedRooms.Count) more)
+                    </button>
+                }
+            }
+        }
+
+        <div class="room-list">
+            @{ var rooms = FilteredRooms; }
+            @{ var pinned = rooms.Where(r => r.IsPinned).ToList(); }
+            @{ var recent = rooms.Where(r => !r.IsPinned).ToList(); }
+
+            @if (pinned.Any())
+            {
+                <div class="room-section-head"><i data-lucide="pin"></i> Pinned</div>
+                @foreach (var room in pinned)
+                {
+                    var isActiveP = room.Id == ActiveRoomId;
+                    <div class="room-item @(isActiveP ? "active" : "") @(isActiveP && IsOpening ? "busy" : "")" @onclick="() => OnOpenRoom.InvokeAsync(room.Id)">
+                        <div class="avatar @(room.Type == "dm" ? "round" : "")" style="background:@GetRoomColor(room)">
+                            @GetRoomInitials(room)
+                            @if (room.Type == "dm")
+                            {
+                                <span class="presence-dot @(room.PresenceStatus ?? "")"></span>
+                            }
+                        </div>
+                        <div class="info">
+                            <div class="name">
+                                @GetRoomName(room)
+                                <span class="pin-icon"><i data-lucide="pin"></i></span>
+                            </div>
+                            <div class="preview @(room.HasUnreadMention ? "mention-hl" : "")">
+                                @(room.LastMessage ?? "")
+                                @if (room.HasUnreadMention) { <i data-lucide="at-sign" class="mention-icon"></i> }
+                            </div>
+                        </div>
+                        <div class="meta">
+                            <span class="time">@FormatTime(room.LastMessageAt)</span>
+                            @if (room.UnreadCount > 0)
+                            {
+                                <span class="unread">@room.UnreadCount</span>
+                            }
+                            @if (room.IsMuted)
+                            {
+                                <span class="muted"><i data-lucide="bell-off"></i></span>
+                            }
+                            <button class="comp-btn btn-pin @(room.IsPinned ? "pinned" : "unpinned")" title="@(room.IsPinned ? "Unpin" : "Pin")" @onclick="() => OnTogglePin.InvokeAsync(room)" @onclick:stopPropagation>
+                                <i data-lucide="pin"></i>
+                            </button>
+                        </div>
+                    </div>
+                }
+            }
+
+            @if (recent.Any())
+            {
+                <div class="room-section-head @(pinned.Any() ? "mt-4" : "")"><i data-lucide="clock"></i> Recent</div>
+                @foreach (var room in recent)
+                {
+                    var isActiveR = room.Id == ActiveRoomId;
+                    <div class="room-item @(isActiveR ? "active" : "") @(isActiveR && IsOpening ? "busy" : "")" @onclick="() => OnOpenRoom.InvokeAsync(room.Id)">
+                        <div class="avatar @(room.Type == "dm" ? "round" : "")" style="background:@GetRoomColor(room)">
+                            @GetRoomInitials(room)
+                            @if (room.Type == "dm")
+                            {
+                                <span class="presence-dot @(room.PresenceStatus ?? "")"></span>
+                            }
+                        </div>
+                        <div class="info">
+                            <div class="name">@GetRoomName(room)</div>
+                            <div class="preview @(room.HasUnreadMention ? "mention-hl" : "")">
+                                @(room.LastMessage ?? "")
+                                @if (room.HasUnreadMention) { <i data-lucide="at-sign" class="mention-icon"></i> }
+                            </div>
+                        </div>
+                        <div class="meta">
+                            <span class="time">@FormatTime(room.LastMessageAt)</span>
+                            @if (room.UnreadCount > 0)
+                            {
+                                <span class="unread">@room.UnreadCount</span>
+                            }
+                            @if (room.IsMuted)
+                            {
+                                <span class="muted"><i data-lucide="bell-off"></i></span>
+                            }
+                            <button class="comp-btn btn-pin @(room.IsPinned ? "pinned" : "unpinned")" title="@(room.IsPinned ? "Unpin" : "Pin")" @onclick="() => OnTogglePin.InvokeAsync(room)" @onclick:stopPropagation>
+                                <i data-lucide="pin"></i>
+                            </button>
+                        </div>
+                    </div>
+                }
+            }
+
+            @if (!rooms.Any())
+            {
+                <div class="empty-state">
+                    <i data-lucide="message-circle"></i>
+                    <div class="sub">@(SearchActive ? "No conversations match your search." : "No conversations yet")</div>
+                </div>
+            }
+
+            @if (!SearchActive)
+            {
+                @if (ActiveTab == RoomTab.Direct && HasMoreDirectRooms)
+                {
+                    <button type="button" class="room-load-more" @onclick="OnLoadMoreDirect">
+                        <i data-lucide="chevron-down"></i> Load more conversations
+                    </button>
+                }
+                @if (ActiveTab == RoomTab.Groups && HasMoreGroupRooms)
+                {
+                    <button type="button" class="room-load-more" @onclick="OnLoadMoreGroups">
+                        <i data-lucide="chevron-down"></i> Load more groups
+                    </button>
+                }
+            }
+        </div>
+    </div>
+
+    @* ============ CONVERSATION PANE (right flex) ============ *@
+    <div class="conv-pane rise rise-2">
+        @if (ActiveRoomId is not null && ActiveRoom is not null)
+        {
+            @* ---- Conversation Header ---- *@
+            <ChatHeader Room="ActiveRoom"
+                        CurrentUserNik="@GetCurrentUserNik()"
+                        RoomName="@GetActiveRoomName()"
+                        RoomInitials="@GetActiveRoomInitials()"
+                        RoomColor="@GetActiveRoomColor()"
+                        SearchOpen="@SearchOpen"
+                        DrawerOpen="@DrawerOpen"
+                        ActiveDrawerTab="@ActiveDrawerTabIndex"
+                        IsMuted="@IsActiveRoomMuted"
+                        OnBackMobile="() => OnToggleMobileRooms.InvokeAsync(true)"
+                        OnOpenProfile="OnOpenUserProfile"
+                        OnToggleSearch="OnToggleSearch"
+                        OnStartCall="OnStartCall"
+                        OnOpenPinned="OnOpenPinned"
+                        OnOpenMedia="OnOpenMedia"
+                        OnOpenMembers="OnOpenMembers"
+                        OnToggleDrawer="OnToggleDrawer"
+                        PresenceLabel="PresenceLabel" />
+
+            @* ---- Sticky Pinned Announcement Bar ---- *@
+            @if (PinnedMessages.Count > 0)
+            {
+                var latestPin = PinnedMessages.OrderByDescending(p => p.PinnedAt).First();
+                <div class="sticky-pinned-bar" @onclick="() => OnJumpToMessage.InvokeAsync(latestPin.MessageId)">
+                    <div class="pin-ic"><i data-lucide="pin"></i></div>
+                    <div class="pin-body">
+                        <span class="pin-tag">Pinned Message @(PinnedMessages.Count > 1 ? $"({PinnedMessages.Count})" : "")</span>
+                        <span class="pin-text">@(!string.IsNullOrEmpty(latestPin.Content) ? TruncateStr(latestPin.Content, 90) : "Pinned announcement")</span>
+                    </div>
+                    <button type="button" class="pin-all-btn" @onclick="OnOpenPinned" @onclick:stopPropagation>
+                        View all
+                    </button>
+                </div>
+            }
+
+            @* ---- Offline banner ---- *@
+            @if (!IsConnected)
+            {
+                <div class="offline-banner">
+                    <i data-lucide="wifi-off"></i>
+                    <span>Offline — messages will be sent when reconnected</span>
+                </div>
+            }
+
+            <div class="conv-body-flex">
+                <div class="conv-chat-flow">
+                    @* ---- In-conversation Search ---- *@
+                    @if (SearchOpen)
+                    {
+                        <div class="conv-search-bar">
+                            <i data-lucide="search"></i>
+                            <input type="text" placeholder="Search messages..." @bind="SearchQueryInternal" @bind:event="oninput" @bind:after="() => OnSearchMessages.InvokeAsync()" />
+                            <button class="comp-btn" @onclick="() => OnCloseSearch.InvokeAsync()"><i data-lucide="x"></i></button>
+                        </div>
+                        @if (SearchResults.Any())
+                        {
+                            <div class="search-results">
+                                @foreach (var result in SearchResults.Take(20))
+                                {
+                                    var r = result;
+                                    <button type="button" class="sr-item" @onclick="() => OnJumpToMessage.InvokeAsync(r.Id)">
+                                        <span class="sr-head">
+                                            <span class="who">@r.SenderName</span>
+                                            <span class="when">@r.CreatedAt.ToLocalTime().ToString("MMM d, HH:mm")</span>
+                                        </span>
+                                        <span class="sr-text">@TruncateStr(r.Content, 110)</span>
+                                    </button>
+                                }
+                            </div>
+                        }
+                        else if (SearchQueryInternal.Length >= 2)
+                        {
+                            <div class="search-results empty">No messages match "@SearchQueryInternal".</div>
+                        }
+                    }
+
+                    @* ---- Messages ---- *@
+                    <div class="messages" @ref="MessagesRef">
+                        @if (HasOlderMessages)
+                        {
+                            <div class="load-older">
+                                <button type="button" @onclick="OnLoadOlder"><i data-lucide="chevron-up"></i> Load older messages</button>
+                            </div>
+                        }
+                        else if (ActiveRoom is not null)
+                        {
+                            <div class="conv-start-card">
+                                <div class="conv-start-avatar" style="background:@GetActiveRoomColor()">
+                                    @GetActiveRoomInitials()
+                                </div>
+                                <h3 class="conv-start-title">@GetActiveRoomName()</h3>
+                                <p class="conv-start-sub">
+                                    @(ActiveRoom.Type == "dm"
+                                        ? $"This is the beginning of your direct message history with {GetActiveRoomName()}."
+                                        : $"Welcome to the beginning of the #{ActiveRoom.Name} group conversation.")
+                                </p>
+                                @if (ActiveRoom.Type == "dm")
+                                {
+                                    var otherDm = ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
+                                    if (otherDm is not null)
+                                    {
+                                        <div class="conv-start-actions">
+                                            <button type="button" class="conv-start-btn" @onclick="() => OnOpenUserProfile.InvokeAsync(otherDm.Nik)">
+                                                <i data-lucide="user"></i> View Profile
+                                            </button>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+                        @{
+                            DateTime? lastDate = null;
+                            string? prevSenderNik = null;
+                            DateTime prevSentAt = DateTime.MinValue;
+                            string? prevType = null;
+                        }
+                        @foreach (var msg in ActiveMessages)
+                        {
+                            var msgDate = msg.CreatedAt.ToLocalTime().Date;
+                            var startsNewDay = lastDate is null || lastDate != msgDate;
+                            if (startsNewDay)
+                            {
+                                <div class="date-sep">@FormatDateSep(msg.CreatedAt)</div>
+                                lastDate = msgDate;
+                            }
+
+                            var startsUnread = UnreadDividerMsgId == msg.Id;
+                            if (startsUnread)
+                            {
+                                <div class="unread-sep"><span class="unread-tag">New messages</span></div>
+                            }
+
+                            var isSent = msg.SenderNik == GetCurrentUserNik();
+                            var isPending = IsMessagePending(msg.Id);
+                            var isFailed = IsMessageFailed(msg.Id);
+                            var isMediaOnly = IsAttachmentPlaceholder(msg) && msg.ReplyPreview is null && msg.Type != "emergency";
+                            var msgClass = msg.Type switch
+                            {
+                                "system" => "msg system",
+                                "emergency" => "msg emergency",
+                                _ => isSent ? "msg sent" : "msg recv"
+                            };
+                            if (isPending) msgClass += " pending";
+                            if (isFailed) msgClass += " failed";
+
+                            var isGrouped = prevSenderNik is not null
+                                && prevSenderNik == msg.SenderNik
+                                && !startsNewDay && !startsUnread
+                                && msg.Type is not ("system" or "emergency")
+                                && prevType is not ("system" or "emergency")
+                                && (msg.CreatedAt - prevSentAt).TotalMinutes < GroupWindowMinutes;
+                            if (isGrouped) msgClass += " grouped";
+                            prevSenderNik = msg.SenderNik;
+                            prevSentAt = msg.CreatedAt;
+                            prevType = msg.Type;
+                            var currentMsg = msg;
+
+                            <div @key="msg.Id" data-msg-id="@msg.Id" class="@msgClass" @oncontextmenu="(e) => OnShowContextMenu.InvokeAsync((currentMsg.Id, e))" @oncontextmenu:preventDefault>
+                                @if (msg.Type != "system" && msg.Type != "emergency" && EditingMsgId != msg.Id)
+                                {
+                                    <div class="msg-hover-actions">
+                                        <div class="quick-reacts">
+                                            <button type="button" title="Like" @onclick='() => OnQuickReact.InvokeAsync((currentMsg.Id, "👍"))' @onclick:stopPropagation>👍</button>
+                                            <button type="button" title="Love" @onclick='() => OnQuickReact.InvokeAsync((currentMsg.Id, "❤️"))' @onclick:stopPropagation>❤️</button>
+                                            <button type="button" title="Laugh" @onclick='() => OnQuickReact.InvokeAsync((currentMsg.Id, "😂"))' @onclick:stopPropagation>😂</button>
+                                            <button type="button" title="Celebrate" @onclick='() => OnQuickReact.InvokeAsync((currentMsg.Id, "🎉"))' @onclick:stopPropagation>🎉</button>
+                                            <button type="button" title="Rocket" @onclick='() => OnQuickReact.InvokeAsync((currentMsg.Id, "🚀"))' @onclick:stopPropagation>🚀</button>
+                                        </div>
+                                        <div class="act-divider"></div>
+                                        <button type="button" class="act-btn" title="Reply" @onclick="() => OnStartReply.InvokeAsync(currentMsg.Id)" @onclick:stopPropagation>
+                                            <i data-lucide="reply"></i>
+                                        </button>
+                                        @if (CanPinInActiveRoom)
+                                        {
+                                            <button type="button" class="act-btn" title="@(IsMsgPinned(currentMsg.Id) ? "Unpin message" : "Pin message")" @onclick="() => OnPinMessage.InvokeAsync(currentMsg.Id)" @onclick:stopPropagation>
+                                                <i data-lucide="@(IsMsgPinned(currentMsg.Id) ? "pin-off" : "pin")"></i>
+                                            </button>
+                                        }
+                                        @if (!string.IsNullOrEmpty(currentMsg.Content) && !IsAttachmentPlaceholder(currentMsg))
+                                        {
+                                            <button type="button" class="act-btn" title="Copy text" @onclick="() => OnCopyText.InvokeAsync(currentMsg.Content)" @onclick:stopPropagation>
+                                                <i data-lucide="copy"></i>
+                                            </button>
+                                        }
+                                        @if (CanEditMsg(currentMsg.Id))
+                                        {
+                                            <button type="button" class="act-btn" title="Edit" @onclick="() => OnStartEdit.InvokeAsync(currentMsg.Id)" @onclick:stopPropagation>
+                                                <i data-lucide="pencil"></i>
+                                            </button>
+                                        }
+                                        <button type="button" class="act-btn" title="Save message" aria-label="Save message" @onclick="() => OnSaveMessage.InvokeAsync(currentMsg.Id)" @onclick:stopPropagation>
+                                            <i data-lucide="bookmark"></i>
+                                        </button>
+                                        <button type="button" class="act-btn" title="More options" @onclick="(e) => OnShowContextMenu.InvokeAsync((currentMsg.Id, e))" @onclick:stopPropagation>
+                                            <i data-lucide="more-horizontal"></i>
+                                        </button>
+                                    </div>
+                                }
+
+                                @if (EditingMsgId == msg.Id)
+                                {
+                                    <div class="bubble-wrap">
+                                        <textarea class="input-wrap edit-textarea" @bind="EditText"></textarea>
+                                        <div class="edit-actions">
+                                            <button class="comp-btn" @onclick="() => OnSaveEdit.InvokeAsync()">Save</button>
+                                            <button class="comp-btn" @onclick="() => OnCancelEdit.InvokeAsync()">Cancel</button>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <MessageBubble Message="currentMsg"
+                                                   OnCtx="t => OnShowContextMenu.InvokeAsync(t)"
+                                                   OnProfile="OnOpenUserProfile"
+                                                   OnReact="t => OnQuickReact.InvokeAsync(t)"
+                                                   OnThread="OnToggleThread"
+                                                   OnAttachmentOpen="a => OnOpenAttachment.InvokeAsync((a, currentMsg.Attachments))" />
+
+                                    @if (isSent && !isPending && !isFailed && msg.Id == LastOwnMessageId
+                                         && msg.Type != "system" && ActiveRoom!.Type == "group")
+                                    {
+                                        <SeenIndicator @key="msg.Id" Message="currentMsg"
+                                                       CurrentUserNik="@GetCurrentUserNik()"
+                                                       RoomType="@ActiveRoom!.Type" />
+                                    }
+
+                                    @if (isFailed)
+                                    {
+                                        <div class="msg-retry">
+                                            <span>Not sent</span>
+                                            <button type="button" @onclick="() => OnRetryMessage.InvokeAsync(currentMsg.Id)" @onclick:stopPropagation>
+                                                <i data-lucide="rotate-ccw"></i> Retry
+                                            </button>
+                                        </div>
+                                    }
+                                }
+
+                                @if (ExpandedThreadId == msg.Id)
+                                {
+                                    <ThreadPanel ParentId="msg.Id" />
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @* ---- Typing indicator ---- *@
+                    @if (TypingUsers.Any())
+                    {
+                        <div class="typing-indicator">
+                            <span class="dots"><span></span><span></span><span></span></span>
+                            @FormatTypingLabel()
+                        </div>
+                    }
+                </div>
+
+                @* ---- Jump to latest ---- *@
+                @if (ShowJumpToLatest)
+                {
+                    <button type="button" class="jump-latest" title="Jump to latest" @onclick="OnJumpToLatest">
+                        <i data-lucide="arrow-down"></i>
+                    </button>
+                }
+
+                @* ---- Composer ---- *@
+                <ChatComposerBar Text="@MessageText"
+                                 TextChanged="OnMessageTextChanged"
+                                 IsGroup="@(ActiveRoom.Type == "group")"
+                                 IsGroupAdmin="@IsGroupAdmin"
+                                 Uploading="@Uploading"
+                                 UploadError="@UploadError"
+                                 PendingAttachments="@PendingAttachments"
+                                 PickerOpen="@PickerOpen"
+                                 IsRecordingVoice="@IsRecordingVoice"
+                                 OnTriggerUpload="OnTriggerFileUpload"
+                                 OnTogglePicker="() => OnTogglePicker.InvokeAsync()"
+                                 OnOpenMention="OnOpenMention"
+                                 OnOpenPoll="() => OnOpenPoll.InvokeAsync()"
+                                 OnStartVoice="OnStartVoiceRecord"
+                                 OnStopVoice="OnStopVoiceRecord"
+                                 OnCancelVoice="OnCancelVoiceRecord"
+                                 OnSend="OnSendMessage"
+                                 OnOpenEmergency="() => OnOpenEmergency.InvokeAsync()"
+                                 OnRemovePending="OnRemovePendingAttachment"
+                                 OnComposerInput="OnComposerInput"
+                                 OnComposerKeyDown="OnComposerKeyDown"
+                                 OnComposerBlur="OnComposerBlur"
+                                 OnSendStickerSelected="OnSendSticker" />
+            </div>
+
+            @* ---- Tabbed Right-Side Drawer ---- *@
+            @if (DrawerOpen && ActiveRoom is not null)
+            {
+                <div class="chat-drawer-backdrop" @onclick="() => OnCloseDrawer.InvokeAsync()"></div>
+                <aside class="chat-drawer">
+                    <div class="drawer-top-bar">
+                        <div class="drawer-tabs">
+                            <button type="button" class="d-tab @(ActiveDrawerTab == ChatDrawerTab.Overview ? "active" : "")"
+                                    @onclick="() => OnSetDrawerTab.InvokeAsync(ChatDrawerTab.Overview)">Overview</button>
+                            <button type="button" class="d-tab @(ActiveDrawerTab == ChatDrawerTab.Members ? "active" : "")"
+                                    @onclick="() => OnSetDrawerTab.InvokeAsync(ChatDrawerTab.Members)">
+                                Members <span class="badge">@ActiveRoom.MemberCount</span>
+                            </button>
+                            <button type="button" class="d-tab @(ActiveDrawerTab == ChatDrawerTab.Media ? "active" : "")"
+                                    @onclick="() => OnSetDrawerTab.InvokeAsync(ChatDrawerTab.Media)">
+                                Files & Media
+                            </button>
+                            <button type="button" class="d-tab @(ActiveDrawerTab == ChatDrawerTab.Pinned ? "active" : "")"
+                                    @onclick="() => OnSetDrawerTab.InvokeAsync(ChatDrawerTab.Pinned)">
+                                Pinned @if (PinnedMessages.Count > 0) { <span class="badge">@PinnedMessages.Count</span> }
+                            </button>
+                            <button type="button" class="d-tab @(ActiveDrawerTab == ChatDrawerTab.Calendar ? "active" : "")"
+                                    @onclick="() => OnSetDrawerTab.InvokeAsync(ChatDrawerTab.Calendar)">
+                                Calendar
+                            </button>
+                        </div>
+                        <button type="button" class="drawer-close-btn" title="Close details" @onclick="() => OnCloseDrawer.InvokeAsync()">
+                            <i data-lucide="x"></i>
+                        </button>
+                    </div>
+
+                    <div class="drawer-content">
+                        @if (ActiveDrawerTab == ChatDrawerTab.Overview)
+                        {
+                            <div class="drawer-pane overview-pane">
+                                <div class="drawer-hero">
+                                    <div class="hero-av avatar" style="background:@GetActiveRoomColor()">
+                                        @GetActiveRoomInitials()
+                                    </div>
+                                    <h2 class="hero-name">@GetActiveRoomName()</h2>
+                                    <div class="hero-meta">
+                                        @if (ActiveRoom.Type == "dm")
+                                        {
+                                            var dmOther = ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
+                                            <span class="presence-badge @(dmOther?.PresenceStatus ?? "off")">
+                                                <span class="dot"></span> @PresenceLabel(dmOther?.PresenceStatus)
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span>@ActiveRoom.MemberCount members · @ActiveRoom.OnlineCount online</span>
+                                        }
+                                    </div>
+                                </div>
+
+                                <div class="drawer-stats-row">
+                                    <div class="stat-card">
+                                        <div class="stat-num">@ActiveMessages.Count</div>
+                                        <div class="stat-lbl">Messages</div>
+                                    </div>
+                                    <div class="stat-card">
+                                        <div class="stat-num">@ActiveMessages.SelectMany(m => m.Attachments).Count()</div>
+                                        <div class="stat-lbl">Shared Files</div>
+                                    </div>
+                                    <div class="stat-card">
+                                        <div class="stat-num">@PinnedMessages.Count</div>
+                                        <div class="stat-lbl">Pinned</div>
+                                    </div>
+                                </div>
+
+                                <div class="drawer-section">
+                                    <h4 class="section-title">Quick Actions</h4>
+                                    <div class="action-list">
+                                        @if (ActiveRoom.Type == "dm")
+                                        {
+                                            var dmOther = ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
+                                            <button type="button" class="action-row" @onclick="() => OnOpenUserProfile.InvokeAsync(dmOther?.Nik)">
+                                                <i data-lucide="user"></i>
+                                                <span>View full profile</span>
+                                                <i data-lucide="chevron-right" class="arrow"></i>
+                                            </button>
+                                            <a class="action-row" href="/mail?compose=@(dmOther?.Nik)">
+                                                <i data-lucide="mail"></i>
+                                                <span>Send an email</span>
+                                                <i data-lucide="chevron-right" class="arrow"></i>
+                                            </a>
+                                            <button type="button" class="action-row" style="background:none;border:none;width:100%;text-align:left;cursor:pointer" @onclick="() => OnStartCall.InvokeAsync(dmOther?.Nik)">
+                                                <i data-lucide="phone"></i>
+                                                <span>Voice Call</span>
+                                                <i data-lucide="chevron-right" class="arrow"></i>
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="action-row" @onclick="() => OnToggleAddMember.InvokeAsync()">
+                                                <i data-lucide="user-plus"></i>
+                                                <span>Add members to group</span>
+                                                <i data-lucide="chevron-right" class="arrow"></i>
+                                            </button>
+                                        }
+                                        <button type="button" class="action-row" @onclick="() => OnToggleMuteRoom.InvokeAsync()">
+                                            <i data-lucide="@(IsActiveRoomMuted ? "bell" : "bell-off")"></i>
+                                            <span>@(IsActiveRoomMuted ? "Unmute notifications" : "Mute notifications")</span>
+                                        </button>
+                                        <button type="button" class="action-row" @onclick="() => OnToggleReadReceipts.InvokeAsync()">
+                                            <i data-lucide="@(IsActiveRoomReadReceiptsEnabled ? "check-check" : "eye-off")"></i>
+                                            <span>@(IsActiveRoomReadReceiptsEnabled ? "Read receipts on" : "Read receipts off")</span>
+                                        </button>
+                                        <button type="button" class="action-row" @onclick="() => OnArchiveRoom.InvokeAsync()">
+                                            <i data-lucide="archive"></i>
+                                            <span>Archive conversation</span>
+                                        </button>
+                                        @if (ActiveRoom.Type == "group")
+                                        {
+                                            <button type="button" class="action-row" @onclick="() => OnNavigateGroupSettings.InvokeAsync()">
+                                                <i data-lucide="settings"></i>
+                                                <span>Group settings</span>
+                                                <i data-lucide="chevron-right" class="arrow"></i>
+                                            </button>
+                                            <button type="button" class="action-row danger" @onclick="() => OnLeaveGroup.InvokeAsync()">
+                                                <i data-lucide="log-out"></i>
+                                                <span>Leave group</span>
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        else if (ActiveDrawerTab == ChatDrawerTab.Members)
+                        {
+                            <div class="drawer-pane members-pane">
+                                <div class="pane-search">
+                                    <i data-lucide="search"></i>
+                                    <input type="text" placeholder="Search members…" @bind="MemberFilter" @bind:event="oninput" />
+                                </div>
+
+                                @if (ActiveRoom.Type == "group")
+                                {
+                                    <div class="add-member-bar">
+                                        <button type="button" class="add-member-toggle-btn" @onclick="() => OnToggleAddMember.InvokeAsync()">
+                                            <i data-lucide="user-plus"></i> Add new member
+                                        </button>
+                                        @if (AddMemberOpen)
+                                        {
+                                            <div class="add-member-popup">
+                                                <input type="text" placeholder="Type name or ID…" @bind="AddMemberQuery" @bind:event="oninput" @bind:after="() => OnSearchAddMember.InvokeAsync()" />
+                                                <div class="add-member-results">
+                                                    @foreach (var user in AddMemberResults.Take(6))
+                                                    {
+                                                        var u = user;
+                                                        <div class="add-user-item" @onclick="() => OnAddMember.InvokeAsync(u)">
+                                                            <div class="avatar avatar-26" style="background:@GetUserColor(u.Nik)">
+                                                                @GetInitialsFromName(u.Name)
+                                                            </div>
+                                                            <span class="name">@u.Name</span>
+                                                            <i data-lucide="plus" class="plus-icon"></i>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                }
+
+                                <div class="member-list-scroll">
+                                    @{
+                                        var members = ActiveRoom.Members
+                                            .Where(m => string.IsNullOrWhiteSpace(MemberFilter) ||
+                                                        m.Name.Contains(MemberFilter, StringComparison.OrdinalIgnoreCase) ||
+                                                        m.Nik.Contains(MemberFilter, StringComparison.OrdinalIgnoreCase))
+                                            .ToList();
+                                    }
+                                    @foreach (var m in members)
+                                    {
+                                        var member = m;
+                                        <MemberRow Member="member"
+                                                   CurrentUserNik="@GetCurrentUserNik()"
+                                                   CurrentUserRole="@(ActiveRoom?.CurrentUserRole ?? "")"
+                                                   ShowActions="false"
+                                                   OnProfile="OnOpenUserProfile" />
+                                    }
+                                    @if (!members.Any())
+                                    {
+                                        <div class="empty-media-state">No members match "@MemberFilter"</div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        else if (ActiveDrawerTab == ChatDrawerTab.Media)
+                        {
+                            <div class="drawer-pane media-pane">
+                                <div class="media-subtabs">
+                                    <button type="button" class="subtab @(MediaSubTab == "all" ? "active" : "")" @onclick='() => OnSetMediaSubTab.InvokeAsync("all")'>All</button>
+                                    <button type="button" class="subtab @(MediaSubTab == "photos" ? "active" : "")" @onclick='() => OnSetMediaSubTab.InvokeAsync("photos")'>Photos & Videos</button>
+                                    <button type="button" class="subtab @(MediaSubTab == "docs" ? "active" : "")" @onclick='() => OnSetMediaSubTab.InvokeAsync("docs")'>Documents</button>
+                                </div>
+
+                                <div class="media-list-scroll">
+                                    @{
+                                        var allAtts = ActiveMessages
+                                            .SelectMany(m => m.Attachments)
+                                            .DistinctBy(a => a.Id)
+                                            .ToList();
+                                        var filteredAtts = MediaSubTab switch
+                                        {
+                                            "photos" => allAtts.Where(a => ChatAttachments.IsImage(a) || ChatAttachments.Kind(a) == AttachmentKind.Video).ToList(),
+                                            "docs" => allAtts.Where(a => !ChatAttachments.IsImage(a) && ChatAttachments.Kind(a) != AttachmentKind.Video).ToList(),
+                                            _ => allAtts
+                                        };
+                                    }
+                                    @if (MediaSubTab == "photos" || (MediaSubTab == "all" && filteredAtts.Any(a => ChatAttachments.IsImage(a) || ChatAttachments.Kind(a) == AttachmentKind.Video)))
+                                    {
+                                        var visualAtts = (MediaSubTab == "photos" ? filteredAtts : filteredAtts.Where(a => ChatAttachments.IsImage(a) || ChatAttachments.Kind(a) == AttachmentKind.Video)).ToList();
+                                        @if (visualAtts.Any())
+                                        {
+                                            <div class="media-grid-3">
+                                                @foreach (var att in visualAtts)
+                                                {
+                                                    var a = att;
+                                                    <div class="media-thumb-box" @onclick="() => OnOpenAttachment.InvokeAsync((a, visualAtts))">
+                                                        <ChatAttachment Attachment="a" OnOpen="attDto => OnOpenAttachment.InvokeAsync((attDto, visualAtts))" />
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    }
+                                    @if (MediaSubTab == "docs" || (MediaSubTab == "all" && filteredAtts.Any(a => !ChatAttachments.IsImage(a) && ChatAttachments.Kind(a) != AttachmentKind.Video)))
+                                    {
+                                        var docAtts = (MediaSubTab == "docs" ? filteredAtts : filteredAtts.Where(a => !ChatAttachments.IsImage(a) && ChatAttachments.Kind(a) != AttachmentKind.Video)).ToList();
+                                        @if (docAtts.Any())
+                                        {
+                                            <div class="doc-list-col">
+                                                @foreach (var att in docAtts)
+                                                {
+                                                    var a = att;
+                                                    <ChatAttachment Attachment="a" Layout="row" OnOpen="attDto => OnOpenAttachment.InvokeAsync((attDto, docAtts))" />
+                                                }
+                                            </div>
+                                        }
+                                    }
+                                    @if (!filteredAtts.Any())
+                                    {
+                                        <div class="empty-media-state">
+                                            <i data-lucide="paperclip"></i>
+                                            <span>No shared files found in this conversation yet.</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        else if (ActiveDrawerTab == ChatDrawerTab.Pinned)
+                        {
+                            <PinnedPanel RoomId="@(ActiveRoom?.Id ?? Guid.Empty)"
+                                         IsOpen="true"
+                                         Items="PinnedMessages"
+                                         OnClose="() => OnCloseDrawer.InvokeAsync()"
+                                         OnJumpTo="OnJumpToMessage"
+                                         OnChanged="OnLoadPinnedMessages" />
+                        }
+                        else if (ActiveDrawerTab == ChatDrawerTab.Calendar)
+                        {
+                            @* Kalender ruang (Fase 4): daftar event ruang + tambah cepat.
+                               Peserta terisi otomatis dari anggota ruang saat form dibuka. *@
+                            <div class="drawer-cal">
+                                <div class="drawer-cal-head">
+                                    <i data-lucide="calendar"></i>
+                                    <span>Room calendar</span>
+                                    <button class="btn-sm accent" style="margin-left:auto" @onclick="ToggleAddEventForm">
+                                        <i data-lucide="plus" style="width:12px;height:12px"></i> Event
+                                    </button>
+                                </div>
+
+                                @if (addEventFormOpen)
+                                {
+                                    <div class="drawer-cal-form">
+                                        <input class="org-input" style="height:30px;font-size:12.5px" placeholder="Event title…" @bind="newEventTitle" />
+                                        <input type="datetime-local" class="org-input" style="height:30px;font-size:12.5px" @bind="newEventStart" />
+                                        <div class="drawer-cal-attendees">
+                                            <i data-lucide="users" style="width:12px;height:12px"></i>
+                                            <span>Attendees: @(ActiveRoom?.MemberCount ?? 0) room members (auto)</span>
+                                        </div>
+                                        <div style="display:flex;gap:6px">
+                                            <button class="btn-sm accent" disabled="@(string.IsNullOrWhiteSpace(newEventTitle))" @onclick="SubmitAddEvent">Save</button>
+                                            <button class="btn-sm surface" @onclick="ToggleAddEventForm">Cancel</button>
+                                        </div>
+                                    </div>
+                                }
+
+                                @if (RoomEvents.Count == 0)
+                                {
+                                    <div class="drawer-cal-empty">
+                                        <i data-lucide="calendar-x" style="width:22px;height:22px"></i>
+                                        <div>No events in this room</div>
+                                        <div class="meta" style="font-size:11px;color:var(--ink-3)">Add meetings or reminders for room members.</div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var ev in RoomEvents)
+                                    {
+                                        <button type="button" class="drawer-cal-event" @onclick="() => OnOpenCalendarEvent.InvokeAsync(ev.Id)">
+                                            <span class="cal-dot"></span>
+                                            <span class="cal-t">@ev.Title</span>
+                                            <span class="cal-w">@ev.StartAt.ToLocalTime().ToString("dd MMM, HH:mm")</span>
+                                        </button>
+                                    }
+                                }
+                            </div>
+                        }
+                    </div>
+                </aside>
+            }
+        }
+        else
+        {
+            @* ---- Empty state ---- *@
+            <div class="empty-state">
+                <i data-lucide="message-circle"></i>
+                <div class="title">Select a conversation</div>
+                <div class="sub">Choose from your existing conversations, or start a new one.</div>
+                <div class="empty-acts">
+                    <button type="button" class="ghost mobile-only" @onclick="() => OnToggleMobileRooms.InvokeAsync(true)">
+                        <i data-lucide="list"></i> Browse conversations
+                    </button>
+                    <button type="button" @onclick="OnStartDm"><i data-lucide="user-plus"></i> New message</button>
+                    <button type="button" class="ghost" @onclick="OnStartGroup"><i data-lucide="users"></i> New group</button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    // ---- Room Pane Parameters ----
+    [Parameter] public IReadOnlyList<RoomListDto> DirectRooms { get; set; } = [];
+    [Parameter] public IReadOnlyList<RoomListDto> GroupRooms { get; set; } = [];
+    [Parameter] public IReadOnlyList<RoomListDto> ArchivedRooms { get; set; } = [];
+    [Parameter] public int ArchivedCount { get; set; }
+    [Parameter] public int ArchivedTotal { get; set; }
+    [Parameter] public bool HasMoreArchived { get; set; }
+    [Parameter] public bool HasMoreDirectRooms { get; set; }
+    [Parameter] public bool HasMoreGroupRooms { get; set; }
+    [Parameter] public bool ArchivedOpen { get; set; }
+    [Parameter] public RoomTab ActiveTab { get; set; } = RoomTab.Direct;
+    [Parameter] public string SearchQuery { get; set; } = "";
+    [Parameter] public bool SearchActive { get; set; }
+    [Parameter] public int DirectUnread { get; set; }
+    [Parameter] public int GroupUnread { get; set; }
+    [Parameter] public bool HasGroupMention { get; set; }
+    [Parameter] public bool CreateDropdownOpen { get; set; }
+    [Parameter] public bool MobileRoomsOpen { get; set; }
+    [Parameter] public bool IsOpening { get; set; }
+
+    // ---- Active Room Parameters ----
+    [Parameter] public Guid? ActiveRoomId { get; set; }
+    [Parameter] public ChatRoomDto? ActiveRoom { get; set; }
+    [Parameter] public IReadOnlyList<MessageDto> ActiveMessages { get; set; } = [];
+    [Parameter] public IReadOnlyList<PinnedMessageDto> PinnedMessages { get; set; } = [];
+    [Parameter] public bool IsConnected { get; set; }
+    [Parameter] public bool HasOlderMessages { get; set; }
+    [Parameter] public HashSet<string> TypingUsers { get; set; } = [];
+    [Parameter] public bool ShowJumpToLatest { get; set; }
+    [Parameter] public Guid? UnreadDividerMsgId { get; set; }
+    [Parameter] public Guid? LastOwnMessageId { get; set; }
+
+    // ---- Search Parameters ----
+    [Parameter] public bool SearchOpen { get; set; }
+    [Parameter] public string SearchQueryInternal { get; set; } = "";
+    [Parameter] public List<MessageDto> SearchResults { get; set; } = [];
+
+    // ---- Composer Parameters ----
+    [Parameter] public string MessageText { get; set; } = "";
+    [Parameter] public bool Uploading { get; set; }
+    [Parameter] public string? UploadError { get; set; }
+    [Parameter] public IReadOnlyList<IPop.Web.Models.PendingAttachmentItem> PendingAttachments { get; set; } = [];
+    [Parameter] public bool PickerOpen { get; set; }
+    [Parameter] public bool IsRecordingVoice { get; set; }
+    [Parameter] public bool IsGroupAdmin { get; set; }
+    [Parameter] public bool CanPinInActiveRoom { get; set; }
+
+    // ---- Drawer Parameters ----
+    [Parameter] public bool DrawerOpen { get; set; }
+    [Parameter] public ChatDrawerTab ActiveDrawerTab { get; set; }
+    [Parameter] public string MemberFilter { get; set; } = "";
+    [Parameter] public string MediaSubTab { get; set; } = "all";
+    [Parameter] public bool AddMemberOpen { get; set; }
+    [Parameter] public string AddMemberQuery { get; set; } = "";
+    [Parameter] public List<UserSearchResult> AddMemberResults { get; set; } = [];
+
+    // ---- Edit State ----
+    [Parameter] public Guid? EditingMsgId { get; set; }
+    [Parameter] public string EditText { get; set; } = "";
+    [Parameter] public Guid? ExpandedThreadId { get; set; }
+
+    // ---- Events ----
+    [Parameter] public EventCallback OnToggleCreate { get; set; }
+    [Parameter] public EventCallback OnStartDm { get; set; }
+    [Parameter] public EventCallback OnStartGroup { get; set; }
+    [Parameter] public EventCallback<ChangeEventArgs> OnSearchChanged { get; set; }
+    [Parameter] public EventCallback<RoomTab> OnSetTab { get; set; }
+    [Parameter] public EventCallback OnToggleArchived { get; set; }
+    [Parameter] public EventCallback<Guid> OnUnarchiveRoom { get; set; }
+    [Parameter] public EventCallback OnLoadMoreArchived { get; set; }
+    [Parameter] public EventCallback OnLoadMoreDirect { get; set; }
+    [Parameter] public EventCallback OnLoadMoreGroups { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpenRoom { get; set; }
+    [Parameter] public EventCallback<RoomListDto> OnTogglePin { get; set; }
+    [Parameter] public EventCallback<bool> OnToggleMobileRooms { get; set; }
+    [Parameter] public EventCallback OnNavigatePins { get; set; }
+    [Parameter] public EventCallback OnNavigateSaved { get; set; }
+    [Parameter] public EventCallback OnNavigateSearch { get; set; }
+    [Parameter] public EventCallback OnNavigateMentions { get; set; }
+
+    // ---- Conversation Events ----
+    [Parameter] public EventCallback<string?> OnOpenUserProfile { get; set; }
+    [Parameter] public EventCallback OnToggleSearch { get; set; }
+    [Parameter] public EventCallback<string> OnStartCall { get; set; }
+    [Parameter] public EventCallback OnOpenPinned { get; set; }
+    [Parameter] public EventCallback OnOpenMedia { get; set; }
+    [Parameter] public EventCallback OnOpenMembers { get; set; }
+    [Parameter] public EventCallback OnToggleDrawer { get; set; }
+    [Parameter] public EventCallback OnCloseDrawer { get; set; }
+    [Parameter] public EventCallback<ChatDrawerTab> OnSetDrawerTab { get; set; }
+    [Parameter] public EventCallback OnLoadOlder { get; set; }
+    [Parameter] public EventCallback OnJumpToLatest { get; set; }
+    [Parameter] public EventCallback<Guid> OnJumpToMessage { get; set; }
+    [Parameter] public EventCallback OnSearchMessages { get; set; }
+    [Parameter] public EventCallback OnCloseSearch { get; set; }
+
+    // ---- Message Events ----
+    [Parameter] public EventCallback<(Guid, Microsoft.AspNetCore.Components.Web.MouseEventArgs)> OnShowContextMenu { get; set; }
+    [Parameter] public EventCallback<(Guid, string)> OnQuickReact { get; set; }
+    [Parameter] public EventCallback<Guid> OnStartReply { get; set; }
+    [Parameter] public EventCallback<Guid> OnPinMessage { get; set; }
+    [Parameter] public EventCallback<string> OnCopyText { get; set; }
+    [Parameter] public EventCallback<Guid> OnStartEdit { get; set; }
+    [Parameter] public EventCallback OnSaveEdit { get; set; }
+    [Parameter] public EventCallback OnCancelEdit { get; set; }
+    [Parameter] public EventCallback<Guid> OnSaveMessage { get; set; }
+    [Parameter] public EventCallback<Guid> OnToggleThread { get; set; }
+    [Parameter] public EventCallback<Guid> OnRetryMessage { get; set; }
+    [Parameter] public EventCallback<(AttachmentDto, IReadOnlyList<AttachmentDto>)> OnOpenAttachment { get; set; }
+
+    // ---- Composer Events ----
+    [Parameter] public EventCallback<string> OnMessageTextChanged { get; set; }
+    [Parameter] public EventCallback OnTriggerFileUpload { get; set; }
+    [Parameter] public EventCallback OnTogglePicker { get; set; }
+    [Parameter] public EventCallback OnOpenMention { get; set; }
+    [Parameter] public EventCallback OnOpenPoll { get; set; }
+    [Parameter] public EventCallback OnStartVoiceRecord { get; set; }
+    [Parameter] public EventCallback OnStopVoiceRecord { get; set; }
+    [Parameter] public EventCallback OnCancelVoiceRecord { get; set; }
+    [Parameter] public EventCallback OnSendMessage { get; set; }
+    [Parameter] public EventCallback OnOpenEmergency { get; set; }
+    [Parameter] public EventCallback<Guid> OnRemovePendingAttachment { get; set; }
+    [Parameter] public EventCallback<ChangeEventArgs> OnComposerInput { get; set; }
+    [Parameter] public EventCallback<KeyboardEventArgs> OnComposerKeyDown { get; set; }
+    [Parameter] public EventCallback OnComposerBlur { get; set; }
+    [Parameter] public EventCallback<string> OnSendSticker { get; set; }
+
+    // ---- Drawer Events ----
+    [Parameter] public EventCallback OnToggleAddMember { get; set; }
+    [Parameter] public EventCallback OnSearchAddMember { get; set; }
+    [Parameter] public EventCallback<UserSearchResult> OnAddMember { get; set; }
+    [Parameter] public EventCallback OnToggleMuteRoom { get; set; }
+    [Parameter] public EventCallback OnToggleReadReceipts { get; set; }
+    [Parameter] public EventCallback OnArchiveRoom { get; set; }
+    [Parameter] public EventCallback OnNavigateGroupSettings { get; set; }
+    [Parameter] public EventCallback OnLeaveGroup { get; set; }
+    [Parameter] public EventCallback<string> OnSetMediaSubTab { get; set; }
+    [Parameter] public EventCallback OnLoadPinnedMessages { get; set; }
+
+    // ---- Helper Functions ----
+    [Parameter] public Func<RoomListDto, string> GetRoomName { get; set; } = _ => "";
+    [Parameter] public Func<RoomListDto, string> GetRoomInitials { get; set; } = _ => "";
+    [Parameter] public Func<RoomListDto, string> GetRoomColor { get; set; } = _ => "";
+    [Parameter] public Func<DateTime?, string> FormatTime { get; set; } = _ => "";
+    [Parameter] public Func<DateTime, string> FormatDateSep { get; set; } = _ => "";
+    [Parameter] public Func<string?, string> PresenceLabel { get; set; } = _ => "";
+    [Parameter] public Func<string, string> GetUserColor { get; set; } = _ => "";
+    [Parameter] public Func<string, string> GetInitialsFromName { get; set; } = _ => "";
+    [Parameter] public Func<MessageDto, bool> IsAttachmentPlaceholder { get; set; } = _ => false;
+    [Parameter] public Func<Guid, bool> IsMessagePending { get; set; } = _ => false;
+    [Parameter] public Func<Guid, bool> IsMessageFailed { get; set; } = _ => false;
+    [Parameter] public Func<Guid, bool> IsMsgPinned { get; set; } = _ => false;
+    [Parameter] public Func<Guid, bool> CanEditMsg { get; set; } = _ => false;
+
+    // ---- Internal State ----
+    private ElementReference MessagesRef;
+    private const double GroupWindowMinutes = 5;
+
+    private string GetCurrentUserNik() => Auth.Me?.Nik ?? "";
+
+    private string GetRoomCountText()
+    {
+        var total = DirectRooms.Count + GroupRooms.Count;
+        return total switch
+        {
+            0 => "No conversations",
+            1 => "1 conversation",
+            _ => $"{total} conversations"
+        };
+    }
+
+    private IReadOnlyList<RoomListDto> FilteredRooms => ActiveTab == RoomTab.Direct ? DirectRooms : GroupRooms;
+
+    private int ActiveDrawerTabIndex => ActiveDrawerTab switch
+    {
+        ChatDrawerTab.Overview => 0,
+        ChatDrawerTab.Members => 1,
+        ChatDrawerTab.Media => 2,
+        ChatDrawerTab.Pinned => 3,
+        ChatDrawerTab.Calendar => 4,
+        _ => 0
+    };
+
+    // ---- Kalender ruang (Fase 4) ----
+    public sealed record RoomEventModel(Guid Id, string Title, DateTime StartAt, Guid? MeetingId = null);
+    [Parameter] public IReadOnlyList<RoomEventModel> RoomEvents { get; set; } = [];
+    [Parameter] public EventCallback OnAddRoomEvent { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpenCalendarEvent { get; set; }
+    /// Formulir tambah event (Fase 4): host menerima judul+waktu; peserta otomatis anggota ruang.
+    [Parameter] public EventCallback<(string Title, DateTime StartAt)> OnCreateRoomEvent { get; set; }
+
+    private bool addEventFormOpen;
+    private string newEventTitle = "";
+    private DateTime newEventStart = DateTime.Now.Date.AddDays(1).AddHours(9);
+
+    private void ToggleAddEventForm() => addEventFormOpen = !addEventFormOpen;
+
+    private async Task SubmitAddEvent()
+    {
+        if (string.IsNullOrWhiteSpace(newEventTitle)) return;
+        if (OnCreateRoomEvent.HasDelegate)
+            await OnCreateRoomEvent.InvokeAsync((newEventTitle.Trim(), newEventStart));
+        else
+            await OnAddRoomEvent.InvokeAsync();
+        newEventTitle = "";
+        addEventFormOpen = false;
+    }
+
+    private string GetActiveRoomName()
+    {
+        if (ActiveRoom is null) return "";
+        if (ActiveRoom.Type == "dm")
+        {
+            var other = ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
+            return other?.Name ?? "Direct Message";
+        }
+        return ActiveRoom.Name ?? "Group";
+    }
+
+    private string GetActiveRoomInitials()
+    {
+        if (ActiveRoom is null) return "?";
+        return GetInitialsFromName(GetActiveRoomName());
+    }
+
+    private string GetActiveRoomColor()
+    {
+        if (ActiveRoom is null) return "var(--accent)";
+        if (!string.IsNullOrWhiteSpace(ActiveRoom.AvatarColor)) return ActiveRoom.AvatarColor;
+        return GetUserColor(ActiveRoom.Id.ToString());
+    }
+
+    private bool IsActiveRoomMuted =>
+        GroupRooms.Concat(DirectRooms).FirstOrDefault(r => r.Id == ActiveRoomId)?.IsMuted == true;
+
+    private bool IsActiveRoomReadReceiptsEnabled =>
+        GroupRooms.Concat(DirectRooms).FirstOrDefault(r => r.Id == ActiveRoomId)?.ReadReceiptsEnabled ?? true;
+
+    private string FormatTypingLabel()
+    {
+        var users = TypingUsers.ToList();
+        return users.Count switch
+        {
+            1 => $"{users[0]} is typing...",
+            2 => $"{users[0]} and {users[1]} are typing...",
+            3 => $"{users[0]}, {users[1]}, and {users[2]} are typing...",
+            _ => $"{users.Count} people are typing..."
+        };
+    }
+
+    private static string TruncateStr(string s, int max) => s.Length <= max ? s : s[..max] + "...";
+
+    public record UserSearchResult(Guid Id, string Nik, string Name, string? Email);
+
+    public enum RoomTab { Direct, Groups }
+    public enum ChatDrawerTab { Overview, Members, Media, Pinned, Calendar }
+}

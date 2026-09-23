@@ -7,6 +7,7 @@ public record AdminUserRowDto(string Nik, string Name, string Email, string? Pos
     bool IsActive, bool IsManuallyEdited, string[] Roles, string Status, DateTime UpdatedAt);
 
 public record AdminUserPageDto(int Total, int Page, int PageSize, AdminUserRowDto[] Items);
+public record AdminUserStatsDto(int Total, int Active, int Admins, int Online);
 
 public record OrgDepartmentRowDto(Guid Id, string Code, string Name, string? ParentCode, bool IsActive,
     int MemberCount, int ActiveMemberCount);

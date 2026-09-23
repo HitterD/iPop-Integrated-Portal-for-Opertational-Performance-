@@ -207,12 +207,55 @@ public class DirectoryReadEndpointsTests
         t.AddUser("20080116");    // no division -> filtered out
         t.Db.SaveChanges();
 
-        var result = await DirectoryEndpoints.EmployeesCore(null, null, null, "DV1", null, null, null,
-            null, null, t.Db, default);
+        var result = await DirectoryEndpoints.EmployeesCore(null, null, null, "DV1", null, null, null, null,
+            null, null, null, t.Db, default);
 
         var item = Assert.Single(result.Items);
         Assert.Equal("20080115", item.Nik);
         Assert.Equal(1, result.Total);
+    }
+
+    [Fact]
+    public async Task Employees_manager_filter_returns_direct_reports()
+    {
+        using var t = new TestDb();
+        var boss = t.AddUser("BOSS");
+        var report1 = t.AddUser("REP1"); report1.ManagerNik = boss.Nik;
+        var report2 = t.AddUser("REP2"); report2.ManagerNik = boss.Nik;
+        t.AddUser("OTHR"); // bukan bawahan
+        t.Db.SaveChanges();
+
+        var result = await DirectoryEndpoints.EmployeesCore(null, null, null, null, null, boss.Nik, null, null,
+            null, null, null, t.Db, default);
+
+        Assert.Equal(2, result.Total);
+        Assert.All(result.Items, e => Assert.Equal(boss.Nik, e.ManagerNik));
+        Assert.Contains(result.Items, e => e.Nik == "REP1");
+        Assert.Contains(result.Items, e => e.Nik == "REP2");
+    }
+
+    [Fact]
+    public async Task Employees_carry_favorite_flag_for_caller()
+    {
+        using var t = new TestDb();
+        var caller = t.AddUser("CALLER");
+        var fav = t.AddUser("FAV01");
+        t.AddUser("PLAIN");
+        t.Db.UserFavoriteContacts.Add(new IPop.Core.Entities.UserFavoriteContact
+        {
+            Id = Guid.NewGuid(), UserId = caller.Id, ContactNik = fav.Nik, CreatedAt = DateTime.UtcNow
+        });
+        t.Db.SaveChanges();
+
+        var result = await DirectoryEndpoints.EmployeesCore(null, null, null, null, null, null, null, null,
+            null, null, caller.Nik, t.Db, default);
+
+        Assert.True(result.Items.Single(e => e.Nik == "FAV01").IsFavorite);
+        Assert.False(result.Items.Single(e => e.Nik == "PLAIN").IsFavorite);
+        // Tanpa pemanggil (anonim) semua bukan favorit.
+        var anon = await DirectoryEndpoints.EmployeesCore(null, null, null, null, null, null, null, null,
+            null, null, null, t.Db, default);
+        Assert.All(anon.Items, e => Assert.False(e.IsFavorite));
     }
 
     // --- Authorization (real application mechanisms, not IsInRole stubs) ---

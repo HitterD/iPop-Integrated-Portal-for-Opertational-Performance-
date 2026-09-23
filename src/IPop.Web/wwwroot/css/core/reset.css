@@ -1,0 +1,20 @@
+/* Global reset and document primitives. */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  transition: background 0.3s var(--ease), color 0.3s var(--ease);
+}
+img, svg, video, canvas { max-width: 100%; }
+button, input, textarea, select { font: inherit; }
+.hidden-input, input[type="file"].hidden-input { display: none !important; }
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}

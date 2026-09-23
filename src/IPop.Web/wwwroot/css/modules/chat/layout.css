@@ -1,0 +1,90 @@
+/* ============ MODERN CHAT LAYOUT ============ */
+
+.chat-area {
+  display: grid;
+  grid-template-columns: 296px minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+  background: var(--surface);
+  gap: 0;
+  position: relative;
+}
+
+/* Room pane */
+.room-pane {
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  overflow: hidden;
+  position: relative;
+  z-index: 10;
+}
+
+/* Conversation pane */
+.conv-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+  position: relative;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+  .chat-area {
+    grid-template-columns: 1fr;
+  }
+
+  .room-pane {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 85vw;
+    max-width: 360px;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 0.28s var(--ease);
+    box-shadow: var(--sh-pop, 0 8px 30px rgba(0, 0, 0, 0.16));
+  }
+
+  .chat-area.rooms-open .room-pane {
+    transform: translateX(0);
+  }
+
+  .conv-pane {
+    width: 100%;
+  }
+}
+
+/* Smooth entrance animations */
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rise {
+  animation: fade-in-up 0.24s var(--ease) backwards;
+}
+
+.rise-1 { animation-delay: 0.04s; }
+.rise-2 { animation-delay: 0.08s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none !important;
+  }
+  .room-pane {
+    transition: none !important;
+  }
+}

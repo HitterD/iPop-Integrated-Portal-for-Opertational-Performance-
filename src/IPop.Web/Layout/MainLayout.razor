@@ -3,20 +3,45 @@
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @inject AuthState Auth
+@inject ChatState Chat
+@inject IPop.Web.Services.NotificationState Notifs
+@inject IPop.Web.Services.CallState CallSvc
 
-<div class="shell @(collapsed ? "collapsed" : "")" id="shell">
+<div class="shell @(collapsed ? "collapsed" : "") @(IsToolbarPage ? "toolbar-mode" : "")" id="shell">
     <aside class="sidebar">
         <div class="side-head">
             <img class="mark" src="img/logo.png" alt="IPop" style="width:34px;height:34px" />
             <div class="txt"><div class="t">IPop</div><div class="s">Operational portal</div></div>
             <button class="collapse-btn" title="Collapse sidebar ( [ )" @onclick="ToggleSidebar"><i data-lucide="panel-left-close"></i></button>
         </div>
-        <NavLink class="nav-item" href="/dashboard" data-tip="Dashboard" Match="NavLinkMatch.All"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></NavLink>
-        <NavLink class="nav-item" href="/directory" data-tip="Directory"><i data-lucide="users"></i><span class="lbl">Directory</span></NavLink>
-        <NavLink class="nav-item" href="/files" data-tip="Files"><i data-lucide="folder"></i><span class="lbl">Files</span></NavLink>
+        <div class="nav-group">
+            <div class="nav-label">Workspace</div>
+            <NavLink class="nav-item" href="/dashboard" data-tip="Dashboard" Match="NavLinkMatch.All"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></NavLink>
+            <NavLink class="nav-item" href="/directory" data-tip="Directory"><i data-lucide="users"></i><span class="lbl">Directory</span></NavLink>
+            <NavLink class="nav-item" href="/projects" data-tip="Projects"><i data-lucide="kanban"></i><span class="lbl">Projects</span></NavLink>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-label">Communication</div>
+            <NavLink class="nav-item" href="/chat" data-tip="Chat"><i data-lucide="message-circle"></i><span class="lbl">Chat</span>@if (ChatUnread > 0){<span class="nav-count">@ChatUnread</span>}</NavLink>
+            <NavLink class="nav-item" href="/mail" data-tip="Mail"><i data-lucide="mail"></i><span class="lbl">Mail</span></NavLink>
+            <NavLink class="nav-item" href="/news" data-tip="News &amp; Memos"><i data-lucide="newspaper"></i><span class="lbl">News &amp; Memos</span></NavLink>
+            <NavLink class="nav-item" href="/calls" data-tip="Calls"><i data-lucide="phone"></i><span class="lbl">Calls</span></NavLink>
+        </div>
+
+        <div class="nav-group">
+            <div class="nav-label">Resources</div>
+            <NavLink class="nav-item" href="/files" data-tip="Files"><i data-lucide="folder"></i><span class="lbl">Files</span></NavLink>
+            <NavLink class="nav-item" href="/devices/link" data-tip="Link device"><i data-lucide="monitor-smartphone"></i><span class="lbl">Devices</span></NavLink>
+        </div>
+
         @if (Auth.IsAdmin)
         {
-            <NavLink class="nav-item" href="/admin" data-tip="Administration"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administration</span></NavLink>
+            <div class="nav-group">
+                <div class="nav-label">Administration</div>
+                <NavLink class="nav-item" href="/admin" data-tip="Administration"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administration</span></NavLink>
+                <NavLink class="nav-item" href="/notifications" data-tip="Notification Gateway"><i data-lucide="bell"></i><span class="lbl">Notifications</span></NavLink>
+            </div>
         }
         @* Locked modules are buttons, not links: nothing to navigate to, and a disabled
            <a> is unreachable by keyboard. aria-disabled keeps them announced but inert. *@
@@ -34,25 +59,46 @@
     </aside>
 
     <div class="main">
-        <header class="topbar">
-            <h1>@PageTitle</h1>
-            @if (!string.IsNullOrEmpty(Crumb))
+        <header class="topbar @(IsToolbarPage ? "apple-toolbar" : "")">
+            @if (IsToolbarPage)
             {
-                <span class="crumb">@Crumb</span>
+                @* Apple toolbar: large title + one-line summary. Page actions render into the
+                   "topbar-actions" section (Mail/Chat) ahead of the shell controls. *@
+                <div class="tb-title">
+                    <h1>@PageTitle</h1>
+                    @if (!string.IsNullOrEmpty(Subtitle))
+                    {
+                        <div class="tb-sub">@Subtitle</div>
+                    }
+                </div>
+            }
+            else
+            {
+                <h1>@PageTitle</h1>
+                @if (!string.IsNullOrEmpty(Crumb))
+                {
+                    <span class="crumb">@Crumb</span>
+                }
+            }
+            @if (PresenceConnected && !ShowSearch && !IsToolbarPage)
+            {
+                <span class="meta conn" title="Real-time presence connection"><i data-lucide="plug-zap" style="width:13px;height:13px"></i> @PresenceLabel</span>
             }
             @if (ShowSearch)
             {
                 <div class="search">
                     <i data-lucide="search"></i>
-                    <input type="text" placeholder="Search people by name or ID" @bind="SearchQuery" @bind:event="oninput" @bind:after="NotifySearchChanged" />
+                    <input type="text" placeholder="@SearchPlaceholder" @bind="SearchQuery" @bind:event="oninput" @bind:after="NotifySearchChanged" />
                 </div>
             }
             <div class="topbar-right">
+                <SectionOutlet SectionName="topbar-actions" />
                 @if (Auth.Me is not null)
                 {
                     <button class="presence-toggle" title="@(Auth.MyStatus == "busy" ? "Clear busy status" : "Set busy status")"
                             @onclick="ToggleBusy">
-                        <span class="dot @Auth.MyStatus">@StatusLabel</span>
+                        <span class="dot @Auth.MyStatus"></span>
+                        <span class="status-lbl">@StatusLabel</span>
                     </button>
                 }
                 <button class="theme-btn" title="@(IsDark ? "Switch to light mode" : "Switch to dark mode")" @onclick="ToggleTheme">
@@ -61,51 +107,144 @@
                 <div class="bell-wrap">
                     <button class="bell-btn" title="Notifications" @onclick="ToggleNotif" @onclick:stopPropagation>
                         <i data-lucide="bell"></i>
+                        @if (NotifUnread > 0 && NotifPrefs.ShowBadge)
+                        {
+                            <span class="badge">@NotifUnread</span>
+                        }
                     </button>
-                    @* Real system status, not a mock feed — the notification stream itself
-                       arrives with the Chat module. *@
-                    <div class="notif-pop @(notifOpen ? "on" : "")">
-                        <div class="tray"><div class="core" style="padding:6px">
-                    <div class="notif-item">
-                        <div class="ic" style="background:var(--accent-soft);color:var(--accent-ink)"><i data-lucide="refresh-cw"></i></div>
-                        <div>
-                            <div class="t">Directory synced from HRIS</div>
-                            <div class="s">@SyncCaption</div>
+                    @* Apple Notification Center popover tray *@
+                    <div class="notif-pop @(notifOpen ? "on" : "")" @onclick:stopPropagation>
+                        <div class="apple-notif-pop-card">
+                            <div class="apple-notif-header">
+                                <div class="apple-notif-title-group">
+                                    <span class="apple-notif-title">Notifications</span>
+                                    @if (NotifUnread > 0)
+                                    {
+                                        <span class="apple-notif-unread-badge">@NotifUnread new</span>
+                                    }
+                                </div>
+                                @if (NotifUnread > 0)
+                                {
+                                    <button class="apple-notif-readall-btn" @onclick="MarkAllNotifsRead" title="Mark all read">
+                                        <i data-lucide="check-check"></i>
+                                        <span>Mark all read</span>
+                                    </button>
+                                }
+                            </div>
+
+                            <div class="apple-notif-body">
+                                @if (Notifs.IsLoading && Notifs.RecentNotifications.Count == 0)
+                                {
+                                    <div class="apple-notif-loading">
+                                        <div class="skel" style="height:54px;border-radius:12px;margin-bottom:8px"></div>
+                                        <div class="skel" style="height:54px;border-radius:12px"></div>
+                                    </div>
+                                }
+                                else if (Notifs.RecentNotifications.Count == 0)
+                                {
+                                    <div class="apple-notif-empty">
+                                        <div class="apple-notif-empty-icon">
+                                            <i data-lucide="bell-off"></i>
+                                        </div>
+                                        <div class="apple-notif-empty-title">No notifications</div>
+                                        <div class="apple-notif-empty-sub">All new notifications will appear here</div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="apple-notif-list">
+                                        @foreach (var item in Notifs.RecentNotifications)
+                                        {
+                                            var notif = item;
+                                            var icon = NotificationState.GetTypeIcon(notif.Type);
+                                            var timeText = FormatNotifTime(notif.At);
+
+                                            <div class="apple-notif-row @(notif.IsRead ? "read" : "unread")"
+                                                 @onclick="() => OnNotifClicked(notif)">
+                                                <div class="apple-notif-ic @notif.Type">
+                                                    <i data-lucide="@icon"></i>
+                                                </div>
+                                                <div class="apple-notif-info">
+                                                    <div class="apple-notif-row-top">
+                                                        <span class="apple-notif-row-title">@notif.Title</span>
+                                                        <span class="apple-notif-row-time">@timeText</span>
+                                                    </div>
+                                                    <div class="apple-notif-row-desc">@notif.Body</div>
+                                                </div>
+                                                @if (!notif.IsRead)
+                                                {
+                                                    <span class="apple-notif-dot" title="Unread"></span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="apple-notif-footer" @onclick="OpenInbox">
+                                <span>View all in Inbox</span>
+                                <i data-lucide="arrow-right"></i>
+                            </div>
                         </div>
-                    </div>
-                    <div class="notif-item">
-                        <div class="ic" style="background:var(--tray);color:var(--ink-2)"><i data-lucide="bell-off"></i></div>
-                        <div><div class="t">No other notifications</div><div class="s">Alerts arrive with the Chat module</div></div>
-                    </div>
-                </div></div>
                     </div>
                 </div>
             </div>
         </header>
 
         <CascadingValue Value="this">
-            @Body
+            <ErrorBoundary @ref="errorBoundary">
+                <ChildContent>
+                    @Body
+                </ChildContent>
+                <ErrorContent Context="ex">
+                    <div style="padding:48px 24px;text-align:center;max-width:480px;margin:60px auto;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sh-card)">
+                        <div style="width:48px;height:48px;border-radius:50%;background:rgba(255,59,48,0.12);color:#ff3b30;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px">
+                            <i data-lucide="alert-circle" style="width:24px;height:24px"></i>
+                        </div>
+                        <h2 style="font-size:16px;font-weight:650;margin-bottom:6px;color:var(--ink)">An error occurred in this view</h2>
+                        <p style="font-size:12.5px;color:var(--ink-3);margin-bottom:18px;line-height:1.4">
+                            @(ex.Message)
+                        </p>
+                        <div style="display:flex;gap:10px;justify-content:center">
+                            <button type="button" class="btn-primary" @onclick="() => errorBoundary?.Recover()">Try again</button>
+                            <button type="button" class="ghost-btn" @onclick='() => Nav.NavigateTo(Nav.Uri, forceLoad: true)'>Reload</button>
+                        </div>
+                    </div>
+                </ErrorContent>
+            </ErrorBoundary>
         </CascadingValue>
+        <IPop.Web.Components.Chat.ToastHost />
+        <IPop.Web.Components.Calls.GlobalCallOverlay />
+        <IPop.Web.Components.Notifications.GlobalNotificationBanner />
     </div>
 </div>
 
 @code {
     private bool collapsed, notifOpen;
     private DotNetObjectReference<MainLayout>? selfRef;
+    private ErrorBoundary? errorBoundary;
+
+    /// Chat and Mail use the Apple toolbar header (title + summary + page actions). The sidebar
+    /// is deliberately not touched here — it stays however the user left it.
+    private bool IsToolbarPage
+    {
+        get
+        {
+            var path = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0];
+            return path is "/chat" or "/mail" || path.StartsWith("/chat/") || path.StartsWith("/mail/");
+        }
+    }
 
     private record Module(string Label, string Icon);
 
-    private static readonly Module[] Locked =
-    [
-        new("Chat", "message-circle"),
-        new("Mail", "mail"),
-        new("Projects", "square-kanban"),
-        new("News & Memos", "newspaper"),
-        new("Calls", "phone"),
-    ];
+    private static readonly Module[] Locked = [];
 
     private string UserName => Auth.Me?.Name ?? "…";
     private string UserRole => Auth.Me is null ? "" : $"{Auth.Me.Department} · {Auth.Me.Position}";
+    private int ChatUnread => Chat.TotalUnread;
+    /// Unread count behind the bell badge (NotificationState; mock count until backend).
+    private int NotifUnread => Notifs.UnreadCount;
+    private NotificationLocalPrefs NotifPrefs { get; set; } = new();
     private string Initials => Auth.Me is null
         ? "·"
         : string.Concat(Auth.Me.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
@@ -114,6 +253,14 @@
     private string SyncCaption => syncedAt is null
         ? "Waiting for the first sync"
         : $"{syncCount} records · {syncedAt:HH:mm}";
+
+    private bool PresenceConnected => Auth.ConnectionState != DirectoryConnectionState.Connecting;
+    private string PresenceLabel => Auth.ConnectionState switch
+    {
+        DirectoryConnectionState.Live => "Live",
+        DirectoryConnectionState.Reconnecting => "Reconnecting...",
+        _ => "Connecting..."
+    };
 
     private DateTime? syncedAt;
     private int syncCount;
@@ -124,12 +271,29 @@
     public string? SearchQuery { get; set; }
     public event Action? SearchChanged;
 
+    /// ipop-25: page-supplied placeholder so the shell search stops lying about what
+    /// it searches (it said "people" on News). Defaults keep existing callers unchanged.
+    public string SearchPlaceholder { get; private set; } = "Search people by name or ID";
+
     /// Raised when Escape is pressed anywhere. Pages use it to close overlays.
     public event Action? EscapePressed;
 
-    public void SetHeader(string title, string crumb = "", bool showSearch = false)
+    /// Toolbar summary under the title (e.g. "6 unread · 142 messages"). Only rendered on
+    /// toolbar pages; every SetHeader clears it so it never leaks across navigation.
+    public string Subtitle { get; private set; } = "";
+
+    public void SetHeader(string title, string crumb = "", bool showSearch = false, string? searchPlaceholder = null)
     {
         PageTitle = title; Crumb = crumb; ShowSearch = showSearch;
+        SearchPlaceholder = searchPlaceholder ?? "Search people by name or ID";
+        Subtitle = "";
+        StateHasChanged();
+    }
+
+    public void SetSubtitle(string subtitle)
+    {
+        if (Subtitle == subtitle) return;
+        Subtitle = subtitle;
         StateHasChanged();
     }
 
@@ -138,8 +302,86 @@
     private void OnPresenceChanged(string nik, string status)
         => _ = InvokeAsync(StateHasChanged);
 
+    private void OnConnectionStateChanged() => _ = InvokeAsync(StateHasChanged);
+
+    /// The refresh token was refused — the session is genuinely over. Send the user to sign in
+    /// rather than leaving them on a shell whose every request 401s behind a red error bar.
+    /// forceLoad: the whole component tree holds state tied to the old session, and a clean
+    /// document is both simpler and safer than unwinding it page by page.
+    private void OnSessionEnded() => _ = InvokeAsync(() => Nav.NavigateTo("/login", forceLoad: true));
+
+    private void OnChatUnreadChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void OnNotifUnreadChanged() => _ = InvokeAsync(StateHasChanged);
+
+    /// Preferensi berubah (disimpan dari halaman settings) — muat ulang localStorage
+    /// lalu render ulang agar badge lonceng langsung mengikuti ShowBadge terbaru.
+    private void OnNotifPreferencesChanged() => _ = InvokeAsync(async () =>
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string>("localStorage.getItem", "notification-preferences");
+            if (!string.IsNullOrEmpty(json))
+            {
+                var p = System.Text.Json.JsonSerializer.Deserialize<NotificationLocalPrefs>(json);
+                if (p is not null) NotifPrefs = p;
+            }
+        }
+        catch { }
+        StateHasChanged();
+    });
+
+    private void OnNotificationsChanged() => _ = InvokeAsync(async () =>
+    {
+        try
+        {
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+        catch { }
+    });
+
     private void ToggleSidebar() => collapsed = !collapsed;
-    private void ToggleNotif() => notifOpen = !notifOpen;
+
+    private async Task ToggleNotif()
+    {
+        notifOpen = !notifOpen;
+        if (notifOpen)
+        {
+            await Notifs.LoadRecentAsync();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    private async Task MarkAllNotifsRead()
+    {
+        await Notifs.MarkAllReadAsync();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task OnNotifClicked(ShellNotificationItem item)
+    {
+        notifOpen = false;
+        var targetUrl = NotificationState.GetRedirectUrl(item);
+        await Notifs.MarkReadAsync(item.Id);
+        Nav.NavigateTo(targetUrl);
+    }
+
+    private static string FormatNotifTime(DateTime dt)
+    {
+        var diff = DateTime.Now - dt;
+        if (diff.TotalSeconds < 60) return "Just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m";
+        if (diff.TotalHours < 24) return dt.ToString("HH:mm");
+        return dt.ToString("dd/MM");
+    }
+
+    /// Bell tray "Open inbox" — jump to the personal notification inbox.
+    private void OpenInbox()
+    {
+        notifOpen = false;
+        Nav.NavigateTo("/notifications/inbox");
+    }
 
     private bool IsDark { get; set; }
 
@@ -192,10 +434,37 @@
     protected override async Task OnInitializedAsync()
     {
         Auth.PresenceChanged += OnPresenceChanged;
+        Auth.ConnectionStateChanged += OnConnectionStateChanged;
+        Auth.SessionEnded += OnSessionEnded;
+        Chat.RoomListChanged += OnChatUnreadChanged;
+        Notifs.UnreadChanged += OnNotifUnreadChanged;
+        Notifs.NotificationsChanged += OnNotificationsChanged;
+        Notifs.PreferencesChanged += OnNotifPreferencesChanged;
+        Nav.LocationChanged += OnLocationChanged;
         await Auth.LoadMeAsync();
         await Auth.StartPresenceAsync();
+        await Chat.ConnectAsync();
+        // Connect notification SignalR AFTER auth so the token provider has a token.
+        await Notifs.ConnectAsync();
+        await Notifs.LoadRecentAsync(6);
+        await CallSvc.ConnectAsync();
         var s = await Auth.GetAsync<SyncStatusDto>("/api/admin/hris/status");
         if (s is not null) { syncedAt = s.LastSyncedAt?.ToLocalTime(); syncCount = s.EmployeeCount; }
+    }
+
+    // Re-render so the toolbar/standard header switch follows the route.
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        errorBoundary?.Recover();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private class NotificationLocalPrefs
+    {
+        public bool EnableNotifications { get; set; } = true;
+        public bool PlaySound { get; set; } = true;
+        public bool ShowBadge { get; set; } = true;
+        public bool ShowPreview { get; set; } = true;
     }
 
     private record SyncStatusDto(DateTime? LastSyncedAt, int EmployeeCount);
@@ -204,6 +473,18 @@
     {
         if (firstRender)
         {
+            // Muat preferensi notifikasi lokal (ShowBadge) dari localStorage.
+            try
+            {
+                var json = await JS.InvokeAsync<string>("localStorage.getItem", "notification-preferences");
+                if (!string.IsNullOrEmpty(json))
+                {
+                    var p = System.Text.Json.JsonSerializer.Deserialize<NotificationLocalPrefs>(json);
+                    if (p is not null) { NotifPrefs = p; }
+                }
+            }
+            catch { }
+
             selfRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("ipop.shortcuts", selfRef);
             IsDark = await JS.InvokeAsync<string>("ipop.theme") == "dark";
@@ -216,6 +497,13 @@
     {
         selfRef?.Dispose();
         Auth.PresenceChanged -= OnPresenceChanged;
+        Auth.ConnectionStateChanged -= OnConnectionStateChanged;
+        Auth.SessionEnded -= OnSessionEnded;
+        Chat.RoomListChanged -= OnChatUnreadChanged;
+        Notifs.UnreadChanged -= OnNotifUnreadChanged;
+        Notifs.NotificationsChanged -= OnNotificationsChanged;
+        Notifs.PreferencesChanged -= OnNotifPreferencesChanged;
+        Nav.LocationChanged -= OnLocationChanged;
         _ = JS.InvokeVoidAsync("ipop.shortcutsOff");
     }
 }

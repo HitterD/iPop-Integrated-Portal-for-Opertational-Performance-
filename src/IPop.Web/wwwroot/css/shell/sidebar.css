@@ -1,0 +1,417 @@
+/* ============ MODERN SIDEBAR ============ */
+/* Auto-collapse on Chat/Mail, smooth icon-only rail */
+
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--line-soft);
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4) var(--space-3) var(--space-3);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  transition: all var(--dur-normal) var(--ease-smooth);
+}
+
+/* Header */
+.side-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-2) var(--space-4);
+  margin-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line-soft);
+  min-height: 52px;
+}
+
+.side-head .mark {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  transition: transform var(--dur-fast) var(--ease-spring);
+}
+
+.side-head:hover .mark {
+  transform: scale(1.05);
+}
+
+.side-head .txt {
+  overflow: hidden;
+  white-space: nowrap;
+  transition: opacity var(--dur-normal) var(--ease-smooth), width var(--dur-normal) var(--ease-smooth);
+}
+
+.side-head .t {
+  font-size: var(--text-lg);
+  font-weight: var(--font-bold);
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.side-head .s {
+  font-size: var(--text-xs);
+  color: var(--ink-3);
+  margin-top: 1px;
+}
+
+/* Collapse button */
+.collapse-btn {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-smooth);
+}
+
+.collapse-btn:hover {
+  background: var(--tray);
+  color: var(--ink);
+  border-color: var(--line-strong);
+  transform: scale(1.05);
+}
+
+.collapse-btn:active {
+  transform: scale(0.95);
+}
+
+.collapse-btn .lucide {
+  width: 16px;
+  height: 16px;
+  transition: transform var(--dur-normal) var(--ease-smooth);
+}
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+
+.nav-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-4);
+  letter-spacing: 0.01em;
+  padding: 6px 10px 4px;
+  white-space: nowrap;
+}
+
+.shell.collapsed .nav-label {
+  display: none;
+}
+
+/* Navigation */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 8px 10px;
+  border-radius: var(--r-ctl);
+  margin-bottom: 2px;
+  color: var(--ink-2);
+  font-weight: var(--font-medium);
+  font-size: 13.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all var(--dur-fast) var(--ease-smooth);
+  position: relative;
+  text-decoration: none;
+  border: none;
+}
+
+.nav-item .lucide {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  transition: transform var(--dur-fast) var(--ease-spring);
+}
+
+.nav-item:hover .lucide {
+  transform: scale(1.08);
+}
+
+.nav-item .lbl {
+  overflow: hidden;
+  transition: opacity var(--dur-fast) var(--ease-smooth), width var(--dur-normal) var(--ease-smooth);
+}
+
+.nav-item:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  transform: none;
+}
+
+.nav-item.active {
+  background: var(--accent-bright);
+  color: #0d2c1d;
+  font-weight: 560;
+  border-color: transparent;
+}
+
+.nav-item.active .lucide {
+  color: #0d2c1d;
+}
+
+.nav-item.active::before {
+  display: none;
+}
+
+.nav-count {
+  margin-left: auto;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.nav-item.active .nav-count {
+  opacity: 0.85;
+  color: #0d2c1d;
+}
+
+.nav-item.locked {
+  color: var(--ink-3);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.nav-item.locked:hover {
+  background: transparent;
+  color: var(--ink-3);
+  transform: none;
+}
+
+.nav-item .lock {
+  margin-left: auto;
+  width: 14px;
+  height: 14px;
+}
+
+/* Badge */
+.nav-item .badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  background: var(--danger);
+  color: #fff;
+  font-size: var(--text-xs);
+  font-weight: var(--font-bold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  animation: badge-pulse 2s infinite;
+}
+
+@keyframes badge-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}
+
+/* Collapsed state */
+.shell.collapsed .sidebar {
+  padding: var(--space-4) var(--space-2) var(--space-3);
+}
+
+.shell.collapsed .side-head {
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: 0 0 var(--space-4);
+}
+
+.shell.collapsed .side-head .txt {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.shell.collapsed .collapse-btn {
+  margin: 0;
+}
+
+.shell.collapsed .collapse-btn .lucide {
+  transform: rotate(180deg);
+}
+
+.shell.collapsed .nav-item {
+  justify-content: center;
+  padding: 10px;
+  gap: 0;
+}
+
+.shell.collapsed .nav-item .lbl {
+  opacity: 0;
+  width: 0;
+}
+
+.shell.collapsed .nav-item .badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  font-size: 10px;
+  border: 2px solid var(--surface);
+}
+
+.shell.collapsed .nav-item .lock {
+  display: none;
+}
+
+/* Tooltips when collapsed */
+.shell.collapsed .nav-item::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + 12px);
+  top: 50%;
+  transform: translateY(-50%) translateX(-8px);
+  background: var(--ink);
+  color: var(--bg);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease-smooth), transform var(--dur-fast) var(--ease-smooth);
+  z-index: var(--z-tooltip);
+  box-shadow: var(--shadow-md);
+}
+
+[data-theme="dark"] .shell.collapsed .nav-item::after {
+  background: var(--surface-raised);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.shell.collapsed .nav-item:hover::after {
+  opacity: 1;
+  transform: translateY(-50%) translateX(0);
+}
+
+/* Footer */
+.sidebar-foot {
+  margin-top: auto;
+  padding: var(--space-3) var(--space-2) 0;
+  border-top: 1px solid var(--line-soft);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  white-space: nowrap;
+}
+
+.sidebar-foot .avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  font-weight: var(--font-bold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 2px solid var(--line-soft);
+  transition: transform var(--dur-fast) var(--ease-spring);
+}
+
+.sidebar-foot .avatar:hover {
+  transform: scale(1.05);
+}
+
+.sidebar-foot .who {
+  overflow: hidden;
+  transition: opacity var(--dur-fast) var(--ease-smooth);
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-foot .n {
+  font-weight: var(--font-semibold);
+  font-size: var(--text-sm);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-foot .r {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-foot .out {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--dur-fast) var(--ease-smooth);
+  flex-shrink: 0;
+}
+
+.sidebar-foot .out:hover {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.shell.collapsed .sidebar-foot {
+  justify-content: center;
+  padding: var(--space-3) 0 0;
+}
+
+.shell.collapsed .sidebar-foot .who {
+  opacity: 0;
+  width: 0;
+}
+
+.shell.collapsed .sidebar-foot .out {
+  display: none;
+}
+
+/* Auto-collapse animation helper */
+.sidebar-auto-collapsed .sidebar {
+  animation: sidebar-collapse var(--dur-normal) var(--ease-smooth) forwards;
+}
+
+@keyframes sidebar-collapse {
+  to {
+    width: var(--sidebar-collapsed);
+  }
+}
+
+/* Smooth grid transition */
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr;
+  min-height: 100vh;
+  transition: grid-template-columns var(--dur-normal) var(--ease-smooth);
+}
+
+.shell.collapsed {
+  grid-template-columns: var(--sidebar-collapsed) 1fr;
+}

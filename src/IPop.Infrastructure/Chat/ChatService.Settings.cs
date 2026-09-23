@@ -64,19 +64,27 @@ public sealed partial class ChatService
         return new RoomSettingsResultDto(true, null);
     }
 
-    public async Task<RoomSettingsResultDto> UpdateGroupIdentityAsyncImpl(Guid actorId, Guid roomId, string name, string? description, CancellationToken ct)
+    public async Task<RoomSettingsResultDto> UpdateGroupIdentityAsyncImpl(Guid actorId, Guid roomId, string name, string? description, string? avatarColor, CancellationToken ct)
     {
         var trimmedName = name.Trim();
         var trimmedDesc = description?.Trim();
         if (string.IsNullOrWhiteSpace(trimmedName) || trimmedName.Length > 100) return new RoomSettingsResultDto(false, "invalid_group_name");
         if (trimmedDesc != null && trimmedDesc.Length > 500) return new RoomSettingsResultDto(false, "invalid_group_description");
+        // Warna avatar: heksadesimal #RGB/#RRGGBB (opsional; null = palet default dari nama).
+        string? trimmedColor = null;
+        if (!string.IsNullOrWhiteSpace(avatarColor))
+        {
+            trimmedColor = avatarColor.Trim();
+            if (!System.Text.RegularExpressions.Regex.IsMatch(trimmedColor, "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"))
+                return new RoomSettingsResultDto(false, "invalid_avatar_color");
+        }
         var room = await db.ChatRooms.FindAsync([roomId], ct);
         if (room is null) return new RoomSettingsResultDto(false, "room_not_found");
         if (room.Type == "dm") return new RoomSettingsResultDto(false, "not_a_group");
         var role = await GetMemberRoleAsync(actorId, roomId, ct);
         if (role is not ("owner" and var _ or "admin")) return new RoomSettingsResultDto(false, "forbidden");
-        var changed = room.Name != trimmedName || room.Description != trimmedDesc;
-        room.Name = trimmedName; room.Description = trimmedDesc;
+        var changed = room.Name != trimmedName || room.Description != trimmedDesc || room.AvatarColor != trimmedColor;
+        room.Name = trimmedName; room.Description = trimmedDesc; room.AvatarColor = trimmedColor;
         if (changed)
         {
             var now = DateTime.UtcNow;
@@ -126,7 +134,7 @@ public sealed partial class ChatService
         var q = db.ChatRooms.AsNoTracking().Where(r => archivedIds.Contains(r.Id) && r.IsActive);
         var total = await q.CountAsync(ct);
         var rooms = await q.OrderByDescending(r => r.LastMessageAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
-        var dtos = rooms.Select(r => new RoomListDto(r.Id, r.Type, r.Name, null, null, null, r.LastMessageAt == default ? null : r.LastMessageAt, 0, false, true, true, null, false, false, null)).ToList();
+        var dtos = rooms.Select(r => new RoomListDto(r.Id, r.Type, r.Name, null, null, null, r.LastMessageAt == default ? null : r.LastMessageAt, 0, false, true, true, null, false, false, null, true, r.AvatarColor)).ToList();
         return new PagedResult<RoomListDto>(dtos, total, page, pageSize);
     }
 }

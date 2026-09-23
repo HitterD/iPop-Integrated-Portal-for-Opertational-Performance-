@@ -1,4 +1,5 @@
 using IPop.Api.Rbac;
+using IPop.Application.Documents;
 using IPop.Application.Files;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
@@ -94,41 +95,41 @@ public static class FileEndpoints
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
         });
 
-        g.MapGet("/preview", async (string server, string path, HttpContext http, IFileAccessService svc, IPopDbContext db, OfficeOptions office, CancellationToken ct) =>
+        g.MapGet("/preview", async (string server, string path, HttpContext http, IFileAccessService svc, IPopDbContext db, IWordDocumentService wordService, IPresentationService presentationService, CancellationToken ct) =>
         {
             var userId = await UserIdAsync(http);
             if (userId is null) return Results.Unauthorized();
             if (string.IsNullOrWhiteSpace(path)) return Results.BadRequest(new { code = "path_required" });
             var ext = System.IO.Path.GetExtension(path).ToLowerInvariant();
-            if (ext is not (".docx" or ".doc" or ".pptx" or ".ppt"))
-                return Results.BadRequest(new { code = "unsupported", message = "Only Word/PowerPoint files can be previewed." });
+            if (ext is not (".docx" or ".doc" or ".pptx" or ".ppt" or ".rtf"))
+                return Results.BadRequest(new { code = "unsupported", message = "Only Word or PowerPoint files can be previewed." });
             try
             {
                 await using var src = await svc.DownloadAsync(userId.Value, server, path.Trim(), ct);
                 await Audit(http, db, "files.preview", $"{server}:{path.Trim()}", ct);
 
-                var tempDir = Path.Combine(office.TempDirectory, "ipop-office");
-                Directory.CreateDirectory(tempDir);
-                var inFile = Path.Combine(tempDir, $"{Guid.NewGuid():N}{ext}");
-                var outFile = Path.ChangeExtension(inFile, ".pdf");
-                try
+                byte[] pdfBytes;
+                if (ext is ".docx" or ".doc" or ".rtf")
                 {
-                    await using (var fs = File.Create(inFile))
-                        await src.CopyToAsync(fs, ct);
-                    var result = await office.ConvertAsync(inFile, tempDir, ct);
-                    if (result is not 0) return Results.Json(new { code = "conversion_failed", message = "LibreOffice could not convert this file." }, statusCode: 500);
-                    if (!File.Exists(outFile)) return Results.Json(new { code = "conversion_failed" }, statusCode: 500);
-                    var bytes = await File.ReadAllBytesAsync(outFile, ct);
-                    return Results.File(bytes, "application/pdf", $"{Path.GetFileNameWithoutExtension(path)}.pdf");
+                    pdfBytes = await wordService.ConvertToPdfAsync(src, ct);
                 }
-                finally
+                else if (ext is ".pptx" or ".ppt")
                 {
-                    if (File.Exists(inFile)) File.Delete(inFile);
-                    if (File.Exists(outFile)) File.Delete(outFile);
+                    pdfBytes = await presentationService.ConvertToPdfAsync(src, ct);
                 }
+                else
+                {
+                    return Results.BadRequest(new { code = "unsupported", message = "Document format is not supported for preview." });
+                }
+
+                return Results.File(pdfBytes, "application/pdf", $"{Path.GetFileNameWithoutExtension(path)}.pdf");
             }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+            catch (Exception ex)
+            {
+                return Results.Json(new { code = "conversion_failed", message = $"Failed to convert document: {ex.Message}" }, statusCode: 500);
+            }
         });
 
         g.MapPost("/upload", async (HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>

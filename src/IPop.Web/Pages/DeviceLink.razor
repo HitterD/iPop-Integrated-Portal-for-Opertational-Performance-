@@ -1,0 +1,144 @@
+@page "/devices/link"
+@inject IJSRuntime JS
+@inject AuthState Auth
+
+@* Menghubungkan SJA Notifier lewat NIK: user sudah login di IPop, jadi NIK diambil
+   server-side dari klaim token. Halaman ini hanya menyetor kode 6 digit yang
+   ditampilkan aplikasi desktop — tidak pernah mengirim NIK dari sisi klien. *@
+
+<PageTitle>Link Device — IPop</PageTitle>
+
+<div class="content" style="grid-template-columns:1fr">
+    <div class="tray rise rise-1">
+        <div class="core">
+            <div class="panel-head">
+                <i data-lucide="monitor-smartphone"></i> <span>Link Notification Device</span>
+            </div>
+
+            <p class="sub" style="margin:12px 0 4px">
+                Open <strong>SJA Notifier</strong> on your computer, select
+                <strong>Link from another app</strong>, then enter the 6-digit code
+                shown on that screen here.
+            </p>
+
+            @if (linked is null)
+            {
+                <form @onsubmit="Submit" @onsubmit:preventDefault>
+                    <div class="field" style="max-width:260px">
+                        <label for="code">Activation code</label>
+                        <input id="code" type="text" inputmode="numeric" autocomplete="one-time-code"
+                               maxlength="6" placeholder="000000"
+                               style="letter-spacing:0.36em;font-size:18px;font-weight:600;text-align:center"
+                               @bind="code" @bind:event="oninput" disabled="@busy" />
+                    </div>
+
+                    <button class="btn" type="submit" disabled="@(!CodeValid || busy)">
+                        @(busy ? "Connecting…" : "Connect")
+                        <span class="orb"><i data-lucide="link"></i></span>
+                    </button>
+                </form>
+
+                <div class="note @(error is null ? "" : "err")" style="margin-top:14px"
+                     @key="@(error is null ? "shield" : "alert-circle")">
+                    <i data-lucide="@(error is null ? "shield" : "alert-circle")"></i>
+                    <span>
+                        @(error ?? "Devices linked this way only receive notifications and quick replies. Remote desktop still requires a one-time iDesk login.")
+                    </span>
+                </div>
+            }
+            else
+            {
+                <div class="note" style="margin-top:14px">
+                    <i data-lucide="check-circle-2"></i>
+                    <span>
+                        Device <strong>@(linked.DeviceName ?? "unnamed")</strong> linked successfully
+                        @(string.IsNullOrWhiteSpace(linked.EmployeeName) ? "" : $"for {linked.EmployeeName}").
+                        Permissions: @CapabilityLabel.
+                    </span>
+                </div>
+                <button class="btn-sm surface" style="margin-top:12px" @onclick="Reset">
+                    <i data-lucide="plus" style="width:13px;height:13px"></i> Link another device
+                </button>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private const int CodeLength = 6;
+
+    private string code = "";
+    private bool busy;
+    private string? error;
+    private DeviceLinkResult? linked;
+
+    private bool CodeValid => code.Length == CodeLength && code.All(char.IsAsciiDigit);
+
+    private string CapabilityLabel =>
+        linked?.Capabilities is { Count: > 0 } c ? string.Join(", ", c.Select(FriendlyCapability))
+                                                 : "notifications";
+
+    private static string FriendlyCapability(string c) => c switch
+    {
+        "notify" => "notifications",
+        "quick_reply" => "quick replies",
+        "remote" => "remote desktop",
+        _ => c,
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+        => await JS.InvokeVoidAsync("ipop.icons");
+
+    private async Task Submit()
+    {
+        if (!CodeValid || busy) return;
+
+        busy = true; error = null;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/devices/link", new { code });
+            if (!res.IsSuccessStatusCode)
+            {
+                error = await ReadMessage(res) ?? "Activation code is invalid or has expired.";
+                return;
+            }
+
+            linked = await res.Content.ReadFromJsonAsync<DeviceLinkResult>();
+            code = "";
+        }
+        catch
+        {
+            // API tak terjangkau melempar keluar dari SendAsync — tampilkan alasannya
+            // alih-alih membiarkan tombol terkunci tanpa penjelasan.
+            error = "Notification server could not be reached. Check your connection and try again.";
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    /// Endpoint mengembalikan { message } saat gagal; 500/proxy bisa mengembalikan HTML.
+    private static async Task<string?> ReadMessage(HttpResponseMessage res)
+    {
+        try
+        {
+            var body = await res.Content.ReadFromJsonAsync<ApiMessage>();
+            return string.IsNullOrWhiteSpace(body?.Message) ? null : body!.Message;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private void Reset()
+    {
+        linked = null;
+        code = "";
+        error = null;
+    }
+
+    private record ApiMessage(string? Message);
+    private record DeviceLinkResult(bool Success, string? DeviceName, string? EmployeeName, List<string>? Capabilities);
+}

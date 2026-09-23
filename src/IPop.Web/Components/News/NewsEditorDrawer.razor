@@ -1,0 +1,221 @@
+@namespace IPop.Web.Components.News
+@using IPop.Web.Models
+
+<div class="backdrop on" @onclick="OnClose"></div>
+<div class="drawer on" role="dialog" aria-label="@(IsEdit ? "Edit Post" : "Create New Post")" aria-modal="true">
+    <div class="tray"><div class="core" style="display:flex;flex-direction:column;height:100%;padding:0;overflow:hidden">
+        <div class="drawer-head">
+            <span style="display:flex;align-items:center;gap:8px;font-weight:700">
+                <i data-lucide="@(IsEdit ? "pencil" : "plus")"></i>
+                <span>@(IsEdit ? "Edit Post" : "Create New Post")</span>
+            </span>
+            <button class="drawer-close" @onclick="OnClose" aria-label="Close"><i data-lucide="x"></i></button>
+        </div>
+        <div class="drawer-body" style="flex:1;overflow:auto;padding:20px">
+            @if (!string.IsNullOrEmpty(FormError))
+            {
+                <div class="note err" style="margin-bottom:14px"><i data-lucide="alert-circle"></i><span>@FormError</span></div>
+            }
+
+            <div class="field">
+                <label>Post Category / Type</label>
+                <AppSelect Value="@formType" ValueChanged="OnTypeChanged" Options="@NewsUiHelper.FormTypeOptions" Label="Select Category" />
+            </div>
+
+            @if (formType == "condolence")
+            {
+                <div class="note" style="margin-bottom:14px;background:var(--tray);color:var(--ink-2)">
+                    <i data-lucide="heart" style="color:var(--ink-2)"></i>
+                    <span><strong>Condolence</strong> posts are presented with a respectful sympathy layout for the company community.</span>
+                </div>
+            }
+            else if (formType == "memo")
+            {
+                <div class="note" style="margin-bottom:14px;background:var(--accent-soft);color:var(--accent-ink)">
+                    <i data-lucide="file-text" style="color:var(--accent)"></i>
+                    <span><strong>Internal Memo</strong> serves as official internal correspondence. Enable acknowledgement if employees are required to confirm reading.</span>
+                </div>
+            }
+
+            <div class="field">
+                <label>Post Title</label>
+                <input placeholder="@(formType == "condolence" ? "Condolence — Mr./Ms. [Name]..." : formType == "memo" ? "Policy Update — Working Hours Policy..." : "Q3 Town Hall — Schedule & Agenda...")"
+                       @bind="formTitle"
+                       maxlength="300" />
+            </div>
+
+            <div class="field">
+                <label>Content</label>
+                <textarea placeholder="@(formType == "condolence" ? "With deep sorrow..." : "Enter announcement, notification, or memo text...")"
+                          @bind="formBody"
+                          rows="9"
+                          style="width:100%;padding:12px;font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);resize:vertical;line-height:1.6"></textarea>
+            </div>
+
+            <div class="field">
+                <label>Automatic Publish Schedule (Optional — leave blank to publish immediately upon approval)</label>
+                <input type="datetime-local"
+                       @bind="formPublishAt"
+                       style="width:100%;padding:10px 12px;font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink)" />
+            </div>
+
+            <div class="form-checkbox-group">
+                <label class="form-check-card">
+                    <input type="checkbox" @bind="formRequiresAck" />
+                    <div>
+                        <div style="font-weight:600;font-size:12.5px;color:var(--ink)">Requires Acknowledgement</div>
+                        <div style="font-size:11.5px;color:var(--ink-2)">Recipients must confirm having read this post.</div>
+                    </div>
+                </label>
+                <label class="form-check-card">
+                    <input type="checkbox" @bind="formIsPinned" />
+                    <div>
+                        <div style="font-weight:600;font-size:12.5px;color:var(--ink)">Pinned Post</div>
+                        <div style="font-size:11.5px;color:var(--ink-2)">This post will appear pinned at the top of the feed.</div>
+                    </div>
+                </label>
+            </div>
+
+            <div class="field" style="margin-top:16px">
+                <label>Audience Targeting</label>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+                    @foreach (var t in formTargets)
+                    {
+                        var target = t;
+                        <span class="tag-target-chip" style="display:inline-flex;align-items:center;gap:6px">
+                            @target.Kind:@(target.Value ?? "all")
+                            <button type="button" @onclick="() => formTargets.Remove(target)" style="background:none;border:none;cursor:pointer;padding:0;color:inherit"><i data-lucide="x" style="width:11px;height:11px"></i></button>
+                        </span>
+                    }
+                    @if (formTargets.Count == 0)
+                    {
+                        <span style="font-size:12px;color:var(--ink-3)">Empty targeting = All Employees (All Users)</span>
+                    }
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                    <AppSelect Value="@targetKind" ValueChanged="v => targetKind = v ?? targetKind" Options="@NewsUiHelper.TargetKindOptions" Label="Target Type" />
+                    @if (targetKind != "all")
+                    {
+                        <input placeholder="@(targetKind == "department" ? "Dept Code (e.g. ENG, HRD)" : targetKind == "role" ? "Role (e.g. Manager)" : "Employee ID (NIK)")"
+                               @bind="targetValue"
+                               style="flex:1;min-width:140px;padding:8px 12px;font-family:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)" />
+                    }
+                    <button type="button" class="org-act" style="width:auto;padding:8px 14px;font-size:12.5px" @onclick="AddTarget"><i data-lucide="plus" style="width:12px;height:12px"></i> Add Target</button>
+                </div>
+                @if (targetKind == "user")
+                {
+                    <div style="margin-top:8px"><AppMemberPicker Placeholder="Select employee…" ValueChanged="OnPickMember" /></div>
+                }
+            </div>
+
+            @if (IsEdit && Detail is not null)
+            {
+                <div class="note" style="margin-top:16px"><i data-lucide="info"></i><span>Editing a rejected post resets its status back to draft for resubmission.</span></div>
+            }
+        </div>
+        <div style="padding:14px 20px;border-top:1px solid var(--line-soft);display:flex;gap:8px;background:var(--bg)">
+            <button type="button" class="btn" style="flex:1;margin:0" @onclick="SubmitForm" disabled="@FormBusy">
+                @(FormBusy ? "Saving…" : (IsEdit ? "Save Changes" : "Save as Draft"))
+                <span class="orb"><i data-lucide="@(IsEdit ? "check" : "plus")"></i></span>
+            </button>
+            <button type="button" class="btn" style="width:auto;margin:0;background:var(--surface);color:var(--ink);border:1px solid var(--line)" @onclick="OnClose">Cancel</button>
+        </div>
+    </div></div>
+</div>
+
+@code {
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    [Parameter] public bool IsEdit { get; set; }
+    [Parameter] public NewsDetailDto? Detail { get; set; }
+    [Parameter] public string DefaultCategory { get; set; } = "news";
+    [Parameter] public bool FormBusy { get; set; }
+    [Parameter] public string? FormError { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<NewsSaveRequest> OnSave { get; set; }
+
+    private string formType = "news";
+    private string formTitle = "";
+    private string formBody = "";
+    private DateTime? formPublishAt;
+    private bool formRequiresAck;
+    private bool formIsPinned;
+    private List<NewsTargetInput> formTargets = [];
+    private string targetKind = "all";
+    private string targetValue = "";
+
+    protected override void OnParametersSet()
+    {
+        if (IsEdit && Detail is not null)
+        {
+            formType = Detail.Type;
+            formTitle = Detail.Title;
+            formBody = Detail.Body;
+            formPublishAt = Detail.PublishAt;
+            formRequiresAck = Detail.RequiresAcknowledgement;
+            formIsPinned = Detail.IsPinned;
+            formTargets = Detail.Targets.Select(t => new NewsTargetInput(t.Kind, t.Value)).ToList();
+        }
+        else if (!IsEdit)
+        {
+            formType = string.IsNullOrEmpty(DefaultCategory) ? "news" : DefaultCategory;
+            formTitle = "";
+            formBody = "";
+            formPublishAt = null;
+            formRequiresAck = false;
+            formIsPinned = false;
+            formTargets = [];
+        }
+        targetKind = "all";
+        targetValue = "";
+    }
+
+    private void OnTypeChanged(string? v)
+    {
+        formType = v ?? "news";
+        StateHasChanged();
+        _ = JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private void AddTarget()
+    {
+        var kind = targetKind.Trim().ToLowerInvariant();
+        var val = targetValue.Trim();
+        if (kind == "all")
+        {
+            formTargets.Add(new NewsTargetInput("all", null));
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(val)) return;
+            formTargets.Add(new NewsTargetInput(kind, val));
+        }
+        targetValue = "";
+        StateHasChanged();
+        _ = JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private void OnPickMember(MemberSearchRow r)
+    {
+        formTargets.Add(new NewsTargetInput("user", r.Nik));
+        targetKind = "user";
+        targetValue = r.Nik;
+        StateHasChanged();
+        _ = JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task SubmitForm()
+    {
+        var req = new NewsSaveRequest(
+            formType,
+            formTitle.Trim(),
+            formBody,
+            formPublishAt,
+            formRequiresAck,
+            formIsPinned,
+            formTargets
+        );
+        await OnSave.InvokeAsync(req);
+    }
+}

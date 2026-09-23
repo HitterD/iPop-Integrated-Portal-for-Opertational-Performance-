@@ -77,6 +77,20 @@ public static class AdminEndpoints
             return Results.Ok(new { total, page = p, pageSize = size, items });
         });
 
+        g.MapGet("/stats", async (IPopDbContext db, CancellationToken ct) =>
+        {
+            var total = await db.Users.CountAsync(ct);
+            var active = await db.Users.CountAsync(u => u.IsActive, ct);
+            var adminRoleId = await db.Roles.Where(r => r.Name == "Admin").Select(r => r.Id).FirstOrDefaultAsync(ct);
+            var admins = adminRoleId != default
+                ? await db.UserRoles.CountAsync(ur => ur.RoleId == adminRoleId, ct)
+                : 0;
+            var now = DateTime.UtcNow;
+            var activeCutoff = now.AddMinutes(-5);
+            var online = await db.Users.CountAsync(u => u.IsActive && u.PresenceLastSeenAt >= activeCutoff, ct);
+            return Results.Ok(new AdminUserStats(total, active, admins, online));
+        });
+
         g.MapGet("/sessions", async (IPopDbContext db, CancellationToken ct) =>
         {
             var now = DateTime.UtcNow;
@@ -886,6 +900,7 @@ public static class AdminEndpoints
         string? Location, string? Department, string? DepartmentCode, string? Site,
         string? SiteCode, bool IsActive, bool IsManuallyEdited, string[] Roles,
         string Status, DateTime UpdatedAt);
+    public record AdminUserStats(int Total, int Active, int Admins, int Online);
     public record AdminSessionRow(Guid Id, string Nik, string Name, string? DeviceFingerprint,
         string? IpAddress, DateTime CreatedAt, DateTime ExpiresAt);
     public record CreateUserRequest(string Nik, string Name, string Email, string? Position,

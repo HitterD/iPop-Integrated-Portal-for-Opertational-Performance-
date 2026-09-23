@@ -1,0 +1,580 @@
+/* ============ MODERN TOPBAR ============ */
+/* Clean, elevated, with better visual hierarchy */
+
+.topbar {
+  height: var(--topbar-height);
+  background: rgba(250, 250, 249, 0.8);
+  backdrop-filter: blur(16px) saturate(1.5);
+  border-bottom: 1px solid var(--line-soft);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-6);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  transition: all var(--dur-normal) var(--ease-smooth);
+}
+
+[data-theme="dark"] .topbar {
+  background: rgba(12, 10, 9, 0.8);
+}
+
+.topbar h1 {
+  font-size: var(--text-xl);
+  font-weight: var(--font-bold);
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.topbar .crumb {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  padding: 4px 10px;
+  background: var(--tray);
+  border-radius: var(--radius-full);
+}
+
+/* Connection status */
+.topbar .meta.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  border: 1px solid rgba(var(--accent-rgb), 0.2);
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+.topbar .meta.conn .lucide {
+  width: 12px;
+  height: 12px;
+}
+
+/* Search */
+.search {
+  position: relative;
+  flex: 0 1 400px;
+  margin-left: var(--space-2);
+}
+
+.search .lucide {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--ink-3);
+  pointer-events: none;
+  transition: color var(--dur-fast) var(--ease-smooth);
+}
+
+.search input {
+  width: 100%;
+  padding: 10px 16px 10px 40px;
+  font-size: var(--text-sm);
+  font-family: inherit;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--ink);
+  transition: all var(--dur-fast) var(--ease-smooth);
+  box-shadow: var(--shadow-xs);
+}
+
+.search input:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.search input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring-accent);
+}
+
+.search input:focus + .lucide {
+  color: var(--accent);
+}
+
+.search input::placeholder {
+  color: var(--ink-3);
+}
+
+/* Right side actions */
+.topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Icon buttons */
+.topbar-right button {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-smooth);
+  position: relative;
+}
+
+.topbar-right button:hover {
+  background: var(--tray);
+  color: var(--ink);
+  transform: translateY(-1px);
+}
+
+.topbar-right button:active {
+  transform: translateY(0) scale(0.95);
+}
+
+.topbar-right button .lucide {
+  width: 18px;
+  height: 18px;
+}
+
+/* Theme toggle (Apple style) */
+.theme-btn {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 8px !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--ink-2) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: all 0.14s var(--ease) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.theme-btn:hover {
+  background: var(--surface-2) !important;
+  color: var(--ink) !important;
+  transform: none !important;
+}
+
+.theme-btn:active {
+  background: var(--surface-3, rgba(0, 0, 0, 0.08)) !important;
+  transform: scale(0.96) !important;
+}
+
+/* Bell with badge (Apple style) */
+.bell-btn {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 8px !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--ink-2) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  transition: all 0.14s var(--ease) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.bell-btn:hover {
+  background: var(--surface-2) !important;
+  color: var(--ink) !important;
+  transform: none !important;
+}
+
+.bell-btn:active {
+  background: var(--surface-3, rgba(0, 0, 0, 0.08)) !important;
+  transform: scale(0.96) !important;
+}
+
+.bell-btn .badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 17px;
+  height: 17px;
+  border-radius: 99px;
+  background: #ff3b30;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 2px solid var(--surface);
+  line-height: 1;
+}
+
+/* Notification popover */
+.bell-wrap {
+  position: relative;
+}
+
+.notif-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 1000;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  opacity: 0;
+  transform: translateY(-10px) scale(0.97);
+  pointer-events: none;
+  transition: opacity 0.2s var(--ease), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  filter: drop-shadow(0 16px 36px rgba(0, 0, 0, 0.18));
+}
+
+.notif-pop.on {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+/* Presence toggle (Apple style pill) */
+.presence-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 0 11px;
+  background: var(--surface-2);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all 0.16s var(--ease);
+  height: 30px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.presence-toggle .status-lbl {
+  font-size: 12px;
+  color: var(--ink);
+  font-weight: 520;
+  letter-spacing: -0.01em;
+}
+
+.presence-toggle:hover {
+  background: var(--surface-3, var(--tray));
+  border-color: var(--line-2, var(--line-strong));
+  transform: none;
+}
+
+.presence-toggle .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.presence-toggle .dot.on {
+  background: #34c759;
+  box-shadow: 0 0 0 2px rgba(52, 199, 89, 0.25);
+}
+
+.presence-toggle .dot.busy {
+  background: #ff3b30;
+  box-shadow: 0 0 0 2px rgba(255, 59, 48, 0.25);
+}
+
+.presence-toggle .dot.away {
+  background: #ff9500;
+  box-shadow: 0 0 0 2px rgba(255, 149, 0, 0.25);
+}
+
+.presence-toggle .dot.off {
+  background: #8e8e93;
+}
+
+/* ============ APPLE TOPBAR & CONTROL EXTENSIONS ============ */
+.searchbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 7px 13px;
+  width: 248px;
+  color: var(--ink-3);
+  transition: border-color 0.18s, background 0.18s;
+}
+.searchbox:focus-within {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+.searchbox .lucide {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+.searchbox input {
+  border: 0;
+  outline: 0;
+  background: none;
+  width: 100%;
+  font-size: 13.5px;
+  color: var(--ink);
+  font-family: inherit;
+}
+.searchbox input::placeholder {
+  color: var(--ink-4);
+}
+.kbd {
+  font-size: 10.5px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--surface-3);
+  color: var(--ink-3);
+  border: 1px solid var(--line);
+  flex: none;
+}
+[data-theme="dark"] .kbd {
+  background: var(--surface-2);
+}
+
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  display: grid;
+  place-items: center;
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+  cursor: pointer;
+  position: relative;
+  padding: 0;
+}
+.icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-color: var(--line-2);
+}
+.icon-btn .dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: #ffffff !important;
+  font-size: 13px;
+  font-weight: 560;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.14s, transform 0.14s var(--ease-out);
+  text-decoration: none;
+}
+.btn-primary:hover {
+  opacity: 0.88;
+}
+.btn-primary:active {
+  transform: scale(0.97);
+}
+.btn-primary .lucide {
+  width: 15px;
+  height: 15px;
+}
+
+.ghost-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: var(--r-ctl);
+  background: var(--surface);
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+  font-size: 12.5px;
+  font-weight: 520;
+  cursor: pointer;
+  transition: all 0.16s var(--ease);
+  text-decoration: none;
+}
+.ghost-btn:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-color: var(--line-2);
+}
+.ghost-btn .lucide {
+  width: 15px;
+  height: 15px;
+}
+
+.me-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--window);
+  font-size: 12px;
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+}
+
+/* ============ APPLE TOOLBAR (Chat / Mail) ============
+   Large title + one-line summary on the left; page actions (SectionOutlet
+   "topbar-actions") then the shell's status/theme/bell on the right. Mirrors
+   docs/mockups/ipop-apple: no pills, no crumb, calm hairline. */
+.topbar.apple-toolbar {
+  height: 54px;
+  padding: 0 20px 0 24px;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid var(--line);
+}
+
+[data-theme="dark"] .topbar.apple-toolbar {
+  background: rgba(24, 24, 27, 0.94);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.topbar.apple-toolbar .tb-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0;
+}
+
+.topbar.apple-toolbar h1 {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.topbar.apple-toolbar .tb-sub {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.topbar.apple-toolbar .topbar-right {
+  gap: 8px;
+}
+
+/* Page actions keep their natural size; only the shell's square controls are 36×36. */
+.topbar-right .tb-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 6px;
+  padding-right: 12px;
+  border-right: 1px solid var(--line);
+}
+
+.topbar-right .tb-actions button {
+  width: auto;
+  height: 34px;
+  transform: none;
+}
+
+.topbar-right .tb-actions button:hover {
+  transform: none;
+}
+
+.topbar-right .tb-actions .icon-btn {
+  width: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  background: var(--surface);
+}
+
+.topbar-right .tb-actions .icon-btn:hover {
+  background: var(--surface-2);
+}
+
+.topbar-right .tb-actions .btn-primary {
+  padding: 0 16px;
+  background: var(--ink);
+  font-weight: 600;
+}
+
+[data-theme="dark"] .topbar-right .tb-actions .btn-primary {
+  background: var(--accent);
+}
+
+.topbar-right .tb-actions .tb-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  width: 280px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+
+.topbar-right .tb-actions .tb-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.14);
+}
+
+.topbar-right .tb-actions .tb-search .lucide {
+  width: 15px;
+  height: 15px;
+  color: var(--ink-3);
+  flex-shrink: 0;
+}
+
+.topbar-right .tb-actions .tb-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.topbar-right .tb-actions .tb-search input::placeholder {
+  color: var(--ink-4);
+}
+
+@media (max-width: 1280px) {
+  .topbar-right .tb-actions .tb-search { width: 200px; }
+  .topbar.apple-toolbar .presence-toggle .status-lbl { display: none; }
+}

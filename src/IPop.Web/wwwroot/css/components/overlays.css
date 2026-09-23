@@ -1,0 +1,141 @@
+/* Shared overlays: backdrop, drawer/modal/context shells, and toast host. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(30, 27, 22, 0.32);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s var(--ease);
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+}
+[data-theme="dark"] .backdrop { background: rgba(0, 0, 0, 0.58); }
+.backdrop.on { opacity: 1; pointer-events: auto; }
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 70;
+  width: 440px;
+  max-width: 94vw;
+  transform: translateX(calc(100% + 24px));
+  transition: transform 0.35s var(--ease);
+  padding: 16px;
+  box-sizing: border-box;
+}
+.drawer.on { transform: translateX(0); }
+
+/* Drawers carry two shells: most pages nest .tray/.core, Chat's drawers use
+   the -d variants. Both are live in markup, so both are styled identically. */
+.drawer .tray, .drawer .tray-d {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  box-shadow: var(--sh-pop);
+  overflow: hidden;
+}
+[data-theme="dark"] .drawer .tray, [data-theme="dark"] .drawer .tray-d {
+  background: var(--surface);
+  border-color: var(--line);
+}
+.drawer .core, .drawer .core-d {
+  flex: 1;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+  font-size: 14px;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 2;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.drawer-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.16s var(--ease);
+  padding: 0;
+}
+.drawer-close:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-color: var(--line-2);
+  transform: scale(1.05);
+}
+.drawer-close:active {
+  transform: scale(0.95);
+}
+.drawer-close .lucide { width: 15px; height: 15px; }
+
+.ctx-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: transparent;
+}
+
+.ctx-menu {
+  z-index: 9999;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 4px;
+  min-width: 168px;
+  max-width: calc(100vw - 20px);
+  max-height: calc(100vh - 20px);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(8px);
+  transform-origin: top left;
+  animation: ctx-rise 0.14s var(--ease) both;
+}
+@keyframes ctx-rise { from { opacity: 0; transform: translateY(-3px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.ctx-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font: 500 12px/1 inherit;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.14s var(--ease), color 0.14s var(--ease);
+}
+.ctx-menu button:hover { background: var(--tray); }
+.ctx-menu button .lucide { width: 13px; height: 13px; color: var(--ink-2); }
+.ctx-menu button.danger { color: var(--danger); }
+.ctx-menu button.danger .lucide { color: var(--danger); }
+.ctx-menu button.danger:hover { background: var(--danger-soft); }
+.ctx-menu .ctx-sep { height: 1px; margin: 3px 5px; background: var(--line-soft); }
+
+.toast-host { position: fixed; top: 14px; right: 14px; z-index: 120; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast { pointer-events: auto; min-width: 260px; max-width: 380px; padding: 10px 12px; border-radius: 10px; display: flex; align-items: center; gap: 8px; font-size: 12px; box-shadow: var(--shadow-md); }
+.toast.error { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger); }
+.toast.success { background: var(--accent-soft); color: var(--accent-ink); border: 1px solid var(--accent); }
+.toast.info { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+.toast-close { margin-left: auto; background: none; border: none; font-size: 16px; cursor: pointer; color: inherit; }

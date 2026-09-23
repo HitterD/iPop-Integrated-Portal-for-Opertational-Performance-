@@ -19,6 +19,7 @@ public partial class Chat
         ctxMsgId = msgId;
         ctxX = e.ClientX;
         ctxY = e.ClientY;
+        ctxNeedsPlacement = true;
     }
 
     private void CloseCtx() => ctxMsgId = null;
@@ -87,11 +88,11 @@ public partial class Chat
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/messages/{forwardMsgId}/forward", new { targetRoomId });
         if (res.IsSuccessStatusCode)
         {
-            Toasts.Show("Pesan berhasil diteruskan", ToastKind.Success);
+            Toasts.Show("Message forwarded successfully.", ToastKind.Success);
         }
         else
         {
-            Toasts.Show("Gagal meneruskan pesan", ToastKind.Error);
+            Toasts.Show("Failed to forward message.", ToastKind.Error);
         }
         forwardOpen = false;
         forwardMsgId = null;
@@ -115,7 +116,7 @@ public partial class Chat
         }
         else
         {
-            Toasts.Show("Izin mikrofon diperlukan untuk merekam suara.", ToastKind.Error);
+            Toasts.Show("Microphone permission is required to record audio.", ToastKind.Error);
         }
     }
 
@@ -159,7 +160,7 @@ public partial class Chat
         }
         catch (Exception ex)
         {
-            Toasts.Show("Gagal mengirim voice message: " + ex.Message, ToastKind.Error);
+            Toasts.Show("Failed to send voice message: " + ex.Message, ToastKind.Error);
         }
     }
 
@@ -261,10 +262,31 @@ public partial class Chat
 
     // ---- Group Info (Task 15.1) ----
 
-    private async Task LeaveGroup()
+    private bool leaveConfirmOpen;
+    private string leaveConfirmMessage = "";
+
+    private void LeaveGroup()
     {
+        if (ChatSvc.ActiveRoomId is null || ChatSvc.ActiveRoom is null) return;
+        var role = ChatSvc.ActiveRoom.CurrentUserRole;
+        var others = ChatSvc.ActiveRoom.Members.Where(m => m.Nik != GetCurrentUserNik()).ToList();
+        if (role == "owner" && others.Count > 0)
+        {
+            var next = others.OrderBy(m => m.Role == "admin" ? 0 : 1).First();
+            leaveConfirmMessage = $"You are the group owner. Ownership will transfer to {next.Name}. Leave {ChatSvc.ActiveRoom.Name}?";
+        }
+        else if (role == "owner" && others.Count == 0)
+            leaveConfirmMessage = $"You are the last member. The group will be archived. Leave {ChatSvc.ActiveRoom.Name}?";
+        else
+            leaveConfirmMessage = $"Leave {ChatSvc.ActiveRoom.Name}? This conversation will be removed from your list.";
+        leaveConfirmOpen = true;
+    }
+
+    private async Task ConfirmLeaveGroup()
+    {
+        leaveConfirmOpen = false;
         await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/leave");
-        groupInfoOpen = false;
+        CloseDetail();
         await ChatSvc.LoadRoomsAsync();
     }
 
@@ -275,11 +297,11 @@ public partial class Chat
         ToggleDrawerTab(ChatDrawerTab.Pinned);
     }
 
-    /// ipop-34: hub 'pinnedChanged' events now land here. Only fetch while the panel is
-    /// open — a closed panel must not fire requests on every pin/unpin in any room.
+    /// ipop-34: hub 'pinnedChanged' events now land here. Always refresh the list so
+    /// the sticky pinned bar stays live; the drawer tab reads the same cached list.
     private void OnPinnedChanged() => _ = InvokeAsync(async () =>
     {
-        if ((!drawerOpen || activeDrawerTab != ChatDrawerTab.Pinned) || ChatSvc.ActiveRoomId is null) return;
+        if (ChatSvc.ActiveRoomId is null) return;
         await LoadPinnedMessagesAsync();
     });
 
@@ -331,6 +353,25 @@ public partial class Chat
     }
 
     // ---- New DM Methods ----
+    private void OpenDmFromList(Guid roomId)
+    {
+        newDmModalOpen = false;
+        activeTab = RoomTab.Direct;
+        OpenRoom(roomId);
+    }
+
+    private void ClearDmSearch()
+    {
+        newDmSearchQuery = "";
+        newDmSearchResults = [];
+    }
+
+    private void ClearGroupSearch()
+    {
+        newGroupSearchQuery = "";
+        newGroupSearchResults = [];
+    }
+
     private async Task SearchDmUsers()
     {
         if (newDmSearchQuery.Length < 2) { newDmSearchResults = []; return; }
@@ -434,7 +475,7 @@ public partial class Chat
     {
         if (ChatSvc.ActiveRoomId is null) return;
         await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/archive");
-        groupInfoOpen = false;
+        CloseDetail();
         await ChatSvc.LoadRoomsAsync();
     }
 
@@ -465,19 +506,46 @@ public partial class Chat
         await ChatSvc.LoadArchivedRoomsAsync();
     }
 
+    // Arsip tetap bisa dibuka (PRD: riwayat tetap dapat dibuka) — membuka ruang
+    // arsip tidak mengeluarkannya dari arsip; itu aksi tombol Unarchive terpisah.
+    private void OpenArchivedRoom(Guid roomId) => OpenRoom(roomId);
+
     // ipop-47b: pager for the archived list — rooms past the first page were unreachable
     // by any other path (search and the main list exclude archived ids).
     private async Task LoadMoreArchived() => await ChatSvc.LoadMoreArchivedAsync();
 
     // ---- Pin Message (Fix 7) ----
 
+    private bool IsMsgPinned(Guid msgId) => pinnedMessages.Any(p => p.MessageId == msgId);
+
     private async Task PinMessage(Guid msgId)
     {
         ctxMsgId = null;
         if (ChatSvc.ActiveRoomId is null) return;
-        await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/pins/{msgId}");
-        if (drawerOpen && activeDrawerTab == ChatDrawerTab.Pinned)
-            await LoadPinnedMessagesAsync();
+        if (IsMsgPinned(msgId))
+            await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/pins/{msgId}");
+        else
+            await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/pins/{msgId}");
+        await LoadPinnedMessagesAsync();
+    }
+
+    // ---- Simpan Pesan (bookmark pribadi) ----
+    // Simpanan bersifat pribadi: tidak mengubah tampilan ruang, tidak menyiarkan
+    // apa pun. POST /api/chat/saved/{messageId}.
+
+    private async Task SaveMessage(Guid msgId)
+    {
+        ctxMsgId = null;
+        if (ChatSvc.ActiveRoomId is null) return;
+        try
+        {
+            await Auth.SendAsync(HttpMethod.Post, $"/api/chat/saved/{msgId}");
+            Toasts.Show("Message saved to your personal saved list.", ToastKind.Success);
+        }
+        catch
+        {
+            Toasts.Show("Failed to save message. Please try again.", ToastKind.Error);
+        }
     }
 
     private async Task StartCallWith(string? nik)
@@ -486,7 +554,7 @@ public partial class Chat
         var room = await CallStateSvc.CreateAsync(nik);
         if (room is null)
         {
-            Toasts.Show("Tidak dapat memulai panggilan. Pastikan rekan Anda terdaftar dan aktif.", ToastKind.Error);
+            Toasts.Show("Could not start call. Make sure the contact is registered and active.", ToastKind.Error);
         }
     }
 }

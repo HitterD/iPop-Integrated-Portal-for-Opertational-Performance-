@@ -10,7 +10,9 @@ public record MailSummary(
     string Subject, string Snippet, DateTime? ReceivedAt,
     bool IsRead, bool IsStarred, bool HasAttachment,
     int ThreadCount, bool IsThreadRoot, Guid? ThreadRootId,
-    bool IsPinned = false, string Importance = "normal", DateTime? ScheduledAt = null);
+    bool IsPinned = false, string Importance = "normal", DateTime? ScheduledAt = null,
+    /// Label pengguna pada surat ini (Fase 3 — Surat Lanjutan).
+    IReadOnlyList<string>? Labels = null);
 
 public record MailCounts(
     int InboxUnread, int InboxTotal, int SentTotal, int DraftTotal,
@@ -52,3 +54,4 @@ public record MailSendRequest(
 public record BatchIds(IReadOnlyList<Guid> MailIds);
 public record BatchMove(IReadOnlyList<Guid> MailIds, string Folder);
 public record FolderReq(string Folder);
+public record MailLabel(Guid Id, string Name, string Color, int Count);

@@ -1,0 +1,230 @@
+@namespace IPop.Web.Components
+@inject IPop.Web.Services.AuthState Auth
+@inject IJSRuntime JS
+@inject IPop.Web.Services.ToastService Toasts
+
+@* Pemilih berkas NAS generik (SynologyDrive) — mengembalikan REFERENSI berkas
+   (server + path + nama + ukuran), bukan mengunduh isinya. Dipakai modul mana pun
+   yang menautkan berkas NAS (lampiran tugas, komentar, dst). *@
+
+@if (IsOpen)
+{
+    <div class="syno-modal-overlay" @onclick="Close">
+        <div class="syno-picker-dialog" @onclick:stopPropagation>
+            <div class="syno-picker-head">
+                <span class="title">
+                    <i data-lucide="hard-drive"></i>
+                    <span>Select Files from NAS (iPop Files)</span>
+                </span>
+                <button type="button" class="icon-btn" @onclick="Close">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+
+            <div class="syno-picker-body">
+                @* Server Switcher *@
+                <div style="display:flex;gap:6px;margin-bottom:10px;">
+                    @foreach (var s in Servers)
+                    {
+                        <button type="button"
+                                class="admin-tab @(server == s.Id ? "active" : "")"
+                                style="padding:4px 10px;font-size:11.5px;border-radius:6px;"
+                                @onclick="() => SwitchServer(s.Id)">
+                            @s.Label
+                        </button>
+                    }
+                </div>
+
+                @* Breadcrumbs *@
+                <div class="syno-breadcrumb">
+                    <button type="button" class="comp-btn" style="height:22px;padding:0 6px;font-size:11px" @onclick='() => NavigateTo("/")'>
+                        <i data-lucide="home" style="width:12px;height:12px"></i>
+                    </button>
+                    @if (currentPath != "/")
+                    {
+                        var segments = currentPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                        var build = "";
+                        foreach (var seg in segments)
+                        {
+                            build += "/" + seg;
+                            var target = build;
+                            <span>/</span>
+                            <button type="button" class="comp-btn" style="height:22px;padding:0 6px;font-size:11px" @onclick="() => NavigateTo(target)">
+                                @seg
+                            </button>
+                        }
+                    }
+                </div>
+
+                @if (loading)
+                {
+                    <div style="padding:30px;text-align:center;color:var(--ink-3);font-size:13px">
+                        <i data-lucide="loader-circle" style="width:20px;height:20px;margin-bottom:8px"></i>
+                        <div>Loading files…</div>
+                    </div>
+                }
+                else if (loadError != null)
+                {
+                    <div style="padding:20px;text-align:center;color:var(--danger);font-size:12.5px">
+                        @loadError
+                    </div>
+                }
+                else if (currentPath == "/" && shares is not null)
+                {
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
+                        @foreach (var share in shares)
+                        {
+                            <button type="button" class="syno-share-card" @onclick='() => NavigateTo("/" + share)'>
+                                <i data-lucide="folder" style="width:20px;height:20px"></i>
+                                <span>@share</span>
+                            </button>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="display:flex;flex-direction:column;gap:4px">
+                        @foreach (var it in items.OrderByDescending(i => i.IsDir).ThenBy(i => i.Name))
+                        {
+                            var item = it;
+                            var isSel = selectedPaths.ContainsKey(item.Path);
+                            <div class="syno-row @(isSel ? "selected" : "")"
+                                 @onclick="() => OnRowClick(item)">
+                                <i data-lucide="@(item.IsDir ? "folder" : "file")" style="width:15px;height:15px;color:@(item.IsDir ? "var(--accent-ink)" : "var(--ink-3)")"></i>
+                                <span style="flex:1;font-size:12.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">@item.Name</span>
+                                @if (!item.IsDir)
+                                {
+                                    <span style="font-size:10.5px;color:var(--ink-3)">@HumanSize(item.Size)</span>
+                                    <input type="checkbox" checked="@isSel" @onclick:stopPropagation @onchange="() => ToggleSelect(item)" />
+                                }
+                            </div>
+                        }
+                        @if (items.Count == 0)
+                        {
+                            <div style="padding:20px;text-align:center;color:var(--ink-3);font-size:12px">This folder is empty.</div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="syno-picker-foot">
+                <span style="font-size:11.5px;color:var(--ink-3)">@selectedPaths.Count files selected</span>
+                <button type="button" class="btn-sm accent" disabled="@(selectedPaths.Count == 0)" @onclick="PickSelected">
+                    <i data-lucide="check" style="width:12px;height:12px"></i> Select
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    /// Berkas terpilih sebagai referensi NAS (bukan isi unduhan).
+    [Parameter] public EventCallback<List<NasFileRef>> OnPicked { get; set; }
+
+    /// Referensi berkas NAS: cukup untuk menautkan tanpa menyalin isi.
+    public sealed record NasFileRef(string Server, string Path, string Name, long Size);
+
+    private record ServerInfo(string Id, string Label);
+    private static readonly ServerInfo[] Servers = [
+        new("spj", "SPJ (Head Office)"),
+        new("krw", "KRW (Plant)"),
+        new("jtb", "JTB"),
+        new("smg", "SMG"),
+    ];
+
+    private string server = "spj";
+    private string currentPath = "/";
+    private bool loading;
+    private string? loadError;
+    private List<string>? shares;
+    private List<SynoPickerItem> items = [];
+    private Dictionary<string, SynoPickerItem> selectedPaths = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && shares is null && !loading)
+            await LoadFolderAsync();
+    }
+
+    private void Close()
+    {
+        IsOpen = false;
+        IsOpenChanged.InvokeAsync(false);
+    }
+
+    private async Task SwitchServer(string s)
+    {
+        server = s;
+        currentPath = "/";
+        selectedPaths.Clear();
+        await LoadFolderAsync();
+    }
+
+    private async Task NavigateTo(string path)
+    {
+        currentPath = path;
+        await LoadFolderAsync();
+    }
+
+    private void ToggleSelect(SynoPickerItem item)
+    {
+        if (!selectedPaths.Remove(item.Path)) selectedPaths[item.Path] = item;
+    }
+
+    private async Task OnRowClick(SynoPickerItem item)
+    {
+        if (item.IsDir) await NavigateTo(item.Path);
+        else ToggleSelect(item);
+    }
+
+    private async Task LoadFolderAsync()
+    {
+        loading = true;
+        loadError = null;
+        shares = null;
+        items = [];
+        StateHasChanged();
+
+        try
+        {
+            if (currentPath == "/")
+            {
+                shares = await Auth.GetAsync<List<string>>($"/api/files/shares?server={server}") ?? [];
+            }
+            else
+            {
+                items = await Auth.GetAsync<List<SynoPickerItem>>($"/api/files/list?server={server}&path={Uri.EscapeDataString(currentPath)}") ?? [];
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = "Failed to load: " + ex.Message;
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task PickSelected()
+    {
+        var refs = selectedPaths.Values
+            .Select(i => new NasFileRef(server, i.Path, i.Name, i.Size))
+            .ToList();
+        await OnPicked.InvokeAsync(refs);
+        selectedPaths.Clear();
+        Close();
+    }
+
+    private static string HumanSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    private record SynoPickerItem(string Path, string Name, bool IsDir, long Size, long Mtime);
+}

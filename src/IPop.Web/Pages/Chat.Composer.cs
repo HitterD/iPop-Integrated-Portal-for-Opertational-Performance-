@@ -39,12 +39,20 @@ public partial class Chat
             await ChatSvc.StopTypingAsync();
     }
 
-    private async Task OnComposerKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    [Microsoft.JSInterop.JSInvokable]
+    public async Task OnJsEnter()
     {
-        if (e.Key == "Enter" && !e.ShiftKey)
-        {
-            await SendMessage();
-        }
+        await SendMessage();
+    }
+
+    [Microsoft.JSInterop.JSInvokable]
+    public void OnJsEscape()
+    {
+        if (replyToMsg is not null) CancelReply();
+        if (editingMsgId is not null) CancelEdit();
+        if (ctxMsgId is not null) CloseCtx();
+        if (drawerOpen) CloseDetail();
+        StateHasChanged();
     }
 
     private async Task SendMessage()
@@ -59,6 +67,7 @@ public partial class Chat
         var sendRoomId = ChatSvc.ActiveRoomId;
         messageText = "";
         uploadError = null;
+        try { await JS.InvokeVoidAsync("ipop.resetComposer", composerRef); } catch { }
         var ids = hasAttachments ? pendingAttachments.Select(a => a.Id).ToList() : null;
         // The optimistic bubble needs real attachment metadata to draw its tiles.
         var previews = hasAttachments ? pendingAttachments.Select(a => a.AsDto()).ToList() : null;
@@ -72,7 +81,7 @@ public partial class Chat
         await ChatSvc.SendMessageAsync(text, replyToMsg?.Id, null, ids, previews);
         foreach (var u in toRevoke) _ = JS.InvokeVoidAsync("ipop.revokeBlob", u);
         replyToMsg = null;
-        await GrowComposer();
+        try { await JS.InvokeVoidAsync("ipop.resetComposer", composerRef); } catch { }
         // ipop-38: the sent draft is consumed — drop it from the per-room draft store
         // so returning to this room doesn't restore an already-sent message.
         if (sendRoomId is not null)
@@ -273,16 +282,35 @@ public partial class Chat
     private async Task OpenUserProfile(string? nik)
     {
         if (string.IsNullOrWhiteSpace(nik)) return;
-        profilePerson = null; // open drawer immediately with loading state
+        profilePerson = null;
+        personFromRoom = ChatSvc.ActiveRoom != null;
+        panelView = DetailPanelView.Person;
+        drawerOpen = true;
+        StateHasChanged();
         try
         {
             var d = await Auth.GetAsync<IPop.Web.Services.DirectoryEmployeeDto>($"/api/chat/users/{Uri.EscapeDataString(nik)}");
             if (d is not null) profilePerson = MapEmployee(d);
         }
         catch { profilePerson = null; }
+        StateHasChanged();
     }
 
-    private Task CloseUserProfile() { profilePerson = null; return Task.CompletedTask; }
+    private Task CloseUserProfile()
+    {
+        profilePerson = null;
+        if (personFromRoom)
+        {
+            panelView = DetailPanelView.Main;
+            personFromRoom = false;
+        }
+        else
+        {
+            drawerOpen = false;
+        }
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
 
     private static IPop.Web.Models.Employee MapEmployee(IPop.Web.Services.DirectoryEmployeeDto d)
         => new(d.Name, d.Position ?? "—", d.Nik, d.Extension ?? "—", d.Location ?? "—",
@@ -392,7 +420,7 @@ public partial class Chat
                 }
                 catch { /* keep the typed-card fallback */ }
             }
-            pendingAttachments.Add(new PendingAtt(a.Id, a.FileName, a.FileSize, a.MimeType, preview));
+            pendingAttachments.Add(new PendingAttachmentItem(a.Id, a.FileName, a.FileSize, a.MimeType, preview));
         }
     }
 

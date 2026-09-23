@@ -3,22 +3,22 @@
 
 <div class="rte-container">
     <div class="rte-toolbar">
-        <button type="button" class="rte-btn" title="Undo (Ctrl+Z)" @onclick='() => Exec("undo")'>
+        <button type="button" class="rte-btn" title="Undo (Ctrl+Z)" aria-label="Undo" @onclick='() => Exec("undo")'>
             <i data-lucide="undo-2"></i>
         </button>
-        <button type="button" class="rte-btn" title="Redo (Ctrl+Y)" @onclick='() => Exec("redo")'>
+        <button type="button" class="rte-btn" title="Redo (Ctrl+Y)" aria-label="Redo" @onclick='() => Exec("redo")'>
             <i data-lucide="redo-2"></i>
         </button>
         <div class="rte-sep"></div>
 
-        <select class="rte-select" @onchange="OnFormatBlockChange" title="Heading">
+        <select class="rte-select" @onchange="OnFormatBlockChange" title="Heading" aria-label="Heading">
             <option value="p">Normal text</option>
             <option value="h1">Heading 1</option>
             <option value="h2">Heading 2</option>
             <option value="h3">Heading 3</option>
         </select>
 
-        <select class="rte-select" @onchange="OnFontSizeChange" title="Font Size">
+        <select class="rte-select" @onchange="OnFontSizeChange" title="Font Size" aria-label="Font Size">
             <option value="3">Normal (12pt)</option>
             <option value="2">Small (10pt)</option>
             <option value="4">Medium (14pt)</option>
@@ -27,53 +27,53 @@
         </select>
         <div class="rte-sep"></div>
 
-        <button type="button" class="rte-btn" title="Bold (Ctrl+B)" @onclick='() => Exec("bold")'>
+        <button type="button" class="rte-btn" title="Bold (Ctrl+B)" aria-label="Bold" @onclick='() => Exec("bold")'>
             <i data-lucide="bold"></i>
         </button>
-        <button type="button" class="rte-btn" title="Italic (Ctrl+I)" @onclick='() => Exec("italic")'>
+        <button type="button" class="rte-btn" title="Italic (Ctrl+I)" aria-label="Italic" @onclick='() => Exec("italic")'>
             <i data-lucide="italic"></i>
         </button>
-        <button type="button" class="rte-btn" title="Underline (Ctrl+U)" @onclick='() => Exec("underline")'>
+        <button type="button" class="rte-btn" title="Underline (Ctrl+U)" aria-label="Underline" @onclick='() => Exec("underline")'>
             <i data-lucide="underline"></i>
         </button>
-        <button type="button" class="rte-btn" title="Strikethrough" @onclick='() => Exec("strikeThrough")'>
+        <button type="button" class="rte-btn" title="Strikethrough" aria-label="Strikethrough" @onclick='() => Exec("strikeThrough")'>
             <i data-lucide="strikethrough"></i>
         </button>
         <div class="rte-sep"></div>
 
-        <input type="color" title="Text Color" style="width:24px;height:24px;padding:0;border:none;background:transparent;cursor:pointer;"
+        <input type="color" title="Text Color" aria-label="Text Color" style="width:24px;height:24px;padding:0;border:none;background:transparent;cursor:pointer;"
                @onchange="OnColorChange" value="#1f2937" />
         <div class="rte-sep"></div>
 
-        <button type="button" class="rte-btn" title="Align Left" @onclick='() => Exec("justifyLeft")'>
+        <button type="button" class="rte-btn" title="Align Left" aria-label="Align Left" @onclick='() => Exec("justifyLeft")'>
             <i data-lucide="align-left"></i>
         </button>
-        <button type="button" class="rte-btn" title="Align Center" @onclick='() => Exec("justifyCenter")'>
+        <button type="button" class="rte-btn" title="Align Center" aria-label="Align Center" @onclick='() => Exec("justifyCenter")'>
             <i data-lucide="align-center"></i>
         </button>
-        <button type="button" class="rte-btn" title="Align Right" @onclick='() => Exec("justifyRight")'>
+        <button type="button" class="rte-btn" title="Align Right" aria-label="Align Right" @onclick='() => Exec("justifyRight")'>
             <i data-lucide="align-right"></i>
         </button>
         <div class="rte-sep"></div>
 
-        <button type="button" class="rte-btn" title="Bullet List" @onclick='() => Exec("insertUnorderedList")'>
+        <button type="button" class="rte-btn" title="Bullet List" aria-label="Bullet List" @onclick='() => Exec("insertUnorderedList")'>
             <i data-lucide="list"></i>
         </button>
-        <button type="button" class="rte-btn" title="Numbered List" @onclick='() => Exec("insertOrderedList")'>
+        <button type="button" class="rte-btn" title="Numbered List" aria-label="Numbered List" @onclick='() => Exec("insertOrderedList")'>
             <i data-lucide="list-ordered"></i>
         </button>
-        <button type="button" class="rte-btn" title="Quote" @onclick='() => Exec("formatBlock", "blockquote")'>
+        <button type="button" class="rte-btn" title="Quote" aria-label="Quote" @onclick='() => Exec("formatBlock", "blockquote")'>
             <i data-lucide="quote"></i>
         </button>
         <div class="rte-sep"></div>
 
-        <button type="button" class="rte-btn" title="Insert Link" @onclick="InsertLink">
+        <button type="button" class="rte-btn" title="Insert Link" aria-label="Insert Link" @onclick="InsertLink">
             <i data-lucide="link"></i>
         </button>
-        <button type="button" class="rte-btn" title="Insert Table (3x3)" @onclick="InsertTable">
+        <button type="button" class="rte-btn" title="Insert Table (3x3)" aria-label="Insert Table" @onclick="InsertTable">
             <i data-lucide="table"></i>
         </button>
-        <button type="button" class="rte-btn" title="Clear Formatting" @onclick='() => Exec("removeFormat")'>
+        <button type="button" class="rte-btn" title="Clear Formatting" aria-label="Clear Formatting" @onclick='() => Exec("removeFormat")'>
             <i data-lucide="remove-formatting"></i>
         </button>
     </div>
@@ -104,6 +104,10 @@
             lastSyncedValue = Value ?? "";
             initialized = true;
             await JS.InvokeVoidAsync("ipop.icons");
+            // Fase 2: paste gambar dari clipboard (Ctrl+V) disisipkan inline,
+            // lalu gambar bisa digeser & diubah ukurannya bebas.
+            await JS.InvokeVoidAsync("ipop.rteBindImagePaste", editorRef);
+            await JS.InvokeVoidAsync("ipop.rteBindImageManipulation", editorRef);
         }
         else if (initialized && Value != lastSyncedValue)
         {

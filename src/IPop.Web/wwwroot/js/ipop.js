@@ -398,6 +398,246 @@ window.ipop = {
     delete wrap._ipopDragLeave;
   },
 
+  // Mail composer: drag-and-drop file zone (Fase 2). Meneruskan FileList ke
+  // input[type=file] tersembunyi di dalam composer, lalu memicu event change
+  // agar Blazor InputFile mengambilnya.
+  mailBindDropZone(el, fileInputSelector) {
+    if (!el) return;
+    const input = el.querySelector(fileInputSelector) || document.querySelector(fileInputSelector);
+    if (!input) return;
+    const onDragOver = e => {
+      if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes("Files")) {
+        e.preventDefault();
+        el.classList.add("drag-over");
+      }
+    };
+    const onDragLeave = e => {
+      if (!el.contains(e.relatedTarget)) el.classList.remove("drag-over");
+    };
+    const onDrop = e => {
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (!files || files.length === 0) return;
+      e.preventDefault();
+      el.classList.remove("drag-over");
+      try {
+        const dt = new DataTransfer();
+        Array.from(files).slice(0, 5).forEach(f => dt.items.add(f));
+        input.files = dt.files;
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      } catch { /* DataTransfer ctor not supported — ignore */ }
+    };
+    el.addEventListener("dragover", onDragOver);
+    el.addEventListener("dragleave", onDragLeave);
+    el.addEventListener("drop", onDrop);
+    el._ipopMailDrop = { onDragOver, onDragLeave, onDrop };
+  },
+  mailUnbindDropZone(el) {
+    if (!el || !el._ipopMailDrop) return;
+    const h = el._ipopMailDrop;
+    el.removeEventListener("dragover", h.onDragOver);
+    el.removeEventListener("dragleave", h.onDragLeave);
+    el.removeEventListener("drop", h.onDrop);
+    el.classList.remove("drag-over");
+    delete el._ipopMailDrop;
+  },
+
+  // Mail RTE: paste gambar dari clipboard (Ctrl+V) disisipkan inline sebagai
+  // <img src="data:..."> di posisi kursor. Teks tetap dibiarkan ke handler
+  // paste bawaan contenteditable.
+  rteBindImagePaste(el) {
+    if (!el || el._ipopRtePaste) return;
+    const onPaste = e => {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      const imgItem = Array.from(items).find(i => i.kind === "file" && i.type.startsWith("image/"));
+      if (!imgItem) return; // bukan gambar → biarkan teks tertempel normal
+      e.preventDefault();
+      const file = imgItem.getAsFile();
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const dataUrl = ev.target.result;
+        const img = document.createElement("img");
+        img.src = dataUrl;
+        img.style.maxWidth = "100%";
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          range.insertNode(img);
+          range.setStartAfter(img);
+          range.collapse(true);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        } else {
+          el.appendChild(img);
+        }
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      reader.readAsDataURL(file);
+    };
+    el.addEventListener("paste", onPaste);
+    el._ipopRtePaste = onPaste;
+  },
+  rteUnbindImagePaste(el) {
+    if (!el || !el._ipopRtePaste) return;
+    el.removeEventListener("paste", el._ipopRtePaste);
+    delete el._ipopRtePaste;
+  },
+
+  // Mail RTE (Fase 2): gambar di editor bisa digeser (drag) dan diubah
+  // ukurannya (handle pojok kanan bawah). Posisi disimpan sebagai float/absolut
+  // di dalam HTML sehingga ikut tersimpan ke draf.
+  rteBindImageManipulation(el) {
+    if (!el || el._ipopRteManip) return;
+
+    const makeManipulable = img => {
+      if (img._ipopManip) return;
+      img._ipopManip = true;
+      img.style.cursor = "move";
+      img.style.maxWidth = "100%";
+
+      const wrapInFloater = () => {
+        if (img.parentElement && img.parentElement.classList.contains("rte-img-float")) return img.parentElement;
+        const wrap = document.createElement("span");
+        wrap.className = "rte-img-float";
+        wrap.style.position = "relative";
+        wrap.style.display = "inline-block";
+        img.parentNode.insertBefore(wrap, img);
+        wrap.appendChild(img);
+        const handle = document.createElement("span");
+        handle.className = "rte-img-resize";
+        handle.title = "Tarik untuk mengubah ukuran";
+        wrap.appendChild(handle);
+        return wrap;
+      };
+
+      // Drag: klik-gerak memindahkan gambar lewat margin kiri/atas relatif.
+      img.addEventListener("mousedown", e => {
+        e.preventDefault();
+        const startX = e.clientX, startY = e.clientY;
+        const startMl = parseFloat(getComputedStyle(img).marginLeft) || 0;
+        const startMt = parseFloat(getComputedStyle(img).marginTop) || 0;
+        const move = ev => {
+          img.style.marginLeft = (startMl + ev.clientX - startX) + "px";
+          img.style.marginTop = (startMt + ev.clientY - startY) + "px";
+        };
+        const up = () => {
+          document.removeEventListener("mousemove", move);
+          document.removeEventListener("mouseup", up);
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+        };
+        document.addEventListener("mousemove", move);
+        document.addEventListener("mouseup", up);
+      });
+
+      // Resize handle: tarik pojok kanan bawah mengubah lebar.
+      const wrap = wrapInFloater();
+      const handle = wrap.querySelector(".rte-img-resize");
+      handle.addEventListener("mousedown", e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const startX = e.clientX;
+        const startW = img.offsetWidth;
+        const move = ev => {
+          const w = Math.max(40, startW + ev.clientX - startX);
+          img.style.width = w + "px";
+        };
+        const up = () => {
+          document.removeEventListener("mousemove", move);
+          document.removeEventListener("mouseup", up);
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+        };
+        document.addEventListener("mousemove", move);
+        document.addEventListener("mouseup", up);
+      });
+    };
+
+    // Terapkan ke gambar yang sudah ada + amati gambar baru (hasil paste).
+    el.querySelectorAll("img").forEach(makeManipulable);
+    const observer = new MutationObserver(muts => {
+      for (const m of muts) {
+        for (const n of m.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          if (n.tagName === "IMG") makeManipulable(n);
+          else n.querySelectorAll && n.querySelectorAll("img").forEach(makeManipulable);
+        }
+      }
+    });
+    observer.observe(el, { childList: true, subtree: true });
+    el._ipopRteManip = observer;
+  },
+  rteUnbindImageManipulation(el) {
+    if (!el || !el._ipopRteManip) return;
+    el._ipopRteManip.disconnect();
+    delete el._ipopRteManip;
+  },
+
+  chatBindComposer(el, dotNet) {
+    if (!el || !dotNet) return;
+    if (el._ipopComposerBound) this.chatUnbindComposer(el);
+    el._ipopComposerBound = true;
+
+    const onKey = (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        el.style.height = 'auto';
+        dotNet.invokeMethodAsync('OnJsEnter');
+      } else if (e.key === 'Escape') {
+        dotNet.invokeMethodAsync('OnJsEscape');
+      }
+    };
+    const onInput = () => {
+      window.ipop.autoGrow(el);
+    };
+
+    el.addEventListener('keydown', onKey);
+    el.addEventListener('input', onInput);
+    el._ipopKey = onKey;
+    el._ipopInput = onInput;
+  },
+
+  chatUnbindComposer(el) {
+    if (!el || !el._ipopComposerBound) return;
+    if (el._ipopKey) el.removeEventListener('keydown', el._ipopKey);
+    if (el._ipopInput) el.removeEventListener('input', el._ipopInput);
+    delete el._ipopKey;
+    delete el._ipopInput;
+    delete el._ipopComposerBound;
+  },
+
+  resetComposer(el) {
+    if (!el) return;
+    el.value = '';
+    el.style.height = 'auto';
+  },
+
+  placeContextMenu(el, clientX, clientY) {
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const w = rect.width > 0 ? rect.width : 180;
+    const h = rect.height > 0 ? rect.height : 230;
+    const pad = 12;
+
+    let x = clientX;
+    let y = clientY;
+
+    // Flip or clamp if opening to the right would overflow viewport
+    if (x + w > window.innerWidth - pad) {
+      x = Math.max(pad, x - w);
+    }
+    // Flip or clamp if opening downwards would overflow viewport
+    if (y + h > window.innerHeight - pad) {
+      y = Math.max(pad, y - h);
+    }
+
+    el.style.position = 'fixed';
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+  },
+
   // ==========================================================================
   // Chat attachments — preview, zoom, document rendering
   // ==========================================================================
@@ -717,8 +957,12 @@ window.ipop = {
   // Auto-grow the composer textarea up to its CSS max-height.
   autoGrow(el) {
     if (!el) return;
+    if (!el.value) {
+      el.style.height = "auto";
+      return;
+    }
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 140) + "px";
+    el.style.height = Math.min(el.scrollHeight, 130) + "px";
   },
 
   // ── DraftStore helpers (Req 18) ──
@@ -869,14 +1113,26 @@ window.ipop = {
     // Hubungkan DocsAPI events ke Blazor jika dotNetHelper diberikan
     if (dotNetHelper) {
       config.events = config.events || {};
-      config.events.onDocumentReady = () => {
+      const notifyReady = () => {
         try { dotNetHelper.invokeMethodAsync("OnEditorReady"); } catch {}
       };
+      config.events.onDocumentReady = notifyReady;
+      config.events.onAppReady = notifyReady;
       config.events.onDocumentStateChange = (event) => {
         try { dotNetHelper.invokeMethodAsync("OnDocumentStateChange", !!(event && event.data)); } catch {}
       };
       config.events.onError = (event) => {
-        try { dotNetHelper.invokeMethodAsync("OnEditorError", (event && event.data) ? String(event.data) : "Editor error"); } catch {}
+        let msg = "Terjadi kendala pada dokumen editor.";
+        if (event) {
+          if (typeof event.data === "string") {
+            msg = event.data;
+          } else if (event.data && typeof event.data === "object") {
+            msg = event.data.description || event.data.message || JSON.stringify(event.data);
+          } else if (event.description || event.message) {
+            msg = event.description || event.message;
+          }
+        }
+        try { dotNetHelper.invokeMethodAsync("OnEditorError", msg); } catch {}
       };
     }
 
@@ -1012,6 +1268,30 @@ window.ipop = {
       this._audioStream = null;
     }
     this._audioChunks = [];
+  },
+
+  // Notification sound — short chime synthesized via WebAudio (no asset needed).
+  // Called by ToastHost when a toast arrives and the user's PlaySound pref is on.
+  playNotificationSound() {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      this._notifCtx = this._notifCtx || new Ctx();
+      const ctx = this._notifCtx;
+      if (ctx.state === "suspended") ctx.resume();
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(880, now);          // A5
+      osc.frequency.setValueAtTime(1174.66, now + 0.08); // D6
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.15, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.4);
+    } catch { /* audio blocked — ignore */ }
   }
 };
 

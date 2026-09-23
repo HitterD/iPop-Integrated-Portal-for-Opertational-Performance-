@@ -1,0 +1,606 @@
+@page "/news"
+@implements IDisposable
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>News & Memos — IPop</PageTitle>
+
+<div class="content" style="grid-template-columns:1fr">
+    @if (loading && items is null)
+    {
+        <div class="tray rise rise-1">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head"><i data-lucide="newspaper"></i><span>News & Memos</span><span class="meta">Loading…</span></div>
+                <div style="padding:16px;display:grid;gap:12px">
+                    <div class="skel" style="height:44px;border-radius:12px"></div>
+                    <div class="skel" style="height:120px;border-radius:14px"></div>
+                    <div class="skel" style="height:120px;border-radius:14px"></div>
+                    <div class="skel" style="height:120px;border-radius:14px"></div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="tray rise rise-1">
+            <div class="core" style="padding:0;overflow:hidden">
+                <!-- Header Bar -->
+                <div class="panel-head" style="flex-wrap:wrap;gap:10px;padding:16px 20px">
+                    <div style="display:flex;align-items:center;gap:10px">
+                        <div class="head-icon-box"><i data-lucide="newspaper"></i></div>
+                        <div>
+                            <div style="display:flex;align-items:center;gap:8px">
+                                <span style="font-size:16px;font-weight:700;color:var(--ink)">News & Memos</span>
+                                <span class="meta">@(total) posts</span>
+                                @if (isApprover)
+                                {
+                                    <span class="meta" style="background:var(--accent-soft);color:var(--accent-ink);border-color:rgba(46,125,91,0.18);display:inline-flex;align-items:center;gap:6px">
+                                        <i data-lucide="shield-check" style="width:12px;height:12px"></i> Approver
+                                    </span>
+                                }
+                            </div>
+                            <div style="font-size:12px;color:var(--ink-2);margin-top:2px">Corporate announcements, internal memos, condolences, and notices</div>
+                        </div>
+                    </div>
+                    <span style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <button type="button" class="btn" style="width:auto;margin:0;padding:8px 16px;font-size:12.5px" @onclick="OpenCreate">
+                            <i data-lucide="plus" style="width:14px;height:14px"></i> Create New Post
+                        </button>
+                    </span>
+                </div>
+
+                <!-- Category Tabs & Filters Bar -->
+                <NewsCategoryTabs TypeFilter="@typeFilter"
+                                  Total="@total"
+                                  SearchQuery="@q"
+                                  StatusFilter="@statusFilter"
+                                  PinnedOnly="@pinnedOnly"
+                                  RequiresAckOnly="@requiresAckOnly"
+                                  IncludeScheduled="@includeScheduled"
+                                  IsApprover="@isApprover"
+                                  HasActiveFilters="@HasActiveFilters"
+                                  OnSelectCategory="SetCategoryTab"
+                                  OnSearchQueryChanged="OnSearchInput"
+                                  OnStatusFilterChanged="OnStatusFilterChanged"
+                                  OnPinnedOnlyChanged="v => { pinnedOnly = v; _ = Reload(1, true); }"
+                                  OnRequiresAckOnlyChanged="v => { requiresAckOnly = v; _ = Reload(1, true); }"
+                                  OnIncludeScheduledChanged="v => { includeScheduled = v; _ = Reload(1, true); }"
+                                  OnResetFilters="ClearFilters" />
+
+                @if (!string.IsNullOrEmpty(listError))
+                {
+                    <div style="padding:12px 18px"><div class="note err"><i data-lucide="alert-circle"></i><span>@listError</span></div></div>
+                }
+
+                <!-- Pinned Highlight Section -->
+                @if (pinnedItems.Count > 0)
+                {
+                    <div class="pinned-highlights-container">
+                        <div class="pinned-section-header">
+                            <span class="pinned-pill"><i data-lucide="pin" style="width:12px;height:12px"></i> PINNED HIGHLIGHTS</span>
+                            <span class="pinned-sub">Important posts pinned for all readers</span>
+                        </div>
+                        <div class="news-grid-stack">
+                            @foreach (var p in pinnedItems)
+                            {
+                                <NewsCard Item="@p" OnClick="OpenDetail" />
+                            }
+                        </div>
+                    </div>
+                }
+
+                <!-- Regular Feed Section -->
+                <div style="padding:14px 18px 20px;display:grid;gap:12px">
+                    @if (pinnedItems.Count > 0 && feedItems.Count > 0)
+                    {
+                        <div style="display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--ink-3);margin-top:8px">
+                            <i data-lucide="newspaper" style="width:13px;height:13px"></i>
+                            <span>@(string.IsNullOrEmpty(typeFilter) ? "LATEST POSTS" : $"{NewsUiHelper.GetCategoryLabel(typeFilter).ToUpper()} POSTS")</span>
+                        </div>
+                    }
+
+                    @if (items is not null && items.Count == 0)
+                    {
+                        <div class="tree-empty" style="padding:40px 20px;text-align:center">
+                            <div class="empty-icon-circle">
+                                <i data-lucide="@NewsUiHelper.GetCategoryIcon(typeFilter)" style="width:26px;height:26px;color:var(--ink-3)"></i>
+                            </div>
+                            <div style="font-weight:700;font-size:15px;color:var(--ink);margin-top:12px">No @NewsUiHelper.GetCategoryLabel(typeFilter) Posts Yet</div>
+                            <div style="font-size:12.5px;color:var(--ink-2);margin-top:4px;max-width:440px;margin-left:auto;margin-right:auto">
+                                @(string.IsNullOrEmpty(typeFilter)
+                                    ? "No company news, internal memos, announcements, or condolences published yet."
+                                    : $"No posts in category {NewsUiHelper.GetCategoryLabel(typeFilter)}. Create a draft or publish a new post.")
+                            </div>
+                            <button type="button" class="btn" style="width:auto;margin:16px auto 0;padding:9px 18px;font-size:12.5px" @onclick="OpenCreate">
+                                <i data-lucide="plus" style="width:14px;height:14px"></i> Create New Post
+                            </button>
+                        </div>
+                    }
+                    else if (items is not null)
+                    {
+                        <div class="news-grid-stack">
+                            @foreach (var p in feedItems)
+                            {
+                                <NewsCard Item="@p" OnClick="OpenDetail" />
+                            }
+                        </div>
+
+                        @if (page < totalPages)
+                        {
+                            <div style="text-align:center;margin-top:10px">
+                                <button type="button" class="btn" style="width:auto;margin:0 auto;padding:10px 22px;font-size:12.5px;background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:var(--shadow-xs)" @onclick="LoadMore">
+                                    Load more (@(total - items.Count) remaining)
+                                </button>
+                            </div>
+                        }
+                    }
+                </div>
+
+                <!-- Scheduled Queue for Approver -->
+                @if (isApprover && scheduledItems.Count > 0)
+                {
+                    <div class="scheduled-queue-container">
+                        <div class="scheduled-header">
+                            <i data-lucide="clock-3" style="width:14px;height:14px"></i> Scheduled Queue (@scheduledItems.Count)
+                        </div>
+                        <div style="display:grid;gap:10px">
+                            @foreach (var p in scheduledItems)
+                            {
+                                <div class="news-card card-scheduled" style="cursor:default">
+                                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                                        <span class="news-type-badge type-@p.Type">@NewsUiHelper.GetCategoryLabel(p.Type)</span>
+                                        <span class="status-pill @p.Status">@NewsUiHelper.StatusLabel(p.Status)</span>
+                                        <span class="mono" style="font-size:11px;color:var(--ink-3);margin-left:auto">
+                                            <i data-lucide="clock-3" style="width:11px;height:11px;display:inline;vertical-align:middle;margin-right:3px"></i>
+                                            Go live: @NewsUiHelper.FormatDate(p.PublishAt)
+                                        </span>
+                                    </div>
+                                    <div style="font-weight:700;margin-top:8px;font-size:14px">@p.Title</div>
+                                    <div style="font-size:12px;color:var(--ink-2);margin-top:4px">@NewsUiHelper.PreviewText(p.Title, p.Type)</div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Contextual Detail Reader (Drawer) -->
+@if (showDetail && detail is not null)
+{
+    <NewsDetailDrawer Detail="@detail"
+                      Audits="@audits"
+                      IsApprover="@isApprover"
+                      CanEdit="@canEdit"
+                      AckBusy="@ackBusy"
+                      DetailError="@detailError"
+                      OnClose="CloseDetail"
+                      OnCopyLink="CopyLink"
+                      OnEdit="OpenEdit"
+                      OnSubmit="Submit"
+                      OnApprove="Approve"
+                      OnOpenReject="() => showReject = true"
+                      OnUnpublish="Unpublish"
+                      OnTogglePin="TogglePin"
+                      OnAcknowledge="Acknowledge"
+                      OnRemindAck="RemindAck" />
+}
+
+<!-- Reject Modal -->
+@if (showReject)
+{
+    <NewsRejectModal OnClose="() => showReject = false"
+                     OnConfirmReject="RejectWithReason" />
+}
+
+<!-- Create / Edit Drawer Form -->
+@if (showCreate || showEdit)
+{
+    <NewsEditorDrawer IsEdit="@showEdit"
+                      Detail="@detail"
+                      DefaultCategory="@(string.IsNullOrEmpty(typeFilter) ? "news" : typeFilter)"
+                      FormBusy="@formBusy"
+                      FormError="@formError"
+                      OnClose="CloseForm"
+                      OnSave="SaveForm" />
+}
+
+@code {
+    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+
+    private bool loading = true;
+    private string? listError;
+    private string q = "";
+    private string typeFilter = "";
+    private string statusFilter = "";
+    private bool pinnedOnly;
+    private bool requiresAckOnly;
+    private bool includeScheduled;
+    private int page = 1;
+    private int total;
+    private int totalPages => Math.Max(1, (int)Math.Ceiling(total / 20.0));
+    private List<NewsSummaryDto>? items;
+    private List<NewsSummaryDto> pinnedItems => items?.Where(x => x.IsPinned).ToList() ?? [];
+    private List<NewsSummaryDto> feedItems => items?.Where(x => !x.IsPinned).ToList() ?? [];
+    private List<NewsSummaryDto> scheduledItems => items?.Where(x => x.PublishAt != null && x.PublishAt > DateTime.UtcNow).ToList() ?? [];
+
+    private bool showDetail;
+    private NewsDetailDto? detail;
+    private List<NewsAuditDto>? audits;
+    private string? detailError;
+    private bool ackBusy;
+    private bool showReject;
+    private bool showCreate;
+    private bool showEdit;
+    private bool formBusy;
+    private string? formError;
+    private Guid? openDetailId;
+
+    private bool isApprover => Auth.Me?.Roles.Contains("Admin") == true;
+    private bool canEdit => detail is not null && (detail.Status == "draft" || detail.Status == "rejected");
+    private bool HasActiveFilters => !string.IsNullOrEmpty(q) || !string.IsNullOrEmpty(statusFilter) || pinnedOnly || requiresAckOnly || includeScheduled;
+
+    protected override void OnInitialized()
+    {
+        Layout.SetHeader("News & Memos", "Corporate announcements & internal news", showSearch: true, searchPlaceholder: "Search title or body…");
+        Layout.SearchChanged += OnLayoutSearch;
+    }
+
+    protected override async Task OnInitializedAsync() => await Reload(1, true);
+
+    private void OnLayoutSearch() => _ = InvokeAsync(async () =>
+    {
+        try
+        {
+            q = Layout.SearchQuery ?? "";
+            await Reload(1, true);
+        }
+        catch (Exception ex)
+        {
+            listError = $"Search failed: {ex.Message}";
+            loading = false;
+            StateHasChanged();
+        }
+    });
+
+    private async Task OnSearchInput(string val)
+    {
+        q = val;
+        await Reload(1, true);
+    }
+
+    private async Task OnStatusFilterChanged(string val)
+    {
+        statusFilter = val;
+        await Reload(1, true);
+    }
+
+    private async Task SetCategoryTab(string cat)
+    {
+        typeFilter = cat;
+        await Reload(1, true);
+    }
+
+    private async Task Reload(int p, bool replace)
+    {
+        loading = items is null;
+        page = p;
+        listError = null;
+        var qs = BuildQuery(p);
+        var res = await Auth.GetAsync<PagedNewsResult<NewsSummaryDto>>($"/api/news{qs}");
+        if (qs != BuildQuery(p)) return;
+        if (res is null)
+        {
+            listError = "Failed to load news list.";
+            loading = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+            return;
+        }
+        total = res.TotalCount;
+        page = res.Page;
+        if (replace || items is null) items = res.Items.ToList();
+        else items.AddRange(res.Items);
+        loading = false;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private string BuildQuery(int p)
+    {
+        var parts = new List<string> { $"page={p}", "pageSize=20" };
+        if (!string.IsNullOrWhiteSpace(typeFilter)) parts.Add($"type={Uri.EscapeDataString(typeFilter)}");
+        if (!string.IsNullOrWhiteSpace(statusFilter)) parts.Add($"status={Uri.EscapeDataString(statusFilter)}");
+        if (!string.IsNullOrWhiteSpace(q)) parts.Add($"q={Uri.EscapeDataString(q.Trim())}");
+        if (pinnedOnly) parts.Add("pinned=true");
+        if (requiresAckOnly) parts.Add("requiresAck=true");
+        if (includeScheduled) parts.Add("includeScheduled=true");
+        return "?" + string.Join("&", parts);
+    }
+
+    private void ClearFilters()
+    {
+        q = "";
+        statusFilter = "";
+        pinnedOnly = false;
+        requiresAckOnly = false;
+        includeScheduled = false;
+        _ = Reload(1, true);
+    }
+
+    private Task LoadMore() => Reload(page + 1, false);
+
+    private async Task OpenDetail(Guid id)
+    {
+        openDetailId = id;
+        detailError = null;
+        audits = null;
+        showDetail = true;
+        detail = null;
+        StateHasChanged();
+
+        var d = await Auth.GetAsync<NewsDetailDto>($"/api/news/{id}");
+        if (d is null)
+        {
+            if (openDetailId != id) return;
+            detailError = "Unable to load post details.";
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+            return;
+        }
+        if (openDetailId != id) return;
+        detail = d;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+
+        var a = await Auth.GetAsync<NewsAuditDto[]>($"/api/news/{id}/audits");
+        if (openDetailId != id) return;
+        audits = a?.ToList() ?? [];
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private void CloseDetail()
+    {
+        showDetail = false;
+        detail = null;
+        audits = null;
+        detailError = null;
+        showReject = false;
+        openDetailId = null;
+        StateHasChanged();
+    }
+
+    private async Task Acknowledge()
+    {
+        if (detail is null) return;
+        ackBusy = true;
+        detailError = null;
+        StateHasChanged();
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/news/{detail.Id}/acknowledge", null);
+            if (!res.IsSuccessStatusCode)
+            {
+                detailError = "Unable to record acknowledgement.";
+                StateHasChanged();
+                return;
+            }
+            var updated = await res.Content.ReadFromJsonAsync<NewsDetailDto>();
+            if (updated is not null) detail = updated;
+            await Reload(1, true);
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+            Toasts.Show("Read confirmation recorded successfully.", ToastKind.Success);
+        }
+        finally
+        {
+            ackBusy = false;
+        }
+    }
+
+    private async Task RemindAck()
+    {
+        Toasts.Show("Reminder sent to targeted employees.", ToastKind.Info);
+        await Task.CompletedTask;
+    }
+
+    private async Task CopyLink()
+    {
+        if (detail is null) return;
+        var url = Nav.Uri.Split('?')[0] + $"?post={detail.Id}";
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
+            Toasts.Show("Post link copied to clipboard.", ToastKind.Success);
+        }
+        catch
+        {
+            Toasts.Show(url, ToastKind.Info);
+        }
+    }
+
+    private async Task Submit() => await Workflow("submit");
+    private async Task Approve() => await Workflow("approve");
+
+    private async Task RejectWithReason(string reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            detailError = "Rejection reason is required.";
+            StateHasChanged();
+            return;
+        }
+        showReject = false;
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/news/{detail!.Id}/reject", new { reason });
+        if (!res.IsSuccessStatusCode)
+        {
+            detailError = await ReadErr(res);
+            StateHasChanged();
+            return;
+        }
+        detail = await res.Content.ReadFromJsonAsync<NewsDetailDto>();
+        await Reload(1, true);
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+        Toasts.Show("Post has been rejected.", ToastKind.Info);
+    }
+
+    private async Task Publish() => await Workflow("publish");
+    private async Task Unpublish() => await Workflow("unpublish");
+
+    private async Task TogglePin()
+    {
+        if (detail is null) return;
+        var method = detail.IsPinned ? HttpMethod.Delete : HttpMethod.Post;
+        var res = await Auth.SendAsync(method, $"/api/news/{detail.Id}/pin", null);
+        if (!res.IsSuccessStatusCode)
+        {
+            detailError = await ReadErr(res);
+            StateHasChanged();
+            return;
+        }
+        detail = await res.Content.ReadFromJsonAsync<NewsDetailDto>();
+        await Reload(1, true);
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+        Toasts.Show(detail.IsPinned ? "Post pinned successfully." : "Post unpinned.", ToastKind.Success);
+    }
+
+    private async Task Workflow(string action)
+    {
+        if (detail is null) return;
+        detailError = null;
+        StateHasChanged();
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/news/{detail.Id}/{action}", null);
+        if (!res.IsSuccessStatusCode)
+        {
+            detailError = await ReadErr(res);
+            StateHasChanged();
+            return;
+        }
+        detail = await res.Content.ReadFromJsonAsync<NewsDetailDto>();
+        audits = await Auth.GetAsync<NewsAuditDto[]>($"/api/news/{detail!.Id}/audits") is { } a ? a.ToList() : audits;
+        await Reload(1, true);
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+        Toasts.Show("Action " + action + " completed successfully.", ToastKind.Success);
+    }
+
+    private void OpenCreate()
+    {
+        formError = null;
+        showCreate = true;
+        showEdit = false;
+        StateHasChanged();
+        _ = JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private void OpenEdit()
+    {
+        if (detail is null) return;
+        formError = null;
+        showEdit = true;
+        showCreate = false;
+        StateHasChanged();
+        _ = JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private void CloseForm()
+    {
+        showCreate = false;
+        showEdit = false;
+        formError = null;
+        formBusy = false;
+        StateHasChanged();
+    }
+
+    private async Task SaveForm(NewsSaveRequest req)
+    {
+        formError = null;
+        if (string.IsNullOrWhiteSpace(req.Title))
+        {
+            formError = "Post title is required.";
+            StateHasChanged();
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(req.Body))
+        {
+            formError = "Content is required.";
+            StateHasChanged();
+            return;
+        }
+        formBusy = true;
+        StateHasChanged();
+
+        HttpResponseMessage res;
+        if (showEdit && detail is not null)
+        {
+            res = await Auth.SendAsync(new HttpMethod("PATCH"), $"/api/news/{detail.Id}", new
+            {
+                title = req.Title,
+                body = req.Body,
+                type = req.Type,
+                publishAt = req.PublishAt,
+                requiresAcknowledgement = req.RequiresAcknowledgement,
+                isPinned = req.IsPinned,
+                targets = req.Targets
+            });
+        }
+        else
+        {
+            res = await Auth.SendAsync(HttpMethod.Post, "/api/news", new
+            {
+                type = req.Type,
+                title = req.Title,
+                body = req.Body,
+                publishAt = req.PublishAt,
+                requiresAcknowledgement = req.RequiresAcknowledgement,
+                isPinned = req.IsPinned,
+                targets = req.Targets.Count == 0 ? null : req.Targets
+            });
+        }
+
+        if (!res.IsSuccessStatusCode)
+        {
+            formError = await ReadErr(res);
+            formBusy = false;
+            StateHasChanged();
+            return;
+        }
+
+        var created = await res.Content.ReadFromJsonAsync<NewsDetailDto>();
+        formBusy = false;
+        showCreate = false;
+        showEdit = false;
+        if (created is not null)
+        {
+            detail = created;
+            showDetail = true;
+            audits = await Auth.GetAsync<NewsAuditDto[]>($"/api/news/{created.Id}/audits") is { } a ? a.ToList() : audits;
+        }
+        await Reload(1, true);
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+        Toasts.Show(showEdit ? "Post updated successfully." : "Draft post created successfully.", ToastKind.Success);
+    }
+
+    private static async Task<string> ReadErr(HttpResponseMessage r)
+    {
+        try
+        {
+            var j = await r.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+            if (j is not null && j.TryGetValue("message", out var m)) return m;
+            if (j is not null && j.TryGetValue("code", out var c)) return c;
+        }
+        catch { }
+        return r.StatusCode.ToString();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+    public void Dispose() { Layout.SearchChanged -= OnLayoutSearch; }
+}

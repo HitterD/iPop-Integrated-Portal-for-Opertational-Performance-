@@ -1,0 +1,171 @@
+@using IPop.Application.Projects
+
+<div class="gantt-card">
+    @* Toolbar: Scale Switcher, Status Filter & Date Navigation *@
+    <div class="gantt-toolbar">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div class="gantt-scale-switcher">
+                <button type="button" class="gantt-scale-btn @(timelineScale == "weekly" ? "active" : "")" @onclick='() => SetTimelineScale("weekly")'>Weekly</button>
+                <button type="button" class="gantt-scale-btn @(timelineScale == "monthly" ? "active" : "")" @onclick='() => SetTimelineScale("monthly")'>Monthly</button>
+                <button type="button" class="gantt-scale-btn @(timelineScale == "yearly" ? "active" : "")" @onclick='() => SetTimelineScale("yearly")'>Yearly</button>
+            </div>
+
+            <div class="gantt-filter-chips">
+                <button type="button" class="gantt-filter-btn @(statusFilter == "" ? "active" : "")" @onclick='() => statusFilter = ""'>All</button>
+                <button type="button" class="gantt-filter-btn @(statusFilter == "todo" ? "active" : "")" @onclick='() => statusFilter = "todo"'>To Do</button>
+                <button type="button" class="gantt-filter-btn @(statusFilter == "doing" ? "active" : "")" @onclick='() => statusFilter = "doing"'>In Progress</button>
+                <button type="button" class="gantt-filter-btn @(statusFilter == "done" ? "active" : "")" @onclick='() => statusFilter = "done"'>Done</button>
+            </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <div class="gantt-nav-group">
+                <button type="button" class="gantt-nav-btn" @onclick="() => NavigateTimeline(-1)" title="Previous period">
+                    <i data-lucide="chevron-left" style="width:14px;height:14px"></i>
+                </button>
+                <button type="button" class="gantt-today-btn" @onclick="ResetTimelineToday">
+                    @(timelineScale == "weekly" ? "This Week" : (timelineScale == "yearly" ? "This Year" : "This Month"))
+                </button>
+                <button type="button" class="gantt-nav-btn" @onclick="() => NavigateTimeline(1)" title="Next period">
+                    <i data-lucide="chevron-right" style="width:14px;height:14px"></i>
+                </button>
+                <span class="gantt-period-label">@ProjectUiHelpers.GetTimelinePeriodLabel(timelineScale, timelineAnchorDate)</span>
+            </div>
+
+            <div style="font-size:11.5px;color:var(--ink-3);padding:3px 10px;background:var(--surface);border:1px solid var(--line-soft);border-radius:999px">
+                @(Timeline?.Tasks.Count ?? 0) tasks
+            </div>
+        </div>
+    </div>
+
+    @if (Timeline is null || Timeline.Tasks.Count == 0)
+    {
+        <div class="tree-empty" style="padding:48px 16px;text-align:center">
+            <i data-lucide="calendar-x" style="width:32px;height:32px;margin-bottom:8px"></i>
+            <div>No tasks on this project timeline yet.</div>
+            <button class="btn-sm accent" style="margin-top:12px" @onclick="() => OnAddTask.InvokeAsync()">
+                <i data-lucide="plus"></i> Add First Task
+            </button>
+        </div>
+    }
+    else
+    {
+        var cols = ProjectUiHelpers.GetGanttColumns(timelineScale, timelineAnchorDate);
+        var pBounds = ProjectUiHelpers.GetTimelinePeriodBounds(timelineScale, timelineAnchorDate);
+        var todayColIndex = cols.FindIndex(c => c.IsToday);
+        var todayLeftPct = todayColIndex >= 0
+            ? ((todayColIndex + 0.5) / cols.Count * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
+            : null;
+
+        var tasksToDisplay = Timeline.Tasks.AsEnumerable();
+        if (!string.IsNullOrEmpty(statusFilter))
+            tasksToDisplay = tasksToDisplay.Where(t => t.Status == statusFilter);
+
+        <div class="gantt-body-wrap">
+            @* Gantt Header *@
+            <div class="gantt-header-row">
+                <div class="gantt-header-tasks-title">
+                    <i data-lucide="list-todo" style="width:13px;height:13px"></i>
+                    <span>Task Name</span>
+                </div>
+                <div class="gantt-header-timeline-cols">
+                    @if (todayLeftPct != null)
+                    {
+                        <div class="gantt-today-badge" style="left:@(todayLeftPct)%">Today</div>
+                    }
+                    @foreach (var c in cols)
+                    {
+                        <div class="gantt-header-col @(c.IsToday ? "is-today" : "")">
+                            <div>@c.Title</div>
+                            <div style="font-size:9.5px;opacity:0.8">@c.Sub</div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @* Gantt Task Rows *@
+            @foreach (var t in tasksToDisplay.OrderBy(x => x.StartDate ?? x.DueDate ?? DateTime.MaxValue))
+            {
+                var (left, width, hasDates, dateLabel) = ProjectUiHelpers.CalculateGanttBar(t, pBounds.start, pBounds.end);
+                var fullTask = AllTasks.FirstOrDefault(x => x.Id == t.Id);
+
+                <div class="gantt-task-row">
+                    <div class="gantt-task-info">
+                        <div class="gantt-task-title-group">
+                            <span class="col-dot @t.Status.ToLower()" style="flex-shrink:0"></span>
+                            <span class="gantt-task-title" @onclick="() => OnTaskClick.InvokeAsync(t)" title="@t.Title (@t.Status)">@t.Title</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+                            @if (fullTask != null && fullTask.Assignees.Count > 0)
+                            {
+                                <div class="team-avatar-circ" style="width:18px;height:18px;font-size:8px;background:@ProjectUiHelpers.GetAvatarBg(fullTask.Assignees[0].Name)" title="@fullTask.Assignees[0].Name">
+                                    @ProjectUiHelpers.GetInitials(fullTask.Assignees[0].Name)
+                                </div>
+                            }
+                            <span class="status-pill @t.Status.ToLower()" style="font-size:9px;padding:1px 6px">@t.Status</span>
+                        </div>
+                    </div>
+
+                    <div class="gantt-track-area">
+                        <div class="gantt-grid-lines">
+                            @foreach (var c in cols)
+                            {
+                                <div class="gantt-grid-col @(c.IsToday ? "is-today" : "")"></div>
+                            }
+                        </div>
+
+                        @* Today Vertical Marker Line *@
+                        @if (todayLeftPct != null)
+                        {
+                            <div class="gantt-today-line" style="left:@(todayLeftPct)%"></div>
+                        }
+
+                        <div class="gantt-bar-item @t.Status.ToLower() @(!hasDates ? "no-dates" : "")"
+                             style="left:@(left.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%; width:@(width.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%"
+                             @onclick="() => OnTaskClick.InvokeAsync(t)"
+                             title="@t.Title • @(hasDates ? dateLabel : "No date set") • Click to edit">
+                            <i data-lucide="@(t.Status == "done" ? "check-circle" : (t.Status == "doing" ? "clock" : "circle"))" style="width:11px;height:11px;flex-shrink:0"></i>
+                            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@t.Title</span>
+                            @if (hasDates)
+                            {
+                                <span style="font-size:9.5px;opacity:0.85;margin-left:auto;flex-shrink:0">@dateLabel</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public ProjectTimelineDto? Timeline { get; set; }
+    [Parameter] public List<ProjectTaskDto> AllTasks { get; set; } = [];
+
+    [Parameter] public EventCallback<TimelineTaskDto> OnTaskClick { get; set; }
+    [Parameter] public EventCallback OnAddTask { get; set; }
+
+    private string timelineScale = "monthly"; // "weekly", "monthly", "yearly"
+    private DateTime timelineAnchorDate = DateTime.Today;
+    private string statusFilter = "";
+
+    private void SetTimelineScale(string scale)
+    {
+        timelineScale = scale;
+    }
+
+    private void NavigateTimeline(int direction)
+    {
+        if (timelineScale == "weekly")
+            timelineAnchorDate = timelineAnchorDate.AddDays(direction * 7);
+        else if (timelineScale == "yearly")
+            timelineAnchorDate = timelineAnchorDate.AddYears(direction);
+        else
+            timelineAnchorDate = timelineAnchorDate.AddMonths(direction);
+    }
+
+    private void ResetTimelineToday()
+    {
+        timelineAnchorDate = DateTime.Today;
+    }
+}

@@ -1,0 +1,683 @@
+@implements IDisposable
+@inject CallState CallSvc
+@inject AuthState Auth
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject ToastService Toasts
+
+@* =========================================================================
+   GlobalCallOverlay: Unified Floating Call Experience (antislop-ui & ui-ux-pro-max)
+   Manages Incoming Ring, Outgoing Ring, Active Call (with timer & visualizer),
+   controls (Mute, Share Screen, End Call), and Minimize/Expand states.
+   ========================================================================= *@
+
+@if (CallSvc.HasLiveCall)
+{
+    @* ---- 1. INCOMING CALL (when another user calls me) ---- *@
+    @if (CallSvc.IsIncomingRing)
+    {
+        <div class="incoming-call-toast" role="alert" aria-live="assertive">
+            <div class="tray rise rise-1 incoming-call-card">
+                <div class="core call-card-core">
+                    <div class="avatar avatar-incoming-pulse" style="background:var(--accent);color:#fff;width:48px;height:48px;font-size:16px;font-weight:700">
+                        <i data-lucide="phone-incoming" style="width:22px;height:22px"></i>
+                    </div>
+                    <div style="flex:1;min-width:160px">
+                        <div class="peer-name">@(CallSvc.RemotePeer?.Name ?? "Teammate")</div>
+                        <div class="call-subtitle">Incoming voice call…</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <button type="button" class="btn call-accept-btn" @onclick="AcceptCall" title="Accept call">
+                            <i data-lucide="phone" style="width:14px;height:14px"></i>
+                            <span>Accept</span>
+                        </button>
+                        <button type="button" class="btn-sm surface call-decline-btn" @onclick="DeclineCall" title="Decline call">
+                            <i data-lucide="phone-off" style="width:14px;height:14px"></i>
+                            <span>Decline</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    @* ---- 2. OUTGOING RINGING (calling peer) or ACTIVE IN-CALL ---- *@
+    else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
+    {
+        var isOutgoing = CallSvc.IsOutgoingRing;
+        var peerName = CallSvc.RemotePeer?.Name ?? "Teammate";
+        var me = CallSvc.ActiveMe;
+
+        @if (isMinimized)
+        {
+            @* Minimized Floating Pill *@
+            <div class="global-call-pill rise" role="dialog" aria-label="Active Call">
+                <div class="pill-avatar @(CallSvc.IsActiveCall ? "avatar-remote-speaker" : "avatar-pulse")">
+                    @Initials(peerName)
+                </div>
+                <div class="pill-info">
+                    <div class="pill-name">@peerName</div>
+                    <div class="pill-status">
+                        @if (isOutgoing)
+                        {
+                            <span class="text-calling">Calling…</span>
+                        }
+                        else
+                        {
+                            <span class="call-timer-mono">@FormattedElapsed</span>
+                        }
+                    </div>
+                </div>
+                <div class="pill-actions">
+                    @if (CallSvc.IsActiveCall)
+                    {
+                        <button type="button" class="pill-btn @(me?.IsMuted == true ? "muted" : "")"
+                                @onclick="ToggleMute" title="@(me?.IsMuted == true ? "Unmute mic" : "Mute mic")">
+                            <i data-lucide="@(me?.IsMuted == true ? "mic-off" : "mic")"></i>
+                        </button>
+                    }
+                    <button type="button" class="pill-btn hangup" @onclick="EndCall" title="End call">
+                        <i data-lucide="phone-off"></i>
+                    </button>
+                    <button type="button" class="pill-btn expand" @onclick="() => isMinimized = false" title="Open call window">
+                        <i data-lucide="maximize-2"></i>
+                    </button>
+                </div>
+            </div>
+        }
+        else
+        {
+            @* Full Floating Call Window *@
+            <div class="global-call-window rise" role="dialog" aria-label="Voice Call">
+                <div class="call-win-head">
+                    <div class="call-win-title">
+                        <i data-lucide="@(isOutgoing ? "phone-outgoing" : "phone-call")"></i>
+                        <span>@(isOutgoing ? "Outgoing Call" : "Voice Call")</span>
+                    </div>
+                    <div class="call-win-actions">
+                        <button type="button" class="icon-action" @onclick="() => isMinimized = true" title="Minimize to floating bar">
+                            <i data-lucide="minimize-2"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="call-win-body">
+                    <div class="call-avatar-wrap">
+                        <div class="call-avatar-main @(isOutgoing ? "avatar-outgoing-pulse" : "avatar-remote-speaker")" style="background:var(--accent-soft);color:var(--accent-ink)">
+                            @Initials(peerName)
+                        </div>
+                        @if (CallSvc.IsActiveCall)
+                        {
+                            <div class="speaker-wave-badge" title="Audio active">
+                                <i data-lucide="volume-2"></i>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="call-peer-details">
+                        <div class="call-peer-name">@peerName</div>
+                        <div class="call-status-row">
+                            @if (isOutgoing)
+                            {
+                                <span class="status-calling-badge">
+                                    <span class="calling-dot"></span>
+                                    <span>Contacting colleague…</span>
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="status-active-badge">
+                                    <span class="live-dot"></span>
+                                    <span class="call-timer-mono font-bold">@FormattedElapsed</span>
+                                </span>
+                            }
+                        </div>
+                        @if (!string.IsNullOrEmpty(CallSvc.LastError))
+                        {
+                            <div class="call-error-text" style="color:var(--danger, #b3543f);font-size:11.5px;margin-top:4px;text-align:center;line-height:1.3;">
+                                @CallSvc.LastError
+                            </div>
+                        }
+                        else if (!string.IsNullOrEmpty(CallSvc.WebRtcState) && CallSvc.IsActiveCall)
+                        {
+                            <div class="call-webrtc-state" style="font-size:11px;color:var(--ink-muted);margin-top:2px;">WebRTC Connection: @CallSvc.WebRtcState</div>
+                        }
+                    </div>
+
+                    @* Call Controls *@
+                    <div class="call-win-controls">
+                        @if (CallSvc.IsActiveCall)
+                        {
+                            <button type="button" class="call-ctrl-btn @(me?.IsMuted == true ? "active-ctrl" : "")"
+                                    @onclick="ToggleMute" title="@(me?.IsMuted == true ? "Unmute microphone" : "Mute microphone")">
+                                <div class="ctrl-icon"><i data-lucide="@(me?.IsMuted == true ? "mic-off" : "mic")"></i></div>
+                                <span>@(me?.IsMuted == true ? "Unmute" : "Mute")</span>
+                            </button>
+
+                            <button type="button" class="call-ctrl-btn @(me?.IsScreenSharing == true ? "active-ctrl" : "")"
+                                    @onclick="ToggleScreen" title="@(me?.IsScreenSharing == true ? "Stop sharing screen" : "Share screen")">
+                                <div class="ctrl-icon"><i data-lucide="@(me?.IsScreenSharing == true ? "monitor-stop" : "monitor-up")"></i></div>
+                                <span>@(me?.IsScreenSharing == true ? "Stop Sharing" : "Share Screen")</span>
+                            </button>
+                        }
+
+                        <button type="button" class="call-ctrl-btn hangup-btn" @onclick="EndCall" title="End / Cancel call">
+                            <div class="ctrl-icon"><i data-lucide="phone-off"></i></div>
+                            <span>@(isOutgoing ? "Cancel" : "End")</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+}
+else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
+{
+    @* Brief Call Ended Notification Banner *@
+    <div class="call-ended-toast rise" role="alert">
+        <div class="call-ended-box">
+            <i data-lucide="phone-off"></i>
+            <span>@CallSvc.LastEndReason</span>
+            <button type="button" class="toast-close-btn" @onclick="() => CallSvc.DismissEndReason()">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+    </div>
+}
+
+<style>
+    /* ---- Global Call Overlay CSS ---- */
+    .incoming-call-toast {
+        position: fixed;
+        top: 24px;
+        right: 24px;
+        z-index: 99999;
+        min-width: 360px;
+        max-width: 440px;
+        animation: slideInDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .call-card-core {
+        padding: 16px 20px;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        box-shadow: var(--shadow-lg, 0 10px 25px rgba(0,0,0,0.18));
+        border-radius: 14px;
+        border: 1px solid var(--line-soft);
+        background: var(--bg);
+    }
+    .call-accept-btn {
+        width: auto !important;
+        margin: 0 !important;
+        background: var(--accent) !important;
+        color: #fff !important;
+        padding: 8px 16px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+    }
+    .call-decline-btn {
+        padding: 8px 14px !important;
+        color: var(--danger, #b3543f) !important;
+        border-color: var(--line-soft) !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 5px !important;
+    }
+
+    /* Floating Call Window */
+    .global-call-window {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        width: 330px;
+        z-index: 99998;
+        border-radius: 18px;
+        background: var(--bg);
+        border: 1px solid var(--line-soft);
+        box-shadow: 0 14px 40px rgba(0, 0, 0, 0.16), 0 2px 10px rgba(0,0,0,0.08);
+        overflow: hidden;
+        animation: slideInUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .call-win-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        background: var(--tray);
+        border-bottom: 1px solid var(--line-soft);
+    }
+    .call-win-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--ink);
+    }
+    .call-win-title i {
+        width: 15px;
+        height: 15px;
+        color: var(--accent);
+    }
+    .call-win-actions .icon-action {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: var(--ink-3);
+        padding: 4px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .call-win-actions .icon-action:hover {
+        color: var(--ink);
+        background: var(--bg);
+    }
+
+    .call-win-body {
+        padding: 22px 18px 18px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+
+    .call-avatar-wrap {
+        position: relative;
+        margin-bottom: 14px;
+    }
+    .call-avatar-main {
+        width: 72px;
+        height: 72px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 22px;
+        font-weight: 700;
+        box-shadow: var(--shadow-sm, 0 2px 6px rgba(0,0,0,0.06));
+    }
+    .speaker-wave-badge {
+        position: absolute;
+        bottom: -2px;
+        right: -2px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid var(--bg);
+    }
+    .speaker-wave-badge i {
+        width: 12px;
+        height: 12px;
+    }
+
+    .call-peer-details {
+        margin-bottom: 20px;
+    }
+    .call-peer-name {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--ink);
+        line-height: 1.3;
+    }
+    .call-status-row {
+        margin-top: 6px;
+        font-size: 13px;
+        color: var(--ink-2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+    }
+    .call-webrtc-state {
+        font-size: 11px;
+        color: var(--ink-3);
+        margin-top: 4px;
+    }
+    .call-timer-mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 14px;
+        letter-spacing: 0.5px;
+    }
+
+    /* Status indicators */
+    .status-calling-badge, .status-active-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .calling-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--accent);
+        animation: pulseRing 1.2s infinite;
+    }
+    .live-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #22c55e;
+    }
+
+    /* Controls Grid */
+    .call-win-controls {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        width: 100%;
+        padding-top: 10px;
+        border-top: 1px solid var(--line-soft);
+    }
+    .call-ctrl-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        color: var(--ink-2);
+        font-size: 11px;
+        font-weight: 500;
+        transition: all 0.15s ease;
+    }
+    .call-ctrl-btn .ctrl-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        background: var(--tray);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--ink);
+        transition: all 0.15s ease;
+    }
+    .call-ctrl-btn:hover .ctrl-icon {
+        background: var(--line-soft);
+        color: var(--ink);
+    }
+    .call-ctrl-btn.active-ctrl .ctrl-icon {
+        background: var(--accent-soft);
+        color: var(--accent-ink);
+    }
+    .call-ctrl-btn.hangup-btn {
+        color: var(--danger, #b3543f);
+    }
+    .call-ctrl-btn.hangup-btn .ctrl-icon {
+        background: var(--danger, #b3543f);
+        color: #fff;
+    }
+    .call-ctrl-btn.hangup-btn:hover .ctrl-icon {
+        background: #963d2a;
+    }
+
+    /* Minimized Floating Pill */
+    .global-call-pill {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 99998;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: var(--bg);
+        border: 1px solid var(--line-soft);
+        border-radius: 9999px;
+        padding: 6px 14px 6px 6px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        animation: slideInUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .pill-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: var(--accent-soft);
+        color: var(--accent-ink);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 13px;
+    }
+    .pill-info {
+        display: flex;
+        flex-direction: column;
+    }
+    .pill-name {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--ink);
+        max-width: 120px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .pill-status {
+        font-size: 11px;
+        color: var(--ink-3);
+    }
+    .pill-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: 4px;
+    }
+    .pill-btn {
+        background: var(--tray);
+        border: none;
+        border-radius: 50%;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--ink-2);
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .pill-btn:hover {
+        background: var(--line-soft);
+        color: var(--ink);
+    }
+    .pill-btn.muted {
+        background: var(--accent-soft);
+        color: var(--accent-ink);
+    }
+    .pill-btn.hangup {
+        background: var(--danger, #b3543f);
+        color: #fff;
+    }
+    .pill-btn.hangup:hover {
+        background: #963d2a;
+    }
+
+    /* Call Ended Notification Toast */
+    .call-ended-toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 99999;
+        animation: slideInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .call-ended-box {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 18px;
+        background: var(--bg);
+        border: 1px solid var(--line-soft);
+        border-radius: 12px;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+        font-size: 13px;
+        color: var(--ink);
+        font-weight: 500;
+    }
+    .call-ended-box i {
+        color: var(--danger, #b3543f);
+        width: 16px;
+        height: 16px;
+    }
+    .toast-close-btn {
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: var(--ink-3);
+        padding: 2px;
+        margin-left: 6px;
+    }
+
+    /* Keyframes */
+    @@keyframes slideInDown {
+        from { transform: translateY(-30px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+    @@keyframes slideInUp {
+        from { transform: translateY(30px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+    .avatar-incoming-pulse, .avatar-outgoing-pulse {
+        animation: pulseRing 1.4s infinite;
+    }
+    @@keyframes pulseRing {
+        0% { box-shadow: 0 0 0 0 rgba(46, 125, 91, 0.45); }
+        70% { box-shadow: 0 0 0 12px rgba(46, 125, 91, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(46, 125, 91, 0); }
+    }
+    .avatar-local-speaker.speaking,
+    .avatar-remote-speaker.speaking {
+        box-shadow: 0 0 0 4px var(--accent) !important;
+        transition: box-shadow 0.15s ease-in-out;
+    }
+</style>
+
+@code {
+    private bool isMinimized = false;
+    private System.Threading.Timer? elapsedTimer;
+    private int elapsedSeconds = 0;
+    private System.Threading.CancellationTokenSource? endReasonCts;
+
+    private string FormattedElapsed =>
+        $"{elapsedSeconds / 60:D2}:{elapsedSeconds % 60:D2}";
+
+    protected override void OnInitialized()
+    {
+        CallSvc.StateChanged += OnStateChanged;
+    }
+
+    private void OnStateChanged()
+    {
+        InvokeAsync(async () =>
+        {
+            UpdateElapsedTimer();
+
+            // Auto-dismiss end reason after 3 seconds
+            if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
+            {
+                endReasonCts?.Cancel();
+                endReasonCts?.Dispose();
+                endReasonCts = new System.Threading.CancellationTokenSource();
+                var token = endReasonCts.Token;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(3000, token);
+                        if (!token.IsCancellationRequested)
+                        {
+                            await InvokeAsync(() => CallSvc.DismissEndReason());
+                        }
+                    }
+                    catch (TaskCanceledException) { }
+                });
+            }
+
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        });
+    }
+
+    private void UpdateElapsedTimer()
+    {
+        if (CallSvc.IsActiveCall)
+        {
+            if (elapsedTimer is null)
+            {
+                var start = CallSvc.Current?.EstablishedAt ?? CallSvc.Current?.StartedAt ?? DateTime.UtcNow;
+                elapsedSeconds = Math.Max(0, (int)(DateTime.UtcNow - start).TotalSeconds);
+                elapsedTimer = new System.Threading.Timer(_ =>
+                {
+                    InvokeAsync(() =>
+                    {
+                        elapsedSeconds++;
+                        StateHasChanged();
+                    });
+                }, null, 1000, 1000);
+            }
+        }
+        else
+        {
+            elapsedTimer?.Dispose();
+            elapsedTimer = null;
+            elapsedSeconds = 0;
+        }
+    }
+
+    private async Task AcceptCall()
+    {
+        var room = await CallSvc.AcceptCurrentAsync();
+        if (room is null)
+        {
+            Toasts.Show("Failed to accept call.", ToastKind.Error);
+        }
+    }
+
+    private async Task DeclineCall()
+    {
+        await CallSvc.DeclineCurrentAsync();
+    }
+
+    private async Task EndCall()
+    {
+        if (CallSvc.IsOutgoingRing)
+        {
+            await CallSvc.CancelCurrentAsync();
+        }
+        else
+        {
+            await CallSvc.EndCurrentAsync();
+        }
+    }
+
+    private async Task ToggleMute()
+    {
+        await CallSvc.ToggleMuteAudioAsync();
+    }
+
+    private async Task ToggleScreen()
+    {
+        if (CallSvc.Current is null) return;
+        var me = CallSvc.ActiveMe;
+        bool next = !(me?.IsScreenSharing ?? false);
+        await CallSvc.SignalAsync(CallSvc.Current.Id, "update", screen: next);
+    }
+
+    private static string Initials(string name) =>
+        string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w[0]).Take(2)).ToUpperInvariant();
+
+    public void Dispose()
+    {
+        CallSvc.StateChanged -= OnStateChanged;
+        elapsedTimer?.Dispose();
+        endReasonCts?.Cancel();
+        endReasonCts?.Dispose();
+    }
+}

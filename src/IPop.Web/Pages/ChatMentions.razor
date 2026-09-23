@@ -1,0 +1,217 @@
+@page "/chat/mentions"
+@implements IDisposable
+@inject IJSRuntime JS
+@inject AuthState Auth
+@inject ChatState ChatSvc
+@inject NavigationManager Nav
+@using IPop.Application.Chat
+
+<PageTitle>Unread mentions — IPop</PageTitle>
+
+<div class="content" style="grid-template-columns:1fr">
+
+    <div class="tray rise rise-1">
+        <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head" style="flex-wrap:wrap;gap:10px">
+                <i data-lucide="at-sign"></i> <span>Unread mentions</span>
+                <span class="meta">@Subtitle</span>
+                <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+                    <button class="btn-sm surface" @onclick="RefreshAsync" title="Reload"><i data-lucide="refresh-cw" style="width:13px;height:13px"></i> Refresh</button>
+                </span>
+            </div>
+
+            @if (loading)
+            {
+                <div class="tree-empty" style="padding:34px">
+                    <i data-lucide="loader-circle" style="width:20px;height:20px;margin-bottom:6px"></i>
+                    <div>Loading mentions…</div>
+                </div>
+            }
+            else if (Groups.Count == 0)
+            {
+                <div class="tree-empty" style="padding:34px">
+                    <i data-lucide="at-sign" style="width:20px;height:20px;margin-bottom:6px"></i>
+                    <div>No unread mentions.</div>
+                    <div class="meta" style="font-size:11.5px;color:var(--ink-3)">When someone mentions you with @@name or @@all, their messages will appear here.</div>
+                </div>
+            }
+            else
+            {
+                @foreach (var g in Groups)
+                {
+                    <div class="pins-room-head">
+                        <span class="pins-room-av avatar" style="background:@IPop.Web.Models.AvatarPalette.For(RoomLabel(g.RoomId))">@RoomInitials(g)</span>
+                        <span class="pins-room-name">@RoomLabel(g.RoomId)</span>
+                        <span class="pins-room-count">@g.Items.Count mentions</span>
+                    </div>
+                    <div class="notif-list" role="list" aria-label="Unread mentions">
+                        @foreach (var m in g.Items)
+                        {
+                            var msg = m;
+                            <div class="notif-row unread" role="listitem" @onclick="() => OpenInChat(msg)">
+                                <div class="notif-row-ic" style="background:var(--accent-soft);color:var(--accent-ink)">
+                                    <i data-lucide="at-sign"></i>
+                                </div>
+                                <div class="notif-row-main">
+                                    <div class="notif-row-t">
+                                        @msg.SenderName
+                                        <span class="tag" style="background:var(--accent-soft);color:var(--accent-ink)">@RoomLabel(msg.RoomId)</span>
+                                        @if (msg.MentionsAll)
+                                        {
+                                            <span class="tag" style="background:var(--danger-soft);color:var(--danger)">@("@all")</span>
+                                        }
+                                    </div>
+                                    <div class="notif-row-s">@Snippet(msg.Content)</div>
+                                    <div class="notif-row-meta">
+                                        <i data-lucide="clock" style="width:11px;height:11px"></i>
+                                        <span>@FormatTime(msg.CreatedAt.ToLocalTime())</span>
+                                    </div>
+                                </div>
+                                <span class="notif-row-dot" title="Unread"></span>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+</div>
+
+@code {
+    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+
+    private sealed class RoomMentions
+    {
+        public required Guid RoomId { get; init; }
+        public required List<MessageDto> Items { get; init; }
+    }
+
+    private List<RoomMentions> Groups = [];
+    private Dictionary<Guid, string> roomNames = [];
+    private bool loading = true;
+
+    private string Subtitle => loading ? "loading…"
+        : $"{Groups.Sum(g => g.Items.Count)} mentions · {Groups.Count} rooms";
+
+    private string RoomLabel(Guid roomId)
+        => roomNames.TryGetValue(roomId, out var n) ? n : "Room";
+
+    private string RoomInitials(RoomMentions g)
+    {
+        var name = RoomLabel(g.RoomId);
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant(),
+            _ => string.Concat(parts[0][0], parts[1][0]).ToUpperInvariant()
+        };
+    }
+
+    protected override void OnInitialized()
+    {
+        Layout.SetHeader("Messages");
+        Layout.SetSubtitle("Unread mentions");
+        ChatSvc.RoomListChanged += OnRoomListChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ChatSvc.ConnectAsync();
+        await ChatSvc.LoadRoomsAsync();
+        BuildRoomNames();
+        await RefreshAsync();
+    }
+
+    private void OnRoomListChanged()
+    {
+        BuildRoomNames();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void BuildRoomNames()
+    {
+        roomNames = ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms)
+            .ToDictionary(r => r.Id, r => r.Type == "dm"
+                ? (r.RecipientName ?? r.RecipientNik ?? "Direct message")
+                : (r.Name ?? "Group"));
+    }
+
+    private async Task RefreshAsync()
+    {
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            await ChatSvc.LoadRoomsAsync();
+            BuildRoomNames();
+            var myNik = Auth.Me?.Nik;
+
+            try
+            {
+                var page0 = await Auth.GetAsync<PagedResult<MessageDto>>("/api/chat/mentions/unread?page=1&pageSize=50");
+                Groups = (page0?.Items ?? (IReadOnlyList<MessageDto>)[])
+                    .GroupBy(m => m.RoomId)
+                    .Select(g => new RoomMentions { RoomId = g.Key, Items = g.OrderByDescending(m => m.CreatedAt).ToList() })
+                    .Where(g => g.Items.Count > 0)
+                    .OrderByDescending(g => g.Items.Max(m => m.CreatedAt))
+                    .ToList();
+                return;
+            }
+            catch { }
+
+            var flagged = ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms)
+                .Where(r => r.HasUnreadMention || ChatSvc.HasUnreadMention(r.Id))
+                .ToList();
+
+            var results = await Task.WhenAll(flagged.Select(async r =>
+            {
+                try
+                {
+                    var page = await Auth.GetAsync<PagedResult<MessageDto>>($"/api/chat/rooms/{r.Id}/messages?page=1&pageSize=50");
+                    var hits = (page?.Items ?? (IReadOnlyList<MessageDto>)[])
+                        .Where(m => !m.IsDeleted && m.Type != "system" &&
+                                    (m.MentionsAll ||
+                                     (myNik != null && m.MentionedNiks.Contains(myNik, StringComparer.OrdinalIgnoreCase))))
+                        .OrderByDescending(m => m.CreatedAt)
+                        .ToList();
+                    return new RoomMentions { RoomId = r.Id, Items = hits };
+                }
+                catch
+                {
+                    return new RoomMentions { RoomId = r.Id, Items = [] };
+                }
+            }));
+            Groups = results.Where(g => g.Items.Count > 0)
+                            .OrderByDescending(g => g.Items.Max(m => m.CreatedAt))
+                            .ToList();
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenInChat(MessageDto msg)
+        => Nav.NavigateTo($"/chat/{msg.RoomId}?jump={msg.Id}");
+
+    private static string Snippet(string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return "(attachment)";
+        var text = content.StartsWith("[forwarded]") ? content["[forwarded]".Length..].TrimStart() : content;
+        return text.Length <= 160 ? text : text[..160] + "…";
+    }
+
+    private static string FormatTime(DateTime t)
+        => t.Date == DateTime.Now.Date ? t.ToString("HH:mm") : t.ToString("dd MMM");
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+        => await JS.InvokeVoidAsync("ipop.icons");
+
+    public void Dispose()
+    {
+        ChatSvc.RoomListChanged -= OnRoomListChanged;
+    }
+}

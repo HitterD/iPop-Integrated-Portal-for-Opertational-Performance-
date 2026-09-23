@@ -1,0 +1,144 @@
+/* Radzen and third-party overrides stay isolated from domain modules.
+   Purpose: neutralize vendor styles that leak into the app, map palette where needed,
+   and keep our tokens authoritative.
+*/
+
+/* === SCROLLBARS (Radzen default.css global leak) ===
+   Radzen ships:
+     body:not(.rz-default-scrollbars)::-webkit-scrollbar { ... --rz-secondary ... }
+     body:not(.rz-default-scrollbars) ::-webkit-scrollbar { ... }
+   Size 16px, color #35a0d7 (blue). We want thin neutral scrollbars everywhere.
+*/
+:root {
+  --app-scrollbar-size: 10px;
+  --app-scrollbar-thumb: rgba(63, 63, 58, 0.35);
+  --app-scrollbar-thumb-hover: rgba(63, 63, 58, 0.55);
+  --app-scrollbar-track: transparent;
+}
+
+[data-theme="dark"] {
+  --app-scrollbar-thumb: rgba(231, 228, 221, 0.35);
+  --app-scrollbar-thumb-hover: rgba(231, 228, 221, 0.55);
+}
+
+/* Cover Radzen's broad selectors without fighting specificity war.
+   We use !important only where Radzen uses it; otherwise plain override suffices
+   because this stylesheet is last. */
+body:not(.rz-default-scrollbars)::-webkit-scrollbar,
+body:not(.rz-default-scrollbars) ::-webkit-scrollbar,
+.rz-scrollbars::-webkit-scrollbar,
+.rz-scrollbars ::-webkit-scrollbar {
+  width: var(--app-scrollbar-size);
+  height: var(--app-scrollbar-size);
+  background-color: var(--app-scrollbar-track);
+}
+
+body:not(.rz-default-scrollbars)::-webkit-scrollbar-thumb,
+body:not(.rz-default-scrollbars) ::-webkit-scrollbar-thumb,
+.rz-scrollbars::-webkit-scrollbar-thumb,
+.rz-scrollbars ::-webkit-scrollbar-thumb {
+  background: var(--app-scrollbar-thumb);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+  min-width: 24px;
+  min-height: 24px;
+}
+
+body:not(.rz-default-scrollbars)::-webkit-scrollbar-thumb:hover,
+body:not(.rz-default-scrollbars) ::-webkit-scrollbar-thumb:hover,
+.rz-scrollbars::-webkit-scrollbar-thumb:hover,
+.rz-scrollbars ::-webkit-scrollbar-thumb:hover {
+  background: var(--app-scrollbar-thumb-hover);
+}
+
+body:not(.rz-default-scrollbars)::-webkit-scrollbar-corner,
+body:not(.rz-default-scrollbars) ::-webkit-scrollbar-corner,
+.rz-scrollbars::-webkit-scrollbar-corner,
+.rz-scrollbars ::-webkit-scrollbar-corner {
+  background-color: var(--app-scrollbar-track);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--app-scrollbar-thumb) var(--app-scrollbar-track);
+}
+
+/* === Radzen palette mapping (only the bits we actually use) ===
+   Keep Radzen components from looking alien. Map only what surfaces.
+   These live at :root so they affect both themes; dark overrides below. */
+:root {
+  /* Map to our tokens where semantically close; otherwise keep a calm neutral. */
+  --rz-primary: var(--accent);
+  --rz-secondary: var(--ink-2);
+  --rz-info: var(--ink-2);
+  --rz-success: #2e7d5b; /* accent-ish, not our full --accent to avoid confusion */
+  --rz-warning: var(--warn);
+  --rz-danger: var(--danger);
+
+  /* Inputs / focus ring we want to look like ours */
+  --rz-border-focus: 1px solid var(--accent);
+  --rz-input-background-color: var(--surface);
+  --rz-text-color: var(--ink);
+  --rz-text-disabled-color: var(--ink-3);
+  --rz-text-tertiary-color: var(--ink-3);
+}
+
+/* Dark theme Radzen mapping */
+[data-theme="dark"] {
+  --rz-primary: var(--accent);
+  --rz-secondary: var(--ink-2);
+  --rz-info: var(--ink-2);
+  --rz-success: #4ca37e;
+  --rz-warning: var(--warn);
+  --rz-danger: var(--danger);
+
+  --rz-border-focus: 1px solid var(--accent);
+  --rz-input-background-color: var(--surface);
+  --rz-text-color: var(--ink);
+  --rz-text-disabled-color: var(--ink-3);
+  --rz-text-tertiary-color: var(--ink-3);
+}
+
+/* === Color scheme for native form controls (date pickers, etc.) === */
+:root {
+  color-scheme: light;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* === Ensure Radzen dialogs / popups inherit our surface tokens === */
+.rz-dialog,
+.rz-popup,
+.rz-tooltip-content,
+.rz-dropdown-panel {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+.rz-dialog-titlebar {
+  background: var(--tray);
+  color: var(--ink);
+  border-bottom: 1px solid var(--line);
+}
+
+/* === Dropdown items hover === */
+.rz-dropdown-item:hover,
+.rz-listbox-item:hover {
+  background: var(--tray);
+}
+
+/* === Buttons: keep our language; don't let orange bleed through === */
+.rz-button {
+  border-radius: 8px;
+}
+.rz-button-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.rz-button-primary:hover {
+  background: var(--accent-ink);
+  border-color: var(--accent-ink);
+}

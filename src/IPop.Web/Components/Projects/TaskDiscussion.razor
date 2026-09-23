@@ -1,0 +1,97 @@
+@namespace IPop.Web.Components.Projects
+@using IPop.Web.Components.Projects
+
+@* Komentar tugas dengan balasan berurutan (Diskusi Tugas, Fase 2).
+   Kontrak backend: GET/POST /api/projects/tasks/{taskId}/comments,
+   komentar membawa ParentCommentId untuk balasan satu tingkat (indentasi). *@
+
+<div class="task-discussion">
+    @if (Roots.Count == 0)
+    {
+        <div class="tree-empty" style="padding:24px">
+            <i data-lucide="messages-square" style="width:18px;height:18px;margin-bottom:6px"></i>
+            <div class="meta" style="font-size:12px;color:var(--ink-3)">No comments yet. Start the discussion below.</div>
+        </div>
+    }
+    else
+    {
+        <div style="display:flex;flex-direction:column;gap:10px">
+            @foreach (var c in Roots)
+            {
+                @RenderComment(c, false)
+            }
+        </div>
+    }
+    <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-end">
+        <textarea class="org-input" style="flex:1;min-height:38px;resize:vertical;font-size:12.5px"
+                  placeholder="@(replyTo is null ? "Write a comment…" : $"Reply to @{replyTo.Author}…")"
+                  @bind="newText"></textarea>
+        <button class="btn-sm accent" style="padding:6px 12px" disabled="@string.IsNullOrWhiteSpace(newText)" @onclick="Submit">
+            <i data-lucide="send" style="width:12px;height:12px"></i>
+        </button>
+    </div>
+    @if (replyTo is not null)
+    {
+        <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-3);margin-top:2px">
+            <i data-lucide="reply" style="width:11px;height:11px"></i> Replying to <b>@replyTo.Author</b>
+            <button type="button" class="btn-sm surface" style="padding:1px 8px;font-size:10.5px" @onclick="() => replyTo = null">Cancel reply</button>
+        </div>
+    }
+</div>
+
+@code {
+    /// Satu komentar (atau balasan) pada tugas.
+    public sealed record TaskCommentItem(Guid Id, string Author, string Text, DateTime At,
+        IReadOnlyList<string> Attachments, Guid? ParentCommentId);
+
+    [Parameter] public IReadOnlyList<TaskCommentItem> Items { get; set; } = [];
+    /// Dipanggil saat pengguna mengirim komentar/balasan baru.
+    [Parameter] public EventCallback<(string Text, Guid? ParentId)> OnSubmit { get; set; }
+
+    private string newText = "";
+    private TaskCommentItem? replyTo;
+
+    private List<TaskCommentItem> Roots =>
+        Items.Where(c => c.ParentCommentId is null).OrderBy(c => c.At).ToList();
+
+    private IEnumerable<TaskCommentItem> RepliesOf(Guid id) =>
+        Items.Where(c => c.ParentCommentId == id).OrderBy(c => c.At);
+
+    private async Task Submit()
+    {
+        if (string.IsNullOrWhiteSpace(newText)) return;
+        await OnSubmit.InvokeAsync((newText.Trim(), replyTo?.Id));
+        newText = "";
+        replyTo = null;
+    }
+
+    private RenderFragment RenderComment(TaskCommentItem c, bool isReply) => __builder =>
+    {
+        <div class="task-comment @(isReply ? "reply" : "")" @key="c.Id">
+            <div class="team-avatar-circ" style="width:26px;height:26px;font-size:10px;background:@ProjectUiHelpers.GetAvatarBg(c.Author);flex-shrink:0">@ProjectUiHelpers.GetInitials(c.Author)</div>
+            <div style="flex:1;min-width:0">
+                <div style="font-size:12px"><b>@c.Author</b> <span style="color:var(--ink-3);font-size:11px">· @c.At.ToLocalTime().ToString("dd MMM HH:mm")</span></div>
+                <div style="font-size:12.5px;color:var(--ink);margin-top:2px;white-space:pre-wrap">@c.Text</div>
+                @if (c.Attachments.Count > 0)
+                {
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+                        @foreach (var att in c.Attachments)
+                        {
+                            <span class="task-comment-att"><i data-lucide="paperclip"></i> @att</span>
+                        }
+                    </div>
+                }
+                @if (!isReply)
+                {
+                    <button type="button" class="task-comment-reply" @onclick="() => replyTo = c">
+                        <i data-lucide="reply"></i> Reply
+                    </button>
+                }
+            </div>
+        </div>
+        @foreach (var r in RepliesOf(c.Id))
+        {
+            @RenderComment(r, true)
+        }
+    };
+}

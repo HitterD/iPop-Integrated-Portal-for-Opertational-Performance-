@@ -275,9 +275,15 @@ public sealed partial class ChatService
             return new MessageResultDto(false, null, "forbidden");
 
         var now = DateTime.UtcNow;
-        var formattedContent = original.Content?.StartsWith("[forwarded]") == true
-            ? original.Content
-            : $"[forwarded] {original.Content}";
+        // Konten bersih: lepas prefix legacy "[forwarded]" — metadata terusan kini
+        // hidup di kolom ForwardedFrom*, tidak lagi di dalam teks pesan.
+        var cleanContent = original.Content?.StartsWith("[forwarded]") == true
+            ? original.Content["[forwarded]".Length..].TrimStart()
+            : original.Content;
+        // Asal-usul terusan: bila pesan asal sendiri hasil terusan, pertahankan
+        // pengirim ASLI pertama (rantai terusan tidak menimpa asal).
+        var originSender = original.ForwardedFromSenderName ?? original.Sender?.Name ?? "Unknown";
+        var originMessageId = original.ForwardedFromMessageId ?? original.Id;
 
         var newMessage = new ChatMessage
         {
@@ -285,8 +291,10 @@ public sealed partial class ChatService
             RoomId = targetRoomId,
             SenderId = userId,
             Type = original.Type ?? "text",
-            Content = formattedContent,
+            Content = cleanContent,
             IdempotencyKey = Guid.NewGuid(),
+            ForwardedFromMessageId = originMessageId,
+            ForwardedFromSenderName = originSender,
             CreatedAt = now
         };
 
@@ -406,7 +414,8 @@ public sealed partial class ChatService
             roomDtos.Add(new RoomListDto(
                 r.Id, r.Type, r.Name, recipientNik, recipientName,
                 null, r.LastMessageAt == default ? null : r.LastMessageAt,
-                0, false, false, false, presenceStatus, false, searchMentionIds.Contains(r.Id), null
+                0, false, false, false, presenceStatus, false, searchMentionIds.Contains(r.Id), null,
+                true, r.AvatarColor
             ));
         }
 
@@ -441,6 +450,75 @@ public sealed partial class ChatService
             .Include(m => m.Attachments)
             .Include(m => m.Reactions)
             .Include(m => m.ReadReceipts)
+            .Include(m => m.ReplyTo)
+                .ThenInclude(r => r!.Sender)
+            .ToListAsync(ct);
+
+        var dtos = messages.Select(m => MapToMessageDto(m, userId)).ToList();
+        return new PagedResult<MessageDto>(dtos, totalCount, page, pageSize);
+    }
+
+    public async Task<PagedResult<MessageDto>> SearchAllMessagesAsync(Guid userId, string query, int page, int pageSize, CancellationToken ct)
+    {
+        if (query.Length < 2)
+            return new PagedResult<MessageDto>([], 0, page, pageSize);
+
+        var pattern = EscapeLikePattern(query);
+
+        // Hanya ruang yang diikuti pengguna (keanggotaan aktif); balasan utas dikecualikan
+        // seperti pencarian per-ruang — induk utaslah yang mewakili percakapan.
+        var messagesQuery = db.ChatMessages
+            .AsNoTracking()
+            .Where(m => m.ThreadParentId == null && !m.IsDeleted
+                && EF.Functions.ILike(m.Content, pattern)
+                && db.ChatRoomMembers.Any(mm => mm.RoomId == m.RoomId && mm.UserId == userId && mm.LeftAt == null));
+
+        var totalCount = await messagesQuery.CountAsync(ct);
+
+        var messages = await messagesQuery
+            .OrderByDescending(m => m.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Include(m => m.Sender)
+            .Include(m => m.Attachments)
+            .Include(m => m.Reactions)
+            .Include(m => m.ReadReceipts)
+            .Include(m => m.ReplyTo)
+                .ThenInclude(r => r!.Sender)
+            .ToListAsync(ct);
+
+        var dtos = messages.Select(m => MapToMessageDto(m, userId)).ToList();
+        return new PagedResult<MessageDto>(dtos, totalCount, page, pageSize);
+    }
+
+    public async Task<PagedResult<MessageDto>> GetUnreadMentionsAsync(Guid userId, int page, int pageSize, CancellationToken ct)
+    {
+        // Kriteria yang sama dengan penanda HasUnreadMention di daftar ruang:
+        // mention milik pengguna, pesan tidak dihapus, bukan kiriman sendiri, dan
+        // lebih baru dari tanda baca terakhir ruangnya.
+        var mentionsQuery =
+            from cm in db.ChatMentions.AsNoTracking()
+            join m in db.ChatMessages.AsNoTracking() on cm.MessageId equals m.Id
+            join s in db.ChatRoomUserSettings.AsNoTracking().Where(x => x.UserId == userId) on m.RoomId equals s.RoomId into sj
+            from s in sj.DefaultIfEmpty()
+            where cm.UserId == userId
+                  && !m.IsDeleted
+                  && m.SenderId != userId
+                  && (s == null || s.LastReadMessageAt == null || m.CreatedAt > s.LastReadMessageAt)
+            select m;
+
+        var totalCount = await mentionsQuery.Distinct().CountAsync(ct);
+
+        var messages = await mentionsQuery
+            .Distinct()
+            .OrderByDescending(m => m.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Include(m => m.Sender)
+            .Include(m => m.Attachments)
+            .Include(m => m.Reactions)
+            .Include(m => m.ReadReceipts)
+            .Include(m => m.Mentions)
             .Include(m => m.ReplyTo)
                 .ThenInclude(r => r!.Sender)
             .ToListAsync(ct);

@@ -88,7 +88,10 @@ public sealed partial class ChatService
         var roomId = message.RoomId;
 
         var role = await GetMemberRoleAsync(userId, roomId, ct);
-        if (role is not ("owner" or "admin"))
+        // DM members all carry "member" (no owner/admin) — any DM member may pin;
+        // in groups pinning stays an owner/admin action.
+        var isDm = await db.ChatRooms.AsNoTracking().Where(r => r.Id == roomId).Select(r => r.Type == "dm").FirstOrDefaultAsync(ct);
+        if (role is null || (!isDm && role is not ("owner" or "admin")))
             return new PinnedResultDto(false, "forbidden");
 
         var alreadyPinned = await db.ChatPinnedMessages
@@ -133,7 +136,8 @@ public sealed partial class ChatService
             return new PinnedResultDto(false, "message_not_found");
 
         var role = await GetMemberRoleAsync(userId, pinned.RoomId, ct);
-        if (role is not ("owner" or "admin"))
+        var isDm = await db.ChatRooms.AsNoTracking().Where(r => r.Id == pinned.RoomId).Select(r => r.Type == "dm").FirstOrDefaultAsync(ct);
+        if (role is null || (!isDm && role is not ("owner" or "admin")))
             return new PinnedResultDto(false, "forbidden");
 
         var unpinRoomId = pinned.RoomId;
@@ -156,6 +160,68 @@ public sealed partial class ChatService
                 p.Message.Sender.Name,
                 MentionPlainText.Project(p.Message.Content, 120),
                 p.PinnedAt
+            ))
+            .ToListAsync(ct);
+    }
+
+    // ── Simpanan pribadi (bookmark per pengguna — tidak mengubah tampilan ruang) ──
+
+    public async Task<SavedResultDto> SaveMessageAsync(Guid userId, Guid messageId, CancellationToken ct)
+    {
+        var message = await db.ChatMessages.AsNoTracking()
+            .Where(m => m.Id == messageId && !m.IsDeleted)
+            .Select(m => new { m.RoomId })
+            .FirstOrDefaultAsync(ct);
+        if (message is null)
+            return new SavedResultDto(false, "message_not_found");
+
+        // Hanya anggota ruang yang boleh menyimpan pesannya.
+        if (!await IsMemberAsync(userId, message.RoomId, ct))
+            return new SavedResultDto(false, "forbidden");
+
+        var already = await db.ChatSavedMessages
+            .AnyAsync(s => s.UserId == userId && s.MessageId == messageId, ct);
+        if (already)
+            return new SavedResultDto(true, null); // idempotent
+
+        db.ChatSavedMessages.Add(new ChatSavedMessage
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            MessageId = messageId,
+            SavedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync(ct);
+        return new SavedResultDto(true, null);
+    }
+
+    public async Task<SavedResultDto> UnsaveMessageAsync(Guid userId, Guid messageId, CancellationToken ct)
+    {
+        var saved = await db.ChatSavedMessages
+            .FirstOrDefaultAsync(s => s.UserId == userId && s.MessageId == messageId, ct);
+        if (saved is null)
+            return new SavedResultDto(false, "message_not_found");
+
+        db.ChatSavedMessages.Remove(saved);
+        await db.SaveChangesAsync(ct);
+        return new SavedResultDto(true, null);
+    }
+
+    public async Task<IReadOnlyList<SavedMessageDto>> GetSavedMessagesAsync(Guid userId, CancellationToken ct)
+    {
+        return await db.ChatSavedMessages
+            .AsNoTracking()
+            .Where(s => s.UserId == userId && !s.Message.IsDeleted)
+            .Include(s => s.Message)
+                .ThenInclude(m => m.Sender)
+            .OrderByDescending(s => s.SavedAt)
+            .Select(s => new SavedMessageDto(
+                s.Id,
+                s.Message.RoomId,
+                s.MessageId,
+                s.Message.Sender.Name,
+                MentionPlainText.Project(s.Message.Content, 120),
+                s.SavedAt
             ))
             .ToListAsync(ct);
     }

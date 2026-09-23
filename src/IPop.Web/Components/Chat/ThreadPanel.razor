@@ -1,0 +1,114 @@
+@using IPop.Application.Chat
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject ChatState ChatSvc
+
+@if (isOpen)
+{
+    <div class="thread-replies thread-panel">
+        @if (loading) { <div class="thread-state">Loading…</div> }
+        else if (!string.IsNullOrEmpty(error)) { <div class="thread-error">@error <button class="comp-btn thread-action" @onclick="Load">Retry</button></div> }
+        else
+        {
+            @foreach (var r in replies)
+            {
+                var reply = r;
+                <div class="msg recv thread-reply">
+                    <div class="msg-avatar avatar thread-avatar" style="background:@Color(reply.SenderNik)">@Initials(reply.SenderName)</div>
+                    <div class="bubble-wrap"><div class="sender">@reply.SenderName</div><div class="bubble thread-bubble">@reply.Content<span class="time">@reply.CreatedAt.ToLocalTime().ToString("HH:mm")</span></div></div>
+                </div>
+            }
+            <div class="thread-composer">
+                <input class="thread-input" placeholder="Reply in thread…" @bind="input" @bind:event="oninput" @onkeydown="OnKey" />
+                <button class="comp-btn thread-send" disabled="@(string.IsNullOrWhiteSpace(input) || sending)" @onclick="Send">@(sending ? "…" : "Send")</button>
+            </div>
+            @if (input.Length > 3900) { <div class="thread-count">@input.Length / 4000</div> }
+            @if (!string.IsNullOrEmpty(sendError)) { <div class="thread-error">@sendError</div> }
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public Guid? ParentId { get; set; }
+    private List<MessageDto> replies = [];
+    private HashSet<Guid> seenKeys = [];
+    private string input = "";
+    private bool loading;
+    private bool sending;
+    private string? error;
+    private string? sendError;
+    private bool isOpen => ParentId.HasValue;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ParentId.HasValue) await Load();
+        ChatSvc.ThreadReplyReceived -= OnThreadReply;
+        ChatSvc.ThreadReplyReceived += OnThreadReply;
+    }
+
+    private async Task Load()
+    {
+        if (!ParentId.HasValue) return;
+        loading = true; error = null;
+        try
+        {
+            var res = await Auth.GetAsync<PagedResult<MessageDto>>($"/api/chat/messages/{ParentId.Value}/thread?pageSize=50");
+            if (res != null) { replies = res.Items.ToList(); seenKeys = replies.Select(r => r.IdempotencyKey).ToHashSet(); }
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { loading = false; }
+    }
+
+    private void OnThreadReply(MessageDto reply)
+    {
+        if (reply.ThreadParentId != ParentId) return;
+        if (seenKeys.Contains(reply.IdempotencyKey)) return;
+        seenKeys.Add(reply.IdempotencyKey);
+        replies.Add(reply);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task Send()
+    {
+        if (string.IsNullOrWhiteSpace(input) || !ParentId.HasValue || sending) return;
+        var text = input.Trim();
+        if (text.Length > 4000) return;
+        sending = true; sendError = null;
+        try
+        {
+            var key = Guid.NewGuid();
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/chat/messages/{ParentId.Value}/thread", new { content = text, idempotencyKey = key, roomId = ChatSvc.ActiveRoomId });
+            if (!res.IsSuccessStatusCode)
+            {
+                try { var b = await res.Content.ReadFromJsonAsync<Dictionary<string,string>>(); sendError = b != null && b.TryGetValue("message", out var m) ? m : res.StatusCode.ToString(); } catch { sendError = res.StatusCode.ToString(); }
+                if (sendError?.Contains("thread_full") == true) sendError = "Thread is full (255 replies).";
+                return;
+            }
+            input = "";
+            await Load();
+        }
+        catch (Exception ex) { sendError = ex.Message; }
+        finally { sending = false; }
+    }
+
+    private async Task OnKey(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey) await Send();
+    }
+
+    private static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
+    }
+    private static string Color(string nik)
+    {
+        var colors = new[] { "#2e7d5b", "#7d5ba6", "#8a6d3b", "#b3543f", "#4f6d8f", "#5b7d2e" };
+        return colors[Math.Abs(nik.GetHashCode()) % colors.Length];
+    }
+}
+
+@implements IDisposable
+@code {
+    public void Dispose() => ChatSvc.ThreadReplyReceived -= OnThreadReply;
+}

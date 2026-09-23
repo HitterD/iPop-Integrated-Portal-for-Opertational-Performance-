@@ -39,7 +39,9 @@ public record MailSummaryDto(
     Guid? ThreadRootId,
     bool IsPinned = false,
     string Importance = "normal",
-    DateTime? ScheduledAt = null);
+    DateTime? ScheduledAt = null,
+    /// Label yang menempel pada surat ini (Fase 3 — Surat Lanjutan).
+    IReadOnlyList<string>? Labels = null);
 
 public record PagedResult<T>(IReadOnlyList<T> Items, int TotalCount, int Page, int PageSize);
 
@@ -59,7 +61,14 @@ public record MailSearchRequest(
     string? Query = null,
     bool? StarredOnly = null,
     bool? UnreadOnly = null,
-    string? SenderNik = null);
+    string? SenderNik = null,
+    /// Filter label (nama) — Surat Lanjutan.
+    string? Label = null,
+    /// Rentang tanggal kirim (UTC), inklusif batas bawah.
+    DateTime? DateFrom = null,
+    DateTime? DateTo = null,
+    /// Hanya surat yang punya lampiran.
+    bool? HasAttachment = null);
 
 // Full message with resolved recipients for the reading pane.
 public record MailRecipientDto(Guid UserId, string Name, string Nik, string Email, string RecipientType);

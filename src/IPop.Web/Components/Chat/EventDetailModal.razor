@@ -1,0 +1,60 @@
+@namespace IPop.Web.Components.Chat
+@using IPop.Web.Services
+@inject NavigationManager Nav
+
+@* Modal detail event (Fase 4): terbuka saat kartu event di percakapan diklik.
+   Menampilkan judul, waktu, lokasi/tautan, peserta; tombol buka di kalender. *@
+
+@if (IsOpen && Event is not null)
+{
+    <div class="backdrop on" @onclick="Close"></div>
+    <div class="event-modal" role="dialog" aria-modal="true" aria-label="Event details">
+        <div class="event-modal-head">
+            <i data-lucide="calendar-clock"></i>
+            <span class="t">@Event.Title</span>
+            <button class="icon-btn" style="margin-left:auto" @onclick="Close" title="Close" aria-label="Close"><i data-lucide="x"></i></button>
+        </div>
+        <div class="event-modal-body">
+            <div class="ev-row"><i data-lucide="clock"></i><span>@Event.StartAt.ToLocalTime().ToString("dddd, dd MMM yyyy · HH:mm")@(Event.EndAt is not null ? $"–{Event.EndAt.Value.ToLocalTime():HH:mm}" : "")</span></div>
+            @if (!string.IsNullOrEmpty(Event.Location))
+            {
+                <div class="ev-row"><i data-lucide="map-pin"></i><span>@Event.Location</span></div>
+            }
+            @if (!string.IsNullOrEmpty(Event.Link))
+            {
+                <div class="ev-row"><i data-lucide="link"></i><a href="@Event.Link" target="_blank" rel="noopener">@Event.Link</a></div>
+            }
+            @if (Event.Attendees.Count > 0)
+            {
+                <div class="ev-row" style="align-items:flex-start">
+                    <i data-lucide="users"></i>
+                    <div>
+                        <div style="font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:4px">@Event.Attendees.Count attendees</div>
+                        <div style="display:flex;flex-wrap:wrap;gap:4px">
+                            @foreach (var a in Event.Attendees.Take(12))
+                            {
+                                <span class="chip" style="font-size:11px">@a</span>
+                            }
+                            @if (Event.Attendees.Count > 12) { <span class="chip" style="font-size:11px">+@(Event.Attendees.Count - 12) more</span> }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+        <div class="event-modal-foot">
+            <button class="btn-sm surface" @onclick="OpenInCalendar"><i data-lucide="calendar" style="width:12px;height:12px"></i> Open in Calendar</button>
+            <button class="btn-sm accent" @onclick="Close">Close</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public EventModel? Event { get; set; }
+
+    public sealed record EventModel(Guid Id, string Title, DateTime StartAt, DateTime? EndAt, string? Location, string? Link, IReadOnlyList<string> Attendees);
+
+    private void Close() => IsOpenChanged.InvokeAsync(false);
+    private void OpenInCalendar() { IsOpenChanged.InvokeAsync(false); Nav.NavigateTo("/calendar"); }
+}

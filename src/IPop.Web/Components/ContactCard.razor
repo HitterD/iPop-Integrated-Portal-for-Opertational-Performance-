@@ -1,0 +1,217 @@
+@using IPop.Web.Models
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject IPop.Web.Services.CallState CallSvc
+@inject IPop.Web.Services.ToastService Toasts
+@inject IPop.Web.Services.FavoriteContacts Favorites
+
+@if (Person is not null)
+{
+    <div class="contact-card">
+        <!-- Hero -->
+        <div class="contact-hero">
+            <div class="contact-av-wrap">
+                <div class="contact-av" style="background:@Person.Color">
+                    @Person.Initials
+                </div>
+                @if (!string.IsNullOrWhiteSpace(Person.Status))
+                {
+                    <span class="presence @Person.Status"></span>
+                }
+            </div>
+            <div class="contact-name">@Person.Name</div>
+            @if (!string.IsNullOrWhiteSpace(Person.Position) && Person.Position != "—")
+            {
+                <div class="contact-pos">@Person.Position</div>
+            }
+            @{
+                var orgLine = GetDeptSite(Person);
+            }
+            @if (!string.IsNullOrWhiteSpace(orgLine))
+            {
+                <div class="contact-org">
+                    <i data-lucide="network"></i>
+                    <span>@orgLine</span>
+                </div>
+            }
+
+            @if (ShowActions)
+            {
+                <div class="hero-actions">
+                    <button type="button" class="hero-btn" @onclick="HandleMessage" title="Message" aria-label="Message">
+                        <div class="hero-btn-ic"><i data-lucide="message-circle"></i></div>
+                        <span>Message</span>
+                    </button>
+                    <button type="button" class="hero-btn" @onclick="HandleMail" title="Mail" aria-label="Mail">
+                        <div class="hero-btn-ic"><i data-lucide="mail"></i></div>
+                        <span>Mail</span>
+                    </button>
+                    <button type="button" class="hero-btn" @onclick="HandleCall" title="Call" aria-label="Call">
+                        <div class="hero-btn-ic"><i data-lucide="phone"></i></div>
+                        <span>Call</span>
+                    </button>
+                </div>
+            }
+        </div>
+
+        <!-- Inset Groups -->
+        <div class="inset-groups">
+            <!-- Contact details -->
+            <div class="inset-group">
+                <div class="inset-sec-title">Contact</div>
+                <div class="inset-box">
+                    <div class="inset-row">
+                        <span class="inset-k">Employee ID</span>
+                        <span class="inset-v num">@Person.Nik</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(Person.Email) && Person.Email != "—")
+                    {
+                        <div class="inset-row">
+                            <span class="inset-k">Email</span>
+                            <a href="mailto:@Person.Email" class="inset-v inset-link">@Person.Email</a>
+                        </div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Person.Extension) && Person.Extension != "—")
+                    {
+                        <div class="inset-row">
+                            <span class="inset-k">Extension</span>
+                            <span class="inset-v num">@Person.Extension</span>
+                        </div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Person.Location) && Person.Location != "—")
+                    {
+                        <div class="inset-row">
+                            <span class="inset-k">Location</span>
+                            <span class="inset-v">@Person.Location</span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Organization details -->
+            <div class="inset-group">
+                <div class="inset-sec-title">Organization</div>
+                <div class="inset-box">
+                    @if (!string.IsNullOrWhiteSpace(Person.Manager) && Person.Manager != "—")
+                    {
+                        <div class="contact-manager-row">
+                            <div class="contact-manager-av" style="background:@AvatarPalette.For(Person.Manager)">
+                                @GetManagerInitials(Person.Manager)
+                            </div>
+                            <div class="contact-manager-info">
+                                <div class="contact-manager-name">@Person.Manager</div>
+                                <div class="contact-manager-sub">Direct Manager</div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="inset-row inset-empty">
+                            <span class="inset-dim">No direct manager listed.</span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Options / Favorite -->
+            <div class="inset-group">
+                <div class="inset-sec-title">Options</div>
+                <div class="inset-box">
+                    @{
+                        var isFav = Favorites.IsFavorite(Person.Nik);
+                    }
+                    <button type="button" class="inset-action-row" @onclick="ToggleFavorite">
+                        <div class="inset-action-left">
+                            <i data-lucide="star" style="color:@(isFav ? "var(--warn)" : "var(--ink-3)");fill:@(isFav ? "currentColor" : "none")"></i>
+                            <span>@(isFav ? "Remove from Favorites" : "Add to Favorites")</span>
+                        </div>
+                        <i data-lucide="chevron-right" class="inset-action-chev"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Employee? Person { get; set; }
+    [Parameter] public bool ShowActions { get; set; } = true;
+    [Parameter] public EventCallback OnMessage { get; set; }
+    [Parameter] public EventCallback OnMail { get; set; }
+    [Parameter] public EventCallback OnCall { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private static string? GetDeptSite(Employee? person)
+    {
+        if (person is null) return null;
+        var d = string.IsNullOrWhiteSpace(person.Department) || person.Department == "—" ? null : person.Department;
+        var s = string.IsNullOrWhiteSpace(person.Site) || person.Site == "—" ? null : person.Site;
+        if (d is not null && s is not null) return $"{d} · {s}";
+        return d ?? s;
+    }
+
+    private static string GetManagerInitials(string manager)
+    {
+        if (string.IsNullOrWhiteSpace(manager)) return "";
+        var parts = manager.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : manager.Length >= 2 ? manager[..2].ToUpperInvariant() : manager.ToUpperInvariant();
+    }
+
+    private async Task HandleMessage()
+    {
+        if (OnMessage.HasDelegate)
+        {
+            await OnMessage.InvokeAsync();
+            return;
+        }
+        if (OnClose.HasDelegate) await OnClose.InvokeAsync();
+        if (Person is not null && !string.IsNullOrWhiteSpace(Person.Nik))
+        {
+            Nav.NavigateTo($"/chat?nik={Uri.EscapeDataString(Person.Nik)}");
+        }
+    }
+
+    private async Task HandleMail()
+    {
+        if (OnMail.HasDelegate)
+        {
+            await OnMail.InvokeAsync();
+            return;
+        }
+        if (OnClose.HasDelegate) await OnClose.InvokeAsync();
+        if (Person is not null && !string.IsNullOrWhiteSpace(Person.Nik))
+        {
+            Nav.NavigateTo($"/mail?to={Uri.EscapeDataString(Person.Nik)}");
+        }
+    }
+
+    private async Task HandleCall()
+    {
+        if (OnCall.HasDelegate)
+        {
+            await OnCall.InvokeAsync();
+            return;
+        }
+        if (OnClose.HasDelegate) await OnClose.InvokeAsync();
+        if (Person is not null && !string.IsNullOrWhiteSpace(Person.Nik))
+        {
+            var room = await CallSvc.CreateAsync(Person.Nik);
+            if (room is null)
+            {
+                Toasts.Show("Could not start call with this user.", ToastKind.Error);
+            }
+        }
+    }
+
+    private async Task ToggleFavorite()
+    {
+        if (Person is not null && !string.IsNullOrWhiteSpace(Person.Nik))
+        {
+            await Favorites.ToggleAsync(Person.Nik);
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+        => await JS.InvokeVoidAsync("ipop.icons");
+}

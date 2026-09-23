@@ -22,8 +22,8 @@ public sealed partial class ChatService : IChatService
     // Interface explicit mapping
     // ──────────────────────────────────────────────────────────────────────────
 
-    Task<RoomSettingsResultDto> IChatService.UpdateGroupIdentityAsync(Guid actorId, Guid roomId, string name, string? description, CancellationToken ct)
-        => UpdateGroupIdentityAsyncImpl(actorId, roomId, name, description, ct);
+    Task<RoomSettingsResultDto> IChatService.UpdateGroupIdentityAsync(Guid actorId, Guid roomId, string name, string? description, string? avatarColor, CancellationToken ct)
+        => UpdateGroupIdentityAsyncImpl(actorId, roomId, name, description, avatarColor, ct);
 
     Task<PagedResult<MembershipAuditDto>> IChatService.GetMembershipAuditAsync(Guid callerId, Guid roomId, int page, int pageSize, CancellationToken ct)
         => GetMembershipAuditAsyncImpl(callerId, roomId, page, pageSize, ct);
@@ -39,6 +39,15 @@ public sealed partial class ChatService : IChatService
 
     Task<PagedResult<RoomListDto>> IChatService.GetArchivedRoomsAsync(Guid userId, int page, int pageSize, CancellationToken ct)
         => GetArchivedRoomsAsyncImpl(userId, page, pageSize, ct);
+
+    Task<SavedResultDto> IChatService.SaveMessageAsync(Guid userId, Guid messageId, CancellationToken ct)
+        => SaveMessageAsync(userId, messageId, ct);
+
+    Task<SavedResultDto> IChatService.UnsaveMessageAsync(Guid userId, Guid messageId, CancellationToken ct)
+        => UnsaveMessageAsync(userId, messageId, ct);
+
+    Task<IReadOnlyList<SavedMessageDto>> IChatService.GetSavedMessagesAsync(Guid userId, CancellationToken ct)
+        => GetSavedMessagesAsync(userId, ct);
 
     // ──────────────────────────────────────────────────────────────────────────
     // Private Helpers
@@ -116,7 +125,9 @@ public sealed partial class ChatService : IChatService
             m.ThreadParentId, m.ThreadReplyCount, m.LastThreadReplyAt,
             attachments, reactions,
             [], false, m.IdempotencyKey,
-            deliveryStatus);
+            deliveryStatus,
+            ForwardedFromSenderName: m.ForwardedFromSenderName
+                ?? (m.Content.StartsWith("[forwarded]", StringComparison.Ordinal) ? "" : null));
     }
 
     private static string Truncate(string value, int maxLength)

@@ -1,0 +1,503 @@
+@using System.Net.Http.Json
+@using IPop.Web.Services
+@using IPop.Web.Components
+@implements IDisposable
+@inject AuthState Auth
+@inject IJSRuntime JS
+
+@* ---- Admin KPI Stat Summary ---- *@
+<div class="admin-kpi-grid">
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-green">
+            <i data-lucide="users"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val">@($"{stats?.Total ?? page?.Total ?? 0:N0}")</div>
+            <div class="kpi-lbl">Total Employees</div>
+        </div>
+    </div>
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-teal">
+            <i data-lucide="user-check"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val">@($"{stats?.Active ?? 0:N0}")</div>
+            <div class="kpi-lbl">Active Employees</div>
+        </div>
+    </div>
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-purple">
+            <i data-lucide="shield"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val">@($"{stats?.Admins ?? 0:N0}")</div>
+            <div class="kpi-lbl">Administrators</div>
+        </div>
+    </div>
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-blue">
+            <i data-lucide="activity"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val">@($"{stats?.Online ?? 0:N0}")</div>
+            <div class="kpi-lbl">Online Now</div>
+        </div>
+    </div>
+</div>
+
+<div class="tray rise rise-3">
+    <div class="core" style="padding:0;overflow:hidden">
+        <div class="panel-head" style="border-bottom:1px solid var(--line-soft)">
+            <div style="display:flex;align-items:center;gap:8px">
+                <i data-lucide="users" style="color:#059669"></i>
+                <span style="font-weight:700">Users & Employees</span>
+            </div>
+            <span class="meta">@($"{page?.Total:N0} total")</span>
+        </div>
+        <div style="display:flex;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line-soft);align-items:center">
+            <div class="search" style="flex:0 1 340px;margin:0">
+                <i data-lucide="search"></i>
+                <input type="text" placeholder="Search by name or NIK..." @bind="query" @bind:event="oninput" @bind:after="OnUserSearchInput" />
+            </div>
+            <button class="btn" style="width:auto;margin:0 0 0 auto;padding:9px 18px" @onclick="OpenCreate">
+                Add Employee <span class="orb"><i data-lucide="plus"></i></span>
+            </button>
+        </div>
+
+        @if (usersError is not null)
+        {
+            <div class="tree-empty">@usersError</div>
+        }
+        else if (page is null)
+        {
+            <div style="padding:14px"><div class="skel"></div></div>
+        }
+        else
+        {
+            <table class="u-table">
+                <thead>
+                    <tr>
+                        <th style="width:110px">NIK</th>
+                        <th>Employee</th>
+                        <th>Position & Unit</th>
+                        <th style="width:120px">Role</th>
+                        <th style="width:110px">Status</th>
+                        <th style="width:120px">Presence</th>
+                        <th style="width:125px;text-align:right">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var u in page.Items)
+                    {
+                        <tr @key="u.Nik" class="@(u.IsActive ? "" : "inactive")">
+                            <td class="mono">
+                                <span class="tag">@u.Nik</span>
+                            </td>
+                            <td>
+                                <div class="u-user-cell">
+                                    <div class="u-avatar" style="background:@GetUserColor(u.Nik)">
+                                        @GetInitialsFromName(u.Name)
+                                    </div>
+                                    <div>
+                                        <div class="u-user-name">@u.Name</div>
+                                        <div class="u-user-sub">@(string.IsNullOrEmpty(u.Email) ? u.Nik : u.Email)</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <div style="font-weight:500;color:var(--ink)">@(u.Position ?? "—")</div>
+                                <div style="font-size:11px;color:var(--ink-3)">@(u.Department ?? u.Site ?? "—")</div>
+                            </td>
+                            <td>
+                                @if (u.Roles.Contains("Admin"))
+                                {
+                                    <span class="badge-role-admin"><i data-lucide="shield" style="width:11px;height:11px"></i> Admin</span>
+                                }
+                                else
+                                {
+                                    <span class="badge-role-emp">Employee</span>
+                                }
+                            </td>
+                            <td>
+                                @if (u.IsActive)
+                                {
+                                    <span class="badge-active-yes"><span class="dot" style="background:#10b981;width:6px;height:6px;border-radius:50%"></span> Active</span>
+                                }
+                                else
+                                {
+                                    <span class="badge-active-no"><span class="dot" style="background:#ef4444;width:6px;height:6px;border-radius:50%"></span> Inactive</span>
+                                }
+                            </td>
+                            <td>
+                                <span class="badge-pres @u.Status">
+                                    <span class="dot"></span>
+                                    <span>@StatusLabel(u.Status)</span>
+                                </span>
+                            </td>
+                            <td class="acts">
+                                <button type="button" class="act-edit" title="Edit Profile" @onclick="() => OpenEdit(u)"><i data-lucide="pencil"></i></button>
+                                <button type="button" class="act-key" title="Reset password to 1234" @onclick="() => OpenResetModal(u)"><i data-lucide="key-round"></i></button>
+                                <button type="button" class="act-toggle @(u.IsActive ? "" : "is-inactive")" title="@(u.IsActive ? "Deactivate Account" : "Activate Account")" @onclick="() => ToggleActive(u)">
+                                    <i data-lucide="@(u.IsActive ? "user-x" : "user-check")"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (page is { } pg && TotalPages > 1)
+            {
+                <div style="display:flex;gap:10px;align-items:center;justify-content:center;padding:12px">
+                    <button class="org-act" disabled="@(pg.Page <= 1)" @onclick="() => ReloadUsers(pg.Page - 1)"><i data-lucide="chevron-left"></i></button>
+                    <span style="font-size:12px;color:var(--ink-2)">Page @pg.Page of @TotalPages</span>
+                    <button class="org-act" disabled="@(pg.Page >= TotalPages)" @onclick="() => ReloadUsers(pg.Page + 1)"><i data-lucide="chevron-right"></i></button>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@* ---- user drawer: create / edit share one shell ---- *@
+<div class="backdrop @(drawer is not null ? "on" : "")" @onclick="CloseDrawer"></div>
+<div class="drawer @(drawer is not null ? "on" : "")" role="dialog" aria-label="User">
+    <div class="tray">
+        <div class="core">
+            <div class="drawer-head">
+                @(drawer?.IsCreate == true ? "Add user" : $"Edit {drawer?.Nik}")
+                <button class="drawer-close" @onclick="CloseDrawer"><i data-lucide="x"></i></button>
+            </div>
+            @if (drawer is not null)
+            {
+                <div class="drawer-body">
+                    @if (drawer.IsCreate)
+                    {
+                        <div class="field"><label>Employee ID</label><input @bind="drawer.Nik" placeholder="e.g. 20140312" /></div>
+                    }
+                    <div class="field"><label>Name</label><input @bind="drawer.Name" /></div>
+                    <div class="field"><label>Email</label><input @bind="drawer.Email" /></div>
+                    <div class="field"><label>Position</label><input @bind="drawer.Position" /></div>
+                    <div class="field">
+                        <label>Department</label>
+                        <AppSelect Label="Department" Value="@drawer.DepartmentCode" ValueChanged="v => drawer.DepartmentCode = v"
+                                   Options="@DeptOptions" />
+                    </div>
+                    <div class="field">
+                        <label>Site</label>
+                        <AppSelect Label="Site" Value="@drawer.SiteCode" ValueChanged="v => drawer.SiteCode = v"
+                                   Options="@SiteOptions" />
+                    </div>
+                    @if (!drawer.IsCreate)
+                    {
+                        <div class="field">
+                            <label>Roles</label>
+                            <label style="display:flex;gap:8px;align-items:center;font-weight:500;text-transform:none">
+                                <input type="checkbox" style="width:auto" @bind="drawer.IsAdmin" /> Administrator
+                            </label>
+                        </div>
+                    }
+                    <div class="note">
+                        <i data-lucide="info"></i>
+                        <span>@(drawer.IsCreate
+                            ? "The new user signs in with the default password 1234 and must set their own at first login."
+                            : "Profile edits are protected from the next HRIS sync.")</span>
+                    </div>
+                    @if (drawer.Error is not null)
+                    {
+                        <div class="note err"><i data-lucide="alert-circle"></i><span>@drawer.Error</span></div>
+                    }
+                    <button class="btn" style="margin-top:14px" disabled="@drawer.Saving" @onclick="SaveDrawer">
+                        @(drawer.Saving ? "Saving..." : drawer.IsCreate ? "Create user" : "Save changes")
+                        <span class="orb"><i data-lucide="check"></i></span>
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@* ---- Reset Password Confirmation Modal ---- *@
+@if (resetConfirmUser is not null)
+{
+    <div class="admin-modal-backdrop" @onclick="CloseResetModal"></div>
+    <div class="admin-modal-center">
+        <div class="admin-modal-tray">
+            <div class="admin-modal-card">
+                <div class="reset-modal-head">
+                    <div class="reset-head-title">
+                        <i data-lucide="key-round"></i>
+                        <span>Reset Employee Password</span>
+                    </div>
+                    <button type="button" class="drawer-close" @onclick="CloseResetModal" aria-label="Close"><i data-lucide="x"></i></button>
+                </div>
+
+                <div class="reset-user-hero">
+                    <div class="u-avatar" style="background:@GetUserColor(resetConfirmUser.Nik);width:38px;height:38px;font-size:13px">
+                        @GetInitialsFromName(resetConfirmUser.Name)
+                    </div>
+                    <div>
+                        <div style="font-weight:700;font-size:13.5px;color:var(--ink)">@resetConfirmUser.Name</div>
+                        <div style="font-size:12px;color:var(--ink-2)">NIK: <span class="tag">@resetConfirmUser.Nik</span> @(!string.IsNullOrEmpty(resetConfirmUser.Department) ? $"· {resetConfirmUser.Department}" : "")</div>
+                    </div>
+                </div>
+
+                <div class="reset-warning-box">
+                    <i data-lucide="alert-triangle"></i>
+                    <div>
+                        <strong>Password will be reset to: <span style="font-family:'JetBrains Mono',monospace;color:#b45309;background:rgba(245,158,11,0.2);padding:1px 6px;border-radius:4px">1234</span></strong>
+                        <div style="margin-top:4px;color:var(--ink-2);font-size:12px">
+                            All active sessions for this user will be revoked automatically. The user can log in using the temporary password 1234 and will be required to set a new password upon first login.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="admin-modal-actions">
+                    <button type="button" class="btn ghost" @onclick="CloseResetModal" disabled="@isResetting" style="padding:9px 16px;border-radius:9px;font-size:13px">Cancel</button>
+                    <button type="button" class="reset-btn-confirm" @onclick="ConfirmResetPassword" disabled="@isResetting">
+                        @if (isResetting)
+                        {
+                            <i data-lucide="loader-2" class="spin"></i>
+                            <span>Processing…</span>
+                        }
+                        else
+                        {
+                            <i data-lucide="key-round"></i>
+                            <span>Reset password to 1234</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@* ---- Toast Feedback Banner ---- *@
+@if (!string.IsNullOrEmpty(toastMessage))
+{
+    <div class="admin-toast-wrap">
+        <div class="admin-toast @(toastIsError ? "toast-error" : "toast-success")">
+            <i data-lucide="@(toastIsError ? "alert-circle" : "check-circle")"></i>
+            <span>@toastMessage</span>
+            <button type="button" class="toast-close" @onclick="() => toastMessage = null" aria-label="Close">
+                <i data-lucide="x" style="width:14px;height:14px"></i>
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private string query = "";
+    private string? usersError;
+    private AdminUserPageDto? page;
+    private AdminUserStatsDto? stats;
+    private AdminUserRowDto? resetConfirmUser;
+    private bool isResetting;
+    private string? toastMessage;
+    private bool toastIsError;
+    private DrawerState? drawer;
+    private CancellationTokenSource? userSearchCts;
+    private OrgViewDto org = new([], []);
+
+    private int TotalPages => page is null ? 1 : (int)Math.Ceiling(page.Total / (double)page.PageSize);
+
+    private List<AppOption> DeptOptions => [new("", "(none)"), .. org.Departments.Where(x => x.IsActive).OrderBy(x => x.Name).Select(d => new AppOption(d.Code, d.Name))];
+    private List<AppOption> SiteOptions => [new("", "(none)"), .. org.Sites.Where(x => x.IsActive).OrderBy(x => x.Name).Select(s => new AppOption(s.Code, s.Name))];
+
+    private static string StatusLabel(string s) => s switch
+        { "on" => "Online", "away" => "Away", "busy" => "Busy", _ => "Offline" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Reload();
+    }
+
+    public async Task Reload()
+    {
+        org = await Auth.GetAsync<OrgViewDto>("/api/admin/org") ?? new([], []);
+        stats = await Auth.GetAsync<AdminUserStatsDto>("/api/admin/users/stats");
+        await ReloadUsers(page?.Page ?? 1);
+        StateHasChanged();
+    }
+
+    private async Task OnUserSearchInput()
+    {
+        userSearchCts?.Cancel();
+        userSearchCts?.Dispose();
+        var t = new CancellationTokenSource();
+        userSearchCts = t;
+        try { await Task.Delay(250, t.Token); }
+        catch (OperationCanceledException) { return; }
+        if (t.IsCancellationRequested) return;
+        await ReloadUsers(1);
+    }
+
+    private async Task ReloadUsers(int p)
+    {
+        var qAtStart = query;
+        var url = $"/api/admin/users?page={p}&pageSize=50" + (string.IsNullOrWhiteSpace(query) ? "" : $"&q={Uri.EscapeDataString(query.Trim())}");
+        var res = await Auth.GetAsync<AdminUserPageDto>(url);
+        if (qAtStart != query) return;
+        page = res;
+        usersError = res is null ? "Could not load users." : null;
+        StateHasChanged();
+    }
+
+    private void OpenCreate() => drawer = new DrawerState { IsCreate = true };
+    private void OpenEdit(AdminUserRowDto u) => drawer = new DrawerState
+    {
+        Nik = u.Nik, Name = u.Name, Email = u.Email, Position = u.Position ?? "",
+        DepartmentCode = u.DepartmentCode, SiteCode = u.SiteCode,
+        IsAdmin = u.Roles.Contains("Admin"),
+    };
+    public void CloseDrawer()
+    {
+        drawer = null;
+        StateHasChanged();
+    }
+
+    private void OpenResetModal(AdminUserRowDto u) => resetConfirmUser = u;
+    private void CloseResetModal() { if (!isResetting) resetConfirmUser = null; }
+
+    private async Task ConfirmResetPassword()
+    {
+        if (resetConfirmUser is null || isResetting) return;
+        isResetting = true;
+        var target = resetConfirmUser;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/admin/users/{Uri.EscapeDataString(target.Nik)}/reset-password");
+            if (res.IsSuccessStatusCode)
+            {
+                resetConfirmUser = null;
+                ShowToast($"Password for {target.Name} ({target.Nik}) was reset to default: 1234.", false);
+                await ReloadUsers(page?.Page ?? 1);
+                stats = await Auth.GetAsync<AdminUserStatsDto>("/api/admin/users/stats");
+            }
+            else
+            {
+                ShowToast("Failed to reset user password. Make sure the server is reachable and try again.", true);
+            }
+        }
+        catch
+        {
+            ShowToast("Failed to contact the server to reset password.", true);
+        }
+        finally
+        {
+            isResetting = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ShowToast(string message, bool isError)
+    {
+        toastMessage = message;
+        toastIsError = isError;
+        StateHasChanged();
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(5000);
+            if (toastMessage == message)
+            {
+                toastMessage = null;
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+    }
+
+    private static string GetUserColor(string nik)
+        => IPop.Web.Models.AvatarPalette.For(nik);
+
+    private static string GetInitialsFromName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var clean = name.Trim().TrimStart('\'', '"', '`', '(', '[', '{');
+        if (string.IsNullOrWhiteSpace(clean)) return "?";
+        var parts = clean.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+        {
+            var p0 = parts[0].TrimStart('\'', '"', '`', '(', '[');
+            var p1 = parts[1].TrimStart('\'', '"', '`', '(', '[');
+            if (p0.Length > 0 && p1.Length > 0)
+                return $"{p0[0]}{p1[0]}".ToUpperInvariant();
+        }
+        return clean.Length >= 2 ? clean[..2].ToUpperInvariant() : clean.ToUpperInvariant();
+    }
+
+    private async Task SaveDrawer()
+    {
+        if (drawer is null) return;
+        drawer.Saving = true;
+        drawer.Error = null;
+
+        HttpResponseMessage res;
+        if (drawer.IsCreate)
+        {
+            res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/users",
+                new { nik = drawer.Nik, name = drawer.Name, email = drawer.Email, position = drawer.Position,
+                    location = (string?)null, departmentCode = drawer.DepartmentCode, siteCode = drawer.SiteCode });
+        }
+        else
+        {
+            res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/users/{Uri.EscapeDataString(drawer.Nik)}",
+                new { name = drawer.Name, email = drawer.Email, position = drawer.Position,
+                    location = (string?)null, departmentCode = drawer.DepartmentCode, siteCode = drawer.SiteCode });
+        }
+
+        if (!res.IsSuccessStatusCode)
+        {
+            drawer.Error = res.StatusCode == System.Net.HttpStatusCode.Conflict
+                ? "A user with this ID already exists." : "Save failed — check the fields.";
+            drawer.Saving = false;
+            return;
+        }
+
+        if (!drawer.IsCreate)
+        {
+            var wantedRoles = drawer.IsAdmin ? new[] { "Admin" } : Array.Empty<string>();
+            await Auth.SendAsync(HttpMethod.Put, $"/api/admin/users/{Uri.EscapeDataString(drawer.Nik)}/roles",
+                new { roles = wantedRoles });
+        }
+
+        drawer.Saving = false;
+        drawer = null;
+        await ReloadUsers(page?.Page ?? 1);
+        stats = await Auth.GetAsync<AdminUserStatsDto>("/api/admin/users/stats");
+    }
+
+    private async Task ToggleActive(AdminUserRowDto u)
+    {
+        var action = u.IsActive ? "deactivate" : "reactivate";
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/admin/users/{Uri.EscapeDataString(u.Nik)}/{action}");
+        if (res.IsSuccessStatusCode)
+        {
+            await ReloadUsers(page?.Page ?? 1);
+            stats = await Auth.GetAsync<AdminUserStatsDto>("/api/admin/users/stats");
+            ShowToast($"Account status for {u.Name} updated to {(u.IsActive ? "Inactive" : "Active")}.", false);
+        }
+        else
+        {
+            var msg = res.StatusCode == System.Net.HttpStatusCode.BadRequest
+                ? "You cannot deactivate your own account."
+                : "Failed to update account active status.";
+            ShowToast(msg, true);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    public void Dispose()
+    {
+        userSearchCts?.Cancel();
+        userSearchCts?.Dispose();
+    }
+
+    private sealed class DrawerState
+    {
+        public bool IsCreate, IsAdmin, Saving;
+        public string Nik = "", Name = "", Email = "", Position = "";
+        public string? DepartmentCode, SiteCode, Error;
+    }
+}

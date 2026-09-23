@@ -42,13 +42,196 @@ public static class DirectoryEndpoints
                     me.UserRoles.Select(ur => ur.Role.Name).ToArray(), me.PhotoPath));
         }).RequireAuthorization();
 
+        // ── Kontak favorit (Kontak Prioritas) — privat per pengguna ──
+
+        // GET /api/directory/favorites → daftar NIK favorit milik pengguna
+        app.MapGet("/api/directory/favorites", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var nik = http.User.FindFirst("nik")?.Value;
+            if (string.IsNullOrEmpty(nik)) return Results.Unauthorized();
+            var rows = await db.UserFavoriteContacts.AsNoTracking()
+                .Where(f => f.User.Nik == nik)
+                .OrderByDescending(f => f.CreatedAt)
+                .Select(f => f.ContactNik)
+                .ToListAsync(ct);
+            return Results.Ok(rows);
+        }).RequireAuthorization().RequirePermission("directory.read");
+
+        // PUT /api/directory/favorites/{nik} — favoritkan (idempotent)
+        app.MapPut("/api/directory/favorites/{contactNik}", async (string contactNik, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var nik = http.User.FindFirst("nik")?.Value;
+            if (string.IsNullOrEmpty(nik)) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(contactNik) || contactNik.Length > 32)
+                return Results.Json(new { code = "invalid_nik", message = "Invalid contact NIK." }, statusCode: 422);
+            if (string.Equals(nik, contactNik, StringComparison.OrdinalIgnoreCase))
+                return Results.Json(new { code = "cannot_favorite_self", message = "Cannot favorite yourself." }, statusCode: 422);
+
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Nik == nik, ct);
+            if (user is null) return Results.Unauthorized();
+            // Kontak harus pegawai aktif yang ada di direktori.
+            var contactExists = await db.Users.AsNoTracking().AnyAsync(u => u.Nik == contactNik && u.IsActive, ct);
+            if (!contactExists)
+                return Results.Json(new { code = "contact_not_found", message = "Employee not found." }, statusCode: 404);
+
+            var exists = await db.UserFavoriteContacts.AnyAsync(f => f.UserId == user.Id && f.ContactNik == contactNik, ct);
+            if (!exists)
+            {
+                db.UserFavoriteContacts.Add(new IPop.Core.Entities.UserFavoriteContact
+                {
+                    Id = Guid.NewGuid(), UserId = user.Id, ContactNik = contactNik, CreatedAt = DateTime.UtcNow
+                });
+                await db.SaveChangesAsync(ct);
+            }
+            return Results.Ok(new { nik = contactNik, favorite = true });
+        }).RequireAuthorization().RequirePermission("directory.read");
+
+        // DELETE /api/directory/favorites/{nik} — lepas favorit (idempotent: 200 meski belum ada)
+        app.MapDelete("/api/directory/favorites/{contactNik}", async (string contactNik, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var nik = http.User.FindFirst("nik")?.Value;
+            if (string.IsNullOrEmpty(nik)) return Results.Unauthorized();
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Nik == nik, ct);
+            if (user is null) return Results.Unauthorized();
+            await db.UserFavoriteContacts.Where(f => f.UserId == user.Id && f.ContactNik == contactNik).ExecuteDeleteAsync(ct);
+            return Results.Ok(new { nik = contactNik, favorite = false });
+        }).RequireAuthorization().RequirePermission("directory.read");
+
+        // GET /api/directory/frequent — sering dihubungi: gabungan lawan bicara DM
+        // terbaru dan koresponden surat, diskor per keterbaruan lalu diambil top-N.
+        app.MapGet("/api/directory/frequent", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var nik = http.User.FindFirst("nik")?.Value;
+            if (string.IsNullOrEmpty(nik)) return Results.Unauthorized();
+            var me = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Nik == nik, ct);
+            if (me is null) return Results.Unauthorized();
+
+            // Chat: pihak lain di ruang DM, berbobot waktu pesan terakhir ruang.
+            var chatRows = await db.ChatRoomMembers.AsNoTracking()
+                .Where(m => m.UserId == me.Id && m.LeftAt == null && m.Room.Type == "dm")
+                .Select(m => new { m.RoomId, m.Room.LastMessageAt })
+                .ToListAsync(ct);
+            var chatRoomIds = chatRows.Select(r => r.RoomId).ToList();
+            var others = await db.ChatRoomMembers.AsNoTracking()
+                .Where(m => chatRoomIds.Contains(m.RoomId) && m.UserId != me.Id && m.LeftAt == null)
+                .Select(m => new { m.RoomId, Nik = m.User.Nik })
+                .ToListAsync(ct);
+            var otherByRoom = others.GroupBy(o => o.RoomId).ToDictionary(g => g.Key, g => g.First().Nik);
+
+            // Surat: lawan korespondensi (pengirim saat saya penerima; penerima saat saya pengirim).
+            var mailNiks = await db.MailRecipients.AsNoTracking()
+                .Where(r => r.UserId == me.Id || r.Mail.SenderId == me.Id)
+                .Select(r => r.UserId == me.Id ? r.Mail.Sender.Nik : r.User.Nik)
+                .Where(n => n != nik)
+                .ToListAsync(ct);
+
+            var score = new Dictionary<string, (double Score, DateTime Last)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var r in chatRows.OrderByDescending(r => r.LastMessageAt))
+            {
+                if (!otherByRoom.TryGetValue(r.RoomId, out var otherNik)) continue;
+                var s = score.TryGetValue(otherNik, out var cur) ? cur : (0, DateTime.MinValue);
+                var ageHours = Math.Max(0, (DateTime.UtcNow - r.LastMessageAt).TotalHours);
+                s.Score += 3.0 / (1 + ageHours / 24); // chat berbobot 3, meluruh per hari
+                if (r.LastMessageAt > s.Last) s.Last = r.LastMessageAt;
+                score[otherNik] = s;
+            }
+            foreach (var mn in mailNiks)
+            {
+                var s = score.TryGetValue(mn, out var cur) ? cur : (0, DateTime.MinValue);
+                s.Score += 1.0; // surat berbobot 1 per korespondensi
+                score[mn] = s;
+            }
+
+            var top = score.OrderByDescending(kv => kv.Value.Score)
+                           .ThenByDescending(kv => kv.Value.Last)
+                           .Take(10).Select(kv => kv.Key).ToList();
+            if (top.Count == 0) return Results.Ok(Array.Empty<object>());
+
+            var now = DateTime.UtcNow;
+            var people = await db.Users.AsNoTracking()
+                .Where(u => top.Contains(u.Nik) && u.IsActive)
+                .Select(u => new DirectoryEmployee(
+                    u.Nik, u.Name, u.Position, u.Department!.Name, u.Department!.Code,
+                    u.Site!.Name, u.Site!.Code, null, u.Email, u.Extension, u.Location,
+                    PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now),
+                    null, u.PhotoPath))
+                .ToListAsync(ct);
+            // Pertahankan urutan skor, bukan urutan hasil query.
+            var ordered = top.Select(n => people.FirstOrDefault(p => p.Nik == n)).Where(p => p is not null).ToArray();
+            return Results.Ok(ordered);
+        }).RequireAuthorization().RequirePermission("directory.read");
+
+        // GET /api/directory/employees/{nik}/relations — relasi organisasi satu pegawai:
+        // atasan langsung + bawahan langsung (ManagerNik tersinkron dari HRIS).
+        app.MapGet("/api/directory/employees/{nik}/relations", async (string nik, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var callerNik = http.User.FindFirst("nik")?.Value;
+            if (string.IsNullOrEmpty(callerNik)) return Results.Unauthorized();
+
+            var u = await db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Nik == nik && x.IsActive, ct);
+            if (u is null) return Results.Json(new { code = "user_not_found", message = "User not found." }, statusCode: 404);
+
+            DirectoryEmployee? manager = null;
+            if (!string.IsNullOrEmpty(u.ManagerNik))
+            {
+                var m = await db.Users.Include(x => x.Department).Include(x => x.Site)
+                    .AsNoTracking().FirstOrDefaultAsync(x => x.Nik == u.ManagerNik && x.IsActive, ct);
+                if (m is not null)
+                    manager = new DirectoryEmployee(m.Nik, m.Name, m.Position, m.Department?.Name, m.Department?.Code,
+                        m.Site?.Name, m.Site?.Code, null, m.Email, m.Extension, m.Location,
+                        PresenceStatus.ComputeStatus(m.PresenceLastSeenAt, m.PresenceManualStatus, DateTime.UtcNow), null, m.PhotoPath);
+            }
+
+            var reports = await db.Users.Include(x => x.Department).Include(x => x.Site)
+                .AsNoTracking().Where(x => x.ManagerNik == u.Nik && x.IsActive)
+                .OrderBy(x => x.Name)
+                .Select(x => new DirectoryEmployee(x.Nik, x.Name, x.Position, x.Department!.Name, x.Department.Code,
+                    x.Site!.Name, x.Site.Code, u.Name, x.Email, x.Extension, x.Location,
+                    PresenceStatus.ComputeStatus(x.PresenceLastSeenAt, x.PresenceManualStatus, DateTime.UtcNow), null, x.PhotoPath))
+                .ToListAsync(ct);
+
+            return Results.Ok(new { manager, reports });
+        }).RequireAuthorization().RequirePermission("directory.read");
+
+        // GET /api/directory/employees/export.csv — ekspor CSV dari himpunan hasil yang
+        // SAMA dengan filter halaman (q/divisionCode/presence/dst). Server-side agar
+        // seluruh hasil (bukan satu halaman) ikut serta dan ada jejak audit.
+        app.MapGet("/api/directory/employees/export.csv", async (HttpContext http, string? q, string? departmentCode,
+            string? siteCode, string? divisionCode, string? presence, string? manager, IPopDbContext db, CancellationToken ct) =>
+        {
+            var callerNik = http.User.FindFirst("nik")?.Value;
+            if (string.IsNullOrEmpty(callerNik)) return Results.Unauthorized();
+
+            var page = await EmployeesCore(q, departmentCode, siteCode, divisionCode, presence, manager, "name", false,
+                1, 2000, callerNik, db, ct);
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("NIK;Name;Position;Department;Site;Email;Extension;Location;Status");
+            foreach (var e in page.Items)
+                sb.AppendLine(string.Join(';', CsvField(e.Nik), CsvField(e.Name), CsvField(e.Position),
+                    CsvField(e.Department), CsvField(e.Site), CsvField(e.Email), CsvField(e.Extension),
+                    CsvField(e.Location), CsvField(e.Status)));
+
+            db.AuditLogs.Add(new IPop.Core.Entities.AuditLog
+            {
+                ActorNik = callerNik, Action = "directory.export_csv", Entity = "Directory",
+                EntityId = $"q={q ?? ""};div={divisionCode ?? ""};presence={presence ?? ""};n={page.Items.Length}",
+                IpAddress = http.Connection.RemoteIpAddress?.ToString(), CreatedAt = DateTime.UtcNow
+            });
+            await db.SaveChangesAsync(ct);
+
+            // BOM UTF-8 agar Excel membaca aksen dengan benar.
+            var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+            return Results.File(bytes, "text/csv; charset=utf-8", $"directory-{DateTime.UtcNow:yyyyMMdd-HHmm}.csv");
+        }).RequireAuthorization().RequirePermission("directory.read");
+
         // Employee directory listing: name/NIK search, department/site/division filters, presence
         // filter, sort, and paging. Same ILIKE-escape pattern as /divisions and /member-search.
         app.MapGet("/api/directory/employees", async (HttpContext http, string? q, string? departmentCode,
-            string? siteCode, string? divisionCode, string? presence, string? sort, bool? desc, int? page,
+            string? siteCode, string? divisionCode, string? presence, string? manager, string? sort, bool? desc, int? page,
             int? pageSize, IPopDbContext db, CancellationToken ct) =>
-            Results.Ok(await EmployeesCore(q, departmentCode, siteCode, divisionCode, presence, sort, desc,
-                page, pageSize, db, ct))
+            Results.Ok(await EmployeesCore(q, departmentCode, siteCode, divisionCode, presence, manager, sort, desc,
+                page, pageSize, http.User.FindFirst("nik")?.Value, db, ct))
         ).RequireAuthorization().RequirePermission("directory.read");
 
         // Structure tree: Site ▸ Department ▸ Division with live member counts, for the
@@ -123,8 +306,8 @@ public static class DirectoryEndpoints
     // /divisions and /member-search) plus department/site/division exact-code filters, presence
     // filter (applied in-memory since ComputeStatus isn't translatable), sort, and paging.
     internal static async Task<DirectoryPage> EmployeesCore(string? q, string? departmentCode, string? siteCode,
-        string? divisionCode, string? presence, string? sort, bool? desc, int? page, int? pageSize,
-        IPopDbContext db, CancellationToken ct)
+        string? divisionCode, string? presence, string? manager, string? sort, bool? desc, int? page, int? pageSize,
+        string? callerNik, IPopDbContext db, CancellationToken ct)
     {
         var p = Math.Max(1, page ?? 1);
         var size = Math.Clamp(pageSize ?? 120, 1, 200);
@@ -141,6 +324,9 @@ public static class DirectoryEndpoints
             query = query.Where(u => u.Site != null && u.Site.Code == siteCode.Trim());
         if (!string.IsNullOrWhiteSpace(divisionCode))
             query = query.Where(u => u.Division != null && u.Division.Code == divisionCode.Trim());
+        // Bawahan langsung: hanya pegawai dengan ManagerNik = NIK ini (kartu profil).
+        if (!string.IsNullOrWhiteSpace(manager))
+            query = query.Where(u => u.ManagerNik == manager.Trim());
 
         var now = DateTime.UtcNow;
         var rows = await query.Select(u => new
@@ -157,11 +343,19 @@ public static class DirectoryEndpoints
             _ => desc == true ? rows.OrderByDescending(x => x.User.Name).ThenBy(x => x.User.Nik) : rows.OrderBy(x => x.User.Name).ThenBy(x => x.User.Nik),
         };
         var total = ordered.Count();
+        // Flag favorit per pemanggil (Kontak Prioritas) — satu query per halaman.
+        var pageNiks = ordered.Skip((p - 1) * size).Take(size).Select(x => x.User.Nik).ToList();
+        var favNiks = callerNik is null || pageNiks.Count == 0
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : (await db.UserFavoriteContacts.AsNoTracking()
+                .Where(f => f.User.Nik == callerNik && pageNiks.Contains(f.ContactNik))
+                .Select(f => f.ContactNik).ToListAsync(ct)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var items = ordered.Skip((p - 1) * size).Take(size).Select(x => new DirectoryEmployee(
             x.User.Nik, x.User.Name, x.User.Position, x.User.Department?.Name, x.User.Department?.Code,
             x.User.Site?.Name, x.User.Site?.Code,
-            x.User.ManagerNik is not null && names.TryGetValue(x.User.ManagerNik, out var manager) ? manager : null,
-            x.User.Email, x.User.Extension, x.User.Location, x.Status, null, x.User.PhotoPath)).ToArray();
+            x.User.ManagerNik is not null && names.TryGetValue(x.User.ManagerNik, out var managerName) ? managerName : null,
+            x.User.Email, x.User.Extension, x.User.Location, x.Status, null, x.User.PhotoPath,
+            favNiks.Contains(x.User.Nik), x.User.ManagerNik)).ToArray();
         return new DirectoryPage(total, p, size, items);
     }
 
@@ -245,4 +439,13 @@ public static class DirectoryEndpoints
     // /divisions, and /member-search.
     internal static string LikePattern(string term) =>
         $"%{term.Trim().Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_")}%";
+
+    // CSV field escaping (RFC 4180-ish, separator ';' agar ramah Excel lokal id-ID).
+    private static string CsvField(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return "";
+        return value.Contains(';') || value.Contains('"') || value.Contains('\n') || value.Contains('\r')
+            ? $"\"{value.Replace("\"", "\"\"")}\""
+            : value;
+    }
 }

@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iPop — Chat</title>
+<link rel="stylesheet" href="app.css">
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+<div class="window" id="win">
+
+  <!-- ══════════════ LEFT RAIL ══════════════ -->
+  <aside class="rail">
+    <div class="brand">
+      <div class="brand-mark">iP</div>
+      <div class="brand-name">iPop</div>
+      <button class="brand-caret"><i data-lucide="chevron-down"></i></button>
+      <button class="rail-toggle" id="railToggle" title="Ciutkan sidebar"><i data-lucide="panel-left-close"></i></button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Ruang Kerja</div>
+      <a class="nav-item" href="dashboard.html"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></a>
+      <a class="nav-item" href="directory.html"><i data-lucide="users"></i><span class="lbl">Direktori</span></a>
+      <a class="nav-item" href="index.html"><i data-lucide="kanban"></i><span class="lbl">Proyek</span><span class="nav-count">8</span></a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Komunikasi</div>
+      <a class="nav-item active" href="chat.html"><i data-lucide="message-circle"></i><span class="lbl">Chat</span><span class="nav-count">12</span></a>
+      <a class="nav-item" href="mail.html"><i data-lucide="mail"></i><span class="lbl">Mail</span><span class="nav-count">6</span></a>
+      <button class="nav-item"><i data-lucide="newspaper"></i><span class="lbl">Berita &amp; Memo</span></button>
+      <button class="nav-item"><i data-lucide="phone"></i><span class="lbl">Panggilan</span></button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Sumber Daya</div>
+      <button class="nav-item"><i data-lucide="folder"></i><span class="lbl">Berkas</span></button>
+      <button class="nav-item"><i data-lucide="calendar"></i><span class="lbl">Kalender</span></button>
+    </div>
+
+    <div class="rail-foot">
+      <button class="nav-item"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administrasi</span></button>
+      <button class="nav-item" id="themeBtn"><i data-lucide="moon"></i><span class="lbl">Mode Gelap</span></button>
+      <button class="nav-item"><i data-lucide="settings"></i><span class="lbl">Pengaturan</span></button>
+    </div>
+  </aside>
+
+  <!-- ══════════════ MAIN ══════════════ -->
+  <div class="main">
+    <section class="screen on" id="s-chat">
+      <div class="chat with-drawer">
+
+        <!-- room pane -->
+        <div class="rooms">
+          <div class="rooms-head">
+            <div class="between center" style="margin-bottom:12px">
+              <div class="page-title" style="font-size:19px">Pesan</div>
+              <button class="icon-btn" style="width:30px;height:30px" title="Percakapan baru"><i data-lucide="square-pen" style="width:15px;height:15px"></i></button>
+            </div>
+            <div class="searchbox" style="width:100%">
+              <i data-lucide="search"></i><input placeholder="Cari percakapan…">
+            </div>
+          </div>
+
+          <div class="room-nav">
+            <button><i data-lucide="pin"></i>Semua pesan tersemat<span class="push"><i data-lucide="chevron-right"></i></span></button>
+            <button><i data-lucide="bookmark"></i>Pesan tersimpan<span class="push"><i data-lucide="chevron-right"></i></span></button>
+            <button><i data-lucide="at-sign"></i>Mention belum dibaca<span class="push"><span class="badge bad" style="font-size:10.5px">2</span></span></button>
+          </div>
+
+          <div style="padding:0 16px 10px">
+            <div class="tabs">
+              <button class="tab active">Langsung<span class="n">3</span></button>
+              <button class="tab">Grup<span class="n">9</span></button>
+            </div>
+          </div>
+
+          <div class="rooms-list">
+            <div class="room-sec"><i data-lucide="pin"></i>Tersemat</div>
+
+            <button class="room">
+              <div class="av-wrap"><div class="av av-4">HR</div></div>
+              <div class="room-main">
+                <div class="room-top"><span class="room-n">HR Announcements</span><span class="room-time">09:12</span></div>
+                <div class="room-p">Libur nasional tanggal 17 Agustus</div>
+              </div>
+              <span class="room-badge">3</span>
+            </button>
+
+            <button class="room">
+              <div class="av-wrap"><div class="av av-3">BS</div><span class="presence busy"></span></div>
+              <div class="room-main">
+                <div class="room-top"><span class="room-n">Budi Santoso</span><span class="room-time">08:40</span></div>
+                <div class="room-p">Meeting besok jam 10 pagi</div>
+              </div>
+              <span class="room-badge">1</span>
+            </button>
+
+            <div class="room-sec"><i data-lucide="clock"></i>Terbaru</div>
+
+            <button class="room active">
+              <div class="av-wrap"><div class="av av-2">PA</div></div>
+              <div class="room-main">
+                <div class="room-top"><span class="room-n">Project Alpha</span><span class="room-time">10:24</span></div>
+                <div class="room-p">Deployment berhasil! 🎉</div>
+              </div>
+              <span class="room-badge">12</span>
+            </button>
+
+            <button class="room">
+              <div class="av-wrap"><div class="av av-1">TD</div></div>
+              <div class="room-main">
+                <div class="room-top"><span class="room-n">Tim Development</span><span class="room-time">09:58</span></div>
+                <div class="room-p"><span style="color:var(--accent);font-weight:600">@anda</span> Jangan lupa daily standup jam 9</div>
+              </div>
+              <span class="room-badge">5</span>
+            </button>
+
+            <button class="room">
+              <div class="av-wrap"><div class="av av-6">AW</div><span class="presence on"></span></div>
+              <div class="room-main">
+                <div class="room-top"><span class="room-n">Ahmad Wijaya</span><span class="room-time">09:30</span></div>
+                <div class="room-p">Halo, bagaimana kabar proyeknya?</div>
+              </div>
+              <span class="room-badge">2</span>
+            </button>
+
+            <button class="room">
+              <div class="av-wrap"><div class="av av-5">SR</div><span class="presence away"></span></div>
+              <div class="room-main">
+                <div class="room-top"><span class="room-n">Siti Rahayu</span><span class="room-time">Kemarin</span></div>
+                <div class="room-p">Dokumen sudah saya kirim ya</div>
+              </div>
+            </button>
+
+            <button class="room">
+              <div class="av-wrap"><div class="av av-8">FA</div><span class="presence off"></span></div>
+              <div class="room-main">
+                <div class="room-top"><span class="room-n">Fajar Ardiansyah</span><span class="room-time">Kemarin</span></div>
+                <div class="room-p">Terima kasih atas bantuannya</div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <!-- conv pane -->
+        <div class="conv">
+          <div class="topbar" style="padding:16px 20px;border-bottom:1px solid var(--line)">
+            <div class="flex center gap-10">
+              <div class="av av-2" style="width:38px;height:38px;border-radius:12px">PA</div>
+              <div>
+                <div class="t-15 strong">Project Alpha</div>
+                <div class="t-11 dim flex center gap-6">
+                  <span style="color:var(--accent)">●</span> 14 anggota · 5 online · Dibuat oleh Dimas P.
+                </div>
+              </div>
+            </div>
+            <div class="topbar-right">
+              <button class="icon-btn" id="fsBtn" title="Fullscreen"><i data-lucide="maximize-2"></i></button>
+              <button class="icon-btn" title="Cari di obrolan"><i data-lucide="search"></i></button>
+              <button class="icon-btn" title="Panggilan audio"><i data-lucide="phone"></i></button>
+              <button class="icon-btn" title="Berkas & tautan"><i data-lucide="paperclip"></i></button>
+              <button class="icon-btn" title="Detail obrolan"><i data-lucide="panel-right"></i></button>
+            </div>
+          </div>
+
+          <div class="sticky-pinned">
+            <div class="pin-ic"><i data-lucide="pin" style="width:13px;height:13px"></i></div>
+            <div class="pin-body">
+              <div class="pin-tag">Pesan Tersemat · Oleh Bagas Arif</div>
+              <div class="pin-txt">Maintenance server Cikarang Sabtu malam pk 22:00–02:00. Semua deploy ditunda.</div>
+            </div>
+            <button class="ghost-btn" style="padding:4px 9px;font-size:11.5px">Lihat</button>
+          </div>
+
+          <div class="messages">
+            <div class="date-sep"><span>Kemarin</span></div>
+
+            <div class="msg">
+              <div class="av sm av-2">DP</div>
+              <div class="msg-body">
+                <div class="msg-meta"><span class="strong">Dimas Prakoso</span><span class="dim">16:42</span></div>
+                <div class="bubble">Halo rekan-rekan, build v2.4 sudah siap untuk deployment ke staging.</div>
+              </div>
+            </div>
+
+            <div class="msg me">
+              <div class="msg-body">
+                <div class="msg-meta"><span class="dim">16:45</span><span class="strong">Anda</span></div>
+                <div class="bubble">
+                  Siap Dimas, sudah saya periksa konfigurasi env di staging. Aman untuk dideploy.
+                  <div class="receipt"><i data-lucide="check-check" style="width:13px;height:13px"></i> Dibaca semua</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="date-sep"><span>Hari ini</span></div>
+
+            <div class="msg">
+              <div class="av sm av-6">AW</div>
+              <div class="msg-body">
+                <div class="msg-meta"><span class="strong">Ahmad Wijaya</span><span class="dim">09:15</span></div>
+                <div class="bubble">
+                  <div class="reply-ref">
+                    <div class="t-11 dim">Bagas Arif</div>
+                    <div class="t-12" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Siap Dimas, sudah saya periksa konfigurasi env di staging.</div>
+                  </div>
+                  Deployment ke production bisa dijadwalkan siang ini setelah makan siang?
+                </div>
+                <div class="react-row">
+                  <span class="react-pill active">👍 3</span>
+                  <span class="react-pill">🚀 2</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="msg">
+              <div class="av sm av-2">DP</div>
+              <div class="msg-body">
+                <div class="msg-meta"><span class="strong">Dimas Prakoso</span><span class="dim">10:24</span></div>
+                <div class="bubble">
+                  Deployment berhasil! 🎉 Semua service running normal, database migrasi selesai tanpa error.
+                  <div class="poll mt-10">
+                    <div class="poll-q">Polling: Apakah perlu hotfix rilis hari ini?</div>
+                    <div class="poll-opt">
+                      <div class="poll-opt-top"><span>Tidak, stabil</span><span class="num">80% (4)</span></div>
+                      <div class="meter"><i style="width:80%"></i></div>
+                    </div>
+                    <div class="poll-opt">
+                      <div class="poll-opt-top"><span>Ya, ada minor bug</span><span class="num">20% (1)</span></div>
+                      <div class="meter"><i class="warn" style="width:20%"></i></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="react-row">
+                  <span class="react-pill">🎉 5</span>
+                  <span class="react-pill">❤️ 2</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="composer">
+            <div class="composer-box">
+              <button class="comp-ic" title="Lampirkan berkas"><i data-lucide="paperclip"></i></button>
+              <button class="comp-ic" title="Emoji"><i data-lucide="smile"></i></button>
+              <input placeholder="Tulis pesan ke #Project Alpha…">
+              <button class="comp-ic" title="Pesan suara"><i data-lucide="mic"></i></button>
+              <button class="send-btn" title="Kirim"><i data-lucide="arrow-up"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- right drawer (media, members, shortcuts) -->
+        <div class="detail">
+          <div class="detail-head">
+            <div class="card-title">Detail Obrolan</div>
+            <button class="icon-btn" style="margin-left:auto;width:28px;height:28px"><i data-lucide="x"></i></button>
+          </div>
+          <div class="detail-body">
+            <div style="text-align:center;padding:10px 0 16px">
+              <div class="av av-2" style="width:58px;height:58px;font-size:22px;border-radius:18px;margin:0 auto 10px">PA</div>
+              <div class="card-title" style="font-size:16px">Project Alpha</div>
+              <div class="t-12 dim mt-2">14 anggota · Dibuat 12 Juli 2026</div>
+            </div>
+
+            <div>
+              <div class="sec-label">Pintasan</div>
+              <div class="col gap-6">
+                <button class="ghost-btn" style="justify-content:flex-start;width:100%"><i data-lucide="calendar-clock"></i>Kalender ruang</button>
+                <button class="ghost-btn" style="justify-content:flex-start;width:100%"><i data-lucide="bell-off"></i>Bisukan notifikasi</button>
+                <button class="ghost-btn" style="justify-content:flex-start;width:100%"><i data-lucide="archive"></i>Arsipkan percakapan</button>
+                <button class="ghost-btn" style="justify-content:flex-start;width:100%;color:var(--danger)"><i data-lucide="log-out"></i>Keluar dari grup</button>
+              </div>
+            </div>
+
+            <div>
+              <div class="sec-label">Anggota online</div>
+              <div class="col gap-10">
+                <div class="flex center gap-10">
+                  <div class="av-wrap"><div class="av sm av-6">AW</div><span class="presence on"></span></div>
+                  <div style="min-width:0"><div class="t-13 strong">Ahmad Wijaya</div><div class="t-11 dim">Owner</div></div>
+                </div>
+                <div class="flex center gap-10">
+                  <div class="av-wrap"><div class="av sm av-5">SR</div><span class="presence away"></span></div>
+                  <div style="min-width:0"><div class="t-13 strong">Siti Rahayu</div><div class="t-11 dim">Admin</div></div>
+                </div>
+                <div class="flex center gap-10">
+                  <div class="av-wrap"><div class="av sm av-1">DP</div><span class="presence on"></span></div>
+                  <div style="min-width:0"><div class="t-13 strong">Dimas Prakoso</div><div class="t-11 dim">Anggota</div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+  lucide.createIcons();
+
+  document.getElementById('railToggle').addEventListener('click', e => {
+    e.stopPropagation();
+    document.getElementById('win').classList.toggle('rail-collapsed');
+  });
+
+  document.getElementById('fsBtn')?.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  });
+
+  document.getElementById('themeBtn').addEventListener('click', function () {
+    const root = document.documentElement;
+    const dark = root.getAttribute('data-theme') === 'dark';
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    this.querySelector('.lbl').textContent = dark ? 'Mode Gelap' : 'Mode Terang';
+    this.querySelector('i').setAttribute('data-lucide', dark ? 'moon' : 'sun');
+    lucide.createIcons();
+  });
+
+  document.addEventListener('click', e => {
+    const room = e.target.closest('.room');
+    if (room) {
+      document.querySelectorAll('.room').forEach(r => r.classList.remove('active'));
+      room.classList.add('active');
+      const badge = room.querySelector('.room-badge');
+      if (badge) badge.remove();
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,216 @@
+@using IPop.Web.Services
+@implements IDisposable
+@inject AuthState Auth
+@inject IJSRuntime JS
+
+@* ---- Audit Trail KPI Summary Grid ---- *@
+<div class="admin-kpi-grid">
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-amber">
+            <i data-lucide="scroll-text"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val">@($"{audit?.Total ?? 0:N0}")</div>
+            <div class="kpi-lbl">Total Log Audit</div>
+        </div>
+    </div>
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-blue">
+            <i data-lucide="file-text"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val">@($"{audit?.Items.Length ?? 0:N0}")</div>
+            <div class="kpi-lbl">Logs on this page</div>
+        </div>
+    </div>
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-purple">
+            <i data-lucide="user-check"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val">@($"{UniqueActorsCount:N0}")</div>
+            <div class="kpi-lbl">Active actors</div>
+        </div>
+    </div>
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-green">
+            <i data-lucide="shield-check"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val" style="font-size:16px">Active & Logged</div>
+            <div class="kpi-lbl">Audit Trail System</div>
+        </div>
+    </div>
+</div>
+
+<div class="tray rise rise-2">
+    <div class="core" style="padding:0;overflow:hidden">
+        <div class="panel-head" style="border-bottom:1px solid var(--line-soft)">
+            <div style="display:flex;align-items:center;gap:8px">
+                <i data-lucide="scroll-text" style="color:#d97706"></i>
+                <span style="font-weight:700">System Activity Audit Trail</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+                <span class="meta">@($"{audit?.Total ?? 0:N0} total records")</span>
+                <button class="org-act" title="Refresh audit log" @onclick="() => LoadAudit(currentPage)"><i data-lucide="refresh-cw"></i></button>
+            </div>
+        </div>
+
+        <div style="display:flex;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line-soft);align-items:center">
+            <div class="search" style="flex:0 1 320px;margin:0">
+                <i data-lucide="search"></i>
+                <input type="text" placeholder="Filter Actor NIK..." @bind="filterActor" @bind:event="oninput" @bind:after="OnFilterChanged" />
+            </div>
+            <div class="search" style="flex:0 1 240px;margin:0">
+                <i data-lucide="filter"></i>
+                <input type="text" placeholder="Filter Action..." @bind="filterAction" @bind:event="oninput" @bind:after="OnFilterChanged" />
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="padding:14px"><div class="skel"></div></div>
+        }
+        else if (audit is null || audit.Items.Length == 0)
+        {
+            <div class="tree-empty" style="padding:28px">No matching audit activity logs.</div>
+        }
+        else
+        {
+            <table class="u-table">
+                <thead>
+                    <tr>
+                        <th style="width:170px">Timestamp</th>
+                        <th style="width:160px">Action</th>
+                        <th style="width:140px">Actor</th>
+                        <th style="width:130px">Entity</th>
+                        <th>Target / Details</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in audit.Items)
+                    {
+                        <tr @key="row.Id">
+                            <td class="mono" style="font-size:12px;color:var(--ink-2)">
+                                <i data-lucide="clock" style="width:12px;height:12px;display:inline-block;vertical-align:-1px;margin-right:4px;color:var(--ink-3)"></i>
+                                @row.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")
+                            </td>
+                            <td>
+                                <span class="badge-audit @GetActionBadgeClass(row.Action)">
+                                    @row.Action
+                                </span>
+                            </td>
+                            <td>
+                                @if (string.IsNullOrEmpty(row.ActorNik) || row.ActorNik.Equals("system", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <span class="badge-audit system">system</span>
+                                }
+                                else
+                                {
+                                    <span class="tag">@row.ActorNik</span>
+                                }
+                            </td>
+                            <td>
+                                <span style="font-weight:600;color:var(--ink)">@(row.Entity ?? "—")</span>
+                            </td>
+                            <td class="mono" style="color:var(--ink-2);font-size:12px">
+                                @(row.EntityId ?? "—")
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            @if (TotalPages > 1)
+            {
+                <div style="display:flex;gap:10px;align-items:center;justify-content:center;padding:14px;border-top:1px solid var(--line-soft)">
+                    <button class="org-act" disabled="@(currentPage <= 1)" @onclick="() => LoadAudit(currentPage - 1)"><i data-lucide="chevron-left"></i></button>
+                    <span style="font-size:12px;color:var(--ink-2)">Page @currentPage of @TotalPages</span>
+                    <button class="org-act" disabled="@(currentPage >= TotalPages)" @onclick="() => LoadAudit(currentPage + 1)"><i data-lucide="chevron-right"></i></button>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private AuditPageDto? audit;
+    private bool isLoading = true;
+    private int currentPage = 1;
+    private const int pageSize = 25;
+    private string filterActor = "";
+    private string filterAction = "";
+    private CancellationTokenSource? searchCts;
+
+    private int TotalPages => audit is null ? 1 : (int)Math.Ceiling(audit.Total / (double)pageSize);
+    private int UniqueActorsCount => audit?.Items.Select(x => x.ActorNik ?? "system").Distinct().Count() ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Auth.AuditChanged += OnAuditChanged;
+        await LoadAudit(1);
+    }
+
+    public async Task Reload()
+    {
+        await LoadAudit(currentPage);
+        StateHasChanged();
+    }
+
+    private async Task OnFilterChanged()
+    {
+        searchCts?.Cancel();
+        searchCts?.Dispose();
+        var t = new CancellationTokenSource();
+        searchCts = t;
+        try { await Task.Delay(250, t.Token); }
+        catch (OperationCanceledException) { return; }
+        if (t.IsCancellationRequested) return;
+        await LoadAudit(1);
+    }
+
+    private async Task LoadAudit(int page)
+    {
+        currentPage = page;
+        isLoading = true;
+        var url = $"/api/admin/audit?page={page}&pageSize={pageSize}";
+        if (!string.IsNullOrWhiteSpace(filterActor)) url += $"&actor={Uri.EscapeDataString(filterActor.Trim())}";
+        if (!string.IsNullOrWhiteSpace(filterAction)) url += $"&action={Uri.EscapeDataString(filterAction.Trim())}";
+
+        audit = await Auth.GetAsync<AuditPageDto>(url);
+        isLoading = false;
+        StateHasChanged();
+    }
+
+    private static string GetActionBadgeClass(string action)
+    {
+        var lower = action.ToLowerInvariant();
+        if (lower.Contains("login") || lower.Contains("auth") || lower.Contains("token") || lower.Contains("session"))
+            return "auth";
+        if (lower.Contains("create") || lower.Contains("insert") || lower.Contains("add"))
+            return "create";
+        if (lower.Contains("update") || lower.Contains("patch") || lower.Contains("edit") || lower.Contains("reset"))
+            return "update";
+        if (lower.Contains("delete") || lower.Contains("revoke") || lower.Contains("deactivate") || lower.Contains("remove"))
+            return "delete";
+        return "system";
+    }
+
+    private void OnAuditChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAudit(currentPage);
+        StateHasChanged();
+    });
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    public void Dispose()
+    {
+        Auth.AuditChanged -= OnAuditChanged;
+        searchCts?.Cancel();
+        searchCts?.Dispose();
+    }
+}

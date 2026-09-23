@@ -1,0 +1,67 @@
+@using IPop.Application.Chat
+@using IPop.Web.Models
+@using IPop.Web.Services
+
+<div class="grp-member member-row-clickable" @onclick="HandleClick" @onclick:stopPropagation>
+    <div class="avatar member-row-avatar" style="background:@GetColor(Member.Nik)">@Initials(Member.Name)</div>
+    <div class="member-row-copy">
+        <div class="name">@Member.Name</div>
+        <div class="role">@DisplayRole(Member.Role)</div>
+    </div>
+    <span class="tag @(Member.Role == "owner" ? "owner" : "")">@DisplayRole(Member.Role)</span>
+    @if (ShowActions)
+    {
+        @if (CanRemove)
+        {
+            <button class="member-action" title="Remove" @onclick="() => OnRemove.InvokeAsync(Member)" @onclick:stopPropagation><i data-lucide="user-minus"></i></button>
+        }
+        @if (CanChangeRole)
+        {
+            @if (Member.Role == "member")
+            {
+                <button class="member-action role-action" title="Make admin" @onclick="() => OnChangeRole.InvokeAsync((Member, ChatMemberRole.Admin))" @onclick:stopPropagation>↑ admin</button>
+            }
+            else if (Member.Role == "admin")
+            {
+                <button class="member-action role-action" title="Make member" @onclick="() => OnChangeRole.InvokeAsync((Member, ChatMemberRole.Member))" @onclick:stopPropagation>↓ member</button>
+            }
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public MemberDto Member { get; set; } = default!;
+    [Parameter] public string CurrentUserRole { get; set; } = "member";
+    [Parameter] public string CurrentUserNik { get; set; } = "";
+    [Parameter] public EventCallback<MemberDto> OnRemove { get; set; }
+    [Parameter] public EventCallback<(MemberDto, ChatMemberRole)> OnChangeRole { get; set; }
+    [Parameter] public bool ShowActions { get; set; } = true;
+
+    private bool IsSelf => Member.Nik == CurrentUserNik;
+    private bool IsOwner => Member.Role == "owner";
+    private bool CanRemove => !IsSelf && !IsOwner && (CurrentUserRole == "owner" || (CurrentUserRole == "admin" && Member.Role == "member"));
+    private bool CanChangeRole => !IsSelf && !IsOwner && CurrentUserRole == "owner";
+
+    [Parameter] public EventCallback<string> OnProfile { get; set; }
+
+    private async Task HandleClick()
+    {
+        if (OnProfile.HasDelegate)
+            await OnProfile.InvokeAsync(Member.Nik);
+    }
+
+    private static string DisplayRole(string? role) => role switch
+    {
+        "owner" => "Owner",
+        "admin" => "Admin",
+        "member" => "Member",
+        _ => role ?? ""
+    };
+
+    private static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
+    }
+    private static string GetColor(string nik) => AvatarPalette.For(nik);
+}

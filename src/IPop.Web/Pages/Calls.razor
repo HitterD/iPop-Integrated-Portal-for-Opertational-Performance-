@@ -1,0 +1,411 @@
+@page "/calls"
+@implements IDisposable
+@using IPop.Application.Calls
+@inject IJSRuntime JS
+@inject AuthState Auth
+@inject CallState CallSvc
+@inject NavigationManager Nav
+@inject ToastService Toasts
+
+<PageTitle>Calls — IPop</PageTitle>
+
+<div class="content" style="grid-template-columns:1fr">
+
+    @* ---- Header / peer picker ---- *@
+    <div class="tray rise rise-1">
+        <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head" style="flex-wrap:wrap;gap:10px">
+                <i data-lucide="phone"></i> <span>Calls</span>
+                <span class="meta conn"><i data-lucide="wifi" style="width:12px;height:12px"></i> @(CallSvc.IsConnected ? "Live" : "Connecting…")</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;flex-wrap:wrap">
+                <div style="flex:1 1 260px;min-width:220px">
+                    <div style="font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:6px">Start a call with…</div>
+                    <AppMemberPicker Placeholder="Type a name or NIK…" Value="@selectedPeer" ValueChanged="OnPickPeer" />
+                </div>
+                <button class="btn" style="width:auto;margin:0;padding:10px 18px;align-self:end" disabled="@(selectedPeer is null)" @onclick="CallPeer">
+                    <i data-lucide="phone-outgoing" style="width:14px;height:14px"></i> Call
+                </button>
+            </div>
+            @if (!string.IsNullOrEmpty(notice))
+            {
+                <div class="note" style="margin:0 14px 14px;border-radius:10px"><i data-lucide="info"></i><span>@notice</span></div>
+            }
+        </div>
+    </div>
+
+    @* ---- Incoming call card ---- *@
+    @if (incoming is not null)
+    {
+        <div class="tray rise rise-2">
+            <div class="core" style="padding:14px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                <div class="avatar" style="background:var(--accent)"><i data-lucide="phone-incoming"></i></div>
+                <div style="flex:1">
+                    <div style="font-weight:700">@IncomingPeerName</div>
+                    <div style="font-size:12.5px;color:var(--ink-2)">is calling you…</div>
+                </div>
+                <button class="btn" style="width:auto;margin:0;background:var(--accent);padding:10px 16px" @onclick="AcceptIncoming"><i data-lucide="phone" style="width:14px;height:14px"></i> Accept</button>
+                <button class="btn-sm surface" @onclick="DeclineIncoming"><i data-lucide="phone-off" style="width:13px;height:13px"></i> Decline</button>
+            </div>
+        </div>
+    }
+
+    @* ---- Active call bar + participant grid ---- *@
+    @if (active is not null)
+    {
+        <div class="tray rise rise-2">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head">
+                    <i data-lucide="phone-call"></i> <span>Active call</span>
+                    <span class="meta" aria-live="polite">@Math.Max(0, (int)((DateTime.UtcNow - active.StartedAt).TotalSeconds))s elapsed · @active.Status</span>
+                </div>
+                <div style="padding:14px;display:grid;gap:12px">
+                    @* Controls *@
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                        <button class="btn-sm surface" aria-label="@(ActiveMe?.IsMuted == true ? "Unmute microphone" : "Mute microphone")" @onclick="() => ToggleMute()">
+                            <i data-lucide="@(ActiveMe?.IsMuted == true ? "mic-off" : "mic")" style="width:13px;height:13px"></i>
+                            @(ActiveMe?.IsMuted == true ? "Unmute" : "Mute")
+                        </button>
+                        <button class="btn-sm surface" aria-label="@(ActiveMe?.IsScreenSharing == true ? "Stop screen sharing" : "Share screen")" @onclick="() => ToggleScreen()">
+                            <i data-lucide="@(ActiveMe?.IsScreenSharing == true ? "monitor-stop" : "monitor-up")" style="width:13px;height:13px"></i>
+                            @(ActiveMe?.IsScreenSharing == true ? "Stop share" : "Share screen")
+                        </button>
+                        <button class="btn" style="width:auto;margin:0;background:var(--danger);padding:8px 14px;display:inline-flex;align-items:center;gap:6px" @onclick="EndCall"><i data-lucide="phone-off" style="width:13px;height:13px"></i> End</button>
+                    </div>
+
+                    @* Participant grid; max 6 visible (more = show others as chips). *@
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px">
+                        @foreach (var p in active.Participants.Take(6))
+                        {
+                            var isMe = p.Nik == Auth.Me?.Nik;
+                            var speakerClass = isMe ? "avatar-local-speaker" : "avatar-remote-speaker";
+                            <div style="border:1px solid var(--line-soft);border-radius:12px;padding:12px;display:flex;flex-direction:column;align-items:center;gap:8px;background:var(--bg)">
+                                <div class="avatar @speakerClass" style="background:var(--accent-soft);color:var(--accent-ink);width:44px;height:44px">@Initials(p.Name)</div>
+                                <div style="font-size:12px;font-weight:600;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">@p.Name</div>
+                                <div style="display:flex;gap:4px">
+                                    @if (p.IsMuted) { <span class="tag tag-warn" title="Muted"><i data-lucide="mic-off" style="width:10px;height:10px"></i></span> }
+                                    else { <span class="tag" title="Unmuted"><i data-lucide="mic" style="width:10px;height:10px"></i></span> }
+                                    @if (p.IsScreenSharing) { <span class="tag tag-warn" title="Screen sharing"><i data-lucide="monitor-up" style="width:10px;height:10px"></i></span> }
+                                    <span class="tag">@p.Status</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    @if (active.Participants.Count > 6)
+                    {
+                        <div style="font-size:11.5px;color:var(--ink-3)">+@(active.Participants.Count - 6) more participants</div>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(CallSvc.LastError))
+                {
+                    <div class="note" style="margin:0 14px 14px;border-radius:10px;background:var(--tray);color:var(--danger, #b3543f)">
+                        <i data-lucide="alert-circle"></i><span>@CallSvc.LastError</span>
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(CallSvc.WebRtcState))
+                {
+                    <div class="note" style="margin:0 14px 14px;border-radius:10px;background:var(--tray)">
+                        <i data-lucide="activity"></i><span>WebRTC Audio: @CallSvc.WebRtcState</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @* ---- Call history (grouped by date) ---- *@
+    <div class="tray rise rise-3">
+        <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head">
+                <i data-lucide="history"></i> <span>Call history</span>
+                <span class="meta">@(historyRows.Count == 0 ? "No calls yet" : $"{history.Total} calls")</span>
+            </div>
+            @if (historyRows.Count == 0)
+            {
+                <div class="tree-empty" style="padding:20px"><i data-lucide="phone-missed" style="width:18px;height:18px;margin-bottom:6px"></i>
+                    <div>No calls yet — start your first call with a teammate.</div>
+                </div>
+            }
+            else
+            {
+                <div style="padding:6px 14px 14px">
+                    @foreach (var g in historyRows.GroupBy(h => h.StartedAt.Date).OrderByDescending(g => g.Key))
+                    {
+                        <div style="font-weight:600;font-size:12px;color:var(--ink-2);margin:10px 0 6px">@g.Key.ToLocalTime().ToString("dddd, MMM dd")</div>
+                        @foreach (var h in g)
+                        {
+                            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:var(--bg);margin-bottom:6px">
+                                <div class="avatar" style="background:@(h.Direction == "outgoing" ? "var(--accent-soft)" : "var(--tray)");color:@(h.Direction == "outgoing" ? "var(--accent-ink)" : "var(--ink-3)")">
+                                    <i data-lucide="@(h.Direction == "outgoing" ? "phone-outgoing" : "phone-incoming")" style="width:13px;height:13px"></i>
+                                </div>
+                                <div style="flex:1">
+                                    <div style="font-size:12.5px;font-weight:600">@h.PeerName</div>
+                                    <div style="font-size:11px;color:var(--ink-3)">@h.StartedAt.ToLocalTime().ToString("HH:mm") · @DurationLabel(h)</div>
+                                </div>
+                                <span class="tag" style="@ResultStyle(h.Result)">@h.Result</span>
+                                @if (!string.IsNullOrWhiteSpace(h.PeerNik))
+                                {
+                                    <a class="btn-sm surface" href="@ChatHref(h.PeerNik)" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;font-size:11.5px;padding:6px 10px" title="Open chat with @h.PeerName"><i data-lucide="message-circle" style="width:12px;height:12px"></i> Chat</a>
+                                }
+                                <button class="btn-sm surface" title="Call @h.PeerName again" disabled="@(string.IsNullOrWhiteSpace(h.PeerNik))" @onclick="() => CallAgain(h.PeerNik!)"><i data-lucide="phone" style="width:11px;height:11px"></i> Call again</button>
+                            </div>
+                        }
+                    }
+                    @if (HasMoreHistory)
+                    {
+                        @* ipop-49: sits OUTSIDE the GroupBy loop so an appended page keeps its own
+                           date headings instead of splitting a day across two groups. *@
+                        <div style="display:flex;justify-content:center;padding:6px 0 2px">
+                            <button class="btn-sm surface" @onclick="LoadMoreHistory" disabled="@historyLoadingMore">
+                                @(historyLoadingMore ? "Loading…" : $"Show {history.Total - historyRows.Count} more")
+                            </button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+</div>
+
+@code {
+    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+
+    private CallRoomDto? active;
+    private CallRoomDto? incoming;
+    private CallHistoryPage history = new([], 0, 1, 50);
+    // ipop-49: the loader fetched one page of 50 and dropped the rest, while the panel head at
+    // :109 renders the server's true Total. CallHistories gets a row PER PARTICIPANT per call and
+    // is never pruned, so any active user passes 50 and then sees e.g. "312 calls" above exactly
+    // 50 rows with no way to reach the others. Same shape as ipop-47 (archived rooms) and ipop-48
+    // (thread replies); same remedy. Server side was already correct (CallService.cs:146 — true
+    // CountAsync, clamps, honours Skip/Take), so this is client-only.
+    private List<CallHistoryDto> historyRows = [];
+    private int historyPage = 1;
+    private bool historyLoadingMore;
+    private bool HasMoreHistory => historyRows.Count < history.Total;
+    private MemberSearchRow? selectedPeer;
+    private string notice = "";
+
+    private CallParticipantDto? ActiveMe => active?.Participants.FirstOrDefault(p => p.Nik == Auth.Me?.Nik);
+
+    private string IncomingPeerName =>
+        incoming?.Participants.FirstOrDefault(p => p.Nik != Auth.Me?.Nik)?.Name ?? "Someone";
+
+    protected override void OnInitialized()
+    {
+        Layout.SetHeader("Calls", "Direct calls · history · preselect via drawer");
+        CallSvc.StateChanged += OnStateChanged;
+        // ipop-32d: ProfileDrawer's Call button deep-links /calls?callee=…; the drawer is
+        // rendered on pages other than this one, but a same-page re-navigation would not
+        // remount us, so parse per URL change too. PRESELECT only — never auto-ring.
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await HandleCalleeDeeplinkAsync(); // catch a query already present at mount
+    }
+
+    private string? _lastHandledQuery;
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+        => _ = HandleCalleeDeeplinkAsync();
+
+    /// ipop-32d: /calls?callee={Nik} preselects the peer with the Call button armed.
+    /// Deliberately NOT auto-ring: a mis-click must not interrupt someone who never
+    /// clicked anything (reversibility test — every other deeplink costs the clicker only).
+    private async Task HandleCalleeDeeplinkAsync()
+    {
+        var query = Nav.ToAbsoluteUri(Nav.Uri).Query.TrimStart('?');
+        if (string.IsNullOrEmpty(query) || _lastHandledQuery == query) return;
+        string? callee = null;
+        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq < 0) continue;
+            if (!part[..eq].Equals("callee", StringComparison.OrdinalIgnoreCase)) continue;
+            callee = Uri.UnescapeDataString(part[(eq + 1)..]);
+            break;
+        }
+        if (string.IsNullOrWhiteSpace(callee)) return;
+        _lastHandledQuery = query;
+        selectedPeer = new MemberSearchRow(callee, await ResolvePeerNameAsync(callee), null, null);
+        notice = "";
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    /// Resolve a display name for a NIK arriving via ?callee= — cosmetic label only,
+    /// send path resolves by NIK server-side; falls back to the raw NIK.
+    private async Task<string> ResolvePeerNameAsync(string nik)
+    {
+        try
+        {
+            var rows = await Auth.GetAsync<MemberSearchRow[]>($"/api/directory/member-search?q={Uri.EscapeDataString(nik)}");
+            var hit = rows?.FirstOrDefault(r => string.Equals(r.Nik, nik, StringComparison.OrdinalIgnoreCase));
+            if (hit is not null) return hit.Name;
+        }
+        catch { /* bounded: fall through to NIK-as-label */ }
+        return nik;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+        if (firstRender)
+        {
+            await CallSvc.ConnectAsync();
+            await LoadHistory();
+        }
+    }
+
+    private void OnStateChanged() => _ = InvokeAsync(() =>
+    {
+        var c = CallSvc.Current;
+        active = c is { Status: "active" } ? c : null;
+        // ringing inbound card shows when the current user is INVITED (not the caller)
+        incoming = c is { Status: "ringing" } && c.Participants.Any(p => p.Nik == Auth.Me?.Nik && p.Status == "invited") ? c : null;
+        StateHasChanged();
+        _ = JS.InvokeVoidAsync("ipop.icons");
+    });
+
+    private void OnPickPeer(MemberSearchRow? r)
+    {
+        selectedPeer = r;
+        notice = "";
+        StateHasChanged();
+    }
+
+    private async Task CallPeer()
+    {
+        if (selectedPeer is null) return;
+        var room = await CallSvc.CreateAsync(selectedPeer.Nik);
+        if (room is null) { Toasts.Show("Could not start the call. Please try again.", ToastKind.Error); return; }
+        notice = $"Calling {selectedPeer.Name}… waiting for answer.";
+        await LoadHistory();
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task AcceptIncoming()
+    {
+        if (incoming is null) return;
+        var room = await CallSvc.AcceptCurrentAsync();
+        if (room is null) { Toasts.Show("Failed to accept the call.", ToastKind.Error); return; }
+        incoming = null;
+        active = room;
+        notice = "";
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task DeclineIncoming()
+    {
+        if (incoming is null) return;
+        await CallSvc.DeclineCurrentAsync();
+        incoming = null;
+        active = null;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task ToggleMute()
+    {
+        if (active is null) return;
+        await CallSvc.ToggleMuteAudioAsync();
+        StateHasChanged();
+    }
+
+    private async Task ToggleScreen()
+    {
+        if (active is null) return;
+        var me = ActiveMe;
+        await CallSvc.SignalAsync(active.Id, "update", screen: !(me?.IsScreenSharing ?? false));
+        StateHasChanged();
+    }
+
+    private async Task EndCall()
+    {
+        if (active is null) return;
+        await CallSvc.EndCurrentAsync();
+        active = null;
+        incoming = null;
+        await LoadHistory();
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task LoadHistory()
+    {
+        var page = await Auth.GetAsync<CallHistoryPage>("/api/calls/history?page=1&pageSize=50");
+        history = page ?? new([], 0, 1, 50);
+        // ipop-49: every caller of LoadHistory is a post-call refresh, which legitimately resets
+        // to page 1 — a just-ended call belongs at the top. Reset the paging cursor with it.
+        historyRows = history.Items.ToList();
+        historyPage = 1;
+        StateHasChanged();
+    }
+
+    /// ipop-49: append the next page of call history.
+    private async Task LoadMoreHistory()
+    {
+        if (historyLoadingMore) return;
+        historyLoadingMore = true;
+        try
+        {
+            var next = historyPage + 1;
+            var page = await Auth.GetAsync<CallHistoryPage>($"/api/calls/history?page={next}&pageSize=50");
+            if (page is null) return;
+            historyPage = next;
+            // The server's figure is authoritative for what remains.
+            history = history with { Total = page.Total };
+            // A call completing between page 1 and page 2 shifts every row down one, so the last
+            // row of page 1 comes back as the first of page 2. CallId is unique within ONE user's
+            // history (CallService.cs:198 excludes the creator from the incoming rows, so a user
+            // gets exactly one row per call they were in), which makes it a safe dedup key here.
+            var seen = historyRows.Select(h => h.CallId).ToHashSet();
+            foreach (var row in page.Items)
+                if (seen.Add(row.CallId))
+                    historyRows.Add(row);
+        }
+        finally
+        {
+            historyLoadingMore = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string Initials(string name) =>
+        string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w[0]).Take(2)).ToUpperInvariant();
+
+    private static string DurationLabel(CallHistoryDto h) =>
+        h.DurationSeconds < 60 ? $"{h.DurationSeconds}s"
+        : h.DurationSeconds < 3600 ? $"{h.DurationSeconds / 60}m {h.DurationSeconds % 60}s"
+        : $"{h.DurationSeconds / 3600}h {(h.DurationSeconds % 3600) / 60}m";
+
+    private static string ResultStyle(string r) => r switch
+    {
+        "completed" => "background:var(--accent-soft);color:var(--accent-ink)",
+        "missed" => "background:var(--danger-soft);color:var(--danger)",
+        "declined" => "background:var(--danger-soft);color:var(--danger)",
+        _ => "background:var(--tray);color:var(--ink-2)",
+    };
+
+    private static string ChatHref(string nik) => $"/chat?nik={Uri.EscapeDataString(nik)}";
+
+    private async Task CallAgain(string peerNik)
+    {
+        var room = await CallSvc.CreateAsync(peerNik);
+        if (room is null) { Toasts.Show("Could not start the call.", ToastKind.Error); return; }
+        active = room;
+        StateHasChanged();
+        await LoadHistory();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+        CallSvc.StateChanged -= OnStateChanged;
+    }
+}

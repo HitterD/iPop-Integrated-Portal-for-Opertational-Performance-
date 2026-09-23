@@ -4,7 +4,11 @@ namespace IPop.Application.Hris;
 public record DirectoryEmployee(
     string Nik, string Name, string? Position, string? Department, string? DepartmentCode,
     string? Site, string? SiteCode, string? Manager, string Email, string? Extension,
-    string? Location, string Status, string[]? Roles = null, string? PhotoPath = null);
+    string? Location, string Status, string[]? Roles = null, string? PhotoPath = null,
+    /// NIK pegawai yang berkorespondensi dengan pegawai ini adalah favorit pemanggil.
+    bool IsFavorite = false,
+    /// NIK atasan (untuk relasi bawahan di kartu profil).
+    string? ManagerNik = null);
 
 public record DirectoryDepartment(string Code, string Name, string? ParentCode, int DirectMembers);
 public record DirectorySite(string Code, string Name);

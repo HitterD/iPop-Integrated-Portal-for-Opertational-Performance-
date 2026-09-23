@@ -17,7 +17,7 @@ namespace IPop.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.11")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -93,6 +93,53 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("AuthSessions");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.CalendarEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("EndAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("MeetingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RoomId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("StartAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MeetingId");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("RoomId");
+
+                    b.HasIndex("StartAt");
+
+                    b.ToTable("CalendarEvents");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.CallHistory", b =>
@@ -371,6 +418,12 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("EditedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("ForwardedFromMessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ForwardedFromSenderName")
+                        .HasColumnType("text");
+
                     b.Property<Guid>("IdempotencyKey")
                         .HasColumnType("uuid");
 
@@ -518,6 +571,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("AvatarColor")
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -608,8 +665,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     b.Property<bool>("ReadReceiptsEnabled")
-                        .HasDefaultValue(true)
-                        .HasColumnType("boolean");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
 
                     b.HasKey("UserId", "RoomId");
 
@@ -618,6 +676,33 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId", "IsArchived");
 
                     b.ToTable("ChatRoomUserSettings");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ChatSavedMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("SavedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MessageId");
+
+                    b.HasIndex("UserId", "MessageId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "SavedAt");
+
+                    b.ToTable("ChatSavedMessages");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.Department", b =>
@@ -880,6 +965,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
                     b.Property<string>("SynologyPath")
                         .IsRequired()
                         .HasColumnType("text");
@@ -895,7 +983,97 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("MailId");
 
+                    b.HasIndex("MailId", "SortOrder");
+
                     b.ToTable("MailAttachments");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MailAutoReplySetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("FromDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Message")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime?>("UntilDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("MailAutoReplySettings");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MailLabel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("MailLabels");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MailLabelAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("LabelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MailId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MailId");
+
+                    b.HasIndex("LabelId", "MailId")
+                        .IsUnique();
+
+                    b.ToTable("MailLabelAssignments");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.MailRecipient", b =>
@@ -950,6 +1128,201 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId", "Folder", "IsPinned", "CreatedAt");
 
                     b.ToTable("MailRecipients");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MailRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("LabelId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("SenderContains")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LabelId");
+
+                    b.HasIndex("UserId", "IsEnabled");
+
+                    b.ToTable("MailRules");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MailTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("MailTemplates");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.Meeting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("EndAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Link")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Location")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("OrganizerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("ReminderMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("RoomId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SourceMailId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("StartAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("TimeZone")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizerId");
+
+                    b.HasIndex("RoomId");
+
+                    b.HasIndex("StartAt");
+
+                    b.ToTable("Meetings");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MeetingAttendee", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MeetingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<bool>("Required")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RsvpStatus")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("MeetingId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("MeetingAttendees");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MeetingReminder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MeetingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("SendAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MeetingId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("SendAt", "SentAt");
+
+                    b.ToTable("MeetingReminders");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NewsAcknowledgement", b =>
@@ -1214,6 +1587,49 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("NotificationGatewayClients");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NotificationPreference", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AllowImportant")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("MutedTypes")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("QuietDays")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("QuietEnd")
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
+                    b.Property<bool>("QuietHoursEnabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("QuietStart")
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("NotificationPreferences");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NotificationRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1279,6 +1695,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<string>("TargetRole")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
+
+                    b.Property<string>("TargetUrl")
+                        .HasColumnType("text");
 
                     b.Property<string>("Title")
                         .IsRequired()
@@ -1449,6 +1868,41 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("ProjectMembers");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectMilestone", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AchievedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("DueDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TaskId");
+
+                    b.HasIndex("ProjectId", "DueDate");
+
+                    b.ToTable("ProjectMilestones");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectRoom", b =>
                 {
                     b.Property<Guid>("ProjectId")
@@ -1556,6 +2010,43 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("ProjectTasks");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTaskActivity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("ActorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("NewValue")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("OldValue")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorId");
+
+                    b.HasIndex("TaskId", "CreatedAt");
+
+                    b.ToTable("ProjectTaskActivities");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectTaskAssignee", b =>
                 {
                     b.Property<Guid>("TaskId")
@@ -1576,6 +2067,184 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("ProjectTaskAssignees");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTaskAttachment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<long>("FileSize")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("SynologyPath")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("SynologyServer")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UploadedById")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UploadedById");
+
+                    b.HasIndex("TaskId", "CreatedAt");
+
+                    b.ToTable("ProjectTaskAttachments");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTaskComment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AuthorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("EditedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid?>("ParentCommentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorId");
+
+                    b.HasIndex("ParentCommentId");
+
+                    b.HasIndex("TaskId", "CreatedAt");
+
+                    b.ToTable("ProjectTaskComments");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTaskReminder", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("OffsetHours")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TaskId", "SentAt");
+
+                    b.ToTable("ProjectTaskReminders");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid?>("SourceProjectId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceProjectId");
+
+                    b.HasIndex("IsActive", "Name");
+
+                    b.ToTable("ProjectTemplates");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTemplateTask", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<int?>("DueOffsetDays")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Priority")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TemplateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TemplateId", "SortOrder");
+
+                    b.ToTable("ProjectTemplateTasks");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.Role", b =>
@@ -1741,6 +2410,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("SiteId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("TimeZoneId")
+                        .HasColumnType("text");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1771,6 +2443,31 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("DirGroupId");
 
                     b.ToTable("UserDirGroups");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.UserFavoriteContact", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContactNik")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "ContactNik")
+                        .IsUnique();
+
+                    b.ToTable("UserFavoriteContacts");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.UserOrgNode", b =>
@@ -1896,6 +2593,24 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.CalendarEvent", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Meeting", "Meeting")
+                        .WithMany()
+                        .HasForeignKey("MeetingId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("IPop.Core.Entities.User", "Owner")
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Meeting");
+
+                    b.Navigation("Owner");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.CallHistory", b =>
@@ -2149,6 +2864,25 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ChatSavedMessage", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.ChatMessage", "Message")
+                        .WithMany()
+                        .HasForeignKey("MessageId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Message");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.Department", b =>
                 {
                     b.HasOne("IPop.Core.Entities.Department", "Parent")
@@ -2222,6 +2956,47 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Mail");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.MailAutoReplySetting", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MailLabel", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MailLabelAssignment", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.MailLabel", "Label")
+                        .WithMany("Assignments")
+                        .HasForeignKey("LabelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.Mail", "Mail")
+                        .WithMany()
+                        .HasForeignKey("MailId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Label");
+
+                    b.Navigation("Mail");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.MailRecipient", b =>
                 {
                     b.HasOne("IPop.Core.Entities.Mail", "Mail")
@@ -2237,6 +3012,85 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Mail");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MailRule", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.MailLabel", "Label")
+                        .WithMany()
+                        .HasForeignKey("LabelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Label");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MailTemplate", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.Meeting", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "Organizer")
+                        .WithMany()
+                        .HasForeignKey("OrganizerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Organizer");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MeetingAttendee", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Meeting", "Meeting")
+                        .WithMany("Attendees")
+                        .HasForeignKey("MeetingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Meeting");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MeetingReminder", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Meeting", "Meeting")
+                        .WithMany()
+                        .HasForeignKey("MeetingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Meeting");
 
                     b.Navigation("User");
                 });
@@ -2327,6 +3181,17 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NotificationPreference", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NotificationRequest", b =>
                 {
                     b.HasOne("IPop.Core.Entities.NotificationGatewayClient", "Client")
@@ -2385,6 +3250,24 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectMilestone", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.ProjectTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Project");
+
+                    b.Navigation("Task");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectRoom", b =>
                 {
                     b.HasOne("IPop.Core.Entities.Project", "Project")
@@ -2430,6 +3313,25 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Project");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTaskActivity", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "Actor")
+                        .WithMany()
+                        .HasForeignKey("ActorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.ProjectTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Actor");
+
+                    b.Navigation("Task");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectTaskAssignee", b =>
                 {
                     b.HasOne("IPop.Core.Entities.ProjectTask", "Task")
@@ -2447,6 +3349,83 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Task");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTaskAttachment", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.ProjectTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "UploadedBy")
+                        .WithMany()
+                        .HasForeignKey("UploadedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Task");
+
+                    b.Navigation("UploadedBy");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTaskComment", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "Author")
+                        .WithMany()
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.ProjectTaskComment", "Parent")
+                        .WithMany()
+                        .HasForeignKey("ParentCommentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("IPop.Core.Entities.ProjectTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Author");
+
+                    b.Navigation("Parent");
+
+                    b.Navigation("Task");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTaskReminder", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.ProjectTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Task");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTemplate", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Project", "SourceProject")
+                        .WithMany()
+                        .HasForeignKey("SourceProjectId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("SourceProject");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTemplateTask", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.ProjectTemplate", "Template")
+                        .WithMany("Tasks")
+                        .HasForeignKey("TemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Template");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.Role", b =>
@@ -2528,6 +3507,17 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("DirGroup");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.UserFavoriteContact", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("User");
                 });
@@ -2652,6 +3642,16 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Recipients");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.MailLabel", b =>
+                {
+                    b.Navigation("Assignments");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.Meeting", b =>
+                {
+                    b.Navigation("Attendees");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NewsPost", b =>
                 {
                     b.Navigation("Acknowledgements");
@@ -2695,6 +3695,11 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Assignees");
 
                     b.Navigation("Subtasks");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTemplate", b =>
+                {
+                    b.Navigation("Tasks");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.Role", b =>

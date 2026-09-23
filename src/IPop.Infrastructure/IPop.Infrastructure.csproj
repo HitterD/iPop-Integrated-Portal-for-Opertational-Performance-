@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\IPop.Application\IPop.Application.csproj" />
@@ -11,6 +11,9 @@
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.*" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Polly.Core" Version="8.7.0" />
+    <PackageReference Include="DevExpress.Document.Processor" Version="26.1.4" />
+    <PackageReference Include="DevExpress.Docs.Presentation" Version="26.1.4" />
+    <PackageReference Include="DevExpress.Drawing.Skia" Version="26.1.4" />
   </ItemGroup>
 
   <PropertyGroup>

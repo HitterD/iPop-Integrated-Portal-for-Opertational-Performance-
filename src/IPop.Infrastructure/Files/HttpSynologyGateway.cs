@@ -1,4 +1,7 @@
+using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json.Serialization;
 using IPop.Application.Files;
 using Microsoft.Extensions.Configuration;
@@ -114,17 +117,11 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
 
     public async Task UploadAsync(string server, string sid, string dir, string filename, Stream content, CancellationToken ct)
     {
-        using var form = new MultipartFormDataContent
-        {
-            { new StringContent("SYNO.FileStation.Upload"), "api" },
-            { new StringContent("2"), "version" },
-            { new StringContent("upload"), "method" },
-            { new StringContent($"\"{dir}\""), "path" },
-            { new StringContent("true"), "overwrite" },
-            { new StringContent(sid), "_sid" },
-        };
-        form.Add(new StreamContent(content), "file", filename);
-        using var res = await http.PostAsync($"{BaseFor(server)}/webapi/entry.cgi", form, ct);
+        var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Upload&version=2&method=upload&_sid={Uri.EscapeDataString(sid)}";
+        var boundary = $"---------------------------{Guid.NewGuid():N}";
+
+        using var uploadContent = new SynologyUploadContent(boundary, dir, filename, content);
+        using var res = await http.PostAsync(url, uploadContent, ct);
         var json = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
             throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
@@ -134,6 +131,89 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
             var code = probe.Error?.Code;
             if (code == 119) throw new SynoException("Session expired", code, sessionExpired: true);
             throw new SynoException($"Synology error {code}", code);
+        }
+    }
+
+    private sealed class SynologyUploadContent : HttpContent
+    {
+        private readonly string _boundary;
+        private readonly string _dir;
+        private readonly string _filename;
+        private readonly Stream _content;
+
+        public SynologyUploadContent(string boundary, string dir, string filename, Stream content)
+        {
+            _boundary = boundary;
+            _dir = dir;
+            _filename = filename;
+            _content = content;
+            Headers.TryAddWithoutValidation("Content-Type", $"multipart/form-data; boundary={boundary}");
+        }
+
+        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context)
+        {
+            await SerializeToStreamAsync(stream, context, CancellationToken.None);
+        }
+
+        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken)
+        {
+            var safeFilename = Path.GetFileName(_filename);
+            var sb = new StringBuilder();
+            sb.Append($"--{_boundary}\r\n");
+            sb.Append("Content-Disposition: form-data; name=\"path\"\r\n\r\n");
+            sb.Append($"{_dir}\r\n");
+
+            sb.Append($"--{_boundary}\r\n");
+            sb.Append("Content-Disposition: form-data; name=\"create_parents\"\r\n\r\n");
+            sb.Append("true\r\n");
+
+            sb.Append($"--{_boundary}\r\n");
+            sb.Append("Content-Disposition: form-data; name=\"overwrite\"\r\n\r\n");
+            sb.Append("true\r\n");
+
+            sb.Append($"--{_boundary}\r\n");
+            sb.Append($"Content-Disposition: form-data; name=\"file\"; filename=\"{safeFilename}\"\r\n");
+            sb.Append("Content-Type: application/octet-stream\r\n\r\n");
+
+            var headerBytes = Encoding.UTF8.GetBytes(sb.ToString());
+            await stream.WriteAsync(headerBytes, cancellationToken);
+
+            await _content.CopyToAsync(stream, cancellationToken);
+
+            var footerBytes = Encoding.UTF8.GetBytes($"\r\n--{_boundary}--\r\n");
+            await stream.WriteAsync(footerBytes, cancellationToken);
+        }
+
+        protected override bool TryComputeLength(out long length)
+        {
+            if (_content.CanSeek)
+            {
+                var safeFilename = Path.GetFileName(_filename);
+                var sb = new StringBuilder();
+                sb.Append($"--{_boundary}\r\n");
+                sb.Append("Content-Disposition: form-data; name=\"path\"\r\n\r\n");
+                sb.Append($"{_dir}\r\n");
+
+                sb.Append($"--{_boundary}\r\n");
+                sb.Append("Content-Disposition: form-data; name=\"create_parents\"\r\n\r\n");
+                sb.Append("true\r\n");
+
+                sb.Append($"--{_boundary}\r\n");
+                sb.Append("Content-Disposition: form-data; name=\"overwrite\"\r\n\r\n");
+                sb.Append("true\r\n");
+
+                sb.Append($"--{_boundary}\r\n");
+                sb.Append($"Content-Disposition: form-data; name=\"file\"; filename=\"{safeFilename}\"\r\n");
+                sb.Append("Content-Type: application/octet-stream\r\n\r\n");
+
+                var headerLen = Encoding.UTF8.GetByteCount(sb.ToString());
+                var footerLen = Encoding.UTF8.GetByteCount($"\r\n--{_boundary}--\r\n");
+                length = headerLen + _content.Length + footerLen;
+                return true;
+            }
+
+            length = 0;
+            return false;
         }
     }
 

@@ -1,0 +1,32 @@
+@using Microsoft.AspNetCore.Components.Web
+<div class="backdrop on" @onclick="OnCancel"></div>
+<div class="confirm-center" @onclick="OnCancel">
+    <div class="confirm-card" role="dialog" aria-modal="true" aria-label="@Title" tabindex="-1"
+         @onclick:stopPropagation @onkeydown="OnKeyDown">
+        <h3 class="confirm-title">@Title</h3>
+        @if (!string.IsNullOrEmpty(Message))
+        {
+            <p class="confirm-message">@Message</p>
+        }
+        @ChildContent
+        <div class="confirm-actions">
+            <button class="comp-btn confirm-cancel" @onclick="OnCancel">@CancelText</button>
+            <button class="cm-btn primary confirm-submit" @onclick="OnConfirm">@ConfirmText</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "Confirm";
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string ConfirmText { get; set; } = "Confirm";
+    [Parameter] public string CancelText { get; set; } = "Cancel";
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await OnCancel.InvokeAsync();
+    }
+}

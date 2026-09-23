@@ -1,0 +1,243 @@
+@using System.Net.Http.Json
+@using IPop.Web.Services
+@implements IDisposable
+@inject AuthState Auth
+@inject IJSRuntime JS
+
+@* ---- Sessions KPI Summary Grid ---- *@
+<div class="admin-kpi-grid">
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-blue">
+            <i data-lucide="laptop"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val">@($"{sessionList.Count:N0}")</div>
+            <div class="kpi-lbl">Active Sessions</div>
+        </div>
+    </div>
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-purple">
+            <i data-lucide="users"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val">@($"{UniqueUsersCount:N0}")</div>
+            <div class="kpi-lbl">Unique Users</div>
+        </div>
+    </div>
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-cyan">
+            <i data-lucide="globe"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val">@($"{UniqueIpsCount:N0}")</div>
+            <div class="kpi-lbl">Monitored IPs</div>
+        </div>
+    </div>
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-teal">
+            <i data-lucide="radio"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val" style="font-size:16px">Live (30s)</div>
+            <div class="kpi-lbl">Auto Refresh</div>
+        </div>
+    </div>
+</div>
+
+<div class="tray rise rise-2">
+    <div class="core" style="padding:0;overflow:hidden">
+        <div class="panel-head" style="border-bottom:1px solid var(--line-soft)">
+            <div style="display:flex;align-items:center;gap:8px">
+                <i data-lucide="laptop" style="color:#4f46e5"></i>
+                <span style="font-weight:700">Active Sessions</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+                <span class="meta">@sessionList.Count sessions recorded</span>
+                <button class="org-act" title="Refresh sessions" @onclick="LoadSessions"><i data-lucide="refresh-cw"></i></button>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div style="padding:14px"><div class="skel"></div></div>
+        }
+        else if (sessionList.Count == 0)
+        {
+            <div class="tree-empty" style="padding:28px">No active sessions at this time.</div>
+        }
+        else
+        {
+            <table class="u-table">
+                <thead>
+                    <tr>
+                        <th style="width:260px">User</th>
+                        <th style="width:140px">IP Address</th>
+                        <th>Device / Fingerprint</th>
+                        <th style="width:160px">Expires In</th>
+                        <th style="width:80px;text-align:right">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var session in sessionList)
+                    {
+                        <tr @key="session.Id">
+                            <td>
+                                <div class="u-user-cell">
+                                    <div class="u-avatar" style="background:@GetUserColor(session.Nik)">
+                                        @GetInitialsFromName(session.Name)
+                                    </div>
+                                    <div>
+                                        <div class="u-user-name">@session.Name</div>
+                                        <div class="u-user-sub"><span class="tag">@session.Nik</span></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="tag">@(session.IpAddress ?? "—")</span>
+                            </td>
+                            <td class="mono" style="font-size:12px;color:var(--ink-2)">
+                                <i data-lucide="monitor" style="width:12px;height:12px;display:inline-block;vertical-align:-1px;margin-right:4px;color:var(--ink-3)"></i>
+                                @(string.IsNullOrEmpty(session.DeviceFingerprint) ? "Desktop / Browser Session" : TruncateDevice(session.DeviceFingerprint))
+                            </td>
+                            <td>
+                                @{
+                                    var (label, cls) = GetExpiryStatus(session.ExpiresAt);
+                                }
+                                <span class="badge-expire @cls">
+                                    <i data-lucide="clock" style="width:11px;height:11px"></i>
+                                    <span>@label</span>
+                                </span>
+                            </td>
+                            <td class="acts">
+                                <button type="button" class="act-toggle" title="Revoke Session (Force Logout)" @onclick="() => RevokeSession(session)">
+                                    <i data-lucide="log-out"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@* ---- Toast Feedback Banner ---- *@
+@if (!string.IsNullOrEmpty(toastMessage))
+{
+    <div class="admin-toast-wrap">
+        <div class="admin-toast @(toastIsError ? "toast-error" : "toast-success")">
+            <i data-lucide="@(toastIsError ? "alert-circle" : "check-circle")"></i>
+            <span>@toastMessage</span>
+            <button type="button" class="toast-close" @onclick="() => toastMessage = null" aria-label="Close">
+                <i data-lucide="x" style="width:14px;height:14px"></i>
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private List<AdminSessionRowDto> sessionList = [];
+    private System.Threading.Timer? _pollTimer;
+    private bool isLoading = true;
+    private string? toastMessage;
+    private bool toastIsError;
+
+    private int UniqueUsersCount => sessionList.Select(s => s.Nik).Distinct().Count();
+    private int UniqueIpsCount => sessionList.Select(s => s.IpAddress).Where(ip => !string.IsNullOrEmpty(ip)).Distinct().Count();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSessions();
+        isLoading = false;
+        _pollTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadSessions();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    public async Task Reload()
+    {
+        await LoadSessions();
+        StateHasChanged();
+    }
+
+    private async Task LoadSessions()
+    {
+        sessionList = await Auth.GetAsync<List<AdminSessionRowDto>>("/api/admin/users/sessions") ?? [];
+    }
+
+    private async Task RevokeSession(AdminSessionRowDto session)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/admin/users/sessions/{session.Id}/revoke");
+        if (res.IsSuccessStatusCode)
+        {
+            ShowToast($"Session for {session.Name} ({session.Nik}) revoked successfully.", false);
+            await LoadSessions();
+        }
+        else
+        {
+            ShowToast("Failed to revoke user session.", true);
+        }
+    }
+
+    private void ShowToast(string message, bool isError)
+    {
+        toastMessage = message;
+        toastIsError = isError;
+        StateHasChanged();
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(4000);
+            if (toastMessage == message)
+            {
+                toastMessage = null;
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+    }
+
+    private static (string Label, string Cls) GetExpiryStatus(DateTime expiresUtc)
+    {
+        var delta = expiresUtc - DateTime.UtcNow;
+        if (delta.TotalMinutes < 1) return ("Expiring soon", "urgent");
+        if (delta.TotalHours < 1) return ($"{Math.Ceiling(delta.TotalMinutes)}m left", "soon");
+        if (delta.TotalDays < 1) return ($"{Math.Ceiling(delta.TotalHours)}h left", "ok");
+        return ($"{Math.Ceiling(delta.TotalDays)}d left", "ok");
+    }
+
+    private static string TruncateDevice(string fp)
+        => fp.Length > 45 ? fp[..42] + "…" : fp;
+
+    private static string GetUserColor(string nik)
+        => IPop.Web.Models.AvatarPalette.For(nik);
+
+    private static string GetInitialsFromName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var clean = name.Trim().TrimStart('\'', '"', '`', '(', '[', '{');
+        if (string.IsNullOrWhiteSpace(clean)) return "?";
+        var parts = clean.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+        {
+            var p0 = parts[0].TrimStart('\'', '"', '`', '(', '[');
+            var p1 = parts[1].TrimStart('\'', '"', '`', '(', '[');
+            if (p0.Length > 0 && p1.Length > 0)
+                return $"{p0[0]}{p1[0]}".ToUpperInvariant();
+        }
+        return clean.Length >= 2 ? clean[..2].ToUpperInvariant() : clean.ToUpperInvariant();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    public void Dispose()
+    {
+        _pollTimer?.Dispose();
+    }
+}

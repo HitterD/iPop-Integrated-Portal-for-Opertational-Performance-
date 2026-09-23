@@ -1,0 +1,68 @@
+@using IPop.Application.Projects
+
+<div class="proj-canvas-head">
+    <div class="proj-title-box">
+        <h2 class="proj-title-text">@Project.Name</h2>
+        <span class="status-pill @Project.Status.ToLower()">@Project.Status</span>
+        <div class="proj-progress-tag">
+            <div class="proj-progress-mini">
+                <div class="proj-progress-mini-fill" style="width:@Project.Progress%"></div>
+            </div>
+            <span>@Project.Progress%</span>
+        </div>
+        @if (Project.Deadline.HasValue)
+        {
+            <span style="font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:4px">
+                <i data-lucide="calendar" style="width:13px;height:13px"></i>
+                Until @Project.Deadline.Value.ToString("dd MMM yyyy")
+            </span>
+        }
+    </div>
+
+    @* Head Actions *@
+    <div class="proj-head-actions">
+        @* Team avatars pile *@
+        <div class="proj-team-pile" @onclick="OnOpenTeamModal" style="cursor:pointer" title="Manage Team Members (@Members.Count members)">
+            @foreach (var m in Members.Take(4))
+            {
+                <div class="team-avatar-circ" style="background:@ProjectUiHelpers.GetAvatarBg(m.Name)" title="@m.Name (@m.Role)">
+                    @ProjectUiHelpers.GetInitials(m.Name)
+                </div>
+            }
+            @if (Members.Count > 4)
+            {
+                <div class="team-avatar-circ" style="background:var(--ink-3);font-size:9px">
+                    +@(Members.Count - 4)
+                </div>
+            }
+            <div class="team-add-circ" title="Add Member">
+                <i data-lucide="user-plus" style="width:13px;height:13px"></i>
+            </div>
+        </div>
+
+        @* Chat Interconnect *@
+        <button class="proj-btn-action chat" @onclick="OnOpenChatRoom" title="Open Project Chat Room">
+            <i data-lucide="message-square"></i> Chat
+        </button>
+
+        @* Edit Project Button *@
+        <button class="proj-btn-action edit" @onclick="OnOpenEditModal" title="Edit Project Settings">
+            <i data-lucide="edit-3"></i> Edit
+        </button>
+
+        @* Export Snapshot *@
+        <button class="proj-btn-action export" @onclick="OnExport" title="Export Snapshot Data">
+            <i data-lucide="download"></i> Export
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ProjectDto Project { get; set; } = default!;
+    [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
+
+    [Parameter] public EventCallback OnOpenTeamModal { get; set; }
+    [Parameter] public EventCallback OnOpenEditModal { get; set; }
+    [Parameter] public EventCallback OnOpenChatRoom { get; set; }
+    [Parameter] public EventCallback OnExport { get; set; }
+}

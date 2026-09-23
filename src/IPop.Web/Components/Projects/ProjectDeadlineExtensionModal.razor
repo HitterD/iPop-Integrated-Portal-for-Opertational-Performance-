@@ -1,0 +1,174 @@
+@using IPop.Application.Projects
+@using Microsoft.AspNetCore.Components.Forms
+@inject IJSRuntime JS
+
+@if (IsOpen && Task is not null)
+{
+    <div class="evidence-modal-backdrop" @onclick="HandleCancel">
+        <div class="evidence-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true" style="max-width:500px">
+            <div class="evidence-modal-head" style="background:#fff7ed;border-bottom:1px solid #fed7aa">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <div style="width:28px;height:28px;border-radius:50%;background:#ffedd5;display:flex;align-items:center;justify-content:center;color:#ea580c">
+                        <i data-lucide="clock-alert" style="width:16px;height:16px"></i>
+                    </div>
+                    <div>
+                        <div style="font-weight:700;font-size:14px;color:#9a3412">Deadline Extension</div>
+                        <div style="font-size:11px;color:#c2410c">Record obstacle reasons & adjust deadline</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-sm surface" style="padding:4px 8px" @onclick="HandleCancel">
+                    <i data-lucide="x" style="width:14px;height:14px"></i>
+                </button>
+            </div>
+
+            <div class="evidence-modal-body">
+                @* Task Preview *@
+                <div style="padding:10px 14px;background:var(--tray);border-radius:10px;border:1px solid var(--line-soft)">
+                    <div style="font-size:11px;color:var(--ink-3);font-weight:600;text-transform:uppercase">Task</div>
+                    <div style="font-size:13.5px;font-weight:700;color:var(--ink);margin-top:2px">@Task.Title</div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:11.5px">
+                        <span style="color:var(--ink-3)">Current Deadline:</span>
+                        <span class="due-pill overdue" style="font-weight:700">
+                            @(Task.DueDate.HasValue ? Task.DueDate.Value.ToString("dd MMM yyyy") : "Not specified")
+                        </span>
+                    </div>
+                </div>
+
+                @* New Due Date Picker & Presets *@
+                <div class="field" style="margin:0">
+                    <label style="font-size:11.5px;font-weight:700;color:var(--ink-2);display:flex;align-items:center;justify-content:space-between">
+                        <span>New Deadline</span>
+                        <span style="font-size:11px;color:var(--accent);font-weight:600">Select date</span>
+                    </label>
+                    <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+                        <input type="date" class="org-input" style="flex:1;height:34px;font-size:12.5px"
+                               value="@(newDueDate.ToString("yyyy-MM-dd"))"
+                               @onchange="e => { if (DateTime.TryParse(e.Value?.ToString(), out var d)) newDueDate = d; }" />
+                    </div>
+                    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+                        <button type="button" class="modern-estimate-chip" @onclick="() => SetPresetDays(3)">+3 Days</button>
+                        <button type="button" class="modern-estimate-chip" @onclick="() => SetPresetDays(7)">+1 Week</button>
+                        <button type="button" class="modern-estimate-chip" @onclick="() => SetPresetDays(14)">+2 Weeks</button>
+                        <button type="button" class="modern-estimate-chip" @onclick="() => SetPresetDays(30)">+1 Month</button>
+                    </div>
+                </div>
+
+                @* Reason Textarea (Required) *@
+                <div class="field" style="margin:0">
+                    <label style="font-size:11.5px;font-weight:700;color:var(--ink-2);display:flex;align-items:center;justify-content:space-between">
+                        <span>Reason for Extension <span style="color:#e11d48">*</span></span>
+                    </label>
+                    <textarea class="org-input" style="min-height:80px;font-size:12px;margin-top:4px"
+                              placeholder="Explain technical obstacles, vendor delays, or factors requiring postponement..."
+                              @bind="reasonText"></textarea>
+                    @if (showValidation && string.IsNullOrWhiteSpace(reasonText))
+                    {
+                        <div style="font-size:11px;color:#e11d48;margin-top:2px">Extension reason is required for managerial transparency.</div>
+                    }
+                </div>
+
+                @* Optional Attachment (Photo/File) *@
+                <div class="field" style="margin:0">
+                    <label style="font-size:11.5px;font-weight:700;color:var(--ink-2);display:flex;align-items:center;justify-content:space-between">
+                        <span>Attachment / Supporting Evidence (Optional)</span>
+                        <span style="font-size:10.5px;color:var(--ink-3)">Photo / memo / document</span>
+                    </label>
+                    <div style="margin-top:4px">
+                        <label class="btn-sm surface" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;font-size:11.5px;border-radius:999px">
+                            <i data-lucide="paperclip" style="width:13px;height:13px"></i>
+                            <span>Select Photo / Supporting File</span>
+                            <InputFile OnChange="HandleFileSelected" style="display:none" />
+                        </label>
+                    </div>
+
+                    @if (!string.IsNullOrEmpty(attachmentName))
+                    {
+                        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border:1px solid var(--line-soft);border-radius:8px;margin-top:6px">
+                            <i data-lucide="file-check" style="width:14px;height:14px;color:var(--accent)"></i>
+                            <span style="flex:1;font-size:12px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@attachmentName</span>
+                            <button type="button" style="background:none;border:none;cursor:pointer;color:var(--ink-3);padding:2px" @onclick="() => { attachmentName = null; attachmentDataUrl = null; }">
+                                <i data-lucide="x" style="width:12px;height:12px"></i>
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div style="padding:12px 18px;border-top:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;background:var(--tray)">
+                <button type="button" class="btn-sm surface" style="border-radius:999px" @onclick="HandleCancel">
+                    Cancel
+                </button>
+                <button type="button" class="btn-sm accent" style="border-radius:999px;padding:6px 18px" @onclick="HandleSubmit">
+                    <i data-lucide="check" style="width:13px;height:13px"></i>
+                    <span>Save Extension</span>
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public ProjectTaskDto? Task { get; set; }
+
+    [Parameter] public EventCallback<(ProjectTaskDto Task, DateTime NewDueDate, string Reason, string? AttachmentName, string? AttachmentDataUrl)> OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private DateTime newDueDate = DateTime.UtcNow.Date.AddDays(7);
+    private string reasonText = "";
+    private string? attachmentName;
+    private string? attachmentDataUrl;
+    private bool showValidation;
+
+    protected override void OnParametersSet()
+    {
+        if (Task is not null)
+        {
+            var baseDate = Task.DueDate ?? DateTime.UtcNow.Date;
+            newDueDate = baseDate > DateTime.UtcNow.Date ? baseDate.AddDays(7) : DateTime.UtcNow.Date.AddDays(7);
+            reasonText = "";
+            attachmentName = null;
+            attachmentDataUrl = null;
+            showValidation = false;
+        }
+    }
+
+    private void SetPresetDays(int days)
+    {
+        var baseDate = Task?.DueDate ?? DateTime.UtcNow.Date;
+        if (baseDate < DateTime.UtcNow.Date) baseDate = DateTime.UtcNow.Date;
+        newDueDate = baseDate.AddDays(days);
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null || file.Size > 8 * 1024 * 1024) return;
+        try
+        {
+            attachmentName = file.Name;
+            var buffer = new byte[file.Size];
+            await file.OpenReadStream(8 * 1024 * 1024).ReadExactlyAsync(buffer);
+            attachmentDataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(buffer)}";
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+        catch {}
+    }
+
+    private async Task HandleSubmit()
+    {
+        if (string.IsNullOrWhiteSpace(reasonText))
+        {
+            showValidation = true;
+            return;
+        }
+
+        if (Task is null) return;
+        await OnConfirm.InvokeAsync((Task, newDueDate, reasonText.Trim(), attachmentName, attachmentDataUrl));
+    }
+
+    private async Task HandleCancel()
+    {
+        await OnCancel.InvokeAsync();
+    }
+}

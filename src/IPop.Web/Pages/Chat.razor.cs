@@ -22,6 +22,9 @@ public partial class Chat
     private ElementReference composerRef;
     private ElementReference composerWrapRef;
     private ElementReference qsInputRef;
+    private ElementReference ctxMenuRef;
+    private bool ctxNeedsPlacement;
+    private bool composerKeyBound;
     private DotNetObjectReference<Chat>? selfRef;
     private bool composerPasteBound;
     private string messageText = "";
@@ -105,8 +108,11 @@ public partial class Chat
     private bool threadLoadingMore;
     private bool HasMoreThreadReplies => threadReplies.Count < threadTotal;
 
-    // ---- Unified Tabbed Drawer State ----
-    private enum ChatDrawerTab { Overview, Members, Media, Pinned }
+    // ---- Apple Detail Panel State ----
+    public enum DetailPanelView { Main, Members, Pinned, Media, Events, Person }
+    private DetailPanelView panelView = DetailPanelView.Main;
+    private bool personFromRoom;
+    private enum ChatDrawerTab { Overview, Members, Media, Pinned, Calendar }
     private ChatDrawerTab activeDrawerTab = ChatDrawerTab.Overview;
     private bool drawerOpen;
     private bool groupInfoOpen;
@@ -115,14 +121,192 @@ public partial class Chat
     private string mediaSubTab = "all";
     private string memberFilter = "";
 
+    private void ToggleDetailPanel()
+    {
+        if (drawerOpen && panelView == DetailPanelView.Main)
+            CloseDetail();
+        else
+            OpenDetailView(DetailPanelView.Main);
+    }
+
+    private IPop.Web.Models.Employee? dmPerson;
+
+    private async Task EnsureDmPersonLoadedAsync()
+    {
+        if (ChatSvc.ActiveRoom?.Type != "dm") { dmPerson = null; return; }
+        var dmMember = ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
+        if (dmMember is null || string.IsNullOrWhiteSpace(dmMember.Nik)) { dmPerson = null; return; }
+        if (dmPerson?.Nik == dmMember.Nik) return;
+        try
+        {
+            var d = await Auth.GetAsync<IPop.Web.Services.DirectoryEmployeeDto>($"/api/chat/users/{Uri.EscapeDataString(dmMember.Nik)}");
+            if (d is not null) dmPerson = MapEmployee(d);
+        }
+        catch { dmPerson = null; }
+        StateHasChanged();
+    }
+
+    private void OpenDetailView(DetailPanelView view)
+    {
+        panelView = view;
+        drawerOpen = true;
+        groupInfoOpen = (view == DetailPanelView.Main);
+        pinnedPanelOpen = (view == DetailPanelView.Pinned);
+        if (view == DetailPanelView.Pinned) _ = LoadPinnedMessagesAsync();
+        if (view == DetailPanelView.Events) _ = LoadRoomEventsAsync();
+        if (view == DetailPanelView.Main && ChatSvc.ActiveRoom?.Type == "dm") _ = EnsureDmPersonLoadedAsync();
+        StateHasChanged();
+    }
+
+    private void GoBackToMain()
+    {
+        panelView = DetailPanelView.Main;
+        StateHasChanged();
+    }
+
+    private void CloseDetail()
+    {
+        drawerOpen = false;
+        panelView = DetailPanelView.Main;
+        groupInfoOpen = false;
+        pinnedPanelOpen = false;
+        personFromRoom = false;
+        profilePerson = null;
+        StateHasChanged();
+    }
+
+    private async Task HandlePersonMessage()
+    {
+        CloseDetail();
+        try { await composerRef.FocusAsync(); } catch { }
+    }
+
+    private void OpenPinnedSection()
+    {
+        if (drawerOpen && panelView == DetailPanelView.Pinned) CloseDetail();
+        else OpenDetailView(DetailPanelView.Pinned);
+    }
+
+    private void OpenMediaSection()
+    {
+        if (drawerOpen && panelView == DetailPanelView.Media) CloseDetail();
+        else OpenDetailView(DetailPanelView.Media);
+    }
+
+    private void OpenMembersSection()
+    {
+        if (drawerOpen && panelView == DetailPanelView.Members) CloseDetail();
+        else OpenDetailView(DetailPanelView.Members);
+    }
+
     private void OpenDrawerTab(ChatDrawerTab tab)
     {
         activeDrawerTab = tab;
-        drawerOpen = true;
-        groupInfoOpen = (tab == ChatDrawerTab.Overview);
-        pinnedPanelOpen = (tab == ChatDrawerTab.Pinned);
-        if (tab == ChatDrawerTab.Pinned) _ = LoadPinnedMessagesAsync();
+        var view = tab switch
+        {
+            ChatDrawerTab.Members => DetailPanelView.Members,
+            ChatDrawerTab.Pinned => DetailPanelView.Pinned,
+            ChatDrawerTab.Media => DetailPanelView.Media,
+            ChatDrawerTab.Calendar => DetailPanelView.Events,
+            _ => DetailPanelView.Main
+        };
+        OpenDetailView(view);
     }
+
+    // ---- Kalender ruang (Fase 4) ----
+    private sealed record RoomEventRow(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string Type, Guid? MeetingId, Guid? RoomId);
+    private List<RoomEventRow> roomEvents = [];
+    private bool roomEventsLoading;
+    private bool roomEventFormOpen;
+    private bool roomEventSaving;
+    private string roomEventTitle = "";
+    private DateTime roomEventStart = DateTime.Now.Date.AddDays(1).AddHours(9);
+
+    private void ToggleRoomEventForm() => roomEventFormOpen = !roomEventFormOpen;
+
+    private async Task LoadRoomEventsAsync()
+    {
+        if (ChatSvc.ActiveRoomId is null) return;
+        roomEventsLoading = true;
+        StateHasChanged();
+        try
+        {
+            roomEvents = await Auth.GetAsync<List<RoomEventRow>>($"/api/meetings/room/{ChatSvc.ActiveRoomId}") ?? [];
+        }
+        catch { roomEvents = []; }
+        roomEventsLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task SaveRoomEvent()
+    {
+        if (ChatSvc.ActiveRoomId is null || string.IsNullOrWhiteSpace(roomEventTitle) || roomEventSaving) return;
+        roomEventSaving = true;
+        StateHasChanged();
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/meetings/calendar", new
+            {
+                title = roomEventTitle.Trim(),
+                startAt = roomEventStart.ToUniversalTime(),
+                endAt = roomEventStart.AddHours(1).ToUniversalTime(),
+                type = "rapat",
+                roomId = ChatSvc.ActiveRoomId.Value,
+            });
+            if (res.IsSuccessStatusCode)
+            {
+                roomEventTitle = "";
+                roomEventFormOpen = false;
+                Toasts.Show("Room event saved.", ToastKind.Success);
+                await LoadRoomEventsAsync();
+            }
+            else
+            {
+                Toasts.Show("Failed to save event.", ToastKind.Error);
+            }
+        }
+        catch { Toasts.Show("Failed to save event.", ToastKind.Error); }
+        finally { roomEventSaving = false; StateHasChanged(); }
+    }
+
+    private void OpenRoomEventDetail(RoomEventRow ev)
+    {
+        _ = OpenRoomEventDetailAsync(ev);
+    }
+
+    // Modal detail event ruang — memuat rapat (lokasi/peserta/RSVP) dari MeetingId.
+    private bool roomEventModalOpen;
+    private IPop.Web.Components.Chat.EventDetailModal.EventModel? roomEventDetail;
+
+    private async Task OpenRoomEventDetailAsync(RoomEventRow ev)
+    {
+        string? location = null;
+        string? link = null;
+        IReadOnlyList<string> attendees = ChatSvc.ActiveRoom?.Members.Select(m => m.Name).ToList() ?? [];
+        if (ev.MeetingId is { } meetingId)
+        {
+            try
+            {
+                var dto = await Auth.GetAsync<MeetingDetailDto>($"/api/meetings/{meetingId}");
+                if (dto is not null)
+                {
+                    location = dto.Location;
+                    link = dto.Link;
+                    attendees = dto.Attendees.Select(a => a.Name).ToList();
+                }
+            }
+            catch { }
+        }
+        roomEventDetail = new IPop.Web.Components.Chat.EventDetailModal.EventModel(
+            ev.Id, ev.Title, ev.StartAt, ev.EndAt, location, link, attendees);
+        roomEventModalOpen = true;
+        StateHasChanged();
+    }
+
+    private sealed record MeetingAttendeeDto(Guid UserId, string Name, string Nik, bool Required, string RsvpStatus, string? Note);
+    private sealed record MeetingDetailDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string? TimeZone, string? Location, string? Link,
+        Guid OrganizerId, string OrganizerName, string Status, IReadOnlyList<MeetingAttendeeDto> Attendees,
+        int AcceptCount, int MaybeCount, int DeclineCount, int PendingCount, string MyResponse);
 
     private void ToggleDrawerTab(ChatDrawerTab tab)
     {
@@ -185,6 +369,9 @@ public partial class Chat
     private string emergencyContent = "";
     private bool IsGroupAdmin => ChatSvc.ActiveRoom?.Type == "group" && ChatSvc.ActiveRoom.Members.Any(m => m.Nik == GetCurrentUserNik() && m.Role is "owner" or "admin");
 
+    /// Backend pin rule: owner/admin only in groups; any member in DMs.
+    private bool CanPinInActiveRoom => ChatSvc.ActiveRoom?.Type == "dm" || IsGroupAdmin;
+
     // ---- New DM Modal State ----
     private bool newDmModalOpen;
     private string newDmSearchQuery = "";
@@ -225,9 +412,35 @@ public partial class Chat
 
     // ---- Lifecycle ----
 
+    private string? _lastSubtitle;
+
+    private void UpdateSubtitle()
+    {
+        var totalUnread = (ChatSvc.DirectRooms?.Sum(r => r.UnreadCount) ?? 0) + (ChatSvc.GroupRooms?.Sum(r => r.UnreadCount) ?? 0);
+        var totalRooms = (ChatSvc.DirectRooms?.Count ?? 0) + (ChatSvc.GroupRooms?.Count ?? 0);
+        var unreadPart = totalUnread == 0 ? "No unread" : totalUnread == 1 ? "1 unread" : $"{totalUnread} unread";
+        var convPart = totalRooms == 1 ? "1 conversation" : $"{totalRooms} conversations";
+        var subtitle = $"{unreadPart} · {convPart}";
+        if (_lastSubtitle != subtitle)
+        {
+            _lastSubtitle = subtitle;
+            InvokeAsync(() => Layout.SetSubtitle(subtitle));
+        }
+    }
+
+    private void OnEscapePressed()
+    {
+        if (drawerOpen)
+        {
+            CloseDetail();
+        }
+    }
+
     protected override async Task OnInitializedAsync()
     {
-        Layout.SetHeader("Chat", "Messages");
+        Layout.SetHeader("Messages");
+        UpdateSubtitle();
+        Layout.EscapePressed += OnEscapePressed;
         ChatSvc.StateChanged += OnStateChanged;
         ChatSvc.RoomListChanged += OnStateChanged;
         ChatSvc.TypingChanged += OnStateChanged;
@@ -288,7 +501,7 @@ public partial class Chat
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await JS.InvokeVoidAsync("ipop.icons");
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
         // Bind paste + drag-drop when the composer is in the DOM (retry after room switch).
         if (!composerPasteBound)
         {
@@ -299,6 +512,25 @@ public partial class Chat
                 composerPasteBound = true;
             }
             catch { /* composer not yet rendered (empty state) — retry next frame */ }
+        }
+        if (!composerKeyBound && ChatSvc.ActiveRoomId is not null)
+        {
+            try
+            {
+                selfRef ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("ipop.chatBindComposer", composerRef, selfRef);
+                composerKeyBound = true;
+            }
+            catch { }
+        }
+        if (ctxNeedsPlacement && ctxMsgId is not null)
+        {
+            ctxNeedsPlacement = false;
+            try
+            {
+                await JS.InvokeVoidAsync("ipop.placeContextMenu", ctxMenuRef, ctxX, ctxY);
+            }
+            catch { }
         }
         if (!scrollWatchBound && ChatSvc.ActiveRoomId is not null)
         {
@@ -325,7 +557,9 @@ public partial class Chat
 
     public void Dispose()
     {
+        Layout.EscapePressed -= OnEscapePressed;
         try { _ = JS.InvokeVoidAsync("ipop.chatUnbindPaste", composerWrapRef); } catch { }
+        try { _ = JS.InvokeVoidAsync("ipop.chatUnbindComposer", composerRef); } catch { }
         try { _ = JS.InvokeVoidAsync("ipop.unbindScrollWatch", messagesRef); } catch { }
         // ipop-22: unbind chip delegation
         try { _ = JS.InvokeVoidAsync("ipop.unbindMentionChips", messagesRef); } catch { }
@@ -356,6 +590,7 @@ public partial class Chat
             openedRoomId = null;
             if (RoomId is not null) Nav.NavigateTo("/chat", replace: true);
         }
+        UpdateSubtitle();
         InvokeAsync(StateHasChanged);
     }
 

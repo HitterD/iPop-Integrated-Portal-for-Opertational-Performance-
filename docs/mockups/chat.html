@@ -1,0 +1,939 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPop — Chat Module</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+:root, [data-theme="light"] {
+  --bg: #f7f6f3; --surface: #ffffff; --tray: #efede8; --line: #e5e2da; --line-soft: #eceae3;
+  --ink: #3f3f3a; --ink-2: #6f6f66; --ink-3: #a3a39a;
+  --accent: #2e7d5b; --accent-ink: #256b4d; --accent-soft: #e8f3ee;
+  --danger: #b3462f; --danger-soft: #f9ece7;
+  --warn: #a67c00; --warn-soft: #fef9e7;
+  --info: #2563eb; --info-soft: #eff6ff;
+  --radius-tray: 20px; --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --topbar-bg: rgba(247,246,243,0.85);
+  --drawer-tray: rgba(239,237,232,0.95);
+}
+[data-theme="dark"] {
+  --bg: #171614; --surface: #201f1c; --tray: #2a2825; --line: #383530; --line-soft: #2e2c28;
+  --ink: #e7e4dd; --ink-2: #a9a69c; --ink-3: #7b786f;
+  --accent: #4ca37e; --accent-ink: #7ecfa9; --accent-soft: #223b30;
+  --danger: #e0795f; --danger-soft: #422a22;
+  --warn: #d4a418; --warn-soft: #3d3316;
+  --info: #60a5fa; --info-soft: #1e293b;
+  --topbar-bg: rgba(23,22,20,0.88);
+  --drawer-tray: rgba(42,40,37,0.95);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html { -webkit-font-smoothing:antialiased; }
+body { font-family:"Figtree","Segoe UI",system-ui,sans-serif; background:var(--bg); color:var(--ink); font-size:14px; letter-spacing:-0.004em; transition:background 0.3s var(--ease),color 0.3s var(--ease); }
+.lucide { width:17px; height:17px; stroke-width:1.6; }
+
+body::after { content:""; position:fixed; inset:0; z-index:90; pointer-events:none; opacity:0.025; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E"); }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:8px; }
+@keyframes rise { from{opacity:0;transform:translateY(16px);filter:blur(4px)} to{opacity:1;transform:translateY(0);filter:blur(0)} }
+.rise { animation:rise 0.8s var(--ease) both; } .rise-1{animation-delay:.05s} .rise-2{animation-delay:.12s}
+@keyframes typing-dot { 0%,60%,100%{opacity:.3;transform:translateY(0)} 30%{opacity:1;transform:translateY(-3px)} }
+@keyframes highlight-flash { 0%{background:var(--accent-soft)} 100%{background:transparent} }
+@keyframes shimmer { from{background-position:-400px 0} to{background-position:400px 0} }
+
+/* ---- Switcher ---- */
+.switcher { position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:100;background:rgba(63,63,58,0.92);color:#e8e6e0;display:flex;align-items:center;gap:6px;padding:5px 7px;border-radius:999px;font-size:12px;backdrop-filter:blur(12px);box-shadow:0 10px 32px rgba(63,63,58,0.2); }
+.switcher span { color:#b3b1a8;margin:0 8px 0 10px;font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase; }
+.switcher button { background:transparent;color:#cfcdc4;border:none;padding:6px 13px;border-radius:999px;cursor:pointer;font-size:11.5px;font-family:inherit;transition:all 0.35s var(--ease); }
+.switcher button.active { background:var(--surface);color:var(--ink); }
+.screen { display:none;min-height:100vh; } .screen.active { display:block; }
+
+/* ============ SHELL ============ */
+.shell { display:grid;grid-template-columns:248px 1fr;min-height:100vh; }
+.sidebar { background:var(--surface);border-right:1px solid var(--line-soft);display:flex;flex-direction:column;padding:18px 12px 14px;position:sticky;top:0;height:100vh;overflow:hidden;transition:background 0.3s var(--ease); }
+.side-head { display:flex;align-items:center;gap:11px;padding:0 8px 16px;margin-bottom:12px;border-bottom:1px solid var(--line-soft); }
+.side-head .t { font-size:15.5px;font-weight:700;letter-spacing:-0.02em; } .side-head .s { font-size:11px;color:var(--ink-3); }
+.mark { width:34px;height:34px;border-radius:11px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0; }
+.nav-item { display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:11px;margin-bottom:2px;color:var(--ink-2);font-weight:500;font-size:13.5px;cursor:pointer;white-space:nowrap;transition:all 0.3s var(--ease);position:relative;text-decoration:none;border:none;background:none;font-family:inherit;width:100%;text-align:left; }
+.nav-item:hover { background:var(--tray);color:var(--ink); }
+.nav-item.active { background:var(--accent-soft);color:var(--accent-ink);font-weight:600; }
+.nav-item.locked { color:var(--ink-3);cursor:default; } .nav-item.locked:hover { background:transparent;color:var(--ink-3); }
+.nav-item .lock { margin-left:auto; } .nav-item .lock.lucide { width:12.5px;height:12.5px; }
+.nav-item .badge { margin-left:auto;background:var(--accent);color:#fff;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:99px;min-width:18px;text-align:center; }
+.sidebar-foot { margin-top:auto;padding:12px 8px 2px;border-top:1px solid var(--line-soft);display:flex;align-items:center;gap:10px;white-space:nowrap; }
+.avatar { width:32px;height:32px;border-radius:50%;color:#fff;font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0; }
+.sidebar-foot .n { font-weight:600;font-size:13px; } .sidebar-foot .r { color:var(--ink-3);font-size:11.5px; }
+.sidebar-foot .out { margin-left:auto;color:var(--ink-3);cursor:pointer;background:none;border:none;padding:4px; } .sidebar-foot .out:hover { color:var(--ink); }
+.main { display:flex;flex-direction:column;min-width:0; }
+
+/* ---- Topbar ---- */
+.topbar { height:64px;background:var(--topbar-bg);backdrop-filter:blur(12px);border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:18px;padding:0 26px;position:sticky;top:0;z-index:40;transition:background 0.3s var(--ease); }
+.topbar h1 { font-size:16.5px;font-weight:700;letter-spacing:-0.015em; } .topbar .crumb { color:var(--ink-3);font-size:12.5px; }
+.topbar-right { margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--ink-2); }
+.icon-btn { width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.3s var(--ease); }
+.icon-btn:hover { background:var(--tray);color:var(--ink); }
+.presence-toggle { display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;padding:7px 11px;background:var(--surface);color:var(--ink-2);font:600 11.5px/1 inherit;cursor:pointer;transition:all 0.3s var(--ease); }
+.presence-toggle:hover { background:var(--tray);color:var(--ink); }
+.dot { display:inline-flex;align-items:center;gap:6px;font-weight:600; } .dot::before { content:"";width:7px;height:7px;border-radius:50%; }
+.dot.on { color:var(--accent-ink); } .dot.on::before { background:var(--accent); }
+.dot.away::before { background:#d9d6cd; } .dot.busy::before { background:var(--danger); } .dot.off::before { background:var(--line); }
+.mono { font-variant-numeric:tabular-nums; }
+
+/* ============ CHAT LAYOUT ============ */
+.chat-area { display:grid;grid-template-columns:300px 1fr;height:calc(100vh - 64px);overflow:hidden; }
+/* Room pane */
+.room-pane { border-right:1px solid var(--line-soft);display:flex;flex-direction:column;background:var(--surface);overflow:hidden;transition:background 0.3s var(--ease); }
+.room-head { padding:14px 16px 10px;display:flex;align-items:center;gap:10px; }
+.room-head .title { font-size:15px;font-weight:700;letter-spacing:-0.01em; }
+/* Create dropdown */
+.create-wrap { margin-left:auto;position:relative; }
+.create-wrap .new-btn { width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.3s var(--ease); }
+.create-wrap .new-btn:hover { background:var(--accent);color:#fff;border-color:var(--accent); }
+.create-wrap .new-btn .lucide { width:15px;height:15px; }
+.create-dropdown { position:absolute;top:calc(100% + 6px);right:0;z-index:50;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:5px;min-width:180px;box-shadow:0 8px 24px -6px rgba(63,63,58,0.2);opacity:0;transform:translateY(-4px) scale(0.96);pointer-events:none;transition:all 0.25s var(--ease); }
+.create-dropdown.on { opacity:1;transform:translateY(0) scale(1);pointer-events:auto; }
+.create-dropdown button { display:flex;align-items:center;gap:9px;width:100%;padding:9px 12px;border:none;background:none;color:var(--ink);font:500 12.5px/1 inherit;border-radius:8px;cursor:pointer;transition:background 0.2s var(--ease);text-align:left; }
+.create-dropdown button:hover { background:var(--tray); }
+.create-dropdown button .lucide { width:15px;height:15px;color:var(--ink-2); }
+.create-dropdown button .desc { font-size:11px;color:var(--ink-3);font-weight:400;margin-top:2px; }
+/* Search + tabs */
+.room-search { padding:0 16px 10px;position:relative; }
+.room-search input { width:100%;padding:8px 12px 8px 34px;font-size:12.5px;font-family:inherit;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--ink);transition:all 0.3s var(--ease); }
+.room-search input:focus { outline:none;border-color:var(--accent);background:var(--surface);box-shadow:0 0 0 3px rgba(46,125,91,0.1); }
+.room-search input::placeholder { color:var(--ink-3); }
+.room-search .lucide { position:absolute;left:28px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--ink-3); }
+.room-tabs { display:flex;padding:0 12px;border-bottom:1px solid var(--line-soft); }
+.room-tab { flex:1;padding:9px 0;font-size:12.5px;font-weight:600;text-align:center;color:var(--ink-3);border:none;background:none;cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;transition:all 0.3s var(--ease); }
+.room-tab:hover { color:var(--ink-2); } .room-tab.active { color:var(--accent-ink);border-bottom-color:var(--accent); }
+.room-tab .tab-badge { display:inline-flex;align-items:center;justify-content:center;margin-left:5px;background:var(--accent);color:#fff;font-size:9.5px;font-weight:700;min-width:16px;height:16px;border-radius:99px;padding:0 4px; }
+
+/* Room items */
+.room-list { flex:1;overflow-y:auto;padding:6px 8px; }
+.room-section-head { padding:8px 12px 4px;font-size:10.5px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.05em;display:flex;align-items:center;gap:6px; }
+.room-section-head .lucide { width:12px;height:12px; }
+.room-item { display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:12px;cursor:pointer;transition:all 0.2s var(--ease); }
+.room-item:hover { background:var(--bg); } .room-item.active { background:var(--accent-soft); }
+.room-item .avatar { width:40px;height:40px;border-radius:12px;font-size:13px;position:relative; }
+.room-item .avatar.round { border-radius:50%; }
+.room-item .avatar .presence-dot { position:absolute;bottom:-1px;right:-1px;width:11px;height:11px;border-radius:50%;border:2px solid var(--surface);background:var(--line); }
+.room-item .avatar .presence-dot.on { background:var(--accent); } .room-item .avatar .presence-dot.away { background:#d9d6cd; }
+.room-item .info { flex:1;min-width:0; }
+.room-item .info .name { font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:5px; }
+.room-item .info .name .pin-icon .lucide { width:11px;height:11px;color:var(--ink-3); }
+.room-item .info .preview { color:var(--ink-3);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px; }
+.room-item .info .preview .mention-hl { color:var(--accent-ink);font-weight:600; }
+.room-item .meta { display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0; }
+.room-item .meta .time { font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums; }
+.room-item .meta .unread { background:var(--accent);color:#fff;font-size:10px;font-weight:700;min-width:18px;height:18px;border-radius:99px;display:flex;align-items:center;justify-content:center;padding:0 5px; }
+.room-item .meta .muted .lucide { width:12px;height:12px;color:var(--ink-3); }
+
+/* ---- Conversation ---- */
+.conv-pane { display:flex;flex-direction:column;min-width:0;background:var(--bg);transition:background 0.3s var(--ease);position:relative; }
+.conv-header { height:56px;padding:0 20px;display:flex;align-items:center;gap:12px;background:var(--surface);border-bottom:1px solid var(--line-soft);flex-shrink:0;transition:background 0.3s var(--ease); }
+.conv-header .avatar { width:34px;height:34px;border-radius:10px;font-size:12px; }
+.conv-header .info .name { font-size:13.5px;font-weight:700;letter-spacing:-0.01em; }
+.conv-header .info .meta { font-size:11.5px;color:var(--ink-3); }
+.conv-header .actions { margin-left:auto;display:flex;gap:6px; }
+.conv-header .actions button { width:32px;height:32px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.3s var(--ease); }
+.conv-header .actions button:hover { background:var(--tray);color:var(--ink); }
+.conv-header .actions button.on { background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink); }
+.conv-header .actions button .lucide { width:15px;height:15px; }
+
+/* ---- Messages ---- */
+.messages { flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:2px; }
+.date-sep { text-align:center;padding:14px 0 8px;font-size:11px;font-weight:600;color:var(--ink-3);letter-spacing:0.02em; }
+.msg { display:flex;gap:8px;max-width:72%;position:relative;padding:3px 0; }
+.msg.sent { align-self:flex-end;flex-direction:row-reverse; }
+.msg.recv { align-self:flex-start; }
+.msg .msg-avatar { width:28px;height:28px;border-radius:8px;font-size:9.5px;flex-shrink:0;margin-top:2px; }
+.msg.sent .msg-avatar { display:none; }
+.msg .bubble-wrap { display:flex;flex-direction:column;min-width:0; }
+.msg .sender { font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:2px;padding:0 4px; }
+.msg.sent .sender { display:none; }
+.msg .bubble { padding:10px 14px;font-size:13.5px;line-height:1.5;word-break:break-word;position:relative; }
+.msg.sent .bubble { background:var(--accent);color:#fff;border-radius:16px 4px 16px 16px; }
+.msg.recv .bubble { background:var(--surface);color:var(--ink);border-radius:4px 16px 16px 16px;border:1px solid var(--line-soft); }
+.msg .bubble .time { display:inline-flex;align-items:center;gap:4px;font-size:10.5px;opacity:0.7;margin-left:10px;float:right;margin-top:4px; }
+.msg.sent .bubble .time { color:rgba(255,255,255,0.7); } .msg.recv .bubble .time { color:var(--ink-3); }
+.msg .bubble .time .lucide { width:12px;height:12px; }
+.msg .bubble .edited { font-size:10.5px;font-style:italic;opacity:0.6;margin-left:4px; }
+.msg .bubble .mention { background:rgba(46,125,91,0.15);color:var(--accent-ink);padding:1px 4px;border-radius:4px;font-weight:600;cursor:pointer; }
+.msg.sent .bubble .mention { background:rgba(255,255,255,0.2);color:#fff; }
+/* Reply quote */
+.msg .reply-quote { padding:6px 10px;margin-bottom:6px;border-radius:8px;border-left:3px solid var(--accent);font-size:12px;line-height:1.4;cursor:pointer;transition:background 0.2s var(--ease); }
+.msg .reply-quote:hover { opacity:0.8; }
+.msg.sent .reply-quote { background:rgba(255,255,255,0.15);color:rgba(255,255,255,0.9);border-left-color:rgba(255,255,255,0.5); }
+.msg.recv .reply-quote { background:var(--bg);color:var(--ink-2); }
+.msg .reply-quote .rq-name { font-weight:600;font-size:11px;margin-bottom:2px; }
+/* Reactions */
+.msg .reactions { display:flex;gap:4px;margin-top:4px;padding:0 4px;flex-wrap:wrap; }
+.msg .reactions .pill { display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border-radius:99px;font-size:11px;font-weight:600;background:var(--tray);color:var(--ink-2);border:1px solid transparent;cursor:pointer;transition:all 0.2s var(--ease); }
+.msg .reactions .pill:hover { border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink); }
+.msg .reactions .pill.mine { background:var(--accent);color:#fff; }
+.msg .reactions .pill .lucide { width:12px;height:12px; }
+/* Thread */
+.msg .thread-link { display:flex;align-items:center;gap:5px;margin-top:4px;padding:4px 8px;font-size:11px;color:var(--accent-ink);font-weight:600;cursor:pointer;border-radius:6px;transition:background 0.2s var(--ease); }
+.msg .thread-link:hover { background:var(--accent-soft); }
+.msg .thread-link .lucide { width:12px;height:12px; }
+/* Seen by (group read receipts) */
+.msg .seen-by { display:flex;align-items:center;gap:3px;margin-top:4px;padding:0 4px; }
+.msg .seen-by .seen-avatar { width:16px;height:16px;border-radius:5px;font-size:7px;border:1.5px solid var(--surface); margin-left:-4px; }
+.msg .seen-by .seen-avatar:first-child { margin-left:0; }
+.msg .seen-by .seen-label { font-size:10px;color:var(--ink-3);margin-left:4px; }
+/* Message status indicators */
+.msg-status { display:inline-flex;align-items:center;gap:2px; }
+.msg-status .lucide { width:13px;height:13px; }
+.msg-status.pending { color:rgba(255,255,255,0.5); }
+.msg-status.sent { color:rgba(255,255,255,0.6); }
+.msg-status.delivered { color:rgba(255,255,255,0.75); }
+.msg-status.read { color:rgba(255,255,255,1); }
+/* For recv-side status display (in DM shown on sender side) */
+.msg.recv .msg-status.read { color:var(--accent); }
+/* Image in message */
+.msg .img-preview { margin-top:6px;border-radius:12px;overflow:hidden;max-width:280px;cursor:pointer;position:relative; }
+.msg .img-preview img { width:100%;height:auto;display:block;transition:transform 0.3s var(--ease); }
+.msg .img-preview:hover img { transform:scale(1.02); }
+.msg .img-preview .img-overlay { position:absolute;inset:0;background:rgba(0,0,0,0.03);opacity:0;transition:opacity 0.2s;display:flex;align-items:center;justify-content:center; }
+.msg .img-preview:hover .img-overlay { opacity:1; }
+/* Sticker */
+.msg .sticker-msg { padding:4px; }
+.msg .sticker-msg .sticker-big { width:120px;height:120px;background:var(--tray);border-radius:16px;display:flex;align-items:center;justify-content:center; }
+.msg .sticker-msg .sticker-big .lucide { width:48px;height:48px;color:var(--ink-2); }
+/* Highlight animation on reply-jump */
+.msg.highlighted .bubble { animation:highlight-flash 1.5s var(--ease); }
+/* System & Emergency */
+.msg.system { align-self:center;max-width:80%;gap:0; }
+.msg.system .bubble { background:transparent;border:none;padding:8px 14px;font-size:12px;color:var(--ink-3);font-style:italic;text-align:center; }
+.msg.system .msg-avatar { display:none; }
+.msg.emergency { align-self:stretch;max-width:100%; }
+.msg.emergency .msg-avatar { display:none; }
+.msg.emergency .bubble { background:var(--danger-soft);color:var(--danger);border:none;border-left:3px solid var(--danger);border-radius:4px 12px 12px 4px;display:flex;align-items:flex-start;gap:10px;padding:12px 16px;font-weight:600; }
+.msg.emergency .bubble .lucide { width:18px;height:18px;flex-shrink:0;margin-top:1px; }
+/* Typing */
+.typing-indicator { display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:12px;color:var(--ink-3); }
+.typing-indicator .dots { display:flex;gap:3px; }
+.typing-indicator .dots span { width:5px;height:5px;border-radius:50%;background:var(--ink-3);animation:typing-dot 1.2s infinite; }
+.typing-indicator .dots span:nth-child(2){animation-delay:.2s} .typing-indicator .dots span:nth-child(3){animation-delay:.4s}
+
+/* ---- Composer ---- */
+.composer-wrap { position:relative;flex-shrink:0; }
+.reply-bar { padding:8px 20px;background:var(--surface);border-top:1px solid var(--line-soft);display:flex;align-items:center;gap:10px;font-size:12px;color:var(--ink-2); }
+.reply-bar .rq { flex:1;border-left:3px solid var(--accent);padding-left:10px; }
+.reply-bar .rq-name { font-weight:600;font-size:11px;color:var(--accent-ink); }
+.reply-bar .rq-text { white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.reply-bar .close-reply { width:24px;height:24px;border-radius:6px;border:none;background:transparent;color:var(--ink-3);cursor:pointer;display:flex;align-items:center;justify-content:center; }
+.reply-bar .close-reply:hover { background:var(--tray);color:var(--ink); }
+.composer { padding:12px 20px;background:var(--surface);border-top:1px solid var(--line-soft);display:flex;align-items:flex-end;gap:8px;transition:background 0.3s var(--ease); }
+.comp-btn { width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.3s var(--ease); }
+.comp-btn:hover { background:var(--tray);color:var(--ink); }
+.comp-btn.on { background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink); }
+.comp-btn .lucide { width:16px;height:16px; }
+.input-wrap { flex:1;border:1px solid var(--line);border-radius:14px;background:var(--bg);padding:9px 14px;min-height:36px;max-height:120px;overflow-y:auto;font-size:13.5px;color:var(--ink);line-height:1.5;transition:border-color 0.3s var(--ease),background 0.3s var(--ease); }
+.input-wrap:focus-within { border-color:var(--accent);background:var(--surface); }
+.input-wrap[contenteditable]::before { content:attr(data-placeholder);color:var(--ink-3); }
+.input-wrap:not(:empty)::before { content:""; }
+.input-wrap .mention-tag { background:var(--accent-soft);color:var(--accent-ink);padding:1px 4px;border-radius:4px;font-weight:600; }
+.send-btn { width:36px;height:36px;border-radius:10px;border:none;background:var(--accent);color:#fff;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.3s var(--ease); }
+.send-btn:hover { background:var(--accent-ink); }
+.send-btn.disabled { background:var(--tray);color:var(--ink-3);cursor:default; }
+.send-btn .lucide { width:16px;height:16px; }
+
+/* ---- Mention popup ---- */
+.mention-popup { position:absolute;bottom:100%;left:60px;right:60px;z-index:50;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:6px;box-shadow:0 8px 30px -8px rgba(63,63,58,0.2);max-height:200px;overflow-y:auto; }
+.mention-popup .mi { display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:9px;cursor:pointer;transition:background 0.2s var(--ease); }
+.mention-popup .mi:hover,.mention-popup .mi.sel { background:var(--accent-soft); }
+.mention-popup .mi .avatar { width:28px;height:28px;border-radius:8px;font-size:10px; }
+.mention-popup .mi .name { font-size:12.5px;font-weight:600; }
+.mention-popup .mi .role { font-size:11px;color:var(--ink-3); }
+
+/* ---- Sticker/Emoji picker ---- */
+.picker-panel { position:absolute;bottom:100%;right:20px;z-index:50;width:340px;background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:0 12px 40px -10px rgba(63,63,58,0.25);overflow:hidden; }
+.picker-panel .pp-tabs { display:flex;border-bottom:1px solid var(--line-soft); }
+.picker-panel .pp-tab { flex:1;padding:10px;font-size:12px;font-weight:600;text-align:center;color:var(--ink-3);border:none;background:none;cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;transition:all 0.2s var(--ease); }
+.picker-panel .pp-tab.active { color:var(--accent-ink);border-bottom-color:var(--accent); }
+.picker-panel .pp-search { padding:8px 10px;border-bottom:1px solid var(--line-soft); }
+.picker-panel .pp-search input { width:100%;padding:6px 10px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:inherit;background:var(--bg);color:var(--ink); }
+.picker-panel .pp-search input::placeholder { color:var(--ink-3); }
+/* Emoji grid */
+.emoji-grid { display:grid;grid-template-columns:repeat(8,1fr);gap:2px;padding:10px;max-height:200px;overflow-y:auto; }
+.emoji-grid .ei { width:100%;aspect-ratio:1;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:20px;cursor:pointer;transition:background 0.15s var(--ease);border:none;background:none; }
+.emoji-grid .ei:hover { background:var(--tray); }
+/* Sticker grid */
+.sticker-grid { display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:12px;max-height:200px;overflow-y:auto; }
+.sticker-grid .si { width:100%;aspect-ratio:1;border-radius:12px;background:var(--tray);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.2s var(--ease);border:2px solid transparent; }
+.sticker-grid .si:hover { background:var(--accent-soft);border-color:var(--accent);transform:scale(1.06); }
+.sticker-grid .si .lucide { width:28px;height:28px;color:var(--ink-2); }
+/* Quick reactions bar */
+.quick-react { padding:8px 12px;border-top:1px solid var(--line-soft);display:flex;gap:4px;align-items:center; }
+.quick-react .qr { width:32px;height:32px;border-radius:8px;border:1px solid var(--line);background:var(--surface);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:all 0.2s var(--ease); }
+.quick-react .qr:hover { background:var(--accent-soft);border-color:var(--accent); }
+.quick-react .qr .lucide { width:16px;height:16px;color:var(--ink-2); }
+
+/* ---- Lightbox (image popup viewer) ---- */
+.lightbox { position:fixed;inset:0;z-index:200;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.35s var(--ease);backdrop-filter:blur(8px); }
+.lightbox.on { opacity:1;pointer-events:auto; }
+.lightbox img { max-width:90vw;max-height:85vh;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.4);transition:transform 0.3s var(--ease);cursor:grab; }
+.lightbox img.zoomed { transform:scale(1.8);cursor:zoom-out; }
+.lightbox .lb-toolbar { position:absolute;top:20px;right:20px;display:flex;gap:8px; }
+.lightbox .lb-toolbar button { width:40px;height:40px;border-radius:12px;border:none;background:rgba(255,255,255,0.12);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s var(--ease);backdrop-filter:blur(4px); }
+.lightbox .lb-toolbar button:hover { background:rgba(255,255,255,0.25); }
+.lightbox .lb-toolbar button .lucide { width:18px;height:18px; }
+.lightbox .lb-caption { position:absolute;bottom:20px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.8);font-size:12px;font-weight:500; }
+
+/* ---- Pinned panel ---- */
+.pinned-panel { position:absolute;top:56px;right:0;width:340px;max-height:calc(100% - 56px);z-index:30;background:var(--surface);border-left:1px solid var(--line-soft);display:flex;flex-direction:column;box-shadow:-4px 0 20px rgba(63,63,58,0.08);transition:background 0.3s var(--ease); }
+.pinned-panel .pp-head { padding:14px 16px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700; }
+.pinned-panel .pp-head .lucide { width:15px;height:15px;color:var(--accent-ink); }
+.pinned-panel .pp-head .count { margin-left:auto;font-size:11px;font-weight:500;color:var(--ink-3); }
+.pinned-panel .pp-head .close-pin { width:28px;height:28px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer;display:flex;align-items:center;justify-content:center;margin-left:8px; }
+.pinned-panel .pp-head .close-pin:hover { background:var(--tray); }
+.pinned-panel .pp-head .close-pin .lucide { width:13px;height:13px; }
+.pinned-panel .pp-list { flex:1;overflow-y:auto;padding:8px; }
+.pin-item { padding:10px 12px;border:1px solid var(--line-soft);border-radius:12px;margin-bottom:6px;cursor:pointer;transition:all 0.2s var(--ease); }
+.pin-item:hover { background:var(--bg);border-color:var(--line); }
+.pin-item .pin-sender { font-size:11.5px;font-weight:600;color:var(--accent-ink);margin-bottom:3px; }
+.pin-item .pin-text { font-size:12.5px;color:var(--ink);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden; }
+.pin-item .pin-meta { display:flex;align-items:center;gap:6px;margin-top:6px;font-size:10.5px;color:var(--ink-3); }
+.pin-item .pin-meta .lucide { width:11px;height:11px; }
+
+/* ---- Context menu ---- */
+.ctx-menu { position:absolute;z-index:80;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:6px;min-width:170px;box-shadow:0 8px 30px -8px rgba(63,63,58,0.25); }
+.ctx-menu button { display:flex;align-items:center;gap:9px;width:100%;padding:8px 12px;border:none;background:none;color:var(--ink);font:500 12.5px/1 inherit;border-radius:9px;cursor:pointer;transition:background 0.2s var(--ease);text-align:left; }
+.ctx-menu button:hover { background:var(--tray); }
+.ctx-menu button .lucide { width:14px;height:14px;color:var(--ink-2); }
+.ctx-menu button.danger { color:var(--danger); } .ctx-menu button.danger .lucide { color:var(--danger); }
+
+/* ---- Drawer ---- */
+.backdrop { position:fixed;inset:0;z-index:60;background:rgba(23,22,20,0.4);opacity:0;pointer-events:none;transition:opacity 0.4s var(--ease);backdrop-filter:blur(3px); }
+.backdrop.on { opacity:1;pointer-events:auto; }
+.drawer { position:fixed;top:0;right:0;bottom:0;z-index:70;width:380px;max-width:92vw;transform:translateX(105%);transition:transform 0.5s var(--ease);padding:14px; }
+.drawer.on { transform:translateX(0); }
+.drawer .tray-d { height:100%;display:flex;background:var(--drawer-tray);border:1px solid var(--line-soft);border-radius:var(--radius-tray);backdrop-filter:blur(16px);box-shadow:0 24px 64px -24px rgba(23,22,20,0.35); }
+.drawer .core-d { flex:1;background:var(--surface);border-radius:calc(var(--radius-tray) - 6px);overflow-y:auto;display:flex;flex-direction:column;transition:background 0.3s var(--ease); }
+.drawer-head { display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-bottom:1px solid var(--line-soft);font-weight:700;font-size:13px;position:sticky;top:0;background:var(--surface);z-index:2; }
+.drawer-close { width:30px;height:30px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer;display:flex;align-items:center;justify-content:center; }
+.drawer-close:hover { background:var(--tray); }
+.drawer-close .lucide { width:14px;height:14px; }
+.grp-hero { padding:24px 20px;text-align:center;border-bottom:1px solid var(--line-soft); }
+.grp-hero .av-big { width:56px;height:56px;border-radius:16px;font-size:18px;margin:0 auto 12px; }
+.grp-hero .name { font-size:16px;font-weight:700; } .grp-hero .meta { font-size:12px;color:var(--ink-3);margin-top:4px; }
+.grp-section { padding:14px 18px; }
+.grp-section-head { font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:10px; }
+.grp-member { display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line-soft); }
+.grp-member:last-child { border-bottom:none; }
+.grp-member .avatar { width:30px;height:30px;font-size:10.5px;border-radius:9px; }
+.grp-member .name { font-size:12.5px;font-weight:600; } .grp-member .role { font-size:10.5px;color:var(--ink-3); }
+.grp-member .tag { margin-left:auto;font-size:10px;padding:2px 7px;border-radius:6px;background:var(--tray);color:var(--ink-2);font-weight:500; }
+.grp-member .tag.owner { background:var(--accent-soft);color:var(--accent-ink); }
+.grp-actions { padding:14px 18px;display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line-soft); }
+.grp-actions button { display:flex;align-items:center;gap:9px;width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink-2);font:500 12.5px/1 inherit;cursor:pointer;transition:all 0.3s var(--ease);text-align:left; }
+.grp-actions button:hover { background:var(--tray);color:var(--ink); }
+.grp-actions button .lucide { width:15px;height:15px; }
+.grp-actions button.danger { color:var(--danger);border-color:var(--danger-soft); }
+.grp-actions button.danger:hover { background:var(--danger-soft); }
+
+/* ---- Create inline ---- */
+.create-inline { padding:16px 20px;display:flex;flex-direction:column;gap:12px; }
+.create-inline .ci-label { font-size:12.5px;font-weight:600;color:var(--ink-2); }
+.create-inline .ci-row { display:flex;align-items:center;gap:8px;flex-wrap:wrap; }
+.create-inline .chip { display:inline-flex;align-items:center;gap:5px;padding:5px 10px;background:var(--accent-soft);color:var(--accent-ink);border-radius:99px;font-size:12px;font-weight:600; }
+.create-inline .chip .rm { width:16px;height:16px;border-radius:50%;background:rgba(46,125,91,0.15);display:flex;align-items:center;justify-content:center;cursor:pointer; }
+.create-inline .chip .rm .lucide { width:10px;height:10px; }
+.create-inline input { flex:1;min-width:100px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;font-size:13px;font-family:inherit;background:var(--surface);color:var(--ink); }
+.create-inline input:focus { outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(46,125,91,0.1); }
+.create-inline input::placeholder { color:var(--ink-3); }
+.create-inline .note-box { padding:10px 12px;border-radius:10px;background:var(--info-soft);color:var(--info);font-size:12px;display:flex;gap:8px;align-items:flex-start; }
+.create-inline .note-box .lucide { width:14px;height:14px;flex-shrink:0;margin-top:1px; }
+.create-inline .btn-create { padding:9px 18px;border:none;border-radius:999px;background:var(--accent);color:#fff;font:600 13px inherit;cursor:pointer;transition:background 0.25s var(--ease);align-self:flex-start; }
+.create-inline .btn-create:hover { background:var(--accent-ink); }
+
+/* ---- Misc ---- */
+.empty-state { flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:var(--ink-3);padding:40px; }
+.empty-state .lucide { width:48px;height:48px;stroke-width:1;color:var(--line); }
+.empty-state .title { font-size:14px;font-weight:600;color:var(--ink-2); }
+.empty-state .sub { font-size:12.5px;text-align:center;max-width:240px; }
+.offline-banner { padding:8px 16px;background:var(--warn-soft);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--warn); }
+.offline-banner .lucide { width:14px;height:14px; }
+</style>
+</head>
+<body>
+
+<div class="switcher">
+  <span>IPop Chat</span>
+  <button class="active" data-screen="dm">Direct</button>
+  <button data-screen="group">Group</button>
+  <button data-screen="image">Image &amp; Thread</button>
+  <button data-screen="picker">Emoji &amp; Sticker</button>
+  <button data-screen="create">New Chat</button>
+  <button data-screen="dark">Dark Mode</button>
+</div>
+
+<!-- ======== SIDEBAR TEMPLATE (reused) ======== -->
+<!-- ======== SCREEN 1: DIRECT MESSAGES ======== -->
+<div class="screen active" id="screen-dm">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="side-head"><div class="mark">iP</div><div class="txt"><div class="t">IPop</div><div class="s">Operational portal</div></div></div>
+    <div class="nav-item"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></div>
+    <div class="nav-item"><i data-lucide="users"></i><span class="lbl">Directory</span></div>
+    <div class="nav-item active"><i data-lucide="message-circle"></i><span class="lbl">Chat</span><span class="badge">5</span></div>
+    <div class="nav-item"><i data-lucide="folder"></i><span class="lbl">Files</span></div>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="mail"></i><span class="lbl">Mail</span><i data-lucide="lock" class="lock"></i></button>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="square-kanban"></i><span class="lbl">Projects</span><i data-lucide="lock" class="lock"></i></button>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="phone"></i><span class="lbl">Calls</span><i data-lucide="lock" class="lock"></i></button>
+    <div class="nav-item"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administration</span></div>
+    <div class="sidebar-foot"><div class="avatar" style="background:#2e7d5b">BA</div><div class="who"><div class="n">Bagas Arif</div><div class="r">IT - Infrastructure</div></div><button class="out"><i data-lucide="log-out"></i></button></div>
+  </aside>
+  <div class="main">
+    <header class="topbar"><h1>Chat</h1><span class="crumb">Messages</span>
+      <div class="topbar-right"><button class="presence-toggle"><span class="dot on">Online</span></button><button class="icon-btn" id="theme-toggle" title="Toggle dark mode"><i data-lucide="moon"></i></button><button class="icon-btn"><i data-lucide="bell"></i></button></div>
+    </header>
+    <div class="chat-area">
+      <div class="room-pane rise rise-1">
+        <div class="room-head"><span class="title">Messages</span>
+          <div class="create-wrap"><button class="new-btn" onclick="this.nextElementSibling.classList.toggle('on')"><i data-lucide="square-pen"></i></button>
+            <div class="create-dropdown"><button><i data-lucide="user"></i><div><div>New direct message</div><div class="desc">Chat with one person</div></div></button><button><i data-lucide="users"></i><div><div>New group chat</div><div class="desc">Create a group with multiple people</div></div></button></div>
+          </div>
+        </div>
+        <div class="room-search"><i data-lucide="search"></i><input placeholder="Search conversations..."></div>
+        <div class="room-tabs"><button class="room-tab active">Direct <span class="tab-badge">3</span></button><button class="room-tab">Groups <span class="tab-badge">2</span></button></div>
+        <div class="room-list">
+          <div class="room-section-head"><i data-lucide="pin"></i> Pinned</div>
+          <div class="room-item"><div class="avatar round" style="background:#7d5ba6">AN<span class="presence-dot on"></span></div><div class="info"><div class="name">Ayu Ningrum <span class="pin-icon"><i data-lucide="pin"></i></span></div><div class="preview">Bisa meeting jam 2 siang?</div></div><div class="meta"><span class="time">15m</span><span class="unread">2</span></div></div>
+          <div class="room-section-head" style="margin-top:4px"><i data-lucide="clock"></i> Recent</div>
+          <div class="room-item active"><div class="avatar round" style="background:#8a6d3b">RS<span class="presence-dot on"></span></div><div class="info"><div class="name">Rizky Saputra</div><div class="preview">Dokumentasi sudah saya upload ke NAS</div></div><div class="meta"><span class="time">1h</span></div></div>
+          <div class="room-item"><div class="avatar round" style="background:#b3543f">FW<span class="presence-dot away"></span></div><div class="info"><div class="name">Fajar Wibowo</div><div class="preview">You: Cek email ya untuk detailnya</div></div><div class="meta"><span class="time">3h</span></div></div>
+          <div class="room-item"><div class="avatar round" style="background:#2e7d5b">SM<span class="presence-dot on"></span></div><div class="info"><div class="name">Sinta Maharani</div><div class="preview">Terima kasih atas bantuannya!</div></div><div class="meta"><span class="time">Yesterday</span></div></div>
+          <div class="room-item"><div class="avatar round" style="background:#4f6d8f">DP<span class="presence-dot"></span></div><div class="info"><div class="name">Dewi Prasetyo</div><div class="preview">You: Sudah saya kirim filenya</div></div><div class="meta"><span class="time">Mon</span><span class="muted"><i data-lucide="bell-off"></i></span></div></div>
+        </div>
+      </div>
+
+      <!-- DM Conversation -->
+      <div class="conv-pane rise rise-2">
+        <div class="conv-header">
+          <div class="avatar round" style="background:#8a6d3b">RS</div>
+          <div class="info"><div class="name">Rizky Saputra</div><div class="meta"><span class="dot on">Online</span></div></div>
+          <div class="actions"><button title="Search"><i data-lucide="search"></i></button><button title="Pin"><i data-lucide="pin"></i></button><button title="More"><i data-lucide="ellipsis-vertical"></i></button></div>
+        </div>
+        <div class="messages">
+          <div class="date-sep">Today</div>
+          <div class="msg recv">
+            <div class="msg-avatar avatar round" style="background:#8a6d3b">RS</div>
+            <div class="bubble-wrap"><div class="bubble">Dokumentasi sudah saya upload ke NAS. Path: /IT-INFRA/docs/monitoring-v2/<span class="time">08:45</span></div></div>
+          </div>
+          <div class="msg sent">
+            <div class="bubble-wrap"><div class="bubble"><div class="reply-quote"><div class="rq-name">Rizky Saputra</div>Dokumentasi sudah saya upload ke NAS...</div>Mantap! Nanti saya review dan kasih feedback.<span class="time">09:02 <span class="msg-status read"><i data-lucide="check-check"></i></span></span></div></div>
+          </div>
+          <div class="msg sent">
+            <div class="bubble-wrap"><div class="bubble">Sekalian tolong update wiki-nya juga ya.<span class="time">09:10 <span class="msg-status delivered"><i data-lucide="check-check"></i></span></span></div></div>
+          </div>
+          <div class="msg recv">
+            <div class="msg-avatar avatar round" style="background:#8a6d3b">RS</div>
+            <div class="bubble-wrap"><div class="bubble">Siap. Kalau ada yang kurang jelas langsung tanya aja.<span class="time">09:15</span></div>
+              <div class="reactions"><span class="pill mine"><i data-lucide="thumbs-up"></i> 1</span></div>
+            </div>
+          </div>
+          <div class="msg sent">
+            <div class="bubble-wrap"><div class="bubble">Oke noted, thanks Rizky!<span class="time">09:20 <span class="msg-status sent"><i data-lucide="check"></i></span></span></div></div>
+          </div>
+          <div class="msg sent">
+            <div class="bubble-wrap"><div class="bubble">Besok kita sync lagi soal timeline deploy.<span class="time">09:22 <span class="msg-status pending"><i data-lucide="clock"></i></span></span></div></div>
+          </div>
+        </div>
+        <div class="composer-wrap">
+          <div class="composer">
+            <button class="comp-btn" title="Attach"><i data-lucide="paperclip"></i></button>
+            <button class="comp-btn" title="Sticker & Emoji"><i data-lucide="smile-plus"></i></button>
+            <div class="input-wrap" contenteditable="true" data-placeholder="Type a message..."></div>
+            <button class="send-btn disabled"><i data-lucide="send-horizontal"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ======== SCREEN 2: GROUP CHAT (with avatars per user) ======== -->
+<div class="screen" id="screen-group">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="side-head"><div class="mark">iP</div><div class="txt"><div class="t">IPop</div><div class="s">Operational portal</div></div></div>
+    <div class="nav-item"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></div>
+    <div class="nav-item"><i data-lucide="users"></i><span class="lbl">Directory</span></div>
+    <div class="nav-item active"><i data-lucide="message-circle"></i><span class="lbl">Chat</span><span class="badge">5</span></div>
+    <div class="nav-item"><i data-lucide="folder"></i><span class="lbl">Files</span></div>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="mail"></i><span class="lbl">Mail</span><i data-lucide="lock" class="lock"></i></button>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="square-kanban"></i><span class="lbl">Projects</span><i data-lucide="lock" class="lock"></i></button>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="phone"></i><span class="lbl">Calls</span><i data-lucide="lock" class="lock"></i></button>
+    <div class="nav-item"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administration</span></div>
+    <div class="sidebar-foot"><div class="avatar" style="background:#2e7d5b">BA</div><div class="who"><div class="n">Bagas Arif</div><div class="r">IT - Infrastructure</div></div><button class="out"><i data-lucide="log-out"></i></button></div>
+  </aside>
+  <div class="main">
+    <header class="topbar"><h1>Chat</h1><span class="crumb">Messages</span><div class="topbar-right"><button class="presence-toggle"><span class="dot on">Online</span></button><button class="icon-btn"><i data-lucide="moon"></i></button><button class="icon-btn"><i data-lucide="bell"></i></button></div></header>
+    <div class="chat-area">
+      <div class="room-pane rise rise-1">
+        <div class="room-head"><span class="title">Messages</span><div class="create-wrap"><button class="new-btn"><i data-lucide="square-pen"></i></button><div class="create-dropdown"></div></div></div>
+        <div class="room-search"><i data-lucide="search"></i><input placeholder="Search conversations..."></div>
+        <div class="room-tabs"><button class="room-tab">Direct <span class="tab-badge">3</span></button><button class="room-tab active">Groups <span class="tab-badge">2</span></button></div>
+        <div class="room-list">
+          <div class="room-section-head"><i data-lucide="pin"></i> Pinned</div>
+          <div class="room-item active"><div class="avatar" style="background:#4f6d8f">IT</div><div class="info"><div class="name">IT Infrastructure Team <span class="pin-icon"><i data-lucide="pin"></i></span></div><div class="preview">Dewi: Server migration is done</div></div><div class="meta"><span class="time">2m</span></div></div>
+          <div class="room-section-head" style="margin-top:4px"><i data-lucide="clock"></i> Recent</div>
+          <div class="room-item"><div class="avatar" style="background:#2e7d5b">PM</div><div class="info"><div class="name">Project Managers</div><div class="preview"><span class="mention-hl">@You</span> Timeline updated</div></div><div class="meta"><span class="time">Yesterday</span><span class="unread">5</span></div></div>
+        </div>
+      </div>
+
+      <!-- Group conversation with per-user avatars -->
+      <div class="conv-pane rise rise-2">
+        <div class="conv-header">
+          <div class="avatar" style="background:#4f6d8f">IT</div>
+          <div class="info"><div class="name">IT Infrastructure Team</div><div class="meta">6 members - 4 online</div></div>
+          <div class="actions"><button title="Pinned"><i data-lucide="pin"></i></button><button title="Search"><i data-lucide="search"></i></button><button title="Info"><i data-lucide="panel-right"></i></button></div>
+        </div>
+        <div class="messages">
+          <div class="date-sep">Today</div>
+          <div class="msg recv">
+            <div class="msg-avatar avatar" style="background:#b3543f;border-radius:9px">FW</div>
+            <div class="bubble-wrap">
+              <div class="sender">Fajar Wibowo</div>
+              <div class="bubble">Ada security findings. <span class="mention">@Bagas Arif</span> bisa review?<span class="time">09:14</span></div>
+            </div>
+          </div>
+          <div class="msg sent">
+            <div class="bubble-wrap"><div class="bubble">Siap <span class="mention">@Fajar Wibowo</span>, share reportnya.<span class="time">09:18 <span class="msg-status read"><i data-lucide="check-check"></i></span></span></div>
+              <div class="seen-by"><div class="seen-avatar avatar" style="background:#b3543f;width:16px;height:16px;font-size:7px;border-radius:5px">FW</div><div class="seen-avatar avatar" style="background:#4f6d8f;width:16px;height:16px;font-size:7px;border-radius:5px">DP</div><div class="seen-avatar avatar" style="background:#8a6d3b;width:16px;height:16px;font-size:7px;border-radius:5px">RS</div><div class="seen-avatar avatar" style="background:#2e7d5b;width:16px;height:16px;font-size:7px;border-radius:5px">SM</div><span class="seen-label">Seen by 4</span></div>
+            </div>
+          </div>
+          <div class="msg recv">
+            <div class="msg-avatar avatar" style="background:#b3543f;border-radius:9px">FW</div>
+            <div class="bubble-wrap">
+              <div class="sender">Fajar Wibowo</div>
+              <div class="bubble">Report lengkap. <span class="mention">@all</span> prioritaskan severity high.<span class="time">09:22</span></div>
+              <div class="thread-link"><i data-lucide="messages-square"></i> 3 replies</div>
+            </div>
+          </div>
+          <div class="msg emergency">
+            <div class="bubble-wrap"><div class="bubble"><i data-lucide="alert-triangle"></i><div><strong>EMERGENCY:</strong> Database primary node down. Failover berjalan. <span class="mention" style="background:rgba(179,70,47,0.15);color:var(--danger)">@all</span> standby.<span class="time">10:05</span></div></div></div>
+          </div>
+          <div class="msg recv">
+            <div class="msg-avatar avatar" style="background:#4f6d8f;border-radius:9px">DP</div>
+            <div class="bubble-wrap">
+              <div class="sender">Dewi Prasetyo</div>
+              <div class="bubble">Server migration done. Semua service running normal.<span class="time">10:47</span></div>
+              <div class="reactions"><span class="pill mine"><i data-lucide="thumbs-up"></i> 3</span><span class="pill"><i data-lucide="heart"></i> 2</span><span class="pill"><i data-lucide="rocket"></i> 1</span></div>
+              <div class="seen-by"><div class="seen-avatar avatar" style="background:#2e7d5b;width:16px;height:16px;font-size:7px;border-radius:5px">BA</div><div class="seen-avatar avatar" style="background:#8a6d3b;width:16px;height:16px;font-size:7px;border-radius:5px">RS</div><div class="seen-avatar avatar" style="background:#2e7d5b;width:16px;height:16px;font-size:7px;border-radius:5px">SM</div><span class="seen-label">Seen by all</span></div>
+            </div>
+          </div>
+          <div class="msg recv">
+            <div class="msg-avatar avatar" style="background:#2e7d5b;border-radius:9px">SM</div>
+            <div class="bubble-wrap">
+              <div class="sender">Sinta Maharani</div>
+              <div class="bubble"><div class="sticker-msg"><div class="sticker-big"><i data-lucide="party-popper"></i></div></div></div>
+            </div>
+          </div>
+          <div class="msg recv">
+            <div class="msg-avatar avatar" style="background:#8a6d3b;border-radius:9px">RS</div>
+            <div class="bubble-wrap">
+              <div class="sender">Rizky Saputra</div>
+              <div class="bubble">Nice work team! 🎉<span class="time">10:52</span></div>
+            </div>
+          </div>
+          <div class="typing-indicator"><span class="dots"><span></span><span></span><span></span></span>Dewi is typing...</div>
+        </div>
+        <div class="composer-wrap">
+          <div class="composer">
+            <button class="comp-btn"><i data-lucide="paperclip"></i></button>
+            <button class="comp-btn"><i data-lucide="smile-plus"></i></button>
+            <button class="comp-btn"><i data-lucide="at-sign"></i></button>
+            <div class="input-wrap" contenteditable="true" data-placeholder="Type a message..."></div>
+            <button class="send-btn disabled"><i data-lucide="send-horizontal"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ======== SCREEN 3: IMAGE PREVIEW + THREAD + PINNED ======== -->
+<div class="screen" id="screen-image">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="side-head"><div class="mark">iP</div><div class="txt"><div class="t">IPop</div><div class="s">Operational portal</div></div></div>
+    <div class="nav-item"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></div>
+    <div class="nav-item"><i data-lucide="users"></i><span class="lbl">Directory</span></div>
+    <div class="nav-item active"><i data-lucide="message-circle"></i><span class="lbl">Chat</span><span class="badge">5</span></div>
+    <div class="nav-item"><i data-lucide="folder"></i><span class="lbl">Files</span></div>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="mail"></i><span class="lbl">Mail</span><i data-lucide="lock" class="lock"></i></button>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="square-kanban"></i><span class="lbl">Projects</span><i data-lucide="lock" class="lock"></i></button>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="phone"></i><span class="lbl">Calls</span><i data-lucide="lock" class="lock"></i></button>
+    <div class="nav-item"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administration</span></div>
+    <div class="sidebar-foot"><div class="avatar" style="background:#2e7d5b">BA</div><div class="who"><div class="n">Bagas Arif</div><div class="r">IT - Infrastructure</div></div><button class="out"><i data-lucide="log-out"></i></button></div>
+  </aside>
+  <div class="main">
+    <header class="topbar"><h1>Chat</h1><span class="crumb">Messages</span><div class="topbar-right"><button class="presence-toggle"><span class="dot on">Online</span></button><button class="icon-btn"><i data-lucide="moon"></i></button><button class="icon-btn"><i data-lucide="bell"></i></button></div></header>
+    <div class="chat-area">
+      <div class="room-pane">
+        <div class="room-head"><span class="title">Messages</span><div class="create-wrap"><button class="new-btn"><i data-lucide="square-pen"></i></button><div class="create-dropdown"></div></div></div>
+        <div class="room-search"><i data-lucide="search"></i><input placeholder="Search conversations..."></div>
+        <div class="room-tabs"><button class="room-tab">Direct</button><button class="room-tab active">Groups</button></div>
+        <div class="room-list">
+          <div class="room-item active"><div class="avatar" style="background:#4f6d8f">IT</div><div class="info"><div class="name">IT Infrastructure Team</div><div class="preview">Dewi: Screenshot attached</div></div><div class="meta"><span class="time">5m</span></div></div>
+        </div>
+      </div>
+      <!-- Conversation with image + pinned panel -->
+      <div class="conv-pane">
+        <div class="conv-header">
+          <div class="avatar" style="background:#4f6d8f">IT</div>
+          <div class="info"><div class="name">IT Infrastructure Team</div><div class="meta">6 members</div></div>
+          <div class="actions"><button class="on" title="Pinned (4)"><i data-lucide="pin"></i></button><button title="Search"><i data-lucide="search"></i></button><button title="Info"><i data-lucide="panel-right"></i></button></div>
+        </div>
+        <div style="display:flex;flex:1;overflow:hidden">
+          <div class="messages" style="flex:1">
+            <div class="date-sep">Today</div>
+            <div class="msg recv">
+              <div class="msg-avatar avatar" style="background:#4f6d8f;border-radius:9px">DP</div>
+              <div class="bubble-wrap">
+                <div class="sender">Dewi Prasetyo</div>
+                <div class="bubble">Ini screenshot monitoring dashboard setelah migration:
+                  <div class="img-preview" onclick="document.getElementById('lightbox1').classList.add('on')">
+                    <img src="https://picsum.photos/seed/monitoring-dash/560/320" alt="Dashboard screenshot" loading="lazy">
+                    <div class="img-overlay"><i data-lucide="maximize-2" style="width:24px;height:24px;color:#fff"></i></div>
+                  </div>
+                  <span class="time">10:52</span>
+                </div>
+                <div class="reactions"><span class="pill"><i data-lucide="eye"></i> 4</span></div>
+              </div>
+            </div>
+            <div class="msg recv highlighted" id="msg-target">
+              <div class="msg-avatar avatar" style="background:#8a6d3b;border-radius:9px">RS</div>
+              <div class="bubble-wrap">
+                <div class="sender">Rizky Saputra</div>
+                <div class="bubble">Response time turun dari 450ms ke 180ms. Improvement signifikan!<span class="time">10:55</span></div>
+                <div class="thread-link"><i data-lucide="messages-square"></i> 2 replies - last reply 11:02</div>
+              </div>
+            </div>
+            <div class="msg sent">
+              <div class="bubble-wrap"><div class="bubble"><div class="reply-quote" title="Click to jump to original"><div class="rq-name">Rizky Saputra</div>Response time turun dari 450ms ke 180ms...</div>Keren! Ini yang kita harapkan. Screenshot-nya bisa di-share ke management.<span class="time">11:00 <i data-lucide="check-check"></i></span></div></div>
+            </div>
+            <div class="msg recv">
+              <div class="msg-avatar avatar" style="background:#b3543f;border-radius:9px">FW</div>
+              <div class="bubble-wrap">
+                <div class="sender">Fajar Wibowo</div>
+                <div class="bubble">
+                  <div class="img-preview">
+                    <img src="https://picsum.photos/seed/security-scan/400/250" alt="Security scan result" loading="lazy">
+                    <div class="img-overlay"><i data-lucide="maximize-2" style="width:24px;height:24px;color:#fff"></i></div>
+                  </div>
+                  Security scan juga clear. No critical vulnerabilities.<span class="time">11:10</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- Pinned messages panel -->
+          <div class="pinned-panel">
+            <div class="pp-head"><i data-lucide="pin"></i> Pinned<span class="count">4 messages</span><button class="close-pin"><i data-lucide="x"></i></button></div>
+            <div class="pp-list">
+              <div class="pin-item"><div class="pin-sender">Bagas Arif</div><div class="pin-text">Server monitoring SOP: Cek dashboard setiap shift awal. Alert kritis respond dalam 5 menit.</div><div class="pin-meta"><i data-lucide="clock"></i> 3 days ago</div></div>
+              <div class="pin-item"><div class="pin-sender">Fajar Wibowo</div><div class="pin-text">Security checklist deploy: 1) Scan deps 2) Access control 3) Secrets rotation</div><div class="pin-meta"><i data-lucide="clock"></i> 5 days ago</div></div>
+              <div class="pin-item"><div class="pin-sender">Dewi Prasetyo</div><div class="pin-text">Network topology v3 sudah di-update. Path: /IT-INFRA/docs/network-v3.pdf</div><div class="pin-meta"><i data-lucide="clock"></i> 1 week ago <i data-lucide="paperclip"></i></div></div>
+              <div class="pin-item"><div class="pin-sender">Ayu Ningrum</div><div class="pin-text">On-call Q3: W1-2 Rizky, W3-4 Dewi, W5-6 Bagas, W7-8 Fajar</div><div class="pin-meta"><i data-lucide="clock"></i> 2 weeks ago</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="composer-wrap">
+          <div class="composer"><button class="comp-btn"><i data-lucide="paperclip"></i></button><button class="comp-btn"><i data-lucide="smile-plus"></i></button><button class="comp-btn"><i data-lucide="at-sign"></i></button><div class="input-wrap" contenteditable="true" data-placeholder="Type a message..."></div><button class="send-btn disabled"><i data-lucide="send-horizontal"></i></button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox1" onclick="if(event.target===this)this.classList.remove('on')">
+  <div class="lb-toolbar"><button title="Zoom in/out" onclick="this.closest('.lightbox').querySelector('img').classList.toggle('zoomed')"><i data-lucide="zoom-in"></i></button><button title="Download"><i data-lucide="download"></i></button><button title="Close" onclick="this.closest('.lightbox').classList.remove('on')"><i data-lucide="x"></i></button></div>
+  <img src="https://picsum.photos/seed/monitoring-dash/1200/700" alt="Full size">
+  <div class="lb-caption">monitoring-dashboard-post-migration.png - Dewi Prasetyo - 10:52</div>
+</div>
+</div>
+
+<!-- ======== SCREEN 4: EMOJI & STICKER PICKER ======== -->
+<div class="screen" id="screen-picker">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="side-head"><div class="mark">iP</div><div class="txt"><div class="t">IPop</div><div class="s">Operational portal</div></div></div>
+    <div class="nav-item"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></div>
+    <div class="nav-item"><i data-lucide="users"></i><span class="lbl">Directory</span></div>
+    <div class="nav-item active"><i data-lucide="message-circle"></i><span class="lbl">Chat</span><span class="badge">5</span></div>
+    <div class="nav-item"><i data-lucide="folder"></i><span class="lbl">Files</span></div>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="mail"></i><span class="lbl">Mail</span><i data-lucide="lock" class="lock"></i></button>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="square-kanban"></i><span class="lbl">Projects</span><i data-lucide="lock" class="lock"></i></button>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="phone"></i><span class="lbl">Calls</span><i data-lucide="lock" class="lock"></i></button>
+    <div class="nav-item"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administration</span></div>
+    <div class="sidebar-foot"><div class="avatar" style="background:#2e7d5b">BA</div><div class="who"><div class="n">Bagas Arif</div><div class="r">IT - Infrastructure</div></div><button class="out"><i data-lucide="log-out"></i></button></div>
+  </aside>
+  <div class="main">
+    <header class="topbar"><h1>Chat</h1><span class="crumb">Messages</span><div class="topbar-right"><button class="presence-toggle"><span class="dot on">Online</span></button><button class="icon-btn"><i data-lucide="moon"></i></button><button class="icon-btn"><i data-lucide="bell"></i></button></div></header>
+    <div class="chat-area">
+      <div class="room-pane">
+        <div class="room-head"><span class="title">Messages</span><div class="create-wrap"><button class="new-btn"><i data-lucide="square-pen"></i></button><div class="create-dropdown"></div></div></div>
+        <div class="room-search"><i data-lucide="search"></i><input placeholder="Search conversations..."></div>
+        <div class="room-tabs"><button class="room-tab">Direct</button><button class="room-tab active">Groups</button></div>
+        <div class="room-list"><div class="room-item active"><div class="avatar" style="background:#4f6d8f">IT</div><div class="info"><div class="name">IT Infrastructure Team</div><div class="preview">Sinta sent a sticker</div></div><div class="meta"><span class="time">2m</span></div></div></div>
+      </div>
+      <!-- Conversation with picker open -->
+      <div class="conv-pane">
+        <div class="conv-header">
+          <div class="avatar" style="background:#4f6d8f">IT</div>
+          <div class="info"><div class="name">IT Infrastructure Team</div><div class="meta">6 members - 4 online</div></div>
+          <div class="actions"><button><i data-lucide="pin"></i></button><button><i data-lucide="search"></i></button><button><i data-lucide="panel-right"></i></button></div>
+        </div>
+        <div class="messages">
+          <div class="date-sep">Today</div>
+          <div class="msg recv">
+            <div class="msg-avatar avatar" style="background:#2e7d5b;border-radius:9px">SM</div>
+            <div class="bubble-wrap"><div class="sender">Sinta Maharani</div><div class="bubble"><div class="sticker-msg"><div class="sticker-big"><i data-lucide="party-popper"></i></div></div></div></div>
+          </div>
+          <div class="msg recv">
+            <div class="msg-avatar avatar" style="background:#8a6d3b;border-radius:9px">RS</div>
+            <div class="bubble-wrap"><div class="sender">Rizky Saputra</div><div class="bubble"><span class="mention">@Bagas Arif</span> sudah review belum?<span class="time">11:20</span></div></div>
+          </div>
+          <div class="msg sent"><div class="bubble-wrap"><div class="bubble">Lagi on progress 👍<span class="time">11:25 <i data-lucide="check-check"></i></span></div></div></div>
+        </div>
+        <!-- Composer with picker open + mention popup -->
+        <div class="composer-wrap" style="position:relative">
+          <!-- Mention autocomplete -->
+          <div class="mention-popup">
+            <div class="mi sel"><div class="avatar" style="background:#b3543f;width:28px;height:28px;font-size:10px;border-radius:8px">FW</div><div><div class="name">Fajar Wibowo</div><div class="role">Security Analyst</div></div></div>
+            <div class="mi"><div class="avatar" style="background:#4f6d8f;width:28px;height:28px;font-size:10px;border-radius:8px">DP</div><div><div class="name">Dewi Prasetyo</div><div class="role">Network Admin</div></div></div>
+            <div class="mi"><div class="avatar" style="background:#8a6d3b;width:28px;height:28px;font-size:10px;border-radius:8px">RS</div><div><div class="name">Rizky Saputra</div><div class="role">Sysadmin</div></div></div>
+          </div>
+          <!-- Emoji/Sticker picker panel -->
+          <div class="picker-panel">
+            <div class="pp-tabs"><button class="pp-tab active">Emoji</button><button class="pp-tab">Stickers</button></div>
+            <div class="pp-search"><input placeholder="Search emoji..."></div>
+            <div class="emoji-grid">
+              <button class="ei">👍</button><button class="ei">❤️</button><button class="ei">😂</button><button class="ei">🎉</button>
+              <button class="ei">🔥</button><button class="ei">👀</button><button class="ei">✅</button><button class="ei">💯</button>
+              <button class="ei">🚀</button><button class="ei">⭐</button><button class="ei">💡</button><button class="ei">🙏</button>
+              <button class="ei">👏</button><button class="ei">😊</button><button class="ei">😎</button><button class="ei">🤔</button>
+              <button class="ei">😅</button><button class="ei">☕</button><button class="ei">🏆</button><button class="ei">💪</button>
+              <button class="ei">📌</button><button class="ei">📎</button><button class="ei">🎯</button><button class="ei">⚡</button>
+            </div>
+            <div class="quick-react">
+              <span style="font-size:11px;color:var(--ink-3);font-weight:600;margin-right:4px">Quick:</span>
+              <button class="qr">👍</button><button class="qr">❤️</button><button class="qr">✅</button><button class="qr">🚀</button><button class="qr">👀</button><button class="qr">🔥</button>
+            </div>
+          </div>
+          <div class="composer">
+            <button class="comp-btn"><i data-lucide="paperclip"></i></button>
+            <button class="comp-btn on"><i data-lucide="smile-plus"></i></button>
+            <button class="comp-btn on"><i data-lucide="at-sign"></i></button>
+            <div class="input-wrap" contenteditable="true" data-placeholder="Type a message..."><span class="mention-tag">@Fa</span></div>
+            <button class="send-btn"><i data-lucide="send-horizontal"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ======== SCREEN 5: NEW CHAT FLOW (create dropdown + inline) ======== -->
+<div class="screen" id="screen-create">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="side-head"><div class="mark">iP</div><div class="txt"><div class="t">IPop</div><div class="s">Operational portal</div></div></div>
+    <div class="nav-item"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></div>
+    <div class="nav-item"><i data-lucide="users"></i><span class="lbl">Directory</span></div>
+    <div class="nav-item active"><i data-lucide="message-circle"></i><span class="lbl">Chat</span><span class="badge">5</span></div>
+    <div class="nav-item"><i data-lucide="folder"></i><span class="lbl">Files</span></div>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="mail"></i><span class="lbl">Mail</span><i data-lucide="lock" class="lock"></i></button>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="square-kanban"></i><span class="lbl">Projects</span><i data-lucide="lock" class="lock"></i></button>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="phone"></i><span class="lbl">Calls</span><i data-lucide="lock" class="lock"></i></button>
+    <div class="nav-item"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administration</span></div>
+    <div class="sidebar-foot"><div class="avatar" style="background:#2e7d5b">BA</div><div class="who"><div class="n">Bagas Arif</div><div class="r">IT - Infrastructure</div></div><button class="out"><i data-lucide="log-out"></i></button></div>
+  </aside>
+  <div class="main">
+    <header class="topbar"><h1>Chat</h1><span class="crumb">New group chat</span><div class="topbar-right"><button class="presence-toggle"><span class="dot on">Online</span></button><button class="icon-btn"><i data-lucide="moon"></i></button><button class="icon-btn"><i data-lucide="bell"></i></button></div></header>
+    <div class="chat-area">
+      <div class="room-pane">
+        <div class="room-head"><span class="title">Messages</span>
+          <div class="create-wrap"><button class="new-btn" style="background:var(--accent);color:#fff;border-color:var(--accent)"><i data-lucide="square-pen"></i></button>
+            <div class="create-dropdown on"><button><i data-lucide="user"></i><div><div>New direct message</div><div class="desc">Chat with one person</div></div></button><button style="background:var(--accent-soft)"><i data-lucide="users" style="color:var(--accent-ink)"></i><div><div style="color:var(--accent-ink);font-weight:600">New group chat</div><div class="desc">Create a group with multiple people</div></div></button></div>
+          </div>
+        </div>
+        <div class="room-search"><i data-lucide="search"></i><input placeholder="Search conversations..."></div>
+        <div class="room-tabs"><button class="room-tab">Direct</button><button class="room-tab active">Groups</button></div>
+        <div class="room-list">
+          <div class="room-item"><div class="avatar" style="background:#4f6d8f">IT</div><div class="info"><div class="name">IT Infrastructure</div><div class="preview">Dewi: Server migration done</div></div><div class="meta"><span class="time">2m</span></div></div>
+          <div class="room-item"><div class="avatar" style="background:#2e7d5b">PM</div><div class="info"><div class="name">Project Managers</div><div class="preview">Timeline updated</div></div><div class="meta"><span class="time">1h</span></div></div>
+        </div>
+      </div>
+      <!-- Conversation pane shows normal empty state behind the modal -->
+      <div class="conv-pane">
+        <div class="empty-state">
+          <i data-lucide="message-circle"></i>
+          <div class="title">Select a conversation</div>
+          <div class="sub">Choose from your existing conversations or start a new one</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Create Group Modal (popup overlay) -->
+<div class="backdrop on"></div>
+<div style="position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;padding:20px">
+  <div style="width:460px;max-width:95vw;background:var(--drawer-tray);border:1px solid var(--line-soft);border-radius:var(--radius-tray);padding:6px;backdrop-filter:blur(16px);box-shadow:0 24px 64px -16px rgba(23,22,20,0.35)">
+    <div style="background:var(--surface);border-radius:calc(var(--radius-tray) - 6px);padding:28px 26px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.9)">
+      <!-- Header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:38px;height:38px;border-radius:11px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center"><i data-lucide="users" style="width:18px;height:18px;color:var(--accent-ink)"></i></div>
+          <div><div style="font-size:16px;font-weight:700;letter-spacing:-0.02em">New group chat</div><div style="font-size:12px;color:var(--ink-3);margin-top:1px">Add members and name your group</div></div>
+        </div>
+        <button class="drawer-close"><i data-lucide="x"></i></button>
+      </div>
+      <!-- Members field -->
+      <div style="margin-bottom:18px">
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:7px">Members</label>
+        <div style="border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface);display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:42px">
+          <span class="chip" style="margin:0">Dewi Prasetyo <span class="rm"><i data-lucide="x"></i></span></span>
+          <span class="chip" style="margin:0">Rizky Saputra <span class="rm"><i data-lucide="x"></i></span></span>
+          <span class="chip" style="margin:0">Sinta Maharani <span class="rm"><i data-lucide="x"></i></span></span>
+          <input style="flex:1;min-width:100px;border:none;background:none;font-size:13px;font-family:inherit;color:var(--ink);outline:none;padding:3px 0" placeholder="Add people...">
+        </div>
+      </div>
+      <!-- Group name -->
+      <div style="margin-bottom:18px">
+        <label style="display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:7px">Group name</label>
+        <input style="width:100%;padding:10px 14px;font-size:13.5px;font-family:inherit;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink)" placeholder="e.g. Backend Migration Team" value="Backend Migration Team">
+      </div>
+      <!-- Info -->
+      <div style="padding:10px 12px;border-radius:10px;background:var(--info-soft);color:var(--info);font-size:12px;display:flex;gap:8px;align-items:flex-start;margin-bottom:22px">
+        <i data-lucide="info" style="width:14px;height:14px;flex-shrink:0;margin-top:1px"></i>
+        <span>3 people selected. This will create a <strong>group chat</strong>. Selecting 1 person starts a direct message.</span>
+      </div>
+      <!-- Actions -->
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button style="padding:10px 18px;font-size:13px;font-weight:600;font-family:inherit;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--ink-2);cursor:pointer">Cancel</button>
+        <button class="btn-create" style="padding:10px 22px;font-size:13px">Create group</button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ======== SCREEN 6: DARK MODE ======== -->
+<div class="screen" id="screen-dark">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="side-head"><div class="mark">iP</div><div class="txt"><div class="t">IPop</div><div class="s">Operational portal</div></div></div>
+    <div class="nav-item"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></div>
+    <div class="nav-item"><i data-lucide="users"></i><span class="lbl">Directory</span></div>
+    <div class="nav-item active"><i data-lucide="message-circle"></i><span class="lbl">Chat</span><span class="badge">5</span></div>
+    <div class="nav-item"><i data-lucide="folder"></i><span class="lbl">Files</span></div>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="mail"></i><span class="lbl">Mail</span><i data-lucide="lock" class="lock"></i></button>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="square-kanban"></i><span class="lbl">Projects</span><i data-lucide="lock" class="lock"></i></button>
+    <button class="nav-item locked" aria-disabled="true"><i data-lucide="phone"></i><span class="lbl">Calls</span><i data-lucide="lock" class="lock"></i></button>
+    <div class="nav-item"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administration</span></div>
+    <div class="sidebar-foot"><div class="avatar" style="background:#4ca37e">BA</div><div class="who"><div class="n">Bagas Arif</div><div class="r">IT - Infrastructure</div></div><button class="out"><i data-lucide="log-out"></i></button></div>
+  </aside>
+  <div class="main">
+    <header class="topbar"><h1>Chat</h1><span class="crumb">Messages</span><div class="topbar-right"><button class="presence-toggle"><span class="dot on">Online</span></button><button class="icon-btn"><i data-lucide="sun"></i></button><button class="icon-btn"><i data-lucide="bell"></i></button></div></header>
+    <div class="chat-area">
+      <div class="room-pane rise rise-1">
+        <div class="room-head"><span class="title">Messages</span><div class="create-wrap"><button class="new-btn"><i data-lucide="square-pen"></i></button><div class="create-dropdown"></div></div></div>
+        <div class="room-search"><i data-lucide="search"></i><input placeholder="Search conversations..."></div>
+        <div class="room-tabs"><button class="room-tab">Direct <span class="tab-badge">3</span></button><button class="room-tab active">Groups <span class="tab-badge">2</span></button></div>
+        <div class="room-list">
+          <div class="room-item active"><div class="avatar" style="background:#4f6d8f">IT</div><div class="info"><div class="name">IT Infrastructure Team</div><div class="preview">Dewi: All clear!</div></div><div class="meta"><span class="time">2m</span></div></div>
+          <div class="room-item"><div class="avatar" style="background:#2e7d5b">PM</div><div class="info"><div class="name">Project Managers</div><div class="preview"><span class="mention-hl">@You</span> Review needed</div></div><div class="meta"><span class="time">1h</span><span class="unread">3</span></div></div>
+        </div>
+      </div>
+      <!-- Dark mode conversation -->
+      <div class="conv-pane rise rise-2">
+        <div class="conv-header">
+          <div class="avatar" style="background:#4f6d8f">IT</div>
+          <div class="info"><div class="name">IT Infrastructure Team</div><div class="meta">6 members - 4 online</div></div>
+          <div class="actions"><button><i data-lucide="pin"></i></button><button><i data-lucide="search"></i></button><button><i data-lucide="panel-right"></i></button></div>
+        </div>
+        <div class="messages">
+          <div class="date-sep">Today</div>
+          <div class="msg recv">
+            <div class="msg-avatar avatar" style="background:#4f6d8f;border-radius:9px">DP</div>
+            <div class="bubble-wrap"><div class="sender">Dewi Prasetyo</div><div class="bubble">Semua service running normal setelah migration. All clear! 🎉<span class="time">10:47</span></div>
+              <div class="reactions"><span class="pill mine"><i data-lucide="thumbs-up"></i> 3</span><span class="pill"><i data-lucide="heart"></i> 2</span></div>
+            </div>
+          </div>
+          <div class="msg sent">
+            <div class="bubble-wrap"><div class="bubble">Great work <span class="mention">@Dewi Prasetyo</span>! Semua berjalan lancar 🚀<span class="time">10:50 <i data-lucide="check-check"></i></span></div></div>
+          </div>
+          <div class="msg recv">
+            <div class="msg-avatar avatar" style="background:#8a6d3b;border-radius:9px">RS</div>
+            <div class="bubble-wrap"><div class="sender">Rizky Saputra</div><div class="bubble">
+              <div class="img-preview"><img src="https://picsum.photos/seed/dark-dashboard/400/220" alt="Dashboard" loading="lazy"><div class="img-overlay"><i data-lucide="maximize-2" style="width:24px;height:24px;color:#fff"></i></div></div>
+              Monitoring semua hijau 👍<span class="time">10:55</span></div></div>
+          </div>
+          <div class="msg recv">
+            <div class="msg-avatar avatar" style="background:#2e7d5b;border-radius:9px">SM</div>
+            <div class="bubble-wrap"><div class="sender">Sinta Maharani</div><div class="bubble"><div class="sticker-msg"><div class="sticker-big"><i data-lucide="trophy"></i></div></div></div></div>
+          </div>
+        </div>
+        <div class="composer-wrap">
+          <div class="composer"><button class="comp-btn"><i data-lucide="paperclip"></i></button><button class="comp-btn"><i data-lucide="smile-plus"></i></button><button class="comp-btn"><i data-lucide="at-sign"></i></button><div class="input-wrap" contenteditable="true" data-placeholder="Type a message..."></div><button class="send-btn disabled"><i data-lucide="send-horizontal"></i></button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+// Screen switcher
+document.querySelectorAll('.switcher button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.switcher button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    const id = 'screen-' + btn.dataset.screen;
+    document.getElementById(id).classList.add('active');
+    // Toggle dark mode for dark screen
+    if (btn.dataset.screen === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+    lucide.createIcons();
+  });
+});
+// Theme toggle button
+document.addEventListener('click', e => {
+  if (e.target.closest('#theme-toggle')) {
+    const html = document.documentElement;
+    const isDark = html.getAttribute('data-theme') === 'dark';
+    html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  }
+});
+// Create dropdown toggle
+document.querySelectorAll('.create-wrap .new-btn').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const dd = btn.nextElementSibling;
+    if (dd) dd.classList.toggle('on');
+  });
+});
+document.addEventListener('click', () => {
+  document.querySelectorAll('.create-dropdown.on').forEach(d => d.classList.remove('on'));
+});
+// Lightbox zoom
+document.querySelectorAll('.lightbox img').forEach(img => {
+  img.addEventListener('click', () => img.classList.toggle('zoomed'));
+});
+// Init icons
+document.addEventListener('DOMContentLoaded', () => lucide.createIcons());
+</script>
+</body>
+</html>

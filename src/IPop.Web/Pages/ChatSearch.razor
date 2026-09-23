@@ -1,0 +1,274 @@
+@page "/chat/search"
+@implements IDisposable
+@inject IJSRuntime JS
+@inject AuthState Auth
+@inject ChatState ChatSvc
+@inject NavigationManager Nav
+@using IPop.Application.Chat
+
+<PageTitle>Search messages — IPop</PageTitle>
+
+<div class="content" style="grid-template-columns:1fr">
+
+    <div class="tray rise rise-1">
+        <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head" style="flex-wrap:wrap;gap:10px">
+                <i data-lucide="search"></i> <span>Search all conversations</span>
+                <span class="meta">@Subtitle</span>
+            </div>
+
+            @* ---- Search box ---- *@
+            <div class="filter-bar" style="padding:12px 14px;border-bottom:1px solid var(--line-soft)">
+                <div style="flex:1 1 260px;display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:6px 12px;background:var(--surface)">
+                    <i data-lucide="search" style="width:14px;height:14px;color:var(--ink-3);flex-shrink:0"></i>
+                    <input type="text" placeholder="Search keywords across all chat rooms…"
+                           style="flex:1;border:none;background:transparent;color:var(--ink);font-size:13px;outline:none"
+                           @bind="query" @bind:event="oninput" @bind:after="OnQueryChanged" />
+                    @if (!string.IsNullOrEmpty(query))
+                    {
+                        <button type="button" class="drawer-close-btn" style="width:22px;height:22px" title="Clear" aria-label="Clear" @onclick="ClearQuery"><i data-lucide="x"></i></button>
+                    }
+                </div>
+                <button class="btn-sm accent" @onclick="SearchAsync" disabled="@(searching || query.Trim().Length < 2)">
+                    <i data-lucide="search" style="width:13px;height:13px"></i> Search
+                </button>
+            </div>
+
+            @if (query.Trim().Length == 1)
+            {
+                <div class="tree-empty" style="padding:20px">
+                    <div class="meta" style="font-size:12px;color:var(--ink-3)">Keyword must be at least 2 characters.</div>
+                </div>
+            }
+            else if (searching)
+            {
+                <div class="tree-empty" style="padding:34px">
+                    <i data-lucide="loader-circle" style="width:20px;height:20px;margin-bottom:6px"></i>
+                    <div>Searching in @roomCount rooms…</div>
+                </div>
+            }
+            else if (searched && FilteredGroups.Count == 0)
+            {
+                <div class="tree-empty" style="padding:34px">
+                    <i data-lucide="search-x" style="width:20px;height:20px;margin-bottom:6px"></i>
+                    <div>No messages match "@query".</div>
+                    <div class="meta" style="font-size:11.5px;color:var(--ink-3)">Try another keyword, or check your spelling.</div>
+                </div>
+            }
+            else if (!searched)
+            {
+                <div class="tree-empty" style="padding:34px">
+                    <i data-lucide="text-search" style="width:20px;height:20px;margin-bottom:6px"></i>
+                    <div>Search across all your conversations at once.</div>
+                    <div class="meta" style="font-size:11.5px;color:var(--ink-3)">Type a keyword and press Search — results are grouped by room.</div>
+                </div>
+            }
+            else
+            {
+                @foreach (var g in FilteredGroups)
+                {
+                    <div class="pins-room-head">
+                        <span class="pins-room-av avatar" style="background:@IPop.Web.Models.AvatarPalette.For(RoomLabel(g.RoomId))">@RoomInitials(g)</span>
+                        <span class="pins-room-name">@RoomLabel(g.RoomId)</span>
+                        <span class="pins-room-count">@g.Items.Count results</span>
+                    </div>
+                    <div class="notif-list" role="list" aria-label="Search results">
+                        @foreach (var m in g.Items)
+                        {
+                            var msg = m;
+                            <div class="notif-row" role="listitem" @onclick="() => OpenInChat(msg)">
+                                <div class="notif-row-ic" style="background:var(--accent-soft);color:var(--accent-ink)">
+                                    <i data-lucide="message-circle"></i>
+                                </div>
+                                <div class="notif-row-main">
+                                    <div class="notif-row-t">
+                                        @msg.SenderName
+                                        <span class="tag" style="background:var(--accent-soft);color:var(--accent-ink)">@RoomLabel(msg.RoomId)</span>
+                                        @if (msg.Content?.StartsWith("[forwarded]") == true)
+                                        {
+                                            <span class="tag" style="background:var(--tray);color:var(--ink-2)"><i data-lucide="forward" style="width:10px;height:10px"></i> Forwarded</span>
+                                        }
+                                    </div>
+                                    <div class="notif-row-s">@Snippet(msg.Content)</div>
+                                    <div class="notif-row-meta">
+                                        <i data-lucide="clock" style="width:11px;height:11px"></i>
+                                        <span>@FormatTime(msg.CreatedAt.ToLocalTime())</span>
+                                    </div>
+                                </div>
+                                <i data-lucide="arrow-up-right" style="width:14px;height:14px;color:var(--ink-3);flex-shrink:0"></i>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+</div>
+
+@code {
+    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+
+    private sealed class RoomHits
+    {
+        public required Guid RoomId { get; init; }
+        public required List<MessageDto> Items { get; init; }
+    }
+
+    private List<RoomHits> Groups = [];
+    private Dictionary<Guid, string> roomNames = [];
+    private string query = "";
+    private bool searching;
+    private bool searched;
+    private int roomCount;
+
+    private string Subtitle => searching ? "searching…"
+        : searched ? $"{Groups.Sum(g => g.Items.Count)} results · {Groups.Count} rooms"
+        : $"{roomCount} rooms";
+
+    private List<RoomHits> FilteredGroups => Groups;
+
+    private string RoomLabel(Guid roomId)
+        => roomNames.TryGetValue(roomId, out var n) ? n : "Room";
+
+    private string RoomInitials(RoomHits g)
+    {
+        var name = RoomLabel(g.RoomId);
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant(),
+            _ => string.Concat(parts[0][0], parts[1][0]).ToUpperInvariant()
+        };
+    }
+
+    protected override void OnInitialized()
+    {
+        Layout.SetHeader("Messages");
+        Layout.SetSubtitle("Search all conversations");
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ChatSvc.ConnectAsync();
+        await ChatSvc.LoadRoomsAsync();
+        BuildRoomNames();
+        roomCount = roomNames.Count;
+        var q0 = QueryValue("q");
+        if (!string.IsNullOrWhiteSpace(q0) && q0.Trim().Length >= 2)
+        {
+            query = q0;
+            await SearchAsync();
+        }
+    }
+
+    private void BuildRoomNames()
+    {
+        roomNames = ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms)
+            .ToDictionary(r => r.Id, r => r.Type == "dm"
+                ? (r.RecipientName ?? r.RecipientNik ?? "Direct message")
+                : (r.Name ?? "Group"));
+    }
+
+    private System.Threading.Timer? debounce;
+
+    private void OnQueryChanged()
+    {
+        searched = false;
+        debounce?.Dispose();
+        debounce = null;
+        if (query.Trim().Length >= 2)
+        {
+            debounce = new System.Threading.Timer(_ => _ = InvokeAsync(SearchAsync), null, 450, Timeout.Infinite);
+        }
+    }
+
+    private void ClearQuery()
+    {
+        query = "";
+        searched = false;
+        Groups = [];
+        debounce?.Dispose();
+        debounce = null;
+    }
+
+    private async Task SearchAsync()
+    {
+        var q = query.Trim();
+        if (q.Length < 2 || searching) return;
+        searching = true;
+        searched = false;
+        StateHasChanged();
+        try
+        {
+            var enc = Uri.EscapeDataString(q);
+            List<RoomHits> grouped;
+            try
+            {
+                var page = await Auth.GetAsync<PagedResult<MessageDto>>($"/api/chat/search?q={enc}&pageSize=50");
+                grouped = (page?.Items ?? (IReadOnlyList<MessageDto>)[])
+                    .GroupBy(m => m.RoomId)
+                    .Select(g => new RoomHits { RoomId = g.Key, Items = g.ToList() })
+                    .ToList();
+            }
+            catch
+            {
+                var rooms = ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms).ToList();
+                var results = await Task.WhenAll(rooms.Select(async r =>
+                {
+                    try
+                    {
+                        var page = await Auth.GetAsync<PagedResult<MessageDto>>($"/api/chat/rooms/{r.Id}/search?q={enc}&pageSize=10");
+                        return new RoomHits { RoomId = r.Id, Items = page?.Items.ToList() ?? [] };
+                    }
+                    catch
+                    {
+                        return new RoomHits { RoomId = r.Id, Items = [] };
+                    }
+                }));
+                grouped = results.ToList();
+            }
+            Groups = grouped.Where(g => g.Items.Count > 0)
+                            .OrderByDescending(g => g.Items.Max(m => m.CreatedAt))
+                            .ToList();
+            searched = true;
+        }
+        finally
+        {
+            searching = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenInChat(MessageDto msg)
+        => Nav.NavigateTo($"/chat/{msg.RoomId}?jump={msg.Id}");
+
+    private static string Snippet(string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return "(attachment)";
+        var text = content.StartsWith("[forwarded]") ? content["[forwarded]".Length..].TrimStart() : content;
+        return text.Length <= 160 ? text : text[..160] + "…";
+    }
+
+    private static string FormatTime(DateTime t)
+        => t.Date == DateTime.Now.Date ? t.ToString("HH:mm") : t.ToString("dd MMM");
+
+    private string? QueryValue(string key)
+    {
+        var q = Nav.ToAbsoluteUri(Nav.Uri).Query.TrimStart('?');
+        foreach (var part in q.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq < 0) continue;
+            if (!part[..eq].Equals(key, StringComparison.OrdinalIgnoreCase)) continue;
+            return Uri.UnescapeDataString(part[(eq + 1)..]);
+        }
+        return null;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+        => await JS.InvokeVoidAsync("ipop.icons");
+
+    public void Dispose() => debounce?.Dispose();
+}

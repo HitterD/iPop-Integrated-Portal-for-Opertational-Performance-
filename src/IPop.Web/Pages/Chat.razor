@@ -11,23 +11,32 @@
 @inject IPop.Web.Services.ToastService Toasts
 @inject IPop.Web.Services.OverlayStack Overlays
 @inject IPop.Web.Services.CallState CallStateSvc
+@inject IPop.Web.Services.FavoriteContacts Favorites
 @using IPop.Application.Chat.Mentions
 @using Microsoft.JSInterop
 @using IPop.Application.Chat
+@using IPop.Web.Components
 @using IPop.Web.Components.Chat
 
-<PageTitle>Chat — IPop</PageTitle>
+<PageTitle>Messages — IPop</PageTitle>
 
-<div class="chat-area @(mobileRoomsOpen ? "rooms-open" : "")" @onclick="CloseCtx">
-    @* ============ ROOM PANE (left 300px) ============ *@
+<div class="chat-area @(mobileRoomsOpen ? "rooms-open" : "") @(drawerOpen ? "with-drawer" : "")" @onclick="CloseCtx">
+    @* ============ ROOM PANE ============ *@
     <div class="room-pane rise rise-1">
-        <div class="room-head">
-            <span class="title">Messages</span>
-            <button type="button" class="room-pane-close" title="Close" @onclick="() => mobileRoomsOpen = false">
-                <i data-lucide="x"></i>
-            </button>
+        @* Top bar: search field + compose button *@
+        <div class="room-top-bar">
+            <div class="room-search-box">
+                <i data-lucide="search"></i>
+                <input type="text" placeholder="Search conversations..." value="@roomSearchQuery" @oninput="OnRoomSearchChanged" />
+                @if (!string.IsNullOrEmpty(roomSearchQuery))
+                {
+                    <button type="button" class="room-search-clear" @onclick='() => { roomSearchQuery = ""; _ = ChatSvc.SearchRoomsAsync(""); }' title="Clear search" aria-label="Clear search">
+                        <i data-lucide="x"></i>
+                    </button>
+                }
+            </div>
             <div class="create-wrap">
-                <button class="new-btn" title="New conversation" @onclick="ToggleCreateDropdown" @onclick:stopPropagation>
+                <button type="button" class="compose-btn" title="New conversation" aria-label="New conversation" @onclick="ToggleCreateDropdown" @onclick:stopPropagation>
                     <i data-lucide="square-pen"></i>
                 </button>
                 <div class="create-dropdown @(createDropdownOpen ? "on" : "")">
@@ -43,49 +52,85 @@
             </div>
         </div>
 
-        <div class="room-search">
-            <i data-lucide="search"></i>
-            <input type="text" placeholder="Search conversations..." value="@roomSearchQuery" @oninput="OnRoomSearchChanged" />
-        </div>
-
-        <div class="room-tabs">
-            <button class="room-tab @(activeTab == RoomTab.Direct ? "active" : "")" @onclick="() => SetTab(RoomTab.Direct)">
-                Direct
-                @if (DirectUnread > 0)
-                {
-                    <span class="tab-badge">@DirectUnread</span>
-                }
+        @* Compact navigation rows *@
+        <div class="room-nav-links">
+            <button type="button" class="room-nav-btn" @onclick='() => Nav.NavigateTo("/chat/pins")'>
+                <div class="rnb-icon"><i data-lucide="pin"></i></div>
+                <span class="rnb-label">Pinned messages</span>
+                <i data-lucide="chevron-right" class="rnb-chev"></i>
             </button>
-            <button class="room-tab @(activeTab == RoomTab.Groups ? "active" : "")" @onclick="() => SetTab(RoomTab.Groups)">
-                Groups
+            <button type="button" class="room-nav-btn" @onclick='() => Nav.NavigateTo("/chat/saved")'>
+                <div class="rnb-icon"><i data-lucide="bookmark"></i></div>
+                <span class="rnb-label">Saved messages</span>
+                <i data-lucide="chevron-right" class="rnb-chev"></i>
+            </button>
+            <button type="button" class="room-nav-btn" @onclick='() => Nav.NavigateTo("/chat/search")'>
+                <div class="rnb-icon"><i data-lucide="text-search"></i></div>
+                <span class="rnb-label">Search all conversations</span>
+                <i data-lucide="chevron-right" class="rnb-chev"></i>
+            </button>
+            <button type="button" class="room-nav-btn" @onclick='() => Nav.NavigateTo("/chat/mentions")'>
+                <div class="rnb-icon"><i data-lucide="at-sign"></i></div>
+                <span class="rnb-label">Unread mentions</span>
                 @if (HasGroupMention)
                 {
-                    <i data-lucide="at-sign" class="ico-sm accent"></i>
+                    <span class="rnb-badge">@GroupUnread</span>
                 }
+                <i data-lucide="chevron-right" class="rnb-chev"></i>
+            </button>
+        </div>
+
+        @* Segmented control: Direct / Groups *@
+        <div class="room-segmented">
+            <button type="button" class="seg-item @(activeTab == RoomTab.Direct ? "active" : "")" @onclick="() => SetTab(RoomTab.Direct)">
+                <span>Direct</span>
+                @if (DirectUnread > 0)
+                {
+                    <span class="seg-badge">@DirectUnread</span>
+                }
+            </button>
+            <button type="button" class="seg-item @(activeTab == RoomTab.Groups ? "active" : "")" @onclick="() => SetTab(RoomTab.Groups)">
+                <span>Groups</span>
                 @if (GroupUnread > 0)
                 {
-                    <span class="tab-badge">@GroupUnread</span>
+                    <span class="seg-badge">@GroupUnread</span>
                 }
             </button>
         </div>
+
         @if (ChatSvc.ArchivedRooms.Any() || ChatSvc.ArchivedCount > 0)
         {
-            <button class="room-archived-toggle" @onclick="() => archivedOpen = !archivedOpen"><i data-lucide="archive"></i> Archived (@ChatSvc.ArchivedCount) <i data-lucide="@(archivedOpen ? "chevron-up" : "chevron-down")"></i></button>
+            <button type="button" class="room-archived-toggle" @onclick="() => archivedOpen = !archivedOpen">
+                <i data-lucide="archive"></i>
+                <span>Archived (@ChatSvc.ArchivedCount)</span>
+                <i data-lucide="@(archivedOpen ? "chevron-up" : "chevron-down")"></i>
+            </button>
             @if (archivedOpen)
             {
-                @foreach (var ar in ChatSvc.ArchivedRooms)
-                {
-                    var room = ar;
-                    <div class="room-item" @onclick="() => UnarchiveRoom(room.Id)">
-                        <div class="avatar" style="background:@GetRoomColor(room)">@GetRoomInitials(room)</div>
-                        <div class="info"><div class="name">@GetRoomName(room)</div><div class="preview">@(room.LastMessage ?? "")</div></div>
-                        <button class="comp-btn room-unarchive-btn" @onclick="() => UnarchiveRoom(room.Id)" @onclick:stopPropagation>Unarchive</button>
-                    </div>
-                }
-                @if (ChatSvc.HasMoreArchived)
-                {
-                    <button type="button" class="room-load-more" @onclick="LoadMoreArchived"><i data-lucide="chevron-down"></i> Load more archived (@(ChatSvc.ArchivedTotal - ChatSvc.ArchivedRooms.Count) more)</button>
-                }
+                <div class="archived-list">
+                    @foreach (var ar in ChatSvc.ArchivedRooms)
+                    {
+                        var room = ar;
+                        <div class="room-item" @onclick="() => OpenArchivedRoom(room.Id)" title="Open conversation history">
+                            <div class="room-av" style="background:@GetRoomColor(room)">@GetRoomInitials(room)</div>
+                            <div class="room-info">
+                                <div class="room-row-top">
+                                    <span class="room-name">@GetRoomName(room)</span>
+                                </div>
+                                <div class="room-row-sub">
+                                    <span class="room-preview">@(room.LastMessage ?? "")</span>
+                                    <button class="room-unarchive-btn" title="Unarchive" @onclick="() => UnarchiveRoom(room.Id)" @onclick:stopPropagation>Unarchive</button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    @if (ChatSvc.HasMoreArchived)
+                    {
+                        <button type="button" class="room-load-more" @onclick="LoadMoreArchived">
+                            <i data-lucide="chevron-down"></i> Load more archived (@(ChatSvc.ArchivedTotal - ChatSvc.ArchivedRooms.Count) more)
+                        </button>
+                    }
+                </div>
             }
         }
 
@@ -96,36 +141,41 @@
 
             @if (pinned.Any())
             {
-                <div class="room-section-head"><i data-lucide="pin"></i> Pinned</div>
+                <div class="room-section-label">Pinned</div>
                 @foreach (var room in pinned)
                 {
                     var isActiveP = room.Id == ChatSvc.ActiveRoomId;
                     <div class="room-item @(isActiveP ? "active" : "") @(isActiveP && ChatSvc.IsOpening ? "busy" : "")" @onclick="() => OpenRoom(room.Id)">
-                        <div class="avatar @(room.Type == "dm" ? "round" : "")" style="background:@GetRoomColor(room)">
-                            @GetRoomInitials(room)
-                            @if (room.Type == "dm")
-                            {
-                                <span class="presence-dot @(room.PresenceStatus ?? "")"></span>
-                            }
-                        </div>
-                        <div class="info">
-                            <div class="name">
-                                @GetRoomName(room)
-                                <span class="pin-icon"><i data-lucide="pin"></i></span>
+                        <div class="room-av-wrap">
+                            <div class="room-av" style="background:@GetRoomColor(room)">
+                                @GetRoomInitials(room)
                             </div>
-                            <div class="preview @(room.HasUnreadMention ? "mention-hl" : "")">@(room.LastMessage ?? "") @if (room.HasUnreadMention) { <i data-lucide="at-sign" class="mention-icon"></i> }</div>
+                            @if (room.Type == "dm" && !string.IsNullOrWhiteSpace(room.PresenceStatus))
+                            {
+                                <span class="presence-dot @room.PresenceStatus"></span>
+                            }
                         </div>
-                        <div class="meta">
-                            <span class="time">@FormatTime(room.LastMessageAt)</span>
-                            @if (room.UnreadCount > 0)
-                            {
-                                <span class="unread">@room.UnreadCount</span>
-                            }
-                            @if (room.IsMuted)
-                            {
-                                <span class="muted"><i data-lucide="bell-off"></i></span>
-                            }
-                            <button class="comp-btn btn-pin @(room.IsPinned ? "pinned" : "unpinned")" title="@(room.IsPinned ? "Unpin" : "Pin")" @onclick="() => TogglePin(room)" @onclick:stopPropagation><i data-lucide="pin"></i></button>
+                        <div class="room-info">
+                            <div class="room-row-top">
+                                <span class="room-name">@GetRoomName(room)</span>
+                                <span class="room-time">@FormatTime(room.LastMessageAt)</span>
+                            </div>
+                            <div class="room-row-sub">
+                                <span class="room-preview @(room.HasUnreadMention ? "mention-hl" : "")">
+                                    @(room.LastMessage ?? "")
+                                </span>
+                                <div class="room-badges">
+                                    <i data-lucide="pin" class="room-pin-ic"></i>
+                                    @if (room.IsMuted)
+                                    {
+                                        <i data-lucide="bell-off" class="room-muted-ic"></i>
+                                    }
+                                    @if (room.UnreadCount > 0)
+                                    {
+                                        <span class="room-unread-pill">@room.UnreadCount</span>
+                                    }
+                                </div>
+                            </div>
                         </div>
                     </div>
                 }
@@ -133,33 +183,40 @@
 
             @if (recent.Any())
             {
-                <div class="room-section-head @(pinned.Any() ? "mt-4" : "")"><i data-lucide="clock"></i> Recent</div>
+                <div class="room-section-label @(pinned.Any() ? "has-pinned-above" : "")">Recent</div>
                 @foreach (var room in recent)
                 {
                     var isActiveR = room.Id == ChatSvc.ActiveRoomId;
                     <div class="room-item @(isActiveR ? "active" : "") @(isActiveR && ChatSvc.IsOpening ? "busy" : "")" @onclick="() => OpenRoom(room.Id)">
-                        <div class="avatar @(room.Type == "dm" ? "round" : "")" style="background:@GetRoomColor(room)">
-                            @GetRoomInitials(room)
-                            @if (room.Type == "dm")
+                        <div class="room-av-wrap">
+                            <div class="room-av" style="background:@GetRoomColor(room)">
+                                @GetRoomInitials(room)
+                            </div>
+                            @if (room.Type == "dm" && !string.IsNullOrWhiteSpace(room.PresenceStatus))
                             {
-                                <span class="presence-dot @(room.PresenceStatus ?? "")"></span>
+                                <span class="presence-dot @room.PresenceStatus"></span>
                             }
                         </div>
-                        <div class="info">
-                            <div class="name">@GetRoomName(room)</div>
-                            <div class="preview @(room.HasUnreadMention ? "mention-hl" : "")">@(room.LastMessage ?? "") @if (room.HasUnreadMention) { <i data-lucide="at-sign" class="mention-icon"></i> }</div>
-                        </div>
-                        <div class="meta">
-                            <span class="time">@FormatTime(room.LastMessageAt)</span>
-                            @if (room.UnreadCount > 0)
-                            {
-                                <span class="unread">@room.UnreadCount</span>
-                            }
-                            @if (room.IsMuted)
-                            {
-                                <span class="muted"><i data-lucide="bell-off"></i></span>
-                            }
-                            <button class="comp-btn btn-pin @(room.IsPinned ? "pinned" : "unpinned")" title="@(room.IsPinned ? "Unpin" : "Pin")" @onclick="() => TogglePin(room)" @onclick:stopPropagation><i data-lucide="pin"></i></button>
+                        <div class="room-info">
+                            <div class="room-row-top">
+                                <span class="room-name">@GetRoomName(room)</span>
+                                <span class="room-time">@FormatTime(room.LastMessageAt)</span>
+                            </div>
+                            <div class="room-row-sub">
+                                <span class="room-preview @(room.HasUnreadMention ? "mention-hl" : "")">
+                                    @(room.LastMessage ?? "")
+                                </span>
+                                <div class="room-badges">
+                                    @if (room.IsMuted)
+                                    {
+                                        <i data-lucide="bell-off" class="room-muted-ic"></i>
+                                    }
+                                    @if (room.UnreadCount > 0)
+                                    {
+                                        <span class="room-unread-pill">@room.UnreadCount</span>
+                                    }
+                                </div>
+                            </div>
                         </div>
                     </div>
                 }
@@ -175,8 +232,6 @@
 
             @if (!searchActive)
             {
-                // ipop-52: load-more for the paginated room lists — suppressed during search,
-                // where the server result set is already complete for the query.
                 @if (activeTab == RoomTab.Direct && ChatSvc.HasMoreDirectRooms)
                 {
                     <button type="button" class="room-load-more" @onclick="LoadMoreDirectRooms"><i data-lucide="chevron-down"></i> Load more conversations</button>
@@ -189,77 +244,95 @@
         </div>
     </div>
 
-    @* ============ CONVERSATION PANE (right flex) ============ *@
+    @* ============ CONVERSATION PANE ============ *@
     <div class="conv-pane rise rise-2">
         @if (ChatSvc.ActiveRoomId is not null && ChatSvc.ActiveRoom is not null)
         {
             @* ---- Conversation Header ---- *@
             <div class="conv-header">
-                <button type="button" class="conv-back" title="Conversations" @onclick="() => mobileRoomsOpen = true">
+                <button type="button" class="conv-back" title="Conversations" aria-label="Back to conversations" @onclick="() => mobileRoomsOpen = true">
                     <i data-lucide="arrow-left"></i>
                 </button>
                 @if (ChatSvc.ActiveRoom.Type == "dm")
                 {
                     var dmMember = ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
-                    <button type="button" class="avatar round avatar-btn" style="background:@GetActiveRoomColor()" title="View profile" @onclick="() => OpenUserProfile(dmMember?.Nik)">
+                    <button type="button" class="header-avatar-btn round" style="background:@GetActiveRoomColor()" title="View profile" aria-label="View profile" @onclick="() => OpenUserProfile(dmMember?.Nik)">
                         @GetActiveRoomInitials()
                     </button>
                 }
                 else
                 {
-                    <button type="button" class="avatar avatar-btn" style="background:@GetActiveRoomColor()" title="Group info" @onclick="() => ToggleDrawerTab(ChatDrawerTab.Overview)">
+                    <button type="button" class="header-avatar-btn" style="background:@GetActiveRoomColor()" title="Group info" aria-label="Group info" @onclick="ToggleDetailPanel">
                         @GetActiveRoomInitials()
                     </button>
                 }
-                <div class="info">
-                    <div class="name">@GetActiveRoomName()</div>
-                    <div class="meta">
+                <div class="header-info">
+                    <div class="header-name-row">
+                        <span class="header-name">@GetActiveRoomName()</span>
+                        @if (IsActiveRoomMuted)
+                        {
+                            <span class="mute-chip" title="Notifications muted"><i data-lucide="bell-off"></i></span>
+                        }
+                    </div>
+                    <div class="header-status-line">
                         @if (ChatSvc.ActiveRoom.Type == "dm")
                         {
-                            @* Show presence for DM *@
                             var dmMember = ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
                             if (dmMember is not null)
                             {
-                                <span class="dot @(dmMember.PresenceStatus ?? "off")">@PresenceLabel(dmMember.PresenceStatus)</span>
+                                <span class="status-dot @(dmMember.PresenceStatus ?? "off")"></span>
+                                <span class="status-txt">@PresenceLabel(dmMember.PresenceStatus)</span>
                             }
                         }
                         else
                         {
-                            <span>@ChatSvc.ActiveRoom.MemberCount members · @ChatSvc.ActiveRoom.OnlineCount online</span>
+                            <span class="status-txt">@ChatSvc.ActiveRoom.MemberCount members · @ChatSvc.ActiveRoom.OnlineCount online</span>
                         }
                     </div>
                 </div>
-                <div class="actions">
-                    <button class="@(searchOpen ? "on" : "")" title="Search messages" @onclick="() => searchOpen = !searchOpen"><i data-lucide="search"></i></button>
+                <div class="header-actions">
+                    <button type="button" class="header-icon-btn @(searchOpen ? "on" : "")" title="Search messages" aria-label="Search messages" @onclick="() => searchOpen = !searchOpen">
+                        <i data-lucide="search"></i>
+                    </button>
                     @if (ChatSvc.ActiveRoom.Type == "dm")
                     {
                         var dmMember = ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
                         if (dmMember is not null)
                         {
-                            <button type="button" title="Audio / Video call" @onclick="() => StartCallWith(dmMember.Nik)"><i data-lucide="phone"></i></button>
+                            <button type="button" class="header-icon-btn" title="Call" aria-label="Start call" @onclick="() => StartCallWith(dmMember.Nik)">
+                                <i data-lucide="phone"></i>
+                            </button>
                         }
                     }
-                    <button class="@(drawerOpen && activeDrawerTab == ChatDrawerTab.Pinned ? "on" : "")" title="Pinned messages" @onclick="() => ToggleDrawerTab(ChatDrawerTab.Pinned)"><i data-lucide="pin"></i></button>
-                    <button class="@(drawerOpen && activeDrawerTab == ChatDrawerTab.Media ? "on" : "")" title="Shared files & media" @onclick="() => ToggleDrawerTab(ChatDrawerTab.Media)"><i data-lucide="paperclip"></i></button>
+                    <button type="button" class="header-icon-btn @(drawerOpen && panelView == DetailPanelView.Pinned ? "on" : "")" title="Pinned messages" aria-label="Pinned messages" @onclick="OpenPinnedSection">
+                        <i data-lucide="pin"></i>
+                    </button>
+                    <button type="button" class="header-icon-btn @(drawerOpen && panelView == DetailPanelView.Media ? "on" : "")" title="Shared files & media" aria-label="Shared files & media" @onclick="OpenMediaSection">
+                        <i data-lucide="paperclip"></i>
+                    </button>
                     @if (ChatSvc.ActiveRoom.Type == "group")
                     {
-                        <button class="@(drawerOpen && activeDrawerTab == ChatDrawerTab.Members ? "on" : "")" title="Members" @onclick="() => ToggleDrawerTab(ChatDrawerTab.Members)"><i data-lucide="users"></i></button>
+                        <button type="button" class="header-icon-btn @(drawerOpen && panelView == DetailPanelView.Members ? "on" : "")" title="Members" aria-label="Members" @onclick="OpenMembersSection">
+                            <i data-lucide="users"></i>
+                        </button>
                     }
-                    <button class="@(drawerOpen && activeDrawerTab == ChatDrawerTab.Overview ? "on" : "")" title="Room details & settings" @onclick="() => ToggleDrawerTab(ChatDrawerTab.Overview)"><i data-lucide="panel-right"></i></button>
+                    <button type="button" class="header-icon-btn @(drawerOpen && panelView == DetailPanelView.Main ? "on" : "")" title="Conversation details" aria-label="Conversation details" @onclick="ToggleDetailPanel">
+                        <i data-lucide="panel-right"></i>
+                    </button>
                 </div>
             </div>
 
-            @* ---- Sticky Pinned Announcement Bar (Group & DM) ---- *@
+            @* ---- Slim Sticky Pinned Announcement Bar ---- *@
             @if (pinnedMessages.Count > 0)
             {
                 var latestPin = pinnedMessages.OrderByDescending(p => p.PinnedAt).First();
                 <div class="sticky-pinned-bar" @onclick="() => JumpToMessage(latestPin.MessageId)">
                     <div class="pin-ic"><i data-lucide="pin"></i></div>
                     <div class="pin-body">
-                        <span class="pin-tag">Pinned Message @(pinnedMessages.Count > 1 ? $"({pinnedMessages.Count})" : "")</span>
+                        <span class="pin-tag">Pinned @(pinnedMessages.Count > 1 ? $"({pinnedMessages.Count})" : "") · By @latestPin.SenderName</span>
                         <span class="pin-text">@(!string.IsNullOrEmpty(latestPin.Content) ? TruncateStr(latestPin.Content, 90) : "Pinned announcement")</span>
                     </div>
-                    <button type="button" class="pin-all-btn" @onclick="() => OpenDrawerTab(ChatDrawerTab.Pinned)" @onclick:stopPropagation>
+                    <button type="button" class="pin-all-btn" @onclick="OpenPinnedSection" @onclick:stopPropagation>
                         View all
                     </button>
                 </div>
@@ -276,13 +349,15 @@
 
             <div class="conv-body-flex">
                 <div class="conv-chat-flow">
-                    @* ---- In-conversation Search (Task 15.3) ---- *@
+                    @* ---- In-conversation Search ---- *@
                     @if (searchOpen)
                     {
                         <div class="conv-search-bar">
                             <i data-lucide="search"></i>
                             <input type="text" placeholder="Search messages..." @bind="searchQuery" @bind:event="oninput" @bind:after="DoSearch" />
-                            <button class="comp-btn" @onclick="() => { searchOpen = false; searchResults = []; searchQuery = string.Empty; }"><i data-lucide="x"></i></button>
+                            <button class="comp-btn" @onclick="() => { searchOpen = false; searchResults = []; searchQuery = string.Empty; }" title="Close search" aria-label="Close search">
+                                <i data-lucide="x"></i>
+                            </button>
                         </div>
                         @if (searchResults.Any())
                         {
@@ -342,15 +417,12 @@
                         }
                         @{
                             DateTime? lastDate = null;
-                            // Grouping trackers — carried across iterations to decide whether a
-                            // message continues the previous sender's run.
                             string? prevSenderNik = null;
                             DateTime prevSentAt = DateTime.MinValue;
                             string? prevType = null;
                         }
                         @foreach (var msg in ChatSvc.ActiveMessages)
                         {
-                            @* Date separator — group by *local* date so it matches the label. *@
                             var msgDate = msg.CreatedAt.ToLocalTime().Date;
                             var startsNewDay = lastDate is null || lastDate != msgDate;
                             if (startsNewDay)
@@ -359,10 +431,6 @@
                                 lastDate = msgDate;
                             }
 
-                            @* Unread divider — rendered once, immediately above the first message
-                               the reader had not seen when they opened the room. Slack/Teams/Lark
-                               all keep it pinned there for the whole visit rather than clearing it
-                               the moment it scrolls into view, so it stays a usable landmark. *@
                             var startsUnread = unreadDividerMsgId == msg.Id;
                             if (startsUnread)
                             {
@@ -372,7 +440,6 @@
                             var isSent = msg.SenderNik == GetCurrentUserNik();
                             var isPending = ChatSvc.IsPending(msg.Id);
                             var isFailed = ChatSvc.IsFailed(msg.Id);
-                            var isMediaOnly = IsAttachmentPlaceholder(msg) && msg.ReplyPreview is null && msg.Type != "emergency";
                             var msgClass = msg.Type switch
                             {
                                 "system" => "msg system",
@@ -382,9 +449,6 @@
                             if (isPending) msgClass += " pending";
                             if (isFailed) msgClass += " failed";
 
-                            @* A run continues only when nothing has visually interrupted it: same
-                               sender, ordinary message type on both sides, inside the 5-minute
-                               window, and no separator drawn above this one. *@
                             var isGrouped = prevSenderNik is not null
                                 && prevSenderNik == msg.SenderNik
                                 && !startsNewDay && !startsUnread
@@ -409,34 +473,36 @@
                                             <button type="button" title="Rocket" @onclick='() => QuickReact(currentMsg.Id, "🚀")' @onclick:stopPropagation>🚀</button>
                                         </div>
                                         <div class="act-divider"></div>
-                                        <button type="button" class="act-btn" title="Reply" @onclick="() => StartReply(currentMsg.Id)" @onclick:stopPropagation>
+                                        <button type="button" class="act-btn" title="Reply" aria-label="Reply" @onclick="() => StartReply(currentMsg.Id)" @onclick:stopPropagation>
                                             <i data-lucide="reply"></i>
                                         </button>
-                                        <button type="button" class="act-btn" title="Pin message" @onclick="() => PinMessage(currentMsg.Id)" @onclick:stopPropagation>
-                                            <i data-lucide="pin"></i>
-                                        </button>
+                                        @if (CanPinInActiveRoom)
+                                        {
+                                            <button type="button" class="act-btn" title="@(IsMsgPinned(currentMsg.Id) ? "Unpin message" : "Pin message")" aria-label="@(IsMsgPinned(currentMsg.Id) ? "Unpin message" : "Pin message")" @onclick="() => PinMessage(currentMsg.Id)" @onclick:stopPropagation>
+                                                <i data-lucide="@(IsMsgPinned(currentMsg.Id) ? "pin-off" : "pin")"></i>
+                                            </button>
+                                        }
                                         @if (!string.IsNullOrEmpty(currentMsg.Content) && !IsAttachmentPlaceholder(currentMsg))
                                         {
-                                            <button type="button" class="act-btn" title="Copy text" @onclick="() => CopyMessageText(currentMsg.Content)" @onclick:stopPropagation>
+                                            <button type="button" class="act-btn" title="Copy text" aria-label="Copy text" @onclick="() => CopyMessageText(currentMsg.Content)" @onclick:stopPropagation>
                                                 <i data-lucide="copy"></i>
                                             </button>
                                         }
                                         @if (CanEditMsg(currentMsg.Id))
                                         {
-                                            <button type="button" class="act-btn" title="Edit" @onclick="() => StartEdit(currentMsg.Id)" @onclick:stopPropagation>
+                                            <button type="button" class="act-btn" title="Edit" aria-label="Edit" @onclick="() => StartEdit(currentMsg.Id)" @onclick:stopPropagation>
                                                 <i data-lucide="pencil"></i>
                                             </button>
                                         }
-                                        <button type="button" class="act-btn" title="More options" @onclick="(e) => ShowCtx(currentMsg.Id, e)" @onclick:stopPropagation>
+                                        <button type="button" class="act-btn" title="Save message" aria-label="Save message" @onclick="() => SaveMessage(currentMsg.Id)" @onclick:stopPropagation>
+                                            <i data-lucide="bookmark"></i>
+                                        </button>
+                                        <button type="button" class="act-btn" title="More options" aria-label="More options" @onclick="(e) => ShowCtx(currentMsg.Id, e)" @onclick:stopPropagation>
                                             <i data-lucide="more-horizontal"></i>
                                         </button>
                                     </div>
                                 }
 
-                                @* Avatar rendered inside MessageBubble for normal (non-edit) messages *@
-                                @* (component owns avatar + bubble + reactions + thread link + Seen) *@
-
-                                @* ---- Inline edit mode (Task 13.3) ---- *@
                                 @if (editingMsgId == msg.Id)
                                 {
                                     <div class="bubble-wrap">
@@ -450,22 +516,21 @@
                                 else
                                 {
                                     <MessageBubble Message="currentMsg"
+                                                   ShowDeliveryStatus="@(isSent && msg.Id == LastOwnMessageId)"
                                                    OnCtx="t => ShowCtx(t.Item1, t.Item2)"
                                                    OnProfile="OpenUserProfile"
                                                    OnReact="t => QuickReact(t.Item1, t.Item2)"
                                                    OnThread="ToggleThread"
                                                    OnAttachmentOpen="a => OpenAttachment(a, currentMsg.Attachments)" />
 
-                                    @* ---- Group read receipts (trailing own message only) ---- *@
                                     @if (isSent && !isPending && !isFailed && msg.Id == LastOwnMessageId
-                                         && msg.Type != "system" && ChatSvc.ActiveRoom!.Type == "group")
+                                         && msg.Type != "system" && ChatSvc.ActiveRoom?.Type == "group")
                                     {
                                         <SeenIndicator @key="msg.Id" Message="currentMsg"
                                                        CurrentUserNik="@GetCurrentUserNik()"
-                                                       RoomType="@ChatSvc.ActiveRoom!.Type" />
+                                                       RoomType="@(ChatSvc.ActiveRoom?.Type ?? "group")" />
                                     }
 
-                                    @* ---- Failed send retry ---- *@
                                     @if (isFailed)
                                     {
                                         <div class="msg-retry">
@@ -477,486 +542,760 @@
                                     }
                                 }
 
-                        @* ---- Thread replies (extracted to ThreadPanel) ---- *@
-                        @if (expandedThreadId == msg.Id)
-                        {
-                            <ThreadPanel ParentId="msg.Id" />
-                        }
-                    </div>
-                }
-
-                @* ---- Context Menu (Task 13.1) ---- *@
-                @if (ctxMsgId is not null)
-                {
-                    <div class="ctx-menu on" style="position:fixed;top:@(ctxY)px;left:@(ctxX)px;z-index:99" @onclick:stopPropagation>
-                        <button @onclick="() => StartReply(ctxMsgId.Value)"><i data-lucide="reply"></i> Reply</button>
-                        @if (CanEditMsg(ctxMsgId.Value))
-                        {
-                            <button @onclick="() => StartEdit(ctxMsgId.Value)"><i data-lucide="pencil"></i> Edit</button>
-                        }
-                        <button @onclick="() => StartForward(ctxMsgId.Value)"><i data-lucide="forward"></i> Forward</button>
-                        @if (IsGroupAdmin)
-                        {
-                            <button @onclick="() => PinMessage(ctxMsgId.Value)"><i data-lucide="pin"></i> Pin</button>
-                        }
-                        <button @onclick="() => QuickReact(ctxMsgId.Value, LikeEmoji)"><i data-lucide="thumbs-up"></i> Like</button>
-                        <button class="danger" @onclick="() => ConfirmDelete(ctxMsgId.Value)"><i data-lucide="trash-2"></i> Delete</button>
-                    </div>
-                }
-
-                @* ---- Typing indicator ---- *@
-                @if (ChatSvc.TypingUsers.Any())
-                {
-                    <div class="typing-indicator">
-                        <span class="dots"><span></span><span></span><span></span></span>
-                        @FormatTypingLabel()
-                    </div>
-                }
-            </div>
-
-            @* ---- Jump to latest ---- *@
-            @if (showJumpToLatest)
-            {
-                <button type="button" class="jump-latest" title="Jump to latest" @onclick="JumpToLatest">
-                    <i data-lucide="arrow-down"></i>
-                </button>
-            }
-
-            @* ---- Composer ---- *@
-            <div class="composer-wrap" @ref="composerWrapRef">
-                @* ---- Emoji/Sticker Picker Panel (Task 16.1) ---- *@
-                @if (pickerOpen)
-                {
-                    <div class="picker-panel picker-fixed">
-                        <div class="picker-tabs">
-                            <button class="picker-tab @(pickerTab=="emoji"?"active":"")" @onclick='() => pickerTab = "emoji"'>Emoji</button>
-                            <button class="picker-tab @(pickerTab=="stickers"?"active":"")" @onclick='() => pickerTab = "stickers"'>Stickers</button>
-                        </div>
-                        @if (pickerTab == "emoji")
-                        {
-                            <div class="picker-grid">
-                                @foreach (var emoji in EmojiGrid)
+                                @if (expandedThreadId == msg.Id)
                                 {
-                                    var e = emoji;
-                                    <button class="picker-emoji" @onclick="() => InsertEmoji(e)" @onclick:stopPropagation>@e</button>
+                                    <ThreadPanel ParentId="msg.Id" />
                                 }
                             </div>
                         }
-                        else
+
+                        @if (ChatSvc.TypingUsers.Any())
                         {
-                            <div class="picker-stickers">
-                                @foreach (var icon in StickerIcons)
-                                {
-                                    var ic = icon;
-                                    <button class="picker-sticker" @onclick="() => SendSticker(ic)" @onclick:stopPropagation>
-                                        <i data-lucide="@ic"></i>
-                                    </button>
-                                }
+                            <div class="typing-indicator">
+                                <span class="dots"><span></span><span></span><span></span></span>
+                                @FormatTypingLabel()
                             </div>
                         }
                     </div>
-                }
 
-                @* ---- Mention Autocomplete Popup (Task 16.2 + ipop-30 @project + ipop-31 #task) ---- *@
-                @{
-                    var isTaskTrigger = mentionTrigger == '#' && !string.IsNullOrEmpty(mentionTaskProject?.Id.ToString());
-                    if (isTaskTrigger && tasksLoadedForProject != mentionTaskProject!.Id.ToString("N"))
-                        _ = EnsureTaskCandidatesAsync();
-                    var projectMatches = !mentionPopupOpen && mentionTrigger == '@'
-                        ? projectMentionCandidates.Where(p => p.Name.ToLowerInvariant().Contains(mentionFilter)).Take(5).ToList()
-                        : new List<IPop.Application.Projects.ProjectListDto>();
-                    var taskMatches = isTaskTrigger
-                        ? taskMentionCandidates.Where(t => t.Title.ToLowerInvariant().Contains(mentionFilter)).Take(8).ToList()
-                        : new List<IPop.Application.Projects.ProjectTaskDto>();
-                }
-                @if (mentionPopupOpen && mentionSuggestions.Any())
-                {
-                    <MentionPopup IsOpen="mentionPopupOpen"
-                                  Query="@mentionFilter"
-                                  Candidates="@mentionSuggestions"
-                                  CurrentUserNik="@GetCurrentUserNik()"
-                                  ShowAll="false"
-                                  OnPick="HandleMentionPick" />
-                }
-                else if (projectMatches.Any() || taskMatches.Any())
-                {
-                    <div class="mention-popup">
-                        @if (isTaskTrigger)
+                    @if (showJumpToLatest)
+                    {
+                        <button type="button" class="jump-latest" title="Jump to latest" aria-label="Jump to latest" @onclick="JumpToLatest">
+                            <i data-lucide="arrow-down"></i>
+                        </button>
+                    }
+
+                    @* ---- Apple-style Composer ---- *@
+                    <div class="composer-wrap" @ref="composerWrapRef">
+                        @if (pickerOpen)
                         {
-                            @foreach (var t in taskMatches)
-                            {
-                                var task = t;
-                                <div class="mi" @onclick="() => SelectTaskMention(task)">
-                                    <div class="avatar avatar-28 chip-avatar"><i data-lucide="square-check"></i></div>
-                                    <div><div class="name">@task.Title</div><div class="role">Task · @(task.Status ?? "todo")@(task.Priority is not null ? $" · {task.Priority}" : "")</div></div>
+                            <div class="picker-panel picker-fixed">
+                                <div class="picker-tabs">
+                                    <button class="picker-tab @(pickerTab=="emoji"?"active":"")" @onclick='() => pickerTab = "emoji"'>Emoji</button>
+                                    <button class="picker-tab @(pickerTab=="stickers"?"active":"")" @onclick='() => pickerTab = "stickers"'>Stickers</button>
                                 </div>
-                            }
-                        }
-                        else
-                        {
-                            @foreach (var p in projectMatches)
-                            {
-                                var proj = p;
-                                <div class="mi" @onclick="() => SelectProjectMention(proj)">
-                                    <div class="avatar avatar-28 chip-avatar chip-contextual"><i data-lucide="folder"></i></div>
-                                    <div><div class="name">@proj.Name</div><div class="role">Project · @proj.Status</div></div>
-                                </div>
-                            }
-                        }
-                    </div>
-                }
-                @* ---- Reply Bar (Task 13.2) ---- *@
-                @if (replyToMsg is not null)
-                {
-                    <div class="reply-bar">
-                        <div class="rq"><div class="rq-name">@replyToMsg.SenderName</div><div class="rq-text">@TruncateStr(replyToMsg.Content, 100)</div></div>
-                        <button class="close-reply" @onclick="CancelReply"><i data-lucide="x"></i></button>
-                    </div>
-                }
-                @if (!string.IsNullOrEmpty(uploadError))
-                {
-                    <div class="upload-error">@uploadError</div>
-                }
-                @* ---- Pending Attachments Strip ---- *@
-                @if (pendingAttachments.Count > 0)
-                {
-                    <div class="pending-strip">
-                        @foreach (var att in pendingAttachments)
-                        {
-                            var a = att;
-                            var dto = a.AsDto();
-                            <div class="pending-item @(a.PreviewUrl is not null ? "has-thumb" : "")" title="@a.FileName">
-                                @if (a.PreviewUrl is not null)
+                                @if (pickerTab == "emoji")
                                 {
-                                    <img src="@a.PreviewUrl" alt="@a.FileName" />
+                                    <div class="picker-grid">
+                                        @foreach (var emoji in EmojiGrid)
+                                        {
+                                            var e = emoji;
+                                            <button class="picker-emoji" @onclick="() => InsertEmoji(e)" @onclick:stopPropagation>@e</button>
+                                        }
+                                    </div>
                                 }
                                 else
                                 {
-                                    <span class="ic attachment-icon" style="--attachment-accent:@ChatAttachments.Accent(dto)">
-                                        <i data-lucide="@ChatAttachments.Icon(dto)"></i>
-                                    </span>
-                                    <span class="txt">
-                                        <span class="nm">@a.FileName</span>
-                                        <span class="sz">@ChatAttachments.TypeLabel(dto) · @ChatAttachments.FormatSize(a.FileSize)</span>
-                                    </span>
+                                    <div class="picker-stickers">
+                                        @foreach (var icon in StickerIcons)
+                                        {
+                                            var ic = icon;
+                                            <button class="picker-sticker" @onclick="() => SendSticker(ic)" @onclick:stopPropagation>
+                                                <i data-lucide="@ic"></i>
+                                            </button>
+                                        }
+                                    </div>
                                 }
-                                <button type="button" class="rm" title="Remove" @onclick="() => RemovePending(a.Id)" @onclick:stopPropagation>
-                                    <i data-lucide="x"></i>
-                                </button>
                             </div>
                         }
-                        @if (uploading)
-                        {
-                            <div class="pending-item uploading"><span class="att-skeleton"></span></div>
+
+                        @{
+                            var isTaskTrigger = mentionTrigger == '#' && !string.IsNullOrEmpty(mentionTaskProject?.Id.ToString());
+                            if (isTaskTrigger && tasksLoadedForProject != mentionTaskProject!.Id.ToString("N"))
+                                _ = EnsureTaskCandidatesAsync();
+                            var projectMatches = !mentionPopupOpen && mentionTrigger == '@'
+                                ? projectMentionCandidates.Where(p => p.Name.ToLowerInvariant().Contains(mentionFilter)).Take(5).ToList()
+                                : new List<IPop.Application.Projects.ProjectListDto>();
+                            var taskMatches = isTaskTrigger
+                                ? taskMentionCandidates.Where(t => t.Title.ToLowerInvariant().Contains(mentionFilter)).Take(8).ToList()
+                                : new List<IPop.Application.Projects.ProjectTaskDto>();
                         }
-                    </div>
-                }
-                <div class="composer">
-                    <button class="comp-btn @(uploading ? "busy" : "")" title="Attach file" disabled="@uploading" @onclick="TriggerFileUpload">
-                        <i data-lucide="@(uploading ? "loader" : "paperclip")"></i>
-                    </button>
-                    <InputFile @ref="fileInput" OnChange="OnFileSelected" class="hidden-input" accept="*/*" multiple />
-                    <button class="comp-btn @(pickerOpen ? "on" : "")" title="Emoji & Stickers" @onclick="() => pickerOpen = !pickerOpen"><i data-lucide="smile-plus"></i></button>
-                    @if (ChatSvc.ActiveRoom!.Type == "group")
-                    {
-                        <button class="comp-btn" title="Mention" @onclick="OpenMention"><i data-lucide="at-sign"></i></button>
-                        <button type="button" class="comp-btn" title="Create Poll" @onclick="() => pollModalOpen = true"><i data-lucide="bar-chart-2"></i></button>
-                    }
-
-                    @if (isRecordingVoice)
-                    {
-                        <div class="voice-record-bar">
-                            <span class="rec-dot"></span>
-                            <span>Recording audio...</span>
-                            <button type="button" class="cancel-btn" @onclick="CancelVoiceRecord">Cancel</button>
-                        </div>
-                        <button type="button" class="send-btn" title="Send Voice Message" @onclick="StopAndSendVoiceRecord">
-                            <i data-lucide="send-horizontal"></i>
-                        </button>
-                    }
-                    else
-                    {
-                        <textarea @ref="composerRef" class="input-wrap"
-                                  placeholder="Type a message…  (Enter to send, Shift+Enter for a new line)"
-                                  @bind="messageText"
-                                  @bind:event="oninput"
-                                  @bind:after="OnComposerInput"
-                                  @onkeydown="OnComposerKeyDown"
-                                  @onblur="OnComposerBlur"
-                                  rows="1"></textarea>
-                        <button type="button" class="comp-btn" title="Record Voice Message" @onclick="StartVoiceRecord">
-                            <i data-lucide="mic"></i>
-                        </button>
-                        <button class="send-btn @((string.IsNullOrWhiteSpace(messageText) && pendingAttachments.Count == 0) ? "disabled" : "")"
-                                title="Send"
-                                @onclick="SendMessage"
-                                disabled="@(string.IsNullOrWhiteSpace(messageText) && pendingAttachments.Count == 0)">
-                            <i data-lucide="send-horizontal"></i>
-                        </button>
-                    }
-
-                    @if (IsGroupAdmin)
-                    {
-                        <button class="comp-btn danger-color" title="Emergency broadcast" @onclick="() => emergencyConfirmOpen = true"><i data-lucide="alert-triangle"></i></button>
-                    }
-                </div>
-            </div> @* end .composer-wrap *@
-            </div> @* end .conv-flow *@
-
-            @* ---- Tabbed Right-Side Drawer (Overview | Members | Media & Files | Pinned) ---- *@
-            @if (drawerOpen && ChatSvc.ActiveRoom is not null)
-            {
-                <div class="chat-drawer-backdrop" @onclick="() => drawerOpen = false"></div>
-                <aside class="chat-drawer">
-                    <div class="drawer-top-bar">
-                        <div class="drawer-tabs">
-                            <button type="button" class="d-tab @(activeDrawerTab == ChatDrawerTab.Overview ? "active" : "")"
-                                    @onclick="() => OpenDrawerTab(ChatDrawerTab.Overview)">Overview</button>
-                            <button type="button" class="d-tab @(activeDrawerTab == ChatDrawerTab.Members ? "active" : "")"
-                                    @onclick="() => OpenDrawerTab(ChatDrawerTab.Members)">
-                                Members <span class="badge">@ChatSvc.ActiveRoom.MemberCount</span>
-                            </button>
-                            <button type="button" class="d-tab @(activeDrawerTab == ChatDrawerTab.Media ? "active" : "")"
-                                    @onclick="() => OpenDrawerTab(ChatDrawerTab.Media)">
-                                Files & Media
-                            </button>
-                            <button type="button" class="d-tab @(activeDrawerTab == ChatDrawerTab.Pinned ? "active" : "")"
-                                    @onclick="() => OpenDrawerTab(ChatDrawerTab.Pinned)">
-                                Pinned @if (pinnedMessages.Count > 0) { <span class="badge">@pinnedMessages.Count</span> }
-                            </button>
-                        </div>
-                        <button type="button" class="drawer-close-btn" title="Close details" @onclick="() => drawerOpen = false">
-                            <i data-lucide="x"></i>
-                        </button>
-                    </div>
-
-                    <div class="drawer-content">
-                        @if (activeDrawerTab == ChatDrawerTab.Overview)
+                        @if (mentionPopupOpen && mentionSuggestions.Any())
                         {
-                            <div class="drawer-pane overview-pane">
-                                <div class="drawer-hero">
-                                    <div class="hero-av avatar" style="background:@GetActiveRoomColor()">
-                                        @GetActiveRoomInitials()
-                                    </div>
-                                    <h2 class="hero-name">@GetActiveRoomName()</h2>
-                                    <div class="hero-meta">
-                                        @if (ChatSvc.ActiveRoom.Type == "dm")
+                            <MentionPopup IsOpen="mentionPopupOpen"
+                                          Query="@mentionFilter"
+                                          Candidates="@mentionSuggestions"
+                                          CurrentUserNik="@GetCurrentUserNik()"
+                                          ShowAll="false"
+                                          OnPick="HandleMentionPick" />
+                        }
+                        else if (projectMatches.Any() || taskMatches.Any())
+                        {
+                            <div class="mention-popup">
+                                @if (isTaskTrigger)
+                                {
+                                    @foreach (var t in taskMatches)
+                                    {
+                                        var task = t;
+                                        <div class="mi" @onclick="() => SelectTaskMention(task)">
+                                            <div class="avatar avatar-28 chip-avatar"><i data-lucide="square-check"></i></div>
+                                            <div><div class="name">@task.Title</div><div class="role">Task · @(task.Status ?? "todo")@(task.Priority is not null ? $" · {task.Priority}" : "")</div></div>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    @foreach (var p in projectMatches)
+                                    {
+                                        var proj = p;
+                                        <div class="mi" @onclick="() => SelectProjectMention(proj)">
+                                            <div class="avatar avatar-28 chip-avatar chip-contextual"><i data-lucide="folder"></i></div>
+                                            <div><div class="name">@proj.Name</div><div class="role">Project · @proj.Status</div></div>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+
+                        @if (replyToMsg is not null)
+                        {
+                            <div class="reply-bar">
+                                <div class="rq"><div class="rq-name">@replyToMsg.SenderName</div><div class="rq-text">@TruncateStr(replyToMsg.Content, 100)</div></div>
+                                <button class="close-reply" title="Cancel reply" aria-label="Cancel reply" @onclick="CancelReply"><i data-lucide="x"></i></button>
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(uploadError))
+                        {
+                            <div class="upload-error">@uploadError</div>
+                        }
+
+                        @if (pendingAttachments.Count > 0)
+                        {
+                            <div class="pending-strip">
+                                @foreach (var att in pendingAttachments)
+                                {
+                                    var a = att;
+                                    var dto = a.AsDto();
+                                    <div class="pending-item @(a.PreviewUrl is not null ? "has-thumb" : "")" title="@a.FileName">
+                                        @if (a.PreviewUrl is not null)
                                         {
-                                            var dmOther = ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
-                                            <span class="presence-badge @(dmOther?.PresenceStatus ?? "off")">
-                                                <span class="dot"></span> @PresenceLabel(dmOther?.PresenceStatus)
+                                            <img src="@a.PreviewUrl" alt="@a.FileName" />
+                                        }
+                                        else
+                                        {
+                                            <span class="ic attachment-icon" style="--attachment-accent:@ChatAttachments.Accent(dto)">
+                                                <i data-lucide="@ChatAttachments.Icon(dto)"></i>
+                                            </span>
+                                            <span class="txt">
+                                                <span class="nm">@a.FileName</span>
+                                                <span class="sz">@ChatAttachments.TypeLabel(dto) · @ChatAttachments.FormatSize(a.FileSize)</span>
                                             </span>
                                         }
-                                        else
-                                        {
-                                            <span>@ChatSvc.ActiveRoom.MemberCount members · @ChatSvc.ActiveRoom.OnlineCount online</span>
-                                        }
-                                    </div>
-                                </div>
-
-                                <div class="drawer-stats-row">
-                                    <div class="stat-card">
-                                        <div class="stat-num">@ChatSvc.ActiveMessages.Count</div>
-                                        <div class="stat-lbl">Messages</div>
-                                    </div>
-                                    <div class="stat-card">
-                                        <div class="stat-num">@ChatSvc.ActiveMessages.SelectMany(m => m.Attachments).Count()</div>
-                                        <div class="stat-lbl">Shared Files</div>
-                                    </div>
-                                    <div class="stat-card">
-                                        <div class="stat-num">@pinnedMessages.Count</div>
-                                        <div class="stat-lbl">Pinned</div>
-                                    </div>
-                                </div>
-
-                                <div class="drawer-section">
-                                    <h4 class="section-title">Quick Actions</h4>
-                                    <div class="action-list">
-                                        @if (ChatSvc.ActiveRoom.Type == "dm")
-                                        {
-                                            var dmOther = ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
-                                            <button type="button" class="action-row" @onclick="() => OpenUserProfile(dmOther?.Nik)">
-                                                <i data-lucide="user"></i>
-                                                <span>View full profile</span>
-                                                <i data-lucide="chevron-right" class="arrow"></i>
-                                            </button>
-                                            <a class="action-row" href="/mail?compose=@(dmOther?.Nik)">
-                                                <i data-lucide="mail"></i>
-                                                <span>Send an email</span>
-                                                <i data-lucide="chevron-right" class="arrow"></i>
-                                            </a>
-                                            <button type="button" class="action-row" style="background:none;border:none;width:100%;text-align:left;cursor:pointer" @onclick="() => StartCallWith(dmOther?.Nik)">
-                                                <i data-lucide="phone"></i>
-                                                <span>Panggilan Suara</span>
-                                                <i data-lucide="chevron-right" class="arrow"></i>
-                                            </button>
-                                        }
-                                        else
-                                        {
-                                            <button type="button" class="action-row" @onclick="() => addMemberOpen = !addMemberOpen">
-                                                <i data-lucide="user-plus"></i>
-                                                <span>Add members to group</span>
-                                                <i data-lucide="chevron-right" class="arrow"></i>
-                                            </button>
-                                        }
-                                        <button type="button" class="action-row" @onclick="ToggleMuteRoom">
-                                            <i data-lucide="@(IsActiveRoomMuted ? "bell" : "bell-off")"></i>
-                                            <span>@(IsActiveRoomMuted ? "Unmute notifications" : "Mute notifications")</span>
+                                        <button type="button" class="rm" title="Remove" aria-label="Remove attachment" @onclick="() => RemovePending(a.Id)" @onclick:stopPropagation>
+                                            <i data-lucide="x"></i>
                                         </button>
-                                        <button type="button" class="action-row" @onclick="ToggleReadReceiptsRoom">
-                                            <i data-lucide="@(IsActiveRoomReadReceiptsEnabled ? "check-check" : "eye-off")"></i>
-                                            <span>@(IsActiveRoomReadReceiptsEnabled ? "Read receipts on" : "Read receipts off")</span>
-                                        </button>
-                                        <button type="button" class="action-row" @onclick="ArchiveRoom">
-                                            <i data-lucide="archive"></i>
-                                            <span>Archive conversation</span>
-                                        </button>
-                                        @if (ChatSvc.ActiveRoom.Type == "group")
-                                        {
-                                            <button type="button" class="action-row danger" @onclick="LeaveGroup">
-                                                <i data-lucide="log-out"></i>
-                                                <span>Leave group</span>
-                                            </button>
-                                        }
                                     </div>
-                                </div>
+                                }
+                                @if (uploading)
+                                {
+                                    <div class="pending-item uploading"><span class="att-skeleton"></span></div>
+                                }
                             </div>
                         }
-                        else if (activeDrawerTab == ChatDrawerTab.Members)
-                        {
-                            <div class="drawer-pane members-pane">
-                                <div class="pane-search">
-                                    <i data-lucide="search"></i>
-                                    <input type="text" placeholder="Search members…" @bind="memberFilter" @bind:event="oninput" />
-                                </div>
 
-                                @if (ChatSvc.ActiveRoom.Type == "group")
+                        <div class="composer">
+                            <div class="composer-left-actions">
+                                <button type="button" class="comp-btn @(uploading ? "busy" : "")" title="Attach file" aria-label="Attach file" disabled="@uploading" @onclick="TriggerFileUpload">
+                                    <i data-lucide="@(uploading ? "loader" : "paperclip")"></i>
+                                </button>
+                                <InputFile @ref="fileInput" OnChange="OnFileSelected" class="hidden-input" accept="*/*" multiple />
+                                <button type="button" class="comp-btn @(pickerOpen ? "on" : "")" title="Emoji & Stickers" aria-label="Emoji & Stickers" @onclick="() => pickerOpen = !pickerOpen">
+                                    <i data-lucide="smile-plus"></i>
+                                </button>
+                                @if (ChatSvc.ActiveRoom!.Type == "group")
                                 {
-                                    <div class="add-member-bar">
-                                        <button type="button" class="add-member-toggle-btn" @onclick="() => addMemberOpen = !addMemberOpen">
-                                            <i data-lucide="user-plus"></i> Add new member
-                                        </button>
-                                        @if (addMemberOpen)
-                                        {
-                                            <div class="add-member-popup">
-                                                <input type="text" placeholder="Type name or NIK…" @bind="addMemberQuery" @bind:event="oninput" @bind:after="SearchAddMember" />
-                                                <div class="add-member-results">
-                                                    @foreach (var user in addMemberResults.Take(6))
-                                                    {
-                                                        var u = user;
-                                                        <div class="add-user-item" @onclick="() => AddMemberToGroup(u)">
-                                                            <div class="avatar avatar-26" style="background:@GetUserColor(u.Nik)">
-                                                                @GetInitialsFromName(u.Name)
+                                    <button type="button" class="comp-btn" title="Mention" aria-label="Mention" @onclick="OpenMention"><i data-lucide="at-sign"></i></button>
+                                    <button type="button" class="comp-btn" title="Create Poll" aria-label="Create Poll" @onclick="() => pollModalOpen = true"><i data-lucide="bar-chart-2"></i></button>
+                                }
+                            </div>
+
+                            @if (isRecordingVoice)
+                            {
+                                <div class="voice-record-bar">
+                                    <span class="rec-dot"></span>
+                                    <span>Recording audio...</span>
+                                    <button type="button" class="cancel-btn" @onclick="CancelVoiceRecord">Cancel</button>
+                                </div>
+                                <button type="button" class="send-btn" title="Send Voice Message" aria-label="Send Voice Message" @onclick="StopAndSendVoiceRecord">
+                                    <i data-lucide="arrow-up"></i>
+                                </button>
+                            }
+                            else
+                            {
+                                <textarea @ref="composerRef" class="input-wrap"
+                                          placeholder="iMessage"
+                                          @bind="messageText"
+                                          @bind:event="oninput"
+                                          @bind:after="OnComposerInput"
+                                          @onblur="OnComposerBlur"
+                                          rows="1"></textarea>
+                                <button type="button" class="comp-btn mic-btn" title="Record Voice Message" aria-label="Record Voice Message" @onclick="StartVoiceRecord">
+                                    <i data-lucide="mic"></i>
+                                </button>
+                                <button class="send-btn @((string.IsNullOrWhiteSpace(messageText) && pendingAttachments.Count == 0) ? "disabled" : "")"
+                                        title="Send"
+                                        aria-label="Send message"
+                                        @onclick="SendMessage"
+                                        disabled="@(string.IsNullOrWhiteSpace(messageText) && pendingAttachments.Count == 0)">
+                                    <i data-lucide="arrow-up"></i>
+                                </button>
+                            }
+
+                            @if (IsGroupAdmin)
+                            {
+                                <button type="button" class="comp-btn danger-color" title="Emergency broadcast" aria-label="Emergency broadcast" @onclick="() => emergencyConfirmOpen = true">
+                                    <i data-lucide="alert-triangle"></i>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                @* ---- Single-Column Apple Detail Panel ---- *@
+                @if (drawerOpen && ChatSvc.ActiveRoom is not null)
+                {
+                    <div class="chat-panel-backdrop @(drawerOpen ? "on" : "")" @onclick="CloseDetail"></div>
+                    <aside class="chat-detail-panel @(drawerOpen ? "on" : "")">
+                        <div class="panel-header">
+                            @if (panelView != DetailPanelView.Main)
+                            {
+                                <button type="button" class="panel-back-btn" @onclick="GoBackToMain" title="Back" aria-label="Back">
+                                    <i data-lucide="chevron-left"></i>
+                                    <span>@(personFromRoom ? GetActiveRoomName() : "Back")</span>
+                                </button>
+                                <span class="panel-header-title">
+                                    @(panelView switch
+                                    {
+                                        DetailPanelView.Members => "Members",
+                                        DetailPanelView.Pinned => "Pinned",
+                                        DetailPanelView.Media => "Files & Media",
+                                        DetailPanelView.Events => "Events",
+                                        DetailPanelView.Person => "Contact Info",
+                                        _ => "Details"
+                                    })
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="panel-header-title">Details</span>
+                            }
+                            <button type="button" class="panel-close-btn" title="Close" aria-label="Close" @onclick="CloseDetail">
+                                <i data-lucide="x"></i>
+                            </button>
+                        </div>
+
+                        <div class="panel-body">
+                            @if (panelView == DetailPanelView.Person)
+                            {
+                                <div class="panel-person-view">
+                                    @if (profilePerson is not null)
+                                    {
+                                        <ContactCard Person="profilePerson" OnMessage="HandlePersonMessage" />
+                                    }
+                                    else
+                                    {
+                                        <div class="panel-loading"><i data-lucide="loader-circle"></i> Loading contact info…</div>
+                                    }
+                                </div>
+                            }
+                            else if (panelView == DetailPanelView.Members)
+                            {
+                                <div class="panel-sub-view">
+                                    <div class="pane-search">
+                                        <i data-lucide="search"></i>
+                                        <input type="text" placeholder="Search members…" @bind="memberFilter" @bind:event="oninput" />
+                                    </div>
+
+                                    @if (ChatSvc.ActiveRoom.Type == "group")
+                                    {
+                                        <div class="add-member-bar">
+                                            <button type="button" class="add-member-toggle-btn" @onclick="() => addMemberOpen = !addMemberOpen">
+                                                <i data-lucide="user-plus"></i> Add new member
+                                            </button>
+                                            @if (addMemberOpen)
+                                            {
+                                                <div class="add-member-popup">
+                                                    <input type="text" placeholder="Type name or ID…" @bind="addMemberQuery" @bind:event="oninput" @bind:after="SearchAddMember" />
+                                                    <div class="add-member-results">
+                                                        @foreach (var user in addMemberResults.Take(6))
+                                                        {
+                                                            var u = user;
+                                                            <div class="add-user-item" @onclick="() => AddMemberToGroup(u)">
+                                                                <div class="avatar avatar-26" style="background:@GetUserColor(u.Nik)">
+                                                                    @GetInitialsFromName(u.Name)
+                                                                </div>
+                                                                <span class="name">@u.Name</span>
+                                                                <i data-lucide="plus" class="plus-icon"></i>
                                                             </div>
-                                                            <span class="name">@u.Name</span>
-                                                            <i data-lucide="plus" class="plus-icon"></i>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+
+                                    <div class="member-list-scroll">
+                                        @{
+                                            var members = ChatSvc.ActiveRoom.Members
+                                                .Where(m => string.IsNullOrWhiteSpace(memberFilter) ||
+                                                            m.Name.Contains(memberFilter, StringComparison.OrdinalIgnoreCase) ||
+                                                            m.Nik.Contains(memberFilter, StringComparison.OrdinalIgnoreCase))
+                                                .ToList();
+                                        }
+                                        @foreach (var m in members)
+                                        {
+                                            var member = m;
+                                            <MemberRow Member="member"
+                                                       CurrentUserNik="@GetCurrentUserNik()"
+                                                       CurrentUserRole="@(ChatSvc.ActiveRoom?.CurrentUserRole ?? "")"
+                                                       ShowActions="false"
+                                                       OnProfile="OpenUserProfile" />
+                                        }
+                                        @if (!members.Any())
+                                        {
+                                            <div class="empty-media-state">No members match "@memberFilter"</div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            else if (panelView == DetailPanelView.Pinned)
+                            {
+                                <div class="panel-sub-view">
+                                    <PinnedPanel RoomId="@(ChatSvc.ActiveRoom?.Id ?? Guid.Empty)"
+                                                 IsOpen="true"
+                                                 Items="pinnedMessages"
+                                                 OnClose="GoBackToMain"
+                                                 OnJumpTo="JumpToMessage"
+                                                 OnChanged="LoadPinnedMessagesAsync" />
+                                </div>
+                            }
+                            else if (panelView == DetailPanelView.Media)
+                            {
+                                <div class="panel-sub-view">
+                                    <div class="media-subtabs">
+                                        <button type="button" class="subtab @(mediaSubTab == "all" ? "active" : "")" @onclick='() => mediaSubTab = "all"'>All</button>
+                                        <button type="button" class="subtab @(mediaSubTab == "photos" ? "active" : "")" @onclick='() => mediaSubTab = "photos"'>Photos & Videos</button>
+                                        <button type="button" class="subtab @(mediaSubTab == "docs" ? "active" : "")" @onclick='() => mediaSubTab = "docs"'>Documents</button>
+                                    </div>
+
+                                    <div class="media-list-scroll">
+                                        @{
+                                            var allAtts = ChatSvc.ActiveMessages
+                                                .SelectMany(m => m.Attachments)
+                                                .DistinctBy(a => a.Id)
+                                                .ToList();
+                                            var filteredAtts = mediaSubTab switch
+                                            {
+                                                "photos" => allAtts.Where(a => ChatAttachments.IsImage(a) || ChatAttachments.Kind(a) == AttachmentKind.Video).ToList(),
+                                                "docs" => allAtts.Where(a => !ChatAttachments.IsImage(a) && ChatAttachments.Kind(a) != AttachmentKind.Video).ToList(),
+                                                _ => allAtts
+                                            };
+                                        }
+                                        @if (mediaSubTab == "photos" || (mediaSubTab == "all" && filteredAtts.Any(a => ChatAttachments.IsImage(a) || ChatAttachments.Kind(a) == AttachmentKind.Video)))
+                                        {
+                                            var visualAtts = (mediaSubTab == "photos" ? filteredAtts : filteredAtts.Where(a => ChatAttachments.IsImage(a) || ChatAttachments.Kind(a) == AttachmentKind.Video)).ToList();
+                                            @if (visualAtts.Any())
+                                            {
+                                                <div class="media-grid-3">
+                                                    @foreach (var att in visualAtts)
+                                                    {
+                                                        var a = att;
+                                                        <div class="media-thumb-box" @onclick="() => OpenAttachment(a, visualAtts)">
+                                                            <ChatAttachment Attachment="a" OnOpen="attDto => OpenAttachment(attDto, visualAtts)" />
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                        @if (mediaSubTab == "docs" || (mediaSubTab == "all" && filteredAtts.Any(a => !ChatAttachments.IsImage(a) && ChatAttachments.Kind(a) != AttachmentKind.Video)))
+                                        {
+                                            var docAtts = (mediaSubTab == "docs" ? filteredAtts : filteredAtts.Where(a => !ChatAttachments.IsImage(a) && ChatAttachments.Kind(a) != AttachmentKind.Video)).ToList();
+                                            @if (docAtts.Any())
+                                            {
+                                                <div class="doc-list-col">
+                                                    @foreach (var att in docAtts)
+                                                    {
+                                                        var a = att;
+                                                        <ChatAttachment Attachment="a" Layout="row" OnOpen="attDto => OpenAttachment(attDto, docAtts)" />
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                        @if (!filteredAtts.Any())
+                                        {
+                                            <div class="empty-media-state">
+                                                <i data-lucide="paperclip"></i>
+                                                <span>No shared files found in this conversation yet.</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            else if (panelView == DetailPanelView.Events)
+                            {
+                                <div class="panel-sub-view">
+                                    <div class="drawer-cal">
+                                        <div class="drawer-cal-head">
+                                            <i data-lucide="calendar"></i>
+                                            <span>Room Events</span>
+                                            <button class="btn-sm accent" style="margin-left:auto" @onclick="ToggleRoomEventForm">
+                                                <i data-lucide="plus" style="width:12px;height:12px"></i> Event
+                                            </button>
+                                        </div>
+
+                                        @if (roomEventFormOpen)
+                                        {
+                                            <div class="drawer-cal-form">
+                                                <input class="org-input" style="height:30px;font-size:12.5px" placeholder="Event title…" @bind="roomEventTitle" />
+                                                <input type="datetime-local" class="org-input" style="height:30px;font-size:12.5px" @bind="roomEventStart" />
+                                                <div class="drawer-cal-attendees">
+                                                    <i data-lucide="users" style="width:12px;height:12px"></i>
+                                                    <span>Attendees: @(ChatSvc.ActiveRoom?.MemberCount ?? 0) room members (auto)</span>
+                                                </div>
+                                                <div style="display:flex;gap:6px">
+                                                    <button class="btn-sm accent" disabled="@(string.IsNullOrWhiteSpace(roomEventTitle) || roomEventSaving)" @onclick="SaveRoomEvent">
+                                                        @(roomEventSaving ? "Saving…" : "Save")
+                                                    </button>
+                                                    <button class="btn-sm surface" @onclick="ToggleRoomEventForm">Cancel</button>
+                                                </div>
+                                            </div>
+                                        }
+
+                                        @if (roomEventsLoading)
+                                        {
+                                            <div class="drawer-cal-empty"><i data-lucide="loader-circle"></i> Loading events…</div>
+                                        }
+                                        else if (roomEvents.Count == 0)
+                                        {
+                                            <div class="drawer-cal-empty">
+                                                <i data-lucide="calendar-x" style="width:22px;height:22px"></i>
+                                                <div>No events in this room</div>
+                                                <div class="meta" style="font-size:11px;color:var(--ink-3)">Add meetings for room members.</div>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var ev in roomEvents)
+                                            {
+                                                <button type="button" class="drawer-cal-event" @onclick="() => OpenRoomEventDetail(ev)">
+                                                    <span class="cal-dot"></span>
+                                                    <span class="cal-t">@ev.Title</span>
+                                                    <span class="cal-w">@ev.StartAt.ToLocalTime().ToString("dd MMM, HH:mm")</span>
+                                                </button>
+                                            }
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                @* ---- Single Scroll Column (Main) ---- *@
+                                <div class="panel-main-col">
+                                    <!-- Hero -->
+                                    <div class="panel-hero">
+                                        <div class="panel-hero-av" style="background:@GetActiveRoomColor()">
+                                            @GetActiveRoomInitials()
+                                        </div>
+                                        <div class="panel-hero-name">@GetActiveRoomName()</div>
+                                        <div class="panel-hero-meta">
+                                            @if (ChatSvc.ActiveRoom.Type == "dm")
+                                            {
+                                                var dmOther = ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
+                                                <span class="presence-badge @(dmOther?.PresenceStatus ?? "off")">
+                                                    <span class="dot"></span> @PresenceLabel(dmOther?.PresenceStatus)
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span>@ChatSvc.ActiveRoom.MemberCount members · @ChatSvc.ActiveRoom.OnlineCount online</span>
+                                            }
+                                        </div>
+
+                                        <!-- Three 44px round labelled buttons -->
+                                        <div class="hero-actions">
+                                            @if (ChatSvc.ActiveRoom.Type == "dm")
+                                            {
+                                                var dmOther = ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
+                                                <button type="button" class="hero-btn" @onclick="HandlePersonMessage" title="Message" aria-label="Message">
+                                                    <div class="hero-btn-ic"><i data-lucide="message-circle"></i></div>
+                                                    <span>Message</span>
+                                                </button>
+                                                <a class="hero-btn" href="/mail?compose=@(dmOther?.Nik)" title="Mail" aria-label="Mail">
+                                                    <div class="hero-btn-ic"><i data-lucide="mail"></i></div>
+                                                    <span>Mail</span>
+                                                </a>
+                                                <button type="button" class="hero-btn" @onclick="() => StartCallWith(dmOther?.Nik)" title="Call" aria-label="Call">
+                                                    <div class="hero-btn-ic"><i data-lucide="phone"></i></div>
+                                                    <span>Call</span>
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="hero-btn" @onclick="() => addMemberOpen = !addMemberOpen" title="Add" aria-label="Add members">
+                                                    <div class="hero-btn-ic"><i data-lucide="user-plus"></i></div>
+                                                    <span>Add</span>
+                                                </button>
+                                                <button type="button" class="hero-btn" @onclick="ToggleMuteRoom" title="@(IsActiveRoomMuted ? "Unmute" : "Mute")" aria-label="@(IsActiveRoomMuted ? "Unmute" : "Mute")">
+                                                    <div class="hero-btn-ic"><i data-lucide="@(IsActiveRoomMuted ? "bell-off" : "bell")"></i></div>
+                                                    <span>@(IsActiveRoomMuted ? "Unmute" : "Mute")</span>
+                                                </button>
+                                                <button type="button" class="hero-btn" @onclick="() => searchOpen = !searchOpen" title="Search" aria-label="Search conversation">
+                                                    <div class="hero-btn-ic"><i data-lucide="search"></i></div>
+                                                    <span>Search</span>
+                                                </button>
+                                            }
+                                        </div>
+                                    </div>
+
+                                    <!-- Inset Grouped Lists -->
+                                    <div class="inset-groups">
+                                        @if (ChatSvc.ActiveRoom.Type == "dm")
+                                        {
+                                            var dmMember = ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
+                                            @if (dmPerson is not null)
+                                            {
+                                                <!-- Contact info -->
+                                                <div class="inset-group">
+                                                    <div class="inset-sec-title">Contact</div>
+                                                    <div class="inset-box">
+                                                        <div class="inset-row">
+                                                            <span class="inset-k">Employee ID</span>
+                                                            <span class="inset-v num">@dmPerson.Nik</span>
+                                                        </div>
+                                                        @if (!string.IsNullOrWhiteSpace(dmPerson.Email) && dmPerson.Email != "—")
+                                                        {
+                                                            <div class="inset-row">
+                                                                <span class="inset-k">Email</span>
+                                                                <a href="mailto:@dmPerson.Email" class="inset-v inset-link">@dmPerson.Email</a>
+                                                            </div>
+                                                        }
+                                                        @if (!string.IsNullOrWhiteSpace(dmPerson.Extension) && dmPerson.Extension != "—")
+                                                        {
+                                                            <div class="inset-row">
+                                                                <span class="inset-k">Extension</span>
+                                                                <span class="inset-v num">@dmPerson.Extension</span>
+                                                            </div>
+                                                        }
+                                                        @if (!string.IsNullOrWhiteSpace(dmPerson.Location) && dmPerson.Location != "—")
+                                                        {
+                                                            <div class="inset-row">
+                                                                <span class="inset-k">Location</span>
+                                                                <span class="inset-v">@dmPerson.Location</span>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                </div>
+
+                                                <!-- Organization -->
+                                                <div class="inset-group">
+                                                    <div class="inset-sec-title">Organization</div>
+                                                    <div class="inset-box">
+                                                        @if (!string.IsNullOrWhiteSpace(dmPerson.Manager) && dmPerson.Manager != "—")
+                                                        {
+                                                            <div class="contact-manager-row">
+                                                                <div class="contact-manager-av" style="background:@IPop.Web.Models.AvatarPalette.For(dmPerson.Manager)">
+                                                                    @GetInitialsFromName(dmPerson.Manager)
+                                                                </div>
+                                                                <div class="contact-manager-info">
+                                                                    <div class="contact-manager-name">@dmPerson.Manager</div>
+                                                                    <div class="contact-manager-sub">Direct Manager</div>
+                                                                </div>
+                                                            </div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <div class="inset-row inset-empty">
+                                                                <span class="inset-dim">No direct manager listed.</span>
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                </div>
+
+                                                <!-- Favorites -->
+                                                <div class="inset-group">
+                                                    <div class="inset-box">
+                                                        @{ var isFav = Favorites.IsFavorite(dmPerson.Nik); }
+                                                        <button type="button" class="inset-action-row" @onclick="() => Favorites.ToggleAsync(dmPerson.Nik)">
+                                                            <div class="inset-action-left">
+                                                                <i data-lucide="star" style="color:@(isFav ? "var(--warn)" : "var(--ink-3)");fill:@(isFav ? "currentColor" : "none")"></i>
+                                                                <span>@(isFav ? "Remove from Favorites" : "Add to Favorites")</span>
+                                                            </div>
+                                                            <i data-lucide="chevron-right" class="inset-action-chev"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <!-- Group Members -->
+                                            <div class="inset-group">
+                                                <div class="inset-sec-header">
+                                                    <span class="inset-sec-title">Members (@ChatSvc.ActiveRoom.MemberCount)</span>
+                                                    <button type="button" class="inset-see-all" @onclick="() => OpenDetailView(DetailPanelView.Members)">See all</button>
+                                                </div>
+                                                <div class="inset-box">
+                                                    @foreach (var m in ChatSvc.ActiveRoom.Members.Take(5))
+                                                    {
+                                                        var member = m;
+                                                        <MemberRow Member="member"
+                                                                   CurrentUserNik="@GetCurrentUserNik()"
+                                                                   CurrentUserRole="@(ChatSvc.ActiveRoom?.CurrentUserRole ?? "")"
+                                                                   ShowActions="false"
+                                                                   OnProfile="OpenUserProfile" />
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
+
+                                        <!-- Pinned Section -->
+                                        @if (pinnedMessages.Count > 0)
+                                        {
+                                            <div class="inset-group">
+                                                <div class="inset-sec-header">
+                                                    <span class="inset-sec-title">Pinned (@pinnedMessages.Count)</span>
+                                                    <button type="button" class="inset-see-all" @onclick="() => OpenDetailView(DetailPanelView.Pinned)">See all</button>
+                                                </div>
+                                                <div class="inset-box">
+                                                    @foreach (var pin in pinnedMessages.Take(3))
+                                                    {
+                                                        var p = pin;
+                                                        <div class="inset-row clickable" @onclick="() => JumpToMessage(p.MessageId)">
+                                                            <div class="inset-pin-info">
+                                                                <span class="inset-pin-sender">@p.SenderName</span>
+                                                                <span class="inset-pin-txt">@TruncateStr(p.Content, 60)</span>
+                                                            </div>
+                                                            <i data-lucide="chevron-right" class="inset-action-chev"></i>
                                                         </div>
                                                     }
                                                 </div>
                                             </div>
                                         }
-                                    </div>
-                                }
 
-                                <div class="member-list-scroll">
-                                    @{
-                                        var members = ChatSvc.ActiveRoom.Members
-                                            .Where(m => string.IsNullOrWhiteSpace(memberFilter) ||
-                                                        m.Name.Contains(memberFilter, StringComparison.OrdinalIgnoreCase) ||
-                                                        m.Nik.Contains(memberFilter, StringComparison.OrdinalIgnoreCase))
-                                            .ToList();
-                                    }
-                                    @foreach (var m in members)
-                                    {
-                                        var member = m;
-                                        <MemberRow Member="member"
-                                                   CurrentUserNik="@GetCurrentUserNik()"
-                                                   CurrentUserRole="@(ChatSvc.ActiveRoom?.CurrentUserRole ?? "")"
-                                                   ShowActions="false"
-                                                   OnProfile="OpenUserProfile" />
-                                    }
-                                    @if (!members.Any())
-                                    {
-                                        <div class="empty-media-state">No members match "@memberFilter"</div>
-                                    }
-                                </div>
-                            </div>
-                        }
-                        else if (activeDrawerTab == ChatDrawerTab.Media)
-                        {
-                            <div class="drawer-pane media-pane">
-                                <div class="media-subtabs">
-                                    <button type="button" class="subtab @(mediaSubTab == "all" ? "active" : "")" @onclick='() => mediaSubTab = "all"'>All</button>
-                                    <button type="button" class="subtab @(mediaSubTab == "photos" ? "active" : "")" @onclick='() => mediaSubTab = "photos"'>Photos & Videos</button>
-                                    <button type="button" class="subtab @(mediaSubTab == "docs" ? "active" : "")" @onclick='() => mediaSubTab = "docs"'>Documents</button>
-                                </div>
-
-                                <div class="media-list-scroll">
-                                    @{
-                                        var allAtts = ChatSvc.ActiveMessages
-                                            .SelectMany(m => m.Attachments)
-                                            .DistinctBy(a => a.Id)
-                                            .ToList();
-                                        var filteredAtts = mediaSubTab switch
+                                        <!-- Files & Media Section -->
+                                        @{
+                                            var recentMedia = ChatSvc.ActiveMessages
+                                                .SelectMany(m => m.Attachments)
+                                                .DistinctBy(a => a.Id)
+                                                .Take(6)
+                                                .ToList();
+                                        }
+                                        @if (recentMedia.Any())
                                         {
-                                            "photos" => allAtts.Where(a => ChatAttachments.IsImage(a) || ChatAttachments.Kind(a) == AttachmentKind.Video).ToList(),
-                                            "docs" => allAtts.Where(a => !ChatAttachments.IsImage(a) && ChatAttachments.Kind(a) != AttachmentKind.Video).ToList(),
-                                            _ => allAtts
-                                        };
-                                    }
-                                    @if (mediaSubTab == "photos" || (mediaSubTab == "all" && filteredAtts.Any(a => ChatAttachments.IsImage(a) || ChatAttachments.Kind(a) == AttachmentKind.Video)))
-                                    {
-                                        var visualAtts = (mediaSubTab == "photos" ? filteredAtts : filteredAtts.Where(a => ChatAttachments.IsImage(a) || ChatAttachments.Kind(a) == AttachmentKind.Video)).ToList();
-                                        @if (visualAtts.Any())
-                                        {
-                                            <div class="media-grid-3">
-                                                @foreach (var att in visualAtts)
-                                                {
-                                                    var a = att;
-                                                    <div class="media-thumb-box" @onclick="() => OpenAttachment(a, visualAtts)">
-                                                        <ChatAttachment Attachment="a" OnOpen="attDto => OpenAttachment(attDto, visualAtts)" />
+                                            <div class="inset-group">
+                                                <div class="inset-sec-header">
+                                                    <span class="inset-sec-title">Files & Media</span>
+                                                    <button type="button" class="inset-see-all" @onclick="() => OpenDetailView(DetailPanelView.Media)">See all</button>
+                                                </div>
+                                                <div class="inset-box" style="padding:10px">
+                                                    <div class="media-grid-3">
+                                                        @foreach (var att in recentMedia)
+                                                        {
+                                                            var a = att;
+                                                            <div class="media-thumb-box" @onclick="() => OpenAttachment(a, recentMedia)">
+                                                                <ChatAttachment Attachment="a" OnOpen="attDto => OpenAttachment(attDto, recentMedia)" />
+                                                            </div>
+                                                        }
                                                     </div>
-                                                }
+                                                </div>
                                             </div>
                                         }
-                                    }
-                                    @if (mediaSubTab == "docs" || (mediaSubTab == "all" && filteredAtts.Any(a => !ChatAttachments.IsImage(a) && ChatAttachments.Kind(a) != AttachmentKind.Video)))
-                                    {
-                                        var docAtts = (mediaSubTab == "docs" ? filteredAtts : filteredAtts.Where(a => !ChatAttachments.IsImage(a) && ChatAttachments.Kind(a) != AttachmentKind.Video)).ToList();
-                                        @if (docAtts.Any())
-                                        {
-                                            <div class="doc-list-col">
-                                                @foreach (var att in docAtts)
-                                                {
-                                                    var a = att;
-                                                    <ChatAttachment Attachment="a" Layout="row" OnOpen="attDto => OpenAttachment(attDto, docAtts)" />
-                                                }
-                                            </div>
-                                        }
-                                    }
-                                    @if (!filteredAtts.Any())
-                                    {
-                                        <div class="empty-media-state">
-                                            <i data-lucide="paperclip"></i>
-                                            <span>No shared files found in this conversation yet.</span>
-                                        </div>
-                                    }
-                                </div>
-                            </div>
-                        }
-                        else if (activeDrawerTab == ChatDrawerTab.Pinned)
-                        {
-                            <PinnedPanel RoomId="@(ChatSvc.ActiveRoom?.Id ?? Guid.Empty)"
-                                         IsOpen="true"
-                                         OnClose="() => drawerOpen = false"
-                                         OnJumpTo="JumpToMessage" />
-                        }
-                    </div>
-                </aside>
-            }
-            </div> @* end .conv-body *@
 
-            @* ---- Forward Modal (Task 13.4) ---- *@
+                                        <!-- Events Section -->
+                                        <div class="inset-group">
+                                            <div class="inset-sec-header">
+                                                <span class="inset-sec-title">Events</span>
+                                                <button type="button" class="inset-see-all" @onclick="() => OpenDetailView(DetailPanelView.Events)">See all</button>
+                                            </div>
+                                            <div class="inset-box">
+                                                @if (roomEvents.Count > 0)
+                                                {
+                                                    @foreach (var ev in roomEvents.Take(3))
+                                                    {
+                                                        <button type="button" class="inset-action-row" @onclick="() => OpenRoomEventDetail(ev)">
+                                                            <div class="inset-action-left">
+                                                                <span class="cal-dot"></span>
+                                                                <span>@ev.Title</span>
+                                                            </div>
+                                                            <span class="inset-dim" style="font-size:11.5px">@ev.StartAt.ToLocalTime().ToString("dd MMM, HH:mm")</span>
+                                                        </button>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <button type="button" class="inset-action-row" @onclick="() => OpenDetailView(DetailPanelView.Events)">
+                                                        <div class="inset-action-left">
+                                                            <i data-lucide="calendar-plus"></i>
+                                                            <span>New event</span>
+                                                        </div>
+                                                        <i data-lucide="chevron-right" class="inset-action-chev"></i>
+                                                    </button>
+                                                }
+                                            </div>
+                                        </div>
+
+                                        <!-- Options Section -->
+                                        <div class="inset-group">
+                                            <div class="inset-sec-title">Options</div>
+                                            <div class="inset-box">
+                                                <button type="button" class="inset-action-row" @onclick="ToggleMuteRoom">
+                                                    <div class="inset-action-left">
+                                                        <i data-lucide="@(IsActiveRoomMuted ? "bell-off" : "bell")"></i>
+                                                        <span>Mute notifications</span>
+                                                    </div>
+                                                    <span class="apple-switch @(IsActiveRoomMuted ? "on" : "")">
+                                                        <span class="apple-switch-knob"></span>
+                                                    </span>
+                                                </button>
+                                                <button type="button" class="inset-action-row" @onclick="ToggleReadReceiptsRoom">
+                                                    <div class="inset-action-left">
+                                                        <i data-lucide="@(IsActiveRoomReadReceiptsEnabled ? "check-check" : "eye-off")"></i>
+                                                        <span>Read receipts</span>
+                                                    </div>
+                                                    <span class="apple-switch @(IsActiveRoomReadReceiptsEnabled ? "on" : "")">
+                                                        <span class="apple-switch-knob"></span>
+                                                    </span>
+                                                </button>
+                                                <button type="button" class="inset-action-row" @onclick="ArchiveRoom">
+                                                    <div class="inset-action-left">
+                                                        <i data-lucide="archive"></i>
+                                                        <span>Archive conversation</span>
+                                                    </div>
+                                                    <i data-lucide="chevron-right" class="inset-action-chev"></i>
+                                                </button>
+                                                @if (ChatSvc.ActiveRoom?.Type == "group")
+                                                {
+                                                    <button type="button" class="inset-action-row" @onclick='() => Nav.NavigateTo($"/chat/group/{ChatSvc.ActiveRoom!.Id}/settings")'>
+                                                        <div class="inset-action-left">
+                                                            <i data-lucide="settings"></i>
+                                                            <span>Group settings</span>
+                                                        </div>
+                                                        <i data-lucide="chevron-right" class="inset-action-chev"></i>
+                                                    </button>
+                                                    <button type="button" class="inset-action-row danger" @onclick="LeaveGroup">
+                                                        <div class="inset-action-left">
+                                                            <i data-lucide="log-out"></i>
+                                                            <span>Leave group</span>
+                                                        </div>
+                                                        <i data-lucide="chevron-right" class="inset-action-chev"></i>
+                                                    </button>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </aside>
+                }
+            </div>
+
+            @* ---- Detail Event Ruang ---- *@
+            <EventDetailModal IsOpen="@roomEventModalOpen"
+                              IsOpenChanged="v => roomEventModalOpen = v"
+                              Event="@roomEventDetail" />
+
+            @* ---- Forward Modal ---- *@
             <ChatForwardDialog IsOpen="@forwardOpen"
                                IsOpenChanged="v => forwardOpen = v"
                                Rooms="ChatSvc.DirectRooms.Concat(ChatSvc.GroupRooms).ToList()"
@@ -970,7 +1309,14 @@
                               IsOpenChanged="v => pollModalOpen = v"
                               OnPollCreated="OnPollCreated" />
 
-            @* ---- Emergency Broadcast Modal (Task 18.1) ---- *@
+            @* ---- Leave Group Confirm ---- *@
+            @if (leaveConfirmOpen)
+            {
+                <ConfirmDialog Title="Leave group" Message="@leaveConfirmMessage" ConfirmText="Leave" CancelText="Cancel"
+                               OnConfirm="ConfirmLeaveGroup" OnCancel="() => leaveConfirmOpen = false" />
+            }
+
+            @* ---- Emergency Broadcast Modal ---- *@
             @if (emergencyConfirmOpen)
             {
                 <div class="backdrop on" @onclick="() => emergencyConfirmOpen = false"></div>
@@ -1009,13 +1355,10 @@
     </div>
 </div>
 
-@* ---- Attachment viewer (images, PDF, Word, Excel, media) ---- *@
+@* ---- Attachment viewer ---- *@
 <AttachmentViewer Attachment="viewerAttachment" Siblings="viewerSiblings"
                   OnNavigate="a => viewerAttachment = a"
                   OnClose="CloseAttachment" />
-
-@* ---- Profile Drawer (avatar click) ---- *@
-<IPop.Web.Components.ProfileDrawer Person="profilePerson" OnClose="CloseUserProfile" />
 
 @* ---- New DM Modal ---- *@
 @if (newDmModalOpen)
@@ -1026,32 +1369,95 @@
             <div class="cm-card">
                 <div class="cm-modal-head">
                     <div class="cm-head-row">
-                        <div class="cm-head-icon"><i data-lucide="user"></i></div>
-                        <div class="cm-title">New direct message</div>
+                        <div class="cm-head-icon"><i data-lucide="message-square-plus"></i></div>
+                        <div>
+                            <div class="cm-title">New Message (Direct Message)</div>
+                            <div class="cm-sub">Start a direct conversation with a colleague</div>
+                        </div>
                     </div>
-                    <button class="drawer-close" @onclick="() => newDmModalOpen = false"><i data-lucide="x"></i></button>
+                    <button type="button" class="drawer-close" @onclick="() => newDmModalOpen = false" aria-label="Close"><i data-lucide="x"></i></button>
                 </div>
+
                 <div class="cm-field">
-                    <label class="cm-label">Search people</label>
-                    <input type="text" class="cm-input" placeholder="Search by name or ID..." @bind="newDmSearchQuery" @bind:event="oninput" @bind:after="SearchDmUsers" />
+                    <div class="cm-search-wrap">
+                        <i data-lucide="search" class="cm-search-icon"></i>
+                        <input type="text"
+                               class="cm-input with-icon"
+                               placeholder="Search colleague name or ID…"
+                               @bind="newDmSearchQuery"
+                               @bind:event="oninput"
+                               @bind:after="SearchDmUsers" />
+                        @if (!string.IsNullOrEmpty(newDmSearchQuery))
+                        {
+                            <button type="button" class="cm-search-clear" @onclick="ClearDmSearch" title="Clear search" aria-label="Clear search">
+                                <i data-lucide="x"></i>
+                            </button>
+                        }
+                    </div>
                 </div>
-                <div class="cm-user-list">
-                    @foreach (var user in newDmSearchResults.Take(10))
+
+                @if (string.IsNullOrWhiteSpace(newDmSearchQuery))
+                {
+                    @if (ChatSvc.DirectRooms.Count > 0)
                     {
-                        var u = user;
-                        <div class="cm-user-row" @onclick="() => CreateDmWith(u)">
-                            <div class="avatar" style="background:@GetUserColor(u.Nik)">@GetInitialsFromName(u.Name)</div>
-                            <div class="cm-user-info">
-                                <div class="cm-user-name">@u.Name</div>
-                                <div class="cm-user-sub">@u.Nik</div>
-                            </div>
+                        <div class="cm-list-header">
+                            <i data-lucide="clock"></i>
+                            <span>Recent Conversations</span>
+                        </div>
+                        <div class="cm-user-list">
+                            @foreach (var room in ChatSvc.DirectRooms.Take(6))
+                            {
+                                var r = room;
+                                <button type="button" class="cm-user-row" @onclick="() => OpenDmFromList(r.Id)">
+                                    <div class="avatar" style="background:@GetUserColor(r.RecipientNik ?? r.Name ?? "")">
+                                        @GetInitialsFromName(r.RecipientName ?? r.Name ?? "?")
+                                        @if (r.PresenceStatus == "online")
+                                        {
+                                            <span class="presence-dot online" title="Online"></span>
+                                        }
+                                    </div>
+                                    <div class="cm-user-info">
+                                        <div class="cm-user-name">@(r.RecipientName ?? r.Name)</div>
+                                        <div class="cm-user-sub">@(r.RecipientNik ?? "Direct Chat")</div>
+                                    </div>
+                                    <i data-lucide="message-square" class="cm-user-act"></i>
+                                </button>
+                            }
                         </div>
                     }
-                    @if (!newDmSearchResults.Any() && newDmSearchQuery.Length >= 2)
+                    else
                     {
-                        <div class="cm-empty"><i data-lucide="search"></i><span>No results found</span></div>
+                        <div class="cm-empty">
+                            <i data-lucide="search"></i>
+                            <span>Type at least 2 characters to search by name or ID.</span>
+                        </div>
                     }
-                </div>
+                }
+                else
+                {
+                    <div class="cm-list-header">
+                        <i data-lucide="search"></i>
+                        <span>Search Results (@newDmSearchResults.Count)</span>
+                    </div>
+                    <div class="cm-user-list">
+                        @foreach (var user in newDmSearchResults.Take(10))
+                        {
+                            var u = user;
+                            <button type="button" class="cm-user-row" @onclick="() => CreateDmWith(u)">
+                                <div class="avatar" style="background:@GetUserColor(u.Nik)">@GetInitialsFromName(u.Name)</div>
+                                <div class="cm-user-info">
+                                    <div class="cm-user-name">@u.Name</div>
+                                    <div class="cm-user-sub">@u.Nik @(!string.IsNullOrEmpty(u.Email) ? $"· {u.Email}" : "")</div>
+                                </div>
+                                <i data-lucide="arrow-right" class="cm-user-act"></i>
+                            </button>
+                        }
+                        @if (!newDmSearchResults.Any() && newDmSearchQuery.Length >= 2)
+                        {
+                            <div class="cm-empty"><i data-lucide="user-x"></i><span>No colleagues found matching "@newDmSearchQuery"</span></div>
+                        }
+                    </div>
+                }
             </div>
         </div>
     </div>
@@ -1062,73 +1468,119 @@
 {
     <div class="backdrop on" @onclick="() => newGroupModalOpen = false"></div>
     <div class="cm-center">
-        <div class="cm-tray">
+        <div class="cm-tray cm-tray-group">
             <div class="cm-card">
                 <div class="cm-modal-head">
                     <div class="cm-head-row">
                         <div class="cm-head-icon"><i data-lucide="users"></i></div>
                         <div>
-                            <div class="cm-title">New group chat</div>
-                            <div class="cm-sub">Add members and name your group</div>
+                            <div class="cm-title">New Group Chat</div>
+                            <div class="cm-sub">Name the group and invite team members</div>
                         </div>
                     </div>
-                    <button class="drawer-close" @onclick="() => newGroupModalOpen = false"><i data-lucide="x"></i></button>
+                    <button type="button" class="drawer-close" @onclick="() => newGroupModalOpen = false" aria-label="Close"><i data-lucide="x"></i></button>
                 </div>
-                <!-- Members -->
+
                 <div class="cm-field">
-                    <label class="cm-label">Members</label>
-                    <div class="cm-chips">
-                        @foreach (var member in newGroupSelectedMembers)
-                        {
-                            var m = member;
-                            <span class="cm-chip">
-                                @m.Name
-                                <button type="button" class="chip-x" @onclick="() => RemoveGroupMember(m)"><i data-lucide="x"></i></button>
-                            </span>
-                        }
-                        <input type="text" class="cm-input" placeholder="Search people to add..." @bind="newGroupSearchQuery" @bind:event="oninput" @bind:after="SearchGroupUsers" />
+                    <label class="cm-label">Group Identity</label>
+                    <div class="cm-group-hero">
+                        <div class="cm-group-avatar-preview @(string.IsNullOrWhiteSpace(newGroupName) ? "empty" : "")">
+                            @if (string.IsNullOrWhiteSpace(newGroupName))
+                            {
+                                <i data-lucide="users"></i>
+                            }
+                            else
+                            {
+                                <span>@GetInitialsFromName(newGroupName)</span>
+                            }
+                        </div>
+                        <input type="text"
+                               class="cm-group-name-input"
+                               placeholder="Name this group chat…"
+                               @bind="newGroupName"
+                               @bind:event="oninput"
+                               maxlength="80" />
                     </div>
+                </div>
+
+                @if (newGroupSelectedMembers.Count > 0)
+                {
+                    <div class="cm-chips-wrap">
+                        <div class="cm-member-counter @(newGroupSelectedMembers.Count >= 2 ? "valid" : "")">
+                            <i data-lucide="@(newGroupSelectedMembers.Count >= 2 ? "check-circle" : "info")" style="width:12px;height:12px"></i>
+                            <span>@newGroupSelectedMembers.Count members selected @(newGroupSelectedMembers.Count >= 2 ? "" : "(minimum 2 members)")</span>
+                        </div>
+                        <div class="cm-chips">
+                            @foreach (var member in newGroupSelectedMembers)
+                            {
+                                var m = member;
+                                <span class="cm-chip">
+                                    <span class="chip-name">@m.Name</span>
+                                    <button type="button" class="chip-x" @onclick="() => RemoveGroupMember(m)" title="Remove" aria-label="Remove member"><i data-lucide="x"></i></button>
+                                </span>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <div class="cm-field">
+                    <label class="cm-label">Add Members</label>
+                    <div class="cm-search-wrap">
+                        <i data-lucide="user-plus" class="cm-search-icon"></i>
+                        <input type="text"
+                               class="cm-input with-icon"
+                               placeholder="Search colleague name or ID…"
+                               @bind="newGroupSearchQuery"
+                               @bind:event="oninput"
+                               @bind:after="SearchGroupUsers" />
+                        @if (!string.IsNullOrEmpty(newGroupSearchQuery))
+                        {
+                            <button type="button" class="cm-search-clear" @onclick="ClearGroupSearch" title="Clear search" aria-label="Clear search">
+                                <i data-lucide="x"></i>
+                            </button>
+                        }
+                    </div>
+
                     @if (newGroupSearchResults.Any())
                     {
+                        <div class="cm-list-header" style="margin-top:4px">
+                            <i data-lucide="user-check"></i>
+                            <span>Select Members</span>
+                        </div>
                         <div class="cm-user-list">
                             @foreach (var user in newGroupSearchResults.Take(8))
                             {
                                 var u = user;
-                                <div class="cm-user-row" @onclick="() => AddGroupMember(u)">
+                                <button type="button" class="cm-user-row" @onclick="() => AddGroupMember(u)">
                                     <div class="avatar" style="background:@GetUserColor(u.Nik)">@GetInitialsFromName(u.Name)</div>
                                     <div class="cm-user-info">
                                         <div class="cm-user-name">@u.Name</div>
-                                        <div class="cm-user-sub">@u.Nik</div>
+                                        <div class="cm-user-sub">@u.Nik @(!string.IsNullOrEmpty(u.Email) ? $"· {u.Email}" : "")</div>
                                     </div>
-                                </div>
+                                    <i data-lucide="plus" class="cm-user-act"></i>
+                                </button>
                             }
                         </div>
                     }
+                    else if (newGroupSearchQuery.Length >= 2)
+                    {
+                        <div class="cm-empty" style="margin-top:6px;padding:16px 10px"><i data-lucide="user-x"></i><span>No results found</span></div>
+                    }
                 </div>
-                <!-- Group name -->
-                <div class="cm-field">
-                    <label class="cm-label">Group name</label>
-                    <input type="text" class="cm-input" placeholder="e.g. Backend Migration Team" @bind="newGroupName" />
-                </div>
-                <!-- Info -->
-                @if (newGroupSelectedMembers.Count > 0)
-                {
-                    <div class="cm-note">
-                        <i data-lucide="info"></i>
-                        <span>@newGroupSelectedMembers.Count people selected. @(newGroupSelectedMembers.Count >= 2 ? "This will create a group chat." : "Select at least 2 people for a group.")</span>
-                    </div>
-                }
-                <!-- Actions -->
+
                 <div class="cm-actions">
-                    <button class="cm-btn ghost" @onclick="() => newGroupModalOpen = false">Cancel</button>
-                    <button class="cm-btn primary" @onclick="CreateGroup" disabled="@(newGroupSelectedMembers.Count < 2 || string.IsNullOrWhiteSpace(newGroupName))">Create group</button>
+                    <button type="button" class="cm-btn ghost" @onclick="() => newGroupModalOpen = false">Cancel</button>
+                    <button type="button" class="cm-btn primary" @onclick="CreateGroup" disabled="@(newGroupSelectedMembers.Count < 2 || string.IsNullOrWhiteSpace(newGroupName))">
+                        <i data-lucide="plus"></i>
+                        <span>Create Group</span>
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 }
 
-@* ---- Ctrl+K Quick Switcher (C4) ---- *@
+@* ---- Ctrl+K Quick Switcher ---- *@
 @if (qsOpen)
 {
     <div class="quick-switcher" @onclick="CloseQuickSwitcher">
@@ -1192,4 +1644,23 @@
     </div>
 }
 
-@* The @code block lives in Chat.razor.cs (partial class) — this file is markup only. *@
+@* ---- Context Menu ---- *@
+@if (ctxMsgId is not null)
+{
+    <div class="ctx-menu-backdrop" @onclick="CloseCtx" @oncontextmenu="CloseCtx" @oncontextmenu:preventDefault></div>
+    <div class="ctx-menu on" @ref="ctxMenuRef" style="position:fixed;top:@(ctxY)px;left:@(ctxX)px;z-index:9999" @onclick:stopPropagation>
+        <button @onclick="() => StartReply(ctxMsgId.Value)"><i data-lucide="reply"></i> Reply</button>
+        @if (CanEditMsg(ctxMsgId.Value))
+        {
+            <button @onclick="() => StartEdit(ctxMsgId.Value)"><i data-lucide="pencil"></i> Edit</button>
+        }
+        <button @onclick="() => StartForward(ctxMsgId.Value)"><i data-lucide="forward"></i> Forward</button>
+        <button @onclick="() => SaveMessage(ctxMsgId.Value)"><i data-lucide="bookmark"></i> Save</button>
+        @if (CanPinInActiveRoom)
+        {
+            <button @onclick="() => PinMessage(ctxMsgId.Value)"><i data-lucide="@(IsMsgPinned(ctxMsgId.Value) ? "pin-off" : "pin")"></i> @(IsMsgPinned(ctxMsgId.Value) ? "Unpin" : "Pin")</button>
+        }
+        <button @onclick="() => QuickReact(ctxMsgId.Value, LikeEmoji)"><i data-lucide="thumbs-up"></i> Like</button>
+        <button class="danger" @onclick="() => ConfirmDelete(ctxMsgId.Value)"><i data-lucide="trash-2"></i> Delete</button>
+    </div>
+}

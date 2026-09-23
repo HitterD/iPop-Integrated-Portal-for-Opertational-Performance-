@@ -1,0 +1,466 @@
+@namespace IPop.Web.Components.Projects
+@using IPop.Application.Projects
+@inject IPop.Web.Services.AuthState Auth
+@inject IPop.Web.Services.ToastService Toasts
+
+@* Rencana & Laporan Proyek (Fase 4) — template proyek, milestone, burndown, velocity.
+   Frontend wave: milestone & burndown dihitung dari tugas nyata; template memakai
+   data tiruan sampai endpoint template tersedia. *@
+
+<div class="proj-reports">
+    @* ── Template proyek (data tiruan) ── *@
+    <div class="tray" style="margin-bottom:14px">
+        <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head">
+                <i data-lucide="layout-template"></i> <span>Project Templates</span>
+                <span class="meta">ready-to-use task frameworks</span>
+                <span style="margin-left:auto">
+                    <button class="btn-sm surface" title="Save this project task structure as a new template" @onclick="SaveAsTemplate" disabled="@(Project is null)">
+                        <i data-lucide="save" style="width:12px;height:12px"></i> Save this project as template
+                    </button>
+                </span>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;padding:14px">
+                @foreach (var tpl in Templates)
+                {
+                    <div class="proj-tpl-card">
+                        <div style="font-size:13px;font-weight:700;color:var(--ink)">@tpl.Name</div>
+                        <div style="font-size:11.5px;color:var(--ink-3);margin-top:2px">@tpl.TaskCount framework tasks · @tpl.Description</div>
+                        <button class="btn-sm surface" style="margin-top:8px" title="Create a new project from this template"
+                                disabled="@creatingFromTemplate" @onclick="() => CreateFromTemplate(tpl)">
+                            <i data-lucide="copy" style="width:12px;height:12px"></i> Use
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    @* ── Milestone ── *@
+    <div class="tray" style="margin-bottom:14px">
+        <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head">
+                <i data-lucide="flag"></i> <span>Milestones</span>
+                <span class="meta">@Milestones.Count major targets</span>
+                <span style="margin-left:auto">
+                    <button class="btn-sm accent" @onclick="() => msFormOpen = !msFormOpen"><i data-lucide="plus" style="width:12px;height:12px"></i> New milestone</button>
+                </span>
+            </div>
+
+            @if (msFormOpen)
+            {
+                <div style="padding:12px 14px;border-bottom:1px solid var(--line-soft);display:grid;gap:8px">
+                    <input class="org-input" style="height:32px;font-size:12px" placeholder="Milestone name…" @bind="msName" />
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <label style="font-size:11.5px;color:var(--ink-3)">Target date</label>
+                        <input type="date" class="org-input" style="height:32px;font-size:12px" @bind="msDate" />
+                        <label style="font-size:11.5px;color:var(--ink-3)">Linked task</label>
+                        <select class="filter-select" style="height:32px;font-size:12px" @bind="msTaskId">
+                            <option value="">(no link)</option>
+                            @foreach (var t in AllTasks.Where(t => t.ParentTaskId is null).OrderBy(t => t.Title))
+                            {
+                                <option value="@t.Id">@t.Title</option>
+                            }
+                        </select>
+                    </div>
+                    <div style="display:flex;gap:6px">
+                        <button class="btn-sm accent" disabled="@(string.IsNullOrWhiteSpace(msName))" @onclick="AddMilestone">Save</button>
+                        <button class="btn-sm surface" @onclick="() => msFormOpen = false">Cancel</button>
+                    </div>
+                </div>
+            }
+
+            <div style="padding:10px 14px;display:grid;gap:6px">
+                @if (Milestones.Count == 0 && customMilestones.Count == 0)
+                {
+                    <div class="meta" style="font-size:12px;color:var(--ink-3)">No milestones yet — mark important tasks with dates as milestones.</div>
+                }
+                else
+                {
+                    @* Milestone buatan pengguna *@
+                    @foreach (var m in customMilestones)
+                    {
+                        <div class="proj-milestone">
+                            <i data-lucide="flag" style="width:14px;height:14px;color:var(--accent-ink)"></i>
+                            @if (editingMilestone?.Id == m.Id)
+                            {
+                                <input class="org-input" style="height:26px;font-size:12px;flex:1" @bind="editingMilestoneTitle" />
+                                <input type="date" class="org-input" style="height:26px;font-size:11px" @bind="editingMilestoneDate" />
+                                <select class="filter-select" style="height:26px;font-size:11px;padding:0 6px" @bind="editingMilestoneTaskId">
+                                    <option value="">(no link)</option>
+                                    @foreach (var t in AllTasks.Where(t => t.ParentTaskId is null).OrderBy(t => t.Title))
+                                    {
+                                        <option value="@t.Id">@t.Title</option>
+                                    }
+                                </select>
+                                <button class="btn-sm accent" style="padding:2px 8px" @onclick="SaveMilestoneEdit"><i data-lucide="check" style="width:11px;height:11px"></i></button>
+                                <button class="btn-sm surface" style="padding:2px 8px" @onclick="() => editingMilestone = null"><i data-lucide="x" style="width:11px;height:11px"></i></button>
+                            }
+                            else
+                            {
+                                <span style="flex:1;font-size:12.5px;font-weight:600">@m.Title</span>
+                                @if (m.TaskId is not null)
+                                {
+                                    var linked = AllTasks.FirstOrDefault(t => t.Id == m.TaskId);
+                                    <span style="font-size:10.5px;color:var(--ink-3)">@(linked?.Title ?? "task")</span>
+                                }
+                                <span style="font-size:11px;color:var(--ink-3)">@m.DueDate.ToString("dd MMM yyyy")</span>
+                                <span class="proj-ms-status">Planned</span>
+                                <button class="btn-sm surface" style="padding:2px 8px" title="Edit milestone" @onclick="() => StartMilestoneEdit(m)">
+                                    <i data-lucide="pencil" style="width:11px;height:11px"></i>
+                                </button>
+                                <button class="btn-sm surface danger" style="padding:2px 8px" title="Delete milestone" @onclick="() => DeleteMilestone(m)">
+                                    <i data-lucide="trash-2" style="width:11px;height:11px"></i>
+                                </button>
+                            }
+                        </div>
+                    }
+                    @* Milestone dari tugas bertanggal *@
+                    @foreach (var m in Milestones)
+                    {
+                        var cls = m.Done ? "done" : m.Overdue ? "overdue" : "";
+                        <div class="proj-milestone @cls">
+                            <i data-lucide="@(m.Done ? "check-circle-2" : m.Overdue ? "alert-circle" : "flag")" style="width:14px;height:14px"></i>
+                            <span style="flex:1;font-size:12.5px;font-weight:600">@m.Title</span>
+                            <span style="font-size:11px;color:var(--ink-3)">@m.DueDate.ToString("dd MMM yyyy")</span>
+                            <span class="proj-ms-status @cls">@(m.Done ? "Achieved" : m.Overdue ? "Delayed" : "In Progress")</span>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </div>
+
+    @* ── Burndown + Velocity ── *@
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <div class="tray">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head">
+                    <i data-lucide="trending-down"></i> <span>Burndown</span>
+                    <span class="meta">remaining tasks over time</span>
+                    <span style="margin-left:auto;display:flex;gap:4px;align-items:center">
+                        <label style="font-size:10.5px;color:var(--ink-3)">Milestone</label>
+                        <select class="filter-select" style="height:26px;font-size:11px;padding:0 8px" @bind="burndownMilestoneId">
+                            <option value="">(all)</option>
+                            @foreach (var m in customMilestones)
+                            {
+                                <option value="@m.Id">@m.Title</option>
+                            }
+                        </select>
+                        <label style="font-size:10.5px;color:var(--ink-3)">Range</label>
+                        <select class="filter-select" style="height:26px;font-size:11px;padding:0 8px" @bind="burndownWeeks">
+                            <option value="4">4 weeks</option>
+                            <option value="6">6 weeks</option>
+                            <option value="12">12 weeks</option>
+                        </select>
+                    </span>
+                </div>
+                <div style="padding:14px">
+                    @if (Burndown.Count == 0)
+                    {
+                        <div class="meta" style="font-size:12px;color:var(--ink-3)">Not enough data — dated tasks are required.</div>
+                    }
+                    else
+                    {
+                        <svg viewBox="0 0 300 120" style="width:100%;height:auto">
+                            <polyline fill="none" stroke="var(--accent)" stroke-width="2"
+                                      points="@BurndownPoints" />
+                            <polyline fill="none" stroke="var(--ink-3)" stroke-width="1" stroke-dasharray="4 3"
+                                      points="0,10 300,110" />
+                        </svg>
+                        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--ink-3);margin-top:4px">
+                            <span>@Burndown.First().Label</span>
+                            <span>@Burndown.Last().Remaining tasks remaining</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="tray">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head">
+                    <i data-lucide="gauge"></i> <span>Velocity</span>
+                    <span class="meta">tasks completed per week</span>
+                    <span style="margin-left:auto;display:flex;gap:4px;align-items:center">
+                        <label style="font-size:10.5px;color:var(--ink-3)">Period</label>
+                        <select class="filter-select" style="height:26px;font-size:11px;padding:0 8px" @bind="velocityWeeks">
+                            <option value="4">4 weeks</option>
+                            <option value="6">6 weeks</option>
+                            <option value="12">12 weeks</option>
+                        </select>
+                    </span>
+                </div>
+                <div style="padding:14px">
+                    <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+                        <span style="font-size:26px;font-weight:700;color:var(--ink)">@VelocityPerWeek</span>
+                        <span style="font-size:12px;color:var(--ink-3)">tasks / week (avg last @velocityWeeks weeks)</span>
+                        @if (EstimatedCompletion is not null)
+                        {
+                            <span class="proj-ms-status" style="font-size:10.5px">Estimated remaining @RemainingTasks tasks completion ≈ @EstimatedCompletion</span>
+                        }
+                    </div>
+                    <div style="display:flex;gap:4px;align-items:flex-end;height:56px;margin-top:10px">
+                        @foreach (var v in VelocityBars)
+                        {
+                            <div style="flex:1;background:var(--accent-soft);border-radius:4px 4px 0 0;height:@(v.Height)%" title="@($"{v.Label}: {v.Count} completed")"></div>
+                        }
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--ink-3);margin-top:4px">
+                        @foreach (var v in VelocityBars) { <span>@v.Label</span> }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public ProjectDto? Project { get; set; }
+    [Parameter] public IReadOnlyList<ProjectTaskDto> AllTasks { get; set; } = [];
+
+    // Template — dari server (GET /api/projects/templates); fallback lokal bila kosong.
+    private sealed record TemplateCard(Guid Id, string Name, string? Description, int TaskCount);
+    private List<TemplateCard> Templates = [];
+    private bool creatingFromTemplate;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTemplatesAsync();
+    }
+
+    private async Task LoadTemplatesAsync()
+    {
+        try
+        {
+            var rows = await Auth.GetAsync<List<TemplateRow>>("/api/projects/templates");
+            Templates = (rows ?? []).Select(r => new TemplateCard(r.Id, r.Name, r.Description, r.TaskCount)).ToList();
+        }
+        catch { Templates = []; }
+    }
+
+    private record TemplateRow(Guid Id, string Name, string? Description, int TaskCount);
+
+    private async Task SaveAsTemplate()
+    {
+        if (Project is null) return;
+        try
+        {
+            await Auth.SendAsync(HttpMethod.Post, "/api/projects/templates",
+                new { name = Project.Name, description = $"from project {Project.Year}", sourceProjectId = Project.Id });
+            await LoadTemplatesAsync();
+            Toasts.Show("Template saved.", ToastKind.Success);
+        }
+        catch { Toasts.Show("Failed to save template.", ToastKind.Error); }
+    }
+
+    private async Task CreateFromTemplate(TemplateCard tpl)
+    {
+        if (creatingFromTemplate) return;
+        creatingFromTemplate = true;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/projects/from-template",
+                new { templateId = tpl.Id, name = tpl.Name });
+            if (res.IsSuccessStatusCode)
+                Toasts.Show($"Project created from template \"{tpl.Name}\".", ToastKind.Success);
+            else
+                Toasts.Show("Failed to create project from template.", ToastKind.Error);
+        }
+        catch { Toasts.Show("Failed to create project from template.", ToastKind.Error); }
+        finally { creatingFromTemplate = false; }
+    }
+
+    // Milestone: tugas ber-DueDate dianggap target besar (sampai endpoint milestone tersedia).
+    private sealed record Milestone(string Title, DateTime DueDate, bool Done, bool Overdue);
+
+    // Milestone buatan pengguna (frontend wave — lokal sampai endpoint tersedia).
+    private sealed record CustomMilestone(Guid Id, string Title, DateTime DueDate, Guid? TaskId);
+    private List<CustomMilestone> customMilestones = [];
+    private bool msFormOpen;
+    private string msName = "";
+    private DateTime msDate = DateTime.Today.AddDays(14);
+    private string msTaskId = "";
+
+    private void AddMilestone()
+    {
+        _ = AddMilestoneAsync();
+    }
+
+    private async Task AddMilestoneAsync()
+    {
+        if (Project is null || string.IsNullOrWhiteSpace(msName)) return;
+        try
+        {
+            await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{Project.Id}/milestones",
+                new { title = msName.Trim(), dueDate = msDate, taskId = Guid.TryParse(msTaskId, out var tid) ? tid : (Guid?)null });
+            msName = ""; msTaskId = ""; msFormOpen = false;
+            await LoadMilestonesAsync();
+            Toasts.Show("Milestone saved.", ToastKind.Success);
+        }
+        catch
+        {
+            Toasts.Show("Failed to save milestone.", ToastKind.Error);
+        }
+    }
+
+    private async Task LoadMilestonesAsync()
+    {
+        if (Project is null) return;
+        try
+        {
+            var rows = await Auth.GetAsync<List<MilestoneRow>>($"/api/projects/{Project.Id}/milestones");
+            if (rows is not null)
+                customMilestones = rows.Select(r => new CustomMilestone(r.Id, r.Title, r.DueDate, r.TaskId)).ToList();
+        }
+        catch { }
+    }
+
+    private record MilestoneRow(Guid Id, string Title, DateTime DueDate, Guid? TaskId, string? TaskTitle, bool Achieved, bool Overdue);
+
+    private async Task DeleteMilestone(CustomMilestone m)
+    {
+        if (Project is null) return;
+        try
+        {
+            await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/{Project.Id}/milestones/{m.Id}");
+            customMilestones.Remove(m);
+            Toasts.Show("Milestone deleted.", ToastKind.Success);
+        }
+        catch { Toasts.Show("Failed to delete milestone.", ToastKind.Error); }
+    }
+
+    // Ubah milestone (judul/tanggal/tautan tugas) — PUT ke server.
+    private CustomMilestone? editingMilestone;
+    private string editingMilestoneTitle = "";
+    private DateTime editingMilestoneDate;
+    private string editingMilestoneTaskId = "";
+
+    private void StartMilestoneEdit(CustomMilestone m)
+    {
+        editingMilestone = m;
+        editingMilestoneTitle = m.Title;
+        editingMilestoneDate = m.DueDate;
+        editingMilestoneTaskId = m.TaskId?.ToString() ?? "";
+    }
+
+    private async Task SaveMilestoneEdit()
+    {
+        if (Project is null || editingMilestone is null) return;
+        var newTaskId = Guid.TryParse(editingMilestoneTaskId, out var tid) ? tid : (Guid?)null;
+        try
+        {
+            await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{Project.Id}/milestones/{editingMilestone.Id}",
+                new { title = editingMilestoneTitle.Trim(), dueDate = editingMilestoneDate, taskId = newTaskId, clearTask = newTaskId is null });
+            editingMilestone = null;
+            await LoadMilestonesAsync();
+            Toasts.Show("Milestone updated.", ToastKind.Success);
+        }
+        catch { Toasts.Show("Failed to update milestone.", ToastKind.Error); }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadMilestonesAsync();
+    }
+
+    private List<Milestone> Milestones => AllTasks
+        .Where(t => t.DueDate is not null && t.ParentTaskId is null)
+        .OrderBy(t => t.DueDate)
+        .Take(8)
+        .Select(t => new Milestone(t.Title, t.DueDate!.Value, t.Status == "done", t.Status != "done" && t.DueDate.Value < DateTime.UtcNow))
+        .ToList();
+
+    // Burndown: sisa tugas (bukan done) per minggu mundur sesuai rentang pilihan.
+    // Filter milestone: hanya tugas yang dikaitkan ke milestone terpilih (bila dipilih).
+    private sealed record BurndownPoint(string Label, int Remaining);
+    private int burndownWeeks = 6;
+    private string burndownMilestoneId = "";
+
+    private List<ProjectTaskDto> BurndownScope
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(burndownMilestoneId)) return AllTasks.Where(t => t.ParentTaskId is null).ToList();
+            var linkedTaskIds = customMilestones
+                .Where(m => m.Id.ToString() == burndownMilestoneId && m.TaskId is not null)
+                .Select(m => m.TaskId!.Value)
+                .ToHashSet();
+            return AllTasks.Where(t => t.ParentTaskId is null && linkedTaskIds.Contains(t.Id)).ToList();
+        }
+    }
+
+    private List<BurndownPoint> Burndown
+    {
+        get
+        {
+            var scope = BurndownScope;
+            if (scope.Count == 0) return [];
+            var points = new List<BurndownPoint>();
+            for (var w = burndownWeeks - 1; w >= 0; w--)
+            {
+                var weekEnd = DateTime.UtcNow.Date.AddDays(-7 * w);
+                // Sisa pada titik lampau = belum selesai kini + yang selesai SETELAH titik
+                // itu (UpdatedAt > weekEnd). Tugas overdue tetap terhitung sisa.
+                var remaining = scope.Count(t => t.Status != "done" || t.UpdatedAt.Date > weekEnd);
+                points.Add(new BurndownPoint(w == 0 ? "Kini" : $"M-{w}", remaining));
+            }
+            return points;
+        }
+    }
+
+    private string BurndownPoints
+    {
+        get
+        {
+            if (Burndown.Count == 0) return "";
+            var max = Math.Max(1, Burndown.Max(p => p.Remaining));
+            return string.Join(" ", Burndown.Select((p, i) =>
+                $"{(int)(i * (300.0 / (Burndown.Count - 1)))},{(int)(10 + (double)p.Remaining / max * 100)}"));
+        }
+    }
+
+    // Velocity: tugas selesai (done) per minggu, sesuai periode pilihan.
+    private sealed record VelocityBar(string Label, int Count, int Height);
+    private int velocityWeeks = 6;
+    private List<VelocityBar> VelocityBars
+    {
+        get
+        {
+            var counts = new List<int>();
+            for (var w = velocityWeeks - 1; w >= 0; w--)
+            {
+                var from = DateTime.UtcNow.Date.AddDays(-7 * (w + 1));
+                var to = DateTime.UtcNow.Date.AddDays(-7 * w);
+                var n = AllTasks.Count(t => t.ParentTaskId is null && t.Status == "done" && t.UpdatedAt >= from && t.UpdatedAt < to);
+                counts.Add(n);
+            }
+            var max = Math.Max(1, counts.Max());
+            var bars = new List<VelocityBar>();
+            for (var i = 0; i < counts.Count; i++)
+                bars.Add(new VelocityBar(i == counts.Count - 1 ? "Kini" : $"M-{counts.Count - 1 - i}", counts[i], (int)(100.0 * counts[i] / max)));
+            return bars;
+        }
+    }
+    private string VelocityPerWeek
+    {
+        get
+        {
+            var total = VelocityBars.Sum(b => b.Count);
+            return (total / (double)velocityWeeks).ToString("0.#");
+        }
+    }
+
+    // Estimasi penyelesaian: sisa tugas ÷ rata-rata velocity per minggu → tanggal kira-kira.
+    private int RemainingTasks => AllTasks.Count(t => t.ParentTaskId is null && t.Status != "done");
+    private string? EstimatedCompletion
+    {
+        get
+        {
+            var total = VelocityBars.Sum(b => b.Count);
+            if (total <= 0 || RemainingTasks <= 0) return null;
+            var perWeek = total / (double)velocityWeeks;
+            var weeksLeft = (int)Math.Ceiling(RemainingTasks / perWeek);
+            return DateTime.Today.AddDays(weeksLeft * 7).ToString("dd MMM yyyy");
+        }
+    }
+}

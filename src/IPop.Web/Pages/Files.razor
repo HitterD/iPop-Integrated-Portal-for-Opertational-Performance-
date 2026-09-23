@@ -1,7 +1,10 @@
 @page "/files"
 @implements IDisposable
+@using IPop.Web.Services
 @inject AuthState Auth
 @inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject FileState FileStateService
 
 <PageTitle>Files - IPop</PageTitle>
 
@@ -60,7 +63,7 @@
         }
         else if (loadError is not null)
         {
-            <div class="tree-empty" style="padding:28px"><p>@loadError</p><button class="btn btn-sm" style="margin:12px auto 0" @onclick="Reload">Retry</button></div>
+            <div class="tree-empty" style="padding:28px"><p>@loadError</p><button class="btn btn-sm" style="margin:12px auto 0" @onclick="() => Reload()">Retry</button></div>
         }
         else
         {
@@ -99,13 +102,36 @@
                                 <i data-lucide="arrow-up"></i>
                             </button>
                         </div>
-                        <button class="files-crumb-pill home" @onclick='() => Navigate("/")'>/</button>
-                        @if (currentPath != "/")
-                        {
-                            <i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--ink-3); flex-shrink:0"></i>
-                            <span class="files-crumb-pill current" title="@currentPath">@currentPath</span>
-                        }
-                        <span class="meta" style="margin-left:6px; font-size:11px; color:var(--ink-3)">@filteredItems.Count items</span>
+                        <div class="files-crumb-trail">
+                            <button class="files-crumb-seg @(currentPath == "/" ? "active" : "")" @onclick='() => Navigate("/")' title="Root">
+                                <i data-lucide="hard-drive" style="width:12px;height:12px"></i> @serverLabel
+                            </button>
+                            @foreach (var seg in GetBreadcrumbs())
+                            {
+                                <i data-lucide="chevron-right" class="files-crumb-sep"></i>
+                                @if (seg.IsLast)
+                                {
+                                    <span class="files-crumb-seg active" title="@seg.Path">@seg.Name</span>
+                                }
+                                else
+                                {
+                                    <button class="files-crumb-seg" title="@seg.Path" @onclick="() => Navigate(seg.Path)">@seg.Name</button>
+                                }
+                            }
+                        </div>
+                        <div class="files-crumb-actions">
+                            @if (isRevalidating)
+                            {
+                                <span class="files-revalidating"><span class="spinner"></span> Syncing…</span>
+                            }
+                            <button class="files-tool-btn @(copiedPath ? "copied" : "")" title="Copy current path to clipboard" @onclick="CopyCurrentPath">
+                                <i data-lucide="@(copiedPath ? "check" : "copy")"></i> <span>@(copiedPath ? "Copied" : "Copy path")</span>
+                            </button>
+                            <button class="files-tool-btn" title="Force refresh from Synology NAS" @onclick="ForceRefresh">
+                                <i data-lucide="refresh-cw"></i> <span>Refresh</span>
+                            </button>
+                            <span class="meta" style="font-size:11px; color:var(--ink-3); margin-left:4px">@filteredItems.Count items</span>
+                        </div>
                     </div>
 
                     <div class="files-head">
@@ -124,11 +150,20 @@
                         {
                             @if (!string.IsNullOrWhiteSpace(search) || !string.IsNullOrEmpty(typeFilter))
                             {
-                                <div class="tree-empty" style="padding:28px">No matching files. <button class="btn btn-sm surface" style="display:inline-flex; margin-left:8px" @onclick="ClearFilters">Clear filters</button></div>
+                                <div class="files-empty-box">
+                                    <div class="empty-icon"><i data-lucide="search-x"></i></div>
+                                    <div class="empty-title">No matching files</div>
+                                    <div class="empty-desc">No items match the current filter or search query.</div>
+                                    <button class="btn btn-sm surface" style="margin-top:6px" @onclick="ClearFilters">Clear filters</button>
+                                </div>
                             }
                             else
                             {
-                                <div class="tree-empty" style="padding:28px">Empty folder.</div>
+                                <div class="files-empty-box">
+                                    <div class="empty-icon"><i data-lucide="folder-open"></i></div>
+                                    <div class="empty-title">This folder is empty</div>
+                                    <div class="empty-desc">No files or subfolders in this directory.</div>
+                                </div>
                             }
                         }
                         else
@@ -146,7 +181,7 @@
                                         {
                                             <span class="fi" style="background:@GetFileIconBg(it.Name); color:@GetFileIconColor(it.Name)"><i data-lucide="@GetFileIcon(it.Name)"></i></span>
                                             <span class="n">@it.Name</span> <span class="tag" style="background:@GetFileTagBg(it.Name); color:@GetFileTagColor(it.Name)">@GetFileExtLabel(it.Name)</span>
-                                            @if (IsPreviewable(it.Name)) { <span class="tag" style="background:var(--accent-soft); color:var(--accent-ink); border:1px solid rgba(46,125,91,0.12)"><i data-lucide="eye" style="width:10px;height:10px; display:inline; vertical-align:middle; margin-right:3px"></i>Preview</span> }
+                                            @if (IsCoAuthorable(it.Name)) { <span class="tag" style="background:#e8f5e9; color:#1b7a3d; border:1px solid rgba(27,122,61,0.2)"><i data-lucide="users" style="width:10px;height:10px; display:inline; vertical-align:middle; margin-right:3px"></i>Co-author</span> }
                                         }
                                     </span>
                                     <span class="fmeta mono">@(it.IsDir ? "—" : FormatSize(it.Size))</span>
@@ -158,10 +193,23 @@
                                         }
                                         else
                                         {
-                                            <button class="org-act" title="Open in Explorer" @onclick="() => OpenInExplorerFor(it)"><i data-lucide="folder-open"></i></button>
+                                            @if (IsCoAuthorable(it.Name))
+                                            {
+                                                <a href="@GetEditorUrl(it)" target="_blank" class="file-action-btn edit-collab" title="Co-author real-time in new tab (ONLYOFFICE)" @onclick:stopPropagation="true">
+                                                    <i data-lucide="users"></i>
+                                                    <span>Co-author</span>
+                                                </a>
+                                            }
                                             @if (IsPreviewable(it.Name))
-                                            { <button class="org-act" title="Preview" @onclick="() => Preview(it)"><i data-lucide="eye"></i></button> }
+                                            {
+                                                <button class="file-action-btn preview-btn" title="Quick document preview" @onclick="() => Preview(it)">
+                                                    <i data-lucide="eye"></i>
+                                                    <span>Preview</span>
+                                                </button>
+                                            }
+                                            <button class="org-act" title="Open in Explorer" @onclick="() => OpenInExplorerFor(it)"><i data-lucide="folder-open"></i></button>
                                             <button class="org-act" title="Download" @onclick="() => Download(it)"><i data-lucide="download"></i></button>
+                                            <button class="org-act" title="Share via Mail" @onclick="() => ShareViaMail(it)"><i data-lucide="mail"></i></button>
                                         }
                                     </span>
                                 </div>
@@ -213,6 +261,8 @@
             <div class="drawer-head">
                 <span style="display:flex; gap:8px; align-items:center; min-width:0"><i data-lucide="eye"></i> <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis">@previewItem?.Name</span> @if (previewMime is not null) { <span class="tag">@previewMime</span> }</span>
                 <span style="display:flex; gap:6px; align-items:center">
+                    @if (previewItem is not null && IsCoAuthorable(previewItem.Name))
+                    { <a href="@GetEditorUrl(previewItem)" target="_blank" class="file-action-btn edit-collab" style="padding:4px 12px; font-size:12px; box-shadow:0 1px 2px rgba(27,122,61,0.12)" title="Co-author real-time in new tab"><i data-lucide="users" style="width:13px;height:13px;margin-right:5px"></i> Co-author</a> }
                     <button class="org-act" title="Open in File Explorer" @onclick="OpenInExplorer"><i data-lucide="folder-open"></i></button>
                     <button class="org-act" title="Print" @onclick="PrintPreview"><i data-lucide="printer"></i></button>
                     <button class="org-act" title="Download" @onclick="() => Download(previewItem!)"><i data-lucide="download"></i></button>
@@ -223,7 +273,15 @@
                 @if (previewLoading)
                 { <div class="tree-empty">Loading preview…</div> }
                 else if (previewError is not null)
-                { <div class="note err"><i data-lucide="alert-circle"></i><span>@previewError</span></div> }
+                {
+                    <div style="display:flex; flex-direction:column; align-items:center; gap:12px; max-width:440px; text-align:center">
+                        <div class="note err"><i data-lucide="alert-circle"></i><span>@previewError</span></div>
+                        @if (previewItem is not null)
+                        {
+                            <button class="btn" style="width:auto; margin:0; font-size:13px" @onclick="() => Download(previewItem)"><i data-lucide="download" style="margin-right:6px"></i> Download @previewItem.Name</button>
+                        }
+                    </div>
+                }
                 else if (isSheetPreview && previewSheetBytes is not null)
                 {
                     <ExcelViewer FileName="@previewItem?.Name" Bytes="@previewSheetBytes" />
@@ -341,38 +399,247 @@
         StateHasChanged();
     }
 
-    protected override void OnInitialized() => Layout.SetHeader("Files", "Files");
-    protected override async Task OnInitializedAsync() => await Reload();
+    private bool isRevalidating;
+    private bool copiedPath;
+
+    private record BreadcrumbSegment(string Name, string Path, bool IsLast);
+
+    private List<BreadcrumbSegment> GetBreadcrumbs()
+    {
+        var list = new List<BreadcrumbSegment>();
+        if (string.IsNullOrEmpty(currentPath) || currentPath == "/") return list;
+
+        var parts = currentPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var acc = "";
+        for (int i = 0; i < parts.Length; i++)
+        {
+            acc += "/" + parts[i];
+            list.Add(new BreadcrumbSegment(parts[i], acc, i == parts.Length - 1));
+        }
+        return list;
+    }
+
+    private async Task CopyCurrentPath()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", currentPath);
+            copiedPath = true;
+            StateHasChanged();
+            await Task.Delay(1800);
+            copiedPath = false;
+            StateHasChanged();
+        }
+        catch
+        {
+            // fallback: no clipboard permission
+        }
+    }
+
+    private async Task ForceRefresh()
+    {
+        FileStateService.Invalidate(server, currentPath);
+        await Reload(bypassCache: true);
+    }
+
+    protected override void OnInitialized()
+    {
+        Layout.SetHeader("Files", "Files");
+        // Pulihkan state server dan path dari in-memory state seketika (0ms)
+        server = FileStateService.CurrentServer;
+        credServer = server;
+        currentPath = FileStateService.CurrentPath;
+
+        backStack.Clear();
+        backStack.AddRange(FileStateService.BackStack);
+        forwardStack.Clear();
+        forwardStack.AddRange(FileStateService.ForwardStack);
+
+        // Pulihkan shares dari cache jika tersedia
+        if (FileStateService.TryGetCachedShares(server, out var sCached))
+        {
+            shares = sCached;
+        }
+
+        if (currentPath == "/")
+        {
+            if (shares is not null) loading = false;
+        }
+        else
+        {
+            if (FileStateService.TryGetCachedItems(server, currentPath, out var iCached))
+            {
+                items = iCached;
+                loading = false;
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Pulihkan persistent last-seen dari localStorage (jika browser di-refresh / tab baru)
+        var restored = await FileStateService.LoadLastSeenAsync(JS);
+        if (restored.HasValue)
+        {
+            server = FileStateService.CurrentServer;
+            credServer = server;
+            currentPath = FileStateService.CurrentPath;
+            if (FileStateService.TryGetCachedShares(server, out var sCached2))
+            {
+                shares = sCached2;
+            }
+            if (currentPath != "/" && FileStateService.TryGetCachedItems(server, currentPath, out var iCached))
+            {
+                items = iCached;
+                loading = false;
+                StateHasChanged();
+            }
+        }
+
+        await Reload();
+    }
 
     private async Task SwitchServer(string id)
     {
         server = id; credServer = id; currentPath = "/"; search = "";
+        FileStateService.CurrentServer = id;
+        FileStateService.CurrentPath = "/";
+        backStack.Clear(); forwardStack.Clear();
+        FileStateService.BackStack.Clear(); FileStateService.ForwardStack.Clear();
+        _ = FileStateService.SaveLastSeenAsync(JS);
         await Reload();
     }
 
-    private async Task Reload()
+    private async Task Reload(bool bypassCache = false)
     {
-        loading = true; loadError = null;
-        shares = null; items = [];
-        var cred = await Auth.GetAsync<CredentialStatusDto>($"/api/files/credential?server={server}");
-        credential = cred;
-        if (cred is null || !cred.HasCredential) { needsCredential = true; loading = false; StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons"); return; }
-        if (cred.IsInvalid) { needsCredential = true; showCred = true; loading = false; StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons"); return; }
-        needsCredential = false;
-        if (currentPath == "/")
+        // ipop-42: navigation paths fire-and-forget Reload after mutating currentPath.
+        // Capture at start and compare after EVERY await — a superseded continuation
+        // must write nothing, or the listing can show folder A while currentPath is B
+        // (and OnUpload then posts files into B while the user is looking at A).
+        var pathAtStart = currentPath;
+        var serverAtStart = server;
+        loadError = null;
+
+        bool hasCachedData = false;
+        // Selalu pastikan shares di-resolve dari cache terlebih dahulu
+        if (shares is null && FileStateService.TryGetCachedShares(server, out var shCache))
         {
-            var s = await Auth.GetAsync<List<string>>($"/api/files/shares?server={server}");
-            if (s is null) loadError = "Could not reach the NAS.";
-            else shares = s;
+            shares = shCache;
+        }
+
+        if (!bypassCache)
+        {
+            if (currentPath == "/")
+            {
+                if (shares is not null)
+                {
+                    hasCachedData = true;
+                }
+            }
+            else
+            {
+                if (FileStateService.TryGetCachedItems(server, currentPath, out var iCached))
+                {
+                    items = iCached;
+                    hasCachedData = true;
+                }
+            }
+        }
+
+        if (hasCachedData)
+        {
+            loading = false;
+            isRevalidating = true;
+            StateHasChanged();
         }
         else
         {
-            var list = await Auth.GetAsync<List<SynoItemDto>>($"/api/files?server={server}&path={Uri.EscapeDataString(currentPath)}");
-            if (list is null) loadError = "Could not load folder.";
-            else items = list;
+            loading = true;
+            if (currentPath != "/") items = [];
         }
-        loading = false;
-        StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons");
+
+        try
+        {
+            var cred = await Auth.GetAsync<CredentialStatusDto>($"/api/files/credential?server={server}");
+            if (pathAtStart != currentPath || serverAtStart != server) return; // superseded by navigation
+            credential = cred;
+            if (cred is null || !cred.HasCredential) { needsCredential = true; return; }
+            if (cred.IsInvalid) { needsCredential = true; showCred = true; return; }
+            needsCredential = false;
+
+            Task<List<string>?>? sharesTask = null;
+            if (shares is null)
+            {
+                sharesTask = Auth.GetAsync<List<string>>($"/api/files/shares?server={server}");
+            }
+
+            Task<List<SynoItemDto>?>? itemsTask = null;
+            if (currentPath != "/")
+            {
+                itemsTask = Auth.GetAsync<List<SynoItemDto>>($"/api/files?server={server}&path={Uri.EscapeDataString(currentPath)}");
+            }
+
+            if (sharesTask is not null)
+            {
+                var s = await sharesTask;
+                if (pathAtStart != currentPath || serverAtStart != server) return;
+                if (s is not null)
+                {
+                    shares = s;
+                    FileStateService.SetCachedShares(server, s);
+                }
+            }
+
+            if (currentPath == "/")
+            {
+                if (shares is null)
+                {
+                    if (!hasCachedData) loadError = "Could not reach the NAS.";
+                }
+                else if (shares.Count > 0)
+                {
+                    // Auto-open share pertama jika di root "/" agar panel kanan tidak kosong
+                    var targetShare = shares.FirstOrDefault(sh => !sh.Contains("backup") && !sh.Contains("git")) ?? shares[0];
+                    currentPath = targetShare;
+                    FileStateService.CurrentPath = targetShare;
+                    _ = FileStateService.SaveLastSeenAsync(JS);
+                    _ = Reload();
+                    return;
+                }
+            }
+            else if (itemsTask is not null)
+            {
+                var list = await itemsTask;
+                if (pathAtStart != currentPath || serverAtStart != server) return; // superseded
+                if (list is null)
+                {
+                    if (!hasCachedData) loadError = "Could not load folder.";
+                }
+                else
+                {
+                    items = list;
+                    FileStateService.SetCachedItems(server, currentPath, list);
+                }
+            }
+
+            FileStateService.CurrentServer = server;
+            FileStateService.CurrentPath = currentPath;
+            FileStateService.BackStack = backStack.ToList();
+            FileStateService.ForwardStack = forwardStack.ToList();
+            _ = FileStateService.SaveLastSeenAsync(JS);
+        }
+        finally
+        {
+            // ipop-46 + ipop-42: guarantee the spinner clears on a throw, but a SUPERSEDED
+            // continuation still writes nothing — the newer Reload owns `loading` now.
+            if (pathAtStart == currentPath && serverAtStart == server)
+            {
+                loading = false;
+                isRevalidating = false;
+                StateHasChanged();
+                await JS.InvokeVoidAsync("ipop.icons");
+            }
+        }
     }
 
     // Push the current path onto the back stack before navigating somewhere
@@ -381,6 +648,8 @@
     {
         if (backStack.Count == 0 || backStack[^1] != currentPath) backStack.Add(currentPath);
         forwardStack.Clear();
+        FileStateService.BackStack = backStack.ToList();
+        FileStateService.ForwardStack = forwardStack.ToList();
     }
 
     private void Enter(string share) { PushHistory(); currentPath = share; _ = Reload(); }
@@ -402,6 +671,10 @@
         forwardStack.Add(currentPath);
         currentPath = backStack[^1];
         backStack.RemoveAt(backStack.Count - 1);
+        FileStateService.BackStack = backStack.ToList();
+        FileStateService.ForwardStack = forwardStack.ToList();
+        FileStateService.CurrentPath = currentPath;
+        _ = FileStateService.SaveLastSeenAsync(JS);
         _ = Reload();
     }
     private void GoForward()
@@ -410,6 +683,10 @@
         backStack.Add(currentPath);
         currentPath = forwardStack[^1];
         forwardStack.RemoveAt(forwardStack.Count - 1);
+        FileStateService.BackStack = backStack.ToList();
+        FileStateService.ForwardStack = forwardStack.ToList();
+        FileStateService.CurrentPath = currentPath;
+        _ = FileStateService.SaveLastSeenAsync(JS);
         _ = Reload();
     }
 
@@ -466,12 +743,24 @@
             try
             {
                 var res2 = await Auth.SendAsync(HttpMethod.Get, $"/api/files/preview?server={server}&path={Uri.EscapeDataString(it.Path)}");
-                if (!res2.IsSuccessStatusCode) { previewError = "Preview not available - use Download."; return; }
+                if (!res2.IsSuccessStatusCode)
+                {
+                    var errText = "Document preview is unavailable.";
+                    try
+                    {
+                        var errJson = await res2.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+                        if (errJson.TryGetProperty("message", out var m) && !string.IsNullOrWhiteSpace(m.GetString()))
+                            errText = m.GetString()!;
+                    }
+                    catch { }
+                    previewError = errText;
+                    return;
+                }
                 var bytes2 = await res2.Content.ReadAsByteArrayAsync();
                 previewUrl = await JS.InvokeAsync<string>("ipop.preview", Convert.ToBase64String(bytes2), "application/pdf", it.Name);
                 previewMime = "application/pdf";
             }
-            catch { previewError = "Preview failed."; }
+            catch (Exception ex) { previewError = $"Failed to load preview: {ex.Message}"; }
             finally { previewLoading = false; StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons"); }
             return;
         }
@@ -513,6 +802,9 @@
         if (url is not null) await JS.InvokeVoidAsync("ipop.revokePreview");
         await JS.InvokeVoidAsync("ipop.icons");
     }
+
+    private static bool IsCoAuthorable(string name) => GetFileExt(name) is ".docx" or ".doc" or ".xlsx" or ".xls" or ".pptx" or ".ppt" or ".rtf";
+    private string GetEditorUrl(SynoItemDto it) => $"/files/editor?server={server}&path={Uri.EscapeDataString(it.Path)}";
 
     private async Task PrintPreview()
     {
@@ -563,14 +855,14 @@
     private static string FormatSize(long b) => b < 1024 ? $"{b} B" : b < 1024 * 1024 ? $"{b / 1024:N0} KB" : $"{b / 1024 / 1024:N0} MB";
     private static string FormatMtime(long mtime) => mtime == 0 ? "—" : DateTimeOffset.FromUnixTimeSeconds(mtime).ToLocalTime().ToString("MMM dd");
     private static string GetFileExt(string name) => System.IO.Path.GetExtension(name).ToLowerInvariant();
-    private static bool IsPreviewable(string name) => GetFileExt(name) is ".pdf" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" or ".xlsx" or ".xls" or ".csv" or ".docx" or ".doc" or ".pptx" or ".ppt";
-    private static bool IsOfficePreviewable(string name) => GetFileExt(name) is ".xlsx" or ".xls" or ".csv" or ".docx" or ".doc" or ".pptx" or ".ppt";
+    private static bool IsPreviewable(string name) => GetFileExt(name) is ".pdf" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" or ".xlsx" or ".xls" or ".csv" or ".docx" or ".doc" or ".pptx" or ".ppt" or ".rtf";
+    private static bool IsOfficePreviewable(string name) => GetFileExt(name) is ".docx" or ".doc" or ".pptx" or ".ppt" or ".rtf";
     // Sheets renderable by RadzenSpreadsheet (XLSX/CSV). Legacy .xls stays on the SheetJS path.
     private static bool IsSheetPreviewable(string name) => GetFileExt(name) is ".xlsx" or ".csv";
     private static string GetFileIcon(string name) => GetFileExt(name) switch
     {
         ".xls" or ".xlsx" or ".csv" => "table",
-        ".doc" or ".docx" => "file-text",
+        ".doc" or ".docx" or ".rtf" => "file-text",
         ".ppt" or ".pptx" => "presentation",
         ".pdf" => "file-text",
         ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "image",
@@ -581,40 +873,40 @@
     };
     private static string GetFileIconBg(string name) => GetFileExt(name) switch
     {
-        ".xls" or ".xlsx" or ".csv" => "#e8f5e9",
-        ".doc" or ".docx" => "#e3f2fd",
-        ".ppt" or ".pptx" => "#fff3e0",
-        ".pdf" => "#f9ece7",
-        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "#f3e8ff",
-        ".zip" or ".rar" or ".7z" => "#eceff1",
-        _ => "var(--surface)"
+        ".xls" or ".xlsx" or ".csv" => "var(--accent-soft)",
+        ".doc" or ".docx" or ".rtf" => "var(--info-soft)",
+        ".ppt" or ".pptx" => "var(--warn-soft)",
+        ".pdf" => "var(--danger-soft)",
+        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "rgba(124, 58, 237, 0.12)",
+        ".zip" or ".rar" or ".7z" => "var(--surface-3)",
+        _ => "var(--surface-2)"
     };
     private static string GetFileIconColor(string name) => GetFileExt(name) switch
     {
-        ".xls" or ".xlsx" or ".csv" => "#1b7a3d",
-        ".doc" or ".docx" => "#1a56c4",
-        ".ppt" or ".pptx" => "#c2410c",
-        ".pdf" => "#b3462f",
-        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "#7c3aed",
-        ".zip" or ".rar" or ".7z" => "#546e7a",
+        ".xls" or ".xlsx" or ".csv" => "var(--accent-ink)",
+        ".doc" or ".docx" or ".rtf" => "var(--info)",
+        ".ppt" or ".pptx" => "var(--warn)",
+        ".pdf" => "var(--danger)",
+        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "#8b5cf6",
+        ".zip" or ".rar" or ".7z" => "var(--ink-3)",
         _ => "var(--ink-3)"
     };
     private static string GetFileTagBg(string name) => GetFileExt(name) switch
     {
-        ".xls" or ".xlsx" or ".csv" => "#e8f5e9",
-        ".doc" or ".docx" => "#e3f2fd",
-        ".ppt" or ".pptx" => "#fff3e0",
+        ".xls" or ".xlsx" or ".csv" => "var(--accent-soft)",
+        ".doc" or ".docx" or ".rtf" => "var(--info-soft)",
+        ".ppt" or ".pptx" => "var(--warn-soft)",
         ".pdf" => "var(--danger-soft)",
-        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "#f3e8ff",
-        _ => "var(--tray)"
+        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "rgba(124, 58, 237, 0.12)",
+        _ => "var(--surface-2)"
     };
     private static string GetFileTagColor(string name) => GetFileExt(name) switch
     {
-        ".xls" or ".xlsx" or ".csv" => "#1b7a3d",
-        ".doc" or ".docx" => "#1a56c4",
-        ".ppt" or ".pptx" => "#c2410c",
+        ".xls" or ".xlsx" or ".csv" => "var(--accent-ink)",
+        ".doc" or ".docx" or ".rtf" => "var(--info)",
+        ".ppt" or ".pptx" => "var(--warn)",
         ".pdf" => "var(--danger)",
-        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "#7c3aed",
+        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "#8b5cf6",
         _ => "var(--ink-2)"
     };
     private static string GetFileExtLabel(string name)
@@ -631,13 +923,26 @@
         ".webp" => "image/webp",
         ".bmp" => "image/bmp",
         ".svg" => "image/svg+xml",
+        ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".doc" => "application/msword",
+        ".rtf" => "application/rtf",
+        ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".ppt" => "application/vnd.ms-powerpoint",
+        ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xls" => "application/vnd.ms-excel",
+        ".csv" => "text/csv",
         _ => "application/octet-stream"
     };
+    private void ShareViaMail(SynoItemDto it)
+    {
+        var subject = it.Name;
+        var body = $"File: {it.Name}\nLocation: {server}:{it.Path}";
+        Nav.NavigateTo($"/mail?shareSubject={Uri.EscapeDataString(subject)}&shareBody={Uri.EscapeDataString(body)}");
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
     public void Dispose()
     {
         _ = JS.InvokeVoidAsync("ipop.revokePreview");
     }
-    private record CredentialStatusDto(bool HasCredential, bool IsInvalid, string? Username, string? Server);
-    private record SynoItemDto(string Name, string Path, bool IsDir, long Size, long Mtime);
 }

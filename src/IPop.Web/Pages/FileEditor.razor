@@ -1,0 +1,293 @@
+@page "/files/editor"
+@layout EmptyLayout
+@implements IDisposable
+@inject AuthState Auth
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>@(string.IsNullOrWhiteSpace(fileName) ? "Document Editor" : fileName) - iPop Docs</PageTitle>
+
+<div class="editor-page">
+    @* --- Top Bar Ramping (44px) ala Google Docs / Office 365 Web --- *@
+    <header class="editor-topbar">
+        <div class="editor-topbar-left">
+            <span class="editor-brand-pill">
+                <i data-lucide="file-edit" style="width:13px;height:13px"></i> iPop Docs
+            </span>
+
+            <div class="editor-file-info">
+                <i data-lucide="@GetFileIcon(fileName)" style="width:16px;height:16px;color:@GetFileIconColor(fileName)"></i>
+                <span class="editor-file-name" title="@fileName">@(string.IsNullOrWhiteSpace(fileName) ? "Document" : fileName)</span>
+                @if (!string.IsNullOrWhiteSpace(ServerParam))
+                {
+                    <span class="editor-server-badge">@ServerParam.ToUpperInvariant()</span>
+                }
+            </div>
+
+            <span class="editor-mode-badge" style="@(isConnecting || !string.IsNullOrEmpty(errorMessage) ? "display:none" : "display:inline-flex")" title="Real-time collaboration mode: changes and cursors of other users are visible simultaneously">
+                <i data-lucide="zap" style="width:11px;height:11px"></i> Real-time Sync
+            </span>
+
+            @* Indikator Status Dinamis (Elemen Stabil) *@
+            <div class="editor-status-pill @StatusPillClass" title="@StatusPillTooltip">
+                <span class="editor-status-dot"></span>
+                <span>@StatusPillText</span>
+            </div>
+        </div>
+
+        <div class="editor-topbar-right">
+            <button class="btn btn-sm surface" style="padding:4px 12px; font-size:12px; height:30px; display:inline-flex; align-items:center; border-radius:6px" title="Download copy of document" @onclick="DownloadFile" disabled="@isDownloading">
+                <i data-lucide="@(isDownloading ? "loader-2" : "download")" class="@(isDownloading ? "spin" : "")" style="width:13px;height:13px;margin-right:5px"></i>
+                <span>Download</span>
+            </button>
+            <button class="btn btn-sm" style="padding:4px 12px; font-size:12px; height:30px; display:inline-flex; align-items:center; border-radius:6px; background:var(--tray); color:var(--ink); border:1px solid var(--line-soft)" title="Close editor and return to Files" @onclick="CloseEditor">
+                <i data-lucide="x" style="width:13px;height:13px;margin-right:5px"></i>
+                <span>Close &amp; Return</span>
+            </button>
+        </div>
+    </header>
+
+    @* --- Fullscreen ONLYOFFICE Canvas Container (Elemen Stabil) --- *@
+    <main class="editor-canvas-container">
+        <div class="editor-overlay-msg @(isConnecting ? "show" : "hide")">
+            <div style="display:flex; flex-direction:column; align-items:center; gap:12px">
+                <div style="width:36px; height:36px; border:3px solid var(--line-soft); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite"></div>
+                <div style="font-weight:600; font-size:14px; color:var(--ink)">Loading Document Editor…</div>
+                <div style="font-size:12px; color:var(--ink-2)">Preparing real-time collaboration session for <strong>@fileName</strong></div>
+            </div>
+        </div>
+
+        <div class="editor-overlay-msg @(!string.IsNullOrEmpty(errorMessage) ? "show" : "hide")" style="z-index:30">
+            <div style="display:flex; flex-direction:column; align-items:center; gap:14px; max-width:480px; text-align:center">
+                <div style="width:48px;height:48px;border-radius:12px;background:#fee2e2;color:#b91c1c;display:grid;place-items:center">
+                    <i data-lucide="alert-triangle" style="width:24px;height:24px"></i>
+                </div>
+                <div style="font-weight:600; font-size:16px; color:var(--ink)">Failed to Open Editor</div>
+                <div style="font-size:13px; color:var(--ink-2); line-height:1.5">@errorMessage</div>
+                <div style="display:flex; gap:10px; margin-top:8px">
+                    <button class="btn btn-sm" style="background:var(--accent); color:#fff" @onclick="LoadEditorConfig">
+                        <i data-lucide="rotate-cw" style="width:13px;height:13px;margin-right:6px"></i> Try Again
+                    </button>
+                    <button class="btn btn-sm surface" @onclick="DownloadFile">
+                        <i data-lucide="download" style="width:13px;height:13px;margin-right:6px"></i> Download File
+                    </button>
+                    <button class="btn btn-sm surface" @onclick="CloseEditor">
+                        Back to Files
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="@PlaceholderId" class="editor-frame-host"></div>
+    </main>
+</div>
+
+@code {
+    private const string PlaceholderId = "ipop-onlyoffice-root";
+
+    [SupplyParameterFromQuery(Name = "server")]
+    public string? ServerParam { get; set; }
+
+    [SupplyParameterFromQuery(Name = "path")]
+    public string? PathParam { get; set; }
+
+    private string fileName => string.IsNullOrWhiteSpace(PathParam) ? "" : System.IO.Path.GetFileName(PathParam);
+    private bool isConnecting = true;
+    private bool isSaving = false;
+    private bool isDownloading = false;
+    private string? errorMessage;
+    private DotNetObjectReference<FileEditor>? dotNetRef;
+
+    private string StatusPillClass =>
+        isConnecting ? "connecting" :
+        !string.IsNullOrEmpty(errorMessage) ? "error" :
+        isSaving ? "saving" : "saved";
+
+    private string StatusPillText =>
+        isConnecting ? "Connecting…" :
+        !string.IsNullOrEmpty(errorMessage) ? "Sync failed" :
+        isSaving ? "Saving to Synology…" : "Saved to Synology";
+
+    private string StatusPillTooltip =>
+        isConnecting ? "Connecting to collaboration server..." :
+        !string.IsNullOrEmpty(errorMessage) ? (errorMessage ?? "") :
+        isSaving ? "Changes are being saved periodically to Synology NAS..." :
+        "All changes saved to Synology NAS";
+
+    protected override async Task OnInitializedAsync()
+    {
+        dotNetRef = DotNetObjectReference.Create(this);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.IsNullOrWhiteSpace(ServerParam) || string.IsNullOrWhiteSpace(PathParam))
+        {
+            errorMessage = "Invalid server or document path parameters.";
+            isConnecting = false;
+            return;
+        }
+
+        await LoadEditorConfig();
+    }
+
+    private async Task LoadEditorConfig()
+    {
+        isConnecting = true;
+        errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var cleanServer = ServerParam?.Trim() ?? "";
+            var cleanPath = PathParam?.Trim() ?? "";
+
+            var res = await Auth.SendAsync(HttpMethod.Get, $"/api/onlyoffice/config?server={Uri.EscapeDataString(cleanServer)}&path={Uri.EscapeDataString(cleanPath)}");
+            if (!res.IsSuccessStatusCode)
+            {
+                string? msg = null;
+                try
+                {
+                    var errJson = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+                    if (errJson.TryGetProperty("message", out var m)) msg = m.GetString();
+                }
+                catch { }
+
+                errorMessage = msg ?? $"Failed to initialize editor (HTTP {(int)res.StatusCode}). Please ensure Synology account is connected.";
+                isConnecting = false;
+                StateHasChanged();
+                await JS.InvokeVoidAsync("ipop.icons");
+                return;
+            }
+
+            var configJson = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            var serverUrl = configJson.TryGetProperty("serverUrl", out var s) ? s.GetString() ?? "http://localhost:8088" : "http://localhost:8088";
+
+            // Sedikit delay agar DOM siap
+            await Task.Delay(50);
+            var ok = await JS.InvokeAsync<bool>("ipop.initOnlyOffice", PlaceholderId, serverUrl, configJson, dotNetRef);
+            if (!ok)
+            {
+                errorMessage = "Failed to load ONLYOFFICE engine. Ensure ONLYOFFICE server on port 8088 is active.";
+                isConnecting = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading document: {ex.Message}";
+            isConnecting = false;
+        }
+        finally
+        {
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    [JSInvokable]
+    public void OnEditorReady()
+    {
+        isConnecting = false;
+        isSaving = false;
+        errorMessage = null;
+        StateHasChanged();
+        _ = JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    [JSInvokable]
+    public void OnDocumentStateChange(bool hasUnsavedChanges)
+    {
+        isSaving = hasUnsavedChanges;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnEditorError(string errorMsg)
+    {
+        errorMessage = $"ONLYOFFICE error: {errorMsg}";
+        isConnecting = false;
+        StateHasChanged();
+        _ = JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task DownloadFile()
+    {
+        if (string.IsNullOrWhiteSpace(ServerParam) || string.IsNullOrWhiteSpace(PathParam) || isDownloading) return;
+        isDownloading = true;
+        StateHasChanged();
+
+        try
+        {
+            var cleanServer = ServerParam.Trim();
+            var cleanPath = PathParam.Trim();
+            var res = await Auth.SendAsync(HttpMethod.Get, $"/api/files/download?server={Uri.EscapeDataString(cleanServer)}&path={Uri.EscapeDataString(cleanPath)}");
+            if (res.IsSuccessStatusCode)
+            {
+                var bytes = await res.Content.ReadAsByteArrayAsync();
+                var mime = GetMimeType(fileName);
+                await JS.InvokeVoidAsync("ipop.downloadBlob", Convert.ToBase64String(bytes), mime, fileName);
+            }
+            else
+            {
+                errorMessage = "Failed to download file from Synology.";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Download error: {ex.Message}";
+        }
+        finally
+        {
+            isDownloading = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    private async Task CloseEditor()
+    {
+        await JS.InvokeVoidAsync("ipop.closeOrNavigate", "/files");
+    }
+
+    private static string GetFileExt(string name) => System.IO.Path.GetExtension(name).ToLowerInvariant();
+
+    private static string GetFileIcon(string name) => GetFileExt(name) switch
+    {
+        ".xls" or ".xlsx" or ".csv" => "table",
+        ".doc" or ".docx" or ".rtf" => "file-text",
+        ".ppt" or ".pptx" => "presentation",
+        _ => "file-text"
+    };
+
+    private static string GetFileIconColor(string name) => GetFileExt(name) switch
+    {
+        ".xls" or ".xlsx" or ".csv" => "#1b7a3d",
+        ".doc" or ".docx" or ".rtf" => "#1a56c4",
+        ".ppt" or ".pptx" => "#c2410c",
+        _ => "var(--accent)"
+    };
+
+    private static string GetMimeType(string name) => GetFileExt(name) switch
+    {
+        ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ".doc" => "application/msword",
+        ".rtf" => "application/rtf",
+        ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".ppt" => "application/vnd.ms-powerpoint",
+        ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xls" => "application/vnd.ms-excel",
+        ".csv" => "text/csv",
+        _ => "application/octet-stream"
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    public void Dispose()
+    {
+        _ = JS.InvokeVoidAsync("ipop.destroyOnlyOffice", PlaceholderId);
+        dotNetRef?.Dispose();
+    }
+}

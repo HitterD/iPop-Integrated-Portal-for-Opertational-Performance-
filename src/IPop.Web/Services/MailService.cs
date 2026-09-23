@@ -20,16 +20,22 @@ public sealed class MailService(AuthState Auth, HttpClient http)
         _ => "inbox",
     };
 
-    public Task<MailPaged<MailSummary>?> GetFolderAsync(MailFolder folder, int page, int pageSize, string? q = null, bool? starredOnly = null, bool? unreadOnly = null, CancellationToken ct = default)
+    public Task<MailPaged<MailSummary>?> GetFolderAsync(MailFolder folder, int page, int pageSize, string? q = null, bool? starredOnly = null, bool? unreadOnly = null, string? label = null,
+        DateTime? dateFrom = null, DateTime? dateTo = null, bool? hasAttachment = null, CancellationToken ct = default)
     {
         var url = $"/api/mail/folders/{F(folder)}?page={page}&pageSize={pageSize}";
         if (!string.IsNullOrWhiteSpace(q)) url += $"&q={Uri.EscapeDataString(q)}";
         if (starredOnly is not null) url += $"&starredOnly={(starredOnly.Value ? "true" : "false")}";
         if (unreadOnly is not null) url += $"&unreadOnly={(unreadOnly.Value ? "true" : "false")}";
+        if (!string.IsNullOrWhiteSpace(label)) url += $"&label={Uri.EscapeDataString(label)}";
+        if (dateFrom is not null) url += $"&dateFrom={dateFrom.Value:yyyy-MM-dd}";
+        if (dateTo is not null) url += $"&dateTo={dateTo.Value:yyyy-MM-dd}";
+        if (hasAttachment == true) url += "&hasAttachment=true";
         return Auth.GetAsync<MailPaged<MailSummary>>(url, ct);
     }
 
     public Task<MailCounts?> GetCountsAsync(CancellationToken ct = default) => Auth.GetAsync<MailCounts>("/api/mail/counts", ct);
+    public Task<List<MailLabel>?> GetLabelsAsync(CancellationToken ct = default) => Auth.GetAsync<List<MailLabel>>("/api/mail/labels", ct);
     public Task<MailDetail?> GetAsync(Guid id, CancellationToken ct = default) => Auth.GetAsync<MailDetail>($"/api/mail/{id}", ct);
     public Task<MailPaged<MailSummary>?> GetThreadAsync(Guid rootId, int page, int pageSize, CancellationToken ct = default)
         => Auth.GetAsync<MailPaged<MailSummary>>($"/api/mail/threads/{rootId}?page={page}&pageSize={pageSize}", ct);

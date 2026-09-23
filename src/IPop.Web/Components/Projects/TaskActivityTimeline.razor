@@ -1,0 +1,71 @@
+@namespace IPop.Web.Components.Projects
+
+@* Riwayat aktivitas tugas — kronologis (terbaru di atas), dikelompokkan per hari.
+   Kontrak backend: GET /api/projects/tasks/{taskId}/activity. *@
+
+@if (Items.Count == 0)
+{
+    <div class="tree-empty" style="padding:24px">
+        <i data-lucide="history" style="width:18px;height:18px;margin-bottom:6px"></i>
+        <div class="meta" style="font-size:12px;color:var(--ink-3)">No recorded activity history.</div>
+    </div>
+}
+else
+{
+    @foreach (var day in DayGroups)
+    {
+        <div class="task-activity-day">@day.Label</div>
+        <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:10px">
+            @foreach (var a in day.Items)
+            {
+                <div class="task-activity-row">
+                    <i data-lucide="@IconFor(a.Action)" class="task-activity-ic"></i>
+                    <div style="flex:1;min-width:0">
+                        <span style="font-size:12px"><b>@a.Actor</b> @a.Action</span>
+                        @if (!string.IsNullOrEmpty(a.Detail))
+                        {
+                            <div style="font-size:11.5px;color:var(--ink-3)">@a.Detail</div>
+                        }
+                    </div>
+                    <span style="font-size:10.5px;color:var(--ink-3);flex-shrink:0">@a.At.ToLocalTime().ToString("HH:mm")</span>
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    /// Satu entri riwayat: siapa mengubah apa dan kapan.
+    public sealed record TaskActivityItem(string Actor, string Action, string? Detail, DateTime At);
+
+    [Parameter] public IReadOnlyList<TaskActivityItem> Items { get; set; } = [];
+
+    private sealed record DayGroup(string Label, List<TaskActivityItem> Items);
+
+    private List<DayGroup> DayGroups => Items
+        .OrderByDescending(a => a.At)
+        .GroupBy(a => a.At.ToLocalTime().Date)
+        .Select(g => new DayGroup(LabelFor(g.Key), g.OrderByDescending(a => a.At).ToList()))
+        .ToList();
+
+    private static string LabelFor(DateTime day)
+    {
+        var today = DateTime.Now.Date;
+        if (day == today) return "Today";
+        if (day == today.AddDays(-1)) return "Yesterday";
+        return day.ToString("dddd, dd MMM yyyy");
+    }
+
+    private static string IconFor(string action) => action switch
+    {
+        var a when a.Contains("status") => "refresh-cw",
+        var a when a.Contains("comment") || a.Contains("komentar") => "message-square",
+        var a when a.Contains("attachment") || a.Contains("lampiran") => "paperclip",
+        var a when a.Contains("due") || a.Contains("tenggat") => "calendar-clock",
+        var a when a.Contains("create") || a.Contains("membuat") => "plus-circle",
+        var a when a.Contains("delete") || a.Contains("remove") || a.Contains("menghapus") => "trash-2",
+        var a when a.Contains("download") || a.Contains("mengunduh") => "download",
+        var a when a.Contains("assign") || a.Contains("menugaskan") || a.Contains("penanggung") => "user-plus",
+        _ => "activity"
+    };
+}

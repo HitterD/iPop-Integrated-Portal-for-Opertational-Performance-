@@ -1,0 +1,822 @@
+@using IPop.Application.Mail
+@using IPop.Web.Services
+@inject IJSRuntime JS
+
+<div class="mail-preview-panel @(IsOpen ? "open" : "")">
+    @* Header *@
+    <div class="preview-header">
+        <div class="preview-title">
+            <i data-lucide="eye"></i>
+            <span>Preview</span>
+        </div>
+        <div class="preview-actions">
+            <button type="button" class="preview-mode-btn @(Mode == "html" ? "active" : "")" @onclick='() => SetMode("html")' title="HTML Preview">
+                <i data-lucide="globe"></i>
+                HTML
+            </button>
+            <button type="button" class="preview-mode-btn @(Mode == "pdf" ? "active" : "")" @onclick='() => SetMode("pdf")' title="PDF Preview">
+                <i data-lucide="file-text"></i>
+                PDF
+            </button>
+            <button type="button" class="close-btn" @onclick="Close" title="Close preview">
+                <i data-lucide="x"></i>
+            </button>
+        </div>
+    </div>
+
+    @* Content *@
+    <div class="preview-content">
+        @if (IsEmpty)
+        {
+            <div class="preview-empty">
+                <i data-lucide="mail-open"></i>
+                <h3>No content to preview</h3>
+                <p>Start writing your message or add recipients to see the preview</p>
+                <div class="empty-tips">
+                    <div class="tip">
+                        <i data-lucide="users"></i>
+                        <span>Add recipients in the To field</span>
+                    </div>
+                    <div class="tip">
+                        <i data-lucide="edit-3"></i>
+                        <span>Write a subject and message body</span>
+                    </div>
+                    <div class="tip">
+                        <i data-lucide="paperclip"></i>
+                        <span>Attach files to include them</span>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (Mode == "html")
+        {
+            <div class="html-preview">
+                @* Mail Header *@
+                <div class="mail-header-preview">
+                    <div class="mail-meta">
+                        <div class="meta-row">
+                            <span class="meta-label">From:</span>
+                            <span class="meta-value">@SenderName &lt;@SenderEmail&gt;</span>
+                        </div>
+                        <div class="meta-row">
+                            <span class="meta-label">To:</span>
+                            <span class="meta-value">@string.Join(", ", ToRecipients)</span>
+                        </div>
+                        @if (CcRecipients.Count > 0)
+                        {
+                            <div class="meta-row">
+                                <span class="meta-label">Cc:</span>
+                                <span class="meta-value">@string.Join(", ", CcRecipients)</span>
+                            </div>
+                        }
+                        <div class="meta-row">
+                            <span class="meta-label">Subject:</span>
+                            <span class="meta-value subject">@Subject</span>
+                        </div>
+                        <div class="meta-row">
+                            <span class="meta-label">Date:</span>
+                            <span class="meta-value">@DateTime.Now.ToString("dddd, dd MMMM yyyy HH:mm")</span>
+                        </div>
+                    </div>
+                </div>
+
+                @* Mail Body *@
+                <div class="mail-body-preview">
+                    @((MarkupString)Body)
+                </div>
+
+                @* Attachments *@
+                @if (Attachments.Count > 0)
+                {
+                    <div class="attachments-preview">
+                        <div class="attachments-header">
+                            <i data-lucide="paperclip"></i>
+                            <span>@Attachments.Count attachment@(Attachments.Count > 1 ? "s" : "")</span>
+                        </div>
+                        <div class="attachments-list">
+                            @foreach (var att in Attachments)
+                            {
+                                <div class="attachment-item">
+                                    <i data-lucide="@GetFileIcon(att.FileName)"></i>
+                                    <span class="name">@att.FileName</span>
+                                    <span class="size">(@FormatFileSize(att.FileSize))</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="pdf-preview">
+                <div class="pdf-toolbar">
+                    <button type="button" class="pdf-nav-btn" @onclick="PrevPage" disabled="@(currentPage <= 1)">
+                        <i data-lucide="chevron-left"></i>
+                    </button>
+                    <span class="pdf-page-info">Page @currentPage of @totalPages</span>
+                    <button type="button" class="pdf-nav-btn" @onclick="NextPage" disabled="@(currentPage >= totalPages)">
+                        <i data-lucide="chevron-right"></i>
+                    </button>
+                </div>
+                <div class="pdf-container">
+                    <div class="pdf-page" style="transform: scale(@zoomLevel); transform-origin: top center;">
+                        <div class="pdf-page-content">
+                            <div class="pdf-header">
+                                <div class="pdf-logo">IPop</div>
+                                <div class="pdf-date">@DateTime.Now.ToString("dd MMM yyyy")</div>
+                            </div>
+                            <div class="pdf-subject">@Subject</div>
+                            <div class="pdf-body">
+                                @((MarkupString)StripHtml(Body))
+                            </div>
+                            @if (Attachments.Count > 0)
+                            {
+                                <div class="pdf-attachments">
+                                    <strong>Attachments:</strong>
+                                    <ul>
+                                        @foreach (var att in Attachments)
+                                        {
+                                            <li>@att.FileName (@FormatFileSize(att.FileSize))</li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
+                            <div class="pdf-footer">
+                                <span>Page @currentPage of @totalPages</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="pdf-controls">
+                    <button type="button" class="pdf-zoom-btn" @onclick="ZoomOut" title="Zoom out">
+                        <i data-lucide="zoom-out"></i>
+                    </button>
+                    <span class="pdf-zoom-level">@((int)(zoomLevel * 100))%</span>
+                    <button type="button" class="pdf-zoom-btn" @onclick="ZoomIn" title="Zoom in">
+                        <i data-lucide="zoom-in"></i>
+                    </button>
+                    <button type="button" class="pdf-zoom-btn" @onclick="ResetZoom" title="Reset zoom">
+                        <i data-lucide="maximize"></i>
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+
+    @* Footer *@
+    <div class="preview-footer">
+        <button type="button" class="btn-secondary" @onclick="Close">
+            <i data-lucide="arrow-left"></i>
+            Back to Edit
+        </button>
+        <div class="footer-actions">
+            <button type="button" class="btn-secondary" @onclick="ExportPdf">
+                <i data-lucide="download"></i>
+                Export PDF
+            </button>
+            <button type="button" class="btn-secondary" @onclick="Print">
+                <i data-lucide="printer"></i>
+                Print
+            </button>
+            <button type="button" class="btn-primary" @onclick="Send">
+                <i data-lucide="send"></i>
+                Send Now
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .mail-preview-panel {
+        position: fixed;
+        top: 0;
+        right: -100%;
+        width: 600px;
+        height: 100vh;
+        background: var(--surface);
+        border-left: 1px solid var(--line);
+        box-shadow: var(--shadow-lg);
+        display: flex;
+        flex-direction: column;
+        transition: right 0.3s ease;
+        z-index: 1000;
+    }
+
+    .mail-preview-panel.open {
+        right: 0;
+    }
+
+    .preview-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--line);
+        background: var(--surface);
+    }
+
+    .preview-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--ink);
+    }
+
+    .preview-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .preview-mode-btn {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 6px 12px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--ink-2);
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .preview-mode-btn:hover {
+        background: var(--tray);
+    }
+
+    .preview-mode-btn.active {
+        background: var(--accent);
+        color: white;
+        border-color: var(--accent);
+    }
+
+    .close-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--ink-2);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+    }
+
+    .close-btn:hover {
+        background: var(--tray);
+        color: var(--ink);
+    }
+
+    .preview-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+    }
+
+    /* HTML Preview */
+    .html-preview {
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .mail-header-preview {
+        background: var(--tray);
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--line);
+    }
+
+    .mail-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .meta-row {
+        display: flex;
+        gap: 8px;
+        font-size: 13px;
+    }
+
+    .meta-label {
+        font-weight: 600;
+        color: var(--ink-2);
+        min-width: 60px;
+    }
+
+    .meta-value {
+        color: var(--ink);
+    }
+
+    .meta-value.subject {
+        font-weight: 600;
+    }
+
+    .mail-body-preview {
+        padding: 20px;
+        font-size: 14px;
+        line-height: 1.6;
+        color: var(--ink);
+        min-height: 200px;
+    }
+
+    .mail-body-preview img {
+        max-width: 100%;
+        border-radius: 8px;
+    }
+
+    .attachments-preview {
+        border-top: 1px solid var(--line);
+        padding: 16px 20px;
+    }
+
+    .attachments-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--ink-2);
+        margin-bottom: 12px;
+    }
+
+    .attachments-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .attachment-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        background: var(--tray);
+        border-radius: 6px;
+        font-size: 13px;
+    }
+
+    .attachment-item .lucide {
+        width: 16px;
+        height: 16px;
+        color: var(--ink-3);
+    }
+
+    .attachment-item .name {
+        color: var(--ink);
+        font-weight: 500;
+    }
+
+    .attachment-item .size {
+        color: var(--ink-3);
+    }
+
+    /* PDF Preview */
+    .pdf-preview {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 400px;
+    }
+
+    .pdf-placeholder {
+        text-align: center;
+        color: var(--ink-3);
+    }
+
+    .pdf-placeholder .lucide {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 16px;
+        opacity: 0.5;
+    }
+
+    .pdf-placeholder h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+        color: var(--ink-2);
+    }
+
+    .pdf-placeholder p {
+        margin: 0 0 24px;
+        font-size: 14px;
+    }
+
+    .pdf-page {
+        width: 100%;
+        max-width: 500px;
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow-md);
+        overflow: hidden;
+        text-align: left;
+    }
+
+    .pdf-page-content {
+        padding: 32px;
+    }
+
+    .pdf-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 2px solid var(--accent);
+    }
+
+    .pdf-logo {
+        font-size: 24px;
+        font-weight: 700;
+        color: var(--accent);
+    }
+
+    .pdf-date {
+        font-size: 12px;
+        color: var(--ink-3);
+    }
+
+    .pdf-subject {
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--ink);
+        margin-bottom: 16px;
+    }
+
+    .pdf-body {
+        font-size: 13px;
+        line-height: 1.7;
+        color: var(--ink-2);
+        margin-bottom: 24px;
+    }
+
+    .pdf-attachments {
+        padding: 16px;
+        background: var(--tray);
+        border-radius: 6px;
+        font-size: 12px;
+    }
+
+    .pdf-attachments ul {
+        margin: 8px 0 0;
+        padding-left: 20px;
+    }
+
+    .pdf-attachments li {
+        margin: 4px 0;
+    }
+
+    /* Footer */
+    .preview-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 20px;
+        border-top: 1px solid var(--line);
+        background: var(--surface);
+    }
+
+    .footer-actions {
+        display: flex;
+        gap: 12px;
+    }
+
+    .btn-secondary {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--surface);
+        color: var(--ink-2);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .btn-secondary:hover {
+        background: var(--tray);
+        color: var(--ink);
+    }
+
+    .btn-primary {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 20px;
+        border: none;
+        border-radius: 6px;
+        background: var(--accent);
+        color: white;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+
+    .btn-primary:hover {
+        filter: brightness(1.1);
+    }
+
+    /* Empty State */
+    .preview-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 60px 40px;
+        text-align: center;
+        color: var(--ink-3);
+    }
+
+    .preview-empty .lucide {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 20px;
+        opacity: 0.4;
+    }
+
+    .preview-empty h3 {
+        margin: 0 0 8px;
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--ink-2);
+    }
+
+    .preview-empty p {
+        margin: 0 0 24px;
+        font-size: 14px;
+    }
+
+    .empty-tips {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        text-align: left;
+        background: var(--tray);
+        padding: 20px;
+        border-radius: 10px;
+    }
+
+    .empty-tips .tip {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13px;
+        color: var(--ink-2);
+    }
+
+    .empty-tips .tip .lucide {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+        opacity: 1;
+        color: var(--accent);
+    }
+
+    /* PDF Preview Controls */
+    .pdf-preview {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        background: var(--bg);
+    }
+
+    .pdf-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 12px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--line);
+    }
+
+    .pdf-nav-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--ink-2);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+    }
+
+    .pdf-nav-btn:hover:not(:disabled) {
+        background: var(--tray);
+        color: var(--ink);
+    }
+
+    .pdf-nav-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    .pdf-page-info {
+        font-size: 13px;
+        color: var(--ink-2);
+        min-width: 100px;
+        text-align: center;
+    }
+
+    .pdf-container {
+        flex: 1;
+        overflow: auto;
+        padding: 20px;
+        display: flex;
+        justify-content: center;
+    }
+
+    .pdf-page {
+        width: 100%;
+        max-width: 600px;
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow-md);
+        overflow: hidden;
+        text-align: left;
+        transition: transform 0.2s ease;
+    }
+
+    .pdf-page-content {
+        padding: 32px;
+        position: relative;
+    }
+
+    .pdf-footer {
+        position: absolute;
+        bottom: 16px;
+        left: 32px;
+        right: 32px;
+        text-align: center;
+        font-size: 11px;
+        color: var(--ink-3);
+        padding-top: 12px;
+        border-top: 1px solid var(--line-soft);
+    }
+
+    .pdf-controls {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 12px;
+        background: var(--surface);
+        border-top: 1px solid var(--line);
+    }
+
+    .pdf-zoom-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--ink-2);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+    }
+
+    .pdf-zoom-btn:hover {
+        background: var(--tray);
+        color: var(--ink);
+    }
+
+    .pdf-zoom-level {
+        font-size: 13px;
+        color: var(--ink-2);
+        min-width: 50px;
+        text-align: center;
+    }
+</style>
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public string Mode { get; set; } = "html";
+    [Parameter] public string Subject { get; set; } = "";
+    [Parameter] public string Body { get; set; } = "";
+    [Parameter] public string SenderName { get; set; } = "";
+    [Parameter] public string SenderEmail { get; set; } = "";
+    [Parameter] public List<string> ToRecipients { get; set; } = [];
+    [Parameter] public List<string> CcRecipients { get; set; } = [];
+    [Parameter] public List<AttachmentItem> Attachments { get; set; } = [];
+
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnExportPdf { get; set; }
+    [Parameter] public EventCallback OnPrint { get; set; }
+    [Parameter] public EventCallback OnSend { get; set; }
+
+    public class AttachmentItem
+    {
+        public string FileName { get; set; } = "";
+        public long FileSize { get; set; }
+    }
+
+    private bool IsEmpty => string.IsNullOrWhiteSpace(Subject)
+        && string.IsNullOrWhiteSpace(Body)
+        && ToRecipients.Count == 0;
+
+    // PDF navigation state
+    private int currentPage = 1;
+    private int totalPages = 1;
+    private double zoomLevel = 1.0;
+
+    private void SetMode(string mode)
+    {
+        Mode = mode;
+        if (mode == "pdf") EstimatePages();
+    }
+
+    private void EstimatePages()
+    {
+        // Estimate pages based on content length
+        var contentLength = (Subject?.Length ?? 0) + (Body?.Length ?? 0);
+        totalPages = Math.Max(1, (int)Math.Ceiling(contentLength / 3000.0));
+        currentPage = 1;
+    }
+
+    private void PrevPage()
+    {
+        if (currentPage > 1) currentPage--;
+    }
+
+    private void NextPage()
+    {
+        if (currentPage < totalPages) currentPage++;
+    }
+
+    private void ZoomIn()
+    {
+        if (zoomLevel < 2.0) zoomLevel += 0.1;
+    }
+
+    private void ZoomOut()
+    {
+        if (zoomLevel > 0.5) zoomLevel -= 0.1;
+    }
+
+    private void ResetZoom()
+    {
+        zoomLevel = 1.0;
+    }
+
+    private async Task Close() => await OnClose.InvokeAsync();
+    private async Task ExportPdf() => await OnExportPdf.InvokeAsync();
+    private async Task Print() => await OnPrint.InvokeAsync();
+    private async Task Send() => await OnSend.InvokeAsync();
+
+    private string GetFileIcon(string fileName)
+    {
+        var ext = System.IO.Path.GetExtension(fileName).ToLowerInvariant();
+        return ext switch
+        {
+            ".pdf" => "file-text",
+            ".doc" or ".docx" => "file-text",
+            ".xls" or ".xlsx" => "file-spreadsheet",
+            ".ppt" or ".pptx" => "presentation",
+            ".zip" or ".rar" or ".7z" => "archive",
+            ".png" or ".jpg" or ".jpeg" or ".gif" => "image",
+            ".mp4" or ".mov" or ".avi" => "video",
+            ".mp3" or ".wav" or ".ogg" => "music",
+            _ => "file"
+        };
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = ["B", "KB", "MB", "GB"];
+        int order = 0;
+        double size = bytes;
+        while (size >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            size /= 1024;
+        }
+        return $"{size:0.#} {sizes[order]}";
+    }
+
+    private string StripHtml(string html)
+    {
+        if (string.IsNullOrEmpty(html)) return "";
+        return System.Text.RegularExpressions.Regex.Replace(html, "<[^>]*>", "");
+    }
+}

@@ -29,6 +29,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<SynologyCredential> SynologyCredentials => Set<SynologyCredential>();
     public DbSet<UserPermissionOverride> UserPermissionOverrides => Set<UserPermissionOverride>();
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
+    public DbSet<UserFavoriteContact> UserFavoriteContacts => Set<UserFavoriteContact>();
 
     // Chat entities
     public DbSet<ChatRoom> ChatRooms => Set<ChatRoom>();
@@ -39,6 +40,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<ChatReaction> ChatReactions => Set<ChatReaction>();
     public DbSet<ChatReadReceipt> ChatReadReceipts => Set<ChatReadReceipt>();
     public DbSet<ChatPinnedMessage> ChatPinnedMessages => Set<ChatPinnedMessage>();
+    public DbSet<ChatSavedMessage> ChatSavedMessages => Set<ChatSavedMessage>();
     public DbSet<ChatRoomUserSettings> ChatRoomUserSettings => Set<ChatRoomUserSettings>();
     public DbSet<ChatMention> ChatMentions => Set<ChatMention>();
     public DbSet<ChatMembershipAudit> ChatMembershipAudits => Set<ChatMembershipAudit>();
@@ -47,11 +49,23 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<NotificationGatewayClient> NotificationGatewayClients => Set<NotificationGatewayClient>();
     public DbSet<NotificationRequest> NotificationRequests => Set<NotificationRequest>();
     public DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
+    public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
+    // Kalender & Rapat
+    public DbSet<Meeting> Meetings => Set<Meeting>();
+    public DbSet<MeetingAttendee> MeetingAttendees => Set<MeetingAttendee>();
+    public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
+    public DbSet<MeetingReminder> MeetingReminders => Set<MeetingReminder>();
 
     // Mail entities (use fully-qualified name to avoid shadowing by sibling namespace IPop.Infrastructure.Mail)
     public DbSet<IPop.Core.Entities.Mail> Mails => Set<IPop.Core.Entities.Mail>();
     public DbSet<MailRecipient> MailRecipients => Set<MailRecipient>();
     public DbSet<MailAttachment> MailAttachments => Set<MailAttachment>();
+    // Surat Lanjutan (Fase 3)
+    public DbSet<MailLabel> MailLabels => Set<MailLabel>();
+    public DbSet<MailLabelAssignment> MailLabelAssignments => Set<MailLabelAssignment>();
+    public DbSet<MailRule> MailRules => Set<MailRule>();
+    public DbSet<MailTemplate> MailTemplates => Set<MailTemplate>();
+    public DbSet<MailAutoReplySetting> MailAutoReplySettings => Set<MailAutoReplySetting>();
 
     // Projects entities
     public DbSet<Project> Projects => Set<Project>();
@@ -60,6 +74,15 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<ProjectTaskAssignee> ProjectTaskAssignees => Set<ProjectTaskAssignee>();
     public DbSet<ProjectRoom> ProjectRooms => Set<ProjectRoom>();
     public DbSet<WorkCalendarEntry> WorkCalendarEntries => Set<WorkCalendarEntry>();
+    // Diskusi Tugas (Fase 2)
+    public DbSet<ProjectTaskComment> ProjectTaskComments => Set<ProjectTaskComment>();
+    public DbSet<ProjectTaskActivity> ProjectTaskActivities => Set<ProjectTaskActivity>();
+    public DbSet<ProjectTaskAttachment> ProjectTaskAttachments => Set<ProjectTaskAttachment>();
+    public DbSet<ProjectTaskReminder> ProjectTaskReminders => Set<ProjectTaskReminder>();
+    // Rencana & Laporan (Fase 4)
+    public DbSet<ProjectTemplate> ProjectTemplates => Set<ProjectTemplate>();
+    public DbSet<ProjectTemplateTask> ProjectTemplateTasks => Set<ProjectTemplateTask>();
+    public DbSet<ProjectMilestone> ProjectMilestones => Set<ProjectMilestone>();
 
     // News & Memos entities (single table with type enum: news/announcement/memo)
     public DbSet<NewsPost> NewsPosts => Set<NewsPost>();
@@ -106,6 +129,12 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasIndex(x => x.StartedAt);
         });
         b.Entity<AuditLog>(e => e.HasIndex(x => x.CreatedAt));
+        b.Entity<UserFavoriteContact>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.ContactNik }).IsUnique();
+            e.Property(x => x.ContactNik).HasMaxLength(32);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<Role>(e =>
         {
             e.HasIndex(x => x.Name).IsUnique();
@@ -164,6 +193,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasIndex(x => x.Type);
             e.Property(x => x.Name).HasMaxLength(100);
             e.Property(x => x.Description).HasMaxLength(500);
+            e.Property(x => x.AvatarColor).HasMaxLength(9); // #RRGGBB / #RRGGBBAA
         });
 
         b.Entity<ChatRoomMember>(e =>
@@ -225,6 +255,14 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasOne(x => x.PinnedByUser).WithMany().HasForeignKey(x => x.PinnedByUserId).OnDelete(DeleteBehavior.Restrict);
         });
 
+        b.Entity<ChatSavedMessage>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.MessageId }).IsUnique();
+            e.HasIndex(x => new { x.UserId, x.SavedAt });
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Message).WithMany().HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         b.Entity<ChatRoomUserSettings>(e =>
         {
             e.HasKey(x => new { x.UserId, x.RoomId });
@@ -283,7 +321,45 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
         b.Entity<MailAttachment>(e =>
         {
             e.HasIndex(x => x.MailId);
+            e.HasIndex(x => new { x.MailId, x.SortOrder });
             e.HasOne(x => x.Mail).WithMany(m => m.Attachments).HasForeignKey(x => x.MailId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Surat Lanjutan (Fase 3)
+        b.Entity<MailLabel>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.Name }).IsUnique();
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.Color).HasMaxLength(9);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<MailLabelAssignment>(e =>
+        {
+            e.HasIndex(x => new { x.LabelId, x.MailId }).IsUnique();
+            e.HasIndex(x => x.MailId);
+            e.HasOne(x => x.Label).WithMany(l => l.Assignments).HasForeignKey(x => x.LabelId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Mail).WithMany().HasForeignKey(x => x.MailId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<MailRule>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.IsEnabled });
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.SenderContains).HasMaxLength(200);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Label).WithMany().HasForeignKey(x => x.LabelId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<MailTemplate>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.Name }).IsUnique();
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Subject).HasMaxLength(500);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<MailAutoReplySetting>(e =>
+        {
+            e.HasIndex(x => x.UserId).IsUnique();
+            e.Property(x => x.Message).HasMaxLength(2000);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         // Projects entities
@@ -300,6 +376,30 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Risk).HasMaxLength(2000);
             e.Property(x => x.Obstacle).HasMaxLength(2000);
             e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Rencana & Laporan (Fase 4)
+        b.Entity<ProjectTemplate>(e =>
+        {
+            e.HasIndex(x => new { x.IsActive, x.Name });
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Description).HasMaxLength(1000);
+            e.HasOne(x => x.SourceProject).WithMany().HasForeignKey(x => x.SourceProjectId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<ProjectTemplateTask>(e =>
+        {
+            e.HasIndex(x => new { x.TemplateId, x.SortOrder });
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.Property(x => x.Description).HasMaxLength(2000);
+            e.Property(x => x.Priority).HasMaxLength(32);
+            e.HasOne(x => x.Template).WithMany(t => t.Tasks).HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ProjectMilestone>(e =>
+        {
+            e.HasIndex(x => new { x.ProjectId, x.DueDate });
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.SetNull);
         });
 
         b.Entity<ProjectMember>(e =>
@@ -329,10 +429,44 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasOne(x => x.CreatedBy).WithMany().HasForeignKey(x => x.CreatedById).OnDelete(DeleteBehavior.Restrict);
         });
 
+        b.Entity<ProjectTaskComment>(e =>
+        {
+            e.HasIndex(x => new { x.TaskId, x.CreatedAt });
+            e.Property(x => x.Content).HasMaxLength(4000);
+            e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Author).WithMany().HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Parent).WithMany().HasForeignKey(x => x.ParentCommentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<ProjectTaskActivity>(e =>
+        {
+            e.HasIndex(x => new { x.TaskId, x.CreatedAt });
+            e.Property(x => x.Action).HasMaxLength(64);
+            e.Property(x => x.OldValue).HasMaxLength(500);
+            e.Property(x => x.NewValue).HasMaxLength(500);
+            e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Actor).WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<ProjectTaskAttachment>(e =>
+        {
+            e.HasIndex(x => new { x.TaskId, x.CreatedAt });
+            e.Property(x => x.FileName).HasMaxLength(255);
+            e.Property(x => x.SynologyServer).HasMaxLength(32);
+            e.Property(x => x.SynologyPath).HasMaxLength(1024);
+            e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.UploadedBy).WithMany().HasForeignKey(x => x.UploadedById).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<ProjectTaskReminder>(e =>
+        {
+            e.HasIndex(x => new { x.TaskId, x.SentAt });
+            e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         b.Entity<ProjectTaskAssignee>(e =>
         {
-            e.HasKey(x => new { x.TaskId, x.UserId });
-            e.HasIndex(x => x.UserId);
+            e.HasKey(x => new { x.TaskId, x.UserId });            e.HasIndex(x => x.UserId);
             e.Property(x => x.Role).HasMaxLength(32);
             e.HasOne(x => x.Task).WithMany(t => t.Assignees).HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
@@ -393,7 +527,51 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         });
 
-        // News & Memos (single table; type enum)
+        // Preferensi notifikasi (Fase 4): satu baris per pengguna.
+        b.Entity<NotificationPreference>(e =>
+        {
+            e.HasIndex(x => x.UserId).IsUnique();
+            e.Property(x => x.QuietStart).HasMaxLength(5);
+            e.Property(x => x.QuietEnd).HasMaxLength(5);
+            e.Property(x => x.MutedTypes).HasMaxLength(500);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Kalender & Rapat
+        b.Entity<Meeting>(e =>
+        {
+            e.HasIndex(x => x.StartAt);
+            e.HasIndex(x => x.OrganizerId);
+            e.HasIndex(x => x.RoomId);
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.TimeZone).HasMaxLength(64);
+            e.HasOne(x => x.Organizer).WithMany().HasForeignKey(x => x.OrganizerId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<MeetingAttendee>(e =>
+        {
+            e.HasIndex(x => new { x.MeetingId, x.UserId }).IsUnique();
+            e.Property(x => x.RsvpStatus).HasMaxLength(16);
+            e.Property(x => x.Note).HasMaxLength(1000);
+            e.HasOne(x => x.Meeting).WithMany(m => m.Attendees).HasForeignKey(x => x.MeetingId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<CalendarEvent>(e =>
+        {
+            e.HasIndex(x => x.StartAt);
+            e.HasIndex(x => x.OwnerId);
+            e.HasIndex(x => x.RoomId);
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.Property(x => x.Type).HasMaxLength(16);
+            e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Meeting).WithMany().HasForeignKey(x => x.MeetingId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<MeetingReminder>(e =>
+        {
+            e.HasIndex(x => new { x.SendAt, x.SentAt });
+            e.HasOne(x => x.Meeting).WithMany().HasForeignKey(x => x.MeetingId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
         b.Entity<NewsPost>(e =>
         {
             e.HasIndex(x => x.Status);

@@ -1,0 +1,95 @@
+/* Empty state */
+.empty-state { flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:var(--ink-3);padding:20px; }
+.empty-state .lucide { width:48px;height:48px;stroke-width:1;color:var(--line); }
+.empty-state .title { font-size:14px;font-weight:600;color:var(--ink-2); }
+.empty-state .sub { font-size:12.5px;text-align:center;max-width:240px; }
+
+/* Offline banner */
+.offline-banner { padding:8px 16px;background:var(--warn-soft);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--warn); }
+.offline-banner .lucide { width:14px;height:14px; }
+
+/* Load-older button */
+.load-older { display:flex;justify-content:center;padding:4px 0 10px; }
+.load-older button { display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 12px;
+  border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2);
+  font:600 11.5px/1 inherit;cursor:pointer;box-shadow:var(--shadow-xs);
+  transition:background 0.18s var(--ease),border-color 0.18s var(--ease),color 0.18s var(--ease); }
+.load-older button:hover { background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink); }
+.load-older button .lucide { width:13px;height:13px; }
+
+/* In-conversation search results */
+.search-results { max-height:230px;overflow-y:auto;background:var(--surface);
+  border-bottom:1px solid var(--line-soft);padding:6px 12px; }
+.search-results.empty { padding:16px;text-align:center;font-size:12px;color:var(--ink-3); }
+.sr-item { display:flex;flex-direction:column;gap:3px;width:100%;padding:8px 10px;margin-bottom:2px;
+  border:none;border-radius:9px;background:none;text-align:left;cursor:pointer;font-family:inherit;
+  transition:background 0.18s var(--ease); }
+.sr-item:hover { background:var(--accent-soft); }
+.sr-head { display:flex;align-items:baseline;gap:8px; }
+.sr-head .who { font-size:12px;font-weight:700;color:var(--accent-ink); }
+.sr-head .when { font-size:10.5px;color:var(--ink-3); }
+.sr-text { font-size:12px;color:var(--ink);line-height:1.45; }
+
+/* Jump to latest */
+.jump-latest { position:absolute;right:22px;bottom:96px;z-index:20;width:38px;height:38px;border-radius:50%;
+  border:1px solid var(--line);background:var(--surface);color:var(--ink-2);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-md);
+  animation:rise 0.4s var(--ease) backwards;
+  transition:background 0.18s var(--ease),border-color 0.18s var(--ease),color 0.18s var(--ease),transform 0.18s var(--ease); }
+.jump-latest:hover { background:var(--accent);border-color:var(--accent);color:#fff;transform:translateY(-2px); }
+[data-theme="dark"] .jump-latest:hover { color:#0e0d0b; }
+.jump-latest:active { transform:scale(0.92); }
+.jump-latest .lucide { width:17px;height:17px; }
+
+/* Empty-state actions */
+.empty-state .empty-acts { display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:6px; }
+.empty-state .empty-acts button { display:inline-flex;align-items:center;gap:7px;padding:9px 15px;
+  border-radius:12px;border:none;background:var(--accent);color:#fff;font:600 12.5px/1 inherit;cursor:pointer;
+  box-shadow:var(--shadow-xs);
+  transition:background 0.18s var(--ease),transform 0.18s var(--ease),box-shadow 0.18s var(--ease); }
+.empty-state .empty-acts button:active { transform:scale(0.96); }
+[data-theme="dark"] .empty-state .empty-acts button { color:#0e0d0b; }
+.empty-state .empty-acts button:hover { background:var(--accent-ink); }
+.empty-state .empty-acts button.ghost { background:var(--surface);color:var(--ink);border:1px solid var(--line); }
+.empty-state .empty-acts button.ghost:hover { background:var(--tray); }
+.empty-state .empty-acts button .lucide { width:14px;height:14px;stroke-width:2;color:currentColor; }
+
+/* Attach button busy spin */
+.comp-btn.busy { pointer-events:none;opacity:0.7; }
+.comp-btn.busy .lucide { animation:av-spin 0.9s linear infinite; }
+
+/* Mobile-only affordances are hidden on desktop */
+.conv-back, .room-pane-close, .empty-acts .mobile-only { display:none; }
+
+/* Chat mobile responsive */
+@media (max-width: 768px) {
+  .chat-area { grid-template-columns:1fr; }
+  .room-pane { position:fixed;inset:0;z-index:60;width:100%;transform:translateX(-100%);
+    transition:transform 0.28s var(--ease);border-right:none; }
+  .chat-area.rooms-open .room-pane { transform:translateX(0); }
+  .conv-back, .room-pane-close { display:flex;align-items:center;justify-content:center; }
+  .empty-acts .mobile-only { display:inline-flex; }
+  .conv-back { width:32px;height:32px;border-radius:9px;border:1px solid var(--line);
+    background:var(--surface);color:var(--ink-2);cursor:pointer;flex-shrink:0;margin-right:2px; }
+  .conv-back .lucide { width:16px;height:16px; }
+  .room-pane-close { margin-left:auto;width:32px;height:32px;border-radius:9px;border:1px solid var(--line);
+    background:var(--surface);color:var(--ink-2);cursor:pointer; }
+  .room-pane-close .lucide { width:16px;height:16px; }
+  .room-head .create-wrap { margin-left:8px; }
+  .messages { padding:14px 12px; }
+  .msg { max-width:88%; }
+  .composer { padding:10px 12px 12px; }
+  .pending-strip { padding:10px 12px 2px; }
+  .jump-latest { right:14px;bottom:88px; }
+  /* Hover bars are unreachable on touch — long-press opens the context menu
+     instead, so keep the bar permanently out of the way rather than letting it
+     flash on tap-hold. */
+  .msg-hover-actions { display:none; }
+  .quick-switcher { top:12vh;padding:0 12px; }
+}
+
+/* Coarse pointers (touch laptops, tablets) get the same treatment for the same
+   reason: there is no hover state to reveal the bar with. */
+@media (hover: none) {
+  .msg-hover-actions { display:none; }
+}

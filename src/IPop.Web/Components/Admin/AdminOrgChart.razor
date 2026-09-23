@@ -1,0 +1,404 @@
+@using Microsoft.AspNetCore.Components.Rendering
+@using IPop.Web.Services
+@using IPop.Web.Components
+@inject AuthState Auth
+@inject IJSRuntime JS
+
+@* ---- Org Chart KPI Summary Grid ---- *@
+<div class="admin-kpi-grid">
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-rose">
+            <i data-lucide="network"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val">@($"{orgNodes.Length:N0}")</div>
+            <div class="kpi-lbl">Total Node Bagan</div>
+        </div>
+    </div>
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-purple">
+            <i data-lucide="crown"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val">@($"{orgNodes.Count(n => n.ParentId == null):N0}")</div>
+            <div class="kpi-lbl">Posisi Puncak</div>
+        </div>
+    </div>
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-blue">
+            <i data-lucide="git-branch"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val">@($"{orgNodes.Count(n => n.ParentId != null):N0}")</div>
+            <div class="kpi-lbl">Subordinat</div>
+        </div>
+    </div>
+    <div class="admin-kpi-card">
+        <div class="kpi-icon-wrap kpi-teal">
+            <i data-lucide="users"></i>
+        </div>
+        <div class="kpi-body">
+            <div class="kpi-val">@($"{orgNodes.Sum(n => n.Members.Length):N0}")</div>
+            <div class="kpi-lbl">Linked Members</div>
+        </div>
+    </div>
+</div>
+
+<div class="tray rise rise-2">
+    <div class="core" style="padding:0;overflow:hidden">
+        <div class="panel-head" style="border-bottom:1px solid var(--line-soft)">
+            <div style="display:flex;align-items:center;gap:8px">
+                <i data-lucide="network" style="color:#e11d48"></i>
+                <span style="font-weight:700">Organization Chart</span>
+            </div>
+            <span class="meta">@(orgNodesLoading ? "Loading..." : $"{orgNodes.Length} structure nodes")</span>
+            @if (Auth.IsAdmin)
+            {
+                <button class="btn btn-sm" style="margin-left:auto;background:#e11d48;color:#fff;border:none;padding:7px 14px;border-radius:8px;font-weight:600" @onclick="() => OpenNodeEditor(null)">
+                    <i data-lucide="plus" style="width:13px;height:13px"></i> Add Node
+                </button>
+            }
+        </div>
+        @if (orgNodesLoading)
+        {
+            <div style="padding:14px"><div class="skel"></div></div>
+        }
+        else if (orgNodes.Length == 0)
+        {
+            <div class="tree-empty" style="padding:28px">No organization structure nodes yet.@(Auth.IsAdmin ? " Add a node above." : "")</div>
+        }
+        else
+        {
+            <div class="chart">
+                @RenderOrgChart(orgNodes.Where(n => n.ParentId == null).OrderBy(n => n.SortOrder).ToArray(), 0)
+            </div>
+        }
+    </div>
+</div>
+
+@if (nodeEditor is not null)
+{
+    <div class="backdrop on" @onclick="CloseNodeEditor"></div>
+    <div class="drawer on" role="dialog" aria-label="Edit node">
+        <div class="tray"><div class="core" style="display:flex; flex-direction:column; height:100%">
+            <div class="drawer-head">
+                @(nodeEditor.IsCreate ? "New node" : $"Edit {nodeEditor.Name}")
+                <button class="drawer-close" @onclick="CloseNodeEditor"><i data-lucide="x"></i></button>
+            </div>
+            <div class="drawer-body">
+                <div class="field"><label>Name</label><input @bind="nodeEditor.Name" placeholder="e.g. Engineering Manager" /></div>
+                <div class="field"><label>Title (optional)</label><input @bind="nodeEditor.Title" placeholder="e.g. VP Engineering" /></div>
+                <div class="field">
+                    <label>Parent node</label>
+                    <AppSelect Label="Parent" Value="@nodeEditor.ParentIdString" ValueChanged="v => nodeEditor.ParentIdString = v"
+                               Options="@NodeParentOptions(nodeEditor.Id)" />
+                </div>
+                <div class="field">
+                    <label>Department</label>
+                    <AppSelect Label="Department" Value="@nodeEditor.DepartmentIdString" ValueChanged="v => nodeEditor.DepartmentIdString = v"
+                               Options="@NodeDeptOptions" />
+                </div>
+                @if (nodeEditor.Error is not null)
+                {
+                    <div class="note err"><i data-lucide="alert-circle"></i><span>@nodeEditor.Error</span></div>
+                }
+                @if (!nodeEditor.IsCreate && nodeEditor.Members.Length > 0)
+                {
+                    <div class="field">
+                        <label>Members (@nodeEditor.Members.Length)</label>
+                        <div class="member-list">
+                            @foreach (var m in nodeEditor.Members)
+                            {
+                                <div class="member-row">
+                                    <span>@m.Name <span class="mono" style="opacity:0.6">@m.Nik</span></span>
+                                    <button class="org-act" title="Remove member" @onclick="() => RemoveNodeMember(nodeEditor, m.Nik)"><i data-lucide="x"></i></button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                <div class="field">
+                    <label>Add member</label>
+                    <AppMemberPicker Placeholder="Search by name or NIK..." ValueChanged="r => OnPickMember(r)" />
+                </div>
+                @if (!nodeEditor.IsCreate)
+                {
+                    <button class="btn" style="margin-top:14px;width:100%;background:var(--danger-soft);color:var(--danger);border:1px solid var(--danger-soft)" @onclick="() => DeleteNode(nodeEditor)">
+                        Delete node
+                    </button>
+                }
+                <button class="btn" style="margin-top:14px;width:100%" disabled="@nodeEditor.Saving" @onclick="SaveNode">
+                    @(nodeEditor.Saving ? "Saving..." : nodeEditor.IsCreate ? "Create node" : "Save changes")
+                    <span class="orb"><i data-lucide="check"></i></span>
+                </button>
+            </div>
+        </div></div>
+    </div>
+}
+
+<ProfileDrawer Person="selectedDirMember" OnClose="() => selectedDirMember = null" />
+
+@code {
+    private OrgNodeDto[] orgNodes = [];
+    private bool orgNodesLoading = true;
+    private NodeEditorState? nodeEditor;
+    private Employee? selectedDirMember;
+    private Guid? OrgDragGroupId;
+    private Guid? OrgDragTarget;
+    private OrgViewDto org = new([], []);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Reload();
+    }
+
+    public async Task Reload()
+    {
+        orgNodesLoading = true;
+        var t1 = Auth.GetAsync<OrgNodeDto[]>("/api/directory/org-tree");
+        var t2 = Auth.GetAsync<OrgViewDto>("/api/admin/org");
+        await Task.WhenAll(t1, t2);
+        orgNodes = (await t1) ?? [];
+        org = (await t2) ?? new([], []);
+        orgNodesLoading = false;
+        StateHasChanged();
+    }
+
+    private static Employee MapMember(OrgNodeMemberDto m) => new(
+        m.Name, m.Position ?? "—", m.Nik, "—", m.Department ?? "—", m.Department ?? "—", null,
+        m.Site ?? "—", null, "—", null, m.Status,
+        AvatarPalette.For(m.Nik), null);
+
+    private RenderFragment RenderOrgChart(OrgNodeDto[] roots, int depth) => builder =>
+    {
+        if (roots.Length == 0) return;
+        var levelOf = new Dictionary<Guid, int>();
+        void Assign(OrgNodeDto n, int lv)
+        {
+            levelOf[n.Id] = lv;
+            foreach (var c in orgNodes.Where(x => x.ParentId == n.Id).OrderBy(x => x.SortOrder))
+                Assign(c, lv + 1);
+        }
+        foreach (var r in roots) Assign(r, depth);
+        var max = levelOf.Values.Max();
+        RenderLevels(builder, orgNodes, levelOf, 0, max, n => n.Id, n => n.ParentId, n => n.Name, n => n.Members,
+            (n, e) => OnNodeDragStart(e, n), (n, e) => OnNodeDragOver(e, n), (n, e) => OnNodeDrop(e, n),
+            OnNodeDragEnd, OpenNodeEditor);
+    };
+
+    private void RenderLevels<TNode>(RenderTreeBuilder builder, TNode[] all,
+        Dictionary<Guid, int> levelOf, int from, int to, Func<TNode, Guid> getId,
+        Func<TNode, Guid?> getParentId, Func<TNode, string> getName, Func<TNode, object> getMembers,
+        Action<TNode, DragEventArgs> onDragStart, Action<TNode, DragEventArgs> onDragOver,
+        Func<TNode, DragEventArgs, Task> onDrop, Action onDragEnd,
+        Action<TNode> onEdit)
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "chart-levels");
+        for (var lv = from; lv <= to; lv++)
+        {
+            var nodes = all.Where(n => levelOf.GetValueOrDefault(getId(n)) == lv).ToArray();
+            if (nodes.Length == 0) continue;
+            builder.OpenElement(2, "div");
+            builder.AddAttribute(3, "class", "chart-level");
+            builder.AddAttribute(4, "data-level", lv.ToString());
+            foreach (var node in nodes)
+            {
+                var id = getId(node);
+                RenderNodeCard(builder, node, id, getName(node), getMembers(node),
+                    all.Any(n => getParentId(n) == id), lv > from,
+                    onDragStart, onDragOver, onDrop, onDragEnd, onEdit);
+            }
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    }
+
+    private void RenderNodeCard<TNode>(RenderTreeBuilder builder, TNode node, Guid id, string name,
+        object membersObj, bool hasChildren, bool hasParent,
+        Action<TNode, DragEventArgs> onDragStart, Action<TNode, DragEventArgs> onDragOver,
+        Func<TNode, DragEventArgs, Task> onDrop, Action onDragEnd,
+        Action<TNode> onEdit)
+    {
+        static string HtmlEncode(string s) => System.Net.WebUtility.HtmlEncode(s);
+
+        var isDragOver = OrgDragTarget == id;
+        var cls = "chart-node" + (hasChildren ? " has-children" : "") + (hasParent ? " has-parent" : "");
+
+        builder.OpenElement(5, "div");
+        builder.AddAttribute(6, "class", cls);
+        builder.AddAttribute(7, "ondragover", EventCallback.Factory.Create<DragEventArgs>(this, e => onDragOver(node, e)));
+        builder.AddAttribute(8, "ondragover:preventDefault", true);
+        builder.AddAttribute(9, "ondrop", EventCallback.Factory.Create<DragEventArgs>(this, e => onDrop(node, e)));
+
+        builder.OpenElement(10, "div");
+        builder.AddAttribute(11, "class", isDragOver ? "chart-card drag-over" : "chart-card");
+        builder.AddAttribute(12, "draggable", "true");
+        builder.AddAttribute(13, "ondragstart", EventCallback.Factory.Create<DragEventArgs>(this, e => onDragStart(node, e)));
+        builder.AddAttribute(14, "ondragend", EventCallback.Factory.Create<DragEventArgs>(this, e => onDragEnd()));
+        builder.AddContent(15, (MarkupString)$"<div class=\"chart-card-name\">{HtmlEncode(name)}</div>");
+
+        var title = node is OrgNodeDto on ? on.Title : null;
+        if (!string.IsNullOrWhiteSpace(title))
+            builder.AddContent(16, (MarkupString)$"<div class=\"chart-card-title\">{HtmlEncode(title)}</div>");
+
+        var members = membersObj as Array;
+        var count = members?.Length ?? 0;
+        builder.AddContent(17, (MarkupString)$"<div class=\"chart-card-meta\">{count} member{(count == 1 ? "" : "s")}</div>");
+
+        if (Auth.IsAdmin)
+        {
+            builder.OpenElement(18, "span");
+            builder.AddAttribute(19, "class", "tree-actions");
+            builder.OpenElement(20, "button");
+            builder.AddAttribute(21, "type", "button");
+            builder.AddAttribute(22, "class", "org-act");
+            builder.AddAttribute(23, "title", "Edit");
+            builder.AddAttribute(24, "onclick", EventCallback.Factory.Create(this, () => onEdit(node)));
+            builder.AddAttribute(25, "onclick:stopPropagation", true);
+            builder.AddAttribute(26, "onmousedown:preventDefault", true);
+            builder.OpenElement(27, "i");
+            builder.AddAttribute(27, "data-lucide", "pencil");
+            builder.CloseElement();
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+
+        if (members is not null && members.Length > 0)
+        {
+            builder.OpenElement(28, "div");
+            builder.AddAttribute(29, "class", "chart-chips");
+            foreach (var m in members)
+            {
+                Employee emp = m is OrgNodeMemberDto onm ? MapMember(onm) : MapMember((m as dynamic)!.Name, (m as dynamic)!.Position, (m as dynamic)!.Nik, (m as dynamic)!.Department, (m as dynamic)!.Site, (m as dynamic)!.Status);
+
+                builder.OpenElement(30, "button");
+                builder.AddAttribute(31, "type", "button");
+                builder.AddAttribute(32, "class", "member-chip");
+                builder.AddAttribute(33, "title", $"{emp.Name} - {emp.Position}");
+                builder.AddAttribute(34, "onclick", EventCallback.Factory.Create(this, () => selectedDirMember = emp));
+                builder.AddContent(35, (MarkupString)$"<span class=\"avatar\" style=\"background:{emp.Color}\">{emp.Initials}</span>");
+                builder.AddContent(36, (MarkupString)$"<span class=\"chip-name\">{HtmlEncode(emp.Name)}</span>");
+                builder.CloseElement();
+            }
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    }
+
+    private static Employee MapMember(string name, string? position, string nik, string? department, string? site, string status) => new(
+        name, position ?? "—", nik, "—", department ?? "—", department ?? "—", null,
+        site ?? "—", null, "—", null, status, AvatarPalette.For(nik), null);
+
+    private void OnNodeDragStart(DragEventArgs e, OrgNodeDto n) { OrgDragGroupId = n.Id; OrgDragTarget = null; StateHasChanged(); }
+    private void OnNodeDragEnd() { OrgDragGroupId = null; OrgDragTarget = null; StateHasChanged(); }
+    private void OnNodeDragOver(DragEventArgs e, OrgNodeDto n)
+    {
+        if (OrgDragGroupId is { } id && id != n.Id && OrgDragTarget != n.Id) { OrgDragTarget = n.Id; StateHasChanged(); }
+    }
+    private Task OnNodeDrop(DragEventArgs e, OrgNodeDto n) => MoveNode(n.Id, OrgDragGroupId);
+    private async Task MoveNode(Guid targetId, Guid? draggedId)
+    {
+        if (draggedId is null || draggedId == targetId) return;
+        OrgDragGroupId = null; OrgDragTarget = null;
+        var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org-nodes/{draggedId.Value}", new UpsertOrgNodeRequest(null, null, targetId, null, null, null));
+        if (res.IsSuccessStatusCode) await Reload();
+    }
+
+    private List<AppOption> NodeParentOptions(Guid selfId) =>
+        [new("", "(root)"), .. orgNodes.Where(x => x.Id != selfId).OrderBy(x => x.Name).Select(n => new AppOption(n.Id.ToString(), n.Name))];
+    private List<AppOption> NodeDeptOptions =>
+        [new("", "(none)"), .. org.Departments.Where(d => d.IsActive).OrderBy(d => d.Name).Select(d => new AppOption(d.Id.ToString(), d.Name))];
+
+    private void OpenNodeEditor(OrgNodeDto? n)
+    {
+        nodeEditor = new NodeEditorState
+        {
+            IsCreate = n is null,
+            Id = n?.Id ?? Guid.Empty,
+            Name = n?.Name ?? "",
+            Title = n?.Title ?? "",
+            ParentIdString = n?.ParentId?.ToString() ?? "",
+            DepartmentIdString = n?.DepartmentId?.ToString() ?? "",
+            Members = n?.Members.Select(m => new AdminOrgNodeMemberDto(m.Nik, m.Name, m.Position, m.Department, m.Site)).ToArray() ?? [],
+        };
+        StateHasChanged();
+    }
+
+    private void CloseNodeEditor() => nodeEditor = null;
+
+    private async Task SaveNode()
+    {
+        if (nodeEditor is null) return;
+        nodeEditor.Saving = true; nodeEditor.Error = null;
+        Guid? parent = Guid.TryParse(nodeEditor.ParentIdString, out var p) ? p : null;
+        Guid? dept = Guid.TryParse(nodeEditor.DepartmentIdString, out var d) ? d : null;
+        var url = nodeEditor.IsCreate ? "/api/admin/org-nodes" : $"/api/admin/org-nodes/{nodeEditor.Id}";
+        var method = nodeEditor.IsCreate ? HttpMethod.Post : HttpMethod.Patch;
+        var res = await Auth.SendAsync(method, url, new UpsertOrgNodeRequest(nodeEditor.Name, nodeEditor.Title, parent, dept, null, null));
+        if (!res.IsSuccessStatusCode) { nodeEditor.Error = "Could not save the node."; nodeEditor.Saving = false; StateHasChanged(); return; }
+        nodeEditor.Saving = false;
+        CloseNodeEditor();
+        await Reload();
+    }
+
+    private async Task DeleteNode(NodeEditorState n)
+    {
+        var ok = await JS.InvokeAsync<bool>("confirm", $"Delete \"{n.Name}\"? Its sub-nodes are moved up one level.");
+        if (!ok) return;
+        n.Saving = true; n.Error = null;
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/org-nodes/{n.Id}", null);
+        if (!res.IsSuccessStatusCode) { n.Error = "Could not delete the node."; n.Saving = false; StateHasChanged(); return; }
+        n.Saving = false;
+        CloseNodeEditor();
+        await Reload();
+    }
+
+    private async Task RemoveNodeMember(NodeEditorState n, string nik)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/org-nodes/{n.Id}/members/{Uri.EscapeDataString(nik)}", null);
+        if (res.IsSuccessStatusCode) await RefreshNodeMembers(n);
+        else { n.Error = "Could not remove member."; StateHasChanged(); }
+    }
+
+    private async Task RefreshNodeMembers(NodeEditorState n)
+    {
+        var nodes = await Auth.GetAsync<AdminOrgNodeRowDto[]>("/api/admin/org-nodes") ?? [];
+        var updated = nodes.FirstOrDefault(x => x.Id == n.Id);
+        if (updated is not null) n.Members = updated.Members;
+        StateHasChanged();
+    }
+
+    private async Task OnPickMember(MemberSearchRow r)
+    {
+        if (nodeEditor is not null)
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/admin/org-nodes/{nodeEditor.Id}/members/by-name", new DirGroupMemberRequest(r.Name));
+            if (res.IsSuccessStatusCode) await RefreshNodeMembers(nodeEditor);
+            else nodeEditor.Error = "Could not add that person.";
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    public void CloseAllDrawers()
+    {
+        nodeEditor = null;
+        selectedDirMember = null;
+        StateHasChanged();
+    }
+
+    private sealed class NodeEditorState
+    {
+        public bool IsCreate, Saving;
+        public Guid Id;
+        public string Name = "", Title = "", ParentIdString = "", DepartmentIdString = "";
+        public string? Error;
+        public AdminOrgNodeMemberDto[] Members = [];
+    }
+}

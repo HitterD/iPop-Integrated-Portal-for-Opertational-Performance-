@@ -13,136 +13,218 @@
 
 <PageTitle>Mail — IPop</PageTitle>
 
-<div class="mail-page" @onkeydown="OnKeyDown" tabindex="0">
-    @* ============ TOP ACTION RIBBON (Outlook Style) ============ *@
-    <div class="mail-ribbon">
-        <button type="button" class="ribbon-btn primary" @onclick="() => OpenComposer()">
-            <i data-lucide="square-pen"></i>
-            <span>New mail</span>
+@* ============ TOPBAR ACTIONS (Injected into Shell Header) ============ *@
+<SectionContent SectionName="topbar-actions">
+    <div class="tb-actions">
+        <div class="tb-search">
+            <i data-lucide="search"></i>
+            <input type="text"
+                   placeholder="Search mail or sender…"
+                   aria-label="Search mail or sender"
+                   value="@search"
+                   @oninput="OnSearch" />
+        </div>
+        <button type="button" class="icon-btn" title="Refresh" aria-label="Refresh" @onclick="ReloadAll">
+            <i data-lucide="refresh-cw"></i>
         </button>
+        <button type="button" class="btn-primary" @onclick="() => OpenComposer()">
+            <i data-lucide="square-pen"></i>
+            <span>Compose</span>
+        </button>
+    </div>
+</SectionContent>
 
-        <div class="ribbon-sep"></div>
-
-        <div class="ribbon-group">
-            <button type="button" class="ribbon-btn danger" disabled="@(detail is null && selected.Count == 0)" @onclick="RibbonDelete" title="Delete">
-                <i data-lucide="trash-2"></i>
-                <span>Delete</span>
+<div class="mail-page" @onkeydown="OnKeyDown" tabindex="0">
+    @* ============ TOOLBAR (Segmented Filter + Ghost Actions) ============ *@
+    <div class="toolbar">
+        <div class="tabs">
+            <button type="button" class="tab @(tabFilter == "all" ? "active" : "")" @onclick='() => SetTabFilter("all")'>
+                <i data-lucide="inbox"></i>
+                <span>All</span>
+                <span class="n">@AllCount</span>
             </button>
-            <button type="button" class="ribbon-btn" disabled="@(detail is null && selected.Count == 0)" @onclick="RibbonArchive" title="Archive">
+            <button type="button" class="tab @(tabFilter == "unread" ? "active" : "")" @onclick='() => SetTabFilter("unread")'>
+                <i data-lucide="mail"></i>
+                <span>Unread</span>
+                <span class="n">@UnreadCount</span>
+            </button>
+            <button type="button" class="tab @(tabFilter == "starred" ? "active" : "")" @onclick='() => SetTabFilter("starred")'>
+                <i data-lucide="star"></i>
+                <span>Starred</span>
+                <span class="n">@StarredCount</span>
+            </button>
+        </div>
+
+        <div class="actions" style="margin-left:auto;display:flex;align-items:center;gap:8px">
+            <button type="button" class="ghost-btn" disabled="@(!CanArchive)" @onclick="ToolbarArchive" title="Archive">
                 <i data-lucide="archive"></i>
                 <span>Archive</span>
             </button>
-            <button type="button" class="ribbon-btn" disabled="@(detail is null && selected.Count == 0)" @onclick="RibbonTrash" title="Move to Trash">
-                <i data-lucide="trash"></i>
-                <span>Junk</span>
+            <button type="button" class="ghost-btn" disabled="@(!CanDelete)" @onclick="ToolbarDelete" title="Delete">
+                <i data-lucide="trash-2"></i>
+                <span>Delete</span>
+            </button>
+            <button type="button" class="ghost-btn" disabled="@(!CanMarkRead)" @onclick="ToolbarMarkRead" title="Mark read">
+                <i data-lucide="check-check"></i>
+                <span>Mark read</span>
             </button>
         </div>
-
-        <div class="ribbon-sep"></div>
-
-        <div class="ribbon-group">
-            @if (detail is not null)
-            {
-                <button type="button" class="ribbon-btn" @onclick="() => TogglePin(detail.Id)" title="Pin to top">
-                    <i data-lucide="pin" style="@(detail.IsPinned ? "color:var(--accent)" : "")"></i>
-                    <span>@(detail.IsPinned ? "Unpin" : "Pin")</span>
-                </button>
-                <button type="button" class="ribbon-btn" @onclick="() => ToggleStar(detail.Id)" title="Flag message">
-                    <i data-lucide="star" style="@(detail.IsStarred ? "color:var(--accent)" : "")"></i>
-                    <span>Flag</span>
-                </button>
-                <button type="button" class="ribbon-btn" @onclick="() => MarkUnread(detail.Id)" title="Mark as unread">
-                    <i data-lucide="mail-x"></i>
-                    <span>Mark unread</span>
-                </button>
-            }
-            @if (activeFolder == MailFolder.Inbox)
-            {
-                <button type="button" class="ribbon-btn" @onclick="MarkAllRead" title="Mark all read">
-                    <i data-lucide="check-check"></i>
-                    <span>Mark all read</span>
-                </button>
-            }
-        </div>
-
-        <div class="ribbon-sep"></div>
-
-        <button type="button" class="ribbon-btn" style="margin-left:auto" @onclick="ReloadAll" title="Sync & Refresh">
-            <i data-lucide="refresh-cw"></i>
-            <span>Sync</span>
-        </button>
     </div>
 
-    @* ============ 3-PANE LAYOUT ============ *@
+    @* ============ 3-PANE CARDS LAYOUT ============ *@
     <div class="mail-area">
-        @* ============ 1. FOLDERS PANE (left) ============ *@
-        <div class="mail-folders">
-            <div class="folder-head">
-                <span class="title"><i data-lucide="mail"></i> Mail</span>
-                <button class="comp-btn" style="width:28px;height:28px;padding:0;" title="New message" @onclick="() => OpenComposer()">
-                    <i data-lucide="square-pen" style="width:14px;height:14px"></i>
-                </button>
+        @* ============ PANE 1: FOLDERS CARD ============ *@
+        <div class="card mail-card mail-folders">
+            <div class="card-head">
+                <div>
+                    <div class="card-title">Mailboxes</div>
+                    <div class="card-meta">@Folders.Length folders</div>
+                </div>
             </div>
 
-            <div class="folder-search">
-                <i data-lucide="search"></i>
-                <input type="text" placeholder="Search mail… (/)" @oninput="OnSearch" aria-label="Search mail" />
-            </div>
+            <div class="tree">
+                @foreach (var f in Folders)
+                {
+                    var folder = f;
+                    var badge = FolderBadge(folder);
+                    <button type="button"
+                            class="tree-node @(activeFolder == folder ? "on" : "")"
+                            aria-current="@(activeFolder == folder ? "page" : null)"
+                            title="@FolderLabel(folder)"
+                            aria-label="@FolderLabel(folder)"
+                            @onclick="() => SelectFolder(folder)">
+                        <i data-lucide="@(FolderIcon(folder))"></i>
+                        <span class="lbl">@FolderLabel(folder)</span>
+                        @if (badge > 0)
+                        {
+                            <span class="tree-n @(folder == MailFolder.Inbox ? "unread-accent" : "")">@badge</span>
+                        }
+                    </button>
+                }
 
-            @foreach (var f in Folders)
-            {
-                var folder = f;
-                <button type="button" class="folder-item @(activeFolder == folder ? "active" : "")" aria-current="@(activeFolder == folder ? "page" : null)"
-                        @onclick="() => SelectFolder(folder)">
-                    <i data-lucide="@(FolderIcon(folder))"></i>
-                    <span class="lbl">@FolderLabel(folder)</span>
-                    @if (FolderBadge(folder) is not 0)
+                <div class="tree-site" style="margin-top:10px">Labels</div>
+                @if (DisplayLabels.Count == 0)
+                {
+                    <div class="empty-labels" style="padding:4px 10px;font-size:11.5px;color:var(--ink-4)">No labels</div>
+                }
+                else
+                {
+                    @foreach (var l in DisplayLabels)
                     {
-                        <span class="badge">@FolderBadge(folder)</span>
+                        var lbl = l;
+                        var isLabelActive = labelFilter == lbl.Name;
+                        <button type="button"
+                                class="tree-node @(isLabelActive ? "on" : "")"
+                                title="@lbl.Name"
+                                aria-label="@lbl.Name"
+                                @onclick="() => ToggleLabelFilter(lbl.Name)">
+                            <span class="label-dot" style="background:@lbl.Color"></span>
+                            <span class="lbl">@lbl.Name</span>
+                            @if (lbl.Count > 0)
+                            {
+                                <span class="tree-n">@lbl.Count</span>
+                            }
+                        </button>
                     }
-                </button>
-            }
+                }
+            </div>
 
-            <div class="folder-foot">
-                <button type="button" class="comp-btn" @onclick="() => OpenComposer()"><i data-lucide="file-plus"></i> New draft</button>
-                <button type="button" class="comp-btn" style="flex:0 0 32px" @onclick="ReloadAll"><i data-lucide="refresh-cw"></i></button>
+            <div class="folders-foot">
+                <button type="button" class="ghost-btn" style="width:100%;justify-content:center;font-size:12px" @onclick='() => Nav.NavigateTo("/mail/advanced")' title="Advanced Mail settings">
+                    <i data-lucide="settings-2"></i>
+                    <span class="lbl">Advanced</span>
+                </button>
             </div>
         </div>
 
-        @* ============ 2. LIST PANE (middle) ============ *@
-        <div class="mail-list">
-            <div class="panel-head">
-                <span class="title">@FolderLabel(activeFolder)</span>
-                <span class="meta">@(counts is null ? "" : $"{counts.InboxUnread} unread · {counts.InboxTotal} total")</span>
-                @if (loading) { <i data-lucide="loader-2" class="spin"></i> }
-            </div>
-
-            @* Filter tabs: All / Unread (Outlook Style) *@
-            <div class="mail-tabs">
-                <button type="button" class="mail-tab @(tabFilter == "all" ? "active" : "")" @onclick='() => SetTabFilter("all")'>
-                    All
-                </button>
-                <button type="button" class="mail-tab @(tabFilter == "unread" ? "active" : "")" @onclick='() => SetTabFilter("unread")'>
-                    Unread
-                    @if ((counts?.InboxUnread ?? 0) > 0 && activeFolder == MailFolder.Inbox)
+        @* ============ PANE 2: MESSAGES LIST CARD ============ *@
+        <div class="card mail-card mail-list-card">
+            <div class="card-head" style="justify-content:space-between">
+                <div class="flex center gap-8">
+                    <span class="cbx @(allSelected ? "on" : "")"
+                          @onclick="ToggleSelectAll"
+                          role="checkbox"
+                          aria-checked="@allSelected"
+                          tabindex="0"
+                          title="Select all"
+                          aria-label="Select all">
+                        <i data-lucide="check"></i>
+                    </span>
+                    <span class="card-title">Messages</span>
+                    @if (NewCount > 0)
                     {
-                        <span class="tab-badge">@counts!.InboxUnread</span>
+                        <span class="badge mute">@NewCount new</span>
                     }
-                </button>
+                </div>
+                <div class="flex center gap-6">
+                    <button type="button" class="icon-btn @(advSearchOpen ? "on" : "")" title="Advanced filter" aria-label="Advanced filter" @onclick="() => advSearchOpen = !advSearchOpen">
+                        <i data-lucide="sliders-horizontal"></i>
+                    </button>
+                </div>
             </div>
 
+            @* Filter banner (Active query or label filter) *@
+            @if (AdvancedActive || !string.IsNullOrWhiteSpace(search) || labelFilter is not null)
+            {
+                <div class="mail-search-banner">
+                    <i data-lucide="search" style="width:13px;height:13px;color:var(--accent-ink)"></i>
+                    <span>
+                        Showing @Items.Count results
+                        @if (!string.IsNullOrWhiteSpace(search)) { <text> for "@search"</text> }
+                        @if (labelFilter is not null) { <span class="label-chip" style="margin-left:4px"><span class="label-dot" style="background:@LabelInk(labelFilter)"></span>@labelFilter</span> }
+                    </span>
+                    <button type="button" class="btn-sm surface" style="margin-left:auto;padding:2px 10px;font-size:11px" @onclick="ResetAdvancedSearch">
+                        <i data-lucide="rotate-ccw" style="width:11px;height:11px"></i> Reset
+                    </button>
+                </div>
+            }
+
+            @* Advanced Filter Panel *@
+            @if (advSearchOpen)
+            {
+                <div class="mail-adv-panel">
+                    <div class="mail-adv-grid">
+                        <input class="org-input" placeholder="From (name/NIK)…" @bind="advFrom" />
+                        <input class="org-input" placeholder="Subject or content keywords…" @bind="advQuery" />
+                        <div class="mail-adv-row">
+                            <label>From date</label>
+                            <input type="date" class="org-input" @bind="advDateFrom" />
+                        </div>
+                        <div class="mail-adv-row">
+                            <label>To date</label>
+                            <input type="date" class="org-input" @bind="advDateTo" />
+                        </div>
+                        <label class="mail-adv-check"><input type="checkbox" @bind="advHasAttachment" /> Has attachment</label>
+                        <select class="filter-select" @bind="advLabel">
+                            <option value="">(All labels)</option>
+                            @foreach (var lbl in AvailableLabels)
+                            {
+                                <option value="@lbl">@lbl</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mail-adv-actions">
+                        <button type="button" class="btn-sm accent" @onclick="ApplyAdvancedSearch"><i data-lucide="search" style="width:12px;height:12px"></i> Apply</button>
+                        <button type="button" class="btn-sm surface" @onclick="ResetAdvancedSearch"><i data-lucide="rotate-ccw" style="width:12px;height:12px"></i> Reset</button>
+                    </div>
+                </div>
+            }
+
+            @* Bulk Selection Bar *@
             @if (Items.Count > 0 && selected.Count > 0)
             {
                 <div class="bulk-bar" aria-label="Bulk actions">
                     <span class="bulk-count">@selected.Count selected</span>
-                    <button class="comp-btn" title="Archive" @onclick="() => BulkMove(MailFolder.Archive)"><i data-lucide="archive"></i></button>
-                    <button class="comp-btn" title="Trash" @onclick="() => BulkMove(MailFolder.Trash)"><i data-lucide="trash-2"></i></button>
-                    <button class="comp-btn" title="Star" @onclick="BulkStar" @onclick:stopPropagation><i data-lucide="star"></i></button>
-                    <button class="comp-btn" title="Restore to inbox" @onclick="() => BulkMove(MailFolder.Inbox)"><i data-lucide="inbox"></i></button>
-                    <button class="comp-btn danger" title="Delete permanently" @onclick="BulkPermanent"><i data-lucide="trash"></i></button>
+                    <button type="button" class="comp-btn" title="Export selected as PDF" disabled="@bulkExporting" @onclick="BulkExportPdf"><i data-lucide="file-down"></i></button>
+                    <button type="button" class="comp-btn" title="Archive" @onclick="() => BulkMove(MailFolder.Archive)"><i data-lucide="archive"></i></button>
+                    <button type="button" class="comp-btn" title="Trash" @onclick="() => BulkMove(MailFolder.Trash)"><i data-lucide="trash-2"></i></button>
+                    <button type="button" class="comp-btn" title="Star" @onclick="BulkStar" @onclick:stopPropagation><i data-lucide="star"></i></button>
+                    <button type="button" class="comp-btn" title="Restore to inbox" @onclick="() => BulkMove(MailFolder.Inbox)"><i data-lucide="inbox"></i></button>
+                    <button type="button" class="comp-btn danger" title="Delete permanently" @onclick="BulkPermanent"><i data-lucide="trash"></i></button>
                 </div>
             }
 
+            @* Messages List *@
             <div class="mail-rows" role="list" aria-label="Mail list">
                 @if (loading && Items.Count == 0)
                 {
@@ -153,7 +235,7 @@
                     <div class="empty-state" style="padding:40px 20px;text-align:center;color:var(--ink-3);">
                         <i data-lucide="@(FolderEmptyIcon(activeFolder))" style="width:36px;height:36px;margin-bottom:10px;opacity:0.5"></i>
                         <div class="title" style="font-weight:700;font-size:14px;color:var(--ink);">Nothing in @FolderLabel(activeFolder)</div>
-                        <div class="sub" style="font-size:12px;margin-top:4px;">Messages land here. Press C to write a new message.</div>
+                        <div class="sub" style="font-size:12px;margin-top:4px;">Messages land here. Press C to compose a new message.</div>
                     </div>
                 }
                 else
@@ -167,13 +249,18 @@
                              aria-selected="@isSel"
                              @onclick="() => OpenDetail(item.Id)">
 
-                            @* Line 1: Checkbox, Sender, Importance, Pin, Time *@
-                            <div class="mail-row-line1">
-                                <input type="checkbox"
-                                       class="row-check"
-                                       @onchange="() => ToggleSelect(item.Id)"
-                                       @onclick:stopPropagation
-                                       checked="@isSel" />
+                            @* Line 1: Checkbox, Importance, Pin, Sender, Time, Quick Actions *@
+                            <div class="m-l1">
+                                <span class="cbx @(isSel ? "on" : "")"
+                                      @onclick="() => ToggleSelect(item.Id)"
+                                      @onclick:stopPropagation
+                                      role="checkbox"
+                                      aria-checked="@isSel"
+                                      tabindex="0"
+                                      title="Select message"
+                                      aria-label="Select message">
+                                    <i data-lucide="check"></i>
+                                </span>
 
                                 @if (item.IsPinned)
                                 {
@@ -182,94 +269,197 @@
 
                                 @if (item.Importance == "high")
                                 {
-                                    <span class="importance-tag high" title="High Importance">❗</span>
+                                    <span class="imp-tag high" title="High Importance"><i data-lucide="alert-circle"></i></span>
                                 }
                                 else if (item.Importance == "low")
                                 {
-                                    <span class="importance-tag low" title="Low Importance">↓</span>
+                                    <span class="imp-tag low" title="Low Importance"><i data-lucide="arrow-down"></i></span>
                                 }
 
-                                <span class="sender">@item.SenderName</span>
-                                <span class="time">@FormatTime(item.ReceivedAt)</span>
+                                <span class="m-from">@item.SenderName</span>
+                                <span class="m-time">@FormatTime(item.ReceivedAt)</span>
+
+                                @* Hover quick actions *@
+                                <div class="mail-row-actions" @onclick:stopPropagation>
+                                    @if (activeFolder == MailFolder.Sent)
+                                    {
+                                        <button type="button" title="Recall message" aria-label="Recall message" @onclick="() => ConfirmRecall(item.Id)">
+                                            <i data-lucide="undo-2"></i>
+                                        </button>
+                                    }
+                                    <button type="button" title="Delete" aria-label="Delete" @onclick="() => QuickDelete(item.Id)">
+                                        <i data-lucide="trash-2"></i>
+                                    </button>
+                                    <button type="button" class="@(item.IsPinned ? "active" : "")" title="@(item.IsPinned ? "Unpin" : "Pin")" aria-label="@(item.IsPinned ? "Unpin" : "Pin")" @onclick="() => TogglePin(item.Id)">
+                                        <i data-lucide="pin"></i>
+                                    </button>
+                                    <button type="button" class="@(item.IsStarred ? "active" : "")" title="@(item.IsStarred ? "Unstar" : "Star")" aria-label="@(item.IsStarred ? "Unstar" : "Star")" @onclick="() => ToggleStar(item.Id)">
+                                        <i data-lucide="star"></i>
+                                    </button>
+                                    <button type="button" title="@(item.IsRead ? "Mark unread" : "Mark read")" aria-label="@(item.IsRead ? "Mark unread" : "Mark read")" @onclick="() => QuickToggleRead(item)">
+                                        <i data-lucide="@(item.IsRead ? "mail-x" : "mail-check")"></i>
+                                    </button>
+                                </div>
                             </div>
 
                             @* Line 2: Subject *@
-                            <div class="mail-row-line2">
-                                <span class="subj">@item.Subject</span>
+                            <div class="m-l2">
+                                <span class="m-subj">@item.Subject</span>
                             </div>
 
-                            @* Line 3: Snippet & Attachment icon *@
-                            <div class="mail-row-line3">
-                                <span class="snip">@item.Snippet</span>
+                            @* Line 3: Snippet & Labels & Attachment clip *@
+                            <div class="m-l3">
+                                <span class="m-snip">@item.Snippet</span>
+                                @if (item.Labels is { Count: > 0 })
+                                {
+                                    @foreach (var lbl in item.Labels.Take(3))
+                                    {
+                                        <span class="label-chip"><span class="label-dot" style="background:@LabelInk(lbl)"></span>@lbl</span>
+                                    }
+                                }
                                 @if (item.HasAttachment)
                                 {
-                                    <i data-lucide="paperclip" class="clip" title="Has attachment"></i>
+                                    <span class="m-clip" title="Has attachment"><i data-lucide="paperclip"></i></span>
                                 }
-                            </div>
-
-                            @* Quick Hover Actions (Outlook Style) *@
-                            <div class="mail-row-actions" @onclick:stopPropagation>
-                                <button type="button" class="act-btn" title="Delete" @onclick="() => QuickDelete(item.Id)">
-                                    <i data-lucide="trash-2"></i>
-                                </button>
-                                <button type="button" class="act-btn @(item.IsPinned ? "active" : "")" title="@(item.IsPinned ? "Unpin" : "Pin")" @onclick="() => TogglePin(item.Id)">
-                                    <i data-lucide="pin"></i>
-                                </button>
-                                <button type="button" class="act-btn @(item.IsStarred ? "active" : "")" title="@(item.IsStarred ? "Unflag" : "Flag")" @onclick="() => ToggleStar(item.Id)">
-                                    <i data-lucide="star"></i>
-                                </button>
-                                <button type="button" class="act-btn" title="@(item.IsRead ? "Mark unread" : "Mark read")" @onclick="() => QuickToggleRead(item)">
-                                    <i data-lucide="@(item.IsRead ? "mail-x" : "mail-check")"></i>
-                                </button>
                             </div>
                         </div>
                     }
                 }
             </div>
 
-            @if (Items.Count > 0 && pageTotal > pageSize)
-            {
-                <div class="pager">
-                    <button class="comp-btn" disabled="@(page <= 1)" @onclick="() => _ = LoadPage(page - 1)"><i data-lucide="chevron-left"></i></button>
-                    <span>@PagerLabel</span>
-                    <button class="comp-btn" disabled="@(page * pageSize >= pageTotal)" @onclick="() => _ = LoadPage(page + 1)"><i data-lucide="chevron-right"></i></button>
-                </div>
-            }
+            @* Pager replacement: Load more footer *@
+            <div class="list-foot">
+                <span class="foot-count">Showing @Items.Count of @pageTotal messages</span>
+                @if (HasMore)
+                {
+                    <span class="foot-sep">·</span>
+                    <button type="button" class="load-more-btn" @onclick="LoadMore" disabled="@loadingMore">
+                        @(loadingMore ? "Loading…" : "Load more")
+                    </button>
+                }
+            </div>
         </div>
 
-        @* ============ 3. DETAIL PANE (right) ============ *@
-        <div class="mail-detail">
+        @* ============ PANE 3: READING CARD ============ *@
+        <div class="card mail-card mail-detail-card">
             @if (detail is null)
             {
                 <div class="empty-state">
                     <i data-lucide="mail-open"></i>
-                    <div style="font-size:15px;font-weight:700;color:var(--ink);">Select a message</div>
-                    <div style="font-size:12.5px;color:var(--ink-3);margin-top:4px;">Choose an email from the list to read it, reply, or forward.</div>
+                    <div class="empty-title">Select a message</div>
+                    <div class="empty-sub">Choose an email from the list to read it, reply, or forward.</div>
                 </div>
             }
             else
             {
-                <div class="detail-head">
-                    <button class="icon-btn" title="Back" @onclick="BackToList"><i data-lucide="arrow-left"></i></button>
-                    <h2 class="subject">@detail.Subject</h2>
+                @* Reading pane action bar *@
+                <div class="card-head detail-actions-bar">
+                    <button type="button" class="icon-btn mobile-back-btn" title="Back to messages" aria-label="Back to messages" @onclick="BackToList">
+                        <i data-lucide="arrow-left"></i>
+                    </button>
+                    <button type="button" class="btn-primary-reply" @onclick="() => ReplyMessage(detail)">
+                        <i data-lucide="reply"></i>
+                        <span>Reply</span>
+                    </button>
+                    <button type="button" class="ghost-btn" @onclick="() => ForwardMessage(detail)">
+                        <i data-lucide="forward"></i>
+                        <span>Forward</span>
+                    </button>
+                    <button type="button" class="icon-btn" title="Archive" aria-label="Archive" @onclick="() => MoveDetail(MailFolder.Archive)">
+                        <i data-lucide="archive"></i>
+                    </button>
+                    <button type="button" class="icon-btn" title="Delete" aria-label="Delete" @onclick="() => MoveDetail(MailFolder.Trash)">
+                        <i data-lucide="trash-2"></i>
+                    </button>
+                    <button type="button" class="icon-btn @(detail.IsStarred ? "star-active" : "")" title="@(detail.IsStarred ? "Starred" : "Star")" aria-label="@(detail.IsStarred ? "Starred" : "Star")" @onclick="() => ToggleStar(detail.Id)">
+                        <i data-lucide="star"></i>
+                    </button>
+                    <button type="button" class="icon-btn" title="Export PDF" aria-label="Export PDF" @onclick="ExportPdf">
+                        <i data-lucide="file-down"></i>
+                    </button>
+                    <button type="button" class="icon-btn" title="Print" aria-label="Print" disabled="@printing" @onclick="PrintDirect">
+                        <i data-lucide="printer"></i>
+                    </button>
 
-                    @if (detail.Importance == "high")
-                    {
-                        <span class="importance-tag high" style="margin-right:6px">❗ High Importance</span>
-                    }
+                    @* More options menu (Pin, Mark unread, Move to Junk, Previews) *@
+                    <div class="more-menu-wrap" style="position:relative;margin-left:auto">
+                        <button type="button" class="icon-btn @(moreMenuOpen ? "on" : "")" title="More options" aria-label="More options" @onclick="ToggleMoreMenu">
+                            <i data-lucide="more-horizontal"></i>
+                        </button>
+                        @if (moreMenuOpen)
+                        {
+                            <div class="menu-backdrop" @onclick="() => moreMenuOpen = false"></div>
+                            <div class="more-dropdown" role="menu" @onclick:stopPropagation>
+                                <button type="button" class="more-item" @onclick="async () => { moreMenuOpen = false; await TogglePin(detail.Id); }">
+                                    <i data-lucide="pin"></i>
+                                    <span>@(detail.IsPinned ? "Unpin" : "Pin")</span>
+                                </button>
+                                <button type="button" class="more-item" @onclick="async () => { moreMenuOpen = false; await MarkUnread(detail.Id); }">
+                                    <i data-lucide="mail-x"></i>
+                                    <span>Mark as unread</span>
+                                </button>
+                                <button type="button" class="more-item" @onclick="async () => { moreMenuOpen = false; await MoveToJunk(); }">
+                                    <i data-lucide="trash"></i>
+                                    <span>Move to Junk</span>
+                                </button>
+                                <button type="button" class="more-item" @onclick="async () => { moreMenuOpen = false; await PreviewPdf(); }">
+                                    <i data-lucide="file-search"></i>
+                                    <span>Preview PDF</span>
+                                </button>
+                                <button type="button" class="more-item" @onclick="() => { moreMenuOpen = false; ToggleHtmlPreview(); }">
+                                    <i data-lucide="eye"></i>
+                                    <span>Preview as recipient</span>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                </div>
 
-                    <button class="icon-btn @(detail.IsPinned ? "on" : "")" title="Pin" @onclick="() => TogglePin(detail.Id)"><i data-lucide="pin"></i></button>
-                    <button class="icon-btn @(detail.IsStarred ? "on" : "")" title="Toggle star" @onclick="() => ToggleStar(detail.Id)"><i data-lucide="star"></i></button>
-                    <button class="icon-btn" title="Mark unread" @onclick="() => MarkUnread(detail.Id)"><i data-lucide="mail-x"></i></button>
-                    <button class="icon-btn" title="Archive" @onclick="() => MoveDetail(MailFolder.Archive)"><i data-lucide="archive"></i></button>
-                    <button class="icon-btn" title="Trash" @onclick="() => MoveDetail(MailFolder.Trash)"><i data-lucide="trash-2"></i></button>
-                    <button class="icon-btn" title="Print/export" @onclick="ExportPdf"><i data-lucide="printer"></i></button>
-                    <button class="icon-btn" title="Forward" @onclick="() => ForwardMessage(detail)"><i data-lucide="forward"></i></button>
-                    <button class="comp-btn" style="margin-left:auto;gap:6px" @onclick="() => ReplyMessage(detail)"><i data-lucide="reply"></i> Reply</button>
+                @* Sender info block *@
+                <div class="detail-sender-block">
+                    <div class="sender-top">
+                        <div class="av-wrap">
+                            <div class="av @AvatarClass(detail.SenderNik)">
+                                @Initials(detail.SenderName)
+                            </div>
+                            <span class="presence @SenderPresence(detail.SenderNik)"></span>
+                        </div>
+                        <div class="sender-details">
+                            <div class="sender-row">
+                                <span class="sender-name">
+                                    @detail.SenderName
+                                    <span class="mono sender-id">ID @detail.SenderNik</span>
+                                </span>
+                                <span class="sender-date">@FormatDetailDate(detail.SentAt ?? detail.ScheduledAt)</span>
+                            </div>
+                            <div class="sender-to">
+                                To: <span class="recipients-names">@RecipientsShort</span>
+                                @if (!string.IsNullOrWhiteSpace(CcShort))
+                                {
+                                    <text> · Cc: <span class="recipients-names">@CcShort</span></text>
+                                }
+                                @if (detail.IsRead)
+                                {
+                                    <span class="read-marker"> · read</span>
+                                }
+                            </div>
+                            <div class="sender-subject-row">
+                                <h2 class="detail-subject">@detail.Subject</h2>
+                                @if (detail.Importance == "high")
+                                {
+                                    <span class="badge bad" style="font-size:10px;padding:2px 7px">High Importance</span>
+                                }
+                                else if (detail.Importance == "low")
+                                {
+                                    <span class="badge mute" style="font-size:10px;padding:2px 7px">Low Importance</span>
+                                }
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 @* Scheduled Send Alert Banner *@
-                @if (detail.Folder == "scheduled" || detail.ScheduledAt.HasValue && detail.SentAt == null)
+                @if (detail.Folder == "scheduled" || (detail.ScheduledAt.HasValue && detail.SentAt == null))
                 {
                     <div class="scheduled-banner">
                         <div class="sched-info">
@@ -285,87 +475,83 @@
                     </div>
                 }
 
-                <div class="detail-body">
-                    <div class="detail-meta">
-                        <span class="avatar" style="background:var(--accent)">@Initials(detail.SenderName)</span>
-                        <div class="who">
-                            <div class="n">@detail.SenderName <span class="mono">@detail.SenderNik</span></div>
-                            <div class="to">To <b>@RecipientsShort</b>@(CcShort is null ? "" : $" · CC {CcShort}")</div>
-                            <div class="when">@(detail.SentAt is null ? (detail.ScheduledAt is not null ? $"Scheduled for {FormatDetail(detail.ScheduledAt.Value.ToLocalTime())}" : "Draft") : FormatDetail(detail.SentAt.Value.ToLocalTime()))@(detail.IsRead ? " · read" : "")</div>
-                        </div>
-                    </div>
+                @* Meeting RSVP Banner *@
+                @if (meetingForDetail is not null)
+                {
+                    <MeetingRsvpPanel
+                        Meeting="@(new MeetingRsvpPanel.MeetingModel(meetingForDetail.Id, meetingForDetail.Title, meetingForDetail.StartAt, meetingForDetail.EndAt, meetingForDetail.Location, meetingForDetail.Link))"
+                        CurrentResponse="@meetingForDetail.MyResponse"
+                        ShowSummary="@(meetingForDetail.OrganizerNik == Auth.Me?.Nik)"
+                        Attendees="@(meetingForDetail.Attendees.Select(a => new MeetingRsvpPanel.AttendeeModel(a.Name, a.RsvpStatus)).ToList())"
+                        OnRespond="OnRsvpRespond" />
+                }
 
-                    @* Attachments *@
-                    @if (detail.Attachments.Count > 0)
+                @* Detail Scroll Area: Body + Attachments or Conversation Stack *@
+                <div class="detail-scroll-area">
+                    @* Linked Projects chip row if any *@
+                    @if (detail.LinkedProjects.Count > 0)
                     {
-                        <div class="attachments">
-                            @foreach (var a in detail.Attachments)
+                        <div class="linked-projects-row">
+                            <span class="linked-title"><i data-lucide="kanban"></i> Projects:</span>
+                            @foreach (var p in detail.LinkedProjects)
                             {
-                                <button type="button" class="att" @onclick="() => Download(a)">
-                                    <i data-lucide="paperclip"></i>
-                                    <span class="name">@a.FileName</span>
-                                    <span class="size">@HumanSize(a.FileSize)</span>
-                                </button>
+                                <span class="badge info" title="Progress: @p.Progress%">@p.Name</span>
                             }
                         </div>
                     }
 
-                    @* Message Body *@
-                    <div class="body">@((MarkupString)detail.Body)</div>
-
-                    @* Conversation Thread Cards *@
-                    @if (detail.ThreadCount > 0 && threadItems.Count > 0)
+                    @if (hasConversation)
                     {
-                        <div style="margin-top:28px">
-                            <div class="panel-head" style="padding:0 0 10px 0;border:none">
-                                <span class="title" style="font-size:13px"><i data-lucide="messages-square"></i> Conversation History (@threadItems.Count)</span>
-                            </div>
-                            <div class="conv-thread">
-                                @foreach (var th in threadItems)
-                                {
-                                    var isExpanded = expandedThreadIds.Contains(th.Id);
-                                    <div class="conv-card @(isExpanded ? "" : "collapsed")">
-                                        <div class="conv-head" @onclick="() => ToggleThreadExpand(th.Id)">
-                                            <span class="sender">@th.SenderName</span>
-                                            <span class="preview">@th.Subject — @th.Snippet</span>
-                                            <span class="time">@FormatTime(th.ReceivedAt)</span>
-                                            <i data-lucide="@(isExpanded ? "chevron-up" : "chevron-down")" style="width:13px;height:13px;color:var(--ink-3)"></i>
-                                        </div>
-                                        @if (isExpanded)
-                                        {
-                                            <div class="conv-body">
-                                                <p style="margin:0">@th.Snippet</p>
-                                            </div>
-                                        }
-                                    </div>
-                                }
-                            </div>
-                        </div>
+                        <MailThreadStack @ref="threadStackRef"
+                                         Detail="detail"
+                                         OnReply="ReplyMessage"
+                                         OnForward="ForwardMessage" />
                     }
+                    else
+                    {
+                        <div class="body">@((MarkupString)detail.Body)</div>
 
-                    @* Inline Quick Reply Box *@
-                    <div class="inline-reply-box">
-                        <div class="inline-reply-header">
-                            <i data-lucide="reply" style="width:14px;height:14px;color:var(--accent)"></i>
-                            <span class="title">Quick reply to @detail.SenderName</span>
-                            <button type="button" class="popout-btn" title="Pop out into floating window" @onclick="() => ReplyMessage(detail)">
-                                <i data-lucide="external-link" style="width:14px;height:14px"></i>
-                            </button>
-                        </div>
-                        <textarea class="body"
-                                  placeholder="Write a quick reply here…"
-                                  rows="3"
-                                  style="width:100%;min-height:70px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:12.5px;resize:vertical;"
-                                  @bind="quickReplyText"></textarea>
-                        <div class="inline-reply-acts">
-                            <button type="button" class="btn" style="width:auto;margin:0;padding:6px 14px;font-size:12px;" @onclick="SendQuickReply" disabled="@quickReplySending">
-                                <i data-lucide="send" style="width:12px;height:12px;margin-right:4px"></i>
-                                @(quickReplySending ? "Sending…" : "Send")
-                            </button>
-                            <button type="button" class="comp-btn" style="height:30px;font-size:11.5px" @onclick="() => ForwardMessage(detail)">
-                                <i data-lucide="forward" style="width:12px;height:12px;margin-right:4px"></i> Forward
-                            </button>
-                        </div>
+                        @if (detail.Attachments.Count > 0)
+                        {
+                            <div class="detail-att-section">
+                                <div class="att-head">Attachments (@detail.Attachments.Count @(detail.Attachments.Count == 1 ? "file" : "files"))</div>
+                                <div class="att-chips">
+                                    @foreach (var a in detail.Attachments)
+                                    {
+                                        var att = a;
+                                        <button type="button" class="att" @onclick="() => Download(att)">
+                                            <i data-lucide="paperclip"></i>
+                                            <span class="name">@att.FileName</span>
+                                            <span class="size">@HumanSize(att.FileSize)</span>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+                </div>
+
+                @* Inline Quick Reply Box *@
+                <div class="inline-reply-box">
+                    <div class="rh">
+                        <i data-lucide="reply"></i>
+                        <span class="title">Quick reply to @detail.SenderName</span>
+                        <button type="button" class="icon-btn" style="margin-left:auto;width:24px;height:24px" title="Open in composer" aria-label="Open in composer" @onclick="() => ReplyMessage(detail)">
+                            <i data-lucide="external-link" style="width:13px;height:13px"></i>
+                        </button>
+                    </div>
+                    <textarea rows="2"
+                              placeholder="Write a quick reply here…"
+                              @bind="quickReplyText"></textarea>
+                    <div class="ra">
+                        <button type="button" class="btn-primary" style="padding:6px 14px" @onclick="SendQuickReply" disabled="@quickReplySending">
+                            <i data-lucide="send"></i>
+                            @(quickReplySending ? "Sending…" : "Send")
+                        </button>
+                        <button type="button" class="ghost-btn" @onclick="() => ForwardMessage(detail)">
+                            <i data-lucide="forward"></i>
+                            <span>Forward</span>
+                        </button>
                     </div>
                 </div>
             }
@@ -373,12 +559,108 @@
     </div>
 </div>
 
-@* ============ FLOATING DOCKED COMPOSER (Outlook Web Style) ============ *@
+@* ============ FLOATING DOCKED COMPOSER ============ *@
 <MailComposer @ref="composerRef"
               IsOpen="@composerOpen"
               IsOpenChanged="v => composerOpen = v"
               OnSent="OnComposerSent"
               OnDiscard="ReloadAll" />
+
+@* ---- Recall Confirmation Dialog ---- *@
+@if (recallConfirmId is not null)
+{
+    <IPop.Web.Components.Chat.ConfirmDialog Title="Recall message?"
+        Message="This message will be removed from recipient inboxes as long as it has not been read. This action cannot be undone."
+        ConfirmText="Recall" CancelText="Cancel"
+        OnConfirm="DoRecall" OnCancel="() => recallConfirmId = null" />
+}
+
+@* ---- PDF Preview Overlay ---- *@
+@if (pdfPreviewOpen)
+{
+    <div class="backdrop on" @onclick="ClosePdfPreview"></div>
+    <div class="pdf-preview-overlay" role="dialog" aria-modal="true" aria-label="PDF preview">
+        <div class="pdf-preview-bar">
+            <i data-lucide="file-search"></i> <span>PDF Preview — @detail?.Subject</span>
+            <span style="margin-left:auto;display:flex;gap:6px">
+                <button type="button" class="btn-sm surface" disabled="@(pdfPreviewUrl is null)" @onclick="DownloadPdfPreview"><i data-lucide="download" style="width:13px;height:13px"></i> Download</button>
+                <button type="button" class="btn-sm surface" disabled="@(pdfPreviewUrl is null)" @onclick="PrintPdfPreview"><i data-lucide="printer" style="width:13px;height:13px"></i> Print</button>
+                <button type="button" class="btn-sm accent" @onclick="ExportPdf"><i data-lucide="file-down" style="width:13px;height:13px"></i> Export</button>
+                <button type="button" class="btn-sm surface" @onclick="ClosePdfPreview"><i data-lucide="x" style="width:13px;height:13px"></i> Close</button>
+            </span>
+        </div>
+        @if (pdfPreviewLoading)
+        {
+            <div class="pdf-preview-body" style="display:flex;align-items:center;justify-content:center;color:var(--ink-3);font-size:13px">
+                <i data-lucide="loader-circle" style="width:18px;height:18px;margin-right:8px"></i> Preparing preview…
+            </div>
+        }
+        else if (pdfPreviewUrl is not null)
+        {
+            <iframe id="preview-frame" class="pdf-preview-body" src="@($"{pdfPreviewUrl}#page={pdfPage}")" title="PDF preview"></iframe>
+            <div class="pdf-preview-nav">
+                <button type="button" class="btn-sm surface" disabled="@(pdfPage <= 1)" @onclick="() => pdfPage--" title="Previous page" aria-label="Previous page">
+                    <i data-lucide="chevron-left" style="width:13px;height:13px"></i>
+                </button>
+                <span style="font-size:12px;color:var(--ink-2)">Page @pdfPage</span>
+                <button type="button" class="btn-sm surface" @onclick="() => pdfPage++" title="Next page" aria-label="Next page">
+                    <i data-lucide="chevron-right" style="width:13px;height:13px"></i>
+                </button>
+            </div>
+        }
+        else
+        {
+            <div class="pdf-preview-body" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--ink-3)">
+                <i data-lucide="file-x" style="width:22px;height:22px"></i>
+                <span style="font-size:13px">Preview unavailable — message may be empty or failed to render.</span>
+            </div>
+        }
+    </div>
+}
+
+@* ---- HTML Preview Overlay ---- *@
+@if (htmlPreviewOpen && detail is not null)
+{
+    <div class="backdrop on" @onclick="CloseHtmlPreview"></div>
+    <div class="pdf-preview-overlay" role="dialog" aria-modal="true" aria-label="HTML preview">
+        <div class="pdf-preview-bar">
+            <i data-lucide="eye"></i> <span>HTML Preview — @detail.Subject</span>
+            <span style="margin-left:auto;display:flex;gap:6px">
+                <button type="button" class="btn-sm surface" @onclick="CloseHtmlPreview"><i data-lucide="x" style="width:13px;height:13px"></i> Close</button>
+            </span>
+        </div>
+        <div class="pdf-preview-body mail-html-preview">
+            <div class="mail-html-card">
+                <div class="mail-html-head">
+                    <div class="subj">@(string.IsNullOrWhiteSpace(detail.Subject) ? "(no subject)" : detail.Subject)</div>
+                    <div class="meta">
+                        <span><strong>From:</strong> @detail.SenderName</span>
+                        <span><strong>To:</strong> @string.Join(", ", detail.Recipients.Where(r => r.RecipientType == "to").Select(r => r.Name))</span>
+                        @{
+                            var ccNames = detail.Recipients.Where(r => r.RecipientType == "cc").Select(r => r.Name).ToList();
+                        }
+                        @if (ccNames.Count > 0) { <span><strong>Cc:</strong> @string.Join(", ", ccNames)</span> }
+                        <span>@(detail.SentAt?.ToLocalTime().ToString("dd MMM yyyy HH:mm") ?? "draft")</span>
+                    </div>
+                </div>
+                @if (string.IsNullOrWhiteSpace(detail.Body))
+                {
+                    <div class="mail-html-empty">
+                        <i data-lucide="mail-open"></i>
+                        <div class="t">This message has no content</div>
+                        <div class="s">No content to preview.</div>
+                    </div>
+                }
+                else
+                {
+                    <div class="mail-html-body">
+                        @((MarkupString)(detail.IsHtml ? detail.Body : $"<pre style=\"white-space:pre-wrap;font-family:inherit\">{detail.Body}</pre>"))
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
 
 @code {
     private static readonly MailFolder[] Folders =
@@ -387,23 +669,27 @@
     ];
 
     private MailFolder activeFolder = MailFolder.Inbox;
-    private string tabFilter = "all"; // "all" or "unread"
+    private string tabFilter = "all"; // "all", "unread", "starred"
+    private string? labelFilter;
     private List<MailSummary> Items = [];
     private MailDetail? detail;
     private MailCounts? counts;
-    private List<MailSummary> threadItems = [];
-    private readonly HashSet<Guid> expandedThreadIds = [];
+    private List<MailLabel> serverLabels = [];
     private int page = 1, pageSize = 25, pageTotal;
     private bool loading;
+    private bool loadingMore;
     private string search = "";
     private readonly HashSet<Guid> selected = [];
     private Guid? selectedMail;
     private CancellationTokenSource? cts;
+    private string lastSyncedTime = DateTime.Now.ToString("HH:mm");
 
     private MailComposer? composerRef;
+    private MailThreadStack? threadStackRef;
     private bool composerOpen;
     private string quickReplyText = "";
     private bool quickReplySending;
+    private bool moreMenuOpen;
     private bool _navSubscribed;
     private string? _lastHandledQuery;
 
@@ -411,10 +697,11 @@
 
     protected override async Task OnInitializedAsync()
     {
-        Layout.SetHeader("Mail", "Inbox");
+        UpdateHeader();
         if (Auth.IsAuthenticated)
         {
             await ReloadAll();
+            await LoadLabelsAsync();
             await JS.InvokeVoidAsync("ipop.icons");
         }
     }
@@ -437,7 +724,20 @@
     public async Task ReloadAll()
     {
         counts = await MailSvc.GetCountsAsync();
+        lastSyncedTime = DateTime.Now.ToString("HH:mm");
+        UpdateHeader();
         await LoadPage(1);
+        await LoadLabelsAsync();
+    }
+
+    private void UpdateHeader()
+    {
+        var title = FolderLabel(activeFolder);
+        Layout.SetHeader(title);
+        var unread = activeFolder == MailFolder.Inbox ? (counts?.InboxUnread ?? 0) : 0;
+        var total = AllCount;
+        var sub = $"{unread} unread · {total} {(total == 1 ? "message" : "messages")} · synced {lastSyncedTime}";
+        Layout.SetSubtitle(sub);
     }
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
@@ -480,9 +780,98 @@
         await LoadPage(1);
     }
 
-    private async Task LoadPage(int p)
+    // ── Counts Helpers ──
+    private int AllCount => activeFolder switch
     {
-        loading = true;
+        MailFolder.Inbox => counts?.InboxTotal ?? pageTotal,
+        MailFolder.Sent => counts?.SentTotal ?? pageTotal,
+        MailFolder.Draft => counts?.DraftTotal ?? pageTotal,
+        MailFolder.Scheduled => counts?.ScheduledTotal ?? pageTotal,
+        MailFolder.Starred => counts?.StarredTotal ?? pageTotal,
+        MailFolder.Archive => counts?.ArchiveTotal ?? pageTotal,
+        MailFolder.Trash => counts?.TrashTotal ?? pageTotal,
+        _ => pageTotal
+    };
+
+    private int UnreadCount => activeFolder == MailFolder.Inbox
+        ? (counts?.InboxUnread ?? 0)
+        : Items.Count(i => !i.IsRead);
+
+    private int StarredCount => counts?.StarredTotal ?? 0;
+
+    private int NewCount => counts?.InboxUnread ?? 0;
+
+    private bool HasMore => Items.Count < pageTotal;
+
+    // ── Advanced Search ──
+    private bool advSearchOpen;
+    private string advFrom = "";
+    private string advQuery = "";
+    private DateTime? advDateFrom;
+    private DateTime? advDateTo;
+    private bool advHasAttachment;
+    private string advLabel = "";
+
+    private bool AdvancedActive =>
+        !string.IsNullOrWhiteSpace(advFrom) || !string.IsNullOrWhiteSpace(advQuery) ||
+        advDateFrom is not null || advDateTo is not null || advHasAttachment || !string.IsNullOrWhiteSpace(advLabel);
+
+    private async Task ApplyAdvancedSearch()
+    {
+        search = string.Join(" ", new[] { advFrom, advQuery }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        labelFilter = string.IsNullOrWhiteSpace(advLabel) ? null : advLabel;
+        await LoadPage(1);
+    }
+
+    private async Task ResetAdvancedSearch()
+    {
+        advFrom = ""; advQuery = ""; advDateFrom = null; advDateTo = null; advHasAttachment = false; advLabel = "";
+        labelFilter = null; search = "";
+        await LoadPage(1);
+    }
+
+    // Labels visible in current search results
+    private List<string> AvailableLabels => Items
+        .SelectMany(m => m.Labels ?? [])
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(x => x)
+        .ToList();
+
+    // Labels for display in the Mailboxes card (server labels or fallback from items)
+    private IReadOnlyList<MailLabel> DisplayLabels
+    {
+        get
+        {
+            if (serverLabels.Count > 0) return serverLabels;
+            return AvailableLabels.Select(name => new MailLabel(Guid.Empty, name, LabelInk(name), 0)).ToList();
+        }
+    }
+
+    private async Task LoadLabelsAsync()
+    {
+        try
+        {
+            serverLabels = await MailSvc.GetLabelsAsync() ?? [];
+        }
+        catch { serverLabels = []; }
+    }
+
+    private async Task ToggleLabelFilter(string name)
+    {
+        if (labelFilter == name)
+        {
+            labelFilter = null;
+        }
+        else
+        {
+            labelFilter = name;
+        }
+        await LoadPage(1);
+    }
+
+    private async Task LoadPage(int p, bool append = false)
+    {
+        if (!append) loading = true;
         StateHasChanged();
         try
         {
@@ -490,15 +879,55 @@
             var searchAtStart = search;
             var q = string.IsNullOrWhiteSpace(search) ? null : search;
             bool? unreadOnly = tabFilter == "unread" ? true : null;
+            bool? starredOnly = tabFilter == "starred" ? true : null;
 
-            var res = await MailSvc.GetFolderAsync(activeFolder, p, pageSize, q, null, unreadOnly);
+            var res = await MailSvc.GetFolderAsync(activeFolder, p, pageSize, q, starredOnly, unreadOnly, labelFilter, advDateFrom, advDateTo, advHasAttachment ? true : null);
             if (folderAtStart != activeFolder || searchAtStart != search) return;
-            Items = res?.Items?.ToList() ?? [];
+
+            var fetched = res?.Items?.ToList() ?? [];
             pageTotal = res?.TotalCount ?? 0;
             page = p;
+
+            if (append)
+            {
+                var existingIds = Items.Select(x => x.Id).ToHashSet();
+                foreach (var item in fetched)
+                {
+                    if (existingIds.Add(item.Id))
+                    {
+                        Items.Add(item);
+                    }
+                }
+            }
+            else
+            {
+                Items = fetched;
+            }
+
+            lastSyncedTime = DateTime.Now.ToString("HH:mm");
+            UpdateHeader();
         }
         catch (Exception ex) { Toasts.Show(ex.Message); }
-        finally { loading = false; StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons"); }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    private async Task LoadMore()
+    {
+        if (loadingMore || !HasMore) return;
+        loadingMore = true;
+        try
+        {
+            await LoadPage(page + 1, append: true);
+        }
+        finally
+        {
+            loadingMore = false;
+        }
     }
 
     private async Task SelectFolder(MailFolder f)
@@ -508,6 +937,8 @@
         selected.Clear();
         selectedMail = null;
         detail = null;
+        moreMenuOpen = false;
+        UpdateHeader();
         await LoadPage(1);
         await JS.InvokeVoidAsync("ipop.icons");
     }
@@ -515,6 +946,7 @@
     private async Task OpenDetail(Guid id)
     {
         selectedMail = id;
+        moreMenuOpen = false;
         detail = await MailSvc.GetAsync(id);
         if (id != selectedMail) return;
 
@@ -523,32 +955,51 @@
             await MailSvc.MarkReadAsync(id);
             var c = await MailSvc.GetCountsAsync();
             if (c is not null) counts = c;
+            UpdateHeader();
             await LoadPage(page);
         }
 
-        // Load thread if present
-        if (detail?.ThreadRootId is not null)
-        {
-            var t = await MailSvc.GetThreadAsync(detail.ThreadRootId.Value, 1, 50);
-            threadItems = t?.Items?.Where(x => x.Id != detail.Id).ToList() ?? [];
-            expandedThreadIds.Clear();
-        }
-        else
-        {
-            threadItems = [];
-        }
-
+        await LoadMeetingForDetail(id);
         await JS.InvokeVoidAsync("ipop.icons");
         StateHasChanged();
     }
 
-    private void ToggleThreadExpand(Guid threadId)
+    // ── Meeting RSVP in Reading Pane ──
+    private MeetingDetailRow? meetingForDetail;
+
+    private sealed record MeetingAttendeeRow(Guid UserId, string Name, string Nik, bool Required, string RsvpStatus, string? Note);
+    private sealed record MeetingDetailRow(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string? TimeZone, string? Location, string? Link,
+        Guid OrganizerId, string OrganizerName, string Status, IReadOnlyList<MeetingAttendeeRow> Attendees,
+        int AcceptCount, int MaybeCount, int DeclineCount, int PendingCount, string MyResponse, string? OrganizerNik = null);
+
+    private async Task LoadMeetingForDetail(Guid mailId)
     {
-        if (!expandedThreadIds.Add(threadId)) expandedThreadIds.Remove(threadId);
-        StateHasChanged();
+        try
+        {
+            meetingForDetail = await Auth.GetAsync<MeetingDetailRow>($"/api/meetings/by-mail/{mailId}");
+        }
+        catch { meetingForDetail = null; }
     }
 
-    private void BackToList() { selectedMail = null; detail = null; threadItems = []; }
+    private async Task OnRsvpRespond((string Response, string? Note) r)
+    {
+        if (meetingForDetail is null) return;
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/meetings/{meetingForDetail.Id}/rsvp",
+            new { response = r.Response, note = r.Note });
+        if (res.IsSuccessStatusCode)
+        {
+            meetingForDetail = await res.Content.ReadFromJsonAsync<MeetingDetailRow>();
+            Toasts.Show("Response saved.", ToastKind.Success);
+        }
+        else
+        {
+            Toasts.Show("Failed to save response.", ToastKind.Error);
+        }
+    }
+
+    private bool hasConversation => detail is not null && (detail.ThreadCount > 0 || detail.ThreadRootId is not null || detail.InReplyToId is not null);
+
+    private void BackToList() { selectedMail = null; detail = null; moreMenuOpen = false; }
 
     private async Task ReloadDetail()
     {
@@ -556,7 +1007,60 @@
         StateHasChanged();
     }
 
-    // ── Single and Ribbon Actions ──
+    // ── Toolbar Actions (Row Under Topbar) ──
+    private bool CanArchive => selected.Count > 0 || detail is not null;
+    private bool CanDelete => selected.Count > 0 || detail is not null;
+    private bool CanMarkRead => selected.Count > 0 || (activeFolder != MailFolder.Starred && (counts?.InboxUnread ?? 0) > 0);
+
+    private async Task ToolbarArchive()
+    {
+        if (selected.Count > 0) await BulkMove(MailFolder.Archive);
+        else if (detail is not null) await MoveDetail(MailFolder.Archive);
+    }
+
+    private async Task ToolbarDelete()
+    {
+        if (selected.Count > 0)
+        {
+            if (activeFolder == MailFolder.Trash) await BulkPermanent();
+            else await BulkMove(MailFolder.Trash);
+        }
+        else if (detail is not null)
+        {
+            await MoveDetail(MailFolder.Trash);
+        }
+    }
+
+    private async Task ToolbarMarkRead()
+    {
+        if (selected.Count > 0)
+        {
+            var list = selected.ToList();
+            selected.Clear();
+            foreach (var id in list)
+            {
+                await MailSvc.MarkReadAsync(id);
+            }
+            counts = await MailSvc.GetCountsAsync();
+            UpdateHeader();
+            await LoadPage(page);
+            Toasts.Show("Marked as read.");
+        }
+        else
+        {
+            await MarkAllRead();
+        }
+    }
+
+    private void ToggleMoreMenu() => moreMenuOpen = !moreMenuOpen;
+
+    private async Task MoveToJunk()
+    {
+        // Backend lacks a dedicated Junk folder; routes to Trash per parity notes.
+        await MoveDetail(MailFolder.Trash);
+    }
+
+    // ── Single Actions ──
     private Task TogglePin(Guid id) => RunAction(async () =>
     {
         await MailSvc.TogglePinAsync(id);
@@ -570,12 +1074,14 @@
         await ReloadDetail();
         await LoadPage(page);
         counts = await MailSvc.GetCountsAsync();
+        UpdateHeader();
     });
 
     private Task MarkUnread(Guid id) => RunAction(async () =>
     {
         await MailSvc.MarkUnreadAsync(id);
         counts = await MailSvc.GetCountsAsync();
+        UpdateHeader();
         BackToList();
         await LoadPage(page);
     });
@@ -585,6 +1091,7 @@
         if (item.IsRead) await MailSvc.MarkUnreadAsync(item.Id);
         else await MailSvc.MarkReadAsync(item.Id);
         counts = await MailSvc.GetCountsAsync();
+        UpdateHeader();
         await LoadPage(page);
     });
 
@@ -593,7 +1100,31 @@
         await MailSvc.DeleteAsync(id);
         if (selectedMail == id) BackToList();
         counts = await MailSvc.GetCountsAsync();
+        UpdateHeader();
         await LoadPage(page);
+    });
+
+    // ── Recall ──
+    private Guid? recallConfirmId;
+    private void ConfirmRecall(Guid id) => recallConfirmId = id;
+
+    private Task DoRecall() => RunAction(async () =>
+    {
+        if (recallConfirmId is null) return;
+        var id = recallConfirmId.Value;
+        recallConfirmId = null;
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/mail/{id}/recall");
+        if (res.IsSuccessStatusCode)
+        {
+            Toasts.Show("Message recalled.", ToastKind.Success);
+            counts = await MailSvc.GetCountsAsync();
+            UpdateHeader();
+            await LoadPage(page);
+        }
+        else
+        {
+            Toasts.Show("Recall failed — the message may have already been read by the recipient.", ToastKind.Error);
+        }
     });
 
     private Task MoveDetail(MailFolder f) => RunAction(async () =>
@@ -601,28 +1132,11 @@
         if (detail is null) return;
         await MailSvc.MoveAsync(detail.Id, f);
         counts = await MailSvc.GetCountsAsync();
+        UpdateHeader();
         BackToList();
         await LoadPage(page);
         Toasts.Show($"Moved to {FolderLabel(f)}");
     });
-
-    private async Task RibbonDelete()
-    {
-        if (selected.Count > 0) await BulkPermanent();
-        else if (detail is not null) await MoveDetail(MailFolder.Trash);
-    }
-
-    private async Task RibbonArchive()
-    {
-        if (selected.Count > 0) await BulkMove(MailFolder.Archive);
-        else if (detail is not null) await MoveDetail(MailFolder.Archive);
-    }
-
-    private async Task RibbonTrash()
-    {
-        if (selected.Count > 0) await BulkMove(MailFolder.Trash);
-        else if (detail is not null) await MoveDetail(MailFolder.Trash);
-    }
 
     private async Task ExportPdf()
     {
@@ -630,6 +1144,106 @@
         await MailSvc.ExportPdfAsync(detail.Id);
         Toasts.Show("PDF export requested.");
         await ReloadDetail();
+    }
+
+    // ── PDF & HTML Previews ──
+    private bool pdfPreviewOpen;
+    private bool pdfPreviewLoading;
+    private string? pdfPreviewUrl;
+    private byte[]? pdfPreviewBytes;
+    private int pdfPage = 1;
+
+    private bool htmlPreviewOpen;
+    private void ToggleHtmlPreview() { if (detail is not null) htmlPreviewOpen = !htmlPreviewOpen; }
+    private void CloseHtmlPreview() => htmlPreviewOpen = false;
+
+    private async Task PreviewPdf()
+    {
+        if (detail is null || pdfPreviewLoading) return;
+        pdfPreviewOpen = true;
+        pdfPreviewLoading = true;
+        pdfPreviewBytes = null;
+        pdfPage = 1;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Get, $"/api/mail/{detail.Id}/export-pdf?mode=preview");
+            if (res.IsSuccessStatusCode)
+            {
+                pdfPreviewBytes = await res.Content.ReadAsByteArrayAsync();
+                pdfPreviewUrl = await JS.InvokeAsync<string>("ipop.preview", Convert.ToBase64String(pdfPreviewBytes), "application/pdf", $"mail-{detail.Id.ToString("N")[..8]}.pdf");
+            }
+            else
+            {
+                Toasts.Show("PDF preview is not yet available on server.", ToastKind.Error);
+                pdfPreviewOpen = false;
+            }
+        }
+        finally { pdfPreviewLoading = false; }
+    }
+
+    private async Task DownloadPdfPreview()
+    {
+        if (pdfPreviewBytes is null || detail is null) return;
+        await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(pdfPreviewBytes), $"mail-{detail.Id.ToString("N")[..8]}.pdf");
+    }
+
+    private async Task PrintPdfPreview()
+    {
+        if (pdfPreviewUrl is null) return;
+        await JS.InvokeVoidAsync("ipop.printUrl", pdfPreviewUrl);
+    }
+
+    private void ClosePdfPreview()
+    {
+        pdfPreviewOpen = false;
+        pdfPreviewUrl = null;
+        pdfPreviewBytes = null;
+    }
+
+    private bool bulkExporting;
+
+    private async Task BulkExportPdf()
+    {
+        if (selected.Count == 0 || bulkExporting) return;
+        bulkExporting = true;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/mail/export-pdf", new { ids = selected.ToList() });
+            if (!res.IsSuccessStatusCode)
+            {
+                Toasts.Show("Combined PDF export is not yet available on server.", ToastKind.Error);
+                return;
+            }
+            var bytes = await res.Content.ReadAsByteArrayAsync();
+            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmm");
+            await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(bytes), $"mail-bundle-{stamp}.pdf");
+            Toasts.Show($"{selected.Count} messages exported as a single PDF.", ToastKind.Success);
+        }
+        finally { bulkExporting = false; }
+    }
+
+    private bool printing;
+
+    private async Task PrintDirect()
+    {
+        if (detail is null || printing) return;
+        printing = true;
+        try
+        {
+            if (pdfPreviewBytes is null)
+            {
+                var res = await Auth.SendAsync(HttpMethod.Get, $"/api/mail/{detail.Id}/export-pdf?mode=preview");
+                if (!res.IsSuccessStatusCode)
+                {
+                    Toasts.Show("Printing is not yet available on server.", ToastKind.Error);
+                    return;
+                }
+                pdfPreviewBytes = await res.Content.ReadAsByteArrayAsync();
+            }
+            var url = await JS.InvokeAsync<string>("ipop.preview", Convert.ToBase64String(pdfPreviewBytes), "application/pdf", "print.pdf");
+            await JS.InvokeVoidAsync("ipop.printUrl", url);
+        }
+        finally { printing = false; }
     }
 
     // ── Scheduled Actions ──
@@ -671,6 +1285,21 @@
     }
 
     // ── Bulk Actions ──
+    private bool allSelected => Items.Count > 0 && selected.Count == Items.Count;
+
+    private void ToggleSelectAll()
+    {
+        if (allSelected)
+        {
+            selected.Clear();
+        }
+        else
+        {
+            foreach (var item in Items) selected.Add(item.Id);
+        }
+        StateHasChanged();
+    }
+
     private void ToggleSelect(Guid id)
     {
         if (!selected.Add(id)) selected.Remove(id);
@@ -684,6 +1313,7 @@
         await MailSvc.BulkMoveAsync(selected.ToList(), f);
         selected.Clear();
         counts = await MailSvc.GetCountsAsync();
+        UpdateHeader();
         await LoadPage(page);
         Toasts.Show($"Moved {n} items to {FolderLabel(f)}");
     });
@@ -693,6 +1323,7 @@
         if (selected.Count == 0) return;
         await MailSvc.BulkStarAsync(selected.ToList());
         counts = await MailSvc.GetCountsAsync();
+        UpdateHeader();
         await LoadPage(page);
     });
 
@@ -702,6 +1333,7 @@
         await MailSvc.BulkDeleteAsync(selected.ToList());
         selected.Clear();
         counts = await MailSvc.GetCountsAsync();
+        UpdateHeader();
         await LoadPage(page);
         Toasts.Show("Deleted.");
     });
@@ -710,6 +1342,7 @@
     {
         await MailSvc.MarkAllReadAsync(activeFolder);
         counts = await MailSvc.GetCountsAsync();
+        UpdateHeader();
         await LoadPage(page);
     }
 
@@ -724,8 +1357,14 @@
         await LoadPage(1);
     }
 
-    private async Task OnKeyDown(KeyboardEventArgs e)
+    private void OnKeyDown(KeyboardEventArgs e)
     {
+        if (moreMenuOpen && e.Key is "Escape")
+        {
+            moreMenuOpen = false;
+            StateHasChanged();
+            return;
+        }
         if (composerOpen) return;
         if (e.Key is "c" or "C")
         {
@@ -749,7 +1388,7 @@
     {
         var to = new List<MemberSearchRow> { new(d.SenderNik, d.SenderName, null, null) };
         var subj = d.Subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? d.Subject : $"Re: {d.Subject}";
-        var bodyQuote = $"<br/><br/><blockquote>On {d.SentAt:g} {d.SenderName} wrote:<br/>{d.Body}</blockquote>";
+        var bodyQuote = $"<p><br/></p>{QuoteOf(d)}";
         OpenComposer(inReplyTo: d.Id, threadRoot: d.ThreadRootId ?? d.Id, initialSubject: subj, initialBody: bodyQuote, initialTo: to);
     }
 
@@ -766,9 +1405,10 @@
         quickReplySending = true;
         try
         {
+            var typed = System.Net.WebUtility.HtmlEncode(quickReplyText.Trim()).Replace("\n", "<br/>");
             var req = new MailSendRequest(
                 Subject: detail.Subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? detail.Subject : $"Re: {detail.Subject}",
-                Body: quickReplyText,
+                Body: $"<p>{typed}</p>{QuoteOf(detail)}",
                 To: [detail.SenderNik],
                 Cc: [],
                 Bcc: [],
@@ -782,6 +1422,7 @@
                 Toasts.Show("Reply sent.");
                 await ReloadDetail();
                 await ReloadAll();
+                if (threadStackRef is not null) await threadStackRef.ReloadAsync(expandLatest: true);
             }
         }
         finally
@@ -790,9 +1431,24 @@
         }
     }
 
+    private static string QuoteOf(MailDetail d)
+    {
+        var stamp = d.SentAt?.ToLocalTime().ToString("ddd, dd MMM yyyy 'at' HH:mm") ?? "earlier";
+        return $"""
+            <details class="mail-quote">
+              <summary class="mail-quote-toggle" title="Show quoted message">⋯</summary>
+              <div class="mail-quote-inner">
+                <div class="mail-quote-attr">On {stamp}, {System.Net.WebUtility.HtmlEncode(d.SenderName)} wrote:</div>
+                <blockquote>{d.Body}</blockquote>
+              </div>
+            </details>
+            """;
+    }
+
     private async Task OnComposerSent()
     {
         await ReloadAll();
+        if (threadStackRef is not null) await threadStackRef.ReloadAsync(expandLatest: true);
     }
 
     private async Task<string> ResolveNameFromNikAsync(string nik)
@@ -859,12 +1515,38 @@
     private string? CcShort => detail is null ? null : string.Join(", ", detail.Recipients.Where(r => r.RecipientType == "cc").Select(r => r.Name));
     private static string Initials(string name)
         => string.Concat((name ?? "U").Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w[0]).Take(2)).ToUpperInvariant();
-    private static string FormatTime(DateTime? t) => t is null ? "" : t.Value.Date == DateTime.Now.Date ? t.Value.ToString("HH:mm") : t.Value.ToString("dd MMM");
-    private static string FormatDetail(DateTime t) => t.ToString("ddd, dd MMM yyyy HH:mm");
+
+    private static string FormatTime(DateTime? t)
+    {
+        if (t is null) return "";
+        var local = t.Value.ToLocalTime();
+        if (local.Date == DateTime.Today) return local.ToString("HH:mm");
+        if (local.Date == DateTime.Today.AddDays(-1)) return "Yesterday";
+        return local.ToString("dd MMM");
+    }
+
+    private static string FormatDetailDate(DateTime? t)
+        => t is null ? "" : t.Value.ToLocalTime().ToString("ddd, dd MMM yyyy, HH:mm");
+
+    private static string AvatarClass(string? nik)
+    {
+        if (string.IsNullOrEmpty(nik)) return "av-1";
+        var idx = (Math.Abs(nik.GetHashCode()) % 8) + 1;
+        return $"av-{idx}";
+    }
+
+    private string SenderPresence(string? nik)
+    {
+        if (string.IsNullOrEmpty(nik)) return "off";
+        if (nik == Auth.Me?.Nik) return Auth.MyStatus;
+        return "off";
+    }
+
+    // Deterministic palette for label colors
+    private static readonly string[] LabelPalette = ["#2e7d5b", "#7d5ba6", "#8a6d3b", "#b3543f", "#4f6d8f", "#5b7d2e"];
+    private static string LabelInk(string name) => LabelPalette[Math.Abs(name.GetHashCode()) % LabelPalette.Length];
     private static string HumanSize(long b) => b switch { < 1024 => $"{b} B", < 1024 * 1024 => $"{b / 1024.0:0.#} KB", _ => $"{b / 1024.0 / 1024.0:0.#} MB" };
     private async Task Download(MailAttachment a) => await JS.InvokeVoidAsync("window.open", $"/api/mail/attachments/{a.Id}/download?inline=true");
-
-    private string PagerLabel => $"{page} / {Math.Max(1, Math.Ceiling(pageTotal / (double)pageSize))}";
 
     public void Dispose()
     {

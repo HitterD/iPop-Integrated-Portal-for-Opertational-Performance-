@@ -1,0 +1,401 @@
+@page "/chat/demo"
+@using IPop.Application.Chat
+@using IPop.Web.Components.Chat
+@using IPop.Web.Services
+@inject ChatMockDataService MockData
+@inject NavigationManager Nav
+@inject AuthState Auth
+@inject ToastService Toasts
+
+<PageTitle>Chat Demo — IPop</PageTitle>
+
+<ChatLayout DirectRooms="@_directRooms"
+            GroupRooms="@_groupRooms"
+            ArchivedRooms="@_archivedRooms"
+            ArchivedCount="@_archivedRooms.Count"
+            ArchivedTotal="@_archivedRooms.Count"
+            HasMoreArchived="false"
+            HasMoreDirectRooms="false"
+            HasMoreGroupRooms="false"
+            ArchivedOpen="@_archivedOpen"
+            ActiveTab="@_activeTab"
+            SearchQuery="@_searchQuery"
+            SearchActive="@(!string.IsNullOrWhiteSpace(_searchQuery))"
+            DirectUnread="@MockData.GetDirectUnread()"
+            GroupUnread="@MockData.GetGroupUnread()"
+            HasGroupMention="@MockData.HasGroupMention()"
+            CreateDropdownOpen="@_createDropdownOpen"
+            MobileRoomsOpen="@_mobileRoomsOpen"
+            IsOpening="false"
+            ActiveRoomId="@_activeRoomId"
+            ActiveRoom="@_activeRoom"
+            ActiveMessages="@_activeMessages"
+            PinnedMessages="@_pinnedMessages"
+            IsConnected="true"
+            HasOlderMessages="false"
+            TypingUsers="@_typingUsers"
+            ShowJumpToLatest="@_showJumpToLatest"
+            UnreadDividerMsgId="@_unreadDividerMsgId"
+            LastOwnMessageId="@_lastOwnMessageId"
+            SearchOpen="@_searchOpen"
+            SearchQueryInternal="@_searchQueryInternal"
+            SearchResults="@_searchResults"
+            MessageText="@_messageText"
+            Uploading="false"
+            UploadError="@_uploadError"
+            PendingAttachments="@_pendingAttachments"
+            PickerOpen="@_pickerOpen"
+            IsRecordingVoice="@_isRecordingVoice"
+            IsGroupAdmin="@_isGroupAdmin"
+            CanPinInActiveRoom="true"
+            DrawerOpen="@_drawerOpen"
+            ActiveDrawerTab="@_activeDrawerTab"
+            MemberFilter="@_memberFilter"
+            MediaSubTab="@_mediaSubTab"
+            AddMemberOpen="@_addMemberOpen"
+            AddMemberQuery="@_addMemberQuery"
+            AddMemberResults="@_addMemberResults"
+            EditingMsgId="@_editingMsgId"
+            EditText="@_editText"
+            ExpandedThreadId="@_expandedThreadId"
+            OnToggleCreate="() => _createDropdownOpen = !_createDropdownOpen"
+            OnStartDm="() => _newDmModalOpen = true"
+            OnStartGroup="() => _newGroupModalOpen = true"
+            OnSearchChanged="OnSearchChanged"
+            OnSetTab="tab => _activeTab = tab"
+            OnToggleArchived="() => _archivedOpen = !_archivedOpen"
+            OnUnarchiveRoom="id => { }"
+            OnLoadMoreArchived="() => { }"
+            OnLoadMoreDirect="() => { }"
+            OnLoadMoreGroups="() => { }"
+            OnOpenRoom="OpenRoom"
+            OnTogglePin="room => { }"
+            OnToggleMobileRooms="open => _mobileRoomsOpen = open"
+            OnNavigatePins='() => Nav.NavigateTo("/chat/pins")'
+            OnNavigateSaved='() => Nav.NavigateTo("/chat/saved")'
+            OnNavigateSearch='() => Nav.NavigateTo("/chat/search")'
+            OnNavigateMentions='() => Nav.NavigateTo("/chat/mentions")'
+            OnOpenUserProfile="nik => { }"
+            OnToggleSearch="() => _searchOpen = !_searchOpen"
+            OnStartCall="nik => { }"
+            OnOpenPinned="() => SetDrawerTab(ChatLayout.ChatDrawerTab.Pinned)"
+            OnOpenMedia="() => SetDrawerTab(ChatLayout.ChatDrawerTab.Media)"
+            OnOpenMembers="() => SetDrawerTab(ChatLayout.ChatDrawerTab.Members)"
+            OnToggleDrawer="() => _drawerOpen = !_drawerOpen"
+            OnCloseDrawer="() => _drawerOpen = false"
+            OnSetDrawerTab="tab => _activeDrawerTab = tab"
+            OnLoadOlder="() => { }"
+            OnJumpToLatest="() => _showJumpToLatest = false"
+            OnJumpToMessage="id => { }"
+            OnSearchMessages="() => { }"
+            OnCloseSearch="() => CloseSearch()"
+            OnShowContextMenu="t => { }"
+            OnQuickReact="t => { }"
+            OnStartReply="id => { }"
+            OnPinMessage="id => { }"
+            OnCopyText="text => { }"
+            OnStartEdit="id => { }"
+            OnSaveMessage="id => { }"
+            OnToggleThread="id => _expandedThreadId = _expandedThreadId == id ? null : id"
+            OnRetryMessage="id => { }"
+            OnOpenAttachment="t => { }"
+            OnMessageTextChanged="text => _messageText = text"
+            OnTriggerFileUpload="() => { }"
+            OnTogglePicker="() => _pickerOpen = !_pickerOpen"
+            OnOpenMention="() => { }"
+            OnOpenPoll="() => { }"
+            OnStartVoiceRecord="() => _isRecordingVoice = true"
+            OnStopVoiceRecord="() => _isRecordingVoice = false"
+            OnCancelVoiceRecord="() => _isRecordingVoice = false"
+            OnSendMessage="() => SendMessage()"
+            OnOpenEmergency="() => { }"
+            OnRemovePendingAttachment="id => { }"
+            OnComposerInput="e => { }"
+            OnComposerKeyDown="e => { }"
+            OnComposerBlur="() => { }"
+            OnSendSticker="st => { }"
+            OnToggleAddMember="() => _addMemberOpen = !_addMemberOpen"
+            OnSearchAddMember="() => { }"
+            OnAddMember="u => { }"
+            OnToggleMuteRoom="() => { }"
+            OnToggleReadReceipts="() => { }"
+            OnArchiveRoom="() => { }"
+            OnNavigateGroupSettings="() => { }"
+            OnLeaveGroup="() => { }"
+            OnSetMediaSubTab="tab => _mediaSubTab = tab"
+            OnLoadPinnedMessages="() => { }"
+            GetRoomName="GetRoomName"
+            GetRoomInitials="GetRoomInitials"
+            GetRoomColor="GetRoomColor"
+            FormatTime="FormatTime"
+            FormatDateSep="FormatDateSep"
+            PresenceLabel="PresenceLabel"
+            GetUserColor="GetUserColor"
+            GetInitialsFromName="GetInitialsFromName"
+            IsAttachmentPlaceholder="IsAttachmentPlaceholder"
+            IsMessagePending="id => false"
+            IsMessageFailed="id => false"
+            IsMsgPinned="id => _pinnedMessages.Any(p => p.MessageId == id)"
+            CanEditMsg="id => true"
+            OnSaveEdit="() => { }"
+            OnCancelEdit="() => { }"
+            RoomEvents="@_roomEvents"
+            OnAddRoomEvent="AddRoomEvent"
+            OnCreateRoomEvent="CreateRoomEvent"
+            OnOpenCalendarEvent="OpenCalendarEvent" />
+
+<EventDetailModal IsOpen="@_eventModalOpen" IsOpenChanged="v => _eventModalOpen = v" Event="@_selectedEvent" />
+
+@code {
+    [CascadingParameter] public MainLayout? Layout { get; set; }
+
+    private List<RoomListDto> _directRooms = [];
+    private List<RoomListDto> _groupRooms = [];
+    private List<RoomListDto> _archivedRooms = [];
+    private List<MessageDto> _activeMessages = [];
+    private List<PinnedMessageDto> _pinnedMessages = [];
+    private List<MessageDto> _searchResults = [];
+    private List<ChatLayout.RoomEventModel> _roomEvents = [];
+
+    private void AddRoomEvent()
+    {
+        _roomEvents.Add(new ChatLayout.RoomEventModel(Guid.NewGuid(), $"Meeting #{_roomEvents.Count + 1}", DateTime.Now.AddDays(1).Date.AddHours(9)));
+    }
+
+    private void CreateRoomEvent((string Title, DateTime StartAt) ev)
+    {
+        _ = CreateRoomEventAsync(ev);
+    }
+
+    private async Task CreateRoomEventAsync((string Title, DateTime StartAt) ev)
+    {
+        if (_activeRoomId is not { } roomId)
+        {
+            Toasts.Show("Select a room first to add an event.", ToastKind.Error);
+            return;
+        }
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/meetings/calendar", new
+            {
+                title = ev.Title, startAt = ev.StartAt.ToUniversalTime(), endAt = ev.StartAt.AddHours(1).ToUniversalTime(),
+                type = "rapat", roomId,
+            });
+            if (res.IsSuccessStatusCode)
+            {
+                var created = await res.Content.ReadFromJsonAsync<CalEventDto>();
+                if (created is not null)
+                {
+                    _roomEvents.Add(new ChatLayout.RoomEventModel(created.Id, created.Title, created.StartAt, created.MeetingId));
+                    Toasts.Show("Event saved.", ToastKind.Success);
+                    return;
+                }
+            }
+            Toasts.Show("Failed to save event to server.", ToastKind.Error);
+        }
+        catch
+        {
+            Toasts.Show("Failed to save event to server.", ToastKind.Error);
+        }
+    }
+
+    private sealed record CalEventDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string Type, Guid? MeetingId, Guid? RoomId);
+
+    // Modal detail event (Fase 4)
+    private bool _eventModalOpen;
+    private IPop.Web.Components.Chat.EventDetailModal.EventModel? _selectedEvent;
+
+    private void OpenCalendarEvent(Guid id)
+    {
+        _ = OpenCalendarEventAsync(id);
+    }
+
+    private async Task OpenCalendarEventAsync(Guid id)
+    {
+        var ev = _roomEvents.FirstOrDefault(e => e.Id == id);
+        if (ev is null) return;
+
+        // Muat detail dari API rapat memakai MeetingId (bukan CalendarEvent.Id).
+        // Bila event tidak terhubung ke rapat, tampilkan data event apa adanya.
+        string? location = null;
+        string? link = null;
+        IReadOnlyList<string> attendees = _activeRoom?.Members.Select(m => m.Name).ToList() ?? [];
+        if (ev.MeetingId is { } meetingId)
+        {
+            try
+            {
+                var dto = await Auth.GetAsync<MeetingDetailDto>($"/api/meetings/{meetingId}");
+                if (dto is not null)
+                {
+                    location = dto.Location;
+                    link = dto.Link;
+                    attendees = dto.Attendees.Select(a => a.Name).ToList();
+                }
+            }
+            catch { }
+        }
+
+        _selectedEvent = new IPop.Web.Components.Chat.EventDetailModal.EventModel(
+            ev.Id, ev.Title, ev.StartAt, ev.StartAt.AddHours(1), location, link, attendees);
+        _eventModalOpen = true;
+    }
+
+    private sealed record MeetingAttendeeDto(Guid UserId, string Name, string Nik, bool Required, string RsvpStatus, string? Note);
+    private sealed record MeetingDetailDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string? TimeZone, string? Location, string? Link,
+        Guid OrganizerId, string OrganizerName, string Status, IReadOnlyList<MeetingAttendeeDto> Attendees,
+        int AcceptCount, int MaybeCount, int DeclineCount, int PendingCount, string MyResponse);
+    private List<IPop.Web.Models.PendingAttachmentItem> _pendingAttachments = [];
+    private HashSet<string> _typingUsers = [];
+    private List<ChatLayout.UserSearchResult> _addMemberResults = [];
+
+    private Guid? _activeRoomId;
+    private ChatRoomDto? _activeRoom;
+    private ChatLayout.RoomTab _activeTab = ChatLayout.RoomTab.Direct;
+    private ChatLayout.ChatDrawerTab _activeDrawerTab = ChatLayout.ChatDrawerTab.Overview;
+
+    private string _searchQuery = "";
+    private string _searchQueryInternal = "";
+    private string _messageText = "";
+    private string _editText = "";
+    private string _memberFilter = "";
+    private string _mediaSubTab = "all";
+    private string _addMemberQuery = "";
+    private string? _uploadError;
+
+    private bool _archivedOpen;
+    private bool _createDropdownOpen;
+    private bool _mobileRoomsOpen;
+    private bool _searchOpen;
+    private bool _pickerOpen;
+    private bool _isRecordingVoice;
+    private bool _isGroupAdmin = true;
+    private bool _drawerOpen;
+    private bool _addMemberOpen;
+    private bool _showJumpToLatest;
+    private bool _newDmModalOpen;
+    private bool _newGroupModalOpen;
+
+    private Guid? _unreadDividerMsgId;
+    private Guid? _lastOwnMessageId;
+    private Guid? _editingMsgId;
+    private Guid? _expandedThreadId;
+
+    protected override void OnInitialized()
+    {
+        Layout?.SetHeader("Messages");
+        Layout?.SetSubtitle("Demo");
+        _directRooms = MockData.GetDirectRooms();
+        _groupRooms = MockData.GetGroupRooms();
+        _archivedRooms = MockData.GetArchivedRooms();
+        _pinnedMessages = MockData.GetPinnedMessages();
+        _roomEvents =
+        [
+            new(Guid.NewGuid(), "Sprint Planning", DateTime.Now.Date.AddDays(1).AddHours(9)),
+            new(Guid.NewGuid(), "Design Review", DateTime.Now.Date.AddDays(3).AddHours(13)),
+        ];
+
+        // Auto-select first room for demo
+        if (_directRooms.Count > 0)
+        {
+            OpenRoom(_directRooms[0].Id);
+        }
+    }
+
+    private void OpenRoom(Guid roomId)
+    {
+        _activeRoomId = roomId;
+        _activeRoom = MockData.GetActiveRoom(roomId);
+        _activeMessages = MockData.GetMockMessages(roomId, 25);
+        _lastOwnMessageId = _activeMessages.LastOrDefault(m => m.SenderNik == "12345")?.Id;
+        _unreadDividerMsgId = _activeMessages.Count > 5 ? _activeMessages[4].Id : null;
+        _typingUsers = ["Ahmad Wijaya"];
+        _mobileRoomsOpen = false;
+    }
+
+    private void SetDrawerTab(ChatLayout.ChatDrawerTab tab)
+    {
+        _activeDrawerTab = tab;
+        _drawerOpen = true;
+    }
+
+    private void OnSearchChanged(ChangeEventArgs e)
+    {
+        _searchQuery = e.Value?.ToString() ?? "";
+    }
+
+    private void CloseSearch()
+    {
+        _searchOpen = false;
+        _searchQueryInternal = "";
+        _searchResults = [];
+    }
+
+    private void SendMessage()
+    {
+        _messageText = "";
+    }
+
+    // Helper functions
+    private string GetRoomName(RoomListDto room) => room.Type == "dm"
+        ? (room.RecipientName ?? room.RecipientNik ?? "Direct Message")
+        : (room.Name ?? "Group");
+
+    private string GetRoomInitials(RoomListDto room)
+    {
+        var name = room.Type == "dm" ? (room.RecipientName ?? room.RecipientNik ?? "?") : (room.Name ?? "G");
+        return GetInitialsFromName(name);
+    }
+
+    private string GetRoomColor(RoomListDto room) => room.AvatarColor ?? GetUserColor(room.Id.ToString());
+
+    private string FormatTime(DateTime? dt)
+    {
+        if (dt is null) return "";
+        var d = dt.Value.ToLocalTime();
+        var now = DateTime.Now;
+        if (d.Date == now.Date) return d.ToString("HH:mm");
+        if (d.Date == now.Date.AddDays(-1)) return "Yesterday";
+        if ((now - d).TotalDays < 7) return d.ToString("ddd");
+        return d.ToString("MMM d");
+    }
+
+    private string FormatDateSep(DateTime dt)
+    {
+        var d = dt.ToLocalTime();
+        var now = DateTime.Now;
+        if (d.Date == now.Date) return "Today";
+        if (d.Date == now.Date.AddDays(-1)) return "Yesterday";
+        if (d.Year != now.Year) return d.ToString("dddd, MMMM d, yyyy");
+        return d.ToString("dddd, MMMM d");
+    }
+
+    private string PresenceLabel(string? status) => status switch
+    {
+        "on" => "Online",
+        "away" => "Away",
+        "busy" => "Busy",
+        _ => "Offline"
+    };
+
+    private string GetUserColor(string id) => IPop.Web.Models.AvatarPalette.For(id);
+
+    private string GetInitialsFromName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var clean = name.Trim().TrimStart('\'', '"', '`', '(', '[', '{');
+        if (string.IsNullOrWhiteSpace(clean)) return "?";
+        var parts = clean.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+        {
+            var p0 = parts[0].TrimStart('\'', '"', '`', '(', '[');
+            var p1 = parts[1].TrimStart('\'', '"', '`', '(', '[');
+            if (p0.Length > 0 && p1.Length > 0)
+                return $"{p0[0]}{p1[0]}".ToUpperInvariant();
+        }
+        return clean.Length >= 2 ? clean[..2].ToUpperInvariant() : clean.ToUpperInvariant();
+    }
+
+    private bool IsAttachmentPlaceholder(MessageDto m) =>
+        (m.Attachments?.Count ?? 0) > 0 &&
+        (string.IsNullOrWhiteSpace(m.Content) || m.Content.Trim() == "(attachment)");
+}

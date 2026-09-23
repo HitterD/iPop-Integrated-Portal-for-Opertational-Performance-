@@ -1,0 +1,112 @@
+@using IPop.Application.Projects
+
+<div class="proj-modal-backdrop" @onclick="OnClose"></div>
+<div class="proj-modal" role="dialog" aria-modal="true" aria-label="Edit Project">
+    <div class="proj-modal-head">
+        <div style="display:flex;align-items:center;gap:8px">
+            <i data-lucide="edit-3"></i>
+            <span>Edit Project Settings</span>
+        </div>
+        <button class="btn-sm surface" style="padding:4px 8px" @onclick="OnClose">
+            <i data-lucide="x"></i>
+        </button>
+    </div>
+
+    <div class="proj-modal-body">
+        <div class="field" style="margin:0">
+            <label style="font-size:11.5px;font-weight:700">Project Name *</label>
+            <input class="org-input" @bind="editProjName" />
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="field" style="margin:0">
+                <label style="font-size:11.5px;font-weight:700">Project Status</label>
+                <select class="filter-select" style="width:100%" @bind="editProjStatus">
+                    <option value="planning">Planning</option>
+                    <option value="doing">Active / Doing</option>
+                    <option value="completed">Completed</option>
+                    <option value="on_hold">On Hold</option>
+                </select>
+            </div>
+            <div class="field" style="margin:0">
+                <label style="font-size:11.5px;font-weight:700">Year</label>
+                <input type="number" class="org-input" @bind="editProjYear" />
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="field" style="margin:0">
+                <label style="font-size:11.5px;font-weight:700">Start Date</label>
+                <input type="date" class="org-input" value="@(editProjStartDate?.ToString("yyyy-MM-dd"))" @onchange="e => editProjStartDate = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null" />
+            </div>
+            <div class="field" style="margin:0">
+                <label style="font-size:11.5px;font-weight:700">Deadline</label>
+                <input type="date" class="org-input" value="@(editProjDeadline?.ToString("yyyy-MM-dd"))" @onchange="e => editProjDeadline = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null" />
+            </div>
+        </div>
+
+        <div class="field" style="margin:0">
+            <label style="font-size:11.5px;font-weight:700">Description</label>
+            <textarea class="org-input" style="min-height:70px;resize:vertical;font-size:12.5px" @bind="editProjDesc"></textarea>
+        </div>
+    </div>
+
+    <div class="proj-modal-foot">
+        <button class="btn-sm surface" @onclick="OnClose">Cancel</button>
+        <button class="btn-sm accent" @onclick="HandleSubmit">
+            <i data-lucide="check"></i> Save Changes
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ProjectDto Project { get; set; } = default!;
+
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<EditProjectModel> OnSubmit { get; set; }
+
+    private string editProjName = "";
+    private string editProjStatus = "doing";
+    private int editProjYear = DateTime.UtcNow.Year;
+    private DateTime? editProjStartDate;
+    private DateTime? editProjDeadline;
+    private string? editProjDesc;
+
+    protected override void OnParametersSet()
+    {
+        if (Project is not null)
+        {
+            editProjName = Project.Name;
+            editProjStatus = Project.Status;
+            editProjYear = Project.Year;
+            editProjStartDate = Project.StartDate;
+            editProjDeadline = Project.Deadline;
+            editProjDesc = Project.Description;
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        if (string.IsNullOrWhiteSpace(editProjName)) return;
+        var model = new EditProjectModel(
+            Project.Id,
+            editProjName.Trim(),
+            editProjStatus,
+            editProjYear,
+            editProjStartDate,
+            editProjDeadline,
+            editProjDesc?.Trim()
+        );
+        await OnSubmit.InvokeAsync(model);
+    }
+
+    public record EditProjectModel(
+        Guid Id,
+        string Name,
+        string Status,
+        int Year,
+        DateTime? StartDate,
+        DateTime? Deadline,
+        string? Description
+    );
+}

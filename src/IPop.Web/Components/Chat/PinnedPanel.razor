@@ -1,0 +1,54 @@
+@using IPop.Application.Chat
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject ChatState ChatSvc
+
+@if (isOpen)
+{
+    <div class="pinned-panel">
+        <div class="pp-head"><i data-lucide="pin"></i> Pinned <span class="count">@Items.Count</span> <button class="close-pin" @onclick="Close" title="Close" aria-label="Close"><i data-lucide="x"></i></button></div>
+        <div class="pp-list">
+            @if (!Items.Any()) { <div class="pinned-state">No pinned messages yet.</div> }
+            else
+            {
+                @foreach (var p in Items)
+                {
+                    var pin = p;
+                    <div class="pin-item" @onclick="() => JumpTo(pin.MessageId)">
+                        <div class="pin-sender">@pin.SenderName</div>
+                        <div class="pin-text">@pin.Content</div>
+                        <div class="pin-meta">
+                            <i data-lucide="clock"></i> @pin.PinnedAt.ToLocalTime().ToString("MMM d")
+                            <button type="button" class="pin-unpin" title="Unpin message"
+                                    @onclick="() => Unpin(pin.MessageId)" @onclick:stopPropagation>
+                                <i data-lucide="pin-off"></i> Unpin
+                            </button>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid RoomId { get; set; }
+    [Parameter] public bool IsOpen { get; set; }
+    /// Pinned messages owned by the page (single source of truth shared with the
+    /// sticky bar). The panel renders them and mutates via the endpoints below.
+    [Parameter] public IReadOnlyList<PinnedMessageDto> Items { get; set; } = [];
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<Guid> OnJumpTo { get; set; }
+    /// Raised after an unpin succeeds so the page can refresh its pinned list.
+    [Parameter] public EventCallback OnChanged { get; set; }
+    private bool isOpen => IsOpen;
+
+    private Task JumpTo(Guid id) => OnJumpTo.InvokeAsync(id);
+    private Task Close() => OnClose.InvokeAsync();
+
+    private async Task Unpin(Guid messageId)
+    {
+        await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/rooms/{RoomId}/pins/{messageId}");
+        await OnChanged.InvokeAsync();
+    }
+}

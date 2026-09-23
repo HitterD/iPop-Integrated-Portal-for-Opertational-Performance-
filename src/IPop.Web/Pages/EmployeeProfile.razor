@@ -1,0 +1,251 @@
+@page "/directory/person/{Nik}"
+@implements IDisposable
+@inject IJSRuntime JS
+@inject AuthState Auth
+@inject ChatState ChatSvc
+@inject NavigationManager Nav
+@inject IPop.Web.Services.CallState CallSvc
+@inject IPop.Web.Services.ToastService Toasts
+@inject IPop.Web.Services.FavoriteContacts Favorites
+@using IPop.Web.Services
+
+@* Kartu Profil Pegawai — halaman penuh untuk satu pegawai: identitas, relasi
+   organisasi (atasan/bawahan), dan aksi cepat chat/surat/panggilan. Data memakai
+   endpoint profil yang sama dengan ProfileDrawer (GET /api/chat/users/{nik}). *@
+
+<PageTitle>@(person?.Name ?? "Profile") — IPop</PageTitle>
+
+<div class="content" style="grid-template-columns:1fr;max-width:860px">
+
+    @if (loading)
+    {
+        <div class="tray rise rise-1"><div class="core" style="padding:0;overflow:hidden">
+            <div class="tree-empty" style="padding:34px">
+                <i data-lucide="loader-circle" style="width:20px;height:20px;margin-bottom:6px"></i>
+                <div>Loading profile…</div>
+            </div>
+        </div></div>
+    }
+    else if (person is null)
+    {
+        <div class="tray rise rise-1"><div class="core" style="padding:0;overflow:hidden">
+            <div class="tree-empty" style="padding:34px">
+                <i data-lucide="user-x" style="width:20px;height:20px;margin-bottom:6px"></i>
+                <div>Employee not found.</div>
+                <div style="margin-top:12px"><button class="btn-sm surface" @onclick='() => Nav.NavigateTo("/directory")'><i data-lucide="arrow-left" style="width:13px;height:13px"></i> Back to Directory</button></div>
+            </div>
+        </div></div>
+    }
+    else
+    {
+        @* ---- Kartu identitas ---- *@
+        <div class="tray rise rise-1">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head">
+                    <i data-lucide="id-card"></i> <span>Profile</span>
+                    <span class="meta"><span class="dot @person.Status" style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px"></span>@StatusLabel(person.Status)</span>
+                    <span style="margin-left:auto;display:flex;gap:6px">
+                        <button class="btn-sm surface" title="@(isFav ? "Remove from favorites" : "Add to favorites")"
+                                style="@(isFav ? "color:var(--accent-ink);border-color:var(--accent-soft);background:var(--accent-soft)" : "")"
+                                @onclick="ToggleFavorite">
+                            <i data-lucide="star" style="width:13px;height:13px;@(isFav ? "fill:currentColor" : "")"></i> @(isFav ? "Favorite" : "Add to favorites")
+                        </button>
+                    </span>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:18px;padding:20px">
+                    <div class="avatar" style="background:@IPop.Web.Models.AvatarPalette.For(person.Nik);width:84px;height:84px;font-size:28px;border-radius:22px;flex-shrink:0">
+                        @Initials(person.Name)
+                    </div>
+                    <div style="flex:1;min-width:0">
+                        <div style="font-size:19px;font-weight:700;letter-spacing:-0.01em">@person.Name</div>
+                        <div style="font-size:13px;color:var(--ink-2);margin-top:2px">@(person.Position ?? "—")</div>
+                        <div style="font-size:12px;color:var(--ink-3);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                            <i data-lucide="network" style="width:12px;height:12px"></i>
+                            @(person.Department ?? "—") · @(person.Site ?? "—")
+                        </div>
+                        <div class="p-rows" style="margin-top:14px">
+                            <div class="p-row"><i data-lucide="badge-check"></i><span class="k">NIK</span><span class="v mono">@person.Nik</span></div>
+                            <div class="p-row"><i data-lucide="at-sign"></i><span class="k">Email</span><span class="v">@person.Email</span></div>
+                            @if (!string.IsNullOrWhiteSpace(person.Extension))
+                            {
+                                <div class="p-row"><i data-lucide="phone"></i><span class="k">Extension</span><span class="v mono">@person.Extension</span></div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(person.Location))
+                            {
+                                <div class="p-row"><i data-lucide="map-pin"></i><span class="k">Location</span><span class="v">@person.Location</span></div>
+                            }
+                        </div>
+                        <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+                            <button class="btn-sm accent" @onclick="OpenChat"><i data-lucide="message-circle" style="width:13px;height:13px"></i> Chat</button>
+                            <button class="btn-sm surface" @onclick="OpenMail"><i data-lucide="mail" style="width:13px;height:13px"></i> Mail</button>
+                            <button class="btn-sm surface" @onclick="OpenCall"><i data-lucide="phone" style="width:13px;height:13px"></i> Call</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @* ---- Relasi organisasi ---- *@
+        <div class="tray rise rise-2">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head">
+                    <i data-lucide="network"></i> <span>Organization Hierarchy</span>
+                </div>
+                <div style="padding:14px;display:grid;gap:14px">
+                    @if (manager is not null)
+                    {
+                        <div>
+                            <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px">Direct Manager</div>
+                            <div class="notif-row" role="button" @onclick="() => OpenPerson(manager.Nik)">
+                                <div class="notif-row-ic" style="background:@IPop.Web.Models.AvatarPalette.For(manager.Nik)">@Initials(manager.Name)</div>
+                                <div class="notif-row-main">
+                                    <div class="notif-row-t">@manager.Name <span class="mono" style="font-size:11px;color:var(--ink-3)">@manager.Nik</span></div>
+                                    <div class="notif-row-s">@(manager.Position ?? "—")</div>
+                                </div>
+                                <i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--ink-3);flex-shrink:0"></i>
+                            </div>
+                        </div>
+                    }
+                    <div>
+                        <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px">Direct Reports @(reports.Count > 0 ? $"({reports.Count})" : "")</div>
+                        @if (reportsLoading)
+                        {
+                            <div class="meta" style="font-size:12px;color:var(--ink-3)">Loading…</div>
+                        }
+                        else if (reports.Count == 0)
+                        {
+                            <div class="meta" style="font-size:12px;color:var(--ink-3)">No direct reports.</div>
+                        }
+                        else
+                        {
+                            <div class="notif-list" role="list" aria-label="Direct reports">
+                                @foreach (var r in reports)
+                                {
+                                    var report = r;
+                                    <div class="notif-row" role="listitem" @onclick="() => OpenPerson(report.Nik)">
+                                        <div class="notif-row-ic" style="background:@IPop.Web.Models.AvatarPalette.For(report.Nik)">@Initials(report.Name)</div>
+                                        <div class="notif-row-main">
+                                            <div class="notif-row-t">@report.Name <span class="mono" style="font-size:11px;color:var(--ink-3)">@report.Nik</span></div>
+                                            <div class="notif-row-s">@(report.Position ?? "—")</div>
+                                        </div>
+                                        <i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--ink-3);flex-shrink:0"></i>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+</div>
+
+@code {
+    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+    [Parameter] public string Nik { get; set; } = "";
+
+    private record PersonRow(string Nik, string Name, string? Position, string? Department, string? Site,
+        string? Manager, string Email, string? Extension, string? Location, string Status, string? PhotoPath);
+    private record ReportRow(string Nik, string Name, string? Position);
+
+    private PersonRow? person;
+    private ReportRow? manager;
+    private List<ReportRow> reports = [];
+    private bool loading = true;
+    private bool reportsLoading;
+    private bool isFav;
+
+    protected override void OnInitialized()
+    {
+        Layout.SetHeader("Directory", "Profile");
+        Auth.PresenceChanged += OnPresenceChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        person = null;
+        manager = null;
+        reports = [];
+        try
+        {
+            var d = await Auth.GetAsync<DirectoryEmployeeDto>($"/api/chat/users/{Uri.EscapeDataString(Nik)}");
+            if (d is not null)
+            {
+                person = new PersonRow(d.Nik, d.Name, d.Position, d.Department, d.Site, d.Manager, d.Email, d.Extension, d.Location, d.Status, d.PhotoPath);
+                await Favorites.EnsureLoadedAsync();
+                isFav = Favorites.IsFavorite(d.Nik);
+                _ = LoadRelationsAsync(d);
+            }
+        }
+        catch { person = null; }
+        finally { loading = false; }
+    }
+
+    private async Task LoadRelationsAsync(DirectoryEmployeeDto d)
+    {
+        // Relasi organisasi dari endpoint khusus (atasan + bawahan dalam satu respons).
+        reportsLoading = true;
+        try
+        {
+            var rel = await Auth.GetAsync<RelationsDto>($"/api/directory/employees/{Uri.EscapeDataString(d.Nik)}/relations");
+            if (rel is not null)
+            {
+                manager = rel.Manager is null ? null : new ReportRow(rel.Manager.Nik, rel.Manager.Name, rel.Manager.Position);
+                reports = rel.Reports.Select(r => new ReportRow(r.Nik, r.Name, r.Position)).ToList();
+            }
+        }
+        catch { }
+        finally
+        {
+            reportsLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private sealed record RelationsDto(RelationPerson? Manager, RelationPerson[] Reports);
+    private sealed record RelationPerson(string Nik, string Name, string? Position);
+
+    private void OnPresenceChanged(string nik, string status) => _ = InvokeAsync(() =>
+    {
+        if (person is not null && string.Equals(person.Nik, nik, StringComparison.OrdinalIgnoreCase))
+            person = person with { Status = status };
+        StateHasChanged();
+    });
+
+    private async Task ToggleFavorite()
+    {
+        if (person is null) return;
+        isFav = await Favorites.ToggleAsync(person.Nik);
+    }
+
+    private void OpenChat() { if (person is not null) Nav.NavigateTo($"/chat?nik={Uri.EscapeDataString(person.Nik)}"); }
+    private void OpenMail() { if (person is not null) Nav.NavigateTo($"/mail?to={Uri.EscapeDataString(person.Nik)}"); }
+    private void OpenPerson(string nik) => Nav.NavigateTo($"/directory/person/{Uri.EscapeDataString(nik)}");
+
+    private async Task OpenCall()
+    {
+        if (person is null) return;
+        var room = await CallSvc.CreateAsync(person.Nik);
+        if (room is null) Toasts.Show("Unable to start a call with this colleague.", ToastKind.Error);
+    }
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "on" => "Online",
+        "busy" => "Busy",
+        "away" => "Away",
+        _ => "Offline"
+    };
+
+    private static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+
+    public void Dispose() { Auth.PresenceChanged -= OnPresenceChanged; }
+}

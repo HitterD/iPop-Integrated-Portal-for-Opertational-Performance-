@@ -18,7 +18,8 @@ public static class MailEndpoints
         // ──────────────────────────────────────────────────────────────────────
 
         // GET /api/mail/folders/{folder}?page=1&pageSize=20&q=&starredOnly=&unreadOnly=&senderNik=
-        g.MapGet("/folders/{folder}", async (string folder, int? page, int? pageSize, string? q, bool? starredOnly, bool? unreadOnly, string? senderNik,
+        g.MapGet("/folders/{folder}", async (string folder, int? page, int? pageSize, string? q, bool? starredOnly, bool? unreadOnly, string? senderNik, string? label,
+            DateTime? dateFrom, DateTime? dateTo, bool? hasAttachment,
             HttpContext http, IMailService svc, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
@@ -35,7 +36,7 @@ public static class MailEndpoints
                 "scheduled" => MailFolder.Scheduled,
                 _ => MailFolder.Inbox
             };
-            var search = new MailSearchRequest(q, starredOnly, unreadOnly, senderNik);
+            var search = new MailSearchRequest(q, starredOnly, unreadOnly, senderNik, label, dateFrom, dateTo, hasAttachment);
             var result = await svc.GetFolderAsync(userId.Value, parsed, Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 20, 1, 100), search, ct);
             return Results.Ok(result);
         });
@@ -310,17 +311,86 @@ public static class MailEndpoints
         });
 
         // ──────────────────────────────────────────────────────────────────────
-        // Signature/paraf + export stub
+        // PDF export (Fase 2 — render sungguhan via DevExpress Document Processing)
         // ──────────────────────────────────────────────────────────────────────
 
-        // POST /api/mail/{id}/export-pdf — records the request; real PDF is Wave-2.
+        // POST /api/mail/{id}/export-pdf — mencatat permintaan ekspor (dipakai tombol Ekspor
+        // di halaman baca) lalu mengembalikan PDF untuk diunduh.
         g.MapPost("/{id:guid}/export-pdf", async (Guid id,
-            HttpContext http, IMailService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IMailService svc, IPopDbContext db, IPop.Infrastructure.Documents.MailPdfRenderer pdf, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
             var result = await svc.RequestPdfExportAsync(userId.Value, id, ct);
-            return ResultOrError(result);
+            if (!result.Success) return ResultOrError(result);
+
+            var models = await LoadMailPdfModels(userId.Value, [id], db, ct);
+            if (models.Count == 0) return Results.Json(new { code = "mail_not_found", message = "Mail not found." }, statusCode: 404);
+            byte[] bytes;
+            try
+            {
+                bytes = await pdf.RenderMailAsync(models[0], ct);
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { code = "pdf_render_failed", message = "Failed to render mail PDF." }, statusCode: 500);
+            }
+            return Results.File(bytes, "application/pdf", PdfFileName(models[0].Subject, id));
+        });
+
+        // GET /api/mail/{id}/export-pdf?mode=preview — pratinjau PDF inline untuk panel.
+        g.MapGet("/{id:guid}/export-pdf", async (Guid id, string? mode,
+            HttpContext http, IPopDbContext db, IPop.Infrastructure.Documents.MailPdfRenderer pdf, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var models = await LoadMailPdfModels(userId.Value, [id], db, ct);
+            if (models.Count == 0) return Results.Json(new { code = "mail_not_found", message = "Mail not found." }, statusCode: 404);
+            byte[] bytes;
+            try
+            {
+                bytes = await pdf.RenderMailAsync(models[0], ct);
+            }
+            catch (Exception ex)
+            {
+                var logger = http.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("MailEndpoints");
+                logger?.LogError(ex, "PDF preview failed for mail {MailId}: {Error}", id, ex.Message);
+                return Results.Json(new { code = "pdf_render_failed", message = "Failed to render mail PDF." }, statusCode: 500);
+            }
+            // mode=preview → inline (iframe); default → unduhan dengan nama dari subjek.
+            var download = !string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase);
+            return Results.File(bytes, "application/pdf",
+                download ? PdfFileName(models[0].Subject, id) : null);
+        });
+
+        // POST /api/mail/export-pdf { ids: [...] } — satu PDF gabungan dari banyak surat.
+        g.MapPost("/export-pdf", async (BulkExportRequest req,
+            HttpContext http, IPopDbContext db, IPop.Infrastructure.Documents.MailPdfRenderer pdf, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var ids = req.Ids?.Distinct().Take(50).ToList() ?? [];
+            if (ids.Count == 0)
+                return Results.Json(new { code = "ids_required", message = "Select at least one email." }, statusCode: 422);
+
+            var models = await LoadMailPdfModels(userId.Value, ids, db, ct);
+            if (models.Count == 0)
+                return Results.Json(new { code = "mail_not_found", message = "No emails accessible." }, statusCode: 404);
+
+            byte[] bytes;
+            try
+            {
+                bytes = models.Count == 1
+                    ? await pdf.RenderMailAsync(models[0], ct)
+                    : await pdf.RenderMergedAsync(models, ct);
+            }
+            catch (Exception ex)
+            {
+                var logger = http.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("MailEndpoints");
+                logger?.LogError(ex, "Bulk PDF export failed for user {UserId}: {Error}", userId.Value, ex.Message);
+                return Results.Json(new { code = "export_failed", message = "Failed to export merged PDF." }, statusCode: 500);
+            }
+            return Results.File(bytes, "application/pdf", $"mail-merged-{DateTime.UtcNow:yyyyMMdd-HHmm}.pdf");
         });
 
         // ──────────────────────────────────────────────────────────────────────
@@ -424,6 +494,29 @@ public static class MailEndpoints
             return Results.Ok(attachments);
         }).RequirePermission("mail.send").DisableAntiforgery();
 
+        // DELETE /api/mail/attachments/{id} — hapus lampiran (hanya orphan/pending milik
+        // uploader; lampiran yang sudah terkirim di surat tidak bisa dihapus lewat sini).
+        g.MapDelete("/attachments/{id:guid}", async (Guid id, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+
+            var attachment = await db.MailAttachments.FirstOrDefaultAsync(a => a.Id == id, ct);
+            if (attachment is null) return Results.NotFound();
+
+            // Orphan = belum ditautkan ke surat (MailId kosong). Hanya uploader yang boleh
+            // menghapus orphan miliknya (path mengandung user id uploader).
+            var isOrphan = attachment.MailId == Guid.Empty;
+            var isUploader = attachment.SynologyPath.StartsWith($"mail-files/{userId.Value:N}", StringComparison.OrdinalIgnoreCase)
+                || attachment.SynologyPath.Contains($"drafts/{userId.Value:N}");
+            if (!isOrphan || !isUploader)
+                return Results.Json(new { code = "forbidden", message = "Only draft attachments belonging to you can be deleted." }, statusCode: 403);
+
+            db.MailAttachments.Remove(attachment);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { success = true });
+        }).RequirePermission("mail.send");
+
         // GET /api/mail/attachments/{id}/download?inline=true
         g.MapGet("/attachments/{id:guid}/download", async (Guid id, bool? inline,
             HttpContext http, IPopDbContext db, IWebHostEnvironment env, CancellationToken ct) =>
@@ -471,6 +564,320 @@ public static class MailEndpoints
             if (!combined.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(combined))
                 return Results.NotFound();
             return Results.File(File.OpenRead(combined), "image/jpeg");
+        });
+
+        // ──────────────────────────────────────────────────────────────────────
+        // Surat Lanjutan (Fase 3) — label, aturan, template, balasan otomatis
+        // ──────────────────────────────────────────────────────────────────────
+
+        // GET /api/mail/labels — label milik pengguna + jumlah surat terlabel.
+        g.MapGet("/labels", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var rows = await db.MailLabels.AsNoTracking()
+                .Where(l => l.UserId == userId.Value)
+                .OrderBy(l => l.Name)
+                .Select(l => new MailLabelDto(l.Id, l.Name, l.Color, l.Assignments.Count))
+                .ToListAsync(ct);
+            return Results.Ok(rows);
+        });
+
+        // POST /api/mail/labels — buat label (nama unik per pengguna).
+        g.MapPost("/labels", async (CreateMailLabelRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var name = req.Name?.Trim() ?? "";
+            var color = req.Color?.Trim() ?? "#2e7d5b";
+            if (name.Length == 0 || name.Length > 100)
+                return Results.Json(new { code = "invalid_name", message = "Label name is required (max 100 characters)." }, statusCode: 422);
+            if (!System.Text.RegularExpressions.Regex.IsMatch(color, "^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"))
+                return Results.Json(new { code = "invalid_color", message = "Color must be hex (#RGB/#RRGGBB)." }, statusCode: 422);
+
+            var exists = await db.MailLabels.AnyAsync(l => l.UserId == userId.Value && l.Name == name, ct);
+            if (exists)
+                return Results.Json(new { code = "duplicate", message = "A label with this name already exists." }, statusCode: 422);
+
+            var label = new IPop.Core.Entities.MailLabel
+            {
+                Id = Guid.NewGuid(), UserId = userId.Value, Name = name, Color = color, CreatedAt = DateTime.UtcNow
+            };
+            db.MailLabels.Add(label);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new MailLabelDto(label.Id, label.Name, label.Color, 0));
+        });
+
+        // DELETE /api/mail/labels/{id} — hapus label (ikut melepas penempelan).
+        g.MapDelete("/labels/{id:guid}", async (Guid id, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var label = await db.MailLabels.FirstOrDefaultAsync(l => l.Id == id && l.UserId == userId.Value, ct);
+            if (label is null) return Results.Json(new { code = "not_found", message = "Label not found." }, statusCode: 404);
+            db.MailLabels.Remove(label);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { success = true });
+        });
+
+        // ── Aturan surat ──
+
+        // GET /api/mail/rules
+        g.MapGet("/rules", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var rows = await db.MailRules.AsNoTracking()
+                .Where(r => r.UserId == userId.Value)
+                .OrderBy(r => r.Name)
+                .Select(r => new MailRuleDto(r.Id, r.Name, r.SenderContains, r.Label.Name, r.IsEnabled))
+                .ToListAsync(ct);
+            return Results.Ok(rows);
+        });
+
+        // POST /api/mail/rules
+        g.MapPost("/rules", async (CreateMailRuleRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var name = req.Name?.Trim() ?? "";
+            var senderContains = req.SenderContains?.Trim() ?? "";
+            if (name.Length == 0 || name.Length > 200)
+                return Results.Json(new { code = "invalid_name", message = "Rule name is required." }, statusCode: 422);
+            if (senderContains.Length == 0 || senderContains.Length > 200)
+                return Results.Json(new { code = "invalid_condition", message = "Sender condition is required." }, statusCode: 422);
+            var label = await db.MailLabels.FirstOrDefaultAsync(l => l.Id == req.LabelId && l.UserId == userId.Value, ct);
+            if (label is null)
+                return Results.Json(new { code = "label_not_found", message = "Label not found." }, statusCode: 404);
+
+            var rule = new IPop.Core.Entities.MailRule
+            {
+                Id = Guid.NewGuid(), UserId = userId.Value, Name = name,
+                SenderContains = senderContains, LabelId = label.Id, IsEnabled = true, CreatedAt = DateTime.UtcNow
+            };
+            db.MailRules.Add(rule);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new MailRuleDto(rule.Id, rule.Name, rule.SenderContains, label.Name, rule.IsEnabled));
+        });
+
+        // PUT /api/mail/rules/{id} — ubah (nama/kondisi/label/enabled).
+        g.MapPut("/rules/{id:guid}", async (Guid id, UpdateMailRuleRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var rule = await db.MailRules.Include(r => r.Label).FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId.Value, ct);
+            if (rule is null) return Results.Json(new { code = "not_found", message = "Rule not found." }, statusCode: 404);
+
+            if (req.Name is not null)
+            {
+                var name = req.Name.Trim();
+                if (name.Length == 0 || name.Length > 200) return Results.Json(new { code = "invalid_name", message = "Invalid rule name." }, statusCode: 422);
+                rule.Name = name;
+            }
+            if (req.SenderContains is not null)
+            {
+                var s = req.SenderContains.Trim();
+                if (s.Length == 0 || s.Length > 200) return Results.Json(new { code = "invalid_condition", message = "Invalid condition." }, statusCode: 422);
+                rule.SenderContains = s;
+            }
+            if (req.LabelId is { } lid)
+            {
+                var label = await db.MailLabels.FirstOrDefaultAsync(l => l.Id == lid && l.UserId == userId.Value, ct);
+                if (label is null) return Results.Json(new { code = "label_not_found", message = "Label not found." }, statusCode: 404);
+                rule.LabelId = lid;
+            }
+            if (req.IsEnabled is { } en) rule.IsEnabled = en;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new MailRuleDto(rule.Id, rule.Name, rule.SenderContains, rule.Label.Name, rule.IsEnabled));
+        });
+
+        // DELETE /api/mail/rules/{id}
+        g.MapDelete("/rules/{id:guid}", async (Guid id, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var rule = await db.MailRules.FirstOrDefaultAsync(r => r.Id == id && r.UserId == userId.Value, ct);
+            if (rule is null) return Results.Json(new { code = "not_found", message = "Rule not found." }, statusCode: 404);
+            db.MailRules.Remove(rule);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { success = true });
+        });
+
+        // ── Template surat ──
+
+        // GET /api/mail/templates
+        g.MapGet("/templates", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var rows = await db.MailTemplates.AsNoTracking()
+                .Where(t => t.UserId == userId.Value)
+                .OrderBy(t => t.Name)
+                .Select(t => new MailTemplateDto(t.Id, t.Name, t.Subject, t.Body))
+                .ToListAsync(ct);
+            return Results.Ok(rows);
+        });
+
+        // POST /api/mail/templates
+        g.MapPost("/templates", async (CreateMailTemplateRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var name = req.Name?.Trim() ?? "";
+            var subject = req.Subject?.Trim() ?? "";
+            if (name.Length == 0 || name.Length > 200)
+                return Results.Json(new { code = "invalid_name", message = "Template name is required." }, statusCode: 422);
+            if (subject.Length == 0 || subject.Length > 500)
+                return Results.Json(new { code = "invalid_subject", message = "Subject is required." }, statusCode: 422);
+
+            var exists = await db.MailTemplates.AnyAsync(t => t.UserId == userId.Value && t.Name == name, ct);
+            if (exists)
+                return Results.Json(new { code = "duplicate", message = "A template with this name already exists." }, statusCode: 422);
+
+            var tpl = new IPop.Core.Entities.MailTemplate
+            {
+                Id = Guid.NewGuid(), UserId = userId.Value, Name = name, Subject = subject,
+                Body = req.Body ?? "", CreatedAt = DateTime.UtcNow
+            };
+            db.MailTemplates.Add(tpl);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new MailTemplateDto(tpl.Id, tpl.Name, tpl.Subject, tpl.Body));
+        });
+
+        // PUT /api/mail/templates/{id}
+        g.MapPut("/templates/{id:guid}", async (Guid id, UpdateMailTemplateRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var tpl = await db.MailTemplates.FirstOrDefaultAsync(t => t.Id == id && t.UserId == userId.Value, ct);
+            if (tpl is null) return Results.Json(new { code = "not_found", message = "Template not found." }, statusCode: 404);
+
+            if (req.Name is not null)
+            {
+                var name = req.Name.Trim();
+                if (name.Length == 0 || name.Length > 200) return Results.Json(new { code = "invalid_name", message = "Invalid name." }, statusCode: 422);
+                tpl.Name = name;
+            }
+            if (req.Subject is not null)
+            {
+                var subject = req.Subject.Trim();
+                if (subject.Length == 0 || subject.Length > 500) return Results.Json(new { code = "invalid_subject", message = "Invalid subject." }, statusCode: 422);
+                tpl.Subject = subject;
+            }
+            if (req.Body is not null) tpl.Body = req.Body;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new MailTemplateDto(tpl.Id, tpl.Name, tpl.Subject, tpl.Body));
+        });
+
+        // DELETE /api/mail/templates/{id}
+        g.MapDelete("/templates/{id:guid}", async (Guid id, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var tpl = await db.MailTemplates.FirstOrDefaultAsync(t => t.Id == id && t.UserId == userId.Value, ct);
+            if (tpl is null) return Results.Json(new { code = "not_found", message = "Template not found." }, statusCode: 404);
+            db.MailTemplates.Remove(tpl);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { success = true });
+        });
+
+        // POST /api/mail/{id}/recall — tarik kembali surat terkirim selama belum dibaca penerima.
+        g.MapPost("/{id:guid}/recall", async (Guid id,
+            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+
+            var mail = await db.Mails.Include(m => m.Recipients).FirstOrDefaultAsync(m => m.Id == id, ct);
+            if (mail is null || mail.SenderId != userId.Value)
+                return Results.Json(new { code = "not_found", message = "Mail not found." }, statusCode: 404);
+            if (mail.Status != "sent")
+                return Results.Json(new { code = "not_sent", message = "Only sent mail can be recalled." }, statusCode: 422);
+
+            // Bila SATU penerima saja sudah membaca, recall ditolak (standar Outlook).
+            var anyRead = mail.Recipients.Any(r => r.RecipientType != "from" && r.ReadAt != null);
+            if (anyRead)
+                return Results.Json(new { code = "already_read", message = "Mail has already been read by recipient — cannot be recalled." }, statusCode: 422);
+
+            var now = DateTime.UtcNow;
+            foreach (var r in mail.Recipients.Where(r => r.RecipientType != "from"))
+                r.Folder = "trash"; // ditarik dari inbox penerima
+            mail.Status = "recalled";
+            mail.UpdatedAt = now;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { success = true });
+        });
+
+        // POST /api/mail/{mailId}/labels/{labelId} — tempel label ke surat (idempotent).
+        g.MapPost("/{mailId:guid}/labels/{labelId:guid}", async (Guid mailId, Guid labelId,
+            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var label = await db.MailLabels.AsNoTracking().FirstOrDefaultAsync(l => l.Id == labelId && l.UserId == userId.Value, ct);
+            if (label is null) return Results.Json(new { code = "label_not_found", message = "Label not found." }, statusCode: 404);
+            var canSee = await db.MailRecipients.AnyAsync(r => r.MailId == mailId && r.UserId == userId.Value, ct);
+            if (!canSee) return Results.Json(new { code = "mail_not_found", message = "Mail not found." }, statusCode: 404);
+
+            var exists = await db.MailLabelAssignments.AnyAsync(a => a.LabelId == labelId && a.MailId == mailId, ct);
+            if (!exists)
+            {
+                db.MailLabelAssignments.Add(new IPop.Core.Entities.MailLabelAssignment
+                {
+                    Id = Guid.NewGuid(), LabelId = labelId, MailId = mailId, CreatedAt = DateTime.UtcNow
+                });
+                await db.SaveChangesAsync(ct);
+            }
+            return Results.Ok(new { success = true });
+        });
+
+        // DELETE /api/mail/{mailId}/labels/{labelId} — lepas label dari surat.
+        g.MapDelete("/{mailId:guid}/labels/{labelId:guid}", async (Guid mailId, Guid labelId,
+            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var label = await db.MailLabels.AsNoTracking().FirstOrDefaultAsync(l => l.Id == labelId && l.UserId == userId.Value, ct);
+            if (label is null) return Results.Json(new { code = "label_not_found", message = "Label not found." }, statusCode: 404);
+            await db.MailLabelAssignments.Where(a => a.LabelId == labelId && a.MailId == mailId).ExecuteDeleteAsync(ct);
+            return Results.Ok(new { success = true });
+        });
+
+        // ── Balasan otomatis (out of office) ──
+
+        // GET /api/mail/auto-reply — pengaturan OOO pengguna saat ini.
+        g.MapGet("/auto-reply", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var s = await db.MailAutoReplySettings.AsNoTracking().FirstOrDefaultAsync(x => x.UserId == userId.Value, ct);
+            return Results.Ok(s is null
+                ? new MailAutoReplyDto(false, null, null, null)
+                : new MailAutoReplyDto(s.IsEnabled, s.FromDate, s.UntilDate, s.Message));
+        });
+
+        // PUT /api/mail/auto-reply — simpan pengaturan OOO (upsert).
+        g.MapPut("/auto-reply", async (UpdateAutoReplyRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            if (req.IsEnabled && string.IsNullOrWhiteSpace(req.Message))
+                return Results.Json(new { code = "message_required", message = "Auto-reply message is required when enabled." }, statusCode: 422);
+            if (req.Message is not null && req.Message.Length > 2000)
+                return Results.Json(new { code = "message_too_long", message = "Message must not exceed 2000 characters." }, statusCode: 422);
+
+            var s = await db.MailAutoReplySettings.FirstOrDefaultAsync(x => x.UserId == userId.Value, ct);
+            if (s is null)
+            {
+                s = new IPop.Core.Entities.MailAutoReplySetting { Id = Guid.NewGuid(), UserId = userId.Value };
+                db.MailAutoReplySettings.Add(s);
+            }
+            s.IsEnabled = req.IsEnabled;
+            s.FromDate = req.FromDate;
+            s.UntilDate = req.UntilDate;
+            s.Message = req.Message?.Trim();
+            s.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new MailAutoReplyDto(s.IsEnabled, s.FromDate, s.UntilDate, s.Message));
         });
 
         return app;
@@ -569,4 +976,64 @@ public static class MailEndpoints
     public record BulkIdsRequest(IReadOnlyList<Guid> MailIds);
     public record FolderRequest(string? Folder);
     public record RescheduleRequest(DateTime ScheduledAt);
+    public record BulkExportRequest(IReadOnlyList<Guid>? Ids);
+    // Surat Lanjutan (Fase 3)
+    public record CreateMailLabelRequest(string? Name, string? Color);
+    public record MailLabelDto(Guid Id, string Name, string Color, int Count);
+    public record CreateMailRuleRequest(string? Name, string? SenderContains, Guid LabelId);
+    public record UpdateMailRuleRequest(string? Name, string? SenderContains, Guid? LabelId, bool? IsEnabled);
+    public record MailRuleDto(Guid Id, string Name, string SenderContains, string LabelName, bool IsEnabled);
+    public record CreateMailTemplateRequest(string? Name, string? Subject, string? Body);
+    public record UpdateMailTemplateRequest(string? Name, string? Subject, string? Body);
+    public record MailTemplateDto(Guid Id, string Name, string Subject, string Body);
+    // Balasan otomatis (Fase 3)
+    public record UpdateAutoReplyRequest(bool IsEnabled, DateTime? FromDate, DateTime? UntilDate, string? Message);
+    public record MailAutoReplyDto(bool IsEnabled, DateTime? FromDate, DateTime? UntilDate, string? Message);
+
+    // ── PDF render helpers (Fase 2) ──
+
+    /// Muat surat yang bisa diakses pengguna dan petakan ke model render.
+    private static async Task<List<IPop.Infrastructure.Documents.MailPdfRenderer.MailPdfModel>> LoadMailPdfModels(
+        Guid userId, IReadOnlyList<Guid> ids, IPopDbContext db, CancellationToken ct)
+    {
+        var rows = await db.Mails.AsNoTracking()
+            .Where(m => ids.Contains(m.Id))
+            .Where(m => m.Recipients.Any(r => r.UserId == userId))
+            .Include(m => m.Sender)
+            .Include(m => m.Recipients).ThenInclude(r => r.User)
+            .OrderBy(m => m.SentAt ?? m.CreatedAt)
+            .ToListAsync(ct);
+
+        return rows.Select(m => new IPop.Infrastructure.Documents.MailPdfRenderer.MailPdfModel(
+            m.Subject,
+            m.Body ?? "",
+            m.IsHtml,
+            m.Sender?.Name ?? "Unknown",
+            m.Sender?.Nik ?? "",
+            string.Join("; ", m.Recipients.Where(r => r.RecipientType != "from").Select(r => r.User?.Name ?? r.User?.Nik ?? "")),
+            m.Signature,
+            m.Importance,
+            m.SentAt
+        )).ToList();
+    }
+
+    private static async Task<byte[]?> RenderMailPdf(Guid userId, Guid mailId,
+        IPop.Infrastructure.Documents.MailPdfRenderer pdf, IPopDbContext db, CancellationToken ct)
+    {
+        var models = await LoadMailPdfModels(userId, [mailId], db, ct);
+        if (models.Count == 0) return null;
+        return await pdf.RenderMailAsync(models[0], ct);
+    }
+
+    /// Nama berkas unduhan dari subjek surat: bersih, terbatas, tetap bermakna.
+    private static string PdfFileName(string? subject, Guid fallbackId)
+    {
+        if (string.IsNullOrWhiteSpace(subject))
+            return $"mail-{fallbackId.ToString("N")[..8]}.pdf";
+        var cleaned = string.Concat(subject.Trim().Select(c =>
+            char.IsLetterOrDigit(c) || c is ' ' or '-' or '_' ? c : ' '));
+        cleaned = System.Text.RegularExpressions.Regex.Replace(cleaned, @"\s+", "-").Trim('-');
+        if (cleaned.Length > 60) cleaned = cleaned[..60].Trim('-');
+        return (cleaned.Length == 0 ? $"mail-{fallbackId.ToString("N")[..8]}" : cleaned.ToLowerInvariant()) + ".pdf";
+    }
 }

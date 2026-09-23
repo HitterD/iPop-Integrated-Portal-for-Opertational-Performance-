@@ -1,0 +1,621 @@
+@using IPop.Application.Projects
+@inject IJSRuntime JS
+
+<div class="proj-table-card">
+    @* Table Top Bar *@
+    <div class="proj-table-head-bar">
+        <div class="table-filter-chips">
+            <button type="button" class="tbl-filter-chip @(StatusFilter == "" ? "active" : "")" @onclick='() => OnFilterChanged.InvokeAsync("")'>All Groups (@Tasks.Count)</button>
+            <button type="button" class="tbl-filter-chip @(StatusFilter == "todo" ? "active" : "")" @onclick='() => OnFilterChanged.InvokeAsync("todo")'>To Do (@Tasks.Count(t => t.Status == "todo"))</button>
+            <button type="button" class="tbl-filter-chip @(StatusFilter == "doing" ? "active" : "")" @onclick='() => OnFilterChanged.InvokeAsync("doing")'>In Progress (@Tasks.Count(t => t.Status == "doing"))</button>
+            <button type="button" class="tbl-filter-chip @(StatusFilter == "done" ? "active" : "")" @onclick='() => OnFilterChanged.InvokeAsync("done")'>Done (@Tasks.Count(t => t.Status == "done"))</button>
+        </div>
+        <div style="font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:6px">
+            <i data-lucide="layout-list" style="width:13px;height:13px"></i>
+            <span>@(FilteredTasks.Count) tasks shown</span>
+        </div>
+    </div>
+
+    @* Monday.com Style Collapsible Status Groups *@
+    <div class="monday-table-groups">
+        @if (ShouldShowGroup("todo"))
+        {
+            @RenderStatusGroup("todo", "To Do", "col-dot todo", "tbl-strip todo", isCollapsedTodo, () => isCollapsedTodo = !isCollapsedTodo, TodoTasks)
+        }
+
+        @if (ShouldShowGroup("doing"))
+        {
+            @RenderStatusGroup("doing", "In Progress", "col-dot doing", "tbl-strip doing", isCollapsedDoing, () => isCollapsedDoing = !isCollapsedDoing, DoingTasks)
+        }
+
+        @if (ShouldShowGroup("done"))
+        {
+            @RenderStatusGroup("done", "Done", "col-dot done", "tbl-strip done", isCollapsedDone, () => isCollapsedDone = !isCollapsedDone, DoneTasks)
+        }
+
+        @if (FilteredTasks.Count == 0)
+        {
+            <div class="tree-empty" style="padding:48px 16px;text-align:center">
+                <i data-lucide="inbox" style="width:32px;height:32px;margin-bottom:8px"></i>
+                <div>No tasks match the current filter.</div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public List<ProjectTaskDto> Tasks { get; set; } = [];
+    [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
+    [Parameter] public string SearchQuery { get; set; } = "";
+    [Parameter] public bool MyTasksOnly { get; set; }
+    [Parameter] public string? CurrentUserNik { get; set; }
+    [Parameter] public string StatusFilter { get; set; } = "";
+
+    [Parameter] public EventCallback<ProjectTaskDto> OnTaskClick { get; set; }
+    [Parameter] public EventCallback<string> OnFilterChanged { get; set; }
+    [Parameter] public EventCallback<(ProjectTaskDto Task, string NewStatus)> OnStatusChangeDirect { get; set; }
+    [Parameter] public EventCallback<(ProjectTaskDto Task, string? Priority)> OnPriorityChangeDirect { get; set; }
+    [Parameter] public EventCallback<(ProjectTaskDto Task, DateTime? DueDate)> OnDueDateChangeDirect { get; set; }
+    [Parameter] public EventCallback<(ProjectTaskDto Task, decimal? EstimatedHours)> OnEstimateChangeDirect { get; set; }
+    [Parameter] public EventCallback<(Guid TaskId, string Title)> OnQuickAddSubtask { get; set; }
+    [Parameter] public EventCallback<(string Status, string Title)> OnQuickAdd { get; set; }
+    [Parameter] public EventCallback<(Guid TaskId, Guid UserId, bool IsAssigned)> OnToggleAssignee { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDto> OnRequestExtension { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDto> OnQuickViewTask { get; set; }
+
+    private bool isCollapsedTodo;
+    private bool isCollapsedDoing;
+    private bool isCollapsedDone;
+
+    private string? addingInStatus;
+    private string newInlineTitle = "";
+    private string quickSubtaskTitle = "";
+
+    private Guid? openStatusDropdownTaskId;
+    private Guid? quickAssignTaskId;
+    private Guid? openPriorityTaskId;
+    private Guid? openDateTaskId;
+    private Guid? openSubtaskTaskId;
+    private Guid? openEstimateTaskId;
+
+    private void CloseAllPopovers()
+    {
+        openStatusDropdownTaskId = null;
+        quickAssignTaskId = null;
+        openPriorityTaskId = null;
+        openDateTaskId = null;
+        openSubtaskTaskId = null;
+        openEstimateTaskId = null;
+    }
+
+    private void ToggleStatusDropdown(Guid taskId)
+    {
+        var prev = openStatusDropdownTaskId;
+        CloseAllPopovers();
+        if (prev != taskId) openStatusDropdownTaskId = taskId;
+    }
+
+    private void ToggleQuickAssign(Guid taskId)
+    {
+        var prev = quickAssignTaskId;
+        CloseAllPopovers();
+        if (prev != taskId) quickAssignTaskId = taskId;
+    }
+
+    private void TogglePriorityDropdown(Guid taskId)
+    {
+        var prev = openPriorityTaskId;
+        CloseAllPopovers();
+        if (prev != taskId) openPriorityTaskId = taskId;
+    }
+
+    private void ToggleDateDropdown(Guid taskId)
+    {
+        var prev = openDateTaskId;
+        CloseAllPopovers();
+        if (prev != taskId) openDateTaskId = taskId;
+    }
+
+    private void ToggleSubtaskDropdown(Guid taskId)
+    {
+        var prev = openSubtaskTaskId;
+        CloseAllPopovers();
+        quickSubtaskTitle = "";
+        if (prev != taskId) openSubtaskTaskId = taskId;
+    }
+
+    private void ToggleEstimateDropdown(Guid taskId)
+    {
+        var prev = openEstimateTaskId;
+        CloseAllPopovers();
+        if (prev != taskId) openEstimateTaskId = taskId;
+    }
+
+    private async Task ChangeStatus(ProjectTaskDto task, string newStatus)
+    {
+        CloseAllPopovers();
+        await OnStatusChangeDirect.InvokeAsync((task, newStatus));
+    }
+
+    private async Task SetPriority(ProjectTaskDto task, string? priority)
+    {
+        CloseAllPopovers();
+        await OnPriorityChangeDirect.InvokeAsync((task, priority));
+    }
+
+    private async Task SetDueDate(ProjectTaskDto task, DateTime? dueDate)
+    {
+        CloseAllPopovers();
+        await OnDueDateChangeDirect.InvokeAsync((task, dueDate));
+    }
+
+    private async Task SetEstimate(ProjectTaskDto task, decimal? estimate)
+    {
+        CloseAllPopovers();
+        await OnEstimateChangeDirect.InvokeAsync((task, estimate));
+    }
+
+    private async Task SubmitQuickSubtask(Guid taskId)
+    {
+        if (string.IsNullOrWhiteSpace(quickSubtaskTitle)) return;
+        var title = quickSubtaskTitle.Trim();
+        quickSubtaskTitle = "";
+        CloseAllPopovers();
+        await OnQuickAddSubtask.InvokeAsync((taskId, title));
+    }
+
+    private List<ProjectTaskDto> FilteredTasks
+    {
+        get
+        {
+            var list = Tasks.AsEnumerable();
+            if (!string.IsNullOrEmpty(StatusFilter))
+                list = list.Where(t => t.Status == StatusFilter);
+            if (MyTasksOnly)
+                list = list.Where(t => ProjectUiHelpers.IsAssignedToUser(t, CurrentUserNik));
+            if (!string.IsNullOrWhiteSpace(SearchQuery))
+                list = list.Where(t => t.Title.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)
+                    || (t.Tags?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false));
+            return list.ToList();
+        }
+    }
+
+    private List<ProjectTaskDto> TodoTasks => FilteredTasks.Where(t => t.Status == "todo").ToList();
+    private List<ProjectTaskDto> DoingTasks => FilteredTasks.Where(t => t.Status == "doing").ToList();
+    private List<ProjectTaskDto> DoneTasks => FilteredTasks.Where(t => t.Status == "done").ToList();
+
+    private bool ShouldShowGroup(string statusKey)
+    {
+        return string.IsNullOrEmpty(StatusFilter) || StatusFilter == statusKey;
+    }
+
+    private void StartInlineAdd(string status)
+    {
+        addingInStatus = status;
+        newInlineTitle = "";
+    }
+
+    private async Task SubmitInlineAdd(string status)
+    {
+        if (string.IsNullOrWhiteSpace(newInlineTitle))
+        {
+            addingInStatus = null;
+            return;
+        }
+
+        var title = newInlineTitle.Trim();
+        addingInStatus = null;
+        newInlineTitle = "";
+        await OnQuickAdd.InvokeAsync((status, title));
+    }
+
+    private RenderFragment RenderStatusGroup(
+        string statusKey,
+        string groupTitle,
+        string dotClass,
+        string stripClass,
+        bool isCollapsed,
+        Action onToggleCollapse,
+        List<ProjectTaskDto> groupItems)
+    {
+        var totalHours = groupItems.Sum(t => t.EstimatedHours ?? 0);
+        var subtaskTotal = groupItems.Sum(t => t.SubtaskCount);
+        var subtaskDone = groupItems.Sum(t => t.SubtaskDoneCount);
+
+        return @<div class="monday-group-section">
+            @* Group Header *@
+            <div class="monday-group-header" @onclick="onToggleCollapse">
+                <div class="monday-group-title">
+                    <i data-lucide="chevron-down" class="monday-group-chevron @(isCollapsed ? "collapsed" : "")"></i>
+                    <span class="@dotClass"></span>
+                    <span>@groupTitle</span>
+                    <span class="col-count @statusKey" style="font-size:11px">@groupItems.Count</span>
+                </div>
+                <div class="monday-group-meta">
+                    @if (totalHours > 0)
+                    {
+                        <span>@totalHours h estimated</span>
+                        <span>•</span>
+                    }
+                    @if (subtaskTotal > 0)
+                    {
+                        <span>@subtaskDone/@subtaskTotal subtasks</span>
+                        <span>•</span>
+                    }
+                    <span style="font-size:11px;opacity:0.8">@(isCollapsed ? "Click to open" : "Click to close")</span>
+                </div>
+            </div>
+
+            @if (!isCollapsed)
+            {
+                <div style="overflow-x:auto">
+                    <table class="grid" style="width:100%;margin:0;border-collapse:collapse">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--line-soft);background:var(--bg)">
+                                <th style="width:4px;padding:0"></th>
+                                <th style="padding:8px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.03em">Task</th>
+                                <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.03em;width:125px">Status</th>
+                                <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.03em;width:115px">Priority</th>
+                                <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.03em;width:130px">Due Date</th>
+                                <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.03em;width:150px">Assignee</th>
+                                <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.03em;width:95px">Subtasks</th>
+                                <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.03em;width:85px">Estimate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (groupItems.Count == 0)
+                            {
+                                <tr>
+                                    <td class="@stripClass"></td>
+                                    <td colspan="7" style="padding:16px 14px;color:var(--ink-3);font-size:12px">
+                                        No tasks in this status.
+                                    </td>
+                                </tr>
+                            }
+                            else
+                            {
+                                @foreach (var t in groupItems)
+                                {
+                                    var isOverdue = t.DueDate.HasValue && t.DueDate.Value < DateTime.UtcNow && t.Status != "done";
+                                    var evidence = TaskEvidenceHelper.Parse(t.Description).Evidence;
+                                    <tr class="table-row-hover" style="cursor:pointer;border-bottom:1px solid var(--line-soft)" @onclick="() => OnTaskClick.InvokeAsync(t)">
+                                        <td class="@stripClass"></td>
+                                        <td style="padding:10px 14px">
+                                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                                                <div style="font-weight:600;font-size:13px;color:var(--ink)">@t.Title</div>
+                                                <button type="button" class="btn-sm surface" style="padding:3px 7px;font-size:10px;border-radius:999px;opacity:0.85"
+                                                        @onclick="() => OnQuickViewTask.InvokeAsync(t)" @onclick:stopPropagation="true" title="Open Quick Inspector">
+                                                    <i data-lucide="panel-right-open" style="width:11px;height:11px"></i>
+                                                </button>
+                                            </div>
+                                            <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap">
+                                                @if (evidence.IsExtended)
+                                                {
+                                                    <span class="badge-extended" title="@evidence.LatestExtension?.Reason">
+                                                        <i data-lucide="calendar-sync" style="width:10px;height:10px"></i> Extended (@evidence.ExtensionHistory.Count)x
+                                                    </span>
+                                                }
+                                                @if (!string.IsNullOrWhiteSpace(t.Tags))
+                                                {
+                                                    <div style="font-size:10.5px;color:var(--ink-3)">@t.Tags</div>
+                                                }
+                                            </div>
+                                        </td>
+
+                                        @* 1. Status Dropdown *@
+                                        <td style="padding:10px 12px;position:relative" @onclick:stopPropagation="true">
+                                            <button type="button" class="modern-status-trigger @t.Status.ToLower()" @onclick="() => ToggleStatusDropdown(t.Id)">
+                                                <span class="col-dot @t.Status.ToLower()"></span>
+                                                <span>@(t.Status == "doing" ? "In Progress" : (t.Status == "done" ? "Done" : "To Do"))</span>
+                                                <i data-lucide="chevron-down" style="width:11px;height:11px"></i>
+                                            </button>
+                                            @if (openStatusDropdownTaskId == t.Id)
+                                            {
+                                                <div class="modern-status-menu">
+                                                    <div class="modern-status-item @(t.Status == "todo" ? "active" : "")" @onclick='() => ChangeStatus(t, "todo")'>
+                                                        <span class="col-dot todo"></span>
+                                                        <span>To Do</span>
+                                                        @if (t.Status == "todo") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
+                                                    </div>
+                                                    <div class="modern-status-item @(t.Status == "doing" ? "active" : "")" @onclick='() => ChangeStatus(t, "doing")'>
+                                                        <span class="col-dot doing"></span>
+                                                        <span>In Progress</span>
+                                                        @if (t.Status == "doing") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
+                                                    </div>
+                                                    <div class="modern-status-item @(t.Status == "done" ? "active" : "")" @onclick='() => ChangeStatus(t, "done")'>
+                                                        <span class="col-dot done"></span>
+                                                        <span>Done</span>
+                                                        @if (t.Status == "done") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
+                                                    </div>
+                                                </div>
+                                            }
+                                        </td>
+
+                                        @* 2. Priority Dropdown Popover *@
+                                        <td style="padding:10px 12px;position:relative" @onclick:stopPropagation="true">
+                                            <button type="button" class="modern-priority-trigger" @onclick="() => TogglePriorityDropdown(t.Id)">
+                                                @if (!string.IsNullOrWhiteSpace(t.Priority))
+                                                {
+                                                    <span class="priority-badge @t.Priority.ToLower()">@t.Priority</span>
+                                                }
+                                                else
+                                                {
+                                                    <span style="color:var(--ink-3);font-size:11px;font-weight:500">— Priority</span>
+                                                }
+                                                <i data-lucide="chevron-down" style="width:10px;height:10px;color:var(--ink-3)"></i>
+                                            </button>
+                                            @if (openPriorityTaskId == t.Id)
+                                            {
+                                                <div class="modern-priority-menu">
+                                                    <div class="modern-priority-item @(t.Priority?.ToLower() == "urgent" ? "active" : "")" @onclick='() => SetPriority(t, "urgent")'>
+                                                        <span class="priority-badge urgent">URGENT</span>
+                                                        <span>Urgent</span>
+                                                        @if (t.Priority?.ToLower() == "urgent") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
+                                                    </div>
+                                                    <div class="modern-priority-item @(t.Priority?.ToLower() == "high" ? "active" : "")" @onclick='() => SetPriority(t, "high")'>
+                                                        <span class="priority-badge high">HIGH</span>
+                                                        <span>High</span>
+                                                        @if (t.Priority?.ToLower() == "high") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
+                                                    </div>
+                                                    <div class="modern-priority-item @(t.Priority?.ToLower() == "medium" ? "active" : "")" @onclick='() => SetPriority(t, "medium")'>
+                                                        <span class="priority-badge medium">MEDIUM</span>
+                                                        <span>Medium</span>
+                                                        @if (t.Priority?.ToLower() == "medium") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
+                                                    </div>
+                                                    <div class="modern-priority-item @(t.Priority?.ToLower() == "low" ? "active" : "")" @onclick='() => SetPriority(t, "low")'>
+                                                        <span class="priority-badge low">LOW</span>
+                                                        <span>Low</span>
+                                                        @if (t.Priority?.ToLower() == "low") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
+                                                    </div>
+                                                    <div class="modern-priority-item" @onclick='() => SetPriority(t, null)'>
+                                                        <span style="color:var(--ink-3);font-size:11px">No Priority</span>
+                                                        @if (string.IsNullOrEmpty(t.Priority)) { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
+                                                    </div>
+                                                </div>
+                                            }
+                                        </td>
+
+                                        @* 3. Due Date Dropdown Popover *@
+                                        <td style="padding:10px 12px;position:relative" @onclick:stopPropagation="true">
+                                            <div style="display:flex;align-items:center;gap:6px">
+                                                <button type="button" class="modern-date-trigger" @onclick="() => ToggleDateDropdown(t.Id)">
+                                                    @if (t.DueDate.HasValue)
+                                                    {
+                                                        <span class="due-pill @(isOverdue ? "overdue" : "")">
+                                                            <i data-lucide="calendar" style="width:11px;height:11px"></i>
+                                                            @t.DueDate.Value.ToString("dd MMM yyyy")
+                                                        </span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span style="color:var(--ink-3);font-size:11px;display:flex;align-items:center;gap:4px">
+                                                            <i data-lucide="calendar-plus" style="width:11px;height:11px"></i>
+                                                            <span>+ Due date</span>
+                                                        </span>
+                                                    }
+                                                </button>
+                                                @if (isOverdue)
+                                                {
+                                                    <button type="button" class="btn-sm surface" style="padding:2px 8px;font-size:10.5px;border-radius:999px;color:#c2410c;border-color:#fed7aa;background:#fff7ed;display:inline-flex;align-items:center;gap:4px"
+                                                            @onclick="() => OnRequestExtension.InvokeAsync(t)" @onclick:stopPropagation="true" title="Request deadline extension">
+                                                        <i data-lucide="clock-alert" style="width:10px;height:10px"></i> Extend
+                                                    </button>
+                                                }
+                                            </div>
+                                            @if (openDateTaskId == t.Id)
+                                            {
+                                                <div class="modern-date-menu">
+                                                    <div style="font-size:11px;font-weight:700;color:var(--ink-3);padding:2px 4px;text-transform:uppercase">Select Due Date</div>
+                                                    <div class="modern-date-preset" @onclick='() => SetDueDate(t, DateTime.UtcNow.Date)'>
+                                                        <span>Today</span>
+                                                        <span style="color:var(--ink-3);font-size:10px">@DateTime.Now.ToString("dd MMM")</span>
+                                                    </div>
+                                                    <div class="modern-date-preset" @onclick='() => SetDueDate(t, DateTime.UtcNow.Date.AddDays(1))'>
+                                                        <span>Tomorrow</span>
+                                                        <span style="color:var(--ink-3);font-size:10px">@DateTime.Now.AddDays(1).ToString("dd MMM")</span>
+                                                    </div>
+                                                    <div class="modern-date-preset" @onclick='() => SetDueDate(t, DateTime.UtcNow.Date.AddDays(7))'>
+                                                        <span>Next Week</span>
+                                                        <span style="color:var(--ink-3);font-size:10px">@DateTime.Now.AddDays(7).ToString("dd MMM")</span>
+                                                    </div>
+                                                    <div style="border-top:1px solid var(--line-soft);padding-top:6px;margin-top:2px">
+                                                        <input type="date" class="org-input" style="width:100%;height:30px;font-size:11.5px"
+                                                               value="@(t.DueDate?.ToString("yyyy-MM-dd"))"
+                                                               @onchange="async e => { if (DateTime.TryParse(e.Value?.ToString(), out var d)) await SetDueDate(t, d); }" />
+                                                    </div>
+                                                    @if (isOverdue)
+                                                    {
+                                                        <div class="modern-date-preset" style="color:#ea580c;border-top:1px solid var(--line-soft);margin-top:4px;padding-top:6px" @onclick="() => { CloseAllPopovers(); OnRequestExtension.InvokeAsync(t); }">
+                                                            <div style="display:flex;align-items:center;gap:6px">
+                                                                <i data-lucide="clock-alert" style="width:11px;height:11px"></i>
+                                                                <span>Extension Form...</span>
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                    @if (t.DueDate.HasValue)
+                                                    {
+                                                        <div class="modern-date-preset" style="color:#e11d48;margin-top:2px" @onclick='() => SetDueDate(t, null)'>
+                                                            <span>Clear Deadline</span>
+                                                            <i data-lucide="x" style="width:11px;height:11px"></i>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
+                                        </td>
+
+                                        @* 4. Assignee Inline Dropdown *@
+                                        <td style="padding:10px 12px;position:relative" @onclick:stopPropagation="true">
+                                            <div style="display:flex;align-items:center;gap:6px">
+                                                @if (t.Assignees.Count > 0)
+                                                {
+                                                    <div class="table-assignee-btn" @onclick="() => ToggleQuickAssign(t.Id)" title="Click to change assigned members">
+                                                        <div class="team-avatar-circ" style="width:22px;height:22px;font-size:9px;background:@ProjectUiHelpers.GetAvatarBg(t.Assignees[0].Name)" title="@t.Assignees[0].Name">
+                                                            @ProjectUiHelpers.GetInitials(t.Assignees[0].Name)
+                                                        </div>
+                                                        <span style="font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px">@t.Assignees[0].Name</span>
+                                                        @if (t.Assignees.Count > 1)
+                                                        {
+                                                            <span style="font-size:10px;color:var(--ink-3);font-weight:600">+@(t.Assignees.Count - 1)</span>
+                                                        }
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <button type="button" class="task-assign-btn-add empty" @onclick="() => ToggleQuickAssign(t.Id)" title="Click to assign members">
+                                                        <i data-lucide="user-plus" style="width:11px;height:11px"></i>
+                                                        <span>+ Assign</span>
+                                                    </button>
+                                                }
+                                            </div>
+
+                                            @if (quickAssignTaskId == t.Id)
+                                            {
+                                                <div class="quick-assign-popover table-popover" @onclick:stopPropagation="true">
+                                                    <div class="quick-assign-popover-head">
+                                                        <span>Assign Member</span>
+                                                        <button type="button" style="background:none;border:none;cursor:pointer;padding:2px;color:var(--ink-3);display:flex;align-items:center" @onclick="() => quickAssignTaskId = null">
+                                                            <i data-lucide="x" style="width:12px;height:12px"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div class="quick-assign-popover-list">
+                                                        @if (Members.Count == 0)
+                                                        {
+                                                            <div class="quick-assign-empty">No team members in this project.</div>
+                                                        }
+                                                        else
+                                                        {
+                                                            @foreach (var m in Members)
+                                                            {
+                                                                var isAssigned = t.Assignees.Any(a => a.UserId == m.UserId);
+                                                                <div class="quick-assign-item @(isAssigned ? "assigned" : "")"
+                                                                     @onclick="() => OnToggleAssignee.InvokeAsync((t.Id, m.UserId, isAssigned))">
+                                                                    <div class="team-avatar-circ" style="width:22px;height:22px;font-size:9.5px;background:@ProjectUiHelpers.GetAvatarBg(m.Name)">
+                                                                        @ProjectUiHelpers.GetInitials(m.Name)
+                                                                    </div>
+                                                                    <div class="quick-assign-item-info">
+                                                                        <div class="name">@m.Name</div>
+                                                                        <div class="role">@m.Role · @m.Nik</div>
+                                                                    </div>
+                                                                    @if (isAssigned)
+                                                                    {
+                                                                        <i data-lucide="check" style="width:13px;height:13px;color:var(--accent);flex-shrink:0"></i>
+                                                                    }
+                                                                </div>
+                                                            }
+                                                        }
+                                                    </div>
+                                                </div>
+                                            }
+                                        </td>
+
+                                        @* 5. Subtask Popover *@
+                                        <td style="padding:10px 12px;text-align:center;position:relative" @onclick:stopPropagation="true">
+                                            <button type="button" class="modern-subtask-trigger" @onclick="() => ToggleSubtaskDropdown(t.Id)">
+                                                @if (t.SubtaskCount > 0)
+                                                {
+                                                    <span class="subtask-badge">
+                                                        <i data-lucide="check-square" style="width:11px;height:11px"></i>
+                                                        @t.SubtaskDoneCount/@t.SubtaskCount
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span style="color:var(--ink-3);font-size:11px">+ Subtask</span>
+                                                }
+                                            </button>
+                                            @if (openSubtaskTaskId == t.Id)
+                                            {
+                                                <div class="modern-subtask-menu">
+                                                    <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:4px;border-bottom:1px solid var(--line-soft)">
+                                                        <span style="font-size:11px;font-weight:700;color:var(--ink)">Subtask (@t.SubtaskDoneCount/@t.SubtaskCount)</span>
+                                                        <button type="button" class="btn-sm surface" style="padding:2px 6px;font-size:10.5px" @onclick="() => { openSubtaskTaskId = null; OnTaskClick.InvokeAsync(t); }">
+                                                            Detail
+                                                        </button>
+                                                    </div>
+                                                    <div style="display:flex;gap:4px;margin-top:4px">
+                                                        <input class="org-input" style="flex:1;height:28px;font-size:11.5px"
+                                                               placeholder="Add subtask..."
+                                                               @bind="quickSubtaskTitle"
+                                                               @onkeydown="@(async e => { if (e.Key == "Enter") await SubmitQuickSubtask(t.Id); })" />
+                                                        <button type="button" class="btn-sm accent" style="padding:2px 8px;font-size:11px" @onclick="() => SubmitQuickSubtask(t.Id)">
+                                                            +
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </td>
+
+                                        @* 6. Estimate Popover *@
+                                        <td style="padding:10px 12px;text-align:center;position:relative" @onclick:stopPropagation="true">
+                                            <button type="button" class="modern-estimate-trigger" @onclick="() => ToggleEstimateDropdown(t.Id)">
+                                                <span>@(t.EstimatedHours.HasValue ? $"{t.EstimatedHours}h" : "— h")</span>
+                                                <i data-lucide="clock" style="width:10px;height:10px;color:var(--ink-3)"></i>
+                                            </button>
+                                            @if (openEstimateTaskId == t.Id)
+                                            {
+                                                <div class="modern-estimate-menu">
+                                                    <div style="font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase">Estimated Hours</div>
+                                                    <div class="modern-estimate-chips">
+                                                        <button type="button" class="modern-estimate-chip" @onclick="() => SetEstimate(t, 1)">1h</button>
+                                                        <button type="button" class="modern-estimate-chip" @onclick="() => SetEstimate(t, 2)">2h</button>
+                                                        <button type="button" class="modern-estimate-chip" @onclick="() => SetEstimate(t, 4)">4h</button>
+                                                        <button type="button" class="modern-estimate-chip" @onclick="() => SetEstimate(t, 8)">8h</button>
+                                                        <button type="button" class="modern-estimate-chip" @onclick="() => SetEstimate(t, 16)">16h</button>
+                                                        <button type="button" class="modern-estimate-chip" @onclick="() => SetEstimate(t, 40)">40h</button>
+                                                    </div>
+                                                    <div style="display:flex;align-items:center;gap:6px;border-top:1px solid var(--line-soft);padding-top:6px">
+                                                        <input type="number" step="0.5" class="org-input" style="flex:1;height:28px;font-size:11.5px"
+                                                               value="@(t.EstimatedHours ?? 0)"
+                                                               @onchange="async e => { if (decimal.TryParse(e.Value?.ToString(), out var h)) await SetEstimate(t, h > 0 ? h : null); }" />
+                                                        <span style="font-size:11px;color:var(--ink-3)">hours</span>
+                                                    </div>
+                                                    @if (t.EstimatedHours.HasValue)
+                                                    {
+                                                        <div style="text-align:center;margin-top:2px">
+                                                            <button type="button" style="background:none;border:none;cursor:pointer;color:#e11d48;font-size:10.5px" @onclick="() => SetEstimate(t, null)">
+                                                                Clear Estimate
+                                                            </button>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+
+                    @* Inline Adder Row *@
+                    <div class="table-inline-adder">
+                        @if (addingInStatus == statusKey)
+                        {
+                            <div class="table-inline-input-wrap">
+                                <input class="table-inline-input"
+                                       placeholder="Type task name and press Enter..."
+                                       @bind="newInlineTitle"
+                                       @onkeydown="@(async e => { if (e.Key == "Enter") await SubmitInlineAdd(statusKey); if (e.Key == "Escape") addingInStatus = null; })"
+                                       autofocus />
+                                <button type="button" class="btn-sm accent" style="padding:3px 10px;font-size:11px" @onclick="() => SubmitInlineAdd(statusKey)">Add</button>
+                                <button type="button" class="btn-sm surface" style="padding:3px 10px;font-size:11px" @onclick="() => addingInStatus = null">Cancel</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <button type="button" class="table-inline-add-btn" @onclick="() => StartInlineAdd(statusKey)">
+                                <i data-lucide="plus" style="width:13px;height:13px"></i>
+                                <span>+ Add task to @groupTitle</span>
+                            </button>
+                        }
+                    </div>
+
+                    @* Group Aggregate Summary Bar *@
+                    <div class="table-group-summary">
+                        <span>Total @groupTitle: @groupItems.Count tasks</span>
+                        <span>@totalHours h total estimate</span>
+                    </div>
+                </div>
+            }
+        </div>;
+    }
+}

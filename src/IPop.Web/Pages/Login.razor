@@ -99,19 +99,32 @@
         }
 
         busy = true;
-        var fingerprint = await JS.InvokeAsync<string>("ipop.fingerprint");
-        var (ok, error, isLocked) = await Auth.LoginAsync(nik.Trim(), password, fingerprint);
-        busy = false;
-
-        if (!ok)
+        try
         {
-            locked = isLocked;
-            await Fail(isLocked ? "lock" : "alert-circle", error!);
-            return;
-        }
+            var fingerprint = await JS.InvokeAsync<string>("ipop.fingerprint");
+            var (ok, error, isLocked) = await Auth.LoginAsync(nik.Trim(), password, fingerprint);
 
-        password = "";
-        Nav.NavigateTo(Auth.MustChangePassword ? "/set-password" : "/directory");
+            if (!ok)
+            {
+                locked = isLocked;
+                await Fail(isLocked ? "lock" : "alert-circle", error!);
+                return;
+            }
+
+            password = "";
+            Nav.NavigateTo(Auth.MustChangePassword ? "/set-password" : "/directory");
+        }
+        catch
+        {
+            // ipop-46: API down / network blip throws out of LoginAsync. Surface the real
+            // reason instead of leaving busy latched (all inputs + button disabled) or
+            // letting Blazor's generic banner be the only signal.
+            await Fail("wifi-off", "Could not reach the server. Check your connection and try again.");
+        }
+        finally
+        {
+            busy = false;
+        }
     }
 
     public void Dispose() => slideTimer?.Dispose();

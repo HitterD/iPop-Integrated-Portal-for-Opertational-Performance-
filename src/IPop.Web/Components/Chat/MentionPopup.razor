@@ -1,0 +1,85 @@
+@using IPop.Application.Chat
+@using IPop.Web.Services
+
+@if (isOpen)
+{
+    <div class="mention-popup" role="listbox" aria-label="Mention suggestions">
+        @for (int i = 0; i < displayItems.Count; i++)
+        {
+            var idx = i;
+            var item = displayItems[idx];
+            var sel = idx == selectedIndex;
+            <div id="mention-opt-@idx" role="option" aria-selected="@sel.ToString().ToLowerInvariant()" class="mi @(sel ? "sel" : "")" @onclick="() => Pick(idx)">
+                @if (item.IsAll)
+                {
+                    <div class="avatar mention-avatar mention-all">@@</div>
+                    <div><div class="name">@@all (@item.AllCount)</div><div class="role">Mention all</div></div>
+                }
+                else
+                {
+                    <div class="avatar mention-avatar" style="background:@Color(item.Member!.Nik)">@Initials(item.Member.Name)</div>
+                    <div><div class="name">@item.Member.Name</div><div class="role">@item.Member.Role</div></div>
+                }
+            </div>
+        }
+        <span class="visually-hidden" aria-live="polite">@AriaLiveText</span>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public string Query { get; set; } = "";
+    [Parameter] public IReadOnlyList<MemberDto> Candidates { get; set; } = [];
+    [Parameter] public string CurrentUserNik { get; set; } = "";
+    [Parameter] public bool ShowAll { get; set; }
+    [Parameter] public int AllCount { get; set; }
+    [Parameter] public EventCallback<PopupPick> OnPick { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private int selectedIndex = 0;
+    private List<PopupItem> displayItems = [];
+    private bool isOpen => IsOpen && displayItems.Count > 0;
+
+    private string AriaLiveText => displayItems.Count == 0 ? "No results" : $"{displayItems.Count} results, selected {displayItems[selectedIndex].Label}";
+
+    private bool IsAllQuery => string.IsNullOrEmpty(Query) || "all".StartsWith(Query, StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnParametersSet()
+    {
+        BuildItems();
+        selectedIndex = 0;
+    }
+
+    private void BuildItems()
+    {
+        displayItems = [];
+        if (ShowAll && IsAllQuery) displayItems.Add(new PopupItem { IsAll = true, AllCount = AllCount, Label = "@all" });
+        var filtered = ComposerMentionModel.Filter(Candidates.Where(c => c.Nik != CurrentUserNik).ToList(), Query, 10);
+        foreach (var m in filtered) displayItems.Add(new PopupItem { Member = m, Label = m.Name });
+    }
+
+    public void MoveDown() { if (displayItems.Count == 0) return; selectedIndex = (selectedIndex + 1) % displayItems.Count; StateHasChanged(); }
+    public void MoveUp() { if (displayItems.Count == 0) return; selectedIndex = (selectedIndex - 1 + displayItems.Count) % displayItems.Count; StateHasChanged(); }
+
+    private async Task Pick(int idx)
+    {
+        var item = displayItems[idx];
+        await OnPick.InvokeAsync(new PopupPick(item.Member, item.IsAll));
+    }
+
+    public async Task PickSelected() => await Pick(selectedIndex);
+
+    private sealed class PopupItem { public MemberDto? Member; public bool IsAll; public int AllCount; public string Label = ""; }
+    public sealed record PopupPick(MemberDto? Member, bool IsAll);
+
+    private static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
+    }
+    private static string Color(string nik)
+    {
+        var colors = new[] { "#2e7d5b", "#7d5ba6", "#8a6d3b", "#b3543f", "#4f6d8f", "#5b7d2e" };
+        return colors[Math.Abs(nik.GetHashCode()) % colors.Length];
+    }
+}

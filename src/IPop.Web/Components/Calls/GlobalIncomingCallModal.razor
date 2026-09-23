@@ -1,0 +1,92 @@
+@implements IDisposable
+@inject CallState CallSvc
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@if (CallSvc.IsIncomingRing)
+{
+    <div class="incoming-call-toast" role="alert" aria-live="assertive">
+        <div class="tray rise rise-1 incoming-call-card">
+            <div class="core" style="padding:16px 20px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow-lg, 0 10px 25px rgba(0,0,0,0.18));border-radius:14px;border:1px solid var(--line-soft);background:var(--bg)">
+                <div class="avatar avatar-incoming-pulse" style="background:var(--accent);color:#fff;width:46px;height:46px;font-size:16px;font-weight:700">
+                    <i data-lucide="phone-incoming" style="width:20px;height:20px"></i>
+                </div>
+                <div style="flex:1;min-width:160px">
+                    <div style="font-weight:700;font-size:14px;color:var(--ink)">@(CallSvc.RemotePeer?.Name ?? "Teammate")</div>
+                    <div style="font-size:12px;color:var(--ink-2);margin-top:2px">Incoming voice call…</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                    <button type="button" class="btn" style="width:auto;margin:0;background:var(--accent);color:#fff;padding:8px 16px;display:inline-flex;align-items:center;gap:6px" @onclick="AcceptCall">
+                        <i data-lucide="phone" style="width:14px;height:14px"></i>
+                        <span>Accept</span>
+                    </button>
+                    <button type="button" class="btn-sm surface" style="padding:8px 14px;color:var(--danger, #b3543f);border-color:var(--line-soft);display:inline-flex;align-items:center;gap:5px" @onclick="DeclineCall">
+                        <i data-lucide="phone-off" style="width:14px;height:14px"></i>
+                        <span>Decline</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .incoming-call-toast {
+        position: fixed;
+        top: 24px;
+        right: 24px;
+        z-index: 99999;
+        min-width: 360px;
+        max-width: 440px;
+        animation: slideInDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @@keyframes slideInDown {
+        from { transform: translateY(-30px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+    .avatar-incoming-pulse {
+        animation: pulseRing 1.4s infinite;
+    }
+    @@keyframes pulseRing {
+        0% { box-shadow: 0 0 0 0 rgba(46, 125, 91, 0.5); }
+        70% { box-shadow: 0 0 0 10px rgba(46, 125, 91, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(46, 125, 91, 0); }
+    }
+    .avatar-local-speaker.speaking,
+    .avatar-remote-speaker.speaking {
+        box-shadow: 0 0 0 3px var(--accent) !important;
+        transition: box-shadow 0.15s ease-in-out;
+    }
+</style>
+
+@code {
+    protected override void OnInitialized()
+    {
+        CallSvc.StateChanged += OnStateChanged;
+    }
+
+    private void OnStateChanged()
+    {
+        InvokeAsync(async () =>
+        {
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        });
+    }
+
+    private async Task AcceptCall()
+    {
+        await CallSvc.AcceptCurrentAsync();
+        Nav.NavigateTo("/calls");
+    }
+
+    private async Task DeclineCall()
+    {
+        await CallSvc.DeclineCurrentAsync();
+    }
+
+    public void Dispose()
+    {
+        CallSvc.StateChanged -= OnStateChanged;
+    }
+}

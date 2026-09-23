@@ -1,0 +1,127 @@
+@using IPop.Application.Chat
+@using IPop.Web.Models
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject ChatState ChatSvc
+
+@if (shouldShow)
+{
+    <div class="seen-by seen-clickable" @onclick="ToggleList">
+        @if (allRead)
+        {
+            <span class="seen-label">Read by everyone</span>
+        }
+        else
+        {
+            @foreach (var r in visibleAvatars)
+            {
+                var reader = r;
+                <span class="seen-avatar avatar" style="background:@Color(reader.UserName)">@Initials(reader.UserName)</span>
+            }
+            @if (extraCount > 0)
+            {
+                <span class="seen-label">+@extraCount</span>
+            }
+        }
+    </div>
+    @if (listOpen)
+    {
+        <div class="seen-pop">
+            <button class="seen-close" aria-label="Close readers" @onclick="() => listOpen = false">×</button>
+            @if (loading) { <div class="seen-state">Loading…</div> }
+            else if (!string.IsNullOrEmpty(listError)) { <div class="seen-state seen-error">@listError</div> }
+            else
+            {
+                @foreach (var r in readers)
+                {
+                    var reader = r;
+                    <div class="seen-row">
+                        <span class="avatar avatar-24" style="background:@Color(reader.UserName)">@Initials(reader.UserName)</span>
+                        <span>@reader.UserName</span>
+                        @if (reader.ReadAt is { } readAt)
+                        {
+                            <span class="seen-time">Read @readAt.ToLocalTime().ToString("g")</span>
+                        }
+                        else if (reader.DeliveredAt is { } deliveredAt)
+                        {
+                            <span class="seen-time">Delivered @deliveredAt.ToLocalTime().ToString("g")</span>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    }
+}
+
+@implements IDisposable
+
+@code {
+    [Parameter] public MessageDto Message { get; set; } = default!;
+    [Parameter] public string? CurrentUserNik { get; set; }
+    [Parameter] public string? RoomType { get; set; }
+    private bool listOpen;
+    private bool loading;
+    private string? listError;
+    private List<SeenByDto> readers = [];
+    private bool allRead;
+    private List<SeenByDto> visibleAvatars = [];
+    private int extraCount;
+    private int activeMemberCount;
+
+    private bool shouldShow =>
+        RoomType == "group"
+        && Message.SenderNik == CurrentUserNik
+        && Message.Type != "system"
+        && (readers.Count > 0 || visibleAvatars.Count > 0 || allRead);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        ChatSvc.SeenUpdated -= OnSeenUpdate;
+        // Only fetch for own messages in group rooms
+        if (RoomType != "group" || Message.SenderNik != CurrentUserNik || Message.Type == "system") return;
+        // Lazy: fetch seen detail once
+        await RefreshReaders();
+        ChatSvc.SeenUpdated += OnSeenUpdate;
+    }
+
+    private async Task RefreshReaders()
+    {
+        try
+        {
+            var detail = await Auth.GetAsync<SeenListDto>($"/api/chat/messages/{Message.Id}/seen");
+            if (detail != null)
+            {
+                readers = detail.Readers.ToList();
+                activeMemberCount = detail.ActiveMemberCount;
+                allRead = activeMemberCount > 0 && readers.Count >= activeMemberCount;
+                visibleAvatars = readers.Take(4).ToList();
+                extraCount = Math.Max(0, readers.Count - 4);
+            }
+        }
+        catch (Exception ex)
+        {
+            listError = ex.Message;
+        }
+    }
+
+    private void OnSeenUpdate(SeenUpdateDto u)
+    {
+        if (u.MessageId == Message.Id) _ = RefreshReaders();
+    }
+
+    private async Task ToggleList()
+    {
+        if (readers.Count == 0) return;
+        listOpen = !listOpen;
+        if (listOpen) { loading = true; await RefreshReaders(); loading = false; }
+    }
+
+    private static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
+    }
+    private static string Color(string name) => AvatarPalette.For(name);
+
+    public void Dispose() => ChatSvc.SeenUpdated -= OnSeenUpdate;
+}

@@ -12,7 +12,11 @@
             <span class="meta">@Workbook.Sheets.Count sheet@(Workbook.Sheets.Count == 1 ? "" : "s")</span>
         }
     </div>
-    @if (Workbook is null)
+    @if (loadError is not null)
+    {
+        <div class="note err" style="margin:20px"><i data-lucide="alert-circle"></i><span>@loadError</span></div>
+    }
+    else if (Workbook is null)
     {
         <div class="tree-empty" style="padding:28px">Loading spreadsheet...</div>
     }
@@ -38,15 +42,25 @@
     [Parameter] public byte[]? Bytes { get; set; }
 
     private Workbook? Workbook { get; set; }
+    private string? loadError;
 
     protected override void OnInitialized()
     {
         if (Bytes is null) return;
-        using var stream = new MemoryStream(Bytes);
-        // Radzen parses XLSX (OOXML) and CSV natively; legacy .xls goes through the
-        // existing SheetJS path in ipop.js instead of this component.
-        Workbook = FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)
-            ? Workbook.LoadFromCsv(stream)
-            : Workbook.LoadFromStream(stream);
+        try
+        {
+            using var stream = new MemoryStream(Bytes);
+            // Radzen parses XLSX (OOXML) and CSV natively; legacy .xls goes through the
+            // existing SheetJS path in ipop.js instead of this component.
+            Workbook = FileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)
+                ? Workbook.LoadFromCsv(stream)
+                : Workbook.LoadFromStream(stream);
+        }
+        catch
+        {
+            // Password-protected, truncated or mislabelled workbooks must not take the
+            // whole page down — chat attachments are arbitrary user uploads.
+            loadError = "This spreadsheet could not be opened. Download it to view in Excel.";
+        }
     }
 }

@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iPop — Mail</title>
+<link rel="stylesheet" href="app.css">
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+<div class="window" id="win">
+
+  <!-- ══════════════ LEFT RAIL ══════════════ -->
+  <aside class="rail">
+    <div class="brand">
+      <div class="brand-mark">iP</div>
+      <div class="brand-name">iPop</div>
+      <button class="brand-caret"><i data-lucide="chevron-down"></i></button>
+      <button class="rail-toggle" id="railToggle" title="Ciutkan sidebar"><i data-lucide="panel-left-close"></i></button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Ruang Kerja</div>
+      <a class="nav-item" href="dashboard.html"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></a>
+      <a class="nav-item" href="directory.html"><i data-lucide="users"></i><span class="lbl">Direktori</span></a>
+      <a class="nav-item" href="index.html"><i data-lucide="kanban"></i><span class="lbl">Proyek</span><span class="nav-count">8</span></a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Komunikasi</div>
+      <a class="nav-item" href="chat.html"><i data-lucide="message-circle"></i><span class="lbl">Chat</span><span class="nav-count">12</span></a>
+      <a class="nav-item active" href="mail.html"><i data-lucide="mail"></i><span class="lbl">Mail</span><span class="nav-count">6</span></a>
+      <button class="nav-item"><i data-lucide="newspaper"></i><span class="lbl">Berita &amp; Memo</span></button>
+      <button class="nav-item"><i data-lucide="phone"></i><span class="lbl">Panggilan</span></button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Sumber Daya</div>
+      <button class="nav-item"><i data-lucide="folder"></i><span class="lbl">Berkas</span></button>
+      <button class="nav-item"><i data-lucide="calendar"></i><span class="lbl">Kalender</span></button>
+    </div>
+
+    <div class="rail-foot">
+      <button class="nav-item"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administrasi</span></button>
+      <button class="nav-item" id="themeBtn"><i data-lucide="moon"></i><span class="lbl">Mode Gelap</span></button>
+      <button class="nav-item"><i data-lucide="settings"></i><span class="lbl">Pengaturan</span></button>
+    </div>
+  </aside>
+
+  <!-- ══════════════ MAIN ══════════════ -->
+  <div class="main">
+    <section class="screen on" id="s-mail">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Kotak Masuk</div>
+          <div class="page-sub">6 belum dibaca · 142 total pesan · sinkron otomatis 09:42</div>
+        </div>
+        <div class="topbar-right">
+          <div class="searchbox"><i data-lucide="search"></i><input placeholder="Cari surat atau pengirim…"><span class="kbd">⌘K</span></div>
+          <button class="icon-btn" id="fsBtn" title="Fullscreen"><i data-lucide="maximize-2"></i></button>
+          <button class="icon-btn" title="Muat ulang"><i data-lucide="refresh-cw"></i></button>
+          <button class="btn-primary" id="openMailComposer"><i data-lucide="square-pen"></i>Tulis Surat</button>
+          <div class="me-avatar">BA</div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="tabs">
+          <button class="tab active"><i data-lucide="inbox"></i>Semua<span class="n">142</span></button>
+          <button class="tab"><i data-lucide="mail"></i>Belum dibaca<span class="n">6</span></button>
+          <button class="tab"><i data-lucide="star"></i>Berbintang<span class="n">4</span></button>
+        </div>
+        <div class="push flex center gap-8">
+          <button class="ghost-btn" title="Arsipkan terpilih"><i data-lucide="archive"></i>Arsipkan</button>
+          <button class="ghost-btn" title="Pindahkan ke sampah"><i data-lucide="trash-2"></i>Hapus</button>
+          <button class="ghost-btn" title="Tandai sudah dibaca"><i data-lucide="check-check"></i>Tandai Dibaca</button>
+        </div>
+      </div>
+
+      <div class="body" style="padding-top:14px">
+        <div class="cols" style="grid-template-columns: 212px minmax(320px, 1fr) minmax(380px, 1.2fr)">
+
+          <!-- Pane 1: Folders & Labels -->
+          <div class="card" style="overflow:hidden">
+            <div class="card-head" style="padding:16px 16px 6px">
+              <div>
+                <div class="card-title" style="font-size:13.5px">Kotak Surat</div>
+                <div class="card-meta" style="font-size:11.5px">7 folder aktif</div>
+              </div>
+            </div>
+            <div class="tree">
+              <button class="tree-node on"><i data-lucide="inbox"></i><span class="lbl">Kotak Masuk</span><span class="tree-n" style="font-weight:700;color:var(--accent-ink)">6</span></button>
+              <button class="tree-node"><i data-lucide="send"></i><span class="lbl">Terkirim</span><span class="tree-n">28</span></button>
+              <button class="tree-node"><i data-lucide="file-text"></i><span class="lbl">Draf</span><span class="tree-n">2</span></button>
+              <button class="tree-node"><i data-lucide="calendar-clock"></i><span class="lbl">Terjadwal</span><span class="tree-n">1</span></button>
+              <button class="tree-node"><i data-lucide="star"></i><span class="lbl">Berbintang</span><span class="tree-n">4</span></button>
+              <button class="tree-node"><i data-lucide="archive"></i><span class="lbl">Arsip</span></button>
+              <button class="tree-node"><i data-lucide="trash-2"></i><span class="lbl">Sampah</span></button>
+
+              <div class="tree-site" style="margin-top:10px">Label</div>
+              <button class="tree-node"><span class="label-dot" style="background:#b3543f"></span><span class="lbl">Penting</span><span class="tree-n">4</span></button>
+              <button class="tree-node"><span class="label-dot" style="background:#4f6d8f"></span><span class="lbl">HR</span><span class="tree-n">12</span></button>
+              <button class="tree-node"><span class="label-dot" style="background:#2e7d5b"></span><span class="lbl">Proyek</span><span class="tree-n">7</span></button>
+            </div>
+            <div style="padding:10px 10px 14px">
+              <button class="ghost-btn" style="width:100%;justify-content:center;font-size:12px"><i data-lucide="settings-2"></i>Surat Lanjutan</button>
+            </div>
+          </div>
+
+          <!-- Pane 2: Message List -->
+          <div class="card" style="overflow:hidden;display:flex;flex-direction:column">
+            <div class="card-head" style="padding:14px 18px 10px;justify-content:space-between">
+              <div class="flex center gap-8">
+                <span class="cbx"><i data-lucide="check"></i></span>
+                <span class="t-13 strong">Daftar Surat</span>
+                <span class="badge mute" style="font-size:11px">6 baru</span>
+              </div>
+              <div class="flex center gap-6">
+                <button class="icon-btn" style="width:28px;height:28px" title="Filter"><i data-lucide="sliders-horizontal" style="width:14px;height:14px"></i></button>
+              </div>
+            </div>
+
+            <div class="mail-list">
+              <!-- Item 1: Selected & Unread -->
+              <div class="mail-row unread sel">
+                <div class="m-l1">
+                  <span class="cbx on"><i data-lucide="check"></i></span>
+                  <span class="imp-tag high" title="High Importance"><i data-lucide="alert-circle"></i></span>
+                  <span class="m-from">Siti Rahmawati</span>
+                  <span class="m-time">14:20</span>
+                  <div class="mail-row-actions">
+                    <button title="Delete"><i data-lucide="trash-2"></i></button>
+                    <button title="Pin"><i data-lucide="pin"></i></button>
+                    <button title="Flag"><i data-lucide="star"></i></button>
+                    <button title="Mark unread"><i data-lucide="mail-x"></i></button>
+                  </div>
+                </div>
+                <div class="m-l2"><span class="m-subj">Laporan stok opname Gudang Cikarang</span></div>
+                <div class="m-l3">
+                  <span class="m-snip">Terlampir hasil opname per tanggal 17 September beserta catatan selisih 3 SKU…</span>
+                  <span class="label-chip"><span class="label-dot" style="background:#4f6d8f"></span>HR</span>
+                  <span class="m-clip"><i data-lucide="paperclip"></i></span>
+                </div>
+              </div>
+
+              <!-- Item 2: Pinned & Unread -->
+              <div class="mail-row unread pinned">
+                <div class="m-l1">
+                  <span class="cbx"><i data-lucide="check"></i></span>
+                  <span class="pin-badge" title="Pinned to top"><i data-lucide="pin"></i></span>
+                  <span class="imp-tag high" title="High Importance"><i data-lucide="alert-circle"></i></span>
+                  <span class="m-from">Direksi</span>
+                  <span class="m-time">08:15</span>
+                  <div class="mail-row-actions">
+                    <button title="Delete"><i data-lucide="trash-2"></i></button>
+                    <button class="active" title="Unpin"><i data-lucide="pin"></i></button>
+                    <button title="Flag"><i data-lucide="star"></i></button>
+                    <button title="Mark read"><i data-lucide="mail-check"></i></button>
+                  </div>
+                </div>
+                <div class="m-l2"><span class="m-subj">Pengumuman: penyesuaian jam operasional gudang</span></div>
+                <div class="m-l3">
+                  <span class="m-snip">Berlaku mulai 1 Oktober, jam operasional gudang Cikarang berubah menjadi…</span>
+                  <span class="label-chip"><span class="label-dot" style="background:#b3543f"></span>Penting</span>
+                </div>
+              </div>
+
+              <!-- Item 3: Unread -->
+              <div class="mail-row unread">
+                <div class="m-l1">
+                  <span class="cbx"><i data-lucide="check"></i></span>
+                  <span class="m-from">Retno Wulandari</span>
+                  <span class="m-time">09:42</span>
+                  <div class="mail-row-actions">
+                    <button title="Delete"><i data-lucide="trash-2"></i></button>
+                    <button title="Pin"><i data-lucide="pin"></i></button>
+                    <button title="Flag"><i data-lucide="star"></i></button>
+                    <button title="Mark read"><i data-lucide="mail-check"></i></button>
+                  </div>
+                </div>
+                <div class="m-l2"><span class="m-subj">Revisi anggaran perjalanan dinas Q4</span></div>
+                <div class="m-l3">
+                  <span class="m-snip">Mohon dicek kembali rincian akomodasi untuk tim Cikarang, ada selisih pada baris…</span>
+                  <span class="label-chip"><span class="label-dot" style="background:#4f6d8f"></span>HR</span>
+                  <span class="m-clip"><i data-lucide="paperclip"></i></span>
+                </div>
+              </div>
+
+              <!-- Item 4: Read -->
+              <div class="mail-row">
+                <div class="m-l1">
+                  <span class="cbx"><i data-lucide="check"></i></span>
+                  <span class="m-from">Bagas Arif</span>
+                  <span class="m-time">Kemarin</span>
+                  <div class="mail-row-actions">
+                    <button title="Delete"><i data-lucide="trash-2"></i></button>
+                    <button title="Pin"><i data-lucide="pin"></i></button>
+                    <button title="Flag"><i data-lucide="star"></i></button>
+                    <button title="Mark unread"><i data-lucide="mail-x"></i></button>
+                  </div>
+                </div>
+                <div class="m-l2"><span class="m-subj">Re: Jadwal maintenance server akhir bulan</span></div>
+                <div class="m-l3">
+                  <span class="m-snip">Siap, saya blokir Sabtu malam. Downtime perkiraan dua jam, sudah saya info ke…</span>
+                  <span class="label-chip"><span class="label-dot" style="background:#2e7d5b"></span>Proyek</span>
+                </div>
+              </div>
+
+              <!-- Item 5: Read -->
+              <div class="mail-row">
+                <div class="m-l1">
+                  <span class="cbx"><i data-lucide="check"></i></span>
+                  <span class="imp-tag low" title="Low Importance"><i data-lucide="arrow-down"></i></span>
+                  <span class="m-from">Sistem iPop</span>
+                  <span class="m-time">20 Sep</span>
+                  <div class="mail-row-actions">
+                    <button title="Delete"><i data-lucide="trash-2"></i></button>
+                    <button title="Pin"><i data-lucide="pin"></i></button>
+                    <button title="Flag"><i data-lucide="star"></i></button>
+                    <button title="Mark unread"><i data-lucide="mail-x"></i></button>
+                  </div>
+                </div>
+                <div class="m-l2"><span class="m-subj">Ringkasan aktivitas mingguan Anda</span></div>
+                <div class="m-l3">
+                  <span class="m-snip">Minggu ini Anda menyelesaikan 7 tugas dan menghadiri 4 rapat.</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="padding:12px 18px;border-top:1px solid var(--line);text-align:center;font-size:12px;color:var(--ink-3)">
+              Menampilkan 5 dari 142 surat · <a href="#" style="color:var(--accent);text-decoration:none;font-weight:550">Muat lebih banyak</a>
+            </div>
+          </div>
+
+          <!-- Pane 3: Reading Pane & Detail -->
+          <div class="card" style="overflow:hidden;display:flex;flex-direction:column">
+            <!-- Action bar -->
+            <div class="card-head" style="padding:12px 18px;border-bottom:1px solid var(--line);gap:8px;flex-wrap:wrap">
+              <button class="ghost-btn" style="padding:6px 12px;background:var(--accent);color:#fff;border-color:var(--accent)"><i data-lucide="reply"></i>Balas</button>
+              <button class="ghost-btn" style="padding:6px 12px"><i data-lucide="forward"></i>Teruskan</button>
+              <button class="icon-btn" title="Arsip"><i data-lucide="archive"></i></button>
+              <button class="icon-btn" title="Hapus"><i data-lucide="trash-2"></i></button>
+              <button class="icon-btn" title="Bintang"><i data-lucide="star" style="color:var(--warn);fill:currentColor"></i></button>
+              <button class="icon-btn" title="Ekspor PDF"><i data-lucide="file-down"></i></button>
+              <button class="icon-btn" title="Cetak"><i data-lucide="printer"></i></button>
+            </div>
+
+            <!-- Sender info -->
+            <div style="padding:18px 20px 14px;border-bottom:1px solid var(--line)">
+              <div style="display:flex;align-items:flex-start;gap:12px">
+                <div class="av-wrap">
+                  <div class="av av-5" style="width:44px;height:44px;font-size:16px;border-radius:14px">SR</div>
+                  <span class="presence on" style="width:12px;height:12px;bottom:1px;right:1px"></span>
+                </div>
+                <div style="min-width:0;flex:1">
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+                    <div style="font-size:15px;font-weight:600">Siti Rahmawati <span class="dim" style="font-size:11.5px;font-family:ui-monospace,monospace">ID 20190822</span></div>
+                    <div style="font-size:11.5px;color:var(--ink-4)">Jumat, 18 Sep 2026, 14:20</div>
+                  </div>
+                  <div style="font-size:12px;color:var(--ink-3);margin-top:2px">
+                    Kepada: <b style="color:var(--ink-2)">Bagas Arif, Retno Wulandari</b> · Cc: <span class="dim">Direksi</span>
+                  </div>
+                  <div style="font-size:17px;font-weight:650;margin-top:10px;color:var(--ink);display:flex;align-items:center;gap:8px">
+                    Laporan stok opname Gudang Cikarang
+                    <span class="badge bad" style="font-size:10px;padding:2px 7px">High Importance</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Meeting RSVP Banner -->
+            <div style="margin:16px 20px 0;padding:12px 14px;background:var(--accent-soft);border-radius:12px;border:1px solid rgba(46,157,107,.25);display:flex;align-items:center;justify-content:space-between;gap:12px">
+              <div class="flex center gap-10">
+                <div class="kpi-ic" style="width:34px;height:34px"><i data-lucide="calendar-clock"></i></div>
+                <div>
+                  <div style="font-size:13px;font-weight:600;color:var(--accent-ink)">Rekonsiliasi Stok Cikarang</div>
+                  <div style="font-size:11.5px;color:var(--ink-3)">Senin, 29 Sep 2026 · 09:00 – 10:00 · Ruang Rapat Lt. 3</div>
+                </div>
+              </div>
+              <div class="flex gap-6">
+                <button class="ghost-btn" style="background:#fff;border-color:var(--line-2);padding:5px 10px;font-size:12px"><i data-lucide="check" style="color:var(--accent)"></i>Terima</button>
+                <button class="ghost-btn" style="background:#fff;border-color:var(--line-2);padding:5px 10px;font-size:12px">Mungkin</button>
+                <button class="ghost-btn" style="background:#fff;border-color:var(--line-2);padding:5px 10px;font-size:12px">Tolak</button>
+              </div>
+            </div>
+
+            <!-- Body -->
+            <div style="padding:18px 20px;font-size:13.5px;line-height:1.65;color:var(--ink-2);flex:1;overflow-y:auto">
+              <p style="margin-bottom:12px">Dengan hormat,</p>
+              <p style="margin-bottom:12px">Terlampir hasil stok opname Gudang Cikarang per tanggal 17 September 2026. Terdapat <b>selisih pada 3 SKU</b> yang sudah saya tandai di lembar kedua, mohon ditinjau sebelum kami tutup periode.</p>
+              <p style="margin-bottom:12px">Rekonsiliasi rencananya dilakukan Senin pagi bersama tim gudang sesuai undangan di atas.</p>
+              <p>Hormat kami,<br><b style="color:var(--ink)">Siti Rahmawati</b><br><span style="font-size:12px;color:var(--ink-3)">Supervisor Gudang · PT IPop Indonesia</span></p>
+
+              <!-- Attachments -->
+              <div style="margin:20px 0 6px;font-size:11.5px;font-weight:600;color:var(--ink-4);text-transform:uppercase;letter-spacing:.04em">Lampiran (2 berkas)</div>
+              <div class="att-chips" style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="att"><i data-lucide="paperclip"></i><span class="name">opname-cikarang-sept.xlsx</span><span class="size">248 KB</span></button>
+                <button class="att"><i data-lucide="paperclip"></i><span class="name">catatan-selisih.pdf</span><span class="size">96 KB</span></button>
+              </div>
+
+              <!-- Quoted history -->
+              <details class="mail-quote" style="margin-top:16px">
+                <summary class="mail-quote-toggle" title="Lihat pesan sebelumnya">⋯</summary>
+                <div class="mail-quote-inner">
+                  <div class="mail-quote-attr">Pada Kamis, 17 Sep 2026 at 16:05, Bagas Arif menulis:</div>
+                  <blockquote>Bu Siti, apakah opname Cikarang sudah selesai? Kami butuh angkanya untuk tutup buku akhir pekan ini.</blockquote>
+                </div>
+              </details>
+            </div>
+
+            <!-- Inline Quick Reply -->
+            <div class="inline-reply-box" style="margin:0 20px 18px">
+              <div class="rh">
+                <i data-lucide="reply"></i>
+                <span class="title">Balas cepat ke Siti Rahmawati</span>
+                <button class="icon-btn" style="margin-left:auto" id="expandReplyBtn" title="Buka jendela penuh"><i data-lucide="external-link"></i></button>
+              </div>
+              <textarea rows="2" placeholder="Tulis balasan cepat di sini…"></textarea>
+              <div class="ra">
+                <button class="btn-primary" style="padding:6px 14px"><i data-lucide="send"></i>Kirim</button>
+                <button class="ghost-btn"><i data-lucide="forward"></i>Teruskan</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- Docked Floating Composer for Mail -->
+    <div id="dockedComposer" class="composer-float" style="display:none;position:fixed;right:32px;bottom:32px;z-index:99;box-shadow:var(--sh-pop)">
+      <div class="composer-bar">
+        <i data-lucide="mail" style="width:15px;height:15px"></i>
+        <span class="t">Pesan Baru</span>
+        <span style="font-size:11.5px;color:rgba(255,255,255,.55);margin-left:8px">Draf disimpan</span>
+        <span style="flex:1"></span>
+        <button class="ic" id="minComposerBtn" title="Minimize"><i data-lucide="minus"></i></button>
+        <button class="ic" id="closeComposerBtn" title="Tutup"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="compose-field">
+        <span class="k">Kepada</span>
+        <span class="person-pill">Retno Wulandari <button class="x"><i data-lucide="x"></i></button></span>
+        <input placeholder="Ketik nama atau NIK…">
+        <button class="ghost-btn" style="padding:3px 8px;font-size:11.5px">Cc</button>
+      </div>
+
+      <div class="compose-field">
+        <input placeholder="Subjek pesan" style="font-weight:550">
+        <select style="border:0;background:none;font-size:12px;color:var(--ink-3);font-family:inherit;outline:0">
+          <option>Normal Priority</option>
+          <option>❗ High Importance</option>
+          <option>↓ Low Importance</option>
+        </select>
+      </div>
+
+      <div class="rte-bar">
+        <button class="rte-btn on" title="Bold (Ctrl+B)"><i data-lucide="bold"></i></button>
+        <button class="rte-btn" title="Italic (Ctrl+I)"><i data-lucide="italic"></i></button>
+        <button class="rte-btn" title="Underline (Ctrl+U)"><i data-lucide="underline"></i></button>
+        <div class="rib-sep"></div>
+        <button class="rte-btn" title="Bullet List"><i data-lucide="list"></i></button>
+        <button class="rte-btn" title="Numbered List"><i data-lucide="list-ordered"></i></button>
+        <div class="rib-sep"></div>
+        <button class="rte-btn" title="Insert Link"><i data-lucide="link"></i></button>
+        <button class="rte-btn" title="Table"><i data-lucide="table"></i></button>
+      </div>
+
+      <div style="padding:15px;min-height:120px;font-size:13.5px;line-height:1.65;color:var(--ink-2)">
+        Tulis isi pesan Anda di sini…
+      </div>
+
+      <div style="display:flex;align-items:center;gap:7px;padding:12px 15px;border-top:1px solid var(--line);background:var(--surface)">
+        <div style="display:flex">
+          <button class="btn-primary" style="border-radius:var(--r-ctl) 0 0 var(--r-ctl)"><i data-lucide="send"></i>Kirim</button>
+          <button class="btn-primary" title="Send options" style="border-left:1px solid rgba(255,255,255,.25);border-radius:0 var(--r-ctl) var(--r-ctl) 0;padding:0 8px"><i data-lucide="chevron-down"></i></button>
+        </div>
+        <button class="ghost-btn"><i data-lucide="paperclip"></i>Lampirkan</button>
+        <span style="flex:1"></span>
+        <button class="ghost-btn" id="discardComposerBtn" title="Buang draf" style="color:var(--danger)"><i data-lucide="trash-2"></i></button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  lucide.createIcons();
+
+  let toastTimer;
+  function toast(msg) {
+    let t = document.getElementById('toast');
+    if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
+    t.textContent = msg;
+    t.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('on'), 2600);
+  }
+
+  document.getElementById('railToggle').addEventListener('click', e => {
+    e.stopPropagation();
+    document.getElementById('win').classList.toggle('rail-collapsed');
+  });
+
+  document.getElementById('fsBtn')?.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  });
+
+  document.getElementById('themeBtn').addEventListener('click', function () {
+    const root = document.documentElement;
+    const dark = root.getAttribute('data-theme') === 'dark';
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    this.querySelector('.lbl').textContent = dark ? 'Mode Gelap' : 'Mode Terang';
+    this.querySelector('i').setAttribute('data-lucide', dark ? 'moon' : 'sun');
+    lucide.createIcons();
+  });
+
+  // mail composer popup toggle
+  const composer = document.getElementById('dockedComposer');
+  document.getElementById('openMailComposer')?.addEventListener('click', () => {
+    if (composer) { composer.style.display = 'block'; lucide.createIcons(); }
+  });
+  document.getElementById('expandReplyBtn')?.addEventListener('click', () => {
+    if (composer) { composer.style.display = 'block'; lucide.createIcons(); }
+  });
+  document.getElementById('closeComposerBtn')?.addEventListener('click', () => {
+    if (composer) composer.style.display = 'none';
+  });
+  document.getElementById('discardComposerBtn')?.addEventListener('click', () => {
+    if (composer) composer.style.display = 'none';
+    toast('Draf dibuang.');
+  });
+  document.getElementById('minComposerBtn')?.addEventListener('click', () => {
+    if (composer) {
+      const isMin = composer.dataset.min === 'true';
+      composer.dataset.min = isMin ? 'false' : 'true';
+      composer.style.height = isMin ? 'auto' : '44px';
+      composer.style.overflow = isMin ? 'visible' : 'hidden';
+    }
+  });
+
+  document.addEventListener('click', e => {
+    const tab = e.target.closest('.tab');
+    if (tab) {
+      tab.parentElement.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+    }
+
+    const node = e.target.closest('.tree-node');
+    if (node) {
+      const parent = node.closest('.tree');
+      if (parent) {
+        parent.querySelectorAll('.tree-node').forEach(n => n.classList.remove('on'));
+        node.classList.add('on');
+        lucide.createIcons();
+      }
+    }
+
+    const mrow = e.target.closest('.mail-row');
+    if (mrow && !e.target.closest('.mail-row-actions') && !e.target.closest('.cbx')) {
+      mrow.closest('.mail-list')?.querySelectorAll('.mail-row').forEach(r => r.classList.remove('sel'));
+      mrow.classList.add('sel');
+      mrow.classList.remove('unread');
+    }
+
+    const cbx = e.target.closest('.cbx');
+    if (cbx) {
+      e.stopPropagation();
+      cbx.classList.toggle('on');
+    }
+  });
+</script>
+</body>
+</html>

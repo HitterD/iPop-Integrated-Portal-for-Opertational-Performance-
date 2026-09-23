@@ -2,138 +2,230 @@
 @implements IDisposable
 @inject IJSRuntime JS
 @inject AuthState Auth
+@inject NavigationManager Nav
+@inject IPop.Web.Services.FavoriteContacts Favorites
 
 <PageTitle>Directory — IPop</PageTitle>
 
-<div class="content">
-    <div class="tree-pane @(treeOpen ? "open" : "")">
-        <button class="hamburger" @onclick="ToggleTree" aria-label="Toggle directory tree">
-            <i data-lucide="menu"></i>
+<div class="toolbar">
+    <span class="presence-label">Presence</span>
+    <div class="apple-segmented">
+        <button type="button" class="seg-btn @(presenceFilter == "" ? "active" : "")" @onclick='() => SetPresenceFilter("")'>
+            <span>All</span>
+            <span class="seg-count">@total</span>
         </button>
-        <div class="tree-backdrop @(treeOpen ? "on" : "")" @onclick="ToggleTree"></div>
-        <div class="tray rise rise-1">
-            <div class="core" style="padding:0; overflow:hidden">
-                <div class="panel-head">
-                    <i data-lucide="folder-tree"></i> <span>Structure</span>
-                    <span class="meta">@(structureLoading ? "Loading..." : $"{TotalDivisions:N0} divisions")</span>
-                    <button class="tree-close" @onclick="ToggleTree" aria-label="Close tree">
-                        <i data-lucide="x"></i>
-                    </button>
-                </div>
-                @if (structureLoading)
-                {
-                    @for (var i = 0; i < 8; i++) { <div class="skel"></div> }
-                }
-                else if (dirStructure is null)
-                {
-                    <div class="tree-empty">Could not load the directory structure.</div>
-                }
-                else
-                {
-                    <div class="tree dir-tree">
-                        @foreach (var site in dirStructure.Sites)
-                        {
-                            <details open>
-                                <summary>
-                                    <i data-lucide="chevron-right" class="chev"></i>
-                                    <span class="node-name">@site.Name</span>
-                                    <span class="count">@site.MemberCount</span>
-                                </summary>
-                                <div class="children">
-                                    @foreach (var dept in site.Departments)
-                                    {
-                                        <details open>
-                                            <summary>
-                                                <i data-lucide="chevron-right" class="chev"></i>
-                                                <span class="node-name">@dept.Name</span>
-                                                <span class="count">@dept.MemberCount</span>
-                                            </summary>
-                                            <div class="children">
-                                                @foreach (var div in dept.Divisions)
-                                                {
-                                                    <button type="button" class="div-row @(selectedDivision?.Code == div.Code ? "sel" : "")"
-                                                            @onclick="() => SelectDivision(div)">
-                                                        <span class="node-name">@div.Name</span>
-                                                        <span class="count">@div.MemberCount</span>
-                                                        @if (divHitCount(div) is { } hit)
-                                                        {
-                                                            <span class="badge hit">@hit</span>
-                                                        }
-                                                    </button>
-                                                }
-                                            </div>
-                                        </details>
-                                    }
-                                </div>
-                            </details>
-                        }
-                        @if (dirStructure.NoDivisionCount > 0)
-                        {
-                            <div class="div-row" style="cursor:default;opacity:0.75">
-                                <span class="node-name">No Division</span>
-                                <span class="count">@dirStructure.NoDivisionCount</span>
-                            </div>
-                        }
-                    </div>
-                }
+        <button type="button" class="seg-btn @(presenceFilter == "on" ? "active" : "")" @onclick='() => SetPresenceFilter("on")'>
+            <span class="seg-dot on"></span>
+            <span>Online</span>
+            <span class="seg-count">@people.Count(p => p.Status == "on")</span>
+        </button>
+        <button type="button" class="seg-btn @(presenceFilter == "busy" ? "active" : "")" @onclick='() => SetPresenceFilter("busy")'>
+            <span class="seg-dot busy"></span>
+            <span>Busy</span>
+            <span class="seg-count">@people.Count(p => p.Status == "busy")</span>
+        </button>
+        <button type="button" class="seg-btn @(presenceFilter == "away" ? "active" : "")" @onclick='() => SetPresenceFilter("away")'>
+            <span class="seg-dot away"></span>
+            <span>Away</span>
+            <span class="seg-count">@people.Count(p => p.Status == "away")</span>
+        </button>
+        <button type="button" class="seg-btn @(presenceFilter == "off" ? "active" : "")" @onclick='() => SetPresenceFilter("off")'>
+            <span class="seg-dot off"></span>
+            <span>Offline</span>
+            <span class="seg-count">@people.Count(p => p.Status == "off")</span>
+        </button>
+    </div>
+    <div class="push flex center gap-8">
+        <button class="ghost-btn" title="Priority contacts: favorites & frequent" @onclick='() => Nav.NavigateTo("/directory/priority")'><i data-lucide="star"></i>Priority</button>
+        <button class="ghost-btn" title="Export search/filter results to CSV" disabled="@exporting" @onclick="ExportCsv"><i data-lucide="download"></i>@(exporting ? "Exporting…" : "Export CSV")</button>
+    </div>
+</div>
+
+<div class="body">
+    @if (notice is not null)
+    {
+        <div class="module-notice" style="margin:0 0 10px">
+            <div class="note @(noticeIsError ? "err" : "")">
+                <i data-lucide="info"></i><span>@notice</span>
+                <button class="note-x" @onclick="DismissNotice" aria-label="Dismiss">
+                    <i data-lucide="x"></i>
+                </button>
             </div>
         </div>
-    </div>
+    }
 
-    <div class="grid-pane">
-        <div class="tray rise rise-1">
-            <div class="core" style="padding:0;overflow:hidden">
-                <div class="panel-head">
-                    <i data-lucide="users"></i> <span>@(selectedDivision?.Name ?? "Directory")</span>
-                    <span class="meta">@(loading ? "Loading..." : $"{total:N0} people")</span>
-                    <span class="meta conn" title="Real-time presence connection"><i data-lucide="plug-zap" style="width:12px;height:12px"></i> @ConnectionLabel</span>
+    <div class="cols" style="grid-template-columns: 240px minmax(0, 1fr)">
+        <!-- Structure: Site ▸ Department ▸ Division -->
+        <div class="card" style="overflow:hidden">
+            <div class="card-head" style="padding:16px 16px 6px">
+                <div>
+                    <div class="card-title" style="font-size:13.5px">Structure</div>
+                    <div class="card-meta" style="font-size:11.5px">@(structureLoading ? "Loading..." : TotalDivisions > 0 ? $"{TotalDivisions:N0} divisions" : $"{dirStructure?.NoDivisionCount:N0} people")</div>
                 </div>
-                @if (notice is not null)
-                {
-                    <div class="module-notice">
-                        <div class="note @(noticeIsError ? "err" : "")">
-                            <i data-lucide="info"></i><span>@notice</span>
-                            <button class="note-x" @onclick="DismissNotice" aria-label="Dismiss">
-                                <i data-lucide="x"></i>
-                            </button>
-                        </div>
-                    </div>
-                }
-                <div class="emp-grid">
-                    @if (loading || structureLoading)
+            </div>
+            @if (structureLoading)
+            {
+                <div style="padding:14px">
+                    @for (var i = 0; i < 6; i++) { <div class="skel" style="height:28px;margin-bottom:6px;border-radius:8px"></div> }
+                </div>
+            }
+            else if (dirStructure is null)
+            {
+                <div class="tree-empty">Could not load the directory structure.</div>
+            }
+            else
+            {
+                <div class="tree">
+                    @foreach (var site in dirStructure.Sites)
                     {
-                        @for (var i = 0; i < 8; i++) { <div class="skel"></div> }
-                    }
-                    else if (people.Count == 0)
-                    {
-                        <div class="tree-empty" style="grid-column:1/-1;padding:34px">@(loadError ?? "No one in this division yet.")</div>
-                    }
-                    else
-                    {
-                        @foreach (var (p, i) in people.Select((p, i) => (p, i)))
+                        <div class="tree-site">@site.Name</div>
+                        @foreach (var dept in site.Departments)
                         {
-                            <div @key="p.Nik" class="emp-card rise @(IsSearching ? "hit" : "")" style="animation-delay:@(Math.Min(i, 12) * 0.05)s" tabindex="0" role="button"
-                                 aria-label="View profile of @p.Name" @onclick="() => selected = p" @onkeydown="e => OnCardKey(e, p)">
-                                <div class="top">
-                                    <div class="avatar" style="background:@p.Color">@p.Initials</div>
-                                    <div><div class="n">@p.Name</div><div class="p">@p.Position</div></div>
-                                </div>
-                                <div class="foot"><span class="mono">ID @p.Nik · @p.Site</span><span class="dot @p.Status">@p.StatusLabel</span></div>
-                                <div class="card-actions">
-                                    <button type="button" class="ca-btn" @onclick='() => ShowModuleNotice("Chat")' @onclick:stopPropagation="true">
-                                        <i data-lucide="message-circle"></i> Chat
-                                    </button>
-                                    <button type="button" class="ca-btn" @onclick='() => ShowModuleNotice("Call")' @onclick:stopPropagation="true">
-                                        <i data-lucide="phone"></i> Call
-                                    </button>
-                                </div>
-                            </div>
+                            <button type="button" class="tree-node lv2">
+                                <i data-lucide="chevron-down"></i>
+                                <span class="lbl">@dept.Name</span>
+                                <span class="tree-n">@dept.MemberCount</span>
+                            </button>
+                            @foreach (var div in dept.Divisions)
+                            {
+                                var isSel = selectedDivision?.Code == div.Code;
+                                <button type="button" class="tree-node lv3 @(isSel ? "on" : "")"
+                                        @onclick="() => SelectDivision(div)">
+                                    <span class="lbl">@div.Name</span>
+                                    <span class="tree-n">@div.MemberCount</span>
+                                </button>
+                            }
                         }
                     }
+                    @if (dirStructure.NoDivisionCount > 0)
+                    {
+                        var isNoDivSel = selectedDivision is null;
+                        <button type="button" class="tree-node @(isNoDivSel ? "on" : "")" style="margin-top:4px" @onclick="ClearDivisionFilter">
+                            <i data-lucide="minus-circle"></i>
+                            <span class="lbl">No Division</span>
+                            <span class="tree-n">@dirStructure.NoDivisionCount</span>
+                        </button>
+                    }
                 </div>
+            }
+        </div>
+
+        <!-- People Section -->
+        <div class="col gap-14" style="min-width:0">
+            @if (!IsSearching && FavoritePeople.Count > 0)
+            {
+                <div class="card" style="overflow:hidden">
+                    <div class="card-head" style="padding:15px 20px 10px">
+                        <i data-lucide="star" style="width:15px;height:15px;color:var(--warn);fill:currentColor"></i>
+                        <div class="card-title" style="font-size:13.5px">Favorites</div>
+                        <div class="card-meta">@FavoritePeople.Count people</div>
+                    </div>
+                    <table class="tbl">
+                        <tbody>
+                            @foreach (var p in FavoritePeople)
+                            {
+                                var isSel = (selected?.Nik ?? people.FirstOrDefault()?.Nik) == p.Nik;
+                                <tr class="@(isSel ? "sel" : "")" @onclick="() => selected = p">
+                                    <td style="width:100%">
+                                        <div class="cell-person">
+                                            <div class="av-wrap">
+                                                <div class="av" style="background:@p.Color">@p.Initials</div>
+                                                <span class="presence @p.Status"></span>
+                                            </div>
+                                            <div>
+                                                <div class="n">@p.Name</div>
+                                                <div class="s">@p.Position · ID @p.Nik</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge @(p.Status == "on" ? "ok" : p.Status == "busy" ? "bad" : p.Status == "away" ? "warn" : "mute")">@p.StatusLabel</span>
+                                    </td>
+                                    <td>
+                                        <div class="flex gap-6">
+                                            <button type="button" class="icon-btn" style="width:29px;height:29px" title="Chat" @onclick="() => OpenChatWith(p.Nik)" @onclick:stopPropagation="true">
+                                                <i data-lucide="message-circle" style="width:15px;height:15px"></i>
+                                            </button>
+                                            <button type="button" class="icon-btn" style="width:29px;height:29px" title="Call" @onclick='() => ShowModuleNotice("Call")' @onclick:stopPropagation="true">
+                                                <i data-lucide="phone" style="width:15px;height:15px"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            <div class="card" style="overflow:hidden">
+                <table class="tbl">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>NIK</th>
+                            <th>Position</th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (loading || structureLoading)
+                        {
+                            @for (var i = 0; i < 7; i++)
+                            {
+                                <tr>
+                                    <td colspan="5"><div class="skel" style="height:26px;border-radius:6px"></div></td>
+                                </tr>
+                            }
+                        }
+                        else if (people.Count == 0 && FavoritePeople.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="5" style="text-align:center;padding:32px;color:var(--ink-3)">@(loadError ?? "No one in this division yet.")</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var p in people)
+                            {
+                                var isFav = Favorites.IsFavorite(p.Nik);
+                                var isSel = (selected?.Nik ?? people.FirstOrDefault()?.Nik) == p.Nik;
+                                <tr class="@(isSel ? "sel" : "")" @onclick="() => selected = p">
+                                    <td>
+                                        <div class="cell-person">
+                                            <div class="av-wrap">
+                                                <div class="av" style="background:@p.Color">@p.Initials</div>
+                                                <span class="presence @p.Status"></span>
+                                            </div>
+                                            <div>
+                                                <div class="n">@p.Name</div>
+                                                <div class="s">@p.Email</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="num dim">@p.Nik</td>
+                                    <td class="dim">@p.Position</td>
+                                    <td>
+                                        <span class="badge @(p.Status == "on" ? "ok" : p.Status == "busy" ? "bad" : p.Status == "away" ? "warn" : "mute")">@p.StatusLabel</span>
+                                    </td>
+                                    <td>
+                                        <button type="button" class="icon-btn" style="width:28px;height:28px;border:none;background:transparent"
+                                                title="@(isFav ? "Remove from favorites" : "Add to favorites")"
+                                                @onclick="() => ToggleFavorite(p.Nik)" @onclick:stopPropagation="true">
+                                            <i data-lucide="star" style="width:15px;height:15px;color:@(isFav ? "var(--warn)" : "var(--ink-4)");fill:@(isFav ? "currentColor" : "none")"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
                 @if (!loading && page < TotalPages)
                 {
-                    <div style="padding:0 14px 14px"><button class="btn" style="width:auto;margin:0 auto;padding:10px 22px" @onclick="LoadMore">Show more (@(total - people.Count) remaining)</button></div>
+                    <div style="padding:14px 20px;border-top:1px solid var(--line);text-align:center">
+                        <button type="button" class="ghost-btn" style="margin:0 auto" @onclick="LoadMore">Show more (@(total - people.Count) remaining)</button>
+                    </div>
                 }
             </div>
         </div>
@@ -171,16 +263,98 @@
 
     protected override void OnInitialized()
     {
-        Layout.SetHeader("Directory", "People", showSearch: true);
+        // ipop-25: make the shell search's placeholder explicit here too, so the
+        // default in SetHeader stays a fallback rather than Directory-specific copy.
+        Layout.SetHeader("Directory", "People", showSearch: true, searchPlaceholder: "Search people by name or ID");
         Layout.SearchChanged += OnSearchChanged;
         Auth.PresenceChanged += OnPresenceChanged;
         Auth.DirectoryChanged += OnDirectoryChanged;
         Auth.ConnectionStateChanged += OnConnectionStateChanged;
+        Favorites.Changed += OnFavoritesChanged;
+    }
+
+    // Kontak Prioritas: kartu favorit di atas grid, dari NIK yang disimpan per
+    // pengguna (frontend wave). Kosong = bagian disembunyikan.
+    private List<Employee> favoritePeople = [];
+    private List<Employee> FavoritePeople => favoritePeople;
+
+    private void OnFavoritesChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadFavoritesAsync();
+        StateHasChanged();
+    });
+
+    private async Task LoadFavoritesAsync()
+    {
+        await Favorites.EnsureLoadedAsync();
+        if (Favorites.All.Count == 0) { favoritePeople = []; return; }
+        var wanted = Favorites.All.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var loaded = new List<Employee>();
+        var p = 1;
+        while (wanted.Count > 0 && p <= 20)
+        {
+            var result = await Auth.GetAsync<DirectoryPageDto>($"/api/directory/employees?page={p}&pageSize=120");
+            if (result is null || result.Items.Length == 0) break;
+            foreach (var d in result.Items)
+            {
+                if (!wanted.Remove(d.Nik)) continue;
+                loaded.Add(Map(d));
+            }
+            if (wanted.Count == 0 || result.Items.Length < 120) break;
+            p++;
+        }
+        favoritePeople = loaded.OrderBy(e => e.Name).ToList();
+    }
+
+    private async Task Unfavorite(string nik) => await Favorites.ToggleAsync(nik);
+
+    private async Task ToggleFavorite(string nik) => await Favorites.ToggleAsync(nik);
+
+    // ---- Ekspor CSV (hasil pencarian/filter saat ini) ----
+    private bool exporting;
+
+    private async Task ExportCsv()
+    {
+        if (exporting) return;
+        exporting = true;
+        try
+        {
+            // Ekspor server-side: filter yang sama (divisi + kata kunci + kehadiran)
+            // berlaku untuk SELURUH himpunan hasil, bukan satu halaman yang terlihat.
+            // Diunduh via fetch ber-Bearer (window.open tak membawa header auth).
+            var divCode = selectedDivision?.Code ?? "";
+            var url = $"/api/directory/employees/export.csv?divisionCode={Uri.EscapeDataString(divCode)}"
+                + (searchQ is null ? "" : $"&q={Uri.EscapeDataString(searchQ)}")
+                + (string.IsNullOrEmpty(presenceFilter) ? "" : $"&presence={presenceFilter}");
+            var res = await Auth.SendAsync(HttpMethod.Get, url);
+            if (!res.IsSuccessStatusCode)
+            {
+                notice = $"Export failed ({(int)res.StatusCode}).";
+                noticeIsError = true;
+                return;
+            }
+            var bytes = await res.Content.ReadAsByteArrayAsync();
+            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmm");
+            await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(bytes), $"directory-{stamp}.csv");
+            notice = "Directory CSV file downloaded.";
+            noticeIsError = false;
+        }
+        catch (Exception ex)
+        {
+            notice = $"Export failed: {ex.Message}";
+            noticeIsError = true;
+        }
+        finally
+        {
+            exporting = false;
+            StateHasChanged();
+        }
     }
 
     protected override async Task OnInitializedAsync()
     {
         await LoadStructure();
+        _ = LoadFavoritesAsync();
         await Reload(1, replace: true);
     }
 
@@ -198,10 +372,19 @@
         StateHasChanged();
     }
 
-    private async Task SelectDivision(DirectoryDivisionNodeDto d)
+    private async Task SelectDivision(DirectoryDivisionNodeDto? d)
     {
-        if (selectedDivision?.Code == d.Code) return;
-        selectedDivision = d;
+        if (selectedDivision?.Code == d?.Code && d is not null)
+            selectedDivision = null;
+        else
+            selectedDivision = d;
+        treeOpen = false;
+        await Reload(1, replace: true);
+    }
+
+    private async Task ClearDivisionFilter()
+    {
+        selectedDivision = null;
         treeOpen = false;
         await Reload(1, replace: true);
     }
@@ -209,30 +392,63 @@
     private int? divHitCount(DirectoryDivisionNodeDto div)
         => IsSearching && divMatches.TryGetValue(div.Code, out var n) ? n : null;
 
-    private async void OnSearchChanged()
+    // ipop-35: void handler + InvokeAsync so an exception inside the await surfaces via
+    // the module notice instead of vanishing as an async-void unhandled error.
+    private void OnSearchChanged() => _ = InvokeAsync(async () =>
     {
-        var q = Layout.SearchQuery?.Trim();
-        if (string.IsNullOrEmpty(q))
+        try
         {
-            searchQ = null;
-            divMatches = [];
-            await Reload(page, replace: true);
-            return;
+            var q = Layout.SearchQuery?.Trim();
+            if (string.IsNullOrEmpty(q))
+            {
+                searchQ = null;
+                divMatches = [];
+                await Reload(page, replace: true);
+                return;
+            }
+            searchQ = q;
+            var matches = await Auth.GetAsync<DirectoryDivisionMatchDto[]>($"/api/directory/divisions?q={Uri.EscapeDataString(q)}");
+            if (searchQ != q) return; // superseded by a newer keystroke or a clear
+            divMatches = matches?.ToDictionary(m => m.Code, m => m.MatchCount) ?? [];
+            await Reload(1, replace: true);
         }
-        searchQ = q;
-        var matches = await Auth.GetAsync<DirectoryDivisionMatchDto[]>($"/api/directory/divisions?q={Uri.EscapeDataString(q)}");
-        if (searchQ != q) return; // superseded by a newer keystroke or a clear
-        divMatches = matches?.ToDictionary(m => m.Code, m => m.MatchCount) ?? [];
-        await Reload(1, replace: true);
-    }
+        catch (Exception ex)
+        {
+            noticeIsError = true;
+            notice = $"Search failed: {ex.Message}";
+            StateHasChanged();
+        }
+    });
 
     private void ToggleTree() => treeOpen = !treeOpen;
     private void DismissNotice() => notice = null;
+
+    // Filter kehadiran — diteruskan ke endpoint employees (presence=on|busy|away|off).
+    private string presenceFilter = "";
+
+    private static string PresenceFilterLabel(string status) => status switch
+    {
+        "on" => "Online",
+        "busy" => "Busy",
+        "away" => "Away",
+        "off" => "Offline",
+        _ => "All"
+    };
+
+    private async Task SetPresenceFilter(string status)
+    {
+        if (presenceFilter == status) return;
+        presenceFilter = status;
+        await Reload(1, replace: true);
+    }
     private void ShowModuleNotice(string module)
     {
         notice = $"{module} isn't available yet — it activates as the module ships.";
         noticeIsError = false;
     }
+
+    private void OpenChatWith(string nik)
+        => Nav.NavigateTo($"/chat?nik={Uri.EscapeDataString(nik)}");
 
     private static Employee Map(DirectoryEmployeeDto d) => new(d.Name, d.Position ?? "—", d.Nik, d.Extension ?? "—", d.Location ?? "—", d.Department ?? "—", d.DepartmentCode, d.Site ?? "—", d.SiteCode, d.Manager ?? "—", d.Email, d.Status, AvatarPalette.For(d.Nik), d.PhotoPath);
 
@@ -242,7 +458,8 @@
         loading = true;
         var divCode = selectedDivision?.Code ?? "";
         var q = searchQ is null ? "" : $"&q={Uri.EscapeDataString(searchQ)}";
-        var url = $"/api/directory/employees?page={requestedPage}&pageSize={PageSize}&divisionCode={Uri.EscapeDataString(divCode)}{q}";
+        var presence = string.IsNullOrEmpty(presenceFilter) ? "" : $"&presence={presenceFilter}";
+        var url = $"/api/directory/employees?page={requestedPage}&pageSize={PageSize}&divisionCode={Uri.EscapeDataString(divCode)}{q}{presence}";
         var result = await Auth.GetAsync<DirectoryPageDto>(url);
         if (qAtStart != searchQ) return; // superseded by a keystroke or clear
         loading = false;
@@ -275,5 +492,5 @@
     private void OnConnectionStateChanged() => _ = InvokeAsync(StateHasChanged);
     private void OnCardKey(KeyboardEventArgs e, Employee p) { if (e.Key is "Enter" or " ") selected = p; }
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
-    public void Dispose() { Layout.SearchChanged -= OnSearchChanged; Auth.PresenceChanged -= OnPresenceChanged; Auth.DirectoryChanged -= OnDirectoryChanged; Auth.ConnectionStateChanged -= OnConnectionStateChanged; }
+    public void Dispose() { Layout.SearchChanged -= OnSearchChanged; Auth.PresenceChanged -= OnPresenceChanged; Auth.DirectoryChanged -= OnDirectoryChanged; Auth.ConnectionStateChanged -= OnConnectionStateChanged; Favorites.Changed -= OnFavoritesChanged; }
 }

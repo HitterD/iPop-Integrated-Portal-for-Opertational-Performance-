@@ -1,0 +1,278 @@
+@using IPop.Application.Projects
+@using Microsoft.AspNetCore.Components.Forms
+@inject IJSRuntime JS
+
+@if (IsOpen && Task is not null)
+{
+    <div class="evidence-modal-backdrop" @onclick="HandleCancel">
+        <div class="evidence-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <div class="evidence-modal-head">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <span class="col-dot @TargetStatus"></span>
+                    <span style="font-weight:700;font-size:14px;color:var(--ink)">
+                        @(TargetStatus == "doing" ? "Progress Breakdown & Field Evidence" : "Work Completion Evidence")
+                    </span>
+                </div>
+                <button type="button" class="btn-sm surface" style="padding:4px 8px" @onclick="HandleCancel">
+                    <i data-lucide="x" style="width:14px;height:14px"></i>
+                </button>
+            </div>
+
+            <div class="evidence-modal-body">
+                <div style="padding:8px 12px;background:var(--tray);border-radius:10px;border:1px solid var(--line-soft)">
+                    <div style="font-size:11px;color:var(--ink-3);font-weight:600;text-transform:uppercase;letter-spacing:0.04em">Task</div>
+                    <div style="font-size:13.5px;font-weight:700;color:var(--ink);margin-top:2px">@Task.Title</div>
+                </div>
+
+                @if (TargetStatus == "doing")
+                {
+                    @* In Progress Breakdown *@
+                    <div class="field" style="margin:0">
+                        <label style="font-size:11.5px;font-weight:700;color:var(--ink-2);display:flex;align-items:center;justify-content:space-between">
+                            <span>Current Progress Breakdown</span>
+                            <span style="font-size:10.5px;color:var(--ink-3)">@(evidence.ProgressSteps.Count) steps</span>
+                        </label>
+                        <div style="display:flex;gap:6px;margin-top:4px">
+                            <input class="org-input" style="flex:1;height:32px;font-size:12px"
+                                   placeholder="e.g. Analyze schematic & check grounding cable..."
+                                   @bind="newStepText"
+                                   @onkeydown="@(e => { if (e.Key == "Enter") AddStep(); })" />
+                            <button type="button" class="btn-sm accent" style="padding:4px 12px;font-size:11.5px" @onclick="AddStep">
+                                <i data-lucide="plus" style="width:12px;height:12px"></i> Add
+                            </button>
+                        </div>
+
+                        @if (evidence.ProgressSteps.Count > 0)
+                        {
+                            <div style="display:flex;flex-direction:column;gap:5px;margin-top:8px;max-height:140px;overflow-y:auto">
+                                @foreach (var step in evidence.ProgressSteps)
+                                {
+                                    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border:1px solid var(--line-soft);border-radius:8px">
+                                        <input type="checkbox" checked="@step.IsDone" @onchange="() => step.IsDone = !step.IsDone" style="cursor:pointer;accent-color:var(--accent)" />
+                                        <span style="flex:1;font-size:12px;color:var(--ink);text-decoration:@(step.IsDone ? "line-through" : "none")">@step.Text</span>
+                                        <button type="button" style="background:none;border:none;cursor:pointer;color:var(--ink-3);padding:2px" @onclick="() => evidence.ProgressSteps.Remove(step)">
+                                            <i data-lucide="x" style="width:12px;height:12px"></i>
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @* Field Photo Evidence *@
+                    <div class="field" style="margin:0">
+                        <label style="font-size:11.5px;font-weight:700;color:var(--ink-2);display:flex;align-items:center;justify-content:space-between">
+                            <span>Attach Field Photos</span>
+                            <span style="font-size:10.5px;color:var(--ink-3)">@(evidence.FieldPhotos.Count) photos</span>
+                        </label>
+                        <div style="margin-top:4px">
+                            <label class="btn-sm surface" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;font-size:11.5px;border-radius:999px">
+                                <i data-lucide="camera" style="width:13px;height:13px"></i>
+                                <span>Select Field Photos</span>
+                                <InputFile OnChange="HandleUploadFieldPhoto" accept="image/*" multiple style="display:none" />
+                            </label>
+                        </div>
+
+                        @if (evidence.FieldPhotos.Count > 0)
+                        {
+                            <div class="evidence-photo-grid">
+                                @foreach (var photo in evidence.FieldPhotos)
+                                {
+                                    <div class="evidence-photo-thumb" title="@photo.Name">
+                                        @if (!string.IsNullOrEmpty(photo.DataUrl))
+                                        {
+                                            <img src="@photo.DataUrl" alt="@photo.Name" />
+                                        }
+                                        else
+                                        {
+                                            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:10px;color:var(--ink-3)">
+                                                <i data-lucide="image" style="width:16px;height:16px"></i>
+                                            </div>
+                                        }
+                                        <button type="button" class="remove-thumb" @onclick="() => evidence.FieldPhotos.Remove(photo)" title="Remove photo">×</button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    @* Done Deliverables & Completion Proof *@
+                    <div class="field" style="margin:0">
+                        <label style="font-size:11.5px;font-weight:700;color:var(--ink-2);display:flex;align-items:center;justify-content:space-between">
+                            <span>Deliverables & Documents / Completion Photos</span>
+                            <span style="font-size:10.5px;color:var(--ink-3)">@(evidence.CompletionDeliverables.Count) files/photos</span>
+                        </label>
+                        <div style="margin-top:4px">
+                            <label class="btn-sm surface" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;font-size:11.5px;border-radius:999px">
+                                <i data-lucide="paperclip" style="width:13px;height:13px"></i>
+                                <span>Upload Deliverables (Photos / PDF / Documents)</span>
+                                <InputFile OnChange="HandleUploadDeliverable" multiple style="display:none" />
+                            </label>
+                        </div>
+
+                        @if (evidence.CompletionDeliverables.Count > 0)
+                        {
+                            <div style="display:flex;flex-direction:column;gap:5px;margin-top:8px;max-height:140px;overflow-y:auto">
+                                @foreach (var item in evidence.CompletionDeliverables)
+                                {
+                                    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border:1px solid var(--line-soft);border-radius:8px">
+                                        <i data-lucide="@(item.Type == "photo" ? "image" : "file-text")" style="width:14px;height:14px;color:var(--accent)"></i>
+                                        <span style="flex:1;font-size:12px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@item.Name</span>
+                                        <span style="font-size:10px;color:var(--ink-3)">@FormatSize(item.Size)</span>
+                                        <button type="button" style="background:none;border:none;cursor:pointer;color:var(--ink-3);padding:2px" @onclick="() => evidence.CompletionDeliverables.Remove(item)">
+                                            <i data-lucide="x" style="width:12px;height:12px"></i>
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @* Completion Notes *@
+                    <div class="field" style="margin:0">
+                        <label style="font-size:11.5px;font-weight:700;color:var(--ink-2)">Completion Notes (Optional)</label>
+                        <textarea class="org-input" style="min-height:75px;font-size:12px"
+                                  placeholder="Notes on testing results, handover, or completed deliverables..."
+                                  @bind="evidence.CompletionNotes"></textarea>
+                    </div>
+                }
+            </div>
+
+            <div style="padding:12px 18px;border-top:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;background:var(--tray)">
+                <button type="button" class="btn-sm surface" style="border-radius:999px" @onclick="HandleSkip">
+                    Skip & Update Status
+                </button>
+                <div style="display:flex;gap:8px">
+                    <button type="button" class="btn-sm surface" style="border-radius:999px" @onclick="HandleCancel">
+                        Cancel
+                    </button>
+                    <button type="button" class="btn-sm accent" style="border-radius:999px;padding:6px 16px" @onclick="HandleConfirm">
+                        <i data-lucide="check" style="width:13px;height:13px"></i>
+                        <span>Save & Update</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public ProjectTaskDto? Task { get; set; }
+    [Parameter] public string TargetStatus { get; set; } = "doing";
+
+    [Parameter] public EventCallback<(ProjectTaskDto Task, string TargetStatus, TaskEvidenceData Evidence)> OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    private TaskEvidenceData evidence = new();
+    private string cleanDescription = "";
+    private string newStepText = "";
+
+    protected override void OnParametersSet()
+    {
+        if (Task is not null)
+        {
+            var parsed = TaskEvidenceHelper.Parse(Task.Description);
+            cleanDescription = parsed.CleanDescription;
+            evidence = parsed.Evidence;
+            newStepText = "";
+        }
+    }
+
+    private void AddStep()
+    {
+        if (string.IsNullOrWhiteSpace(newStepText)) return;
+        evidence.ProgressSteps.Add(new TaskProgressStep
+        {
+            Text = newStepText.Trim(),
+            IsDone = false
+        });
+        newStepText = "";
+    }
+
+    private async Task HandleUploadFieldPhoto(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(5))
+        {
+            if (file.Size > 4 * 1024 * 1024) continue; // max 4MB
+            try
+            {
+                var buffer = new byte[file.Size];
+                await file.OpenReadStream(4 * 1024 * 1024).ReadExactlyAsync(buffer);
+                var base64 = Convert.ToBase64String(buffer);
+                var dataUrl = $"data:{file.ContentType};base64,{base64}";
+                var item = new TaskEvidenceItem
+                {
+                    Name = file.Name,
+                    Size = file.Size,
+                    Type = "photo",
+                    DataUrl = dataUrl
+                };
+                evidence.FieldPhotos.Add(item);
+                await JS.InvokeVoidAsync("localStorage.setItem", $"ipop_evidence_{item.Id}", dataUrl);
+            }
+            catch {}
+        }
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task HandleUploadDeliverable(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(5))
+        {
+            if (file.Size > 10 * 1024 * 1024) continue; // max 10MB
+            try
+            {
+                var isImage = file.ContentType.StartsWith("image/");
+                string? dataUrl = null;
+                if (isImage && file.Size <= 3 * 1024 * 1024)
+                {
+                    var buffer = new byte[file.Size];
+                    await file.OpenReadStream(3 * 1024 * 1024).ReadExactlyAsync(buffer);
+                    dataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(buffer)}";
+                }
+
+                var item = new TaskEvidenceItem
+                {
+                    Name = file.Name,
+                    Size = file.Size,
+                    Type = isImage ? "photo" : "file",
+                    DataUrl = dataUrl
+                };
+                evidence.CompletionDeliverables.Add(item);
+                if (!string.IsNullOrEmpty(dataUrl))
+                {
+                    await JS.InvokeVoidAsync("localStorage.setItem", $"ipop_evidence_{item.Id}", dataUrl);
+                }
+            }
+            catch {}
+        }
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    private async Task HandleConfirm()
+    {
+        if (Task is null) return;
+        await OnConfirm.InvokeAsync((Task, TargetStatus, evidence));
+    }
+
+    private async Task HandleSkip()
+    {
+        if (Task is null) return;
+        await OnConfirm.InvokeAsync((Task, TargetStatus, evidence));
+    }
+
+    private async Task HandleCancel()
+    {
+        await OnCancel.InvokeAsync();
+    }
+}

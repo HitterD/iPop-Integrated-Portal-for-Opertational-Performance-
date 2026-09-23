@@ -1,0 +1,217 @@
+@using IPop.Application.Chat
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject ChatState ChatSvc
+
+<div class="backdrop on" @onclick="OnClose"></div>
+<div class="drawer on">
+    <div class="tray-d"><div class="core-d">
+        <div class="drawer-head">Group info <button class="drawer-close" @onclick="OnClose"><i data-lucide="x"></i></button></div>
+
+        <GroupIdentityEditor RoomId="@(ChatSvc.ActiveRoom?.Id ?? Guid.Empty)" Name="@ChatSvc.ActiveRoom?.Name" Description="@ChatSvc.ActiveRoom?.Description" CanEdit="@CanEditIdentity" OnSaved="Reload" />
+
+        <div class="grp-hero">
+            <div class="av-big avatar group-info-avatar" style="background:@Color(ChatSvc.ActiveRoom?.Name ?? "G")">@Initials(ChatSvc.ActiveRoom?.Name ?? "G")</div>
+            <div class="name">@ChatSvc.ActiveRoom?.Name</div>
+            <div class="meta">@ChatSvc.ActiveRoom?.MemberCount members</div>
+        </div>
+
+        <div class="grp-section">
+            <div class="grp-section-head">Members (@ChatSvc.ActiveRoom?.MemberCount)</div>
+            @if ((ChatSvc.ActiveRoom?.Members.Count ?? 0) > 20)
+            {
+                <input class="group-member-filter" placeholder="Filter members…" @bind="memberFilter" @bind:event="oninput" />
+            }
+            @foreach (var m in FilteredMembers)
+            {
+                var member = m;
+                <MemberRow Member="member" CurrentUserNik="@(Auth.Me?.Nik ?? "")" CurrentUserRole="@(ChatSvc.ActiveRoom?.CurrentUserRole ?? "")" OnRemove="ConfirmRemove" OnChangeRole="DoChangeRole" />
+            }
+            @if (!FilteredMembers.Any())
+            {
+                <div class="group-empty">No members found.</div>
+            }
+        </div>
+
+        <div class="grp-actions">
+            <button @onclick="() => addMemberOpen = !addMemberOpen"><i data-lucide="user-plus"></i> Add member</button>
+            @if (addMemberOpen)
+            {
+                <div class="group-add-panel">
+                    <input type="text" class="group-add-input" placeholder="Search to add..." @bind="addMemberQuery" @bind:event="oninput" @bind:after="SearchAddMember" />
+                    @foreach (var u in addMemberResults.Take(5))
+                    {
+                        var user = u;
+                        <div class="group-add-row" @onclick="() => AddMember(user)">
+                            <div class="avatar avatar-24" style="background:@Color(user.Nik)">@Initials(user.Name)</div>
+                            <span class="group-add-name">@user.Name</span>
+                        </div>
+                    }
+                </div>
+            }
+            <button @onclick="ToggleMute"><i data-lucide="bell-off"></i> @muteLabel</button>
+            @if (showMuteChoices)
+            {
+                <div class="group-mute-choices">
+                    <button disabled="@muteBusy" @onclick='() => DoMute("1h")'>1 hour</button>
+                    <button disabled="@muteBusy" @onclick='() => DoMute("8h")'>8 hours</button>
+                    <button disabled="@muteBusy" @onclick='() => DoMute("1w")'>1 week</button>
+                    <button disabled="@muteBusy" @onclick='() => DoMute("forever")'>Forever</button>
+                </div>
+            }
+            <button @onclick="() => showAudit = !showAudit"><i data-lucide="history"></i> Membership history</button>
+            @if (showAudit && ChatSvc.ActiveRoom != null)
+            {
+                <MembershipAuditList RoomId="ChatSvc.ActiveRoom.Id" />
+            }
+            <button @onclick="Archive"><i data-lucide="archive"></i> Archive</button>
+            <button class="danger" @onclick="ConfirmLeave"><i data-lucide="log-out"></i> Leave group</button>
+        </div>
+    </div></div>
+</div>
+
+@if (confirmRemove != null)
+{
+    <ConfirmDialog Title="Remove member" Message="@($"Remove {confirmRemove.Name}?")" ConfirmText="Remove" OnConfirm="DoRemove" OnCancel="() => confirmRemove = null" />
+}
+@if (showLeaveConfirm)
+{
+    <ConfirmDialog Title="Leave group" Message="@leaveMessage" ConfirmText="Leave" OnConfirm="DoLeave" OnCancel="() => showLeaveConfirm = false" />
+}
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+    private bool addMemberOpen;
+    private string addMemberQuery = "";
+    private List<UserSearchResult> addMemberResults = [];
+    private string memberFilter = "";
+    private bool showMuteChoices;
+    private bool muteBusy;
+    private bool showAudit;
+    private MemberDto? confirmRemove;
+    private bool showLeaveConfirm;
+    private string leaveMessage = "";
+
+    private bool CanEditIdentity => ChatSvc.ActiveRoom?.CurrentUserRole is "owner" or "admin";
+
+    private IEnumerable<MemberDto> FilteredMembers
+    {
+        get
+        {
+            var list = ChatSvc.ActiveRoom?.Members ?? (IReadOnlyList<MemberDto>)Array.Empty<MemberDto>();
+            if ((list.Count) > 20 && !string.IsNullOrWhiteSpace(memberFilter))
+            {
+                var q = memberFilter.Trim();
+                list = list.Where(m => m.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || m.Nik.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+            }
+            return ChatSorting.SortMembers(list);
+        }
+    }
+
+    private string muteLabel
+    {
+        get
+        {
+            var roomId = ChatSvc.ActiveRoom?.Id;
+            if (roomId == null) return "Mute notifications";
+            var dto = ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms).FirstOrDefault(r => r.Id == roomId);
+            if (dto?.IsMuted != true) return "Mute notifications";
+            return dto.MuteExpiresAt == null ? "Unmute (muted forever)" : $"Unmute (until {dto.MuteExpiresAt.Value.ToLocalTime():g})";
+        }
+    }
+
+    private record UserSearchResult(Guid Id, string Nik, string Name, string? Email);
+
+    private void ToggleMute()
+    {
+        var dto = ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms).FirstOrDefault(r => r.Id == ChatSvc.ActiveRoom?.Id);
+        if (dto?.IsMuted == true) _ = DoUnmute();
+        else showMuteChoices = !showMuteChoices;
+    }
+
+    private async Task DoMute(string duration)
+    {
+        muteBusy = true;
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{ChatSvc.ActiveRoom!.Id}/mute", new { duration });
+        muteBusy = false; showMuteChoices = false;
+        await ChatSvc.LoadRoomsAsync();
+    }
+
+    private async Task DoUnmute()
+    {
+        await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/rooms/{ChatSvc.ActiveRoom!.Id}/mute");
+        await ChatSvc.LoadRoomsAsync();
+    }
+
+    private async Task SearchAddMember()
+    {
+        if (addMemberQuery.Length < 2) { addMemberResults = []; return; }
+        var res = await Auth.GetAsync<List<UserSearchResult>>($"/api/chat/users/search?q={Uri.EscapeDataString(addMemberQuery)}");
+        var activeIds = (ChatSvc.ActiveRoom?.Members.Select(m => m.UserId).ToHashSet()) ?? new HashSet<Guid>();
+        addMemberResults = (res ?? []).Where(u => !activeIds.Contains(u.Id) && u.Nik != Auth.Me?.Nik).Take(10).ToList();
+    }
+
+    private async Task AddMember(UserSearchResult user)
+    {
+        await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{ChatSvc.ActiveRoom!.Id}/members", new { userId = user.Id });
+        addMemberOpen = false; addMemberQuery = ""; addMemberResults = [];
+        await ChatSvc.LoadActiveRoomAsync();
+    }
+
+    private void ConfirmRemove(MemberDto m) => confirmRemove = m;
+
+    private async Task DoRemove()
+    {
+        var m = confirmRemove; confirmRemove = null;
+        if (m == null) return;
+        await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/rooms/{ChatSvc.ActiveRoom!.Id}/members/{m.UserId}");
+        await ChatSvc.LoadActiveRoomAsync();
+    }
+
+    private async Task DoChangeRole((MemberDto m, ChatMemberRole role) p)
+    {
+        await Auth.SendAsync(HttpMethod.Put, $"/api/chat/rooms/{ChatSvc.ActiveRoom!.Id}/members/{p.m.UserId}/role", new { role = p.role.ToString().ToLowerInvariant() });
+        await ChatSvc.LoadActiveRoomAsync();
+    }
+
+    private async Task Archive()
+    {
+        await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{ChatSvc.ActiveRoom!.Id}/archive");
+        await ChatSvc.LoadRoomsAsync();
+    }
+
+    private void ConfirmLeave()
+    {
+        var role = ChatSvc.ActiveRoom?.CurrentUserRole;
+        var others = ChatSvc.ActiveRoom?.Members.Where(m => m.Nik != Auth.Me?.Nik).ToList() ?? [];
+        if (role == "owner" && others.Count > 0)
+        {
+            var sorted = others.OrderBy(m => ChatSvc.ActiveRoom!.Members.First(x => x.Nik == m.Nik).Role == "admin" ? 0 : 1).ToList();
+            leaveMessage = $"You are the owner. Ownership will transfer to {sorted[0].Name}. Leave {ChatSvc.ActiveRoom?.Name}?";
+        }
+        else if (role == "owner" && others.Count == 0) leaveMessage = $"You are the last member. The group will be archived. Leave {ChatSvc.ActiveRoom?.Name}?";
+        else leaveMessage = $"Leave {ChatSvc.ActiveRoom?.Name}?";
+        showLeaveConfirm = true;
+    }
+
+    private async Task DoLeave()
+    {
+        showLeaveConfirm = false;
+        await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/rooms/{ChatSvc.ActiveRoom!.Id}/leave");
+        await OnClose.InvokeAsync();
+        await ChatSvc.LoadRoomsAsync();
+    }
+
+    private async Task Reload() => await ChatSvc.LoadActiveRoomAsync();
+
+    private static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
+    }
+    private static string Color(string name)
+    {
+        var colors = new[] { "#2e7d5b", "#7d5ba6", "#8a6d3b", "#b3543f", "#4f6d8f", "#5b7d2e" };
+        return colors[Math.Abs(name.GetHashCode()) % colors.Length];
+    }
+}

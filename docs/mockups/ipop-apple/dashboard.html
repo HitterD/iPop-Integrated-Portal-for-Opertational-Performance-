@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iPop — Dashboard</title>
+<link rel="stylesheet" href="app.css">
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+<div class="window" id="win">
+
+  <!-- ══════════════ LEFT RAIL ══════════════ -->
+  <aside class="rail">
+    <div class="brand">
+      <div class="brand-mark">iP</div>
+      <div class="brand-name">iPop</div>
+      <button class="brand-caret"><i data-lucide="chevron-down"></i></button>
+      <button class="rail-toggle" id="railToggle" title="Ciutkan sidebar"><i data-lucide="panel-left-close"></i></button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Ruang Kerja</div>
+      <a class="nav-item active" href="dashboard.html"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></a>
+      <a class="nav-item" href="directory.html"><i data-lucide="users"></i><span class="lbl">Direktori</span></a>
+      <a class="nav-item" href="index.html"><i data-lucide="kanban"></i><span class="lbl">Proyek</span><span class="nav-count">8</span></a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Komunikasi</div>
+      <a class="nav-item" href="chat.html"><i data-lucide="message-circle"></i><span class="lbl">Chat</span><span class="nav-count">12</span></a>
+      <a class="nav-item" href="mail.html"><i data-lucide="mail"></i><span class="lbl">Mail</span><span class="nav-count">6</span></a>
+      <button class="nav-item"><i data-lucide="newspaper"></i><span class="lbl">Berita &amp; Memo</span></button>
+      <button class="nav-item"><i data-lucide="phone"></i><span class="lbl">Panggilan</span></button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Sumber Daya</div>
+      <button class="nav-item"><i data-lucide="folder"></i><span class="lbl">Berkas</span></button>
+      <button class="nav-item"><i data-lucide="calendar"></i><span class="lbl">Kalender</span></button>
+    </div>
+
+    <div class="rail-foot">
+      <button class="nav-item"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administrasi</span></button>
+      <button class="nav-item" id="themeBtn"><i data-lucide="moon"></i><span class="lbl">Mode Gelap</span></button>
+      <button class="nav-item"><i data-lucide="settings"></i><span class="lbl">Pengaturan</span></button>
+    </div>
+  </aside>
+
+  <!-- ══════════════ MAIN ══════════════ -->
+  <div class="main">
+    <section class="screen on" id="s-dashboard">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Senin, 22 September</div>
+          <div class="page-sub">Selamat pagi, Bagas — 3 hal menunggu tindakan Anda</div>
+        </div>
+        <div class="topbar-right">
+          <div class="searchbox"><i data-lucide="search"></i><input placeholder="Cari"><span class="kbd">⌘K</span></div>
+          <button class="icon-btn" id="fsBtn" title="Fullscreen"><i data-lucide="maximize-2"></i></button>
+          <button class="icon-btn"><i data-lucide="bell"></i><span class="dot"></span></button>
+          <button class="btn-primary"><i data-lucide="plus"></i>Baru</button>
+          <div class="me-avatar">BA</div>
+        </div>
+      </div>
+
+      <div class="body">
+
+        <div class="kpi-strip">
+          <div class="kpi">
+            <div class="kpi-ic"><i data-lucide="mail"></i></div>
+            <div>
+              <div class="kpi-label">Mail belum dibaca</div>
+              <div class="kpi-row"><span class="kpi-val">6</span><span class="badge mute">142 inbox</span></div>
+            </div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-ic"><i data-lucide="kanban"></i></div>
+            <div>
+              <div class="kpi-label">Proyek aktif</div>
+              <div class="kpi-row"><span class="kpi-val">8</span><span class="badge ok">64% rata-rata</span></div>
+            </div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-ic"><i data-lucide="newspaper"></i></div>
+            <div>
+              <div class="kpi-label">Memo perlu dibaca</div>
+              <div class="kpi-row"><span class="kpi-val">2</span><span class="badge warn">ack jatuh tempo</span></div>
+            </div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-ic"><i data-lucide="bell"></i></div>
+            <div>
+              <div class="kpi-label">Notifikasi gagal</div>
+              <div class="kpi-row"><span class="kpi-val">3</span><span class="badge bad">dead-letter</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cols main-rail">
+          <div class="col gap-14">
+
+            <div class="card">
+              <div class="card-head">
+                <div class="card-ic"><i data-lucide="circle-alert"></i></div>
+                <div>
+                  <div class="card-title">Perlu tindakan Anda</div>
+                  <div class="card-meta">3 hal yang menghambat orang lain</div>
+                </div>
+                <div class="right"><button class="ghost-btn"><i data-lucide="check-check"></i>Selesaikan semua</button></div>
+              </div>
+              <div class="row-list" style="border-top:1px solid var(--line)">
+                <div class="row">
+                  <div class="av av-3"><i data-lucide="file-check" style="width:14px;height:14px"></i></div>
+                  <div class="row-main">
+                    <div class="row-t">Memo cuti bersama menunggu persetujuan Anda</div>
+                    <div class="row-s">Diajukan Siti Rahmawati · 2 hari lalu · 214 karyawan menunggu</div>
+                  </div>
+                  <button class="btn-primary" style="padding:6px 13px;font-size:12.5px">Tinjau</button>
+                </div>
+                <div class="row">
+                  <div class="av av-7"><i data-lucide="clock" style="width:14px;height:14px"></i></div>
+                  <div class="row-main">
+                    <div class="row-t">Migrasi NAS Gudang — tenggat lewat 3 hari</div>
+                    <div class="row-s">Anda pemilik proyek · 4 tugas belum selesai</div>
+                  </div>
+                  <span class="badge bad">Terlambat</span>
+                </div>
+                <div class="row">
+                  <div class="av av-4"><i data-lucide="user-plus" style="width:14px;height:14px"></i></div>
+                  <div class="row-main">
+                    <div class="row-t">2 akun baru dari HRIS belum punya peran</div>
+                    <div class="row-s">Sinkron terakhir 06:15 · mereka belum bisa akses Berkas</div>
+                  </div>
+                  <button class="ghost-btn">Atur peran</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <div class="card-ic"><i data-lucide="kanban"></i></div>
+                <div>
+                  <div class="card-title">Proyek berjalan</div>
+                  <div class="card-meta">8 aktif · 3 selesai kuartal ini</div>
+                </div>
+                <div class="right"><a class="ghost-btn" href="index.html">Lihat semua<i data-lucide="arrow-right"></i></a></div>
+              </div>
+              <table class="tbl">
+                <thead><tr>
+                  <th>Proyek</th><th>Pemilik</th><th>Tim</th><th style="width:150px">Progres</th><th>Tenggat</th>
+                </tr></thead>
+                <tbody>
+                  <tr>
+                    <td><div class="strong">Migrasi NAS Gudang</div><div class="t-12 dim mt-2">12 tugas · 4 tersisa</div></td>
+                    <td><div class="cell-person"><div class="av sm av-1">BA</div><span class="t-13">Bagas A.</span></div></td>
+                    <td><div class="av-stack"><div class="av sm av-2">DP</div><div class="av sm av-4">RH</div><div class="av sm av-more">+3</div></div></td>
+                    <td>
+                      <div class="between t-12 dim" style="margin-bottom:5px"><span>68%</span></div>
+                      <div class="meter"><i style="width:68%"></i></div>
+                    </td>
+                    <td><span class="badge bad">Lewat 3 hari</span></td>
+                  </tr>
+                  <tr>
+                    <td><div class="strong">Portal iPop — Modul Mail</div><div class="t-12 dim mt-2">28 tugas · 9 tersisa</div></td>
+                    <td><div class="cell-person"><div class="av sm av-2">DP</div><span class="t-13">Dimas P.</span></div></td>
+                    <td><div class="av-stack"><div class="av sm av-1">BA</div><div class="av sm av-6">SR</div><div class="av sm av-more">+4</div></div></td>
+                    <td>
+                      <div class="between t-12 dim" style="margin-bottom:5px"><span>74%</span></div>
+                      <div class="meter"><i style="width:74%"></i></div>
+                    </td>
+                    <td><span class="badge ok">Sesuai jadwal</span></td>
+                  </tr>
+                  <tr>
+                    <td><div class="strong">Audit Keamanan Jaringan</div><div class="t-12 dim mt-2">15 tugas · 10 tersisa</div></td>
+                    <td><div class="cell-person"><div class="av sm av-7">AW</div><span class="t-13">Agus W.</span></div></td>
+                    <td><div class="av-stack"><div class="av sm av-3">AW</div><div class="av sm av-more">+2</div></div></td>
+                    <td>
+                      <div class="between t-12 dim" style="margin-bottom:5px"><span>31%</span></div>
+                      <div class="meter"><i class="warn" style="width:31%"></i></div>
+                    </td>
+                    <td><span class="badge warn">5 hari lagi</span></td>
+                  </tr>
+                  <tr>
+                    <td><div class="strong">Onboarding Karyawan Baru</div><div class="t-12 dim mt-2">9 tugas · selesai</div></td>
+                    <td><div class="cell-person"><div class="av sm av-6">RH</div><span class="t-13">Rina H.</span></div></td>
+                    <td><div class="av-stack"><div class="av sm av-8">FA</div><div class="av sm av-1">BA</div></div></td>
+                    <td>
+                      <div class="between t-12 dim" style="margin-bottom:5px"><span>100%</span></div>
+                      <div class="meter"><i style="width:100%"></i></div>
+                    </td>
+                    <td><span class="badge ok">Selesai</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="callout">
+              <div class="callout-ic"><i data-lucide="info"></i></div>
+              <div>
+                <div class="t"><b>Sinkronisasi HRIS berjalan normal.</b> 1.284 karyawan, terakhir 06:15 pagi ini.</div>
+                <div class="s mt-2">2 akun baru masuk tanpa peran — mereka bisa masuk portal tapi belum bisa membuka Berkas atau Chat.</div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- right rail -->
+          <div class="col gap-14">
+
+            <div class="card card-pad">
+              <div class="between center" style="margin-bottom:14px">
+                <div class="card-title">Aktivitas terbaru</div>
+                <button class="icon-btn" style="width:28px;height:28px;border:0"><i data-lucide="more-horizontal" style="width:15px;height:15px"></i></button>
+              </div>
+              <div class="col gap-14">
+                <div class="flex gap-10">
+                  <div class="av sm av-5">SR</div>
+                  <div style="min-width:0">
+                    <div class="t-13"><b>Siti Rahmawati</b> menerbitkan memo <b>Cuti Bersama Oktober</b></div>
+                    <div class="t-11 dim mt-2">08:42 · perlu konfirmasi baca</div>
+                  </div>
+                </div>
+                <div class="flex gap-10">
+                  <div class="av sm av-2">DP</div>
+                  <div style="min-width:0">
+                    <div class="t-13"><b>Dimas Prakoso</b> menyelesaikan <b>Integrasi SMTP Outlook</b></div>
+                    <div class="t-11 dim mt-2">07:55 · Portal iPop — Modul Mail</div>
+                  </div>
+                </div>
+                <div class="flex gap-10">
+                  <div class="av sm av-3">AW</div>
+                  <div style="min-width:0">
+                    <div class="t-13"><b>Agus Wibowo</b> mengunggah 4 berkas ke <b>Audit Q3</b></div>
+                    <div class="t-11 dim mt-2">Kemarin 17:20</div>
+                  </div>
+                </div>
+                <div class="flex gap-10">
+                  <div class="av sm av-6">RH</div>
+                  <div style="min-width:0">
+                    <div class="t-13"><b>Rina Hartono</b> menutup proyek <b>Onboarding Karyawan Baru</b></div>
+                    <div class="t-11 dim mt-2">Kemarin 15:03</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card card-pad">
+              <div class="card-title" style="margin-bottom:4px">Ringkasan pesan</div>
+              <div class="card-meta" style="margin-bottom:16px">Belum dibaca hari ini</div>
+              <div class="big-num">18</div>
+              <div class="share mt-14">
+                <i style="width:56%;background:var(--accent)"></i>
+                <i style="width:28%;background:var(--warn)"></i>
+                <i style="width:16%;background:var(--info)"></i>
+              </div>
+              <div class="col gap-8 mt-14">
+                <div class="between t-13"><span class="flex center gap-8"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent)"></span>Chat grup</span><span class="dim num">12</span></div>
+                <div class="between t-13"><span class="flex center gap-8"><span style="width:7px;height:7px;border-radius:50%;background:var(--warn)"></span>Pesan langsung</span><span class="dim num">4</span></div>
+                <div class="between t-13"><span class="flex center gap-8"><span style="width:7px;height:7px;border-radius:50%;background:var(--info)"></span>Disebut (@)</span><span class="dim num">2</span></div>
+              </div>
+            </div>
+
+            <div class="card card-pad">
+              <div class="card-title" style="margin-bottom:14px">Akses cepat</div>
+              <div class="col gap-8">
+                <button class="ghost-btn" style="justify-content:flex-start;width:100%"><i data-lucide="square-pen"></i>Tugas baru</button>
+                <button class="ghost-btn" style="justify-content:flex-start;width:100%"><i data-lucide="plus"></i>Tulis memo</button>
+                <a class="ghost-btn" style="justify-content:flex-start;width:100%" href="directory.html"><i data-lucide="users"></i>Cari orang</a>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+  lucide.createIcons();
+
+  document.getElementById('railToggle').addEventListener('click', e => {
+    e.stopPropagation();
+    document.getElementById('win').classList.toggle('rail-collapsed');
+  });
+
+  document.getElementById('fsBtn')?.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  });
+
+  document.getElementById('themeBtn').addEventListener('click', function () {
+    const root = document.documentElement;
+    const dark = root.getAttribute('data-theme') === 'dark';
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    this.querySelector('.lbl').textContent = dark ? 'Mode Gelap' : 'Mode Terang';
+    this.querySelector('i').setAttribute('data-lucide', dark ? 'moon' : 'sun');
+    lucide.createIcons();
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,356 @@
+@using IPop.Application.Chat
+@using IPop.Web.Services
+@inject ChatAttachments Att
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+@* Full-screen attachment viewer: images (zoom / pan / download), PDF, Word, Excel,
+   text, audio and video. Rendered only while an attachment is selected. *@
+@if (Attachment is not null)
+{
+    var att = Attachment;
+    var kind = ChatAttachments.Kind(att);
+
+    <div class="att-viewer" role="dialog" aria-modal="true" aria-label="@att.FileName">
+        <div class="av-backdrop" @onclick="RequestClose"></div>
+
+        <header class="av-bar">
+            <span class="av-ic" style="color:@ChatAttachments.Accent(att)">
+                <i data-lucide="@ChatAttachments.Icon(att)"></i>
+            </span>
+            <span class="av-title">
+                <span class="nm" title="@att.FileName">@att.FileName</span>
+                <span class="sub">
+                    <span class="badge">@ChatAttachments.TypeLabel(att)</span>
+                    @ChatAttachments.FormatSize(att.FileSize)
+                    @if (HasSiblings)
+                    {
+                        <span class="pos">· @(Index + 1) of @Siblings!.Count</span>
+                    }
+                </span>
+            </span>
+
+            <div class="av-acts">
+                @if (kind == AttachmentKind.Image)
+                {
+                    <button type="button" title="Zoom out (−)" @onclick="() => Zoom(-1)"><i data-lucide="zoom-out"></i></button>
+                    <button type="button" class="av-zoomlbl" title="Reset zoom (0)" @onclick="ZoomReset">@($"{zoom * 100:0}%")</button>
+                    <button type="button" title="Zoom in (+)" @onclick="() => Zoom(1)"><i data-lucide="zoom-in"></i></button>
+                }
+                @if (kind == AttachmentKind.Pdf)
+                {
+                    <button type="button" title="Print" @onclick="Print"><i data-lucide="printer"></i></button>
+                }
+                @if (blobUrl is not null && kind is AttachmentKind.Pdf or AttachmentKind.Image or AttachmentKind.Video)
+                {
+                    <button type="button" title="Open in new tab" @onclick="OpenTab"><i data-lucide="external-link"></i></button>
+                }
+                <button type="button" title="Download" @onclick="Download"><i data-lucide="download"></i></button>
+                <button type="button" class="av-close" title="Close (Esc)" @onclick="RequestClose"><i data-lucide="x"></i></button>
+            </div>
+        </header>
+
+        @if (HasSiblings)
+        {
+            <button type="button" class="av-nav prev" title="Previous (←)" @onclick="() => Step(-1)"><i data-lucide="chevron-left"></i></button>
+            <button type="button" class="av-nav next" title="Next (→)" @onclick="() => Step(1)"><i data-lucide="chevron-right"></i></button>
+        }
+
+        <div class="av-stage @(kind == AttachmentKind.Image ? "image" : "doc")">
+            @if (loading)
+            {
+                <div class="av-status"><span class="av-spinner"></span><span>Loading @att.FileName…</span></div>
+            }
+            else if (error is not null)
+            {
+                <div class="av-status err">
+                    <i data-lucide="alert-circle"></i>
+                    <span>@error</span>
+                    <button type="button" class="av-dl" @onclick="Download"><i data-lucide="download"></i> Download instead</button>
+                </div>
+            }
+            else
+            {
+                switch (kind)
+                {
+                    case AttachmentKind.Image:
+                        <img @ref="imageRef" class="av-image" src="@blobUrl" alt="@att.FileName" />
+                        <div class="av-hint">Scroll or double-click to zoom · drag to pan</div>
+                        break;
+
+                    case AttachmentKind.Pdf:
+                        <iframe id="av-pdf" class="av-frame" src="@blobUrl" title="@att.FileName"></iframe>
+                        break;
+
+                    case AttachmentKind.Video:
+                        <video class="av-video" src="@blobUrl" controls autoplay playsinline></video>
+                        break;
+
+                    case AttachmentKind.Audio:
+                        <div class="av-audio">
+                            <span class="ic"><i data-lucide="music"></i></span>
+                            <div class="nm">@att.FileName</div>
+                            <audio src="@blobUrl" controls autoplay></audio>
+                        </div>
+                        break;
+
+                    case AttachmentKind.Sheet:
+                        <div class="av-sheet">
+                            <ExcelViewer @key="att.Id" FileName="@att.FileName" Bytes="@fileBytes" />
+                        </div>
+                        break;
+
+                    case AttachmentKind.LegacySheet:
+                        <div class="av-doc"><div id="av-xls" class="xls-host"></div></div>
+                        break;
+
+                    case AttachmentKind.Doc:
+                        <div class="av-doc"><div id="av-docx" class="docx-host"></div></div>
+                        break;
+
+                    case AttachmentKind.Text:
+                        <div class="av-doc"><pre class="av-text">@textContent</pre></div>
+                        break;
+
+                    default:
+                        <div class="av-status">
+                            <span class="av-bigic" style="color:@ChatAttachments.Accent(att)">
+                                <i data-lucide="@ChatAttachments.Icon(att)"></i>
+                            </span>
+                            <span>No in-browser preview for @ChatAttachments.TypeLabel(att) files.</span>
+                            <button type="button" class="av-dl" @onclick="Download"><i data-lucide="download"></i> Download @att.FileName</button>
+                        </div>
+                        break;
+                }
+            }
+        </div>
+    </div>
+}
+
+@code {
+    /// The attachment to display. Null closes the viewer.
+    [Parameter] public AttachmentDto? Attachment { get; set; }
+
+    /// Attachments from the same message, enabling ← / → navigation.
+    [Parameter] public IReadOnlyList<AttachmentDto>? Siblings { get; set; }
+
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// Raised when the user navigates to a sibling so the parent can keep its own selection in sync.
+    [Parameter] public EventCallback<AttachmentDto> OnNavigate { get; set; }
+
+    private ElementReference imageRef;
+    private DotNetObjectReference<AttachmentViewer>? selfRef;
+
+    private string? blobUrl;
+    private byte[]? fileBytes;
+    private string? textContent;
+    private bool loading;
+    private string? error;
+    private double zoom = 1;
+
+    private Guid? loadedId;
+    private bool keysBound;
+    private bool zoomBound;
+    private Guid? renderedHostFor;
+
+    private bool HasSiblings => Siblings is { Count: > 1 };
+    private int Index => Attachment is null || Siblings is null ? 0 : Math.Max(0, Siblings.ToList().FindIndex(a => a.Id == Attachment.Id));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Attachment is null)
+        {
+            if (loadedId is not null) await TeardownAsync();
+            return;
+        }
+        if (loadedId == Attachment.Id) return;
+
+        await ReleaseZoomAsync();
+        loadedId = Attachment.Id;
+        blobUrl = null;
+        fileBytes = null;
+        textContent = null;
+        error = null;
+        zoom = 1;
+        renderedHostFor = null;
+        loading = true;
+        StateHasChanged();
+
+        await LoadAsync(Attachment);
+    }
+
+    private async Task LoadAsync(AttachmentDto att)
+    {
+        var kind = ChatAttachments.Kind(att);
+        var id = att.Id;
+
+        try
+        {
+            switch (kind)
+            {
+                case AttachmentKind.Sheet:
+                    // RadzenSpreadsheet parses the raw bytes, no object URL needed.
+                    var bytes = await Att.GetBytesAsync(id);
+                    // ipop-42: guard each WRITE, not just the tail — arrow-key navigation
+                    // starts a new LoadAsync while this is in flight, and a late write of
+                    // fileBytes/textContent/blobUrl/error overwrites the NEW attachment's
+                    // state (the old tail-only guard just declined to clear `loading`).
+                    if (loadedId != id) return;
+                    fileBytes = bytes;
+                    if (fileBytes is null) error = "This file could not be loaded.";
+                    break;
+
+                case AttachmentKind.Text:
+                    var text = await Att.GetTextAsync(id);
+                    if (loadedId != id) return;
+                    textContent = text;
+                    if (textContent is null) error = "This file could not be loaded.";
+                    break;
+
+                default:
+                    var url = await Att.GetAsync(id, thumb: false);
+                    if (loadedId != id) return;
+                    blobUrl = url;
+                    if (blobUrl is null) error = "This file could not be loaded.";
+                    break;
+            }
+        }
+        catch
+        {
+            // ipop-42: a slow FAILED load for the old attachment must not paint its
+            // error over the new one.
+            if (loadedId != id) return;
+            error = "This file could not be loaded.";
+        }
+
+        if (loadedId != id) return;
+        loading = false;
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Attachment is null) return;
+        await JS.InvokeVoidAsync("ipop.icons");
+
+        if (!keysBound)
+        {
+            selfRef ??= DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("ipop.bindViewerKeys", selfRef);
+            keysBound = true;
+        }
+
+        var kind = ChatAttachments.Kind(Attachment);
+
+        if (kind == AttachmentKind.Image && blobUrl is not null && !zoomBound)
+        {
+            await JS.InvokeVoidAsync("ipop.zoomBind", imageRef);
+            zoomBound = true;
+        }
+
+        // Document renderers write into a plain host div, so they run once the host
+        // exists in the DOM rather than during the Blazor render pass.
+        if (blobUrl is not null && renderedHostFor != Attachment.Id &&
+            kind is AttachmentKind.Doc or AttachmentKind.LegacySheet)
+        {
+            renderedHostFor = Attachment.Id;
+            var fn = kind == AttachmentKind.Doc ? "ipop.renderDocx" : "ipop.renderXls";
+            var host = kind == AttachmentKind.Doc ? "av-docx" : "av-xls";
+            string result;
+            try { result = await JS.InvokeAsync<string>(fn, host, blobUrl); }
+            catch { result = "error"; }
+
+            if (result != "ok" && loadedId == Attachment.Id)
+            {
+                error = result == "no-lib"
+                    ? "The preview engine could not be loaded. Download the file to view it."
+                    : "This document could not be rendered. Download it to view in Office.";
+                StateHasChanged();
+            }
+        }
+    }
+
+    // ---- Actions ----
+
+    private Task Download() => Attachment is null ? Task.CompletedTask : Att.DownloadAsync(Attachment);
+
+    private async Task OpenTab()
+    {
+        if (blobUrl is not null) await JS.InvokeVoidAsync("ipop.openBlobTab", blobUrl);
+    }
+
+    private async Task Print() => await JS.InvokeVoidAsync("ipop.printFrame", "av-pdf");
+
+    private async Task Zoom(int step)
+    {
+        if (!zoomBound) return;
+        zoom = await JS.InvokeAsync<double>("ipop.zoomStep", imageRef, step);
+    }
+
+    private async Task ZoomReset()
+    {
+        if (!zoomBound) return;
+        zoom = await JS.InvokeAsync<double>("ipop.zoomReset", imageRef);
+    }
+
+    private async Task Step(int delta)
+    {
+        if (Siblings is null || Attachment is null || Siblings.Count < 2) return;
+        var next = (Index + delta + Siblings.Count) % Siblings.Count;
+        await OnNavigate.InvokeAsync(Siblings[next]);
+    }
+
+    private async Task RequestClose()
+    {
+        await TeardownAsync();
+        await OnClose.InvokeAsync();
+    }
+
+    [JSInvokable]
+    public async Task OnViewerKey(string key)
+    {
+        if (Attachment is null) return;
+        switch (key)
+        {
+            case "Escape": await RequestClose(); break;
+            case "Next": await Step(1); break;
+            case "Prev": await Step(-1); break;
+            case "ZoomIn": await Zoom(1); break;
+            case "ZoomOut": await Zoom(-1); break;
+            case "ZoomReset": await ZoomReset(); break;
+        }
+    }
+
+    // ---- Teardown ----
+
+    private async Task ReleaseZoomAsync()
+    {
+        if (!zoomBound) return;
+        zoomBound = false;
+        try { await JS.InvokeVoidAsync("ipop.zoomUnbind", imageRef); } catch { }
+    }
+
+    private async Task TeardownAsync()
+    {
+        await ReleaseZoomAsync();
+        if (keysBound)
+        {
+            keysBound = false;
+            try { await JS.InvokeVoidAsync("ipop.unbindViewerKeys"); } catch { }
+        }
+        loadedId = null;
+        blobUrl = null;
+        fileBytes = null;
+        textContent = null;
+        error = null;
+        renderedHostFor = null;
+        zoom = 1;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await TeardownAsync();
+        selfRef?.Dispose();
+    }
+}

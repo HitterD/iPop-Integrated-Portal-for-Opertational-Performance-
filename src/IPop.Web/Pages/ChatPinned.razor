@@ -1,0 +1,223 @@
+@page "/chat/pins"
+@implements IDisposable
+@inject IJSRuntime JS
+@inject AuthState Auth
+@inject ChatState ChatSvc
+@inject NavigationManager Nav
+@using IPop.Application.Chat
+@using IPop.Web.Components.Chat
+
+<PageTitle>Pinned messages — IPop</PageTitle>
+
+<div class="content" style="grid-template-columns:1fr">
+
+    <div class="tray rise rise-1">
+        <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head" style="flex-wrap:wrap;gap:10px">
+                <i data-lucide="pin"></i> <span>Pinned messages</span>
+                <span class="meta">@Subtitle</span>
+                <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+                    <button class="btn-sm surface" @onclick="RefreshAsync" title="Reload"><i data-lucide="refresh-cw" style="width:13px;height:13px"></i> Refresh</button>
+                </span>
+            </div>
+
+            @* ---- Filter room ---- *@
+            @if (Groups.Count > 1)
+            {
+                <div class="filter-bar" style="padding:8px 14px;border-bottom:1px solid var(--line-soft)">
+                    <span class="filter-label" style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-3)">Room</span>
+                    @foreach (var f in RoomFilters)
+                    {
+                        var f2 = f;
+                        var active = roomFilter == f2;
+                        <button class="btn-sm surface" style="padding:4px 10px;font-size:11.5px;@(active ? "background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent-soft)" : "")"
+                                @onclick="() => SetRoomFilter(f2)">
+                            @(f2 is null ? "All" : RoomLabel(f2.Value)) @(CountForRoom(f2) > 0 ? $"({CountForRoom(f2)})" : "")
+                        </button>
+                    }
+                </div>
+            }
+
+            @if (loading)
+            {
+                <div class="tree-empty" style="padding:34px">
+                    <i data-lucide="loader-circle" style="width:20px;height:20px;margin-bottom:6px"></i>
+                    <div>Loading pinned messages…</div>
+                </div>
+            }
+            else if (FilteredGroups.Count == 0)
+            {
+                <div class="tree-empty" style="padding:34px">
+                    <i data-lucide="pin-off" style="width:20px;height:20px;margin-bottom:6px"></i>
+                    <div>@(Groups.Count == 0 ? "No pinned messages yet." : "No results for this filter.")</div>
+                    <div class="meta" style="font-size:11.5px;color:var(--ink-3)">
+                        @(Groups.Count == 0 ? "Pin messages from a conversation menu, and find them here." : "Try selecting a different room above.")
+                    </div>
+                </div>
+            }
+            else
+            {
+                @foreach (var g in FilteredGroups)
+                {
+                    <div class="pins-room-head">
+                        <span class="pins-room-av avatar" style="background:@IPop.Web.Models.AvatarPalette.For(RoomLabel(g.RoomId))">@RoomInitials(g)</span>
+                        <span class="pins-room-name">@RoomLabel(g.RoomId)</span>
+                        <span class="pins-room-count">@g.Items.Count pinned</span>
+                    </div>
+                    <div class="notif-list" role="list" aria-label="Pinned messages">
+                        @foreach (var p in g.Items)
+                        {
+                            var pin = p;
+                            <div class="notif-row" role="listitem" @onclick="() => OpenInChat(g.RoomId, pin.MessageId)">
+                                <div class="notif-row-ic" style="background:var(--accent-soft);color:var(--accent-ink)">
+                                    <i data-lucide="pin"></i>
+                                </div>
+                                <div class="notif-row-main">
+                                    <div class="notif-row-t">
+                                        @pin.SenderName
+                                        <span class="tag" style="background:var(--accent-soft);color:var(--accent-ink)">@RoomLabel(g.RoomId)</span>
+                                    </div>
+                                    <div class="notif-row-s">@(string.IsNullOrEmpty(pin.Content) ? "(attachment)" : pin.Content)</div>
+                                    <div class="notif-row-meta">
+                                        <i data-lucide="clock" style="width:11px;height:11px"></i>
+                                        <span>Pinned @FormatTime(pin.PinnedAt.ToLocalTime())</span>
+                                    </div>
+                                </div>
+                                <i data-lucide="arrow-up-right" style="width:14px;height:14px;color:var(--ink-3);flex-shrink:0"></i>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+</div>
+
+@code {
+    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+
+    private sealed class RoomPins
+    {
+        public required Guid RoomId { get; init; }
+        public required List<PinnedMessageDto> Items { get; init; }
+    }
+
+    private List<RoomPins> Groups = [];
+    private Dictionary<Guid, string> roomNames = [];
+    private bool loading = true;
+    private Guid? roomFilter;
+
+    private string Subtitle => loading ? "loading…"
+        : $"{Groups.Sum(g => g.Items.Count)} messages · {Groups.Count} rooms";
+
+    private IEnumerable<Guid?> RoomFilters
+    {
+        get
+        {
+            yield return null;
+            foreach (var g in Groups) yield return g.RoomId;
+        }
+    }
+
+    private List<RoomPins> FilteredGroups
+        => roomFilter is null ? Groups : Groups.Where(g => g.RoomId == roomFilter.Value).ToList();
+
+    private int CountForRoom(Guid? id)
+        => id is null ? Groups.Sum(g => g.Items.Count)
+                      : Groups.FirstOrDefault(g => g.RoomId == id.Value)?.Items.Count ?? 0;
+
+    private void SetRoomFilter(Guid? id) => roomFilter = id;
+
+    private string RoomLabel(Guid roomId)
+        => roomNames.TryGetValue(roomId, out var n) ? n : "Room";
+
+    private string RoomInitials(RoomPins g)
+    {
+        var name = RoomLabel(g.RoomId);
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant(),
+            _ => string.Concat(parts[0][0], parts[1][0]).ToUpperInvariant()
+        };
+    }
+
+    protected override void OnInitialized()
+    {
+        Layout.SetHeader("Messages");
+        Layout.SetSubtitle("Pinned messages");
+        ChatSvc.RoomListChanged += OnRoomListChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ChatSvc.ConnectAsync();
+        await ChatSvc.LoadRoomsAsync();
+        BuildRoomNames();
+        await RefreshAsync();
+    }
+
+    private void OnRoomListChanged()
+    {
+        BuildRoomNames();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void BuildRoomNames()
+    {
+        roomNames = ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms)
+            .ToDictionary(r => r.Id, r => r.Type == "dm"
+                ? (r.RecipientName ?? r.RecipientNik ?? "Direct message")
+                : (r.Name ?? "Group"));
+    }
+
+    private async Task RefreshAsync()
+    {
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            var rooms = ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms).ToList();
+            var results = await Task.WhenAll(rooms.Select(async r =>
+            {
+                try
+                {
+                    var pins = await Auth.GetAsync<List<PinnedMessageDto>>($"/api/chat/rooms/{r.Id}/pins");
+                    return new RoomPins { RoomId = r.Id, Items = pins ?? [] };
+                }
+                catch
+                {
+                    return new RoomPins { RoomId = r.Id, Items = [] };
+                }
+            }));
+            Groups = results.Where(g => g.Items.Count > 0)
+                            .OrderByDescending(g => g.Items.Max(p => p.PinnedAt))
+                            .ToList();
+            if (roomFilter is not null && Groups.All(g => g.RoomId != roomFilter.Value))
+                roomFilter = null;
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenInChat(Guid roomId, Guid messageId)
+    {
+        Nav.NavigateTo($"/chat/{roomId}?jump={messageId}");
+    }
+
+    private static string FormatTime(DateTime t)
+        => t.Date == DateTime.Now.Date ? t.ToString("HH:mm") : t.ToString("dd MMM HH:mm");
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+        => await JS.InvokeVoidAsync("ipop.icons");
+
+    public void Dispose()
+    {
+        ChatSvc.RoomListChanged -= OnRoomListChanged;
+    }
+}

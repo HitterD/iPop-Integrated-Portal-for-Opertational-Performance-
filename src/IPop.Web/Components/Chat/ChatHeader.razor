@@ -7,32 +7,49 @@
     @if (Room.Type == "dm")
     {
         var dmMember = Room.Members.FirstOrDefault(m => m.Nik != CurrentUserNik);
-        <button type="button" class="avatar round avatar-btn" style="background:@RoomColor" title="View profile" @onclick="() => OnOpenProfile.InvokeAsync(dmMember?.Nik)">
+        <button type="button" class="avatar round avatar-btn hover-scale" style="background:@RoomColor" title="View profile" @onclick="() => OnOpenProfile.InvokeAsync(dmMember?.Nik)">
             @RoomInitials
+            <span class="presence-indicator @(dmMember?.PresenceStatus ?? "off")"></span>
         </button>
     }
     else
     {
-        <button type="button" class="avatar avatar-btn" style="background:@RoomColor" title="Group info" @onclick="() => OnToggleDrawer.InvokeAsync()">
+        <button type="button" class="avatar avatar-btn hover-scale" style="background:@RoomColor" title="Group info" @onclick="() => OnToggleDrawer.InvokeAsync()">
             @RoomInitials
         </button>
     }
     <div class="info">
-        <div class="name">@RoomName</div>
-        <div class="meta">
+        <div class="name-row">
+            <div class="name">
+                @RoomName
+                @if (IsMuted)
+                {
+                    <span class="mute-chip" title="@MuteTooltip"><i data-lucide="bell-off"></i></span>
+                }
+            </div>
             @if (Room.Type == "dm")
             {
                 var dmMember = Room.Members.FirstOrDefault(m => m.Nik != CurrentUserNik);
                 if (dmMember is not null)
                 {
-                    <span class="dot @(dmMember.PresenceStatus ?? "off")">@PresenceLabel(dmMember.PresenceStatus)</span>
+                    <span class="status-badge @(dmMember.PresenceStatus ?? "off")">
+                        <span class="status-dot"></span>
+                        @PresenceLabel(dmMember.PresenceStatus)
+                    </span>
                 }
             }
-            else
-            {
-                <span>@Room.MemberCount members · @Room.OnlineCount online</span>
-            }
         </div>
+        @if (Room.Type == "group" && !string.IsNullOrWhiteSpace(Room.Description))
+        {
+            <div class="desc" title="@Room.Description">@Room.Description</div>
+        }
+        @if (Room.Type == "group")
+        {
+            <div class="meta">
+                <span class="member-count">@Room.MemberCount members</span>
+                <span class="online-count">@Room.OnlineCount online</span>
+            </div>
+        }
     </div>
     <div class="actions">
         <button class="@(SearchOpen ? "on" : "")" title="Search messages" @onclick="OnToggleSearch">
@@ -75,6 +92,10 @@
     [Parameter] public bool SearchOpen { get; set; }
     [Parameter] public bool DrawerOpen { get; set; }
     [Parameter] public int ActiveDrawerTab { get; set; }
+    /// Room-list mute flag (RoomListDto.IsMuted) for the open room — the header
+    /// shows a bell-off chip next to the name while notifications are silenced.
+    [Parameter] public bool IsMuted { get; set; }
+    [Parameter] public string MuteTooltip { get; set; } = "Notifications muted";
 
     [Parameter] public EventCallback OnBackMobile { get; set; }
     [Parameter] public EventCallback<string?> OnOpenProfile { get; set; }

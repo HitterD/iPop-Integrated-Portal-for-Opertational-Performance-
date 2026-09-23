@@ -1,0 +1,318 @@
+@page "/directory/priority"
+@implements IDisposable
+@inject IJSRuntime JS
+@inject AuthState Auth
+@inject ChatState ChatSvc
+@inject NavigationManager Nav
+@inject FavoriteContacts Favorites
+@using IPop.Web.Services
+
+@* Kontak Prioritas — favorit (tanda bintang, selalu di atas), sering dihubungi
+   (dari percakapan DM terbaru), dan filter kehadiran. Favorit disimpan per
+   pengguna di perangkat (frontend wave) sampai endpoint favorit tersedia. *@
+
+<PageTitle>Priority Contacts — IPop</PageTitle>
+
+<div class="content" style="grid-template-columns:1fr">
+
+    <div class="tray rise rise-1">
+        <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head" style="flex-wrap:wrap;gap:10px">
+                <i data-lucide="star"></i> <span>Priority Contacts</span>
+                <span class="meta">@Subtitle</span>
+                <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+                    <button class="btn-sm surface" @onclick='() => Nav.NavigateTo("/directory")' title="Open full directory"><i data-lucide="users" style="width:13px;height:13px"></i> Directory</button>
+                    <button class="btn-sm surface" @onclick="RefreshAsync" title="Reload"><i data-lucide="refresh-cw" style="width:13px;height:13px"></i> Refresh</button>
+                </span>
+            </div>
+
+            @* ---- Filter kehadiran (Apple segmented control) ---- *@
+            <div class="filter-bar" style="padding:8px 14px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:10px">
+                <span class="presence-label">Presence</span>
+                <div class="apple-segmented">
+                    <button type="button" class="seg-btn @(presenceFilter == "" ? "active" : "")" @onclick='() => SetPresenceFilter("")'>
+                        <span>All</span>
+                        <span class="seg-count">@CountForPresence("")</span>
+                    </button>
+                    <button type="button" class="seg-btn @(presenceFilter == "online" ? "active" : "")" @onclick='() => SetPresenceFilter("online")'>
+                        <span class="seg-dot on"></span>
+                        <span>Online</span>
+                        <span class="seg-count">@CountForPresence("online")</span>
+                    </button>
+                    <button type="button" class="seg-btn @(presenceFilter == "busy" ? "active" : "")" @onclick='() => SetPresenceFilter("busy")'>
+                        <span class="seg-dot busy"></span>
+                        <span>Busy</span>
+                        <span class="seg-count">@CountForPresence("busy")</span>
+                    </button>
+                    <button type="button" class="seg-btn @(presenceFilter == "away" ? "active" : "")" @onclick='() => SetPresenceFilter("away")'>
+                        <span class="seg-dot away"></span>
+                        <span>Away</span>
+                        <span class="seg-count">@CountForPresence("away")</span>
+                    </button>
+                    <button type="button" class="seg-btn @(presenceFilter == "offline" ? "active" : "")" @onclick='() => SetPresenceFilter("offline")'>
+                        <span class="seg-dot off"></span>
+                        <span>Offline</span>
+                        <span class="seg-count">@CountForPresence("offline")</span>
+                    </button>
+                </div>
+            </div>
+
+            @* ---- Pencarian nama ---- *@
+            <div class="filter-bar" style="padding:8px 14px;border-bottom:1px solid var(--line-soft)">
+                <div style="flex:1 1 220px;display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:6px 12px;background:var(--surface)">
+                    <i data-lucide="search" style="width:14px;height:14px;color:var(--ink-3);flex-shrink:0"></i>
+                    <input type="text" placeholder="Search name or NIK…"
+                           style="flex:1;border:none;background:transparent;color:var(--ink);font-size:13px;outline:none"
+                           @bind="query" @bind:event="oninput" />
+                </div>
+            </div>
+
+            @if (loading)
+            {
+                <div class="tree-empty" style="padding:34px">
+                    <i data-lucide="loader-circle" style="width:20px;height:20px;margin-bottom:6px"></i>
+                    <div>Loading contacts…</div>
+                </div>
+            }
+            else
+            {
+                @* ---- Favorit ---- *@
+                @if (FilteredFavorites.Count > 0)
+                {
+                    <div class="pins-room-head">
+                        <i data-lucide="star" style="width:14px;height:14px;color:var(--accent-ink)"></i>
+                        <span class="pins-room-name">Favorites</span>
+                        <span class="pins-room-count">@FilteredFavorites.Count people</span>
+                    </div>
+                    <div class="notif-list" role="list" aria-label="Favorite contacts">
+                        @foreach (var p in FilteredFavorites)
+                        {
+                            var person = p;
+                            @RenderContactRow(person, true)
+                        }
+                    </div>
+                }
+
+                @* ---- Sering dihubungi ---- *@
+                @if (FilteredFrequent.Count > 0)
+                {
+                    <div class="pins-room-head">
+                        <i data-lucide="history" style="width:14px;height:14px;color:var(--accent-ink)"></i>
+                        <span class="pins-room-name">Frequently Contacted</span>
+                        <span class="pins-room-count">@FilteredFrequent.Count people</span>
+                    </div>
+                    <IPop.Web.Components.FrequentContactsList
+                        Items="@FilteredFrequent.Select(p => new IPop.Web.Components.FrequentContactsList.FrequentContact(p.Nik, p.Name, p.Position, p.Department, p.Status)).ToList()"
+                        OnOpen="c => OpenChat(c.Nik)"
+                        OnChat="c => OpenChat(c.Nik)"
+                        OnMail="c => OpenMail(c.Nik)" />
+                }
+
+                @if (FilteredFavorites.Count == 0 && FilteredFrequent.Count == 0)
+                {
+                    <div class="tree-empty" style="padding:34px">
+                        <i data-lucide="star" style="width:20px;height:20px;margin-bottom:6px"></i>
+                        <div>@(favorites.Count == 0 ? "No priority contacts yet." : "No results for this filter.")</div>
+                        <div class="meta" style="font-size:11.5px;color:var(--ink-3)">
+                            @(favorites.Count == 0 ? "Mark someone as a favorite (star icon) from their profile card in the directory." : "Try changing the presence filter or search keyword above.")
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+</div>
+
+@code {
+    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+
+    private record ContactRow(string Nik, string Name, string? Position, string? Department, string Status, string? PhotoPath);
+
+    private List<ContactRow> people = [];
+    private List<string> frequentNiks = [];
+    private bool loading = true;
+    private string query = "";
+    private string presenceFilter = "";
+
+    private IReadOnlySet<string> favorites => Favorites.All;
+
+    private string Subtitle => loading ? "loading…" : $"{favorites.Count} favorites · {frequentNiks.Count} frequently contacted";
+
+    private IEnumerable<ContactRow> ApplyFilters(IEnumerable<ContactRow> src)
+    {
+        if (!string.IsNullOrWhiteSpace(presenceFilter))
+            src = src.Where(p => string.Equals(NormalizeStatus(p.Status), presenceFilter, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            var q = query.Trim();
+            src = src.Where(p => p.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || p.Nik.Contains(q, StringComparison.OrdinalIgnoreCase));
+        }
+        return src;
+    }
+
+    private List<ContactRow> FilteredFavorites =>
+        ApplyFilters(people.Where(p => favorites.Contains(p.Nik)))
+        .OrderBy(p => p.Name).ToList();
+
+    private List<ContactRow> FilteredFrequent =>
+        ApplyFilters(people.Where(p => frequentNiks.Contains(p.Nik) && !favorites.Contains(p.Nik)))
+        .OrderBy(p => frequentNiks.IndexOf(p.Nik)).ToList();
+
+    private int CountForPresence(string s) => s == ""
+        ? people.Count(p => favorites.Contains(p.Nik) || frequentNiks.Contains(p.Nik))
+        : people.Count(p => (favorites.Contains(p.Nik) || frequentNiks.Contains(p.Nik)) && string.Equals(NormalizeStatus(p.Status), s, StringComparison.OrdinalIgnoreCase));
+
+    private void SetPresenceFilter(string s) => presenceFilter = s;
+
+    private static string NormalizeStatus(string status) => status switch
+    {
+        "on" => "online",
+        "off" => "offline",
+        var x => x
+    };
+
+    private static string PresenceLabel(string status) => status switch
+    {
+        "online" or "on" => "Online",
+        "busy" => "Busy",
+        "away" => "Away",
+        _ => "Offline"
+    };
+
+    protected override void OnInitialized()
+    {
+        Layout.SetHeader("Directory", "Priority contacts");
+        Auth.PresenceChanged += OnPresenceChanged;
+        Favorites.Changed += OnFavoritesChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ChatSvc.ConnectAsync();
+        await ChatSvc.LoadRoomsAsync();
+        await Favorites.EnsureLoadedAsync();
+        await BuildFrequentAsync();
+        await LoadPeopleAsync();
+    }
+
+    private void OnFavoritesChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadPeopleAsync();
+        StateHasChanged();
+    });
+
+    private void OnPresenceChanged(string nik, string status) => _ = InvokeAsync(() =>
+    {
+        var i = people.FindIndex(p => p.Nik == nik);
+        if (i >= 0) people[i] = people[i] with { Status = status };
+        StateHasChanged();
+    });
+
+    private async Task BuildFrequentAsync()
+    {
+        // Sering dihubungi: agregat server (chat + surat). Fallback ke turunan DM
+        // lokal bila endpoint belum tersedia.
+        try
+        {
+            var server = await Auth.GetAsync<DirectoryEmployeeDto[]>("/api/directory/frequent");
+            if (server is not null)
+            {
+                frequentNiks = server.Select(p => p.Nik).ToList();
+                // Barisnya sudah lengkap — langsung masukkan ke cache people agar
+                // LoadPeopleAsync tidak perlu memindai ulang listing direktori.
+                var existing = people.Select(p => p.Nik).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                foreach (var p in server.Where(p => !existing.Contains(p.Nik)))
+                    people.Add(new ContactRow(p.Nik, p.Name, p.Position, p.Department, p.Status, p.PhotoPath));
+                return;
+            }
+        }
+        catch { /* fallback lokal */ }
+        frequentNiks = ChatSvc.DirectRooms
+            .Where(r => r.RecipientNik is not null)
+            .OrderByDescending(r => r.LastMessageAt ?? DateTime.MinValue)
+            .Select(r => r.RecipientNik!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(10)
+            .ToList();
+    }
+
+    private async Task LoadPeopleAsync()
+    {
+        loading = true;
+        StateHasChanged();
+        try
+        {
+            var wanted = favorites.Concat(frequentNiks).Distinct(StringComparer.OrdinalIgnoreCase).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var loaded = new List<ContactRow>();
+            var page = 1;
+            while (wanted.Count > 0 && page <= 20)
+            {
+                var result = await Auth.GetAsync<DirectoryPageDto>($"/api/directory/employees?page={page}&pageSize=50");
+                if (result is null || result.Items.Length == 0) break;
+                foreach (var d in result.Items)
+                {
+                    if (!wanted.Remove(d.Nik)) continue;
+                    loaded.Add(new ContactRow(d.Nik, d.Name, d.Position, d.Department, d.Status, d.PhotoPath));
+                }
+                if (loaded.Count + wanted.Count == 0 || result.Items.Length < 50) break;
+                page++;
+            }
+            people = loaded;
+        }
+        finally
+        {
+            loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        await ChatSvc.LoadRoomsAsync();
+        await BuildFrequentAsync();
+        await LoadPeopleAsync();
+    }
+
+    private async Task ToggleFavorite(string nik) => await Favorites.ToggleAsync(nik);
+
+    private void OpenChat(string nik) => Nav.NavigateTo($"/chat?nik={Uri.EscapeDataString(nik)}");
+    private void OpenMail(string nik) => Nav.NavigateTo($"/mail?compose={Uri.EscapeDataString(nik)}");
+    private void OpenDirectory() => Nav.NavigateTo("/directory");
+
+    private RenderFragment RenderContactRow(ContactRow person, bool isFav) => __builder =>
+    {
+        <div class="notif-row" role="listitem">
+            <div class="notif-row-ic" style="background:@IPop.Web.Models.AvatarPalette.For(person.Nik)">
+                @Initials(person.Name)
+            </div>
+            <div class="notif-row-main">
+                <div class="notif-row-t">
+                    @person.Name
+                    <span class="mono" style="font-size:11px;color:var(--ink-3)">@person.Nik</span>
+                    <span class="tag" style="background:var(--tray);color:var(--ink-2)"><span class="dot @NormalizeStatus(person.Status)" style="width:7px;height:7px;border-radius:50%;display:inline-block"></span> @PresenceLabel(person.Status)</span>
+                </div>
+                <div class="notif-row-s">@(person.Position ?? "—") · @(person.Department ?? "—")</div>
+            </div>
+            <span style="display:flex;gap:4px;flex-shrink:0">
+                <button type="button" class="btn-sm surface" title="Chat" @onclick="() => OpenChat(person.Nik)" @onclick:stopPropagation><i data-lucide="message-circle" style="width:13px;height:13px"></i></button>
+                <button type="button" class="btn-sm surface" title="Mail" @onclick="() => OpenMail(person.Nik)" @onclick:stopPropagation><i data-lucide="mail" style="width:13px;height:13px"></i></button>
+                <button type="button" class="btn-sm surface" title="@(favorites.Contains(person.Nik) ? "Remove from favorites" : "Add to favorites")"
+                        style="@(favorites.Contains(person.Nik) ? "color:var(--accent-ink);border-color:var(--accent-soft);background:var(--accent-soft)" : "")"
+                        @onclick="() => ToggleFavorite(person.Nik)" @onclick:stopPropagation>
+                    <i data-lucide="@(favorites.Contains(person.Nik) ? "star" : "star")" style="width:13px;height:13px;@(favorites.Contains(person.Nik) ? "fill:currentColor" : "")"></i>
+                </button>
+            </span>
+        </div>
+    };
+
+    private static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+
+    public void Dispose() { Auth.PresenceChanged -= OnPresenceChanged; Favorites.Changed -= OnFavoritesChanged; }
+}

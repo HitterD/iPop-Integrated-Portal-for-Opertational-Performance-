@@ -78,18 +78,20 @@
     }
 
     <div class="composer">
-        <button type="button" class="comp-btn @(Uploading ? "busy" : "")" title="Attach file" disabled="@Uploading" @onclick="OnTriggerUpload">
-            <i data-lucide="@(Uploading ? "loader" : "paperclip")"></i>
-        </button>
-        <button type="button" class="comp-btn @(PickerOpen ? "on" : "")" title="Emoji & Stickers" @onclick="OnTogglePicker">
-            <i data-lucide="smile-plus"></i>
-        </button>
+        <div class="composer-actions-left">
+            <button type="button" class="comp-btn @(Uploading ? "busy" : "")" title="Attach file" disabled="@Uploading" @onclick="OnTriggerUpload">
+                <i data-lucide="@(Uploading ? "loader" : "paperclip")"></i>
+            </button>
+            <button type="button" class="comp-btn @(PickerOpen ? "on" : "")" title="Emoji & Stickers" @onclick="OnTogglePicker">
+                <i data-lucide="smile-plus"></i>
+            </button>
 
-        @if (IsGroup)
-        {
-            <button type="button" class="comp-btn" title="Mention" @onclick="OnOpenMention"><i data-lucide="at-sign"></i></button>
-            <button type="button" class="comp-btn" title="Create Poll" @onclick="OnOpenPoll"><i data-lucide="bar-chart-2"></i></button>
-        }
+            @if (IsGroup)
+            {
+                <button type="button" class="comp-btn" title="Mention" @onclick="OnOpenMention"><i data-lucide="at-sign"></i></button>
+                <button type="button" class="comp-btn" title="Create Poll" @onclick="OnOpenPoll"><i data-lucide="bar-chart-2"></i></button>
+            }
+        </div>
 
         @if (IsRecordingVoice)
         {
@@ -104,22 +106,26 @@
         }
         else
         {
-            <textarea @ref="textareaRef" class="input-wrap"
-                      placeholder="Type a message…  (Enter to send, Shift+Enter for a new line)"
-                      value="@Text"
-                      @oninput="OnInput"
-                      @onkeydown="OnKeyDown"
-                      @onblur="OnBlur"
-                      rows="1"></textarea>
-            <button type="button" class="comp-btn" title="Record Voice Message" @onclick="OnStartVoice">
-                <i data-lucide="mic"></i>
-            </button>
-            <button type="button" class="send-btn @((string.IsNullOrWhiteSpace(Text) && PendingAttachments.Count == 0) ? "disabled" : "")"
-                    title="Send"
-                    @onclick="OnSend"
-                    disabled="@(string.IsNullOrWhiteSpace(Text) && PendingAttachments.Count == 0)">
-                <i data-lucide="send-horizontal"></i>
-            </button>
+            <div class="composer-input-wrapper">
+                <textarea @ref="textareaRef" class="input-wrap"
+                          placeholder="Type a message…  (Enter to send, Shift+Enter for a new line)"
+                          value="@Text"
+                          @oninput="OnInput"
+                          @onkeydown="OnKeyDown"
+                          @onblur="OnBlur"
+                          rows="1"></textarea>
+            </div>
+            <div class="composer-actions-right">
+                <button type="button" class="comp-btn" title="Record Voice Message" @onclick="OnStartVoice">
+                    <i data-lucide="mic"></i>
+                </button>
+                <button type="button" class="send-btn @((string.IsNullOrWhiteSpace(Text) && PendingAttachments.Count == 0) ? "disabled" : "")"
+                        title="Send"
+                        @onclick="OnSend"
+                        disabled="@(string.IsNullOrWhiteSpace(Text) && PendingAttachments.Count == 0)">
+                    <i data-lucide="send-horizontal"></i>
+                </button>
+            </div>
         }
 
         @if (IsGroupAdmin)

@@ -1,0 +1,56 @@
+@using IPop.Web.Services
+@inject AuthState Auth
+
+<div class="identity-editor">
+    @if (!editing)
+    {
+        <div class="identity-name">@Name</div>
+        <div class="identity-description">@(string.IsNullOrWhiteSpace(Description) ? "No description provided" : Description)</div>
+        @if (CanEdit)
+        {
+            <button class="comp-btn identity-edit" @onclick="() => editing = true">Edit</button>
+        }
+    }
+    else
+    {
+        <input class="identity-input" placeholder="Group name" @bind="editName" maxlength="100" />
+        @if (editName.Length > 90) { <div class="identity-count">@editName.Length / 100</div> }
+        <textarea class="identity-input identity-textarea" placeholder="Description" @bind="editDesc" maxlength="500"></textarea>
+        @if ((editDesc?.Length ?? 0) > 450) { <div class="identity-count">@(editDesc?.Length ?? 0) / 500</div> }
+        <div class="identity-actions">
+            <button class="comp-btn identity-action" @onclick="Save">Save</button>
+            <button class="comp-btn identity-action" @onclick="() => editing = false">Cancel</button>
+        </div>
+        @if (!string.IsNullOrEmpty(err)) { <div class="identity-error">@err</div> }
+    }
+</div>
+
+@code {
+    [Parameter] public Guid RoomId { get; set; }
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+    private bool editing;
+    private string editName = "";
+    private string? editDesc;
+    private string? err;
+
+    protected override void OnParametersSet()
+    {
+        if (!editing) { editName = Name ?? ""; editDesc = Description; }
+    }
+
+    private async Task Save()
+    {
+        err = null;
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/chat/rooms/{RoomId}", new { name = editName, description = editDesc });
+        if (!res.IsSuccessStatusCode)
+        {
+            try { var b = await res.Content.ReadFromJsonAsync<Dictionary<string,string>>(); err = b != null && b.TryGetValue("message", out var m) ? m : res.StatusCode.ToString(); } catch { err = res.StatusCode.ToString(); }
+            return;
+        }
+        editing = false;
+        await OnSaved.InvokeAsync();
+    }
+}

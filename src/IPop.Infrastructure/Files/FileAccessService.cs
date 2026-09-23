@@ -4,6 +4,7 @@ using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace IPop.Infrastructure.Files;
@@ -12,11 +13,16 @@ public class FileAccessService(
     IPopDbContext db,
     ISynologyGateway gateway,
     IDataProtectionProvider protector,
+    IConfiguration cfg,
     ILogger<FileAccessService> log) : IFileAccessService
 {
     private const string Purpose = "synology-credential";
     private readonly IDataProtector _protector = protector.CreateProtector(Purpose);
     private readonly ConcurrentDictionary<(Guid, string), string> _sids = new();
+
+    // The service-account session is keyed on its own, never mixed with per-user sessions.
+    private string? _serviceSid;
+    private readonly SemaphoreSlim _serviceLock = new(1, 1);
 
     public async Task<(bool Ok, string? Error)> SetCredentialAsync(Guid userId, string server, string username, string password, CancellationToken ct)
     {
@@ -148,9 +154,84 @@ public class FileAccessService(
         }
     }
 
+    // ── Service account ──────────────────────────────────────────────────────
+
+    private string? ServiceUser => cfg["Synology:ServiceAccount:Username"]?.Trim();
+    private string? ServicePass => cfg["Synology:ServiceAccount:Password"];
+
+    public string? ServiceServer
+    {
+        get
+        {
+            var s = cfg["Synology:ServiceAccount:Server"]?.Trim();
+            return string.IsNullOrWhiteSpace(s) ? null : s.ToLowerInvariant();
+        }
+    }
+
+    public bool HasServiceAccount =>
+        !string.IsNullOrWhiteSpace(ServiceUser) &&
+        !string.IsNullOrWhiteSpace(ServicePass) &&
+        !string.IsNullOrWhiteSpace(ServiceServer);
+
+    public Task<Stream> DownloadAsServiceAsync(string path, CancellationToken ct)
+        => WithServiceSid((srv, sid, c) => gateway.DownloadAsync(srv, sid, path, c), ct);
+
+    public Task UploadAsServiceAsync(string dir, string filename, Stream content, CancellationToken ct)
+        => WithServiceSid(async (srv, sid, c) =>
+        {
+            await gateway.UploadAsync(srv, sid, dir, filename, content, c);
+            return true;
+        }, ct);
+
+    private async Task<T> WithServiceSid<T>(Func<string, string, CancellationToken, Task<T>> action, CancellationToken ct)
+    {
+        var server = ServiceServer
+            ?? throw new SynoException("No Synology service account configured", authFailure: true);
+
+        var sid = await GetServiceSidAsync(server, ct);
+        try { return await action(server, sid, ct); }
+        catch (SynoException ex) when (ex.IsSessionExpired)
+        {
+            _serviceSid = null;
+            var fresh = await GetServiceSidAsync(server, ct);
+            return await action(server, fresh, ct);
+        }
+    }
+
+    private async Task<string> GetServiceSidAsync(string server, CancellationToken ct)
+    {
+        if (_serviceSid is { } cached) return cached;
+
+        // One login at a time: a burst of attachment reads on a cold service session would
+        // otherwise open a Synology session per request.
+        await _serviceLock.WaitAsync(ct);
+        try
+        {
+            if (_serviceSid is { } raced) return raced;
+
+            var user = ServiceUser;
+            var pass = ServicePass;
+            if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(pass))
+                throw new SynoException("Synology service account is not configured", authFailure: true);
+
+            try
+            {
+                var sid = await gateway.AuthAsync(server, user, pass, ct);
+                _serviceSid = sid;
+                return sid;
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure)
+            {
+                log.LogError("Synology service account '{User}' rejected by server '{Server}'. Chat attachments cannot be stored on the NAS until this is fixed.", user, server);
+                throw;
+            }
+        }
+        finally { _serviceLock.Release(); }
+    }
+
     private static string NormalizeServer(string s) => s.Trim().ToLowerInvariant() switch
     {
-        "spj" or "krw" or "jtb" or "smg" => s.Trim().ToLowerInvariant(),
-        _ => throw new SynoException($"Unknown server '{s}' — expected spj/krw/jtb/smg")
+        "spj" or "krw" or "jtb" or "smg" or "ict" => s.Trim().ToLowerInvariant(),
+        _ => throw new SynoException($"Unknown server '{s}' — expected spj/krw/jtb/smg/ict")
     };
 }

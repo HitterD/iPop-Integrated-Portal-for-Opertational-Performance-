@@ -6,18 +6,34 @@
 @inject IJSRuntime JS
 
 <div class="member-picker" @ref="wrap">
-    <div class="member-picker-input">
-        <i data-lucide="search"></i>
-        <input placeholder="@(Placeholder ?? "Type a name or NIK...")"
-               @oninput="OnInput" @onkeydown="OnKeyDown"
-               @ref="inputRef" aria-label="Search people" aria-expanded="@(results.Count > 0)" />
-        @if (loading)
-        {
-            <span class="member-picker-spin"><i data-lucide="loader-2" class="spin"></i></span>
-        }
-    </div>
+    @if (Value is not null)
+    {
+        <div class="member-picker-selected" style="display:flex;align-items:center;gap:10px;padding:6px 12px;background:var(--tray);border:1px solid var(--line-soft);border-radius:10px;min-height:38px">
+            <span class="avatar" style="background:@(Value.AvatarColor);width:28px;height:28px;font-size:11px;font-weight:700">@(Value.Initials)</span>
+            <span style="font-size:13px;font-weight:600;flex:1;color:var(--ink)">
+                @Value.Name
+                <span style="font-size:11.5px;font-weight:400;color:var(--ink-3);margin-left:4px">(@Value.Nik)</span>
+            </span>
+            <button type="button" class="comp-btn" style="padding:4px;background:transparent;border:none;cursor:pointer;color:var(--ink-3);display:flex;align-items:center" @onclick="Clear" title="Clear selection">
+                <i data-lucide="x" style="width:14px;height:14px"></i>
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="member-picker-input">
+            <i data-lucide="search"></i>
+            <input placeholder="@(Placeholder ?? "Type a name or NIK...")"
+                   @oninput="OnInput" @onkeydown="OnKeyDown"
+                   @ref="inputRef" aria-label="Search people" aria-expanded="@(results.Count > 0)" />
+            @if (loading)
+            {
+                <span class="member-picker-spin"><i data-lucide="loader-2" class="spin"></i></span>
+            }
+        </div>
+    }
 
-    @if (results.Count > 0)
+    @if (results.Count > 0 && Value is null)
     {
         <div class="member-picker-pop" @ref="popRef" style="position:fixed;z-index:100" role="listbox" aria-label="People">
             @for (var i = 0; i < results.Count; i++)
@@ -33,7 +49,7 @@
             }
         </div>
     }
-    else if (searched && query.Trim().Length >= 2 && !loading && Error is null)
+    else if (searched && query.Trim().Length >= 2 && !loading && Error is null && Value is null)
     {
         <div class="member-picker-empty" style="position:relative;z-index:100">No one matches. Try a name or ID.</div>
     }
@@ -41,7 +57,8 @@
 
 @code {
     [Parameter] public string? Placeholder { get; set; }
-    [Parameter] public EventCallback<MemberSearchRow> ValueChanged { get; set; }
+    [Parameter] public MemberSearchRow? Value { get; set; }
+    [Parameter] public EventCallback<MemberSearchRow?> ValueChanged { get; set; }
 
     private string query = "";
     private List<MemberSearchRow> results = [];
@@ -102,7 +119,18 @@
         searched = false;
         activeIdx = 0;
         StateHasChanged();
-        await JS.InvokeVoidAsync("ipop.focus", inputRef);
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task Clear()
+    {
+        query = "";
+        results = [];
+        searched = false;
+        activeIdx = 0;
+        await ValueChanged.InvokeAsync(null);
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
     }
 
     private async Task OnKeyDown(KeyboardEventArgs e)

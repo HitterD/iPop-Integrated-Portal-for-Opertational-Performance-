@@ -1,0 +1,188 @@
+/* ============ APPLE CONVERSATION HEADER ============ */
+
+.conv-header {
+  height: 52px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 15;
+}
+
+.header-avatar-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 650;
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  transition: transform 0.15s var(--ease);
+}
+
+.header-avatar-btn:hover {
+  transform: scale(1.05);
+}
+
+.header-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.header-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.header-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mute-chip {
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-3);
+}
+
+.mute-chip .lucide {
+  width: 13px;
+  height: 13px;
+}
+
+.header-status-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-top: 1px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-4);
+  flex-shrink: 0;
+}
+
+.status-dot.on,
+.status-dot.online {
+  background: var(--accent);
+}
+
+.status-dot.busy {
+  background: var(--danger);
+}
+
+.status-dot.away {
+  background: var(--warn);
+}
+
+.status-txt {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Header icon buttons: borderless 32px with tray hover and title + aria-label */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.header-icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-ctl, 8px);
+  border: none;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.14s var(--ease), color 0.14s var(--ease);
+}
+
+.header-icon-btn:hover {
+  background: var(--tray);
+  color: var(--ink);
+}
+
+.header-icon-btn.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.header-icon-btn .lucide {
+  width: 16px;
+  height: 16px;
+}
+
+/* Back button for mobile */
+.conv-back {
+  display: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-ctl, 8px);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  transition: all 0.14s var(--ease);
+}
+
+.conv-back:hover {
+  background: var(--tray);
+  color: var(--ink);
+}
+
+.conv-back .lucide {
+  width: 16px;
+  height: 16px;
+}
+
+@media (max-width: 768px) {
+  .conv-back {
+    display: flex;
+  }
+
+  .conv-header {
+    padding: 0 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .header-avatar-btn,
+  .header-icon-btn,
+  .conv-back {
+    transition: none !important;
+  }
+}

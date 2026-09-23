@@ -1,0 +1,137 @@
+@page "/calendar"
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject NavigationManager Nav
+@inject ToastService Toasts
+
+@* Penampil Kalender (Fase 3): tampilan Hari/Minggu/Bulan/Agenda.
+   Frontend wave: kerangka tampilan; data event menyusul dari endpoint kalender. *@
+
+<PageTitle>Calendar — IPop</PageTitle>
+
+<div class="content" style="grid-template-columns:1fr">
+    <div class="tray rise rise-1">
+        <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head" style="flex-wrap:wrap;gap:10px">
+                <i data-lucide="calendar"></i> <span>Calendar</span>
+                <span class="meta">@RangeLabel</span>
+                <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+                    <button class="btn-sm surface" @onclick="Prev" title="Previous"><i data-lucide="chevron-left" style="width:13px;height:13px"></i></button>
+                    <button class="btn-sm surface" @onclick="Today">Today</button>
+                    <button class="btn-sm surface" @onclick="Next" title="Next"><i data-lucide="chevron-right" style="width:13px;height:13px"></i></button>
+                    <span style="display:inline-flex;border:1px solid var(--line-soft);border-radius:999px;overflow:hidden">
+                        @foreach (var v in new[] { ("day", "Day"), ("week", "Week"), ("month", "Month"), ("agenda", "Agenda") })
+                        {
+                            <button class="cal-view-btn @(view == v.Item1 ? "active" : "")" @onclick="() => view = v.Item1">@v.Item2</button>
+                        }
+                    </span>
+                </span>
+            </div>
+
+            @* Minggu: grid jam 7 hari. Bulan: petak tanggal. Agenda/Hari: daftar. *@
+            @if (view == "month")
+            {
+                <div class="cal-month">
+                    @foreach (var d in MonthDays)
+                    {
+                        var dayEvents = EventsOn(d);
+                        <div class="cal-mday @(d.Month == cursor.Month ? "" : "other") @(d.Date == DateTime.Today ? "today" : "")">
+                            <span class="d">@d.Day</span>
+                            @foreach (var ev in dayEvents.Take(3))
+                            {
+                                <div class="cal-ev" title="@ev.Title">@ev.Title</div>
+                            }
+                            @if (dayEvents.Count > 3) { <div class="cal-ev-more">+@(dayEvents.Count - 3) more</div> }
+                        </div>
+                    }
+                </div>
+            }
+            else if (view == "agenda" || view == "day" || view == "week")
+            {
+                var list = view == "day" ? EventsOn(cursor) : EventsInRange();
+                if (list.Count == 0)
+                {
+                    <div class="cal-empty">
+                        <i data-lucide="calendar-days" style="width:26px;height:26px"></i>
+                        <div style="font-size:13.5px;font-weight:600;color:var(--ink-2)">No events</div>
+                        <div class="meta" style="font-size:12px;color:var(--ink-3)">Add an event or accept a meeting invitation to see it here.</div>
+                    </div>
+                }
+                else
+                {
+                    <div class="cal-agenda">
+                        @foreach (var ev in list)
+                        {
+                            <div class="cal-agenda-item">
+                                <span class="cal-dot"></span>
+                                <div style="flex:1;min-width:0">
+                                    <div style="font-size:13px;font-weight:600;color:var(--ink)">@ev.Title</div>
+                                    <div style="font-size:11px;color:var(--ink-3)">@ev.StartAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm") · @(ev.Type == "rapat" ? "Meeting" : "Work")</div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private string view = "month";
+    private DateTime cursor = DateTime.Today;
+    private List<CalEvent> events = [];
+
+    private sealed record CalEvent(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string Type);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var from = cursor.AddDays(-40).ToString("yyyy-MM-dd");
+            var to = cursor.AddDays(60).ToString("yyyy-MM-dd");
+            var rows = await Auth.GetAsync<List<CalEventDto>>($"/api/meetings/calendar?from={from}&to={to}");
+            events = (rows ?? []).Select(r => new CalEvent(r.Id, r.Title, r.StartAt, r.EndAt, r.Type)).ToList();
+        }
+        catch { events = []; }
+    }
+
+    private sealed record CalEventDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string Type, Guid? MeetingId, Guid? RoomId);
+
+    private List<CalEvent> EventsOn(DateTime day) =>
+        events.Where(e => e.StartAt.Date <= day.Date && e.EndAt.Date >= day.Date).OrderBy(e => e.StartAt).ToList();
+
+    private List<CalEvent> EventsInRange() => view switch
+    {
+        "day" => EventsOn(cursor),
+        "week" => events.Where(e => e.StartAt.Date < cursor.AddDays(7).Date && e.EndAt.Date >= cursor.Date).OrderBy(e => e.StartAt).ToList(),
+        _ => events.Where(e => e.StartAt >= cursor.AddDays(-7)).OrderBy(e => e.StartAt).ToList(),
+    };
+
+    private string RangeLabel => view switch
+    {
+        "day" => cursor.ToString("dddd, dd MMM yyyy"),
+        "week" => $"Week of {cursor:dd MMM}",
+        "agenda" => "Agenda",
+        _ => cursor.ToString("MMMM yyyy")
+    };
+
+    private List<DateTime> MonthDays
+    {
+        get
+        {
+            var first = new DateTime(cursor.Year, cursor.Month, 1);
+            var start = first.AddDays(-(int)first.DayOfWeek);
+            return Enumerable.Range(0, 42).Select(i => start.AddDays(i)).ToList();
+        }
+    }
+
+    private void Prev() { cursor = view switch { "month" => cursor.AddMonths(-1), "week" => cursor.AddDays(-7), _ => cursor.AddDays(-1) }; _ = LoadAsync(); }
+    private void Next() { cursor = view switch { "month" => cursor.AddMonths(1), "week" => cursor.AddDays(7), _ => cursor.AddDays(1) }; _ = LoadAsync(); }
+    private void Today() { cursor = DateTime.Today; _ = LoadAsync(); }
+}

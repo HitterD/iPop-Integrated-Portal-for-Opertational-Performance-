@@ -1,0 +1,93 @@
+  /* ============ AUTH: single centered card + slideshow ============ */
+  .auth-wrap {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: hidden; padding: 24px;
+  }
+  .slides { position: absolute; inset: 0; }
+  /* Every slide runs the same Ken Burns loop from page load, so they stay in
+     phase; toggling `on` only crossfades opacity. The old version animated
+     only the active slide, which snapped scale(1.07)->scale(1) on switch. */
+  .slides .slide {
+    position: absolute; inset: 0; background-size: cover; background-position: center;
+    opacity: 0; transition: opacity 1.8s var(--ease);
+    animation: kenburns 10s ease-in-out infinite alternate;
+    will-change: opacity, transform;
+  }
+  .slides .slide.on { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) {
+    .slides .slide { animation: none; transform: scale(1); }
+  }
+  .slides::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(247,246,243,0.55), rgba(247,246,243,0.78));
+  }
+  [data-theme="dark"] .slides::after {
+    background: linear-gradient(180deg, rgba(23,22,20,0.55), rgba(23,22,20,0.82));
+  }
+  .auth-card { position: relative; z-index: 2; width: 100%; max-width: 408px; }
+  /* floating theme toggle on the auth pages (no topbar there) */
+  .auth-theme-btn {
+    position: absolute; top: 22px; right: 22px; z-index: 3;
+    background: rgba(255,255,255,0.7); border-color: rgba(255,255,255,0.6);
+    backdrop-filter: blur(10px);
+  }
+  [data-theme="dark"] .auth-theme-btn { background: rgba(32,31,28,0.7); border-color: rgba(255,255,255,0.08); }
+  /* .tray / .core (the app-wide card primitive) live in components/shared-controls.css. */
+  .brand-row { display: flex; align-items: center; gap: 11px; margin-bottom: 22px; }
+  .mark {
+    width: 36px; height: 36px; object-fit: contain; flex-shrink: 0;
+  }
+  /* The logo art is white — in light mode it needs a dark chip behind it to
+     stay visible; dark mode doesn't (logo is white on dark). */
+  .auth-wrap .mark,
+  .side-head .mark {
+    background: transparent;
+  }
+  .brand-row .t { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; }
+  .brand-row .s { font-size: 11.5px; color: var(--ink-3); }
+  .core h2 { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 3px; }
+  .core .sub { color: var(--ink-2); font-size: 13px; margin-bottom: 24px; }
+  .field { margin-bottom: 15px; }
+  .field label { display: block; font-weight: 600; font-size: 12.5px; margin-bottom: 7px; color: var(--ink-2); }
+  .field input {
+    width: 100%; padding: 11px 14px; font-size: 14px; font-family: inherit;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink);
+    transition: border-color 0.3s var(--ease), box-shadow 0.3s var(--ease);
+  }
+  .field input:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3.5px rgba(46,125,91,0.13);
+  }
+  .field input::placeholder { color: var(--ink-3); }
+  .btn {
+    width: 100%; padding: 11px 14px 11px 20px; font-size: 14px; font-weight: 600; font-family: inherit;
+    background: var(--accent); color: #fff; border: none; border-radius: 999px; cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between;
+    transition: transform 0.25s var(--ease), background 0.25s var(--ease);
+    margin-top: 8px;
+  }
+  .btn:hover { background: var(--accent-ink); }
+  [data-theme="dark"] .btn { color: #0e0d0b; }
+  [data-theme="dark"] .btn .orb { background: rgba(0,0,0,0.18); }
+  .btn:active { transform: scale(0.985); }
+  .btn .orb {
+    width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,0.18);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.35s var(--ease);
+  }
+  .btn:hover .orb { transform: translateX(3px); }
+  .btn .orb .lucide { width: 14px; height: 14px; }
+  .note {
+    margin-top: 18px; padding: 11px 13px; border-radius: 13px;
+    background: var(--tray); color: var(--ink-2); font-size: 12.5px; line-height: 1.55;
+    display: flex; gap: 9px; align-items: flex-start;
+  }
+  .note .lucide { flex-shrink: 0; margin-top: 1px; width: 14.5px; height: 14.5px; color: var(--ink-3); }
+  .note.err { background: var(--danger-soft); color: var(--danger); }
+  .note.err .lucide { color: var(--danger); }
+  .req { margin: 4px 0 16px 0; padding: 0; list-style: none; }
+  .req li { display: flex; gap: 8px; align-items: center; color: var(--ink-2); font-size: 12.5px; padding: 3px 0; transition: color 0.3s var(--ease); }
+  .req li .lucide { width: 13px; height: 13px; }
+  .req li.ok { color: var(--accent-ink); }
+  .req li.ok .lucide { color: var(--accent); }
+

@@ -1,0 +1,494 @@
+@page "/notifications/gateway"
+@implements IDisposable
+@inject IJSRuntime JS
+@inject AuthState Auth
+@inject NavigationManager Nav
+@inject IPop.Web.Services.ToastService Toasts
+
+<PageTitle>Notification Gateway — IPop</PageTitle>
+
+@if (!loaded)
+{
+    <div class="content" style="grid-template-columns:1fr">
+        <div class="tray"><div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head"><i data-lucide="bell"></i> <span>Notification Gateway</span><span class="meta">Loading…</span></div>
+            <div style="padding:14px;display:grid;gap:10px"><div class="skel" style="height:110px"></div><div class="skel" style="height:110px"></div></div>
+        </div></div>
+    </div>
+}
+else if (!Auth.IsAdmin)
+{
+    <div class="content" style="grid-template-columns:1fr">
+        <div class="tray rise rise-1"><div class="core" style="padding:34px">
+            <div class="tree-empty"><i data-lucide="shield" style="width:18px;height:18px;margin-bottom:6px"></i>
+                <div>This page is only available to administrators.</div>
+                <button class="btn-sm surface" style="margin-top:12px" @onclick="GoDashboard"><i data-lucide="arrow-left" style="width:13px;height:13px"></i> Back to dashboard</button>
+            </div>
+        </div></div>
+    </div>
+}
+else
+{
+<div class="content" style="grid-template-columns:1fr">
+
+    @* ---- Header / summary ---- *@
+    <div class="tray rise rise-1">
+        <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head" style="flex-wrap:wrap;gap:10px">
+                <i data-lucide="bell"></i> <span>Notification Gateway</span>
+                <span class="meta" style="background:var(--danger-soft);color:var(--danger);border-color:rgba(179,70,47,0.2);display:inline-flex;align-items:center;gap:6px"><i data-lucide="alert-triangle" style="width:12px;height:12px"></i> @dlq.Total dead-letter</span>
+                <span class="meta" style="display:inline-flex;align-items:center;gap:6px"><i data-lucide="send" style="width:12px;height:12px"></i> @reqCounts.Total requests</span>
+                <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+                    <button class="btn-sm surface" @onclick="LoadAll" title="Refresh"><i data-lucide="refresh-cw" style="width:13px;height:13px"></i> Refresh</button>
+                </span>
+            </div>
+            @if (!string.IsNullOrEmpty(notice))
+            {
+                <div class="note" style="margin:0 14px 14px;border-radius:10px"><i data-lucide="info"></i><span>@notice</span></div>
+            }
+            <div class="filter-bar" style="padding:10px 14px">
+                <div class="search" style="flex:1 1 240px"><i data-lucide="search"></i>
+                    <input type="text" placeholder="Search request GUID" @bind="requestIdInput" @bind:event="oninput" />
+                </div>
+                <button class="btn-sm surface" @onclick="LookupRequest"><i data-lucide="search" style="width:13px;height:13px"></i> Look up timeline</button>
+            </div>
+        </div>
+    </div>
+
+    @* ---- Tabs: Clients / Requests / DLQ ---- *@
+    <div class="admin-tabs rise rise-2" role="tablist" aria-label="Gateway sections">
+        <button class="admin-tab @(Tab == 0 ? "active" : "")" role="tab" aria-selected="@(Tab == 0)" @onclick="() => tab = 0"><i data-lucide="server"></i> Clients</button>
+        <button class="admin-tab @(Tab == 1 ? "active" : "")" role="tab" aria-selected="@(Tab == 1)" @onclick="() => tab = 1"><i data-lucide="send"></i> Requests</button>
+        <button class="admin-tab @(Tab == 2 ? "active" : "")" role="tab" aria-selected="@(Tab == 2)" @onclick="() => tab = 2"><i data-lucide="archive-x"></i> Dead letters @(dlq.Total > 0 ? $"({dlq.Total})" : "")</button>
+    </div>
+
+    @if (Tab == 0)
+    {
+        @* ---- Clients ---- *@
+        <div class="tray rise rise-2">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head">
+                    <i data-lucide="server"></i> <span>Registered clients</span>
+                    <span class="meta">@clients.Total</span>
+                </div>
+                @if (clients.Items.Count == 0)
+                {
+                    <div class="tree-empty" style="padding:20px"><i data-lucide="inbox" style="width:18px;height:18px;margin-bottom:6px"></i>
+                        <div>No gateway clients yet — internal apps register with <span class="mono">POST /api/notifications/v1/clients</span>.</div>
+                    </div>
+                }
+                else
+                {
+                    <table class="u-table">
+                        <thead>
+                            <tr><th>Client ID</th><th>Allowed IPs</th><th>Event types</th><th>Rate/s</th><th>Max recips</th><th>Requests</th><th>Status</th><th>Secret rotated</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var c in clients.Items)
+                            {
+                                <tr class="@(c.IsActive ? "" : "inactive")">
+                                    <td class="mono" style="font-weight:600">@c.ClientId</td>
+                                    <td class="mono" style="font-size:11px;color:var(--ink-2)">@(c.AllowedIps ?? "any")</td>
+                                    <td class="mono" style="font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="@c.AllowedEventTypes">@(c.AllowedEventTypes ?? "all")</td>
+                                    <td class="mono">@c.RateLimitPerSecond</td>
+                                    <td class="mono">@c.MaxRecipients</td>
+                                    <td class="mono">@c.RequestCount</td>
+                                    <td><span class="dot @(c.IsActive ? "on" : "off")">@(c.IsActive ? "Active" : "Inactive")</span></td>
+                                    <td class="mono" style="font-size:11px;color:var(--ink-3)">@(c.SecretRotatedAt?.ToLocalTime().ToString("MMM dd yyyy") ?? "never")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        </div>
+    }
+
+    @if (Tab == 1)
+    {
+        @* ---- Requests ---- *@
+        <div class="tray rise rise-2">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head" style="flex-wrap:wrap;gap:10px">
+                    <i data-lucide="send"></i> <span>Requests</span>
+                    <span class="meta">@reqCounts.Total total</span>
+                    <span style="margin-left:auto;display:flex;gap:6px">
+                        @foreach (var s in new[] { "all", "accepted", "queued", "processing", "delivered", "read", "acknowledged", "failed" })
+                        {
+                            <button class="btn-sm surface" style="padding:4px 9px;font-size:11px;@(reqStatus == s ? "background:var(--accent-soft);color:var(--accent-ink)" : "")" @onclick="() => SetStatusFilter(s)">@s</button>
+                        }
+                    </span>
+                </div>
+                @if (requestRows.Count == 0)
+                {
+                    <div class="tree-empty" style="padding:20px"><i data-lucide="inbox" style="width:18px;height:18px;margin-bottom:6px"></i>
+                        <div>No requests@(reqStatus == "all" ? "" : $" with status '{reqStatus}'") yet.</div>
+                    </div>
+                }
+                else
+                {
+                    <table class="u-table">
+                        <thead>
+                            <tr><th>Client</th><th>Event</th><th>Title</th><th>Priority</th><th>Status</th><th>Accepted</th><th>Recips</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in requestRows)
+                            {
+                                <tr>
+                                    <td class="mono">@r.ClientId</td>
+                                    <td class="mono" style="font-size:11px">@r.EventType</td>
+                                    <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="@r.Title">@r.Title</td>
+                                    <td><span class="tag" style="background:var(--tray);color:@PriorityFg(r.Priority)">@r.Priority</span></td>
+                                    <td><span class="tag" style="background:@StatusChip(r.Status).bg;color:@StatusChip(r.Status).fg">@r.Status</span></td>
+                                    <td class="mono" style="font-size:11px;color:var(--ink-3)">@r.AcceptedAt.ToLocalTime():MMM dd HH:mm</td>
+                                    <td class="mono">@r.DeliveryCount</td>
+                                    <td class="acts">
+                                        <button title="View timeline" @onclick="() => OpenTimeline(r.Id)"><i data-lucide="history"></i></button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    @if (HasMoreRequests)
+                    {
+                        @* ipop-51: sits OUTSIDE the table so an appended page extends the same
+                           tbody instead of opening a second header row. *@
+                        <div style="display:flex;justify-content:center;padding:8px 0">
+                            <button class="btn-sm surface" @onclick="LoadMoreRequests" disabled="@requestsLoadingMore">
+                                @(requestsLoadingMore ? "Loading…" : $"Show {requests.Total - requestRows.Count} more requests")
+                            </button>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+
+    @if (Tab == 2)
+    {
+        @* ---- DLQ (dead-letter) ---- *@
+        <div class="tray rise rise-2">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head">
+                    <i data-lucide="archive-x"></i> <span>Dead-letter queue</span>
+                    <span class="meta">@dlq.Total stuck deliveries</span>
+                </div>
+                @if (dlqRows.Count == 0)
+                {
+                    <div class="tree-empty" style="padding:20px"><i data-lucide="inbox" style="width:18px;height:18px;margin-bottom:6px"></i>
+                        <div>No undeliverable notifications — the queue is clean.</div>
+                    </div>
+                }
+                else
+                {
+                    <table class="u-table">
+                        <thead>
+                            <tr><th>Client</th><th>Request</th><th>Channel</th><th>Attempts</th><th>Last error</th><th>Updated</th><th></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var d in dlqRows)
+                            {
+                                <tr>
+                                    <td class="mono">@d.ClientId</td>
+                                    <td class="mono" style="font-size:11px">@d.RequestId.ToString("N")[..8]</td>
+                                    <td><span class="tag">@(d.Channel ?? "—")</span></td>
+                                    <td class="mono" style="color:var(--danger)">@d.AttemptCount</td>
+                                    <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="@d.LastError">@(d.LastError ?? "—")</td>
+                                    <td class="mono" style="color:var(--ink-3)">@d.UpdatedAt.ToLocalTime():MMM dd HH:mm</td>
+                                    <td class="acts">
+                                        <button title="View timeline" @onclick="() => OpenTimeline(d.RequestId)"><i data-lucide="history"></i></button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    @if (HasMoreDlq)
+                    {
+                        @* ipop-51: sits OUTSIDE the table so an appended page extends the same
+                           tbody instead of opening a second header row. *@
+                        <div style="display:flex;justify-content:center;padding:8px 0">
+                            <button class="btn-sm surface" @onclick="LoadMoreDlq" disabled="@dlqLoadingMore">
+                                @(dlqLoadingMore ? "Loading…" : $"Show {dlq.Total - dlqRows.Count} more dead letters")
+                            </button>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+
+    @* ---- Delivery timeline per request (panel below tabs) ---- *@
+    @if (timeline is not null)
+    {
+        <div class="tray rise rise-3">
+            <div class="core" style="padding:0;overflow:hidden">
+                <div class="panel-head">
+                    <i data-lucide="history"></i> <span>Delivery timeline</span>
+                    <span class="meta">Request @timeline.Id.ToString("N")[..8]</span>
+                </div>
+                <div style="padding:14px;display:grid;gap:14px">
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                        <span class="tag" style="background:var(--tray);color:@PriorityFg(timeline.Priority)">@timeline.Priority</span>
+                        <span class="tag">@timeline.EventType</span>
+                        <span class="tag" style="background:var(--accent-soft);color:var(--accent-ink)">@timeline.Status</span>
+                        <span class="mono" style="color:var(--ink-3)">@timeline.ClientId</span>
+                        <button class="btn-sm surface" style="margin-left:auto" @onclick="() => timeline = null"><i data-lucide="x" style="width:13px;height:13px"></i> Close</button>
+                    </div>
+
+                    @* Request lifecycle stages *@
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                        @foreach (var s in RequestStages(timeline))
+                        {
+                            var active = s.Hit;
+                            <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid @(active ? "var(--accent)" : "var(--line-soft)")">
+                                <span class="dot @(active ? "on" : "off")"></span> @s.Label
+                            </span>
+                        }
+                    </div>
+
+                    @* Per-recipient delivery rows *@
+                    <div style="display:grid;gap:8px">
+                        <div style="font-weight:600;font-size:12px;color:var(--ink-2)">Recipients (@timeline.Deliveries.Count)</div>
+                        @foreach (var del in timeline.Deliveries)
+                        {
+                            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:var(--bg);flex-wrap:wrap">
+                                <span class="tag" style="background:@StatusChip(del.Status).bg;color:@StatusChip(del.Status).fg">@del.Status</span>
+                                <span class="tag" style="background:var(--tray);color:var(--ink-2)">@(del.Channel ?? "—")</span>
+                                <span class="mono" style="font-size:11px;color:var(--ink-3)">attempt @del.AttemptCount</span>
+                                <span style="margin-left:auto;font-size:11px;color:var(--ink-3)" class="mono">@DeliveryMeta(del)</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+</div>
+}
+
+@code {
+    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+
+    private bool loaded;
+    private int tab;
+    private int Tab => tab;
+    private string notice = "";
+    private string requestIdInput = "";
+    private string reqStatus = "all";
+    private GatewayTimelineDto? timeline;
+
+    private ClientsDto clients = new([], 0);
+    private RequestsDto requests = new([], 0, [], 1, 50);
+    private DeadLetterDto dlq = new([], 0, 1, 50);
+    private RequestCounts reqCounts = new(0, 0, 0, 0);
+
+    // ipop-51: both loaders fetched ONE hard-coded page of 100 and discarded the rest, while the
+    // panel heads (:114 requests, :164 dlq) render the server's true Total right beside the
+    // truncated table. NotificationRequests and NotificationDeliveries are append-only —
+    // NotificationGatewayService.cs:97/:101 are the only writers, there is no Remove and no
+    // retention job anywhere in the solution — so on a busy gateway both tables pass 100 and
+    // stay past it. The dead-letter case is the worse of the two: :314 promises "N failed
+    // deliveries are waiting. Open one to inspect or retry" while the operator can only reach
+    // the first 100, and a stuck delivery you cannot see is one you cannot retry. Server side
+    // was already correct (NotificationGatewayEndpoints.cs:288/:191 — true CountAsync, clamps,
+    // honours Skip/Take), so this is client-only. Same shape and remedy as ipop-47 (archived
+    // rooms), ipop-48 (thread replies) and ipop-49 (call history).
+    private List<RequestRow> requestRows = [];
+    private int requestPage = 1;
+    private bool requestsLoadingMore;
+    private bool HasMoreRequests => requestRows.Count < requests.Total;
+
+    private List<DeadLetterItem> dlqRows = [];
+    private int dlqPage = 1;
+    private bool dlqLoadingMore;
+    private bool HasMoreDlq => dlqRows.Count < dlq.Total;
+
+    private record DeadLetterItem(Guid Id, Guid RequestId, Guid UserId, string Status, string? Channel, int AttemptCount, string? LastError, DateTime? NextAttemptAt, DateTime UpdatedAt, string? ClientId);
+    private record DeadLetterDto(IReadOnlyList<DeadLetterItem> Items, int Total, int Page, int PageSize);
+    private record ClientRow(Guid Id, string ClientId, string? AllowedIps, string? AllowedEventTypes, int RateLimitPerSecond, int MaxRecipients, bool IsActive, DateTime CreatedAt, DateTime? SecretRotatedAt, int RequestCount);
+    private record ClientsDto(IReadOnlyList<ClientRow> Items, int Total);
+    private record RequestRow(Guid Id, string ClientId, string EventType, string Title, string Priority, string Status, DateTime AcceptedAt, DateTime? DeliveredAt, DateTime? FailedAt, int DeliveryCount);
+    private record RequestsDto(IReadOnlyList<RequestRow> Items, int Total, IReadOnlyList<ByStatusItem> ByStatus, int Page, int PageSize);
+    private record ByStatusItem(string Status, int Count);
+    private record struct RequestCounts(int Queued, int Failed, int Delivered, int Total);
+    private record DeliveryRow(Guid UserId, string Status, string? Channel, int AttemptCount, DateTime? DeliveredAt, DateTime? ReadAt, DateTime? AcknowledgedAt, string? LastError);
+    private record GatewayTimelineDto(Guid Id, string ClientId, string Priority, string EventType, string Status, DateTime? AcceptedAt, DateTime? QueuedAt, DateTime? ProcessedAt, DateTime? DeliveredAt, DateTime? FailedAt, IReadOnlyList<DeliveryRow> Deliveries);
+
+    private record Stage(string Label, bool Hit);
+
+    protected override void OnInitialized() => Layout.SetHeader("Notifications", "Gateway admin");
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.LoadMeAsync();
+        loaded = true;
+        if (Auth.IsAdmin) await LoadAll();
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task LoadAll()
+    {
+        await Task.WhenAll(LoadClients(), LoadRequests(), LoadDlq());
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task LoadClients()
+    {
+        clients = await Auth.GetAsync<ClientsDto>("/api/notifications/v1/clients") ?? new([], 0);
+    }
+
+    // ipop-51: the status filter is part of the paging identity — SetStatusFilter re-enters here
+    // and must restart at page 1 against the new predicate, never append onto the old one.
+    private string RequestsUrl(int p) => reqStatus == "all"
+        ? $"/api/notifications/v1/requests?page={p}&pageSize=100"
+        : $"/api/notifications/v1/requests?status={Uri.EscapeDataString(reqStatus)}&page={p}&pageSize=100";
+
+    private async Task LoadRequests()
+    {
+        requests = await Auth.GetAsync<RequestsDto>(RequestsUrl(1)) ?? new([], 0, [], 1, 100);
+        reqCounts = PackCounts(requests);
+        requestRows = requests.Items.ToList();
+        requestPage = 1;
+    }
+
+    /// ipop-51: append the next page of requests.
+    private async Task LoadMoreRequests()
+    {
+        if (requestsLoadingMore) return;
+        requestsLoadingMore = true;
+        try
+        {
+            var next = requestPage + 1;
+            var page = await Auth.GetAsync<RequestsDto>(RequestsUrl(next));
+            if (page is null) return;
+            requestPage = next;
+            // The server's figures are authoritative for what remains and for the head counts.
+            requests = requests with { Total = page.Total, ByStatus = page.ByStatus };
+            reqCounts = PackCounts(requests);
+            // A request accepted between page 1 and page 2 shifts every row down one, so the tail
+            // of page 1 comes back as the head of page 2. Id is the primary key, so it dedups.
+            var seen = requestRows.Select(r => r.Id).ToHashSet();
+            foreach (var row in page.Items)
+                if (seen.Add(row.Id))
+                    requestRows.Add(row);
+        }
+        finally { requestsLoadingMore = false; StateHasChanged(); }
+    }
+
+    private async Task LoadDlq()
+    {
+        dlq = await Auth.GetAsync<DeadLetterDto>("/api/notifications/v1/dead-letter?page=1&pageSize=100") ?? new([], 0, 1, 100);
+        notice = dlq.Total > 0 ? $"{dlq.Total} failed deliveries are waiting. Open one to inspect or retry." : "";
+        dlqRows = dlq.Items.ToList();
+        dlqPage = 1;
+    }
+
+    /// ipop-51: append the next page of dead letters.
+    private async Task LoadMoreDlq()
+    {
+        if (dlqLoadingMore) return;
+        dlqLoadingMore = true;
+        try
+        {
+            var next = dlqPage + 1;
+            var page = await Auth.GetAsync<DeadLetterDto>($"/api/notifications/v1/dead-letter?page={next}&pageSize=100");
+            if (page is null) return;
+            dlqPage = next;
+            dlq = dlq with { Total = page.Total };
+            // Retrying a delivery removes it from the failed-only query and shifts the rest up,
+            // which can repeat a row across the page boundary. Id is the delivery PK.
+            var seen = dlqRows.Select(d => d.Id).ToHashSet();
+            foreach (var row in page.Items)
+                if (seen.Add(row.Id))
+                    dlqRows.Add(row);
+            notice = dlq.Total > 0 ? $"{dlq.Total} failed deliveries are waiting. Open one to inspect or retry." : "";
+        }
+        finally { dlqLoadingMore = false; StateHasChanged(); }
+    }
+
+    private static RequestCounts PackCounts(RequestsDto r)
+    {
+        var by = r.ByStatus.ToDictionary(x => x.Status, x => x.Count);
+        return new RequestCounts(
+            by.TryGetValue("queued", out var q) ? q : 0,
+            by.TryGetValue("failed", out var f) ? f : 0,
+            by.TryGetValue("delivered", out var d) ? d : 0,
+            r.Total);
+    }
+
+    private async Task SetStatusFilter(string s)
+    {
+        reqStatus = s;
+        StateHasChanged();
+        await LoadRequests();
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task OpenTimeline(Guid requestId)
+    {
+        timeline = null;
+        StateHasChanged();
+        timeline = await Auth.GetAsync<GatewayTimelineDto>($"/api/notifications/v1/requests/{requestId}/timeline");
+        if (timeline is null) Toasts.Show("Request not found, or you lack permission.", ToastKind.Error);
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task LookupRequest()
+    {
+        if (!Guid.TryParse(requestIdInput.Trim(), out var id))
+        {
+            Toasts.Show("Enter a valid request GUID.", ToastKind.Error);
+            return;
+        }
+        await OpenTimeline(id);
+    }
+
+    private static List<Stage> RequestStages(GatewayTimelineDto t)
+    {
+        var stages = new List<(string, bool)>
+        {
+            ("Accepted", t.AcceptedAt is not null),
+            ("Queued", t.QueuedAt is not null),
+            ("Processing", t.ProcessedAt is not null),
+        };
+        // Delivered = all-deliveries terminal OR request.DeliveredAt set; Failed = failed count > 0.
+        var anyDelivered = t.DeliveredAt is not null || t.Deliveries.Any(d => d.Status is "delivered" or "read" or "acknowledged");
+        var anyFailed = t.FailedAt is not null || t.Deliveries.Any(d => d.Status == "failed");
+        stages.Add(("Delivered", anyDelivered));
+        stages.Add(("Failed", anyFailed));
+        return stages.Select(s => new Stage(s.Item1, s.Item2)).ToList();
+    }
+
+    /// Priority badge -> tokens (never hex): high = --danger, normal = --accent, low = --ink-3.
+    private static string PriorityFg(string p) => p switch
+    {
+        "high" => "var(--danger)",
+        "normal" => "var(--accent)",
+        _ => "var(--ink-3)",
+    };
+
+    private static (string bg, string fg) StatusChip(string s) => s switch
+    {
+        "delivered" or "read" or "acknowledged" => ("var(--accent-soft)", "var(--accent-ink)"),
+        "failed" => ("var(--danger-soft)", "var(--danger)"),
+        _ => ("var(--tray)", "var(--ink-2)"),
+    };
+
+    private static string DeliveryMeta(DeliveryRow d)
+    {
+        if (d.AcknowledgedAt is not null) return $"acked {d.AcknowledgedAt.Value.ToLocalTime():dd MMM HH:mm}";
+        if (d.ReadAt is not null) return $"read {d.ReadAt.Value.ToLocalTime():dd MMM HH:mm}";
+        if (d.DeliveredAt is not null) return $"sent {d.DeliveredAt.Value.ToLocalTime():dd MMM HH:mm}";
+        return d.LastError ?? "—";
+    }
+
+    private void GoDashboard() => Nav.NavigateTo("/dashboard");
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+    public void Dispose() { }
+}

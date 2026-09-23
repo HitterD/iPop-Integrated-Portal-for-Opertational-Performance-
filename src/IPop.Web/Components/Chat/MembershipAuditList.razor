@@ -1,0 +1,58 @@
+@using IPop.Application.Chat
+@using IPop.Web.Services
+@inject AuthState Auth
+
+@if (loading)
+{
+    <div class="audit-state">Loading history…</div>
+}
+else if (!string.IsNullOrEmpty(error))
+{
+    <div class="audit-error">@error <button class="comp-btn audit-retry" @onclick="Load">Retry</button></div>
+}
+else if (!items.Any())
+{
+    <div class="audit-state">No membership changes yet.</div>
+}
+else
+{
+    @foreach (var a in items)
+    {
+        var entry = a;
+        <div class="audit-entry">
+            <div><b>@entry.ActorName</b> @entry.Action @if (entry.TargetName != null) { <b>@entry.TargetName</b> } <span class="audit-muted">@entry.CreatedAt.ToLocalTime().ToString("g")</span></div>
+            @if (entry.OldValue != null || entry.NewValue != null)
+            {
+                <div class="audit-muted">@entry.OldValue → @entry.NewValue</div>
+            }
+        </div>
+    }
+    @if (hasMore)
+    {
+        <button class="audit-load-more" @onclick="LoadMore">Load more</button>
+    }
+}
+
+@code {
+    [Parameter] public Guid RoomId { get; set; }
+    private List<MembershipAuditDto> items = [];
+    private bool loading;
+    private string? error;
+    private int page = 1;
+    private bool hasMore;
+
+    protected override async Task OnParametersSetAsync() { page = 1; items.Clear(); await Load(); }
+
+    private async Task Load()
+    {
+        loading = true; error = null;
+        try
+        {
+            var res = await Auth.GetAsync<PagedResult<MembershipAuditDto>>($"/api/chat/rooms/{RoomId}/audit?page={page}&pageSize=20");
+            if (res != null) { if (page == 1) items = res.Items.ToList(); else foreach (var x in res.Items) items.Add(x); hasMore = items.Count < res.TotalCount; }
+        }
+        catch (Exception ex) { error = ex.Message; }
+        finally { loading = false; }
+    }
+    private async Task LoadMore() { page++; await Load(); }
+}

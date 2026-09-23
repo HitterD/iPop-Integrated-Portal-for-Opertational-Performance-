@@ -17,8 +17,16 @@ public class AuthState(HttpClient http, IJSRuntime js)
     private HubConnection? _presence;
     private Timer? _heartbeat;
 
+    /// Serializes token refresh; _refreshGeneration lets a caller that queued behind a successful
+    /// refresh return that result instead of spending the rotated token again. See TryRestoreAsync.
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private int _refreshGeneration;
+
     public bool MustChangePassword { get; private set; }
     public bool IsAuthenticated => _accessToken is not null;
+
+    /// The current access token for Hub connections (ChatState, etc.). Null when signed out.
+    public string? AccessToken => _accessToken;
     public string MyStatus { get; private set; } = "off";
 
     /// Presence-hub link state, for the Directory page's status pill.
@@ -27,6 +35,12 @@ public class AuthState(HttpClient http, IJSRuntime js)
     public event Action<string, string>? PresenceChanged;
     public event Action? DirectoryChanged;
     public event Action? AuditChanged;
+
+    /// Raised once when the refresh token is refused and the session is genuinely over (14-day
+    /// expiry, admin revoke, deactivation) — as opposed to the routine 15-minute access-token
+    /// renewal. The shell listens and routes to /login; without it the app kept beating against a
+    /// dead session behind a red error bar and a permanent "Reconnecting…".
+    public event Action? SessionEnded;
 
     /// The signed-in user's own directory row, loaded lazily by the shell.
     public DirectoryEmployeeDto? Me { get; private set; }
@@ -137,7 +151,39 @@ public class AuthState(HttpClient http, IJSRuntime js)
     }
 
     /// Restore session from the stored refresh token on app start. False → go to /login.
+    ///
+    /// Single-flight, and it has to be. The server ROTATES refresh tokens: a successful refresh
+    /// revokes the token it was handed (AuthWorkflow.RefreshAsync), so replaying a spent one comes
+    /// back 401 — indistinguishable from "your session is over". When the 15-minute access token
+    /// expires, every request in flight 401s at the same instant (Dashboard alone fans out seven),
+    /// and without this gate each one refreshed in parallel: one won, the rest presented the token
+    /// it had just revoked, and every one of those failures deleted the good refresh token the
+    /// winner had only just stored. The session destroyed itself every quarter of an hour.
     public async Task<bool> TryRestoreAsync()
+    {
+        // Sampled BEFORE queueing: if it moves while we wait, another caller's refresh already
+        // covered us, and re-sending our now-stale copy is precisely the replay to avoid.
+        var seen = Volatile.Read(ref _refreshGeneration);
+        bool ok;
+        await _refreshGate.WaitAsync();
+        try
+        {
+            // Generation moved while we queued: another caller already refreshed, and _accessToken
+            // is theirs. Report their result rather than spending the token they just rotated away.
+            if (Volatile.Read(ref _refreshGeneration) != seen) return _accessToken is not null;
+            ok = await RefreshCoreAsync();
+            if (ok) Interlocked.Increment(ref _refreshGeneration);
+        }
+        finally { _refreshGate.Release(); }
+
+        // Deliberately outside the gate: StartPresenceAsync sends the first heartbeat, and a
+        // heartbeat that 401s re-enters TryRestoreAsync. On WASM's single thread, doing that while
+        // still holding the semaphore is a deadlock the app never wakes up from.
+        if (ok && !MustChangePassword) await StartPresenceAsync();
+        return ok;
+    }
+
+    private async Task<bool> RefreshCoreAsync()
     {
         var refresh = await js.InvokeAsync<string?>("localStorage.getItem", RefreshKey);
         if (string.IsNullOrEmpty(refresh)) return false;
@@ -147,25 +193,33 @@ public class AuthState(HttpClient http, IJSRuntime js)
         catch { return false; } // API down — stay signed out rather than crash the router
         if (!res.IsSuccessStatusCode)
         {
-            await js.InvokeVoidAsync("localStorage.removeItem", RefreshKey);
+            // The server refused the refresh token itself: this session is over and no amount of
+            // retrying brings it back. Tear down the timer and the hub, then tell the shell — the
+            // heartbeat used to keep firing against a corpse, which is what put the red error bar
+            // on screen and left "Reconnecting…" up forever.
+            await ClearAsync();
+            SessionEnded?.Invoke();
             return false;
         }
         var body = (await res.Content.ReadFromJsonAsync<RefreshDto>())!;
         _accessToken = body.AccessToken;
         MustChangePassword = body.MustChangePassword;
         await js.InvokeVoidAsync("localStorage.setItem", RefreshKey, body.RefreshToken);
-        if (!MustChangePassword) await StartPresenceAsync();
-        return true;
+        return true; // presence is started by TryRestoreAsync, once the refresh gate is released
     }
 
     /// GET with bearer + one silent refresh retry on 401 (spec §3.2).
-    public async Task<T?> GetAsync<T>(string url)
+    public async Task<T?> GetAsync<T>(string url, CancellationToken ct = default)
     {
-        var res = await Send(HttpMethod.Get, url, null);
+        var res = await Send(HttpMethod.Get, url, null, ct);
         if (res.StatusCode == HttpStatusCode.Unauthorized && await TryRestoreAsync())
-            res = await Send(HttpMethod.Get, url, null);
+            res = await Send(HttpMethod.Get, url, null, ct);
+        if (ct.IsCancellationRequested) ct.ThrowIfCancellationRequested();
         if (!res.IsSuccessStatusCode) return default;
-        return await res.Content.ReadFromJsonAsync<T>();
+        // Guard empty bodies: 204/idle endpoints (e.g. /api/calls/ringing with no ring)
+        // return 200 + Content-Length: 0 → ReadFromJsonAsync would throw and crash the page.
+        if (res.Content.Headers.ContentLength is 0) return default;
+        return await res.Content.ReadFromJsonAsync<T>(cancellationToken: ct);
     }
 
     public async Task SignOutAsync()
@@ -207,24 +261,35 @@ public class AuthState(HttpClient http, IJSRuntime js)
 
     public async Task<HttpResponseMessage> SendMultipartAsync(string url, MultipartFormDataContent content)
     {
-        var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
-        if (_accessToken is not null) req.Headers.Authorization = new("Bearer", _accessToken);
-        var res = await http.SendAsync(req);
+        // MultipartFormDataContent's inner streams are consumed on Send — buffer once so 401 retry can resend.
+        var buffered = await content.ReadAsByteArrayAsync();
+        var contentType = content.Headers.ContentType?.ToString();
+        content.Dispose();
+
+        async Task<HttpResponseMessage> SendOnce(string? token)
+        {
+            var c = new ByteArrayContent(buffered);
+            if (contentType is not null) c.Headers.TryAddWithoutValidation("Content-Type", contentType);
+            var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = c };
+            if (token is not null) req.Headers.Authorization = new("Bearer", token);
+            return await http.SendAsync(req);
+        }
+
+        var res = await SendOnce(_accessToken);
         if (res.StatusCode == HttpStatusCode.Unauthorized && await TryRestoreAsync())
         {
-            var retry = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
-            if (_accessToken is not null) retry.Headers.Authorization = new("Bearer", _accessToken);
-            res = await http.SendAsync(retry);
+            res.Dispose();
+            res = await SendOnce(_accessToken);
         }
         return res;
     }
 
-    private async Task<HttpResponseMessage> Send(HttpMethod method, string url, object? body)
+    private async Task<HttpResponseMessage> Send(HttpMethod method, string url, object? body, CancellationToken ct = default)
     {
         var req = new HttpRequestMessage(method, url);
         if (body is not null) req.Content = JsonContent.Create(body);
         if (_accessToken is not null) req.Headers.Authorization = new("Bearer", _accessToken);
-        return await http.SendAsync(req);
+        return await http.SendAsync(req, ct);
     }
 
     /// The API returns AuthError as JSON, but a 500/proxy failure returns HTML — don't let that throw.

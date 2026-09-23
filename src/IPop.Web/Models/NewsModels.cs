@@ -78,7 +78,7 @@ public record PagedNewsResult<T>(
 public static class NewsUiHelper
 {
     public static readonly List<AppOption> StatusOptions = [
-        new("", "Semua Status"),
+        new("", "All Statuses"),
         new("published", "Published"),
         new("pending", "Pending Approval"),
         new("draft", "Draft"),
@@ -86,17 +86,17 @@ public static class NewsUiHelper
     ];
 
     public static readonly List<AppOption> FormTypeOptions = [
-        new("news", "News (Berita Korporat)"),
-        new("memo", "Internal Memo (IM / Nota Dinas)"),
-        new("condolence", "Berita Duka Cita"),
-        new("announcement", "Pengumuman Resmi (Announcement)")
+        new("news", "News (Corporate News)"),
+        new("memo", "Internal Memo (IM)"),
+        new("condolence", "Condolence Announcement"),
+        new("announcement", "Official Announcement")
     ];
 
     public static readonly List<AppOption> TargetKindOptions = [
-        new("all", "Semua Karyawan (All)"),
-        new("department", "Departemen Tertentu"),
-        new("role", "Jabatan / Role Tertentu"),
-        new("user", "Karyawan Spesifik (NIK)")
+        new("all", "All Employees (All)"),
+        new("department", "Specific Department"),
+        new("role", "Specific Role"),
+        new("user", "Specific Employee (NIK)")
     ];
 
     public static string GetCategoryIcon(string t) => t switch
@@ -109,11 +109,11 @@ public static class NewsUiHelper
 
     public static string GetCategoryLabel(string t) => t switch
     {
-        "condolence" or "duka" => "Berita Duka",
+        "condolence" or "duka" => "Condolence",
         "memo" => "Internal Memo",
-        "announcement" => "Pengumuman",
+        "announcement" => "Announcement",
         "news" => "News",
-        _ => "Semua"
+        _ => "All"
     };
 
     public static string StatusLabel(string s) => s switch
@@ -127,15 +127,15 @@ public static class NewsUiHelper
 
     public static string FormatAuditAction(string action) => action switch
     {
-        "created" => "Dibuat",
-        "submitted" => "Diajukan",
-        "approved" => "Disetujui",
-        "published" => "Dipublikasikan",
-        "rejected" => "Ditolak",
-        "unpublished" => "Ditarik",
-        "pinned" => "Disematkan",
-        "unpinned" => "Lepas Sematan",
-        "acknowledged" => "Dikonfirmasi Baca",
+        "created" => "Created",
+        "submitted" => "Submitted",
+        "approved" => "Approved",
+        "published" => "Published",
+        "rejected" => "Rejected",
+        "unpublished" => "Unpublished",
+        "pinned" => "Pinned",
+        "unpinned" => "Unpinned",
+        "acknowledged" => "Acknowledged",
         _ => action
     };
 

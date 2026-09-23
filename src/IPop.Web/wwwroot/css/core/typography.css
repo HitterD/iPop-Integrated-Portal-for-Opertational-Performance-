@@ -1,0 +1,44 @@
+/* Global type system. */
+
+/* Self-hosted Inter (latin subset, OFL — see fonts/Inter-LICENSE.txt) for intranet /
+   offline use. Closest open face to SF Pro; the stack falls back to the OS UI font
+   (SF on macOS, Segoe on Windows) if the files are missing. */
+@font-face {
+  font-family: 'Inter';
+  src: url('../fonts/Inter-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('../fonts/Inter-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('../fonts/Inter-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('../fonts/Inter-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+html { -webkit-font-smoothing: antialiased; }
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  /* Inter runs wide at text sizes; Apple-style tracking tightens it. */
+  letter-spacing: -0.011em;
+  font-feature-settings: "cv11", "ss01";
+}
+.lucide { width: 17px; height: 17px; stroke-width: 1.6; }
+.mono { font-variant-numeric: tabular-nums; }

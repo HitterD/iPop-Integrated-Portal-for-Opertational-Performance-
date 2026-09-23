@@ -1,0 +1,126 @@
+@namespace IPop.Web.Components.News
+@using IPop.Web.Models
+
+<!-- Segmented Category Tabs -->
+<div class="news-tabs-bar">
+    <button type="button" class="news-cat-tab @(string.IsNullOrEmpty(TypeFilter) ? "active" : "")" @onclick='() => OnSelectCategory.InvokeAsync("")'>
+        <i data-lucide="layers"></i>
+        <span>All</span>
+        @if (string.IsNullOrEmpty(TypeFilter)) { <span class="tab-badge">@Total</span> }
+    </button>
+    <button type="button" class="news-cat-tab tab-news @(TypeFilter == "news" ? "active" : "")" @onclick='() => OnSelectCategory.InvokeAsync("news")'>
+        <i data-lucide="newspaper"></i>
+        <span>News</span>
+        @if (TypeFilter == "news") { <span class="tab-badge">@Total</span> }
+    </button>
+    <button type="button" class="news-cat-tab tab-memo @(TypeFilter == "memo" ? "active" : "")" @onclick='() => OnSelectCategory.InvokeAsync("memo")'>
+        <i data-lucide="file-text"></i>
+        <span>Internal Memo (IM)</span>
+        @if (TypeFilter == "memo") { <span class="tab-badge">@Total</span> }
+    </button>
+    <button type="button" class="news-cat-tab tab-condolence @(TypeFilter == "condolence" ? "active" : "")" @onclick='() => OnSelectCategory.InvokeAsync("condolence")'>
+        <i data-lucide="heart"></i>
+        <span>Condolence</span>
+        @if (TypeFilter == "condolence") { <span class="tab-badge">@Total</span> }
+    </button>
+    <button type="button" class="news-cat-tab tab-announcement @(TypeFilter == "announcement" ? "active" : "")" @onclick='() => OnSelectCategory.InvokeAsync("announcement")'>
+        <i data-lucide="megaphone"></i>
+        <span>Announcement</span>
+        @if (TypeFilter == "announcement") { <span class="tab-badge">@Total</span> }
+    </button>
+</div>
+
+<!-- Filter Controls Bar -->
+<div class="news-filter-bar">
+    <div class="search" style="flex:1 1 240px">
+        <i data-lucide="search"></i>
+        <input placeholder="Search title, keyword, or subject…"
+               value="@SearchQuery"
+               @oninput="HandleSearchInput" />
+    </div>
+
+    <AppSelect Label="Status"
+               Value="@StatusFilter"
+               ValueChanged="HandleStatusChanged"
+               Options="@NewsUiHelper.StatusOptions" />
+
+    <label class="filter-check-lbl">
+        <input type="checkbox"
+               checked="@PinnedOnly"
+               @onchange="HandlePinnedChanged" />
+        <i data-lucide="pin" style="width:12px;height:12px;color:var(--ink-2)"></i> Pinned only
+    </label>
+
+    <label class="filter-check-lbl">
+        <input type="checkbox"
+               checked="@RequiresAckOnly"
+               @onchange="HandleRequiresAckChanged" />
+        <i data-lucide="check-circle-2" style="width:12px;height:12px;color:var(--ink-2)"></i> Ack required
+    </label>
+
+    @if (IsApprover)
+    {
+        <label class="filter-check-lbl">
+            <input type="checkbox"
+                   checked="@IncludeScheduled"
+                   @onchange="HandleIncludeScheduledChanged" />
+            <i data-lucide="clock-3" style="width:12px;height:12px;color:var(--ink-2)"></i> Scheduled queue
+        </label>
+    }
+
+    @if (HasActiveFilters)
+    {
+        <button class="btn btn-sm surface" @onclick="OnResetFilters" style="display:inline-flex;align-items:center;gap:6px">
+            <i data-lucide="x" style="width:12px;height:12px"></i> Reset filters
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public string TypeFilter { get; set; } = "";
+    [Parameter] public int Total { get; set; }
+    [Parameter] public string SearchQuery { get; set; } = "";
+    [Parameter] public string StatusFilter { get; set; } = "";
+    [Parameter] public bool PinnedOnly { get; set; }
+    [Parameter] public bool RequiresAckOnly { get; set; }
+    [Parameter] public bool IncludeScheduled { get; set; }
+    [Parameter] public bool IsApprover { get; set; }
+    [Parameter] public bool HasActiveFilters { get; set; }
+
+    [Parameter] public EventCallback<string> OnSelectCategory { get; set; }
+    [Parameter] public EventCallback<string> OnSearchQueryChanged { get; set; }
+    [Parameter] public EventCallback<string> OnStatusFilterChanged { get; set; }
+    [Parameter] public EventCallback<bool> OnPinnedOnlyChanged { get; set; }
+    [Parameter] public EventCallback<bool> OnRequiresAckOnlyChanged { get; set; }
+    [Parameter] public EventCallback<bool> OnIncludeScheduledChanged { get; set; }
+    [Parameter] public EventCallback OnResetFilters { get; set; }
+
+    private async Task HandleSearchInput(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString() ?? "";
+        await OnSearchQueryChanged.InvokeAsync(val);
+    }
+
+    private async Task HandleStatusChanged(string? v)
+    {
+        await OnStatusFilterChanged.InvokeAsync(v ?? "");
+    }
+
+    private async Task HandlePinnedChanged(ChangeEventArgs e)
+    {
+        var val = (bool)(e.Value ?? false);
+        await OnPinnedOnlyChanged.InvokeAsync(val);
+    }
+
+    private async Task HandleRequiresAckChanged(ChangeEventArgs e)
+    {
+        var val = (bool)(e.Value ?? false);
+        await OnRequiresAckOnlyChanged.InvokeAsync(val);
+    }
+
+    private async Task HandleIncludeScheduledChanged(ChangeEventArgs e)
+    {
+        var val = (bool)(e.Value ?? false);
+        await OnIncludeScheduledChanged.InvokeAsync(val);
+    }
+}

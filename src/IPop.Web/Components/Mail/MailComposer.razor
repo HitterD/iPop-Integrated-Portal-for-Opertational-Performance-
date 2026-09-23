@@ -1,6 +1,7 @@
 @inject IJSRuntime JS
 @inject IPop.Web.Services.MailService MailSvc
 @inject IPop.Web.Services.ToastService Toasts
+@inject IPop.Web.Services.AuthState Auth
 @using IPop.Web.Components
 @using IPop.Web.Services
 @implements IDisposable
@@ -23,36 +24,39 @@
             <div class="head-actions" @onclick:stopPropagation>
                 @if (dockState == ComposerDockState.Minimized)
                 {
-                    <button class="icon-btn" title="Restore" @onclick="Restore">
+                    <button class="icon-btn" title="Restore" aria-label="Restore" @onclick="Restore">
                         <i data-lucide="maximize-2"></i>
                     </button>
                 }
                 else
                 {
-                    <button class="icon-btn" title="Minimize" @onclick="Minimize">
+                    <button class="icon-btn" title="Minimize" aria-label="Minimize" @onclick="Minimize">
                         <i data-lucide="minus"></i>
                     </button>
                     @if (dockState == ComposerDockState.Maximized)
                     {
-                        <button class="icon-btn" title="Restore size" @onclick="Restore">
+                        <button class="icon-btn" title="Restore size" aria-label="Restore size" @onclick="Restore">
                             <i data-lucide="minimize-2"></i>
                         </button>
                     }
                     else
                     {
-                        <button class="icon-btn" title="Maximize" @onclick="Maximize">
+                        <button class="icon-btn" title="Maximize" aria-label="Maximize" @onclick="Maximize">
                             <i data-lucide="square"></i>
                         </button>
                     }
                 }
-                <button class="icon-btn" title="Close" @onclick="Close">
+                <button class="icon-btn" title="Close" aria-label="Close" @onclick="Close">
                     <i data-lucide="x"></i>
                 </button>
             </div>
         </div>
 
-        @* Body *@
-        <div class="composer-body-wrap">
+        @* Body — drag-drop files zone (Phase 2) *@
+        <div class="composer-body-wrap" @ref="dropZoneRef">
+            <div class="composer-drop-hint">
+                <i data-lucide="upload-cloud"></i> Drop files here to attach
+            </div>
             <div class="recipients-block">
                 @* To Row *@
                 <div class="recipient-row">
@@ -64,7 +68,7 @@
                             {
                                 <span class="chip">
                                     @r.Name
-                                    <button type="button" class="chip-x" @onclick="() => toRows.Remove(r)">
+                                    <button type="button" class="chip-x" title="Remove" aria-label="Remove" @onclick="() => toRows.Remove(r)">
                                         <i data-lucide="x"></i>
                                     </button>
                                 </span>
@@ -89,7 +93,7 @@
                                 {
                                     <span class="chip">
                                         @r.Name
-                                        <button type="button" class="chip-x" @onclick="() => ccRows.Remove(r)">
+                                        <button type="button" class="chip-x" title="Remove" aria-label="Remove" @onclick="() => ccRows.Remove(r)">
                                             <i data-lucide="x"></i>
                                         </button>
                                     </span>
@@ -111,7 +115,7 @@
                                 {
                                     <span class="chip">
                                         @r.Name
-                                        <button type="button" class="chip-x" @onclick="() => bccRows.Remove(r)">
+                                        <button type="button" class="chip-x" title="Remove" aria-label="Remove" @onclick="() => bccRows.Remove(r)">
                                             <i data-lucide="x"></i>
                                         </button>
                                     </span>
@@ -138,21 +142,99 @@
                 </select>
             </div>
 
-            @* Attachments Tray *@
+            @* Template + mail label (Phase 2) — template populates subject+body; label for classification *@
+            @if (templates.Count > 0 || labels.Count > 0)
+            {
+                <div class="composer-tpl-row">
+                    @if (templates.Count > 0)
+                    {
+                        <i data-lucide="layout-template" style="width:13px;height:13px;color:var(--ink-3)"></i>
+                        <select class="filter-select composer-tpl-select" value="" @onchange="ApplyTemplate" title="Use email template" aria-label="Use email template">
+                            <option value="">Use template…</option>
+                            @foreach (var tpl in templates)
+                            {
+                                <option value="@tpl.Name">@tpl.Name</option>
+                            }
+                        </select>
+                    }
+                    @if (labels.Count > 0)
+                    {
+                        <i data-lucide="tag" style="width:13px;height:13px;color:var(--ink-3)"></i>
+                        <select class="filter-select composer-tpl-select" value="" @onchange="ApplyLabel" title="Tag with label" aria-label="Tag with label">
+                            <option value="">Label…</option>
+                            @foreach (var l in labels)
+                            {
+                                <option value="@l.Id">@l.Name</option>
+                            }
+                        </select>
+                        @foreach (var lid in selectedLabelIds)
+                        {
+                            var lbl = labels.FirstOrDefault(x => x.Id == lid);
+                            if (lbl is not null)
+                            {
+                                <span class="chip" style="background:@(lbl.Color ?? "var(--accent-soft)")">
+                                    @lbl.Name
+                                    <button type="button" class="chip-x" title="Remove" aria-label="Remove" @onclick="() => selectedLabelIds.Remove(lid)"><i data-lucide="x"></i></button>
+                                </span>
+                            }
+                        }
+                    }
+                </div>
+            }
+
+            @* Attachments Tray — reorder up/down + delete *@
             @if (composerAtts.Count > 0)
             {
                 <div class="composer-atts">
-                    @foreach (var a in composerAtts)
+                    <div class="composer-atts-head">
+                        <i data-lucide="paperclip"></i>
+                        <span>@composerAtts.Count attachment@(composerAtts.Count == 1 ? "" : "s")</span>
+                        <span class="meta" style="font-size:10.5px;color:var(--ink-3)">order used when sent</span>
+                    </div>
+                    @foreach (var (a, i) in composerAtts.Select((x, idx) => (x, idx)))
                     {
                         <span class="composer-att-chip">
                             <i data-lucide="paperclip"></i>
                             <span class="name">@a.FileName</span>
                             <span class="size">(@HumanSize(a.FileSize))</span>
-                            <button type="button" class="del-btn" @onclick="() => composerAtts.Remove(a)">
+                            <button type="button" class="act-mini" title="Move up" aria-label="Move up" disabled="@(i == 0)" @onclick="() => MoveAtt(a, -1)">
+                                <i data-lucide="arrow-up"></i>
+                            </button>
+                            <button type="button" class="act-mini" title="Move down" aria-label="Move down" disabled="@(i == composerAtts.Count - 1)" @onclick="() => MoveAtt(a, 1)">
+                                <i data-lucide="arrow-down"></i>
+                            </button>
+                            <button type="button" class="del-btn" title="Remove attachment" aria-label="Remove attachment" @onclick="() => RemoveAtt(a)">
                                 <i data-lucide="x"></i>
                             </button>
                         </span>
                     }
+                </div>
+            }
+
+            @* Meeting invitation (Phase 2) — schedule, location/link, reminder; sent as email *@
+            <div class="composer-meeting-toggle">
+                <label class="notif-pref-toggle" style="cursor:pointer">
+                    <input type="checkbox" @bind="isMeeting" /> <i data-lucide="calendar-clock" style="width:13px;height:13px"></i> Turn into meeting invite
+                </label>
+            </div>
+            @if (isMeeting)
+            {
+                <div class="composer-meeting">
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                        <label style="font-size:11.5px;color:var(--ink-3)">Start</label>
+                        <input type="datetime-local" class="org-input" style="height:30px;font-size:12px" @bind="meetingStart" />
+                        <label style="font-size:11.5px;color:var(--ink-3)">End</label>
+                        <input type="datetime-local" class="org-input" style="height:30px;font-size:12px" @bind="meetingEnd" />
+                        <label style="font-size:11.5px;color:var(--ink-3)">Reminder</label>
+                        <select class="filter-select" style="height:30px;font-size:12px" @bind="meetingReminderMin">
+                            <option value="10">10 minutes</option>
+                            <option value="30">30 minutes</option>
+                            <option value="60">1 hour</option>
+                            <option value="1440">1 day</option>
+                        </select>
+                    </div>
+                    <input class="org-input" style="height:30px;font-size:12px" placeholder="Meeting location or link…" @bind="meetingLocation" />
+                    <div style="font-size:11px;color:var(--ink-3)">Attendees = email recipients (To/Cc). Meeting is created when email is sent.</div>
                 </div>
             }
 
@@ -168,7 +250,7 @@
                     <i data-lucide="send"></i>
                     @(sending ? "Sending…" : "Send")
                 </button>
-                <button type="button" class="send-arrow" @onclick="() => sendDropdownOpen = !sendDropdownOpen" title="Send options">
+                <button type="button" class="send-arrow" @onclick="() => sendDropdownOpen = !sendDropdownOpen" title="Send options" aria-label="Send options">
                     <i data-lucide="chevron-down"></i>
                 </button>
 
@@ -239,7 +321,7 @@
         <div class="syno-picker-dialog" style="max-width:420px" @onclick:stopPropagation>
             <div class="syno-picker-head">
                 <span class="title"><i data-lucide="calendar-clock"></i> Schedule Send</span>
-                <button type="button" class="icon-btn" @onclick="() => showCustomScheduleModal = false"><i data-lucide="x"></i></button>
+                <button type="button" class="icon-btn" title="Close" aria-label="Close" @onclick="() => showCustomScheduleModal = false"><i data-lucide="x"></i></button>
             </div>
             <div class="syno-picker-body" style="min-height:auto;padding:20px">
                 <p style="font-size:12.5px;color:var(--ink-2);margin-bottom:12px">
@@ -302,11 +384,26 @@
     private DateTime customScheduleTime = DateTime.Now.AddHours(2);
     private CancellationTokenSource? autosaveCts;
 
+    // Zona seret-lepas berkas (Fase 2)
+    private ElementReference dropZoneRef;
+
+    // Undangan rapat (Fase 2)
+    private bool isMeeting;
+    private DateTime meetingStart = DateTime.Now.Date.AddDays(1).AddHours(9);
+    private DateTime meetingEnd = DateTime.Now.Date.AddDays(1).AddHours(10);
+    private int meetingReminderMin = 30;
+    private string meetingLocation = "";
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (IsOpen)
         {
             await JS.InvokeVoidAsync("ipop.icons");
+            await JS.InvokeVoidAsync("ipop.mailBindDropZone", dropZoneRef, "input[type=file]");
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("ipop.mailUnbindDropZone", dropZoneRef);
         }
     }
 
@@ -384,6 +481,57 @@
     private void OnBodyChanged(string newBody)
     {
         body = newBody;
+        OnContentChanged();
+    }
+
+    // ---- Template surat (Fase 3) ----
+    private sealed record TemplateRow(string Name, string Subject, string Body);
+    private List<TemplateRow> templates = [];
+
+    // ---- Label surat (Fase 2) — klasifikasi yang diterapkan saat kirim ----
+    private sealed record LabelRow(Guid Id, string Name, string? Color);
+    private List<LabelRow> labels = [];
+    private HashSet<Guid> selectedLabelIds = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTemplatesAsync();
+        await LoadLabelsAsync();
+    }
+
+    private async Task LoadTemplatesAsync()
+    {
+        try
+        {
+            templates = await Auth.GetAsync<List<TemplateRow>>("/api/mail/templates") ?? [];
+        }
+        catch { templates = []; }
+    }
+
+    private async Task LoadLabelsAsync()
+    {
+        try
+        {
+            labels = await Auth.GetAsync<List<LabelRow>>("/api/mail/labels") ?? [];
+        }
+        catch { labels = []; }
+    }
+
+    private void ApplyLabel(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var id))
+            selectedLabelIds.Add(id);
+        StateHasChanged();
+    }
+
+    private void ApplyTemplate(ChangeEventArgs e)
+    {
+        var name = e.Value?.ToString();
+        if (string.IsNullOrEmpty(name)) return;
+        var tpl = templates.FirstOrDefault(t => t.Name == name);
+        if (tpl is null) return;
+        subject = tpl.Subject;
+        body = tpl.Body; // RTE tersinkron lewat Value ↔ lastSyncedValue pada render berikutnya
         OnContentChanged();
     }
 
@@ -497,9 +645,17 @@
                     _ = MailSvc.DiscardDraftAsync(editingDraftId.Value);
                 }
 
+                // Undangan rapat (Fase 2): buat Meeting setelah surat terkirim — peserta
+                // adalah penerima (To/Cc). Ditunggu agar kegagalan terlihat; rapat dihubungkan
+                // ke surat undangan lewat SourceMailId.
+                if (isMeeting && res.MailId.HasValue)
+                {
+                    await CreateMeetingAsync(res.MailId.Value);
+                }
+
                 Toasts.Show(scheduledAt.HasValue
                     ? $"Email scheduled for {scheduledAt.Value.ToLocalTime():dd MMM yyyy HH:mm}."
-                    : "Email sent successfully.");
+                    : isMeeting ? "Meeting invitation sent." : "Email sent successfully.");
 
                 Close();
                 await OnSent.InvokeAsync();
@@ -518,6 +674,32 @@
             sending = false;
             StateHasChanged();
         }
+    }
+
+    // Meeting invitation: create Meeting from email recipients (To+Cc → attendee, send NIK),
+    // linked to email via SourceMailId. Failure reported to user.
+    private async Task CreateMeetingAsync(Guid mailId)
+    {
+        var attendeeNiks = toRows.Concat(ccRows).Select(r => r.Nik).Distinct().ToList();
+        if (attendeeNiks.Count == 0) return;
+
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/meetings", new
+        {
+            title = string.IsNullOrWhiteSpace(subject) ? "Meeting" : subject,
+            startAt = meetingStart.ToUniversalTime(),
+            endAt = meetingEnd.ToUniversalTime(),
+            timeZone = (string?)null,
+            location = string.IsNullOrWhiteSpace(meetingLocation) ? null : meetingLocation,
+            link = (string?)null,
+            attendeeIds = (IReadOnlyList<Guid>?)null,
+            requiredIds = (IReadOnlyList<Guid>?)null,
+            attendeeNiks,
+            reminderMinutes = meetingReminderMin,
+            roomId = (Guid?)null,
+            sourceMailId = mailId,
+        });
+        if (!res.IsSuccessStatusCode)
+            Toasts.Show("Email sent, but meeting creation failed.", ToastKind.Error);
     }
 
     private async Task DiscardDraft()
@@ -569,6 +751,29 @@
         StateHasChanged();
     }
 
+    // Panel kelola lampiran: geser urutan (atas/bawah).
+    private void MoveAtt(MailAttachment a, int delta)
+    {
+        var i = composerAtts.IndexOf(a);
+        var j = i + delta;
+        if (i < 0 || j < 0 || j >= composerAtts.Count) return;
+        (composerAtts[i], composerAtts[j]) = (composerAtts[j], composerAtts[i]);
+        StateHasChanged();
+    }
+
+    // Hapus lampiran: dari UI + server (orphan milik uploader). Gagal server tetap
+    // menghapus dari UI agar tidak menghalangi — berkas orphan dibersihkan worker.
+    private async Task RemoveAtt(MailAttachment a)
+    {
+        composerAtts.Remove(a);
+        StateHasChanged();
+        try
+        {
+            await Auth.SendAsync(HttpMethod.Delete, $"/api/mail/attachments/{a.Id}");
+        }
+        catch { /* best-effort */ }
+    }
+
     private static string HumanSize(long bytes)
     {
         if (bytes < 1024) return $"{bytes} B";
@@ -580,5 +785,7 @@
     {
         autosaveCts?.Cancel();
         autosaveCts?.Dispose();
+        if (dropZoneRef.Id is not null)
+            _ = JS.InvokeVoidAsync("ipop.mailUnbindDropZone", dropZoneRef);
     }
 }

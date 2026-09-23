@@ -25,6 +25,9 @@ public class User
     public int FailedLoginCount { get; set; }
     public DateTime? LockedUntil { get; set; }
 
+    /// Zona waktu pengguna (mis. "SE Asia Standard Time" untuk WIB). Null = gunakan default server.
+    public string? TimeZoneId { get; set; }
+
     /// Set by an admin edit; HRIS sync skips profile overwrites on this row so a manual
     /// correction is not reverted by the next sync. Activation still follows the feed.
     public bool IsManuallyEdited { get; set; }

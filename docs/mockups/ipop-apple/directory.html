@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iPop — Direktori</title>
+<link rel="stylesheet" href="app.css">
+<script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+<div class="window" id="win">
+
+  <!-- ══════════════ LEFT RAIL ══════════════ -->
+  <aside class="rail">
+    <div class="brand">
+      <div class="brand-mark">iP</div>
+      <div class="brand-name">iPop</div>
+      <button class="brand-caret"><i data-lucide="chevron-down"></i></button>
+      <button class="rail-toggle" id="railToggle" title="Ciutkan sidebar"><i data-lucide="panel-left-close"></i></button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Ruang Kerja</div>
+      <a class="nav-item" href="index.html"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></a>
+      <a class="nav-item active" href="directory.html"><i data-lucide="users"></i><span class="lbl">Direktori</span></a>
+      <a class="nav-item" href="index.html"><i data-lucide="kanban"></i><span class="lbl">Proyek</span><span class="nav-count">8</span></a>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Komunikasi</div>
+      <a class="nav-item" href="index.html"><i data-lucide="message-circle"></i><span class="lbl">Chat</span><span class="nav-count">12</span></a>
+      <a class="nav-item" href="index.html"><i data-lucide="mail"></i><span class="lbl">Mail</span><span class="nav-count">6</span></a>
+      <button class="nav-item"><i data-lucide="newspaper"></i><span class="lbl">Berita &amp; Memo</span></button>
+      <button class="nav-item"><i data-lucide="phone"></i><span class="lbl">Panggilan</span></button>
+    </div>
+
+    <div class="nav-group">
+      <div class="nav-label">Sumber Daya</div>
+      <button class="nav-item"><i data-lucide="folder"></i><span class="lbl">Berkas</span></button>
+      <button class="nav-item"><i data-lucide="calendar"></i><span class="lbl">Kalender</span></button>
+    </div>
+
+    <div class="rail-foot">
+      <button class="nav-item"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administrasi</span></button>
+      <button class="nav-item" id="themeBtn"><i data-lucide="moon"></i><span class="lbl">Mode Gelap</span></button>
+      <button class="nav-item"><i data-lucide="settings"></i><span class="lbl">Pengaturan</span></button>
+    </div>
+  </aside>
+
+  <!-- ══════════════ MAIN ══════════════ -->
+  <div class="main">
+    <section class="screen on" id="s-directory">
+      <div class="topbar">
+        <div>
+          <div class="page-title">Infrastructure</div>
+          <div class="page-sub">1.284 orang · <span style="color:var(--accent)">●</span> Live · sinkron HRIS 06:15</div>
+        </div>
+        <div class="topbar-right">
+          <div class="searchbox"><i data-lucide="search"></i><input placeholder="Cari nama atau NIK"><span class="kbd">⌘K</span></div>
+          <button class="icon-btn" id="fsBtn" title="Fullscreen"><i data-lucide="maximize-2"></i></button>
+          <button class="ghost-btn"><i data-lucide="star"></i>Prioritas</button>
+          <button class="ghost-btn" title="Ekspor hasil pencarian/filter ke CSV"><i data-lucide="download"></i>Ekspor CSV</button>
+          <div class="me-avatar">BA</div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <span class="t-13 dim" style="font-weight:550">Kehadiran</span>
+        <div class="chips">
+          <button class="chip on">Semua<span class="n">1.284</span></button>
+          <button class="chip">Online<span class="n">312</span></button>
+          <button class="chip">Sibuk<span class="n">48</span></button>
+          <button class="chip">Tidak di tempat<span class="n">96</span></button>
+          <button class="chip">Offline<span class="n">828</span></button>
+        </div>
+      </div>
+
+      <div class="body">
+        <div class="cols" style="grid-template-columns:212px minmax(0,1fr) 302px">
+
+          <!-- Structure: Site ▸ Department ▸ Division -->
+          <div class="card" style="overflow:hidden">
+            <div class="card-head" style="padding:16px 16px 6px">
+              <div>
+                <div class="card-title" style="font-size:13.5px">Structure</div>
+                <div class="card-meta" style="font-size:11.5px">14 divisi</div>
+              </div>
+            </div>
+            <div class="tree">
+              <div class="tree-site">Kantor Pusat</div>
+              <button class="tree-node lv2"><i data-lucide="chevron-down"></i><span class="lbl">Teknologi Informasi</span><span class="tree-n">86</span></button>
+              <button class="tree-node lv3 on"><span class="lbl">Infrastructure</span><span class="tree-n">24</span></button>
+              <button class="tree-node lv3"><span class="lbl">Aplikasi &amp; Data</span><span class="tree-n">41</span></button>
+              <button class="tree-node lv3"><span class="lbl">Dukungan Pengguna</span><span class="tree-n">21</span></button>
+              <button class="tree-node lv2"><i data-lucide="chevron-right"></i><span class="lbl">Sumber Daya Manusia</span><span class="tree-n">52</span></button>
+              <button class="tree-node lv2"><i data-lucide="chevron-right"></i><span class="lbl">Keuangan</span><span class="tree-n">63</span></button>
+
+              <div class="tree-site">Gudang Cikarang</div>
+              <button class="tree-node lv2"><i data-lucide="chevron-right"></i><span class="lbl">Operasional</span><span class="tree-n">214</span></button>
+              <button class="tree-node lv2"><i data-lucide="chevron-right"></i><span class="lbl">Logistik</span><span class="tree-n">178</span></button>
+
+              <div class="tree-site">Cabang Surabaya</div>
+              <button class="tree-node lv2"><i data-lucide="chevron-right"></i><span class="lbl">Pemasaran</span><span class="tree-n">97</span></button>
+
+              <button class="tree-node" style="margin-top:8px"><i data-lucide="minus-circle"></i><span class="lbl">No Division</span><span class="tree-n">31</span></button>
+            </div>
+          </div>
+
+          <!-- people -->
+          <div class="col gap-14" style="min-width:0">
+
+            <div class="card" style="overflow:hidden">
+              <div class="card-head" style="padding:15px 20px 10px">
+                <i data-lucide="star" style="width:15px;height:15px;color:var(--warn)"></i>
+                <div class="card-title" style="font-size:13.5px">Favorit</div>
+                <div class="card-meta">3 orang</div>
+              </div>
+              <table class="tbl">
+                <tbody>
+                  <tr>
+                    <td style="width:100%"><div class="cell-person"><div class="av-wrap"><div class="av av-1">BA</div><span class="presence on"></span></div><div><div class="n">Bagas Arif</div><div class="s">Infrastructure Engineer · ID 20140312</div></div></div></td>
+                    <td><span class="badge ok">Online</span></td>
+                    <td><div class="flex gap-6"><button class="icon-btn" style="width:29px;height:29px" title="Chat"><i data-lucide="message-circle" style="width:15px;height:15px"></i></button><button class="icon-btn" style="width:29px;height:29px" title="Call"><i data-lucide="phone" style="width:15px;height:15px"></i></button></div></td>
+                  </tr>
+                  <tr>
+                    <td><div class="cell-person"><div class="av-wrap"><div class="av av-5">SR</div><span class="presence away"></span></div><div><div class="n">Siti Rahayu</div><div class="s">HR Supervisor · ID 20110342</div></div></div></td>
+                    <td><span class="badge warn">Tidak di tempat</span></td>
+                    <td><div class="flex gap-6"><button class="icon-btn" style="width:29px;height:29px"><i data-lucide="message-circle" style="width:15px;height:15px"></i></button><button class="icon-btn" style="width:29px;height:29px"><i data-lucide="phone" style="width:15px;height:15px"></i></button></div></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="card" style="overflow:hidden">
+              <table class="tbl">
+                <thead><tr><th>Nama</th><th>NIK</th><th>Jabatan</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                  <tr class="sel">
+                    <td><div class="cell-person"><div class="av-wrap"><div class="av av-1">BA</div><span class="presence on"></span></div><div><div class="n">Bagas Arif</div><div class="s">bagas.arif@company.com</div></div></div></td>
+                    <td class="num dim">20140312</td>
+                    <td class="dim">Infrastructure Engineer</td>
+                    <td><span class="badge ok">Online</span></td>
+                    <td><i data-lucide="star" style="width:15px;height:15px;color:var(--warn);fill:currentColor"></i></td>
+                  </tr>
+                  <tr>
+                    <td><div class="cell-person"><div class="av-wrap"><div class="av av-6">AW</div><span class="presence on"></span></div><div><div class="n">Ahmad Wijaya</div><div class="s">ahmad.wijaya@company.com</div></div></div></td>
+                    <td class="num dim">20161104</td>
+                    <td class="dim">Network Administrator</td>
+                    <td><span class="badge ok">Online</span></td>
+                    <td><i data-lucide="star" style="width:15px;height:15px;color:var(--ink-4)"></i></td>
+                  </tr>
+                  <tr>
+                    <td><div class="cell-person"><div class="av-wrap"><div class="av av-2">DP</div><span class="presence busy"></span></div><div><div class="n">Dimas Prakoso</div><div class="s">dimas.prakoso@company.com</div></div></div></td>
+                    <td class="num dim">20180234</td>
+                    <td class="dim">System Engineer</td>
+                    <td><span class="badge bad">Sibuk</span></td>
+                    <td><i data-lucide="star" style="width:15px;height:15px;color:var(--ink-4)"></i></td>
+                  </tr>
+                  <tr>
+                    <td><div class="cell-person"><div class="av-wrap"><div class="av av-4">RH</div><span class="presence off"></span></div><div><div class="n">Rina Hartono</div><div class="s">rina.hartono@company.com</div></div></div></td>
+                    <td class="num dim">20190561</td>
+                    <td class="dim">Database Administrator</td>
+                    <td><span class="badge mute">Offline</span></td>
+                    <td><i data-lucide="star" style="width:15px;height:15px;color:var(--ink-4)"></i></td>
+                  </tr>
+                  <tr>
+                    <td><div class="cell-person"><div class="av-wrap"><div class="av av-8">FA</div><span class="presence on"></span></div><div><div class="n">Fajar Ardiansyah</div><div class="s">fajar.a@company.com</div></div></div></td>
+                    <td class="num dim">20210119</td>
+                    <td class="dim">IT Support Specialist</td>
+                    <td><span class="badge ok">Online</span></td>
+                    <td><i data-lucide="star" style="width:15px;height:15px;color:var(--ink-4)"></i></td>
+                  </tr>
+                  <tr>
+                    <td><div class="cell-person"><div class="av-wrap"><div class="av av-7">MS</div><span class="presence away"></span></div><div><div class="n">Maya Sari</div><div class="s">maya.sari@company.com</div></div></div></td>
+                    <td class="num dim">20220447</td>
+                    <td class="dim">Junior Network Engineer</td>
+                    <td><span class="badge warn">Tidak di tempat</span></td>
+                    <td><i data-lucide="star" style="width:15px;height:15px;color:var(--ink-4)"></i></td>
+                  </tr>
+                  <tr>
+                    <td><div class="cell-person"><div class="av-wrap"><div class="av av-3">RP</div><span class="presence off"></span></div><div><div class="n">Rizki Pratama</div><div class="s">rizki.pratama@company.com</div></div></div></td>
+                    <td class="num dim">20230902</td>
+                    <td class="dim">Junior System Analyst</td>
+                    <td><span class="badge mute">Offline</span></td>
+                    <td><i data-lucide="star" style="width:15px;height:15px;color:var(--ink-4)"></i></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div style="padding:14px 20px;border-top:1px solid var(--line);text-align:center">
+                <button class="ghost-btn" style="margin:0 auto">Show more (17 remaining)</button>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- profile detail -->
+          <div class="card" style="overflow:hidden">
+            <div class="card-pad" style="text-align:center;padding-bottom:16px">
+              <div class="av-wrap" style="display:inline-block;margin-bottom:12px">
+                <div class="av av-1" style="width:72px;height:72px;font-size:26px">BA</div>
+                <span class="presence on" style="width:16px;height:16px;border-width:3px;right:3px;bottom:3px"></span>
+              </div>
+              <div class="card-title" style="font-size:17px">Bagas Arif</div>
+              <div class="t-13 dim mt-2">Infrastructure Engineer</div>
+              <div class="t-11 dim mt-2">Infrastructure · Kantor Pusat</div>
+              <div class="flex center gap-6 mt-10" style="justify-content:center">
+                <button class="ghost-btn" style="padding:6px 11px"><i data-lucide="message-circle"></i>Chat</button>
+                <button class="ghost-btn" style="padding:6px 11px"><i data-lucide="mail"></i>Surat</button>
+                <button class="ghost-btn" style="padding:6px 11px"><i data-lucide="phone"></i>Panggil</button>
+              </div>
+            </div>
+
+            <div style="padding:0 20px 20px">
+              <div class="sec-label">Kartu Profil</div>
+              <div class="kv"><span class="k">NIK</span><span class="v num">20140312</span></div>
+              <div class="kv"><span class="k">Email</span><span class="v" style="font-size:12px">bagas.arif@company.com</span></div>
+              <div class="kv"><span class="k">Ekstensi</span><span class="v num">2140</span></div>
+              <div class="kv"><span class="k">Lokasi</span><span class="v">Lt. 2, Ruang Server</span></div>
+
+              <div class="sec-label mt-14">Relasi Organisasi</div>
+              <div class="row-list" style="border:1px solid var(--line);border-radius:12px;overflow:hidden">
+                <div class="row">
+                  <div class="av-wrap"><div class="av sm av-4">AH</div><span class="presence on"></span></div>
+                  <div class="row-main"><div class="row-t">Ahmad Hidayat</div><div class="row-s">Atasan Langsung (Head)</div></div>
+                </div>
+                <div class="row">
+                  <div class="av-wrap"><div class="av sm av-8">FA</div><span class="presence on"></span></div>
+                  <div class="row-main"><div class="row-t">Fajar Ardiansyah</div><div class="row-s">Bawahan Langsung (2)</div></div>
+                </div>
+                <div class="row">
+                  <div class="av-wrap"><div class="av sm av-3">RP</div><span class="presence off"></span></div>
+                  <div class="row-main"><div class="row-t">Rizki Pratama</div><div class="row-s">Bawahan Langsung</div></div>
+                </div>
+              </div>
+
+              <button class="ghost-btn mt-14" style="width:100%;justify-content:center"><i data-lucide="star"></i>Jadikan favorit</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+  lucide.createIcons();
+
+  let toastTimer;
+  function toast(msg) {
+    let t = document.getElementById('toast');
+    if (!t) { t = document.createElement('div'); t.id = 'toast'; document.body.appendChild(t); }
+    t.textContent = msg;
+    t.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('on'), 2600);
+  }
+
+  document.getElementById('railToggle').addEventListener('click', e => {
+    e.stopPropagation();
+    document.getElementById('win').classList.toggle('rail-collapsed');
+  });
+
+  document.getElementById('fsBtn')?.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  });
+
+  document.getElementById('themeBtn').addEventListener('click', function () {
+    const root = document.documentElement;
+    const dark = root.getAttribute('data-theme') === 'dark';
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+    this.querySelector('.lbl').textContent = dark ? 'Mode Gelap' : 'Mode Terang';
+    this.querySelector('i').setAttribute('data-lucide', dark ? 'moon' : 'sun');
+    lucide.createIcons();
+  });
+
+  document.addEventListener('click', e => {
+    const chip = e.target.closest('.chip');
+    if (chip) {
+      if (chip.parentElement.classList.contains('chips')) {
+        chip.parentElement.querySelectorAll('.chip').forEach(c => c.classList.remove('on'));
+      }
+      chip.classList.add('on');
+    }
+
+    const tr = e.target.closest('.tbl tbody tr');
+    if (tr) {
+      tr.closest('tbody').querySelectorAll('tr').forEach(r => r.classList.remove('sel'));
+      tr.classList.add('sel');
+    }
+
+    const node = e.target.closest('.tree-node');
+    if (node) {
+      document.querySelectorAll('.tree-node').forEach(n => n.classList.remove('on'));
+      node.classList.add('on');
+      const title = document.querySelector('#s-directory .page-title');
+      if (title) title.textContent = node.querySelector('.lbl').textContent;
+      lucide.createIcons();
+    }
+  });
+</script>
+</body>
+</html>
