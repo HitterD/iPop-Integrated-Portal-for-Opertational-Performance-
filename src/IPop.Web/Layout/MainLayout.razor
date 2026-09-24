@@ -7,6 +7,7 @@
 @inject IPop.Web.Services.NotificationState Notifs
 @inject IPop.Web.Services.CallState CallSvc
 @inject CommandPaletteState Palette
+@inject BadgeState Badges
 @inject OverlayStack Overlays
 
 <div class="shell @(collapsed ? "collapsed" : "") @(IsToolbarPage ? "toolbar-mode" : "")" id="shell">
@@ -16,41 +17,26 @@
             <div class="txt"><div class="t">IPop</div><div class="s">Operational portal</div></div>
             <button class="collapse-btn" title="Collapse sidebar ( [ )" @onclick="ToggleSidebar"><i data-lucide="panel-left-close"></i></button>
         </div>
-        <div class="nav-group">
-            <div class="nav-label">Workspace</div>
-            <NavLink class="nav-item" href="/dashboard" data-tip="Dashboard" Match="NavLinkMatch.All"><i data-lucide="layout-grid"></i><span class="lbl">Dashboard</span></NavLink>
-            <NavLink class="nav-item" href="/directory" data-tip="Directory"><i data-lucide="users"></i><span class="lbl">Directory</span></NavLink>
-            <NavLink class="nav-item" href="/projects" data-tip="Projects"><i data-lucide="kanban"></i><span class="lbl">Projects</span></NavLink>
-        </div>
-
-        <div class="nav-group">
-            <div class="nav-label">Communication</div>
-            <NavLink class="nav-item" href="/chat" data-tip="Chat"><i data-lucide="message-circle"></i><span class="lbl">Chat</span>@if (ChatUnread > 0){<span class="nav-count">@ChatUnread</span>}</NavLink>
-            <NavLink class="nav-item" href="/mail" data-tip="Mail"><i data-lucide="mail"></i><span class="lbl">Mail</span></NavLink>
-            <NavLink class="nav-item" href="/news" data-tip="News &amp; Memos"><i data-lucide="newspaper"></i><span class="lbl">News &amp; Memos</span></NavLink>
-            <NavLink class="nav-item" href="/calls" data-tip="Calls"><i data-lucide="phone"></i><span class="lbl">Calls</span></NavLink>
-        </div>
-
-        <div class="nav-group">
-            <div class="nav-label">Resources</div>
-            <NavLink class="nav-item" href="/files" data-tip="Files"><i data-lucide="folder"></i><span class="lbl">Files</span></NavLink>
-        </div>
-
-        @if (Auth.IsAdmin)
+        @foreach (var group in NavGroups)
         {
-            <div class="nav-group">
-                <div class="nav-label">Administration</div>
-                <NavLink class="nav-item" href="/admin" data-tip="Administration"><i data-lucide="sliders-horizontal"></i><span class="lbl">Administration</span></NavLink>
-                <NavLink class="nav-item" href="/notifications" data-tip="Notification Gateway"><i data-lucide="bell"></i><span class="lbl">Notifications</span></NavLink>
-            </div>
-        }
-        @* Locked modules are buttons, not links: nothing to navigate to, and a disabled
-           <a> is unreachable by keyboard. aria-disabled keeps them announced but inert. *@
-        @foreach (var m in Locked)
-        {
-            <button type="button" class="nav-item locked" data-tip="@(m.Label) — coming soon" aria-disabled="true">
-                <i data-lucide="@m.Icon"></i><span class="lbl">@m.Label</span><i data-lucide="lock" class="lock"></i>
-            </button>
+            var items = group.Items.Where(i => !i.AdminOnly || Auth.IsAdmin).ToList();
+            @if (items.Count > 0)
+            {
+                <div class="nav-group">
+                    <div class="nav-label">@group.Label</div>
+                    @foreach (var item in items)
+                    {
+                        <NavLink class="nav-item" href="@item.Href" data-tip="@item.Tip"
+                                 Match="@(item.Href == "/dashboard" ? NavLinkMatch.All : NavLinkMatch.Prefix)">
+                            <i data-lucide="@item.Icon"></i><span class="lbl">@item.Label</span>
+                            @if (item.BadgeKey is { } key && Badges.Any(key))
+                            {
+                                <span class="nav-count">@(Badges[key] > 99 ? "99+" : Badges[key].ToString())</span>
+                            }
+                        </NavLink>
+                    }
+                </div>
+            }
         }
         <div class="sidebar-foot">
             <div class="avatar" style="background:var(--accent)">@Initials</div>
@@ -244,13 +230,37 @@
         }
     }
 
-    private record Module(string Label, string Icon);
+    private record NavItem(string Label, string Icon, string Href, string? BadgeKey = null, bool AdminOnly = false, string? Tip = null)
+    {
+        public string Tip { get; init; } = Tip ?? Label;
+    }
+    private record NavGroup(string Label, NavItem[] Items);
 
-    private static readonly Module[] Locked = [];
+    /// One table drives the sidebar (v6 grouped nav). Devices stays hidden until it has a design.
+    private static readonly NavGroup[] NavGroups =
+    [
+        new("Workspace", [
+            new("Dashboard", "layout-grid", "/dashboard"),
+            new("Directory", "users", "/directory"),
+            new("Projects", "kanban", "/projects"),
+        ]),
+        new("Communication", [
+            new("Chat", "message-circle", "/chat", BadgeKey: "chat"),
+            new("Mail", "mail", "/mail", BadgeKey: "mail"),
+            new("News & Memos", "newspaper", "/news", BadgeKey: "news"),
+            new("Calls", "phone", "/calls", BadgeKey: "calls"),
+        ]),
+        new("Resources", [
+            new("Files", "folder", "/files"),
+        ]),
+        new("Administration", [
+            new("Administration", "sliders-horizontal", "/admin", AdminOnly: true),
+            new("Notifications", "bell", "/notifications", AdminOnly: true, Tip: "Notification Gateway"),
+        ]),
+    ];
 
     private string UserName => Auth.Me?.Name ?? "…";
     private string UserRole => Auth.Me is null ? "" : $"{Auth.Me.Department} · {Auth.Me.Position}";
-    private int ChatUnread => Chat.TotalUnread;
     /// Unread count behind the bell badge (NotificationState; mock count until backend).
     private int NotifUnread => Notifs.UnreadCount;
     private NotificationLocalPrefs NotifPrefs { get; set; } = new();
@@ -319,9 +329,9 @@
     /// document is both simpler and safer than unwinding it page by page.
     private void OnSessionEnded() => _ = InvokeAsync(() => Nav.NavigateTo("/login", forceLoad: true));
 
-    private void OnChatUnreadChanged() => _ = InvokeAsync(StateHasChanged);
+    private void OnChatUnreadChanged() { Badges.Set("chat", Chat.TotalUnread); _ = InvokeAsync(StateHasChanged); }
 
-    private void OnNotifUnreadChanged() => _ = InvokeAsync(StateHasChanged);
+    private void OnNotifUnreadChanged() { Badges.Set("notif", Notifs.UnreadCount); _ = InvokeAsync(StateHasChanged); }
 
     /// Preferensi berubah (disimpan dari halaman settings) — muat ulang localStorage
     /// lalu render ulang agar badge lonceng langsung mengikuti ShowBadge terbaru.
@@ -417,6 +427,7 @@
 
     private async Task SignOut()
     {
+        Badges.Stop(); Badges.Clear();
         await Auth.SignOutAsync();
         Nav.NavigateTo("/login", replace: true);
     }
@@ -455,8 +466,10 @@
         Notifs.NotificationsChanged += OnNotificationsChanged;
         Notifs.PreferencesChanged += OnNotifPreferencesChanged;
         Nav.LocationChanged += OnLocationChanged;
+        Badges.Changed += OnBadgesChanged;
         await Auth.LoadMeAsync();
         await Auth.StartPresenceAsync();
+        await Badges.StartAsync();
         await Chat.ConnectAsync();
         // Connect notification SignalR AFTER auth so the token provider has a token.
         await Notifs.ConnectAsync();
@@ -467,6 +480,8 @@
     }
 
     // Re-render so the toolbar/standard header switch follows the route.
+    private void OnBadgesChanged() => _ = InvokeAsync(StateHasChanged);
+
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
         errorBoundary?.Recover();
@@ -518,6 +533,8 @@
         Notifs.NotificationsChanged -= OnNotificationsChanged;
         Notifs.PreferencesChanged -= OnNotifPreferencesChanged;
         Nav.LocationChanged -= OnLocationChanged;
+        Badges.Changed -= OnBadgesChanged;
+        Badges.Stop();
         _ = JS.InvokeVoidAsync("ipop.shortcutsOff");
     }
 }

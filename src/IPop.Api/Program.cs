@@ -117,6 +117,9 @@ builder.Services.AddSignalR()
         redisConnection,
         options => { options.Configuration.ChannelPrefix = RedisChannel.Literal("ipop-chat"); });
 builder.Services.AddSingleton<IRealtime, HubRealtime>();
+builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.ChatBadgeProvider>();
+builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.MailBadgeProvider>();
+builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.NotificationBadgeProvider>();
 builder.Services.AddSingleton<PresenceBroadcaster>();
 builder.Services.AddSingleton<IDirectoryChangeNotifier, DirectoryChangeNotifier>();
 builder.Services.AddSingleton<IAuditChangeNotifier, AuditChangeNotifier>();
