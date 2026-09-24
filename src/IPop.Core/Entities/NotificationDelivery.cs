@@ -27,6 +27,7 @@ public class NotificationDelivery
     public DateTime? DeliveredAt { get; set; }
     public DateTime? ReadAt { get; set; }
     public DateTime? AcknowledgedAt { get; set; }
+    public DateTime? SnoozedUntil { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 

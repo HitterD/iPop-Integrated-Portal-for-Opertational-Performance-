@@ -525,6 +525,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
         {
             e.HasIndex(x => new { x.RequestId, x.UserId }).IsUnique();
             e.HasIndex(x => new { x.Status, x.NextAttemptAt });
+            e.HasIndex(x => new { x.UserId, x.SnoozedUntil });
             e.Property(x => x.Status).HasMaxLength(32);
             e.Property(x => x.Channel).HasMaxLength(16);
             e.Property(x => x.LastError).HasMaxLength(500);

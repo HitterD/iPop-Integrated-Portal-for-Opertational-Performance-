@@ -16,7 +16,8 @@ public record ShellNotificationItem(
     DateTime At,
     bool IsRead,
     string Priority = "normal",
-    string? TargetUrl = null);
+    string? TargetUrl = null,
+        DateTime? SnoozedUntil = null);
 
 /// <summary>
 /// Model banner melayang bergaya macOS yang aktif di layar.
@@ -527,5 +528,6 @@ public class NotificationState : IDisposable
         DateTime At,
         bool IsRead,
         string Priority,
-        string? TargetUrl = null);
+        string? TargetUrl = null,
+        DateTime? SnoozedUntil = null);
 }

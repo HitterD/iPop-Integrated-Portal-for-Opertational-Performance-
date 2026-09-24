@@ -120,11 +120,68 @@ public static class NotificationGatewayEndpoints
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
+            var now = DateTime.UtcNow;
             var unread = await db.NotificationDeliveries.AsNoTracking()
                 .CountAsync(d => d.UserId == userId.Value
                     && d.Status != NotificationStatus.Read
-                    && d.Status != NotificationStatus.Acknowledged, ct);
+                    && d.Status != NotificationStatus.Acknowledged
+                    && (d.SnoozedUntil == null || d.SnoozedUntil <= now), ct);
             return Results.Ok(new { unread });
+        }).RequireAuthorization();
+
+        v1.MapPost("/notifications/{requestId:guid}/snooze", async (Guid requestId, SnoozeNotificationRequest req,
+            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var delivery = await db.NotificationDeliveries.FirstOrDefaultAsync(d => d.RequestId == requestId && d.UserId == userId.Value, ct);
+            if (delivery is null) return Results.NotFound();
+
+            var until = req.Until ?? DateTime.UtcNow.AddHours(req.Hours ?? 1);
+            delivery.SnoozedUntil = until;
+            delivery.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { requestId, snoozedUntil = until });
+        }).RequireAuthorization();
+
+        v1.MapPost("/notifications/{requestId:guid}/unsnooze", async (Guid requestId,
+            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var delivery = await db.NotificationDeliveries.FirstOrDefaultAsync(d => d.RequestId == requestId && d.UserId == userId.Value, ct);
+            if (delivery is null) return Results.NotFound();
+
+            delivery.SnoozedUntil = null;
+            delivery.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { requestId });
+        }).RequireAuthorization();
+
+        v1.MapPost("/preferences/mute-type", async (MuteTypeRequest req,
+            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(req.Type)) return Results.BadRequest();
+
+            var pref = await db.NotificationPreferences.FirstOrDefaultAsync(p => p.UserId == userId.Value, ct);
+            if (pref is null)
+            {
+                pref = new NotificationPreference { Id = Guid.NewGuid(), UserId = userId.Value, UpdatedAt = DateTime.UtcNow };
+                db.NotificationPreferences.Add(pref);
+            }
+
+            var types = (pref.MutedTypes ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (req.Muted) types.Add(req.Type.Trim().ToLowerInvariant());
+            else types.Remove(req.Type.Trim().ToLowerInvariant());
+
+            pref.MutedTypes = string.Join(',', types);
+            pref.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { mutedTypes = pref.MutedTypes });
         }).RequireAuthorization();
 
         // ── Preferensi notifikasi (Fase 4): jam senyap + jenis yang dibisukan ──
@@ -472,23 +529,29 @@ public static class NotificationGatewayEndpoints
                 _ => q,
             };
         }
+        var now = DateTime.UtcNow;
         if (!string.IsNullOrWhiteSpace(status))
         {
             var s = status.Trim().ToLowerInvariant();
-            // read = delivered/read/acknowledged; unread = everything that hasn't been read yet.
             q = s switch
             {
+                "snoozed" => q.Where(d => d.SnoozedUntil != null && d.SnoozedUntil > now),
                 "read" => q.Where(d => d.Status == NotificationStatus.Read || d.Status == NotificationStatus.Acknowledged),
-                "unread" => q.Where(d => d.Status != NotificationStatus.Read && d.Status != NotificationStatus.Acknowledged),
+                "unread" => q.Where(d => d.Status != NotificationStatus.Read && d.Status != NotificationStatus.Acknowledged && (d.SnoozedUntil == null || d.SnoozedUntil <= now)),
                 _ => q,
             };
+        }
+        else
+        {
+            q = q.Where(d => d.SnoozedUntil == null || d.SnoozedUntil <= now);
         }
 
         var total = await q.CountAsync(ct);
         var unread = await db.NotificationDeliveries.AsNoTracking()
             .CountAsync(d => d.UserId == userId &&
                 d.Status != NotificationStatus.Read &&
-                d.Status != NotificationStatus.Acknowledged, ct);
+                d.Status != NotificationStatus.Acknowledged &&
+                (d.SnoozedUntil == null || d.SnoozedUntil <= now), ct);
 
         // Newest first: the per-recipient timestamp (DeliveredAt, else UpdatedAt) leads.
         // ClassifyEventType is not translatable to SQL — pull the raw event type and map in memory.
@@ -507,6 +570,7 @@ public static class NotificationGatewayEndpoints
                 d.DeliveredAt,
                 d.UpdatedAt,
                 d.Status,
+                d.SnoozedUntil,
             })
             .ToListAsync(ct);
 
@@ -519,7 +583,8 @@ public static class NotificationGatewayEndpoints
             r.DeliveredAt ?? r.UpdatedAt,
             r.Status == NotificationStatus.Read || r.Status == NotificationStatus.Acknowledged,
             r.Priority,
-            r.TargetUrl)).ToList();
+            r.TargetUrl,
+            r.SnoozedUntil)).ToList();
 
         return new InboxListResult(items, total, unread, p, size);
     }
@@ -556,7 +621,10 @@ public static class NotificationGatewayEndpoints
     public record InboxItemRow(
         Guid Id, string Type, string Title, string Body,
         string Source, DateTime At, bool IsRead, string Priority,
-        string? TargetUrl = null);
+        string? TargetUrl = null, DateTime? SnoozedUntil = null);
+
+    public record SnoozeNotificationRequest(DateTime? Until = null, double? Hours = null);
+    public record MuteTypeRequest(string Type, bool Muted);
 
     public record InboxListResult(
         IReadOnlyList<InboxItemRow> Items, int TotalCount,

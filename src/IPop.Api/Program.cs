@@ -173,6 +173,7 @@ else
     builder.Services.AddSingleton<IHrisGateway, JsonHrisGateway>();
 builder.Services.AddHostedService<HrisSyncWorker>();
 builder.Services.AddHostedService<MailScheduledDeliveryWorker>();
+builder.Services.AddHostedService<IPop.Infrastructure.Notifications.NotificationRetentionWorker>();
 
 // Pairing perangkat SJA Notifier lewat NIK (Sja:AppSecret wajib di user-secrets/env).
 builder.Services.AddHttpClient<ISjaGateway, HttpSjaGateway>();

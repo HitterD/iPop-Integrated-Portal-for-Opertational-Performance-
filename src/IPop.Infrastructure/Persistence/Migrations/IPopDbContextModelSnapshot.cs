@@ -1642,6 +1642,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("RequestId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("SnoozedUntil")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -1655,12 +1658,12 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
-
                     b.HasIndex("RequestId", "UserId")
                         .IsUnique();
 
                     b.HasIndex("Status", "NextAttemptAt");
+
+                    b.HasIndex("UserId", "SnoozedUntil");
 
                     b.ToTable("NotificationDeliveries");
                 });

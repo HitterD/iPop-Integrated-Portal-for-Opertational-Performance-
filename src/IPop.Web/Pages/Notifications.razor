@@ -1,615 +1,669 @@
 @page "/notifications"
-@using IPop.Web.Services
 @using System.Net.Http.Json
+@using IPop.Web.Services
+@implements IDisposable
 @inject NavigationManager Nav
 @inject IJSRuntime JS
-@inject HttpClient Http
 @inject AuthState Auth
+@inject ToastService Toasts
+@inject NotificationState Notifs
 
-<PageTitle>Notifications — IPop</PageTitle>
+<PageTitle>Notification Center — IPop</PageTitle>
 
-<div class="notifications-page">
-    @* Header *@
-    <div class="page-header">
-        <h1 class="page-title">
-            <i data-lucide="bell"></i>
-            Notifications
-        </h1>
-        <div class="header-actions">
-            <button type="button" class="btn-secondary" @onclick="MarkAllRead">
-                <i data-lucide="check-check"></i>
-                Mark all read
-            </button>
-            <button type="button" class="btn-secondary" @onclick="OpenSettings">
-                <i data-lucide="settings"></i>
-                Preferences
-            </button>
-        </div>
-    </div>
-
-    @* Filter Tabs *@
-    <div class="filter-tabs">
-        <button type="button" class="filter-tab @(activeFilter == "all" ? "active" : "")" @onclick='() => SetFilter("all")'>
-            All
-            @if (unreadCount > 0)
-            {
-                <span class="badge">@unreadCount</span>
-            }
-        </button>
-        <button type="button" class="filter-tab @(activeFilter == "unread" ? "active" : "")" @onclick='() => SetFilter("unread")'>
-            Unread
-            @if (unreadCount > 0)
-            {
-                <span class="badge accent">@unreadCount</span>
-            }
-        </button>
-        <button type="button" class="filter-tab @(activeFilter == "chat" ? "active" : "")" @onclick='() => SetFilter("chat")'>
-            <i data-lucide="message-circle"></i>
-            Chat
-        </button>
-        <button type="button" class="filter-tab @(activeFilter == "mail" ? "active" : "")" @onclick='() => SetFilter("mail")'>
-            <i data-lucide="mail"></i>
-            Mail
-        </button>
-        <button type="button" class="filter-tab @(activeFilter == "task" ? "active" : "")" @onclick='() => SetFilter("task")'>
-            <i data-lucide="check-square"></i>
-            Tasks
-        </button>
-        <button type="button" class="filter-tab @(activeFilter == "system" ? "active" : "")" @onclick='() => SetFilter("system")'>
-            <i data-lucide="settings"></i>
-            System
-        </button>
-    </div>
-
-    @* Notification List *@
-    <div class="notifications-list">
-        @if (filteredNotifications.Count == 0)
-        {
-            <div class="empty-state">
-                <i data-lucide="bell-off"></i>
-                <h3>No notifications</h3>
-                <p>@(activeFilter == "unread" ? "All notifications have been read" : "No notifications to display")</p>
-            </div>
-        }
-        else
-        {
-            @foreach (var notif in filteredNotifications)
-            {
-                var n = notif;
-                <div class="notification-item @(n.IsRead ? "" : "unread")" @onclick="() => OpenNotification(n)">
-                    <div class="notif-icon" style="background:@GetTypeColor(n.Type)">
-                        <i data-lucide="@GetTypeIcon(n.Type)"></i>
-                    </div>
-                    <div class="notif-content">
-                        <div class="notif-title">@n.Title</div>
-                        <div class="notif-message">@n.Message</div>
-                        <div class="notif-meta">
-                            <span class="notif-time">@n.Time</span>
-                            @if (!string.IsNullOrEmpty(n.Source))
-                            {
-                                <span class="notif-source">@n.Source</span>
-                            }
-                        </div>
-                    </div>
-                    <div class="notif-actions">
-                        @if (!n.IsRead)
-                        {
-                            <button type="button" class="notif-action" title="Mark read" @onclick="() => MarkRead(n.Id)" @onclick:stopPropagation>
-                                <i data-lucide="check"></i>
-                            </button>
-                        }
-                        <button type="button" class="notif-action" title="Delete" @onclick="() => DeleteNotification(n.Id)" @onclick:stopPropagation>
-                            <i data-lucide="x"></i>
-                        </button>
-                    </div>
-                    @if (!n.IsRead)
-                    {
-                        <div class="unread-indicator"></div>
-                    }
-                </div>
-            }
-        }
-    </div>
-
-    @* Load More *@
-    @if (hasMore)
-    {
-        <div class="load-more">
-            <button type="button" class="btn-secondary" @onclick="LoadMore">
-                <i data-lucide="chevron-down"></i>
-                Load more
-            </button>
-        </div>
-    }
-</div>
-
-<style>
-    .notifications-page {
-        padding: 24px;
-        max-width: 800px;
-        margin: 0 auto;
-    }
-
-    .page-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 24px;
-    }
-
-    .page-title {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        font-size: 24px;
-        font-weight: 700;
-        color: var(--ink);
-        margin: 0;
-    }
-
-    .page-title .lucide {
-        width: 28px;
-        height: 28px;
-        color: var(--accent);
-    }
-
-    .header-actions {
-        display: flex;
-        gap: 12px;
-    }
-
-    .btn-secondary {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 16px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--surface);
-        color: var(--ink-2);
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.15s ease;
-    }
-
-    .btn-secondary:hover {
-        background: var(--tray);
-        color: var(--ink);
-    }
-
-    /* Filter Tabs */
-    .filter-tabs {
-        display: flex;
-        gap: 8px;
-        margin-bottom: 20px;
-        padding: 4px;
-        background: var(--tray);
-        border-radius: 10px;
-        overflow-x: auto;
-    }
-
-    .filter-tab {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 16px;
-        border: none;
-        border-radius: 8px;
-        background: transparent;
-        color: var(--ink-2);
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.15s ease;
-        white-space: nowrap;
-    }
-
-    .filter-tab:hover {
-        background: var(--surface);
-        color: var(--ink);
-    }
-
-    .filter-tab.active {
-        background: var(--surface);
-        color: var(--ink);
-        box-shadow: var(--shadow-sm);
-    }
-
-    .filter-tab .badge {
-        background: var(--accent);
-        color: white;
-        font-size: 10px;
-        font-weight: 700;
-        min-width: 18px;
-        height: 18px;
-        border-radius: 99px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0 5px;
-    }
-
-    .filter-tab .badge.accent {
-        background: var(--accent);
-    }
-
-    /* Notification List */
-    .notifications-list {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .notification-item {
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-        padding: 16px;
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        cursor: pointer;
-        transition: all 0.15s ease;
-        position: relative;
-    }
-
-    .notification-item:hover {
-        border-color: var(--accent);
-        box-shadow: var(--shadow-sm);
-    }
-
-    .notification-item.unread {
-        background: var(--accent-soft);
-        border-color: var(--accent);
-    }
-
-    .unread-indicator {
-        position: absolute;
-        left: 0;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 4px;
-        height: 24px;
-        background: var(--accent);
-        border-radius: 0 4px 4px 0;
-    }
-
-    .notif-icon {
-        width: 40px;
-        height: 40px;
-        border-radius: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        flex-shrink: 0;
-    }
-
-    .notif-icon .lucide {
-        width: 20px;
-        height: 20px;
-    }
-
-    .notif-content {
-        flex: 1;
-        min-width: 0;
-    }
-
-    .notif-title {
-        font-size: 14px;
-        font-weight: 600;
-        color: var(--ink);
-        margin-bottom: 4px;
-    }
-
-    .notif-message {
-        font-size: 13px;
-        color: var(--ink-2);
-        line-height: 1.4;
-        margin-bottom: 8px;
-    }
-
-    .notif-meta {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        font-size: 11px;
-        color: var(--ink-3);
-    }
-
-    .notif-source {
-        background: var(--tray);
-        padding: 2px 8px;
-        border-radius: 99px;
-    }
-
-    .notif-actions {
-        display: flex;
-        gap: 4px;
-        opacity: 0;
-        transition: opacity 0.15s ease;
-    }
-
-    .notification-item:hover .notif-actions {
-        opacity: 1;
-    }
-
-    .notif-action {
-        width: 28px;
-        height: 28px;
-        border: none;
-        border-radius: 6px;
-        background: var(--surface);
-        color: var(--ink-3);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.15s ease;
-    }
-
-    .notif-action:hover {
-        background: var(--accent);
-        color: white;
-    }
-
-    /* Empty State */
-    .empty-state {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 60px 20px;
-        text-align: center;
-        color: var(--ink-3);
-    }
-
-    .empty-state .lucide {
-        width: 64px;
-        height: 64px;
-        margin-bottom: 16px;
-        opacity: 0.4;
-    }
-
-    .empty-state h3 {
-        margin: 0 0 8px;
-        font-size: 18px;
-        color: var(--ink-2);
-    }
-
-    .empty-state p {
-        margin: 0;
-        font-size: 14px;
-    }
-
-    /* Load More */
-    .load-more {
-        display: flex;
-        justify-content: center;
-        margin-top: 24px;
-    }
-</style>
-
-@code {
-    private string activeFilter = "all";
-    private int unreadCount = 3;
-    private bool hasMore = true;
-    private int currentPage = 1;
-
-    private List<NotificationItem> notifications = [];
-    private List<NotificationItem> filteredNotifications => activeFilter switch
-    {
-        "unread" => notifications.Where(n => !n.IsRead).ToList(),
-        "chat" => notifications.Where(n => n.Type == "chat").ToList(),
-        "mail" => notifications.Where(n => n.Type == "mail").ToList(),
-        "task" => notifications.Where(n => n.Type == "project" || n.Type == "task").ToList(),
-        "system" => notifications.Where(n => n.Type == "system").ToList(),
-        _ => notifications
-    };
-
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadNotifications();
-    }
-
-    private async Task LoadNotifications(bool append = false)
-    {
-        try
-        {
-            var typeParam = activeFilter switch
-            {
-                "chat" => "chat",
-                "mail" => "mail",
-                "task" => "project",
-                "system" => "system",
-                _ => null
-            };
-            var statusParam = activeFilter == "unread" ? "unread" : null;
-
-            var url = $"/api/notifications/v1/inbox?page={currentPage}&pageSize=20";
-            if (typeParam is not null) url += $"&type={typeParam}";
-            if (statusParam is not null) url += $"&status={statusParam}";
-
-            var response = await Auth.GetAsync<InboxResponse>(url);
-            if (response is not null)
-            {
-                var newItems = response.Items.Select(MapToNotificationItem).ToList();
-                if (append)
+<div style="flex:1;min-height:0;display:flex;flex-direction:column;height:calc(100vh - 56px);background:var(--bg)">
+    @* ---- Top Filter & Action Bar ---- *@
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 24px;border-bottom:1px solid var(--line-soft);background:var(--surface)">
+        <div style="display:inline-flex;padding:2px;background:rgba(118,118,128,0.12);border-radius:10px;gap:2px">
+            <button type="button" class="btn btn-sm" style="height:28px;padding:0 14px;border-radius:8px;border:none;background:@(tabFilter == "all" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(tabFilter == "all" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SetTab("all")'>All</button>
+            <button type="button" class="btn btn-sm" style="height:28px;padding:0 14px;border-radius:8px;border:none;background:@(tabFilter == "unread" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(tabFilter == "unread" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px" @onclick='() => SetTab("unread")'>
+                Unread
+                @if (unreadCount > 0)
                 {
-                    notifications.AddRange(newItems);
+                    <span style="font-size:11px;color:#0A84FF;font-weight:700">@unreadCount</span>
+                }
+            </button>
+        </div>
+
+        <div style="flex:1"></div>
+
+        <div class="search" style="width:260px;margin:0">
+            <i data-lucide="search"></i>
+            <input type="text" placeholder="Search notifications…" @bind="searchQuery" @bind:event="oninput" @bind:after="OnSearchChanged" />
+        </div>
+
+        <button type="button" class="btn btn-sm surface" style="height:32px;padding:0 12px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;border-radius:9px;border:1px solid var(--line);background:var(--surface);cursor:pointer" @onclick="MarkAllRead" title="Mark all read">
+            <i data-lucide="check-check" style="width:14px;height:14px"></i>
+            <span>Mark all read</span>
+        </button>
+
+        <button type="button" class="btn btn-sm surface" style="height:32px;padding:0 12px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;border-radius:9px;border:1px solid @(showPrefs ? "var(--accent)" : "var(--line)");background:@(showPrefs ? "var(--accent-soft)" : "var(--surface)");color:@(showPrefs ? "var(--accent-ink)" : "var(--ink)");cursor:pointer" @onclick="TogglePrefs">
+            <i data-lucide="settings" style="width:14px;height:14px"></i>
+            <span>Preferences</span>
+        </button>
+    </div>
+
+    @* ---- Three Pane Layout ---- *@
+    <div style="flex:1;min-height:0;display:flex;gap:14px;padding:16px 24px 20px;overflow:hidden">
+        @* ---- Left Pane: Category Filters & DND ---- *@
+        <div style="width:220px;flex:none;display:flex;flex-direction:column;gap:12px">
+            <div style="background:var(--surface);border:1px solid var(--line-soft);border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);padding:14px 10px;display:flex;flex-direction:column;gap:2px">
+                <span style="padding:0 8px 8px;font-weight:700;font-size:13px;color:var(--ink-2);letter-spacing:0.02em">CATEGORIES</span>
+                @foreach (var c in CategoryList)
+                {
+                    var active = categoryFilter == c.Id;
+                    var cUnread = CountCategoryUnread(c.Id);
+                    <div style="height:32px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:8px;background:@(active ? "var(--accent-soft)" : "transparent");color:@(active ? "var(--accent-ink)" : "var(--ink)");font-weight:@(active ? "600" : "500");cursor:pointer" @onclick="() => SetCategory(c.Id)">
+                        <i data-lucide="@c.Icon" style="width:15px;height:15px;color:@(active ? "var(--accent)" : "var(--ink-3)")"></i>
+                        <span style="flex:1;font-size:12.5px">@c.Label</span>
+                        @if (cUnread > 0 && c.Id != "snoozed")
+                        {
+                            <span style="min-width:16px;height:16px;padding:0 5px;box-sizing:border-box;border-radius:8px;background:#0A84FF;color:#FFFFFF;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">@cUnread</span>
+                        }
+                    </div>
+                }
+            </div>
+
+            @* DND Quiet Hours Switch Card *@
+            <div style="background:var(--surface);border:1px solid var(--line-soft);border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);padding:14px;display:flex;align-items:center;gap:10px">
+                <span style="width:32px;height:32px;border-radius:9px;background:#EFEAFB;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                    <i data-lucide="moon" style="width:16px;height:16px;color:#7657C4"></i>
+                </span>
+                <div style="flex:1">
+                    <div style="font-weight:600;font-size:12.5px;color:var(--ink)">Do Not Disturb</div>
+                    <div style="font-size:11px;color:var(--ink-3)">@(quietHoursEnabled ? "22:00 – 07:00" : "Off")</div>
+                </div>
+                <div class="apple-switch @(quietHoursEnabled ? "on" : "")" style="cursor:pointer" @onclick="ToggleDnd">
+                    <div class="apple-switch-knob"></div>
+                </div>
+            </div>
+        </div>
+
+        @* ---- Middle Pane: Notification List ---- *@
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line-soft);border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);overflow:hidden">
+            <div style="height:48px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line-soft)">
+                <span style="font-weight:700;font-size:14px;color:var(--ink)">@CurrentCategoryTitle</span>
+                <span style="font-size:12px;color:var(--ink-3)">@($"{FilteredList.Count} items")</span>
+                <div style="flex:1"></div>
+                <button type="button" class="btn btn-sm surface" style="height:26px;padding:0 8px;font-size:11.5px;border-radius:6px;border:1px solid var(--line);cursor:pointer" @onclick="ReloadAsync">
+                    <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
+                </button>
+            </div>
+
+            <div style="flex:1;overflow-y:auto">
+                @if (isLoading)
+                {
+                    <div style="padding:16px"><div class="skel" style="height:60px;margin-bottom:8px"></div><div class="skel" style="height:60px"></div></div>
+                }
+                else if (FilteredList.Count == 0)
+                {
+                    <div style="padding:80px 20px;display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--ink-3);text-align:center">
+                        <span style="width:52px;height:52px;border-radius:50%;background:#E4F4EA;display:flex;align-items:center;justify-content:center">
+                            <i data-lucide="bell" style="width:24px;height:24px;color:#2E9E5B"></i>
+                        </span>
+                        <div style="font-weight:700;color:var(--ink);font-size:15px">All caught up</div>
+                        <div style="font-size:12.5px">No notifications found in this view.</div>
+                    </div>
                 }
                 else
                 {
-                    notifications = newItems;
+                    @foreach (var n in FilteredList)
+                    {
+                        var isSel = selectedItem?.Id == n.Id;
+                        <div style="display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line-soft);background:@(isSel ? "var(--accent-soft)" : "transparent");cursor:pointer;transition:background 0.15s ease"
+                             @onclick="() => SelectNotification(n)">
+                            <div style="padding-top:4px">
+                                <span style="width:8px;height:8px;border-radius:50%;background:@(!n.IsRead ? "#0A84FF" : "transparent");display:block"></span>
+                            </div>
+                            <span style="width:36px;height:36px;flex:none;border-radius:10px;background:@GetBgColor(n.Type);display:flex;align-items:center;justify-content:center">
+                                <i data-lucide="@GetIcon(n.Type)" style="width:16px;height:16px;color:@GetIconColor(n.Type)"></i>
+                            </span>
+                            <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                                <div style="display:flex;align-items:center;gap:8px">
+                                    <span style="flex:1;font-weight:@(!n.IsRead ? "700" : "500");font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@n.Title</span>
+                                    <span style="font-size:11px;color:var(--ink-3);flex-shrink:0">@FormatTime(n.At)</span>
+                                </div>
+                                <span style="font-size:12px;color:var(--ink-2);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">@n.Body</span>
+                                <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+                                    <span class="tag" style="font-size:10px;padding:1px 6px">@GetCategoryName(n.Type)</span>
+                                    @if (n.SnoozedUntil != null && n.SnoozedUntil > DateTime.UtcNow)
+                                    {
+                                        <span class="tag" style="background:#EFEAFB;color:#7657C4;font-size:10px;padding:1px 6px">
+                                            <i data-lucide="alarm-clock" style="width:10px;height:10px;display:inline-block;vertical-align:-1px"></i> Snoozed
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
                 }
-                unreadCount = response.Unread;
-                hasMore = response.Items.Count >= 20;
+            </div>
+        </div>
+
+        @* ---- Right Pane: Detail View or Preferences ---- *@
+        <div style="width:360px;flex:none;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line-soft);border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);overflow:hidden">
+            @if (showPrefs)
+            {
+                <div style="display:flex;align-items:center;padding:16px 18px 12px;border-bottom:1px solid var(--line-soft)">
+                    <span style="flex:1;font-size:15px;font-weight:700">Notification Preferences</span>
+                    <button type="button" class="modal-x" @onclick="TogglePrefs" title="Close preferences"><i data-lucide="x"></i></button>
+                </div>
+                <div style="flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:16px">
+                    <div style="border-radius:12px;background:var(--tray);padding:6px 0">
+                        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px">
+                            <i data-lucide="moon" style="width:16px;height:16px;color:#7657C4"></i>
+                            <div style="flex:1">
+                                <div style="font-weight:600;font-size:12.5px">Do Not Disturb</div>
+                                <div style="font-size:11px;color:var(--ink-3)">Silence alerts 22:00 – 07:00</div>
+                            </div>
+                            <div class="apple-switch @(quietHoursEnabled ? "on" : "")" style="cursor:pointer" @onclick="ToggleDnd">
+                                <div class="apple-switch-knob"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div style="font-size:11px;font-weight:700;color:var(--ink-3);letter-spacing:0.04em;text-transform:uppercase;margin-bottom:8px">MUTE CATEGORIES</div>
+                        <div style="border-radius:12px;background:var(--tray);overflow:hidden">
+                            @foreach (var c in CategoryList.Where(x => x.Id != "all" && x.Id != "unread" && x.Id != "snoozed"))
+                            {
+                                var isMuted = mutedCategories.Contains(c.Id);
+                                <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line-soft)">
+                                    <i data-lucide="@c.Icon" style="width:14px;height:14px;color:var(--ink-3)"></i>
+                                    <span style="flex:1;font-size:12.5px;font-weight:500">@c.Label</span>
+                                    <button type="button" class="btn btn-sm surface" style="height:24px;padding:0 8px;font-size:11px;border-radius:6px;border:1px solid var(--line);cursor:pointer;background:@(isMuted ? "#FFEBEA" : "var(--surface)");color:@(isMuted ? "#C4271C" : "var(--ink)")" @onclick="() => ToggleMuteCategory(c.Id)">
+                                        @(isMuted ? "Muted" : "Active")
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
             }
-        }
-        catch
+            else if (selectedItem is not null)
+            {
+                <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px">
+                    <div style="display:flex;align-items:center;gap:12px">
+                        <span style="width:42px;height:42px;border-radius:12px;background:@GetBgColor(selectedItem.Type);display:flex;align-items:center;justify-content:center">
+                            <i data-lucide="@GetIcon(selectedItem.Type)" style="width:18px;height:18px;color:@GetIconColor(selectedItem.Type)"></i>
+                        </span>
+                        <div style="display:flex;flex-direction:column">
+                            <span style="font-size:12px;font-weight:700;color:@GetIconColor(selectedItem.Type)">@GetCategoryName(selectedItem.Type)</span>
+                            <span style="font-size:11px;color:var(--ink-3)">@selectedItem.At.ToString("dd MMM yyyy, HH:mm")</span>
+                        </div>
+                    </div>
+
+                    <div style="font-size:16px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;line-height:1.35">@selectedItem.Title</div>
+                    <div style="font-size:13px;color:var(--ink-2);line-height:1.6;white-space:pre-wrap">@selectedItem.Body</div>
+
+                    @if (!string.IsNullOrEmpty(selectedItem.TargetUrl))
+                    {
+                        <button type="button" class="btn btn-teal" style="height:38px;padding:0 16px;border-radius:10px;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer" @onclick="() => NavigateToTarget(selectedItem)">
+                            <span>Open in @GetCategoryName(selectedItem.Type)</span>
+                            <i data-lucide="arrow-right" style="width:14px;height:14px"></i>
+                        </button>
+                    }
+
+                    <div style="background:var(--tray);border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;gap:6px;font-size:12px">
+                        <div style="display:flex;justify-content:space-between"><span style="color:var(--ink-3)">Source:</span><span class="mono" style="font-weight:500">@(selectedItem.Source ?? "system")</span></div>
+                        <div style="display:flex;justify-content:space-between"><span style="color:var(--ink-3)">Priority:</span><span style="font-weight:500;text-transform:capitalize">@selectedItem.Priority</span></div>
+                        @if (selectedItem.SnoozedUntil != null && selectedItem.SnoozedUntil > DateTime.UtcNow)
+                        {
+                            <div style="display:flex;justify-content:space-between"><span style="color:#7657C4;font-weight:600">Snoozed until:</span><span style="color:#7657C4;font-weight:600">@selectedItem.SnoozedUntil.Value.ToLocalTime().ToString("HH:mm, dd MMM")</span></div>
+                        }
+                    </div>
+
+                    @* Snooze Preset Buttons *@
+                    <div style="display:flex;flex-direction:column;gap:6px">
+                        <span style="font-size:11px;font-weight:700;color:var(--ink-3);letter-spacing:0.04em;text-transform:uppercase">SNOOZE UNTIL</span>
+                        <div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:6px">
+                            <button type="button" class="btn btn-sm surface" style="height:28px;font-size:11.5px;border-radius:7px;border:1px solid var(--line);cursor:pointer" @onclick="() => Snooze(1)">In 1 hour</button>
+                            <button type="button" class="btn btn-sm surface" style="height:28px;font-size:11.5px;border-radius:7px;border:1px solid var(--line);cursor:pointer" @onclick="() => SnoozeTonight()">Tonight (20:00)</button>
+                            <button type="button" class="btn btn-sm surface" style="height:28px;font-size:11.5px;border-radius:7px;border:1px solid var(--line);cursor:pointer" @onclick="() => SnoozeTomorrow()">Tomorrow (08:00)</button>
+                            <button type="button" class="btn btn-sm surface" style="height:28px;font-size:11.5px;border-radius:7px;border:1px solid var(--line);cursor:pointer" @onclick="() => SnoozeNextWeek()">Next week</button>
+                        </div>
+                    </div>
+                </div>
+
+                @* Bottom Action Bar *@
+                <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:6px;padding:10px 16px;border-top:1px solid var(--line-soft);background:var(--surface)">
+                    <button type="button" class="btn btn-sm surface" style="height:44px;border:none;border-radius:10px;background:var(--tray);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;font-weight:600" @onclick="ToggleReadSelected">
+                        <i data-lucide="@(selectedItem.IsRead ? "mail" : "check")" style="width:14px;height:14px"></i>
+                        <span>@(selectedItem.IsRead ? "Mark unread" : "Mark read")</span>
+                    </button>
+
+                    @if (selectedItem.SnoozedUntil != null && selectedItem.SnoozedUntil > DateTime.UtcNow)
+                    {
+                        <button type="button" class="btn btn-sm" style="height:44px;border:none;border-radius:10px;background:#EFEAFB;color:#7657C4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;font-weight:600" @onclick="UnsnoozeSelected">
+                            <i data-lucide="alarm-clock-off" style="width:14px;height:14px"></i>
+                            <span>Unsnooze</span>
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-sm surface" style="height:44px;border:none;border-radius:10px;background:var(--tray);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;font-weight:600" @onclick="() => Snooze(1)">
+                            <i data-lucide="alarm-clock" style="width:14px;height:14px"></i>
+                            <span>Snooze (1h)</span>
+                        </button>
+                    }
+
+                    <button type="button" class="btn btn-sm" style="height:44px;border:none;border-radius:10px;background:#FFEBEA;color:#C4271C;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;font-weight:600" @onclick="DeleteSelected">
+                        <i data-lucide="trash-2" style="width:14px;height:14px"></i>
+                        <span>Delete</span>
+                    </button>
+                </div>
+            }
+            else
+            {
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--ink-3);padding:24px;text-align:center">
+                    <i data-lucide="bell" style="width:32px;height:32px;opacity:0.4"></i>
+                    <div style="font-weight:600;font-size:14px;color:var(--ink)">No notification selected</div>
+                    <div style="font-size:12px">Pick one from the list to see details and actions.</div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<NotificationItemDto> items = [];
+    private bool isLoading = true;
+    private int unreadCount = 0;
+    private string tabFilter = "all";
+    private string categoryFilter = "all";
+    private string searchQuery = "";
+    private bool showPrefs;
+    private bool quietHoursEnabled;
+    private HashSet<string> mutedCategories = [];
+    private NotificationItemDto? selectedItem;
+    private CancellationTokenSource? searchCts;
+
+    private record CategoryDef(string Id, string Label, string Icon);
+    private static readonly CategoryDef[] CategoryList =
+    [
+        new("all", "All", "inbox"),
+        new("unread", "Unread", "circle-dot"),
+        new("chat", "Chat", "message-circle"),
+        new("mail", "Mail", "mail"),
+        new("task", "Tasks", "kanban"),
+        new("news", "Memos & News", "newspaper"),
+        new("system", "System", "shield-check"),
+        new("snoozed", "Snoozed", "alarm-clock"),
+    ];
+
+    private string CurrentCategoryTitle => CategoryList.FirstOrDefault(c => c.Id == categoryFilter)?.Label ?? "Notifications";
+
+    private List<NotificationItemDto> FilteredList => items.Where(n =>
+    {
+        // Category filter
+        if (categoryFilter == "unread" && n.IsRead) return false;
+        if (categoryFilter == "snoozed" && (n.SnoozedUntil == null || n.SnoozedUntil <= DateTime.UtcNow)) return false;
+        if (categoryFilter != "all" && categoryFilter != "unread" && categoryFilter != "snoozed")
         {
-            // Fallback to empty on error
-            if (!append) notifications = [];
+            var mod = Classify(n.Type);
+            if (!mod.Equals(categoryFilter, StringComparison.OrdinalIgnoreCase)) return false;
         }
-    }
 
-    private NotificationItem MapToNotificationItem(InboxItem item)
+        // Tab filter (All vs Unread)
+        if (tabFilter == "unread" && n.IsRead) return false;
+
+        // Search query
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            var q = searchQuery.Trim().ToLowerInvariant();
+            if (!n.Title.ToLowerInvariant().Contains(q) && !n.Body.ToLowerInvariant().Contains(q))
+                return false;
+        }
+
+        return true;
+    }).ToList();
+
+    protected override async Task OnInitializedAsync()
     {
-        return new NotificationItem(
-            item.RequestId.ToString(),
-            item.Type,
-            item.Title,
-            item.Body,
-            FormatTime(item.DeliveredAt),
-            item.IsRead,
-            item.Source,
-            item.TargetUrl
-        );
+        await LoadPreferences();
+        await ReloadAsync();
+        Notifs.UnreadChanged += OnLiveUnreadChanged;
     }
 
-    private async Task SetFilter(string filter)
+    private void OnLiveUnreadChanged()
     {
-        activeFilter = filter;
-        currentPage = 1;
-        await LoadNotifications();
-        StateHasChanged();
+        _ = InvokeAsync(async () =>
+        {
+            await ReloadAsync();
+            StateHasChanged();
+        });
     }
 
-    private async Task MarkAllRead()
+    private async Task LoadPreferences()
     {
         try
         {
-            await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/inbox/read-all", null);
-            foreach (var n in notifications)
+            var pref = await Auth.GetAsync<PrefResponseDto>("/api/notifications/v1/preferences");
+            if (pref is not null)
             {
-                n.IsRead = true;
+                quietHoursEnabled = pref.QuietHoursEnabled;
+                mutedCategories = (pref.MutedTypes ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
             }
-            unreadCount = 0;
         }
         catch { }
     }
 
-    private async Task MarkRead(string id)
+    private async Task ReloadAsync()
     {
-        var notif = notifications.FirstOrDefault(n => n.Id == id);
-        if (notif is not null && Guid.TryParse(id, out var requestId))
+        isLoading = true;
+        try
         {
-            try
+            var statusParam = categoryFilter == "snoozed" ? "snoozed" : (tabFilter == "unread" ? "unread" : null);
+            var url = $"/api/notifications/v1/inbox?page=1&pageSize=100" + (statusParam != null ? $"&status={statusParam}" : "");
+            var res = await Auth.GetAsync<InboxResultDto>(url);
+            if (res is not null)
             {
-                await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{requestId}/read", null);
-                notif.IsRead = true;
-                unreadCount = notifications.Count(n => !n.IsRead);
+                items = res.Items.Select(i => new NotificationItemDto(
+                    i.Id, i.Type, i.Title, i.Body, i.Source,
+                    i.At.Kind == DateTimeKind.Utc ? i.At.ToLocalTime() : i.At,
+                    i.IsRead, i.Priority, i.TargetUrl, i.SnoozedUntil)).ToList();
+                unreadCount = res.UnreadCount;
+                if (selectedItem != null)
+                {
+                    selectedItem = items.FirstOrDefault(x => x.Id == selectedItem.Id);
+                }
             }
-            catch { }
+        }
+        catch { }
+        finally
+        {
+            isLoading = false;
         }
     }
 
-    private void DeleteNotification(string id)
+    private int CountCategoryUnread(string catId) => catId switch
     {
-        var notif = notifications.FirstOrDefault(n => n.Id == id);
-        if (notif is not null)
+        "all" => items.Count(x => !x.IsRead && (x.SnoozedUntil == null || x.SnoozedUntil <= DateTime.UtcNow)),
+        "unread" => items.Count(x => !x.IsRead && (x.SnoozedUntil == null || x.SnoozedUntil <= DateTime.UtcNow)),
+        "snoozed" => items.Count(x => x.SnoozedUntil != null && x.SnoozedUntil > DateTime.UtcNow),
+        _ => items.Count(x => !x.IsRead && Classify(x.Type) == catId && (x.SnoozedUntil == null || x.SnoozedUntil <= DateTime.UtcNow))
+    };
+
+    private void SetTab(string tab)
+    {
+        tabFilter = tab;
+        selectedItem = null;
+    }
+
+    private void SetCategory(string cat)
+    {
+        categoryFilter = cat;
+        selectedItem = null;
+    }
+
+    private void TogglePrefs() => showPrefs = !showPrefs;
+
+    private async Task ToggleDnd()
+    {
+        quietHoursEnabled = !quietHoursEnabled;
+        try
         {
-            notifications.Remove(notif);
-            unreadCount = notifications.Count(n => !n.IsRead);
+            await Auth.SendAsync(HttpMethod.Put, "/api/notifications/v1/preferences", new
+            {
+                quietHoursEnabled,
+                quietStart = "22:00",
+                quietEnd = "07:00",
+                mutedTypes = string.Join(',', mutedCategories)
+            });
+            Toasts.ShowDetailed("DND Updated", quietHoursEnabled ? "Do Not Disturb enabled (22:00–07:00)" : "Do Not Disturb disabled", ToastKind.Success, "moon");
+        }
+        catch { }
+    }
+
+    private async Task ToggleMuteCategory(string type)
+    {
+        var next = !mutedCategories.Contains(type);
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/preferences/mute-type", new { type, muted = next });
+            if (res.IsSuccessStatusCode)
+            {
+                if (next) mutedCategories.Add(type);
+                else mutedCategories.Remove(type);
+                Toasts.ShowDetailed("Category Updated", next ? $"{type} notifications muted" : $"{type} notifications unmuted", ToastKind.Success, "bell-off");
+            }
+        }
+        catch { }
+    }
+
+    private async Task OnSearchChanged()
+    {
+        searchCts?.Cancel();
+        searchCts?.Dispose();
+        var t = new CancellationTokenSource();
+        searchCts = t;
+        try { await Task.Delay(200, t.Token); }
+        catch (OperationCanceledException) { return; }
+        StateHasChanged();
+    }
+
+    private void SelectNotification(NotificationItemDto item)
+    {
+        selectedItem = item;
+        showPrefs = false;
+        if (!item.IsRead)
+        {
+            _ = MarkReadAsync(item.Id);
         }
     }
 
-    private void OpenNotification(NotificationItem notif)
+    private async Task MarkReadAsync(Guid id)
     {
-        if (!notif.IsRead)
+        var item = items.FirstOrDefault(x => x.Id == id);
+        if (item is not null && !item.IsRead)
         {
-            _ = MarkRead(notif.Id);
+            item.IsRead = true;
+            unreadCount = Math.Max(0, unreadCount - 1);
+            await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{id}/read", new { });
+            Notifs.SetUnread(unreadCount);
         }
+    }
 
-        // Navigate to source using TargetUrl if available
-        if (!string.IsNullOrEmpty(notif.TargetUrl))
+    private async Task ToggleReadSelected()
+    {
+        if (selectedItem is null) return;
+        var next = !selectedItem.IsRead;
+        selectedItem.IsRead = next;
+        if (next)
         {
-            Nav.NavigateTo(notif.TargetUrl);
+            await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{selectedItem.Id}/read", new { });
+            unreadCount = Math.Max(0, unreadCount - 1);
+        }
+        else
+        {
+            unreadCount++;
+        }
+        Notifs.SetUnread(unreadCount);
+    }
+
+    private async Task Snooze(double hours)
+    {
+        if (selectedItem is null) return;
+        var until = DateTime.UtcNow.AddHours(hours);
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{selectedItem.Id}/snooze", new { until });
+        if (res.IsSuccessStatusCode)
+        {
+            selectedItem.SnoozedUntil = until;
+            Toasts.ShowDetailed("Snoozed", $"Notification snoozed for {hours} hour(s)", ToastKind.Success, "alarm-clock");
+            await ReloadAsync();
+        }
+    }
+
+    private async Task SnoozeTonight()
+    {
+        var now = DateTime.UtcNow;
+        var target = DateTime.Today.AddHours(20);
+        if (target <= DateTime.Now) target = target.AddDays(1);
+        await SnoozeUntilTime(target.ToUniversalTime(), "tonight (20:00)");
+    }
+
+    private async Task SnoozeTomorrow()
+    {
+        var target = DateTime.Today.AddDays(1).AddHours(8);
+        await SnoozeUntilTime(target.ToUniversalTime(), "tomorrow (08:00)");
+    }
+
+    private async Task SnoozeNextWeek()
+    {
+        var days = ((int)DayOfWeek.Monday - (int)DateTime.Today.DayOfWeek + 7) % 7;
+        if (days == 0) days = 7;
+        var target = DateTime.Today.AddDays(days).AddHours(8);
+        await SnoozeUntilTime(target.ToUniversalTime(), "next Monday");
+    }
+
+    private async Task SnoozeUntilTime(DateTime utc, string label)
+    {
+        if (selectedItem is null) return;
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{selectedItem.Id}/snooze", new { until = utc });
+        if (res.IsSuccessStatusCode)
+        {
+            selectedItem.SnoozedUntil = utc;
+            Toasts.ShowDetailed("Snoozed", $"Notification snoozed until {label}", ToastKind.Success, "alarm-clock");
+            await ReloadAsync();
+        }
+    }
+
+    private async Task UnsnoozeSelected()
+    {
+        if (selectedItem is null) return;
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{selectedItem.Id}/unsnooze", new { });
+        if (res.IsSuccessStatusCode)
+        {
+            selectedItem.SnoozedUntil = null;
+            Toasts.ShowDetailed("Unsnoozed", "Notification moved back to inbox", ToastKind.Success, "check");
+            await ReloadAsync();
+        }
+    }
+
+    private void DeleteSelected()
+    {
+        if (selectedItem is null) return;
+        items.RemoveAll(x => x.Id == selectedItem.Id);
+        selectedItem = null;
+        Toasts.Show("Notification removed from view.", ToastKind.Info);
+    }
+
+    private async Task MarkAllRead()
+    {
+        await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/inbox/read-all", new { });
+        foreach (var i in items) i.IsRead = true;
+        unreadCount = 0;
+        Notifs.SetUnread(0);
+        Toasts.ShowDetailed("All Read", "All notifications marked as read", ToastKind.Success, "check-check");
+    }
+
+    private void NavigateToTarget(NotificationItemDto item)
+    {
+        if (!string.IsNullOrEmpty(item.TargetUrl))
+        {
+            Nav.NavigateTo(item.TargetUrl);
             return;
         }
-
-        // Fallback to module-based navigation
-        var url = notif.Type switch
+        var target = Classify(item.Type) switch
         {
             "chat" => "/chat",
             "mail" => "/mail",
             "task" => "/projects",
+            "news" => "/news",
             _ => null
         };
-
-        if (url is not null)
-        {
-            Nav.NavigateTo(url);
-        }
+        if (target != null) Nav.NavigateTo(target);
     }
 
-    private void OpenSettings()
+    private static string Classify(string type)
     {
-        Nav.NavigateTo("/notifications/settings");
+        var e = type.ToLowerInvariant();
+        if (e.StartsWith("chat.") || e == "chat") return "chat";
+        if (e.StartsWith("mail.") || e == "mail") return "mail";
+        if (e.StartsWith("news.") || e.StartsWith("memo.") || e == "news") return "news";
+        if (e.StartsWith("project.") || e.StartsWith("task.") || e == "project") return "task";
+        return "system";
     }
 
-    private async Task LoadMore()
-    {
-        currentPage++;
-        await LoadNotifications(append: true);
-    }
-
-    private string GetTypeIcon(string type) => type switch
+    private static string GetIcon(string type) => Classify(type) switch
     {
         "chat" => "message-circle",
         "mail" => "mail",
-        "task" => "check-square",
-        "system" => "settings",
-        _ => "bell"
+        "task" => "kanban",
+        "news" => "newspaper",
+        _ => "shield-check"
     };
 
-    private string GetTypeColor(string type) => type switch
+    private static string GetCategoryName(string type) => Classify(type) switch
     {
-        "chat" => "#2e7d5b",
-        "mail" => "#2563eb",
-        "task" => "#7c3aed",
-        "system" => "#6b7280",
-        _ => "#6b7280"
+        "chat" => "Chat",
+        "mail" => "Mail",
+        "task" => "Task",
+        "news" => "News & Memo",
+        _ => "System"
     };
 
-    private string FormatTime(DateTime dt)
+    private static string GetBgColor(string type) => Classify(type) switch
+    {
+        "chat" => "#E4F4EA",
+        "mail" => "#E8F1FE",
+        "task" => "#EFEAFB",
+        "news" => "#FFF4E5",
+        _ => "#F2F2F4"
+    };
+
+    private static string GetIconColor(string type) => Classify(type) switch
+    {
+        "chat" => "#1C7A44",
+        "mail" => "#0A63D1",
+        "task" => "#7657C4",
+        "news" => "#B25E00",
+        _ => "#3A3A3C"
+    };
+
+    private static string FormatTime(DateTime dt)
     {
         var now = DateTime.Now;
         var diff = now - dt;
-
         if (diff.TotalMinutes < 1) return "Just now";
-        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
-        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
-        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
-        return dt.ToString("dd MMM yyyy");
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m";
+        if (diff.TotalHours < 24) return dt.ToString("HH:mm");
+        if (diff.TotalDays < 7) return dt.ToString("ddd");
+        return dt.ToString("dd MMM");
     }
 
-    private class NotificationItem
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        public string Id { get; set; } = "";
-        public string Type { get; set; } = "";
-        public string Title { get; set; } = "";
-        public string Message { get; set; } = "";
-        public string Time { get; set; } = "";
-        public bool IsRead { get; set; }
-        public string Source { get; set; } = "";
-        public string? TargetUrl { get; set; }
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
 
-        public NotificationItem(string id, string type, string title, string message, string time, bool isRead, string source, string? targetUrl = null)
+    public void Dispose()
+    {
+        Notifs.UnreadChanged -= OnLiveUnreadChanged;
+        searchCts?.Cancel();
+        searchCts?.Dispose();
+    }
+
+    private class NotificationItemDto
+    {
+        public Guid Id { get; set; }
+        public string Type { get; set; }
+        public string Title { get; set; }
+        public string Body { get; set; }
+        public string? Source { get; set; }
+        public DateTime At { get; set; }
+        public bool IsRead { get; set; }
+        public string Priority { get; set; }
+        public string? TargetUrl { get; set; }
+        public DateTime? SnoozedUntil { get; set; }
+
+        public NotificationItemDto(Guid id, string type, string title, string body, string? source, DateTime at, bool isRead, string priority, string? targetUrl, DateTime? snoozedUntil)
         {
-            Id = id;
-            Type = type;
-            Title = title;
-            Message = message;
-            Time = time;
-            IsRead = isRead;
-            Source = source;
-            TargetUrl = targetUrl;
+            Id = id; Type = type; Title = title; Body = body; Source = source; At = at; IsRead = isRead; Priority = priority; TargetUrl = targetUrl; SnoozedUntil = snoozedUntil;
         }
     }
 
-    // API DTOs
-    private record InboxResponse(List<InboxItem> Items, int Total, int Unread, int Page, int PageSize);
-    private record InboxItem(Guid RequestId, string Type, string Title, string Body, string Source, DateTime DeliveredAt, bool IsRead, string? Priority, string? TargetUrl);
+    private record InboxResultDto(List<InboxItemResultDto> Items, int TotalCount, int UnreadCount);
+    private record InboxItemResultDto(Guid Id, string Type, string Title, string Body, string Source, DateTime At, bool IsRead, string Priority, string? TargetUrl, DateTime? SnoozedUntil = null);
+    private record PrefResponseDto(bool QuietHoursEnabled, string? MutedTypes);
 }

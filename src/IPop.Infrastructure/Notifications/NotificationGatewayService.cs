@@ -282,23 +282,35 @@ public sealed class NotificationGatewayService(
             d.DeliveredAt = now;
             d.UpdatedAt = now;
 
-            // Fase 4: cek preferensi jam senyap — notifikasi low-priority ditahan saat jam senyap
+            // Fase 4: cek preferensi jam senyap & jenis yang dibisukan
             var pref = await db.NotificationPreferences.AsNoTracking()
                 .FirstOrDefaultAsync(p => p.UserId == d.UserId, ct);
-            if (pref is not null && pref.QuietHoursEnabled)
+            if (pref is not null)
             {
-                // Ambil zona waktu pengguna dari profil, default WIB
-                var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == d.UserId, ct);
-                var timeZoneId = user?.TimeZoneId ?? "SE Asia Standard Time";
-                var userTimeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
-
-                if (IsInQuietHours(pref, now, userTimeZone))
+                if (pref.QuietHoursEnabled)
                 {
-                    // Cek AllowImportant: notifikasi high priority tetap masuk jika diizinkan
-                    if (request.Priority != "high" || !pref.AllowImportant)
+                    var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == d.UserId, ct);
+                    var timeZoneId = user?.TimeZoneId ?? "SE Asia Standard Time";
+                    var userTimeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+
+                    if (IsInQuietHours(pref, now, userTimeZone))
                     {
-                        d.Channel = NotificationChannel.Push; // deferred — not shown as toast
-                        logger.LogDebug("Notification deferred (quiet hours): user {UserId}, request {RequestId}", d.UserId, d.RequestId);
+                        if (request.Priority != "high" || !pref.AllowImportant)
+                        {
+                            d.Channel = NotificationChannel.Push; // deferred — not shown as toast
+                            logger.LogDebug("Notification deferred (quiet hours): user {UserId}, request {RequestId}", d.UserId, d.RequestId);
+                        }
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(pref.MutedTypes))
+                {
+                    var mod = ClassifyEventType(request.EventType);
+                    var muted = pref.MutedTypes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    if (muted.Contains(mod, StringComparer.OrdinalIgnoreCase) || muted.Contains(request.EventType, StringComparer.OrdinalIgnoreCase))
+                    {
+                        d.Channel = NotificationChannel.Push; // suppressed from realtime SignalR toast
+                        logger.LogDebug("Notification suppressed (muted type {Type}): user {UserId}, request {RequestId}", mod, d.UserId, d.RequestId);
                     }
                 }
             }
@@ -341,12 +353,25 @@ public sealed class NotificationGatewayService(
     /// Memperhitungkan hari aktif dan rentang yang melintasi tengah malam.
     /// Internal agar dapat diuji langsung dari IPop.Tests.
     /// </summary>
+    internal static string ClassifyEventType(string eventType)
+    {
+        var e = eventType.ToLowerInvariant();
+        if (e.StartsWith("chat.") || e == "chat") return "chat";
+        if (e.StartsWith("mail.") || e == "mail") return "mail";
+        if (e.StartsWith("news.") || e.StartsWith("memo.") || e == "news") return "news";
+        if (e.StartsWith("project.") || e.StartsWith("task.") || e == "project") return "project";
+        return "system";
+    }
+
     internal static bool IsInQuietHours(NotificationPreference pref, DateTime now, TimeZoneInfo userTimeZone)
     {
-        if (!pref.QuietHoursEnabled || string.IsNullOrWhiteSpace(pref.QuietStart) || string.IsNullOrWhiteSpace(pref.QuietEnd))
+        if (!pref.QuietHoursEnabled)
             return false;
 
-        if (!TimeOnly.TryParse(pref.QuietStart, out var start) || !TimeOnly.TryParse(pref.QuietEnd, out var end))
+        var startStr = string.IsNullOrWhiteSpace(pref.QuietStart) ? "22:00" : pref.QuietStart;
+        var endStr = string.IsNullOrWhiteSpace(pref.QuietEnd) ? "07:00" : pref.QuietEnd;
+
+        if (!TimeOnly.TryParse(startStr, out var start) || !TimeOnly.TryParse(endStr, out var end))
             return false;
 
         var localNow = TimeZoneInfo.ConvertTimeFromUtc(now, userTimeZone);
