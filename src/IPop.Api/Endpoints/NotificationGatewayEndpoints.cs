@@ -268,6 +268,56 @@ public static class NotificationGatewayEndpoints
             return Results.Ok(new { updated });
         }).RequireAuthorization();
 
+        v1.MapDelete("/notifications/{requestId:guid}", async (Guid requestId,
+            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var delivery = await db.NotificationDeliveries.FirstOrDefaultAsync(d => d.RequestId == requestId && d.UserId == userId.Value, ct);
+            if (delivery is null) return Results.NotFound();
+            db.NotificationDeliveries.Remove(delivery);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { success = true });
+        }).RequireAuthorization();
+
+        v1.MapPost("/notifications/bulk-delete", async (BulkNotificationActionRequest req,
+            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            if (req.RequestIds is { Count: > 0 })
+            {
+                var deliveries = await db.NotificationDeliveries
+                    .Where(d => d.UserId == userId.Value && req.RequestIds.Contains(d.RequestId))
+                    .ToListAsync(ct);
+                db.NotificationDeliveries.RemoveRange(deliveries);
+                await db.SaveChangesAsync(ct);
+            }
+            return Results.Ok(new { success = true });
+        }).RequireAuthorization();
+
+        v1.MapPost("/notifications/bulk-read", async (BulkNotificationActionRequest req,
+            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            if (req.RequestIds is { Count: > 0 })
+            {
+                var now = DateTime.UtcNow;
+                var deliveries = await db.NotificationDeliveries
+                    .Where(d => d.UserId == userId.Value && req.RequestIds.Contains(d.RequestId))
+                    .ToListAsync(ct);
+                foreach (var d in deliveries)
+                {
+                    d.Status = NotificationStatus.Read;
+                    d.ReadAt ??= now;
+                    d.UpdatedAt = now;
+                }
+                await db.SaveChangesAsync(ct);
+            }
+            return Results.Ok(new { success = true });
+        }).RequireAuthorization();
+
         v1.MapPost("/notifications/{requestId:guid}/acknowledge", async (Guid requestId,
             HttpContext http, INotificationGatewayService svc, IPopDbContext db, CancellationToken ct) =>
         {
@@ -677,6 +727,7 @@ public static class NotificationGatewayEndpoints
     }
 
     // Request DTOs
+    public record BulkNotificationActionRequest(IReadOnlyList<Guid>? RequestIds);
     public record RegisterClientRequest(
         string ClientId,
         string Secret,

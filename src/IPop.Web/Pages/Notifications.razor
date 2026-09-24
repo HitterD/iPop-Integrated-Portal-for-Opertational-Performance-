@@ -80,14 +80,29 @@
 
         @* ---- Middle Pane: Notification List ---- *@
         <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line-soft);border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);overflow:hidden">
-            <div style="height:48px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line-soft)">
-                <span style="font-weight:700;font-size:14px;color:var(--ink)">@CurrentCategoryTitle</span>
-                <span style="font-size:12px;color:var(--ink-3)">@($"{FilteredList.Count} items")</span>
-                <div style="flex:1"></div>
-                <button type="button" class="btn btn-sm surface" style="height:26px;padding:0 8px;font-size:11.5px;border-radius:6px;border:1px solid var(--line);cursor:pointer" @onclick="ReloadAsync">
-                    <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
-                </button>
-            </div>
+            @if (selectedIds.Count > 0)
+            {
+                <div style="height:48px;display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--accent-soft);border-bottom:1px solid var(--line-soft)">
+                    <input type="checkbox" checked="@(FilteredList.Count > 0 && selectedIds.Count == FilteredList.Count)" @onchange="ToggleSelectAll" />
+                    <span style="font-weight:600;font-size:12.5px;color:var(--accent-ink)">@selectedIds.Count selected</span>
+                    <div style="flex:1"></div>
+                    <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px" @onclick="BulkMarkRead"><i data-lucide="check-check" style="width:13px;height:13px"></i> Mark read</button>
+                    <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:11.5px;color:var(--danger);display:inline-flex;align-items:center;gap:5px" @onclick="BulkDelete"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete</button>
+                    <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:11.5px" @onclick="() => selectedIds.Clear()">Clear</button>
+                </div>
+            }
+            else
+            {
+                <div style="height:48px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line-soft)">
+                    <input type="checkbox" checked="false" @onchange="ToggleSelectAll" title="Select all" />
+                    <span style="font-weight:700;font-size:14px;color:var(--ink)">@CurrentCategoryTitle</span>
+                    <span style="font-size:12px;color:var(--ink-3)">@($"{FilteredList.Count} items")</span>
+                    <div style="flex:1"></div>
+                    <button type="button" class="btn btn-sm surface" style="height:26px;padding:0 8px;font-size:11.5px;border-radius:6px;border:1px solid var(--line);cursor:pointer" @onclick="ReloadAsync" title="Refresh">
+                        <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
+                    </button>
+                </div>
+            }
 
             <div style="flex:1;overflow-y:auto">
                 @if (isLoading)
@@ -109,9 +124,11 @@
                     @foreach (var n in FilteredList)
                     {
                         var isSel = selectedItem?.Id == n.Id;
-                        <div style="display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line-soft);background:@(isSel ? "var(--accent-soft)" : "transparent");cursor:pointer;transition:background 0.15s ease"
+                        var isChecked = selectedIds.Contains(n.Id);
+                        <div style="display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line-soft);background:@(isSel ? "var(--accent-soft)" : "transparent");cursor:pointer;transition:background 0.15s ease"
                              @onclick="() => SelectNotification(n)">
-                            <div style="padding-top:4px">
+                            <div style="display:flex;align-items:center;gap:6px;padding-top:4px" @onclick:stopPropagation="true">
+                                <input type="checkbox" checked="@isChecked" @onchange="() => ToggleItemSelection(n.Id)" />
                                 <span style="width:8px;height:8px;border-radius:50%;background:@(!n.IsRead ? "#0A84FF" : "transparent");display:block"></span>
                             </div>
                             <span style="width:36px;height:36px;flex:none;border-radius:10px;background:@GetBgColor(n.Type);display:flex;align-items:center;justify-content:center">
@@ -131,6 +148,13 @@
                                             <i data-lucide="alarm-clock" style="width:10px;height:10px;display:inline-block;vertical-align:-1px"></i> Snoozed
                                         </span>
                                     }
+                                    <div style="flex:1"></div>
+                                    <button type="button" class="icon-btn" style="width:24px;height:24px;border:none;background:transparent;color:var(--ink-3)" title="@(n.IsRead ? "Mark unread" : "Mark read")" @onclick="() => ToggleReadStatus(n)" @onclick:stopPropagation="true">
+                                        <i data-lucide="@(n.IsRead ? "mail" : "check")" style="width:13px;height:13px"></i>
+                                    </button>
+                                    <button type="button" class="icon-btn" style="width:24px;height:24px;border:none;background:transparent;color:var(--danger)" title="Delete notification" @onclick="() => DeleteItem(n)" @onclick:stopPropagation="true">
+                                        <i data-lucide="trash-2" style="width:13px;height:13px"></i>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -266,6 +290,7 @@
 
 @code {
     private List<NotificationItemDto> items = [];
+    private HashSet<Guid> selectedIds = [];
     private bool isLoading = true;
     private int unreadCount = 0;
     private string tabFilter = "all";
@@ -282,9 +307,11 @@
     [
         new("all", "All", "inbox"),
         new("unread", "Unread", "circle-dot"),
+        new("mention", "Mentions", "at-sign"),
         new("chat", "Chat", "message-circle"),
         new("mail", "Mail", "mail"),
         new("task", "Tasks", "kanban"),
+        new("meeting", "Meetings", "calendar"),
         new("news", "Memos & News", "newspaper"),
         new("system", "System", "shield-check"),
         new("snoozed", "Snoozed", "alarm-clock"),
@@ -540,12 +567,77 @@
         }
     }
 
-    private void DeleteSelected()
+    private void ToggleItemSelection(Guid id)
+    {
+        if (!selectedIds.Add(id)) selectedIds.Remove(id);
+    }
+
+    private void ToggleSelectAll(ChangeEventArgs e)
+    {
+        if ((bool)(e.Value ?? false))
+            selectedIds = FilteredList.Select(x => x.Id).ToHashSet();
+        else
+            selectedIds.Clear();
+    }
+
+    private async Task DeleteItem(NotificationItemDto n)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notifications/v1/notifications/{n.Id}", null);
+        if (res.IsSuccessStatusCode)
+        {
+            items.RemoveAll(x => x.Id == n.Id);
+            selectedIds.Remove(n.Id);
+            if (selectedItem?.Id == n.Id) selectedItem = null;
+            Toasts.Show("Notification deleted.", ToastKind.Success);
+            await ReloadAsync();
+        }
+        else
+        {
+            Toasts.Show("Could not delete notification.", ToastKind.Error);
+        }
+    }
+
+    private async Task DeleteSelected()
     {
         if (selectedItem is null) return;
-        items.RemoveAll(x => x.Id == selectedItem.Id);
-        selectedItem = null;
-        Toasts.Show("Notification removed from view.", ToastKind.Info);
+        await DeleteItem(selectedItem);
+    }
+
+    private async Task BulkDelete()
+    {
+        if (selectedIds.Count == 0) return;
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/notifications/bulk-delete", new { requestIds = selectedIds.ToList() });
+        if (res.IsSuccessStatusCode)
+        {
+            items.RemoveAll(x => selectedIds.Contains(x.Id));
+            if (selectedItem is not null && selectedIds.Contains(selectedItem.Id)) selectedItem = null;
+            selectedIds.Clear();
+            Toasts.Show("Notifications deleted.", ToastKind.Success);
+            await ReloadAsync();
+        }
+    }
+
+    private async Task BulkMarkRead()
+    {
+        if (selectedIds.Count == 0) return;
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/notifications/bulk-read", new { requestIds = selectedIds.ToList() });
+        if (res.IsSuccessStatusCode)
+        {
+            foreach (var item in items.Where(x => selectedIds.Contains(x.Id))) item.IsRead = true;
+            selectedIds.Clear();
+            Toasts.Show("Notifications marked as read.", ToastKind.Success);
+            await ReloadAsync();
+        }
+    }
+
+    private async Task ToggleReadStatus(NotificationItemDto n)
+    {
+        if (!n.IsRead)
+        {
+            await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{n.Id}/read", new { });
+            n.IsRead = true;
+        }
+        await ReloadAsync();
     }
 
     private async Task MarkAllRead()
@@ -566,9 +658,11 @@
         }
         var target = Classify(item.Type) switch
         {
+            "mention" => "/chat",
             "chat" => "/chat",
             "mail" => "/mail",
             "task" => "/projects",
+            "meeting" => "/calls?tab=scheduled",
             "news" => "/news",
             _ => null
         };
@@ -578,45 +672,55 @@
     private static string Classify(string type)
     {
         var e = type.ToLowerInvariant();
+        if (e.Contains("mention")) return "mention";
         if (e.StartsWith("chat.") || e == "chat") return "chat";
         if (e.StartsWith("mail.") || e == "mail") return "mail";
+        if (e.StartsWith("meeting.") || e.StartsWith("call.") || e == "meeting") return "meeting";
         if (e.StartsWith("news.") || e.StartsWith("memo.") || e == "news") return "news";
-        if (e.StartsWith("project.") || e.StartsWith("task.") || e == "project") return "task";
+        if (e.StartsWith("project.") || e.StartsWith("task.") || e == "project" || e == "task") return "task";
         return "system";
     }
 
     private static string GetIcon(string type) => Classify(type) switch
     {
+        "mention" => "at-sign",
         "chat" => "message-circle",
         "mail" => "mail",
         "task" => "kanban",
+        "meeting" => "calendar",
         "news" => "newspaper",
         _ => "shield-check"
     };
 
     private static string GetCategoryName(string type) => Classify(type) switch
     {
+        "mention" => "Mention",
         "chat" => "Chat",
         "mail" => "Mail",
         "task" => "Task",
+        "meeting" => "Meeting",
         "news" => "News & Memo",
         _ => "System"
     };
 
     private static string GetBgColor(string type) => Classify(type) switch
     {
+        "mention" => "#E1F5FE",
         "chat" => "#E4F4EA",
         "mail" => "#E8F1FE",
         "task" => "#EFEAFB",
+        "meeting" => "#EDE7F6",
         "news" => "#FFF4E5",
         _ => "#F2F2F4"
     };
 
     private static string GetIconColor(string type) => Classify(type) switch
     {
+        "mention" => "#0288D1",
         "chat" => "#1C7A44",
         "mail" => "#0A63D1",
         "task" => "#7657C4",
+        "meeting" => "#5E35B1",
         "news" => "#B25E00",
         _ => "#3A3A3C"
     };

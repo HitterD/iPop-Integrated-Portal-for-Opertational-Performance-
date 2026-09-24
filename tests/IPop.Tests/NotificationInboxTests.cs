@@ -3,6 +3,7 @@ using IPop.Application.Auth;
 using IPop.Application.Notifications;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Notifications;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -181,5 +182,34 @@ public class NotificationInboxTests
         // other user's delivery is still unread
         var otherRes = await NotificationGatewayEndpoints.ListInboxCore(t.Verify(), other.Id, null, null, 1, 20, default);
         Assert.Equal(1, otherRes.UnreadCount);
+    }
+
+    [Fact]
+    public async Task DeleteAndBulkActions_ManageUserDeliveries()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("20080116");
+        var c = AddClient(t);
+        var d1 = AddDelivery(t, c, me.Id, "chat.mention", NotificationStatus.Delivered, "del-1", "d1");
+        var d2 = AddDelivery(t, c, me.Id, "mail.new", NotificationStatus.Delivered, "del-2", "d2");
+        var d3 = AddDelivery(t, c, me.Id, "task.assigned", NotificationStatus.Delivered, "del-3", "d3");
+        await t.Db.SaveChangesAsync();
+
+        // Bulk read d1 & d2
+        var toRead = await t.Db.NotificationDeliveries.Where(d => d.UserId == me.Id && (d.RequestId == d1.RequestId || d.RequestId == d2.RequestId)).ToListAsync();
+        foreach (var d in toRead) d.Status = NotificationStatus.Read;
+        await t.Db.SaveChangesAsync();
+
+        var res = await NotificationGatewayEndpoints.ListInboxCore(t.Verify(), me.Id, null, null, 1, 20, default);
+        Assert.Equal(1, res.UnreadCount);
+
+        // Delete d3
+        var del = await t.Db.NotificationDeliveries.FirstOrDefaultAsync(d => d.RequestId == d3.RequestId && d.UserId == me.Id);
+        t.Db.NotificationDeliveries.Remove(del!);
+        await t.Db.SaveChangesAsync();
+
+        res = await NotificationGatewayEndpoints.ListInboxCore(t.Verify(), me.Id, null, null, 1, 20, default);
+        Assert.Equal(2, res.TotalCount);
+        Assert.DoesNotContain(res.Items, x => x.Id == d3.RequestId);
     }
 }
