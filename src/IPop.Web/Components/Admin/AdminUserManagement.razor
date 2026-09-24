@@ -54,12 +54,20 @@
             </div>
             <span class="meta">@($"{page?.Total:N0} total")</span>
         </div>
-        <div style="display:flex;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line-soft);align-items:center">
-            <div class="search" style="flex:0 1 340px;margin:0">
+        <div style="display:flex;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line-soft);align-items:center;flex-wrap:wrap">
+            <div class="search" style="flex:0 1 300px;margin:0">
                 <i data-lucide="search"></i>
                 <input type="text" placeholder="Search by name or NIK..." @bind="query" @bind:event="oninput" @bind:after="OnUserSearchInput" />
             </div>
-            <button class="btn" style="width:auto;margin:0 0 0 auto;padding:9px 18px" @onclick="OpenCreate">
+            <div style="display:inline-flex;gap:4px;align-items:center">
+                <button type="button" class="btn-sm surface" style="@(roleFilter == "" ? "background:var(--accent-soft);color:var(--accent-ink);font-weight:600" : "")" @onclick='() => SetRoleFilter("")'>All</button>
+                <button type="button" class="btn-sm surface" style="@(roleFilter == "Admin" ? "background:var(--accent-soft);color:var(--accent-ink);font-weight:600" : "")" @onclick='() => SetRoleFilter("Admin")'>Admin</button>
+                <button type="button" class="btn-sm surface" style="@(roleFilter == "Employee" ? "background:var(--accent-soft);color:var(--accent-ink);font-weight:600" : "")" @onclick='() => SetRoleFilter("Employee")'>Employee</button>
+            </div>
+            <button type="button" class="btn-sm surface" style="margin-left:auto;display:inline-flex;align-items:center;gap:4px;padding:6px 12px" @onclick="ExportUsersCsv">
+                <i data-lucide="download" style="width:12px;height:12px"></i> Export
+            </button>
+            <button class="btn" style="width:auto;margin:0;padding:8px 16px" @onclick="OpenCreate">
                 Add Employee <span class="orb"><i data-lucide="plus"></i></span>
             </button>
         </div>
@@ -87,7 +95,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var u in page.Items)
+                    @foreach (var u in DisplayedUsers)
                     {
                         <tr @key="u.Nik" class="@(u.IsActive ? "" : "inactive")">
                             <td class="mono">
@@ -287,6 +295,7 @@
 @code {
     private string query = "";
     private string? usersError;
+    private string roleFilter = "";
     private AdminUserPageDto? page;
     private AdminUserStatsDto? stats;
     private AdminUserRowDto? resetConfirmUser;
@@ -296,6 +305,23 @@
     private DrawerState? drawer;
     private CancellationTokenSource? userSearchCts;
     private OrgViewDto org = new([], []);
+
+    private void SetRoleFilter(string r) => roleFilter = r;
+    private IEnumerable<AdminUserRowDto> DisplayedUsers => page?.Items.Where(u => string.IsNullOrEmpty(roleFilter) || (roleFilter == "Admin" ? u.Roles.Contains("Admin") : !u.Roles.Contains("Admin"))) ?? [];
+
+    private async Task ExportUsersCsv()
+    {
+        if (page is null || page.Items.Length == 0) return;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("NIK,Name,Email,Position,Department,Site,Roles,IsActive,Status");
+        foreach (var u in page.Items)
+        {
+            sb.AppendLine($"{u.Nik},\"{u.Name.Replace("\"", "\"\"")}\",\"{u.Email?.Replace("\"", "\"\"")}\",\"{u.Position?.Replace("\"", "\"\"")}\",\"{u.Department?.Replace("\"", "\"\"")}\",\"{u.Site?.Replace("\"", "\"\"")}\",\"{string.Join(";", u.Roles)}\",{u.IsActive},{u.Status}");
+        }
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var b64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("ipop.download", b64, $"users-{DateTime.Now:yyyyMMdd-HHmm}.csv");
+    }
 
     private int TotalPages => page is null ? 1 : (int)Math.Ceiling(page.Total / (double)page.PageSize);
 

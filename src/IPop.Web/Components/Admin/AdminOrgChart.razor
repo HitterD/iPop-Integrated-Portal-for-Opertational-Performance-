@@ -48,9 +48,17 @@
     <div class="core" style="padding:0;overflow:hidden">
         <div class="panel-head" style="border-bottom:1px solid var(--line-soft)">
             <div style="display:flex;align-items:center;gap:8px">
-                <i data-lucide="network" style="color:#e11d48"></i>
+                <i data-lucide="git-fork" style="color:#e11d48"></i>
                 <span style="font-weight:700">Organization Chart</span>
             </div>
+            <div style="display:inline-flex;align-items:center;gap:4px;background:var(--tray);padding:2px 4px;border-radius:8px;margin-left:14px">
+                <button type="button" class="btn-sm" style="padding:2px 7px;border:none;background:transparent;cursor:pointer" title="Zoom out" @onclick="ZoomOut"><i data-lucide="minus" style="width:12px;height:12px"></i></button>
+                <button type="button" class="btn-sm" style="padding:2px 7px;border:none;background:transparent;cursor:pointer;font-size:11px;font-weight:600" title="Reset zoom" @onclick="ResetZoom">@($"{(int)(zoomLevel * 100)}%")</button>
+                <button type="button" class="btn-sm" style="padding:2px 7px;border:none;background:transparent;cursor:pointer" title="Zoom in" @onclick="ZoomIn"><i data-lucide="plus" style="width:12px;height:12px"></i></button>
+            </div>
+            <button type="button" class="btn btn-sm surface" style="margin-left:8px;padding:4px 10px;font-size:11.5px;display:inline-flex;align-items:center;gap:4px" @onclick="ExportChartCsv">
+                <i data-lucide="download" style="width:12px;height:12px"></i> Export
+            </button>
             <span class="meta">@(orgNodesLoading ? "Loading..." : $"{orgNodes.Length} structure nodes")</span>
             @if (Auth.IsAdmin)
             {
@@ -69,7 +77,7 @@
         }
         else
         {
-            <div class="chart">
+            <div class="chart" style="transform: scale(@zoomLevel); transform-origin: top center; transition: transform 0.2s var(--ease); overflow: auto">
                 @RenderOrgChart(orgNodes.Where(n => n.ParentId == null).OrderBy(n => n.SortOrder).ToArray(), 0)
             </div>
         }
@@ -391,6 +399,25 @@
         nodeEditor = null;
         selectedDirMember = null;
         StateHasChanged();
+    }
+
+    private double zoomLevel = 1.0;
+    private void ZoomIn() => zoomLevel = Math.Min(1.4, Math.Round(zoomLevel + 0.1, 1));
+    private void ZoomOut() => zoomLevel = Math.Max(0.6, Math.Round(zoomLevel - 0.1, 1));
+    private void ResetZoom() => zoomLevel = 1.0;
+
+    private async Task ExportChartCsv()
+    {
+        if (orgNodes.Length == 0) return;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Id,Name,Title,ParentId,DepartmentId,SortOrder,MembersCount");
+        foreach (var n in orgNodes)
+        {
+            sb.AppendLine($"{n.Id},\"{n.Name.Replace("\"", "\"\"")}\",\"{n.Title?.Replace("\"", "\"\"")}\",{n.ParentId},{n.DepartmentId},{n.SortOrder},{n.Members.Length}");
+        }
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var b64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("ipop.download", b64, $"org-chart-{DateTime.Now:yyyyMMdd-HHmm}.csv");
     }
 
     private sealed class NodeEditorState

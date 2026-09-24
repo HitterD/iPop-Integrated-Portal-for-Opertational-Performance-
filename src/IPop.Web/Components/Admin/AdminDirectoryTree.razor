@@ -48,8 +48,12 @@
     <div class="core" style="padding:0;overflow:hidden">
         <div class="panel-head" style="border-bottom:1px solid var(--line-soft)">
             <div style="display:flex;align-items:center;gap:8px">
-                <i data-lucide="folder-tree" style="color:#0284c7"></i>
+                <i data-lucide="network" style="color:#0284c7"></i>
                 <span style="font-weight:700">Company Directory Tree</span>
+            </div>
+            <div style="display:inline-flex;gap:6px;align-items:center;margin-left:14px">
+                <button type="button" class="btn btn-sm surface" style="font-size:11.5px;padding:3px 9px" @onclick="ExpandAll">Expand all</button>
+                <button type="button" class="btn btn-sm surface" style="font-size:11.5px;padding:3px 9px" @onclick="CollapseAll">Collapse</button>
             </div>
             <span class="meta">@(dirGroupsLoading ? "Loading..." : $"{dirGroups.Length} directory groups")</span>
             @if (Auth.IsAdmin)
@@ -69,8 +73,62 @@
         }
         else
         {
-            <div class="tree">
-                @RenderDirTree(dirGroups.Where(g => g.ParentId == null).OrderBy(g => g.SortOrder).ToArray(), 0)
+            <div style="display:grid;grid-template-columns:minmax(280px, 1.15fr) minmax(320px, 1.45fr);gap:16px;padding:16px;min-height:480px">
+                <div class="tree" style="border-right:1px solid var(--line-soft);padding-right:14px;overflow-y:auto">
+                    @RenderDirTree(dirGroups.Where(g => g.ParentId == null).OrderBy(g => g.SortOrder).ToArray(), 0)
+                </div>
+                <div class="tree-detail-pane" style="overflow-y:auto">
+                    @if (selectedGroup is { } sel)
+                    {
+                        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid var(--line-soft)">
+                            <div>
+                                <div style="font-size:16px;font-weight:700;color:var(--ink)">@sel.Name</div>
+                                <div class="meta" style="font-size:12px;color:var(--ink-3)">@sel.Members.Length members in this unit</div>
+                            </div>
+                            <div style="flex:1"></div>
+                            @if (Auth.IsAdmin)
+                            {
+                                <button type="button" class="btn btn-sm surface" style="display:inline-flex;align-items:center;gap:4px" @onclick="() => OpenGroupEditor(sel)">
+                                    <i data-lucide="pencil" style="width:12px;height:12px"></i> Edit unit
+                                </button>
+                            }
+                        </div>
+
+                        <div style="font-size:11.5px;font-weight:700;color:var(--ink-3);letter-spacing:0.04em;text-transform:uppercase;margin:12px 0 8px">Members in this unit</div>
+                        @if (sel.Members.Length == 0)
+                        {
+                            <div class="tree-empty" style="padding:24px;text-align:center">No members assigned to this group yet.</div>
+                        }
+                        else
+                        {
+                            <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:8px">
+                                @foreach (var m in sel.Members)
+                                {
+                                    var emp = MapMember(m);
+                                    <div class="emp-card" role="button" tabindex="0" @onclick="() => selectedDirMember = emp">
+                                        <div class="top">
+                                            <div class="avatar" style="background:@emp.Color">@emp.Initials</div>
+                                            <div style="min-width:0;flex:1">
+                                                <div class="n" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@m.Name</div>
+                                                <div class="p" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@(m.Position ?? "—")</div>
+                                            </div>
+                                        </div>
+                                        <div class="foot">
+                                            <span class="mono">ID @m.Nik</span>
+                                            <span class="badge @(m.Status == "on" ? "ok" : m.Status == "busy" ? "bad" : m.Status == "away" ? "warn" : "mute")">
+                                                @m.Status
+                                            </span>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="tree-empty" style="padding:48px 16px;text-align:center">Select a unit in the tree to inspect its details and members.</div>
+                    }
+                </div>
             </div>
         }
     </div>
@@ -135,10 +193,16 @@
 @code {
     private DirGroupDto[] dirGroups = [];
     private bool dirGroupsLoading = true;
+    private DirGroupDto? selectedGroup;
+    private bool expandAll = true;
     private GroupEditorState? groupEditor;
     private Employee? selectedDirMember;
     private Guid? DragGroupId;
     private Guid? DragTarget;
+
+    private void ExpandAll() { expandAll = true; StateHasChanged(); }
+    private void CollapseAll() { expandAll = false; StateHasChanged(); }
+    private void SelectGroup(DirGroupDto g) { selectedGroup = g; StateHasChanged(); }
 
     protected override async Task OnInitializedAsync()
     {
@@ -149,6 +213,10 @@
     {
         dirGroupsLoading = true;
         dirGroups = await Auth.GetAsync<DirGroupDto[]>("/api/directory/dir-groups") ?? [];
+        if (selectedGroup is not null)
+            selectedGroup = dirGroups.FirstOrDefault(g => g.Id == selectedGroup.Id) ?? dirGroups.FirstOrDefault();
+        else
+            selectedGroup = dirGroups.FirstOrDefault(g => g.ParentId == null);
         dirGroupsLoading = false;
         StateHasChanged();
     }
@@ -166,75 +234,65 @@
             var hasChildren = children.Length > 0;
             var key = g.Id.ToString("N");
 
+            var isSel = selectedGroup?.Id == g.Id;
+            var summaryCls = (DragTarget == g.Id ? "drag-over " : "") + (isSel ? "sel" : "");
+
             builder.OpenElement(0, "details");
-            if (hasChildren) builder.AddAttribute(1, "open", true);
+            if (hasChildren) builder.AddAttribute(1, "open", expandAll);
             builder.AddAttribute(2, "data-group-id", key);
 
             builder.OpenElement(3, "summary");
-            builder.AddAttribute(4, "class", DragTarget == g.Id ? "drag-over" : "");
-            builder.AddAttribute(5, "ondragover", EventCallback.Factory.Create<DragEventArgs>(this, e => OnGroupDragOver(e, g)));
-            builder.AddAttribute(6, "ondragover:preventDefault", true);
-            builder.AddAttribute(7, "ondrop", EventCallback.Factory.Create<DragEventArgs>(this, e => OnGroupDrop(e, g)));
+            builder.AddAttribute(4, "class", summaryCls.Trim());
+            builder.AddAttribute(5, "onclick", EventCallback.Factory.Create(this, () => SelectGroup(g)));
+            builder.AddAttribute(6, "ondragover", EventCallback.Factory.Create<DragEventArgs>(this, e => OnGroupDragOver(e, g)));
+            builder.AddAttribute(7, "ondragover:preventDefault", true);
+            builder.AddAttribute(8, "ondrop", EventCallback.Factory.Create<DragEventArgs>(this, e => OnGroupDrop(e, g)));
             if (hasChildren)
             {
-                builder.OpenElement(6, "i");
-                builder.AddAttribute(7, "data-lucide", "chevron-right");
-                builder.AddAttribute(8, "class", "chev");
+                builder.OpenElement(9, "i");
+                builder.AddAttribute(10, "data-lucide", "chevron-right");
+                builder.AddAttribute(11, "class", "chev");
                 builder.CloseElement();
             }
-            builder.AddContent(9, $" {g.Name}");
-            builder.AddContent(10, (MarkupString)$"<span class=\"meta\" style=\"margin-left:8px;font-size:10.5px\">{g.Members.Length} members</span>");
+            builder.AddContent(12, $" {g.Name}");
+            builder.AddContent(13, (MarkupString)$"<span class=\"meta\" style=\"margin-left:8px;font-size:10.5px\">{g.Members.Length} members</span>");
             if (Auth.IsAdmin)
             {
-                builder.OpenElement(11, "span");
-                builder.AddAttribute(12, "class", "tree-actions");
-                builder.AddAttribute(13, "onclick", EventCallback.Factory.Create(this, e => { }));
-                builder.OpenElement(14, "button");
-                builder.AddAttribute(15, "type", "button");
-                builder.AddAttribute(16, "class", "org-act");
-                builder.AddAttribute(17, "title", "Edit group");
-                builder.AddAttribute(18, "onclick", EventCallback.Factory.Create(this, () => OpenGroupEditor(g)));
-                builder.AddAttribute(19, "onclick:stopPropagation", true);
-                builder.AddAttribute(20, "onmousedown:preventDefault", true);
-                builder.OpenElement(21, "i");
-                builder.AddAttribute(21, "data-lucide", "pencil");
+                builder.OpenElement(14, "span");
+                builder.AddAttribute(15, "class", "tree-actions");
+                builder.AddAttribute(16, "onclick", EventCallback.Factory.Create(this, e => { }));
+                builder.OpenElement(17, "button");
+                builder.AddAttribute(18, "type", "button");
+                builder.AddAttribute(19, "class", "org-act");
+                builder.AddAttribute(20, "title", "Edit group");
+                builder.AddAttribute(21, "onclick", EventCallback.Factory.Create(this, () => OpenGroupEditor(g)));
+                builder.AddAttribute(22, "onclick:stopPropagation", true);
+                builder.AddAttribute(23, "onmousedown:preventDefault", true);
+                builder.OpenElement(24, "i");
+                builder.AddAttribute(25, "data-lucide", "pencil");
                 builder.CloseElement();
                 builder.CloseElement();
-                builder.OpenElement(22, "button");
-                builder.AddAttribute(23, "type", "button");
-                builder.AddAttribute(24, "class", "org-act");
-                builder.AddAttribute(25, "title", "Drag to move");
-                builder.AddAttribute(26, "draggable", "true");
-                builder.AddAttribute(27, "ondragstart", EventCallback.Factory.Create<DragEventArgs>(this, e => OnGroupDragStart(e, g)));
-                builder.AddAttribute(28, "ondragend", EventCallback.Factory.Create<DragEventArgs>(this, e => OnGroupDragEnd()));
-                builder.AddAttribute(29, "onclick", EventCallback.Factory.Create(this, e => { }));
-                builder.AddAttribute(30, "onmousedown:preventDefault", true);
-                builder.OpenElement(31, "i");
-                builder.AddAttribute(32, "data-lucide", "grip-vertical");
+                builder.OpenElement(26, "button");
+                builder.AddAttribute(27, "type", "button");
+                builder.AddAttribute(28, "class", "org-act");
+                builder.AddAttribute(29, "title", "Drag to move");
+                builder.AddAttribute(30, "draggable", "true");
+                builder.AddAttribute(31, "ondragstart", EventCallback.Factory.Create<DragEventArgs>(this, e => OnGroupDragStart(e, g)));
+                builder.AddAttribute(32, "ondragend", EventCallback.Factory.Create<DragEventArgs>(this, e => OnGroupDragEnd()));
+                builder.AddAttribute(33, "onclick", EventCallback.Factory.Create(this, e => { }));
+                builder.AddAttribute(34, "onmousedown:preventDefault", true);
+                builder.OpenElement(35, "i");
+                builder.AddAttribute(36, "data-lucide", "grip-vertical");
                 builder.CloseElement();
                 builder.CloseElement();
                 builder.CloseElement();
             }
             builder.CloseElement();
 
-            builder.OpenElement(33, "div");
-            builder.AddAttribute(34, "class", "children");
+            builder.OpenElement(37, "div");
+            builder.AddAttribute(38, "class", "children");
 
-            foreach (var m in g.Members)
-            {
-                var emp = MapMember(m);
-                builder.OpenElement(35, "div");
-                builder.AddAttribute(36, "class", "emp-card");
-                builder.AddAttribute(37, "tabindex", "0");
-                builder.AddAttribute(38, "role", "button");
-                builder.AddAttribute(39, "onclick", EventCallback.Factory.Create(this, () => selectedDirMember = emp));
-                builder.AddAttribute(40, "aria-label", $"View profile of {m.Name}");
-                builder.AddContent(41, (MarkupString)$"<div class=\"top\"><div class=\"avatar\" style=\"background:{emp.Color}\">{emp.Initials}</div><div><div class=\"n\">{m.Name}</div><div class=\"p\">{m.Position ?? "—"}</div></div></div>");
-                builder.AddContent(42, (MarkupString)$"<div class=\"foot\"><span class=\"mono\">ID {m.Nik}</span><span class=\"dot {m.Status}\">{m.Status switch { "on" => "Online", "away" => "Away", "busy" => "Busy", _ => "Offline" }}</span></div>");
-                builder.CloseElement();
-            }
-
-            if (hasChildren) builder.AddContent(43, RenderDirTree(children, depth + 1));
+            if (hasChildren) builder.AddContent(39, RenderDirTree(children, depth + 1));
             builder.CloseElement();
             builder.CloseElement();
         }
