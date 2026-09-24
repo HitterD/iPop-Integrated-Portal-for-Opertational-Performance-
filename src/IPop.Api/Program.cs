@@ -130,6 +130,7 @@ builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.ChatBadgeP
 builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.MailBadgeProvider>();
 builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.NotificationBadgeProvider>();
 builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.NewsBadgeProvider>();
+builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.CallsBadgeProvider>();
 builder.Services.AddSingleton<PresenceBroadcaster>();
 builder.Services.AddSingleton<IDirectoryChangeNotifier, DirectoryChangeNotifier>();
 builder.Services.AddSingleton<IAuditChangeNotifier, AuditChangeNotifier>();

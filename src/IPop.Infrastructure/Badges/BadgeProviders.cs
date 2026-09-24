@@ -71,3 +71,17 @@ public sealed class NewsBadgeProvider(IPopDbContext db) : IBadgeProvider
             .CountAsync(ct);
     }
 }
+
+/// Missed incoming calls in the last 7 days.
+public sealed class CallsBadgeProvider(IPopDbContext db) : IBadgeProvider
+{
+    public string Key => "calls";
+
+    public Task<int> CountAsync(Guid userId, CancellationToken ct)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-7);
+        return db.CallHistories.AsNoTracking()
+            .CountAsync(h => h.PerformerId == userId && h.Direction == "incoming" && h.Result == "missed" && h.StartedAt >= cutoff, ct);
+    }
+}
+

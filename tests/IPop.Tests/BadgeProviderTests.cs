@@ -95,4 +95,41 @@ public class BadgeProviderTests
 
         Assert.Equal(1, await new NewsBadgeProvider(t.Db).CountAsync(me.Id, default));
     }
+
+    [Fact]
+    public async Task Calls_CountsMissedIncomingCalls()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("200");
+        var caller = t.AddUser("201");
+        var now = DateTime.UtcNow;
+
+        var room = new CallRoom
+        {
+            Id = Guid.NewGuid(), Kind = "user", Status = "ended",
+            CreatorId = caller.Id, StartedAt = now.AddHours(-1), EndedAt = now.AddHours(-1).AddSeconds(20),
+        };
+        t.Db.CallRooms.Add(room);
+
+        t.Db.CallHistories.AddRange(
+            new CallHistory
+            {
+                Id = Guid.NewGuid(), CallId = room.Id, PerformerId = me.Id,
+                Direction = "incoming", Result = "missed", StartedAt = now.AddHours(-1), EndedAt = now.AddHours(-1).AddSeconds(20)
+            },
+            new CallHistory
+            {
+                Id = Guid.NewGuid(), CallId = room.Id, PerformerId = me.Id,
+                Direction = "incoming", Result = "completed", StartedAt = now.AddHours(-2), EndedAt = now.AddHours(-2).AddMinutes(5)
+            },
+            new CallHistory
+            {
+                Id = Guid.NewGuid(), CallId = room.Id, PerformerId = me.Id,
+                Direction = "outgoing", Result = "missed", StartedAt = now.AddHours(-3), EndedAt = now.AddHours(-3).AddSeconds(15)
+            }
+        );
+        await t.Db.SaveChangesAsync();
+
+        Assert.Equal(1, await new CallsBadgeProvider(t.Db).CountAsync(me.Id, default));
+    }
 }
