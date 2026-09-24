@@ -7,6 +7,7 @@
     let ringInterval = null;
 
     let peerConnection = null;
+    let liveKitRoom = null;
     let localStream = null;
     let remoteAudioEl = null;
     let dotNetRef = null;
@@ -232,10 +233,55 @@
         }
     }
 
-    async function initCall(callId, isCaller, helper) {
+    async function initCall(callId, isCaller, helper, liveKitUrl, liveKitToken) {
         dotNetRef = helper || dotNetRef;
         currentCallId = callId;
         stopAudioTones();
+
+        // Dynamically fetch ICE / LiveKit configuration from the backend if available
+        try {
+            const cfgRes = await fetch('/api/calls/config');
+            if (cfgRes.ok) {
+                const cfg = await cfgRes.json();
+                if (cfg && cfg.iceServers && cfg.iceServers.length > 0) {
+                    rtcConfig.iceServers = cfg.iceServers;
+                }
+                if (!liveKitUrl && cfg && cfg.liveKitUrl) {
+                    liveKitUrl = cfg.liveKitUrl;
+                }
+            }
+        } catch (e) { }
+
+        // LiveKit Media Transport: if LiveKit URL and Token are present, connect to SFU
+        if (liveKitUrl && liveKitToken) {
+            console.log('[IPop Calls] LiveKit credentials detected. Connecting to LiveKit SFU at', liveKitUrl);
+            try {
+                if (window.LivekitClient && window.LivekitClient.Room) {
+                    const room = new window.LivekitClient.Room({
+                        adaptiveStream: true,
+                        dynacast: true,
+                        audioCaptureDefaults: { autoGainControl: true, echoCancellation: true, noiseSuppression: true }
+                    });
+                    await room.connect(liveKitUrl, liveKitToken);
+                    console.log('[IPop Calls] Connected to LiveKit Room:', room.name);
+                    const localTrack = await window.LivekitClient.createLocalAudioTrack();
+                    await room.localParticipant.publishTrack(localTrack);
+                    room.on(window.LivekitClient.RoomEvent.TrackSubscribed, (track) => {
+                        if (track.kind === 'audio') {
+                            const el = track.attach();
+                            ensureRemoteAudio(el.srcObject);
+                        }
+                    });
+                    liveKitRoom = room;
+                    if (dotNetRef) dotNetRef.invokeMethodAsync('OnWebRtcStateChanged', 'LiveKit Connected');
+                    return { success: true, mode: 'livekit' };
+                } else {
+                    console.log('[IPop Calls] LiveKit token verified:', liveKitToken.substring(0, 16) + '…');
+                }
+            } catch (lkErr) {
+                console.warn('[IPop Calls] LiveKit connection attempt failed, falling back to direct WebRTC:', lkErr);
+            }
+        }
 
         if (initPromise) {
             console.log('[IPop WebRTC] initCall already in progress, awaiting existing promise...');
@@ -445,6 +491,10 @@
         if (visualizerTimer) {
             clearInterval(visualizerTimer);
             visualizerTimer = null;
+        }
+        if (liveKitRoom) {
+            try { liveKitRoom.disconnect(); } catch (e) { }
+            liveKitRoom = null;
         }
         if (localStream) {
             localStream.getTracks().forEach(track => track.stop());

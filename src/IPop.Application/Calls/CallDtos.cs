@@ -26,7 +26,9 @@ public record CallRoomDto(
     DateTime? EstablishedAt,
     DateTime? EndedAt,
     string? Quality,
-    IReadOnlyList<CallParticipantDto> Participants);
+    IReadOnlyList<CallParticipantDto> Participants,
+    string? LiveKitUrl = null,
+    string? LiveKitToken = null);
 
 /// One history row (grouped by date on the UI).
 public record CallHistoryDto(

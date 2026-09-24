@@ -6,12 +6,11 @@ using Microsoft.EntityFrameworkCore;
 namespace IPop.Infrastructure.Calls;
 
 /// <summary>
-/// Calls stub state machine. Real media (WebRTC/LiveKit) is out of scope this wave;
-/// this service keeps the room/participant/history state consistent so the UI has a
-/// real lifecycle to drive, and the hub broadcasts signaling events over it.
+/// Calls service state machine with WebRTC signaling and LiveKit SFU access token generation.
+/// Keeps the room/participant/history state consistent, and the hub broadcasts signaling events over it.
 /// Every action that would be a 500 on a bad payload returns CallResultDto(Success=false).
 /// </summary>
-public sealed class CallService(IPopDbContext db) : ICallService
+public sealed class CallService(IPopDbContext db, ILiveKitTokenService? liveKit = null) : ICallService
 {
     public async Task<CallResultDto> CreateCallAsync(Guid callerId, CreateCallRequest req, CancellationToken ct)
     {
@@ -129,7 +128,7 @@ public sealed class CallService(IPopDbContext db) : ICallService
             .FirstOrDefaultAsync(r => r.Id == callId, ct);
         if (room is null) return null;
         if (!room.Participants.Any(p => p.UserId == userId)) return null; // only participants see state
-        return ToRoom(room);
+        return ToRoom(room, userId);
     }
 
     public async Task<CallRoomDto?> GetRingingCallAsync(Guid userId, CancellationToken ct)
@@ -140,7 +139,7 @@ public sealed class CallService(IPopDbContext db) : ICallService
                         r.Participants.Any(p => p.UserId == userId && p.Status == CallParticipantStatus.Invited))
             .OrderByDescending(r => r.StartedAt)
             .FirstOrDefaultAsync(ct);
-        return room is null ? null : ToRoom(room);
+        return room is null ? null : ToRoom(room, userId);
     }
 
     public async Task<CallHistoryPage> GetHistoryAsync(Guid userId, int page, int pageSize, CancellationToken ct)
@@ -187,7 +186,7 @@ public sealed class CallService(IPopDbContext db) : ICallService
         var room = await db.CallRooms.AsNoTracking()
             .Include(r => r.Participants).ThenInclude(p => p.User)
             .FirstOrDefaultAsync(r => r.Id == callId, ct);
-        return room is null ? null : ToRoom(room);
+        return room is null ? null : ToRoom(room, userId);
     }
 
     private async Task RecordHistoryAsync(CallRoom room, DateTime endedAt, CancellationToken ct)
@@ -231,14 +230,28 @@ public sealed class CallService(IPopDbContext db) : ICallService
         }
     }
 
-    private static CallRoomDto ToRoom(CallRoom r) => new(
-        r.Id, r.Kind, r.Status, r.Token, r.CreatorId, r.StartedAt,
-        r.EstablishedAt, r.EndedAt, r.Quality,
-        r.Participants
-            .OrderBy(p => p.JoinedAt)
-            .Select(p => new CallParticipantDto(p.UserId, p.User.Nik, p.User.Name, p.Status,
-                p.IsMuted, p.IsScreenSharing, p.LeftAt))
-            .ToList());
+    private CallRoomDto ToRoom(CallRoom r, Guid? forUserId = null)
+    {
+        string? lkToken = null;
+        if (liveKit is not null && forUserId.HasValue)
+        {
+            var p = r.Participants.FirstOrDefault(x => x.UserId == forUserId.Value);
+            var nik = p?.User?.Nik ?? forUserId.Value.ToString();
+            var name = p?.User?.Name ?? nik;
+            lkToken = liveKit.GenerateToken(r.Id.ToString(), nik, name);
+        }
+
+        return new CallRoomDto(
+            r.Id, r.Kind, r.Status, r.Token, r.CreatorId, r.StartedAt,
+            r.EstablishedAt, r.EndedAt, r.Quality,
+            r.Participants
+                .OrderBy(p => p.JoinedAt)
+                .Select(p => new CallParticipantDto(p.UserId, p.User?.Nik ?? "", p.User?.Name ?? "", p.Status,
+                    p.IsMuted, p.IsScreenSharing, p.LeftAt))
+                .ToList(),
+            liveKit?.ServerUrl,
+            lkToken);
+    }
 
     private static string? NormalizeQuality(string? q) => q switch
     {

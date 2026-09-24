@@ -140,7 +140,7 @@ public class CallState : IAsyncDisposable
             {
                 _webRtcActiveCallId = room.Id;
                 _selfRef ??= DotNetObjectReference.Create(this);
-                await _js.InvokeVoidAsync("ipopAudio.initCall", room.Id, isCaller, _selfRef);
+                await _js.InvokeVoidAsync("ipopAudio.initCall", room.Id, isCaller, _selfRef, room.LiveKitUrl, room.LiveKitToken);
             }
         }
         else if (room.Status is CallStatus.Ended or CallStatus.Declined or CallStatus.Missed)

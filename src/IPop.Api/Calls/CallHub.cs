@@ -7,10 +7,10 @@ using Microsoft.EntityFrameworkCore;
 namespace IPop.Api.Calls;
 
 /// <summary>
-/// Calls signaling hub. The client invokes the same state machine the REST API exposes
+/// Calls signaling hub. Drives call state machine, WebRTC signaling relay, and LiveKit SFU access tokens.
+/// The client invokes the same state machine the REST API exposes
 /// (create/signal/get) and receives lifecycle broadcasts on its user group
 /// ("user:{id}") — ringing, state-changed, participant-joined/left, ended.
-/// Media transport (WebRTC/LiveKit) is intentionally out of scope this wave.
 /// </summary>
 public class CallHub(ICallService callService, IPopDbContext db, IPermissionEvaluator perms) : Hub
 {

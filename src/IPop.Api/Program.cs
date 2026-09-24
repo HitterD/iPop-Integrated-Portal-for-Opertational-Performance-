@@ -153,7 +153,8 @@ builder.Services.AddHostedService<IPop.Infrastructure.Meetings.MeetingReminderWo
 // Mail module
 builder.Services.AddScoped<IMailService, MailService>();
 
-// Calls stub module (signaling only)
+// Calls module (WebRTC signaling + LiveKit SFU access tokens)
+builder.Services.AddSingleton<IPop.Application.Calls.ILiveKitTokenService, IPop.Infrastructure.Calls.LiveKitTokenService>();
 builder.Services.AddScoped<IPop.Application.Calls.ICallService, IPop.Infrastructure.Calls.CallService>();
 
 // Projects module
