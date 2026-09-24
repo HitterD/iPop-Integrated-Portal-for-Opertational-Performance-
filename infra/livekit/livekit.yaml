@@ -1,0 +1,12 @@
+port: 7880
+bind_addresses:
+  - ""
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50100
+turn:
+  enabled: true
+  udp_port: 3478
+keys:
+  sja_livekit_key: sja_livekit_secret_32bytes_santosjaya!
