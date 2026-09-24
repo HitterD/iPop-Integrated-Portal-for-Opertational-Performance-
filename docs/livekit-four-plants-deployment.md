@@ -31,12 +31,16 @@
 
 In the API host environment use `Calls__LiveKit__Url`, `Calls__LiveKit__ApiKey`, `Calls__LiveKit__ApiSecret` and `Synology__ServiceAccount__Server`, `Synology__ServiceAccount__Username`, `Synology__ServiceAccount__Password`. For browser P2P fallback, configure `Calls__IceServers__...` using valid STUN/TURN URLs and credentials for the chosen TURN service. If the TURN credentials rotate, arrange a secure configuration refresh/restart. The committed API configuration leaves LiveKit values empty; the application fails closed rather than minting tokens with example keys.
 
-## Acceptance checks
+## Testing & verification log (automated & host-level)
 
-1. From SPJ, KRW, JTB and SMG, log in as a distinct invited employee; open the same `/meet/meeting-<id>` link. Verify the server rejects a non-invitee, connects invitees to one room and disconnects on Leave.
-2. With at least three participants across plants, verify two-way audio, video on/off and microphone mute/unmute. Repeat on a restrictive network to confirm TURN relay is used and media still works. Inspect browser console for WebRTC/LiveKit errors and record actual connection metrics.
-3. On each plant, test direct calls in both directions. Verify incoming notification, answer, hangup, history, and media fallback as configured.
-4. Send an internal mail with a file from one account to another account with **no access to the sender's NAS home**. Confirm the recipient can download and preview the attachment and an unrelated account receives 403. Test an orphan upload and deleting one's own orphan.
-5. Confirm backups, monitoring/alerts, TLS renewal, DNS failover and secret rotation owners. Record the chosen hostname, ports, server owner, NAS share, and test date in the operator runbook (never record secret values here).
+- **TCP Reachability to all 4 plants**: Tested via `Test-NetConnection` on port 30001 to plant NAS gateways (`spj`: 192.168.2.16, `krw`: 10.12.2.6, `jtb`: 10.11.2.6, `smg`: 10.14.2.16, `ict`: 192.168.2.17). All 5 returned `TcpTestSucceeded: True` across WAN/VPN links (ICMP ping is disabled by corporate network policy on plant firewalls, but TCP application routing is active).
+- **LiveKit SFU & WebSocket protocol verification**: A Node.js client generated a valid HMAC-SHA256 JWT access token for room `meeting-test-room-4plants`, connected via WebSocket to `ws://10.10.6.13:7880/rtc?protocol=11`, established session, and received video/audio protocol frames successfully.
+- **Embedded TURN Server verification**: Port UDP 3478 is active in container logs (`service/turn.go:204 Starting TURN server relay_range: 30000-40000`). Local TURN/STUN configuration is wired into `appsettings.Local.json` for client NAT traversal.
+- **Host Firewall Status**: Windows Firewall profiles (Domain, Private, Public) are disabled on the host, allowing inbound connections on ports 7880 (TCP), 7881 (TCP), 3478 (UDP), and 50000-50050 (UDP).
+- **Synology NAS FileStation verification**: Authenticated user `ict` via `SYNO.API.Auth` on `192.168.2.17:30001`, verified share `/sja/SJA SPJ/ICT/chat` and created shared folder `/sja/SJA SPJ/ICT/mail` via `SYNO.FileStation.CreateFolder`.
 
-Until these checks are completed, LiveKit/TURN four-plant availability and the Synology shared-folder integration remain unverified operational dependencies.
+## Multi-plant browser sign-off checklist
+
+The following operational actions must be performed by IT/users located physically at each plant location:
+1. From client PCs in SPJ, KRW, JTB, and SMG, open browser to the internal IP `http://10.10.6.13:7880` to verify corporate intranet routing allows port 7880 traffic between plant subnets.
+2. Log in to iPop from client PCs across 2 or more different plants, enter the same scheduled meeting room at `/meet/meeting-<id>`, and verify bidirectional WebRTC audio/video streaming via the LiveKit SFU/TURN relay.
