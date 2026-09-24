@@ -22,3 +22,6 @@ obj/
 
 # Machine-local secrets (SMTP, Synology service account)
 appsettings.Local.json
+
+# Local secrets for docker-compose (LiveKit keys)
+.env

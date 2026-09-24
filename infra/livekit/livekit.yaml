@@ -9,5 +9,5 @@ rtc:
 turn:
   enabled: true
   udp_port: 3478
-keys:
-  sja_livekit_key: sja_livekit_secret_32bytes_santosjaya!
+# API key/secret come from the LIVEKIT_KEYS env var ("key: secret"), set via the
+# git-ignored .env next to docker-compose.yml. Never commit them here.

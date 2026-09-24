@@ -493,8 +493,8 @@ public class AllTicketsVerificationTests
         // 4. LiveKit Token generation for room
         var cfg = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Calls:LiveKit:ApiKey"] = "sja_livekit_key",
-            ["Calls:LiveKit:ApiSecret"] = "sja_livekit_secret_32bytes_santosjaya!",
+            ["Calls:LiveKit:ApiKey"] = "test_livekit_key",
+            ["Calls:LiveKit:ApiSecret"] = "test_only_livekit_secret_32_bytes_xx",
             ["Calls:LiveKit:Url"] = "ws://10.10.6.13:7880"
         }).Build();
         var lk = new LiveKitTokenService(cfg);
@@ -557,8 +557,8 @@ public class AllTicketsVerificationTests
         // 2. LiveKit SFU Token Generation & Configured State
         var cfg = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["Calls:LiveKit:ApiKey"] = "sja_livekit_key",
-            ["Calls:LiveKit:ApiSecret"] = "sja_livekit_secret_32bytes_santosjaya!",
+            ["Calls:LiveKit:ApiKey"] = "test_livekit_key",
+            ["Calls:LiveKit:ApiSecret"] = "test_only_livekit_secret_32_bytes_xx",
             ["Calls:LiveKit:Url"] = "ws://10.10.6.13:7880"
         }).Build();
         var lk = new LiveKitTokenService(cfg);

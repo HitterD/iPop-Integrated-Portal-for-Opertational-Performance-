@@ -250,10 +250,31 @@
 @code {
     [Inject] private IJSRuntime JS { get; set; } = default!;
     private int FontSize = 14;
+    // Bookmarks are per-browser (localStorage) — there is no server-side bookmark table.
+    private const string SavedKey = "ipop.news.saved";
     private bool isSaved;
-    private void ToggleSave()
+    private Guid loadedFor;
+
+    protected override async Task OnParametersSetAsync()
     {
-        isSaved = !isSaved;
+        if (Detail is null || Detail.Id == loadedFor) return;
+        loadedFor = Detail.Id;
+        isSaved = (await LoadSaved()).Contains(Detail.Id.ToString());
+    }
+
+    private async Task<HashSet<string>> LoadSaved()
+    {
+        var raw = await JS.InvokeAsync<string?>("localStorage.getItem", SavedKey);
+        return string.IsNullOrEmpty(raw) ? [] : raw.Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+    }
+
+    private async Task ToggleSave()
+    {
+        var saved = await LoadSaved();
+        var id = Detail.Id.ToString();
+        isSaved = !saved.Remove(id);
+        if (isSaved) saved.Add(id);
+        await JS.InvokeVoidAsync("localStorage.setItem", SavedKey, string.Join(',', saved));
         Toasts.Show(isSaved ? "Article saved to bookmarks." : "Article removed from bookmarks.", ToastKind.Success);
     }
     private async Task Print() => await JS.InvokeVoidAsync("print");

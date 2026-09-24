@@ -192,6 +192,23 @@ public partial class Chat
             await CreateDmWith(user);
     }
 
+    /// Directory bulk "Create group" lands here with ?new=group&members=nik1,nik2 —
+    /// open the new-group modal with those people preselected.
+    private async Task StartGroupFromQuery()
+    {
+        StartNewGroup();
+        var niks = (QueryValue("members") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        foreach (var nik in niks)
+        {
+            if (nik == GetCurrentUserNik()) continue;
+            var results = await Auth.GetAsync<List<UserSearchResult>>($"/api/chat/users/search?q={Uri.EscapeDataString(nik)}");
+            var user = results?.FirstOrDefault(u => string.Equals(u.Nik, nik, StringComparison.OrdinalIgnoreCase));
+            if (user is not null && !newGroupSelectedMembers.Any(m => m.Id == user.Id))
+                newGroupSelectedMembers.Add(user);
+        }
+        StateHasChanged();
+    }
+
     private string? QueryValue(string key)
     {
         var q = Nav.ToAbsoluteUri(Nav.Uri).Query.TrimStart('?');

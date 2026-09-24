@@ -467,6 +467,8 @@ public partial class Chat
         await ChatSvc.ConnectAsync();
         if (RoomId is not null)
             await OpenRoomCore(RoomId.Value);
+        else if (QueryValue("new") == "group")
+            await StartGroupFromQuery();
         else
         {
             var nik = QueryValue("nik");

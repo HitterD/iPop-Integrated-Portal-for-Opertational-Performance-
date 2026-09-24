@@ -104,7 +104,8 @@ public class DashboardAndSearchTests
             CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
         });
 
-        var start = DateTime.UtcNow.AddMinutes(30);
+        // In progress (not +30min): a future start near midnight UTC would fall on tomorrow's agenda.
+        var start = DateTime.UtcNow.AddMinutes(-5);
         t.Db.Meetings.Add(new Meeting
         {
             Id = Guid.NewGuid(), Title = "Line 3 standup", StartAt = start, EndAt = start.AddMinutes(30),

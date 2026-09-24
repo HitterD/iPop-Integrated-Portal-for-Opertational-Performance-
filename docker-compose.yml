@@ -22,6 +22,8 @@ services:
     container_name: ipop-livekit
     restart: unless-stopped
     command: --config /livekit.yaml
+    environment:
+      LIVEKIT_KEYS: ${LIVEKIT_KEYS:?set LIVEKIT_KEYS in .env}
     volumes:
       - ./infra/livekit/livekit.yaml:/livekit.yaml:ro
     ports:

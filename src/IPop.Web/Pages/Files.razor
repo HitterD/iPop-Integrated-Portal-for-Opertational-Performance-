@@ -569,9 +569,13 @@
     private ElementReference dropZoneRef;
     private bool dropBound;
 
-    private void ToggleStar(string path)
+    // Stars are per-browser (localStorage) — FileStation has no favourite API we can share.
+    private const string StarredKey = "ipop.files.starred";
+
+    private async Task ToggleStar(string path)
     {
         if (!starredPaths.Add(path)) starredPaths.Remove(path);
+        await JS.InvokeVoidAsync("localStorage.setItem", StarredKey, string.Join('\n', starredPaths));
         StateHasChanged();
     }
 
@@ -1013,6 +1017,10 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var starredRaw = await JS.InvokeAsync<string?>("localStorage.getItem", StarredKey);
+        if (!string.IsNullOrEmpty(starredRaw))
+            starredPaths = starredRaw.Split('\n', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+
         // Pulihkan persistent last-seen dari localStorage (jika browser di-refresh / tab baru)
         var restored = await FileStateService.LoadLastSeenAsync(JS);
         if (restored.HasValue)
