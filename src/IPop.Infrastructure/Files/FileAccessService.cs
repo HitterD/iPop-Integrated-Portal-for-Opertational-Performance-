@@ -99,6 +99,36 @@ public class FileAccessService(
     public Task<Stream> DownloadAsync(Guid userId, string server, string path, CancellationToken ct)
         => WithSid(server, userId, (sid, c) => gateway.DownloadAsync(server, sid, path, c), ct);
 
+    public Task RenameAsync(Guid userId, string server, string path, string name, CancellationToken ct)
+        => WithSid(server, userId, (sid, c) => gateway.RenameAsync(server, sid, path, name, c), ct);
+
+    public Task CreateFolderAsync(Guid userId, string server, string folderPath, string name, CancellationToken ct)
+        => WithSid(server, userId, (sid, c) => gateway.CreateFolderAsync(server, sid, folderPath, name, c), ct);
+
+    public Task DeleteAsync(Guid userId, string server, string path, CancellationToken ct)
+        => WithSid(server, userId, (sid, c) => gateway.DeleteAsync(server, sid, path, c), ct);
+
+    public Task CopyMoveAsync(Guid userId, string server, IEnumerable<string> paths, string destDir, bool removeSrc, bool overwrite, CancellationToken ct)
+        => WithSid(server, userId, (sid, c) => gateway.CopyMoveAsync(server, sid, paths, destDir, removeSrc, overwrite, c), ct);
+
+    public Task<SynoShareLink> CreateSharingLinkAsync(Guid userId, string server, string path, string? password, int? expiresInDays, CancellationToken ct)
+        => WithSid(server, userId, (sid, c) => gateway.CreateSharingLinkAsync(server, sid, path, password, expiresInDays, c), ct);
+
+    public Task<IReadOnlyList<SynoShareLink>> ListSharingLinksAsync(Guid userId, string server, string? path, CancellationToken ct)
+        => WithSid(server, userId, async (sid, c) =>
+        {
+            var links = await gateway.ListSharingLinksAsync(server, sid, c);
+            if (!string.IsNullOrWhiteSpace(path))
+                return links.Where(l => l.Path == path).ToList();
+            return links;
+        }, ct);
+
+    public Task DeleteSharingLinkAsync(Guid userId, string server, string id, CancellationToken ct)
+        => WithSid(server, userId, (sid, c) => gateway.DeleteSharingLinkAsync(server, sid, id, c), ct);
+
+    public Task<SynoStorageInfo> GetStorageInfoAsync(Guid userId, string server, CancellationToken ct)
+        => WithSid(server, userId, (sid, c) => gateway.GetStorageInfoAsync(server, sid, c), ct);
+
     public async Task UploadAsync(Guid userId, string server, string dir, string filename, Stream content, CancellationToken ct)
     {
         server = NormalizeServer(server);
@@ -124,6 +154,9 @@ public class FileAccessService(
             return await action(fresh, ct);
         }
     }
+
+    private Task WithSid(string server, Guid userId, Func<string, CancellationToken, Task> action, CancellationToken ct)
+        => WithSid<bool>(server, userId, async (sid, c) => { await action(sid, c); return true; }, ct);
 
     private async Task<string> GetSidAsync(Guid userId, string server, CancellationToken ct)
     {

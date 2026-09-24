@@ -1,7 +1,9 @@
+using System.IO.Compression;
+using System.Text.Json;
 using IPop.Api.Rbac;
-using IPop.Application.Documents;
 using IPop.Application.Files;
 using IPop.Core.Entities;
+using IPop.Infrastructure.Files;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -75,7 +77,17 @@ public static class FileEndpoints
             if (userId is null) return Results.Unauthorized();
             if (string.IsNullOrWhiteSpace(server)) return Results.BadRequest(new { code = "server_required" });
             var p = string.IsNullOrWhiteSpace(path) ? "/" : path.Trim();
-            try { var r = await svc.ListFolderAsync(userId.Value, server, p, ct); await Audit(http, db, "files.list", $"{server}:{p}", ct); return Results.Ok(r); }
+            try
+            {
+                var r = await svc.ListFolderAsync(userId.Value, server, p, ct);
+                // Filter out #recycle from regular browse listings
+                if (!p.Contains("#recycle"))
+                {
+                    r = r.Where(x => !x.Name.Equals("#recycle", StringComparison.OrdinalIgnoreCase)).ToList();
+                }
+                await Audit(http, db, "files.list", $"{server}:{p}", ct);
+                return Results.Ok(r);
+            }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
         });
@@ -95,41 +107,41 @@ public static class FileEndpoints
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
         });
 
-        g.MapGet("/preview", async (string server, string path, HttpContext http, IFileAccessService svc, IPopDbContext db, IWordDocumentService wordService, IPresentationService presentationService, CancellationToken ct) =>
+        g.MapGet("/preview", async (string server, string path, HttpContext http, IFileAccessService svc, IPopDbContext db, OfficeOptions office, CancellationToken ct) =>
         {
             var userId = await UserIdAsync(http);
             if (userId is null) return Results.Unauthorized();
             if (string.IsNullOrWhiteSpace(path)) return Results.BadRequest(new { code = "path_required" });
             var ext = System.IO.Path.GetExtension(path).ToLowerInvariant();
-            if (ext is not (".docx" or ".doc" or ".pptx" or ".ppt" or ".rtf"))
-                return Results.BadRequest(new { code = "unsupported", message = "Only Word or PowerPoint files can be previewed." });
+            if (ext is not (".docx" or ".doc" or ".pptx" or ".ppt"))
+                return Results.BadRequest(new { code = "unsupported", message = "Only Word/PowerPoint files can be previewed." });
             try
             {
                 await using var src = await svc.DownloadAsync(userId.Value, server, path.Trim(), ct);
                 await Audit(http, db, "files.preview", $"{server}:{path.Trim()}", ct);
 
-                byte[] pdfBytes;
-                if (ext is ".docx" or ".doc" or ".rtf")
+                var tempDir = Path.Combine(office.TempDirectory, "ipop-office");
+                Directory.CreateDirectory(tempDir);
+                var inFile = Path.Combine(tempDir, $"{Guid.NewGuid():N}{ext}");
+                var outFile = Path.ChangeExtension(inFile, ".pdf");
+                try
                 {
-                    pdfBytes = await wordService.ConvertToPdfAsync(src, ct);
+                    await using (var fs = File.Create(inFile))
+                        await src.CopyToAsync(fs, ct);
+                    var result = await office.ConvertAsync(inFile, tempDir, ct);
+                    if (result is not 0) return Results.Json(new { code = "conversion_failed", message = "LibreOffice could not convert this file." }, statusCode: 500);
+                    if (!File.Exists(outFile)) return Results.Json(new { code = "conversion_failed" }, statusCode: 500);
+                    var bytes = await File.ReadAllBytesAsync(outFile, ct);
+                    return Results.File(bytes, "application/pdf", $"{Path.GetFileNameWithoutExtension(path)}.pdf");
                 }
-                else if (ext is ".pptx" or ".ppt")
+                finally
                 {
-                    pdfBytes = await presentationService.ConvertToPdfAsync(src, ct);
+                    if (File.Exists(inFile)) File.Delete(inFile);
+                    if (File.Exists(outFile)) File.Delete(outFile);
                 }
-                else
-                {
-                    return Results.BadRequest(new { code = "unsupported", message = "Document format is not supported for preview." });
-                }
-
-                return Results.File(pdfBytes, "application/pdf", $"{Path.GetFileNameWithoutExtension(path)}.pdf");
             }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
-            catch (Exception ex)
-            {
-                return Results.Json(new { code = "conversion_failed", message = $"Failed to convert document: {ex.Message}" }, statusCode: 500);
-            }
         });
 
         g.MapPost("/upload", async (HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
@@ -153,7 +165,352 @@ public static class FileEndpoints
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
         });
 
+        // ── Rename ─────────────────────────────────────────────────────────────
+        g.MapPost("/rename", async (RenameFileRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(req.Server) || string.IsNullOrWhiteSpace(req.Path))
+                return Results.BadRequest(new { code = "invalid_request", message = "Server and path are required." });
+            if (IsInvalidFileName(req.Name))
+                return Results.BadRequest(new { code = "invalid_name", message = "File name cannot be empty or contain illegal characters." });
+
+            try
+            {
+                await svc.RenameAsync(userId.Value, req.Server.Trim(), req.Path.Trim(), req.Name.Trim(), ct);
+                await Audit(http, db, "files.rename", $"{req.Server.Trim()}:{req.Path.Trim()} -> {req.Name.Trim()}", ct);
+                return Results.Ok();
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
+            catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        });
+
+        // ── Create Folder ──────────────────────────────────────────────────────
+        g.MapPost("/folder", async (CreateFolderRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(req.Server) || string.IsNullOrWhiteSpace(req.Path))
+                return Results.BadRequest(new { code = "invalid_request", message = "Server and path are required." });
+            if (IsInvalidFileName(req.Name))
+                return Results.BadRequest(new { code = "invalid_name", message = "Folder name cannot be empty or contain illegal characters." });
+
+            try
+            {
+                await svc.CreateFolderAsync(userId.Value, req.Server.Trim(), req.Path.Trim(), req.Name.Trim(), ct);
+                await Audit(http, db, "files.folder.create", $"{req.Server.Trim()}:{req.Path.Trim()}/{req.Name.Trim()}", ct);
+                return Results.Ok();
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
+            catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        });
+
+        // ── Delete ─────────────────────────────────────────────────────────────
+        g.MapPost("/delete", async (DeleteFilesRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(req.Server) || req.Paths is not { Length: > 0 })
+                return Results.BadRequest(new { code = "invalid_request", message = "Server and paths are required." });
+
+            try
+            {
+                foreach (var p in req.Paths)
+                {
+                    await svc.DeleteAsync(userId.Value, req.Server.Trim(), p.Trim(), ct);
+                    await Audit(http, db, "files.delete", $"{req.Server.Trim()}:{p.Trim()}", ct);
+                }
+                return Results.Ok();
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
+            catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        });
+
+        // ── Move (Same server) ─────────────────────────────────────────────────
+        g.MapPost("/move", async (MoveFilesRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(req.Server) || req.Paths is not { Length: > 0 } || string.IsNullOrWhiteSpace(req.DestDir))
+                return Results.BadRequest(new { code = "invalid_request", message = "Server, paths, and destination directory are required." });
+
+            try
+            {
+                await svc.CopyMoveAsync(userId.Value, req.Server.Trim(), req.Paths, req.DestDir.Trim(), removeSrc: true, req.Overwrite ?? false, ct);
+                await Audit(http, db, "files.move", $"{req.Server.Trim()}:{string.Join(",", req.Paths)} -> {req.DestDir.Trim()}", ct);
+                return Results.Ok();
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
+            catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        });
+
+        // ── Copy (Same server) ─────────────────────────────────────────────────
+        g.MapPost("/copy", async (CopyFilesRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(req.Server) || req.Paths is not { Length: > 0 } || string.IsNullOrWhiteSpace(req.DestDir))
+                return Results.BadRequest(new { code = "invalid_request", message = "Server, paths, and destination directory are required." });
+
+            try
+            {
+                await svc.CopyMoveAsync(userId.Value, req.Server.Trim(), req.Paths, req.DestDir.Trim(), removeSrc: false, req.Overwrite ?? false, ct);
+                await Audit(http, db, "files.copy", $"{req.Server.Trim()}:{string.Join(",", req.Paths)} -> {req.DestDir.Trim()}", ct);
+                return Results.Ok();
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
+            catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        });
+
+        // ── Transfer across servers ───────────────────────────────────────────
+        g.MapPost("/transfer", async (TransferFilesRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(req.SourceServer) || string.IsNullOrWhiteSpace(req.DestServer) || req.Paths is not { Length: > 0 })
+                return Results.BadRequest(new { code = "invalid_request", message = "Source, destination, and paths are required." });
+
+            // Validate caller holds credentials for destination server
+            var (hasDest, _) = await svc.GetCredentialAsync(userId.Value, req.DestServer, ct);
+            if (!hasDest)
+            {
+                return Results.Json(new { code = "synology_credential_required", message = $"Connect to {req.DestServer} first." }, statusCode: 401);
+            }
+
+            var transferItems = req.Paths.Select(p => new FileTransferItem(p, Path.GetFileName(p), 0)).ToList();
+            var op = new FileOperation
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId.Value,
+                Kind = req.Mode?.ToLowerInvariant() is "move" ? "move" : "copy",
+                SourceServer = req.SourceServer.Trim().ToLowerInvariant(),
+                DestServer = req.DestServer.Trim().ToLowerInvariant(),
+                DestDir = req.DestDir?.Trim(),
+                ItemsJson = JsonSerializer.Serialize(transferItems),
+                Status = "Queued",
+                TotalFiles = transferItems.Count,
+                CompletedFiles = 0,
+                FailedFiles = 0,
+                BytesTransferred = 0,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            db.FileOperations.Add(op);
+            await Audit(http, db, "files.transfer", $"{req.SourceServer}->{req.DestServer}:{op.TotalFiles} files", ct);
+            await db.SaveChangesAsync(ct);
+
+            return Results.Ok(new { operationId = op.Id });
+        });
+
+        g.MapGet("/operations", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+
+            var ops = await db.FileOperations.AsNoTracking()
+                .Where(o => o.UserId == userId.Value)
+                .OrderByDescending(o => o.CreatedAt)
+                .Take(20)
+                .ToListAsync(ct);
+            return Results.Ok(ops);
+        });
+
+        g.MapGet("/operations/{id:guid}", async (Guid id, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+
+            var op = await db.FileOperations.AsNoTracking()
+                .FirstOrDefaultAsync(o => o.Id == id && o.UserId == userId.Value, ct);
+            return op is not null ? Results.Ok(op) : Results.NotFound();
+        });
+
+        // ── Recycle Bin ────────────────────────────────────────────────────────
+        g.MapGet("/recycle", async (string server, string? path, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(server)) return Results.BadRequest(new { code = "server_required" });
+
+            try
+            {
+                // If path is specified, browse that recycle folder, else browse root recycle bins of shares
+                var targetPath = string.IsNullOrWhiteSpace(path) ? "/" : path.Trim();
+                if (targetPath == "/")
+                {
+                    var shares = await svc.ListSharesAsync(userId.Value, server, ct);
+                    var items = new List<SynoItem>();
+                    foreach (var sh in shares)
+                    {
+                        try
+                        {
+                            var recyclePath = $"{sh.TrimEnd('/')}/#recycle";
+                            var sub = await svc.ListFolderAsync(userId.Value, server, recyclePath, ct);
+                            items.AddRange(sub);
+                        }
+                        catch { /* share might not have #recycle */ }
+                    }
+                    return Results.Ok(items);
+                }
+                else
+                {
+                    var items = await svc.ListFolderAsync(userId.Value, server, targetPath, ct);
+                    return Results.Ok(items);
+                }
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
+            catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        });
+
+        g.MapPost("/recycle/restore", async (RestoreRecycleRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(req.Server) || req.Paths is not { Length: > 0 })
+                return Results.BadRequest(new { code = "invalid_request", message = "Server and paths are required." });
+
+            var dest = string.IsNullOrWhiteSpace(req.DestDir) ? "/" : req.DestDir.Trim();
+            try
+            {
+                await svc.CopyMoveAsync(userId.Value, req.Server.Trim(), req.Paths, dest, removeSrc: true, true, ct);
+                await Audit(http, db, "files.recycle.restore", $"{req.Server.Trim()}:{string.Join(",", req.Paths)} -> {dest}", ct);
+                return Results.Ok();
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
+            catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        });
+
+        g.MapPost("/recycle/empty", async (EmptyRecycleRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(req.Server)) return Results.BadRequest(new { code = "server_required" });
+
+            try
+            {
+                var shares = await svc.ListSharesAsync(userId.Value, req.Server.Trim(), ct);
+                foreach (var sh in shares)
+                {
+                    try
+                    {
+                        var recyclePath = $"{sh.TrimEnd('/')}/#recycle";
+                        var items = await svc.ListFolderAsync(userId.Value, req.Server.Trim(), recyclePath, ct);
+                        foreach (var it in items)
+                        {
+                            await svc.DeleteAsync(userId.Value, req.Server.Trim(), it.Path, ct);
+                        }
+                    }
+                    catch { }
+                }
+                await Audit(http, db, "files.recycle.empty", $"{req.Server.Trim()}:#recycle", ct);
+                return Results.Ok();
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
+            catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        });
+
+        // ── Storage Info ───────────────────────────────────────────────────────
+        g.MapGet("/storage", async (string? server, HttpContext http, IFileAccessService svc, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            var s = string.IsNullOrWhiteSpace(server) ? "spj" : server.Trim().ToLowerInvariant();
+            try
+            {
+                var info = await svc.GetStorageInfoAsync(userId.Value, s, ct);
+                return Results.Ok(info);
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
+            catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        });
+
+        // ── Sharing Links ──────────────────────────────────────────────────────
+        g.MapGet("/sharing", async (string? server, string? path, HttpContext http, IFileAccessService svc, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(server)) return Results.BadRequest(new { code = "server_required" });
+
+            try
+            {
+                var links = await svc.ListSharingLinksAsync(userId.Value, server.Trim(), path, ct);
+                return Results.Ok(links);
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
+            catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        });
+
+        g.MapPost("/sharing", async (CreateShareLinkRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(req.Server) || string.IsNullOrWhiteSpace(req.Path))
+                return Results.BadRequest(new { code = "invalid_request", message = "Server and path are required." });
+
+            try
+            {
+                var link = await svc.CreateSharingLinkAsync(userId.Value, req.Server.Trim(), req.Path.Trim(), req.Password, req.ExpiresInDays ?? 14, ct);
+                await Audit(http, db, "files.share.create", $"{req.Server.Trim()}:{req.Path.Trim()} -> {link.Url}", ct);
+                return Results.Ok(link);
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
+            catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        });
+
+        g.MapDelete("/sharing", async (string server, string shareId, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(server) || string.IsNullOrWhiteSpace(shareId))
+                return Results.BadRequest(new { code = "invalid_request", message = "Server and shareId are required." });
+
+            try
+            {
+                await svc.DeleteSharingLinkAsync(userId.Value, server.Trim(), shareId.Trim(), ct);
+                await Audit(http, db, "files.share.delete", $"{server.Trim()}:{shareId.Trim()}", ct);
+                return Results.Ok();
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
+            catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        });
+
+        // ── Bulk Download (Streamed Zip) ───────────────────────────────────────
+        g.MapPost("/bulk-download", async (BulkDownloadRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (string.IsNullOrWhiteSpace(req.Server) || req.Paths is not { Length: > 0 })
+                return Results.BadRequest(new { code = "invalid_request", message = "Server and paths are required." });
+
+            var memStream = new MemoryStream();
+            using (var zip = new ZipArchive(memStream, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                foreach (var p in req.Paths)
+                {
+                    try
+                    {
+                        await using var fileStream = await svc.DownloadAsync(userId.Value, req.Server.Trim(), p.Trim(), ct);
+                        var entryName = Path.GetFileName(p);
+                        var entry = zip.CreateEntry(entryName, CompressionLevel.Fastest);
+                        await using var entryStream = entry.Open();
+                        await fileStream.CopyToAsync(entryStream, ct);
+                    }
+                    catch { /* best-effort skip unreadable file in batch */ }
+                }
+            }
+
+            memStream.Position = 0;
+            await Audit(http, db, "files.bulk-download", $"{req.Server.Trim()}:{req.Paths.Length} items", ct);
+            return Results.File(memStream, "application/zip", $"ipop_{req.Server.Trim()}_{DateTime.UtcNow:yyyyMMdd-HHmm}.zip");
+        });
+
         return app;
+    }
+
+    private static bool IsInvalidFileName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 255) return true;
+        return name.IndexOfAny(['\\', '/', ':', '*', '?', '"', '<', '>', '|']) >= 0;
     }
 
     private static async Task<Guid?> UserIdAsync(HttpContext http)
@@ -172,4 +529,14 @@ public static class FileEndpoints
     }
 
     public record CredentialRequest(string Server, string Username, string Password);
+    public record RenameFileRequest(string Server, string Path, string Name);
+    public record CreateFolderRequest(string Server, string Path, string Name);
+    public record DeleteFilesRequest(string Server, string[] Paths);
+    public record MoveFilesRequest(string Server, string[] Paths, string DestDir, bool? Overwrite = null);
+    public record CopyFilesRequest(string Server, string[] Paths, string DestDir, bool? Overwrite = null);
+    public record TransferFilesRequest(string SourceServer, string[] Paths, string DestServer, string? DestDir, string Mode);
+    public record CreateShareLinkRequest(string Server, string Path, int? ExpiresInDays, string? Password);
+    public record RestoreRecycleRequest(string Server, string[] Paths, string? DestDir);
+    public record EmptyRecycleRequest(string Server);
+    public record BulkDownloadRequest(string Server, string[] Paths);
 }

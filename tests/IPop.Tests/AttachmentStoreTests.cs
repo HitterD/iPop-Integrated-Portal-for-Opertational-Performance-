@@ -36,6 +36,16 @@ public class AttachmentStoreTests
         }
         public Task DeleteAsync(string server, string sid, string path, CancellationToken ct)
         { Expire(); Deletes.Add(path); return Task.CompletedTask; }
+        public Task RenameAsync(string server, string sid, string path, string name, CancellationToken ct) => Task.CompletedTask;
+        public Task CreateFolderAsync(string server, string sid, string folderPath, string name, CancellationToken ct) => Task.CompletedTask;
+        public Task CopyMoveAsync(string server, string sid, IEnumerable<string> paths, string destDir, bool removeSrc, bool overwrite, CancellationToken ct) => Task.CompletedTask;
+        public Task<SynoShareLink> CreateSharingLinkAsync(string server, string sid, string path, string? password, int? expiresInDays, CancellationToken ct)
+            => Task.FromResult(new SynoShareLink("id", "url", path, null, false));
+        public Task<IReadOnlyList<SynoShareLink>> ListSharingLinksAsync(string server, string sid, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<SynoShareLink>>([]);
+        public Task DeleteSharingLinkAsync(string server, string sid, string id, CancellationToken ct) => Task.CompletedTask;
+        public Task<SynoStorageInfo> GetStorageInfoAsync(string server, string sid, CancellationToken ct)
+            => Task.FromResult(new SynoStorageInfo(server, 0, 0, 0));
 
         private void Expire()
         {

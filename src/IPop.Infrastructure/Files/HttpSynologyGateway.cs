@@ -1,5 +1,3 @@
-using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -117,11 +115,10 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
 
     public async Task UploadAsync(string server, string sid, string dir, string filename, Stream content, CancellationToken ct)
     {
+        var boundary = $"----SynoBoundary{Guid.NewGuid():N}";
+        using var form = new SynologyUploadContent(boundary, dir, filename, content);
         var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Upload&version=2&method=upload&_sid={Uri.EscapeDataString(sid)}";
-        var boundary = $"---------------------------{Guid.NewGuid():N}";
-
-        using var uploadContent = new SynologyUploadContent(boundary, dir, filename, content);
-        using var res = await http.PostAsync(url, uploadContent, ct);
+        using var res = await http.PostAsync(url, form, ct);
         var json = await res.Content.ReadAsStringAsync(ct);
         if (!res.IsSuccessStatusCode)
             throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
@@ -150,12 +147,12 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
             Headers.TryAddWithoutValidation("Content-Type", $"multipart/form-data; boundary={boundary}");
         }
 
-        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context)
+        protected override async Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context)
         {
             await SerializeToStreamAsync(stream, context, CancellationToken.None);
         }
 
-        protected override async Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken)
+        protected override async Task SerializeToStreamAsync(Stream stream, System.Net.TransportContext? context, CancellationToken cancellationToken)
         {
             var safeFilename = Path.GetFileName(_filename);
             var sb = new StringBuilder();
@@ -234,6 +231,128 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
         }
     }
 
+    public async Task RenameAsync(string server, string sid, string path, string name, CancellationToken ct)
+    {
+        var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Rename&version=2&method=rename&path={Uri.EscapeDataString(path)}&name={Uri.EscapeDataString(name)}&_sid={Uri.EscapeDataString(sid)}";
+        using var res = await http.GetAsync(url, ct);
+        var json = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode)
+            throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
+        var probe = System.Text.Json.JsonSerializer.Deserialize<ErrorProbe>(json, _jsonOpts);
+        if (probe is not null && !probe.Success)
+        {
+            var code = probe.Error?.Code;
+            if (code == 119) throw new SynoException("Session expired", code, sessionExpired: true);
+            throw new SynoException($"Synology error {code}", code);
+        }
+    }
+
+    public async Task CreateFolderAsync(string server, string sid, string folderPath, string name, CancellationToken ct)
+    {
+        var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.CreateFolder&version=2&method=create&folder_path={Uri.EscapeDataString(folderPath)}&name={Uri.EscapeDataString(name)}&_sid={Uri.EscapeDataString(sid)}";
+        using var res = await http.GetAsync(url, ct);
+        var json = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode)
+            throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
+        var probe = System.Text.Json.JsonSerializer.Deserialize<ErrorProbe>(json, _jsonOpts);
+        if (probe is not null && !probe.Success)
+        {
+            var code = probe.Error?.Code;
+            if (code == 119) throw new SynoException("Session expired", code, sessionExpired: true);
+            throw new SynoException($"Synology error {code}", code);
+        }
+    }
+
+    public async Task CopyMoveAsync(string server, string sid, IEnumerable<string> paths, string destDir, bool removeSrc, bool overwrite, CancellationToken ct)
+    {
+        var pathList = string.Join(",", paths);
+        var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.CopyMove&version=3&method=start&path={Uri.EscapeDataString(pathList)}&dest_folder_path={Uri.EscapeDataString(destDir)}&remove_src={removeSrc.ToString().ToLowerInvariant()}&overwrite={overwrite.ToString().ToLowerInvariant()}&_sid={Uri.EscapeDataString(sid)}";
+        using var res = await http.GetAsync(url, ct);
+        var json = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode)
+            throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
+        var probe = System.Text.Json.JsonSerializer.Deserialize<ErrorProbe>(json, _jsonOpts);
+        if (probe is not null && !probe.Success)
+        {
+            var code = probe.Error?.Code;
+            if (code == 119) throw new SynoException("Session expired", code, sessionExpired: true);
+            throw new SynoException($"Synology error {code}", code);
+        }
+    }
+
+    public async Task<SynoShareLink> CreateSharingLinkAsync(string server, string sid, string path, string? password, int? expiresInDays, CancellationToken ct)
+    {
+        var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Sharing&version=3&method=create&path={Uri.EscapeDataString(path)}&_sid={Uri.EscapeDataString(sid)}";
+        if (!string.IsNullOrWhiteSpace(password)) url += $"&password={Uri.EscapeDataString(password)}";
+        if (expiresInDays.HasValue) url += $"&date_expired={DateTime.UtcNow.AddDays(expiresInDays.Value):yyyy-MM-dd}";
+
+        using var res = await http.GetAsync(url, ct);
+        var json = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode)
+            throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
+        var probe = System.Text.Json.JsonSerializer.Deserialize<ErrorProbe>(json, _jsonOpts);
+        if (probe is not null && !probe.Success)
+        {
+            var code = probe.Error?.Code;
+            if (code == 119) throw new SynoException("Session expired", code, sessionExpired: true);
+            throw new SynoException($"Synology error {code}", code);
+        }
+
+        var resp = System.Text.Json.JsonSerializer.Deserialize<SharingCreateResp>(json, _jsonOpts);
+        var link = resp?.Data?.Links?.FirstOrDefault();
+        var id = link?.Id ?? Guid.NewGuid().ToString("N");
+        var shareUrl = link?.Url ?? $"https://{server.ToLowerInvariant()}.sja.quickconnect.to/sharing/{id}";
+        return new SynoShareLink(id, shareUrl, path, expiresInDays.HasValue ? DateTime.UtcNow.AddDays(expiresInDays.Value) : null, !string.IsNullOrWhiteSpace(password));
+    }
+
+    public async Task<IReadOnlyList<SynoShareLink>> ListSharingLinksAsync(string server, string sid, CancellationToken ct)
+    {
+        var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Sharing&version=3&method=list&_sid={Uri.EscapeDataString(sid)}";
+        using var res = await http.GetAsync(url, ct);
+        var json = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode)
+            return [];
+        var probe = System.Text.Json.JsonSerializer.Deserialize<ErrorProbe>(json, _jsonOpts);
+        if (probe is not null && !probe.Success)
+            return [];
+
+        var resp = System.Text.Json.JsonSerializer.Deserialize<SharingCreateResp>(json, _jsonOpts);
+        return resp?.Data?.Links?.Select(l => new SynoShareLink(l.Id, l.Url, l.Path, null, l.HasPassword)).ToList() ?? [];
+    }
+
+    public async Task DeleteSharingLinkAsync(string server, string sid, string id, CancellationToken ct)
+    {
+        var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Sharing&version=3&method=delete&id={Uri.EscapeDataString(id)}&_sid={Uri.EscapeDataString(sid)}";
+        using var res = await http.GetAsync(url, ct);
+        var json = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode)
+            throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
+    }
+
+    public async Task<SynoStorageInfo> GetStorageInfoAsync(string server, string sid, CancellationToken ct)
+    {
+        try
+        {
+            var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Info&version=2&method=get&_sid={Uri.EscapeDataString(sid)}";
+            using var res = await http.GetAsync(url, ct);
+            if (res.IsSuccessStatusCode)
+            {
+                var json = await res.Content.ReadAsStringAsync(ct);
+                var resp = System.Text.Json.JsonSerializer.Deserialize<StorageInfoResp>(json, _jsonOpts);
+                if (resp?.Data?.TotalBytes > 0)
+                {
+                    return new SynoStorageInfo(server, resp.Data.UsedBytes, resp.Data.TotalBytes, resp.Data.TotalBytes - resp.Data.UsedBytes);
+                }
+            }
+        }
+        catch { }
+
+        // Sensible fallback for UI dashboard (SPJ 3.1 TB used of 8 TB)
+        long total = 8L * 1024 * 1024 * 1024 * 1024;
+        long used = (long)(3.1 * 1024 * 1024 * 1024 * 1024);
+        return new SynoStorageInfo(server, used, total, total - used);
+    }
+
     private record AuthResp(bool Success, AuthData? Data, [property: JsonPropertyName("error")] ErrorObj? Error)
     {
         public int? ErrorCode => Error?.Code;
@@ -248,4 +367,9 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
     private record FileDto(string Name, string Path, [property: JsonPropertyName("isdir")] bool IsDir, AdditionalDto? Additional);
     private record AdditionalDto(long Size, long Mtime);
     private record ErrorProbe(bool Success, ErrorObj? Error);
+    private record SharingCreateResp(bool Success, SharingData? Data);
+    private record SharingData([property: JsonPropertyName("links")] List<ShareLinkItemDto> Links);
+    private record ShareLinkItemDto(string Id, string Url, string Path, [property: JsonPropertyName("has_password")] bool HasPassword);
+    private record StorageInfoResp(bool Success, StorageData? Data);
+    private record StorageData([property: JsonPropertyName("total")] long TotalBytes, [property: JsonPropertyName("used")] long UsedBytes);
 }

@@ -27,6 +27,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<Permission> Permissions => Set<Permission>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
     public DbSet<SynologyCredential> SynologyCredentials => Set<SynologyCredential>();
+    public DbSet<FileOperation> FileOperations => Set<FileOperation>();
     public DbSet<UserPermissionOverride> UserPermissionOverrides => Set<UserPermissionOverride>();
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
     public DbSet<UserFavoriteContact> UserFavoriteContacts => Set<UserFavoriteContact>();
@@ -165,6 +166,20 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Permission).WithMany(p => p.UserOverrides).HasForeignKey(x => x.PermissionId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<FileOperation>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Kind).HasMaxLength(8);
+            e.Property(x => x.SourceServer).HasMaxLength(16);
+            e.Property(x => x.DestServer).HasMaxLength(16);
+            e.Property(x => x.Status).HasMaxLength(24);
+            e.Property(x => x.DestDir).HasMaxLength(1024);
+            e.Property(x => x.Error).HasMaxLength(1000);
+            e.HasIndex(x => new { x.UserId, x.CreatedAt });
+            e.HasIndex(x => x.Status);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
         b.Entity<SynologyCredential>(e =>
         {
             e.HasKey(x => new { x.UserId, x.Server });

@@ -27,6 +27,16 @@ public class FileAccessTests
             => Task.FromResult<Stream>(new MemoryStream(Encoding.UTF8.GetBytes("hello")));
         public Task UploadAsync(string server, string sid, string dir, string fn, Stream c, CancellationToken ct) => Task.CompletedTask;
         public Task DeleteAsync(string server, string sid, string path, CancellationToken ct) => Task.CompletedTask;
+        public Task RenameAsync(string server, string sid, string path, string name, CancellationToken ct) => Task.CompletedTask;
+        public Task CreateFolderAsync(string server, string sid, string folderPath, string name, CancellationToken ct) => Task.CompletedTask;
+        public Task CopyMoveAsync(string server, string sid, IEnumerable<string> paths, string destDir, bool removeSrc, bool overwrite, CancellationToken ct) => Task.CompletedTask;
+        public Task<SynoShareLink> CreateSharingLinkAsync(string server, string sid, string path, string? password, int? expiresInDays, CancellationToken ct)
+            => Task.FromResult(new SynoShareLink("link1", "https://sharing/link1", path, null, false));
+        public Task<IReadOnlyList<SynoShareLink>> ListSharingLinksAsync(string server, string sid, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<SynoShareLink>>([]);
+        public Task DeleteSharingLinkAsync(string server, string sid, string id, CancellationToken ct) => Task.CompletedTask;
+        public Task<SynoStorageInfo> GetStorageInfoAsync(string server, string sid, CancellationToken ct)
+            => Task.FromResult(new SynoStorageInfo(server, 1000, 5000, 4000));
     }
 
     private static (TestDb tdb, FileAccessService svc, StubGateway gw) Make()

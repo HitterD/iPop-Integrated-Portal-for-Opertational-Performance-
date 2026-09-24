@@ -9,6 +9,8 @@ public static class RealtimeEvents
     public const string AuditChanged = "auditChanged";         // ()
     public const string BadgeChanged = "badgeChanged";         // (key, count)
     public const string ProjectChanged = "projectChanged";     // (projectId)
+    public const string FileOperationProgress = "fileOperationProgress"; // (operationId, completed, total, bytes)
+    public const string FileOperationFinished = "fileOperationFinished"; // (operationId, status)
 
     public static string UserGroup(string nik) => $"user:{nik}";
 }
