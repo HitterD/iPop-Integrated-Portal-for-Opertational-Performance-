@@ -441,9 +441,12 @@ public static class DirectoryEndpoints
         $"%{term.Trim().Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_")}%";
 
     // CSV field escaping (RFC 4180-ish, separator ';' agar ramah Excel lokal id-ID).
-    private static string CsvField(string? value)
+    // Leading = + - @ (or tab/CR) would make Excel evaluate the cell as a formula, so those
+    // values get a ' prefix (OWASP CSV injection guidance).
+    public static string CsvField(string? value)
     {
         if (string.IsNullOrEmpty(value)) return "";
+        if ("=+-@\t\r".Contains(value[0])) value = "'" + value;
         return value.Contains(';') || value.Contains('"') || value.Contains('\n') || value.Contains('\r')
             ? $"\"{value.Replace("\"", "\"\"")}\""
             : value;
