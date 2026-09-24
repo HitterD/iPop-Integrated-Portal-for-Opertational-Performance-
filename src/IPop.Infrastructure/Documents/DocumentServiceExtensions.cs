@@ -15,7 +15,7 @@ public static class DocumentServiceExtensions
         {
             if (!_skiaEnabled)
             {
-                Settings.DrawingEngine = DrawingEngine.Skia;
+                DevExpress.Drawing.Settings.DrawingEngine = DrawingEngine.Skia;
                 _skiaEnabled = true;
             }
         }

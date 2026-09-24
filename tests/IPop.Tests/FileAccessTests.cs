@@ -26,6 +26,7 @@ public class FileAccessTests
         public Task<Stream> DownloadAsync(string server, string sid, string path, CancellationToken ct)
             => Task.FromResult<Stream>(new MemoryStream(Encoding.UTF8.GetBytes("hello")));
         public Task UploadAsync(string server, string sid, string dir, string fn, Stream c, CancellationToken ct) => Task.CompletedTask;
+        public Task DeleteAsync(string server, string sid, string path, CancellationToken ct) => Task.CompletedTask;
     }
 
     private static (TestDb tdb, FileAccessService svc, StubGateway gw) Make()

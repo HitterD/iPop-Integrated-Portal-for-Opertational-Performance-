@@ -18,4 +18,5 @@ public interface ISynologyGateway
     Task<IReadOnlyList<SynoItem>> ListFolderAsync(string server, string sid, string path, CancellationToken ct);
     Task<Stream> DownloadAsync(string server, string sid, string path, CancellationToken ct);
     Task UploadAsync(string server, string sid, string dir, string filename, Stream content, CancellationToken ct);
+    Task DeleteAsync(string server, string sid, string path, CancellationToken ct);
 }

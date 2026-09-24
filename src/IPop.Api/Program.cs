@@ -21,6 +21,12 @@ using IPop.Infrastructure.Documents;
 using IPop.Application.Rbac;
 using IPop.Application.Notifications;
 using IPop.Application.Sja;
+using IPop.Application.Settings;
+using IPop.Infrastructure.Settings;
+using IPop.Application.Email;
+using IPop.Infrastructure.Email;
+using IPop.Application.Attachments;
+using IPop.Infrastructure.Attachments;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -44,6 +50,18 @@ builder.Services.AddSingleton<ITokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthWorkflow, AuthWorkflow>();
 builder.Services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
 builder.Services.AddScoped<IFileAccessService, FileAccessService>();
+builder.Services.AddScoped<ISettings, DbSettings>();
+
+var smtp = SmtpOptions.Bind(builder.Configuration);
+builder.Services.AddSingleton(smtp);
+if (smtp.IsConfigured) builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+else builder.Services.AddSingleton<IEmailSender, LogEmailSender>();
+builder.Services.AddScoped<IEmailQueue, DbEmailQueue>();
+builder.Services.AddScoped<EmailOutboxProcessor>();
+builder.Services.AddHostedService<EmailOutboxWorker>();
+builder.Services.AddSingleton(AttachmentOptions.Bind(builder.Configuration));
+builder.Services.AddSingleton<AttachmentSession>();
+builder.Services.AddScoped<IAttachmentStore, SynologyAttachmentStore>();
 builder.Services.AddScoped<OfficeOptions>(_ => new OfficeOptions
 {
     SofficePath = builder.Configuration["Office:SofficePath"] ?? "soffice",
@@ -182,6 +200,8 @@ app.MapNews();
 app.MapNotificationGateway();
 app.MapPresence();
 app.MapDocumentDemo();
+app.MapSettings();
+app.MapAttachments();
 app.MapHub<PresenceHub>("/hubs/presence").RequireAuthorization();
 app.MapHub<ChatHub>("/hubs/chat").RequireAuthorization();
 app.MapHub<IPop.Api.Calls.CallHub>("/hubs/calls").RequireAuthorization();

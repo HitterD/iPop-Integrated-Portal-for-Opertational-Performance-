@@ -94,6 +94,9 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<CallRoom> CallRooms => Set<CallRoom>();
     public DbSet<CallParticipant> CallParticipants => Set<CallParticipant>();
     public DbSet<CallHistory> CallHistories => Set<CallHistory>();
+    public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+    public DbSet<Attachment> Attachments => Set<Attachment>();
+    public DbSet<EmailOutboxMessage> EmailOutbox => Set<EmailOutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -637,6 +640,26 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Result).HasMaxLength(16);
             e.HasOne(x => x.Call).WithMany().HasForeignKey(x => x.CallId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Performer).WithMany().HasForeignKey(x => x.PerformerId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<AppSetting>(e =>
+        {
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Key).HasMaxLength(100);
+            e.Property(x => x.ValueJson).HasColumnType("jsonb");
+        });
+        b.Entity<Attachment>(e =>
+        {
+            e.Property(x => x.Area).HasMaxLength(32);
+            e.Property(x => x.FileName).HasMaxLength(255);
+            e.Property(x => x.ContentType).HasMaxLength(127);
+            e.Property(x => x.Sha256).HasMaxLength(64);
+            e.HasIndex(x => new { x.Area, x.CreatedAt });
+            e.HasOne(x => x.Uploader).WithMany().HasForeignKey(x => x.UploaderId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<EmailOutboxMessage>(e =>
+        {
+            e.ToTable("EmailOutbox");
+            e.HasIndex(x => new { x.SentAt, x.NextAttemptAt });
         });
     }
 }

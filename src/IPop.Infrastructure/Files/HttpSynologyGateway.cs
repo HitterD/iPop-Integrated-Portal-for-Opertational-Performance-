@@ -217,6 +217,23 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
         }
     }
 
+    public async Task DeleteAsync(string server, string sid, string path, CancellationToken ct)
+    {
+        // Blocking "delete" method: returns once the file is gone, so callers can rely on it.
+        var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Delete&version=2&method=delete&path={Uri.EscapeDataString(path)}&_sid={Uri.EscapeDataString(sid)}";
+        using var res = await http.GetAsync(url, ct);
+        var json = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode)
+            throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
+        var probe = System.Text.Json.JsonSerializer.Deserialize<ErrorProbe>(json, _jsonOpts);
+        if (probe is not null && !probe.Success)
+        {
+            var code = probe.Error?.Code;
+            if (code == 119) throw new SynoException("Session expired", code, sessionExpired: true);
+            throw new SynoException($"Synology error {code}", code);
+        }
+    }
+
     private record AuthResp(bool Success, AuthData? Data, [property: JsonPropertyName("error")] ErrorObj? Error)
     {
         public int? ErrorCode => Error?.Code;
