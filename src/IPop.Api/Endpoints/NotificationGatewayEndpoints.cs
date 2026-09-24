@@ -114,6 +114,20 @@ public static class NotificationGatewayEndpoints
                 : Results.Ok(state);
         }).RequireAuthorization();
 
+        v1.MapPost("/notifications/{requestId:guid}/unread", async (Guid requestId,
+            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var delivery = await db.NotificationDeliveries.FirstOrDefaultAsync(d => d.RequestId == requestId && d.UserId == userId.Value, ct);
+            if (delivery is null) return Results.NotFound();
+            delivery.Status = NotificationStatus.Delivered;
+            delivery.ReadAt = null;
+            delivery.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { requestId, status = "unread" });
+        }).RequireAuthorization();
+
         // GET /api/notifications/v1/unread-count — jumlah belum dibaca untuk badge.
         // Ringan (satu COUNT) agar shell bisa mem-poll tanpa memuat seluruh inbox.
         v1.MapGet("/unread-count", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
