@@ -50,3 +50,24 @@ public sealed class NotificationBadgeProvider(IPopDbContext db) : IBadgeProvider
                 && d.Status != NotificationStatus.Read
                 && d.Status != NotificationStatus.Acknowledged, ct);
 }
+
+/// Mandatory published memos requiring acknowledgement that the user has not acknowledged yet.
+public sealed class NewsBadgeProvider(IPopDbContext db) : IBadgeProvider
+{
+    public string Key => "news";
+
+    public async Task<int> CountAsync(Guid userId, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var ackedPostIds = db.NewsAcknowledgements.AsNoTracking()
+            .Where(a => a.UserId == userId)
+            .Select(a => a.NewsPostId);
+
+        return await db.NewsPosts.AsNoTracking()
+            .Where(p => p.Status == "published"
+                && p.RequiresAcknowledgement
+                && (p.PublishAt == null || p.PublishAt <= now)
+                && !ackedPostIds.Contains(p.Id))
+            .CountAsync(ct);
+    }
+}

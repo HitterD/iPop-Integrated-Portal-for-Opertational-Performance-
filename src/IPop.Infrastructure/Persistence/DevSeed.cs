@@ -36,6 +36,7 @@ public static class DevSeed
             ("news.read", "Browse and read corporate news, announcements, and memos"),
             ("news.write", "Create and edit news/announcement/memo posts"),
             ("news.approve", "Approve or reject news submissions and publish/unpublish"),
+            ("news.publish", "Publish, unpublish, and pin corporate news/announcements/memos"),
             ("projects.read", "Browse and view projects and tasks"),
             ("projects.write", "Create and update projects and tasks"),
             ("projects.admin", "Administer and delete projects"),

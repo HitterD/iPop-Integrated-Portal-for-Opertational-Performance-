@@ -405,8 +405,23 @@
 
     private async Task RemindAck()
     {
-        Toasts.Show("Reminder sent to targeted employees.", ToastKind.Info);
-        await Task.CompletedTask;
+        if (detail is null) return;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/news/{detail.Id}/remind-ack", null);
+            if (res.IsSuccessStatusCode)
+            {
+                Toasts.Show("Reminder sent to targeted employees.", ToastKind.Success);
+            }
+            else
+            {
+                Toasts.Show("Unable to send acknowledgement reminder.", ToastKind.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Toasts.Show($"Reminder failed: {ex.Message}", ToastKind.Error);
+        }
     }
 
     private async Task CopyLink()

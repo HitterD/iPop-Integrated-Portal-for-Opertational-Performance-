@@ -167,6 +167,19 @@ public static class NewsEndpoints
             return Results.Ok(result.News);
         });
 
+        g.MapPost("/{id:guid}/remind-ack", async (Guid id, HttpContext http, INewsService svc, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            var result = await svc.RemindAckAsync(userId.Value, id, ct);
+            if (!result.Success)
+            {
+                var sc = result.Error == "not_found" ? 404 : result.Error == "forbidden" ? 403 : 422;
+                return Results.Json(new { code = result.Error, message = result.Error }, statusCode: sc);
+            }
+            return Results.Ok(result.News);
+        });
+
         // ── Audit ───────────────────────────────────────────────────────
         g.MapGet("/{id:guid}/audits", async (Guid id, HttpContext http, INewsService svc, CancellationToken ct) =>
         {

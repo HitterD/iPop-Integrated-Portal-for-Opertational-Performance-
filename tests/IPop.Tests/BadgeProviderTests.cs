@@ -59,4 +59,40 @@ public class BadgeProviderTests
 
         Assert.Equal(2, await new MailBadgeProvider(t.Db).CountAsync(me.Id, default));
     }
+
+    [Fact]
+    public async Task News_CountsUnacknowledgedMandatoryPublishedMemos()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("100");
+        var now = DateTime.UtcNow;
+
+        var m1 = new NewsPost
+        {
+            Id = Guid.NewGuid(), Type = "memo", Title = "Mandatory Unacked", Body = "Body",
+            Status = "published", AuthorId = me.Id, PublishedAt = now.AddMinutes(-5),
+            RequiresAcknowledgement = true, CreatedAt = now, UpdatedAt = now
+        };
+        var m2 = new NewsPost
+        {
+            Id = Guid.NewGuid(), Type = "memo", Title = "Mandatory Acked", Body = "Body",
+            Status = "published", AuthorId = me.Id, PublishedAt = now.AddMinutes(-5),
+            RequiresAcknowledgement = true, CreatedAt = now, UpdatedAt = now
+        };
+        var m3 = new NewsPost
+        {
+            Id = Guid.NewGuid(), Type = "news", Title = "Regular News", Body = "Body",
+            Status = "published", AuthorId = me.Id, PublishedAt = now.AddMinutes(-5),
+            RequiresAcknowledgement = false, CreatedAt = now, UpdatedAt = now
+        };
+
+        t.Db.NewsPosts.AddRange(m1, m2, m3);
+        t.Db.NewsAcknowledgements.Add(new NewsAcknowledgement
+        {
+            NewsPostId = m2.Id, UserId = me.Id, AcknowledgedAt = now
+        });
+        await t.Db.SaveChangesAsync();
+
+        Assert.Equal(1, await new NewsBadgeProvider(t.Db).CountAsync(me.Id, default));
+    }
 }

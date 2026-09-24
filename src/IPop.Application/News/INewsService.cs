@@ -19,6 +19,7 @@ public interface INewsService
 
     // Mandatory acknowledgement
     Task<NewsResultDto> AcknowledgeAsync(Guid userId, Guid newsId, CancellationToken ct);
+    Task<NewsResultDto> RemindAckAsync(Guid actorId, Guid newsId, CancellationToken ct);
     Task<IReadOnlyList<NewsAuditDto>> GetAuditsAsync(Guid newsId, Guid viewerId, CancellationToken ct);
 }
 

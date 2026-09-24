@@ -6,7 +6,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IPop.Infrastructure.News;
 
-public sealed class NewsService(IPopDbContext db, INotificationGatewayService? notificationGateway = null) : INewsService
+using IPop.Application.Rbac;
+
+public sealed class NewsService(IPopDbContext db, INotificationGatewayService? notificationGateway = null, IPermissionEvaluator? permEval = null) : INewsService
 {
     private static readonly HashSet<string> ValidTypes = ["news", "announcement", "memo", "condolence", "duka"];
     private static readonly HashSet<string> ValidStatuses = ["draft", "pending", "published", "rejected"];
@@ -145,7 +147,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
 
     public async Task<NewsResultDto> ApproveAsync(Guid approverId, Guid newsId, CancellationToken ct)
     {
-        if (!await IsAdminAsync(approverId, ct)) return new NewsResultDto(false, null, "forbidden");
+        if (!await CanPublishAsync(approverId, ct)) return new NewsResultDto(false, null, "forbidden");
         var post = await db.NewsPosts.FirstOrDefaultAsync(x => x.Id == newsId, ct);
         if (post is null) return new NewsResultDto(false, null, "not_found");
         if (post.Status != "pending") return new NewsResultDto(false, null, "invalid_transition");
@@ -166,7 +168,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
 
     public async Task<NewsResultDto> RejectAsync(Guid approverId, Guid newsId, string reason, CancellationToken ct)
     {
-        if (!await IsAdminAsync(approverId, ct)) return new NewsResultDto(false, null, "forbidden");
+        if (!await CanPublishAsync(approverId, ct)) return new NewsResultDto(false, null, "forbidden");
         var post = await db.NewsPosts.FirstOrDefaultAsync(x => x.Id == newsId, ct);
         if (post is null) return new NewsResultDto(false, null, "not_found");
         if (post.Status != "pending") return new NewsResultDto(false, null, "invalid_transition");
@@ -184,7 +186,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
 
     public async Task<NewsResultDto> PublishAsync(Guid actorId, Guid newsId, CancellationToken ct)
     {
-        if (!await IsAdminAsync(actorId, ct)) return new NewsResultDto(false, null, "forbidden");
+        if (!await CanPublishAsync(actorId, ct)) return new NewsResultDto(false, null, "forbidden");
         var post = await db.NewsPosts.FirstOrDefaultAsync(x => x.Id == newsId, ct);
         if (post is null) return new NewsResultDto(false, null, "not_found");
         if (post.Status == "published") return new NewsResultDto(true, await MapDetailAsync(post.Id, actorId, ct), null);
@@ -203,7 +205,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
 
     public async Task<NewsResultDto> UnpublishAsync(Guid actorId, Guid newsId, CancellationToken ct)
     {
-        if (!await IsAdminAsync(actorId, ct)) return new NewsResultDto(false, null, "forbidden");
+        if (!await CanPublishAsync(actorId, ct)) return new NewsResultDto(false, null, "forbidden");
         var post = await db.NewsPosts.FirstOrDefaultAsync(x => x.Id == newsId, ct);
         if (post is null) return new NewsResultDto(false, null, "not_found");
         if (post.Status != "published") return new NewsResultDto(false, null, "invalid_transition");
@@ -223,7 +225,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
 
     public async Task<NewsResultDto> PinAsync(Guid actorId, Guid newsId, CancellationToken ct)
     {
-        if (!await IsAdminAsync(actorId, ct)) return new NewsResultDto(false, null, "forbidden");
+        if (!await CanPublishAsync(actorId, ct)) return new NewsResultDto(false, null, "forbidden");
         var post = await db.NewsPosts.FirstOrDefaultAsync(x => x.Id == newsId, ct);
         if (post is null) return new NewsResultDto(false, null, "not_found");
         post.IsPinned = true;
@@ -237,7 +239,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
 
     public async Task<NewsResultDto> UnpinAsync(Guid actorId, Guid newsId, CancellationToken ct)
     {
-        if (!await IsAdminAsync(actorId, ct)) return new NewsResultDto(false, null, "forbidden");
+        if (!await CanPublishAsync(actorId, ct)) return new NewsResultDto(false, null, "forbidden");
         var post = await db.NewsPosts.FirstOrDefaultAsync(x => x.Id == newsId, ct);
         if (post is null) return new NewsResultDto(false, null, "not_found");
         post.IsPinned = false;
@@ -396,6 +398,43 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         return new PagedResult<NewsSummaryDto>(summaries, total, page, size);
     }
 
+    public async Task<NewsResultDto> RemindAckAsync(Guid actorId, Guid newsId, CancellationToken ct)
+    {
+        if (!await CanPublishAsync(actorId, ct) && !await IsAuthorOrAdminAsync(newsId, actorId, ct))
+            return new NewsResultDto(false, null, "forbidden");
+
+        var post = await db.NewsPosts.FirstOrDefaultAsync(x => x.Id == newsId, ct);
+        if (post is null) return new NewsResultDto(false, null, "not_found");
+        if (post.Status != "published" || !post.RequiresAcknowledgement)
+            return new NewsResultDto(false, null, "invalid_state");
+
+        if (notificationGateway is not null)
+        {
+            try
+            {
+                await notificationGateway.PublishInternalAsync(
+                    clientSlug: "news",
+                    eventType: "memo.reminder",
+                    title: $"[Pengingat Wajib Baca] {post.Title}",
+                    message: "Mohon segera membaca dan mengonfirmasi pemahaman atas memo ini.",
+                    target: new NotificationTarget(All: true),
+                    priority: "high",
+                    targetUrl: $"/news?post={post.Id}",
+                    ct: ct);
+            }
+            catch
+            {
+                // Non-blocking notification delivery
+            }
+        }
+
+        db.NewsAudits.Add(new NewsAudit { Id = Guid.NewGuid(), NewsPostId = post.Id, ActorId = actorId, Action = "reminded_ack", CreatedAt = DateTime.UtcNow });
+        AuditLog(post.Id, "news.remind_ack", actorId, DateTime.UtcNow);
+        await db.SaveChangesAsync(ct);
+
+        return new NewsResultDto(true, await MapDetailAsync(post.Id, actorId, ct), null);
+    }
+
     public async Task<IReadOnlyList<NewsAuditDto>> GetAuditsAsync(Guid newsId, Guid viewerId, CancellationToken ct)
     {
         // Only author or admin may view audits. Reader-only access is not granted.
@@ -410,6 +449,18 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
     // ──────────────────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────────────────
+
+    private async Task<bool> CanPublishAsync(Guid userId, CancellationToken ct)
+    {
+        if (await IsAdminAsync(userId, ct)) return true;
+        if (permEval is not null && await permEval.IsAllowedAsync(userId, "news.publish", null, ct))
+            return true;
+        return await (from ur in db.UserRoles.AsNoTracking()
+                      join rp in db.RolePermissions.AsNoTracking() on ur.RoleId equals rp.RoleId
+                      join p in db.Permissions.AsNoTracking() on rp.PermissionId equals p.Id
+                      where ur.UserId == userId && (p.Code == "news.publish" || p.Code == "news.approve")
+                      select p.Id).AnyAsync(ct);
+    }
 
     private async Task<bool> IsAdminAsync(Guid userId, CancellationToken ct)
     {

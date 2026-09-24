@@ -515,4 +515,58 @@ public class NewsServiceTests
         Assert.NotNull(detail);
         Assert.Equal("condolence", detail!.Type);
     }
+
+    [Fact]
+    public async Task News_NonAdminWithPublishPermission_CanPublishAndPin()
+    {
+        using var t = new TestDb();
+        var author = t.AddUser("AUTHOR");
+        var publisher = t.AddUser("PUBLISHER");
+
+        // Assign news.publish permission to publisher via Role
+        var role = new Role { Id = Guid.NewGuid(), Name = "NewsEditor" };
+        var perm = new Permission { Id = Guid.NewGuid(), Code = "news.publish", Description = "Publish news" };
+        t.Db.Roles.Add(role);
+        t.Db.Permissions.Add(perm);
+        t.Db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = perm.Id });
+        t.Db.UserRoles.Add(new UserRole { UserId = publisher.Id, RoleId = role.Id });
+        await t.Db.SaveChangesAsync();
+
+        var svcAuthor = new NewsService(t.Verify());
+        var svcPublisher = new NewsService(t.Verify());
+
+        var created = await svcAuthor.CreateAsync(author.Id, new CreateNewsRequest(
+            Type: "news", Title: "Allowed Publish", Body: "Body"), default);
+        var id = created.News!.Id;
+        await svcAuthor.SubmitAsync(author.Id, id, default);
+
+        var pubResult = await svcPublisher.PublishAsync(publisher.Id, id, default);
+        Assert.True(pubResult.Success);
+        Assert.Equal("published", pubResult.News!.Status);
+
+        var pinResult = await svcPublisher.PinAsync(publisher.Id, id, default);
+        Assert.True(pinResult.Success);
+        Assert.True(pinResult.News!.IsPinned);
+    }
+
+    [Fact]
+    public async Task News_RemindAck_SendsNotificationForMandatoryPost()
+    {
+        using var t = new TestDb();
+        var admin = t.AddAdmin("ADMIN");
+        var svc = new NewsService(t.Verify());
+
+        var created = await svc.CreateAsync(admin.Id, new CreateNewsRequest(
+            Type: "memo", Title: "Important Memo", Body: "Body", RequiresAcknowledgement: true), default);
+        var id = created.News!.Id;
+        await svc.SubmitAsync(admin.Id, id, default);
+        await svc.PublishAsync(admin.Id, id, default);
+
+        var remind = await svc.RemindAckAsync(admin.Id, id, default);
+        Assert.True(remind.Success);
+
+        await using var v = t.Verify();
+        var audits = await v.NewsAudits.Where(a => a.NewsPostId == id).ToListAsync();
+        Assert.Contains(audits, a => a.Action == "reminded_ack");
+    }
 }
