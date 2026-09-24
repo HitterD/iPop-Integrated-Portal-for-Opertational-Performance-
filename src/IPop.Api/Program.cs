@@ -186,6 +186,7 @@ builder.Services.AddHttpClient<ISjaGateway, HttpSjaGateway>();
 builder.Services.AddDevExpressDocumentServices();
 
 builder.Services.AddScoped<IPop.Application.Search.ISearchService, IPop.Infrastructure.Search.SearchService>();
+builder.Services.AddScoped<IPop.Application.Dashboard.IDashboardService, IPop.Infrastructure.Dashboard.DashboardService>();
 
 var app = builder.Build();
 
