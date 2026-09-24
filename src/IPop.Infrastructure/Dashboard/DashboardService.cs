@@ -98,7 +98,7 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
 
         // ── Meetings ──
         var myMeetings = db.Meetings.AsNoTracking()
-            .Where(m => m.Status != "cancelled" && (m.OrganizerId == userId || m.Attendees.Any(a => a.UserId == userId && a.RsvpStatus != "declined")));
+            .Where(m => m.Status != "cancelled" && (m.OrganizerId == userId || m.Attendees.Any(a => a.UserId == userId && a.RsvpStatus != "decline")));
         var next = await myMeetings.Where(m => m.EndAt >= now).OrderBy(m => m.StartAt)
             .Select(m => new { m.Id, m.Title, m.StartAt }).FirstOrDefaultAsync(ct);
         var todays = await myMeetings.Where(m => m.StartAt < dayEndUtc && m.EndAt >= dayStartUtc)

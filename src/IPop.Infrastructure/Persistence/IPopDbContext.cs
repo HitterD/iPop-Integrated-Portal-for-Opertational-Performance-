@@ -575,6 +575,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Title).HasMaxLength(300);
             e.Property(x => x.Status).HasMaxLength(16);
             e.Property(x => x.TimeZone).HasMaxLength(64);
+            e.Property(x => x.Agenda).HasMaxLength(4000);
             e.HasOne(x => x.Organizer).WithMany().HasForeignKey(x => x.OrganizerId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<MeetingAttendee>(e =>

@@ -11,6 +11,7 @@ public class Meeting
     public string? TimeZone { get; set; }
     public string? Location { get; set; }
     public string? Link { get; set; }
+    public string? Agenda { get; set; }
     public Guid OrganizerId { get; set; }
     /// aktif | diubah | dibatalkan
     public string Status { get; set; } = "aktif";

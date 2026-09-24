@@ -27,7 +27,7 @@ public static class MeetingEndpoints
             {
                 Id = Guid.NewGuid(), Title = title,
                 StartAt = AsUtc(req.StartAt), EndAt = AsUtc(req.EndAt),
-                TimeZone = req.TimeZone, Location = req.Location, Link = req.Link,
+                TimeZone = req.TimeZone, Location = req.Location, Link = req.Link, Agenda = req.Agenda?.Trim(),
                 OrganizerId = userId.Value, Status = "aktif", RoomId = req.RoomId,
                 SourceMailId = req.SourceMailId,
                 ReminderMinutes = req.ReminderMinutes, CreatedAt = DateTime.UtcNow,
@@ -266,7 +266,76 @@ public static class MeetingEndpoints
             return Results.Ok(new { ok = true });
         });
 
+        // PUT /api/meetings/{id} — organizer edits the meeting; attendees are notified.
+        g.MapPut("/{id:guid}", async (Guid id, UpdateMeetingRequest req, HttpContext http, IPopDbContext db,
+            INotificationGatewayService? notifs, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var (result, added, others) = await ApplyUpdateAsync(db, id, userId.Value, req, ct);
+            switch (result)
+            {
+                case UpdateResult.NotFound: return Results.NotFound();
+                case UpdateResult.Forbidden: return Results.Json(new { code = "forbidden", message = "Only the organizer can edit this meeting." }, statusCode: 403);
+                case UpdateResult.Cancelled: return Results.Json(new { code = "cancelled", message = "This meeting was cancelled." }, statusCode: 409);
+                case UpdateResult.InvalidTitle: return Results.Json(new { code = "invalid_title", message = "Meeting title is required." }, statusCode: 422);
+                case UpdateResult.InvalidRange: return Results.Json(new { code = "invalid_range", message = "End time must be after start time." }, statusCode: 422);
+            }
+            var dto = await LoadMeetingDto(id, userId.Value, db, ct);
+            if (notifs is not null && dto is not null)
+            {
+                var link = $"/calls?tab=scheduled&meeting={id}";
+                if (added.Count > 0)
+                    _ = notifs.PublishInternalAsync("meetings", "meeting.invited", $"Meeting invite: {dto.Title}",
+                        $"{dto.OrganizerName} invited you to \"{dto.Title}\" on {dto.StartAt:dd MMM, HH:mm}.",
+                        new NotificationTarget(UserIds: added.ToList()), "normal", link, ct);
+                if (others.Count > 0)
+                    _ = notifs.PublishInternalAsync("meetings", "meeting.updated", $"Meeting updated: {dto.Title}",
+                        $"{dto.OrganizerName} updated \"{dto.Title}\".",
+                        new NotificationTarget(UserIds: others.ToList()), "normal", link, ct);
+            }
+            return Results.Ok(dto);
+        });
+
+        // GET /api/meetings/join/{roomName} — resolve a /meet/{room} link to its meeting and,
+        // when LiveKit is configured, mint a room token. Only the organizer/attendees may join.
+        g.MapGet("/join/{roomName}", async (string roomName, HttpContext http, IPopDbContext db,
+            IPop.Application.Calls.ILiveKitTokenService? liveKit, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var result = await ResolveJoinAsync(db, liveKit, roomName, userId.Value, ct);
+            return result.Code switch
+            {
+                null => Results.Ok(result.Join),
+                "not_found" => Results.NotFound(),
+                "not_invited" => Results.Json(new { code = "not_invited", message = "You are not an attendee of this meeting." }, statusCode: 403),
+                _ => Results.Json(new { code = "cancelled", message = "This meeting was cancelled." }, statusCode: 409),
+            };
+        });
+
         return app;
+    }
+
+    public static async Task<(MeetingJoinDto? Join, string? Code)> ResolveJoinAsync(IPopDbContext db,
+        IPop.Application.Calls.ILiveKitTokenService? liveKit, string roomName, Guid userId, CancellationToken ct)
+    {
+        if (MeetingIdFromRoom(roomName) is not { } meetingId) return (null, "not_found");
+        var m = await db.Meetings.AsNoTracking().FirstOrDefaultAsync(x => x.Id == meetingId, ct);
+        if (m is null) return (null, "not_found");
+        var allowed = m.OrganizerId == userId || await db.MeetingAttendees.AnyAsync(a => a.MeetingId == meetingId && a.UserId == userId, ct);
+        if (!allowed) return (null, "not_invited");
+        if (m.Status == "cancelled") return (null, "cancelled");
+
+        var me = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => new { u.Nik, u.Name }).FirstAsync(ct);
+        var room = RoomNameFor(m.Id);
+        string? url = null, token = null;
+        if (liveKit is { IsConfigured: true })
+        {
+            url = liveKit.ServerUrl;
+            token = liveKit.GenerateToken(room, me.Nik, me.Name, TimeSpan.FromHours(4));
+        }
+        return (new MeetingJoinDto(m.Id, m.Title, room, m.Link, url, token), null);
     }
 
     private static async Task<MeetingDto?> LoadMeetingDto(Guid id, Guid viewerId, IPopDbContext db, CancellationToken ct)
@@ -287,7 +356,90 @@ public static class MeetingEndpoints
             m.Attendees.Count(a => a.RsvpStatus == "maybe"),
             m.Attendees.Count(a => a.RsvpStatus == "decline"),
             m.Attendees.Count(a => a.RsvpStatus == "pending"),
-            m.Attendees.FirstOrDefault(a => a.UserId == viewerId)?.RsvpStatus ?? "pending");
+            m.Attendees.FirstOrDefault(a => a.UserId == viewerId)?.RsvpStatus ?? "pending",
+            m.Agenda, RoomNameFor(m.Id));
+    }
+
+    /// Video room name for a meeting — stable, so the Dashboard/Calls "Join" link and the
+    /// LiveKit room agree without storing anything extra.
+    public static string RoomNameFor(Guid meetingId) => $"meeting-{meetingId:N}";
+
+    public static Guid? MeetingIdFromRoom(string? roomName) =>
+        roomName is not null && roomName.StartsWith("meeting-", StringComparison.Ordinal)
+            && Guid.TryParseExact(roomName["meeting-".Length..], "N", out var id) ? id : null;
+
+    public enum UpdateResult { Applied, NotFound, Forbidden, InvalidTitle, InvalidRange, Cancelled }
+
+    /// Organizer-only edit: fields, attendee list (by NIK; organizer always stays), calendar
+    /// row and unsent reminders follow the new time. Returns newly invited + all other attendees.
+    public static async Task<(UpdateResult Result, IReadOnlyList<Guid> Added, IReadOnlyList<Guid> Others)> ApplyUpdateAsync(
+        IPopDbContext db, Guid meetingId, Guid userId, UpdateMeetingRequest req, CancellationToken ct)
+    {
+        var m = await db.Meetings.Include(x => x.Attendees).FirstOrDefaultAsync(x => x.Id == meetingId, ct);
+        if (m is null) return (UpdateResult.NotFound, [], []);
+        if (m.OrganizerId != userId) return (UpdateResult.Forbidden, [], []);
+        if (m.Status == "cancelled") return (UpdateResult.Cancelled, [], []);
+        var title = req.Title?.Trim() ?? "";
+        if (title.Length == 0) return (UpdateResult.InvalidTitle, [], []);
+        if (req.EndAt <= req.StartAt) return (UpdateResult.InvalidRange, [], []);
+
+        var timeChanged = AsUtc(req.StartAt) != m.StartAt || AsUtc(req.EndAt) != m.EndAt;
+        m.Title = title;
+        m.StartAt = AsUtc(req.StartAt);
+        m.EndAt = AsUtc(req.EndAt);
+        m.Location = string.IsNullOrWhiteSpace(req.Location) ? null : req.Location.Trim();
+        m.Link = string.IsNullOrWhiteSpace(req.Link) ? null : req.Link.Trim();
+        m.Agenda = string.IsNullOrWhiteSpace(req.Agenda) ? null : req.Agenda.Trim();
+        if (req.ReminderMinutes is not null) m.ReminderMinutes = req.ReminderMinutes > 0 ? req.ReminderMinutes : null;
+
+        var added = new List<Guid>();
+        var attendeeIds = m.Attendees.Select(a => a.UserId).ToHashSet();
+        if (req.AttendeeNiks is not null)
+        {
+            var wanted = await db.Users.Where(u => req.AttendeeNiks.Contains(u.Nik)).Select(u => u.Id).ToListAsync(ct);
+            wanted.Add(userId);
+            attendeeIds = wanted.ToHashSet();
+            foreach (var gone in m.Attendees.Where(a => !attendeeIds.Contains(a.UserId)).ToList())
+            {
+                db.MeetingAttendees.Remove(gone);
+                m.Attendees.Remove(gone);
+            }
+            foreach (var uid in wanted.Distinct().Where(uid => m.Attendees.All(a => a.UserId != uid)).ToList())
+            {
+                var att = new MeetingAttendee { Id = Guid.NewGuid(), MeetingId = m.Id, UserId = uid, Required = true, RsvpStatus = "pending" };
+                db.MeetingAttendees.Add(att);
+                m.Attendees.Add(att);
+                added.Add(uid);
+            }
+        }
+
+        // A new time invalidates earlier answers — everyone but the organizer answers again.
+        if (timeChanged)
+            foreach (var a in m.Attendees.Where(a => a.UserId != userId))
+            {
+                a.RsvpStatus = "pending";
+                a.RespondedAt = null;
+            }
+
+        foreach (var ev in await db.CalendarEvents.Where(e => e.MeetingId == m.Id).ToListAsync(ct))
+        {
+            ev.Title = title;
+            ev.StartAt = m.StartAt;
+            ev.EndAt = m.EndAt;
+        }
+
+        db.MeetingReminders.RemoveRange(await db.MeetingReminders.Where(r => r.MeetingId == m.Id && r.SentAt == null).ToListAsync(ct));
+        if (m.ReminderMinutes is > 0)
+        {
+            var sendAt = m.StartAt.AddMinutes(-m.ReminderMinutes.Value);
+            if (sendAt > DateTime.UtcNow)
+                foreach (var uid in attendeeIds)
+                    db.MeetingReminders.Add(new MeetingReminder { Id = Guid.NewGuid(), MeetingId = m.Id, UserId = uid, SendAt = sendAt });
+        }
+
+        await db.SaveChangesAsync(ct);
+        var others = m.Attendees.Select(a => a.UserId).Where(id => id != userId && !added.Contains(id)).ToList();
+        return (UpdateResult.Applied, added, others);
     }
 
     private static DateTime AsUtc(DateTime dt) => dt.Kind == DateTimeKind.Utc ? dt : DateTime.SpecifyKind(dt, DateTimeKind.Utc);
@@ -316,12 +468,16 @@ public static class MeetingEndpoints
 
     public record CreateMeetingRequest(string? Title, DateTime StartAt, DateTime EndAt, string? TimeZone, string? Location, string? Link,
         IReadOnlyList<Guid>? AttendeeIds, IReadOnlyList<Guid>? RequiredIds, int? ReminderMinutes, Guid? RoomId,
-        IReadOnlyList<string>? AttendeeNiks = null, Guid? SourceMailId = null);
+        IReadOnlyList<string>? AttendeeNiks = null, Guid? SourceMailId = null, string? Agenda = null);
+    public record UpdateMeetingRequest(string? Title, DateTime StartAt, DateTime EndAt, string? Location, string? Link, string? Agenda,
+        IReadOnlyList<string>? AttendeeNiks, int? ReminderMinutes);
+    public record MeetingJoinDto(Guid MeetingId, string Title, string RoomName, string? ExternalLink, string? LiveKitUrl, string? LiveKitToken);
     public record RsvpRequest(string? Response, string? Note);
     public record CreateCalendarEventRequest(string? Title, DateTime StartAt, DateTime EndAt, string? Type, Guid? RoomId);
     public record MeetingAttendeeDto(Guid UserId, string Name, string Nik, bool Required, string RsvpStatus, string? Note);
     public record MeetingDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string? TimeZone, string? Location, string? Link,
         Guid OrganizerId, string OrganizerName, string OrganizerNik, string Status, IReadOnlyList<MeetingAttendeeDto> Attendees,
-        int AcceptCount, int MaybeCount, int DeclineCount, int PendingCount, string MyResponse);
+        int AcceptCount, int MaybeCount, int DeclineCount, int PendingCount, string MyResponse,
+        string? Agenda = null, string? RoomName = null);
     public record CalendarEventDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string Type, Guid? MeetingId, Guid? RoomId);
 }
