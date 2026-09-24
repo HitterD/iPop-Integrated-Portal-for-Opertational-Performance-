@@ -416,7 +416,7 @@ window.ipop = {
   // input[type=file] tersembunyi di dalam composer, lalu memicu event change
   // agar Blazor InputFile mengambilnya.
   mailBindDropZone(el, fileInputSelector) {
-    if (!el) return;
+    if (!el || el._ipopMailDrop) return;
     const input = el.querySelector(fileInputSelector) || document.querySelector(fileInputSelector);
     if (!input) return;
     const onDragOver = e => {

@@ -60,7 +60,7 @@
             </button>
             <label class="btn btn-sm accent">
                 <i data-lucide="upload" style="width:14px;height:14px"></i> Upload
-                <InputFile OnChange="OnUpload" multiple style="display:none" />
+                <InputFile id="files-upload-input" OnChange="OnUpload" multiple style="display:none" />
             </label>
         </div>
 
@@ -138,7 +138,7 @@
                     }
                 </aside>
 
-                <div class="files-browser">
+                <div class="files-browser" @ref="dropZoneRef">
                     <div class="files-crumb-bar">
                         <div class="files-nav">
                             <button class="files-nav-btn @(backStack.Count == 0 ? "dis" : "")" title="Back" @onclick="GoBack" disabled="@(backStack.Count == 0)">
@@ -201,6 +201,7 @@
                     </div>
                     }
 
+                    <div class="files-drop-message"><i data-lucide="upload-cloud"></i> Drop files here to upload</div>
                     <div class="files-list @(gridView ? "files-grid" : "")">
                         @if (loading)
                         {
@@ -534,6 +535,8 @@
     private HashSet<string> selectedPaths = [];
     private bool gridView;
     private SynoItemDto? infoItem;
+    private ElementReference dropZoneRef;
+    private bool dropBound;
 
     private void ShowInfo(SynoItemDto item) => infoItem = item;
 
@@ -1316,7 +1319,12 @@
     private async Task OnUpload(InputFileChangeEventArgs e)
     {
         loadError = null;
-        foreach (var file in e.GetMultipleFiles(20))
+        if (e.FileCount > 5)
+        {
+            loadError = "Select up to five files per upload.";
+            return;
+        }
+        foreach (var file in e.GetMultipleFiles(5))
         {
             using var form = new MultipartFormDataContent();
             form.Add(new StringContent(server), "server");
@@ -1434,9 +1442,24 @@
         Nav.NavigateTo($"/mail?shareSubject={Uri.EscapeDataString(subject)}&shareBody={Uri.EscapeDataString(body)}");
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+        if (!needsCredential && !dropBound && dropZoneRef.Context is not null)
+        {
+            await JS.InvokeVoidAsync("ipop.mailBindDropZone", dropZoneRef, "#files-upload-input");
+            dropBound = true;
+        }
+        else if (needsCredential && dropBound)
+        {
+            await JS.InvokeVoidAsync("ipop.mailUnbindDropZone", dropZoneRef);
+            dropBound = false;
+        }
+    }
+
     public void Dispose()
     {
+        if (dropBound) _ = JS.InvokeVoidAsync("ipop.mailUnbindDropZone", dropZoneRef);
         _ = JS.InvokeVoidAsync("ipop.revokePreview");
     }
 }

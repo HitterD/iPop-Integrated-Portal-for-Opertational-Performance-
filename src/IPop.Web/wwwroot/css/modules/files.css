@@ -284,6 +284,10 @@
   .files-info-pane dt { color: var(--ink-3); }
   .files-info-pane dd { margin: 0; color: var(--ink); }
   .files-info-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+  .files-drop-message { display: none; }
+  .files-browser.drag-over { position: relative; }
+  .files-browser.drag-over .files-drop-message { display: flex; position: absolute; inset: 54px 12px 12px; z-index: 10; align-items: center; justify-content: center; flex-direction: column; gap: 10px; border: 2px dashed var(--accent); border-radius: 16px; background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; pointer-events: none; }
+  .files-browser.drag-over .files-drop-message i { width: 34px; height: 34px; }
   .files-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); align-content: start; gap: 10px; padding: 12px; }
   .files-grid .file-row { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
   .files-grid .file-row.is-active, .file-row.is-active { border-color: var(--accent); background: var(--accent-soft); }
