@@ -9,10 +9,7 @@
 
 <PageTitle>Notifications — IPop</PageTitle>
 
-@* Personal notification inbox — the per-user aggregation of NotificationRequest/Delivery
-   rows (mention chat, mail terbaru, berita wajib ack, penugasan proyek, sistem).
-   Frontend wave: daftar di atas data tiruan dengan bentuk kontrak API yang sama
-   dengan yang dipakai backend nanti (per-user list read/unread, pagination, filter tipe). *@
+@* Personal notification inbox backed by the per-user gateway inbox API. *@
 
 <div class="content" style="grid-template-columns:1fr">
 
@@ -30,6 +27,11 @@
                     <button class="btn-sm surface" @onclick="RefreshAsync" title="Refresh"><i data-lucide="refresh-cw" style="width:13px;height:13px"></i> Refresh</button>
                 </span>
             </div>
+
+            @if (loadError is not null)
+            {
+                <div class="note err" role="alert" style="margin:12px 16px">@loadError</div>
+            }
 
             @* ---- Tab Riwayat | Preferensi (Fase 4) ---- *@
             <div class="notif-tabs">
@@ -239,11 +241,10 @@
 
     private record KindMetaRecord(string Label, string Icon);
 
-    /// Mock rows — shape = kontrak endpoint per-user di wave backend:
-    /// id (request), type (modul), title, body, source, at, read, priority, targetUrl.
     private record NotifItem(Guid Id, string Type, string Title, string Body, string? Source, DateTime At, bool IsRead, string Priority = "normal", string? TargetUrl = null);
 
     private List<NotifItem> Items = [];
+    private string? loadError;
 
     // Preferensi notifikasi (Fase 4) — lokal dulu sampai endpoint tersedia.
     private sealed record NotifType(string Key, string Label);
@@ -424,14 +425,14 @@
         Notifs.UnreadChanged -= OnNotifUnreadChanged;
     }
 
-    /// Loads the per-user inbox. The backend endpoint owns filtering and paging
-    /// (?type=&status=&page=&pageSize=); when it is not reachable (API down, dev
-    /// without gateway data), fall back to the mock so the page stays usable.
+    /// Loads the per-user inbox. Empty responses remain empty; never display
+    /// invented notifications when the API is unavailable.
     private async Task ReloadAsync()
     {
+        loadError = null;
         var url = BuildInboxUrl();
         var dto = await Auth.GetAsync<InboxDto>(url);
-        if (dto is { Items.Count: > 0 } || dto is not null)
+        if (dto is not null)
         {
             Items = dto.Items.Select(i => new NotifItem(
                 i.Id, i.Type, i.Title, i.Body, i.Source,
@@ -442,8 +443,8 @@
         }
         else
         {
-            Items = BuildMock();
-            // If we fell back to mock, don't clobber a real count from elsewhere.
+            Items = [];
+            loadError = "Could not load notifications. Please refresh to try again.";
         }
     }
 
@@ -458,46 +459,6 @@
 
     private record InboxDto(IReadOnlyList<InboxItemDto> Items, int TotalCount, int UnreadCount, int Page, int PageSize);
     private record InboxItemDto(Guid Id, string Type, string Title, string Body, string Source, DateTime At, bool IsRead, string Priority, string? TargetUrl = null);
-
-    private static List<NotifItem> BuildMock()
-    {
-        var now = DateTime.Now;
-        Guid Id(int n) => new($"5d3a0000-0000-4000-{n:D4}-000000000000");
-
-        return
-        [
-            new(Id(1), "chat", "Bagas Arif mentioned @you in #Sprint-Platform",
-                "\"@ipop-admin could you help check the failed notifications? It's been 2 days in dead-letter.\"",
-                "#Sprint-Platform", now.AddMinutes(-6), false, "high", "/chat"),
-            new(Id(2), "mail", "New email from Rina Sari",
-                "Q3 meeting agenda — please confirm attendance before Friday.",
-                "Inbox", now.AddMinutes(-24), false, "normal", "/mail"),
-            new(Id(3), "news", "[Memo] Policy update on meeting expense markup",
-                "Mandatory acknowledge: internal travel budget policy takes effect next month.",
-                "News & Memos", now.AddHours(-1), false, "high", "/news"),
-            new(Id(4), "project", "Task \"Migrate directory to v2\" assigned to you",
-                "Project iPop Reset · milestone this week · due Friday 17:00.",
-                "iPop Reset", now.AddHours(-3), false, "normal", "/projects"),
-            new(Id(5), "chat", "Lutfi M. reacted to your message in #General",
-                "🔥 on \"division structure is clear now\"",
-                "#General", now.AddHours(-5), true, "normal", "/chat"),
-            new(Id(6), "system", "Directory synchronization from HRIS completed",
-                "1,482 employee records synchronized · 0 conflicts.",
-                "HRIS Sync", now.AddHours(-9), true, "normal", "/notifications/inbox"),
-            new(Id(7), "mail", "Maya H. forwarded thread \"System Upgrade\"",
-                "Please check the attachment mock-up-2.pdf as well.",
-                "Inbox", now.AddDays(-1).AddHours(-2), true, "normal", "/mail"),
-            new(Id(8), "project", "Rafianto changed due date of task \"API Spec\"",
-                "Deadline shifted from Thursday to next Monday.",
-                "iPop Reset", now.AddDays(-1).AddHours(-5), true, "normal", "/projects"),
-            new(Id(9), "news", "[News] Office relocation announcement",
-                "Office moving to 4th floor starting Monday — no action required.",
-                "News & Memos", now.AddDays(-2), true, "normal", "/news"),
-            new(Id(10), "system", "Notification gateway rate-limit active (v2)",
-                "Client hris-sync exceeded 5 req/s — throttling enabled.",
-                "Notification Gateway", now.AddDays(-3), true, "normal", "/notifications/inbox"),
-        ];
-    }
 
     private string SourceLabel(NotifItem item)
         => item.Type switch
