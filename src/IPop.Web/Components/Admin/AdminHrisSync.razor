@@ -65,18 +65,23 @@
                         New employees are registered automatically. Manual modifications are protected when enabled.
                     </div>
                 </div>
-                <button class="btn btn-teal" style="width:auto;margin:0;padding:10px 22px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:8px" disabled="@syncing" @onclick="SyncNow">
                     @if (syncing)
                     {
-                        <i data-lucide="loader-2" class="spin" style="width:16px;height:16px"></i>
-                        <span>Synchronizing...</span>
+                        <button class="btn btn-sm surface" style="width:auto;margin:0;padding:9px 16px;border-radius:10px;font-weight:600;color:var(--danger)" @onclick="CancelSync">
+                            Cancel
+                        </button>
+                        <button class="btn btn-teal" style="width:auto;margin:0;padding:10px 22px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:8px" disabled>
+                            <i data-lucide="loader-2" class="spin" style="width:16px;height:16px"></i>
+                            <span>Synchronizing...</span>
+                        </button>
                     }
                     else
                     {
-                        <i data-lucide="download" style="width:16px;height:16px"></i>
-                        <span>Start Sync</span>
+                        <button class="btn btn-teal" style="width:auto;margin:0;padding:10px 22px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:8px" @onclick="SyncNow">
+                            <i data-lucide="download" style="width:16px;height:16px"></i>
+                            <span>Start Sync</span>
+                        </button>
                     }
-                </button>
             </div>
             @if (syncResult is not null)
             {
@@ -510,6 +515,13 @@
         }
         await ReloadSyncStatus();
         await LoadSyncHistory();
+    }
+
+    private void CancelSync()
+    {
+        syncing = false;
+        syncResult = "Synchronization cancelled by user.";
+        Toasts.Show(syncResult, ToastKind.Info);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

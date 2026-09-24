@@ -222,12 +222,17 @@
         {
             <div class="calls-detail-hero"><span class="tag">@m.Status</span><h2>@m.Title</h2><p>@m.StartAt.ToLocalTime().ToString("dddd, dd MMM yyyy · HH:mm") – @m.EndAt.ToLocalTime().ToString("HH:mm")</p></div>
             <div class="calls-detail-actions">
-                @if (m.EndAt > DateTime.UtcNow)
+                @if (m.EndAt > DateTime.UtcNow && m.Status != "cancelled")
                 {
                     <a class="btn-sm surface" href="/meet/@m.RoomName"><i data-lucide="video"></i> Join meeting</a>
                 }
+                <button type="button" class="btn-sm surface" @onclick="() => CopyMeetingLink(m)"><i data-lucide="link"></i> Copy link</button>
                 <a class="btn-sm surface" href="/chat?nik=@Uri.EscapeDataString(m.OrganizerNik)"><i data-lucide="message-circle"></i> Message host</a>
-                @if (m.OrganizerNik == Auth.Me?.Nik) { <button class="btn-sm surface" @onclick="() => EditMeeting(m)">Edit</button> }
+                @if (m.OrganizerNik == Auth.Me?.Nik && m.Status != "cancelled")
+                {
+                    <button class="btn-sm surface" @onclick="() => EditMeeting(m)"><i data-lucide="pencil"></i> Edit</button>
+                    <button class="btn-sm surface" style="color:var(--danger)" @onclick="() => CancelMeeting(m.Id)"><i data-lucide="calendar-x"></i> Cancel</button>
+                }
             </div>
             @if (m.OrganizerNik != Auth.Me?.Nik)
             {
@@ -246,8 +251,19 @@
         else if (detailCall is { } h)
         {
             <div class="calls-detail-hero"><h2>@h.PeerName</h2><p>@h.Result · @h.StartedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</p></div>
-            <div class="calls-detail-actions"><button class="btn-sm surface" disabled="@(h.PeerNik is null)" @onclick="() => CallAgain(h.PeerNik!)">Call again</button><a class="btn-sm surface" href="@ChatHref(h.PeerNik ?? "")">Message</a></div>
+            <div class="calls-detail-actions">
+                <button class="btn-sm surface" disabled="@(h.PeerNik is null)" @onclick="() => CallAgain(h.PeerNik!)"><i data-lucide="phone"></i> Call again</button>
+                <a class="btn-sm surface" href="@ChatHref(h.PeerNik ?? "")"><i data-lucide="message-circle"></i> Message</a>
+                <button class="btn-sm surface" style="color:var(--danger)" @onclick="() => RemoveFromRecents(h.CallId)"><i data-lucide="trash-2"></i> Remove</button>
+            </div>
             <div class="calls-detail-block"><strong>CALL HISTORY</strong><p>@DurationLabel(h) · @h.Direction</p></div>
+            <div class="calls-detail-block">
+                <strong>PRIVATE NOTE</strong>
+                <textarea style="width:100%;min-height:60px;margin-top:6px;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px;background:var(--bg);color:var(--ink);box-sizing:border-box"
+                          placeholder="Add a private note about this contact…"
+                          value="@contactNote"
+                          @oninput="HandleNoteInput"></textarea>
+            </div>
         }
         else { <div class="calls-empty">Select a call or meeting to see its details.</div> }
     </aside></div>
@@ -604,6 +620,49 @@
             Toasts.Show("Meeting saved.", ToastKind.Success);
         }
         finally { savingMeeting = false; }
+    }
+
+    private string contactNote = "";
+
+    private void HandleNoteInput(ChangeEventArgs e)
+    {
+        contactNote = e.Value?.ToString() ?? "";
+    }
+
+    private void RemoveFromRecents(Guid callId)
+    {
+        historyRows.RemoveAll(x => x.CallId == callId);
+        detailCall = null;
+        Toasts.Show("Removed from recents.", ToastKind.Info);
+    }
+
+    private async Task CopyMeetingLink(MeetingDto m)
+    {
+        var url = $"{Nav.BaseUri}meet/{m.RoomName}";
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
+            Toasts.Show("Meeting link copied to clipboard.", ToastKind.Success);
+        }
+        catch
+        {
+            Toasts.Show(url, ToastKind.Info);
+        }
+    }
+
+    private async Task CancelMeeting(Guid meetingId)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/meetings/{meetingId}/cancel", new { });
+        if (res.IsSuccessStatusCode)
+        {
+            Toasts.Show("Meeting cancelled.", ToastKind.Success);
+            await LoadMeetings();
+            detailMeeting = meetings.FirstOrDefault(x => x.Id == meetingId);
+        }
+        else
+        {
+            Toasts.Show("Could not cancel meeting.", ToastKind.Error);
+        }
     }
 
     private async Task Respond(Guid id, string response)

@@ -45,6 +45,10 @@
                         </div>
                     </div>
                     <span style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <select class="form-select" style="height:32px;padding:0 8px;font-size:12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)" @bind="sortOrder" @bind:after="OnSortChanged">
+                            <option value="newest">Newest</option>
+                            <option value="oldest">Oldest</option>
+                        </select>
                         <button type="button" class="btn" style="width:auto;margin:0;padding:8px 16px;font-size:12.5px" @onclick="OpenCreate">
                             <i data-lucide="plus" style="width:14px;height:14px"></i> Create New Post
                         </button>
@@ -231,7 +235,10 @@
     private int totalPages => Math.Max(1, (int)Math.Ceiling(total / 20.0));
     private List<NewsSummaryDto>? items;
     private List<NewsSummaryDto> pinnedItems => items?.Where(x => x.IsPinned).ToList() ?? [];
-    private List<NewsSummaryDto> feedItems => items?.Where(x => !x.IsPinned).ToList() ?? [];
+    private List<NewsSummaryDto> feedItems =>
+        sortOrder == "oldest"
+            ? (items?.Where(x => !x.IsPinned).OrderBy(x => x.PublishedAt ?? x.CreatedAt).ToList() ?? [])
+            : (items?.Where(x => !x.IsPinned).OrderByDescending(x => x.PublishedAt ?? x.CreatedAt).ToList() ?? []);
     private List<NewsSummaryDto> scheduledItems => items?.Where(x => x.PublishAt != null && x.PublishAt > DateTime.UtcNow).ToList() ?? [];
 
     private bool showDetail;
@@ -247,6 +254,12 @@
     private Guid? openDetailId;
     private NewsDiscussionDto? discussion;
     private string commentText = "";
+    private string sortOrder = "newest";
+
+    private async Task OnSortChanged()
+    {
+        await Reload(1, true);
+    }
 
     private bool isApprover => Auth.Me?.Roles.Contains("Admin") == true;
     private bool canEdit => detail is not null && (detail.Status == "draft" || detail.Status == "rejected");
