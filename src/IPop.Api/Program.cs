@@ -184,6 +184,8 @@ builder.Services.AddHttpClient<ISjaGateway, HttpSjaGateway>();
 // DevExpress Office File API (Word, Excel, PDF, PowerPoint, Skia Cross-Platform)
 builder.Services.AddDevExpressDocumentServices();
 
+builder.Services.AddScoped<IPop.Application.Search.ISearchService, IPop.Infrastructure.Search.SearchService>();
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -221,6 +223,7 @@ app.MapPresence();
 app.MapDocumentDemo();
 app.MapSettings();
 app.MapAttachments();
+app.MapDashboardAndSearch();
 app.MapHub<ChatHub>("/hubs/chat").RequireAuthorization();
 app.MapHub<IPop.Api.Calls.CallHub>("/hubs/calls").RequireAuthorization();
 app.MapHub<IPop.Api.Notifications.NotificationHub>("/hubs/notification").RequireAuthorization();

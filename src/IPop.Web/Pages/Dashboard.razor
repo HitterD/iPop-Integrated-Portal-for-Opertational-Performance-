@@ -223,10 +223,16 @@
                 <div class="card-title" style="margin-bottom:4px">Message summary</div>
                 <div class="card-meta" style="margin-bottom:16px">Mail and notifications</div>
                 <div class="big-num">@(mail?.InboxUnread ?? 0)</div>
+                @{
+                    var totalMsgs = Math.Max(1, (mail?.InboxTotal ?? 0) + (mail?.DraftTotal ?? 0));
+                    var inboxPct = Math.Clamp(((mail?.InboxTotal ?? 0) * 100) / totalMsgs, 0, 100);
+                    var unreadPct = Math.Clamp(((mail?.InboxUnread ?? 0) * 100) / totalMsgs, 0, 100);
+                    var draftPct = Math.Clamp(((mail?.DraftTotal ?? 0) * 100) / totalMsgs, 0, 100);
+                }
                 <div class="share mt-14">
-                    <i style="width:60%;background:var(--accent)"></i>
-                    <i style="width:25%;background:var(--warn)"></i>
-                    <i style="width:15%;background:var(--info)"></i>
+                    <i style="width:@(inboxPct)%;background:var(--accent)"></i>
+                    <i style="width:@(unreadPct)%;background:var(--warn)"></i>
+                    <i style="width:@(draftPct)%;background:var(--info)"></i>
                 </div>
                 <div class="col gap-8 mt-14">
                     <div class="between t-13"><span class="flex center gap-8"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent)"></span>Inbox</span><span class="dim num">@(mail?.InboxTotal ?? 0)</span></div>
