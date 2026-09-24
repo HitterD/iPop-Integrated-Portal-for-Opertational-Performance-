@@ -9,10 +9,44 @@
 
 <PageTitle>Calls — IPop</PageTitle>
 
-<div class="content" style="grid-template-columns:1fr">
+<div class="content calls-v6">
+    <div class="calls-toolbar">
+        <div class="calls-tabs">
+            <button class="@(tab == "recents" ? "active" : "")" @onclick='() => SetTab("recents")'><i data-lucide="history"></i> Recents <span>@history.Total</span></button>
+            <button class="@(tab == "scheduled" ? "active" : "")" @onclick='() => SetTab("scheduled")'><i data-lucide="calendar-clock"></i> Scheduled <span>@meetings.Count</span></button>
+        </div>
+        <input aria-label="Search calls or meetings" placeholder="Search calls" @bind="search" @bind:event="oninput" />
+        <button class="btn-sm surface" @onclick="OpenSchedule"><i data-lucide="calendar-plus"></i> Schedule</button>
+        <button class="btn-sm surface" @onclick="FocusCallPicker"><i data-lucide="phone"></i> New call</button>
+    </div>
 
+    @if (showSchedule)
+    {
+        <section class="calls-form" aria-label="@(editingMeetingId is null ? "Schedule meeting" : "Edit meeting")">
+            <h2>@(editingMeetingId is null ? "Schedule meeting" : "Edit meeting")</h2>
+            <label>Title <input @bind="formTitle" maxlength="300" /></label>
+            <label>Starts <input type="datetime-local" @bind="formStart" @bind:format="yyyy-MM-ddTHH:mm" /></label>
+            <label>Ends <input type="datetime-local" @bind="formEnd" @bind:format="yyyy-MM-ddTHH:mm" /></label>
+            <label>Location <input @bind="formLocation" /></label>
+            <label>Agenda <textarea @bind="formAgenda" maxlength="4000"></textarea></label>
+            <label>Invite by NIK (comma-separated) <input @bind="formAttendees" /></label>
+            @if (!string.IsNullOrEmpty(formError)) { <p role="alert">@formError</p> }
+            <div class="calls-form-actions"><button class="btn-sm surface" @onclick="() => showSchedule = false">Cancel</button><button class="btn-sm surface" disabled="@savingMeeting" @onclick="SaveMeeting">@(savingMeeting ? "Saving…" : "Save meeting")</button></div>
+        </section>
+    }
+
+    <div class="calls-favorites">
+        <div class="calls-favorites-head"><strong>FAVORITES</strong><a href="/directory">Manage in Directory</a></div>
+        @if (favorites.Count == 0) { <span>Star people in Directory to add them here.</span> }
+        @foreach (var person in favorites)
+        {
+            <button title="Call @person.Name" @onclick="() => CallAgain(person.Nik)"><span class="calls-fav-avatar">@Initials(person.Name)</span>@person.Name</button>
+        }
+    </div>
+
+    <div class="calls-split"><div class="calls-list">
     @* ---- Header / peer picker ---- *@
-    <div class="tray rise rise-1">
+    <div class="tray rise rise-1" id="calls-picker" hidden="@(!showPicker && selectedPeer is null && tab != "recents")">
         <div class="core" style="padding:0;overflow:hidden">
             <div class="panel-head" style="flex-wrap:wrap;gap:10px">
                 <i data-lucide="phone"></i> <span>Calls</span>
@@ -112,7 +146,23 @@
         </div>
     }
 
+    @if (tab == "scheduled")
+    {
+        <section class="calls-meetings">
+            @foreach (var meeting in meetings.Where(m => string.IsNullOrWhiteSpace(search) || m.Title.Contains(search, StringComparison.OrdinalIgnoreCase)))
+            {
+                <button class="calls-meeting-row @(detailMeeting?.Id == meeting.Id ? "selected" : "")" @onclick="() => SelectMeeting(meeting.Id)">
+                    <span class="calls-meeting-date">@meeting.StartAt.ToLocalTime().ToString("dd MMM")</span>
+                    <span><strong>@meeting.Title</strong><small>@meeting.StartAt.ToLocalTime().ToString("HH:mm") · @meeting.OrganizerName</small></span>
+                    <span class="tag">@meeting.MyResponse</span>
+                </button>
+            }
+            @if (meetings.Count == 0) { <p class="calls-empty">No upcoming meetings.</p> }
+        </section>
+    }
     @* ---- Call history (grouped by date) ---- *@
+    @if (tab == "recents")
+    {
     <div class="tray rise rise-3">
         <div class="core" style="padding:0;overflow:hidden">
             <div class="panel-head">
@@ -128,12 +178,12 @@
             else
             {
                 <div style="padding:6px 14px 14px">
-                    @foreach (var g in historyRows.GroupBy(h => h.StartedAt.Date).OrderByDescending(g => g.Key))
+                    @foreach (var g in historyRows.Where(h => string.IsNullOrWhiteSpace(search) || h.PeerName.Contains(search, StringComparison.OrdinalIgnoreCase)).GroupBy(h => h.StartedAt.ToLocalTime().Date).OrderByDescending(g => g.Key))
                     {
-                        <div style="font-weight:600;font-size:12px;color:var(--ink-2);margin:10px 0 6px">@g.Key.ToLocalTime().ToString("dddd, MMM dd")</div>
+                        <div style="font-weight:600;font-size:12px;color:var(--ink-2);margin:10px 0 6px">@g.Key.ToString("dddd, MMM dd")</div>
                         @foreach (var h in g)
                         {
-                            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:var(--bg);margin-bottom:6px">
+                            <div class="calls-history-row @(detailCall?.CallId == h.CallId ? "selected" : "")" role="button" tabindex="0" @onclick="() => SelectCall(h)">
                                 <div class="avatar" style="background:@(h.Direction == "outgoing" ? "var(--accent-soft)" : "var(--tray)");color:@(h.Direction == "outgoing" ? "var(--accent-ink)" : "var(--ink-3)")">
                                     <i data-lucide="@(h.Direction == "outgoing" ? "phone-outgoing" : "phone-incoming")" style="width:13px;height:13px"></i>
                                 </div>
@@ -165,6 +215,42 @@
         </div>
     </div>
 
+    }
+    </div>
+    <aside class="calls-detail">
+        @if (detailMeeting is { } m)
+        {
+            <div class="calls-detail-hero"><span class="tag">@m.Status</span><h2>@m.Title</h2><p>@m.StartAt.ToLocalTime().ToString("dddd, dd MMM yyyy · HH:mm") – @m.EndAt.ToLocalTime().ToString("HH:mm")</p></div>
+            <div class="calls-detail-actions">
+                @if (m.EndAt > DateTime.UtcNow)
+                {
+                    <a class="btn-sm surface" href="/meet/@m.RoomName"><i data-lucide="video"></i> Join meeting</a>
+                }
+                <a class="btn-sm surface" href="/chat?nik=@Uri.EscapeDataString(m.OrganizerNik)"><i data-lucide="message-circle"></i> Message host</a>
+                @if (m.OrganizerNik == Auth.Me?.Nik) { <button class="btn-sm surface" @onclick="() => EditMeeting(m)">Edit</button> }
+            </div>
+            @if (m.OrganizerNik != Auth.Me?.Nik)
+            {
+                <div class="calls-rsvp">RSVP: <strong>@m.MyResponse</strong>
+                    @foreach (var response in new[] { "accept", "maybe", "decline" })
+                    {
+                        <button class="btn-sm surface" disabled="@rsvpBusy" @onclick="() => Respond(m.Id, response)">@response</button>
+                    }
+                </div>
+            }
+            <div class="calls-detail-block"><strong>MEETING DETAILS</strong><p>Host: @m.OrganizerName</p><p>Location: @(m.Location ?? "Online")</p><p>Agenda: @(m.Agenda ?? "No agenda provided")</p><p>Join link: <a href="/meet/@m.RoomName">Open meeting</a></p></div>
+            <div class="calls-detail-block"><strong>PARTICIPANTS · @m.Attendees.Count</strong>
+                @foreach (var person in m.Attendees) { <p>@person.Name · @person.RsvpStatus</p> }
+            </div>
+        }
+        else if (detailCall is { } h)
+        {
+            <div class="calls-detail-hero"><h2>@h.PeerName</h2><p>@h.Result · @h.StartedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</p></div>
+            <div class="calls-detail-actions"><button class="btn-sm surface" disabled="@(h.PeerNik is null)" @onclick="() => CallAgain(h.PeerNik!)">Call again</button><a class="btn-sm surface" href="@ChatHref(h.PeerNik ?? "")">Message</a></div>
+            <div class="calls-detail-block"><strong>CALL HISTORY</strong><p>@DurationLabel(h) · @h.Direction</p></div>
+        }
+        else { <div class="calls-empty">Select a call or meeting to see its details.</div> }
+    </aside></div>
 </div>
 
 @code {
@@ -184,6 +270,30 @@
     private bool HasMoreHistory => historyRows.Count < history.Total;
     private MemberSearchRow? selectedPeer;
     private string notice = "";
+    private string tab = "recents";
+    private string search = "";
+    private bool showPicker;
+    private bool showSchedule;
+    private bool savingMeeting;
+    private bool rsvpBusy;
+    private string? formError;
+    private string formTitle = "";
+    private DateTime formStart = DateTime.Now.AddHours(1);
+    private DateTime formEnd = DateTime.Now.AddHours(2);
+    private string? formLocation;
+    private string? formAgenda;
+    private string formAttendees = "";
+    private Guid? editingMeetingId;
+    private MeetingDto? detailMeeting;
+    private CallHistoryDto? detailCall;
+    private List<MeetingDto> meetings = [];
+    private List<DirectoryEmployeeDto> favorites = [];
+
+    private record MeetingAttendeeDto(Guid UserId, string Name, string Nik, bool Required, string RsvpStatus, string? Note);
+    private record MeetingDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string? TimeZone,
+        string? Location, string? Link, Guid OrganizerId, string OrganizerName, string OrganizerNik,
+        string Status, List<MeetingAttendeeDto> Attendees, int AcceptCount, int MaybeCount,
+        int DeclineCount, int PendingCount, string MyResponse, string? Agenda, string? RoomName);
 
     private CallParticipantDto? ActiveMe => active?.Participants.FirstOrDefault(p => p.Nik == Auth.Me?.Nik);
 
@@ -202,13 +312,29 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await HandleCalleeDeeplinkAsync(); // catch a query already present at mount
+        await Auth.LoadMeAsync();
+        await LoadMeetings();
+        await LoadFavorites();
+        await HandleDeeplinkAsync();
     }
 
     private string? _lastHandledQuery;
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
-        => _ = HandleCalleeDeeplinkAsync();
+        => _ = InvokeAsync(HandleDeeplinkAsync);
+
+    private async Task HandleDeeplinkAsync()
+    {
+        var query = System.Web.HttpUtility.ParseQueryString(Nav.ToAbsoluteUri(Nav.Uri).Query);
+        if (query["tab"] is "recents" or "scheduled") tab = query["tab"]!;
+        if (Guid.TryParse(query["meeting"], out var id))
+        {
+            tab = "scheduled";
+            await SelectMeeting(id);
+        }
+        if (query["new"] == "1") OpenSchedule();
+        await HandleCalleeDeeplinkAsync();
+    }
 
     /// ipop-32d: /calls?callee={Nik} preselects the peer with the Call button armed.
     /// Deliberately NOT auto-ring: a mis-click must not interrupt someone who never
@@ -372,6 +498,125 @@
             historyLoadingMore = false;
             StateHasChanged();
         }
+    }
+
+    private void SetTab(string selected)
+    {
+        tab = selected;
+        detailMeeting = null;
+        detailCall = null;
+    }
+
+    private void FocusCallPicker()
+    {
+        tab = "recents";
+        showPicker = true;
+    }
+
+    private void SelectCall(CallHistoryDto h)
+    {
+        detailCall = h;
+        detailMeeting = null;
+    }
+
+    private async Task SelectMeeting(Guid id)
+    {
+        detailCall = null;
+        detailMeeting = meetings.FirstOrDefault(m => m.Id == id)
+            ?? await Auth.GetAsync<MeetingDto>($"/api/meetings/{id}");
+    }
+
+    private async Task LoadMeetings()
+    {
+        meetings = await Auth.GetAsync<List<MeetingDto>>("/api/meetings/upcoming") ?? [];
+        if (detailMeeting is not null)
+            detailMeeting = meetings.FirstOrDefault(m => m.Id == detailMeeting.Id) ?? detailMeeting;
+    }
+
+    private async Task LoadFavorites()
+    {
+        var niks = await Auth.GetAsync<List<string>>("/api/directory/favorites") ?? [];
+        var people = new List<DirectoryEmployeeDto>();
+        foreach (var nik in niks.Take(4))
+        {
+            var page = await Auth.GetAsync<DirectoryPageDto>($"/api/directory/employees?q={Uri.EscapeDataString(nik)}&pageSize=10");
+            var person = page?.Items.FirstOrDefault(p => string.Equals(p.Nik, nik, StringComparison.OrdinalIgnoreCase));
+            if (person is not null) people.Add(person);
+        }
+        favorites = people;
+    }
+
+    private void OpenSchedule()
+    {
+        tab = "scheduled";
+        editingMeetingId = null;
+        formTitle = "";
+        formStart = DateTime.Now.AddHours(1);
+        formEnd = formStart.AddHours(1);
+        formLocation = null;
+        formAgenda = null;
+        formAttendees = "";
+        formError = null;
+        showSchedule = true;
+    }
+
+    private void EditMeeting(MeetingDto m)
+    {
+        editingMeetingId = m.Id;
+        formTitle = m.Title;
+        formStart = m.StartAt.ToLocalTime();
+        formEnd = m.EndAt.ToLocalTime();
+        formLocation = m.Location;
+        formAgenda = m.Agenda;
+        formAttendees = string.Join(", ", m.Attendees.Where(a => a.Nik != Auth.Me?.Nik).Select(a => a.Nik));
+        formError = null;
+        showSchedule = true;
+    }
+
+    private async Task SaveMeeting()
+    {
+        if (savingMeeting) return;
+        if (string.IsNullOrWhiteSpace(formTitle) || formEnd <= formStart)
+        {
+            formError = "Enter a title and an end time after the start time.";
+            return;
+        }
+        savingMeeting = true;
+        formError = null;
+        try
+        {
+            var niks = formAttendees.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct().ToArray();
+            var body = new
+            {
+                title = formTitle, startAt = formStart.ToUniversalTime(), endAt = formEnd.ToUniversalTime(),
+                location = formLocation, agenda = formAgenda, attendeeNiks = niks,
+                reminderMinutes = 30, link = (string?)null,
+            };
+            var response = await Auth.SendAsync(editingMeetingId is null ? HttpMethod.Post : HttpMethod.Put,
+                editingMeetingId is { } id ? $"/api/meetings/{id}" : "/api/meetings", body);
+            if (!response.IsSuccessStatusCode)
+            {
+                formError = "Could not save the meeting. Check its details and your permissions.";
+                return;
+            }
+            showSchedule = false;
+            await LoadMeetings();
+            Toasts.Show("Meeting saved.", ToastKind.Success);
+        }
+        finally { savingMeeting = false; }
+    }
+
+    private async Task Respond(Guid id, string response)
+    {
+        if (rsvpBusy) return;
+        rsvpBusy = true;
+        try
+        {
+            var result = await Auth.SendAsync(HttpMethod.Post, $"/api/meetings/{id}/rsvp", new { response });
+            if (!result.IsSuccessStatusCode) Toasts.Show("Could not update your RSVP.");
+            else await LoadMeetings();
+        }
+        finally { rsvpBusy = false; }
     }
 
     private static string Initials(string name) =>
