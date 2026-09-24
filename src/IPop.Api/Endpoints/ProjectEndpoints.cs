@@ -63,7 +63,7 @@ public static class ProjectEndpoints
 
             await Audit(http, db, "projects.create", result.Project!.Id.ToString(), ct);
             return Results.Ok(result.Project);
-        }).RequirePermission("projects.write");
+        }); // any signed-in user may create a project (decision 2026-09-23)
 
         // PUT /api/projects/{id}
         g.MapPut("/{id:guid}", async (Guid id, UpdateProjectRequest req,

@@ -102,10 +102,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
 
     public async Task<ProjectDto?> GetProjectAsync(Guid projectId, Guid userId, CancellationToken ct)
     {
-        var isMember = await db.ProjectMembers
-            .AsNoTracking()
-            .AnyAsync(m => m.ProjectId == projectId && m.UserId == userId, ct);
-        if (!isMember) return null;
+        if (!await CanViewAsync(projectId, userId, ct)) return null;
 
         return await MapToProjectDtoAsync(projectId, ct);
     }
@@ -116,9 +113,11 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
             .Where(m => m.UserId == userId)
             .Select(m => m.ProjectId);
 
+        // Members see their projects; admins see every active project.
+        var isAdmin = await IsAdminAsync(userId, ct);
         var query = db.Projects
             .AsNoTracking()
-            .Where(p => memberProjectIds.Contains(p.Id) && p.IsActive);
+            .Where(p => (isAdmin || memberProjectIds.Contains(p.Id)) && p.IsActive);
 
         if (!string.IsNullOrWhiteSpace(status))
             query = query.Where(p => p.Status == status);
@@ -403,8 +402,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         var task = await db.ProjectTasks.AsNoTracking().FirstOrDefaultAsync(t => t.Id == taskId, ct);
         if (task is null) return null;
 
-        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == task.ProjectId && m.UserId == userId, ct);
-        if (!isMember) return null;
+        if (!await CanViewAsync(task.ProjectId, userId, ct)) return null;
 
         return await MapToTaskDtoAsync(taskId, ct);
     }
@@ -618,8 +616,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
 
     public async Task<KanbanBoardDto?> GetKanbanAsync(Guid projectId, Guid userId, CancellationToken ct)
     {
-        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == userId, ct);
-        if (!isMember) return null;
+        if (!await CanViewAsync(projectId, userId, ct)) return null;
 
         var all = await db.ProjectTasks
             .AsNoTracking()
@@ -704,8 +701,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
 
     public async Task<PagedResult<ProjectTaskDto>> GetTaskListAsync(Guid projectId, Guid userId, string? status, int page, int pageSize, CancellationToken ct)
     {
-        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == userId, ct);
-        if (!isMember) return new PagedResult<ProjectTaskDto>([], 0, page, pageSize);
+        if (!await CanViewAsync(projectId, userId, ct)) return new PagedResult<ProjectTaskDto>([], 0, page, pageSize);
 
         var q = db.ProjectTasks.AsNoTracking().Where(t => t.ProjectId == projectId);
         if (!string.IsNullOrWhiteSpace(status))
@@ -739,8 +735,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
 
     public async Task<ProjectTimelineDto?> GetTimelineAsync(Guid projectId, Guid userId, CancellationToken ct)
     {
-        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == userId, ct);
-        if (!isMember) return null;
+        if (!await CanViewAsync(projectId, userId, ct)) return null;
 
         var project = await db.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId, ct);
         if (project is null) return null;
@@ -770,8 +765,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
 
     public async Task<ProjectWorkloadDto?> GetProjectWorkloadAsync(Guid projectId, Guid userId, CancellationToken ct)
     {
-        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == userId, ct);
-        if (!isMember) return null;
+        if (!await CanViewAsync(projectId, userId, ct)) return null;
 
         var tasks = await db.ProjectTasks
             .AsNoTracking()
@@ -1262,8 +1256,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
 
     public async Task<ProjectGanttDto?> GetGanttAsync(Guid projectId, Guid userId, CancellationToken ct)
     {
-        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == userId, ct);
-        if (!isMember) return null;
+        if (!await CanViewAsync(projectId, userId, ct)) return null;
 
         var project = await db.Projects.AsNoTracking().FirstOrDefaultAsync(p => p.Id == projectId, ct);
         if (project is null) return null;
@@ -1421,8 +1414,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
 
     public async Task<ProjectWorkCalendarDto?> GetWorkCalendarAsync(Guid projectId, Guid userId, DateTime from, DateTime to, CancellationToken ct)
     {
-        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == userId, ct);
-        if (!isMember) return null;
+        if (!await CanViewAsync(projectId, userId, ct)) return null;
 
         from = from.Date;
         to = to.Date;
@@ -1522,4 +1514,11 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         await db.SaveChangesAsync(ct);
         return new MemberResultDto(true, null);
     }
+    private Task<bool> IsAdminAsync(Guid userId, CancellationToken ct) =>
+        db.UserRoles.AnyAsync(ur => ur.UserId == userId && ur.Role.Name == "Admin", ct);
+
+    /// Read access: project members, or any admin (decision: admins see all projects).
+    private async Task<bool> CanViewAsync(Guid projectId, Guid userId, CancellationToken ct) =>
+        await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == userId, ct)
+        || await IsAdminAsync(userId, ct);
 }
