@@ -37,6 +37,7 @@
                 </div>
                 <button class="btn" type="submit" disabled="@(locked || busy)">@(busy ? "Signing in…" : "Sign in") <span class="orb"><i data-lucide="arrow-right"></i></span></button>
             </form>
+            <a class="auth-link" href="/forgot-password">Forgot password?</a>
             <div class="note @(isError ? "err" : "")" @key="noteIcon">
                 <i data-lucide="@noteIcon"></i>
                 <span>@noteText</span>

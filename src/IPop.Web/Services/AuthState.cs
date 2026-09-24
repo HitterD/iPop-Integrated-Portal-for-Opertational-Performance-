@@ -178,6 +178,26 @@ public class AuthState(HttpClient http, IJSRuntime js)
         return (true, null, null);
     }
 
+    /// Anonymous. The server answers 202 whether or not the account exists; only a
+    /// rate-limit (429) or transport failure is worth telling the user about.
+    public async Task<(bool Ok, string? Error)> RequestPasswordResetAsync(string identifier)
+    {
+        var res = await http.PostAsJsonAsync("/api/auth/forgot-password", new { identifier });
+        if (res.IsSuccessStatusCode) return (true, null);
+        return (false, (int)res.StatusCode == 429
+            ? "Too many requests. Wait a few minutes and try again."
+            : "Could not send the reset email. Try again later.");
+    }
+
+    public async Task<(bool Ok, Dictionary<string, string[]>? Fields, string? Error)> ResetPasswordAsync(string token, string newPassword, string confirm)
+    {
+        var res = await http.PostAsJsonAsync("/api/auth/reset-password", new { token, newPassword, confirmPassword = confirm });
+        if (res.IsSuccessStatusCode) return (true, null, null);
+        if ((int)res.StatusCode == 429) return (false, null, "Too many attempts. Wait a few minutes and try again.");
+        var err = await ReadError(res);
+        return (false, err?.Fields, err?.Message ?? "Could not reset the password.");
+    }
+
     /// Restore session from the stored refresh token on app start. False → go to /login.
     ///
     /// Single-flight, and it has to be. The server ROTATES refresh tokens: a successful refresh

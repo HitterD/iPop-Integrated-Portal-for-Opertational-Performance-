@@ -143,7 +143,7 @@ public class AuthWorkflow(IPopDbContext db, IPasswordHasher hasher, ITokenServic
         }
     }
 
-    private static Dictionary<string, string[]> ValidatePolicy(string pw, string confirm)
+    internal static Dictionary<string, string[]> ValidatePolicy(string pw, string confirm)
     {
         var fields = new Dictionary<string, string[]>();
         var errors = new List<string>();
