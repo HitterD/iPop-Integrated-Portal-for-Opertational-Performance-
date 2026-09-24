@@ -1,6 +1,7 @@
 @using IPop.Web.Services
 @implements IDisposable
 @inject AuthState Auth
+@inject ToastService Toasts
 @inject IJSRuntime JS
 
 @* ---- Audit Trail KPI Summary Grid ---- *@
@@ -45,25 +46,37 @@
 
 <div class="tray rise rise-2">
     <div class="core" style="padding:0;overflow:hidden">
-        <div class="panel-head" style="border-bottom:1px solid var(--line-soft)">
+        <div class="panel-head" style="border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between">
             <div style="display:flex;align-items:center;gap:8px">
                 <i data-lucide="scroll-text" style="color:#d97706"></i>
                 <span style="font-weight:700">System Activity Audit Trail</span>
             </div>
-            <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
+            <div style="display:flex;align-items:center;gap:10px">
                 <span class="meta">@($"{audit?.Total ?? 0:N0} total records")</span>
                 <button class="org-act" title="Refresh audit log" @onclick="() => LoadAudit(currentPage)"><i data-lucide="refresh-cw"></i></button>
             </div>
         </div>
 
-        <div style="display:flex;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line-soft);align-items:center">
-            <div class="search" style="flex:0 1 320px;margin:0">
+        <div style="display:flex;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line-soft);align-items:center;flex-wrap:wrap">
+            <div class="search" style="flex:0 1 260px;margin:0">
                 <i data-lucide="search"></i>
-                <input type="text" placeholder="Filter Actor NIK..." @bind="filterActor" @bind:event="oninput" @bind:after="OnFilterChanged" />
+                <input type="text" placeholder="Search actions, actors, targets…" @bind="filterQuery" @bind:event="oninput" @bind:after="OnFilterChanged" />
             </div>
-            <div class="search" style="flex:0 1 240px;margin:0">
-                <i data-lucide="filter"></i>
-                <input type="text" placeholder="Filter Action..." @bind="filterAction" @bind:event="oninput" @bind:after="OnFilterChanged" />
+
+            <div style="display:inline-flex;padding:2px;background:rgba(118,118,128,0.12);border-radius:10px;gap:2px">
+                <button type="button" class="btn btn-sm @(selectedType == "all" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(selectedType == "all" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(selectedType == "all" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SelectType("all")'>All</button>
+                <button type="button" class="btn btn-sm @(selectedType == "security" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(selectedType == "security" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(selectedType == "security" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SelectType("security")'>Security</button>
+                <button type="button" class="btn btn-sm @(selectedType == "user" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(selectedType == "user" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(selectedType == "user" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SelectType("user")'>Users</button>
+                <button type="button" class="btn btn-sm @(selectedType == "sync" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(selectedType == "sync" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(selectedType == "sync" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SelectType("sync")'>Sync</button>
+                <button type="button" class="btn btn-sm @(selectedType == "org" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(selectedType == "org" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(selectedType == "org" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SelectType("org")'>Organization</button>
+                <button type="button" class="btn btn-sm @(selectedType == "settings" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(selectedType == "settings" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(selectedType == "settings" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SelectType("settings")'>Settings</button>
+            </div>
+
+            <div style="margin-left:auto">
+                <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;border-radius:8px;border:1px solid var(--line);background:var(--surface);cursor:pointer" disabled="@exportingCsv" @onclick="ExportCsv">
+                    <i data-lucide="download" style="width:13px;height:13px"></i>
+                    <span>@(exportingCsv ? "Exporting…" : "Export CSV")</span>
+                </button>
             </div>
         </div>
 
@@ -85,6 +98,7 @@
                         <th style="width:140px">Actor</th>
                         <th style="width:130px">Entity</th>
                         <th>Target / Details</th>
+                        <th style="width:130px">IP Address</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -116,6 +130,9 @@
                             <td class="mono" style="color:var(--ink-2);font-size:12px">
                                 @(row.EntityId ?? "—")
                             </td>
+                            <td class="mono" style="font-size:11.5px;color:var(--ink-3)">
+                                @(string.IsNullOrWhiteSpace(row.IpAddress) ? "—" : row.IpAddress)
+                            </td>
                         </tr>
                     }
                 </tbody>
@@ -136,10 +153,11 @@
 @code {
     private AuditPageDto? audit;
     private bool isLoading = true;
+    private bool exportingCsv;
     private int currentPage = 1;
     private const int pageSize = 25;
-    private string filterActor = "";
-    private string filterAction = "";
+    private string filterQuery = "";
+    private string selectedType = "all";
     private CancellationTokenSource? searchCts;
 
     private int TotalPages => audit is null ? 1 : (int)Math.Ceiling(audit.Total / (double)pageSize);
@@ -155,6 +173,12 @@
     {
         await LoadAudit(currentPage);
         StateHasChanged();
+    }
+
+    private async Task SelectType(string type)
+    {
+        selectedType = type;
+        await LoadAudit(1);
     }
 
     private async Task OnFilterChanged()
@@ -174,18 +198,49 @@
         currentPage = page;
         isLoading = true;
         var url = $"/api/admin/audit?page={page}&pageSize={pageSize}";
-        if (!string.IsNullOrWhiteSpace(filterActor)) url += $"&actor={Uri.EscapeDataString(filterActor.Trim())}";
-        if (!string.IsNullOrWhiteSpace(filterAction)) url += $"&action={Uri.EscapeDataString(filterAction.Trim())}";
+        if (!string.IsNullOrWhiteSpace(filterQuery)) url += $"&q={Uri.EscapeDataString(filterQuery.Trim())}";
+        if (!string.IsNullOrWhiteSpace(selectedType) && selectedType != "all") url += $"&type={Uri.EscapeDataString(selectedType)}";
 
         audit = await Auth.GetAsync<AuditPageDto>(url);
         isLoading = false;
         StateHasChanged();
     }
 
+    private async Task ExportCsv()
+    {
+        if (exportingCsv) return;
+        exportingCsv = true;
+        try
+        {
+            var url = "/api/admin/audit/export.csv?";
+            if (!string.IsNullOrWhiteSpace(filterQuery)) url += $"&q={Uri.EscapeDataString(filterQuery.Trim())}";
+            if (!string.IsNullOrWhiteSpace(selectedType) && selectedType != "all") url += $"&type={Uri.EscapeDataString(selectedType)}";
+
+            var res = await Auth.SendAsync(HttpMethod.Get, url);
+            if (!res.IsSuccessStatusCode)
+            {
+                Toasts.Show($"Export failed ({(int)res.StatusCode}).", ToastKind.Error);
+                return;
+            }
+            var bytes = await res.Content.ReadAsByteArrayAsync();
+            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmm");
+            await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(bytes), $"audit_trail-{stamp}.csv");
+            Toasts.ShowDetailed("Export Complete", "Audit trail CSV downloaded", ToastKind.Success, "download");
+        }
+        catch (Exception ex)
+        {
+            Toasts.Show($"Export failed: {ex.Message}", ToastKind.Error);
+        }
+        finally
+        {
+            exportingCsv = false;
+        }
+    }
+
     private static string GetActionBadgeClass(string action)
     {
         var lower = action.ToLowerInvariant();
-        if (lower.Contains("login") || lower.Contains("auth") || lower.Contains("token") || lower.Contains("session"))
+        if (lower.Contains("login") || lower.Contains("auth") || lower.Contains("token") || lower.Contains("session") || lower.Contains("password"))
             return "auth";
         if (lower.Contains("create") || lower.Contains("insert") || lower.Contains("add"))
             return "create";
@@ -213,4 +268,8 @@
         searchCts?.Cancel();
         searchCts?.Dispose();
     }
+
+    public record AuditPageDto(int Total, int Page, int PageSize, AuditRowDto[] Items);
+    public record AuditRowDto(Guid Id, string? ActorNik, string Action, string? Entity,
+        string? EntityId, string? DetailJson, string? IpAddress, DateTime CreatedAt);
 }
