@@ -514,7 +514,23 @@
         await LoadStructure();
         _ = LoadFavoritesAsync();
         await Reload(1, replace: true);
+        await SelectFromQuery();
+        Nav.LocationChanged += OnLocationChanged;
     }
+
+    // ⌘K "People" results link to /directory?nik=… — filter to that person and select them.
+    private async Task SelectFromQuery()
+    {
+        var nik = System.Web.HttpUtility.ParseQueryString(Nav.ToAbsoluteUri(Nav.Uri).Query)["nik"];
+        if (string.IsNullOrWhiteSpace(nik)) return;
+        searchQ = nik;
+        await Reload(1, replace: true);
+        selected = people.FirstOrDefault(p => string.Equals(p.Nik, nik, StringComparison.OrdinalIgnoreCase)) ?? selected;
+        StateHasChanged();
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+        => _ = InvokeAsync(SelectFromQuery);
 
     private async Task LoadStructure()
     {
@@ -664,5 +680,5 @@
     private void OnConnectionStateChanged() => _ = InvokeAsync(StateHasChanged);
     private void OnCardKey(KeyboardEventArgs e, Employee p) { if (e.Key is "Enter" or " ") selected = p; }
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
-    public void Dispose() { Layout.SearchChanged -= OnSearchChanged; Auth.PresenceChanged -= OnPresenceChanged; Auth.DirectoryChanged -= OnDirectoryChanged; Auth.ConnectionStateChanged -= OnConnectionStateChanged; Favorites.Changed -= OnFavoritesChanged; }
+    public void Dispose() { Nav.LocationChanged -= OnLocationChanged; Layout.SearchChanged -= OnSearchChanged; Auth.PresenceChanged -= OnPresenceChanged; Auth.DirectoryChanged -= OnDirectoryChanged; Auth.ConnectionStateChanged -= OnConnectionStateChanged; Favorites.Changed -= OnFavoritesChanged; }
 }
