@@ -7,7 +7,7 @@ namespace IPop.Tests;
 public class BadgeProviderTests
 {
     [Fact]
-    public async Task Chat_CountsUnreadFromOthers_SkipsArchivedAndRead()
+    public async Task Chat_CountsUnreadFromOthers_SkipsArchivedMutedAndRead()
     {
         using var t = new TestDb();
         var me = t.AddUser("100"); var other = t.AddUser("200");
@@ -30,7 +30,17 @@ public class BadgeProviderTests
         t.AddMessage(archived.Id, other.Id, at: now);
         t.AddSettings(me.Id, archived.Id, s => s.IsArchived = true);
 
-        Assert.Equal(3, await new ChatBadgeProvider(t.Db).CountAsync(me.Id, default));
+        var muted = t.AddRoom();
+        t.AddMember(muted.Id, me.Id); t.AddMember(muted.Id, other.Id);
+        t.AddMessage(muted.Id, other.Id, at: now);
+        t.AddSettings(me.Id, muted.Id, s => s.IsMuted = true);
+
+        var muteExpired = t.AddRoom();
+        t.AddMember(muteExpired.Id, me.Id); t.AddMember(muteExpired.Id, other.Id);
+        t.AddMessage(muteExpired.Id, other.Id, at: now);
+        t.AddSettings(me.Id, muteExpired.Id, s => { s.IsMuted = true; s.MuteExpiresAt = now.AddMinutes(-1); });
+
+        Assert.Equal(4, await new ChatBadgeProvider(t.Db).CountAsync(me.Id, default));
     }
 
     [Fact]
