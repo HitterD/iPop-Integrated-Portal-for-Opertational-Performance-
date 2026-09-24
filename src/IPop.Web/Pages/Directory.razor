@@ -3,6 +3,7 @@
 @inject IJSRuntime JS
 @inject AuthState Auth
 @inject NavigationManager Nav
+@inject IPop.Web.Services.CallState CallSvc
 @inject IPop.Web.Services.FavoriteContacts Favorites
 
 <PageTitle>Directory — IPop</PageTitle>
@@ -146,7 +147,7 @@
                                             <button type="button" class="icon-btn" style="width:29px;height:29px" title="Chat" @onclick="() => OpenChatWith(p.Nik)" @onclick:stopPropagation="true">
                                                 <i data-lucide="message-circle" style="width:15px;height:15px"></i>
                                             </button>
-                                            <button type="button" class="icon-btn" style="width:29px;height:29px" title="Call" @onclick='() => ShowModuleNotice("Call")' @onclick:stopPropagation="true">
+                                            <button type="button" class="icon-btn" style="width:29px;height:29px" title="Call" @onclick='() => StartCallWith(p.Nik)' @onclick:stopPropagation="true">
                                                 <i data-lucide="phone" style="width:15px;height:15px"></i>
                                             </button>
                                         </div>
@@ -449,6 +450,16 @@
 
     private void OpenChatWith(string nik)
         => Nav.NavigateTo($"/chat?nik={Uri.EscapeDataString(nik)}");
+
+    private async Task StartCallWith(string nik)
+    {
+        if (string.IsNullOrWhiteSpace(nik)) return;
+        var room = await CallSvc.CreateAsync(nik);
+        if (room is not null)
+        {
+            Nav.NavigateTo("/calls");
+        }
+    }
 
     private static Employee Map(DirectoryEmployeeDto d) => new(d.Name, d.Position ?? "—", d.Nik, d.Extension ?? "—", d.Location ?? "—", d.Department ?? "—", d.DepartmentCode, d.Site ?? "—", d.SiteCode, d.Manager ?? "—", d.Email, d.Status, AvatarPalette.For(d.Nik), d.PhotoPath);
 

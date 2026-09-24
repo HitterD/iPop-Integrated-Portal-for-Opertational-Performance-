@@ -1,4 +1,5 @@
 @page "/calls"
+@page "/meet/{RoomName}"
 @implements IDisposable
 @using IPop.Application.Calls
 @inject IJSRuntime JS
@@ -169,6 +170,7 @@
 
 @code {
     [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+    [Parameter] public string? RoomName { get; set; }
 
     private CallRoomDto? active;
     private CallRoomDto? incoming;
@@ -204,6 +206,14 @@
     protected override async Task OnInitializedAsync()
     {
         await HandleCalleeDeeplinkAsync(); // catch a query already present at mount
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrWhiteSpace(RoomName))
+        {
+            notice = $"Meeting room: {RoomName}";
+        }
     }
 
     private string? _lastHandledQuery;

@@ -96,6 +96,18 @@ public static class CallEndpoints
             return Results.Ok(result);
         });
 
+        // Config endpoint returning ICE/STUN or LiveKit URL
+        g.MapGet("/config", (IConfiguration cfg) =>
+        {
+            var iceServers = cfg.GetSection("Calls:IceServers").Get<object[]>() ?? [
+                new { urls = "stun:stun.l.google.com:19302" },
+                new { urls = "stun:stun1.l.google.com:19302" },
+                new { urls = "stun:stun2.l.google.com:19302" }
+            ];
+            var liveKitUrl = cfg["Calls:LiveKit:Url"];
+            return Results.Ok(new { iceServers, liveKitUrl });
+        });
+
         return app;
     }
 

@@ -1,4 +1,5 @@
 using IPop.Api.Rbac;
+using IPop.Application.Notifications;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -206,6 +207,63 @@ public static class MeetingEndpoints
                 .Select(e => new CalendarEventDto(e.Id, e.Title, e.StartAt, e.EndAt, e.Type, e.MeetingId, e.RoomId))
                 .ToListAsync(ct);
             return Results.Ok(rows);
+        });
+
+        // GET /api/meetings/upcoming — upcoming meetings for current user
+        g.MapGet("/upcoming", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var now = DateTime.UtcNow;
+
+            var meetingIds = await db.MeetingAttendees.AsNoTracking()
+                .Where(a => a.UserId == userId.Value)
+                .Select(a => a.MeetingId)
+                .Union(db.Meetings.AsNoTracking().Where(m => m.OrganizerId == userId.Value).Select(m => m.Id))
+                .Distinct()
+                .ToListAsync(ct);
+
+            var meetings = await db.Meetings.AsNoTracking()
+                .Where(m => meetingIds.Contains(m.Id) && m.EndAt >= now && m.Status != "cancelled")
+                .OrderBy(m => m.StartAt)
+                .Take(50)
+                .Select(m => m.Id)
+                .ToListAsync(ct);
+
+            var dtos = new List<MeetingDto>();
+            foreach (var id in meetings)
+            {
+                var dto = await LoadMeetingDto(id, userId.Value, db, ct);
+                if (dto is not null) dtos.Add(dto);
+            }
+            return Results.Ok(dtos);
+        });
+
+        // POST /api/meetings/{id}/cancel — cancel a meeting and notify attendees
+        g.MapPost("/{id:guid}/cancel", async (Guid id, HttpContext http, IPopDbContext db,
+            INotificationGatewayService? notifs, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+
+            var meeting = await db.Meetings.Include(m => m.Attendees).FirstOrDefaultAsync(m => m.Id == id, ct);
+            if (meeting is null) return Results.NotFound();
+            if (meeting.OrganizerId != userId.Value)
+                return Results.Json(new { code = "forbidden", message = "Only the organizer can cancel this meeting." }, statusCode: 403);
+
+            meeting.Status = "cancelled";
+            await db.SaveChangesAsync(ct);
+
+            var attendeeUserIds = meeting.Attendees.Where(a => a.UserId != userId.Value).Select(a => a.UserId).ToList();
+            if (notifs != null && attendeeUserIds.Count > 0)
+            {
+                _ = notifs.PublishInternalAsync("meetings", "meeting.cancelled",
+                    $"Meeting cancelled: {meeting.Title}",
+                    $"The meeting \"{meeting.Title}\" scheduled for {meeting.StartAt:dd MMM, HH:mm} has been cancelled.",
+                    new NotificationTarget(UserIds: attendeeUserIds), "high", "/calls", ct);
+            }
+
+            return Results.Ok(new { ok = true });
         });
 
         return app;
