@@ -188,6 +188,7 @@
                                           OnSubmit="Submit" OnApprove="Approve" OnOpenReject="() => showReject = true"
                                           OnUnpublish="Unpublish" OnTogglePin="TogglePin"
                                           OnAcknowledge="Acknowledge" OnRemindAck="RemindAck"
+                                          OnDelete="DeleteCurrentPost"
                                           Discussion="@discussion" CommentText="@commentText"
                                           OnCommentTextChanged="v => commentText = v"
                                           OnToggleLike="ToggleLike" OnComment="AddComment" />
@@ -564,6 +565,24 @@
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
         Toasts.Show("Action " + action + " completed successfully.", ToastKind.Success);
+    }
+
+    private async Task DeleteCurrentPost()
+    {
+        if (detail is null) return;
+        var confirmed = await JS.InvokeAsync<bool>("confirm", $"Delete \"{detail.Title}\"?");
+        if (!confirmed) return;
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/news/{detail.Id}");
+        if (res.IsSuccessStatusCode)
+        {
+            CloseDetail();
+            await Reload(1, true);
+            Toasts.Show("Post deleted.", ToastKind.Success);
+        }
+        else
+        {
+            Toasts.Show("Could not delete post.", ToastKind.Error);
+        }
     }
 
     private void OpenCreate()

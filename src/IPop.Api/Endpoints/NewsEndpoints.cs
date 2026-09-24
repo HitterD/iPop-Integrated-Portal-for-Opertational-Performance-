@@ -234,6 +234,19 @@ public static class NewsEndpoints
             return Results.Ok(await GetDiscussionAsync(db, id, userId.Value, ct));
         });
 
+        g.MapDelete("/{id:guid}", async (Guid id, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            var post = await db.NewsPosts.FirstOrDefaultAsync(p => p.Id == id, ct);
+            if (post is null) return Results.NotFound();
+            var isAdmin = await db.UserRoles.AnyAsync(ur => ur.UserId == userId.Value && ur.Role.Name == "Admin", ct);
+            if (post.AuthorId != userId.Value && !isAdmin) return Results.Forbid();
+            db.NewsPosts.Remove(post);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { success = true });
+        });
+
         return app;
     }
 
