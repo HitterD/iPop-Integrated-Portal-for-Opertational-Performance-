@@ -5,6 +5,7 @@
 @inject NavigationManager Nav
 @inject IPop.Web.Services.CallState CallSvc
 @inject IPop.Web.Services.FavoriteContacts Favorites
+@inject ToastService Toasts
 
 <PageTitle>Directory — IPop</PageTitle>
 
@@ -37,6 +38,19 @@
         </button>
     </div>
     <div class="push flex center gap-8">
+        <div style="display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden">
+            <button class="icon-btn" style="border:none;border-radius:0;background:@(!isGridView ? "var(--accent-soft)" : "transparent");color:@(!isGridView ? "var(--accent-ink)" : "var(--ink-2)")" title="List view" @onclick="() => isGridView = false"><i data-lucide="list"></i></button>
+            <button class="icon-btn" style="border:none;border-radius:0;background:@(isGridView ? "var(--accent-soft)" : "transparent");color:@(isGridView ? "var(--accent-ink)" : "var(--ink-2)")" title="Grid view" @onclick="() => isGridView = true"><i data-lucide="layout-grid"></i></button>
+        </div>
+        <select class="form-select" style="height:32px;padding:0 10px;font-size:12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink)" @bind="selectedSort" @bind:after="OnSortChanged">
+            <option value="name-asc">Name A–Z</option>
+            <option value="name-desc">Name Z–A</option>
+            <option value="nik-asc">NIK</option>
+            <option value="status-asc">Online first</option>
+        </select>
+        <button class="ghost-btn @(favOnly ? "active" : "")" style="@(favOnly ? "background:var(--warn-soft);color:var(--warn);border-color:var(--warn)" : "")" title="Toggle favorites only" @onclick="ToggleFavOnly">
+            <i data-lucide="star" style="@(favOnly ? "fill:currentColor" : "")"></i>Favorites <span class="badge" style="margin-left:4px">@FavoritePeople.Count</span>
+        </button>
         <button class="ghost-btn" title="Priority contacts: favorites & frequent" @onclick='() => Nav.NavigateTo("/directory/priority")'><i data-lucide="star"></i>Priority</button>
         <button class="ghost-btn" title="Export search/filter results to CSV" disabled="@exporting" @onclick="ExportCsv"><i data-lucide="download"></i>@(exporting ? "Exporting…" : "Export CSV")</button>
     </div>
@@ -113,7 +127,20 @@
 
         <!-- People Section -->
         <div class="col gap-14" style="min-width:0">
-            @if (!IsSearching && FavoritePeople.Count > 0)
+            @if (selectedNiks.Count > 0)
+            {
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 16px;background:var(--accent-soft);border-bottom:1px solid var(--line-soft);border-radius:12px">
+                    <input type="checkbox" checked="@(DisplayedPeople.Count > 0 && selectedNiks.Count == DisplayedPeople.Count)" @onchange="ToggleSelectAllPeople" />
+                    <span style="font-weight:600;font-size:12.5px;color:var(--accent-ink)">@selectedNiks.Count selected</span>
+                    <div style="flex:1"></div>
+                    <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px" @onclick="BulkMessage"><i data-lucide="message-circle" style="width:13px;height:13px"></i> Message</button>
+                    <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px" @onclick="BulkEmail"><i data-lucide="mail" style="width:13px;height:13px"></i> Email</button>
+                    <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px" @onclick="BulkFavorite"><i data-lucide="star" style="width:13px;height:13px"></i> Favorite</button>
+                    <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:11.5px" @onclick="() => selectedNiks.Clear()">Clear</button>
+                </div>
+            }
+
+            @if (!IsSearching && !favOnly && FavoritePeople.Count > 0)
             {
                 <div class="card" style="overflow:hidden">
                     <div class="card-head" style="padding:15px 20px 10px">
@@ -160,68 +187,141 @@
             }
 
             <div class="card" style="overflow:hidden">
-                <table class="tbl">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>NIK</th>
-                            <th>Position</th>
-                            <th>Status</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @if (loading || structureLoading)
-                        {
-                            @for (var i = 0; i < 7; i++)
+                @if (isGridView)
+                {
+                    @if (loading || structureLoading)
+                    {
+                        <div style="padding:16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px">
+                            @for (var i = 0; i < 8; i++)
                             {
-                                <tr>
-                                    <td colspan="5"><div class="skel" style="height:26px;border-radius:6px"></div></td>
-                                </tr>
+                                <div class="skel" style="height:140px;border-radius:14px"></div>
                             }
-                        }
-                        else if (people.Count == 0 && FavoritePeople.Count == 0)
-                        {
-                            <tr>
-                                <td colspan="5" style="text-align:center;padding:32px;color:var(--ink-3)">@(loadError ?? "No one in this division yet.")</td>
-                            </tr>
-                        }
-                        else
-                        {
-                            @foreach (var p in people)
+                        </div>
+                    }
+                    else if (DisplayedPeople.Count == 0 && FavoritePeople.Count == 0)
+                    {
+                        <div style="text-align:center;padding:32px;color:var(--ink-3)">@(loadError ?? "No one found.")</div>
+                    }
+                    else
+                    {
+                        <div class="emp-grid">
+                            @foreach (var p in DisplayedPeople)
                             {
                                 var isFav = Favorites.IsFavorite(p.Nik);
-                                var isSel = (selected?.Nik ?? people.FirstOrDefault()?.Nik) == p.Nik;
-                                <tr class="@(isSel ? "sel" : "")" @onclick="() => selected = p">
-                                    <td>
-                                        <div class="cell-person">
-                                            <div class="av-wrap">
-                                                <div class="av" style="background:@p.Color">@p.Initials</div>
-                                                <span class="presence @p.Status"></span>
-                                            </div>
-                                            <div>
-                                                <div class="n">@p.Name</div>
-                                                <div class="s">@p.Email</div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td class="num dim">@p.Nik</td>
-                                    <td class="dim">@p.Position</td>
-                                    <td>
-                                        <span class="badge @(p.Status == "on" ? "ok" : p.Status == "busy" ? "bad" : p.Status == "away" ? "warn" : "mute")">@p.StatusLabel</span>
-                                    </td>
-                                    <td>
-                                        <button type="button" class="icon-btn" style="width:28px;height:28px;border:none;background:transparent"
-                                                title="@(isFav ? "Remove from favorites" : "Add to favorites")"
-                                                @onclick="() => ToggleFavorite(p.Nik)" @onclick:stopPropagation="true">
-                                            <i data-lucide="star" style="width:15px;height:15px;color:@(isFav ? "var(--warn)" : "var(--ink-4)");fill:@(isFav ? "currentColor" : "none")"></i>
+                                var isChecked = selectedNiks.Contains(p.Nik);
+                                <div class="emp-card @(isFav ? "fav" : "")" @onclick="() => selected = p">
+                                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px" @onclick:stopPropagation="true">
+                                        <input type="checkbox" checked="@isChecked" @onchange="() => TogglePersonSelection(p.Nik)" />
+                                        <button type="button" class="icon-btn" style="border:none;background:transparent;width:24px;height:24px" title="@(isFav ? "Remove favorite" : "Add favorite")" @onclick="() => ToggleFavorite(p.Nik)">
+                                            <i data-lucide="star" style="width:14px;height:14px;color:@(isFav ? "var(--warn)" : "var(--ink-4)");fill:@(isFav ? "currentColor" : "none")"></i>
                                         </button>
-                                    </td>
+                                    </div>
+                                    <div class="top">
+                                        <div class="av-wrap">
+                                            <div class="avatar" style="background:@p.Color">@p.Initials</div>
+                                            <span class="presence @p.Status"></span>
+                                        </div>
+                                        <div style="min-width:0;flex:1">
+                                            <div class="n" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@p.Name</div>
+                                            <div class="p" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@p.Position</div>
+                                        </div>
+                                    </div>
+                                    <div class="foot">
+                                        <span>@(p.Department) · @p.Nik</span>
+                                        <span class="badge @(p.Status == "on" ? "ok" : p.Status == "busy" ? "bad" : p.Status == "away" ? "warn" : "mute")">@p.StatusLabel</span>
+                                    </div>
+                                    <div style="display:flex;gap:6px;margin-top:10px;border-top:1px solid var(--line-soft);padding-top:8px" @onclick:stopPropagation="true">
+                                        <button type="button" class="ghost-btn" style="flex:1;height:28px;font-size:11px;padding:0 6px" title="Chat" @onclick="() => OpenChatWith(p.Nik)"><i data-lucide="message-circle" style="width:12px;height:12px"></i>Chat</button>
+                                        <button type="button" class="ghost-btn" style="flex:1;height:28px;font-size:11px;padding:0 6px" title="Call" @onclick="() => StartCallWith(p.Nik)"><i data-lucide="phone" style="width:12px;height:12px"></i>Call</button>
+                                        <button type="button" class="ghost-btn" style="flex:1;height:28px;font-size:11px;padding:0 6px" title="Email" @onclick="() => OpenMailWith(p.Nik)"><i data-lucide="mail" style="width:12px;height:12px"></i>Mail</button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+                else
+                {
+                    <table class="tbl">
+                        <thead>
+                            <tr>
+                                <th style="width:32px">
+                                    <input type="checkbox" checked="@(DisplayedPeople.Count > 0 && selectedNiks.Count == DisplayedPeople.Count)" @onchange="ToggleSelectAllPeople" />
+                                </th>
+                                <th>Name</th>
+                                <th>NIK</th>
+                                <th>Position</th>
+                                <th>Department</th>
+                                <th>Status</th>
+                                <th style="text-align:right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (loading || structureLoading)
+                            {
+                                @for (var i = 0; i < 7; i++)
+                                {
+                                    <tr>
+                                        <td colspan="7"><div class="skel" style="height:26px;border-radius:6px"></div></td>
+                                    </tr>
+                                }
+                            }
+                            else if (DisplayedPeople.Count == 0 && FavoritePeople.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="7" style="text-align:center;padding:32px;color:var(--ink-3)">@(loadError ?? "No one in this division yet.")</td>
                                 </tr>
                             }
-                        }
-                    </tbody>
-                </table>
+                            else
+                            {
+                                @foreach (var p in DisplayedPeople)
+                                {
+                                    var isFav = Favorites.IsFavorite(p.Nik);
+                                    var isSel = (selected?.Nik ?? people.FirstOrDefault()?.Nik) == p.Nik;
+                                    var isChecked = selectedNiks.Contains(p.Nik);
+                                    <tr class="@(isSel ? "sel" : "")" @onclick="() => selected = p">
+                                        <td @onclick:stopPropagation="true">
+                                            <input type="checkbox" checked="@isChecked" @onchange="() => TogglePersonSelection(p.Nik)" />
+                                        </td>
+                                        <td>
+                                            <div class="cell-person">
+                                                <div class="av-wrap">
+                                                    <div class="av" style="background:@p.Color">@p.Initials</div>
+                                                    <span class="presence @p.Status"></span>
+                                                </div>
+                                                <div>
+                                                    <div class="n">@p.Name</div>
+                                                    <div class="s">@p.Email</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td class="num dim">@p.Nik</td>
+                                        <td class="dim">@p.Position</td>
+                                        <td class="dim">@p.Department</td>
+                                        <td>
+                                            <span class="badge @(p.Status == "on" ? "ok" : p.Status == "busy" ? "bad" : p.Status == "away" ? "warn" : "mute")">@p.StatusLabel</span>
+                                        </td>
+                                        <td>
+                                            <div class="flex gap-6" style="justify-content:flex-end">
+                                                <button type="button" class="icon-btn" style="width:28px;height:28px" title="Chat" @onclick="() => OpenChatWith(p.Nik)" @onclick:stopPropagation="true">
+                                                    <i data-lucide="message-circle" style="width:14px;height:14px"></i>
+                                                </button>
+                                                <button type="button" class="icon-btn" style="width:28px;height:28px" title="Call" @onclick='() => StartCallWith(p.Nik)' @onclick:stopPropagation="true">
+                                                    <i data-lucide="phone" style="width:14px;height:14px"></i>
+                                                </button>
+                                                <button type="button" class="icon-btn" style="width:28px;height:28px;border:none;background:transparent"
+                                                        title="@(isFav ? "Remove from favorites" : "Add to favorites")"
+                                                        @onclick="() => ToggleFavorite(p.Nik)" @onclick:stopPropagation="true">
+                                                    <i data-lucide="star" style="width:14px;height:14px;color:@(isFav ? "var(--warn)" : "var(--ink-4)");fill:@(isFav ? "currentColor" : "none")"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                }
                 @if (!loading && page < TotalPages)
                 {
                     <div style="padding:14px 20px;border-top:1px solid var(--line);text-align:center">
@@ -243,6 +343,57 @@
     private int page = 1, total;
     private Employee? selected;
     private List<Employee> people = [];
+    private bool isGridView;
+    private bool favOnly;
+    private string selectedSort = "name-asc";
+    private HashSet<string> selectedNiks = [];
+    private IReadOnlyList<Employee> DisplayedPeople => favOnly ? people.Where(p => Favorites.IsFavorite(p.Nik)).ToList() : people;
+
+    private void TogglePersonSelection(string nik)
+    {
+        if (!selectedNiks.Add(nik)) selectedNiks.Remove(nik);
+    }
+
+    private void ToggleSelectAllPeople(ChangeEventArgs e)
+    {
+        if ((bool)(e.Value ?? false))
+            selectedNiks = DisplayedPeople.Select(p => p.Nik).ToHashSet();
+        else
+            selectedNiks.Clear();
+    }
+
+    private void ToggleFavOnly()
+    {
+        favOnly = !favOnly;
+        selectedNiks.Clear();
+    }
+
+    private async Task OnSortChanged()
+    {
+        await Reload(1, replace: true);
+    }
+
+    private void BulkMessage()
+    {
+        if (selectedNiks.Count == 1) OpenChatWith(selectedNiks.First());
+        else Nav.NavigateTo("/chat");
+    }
+
+    private void BulkEmail()
+    {
+        Nav.NavigateTo($"/mail?to={string.Join(",", selectedNiks)}&compose=1");
+    }
+
+    private async Task BulkFavorite()
+    {
+        foreach (var nik in selectedNiks) await Favorites.ToggleAsync(nik);
+        Toasts.Show($"Updated favorites for {selectedNiks.Count} people.", ToastKind.Success);
+        selectedNiks.Clear();
+    }
+
+    private void OpenMailWith(string nik)
+        => Nav.NavigateTo($"/mail?to={Uri.EscapeDataString(nik)}&compose=1");
+
     private DirectoryConnectionState ConnectionState => Auth.ConnectionState;
     private int TotalPages => total == 0 ? 1 : (int)Math.Ceiling(total / (double)PageSize);
 
@@ -470,7 +621,11 @@
         var divCode = selectedDivision?.Code ?? "";
         var q = searchQ is null ? "" : $"&q={Uri.EscapeDataString(searchQ)}";
         var presence = string.IsNullOrEmpty(presenceFilter) ? "" : $"&presence={presenceFilter}";
-        var url = $"/api/directory/employees?page={requestedPage}&pageSize={PageSize}&divisionCode={Uri.EscapeDataString(divCode)}{q}{presence}";
+        var sortParts = selectedSort.Split('-');
+        var sort = sortParts[0];
+        var desc = sortParts.Length > 1 && sortParts[1] == "desc";
+        var sortParam = $"&sort={sort}&desc={desc}";
+        var url = $"/api/directory/employees?page={requestedPage}&pageSize={PageSize}&divisionCode={Uri.EscapeDataString(divCode)}{q}{presence}{sortParam}";
         var result = await Auth.GetAsync<DirectoryPageDto>(url);
         if (qAtStart != searchQ) return; // superseded by a keystroke or clear
         loading = false;
