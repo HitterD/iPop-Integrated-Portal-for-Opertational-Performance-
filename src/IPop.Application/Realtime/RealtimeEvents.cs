@@ -8,6 +8,7 @@ public static class RealtimeEvents
     public const string DirectoryChanged = "directoryChanged"; // ()
     public const string AuditChanged = "auditChanged";         // ()
     public const string BadgeChanged = "badgeChanged";         // (key, count)
+    public const string ProjectChanged = "projectChanged";     // (projectId)
 
     public static string UserGroup(string nik) => $"user:{nik}";
 }

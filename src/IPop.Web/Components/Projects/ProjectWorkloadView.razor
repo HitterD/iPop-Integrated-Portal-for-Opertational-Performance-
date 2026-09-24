@@ -1,4 +1,6 @@
 @using IPop.Application.Projects
+@using IPop.Web.Services
+@inject ToastService Toasts
 
 <div>
     @if (Workload is not null)
@@ -90,14 +92,19 @@
                                     <div class="wm-tasks-dropdown">
                                         @foreach (var mt in memberTasks)
                                         {
-                                            <div class="wm-task-row" @onclick="() => OnTaskClick.InvokeAsync(mt)" title="@mt.Title (Click to edit)">
-                                                <span class="col-dot @mt.Status.ToLower()" style="flex-shrink:0"></span>
-                                                <span class="wm-task-title">@mt.Title</span>
-                                                @if (!string.IsNullOrEmpty(mt.Priority))
-                                                {
-                                                    <span class="priority-badge @mt.Priority.ToLower()" style="font-size:9px;padding:1px 5px">@mt.Priority</span>
-                                                }
-                                                <span class="status-pill @mt.Status.ToLower()" style="font-size:9px;padding:1px 6px">@mt.Status</span>
+                                            <div class="wm-task-row" style="display:flex;align-items:center;justify-content:space-between" @onclick="() => OnTaskClick.InvokeAsync(mt)" title="@mt.Title (Click to edit)">
+                                                <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
+                                                    <span class="col-dot @mt.Status.ToLower()" style="flex-shrink:0"></span>
+                                                    <span class="wm-task-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@mt.Title</span>
+                                                    @if (!string.IsNullOrEmpty(mt.Priority))
+                                                    {
+                                                        <span class="priority-badge @mt.Priority.ToLower()" style="font-size:9px;padding:1px 5px;flex-shrink:0">@mt.Priority</span>
+                                                    }
+                                                    <span class="status-pill @mt.Status.ToLower()" style="font-size:9px;padding:1px 6px;flex-shrink:0">@mt.Status</span>
+                                                </div>
+                                                <button type="button" class="btn btn-sm" style="padding:2px 6px;font-size:11px;border:none;background:transparent;color:var(--ink-3);cursor:pointer;flex-shrink:0" title="Remove assignment" @onclick="() => RemoveTaskFromMember(mt, a.UserId, a.Name)" @onclick:stopPropagation>
+                                                    <i data-lucide="x" style="width:13px;height:13px"></i>
+                                                </button>
                                             </div>
                                         }
                                     </div>
@@ -122,6 +129,8 @@
     [Parameter] public ProjectWorkloadDto? Workload { get; set; }
     [Parameter] public List<ProjectTaskDto> AllTasks { get; set; } = [];
     [Parameter] public EventCallback<ProjectTaskDto> OnTaskClick { get; set; }
+    [Parameter] public EventCallback<(Guid TaskId, Guid UserId)> OnUnassign { get; set; }
+    [Parameter] public EventCallback<(Guid TaskId, Guid UserId)> OnReassign { get; set; }
 
     private HashSet<Guid> expandedAssignees = [];
 
@@ -131,6 +140,16 @@
         {
             expandedAssignees.Remove(userId);
         }
+    }
+
+    private async Task RemoveTaskFromMember(ProjectTaskDto task, Guid userId, string memberName)
+    {
+        await OnUnassign.InvokeAsync((task.Id, userId));
+        Toasts.ShowUndo(
+            $"Unassigned \"{task.Title}\" from {memberName}",
+            async () => await OnReassign.InvokeAsync((task.Id, userId)),
+            "Undo",
+            ms: 5000);
     }
 
     private static (string Label, string CssClass, string Icon) GetCapacityInfo(int count, decimal hours)

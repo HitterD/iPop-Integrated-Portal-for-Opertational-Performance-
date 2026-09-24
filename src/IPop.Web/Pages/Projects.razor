@@ -172,7 +172,9 @@
                                 <ProjectWorkloadView
                                     Workload="workloadData"
                                     AllTasks="AllCurrentTasks"
-                                    OnTaskClick="OpenTaskEditor" />
+                                    OnTaskClick="OpenTaskEditor"
+                                    OnUnassign="HandleWorkloadUnassign"
+                                    OnReassign="HandleWorkloadReassign" />
                             }
                             else if (tab == 5)
                             {
@@ -322,6 +324,17 @@
         catch { }
 
         await ReloadProjects();
+        _projectSub = Auth.On<Guid>(IPop.Application.Realtime.RealtimeEvents.ProjectChanged, async pid =>
+        {
+            if (pid == selectedProjectId)
+            {
+                await InvokeAsync(async () =>
+                {
+                    await ReloadCurrentView();
+                    StateHasChanged();
+                });
+            }
+        });
     }
 
     protected override async Task OnParametersSetAsync()
@@ -489,6 +502,16 @@
         StateHasChanged();
     }
 
+    private async Task ReloadCurrentView()
+    {
+        if (selectedProjectId == Guid.Empty) return;
+        await LoadMembers();
+        await LoadKanban();
+        await LoadTaskList();
+        await LoadTimeline();
+        if (tab == 3) await LoadWorkloadData();
+    }
+
     private async Task LoadWorkloadData()
     {
         if (selectedProjectId == Guid.Empty) return;
@@ -545,11 +568,38 @@
     private async Task ExportSelected()
     {
         if (selectedProjectId == Guid.Empty) return;
-        var exp = await Auth.GetAsync<ProjectExportDto>($"/api/projects/{selectedProjectId}/export");
-        if (exp is not null)
+        try
         {
-            Toasts.Show($"Export ready: {exp.Project.Name} ({exp.Tasks.Count} tasks, {exp.Members.Count} members).");
+            var res = await Auth.SendAsync(HttpMethod.Get, $"/api/projects/{selectedProjectId}/export.csv");
+            if (!res.IsSuccessStatusCode)
+            {
+                Toasts.Show($"Export failed ({(int)res.StatusCode}).", ToastKind.Error);
+                return;
+            }
+            var bytes = await res.Content.ReadAsByteArrayAsync();
+            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmm");
+            var name = selectedProject?.Name ?? "tasks";
+            await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(bytes), $"project-{name}-{stamp}.csv");
+            Toasts.Show("Project tasks exported to CSV successfully.", ToastKind.Success);
         }
+        catch (Exception ex)
+        {
+            Toasts.Show($"Export failed: {ex.Message}", ToastKind.Error);
+        }
+    }
+
+    private async Task HandleWorkloadUnassign((Guid TaskId, Guid UserId) arg)
+    {
+        await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/tasks/{arg.TaskId}/assignees/{arg.UserId}");
+        await LoadWorkloadData();
+        await ReloadCurrentView();
+    }
+
+    private async Task HandleWorkloadReassign((Guid TaskId, Guid UserId) arg)
+    {
+        await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{arg.TaskId}/assignees", new { userId = arg.UserId, role = "member" });
+        await LoadWorkloadData();
+        await ReloadCurrentView();
     }
 
     private async Task HandleTaskMove((Guid TaskId, string TargetStatus) arg)
@@ -1034,5 +1084,9 @@
         }
     }
 
-    public void Dispose() { }
+    private IDisposable? _projectSub;
+    public void Dispose()
+    {
+        _projectSub?.Dispose();
+    }
 }

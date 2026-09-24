@@ -1,3 +1,4 @@
+using IPop.Application.Realtime;
 using IPop.Api.Rbac;
 using IPop.Application.Projects;
 using IPop.Core.Entities;
@@ -45,7 +46,7 @@ public static class ProjectEndpoints
 
         // POST /api/projects — create
         g.MapPost("", async (CreateProjectRequest req,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -62,12 +63,13 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.create", result.Project!.Id.ToString(), ct);
+            await realtime.ToAllAsync(RealtimeEvents.ProjectChanged, result.Project!.Id, ct);
             return Results.Ok(result.Project);
         }); // any signed-in user may create a project (decision 2026-09-23)
 
         // PUT /api/projects/{id}
         g.MapPut("/{id:guid}", async (Guid id, UpdateProjectRequest req,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -85,12 +87,13 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.update", id.ToString(), ct);
+            await realtime.ToAllAsync(RealtimeEvents.ProjectChanged, id, ct);
             return Results.Ok(result.Project);
         }).RequirePermission("projects.write");
 
         // DELETE /api/projects/{id} (soft deactivate)
         g.MapDelete("/{id:guid}", async (Guid id,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -108,6 +111,7 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.delete", id.ToString(), ct);
+            await realtime.ToAllAsync(RealtimeEvents.ProjectChanged, id, ct);
             return Results.Ok(result);
         }).RequirePermission("projects.admin");
 
@@ -215,7 +219,7 @@ public static class ProjectEndpoints
 
         // POST /api/projects/{projectId}/tasks — create task (optionally with parentId for subtask)
         g.MapPost("/{projectId:guid}/tasks", async (Guid projectId, CreateTaskRequest body,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -237,12 +241,13 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.task.create", result.Task!.Id.ToString(), ct);
+            await realtime.ToAllAsync(RealtimeEvents.ProjectChanged, projectId, ct);
             return Results.Ok(result.Task);
         }).RequirePermission("projects.write");
 
         // PUT /api/projects/tasks/{taskId}
         g.MapPut("/tasks/{taskId:guid}", async (Guid taskId, UpdateTaskRequest req,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -260,16 +265,18 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.task.update", taskId.ToString(), ct);
+            await realtime.ToAllAsync(RealtimeEvents.ProjectChanged, result.Task!.ProjectId, ct);
             return Results.Ok(result.Task);
         }).RequirePermission("projects.write");
 
         // DELETE /api/projects/tasks/{taskId}
         g.MapDelete("/tasks/{taskId:guid}", async (Guid taskId,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
+            var task = await db.ProjectTasks.AsNoTracking().FirstOrDefaultAsync(t => t.Id == taskId, ct);
             var result = await svc.DeleteTaskAsync(userId.Value, taskId, ct);
             if (!result.Success)
             {
@@ -283,6 +290,7 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.task.delete", taskId.ToString(), ct);
+            if (task != null) await realtime.ToAllAsync(RealtimeEvents.ProjectChanged, task.ProjectId, ct);
             return Results.Ok(result);
         }).RequirePermission("projects.write");
 
@@ -340,7 +348,7 @@ public static class ProjectEndpoints
 
         // POST /api/projects/tasks/{taskId}/move — { status, sortOrder? }
         g.MapPost("/tasks/{taskId:guid}/move", async (Guid taskId, TaskMoveRequest req,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -423,6 +431,42 @@ public static class ProjectEndpoints
             return exp is not null
                 ? Results.Ok(exp)
                 : Results.Json(new { code = "project_not_found", message = "Not a member of this project." }, statusCode: 404);
+        }).RequirePermission("projects.read");
+
+        // GET /api/projects/{id}/export.csv — real CSV file download
+        g.MapGet("/{id:guid}/export.csv", async (Guid id,
+            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+
+            var exp = await svc.GetProjectExportDataAsync(id, userId.Value, ct);
+            if (exp is null)
+                return Results.Json(new { code = "project_not_found", message = "Not a member of this project." }, statusCode: 404);
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("ID;Title;Status;Priority;Assignees;Start;Due;EstimatedHours;ActualHours;Tags");
+            foreach (var t in exp.Tasks)
+            {
+                var assignees = string.Join(", ", t.Assignees.Select(a => a.Name));
+                var tags = string.Join(", ", t.Tags);
+                sb.AppendLine(string.Join(';',
+                    t.Id,
+                    DirectoryEndpoints.CsvField(t.Title),
+                    DirectoryEndpoints.CsvField(t.Status),
+                    DirectoryEndpoints.CsvField(t.Priority),
+                    DirectoryEndpoints.CsvField(assignees),
+                    t.StartDate?.ToString("yyyy-MM-dd") ?? "",
+                    t.DueDate?.ToString("yyyy-MM-dd") ?? "",
+                    t.EstimatedHours,
+                    t.ActualHours,
+                    DirectoryEndpoints.CsvField(tags)));
+            }
+
+            var safeName = string.Concat(exp.Project.Name.Where(c => !System.IO.Path.GetInvalidFileNameChars().Contains(c)));
+            var filename = $"{safeName}-{DateTime.UtcNow:yyyyMMdd-HHmm}.csv";
+            var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+            return Results.File(bytes, "text/csv; charset=utf-8", filename);
         }).RequirePermission("projects.read");
 
         // GET /api/projects/tasks/{taskId}/recurring-preview?count=5
