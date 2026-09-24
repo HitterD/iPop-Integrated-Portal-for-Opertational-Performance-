@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using IPop.Application.News;
+using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -189,8 +190,67 @@ public static class NewsEndpoints
             return Results.Ok(audits);
         });
 
+        g.MapGet("/{id:guid}/discussion", async (Guid id, HttpContext http, INewsService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (await svc.GetAsync(id, userId.Value, ct) is null) return Results.NotFound();
+            return Results.Ok(await GetDiscussionAsync(db, id, userId.Value, ct));
+        });
+
+        g.MapPost("/{id:guid}/like", async (Guid id, HttpContext http, INewsService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (await svc.GetAsync(id, userId.Value, ct) is not { Status: "published" }) return Results.NotFound();
+            if (!await db.NewsLikes.AnyAsync(l => l.NewsPostId == id && l.UserId == userId.Value, ct))
+            {
+                db.NewsLikes.Add(new NewsLike { NewsPostId = id, UserId = userId.Value, CreatedAt = DateTime.UtcNow });
+                await db.SaveChangesAsync(ct);
+            }
+            return Results.Ok(await GetDiscussionAsync(db, id, userId.Value, ct));
+        });
+
+        g.MapDelete("/{id:guid}/like", async (Guid id, HttpContext http, INewsService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (await svc.GetAsync(id, userId.Value, ct) is null) return Results.NotFound();
+            await db.NewsLikes.Where(l => l.NewsPostId == id && l.UserId == userId.Value).ExecuteDeleteAsync(ct);
+            return Results.Ok(await GetDiscussionAsync(db, id, userId.Value, ct));
+        });
+
+        g.MapPost("/{id:guid}/comments", async (Guid id, CommentRequest req, HttpContext http,
+            INewsService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (await svc.GetAsync(id, userId.Value, ct) is not { Status: "published" }) return Results.NotFound();
+            var body = req.Body?.Trim();
+            if (string.IsNullOrEmpty(body) || body.Length > 2000)
+                return Results.Json(new { code = "invalid_comment", message = "Comment must contain 1–2000 characters." }, statusCode: 422);
+            db.NewsComments.Add(new NewsComment { Id = Guid.NewGuid(), NewsPostId = id, AuthorId = userId.Value, Body = body, CreatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(await GetDiscussionAsync(db, id, userId.Value, ct));
+        });
+
         return app;
     }
+
+    public static async Task<DiscussionDto> GetDiscussionAsync(IPopDbContext db, Guid id, Guid userId, CancellationToken ct)
+    {
+        var comments = await db.NewsComments.AsNoTracking().Where(c => c.NewsPostId == id)
+            .OrderBy(c => c.CreatedAt).ThenBy(c => c.Id)
+            .Select(c => new CommentDto(c.Id, c.Author.Name, c.Body, c.CreatedAt))
+            .Take(100).ToListAsync(ct);
+        var count = await db.NewsLikes.CountAsync(l => l.NewsPostId == id, ct);
+        var liked = await db.NewsLikes.AnyAsync(l => l.NewsPostId == id && l.UserId == userId, ct);
+        return new DiscussionDto(count, liked, comments);
+    }
+
+    public record CommentRequest(string? Body);
+    public record CommentDto(Guid Id, string AuthorName, string Body, DateTime CreatedAt);
+    public record DiscussionDto(int LikeCount, bool IsLiked, IReadOnlyList<CommentDto> Comments);
 
     private static async Task<Guid?> GetUserIdAsync(HttpContext http)
     {

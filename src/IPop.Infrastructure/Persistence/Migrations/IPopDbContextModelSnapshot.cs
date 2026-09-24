@@ -1582,6 +1582,53 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("NewsAudits");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NewsComment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AuthorId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("NewsPostId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuthorId");
+
+                    b.HasIndex("NewsPostId", "CreatedAt");
+
+                    b.ToTable("NewsComments");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsLike", b =>
+                {
+                    b.Property<Guid>("NewsPostId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("NewsPostId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("NewsLikes");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NewsPost", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3416,6 +3463,44 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Actor");
 
                     b.Navigation("NewsPost");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsComment", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "Author")
+                        .WithMany()
+                        .HasForeignKey("AuthorId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.NewsPost", "NewsPost")
+                        .WithMany()
+                        .HasForeignKey("NewsPostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Author");
+
+                    b.Navigation("NewsPost");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsLike", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.NewsPost", "NewsPost")
+                        .WithMany()
+                        .HasForeignKey("NewsPostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("NewsPost");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NewsPost", b =>

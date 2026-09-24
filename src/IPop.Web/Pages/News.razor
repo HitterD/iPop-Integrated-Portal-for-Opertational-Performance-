@@ -183,7 +183,10 @@
                                           OnClose="CloseDetail" OnCopyLink="CopyLink" OnEdit="OpenEdit"
                                           OnSubmit="Submit" OnApprove="Approve" OnOpenReject="() => showReject = true"
                                           OnUnpublish="Unpublish" OnTogglePin="TogglePin"
-                                          OnAcknowledge="Acknowledge" OnRemindAck="RemindAck" />
+                                          OnAcknowledge="Acknowledge" OnRemindAck="RemindAck"
+                                          Discussion="@discussion" CommentText="@commentText"
+                                          OnCommentTextChanged="v => commentText = v"
+                                          OnToggleLike="ToggleLike" OnComment="AddComment" />
                     }
                     else { <div class="news-v6-empty"><i data-lucide="newspaper"></i>Select a post to read</div> }
                 </aside>
@@ -242,6 +245,8 @@
     private bool formBusy;
     private string? formError;
     private Guid? openDetailId;
+    private NewsDiscussionDto? discussion;
+    private string commentText = "";
 
     private bool isApprover => Auth.Me?.Roles.Contains("Admin") == true;
     private bool canEdit => detail is not null && (detail.Status == "draft" || detail.Status == "rejected");
@@ -355,6 +360,8 @@
         openDetailId = id;
         detailError = null;
         audits = null;
+        discussion = null;
+        commentText = "";
         showDetail = true;
         detail = null;
         StateHasChanged();
@@ -376,6 +383,8 @@
         var a = await Auth.GetAsync<NewsAuditDto[]>($"/api/news/{id}/audits");
         if (openDetailId != id) return;
         audits = a?.ToList() ?? [];
+        discussion = await Auth.GetAsync<NewsDiscussionDto>($"/api/news/{id}/discussion");
+        if (openDetailId != id) return;
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
     }
@@ -385,10 +394,32 @@
         showDetail = false;
         detail = null;
         audits = null;
+        discussion = null;
         detailError = null;
         showReject = false;
         openDetailId = null;
         StateHasChanged();
+    }
+
+    private async Task ToggleLike()
+    {
+        if (detail is not { Status: "published" }) return;
+        var method = discussion?.IsLiked == true ? HttpMethod.Delete : HttpMethod.Post;
+        var res = await Auth.SendAsync(method, $"/api/news/{detail.Id}/like", null);
+        if (res.IsSuccessStatusCode) discussion = await res.Content.ReadFromJsonAsync<NewsDiscussionDto>();
+        else Toasts.Show("Could not update your reaction.");
+    }
+
+    private async Task AddComment()
+    {
+        if (detail is not { Status: "published" } || string.IsNullOrWhiteSpace(commentText)) return;
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/news/{detail.Id}/comments", new { body = commentText.Trim() });
+        if (res.IsSuccessStatusCode)
+        {
+            discussion = await res.Content.ReadFromJsonAsync<NewsDiscussionDto>();
+            commentText = "";
+        }
+        else Toasts.Show("Could not post your comment.");
     }
 
     private async Task Acknowledge()

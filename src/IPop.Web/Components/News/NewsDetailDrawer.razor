@@ -150,6 +150,21 @@
                 </div>
             }
 
+            @if (Detail.Status == "published" && Inline)
+            {
+                <div class="news-v6-discussion">
+                    <button class="org-act" @onclick="OnToggleLike" aria-label="@(Discussion?.IsLiked == true ? "Unlike post" : "Like post")">
+                        <i data-lucide="thumbs-up"></i> @(Discussion?.IsLiked == true ? "Liked" : "Like") · @(Discussion?.LikeCount ?? 0)
+                    </button>
+                    <strong>@(Discussion?.Comments.Count ?? 0) comments</strong>
+                    @foreach (var comment in Discussion?.Comments ?? [])
+                    {
+                        <p><b>@comment.AuthorName</b> <span>@comment.CreatedAt.ToLocalTime().ToString("dd MMM, HH:mm")</span><br />@comment.Body</p>
+                    }
+                    <div class="news-v6-comment-form"><input value="@CommentText" @oninput="HandleCommentInput" placeholder="Add a comment…" maxlength="2000" aria-label="Add a comment" /><button @onclick="OnComment" disabled="@(string.IsNullOrWhiteSpace(CommentText))">Post</button></div>
+                </div>
+            }
+
             <!-- Action Workflow Bar -->
             <div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--line-soft);padding-top:16px">
                 @if (CanEdit)
@@ -230,7 +245,13 @@
     [Inject] private IJSRuntime JS { get; set; } = default!;
     private int FontSize = 14;
     private async Task Print() => await JS.InvokeVoidAsync("print");
+    private Task HandleCommentInput(ChangeEventArgs e) => OnCommentTextChanged.InvokeAsync(e.Value?.ToString() ?? "");
     [Parameter] public bool Inline { get; set; }
+    [Parameter] public NewsDiscussionDto? Discussion { get; set; }
+    [Parameter] public string CommentText { get; set; } = "";
+    [Parameter] public EventCallback<string> OnCommentTextChanged { get; set; }
+    [Parameter] public EventCallback OnToggleLike { get; set; }
+    [Parameter] public EventCallback OnComment { get; set; }
     [Parameter] public NewsDetailDto Detail { get; set; } = default!;
     [Parameter] public IReadOnlyList<NewsAuditDto>? Audits { get; set; }
     [Parameter] public bool IsApprover { get; set; }

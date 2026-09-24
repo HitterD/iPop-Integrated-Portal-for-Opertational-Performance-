@@ -20,6 +20,8 @@ public record NewsSummaryDto(
 );
 
 public record NewsTargetDto(string Kind, string? Value);
+public record NewsCommentDto(Guid Id, string AuthorName, string Body, DateTime CreatedAt);
+public record NewsDiscussionDto(int LikeCount, bool IsLiked, IReadOnlyList<NewsCommentDto> Comments);
 
 public record NewsDetailDto(
     Guid Id,

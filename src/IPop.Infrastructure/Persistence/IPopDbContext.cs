@@ -91,6 +91,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<NewsTarget> NewsTargets => Set<NewsTarget>();
     public DbSet<NewsAcknowledgement> NewsAcknowledgements => Set<NewsAcknowledgement>();
     public DbSet<NewsAudit> NewsAudits => Set<NewsAudit>();
+    public DbSet<NewsComment> NewsComments => Set<NewsComment>();
+    public DbSet<NewsLike> NewsLikes => Set<NewsLike>();
 
     // Calls stub entities (signaling only — no media transport this wave)
     public DbSet<CallRoom> CallRooms => Set<CallRoom>();
@@ -638,6 +640,20 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Detail).HasMaxLength(2000);
             e.HasOne(x => x.NewsPost).WithMany(p => p.Audits).HasForeignKey(x => x.NewsPostId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Actor).WithMany().HasForeignKey(x => x.ActorId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<NewsComment>(e =>
+        {
+            e.HasIndex(x => new { x.NewsPostId, x.CreatedAt });
+            e.Property(x => x.Body).HasMaxLength(2000);
+            e.HasOne(x => x.NewsPost).WithMany().HasForeignKey(x => x.NewsPostId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Author).WithMany().HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<NewsLike>(e =>
+        {
+            e.HasKey(x => new { x.NewsPostId, x.UserId });
+            e.HasOne(x => x.NewsPost).WithMany().HasForeignKey(x => x.NewsPostId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         });
 
         // Calls stub — pure signaling; no media transport this wave.
