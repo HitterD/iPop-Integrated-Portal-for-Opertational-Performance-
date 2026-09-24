@@ -19,7 +19,7 @@ public static class MailEndpoints
 
         // GET /api/mail/folders/{folder}?page=1&pageSize=20&q=&starredOnly=&unreadOnly=&senderNik=
         g.MapGet("/folders/{folder}", async (string folder, int? page, int? pageSize, string? q, bool? starredOnly, bool? unreadOnly, string? senderNik, string? label,
-            DateTime? dateFrom, DateTime? dateTo, bool? hasAttachment,
+            DateTime? dateFrom, DateTime? dateTo, bool? hasAttachment, string? importance,
             HttpContext http, IMailService svc, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
@@ -36,7 +36,7 @@ public static class MailEndpoints
                 "scheduled" => MailFolder.Scheduled,
                 _ => MailFolder.Inbox
             };
-            var search = new MailSearchRequest(q, starredOnly, unreadOnly, senderNik, label, dateFrom, dateTo, hasAttachment);
+            var search = new MailSearchRequest(q, starredOnly, unreadOnly, senderNik, label, dateFrom, dateTo, hasAttachment, importance);
             var result = await svc.GetFolderAsync(userId.Value, parsed, Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 20, 1, 100), search, ct);
             return Results.Ok(result);
         });
@@ -258,6 +258,28 @@ public static class MailEndpoints
             var result = await svc.DeleteAsync(userId.Value, id, ct);
             if (result.Success) await WriteAuditAsync(http, db, "mail.delete", id.ToString(), ct);
             return ResultOrError(result);
+        });
+
+        // POST /api/mail/empty-trash
+        g.MapPost("/empty-trash", async (
+            HttpContext http, IMailService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var count = await svc.EmptyTrashAsync(userId.Value, ct);
+            await WriteAuditAsync(http, db, "mail.empty_trash", $"count={count}", ct);
+            return Results.Ok(new { count });
+        });
+
+        // POST /api/mail/{id:guid}/mute
+        g.MapPost("/{id:guid}/mute", async (Guid id,
+            HttpContext http, IMailService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var muted = await svc.ToggleMuteAsync(userId.Value, id, ct);
+            await WriteAuditAsync(http, db, "mail.mute", $"id={id};muted={muted}", ct);
+            return Results.Ok(new { muted });
         });
 
         // POST /api/mail/bulk/move — { mailIds[], folder }

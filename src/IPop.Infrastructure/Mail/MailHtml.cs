@@ -20,4 +20,12 @@ public static class MailHtml
 
     public static string Sanitize(string? html) =>
         string.IsNullOrEmpty(html) ? "" : Sanitizer.Sanitize(html);
+
+    public static string ToPlainText(string? html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return "";
+        var noTags = System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", " ");
+        var decoded = System.Net.WebUtility.HtmlDecode(noTags);
+        return System.Text.RegularExpressions.Regex.Replace(decoded, @"\s+", " ").Trim();
+    }
 }

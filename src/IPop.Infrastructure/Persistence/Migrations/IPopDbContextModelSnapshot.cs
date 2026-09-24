@@ -1292,6 +1292,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<bool>("IsMuted")
+                        .HasColumnType("boolean");
+
                     b.Property<bool>("IsPinned")
                         .HasColumnType("boolean");
 

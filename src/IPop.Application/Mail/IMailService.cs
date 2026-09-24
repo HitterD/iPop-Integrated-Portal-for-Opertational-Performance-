@@ -27,6 +27,8 @@ public interface IMailService
     Task<SendMailResult> ToggleStarAsync(Guid userId, Guid mailId, CancellationToken ct);
     Task<SendMailResult> MoveToFolderAsync(Guid userId, Guid mailId, MailFolder folder, CancellationToken ct);
     Task<SendMailResult> DeleteAsync(Guid userId, Guid mailId, CancellationToken ct);
+    Task<int> EmptyTrashAsync(Guid userId, CancellationToken ct);
+    Task<bool> ToggleMuteAsync(Guid userId, Guid mailId, CancellationToken ct);
 
     // Per-user folder actions — bulk (nice-to-have: bulk archive/trash/star/restore/delete)
     Task<BulkResultDto> BulkMoveAsync(Guid userId, IReadOnlyList<Guid> mailIds, MailFolder folder, CancellationToken ct);

@@ -8,6 +8,7 @@
 
 @inject NavigationManager Nav
 @inject IPop.Web.Services.ToastService Toasts
+@inject IPop.Web.Services.ConfirmService Confirm
 @inject HttpClient Http
 @inject IPop.Web.Services.MailService MailSvc
 
@@ -157,6 +158,12 @@
                     }
                 </div>
                 <div class="flex center gap-6">
+                    @if (activeFolder == MailFolder.Trash && Items.Count > 0)
+                    {
+                        <button type="button" class="btn btn-sm surface" style="color:var(--danger);font-size:11.5px;padding:3px 8px" @onclick="ConfirmEmptyTrash">
+                            <i data-lucide="trash-2" style="width:12px;height:12px"></i> Empty Trash
+                        </button>
+                    }
                     <button type="button" class="icon-btn @(advSearchOpen ? "on" : "")" title="Advanced filter" aria-label="Advanced filter" @onclick="() => advSearchOpen = !advSearchOpen">
                         <i data-lucide="sliders-horizontal"></i>
                     </button>
@@ -266,6 +273,10 @@
                                 {
                                     <span class="pin-badge" title="Pinned to top"><i data-lucide="pin"></i></span>
                                 }
+                                @if (item.IsMuted)
+                                {
+                                    <span class="mute-badge" title="Thread muted" style="color:var(--ink-3);margin-right:4px"><i data-lucide="bell-off" style="width:12px;height:12px"></i></span>
+                                }
 
                                 @if (item.Importance == "high")
                                 {
@@ -361,6 +372,10 @@
                         <i data-lucide="reply"></i>
                         <span>Reply</span>
                     </button>
+                    <button type="button" class="ghost-btn" @onclick="() => ReplyAllMessage(detail)">
+                        <i data-lucide="reply-all"></i>
+                        <span>Reply all</span>
+                    </button>
                     <button type="button" class="ghost-btn" @onclick="() => ForwardMessage(detail)">
                         <i data-lucide="forward"></i>
                         <span>Forward</span>
@@ -393,6 +408,10 @@
                                 <button type="button" class="more-item" @onclick="async () => { moreMenuOpen = false; await TogglePin(detail.Id); }">
                                     <i data-lucide="pin"></i>
                                     <span>@(detail.IsPinned ? "Unpin" : "Pin")</span>
+                                </button>
+                                <button type="button" class="more-item" @onclick="async () => { moreMenuOpen = false; await ToggleMuteThread(detail.Id); }">
+                                    <i data-lucide="@(detail.IsMuted ? "bell" : "bell-off")"></i>
+                                    <span>@(detail.IsMuted ? "Unmute thread" : "Mute thread")</span>
                                 </button>
                                 <button type="button" class="more-item" @onclick="async () => { moreMenuOpen = false; await MarkUnread(detail.Id); }">
                                     <i data-lucide="mail-x"></i>
@@ -1391,6 +1410,63 @@
         var bodyQuote = $"<p><br/></p>{QuoteOf(d)}";
         OpenComposer(inReplyTo: d.Id, threadRoot: d.ThreadRootId ?? d.Id, initialSubject: subj, initialBody: bodyQuote, initialTo: to);
     }
+
+    private void ReplyAllMessage(MailDetail d)
+    {
+        var myNik = Auth.Me?.Nik ?? "";
+        var to = new List<MemberSearchRow> { new(d.SenderNik, d.SenderName, null, null) };
+        foreach (var r in d.Recipients.Where(r => r.RecipientType == "to" && !r.Nik.Equals(myNik, StringComparison.OrdinalIgnoreCase) && !r.Nik.Equals(d.SenderNik, StringComparison.OrdinalIgnoreCase)))
+        {
+            to.Add(new(r.Nik, r.Name, null, null));
+        }
+
+        var cc = d.Recipients
+            .Where(r => r.RecipientType == "cc" && !r.Nik.Equals(myNik, StringComparison.OrdinalIgnoreCase))
+            .Select(r => new MemberSearchRow(r.Nik, r.Name, null, null))
+            .ToList();
+
+        var subj = d.Subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase) ? d.Subject : $"Re: {d.Subject}";
+        var bodyQuote = $"<p><br/></p>{QuoteOf(d)}";
+        composerRef?.OpenNew(inReplyTo: d.Id, threadRoot: d.ThreadRootId ?? d.Id, initialSubject: subj, initialBody: bodyQuote, initialTo: to);
+        if (composerRef != null && cc.Count > 0)
+        {
+            // set CC rows
+            composerRef.SetCcRows(cc);
+        }
+        composerOpen = true;
+    }
+
+    private async Task ToggleMuteThread(Guid mailId)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/mail/{mailId}/mute");
+        if (res.IsSuccessStatusCode)
+        {
+            var r = await res.Content.ReadFromJsonAsync<MuteResponseDto>();
+            if (detail != null && detail.Id == mailId)
+            {
+                detail = detail with { IsMuted = r?.Muted ?? !detail.IsMuted };
+            }
+            Toasts.Show((r?.Muted ?? false) ? "Thread notifications muted." : "Thread notifications unmuted.", ToastKind.Success);
+            await LoadPage(page);
+        }
+    }
+
+    private async Task ConfirmEmptyTrash()
+    {
+        var ok = await Confirm.AskAsync("Empty Trash?", "All messages in the trash folder will be permanently deleted.", "Empty Trash", danger: true);
+        if (!ok) return;
+
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/mail/empty-trash");
+        if (res.IsSuccessStatusCode)
+        {
+            Toasts.Show("Trash emptied successfully.", ToastKind.Success);
+            detail = null;
+            selectedMail = null;
+            await ReloadAll();
+        }
+    }
+
+    private record MuteResponseDto(bool Muted);
 
     private void ForwardMessage(MailDetail d)
     {

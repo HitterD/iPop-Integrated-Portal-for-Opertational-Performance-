@@ -569,4 +569,53 @@ public class MailServiceTests
         Assert.Equal(root.MailId.Value, thread.Items[0].Id);
         Assert.Equal(r1.MailId!.Value, thread.Items[1].Id);
     }
+
+    [Fact]
+    public async Task EmptyTrash_PermanentlyDeletesAllTrashedItemsForUser()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var svc = new MailService(t.Verify());
+
+        var m1 = await svc.SendAsync(a.Id, new ComposeMailRequest("Mail 1", "b1", [b.Nik], [], []), default);
+        var m2 = await svc.SendAsync(a.Id, new ComposeMailRequest("Mail 2", "b2", [b.Nik], [], []), default);
+
+        await svc.DeleteAsync(b.Id, m1.MailId!.Value, default); // moves to trash
+        await svc.DeleteAsync(b.Id, m2.MailId!.Value, default); // moves to trash
+
+        var trashBefore = await svc.GetFolderAsync(b.Id, MailFolder.Trash, 1, 20, null, default);
+        Assert.Equal(2, trashBefore.TotalCount);
+
+        var count = await svc.EmptyTrashAsync(b.Id, default);
+        Assert.Equal(2, count);
+
+        var trashAfter = await svc.GetFolderAsync(b.Id, MailFolder.Trash, 1, 20, null, default);
+        Assert.Equal(0, trashAfter.TotalCount);
+    }
+
+    [Fact]
+    public async Task ToggleMute_TogglesMuteFlagAndReflectsInSummaryAndDetail()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var svc = new MailService(t.Verify());
+
+        var m = await svc.SendAsync(a.Id, new ComposeMailRequest("Mail", "b", [b.Nik], [], []), default);
+        var mailId = m.MailId!.Value;
+
+        var muted = await svc.ToggleMuteAsync(b.Id, mailId, default);
+        Assert.True(muted);
+
+        var detail = await svc.GetAsync(b.Id, mailId, default);
+        Assert.NotNull(detail);
+        Assert.True(detail.IsMuted);
+
+        var folder = await svc.GetFolderAsync(b.Id, MailFolder.Inbox, 1, 20, null, default);
+        Assert.True(folder.Items[0].IsMuted);
+
+        var unmuted = await svc.ToggleMuteAsync(b.Id, mailId, default);
+        Assert.False(unmuted);
+    }
 }

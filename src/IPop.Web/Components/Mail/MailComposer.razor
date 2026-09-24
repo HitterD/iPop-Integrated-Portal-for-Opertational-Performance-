@@ -439,6 +439,13 @@
         StateHasChanged();
     }
 
+    public void SetCcRows(List<MemberSearchRow> cc)
+    {
+        ccRows = cc;
+        showCc = ccRows.Count > 0;
+        StateHasChanged();
+    }
+
     public void OpenDraft(MailDetail draft)
     {
         editingDraftId = draft.Id;

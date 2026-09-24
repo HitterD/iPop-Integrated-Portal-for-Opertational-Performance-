@@ -36,7 +36,7 @@ public sealed class MailBadgeProvider(IPopDbContext db) : IBadgeProvider
 
     public Task<int> CountAsync(Guid userId, CancellationToken ct) =>
         db.MailRecipients.AsNoTracking()
-            .CountAsync(r => r.UserId == userId && r.Folder == "inbox" && !r.IsRead, ct);
+            .CountAsync(r => r.UserId == userId && r.Folder == "inbox" && !r.IsRead && !r.IsMuted, ct);
 }
 
 /// Same count as GET /api/notifications/v1/unread-count.

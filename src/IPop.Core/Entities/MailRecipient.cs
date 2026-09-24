@@ -19,6 +19,7 @@ public class MailRecipient
     public bool IsStarred { get; set; }
     public bool IsRead { get; set; }
     public bool IsPinned { get; set; }
+    public bool IsMuted { get; set; }
     public DateTime? DeliveredAt { get; set; }
     public DateTime? ReadAt { get; set; }
     public DateTime CreatedAt { get; set; }

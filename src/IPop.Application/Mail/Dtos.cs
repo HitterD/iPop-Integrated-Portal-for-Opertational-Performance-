@@ -40,6 +40,7 @@ public record MailSummaryDto(
     bool IsPinned = false,
     string Importance = "normal",
     DateTime? ScheduledAt = null,
+    bool IsMuted = false,
     /// Label yang menempel pada surat ini (Fase 3 — Surat Lanjutan).
     IReadOnlyList<string>? Labels = null);
 
@@ -68,7 +69,8 @@ public record MailSearchRequest(
     DateTime? DateFrom = null,
     DateTime? DateTo = null,
     /// Hanya surat yang punya lampiran.
-    bool? HasAttachment = null);
+    bool? HasAttachment = null,
+    string? Importance = null);
 
 // Full message with resolved recipients for the reading pane.
 public record MailRecipientDto(Guid UserId, string Name, string Nik, string Email, string RecipientType);
@@ -97,7 +99,9 @@ public record MailDetailDto(
     IReadOnlyList<DeliveryReadStateDto> DeliveryState,
     bool IsPinned = false,
     string Importance = "normal",
-    DateTime? ScheduledAt = null)
+    DateTime? ScheduledAt = null,
+    bool IsMuted = false,
+    string? BodyText = null)
 {
     public IReadOnlyList<ProjectLink> LinkedProjects { get; init; } = [];
 }

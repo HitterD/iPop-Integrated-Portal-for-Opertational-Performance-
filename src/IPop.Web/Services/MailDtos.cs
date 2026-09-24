@@ -11,6 +11,7 @@ public record MailSummary(
     bool IsRead, bool IsStarred, bool HasAttachment,
     int ThreadCount, bool IsThreadRoot, Guid? ThreadRootId,
     bool IsPinned = false, string Importance = "normal", DateTime? ScheduledAt = null,
+    bool IsMuted = false,
     /// Label pengguna pada surat ini (Fase 3 — Surat Lanjutan).
     IReadOnlyList<string>? Labels = null);
 
@@ -35,7 +36,8 @@ public record MailDetail(
     IReadOnlyList<MailRecipient> Recipients,
     IReadOnlyList<MailAttachment> Attachments,
     IReadOnlyList<MailDeliveryState> DeliveryState,
-    bool IsPinned = false, string Importance = "normal", DateTime? ScheduledAt = null)
+    bool IsPinned = false, string Importance = "normal", DateTime? ScheduledAt = null,
+    bool IsMuted = false, string? BodyText = null)
 {
     public IReadOnlyList<ProjectLink> LinkedProjects { get; init; } = [];
 }
