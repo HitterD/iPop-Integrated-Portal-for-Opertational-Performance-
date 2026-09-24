@@ -165,9 +165,12 @@
                                 <span class="room-preview @(room.HasUnreadMention ? "mention-hl" : "")">
                                     @(room.LastMessage ?? "")
                                 </span>
-                                <div class="room-badges">
+                                <div class="room-badges" style="position:relative">
                                     <button type="button" class="icon-btn" style="border:none;background:transparent;padding:0;width:16px;height:16px;color:var(--accent);cursor:pointer" title="Unpin conversation" @onclick="() => TogglePin(room)" @onclick:stopPropagation="true">
                                         <i data-lucide="pin" class="room-pin-ic"></i>
+                                    </button>
+                                    <button type="button" class="icon-btn room-pin-hover" style="border:none;background:transparent;padding:0;width:16px;height:16px;color:var(--ink-4);cursor:pointer" title="More" @onclick="() => menuRoomId = (menuRoomId == room.Id ? null : room.Id)" @onclick:stopPropagation="true">
+                                        <i data-lucide="more-horizontal" style="width:12px;height:12px"></i>
                                     </button>
                                     @if (room.IsMuted)
                                     {
@@ -176,6 +179,20 @@
                                     @if (room.UnreadCount > 0)
                                     {
                                         <span class="room-unread-pill">@room.UnreadCount</span>
+                                    }
+                                    @if (menuRoomId == room.Id)
+                                    {
+                                        <div class="app-select-pop on" style="right:0;top:20px;z-index:100;min-width:130px" @onclick:stopPropagation="true">
+                                            <button type="button" class="app-select-opt" @onclick="() => { menuRoomId = null; TogglePin(room); }">
+                                                <i data-lucide="pin" style="width:12px;height:12px"></i> Unpin
+                                            </button>
+                                            <button type="button" class="app-select-opt" @onclick="() => { menuRoomId = null; ToggleMuteRoom(room); }">
+                                                <i data-lucide="bell-off" style="width:12px;height:12px"></i> @(room.IsMuted ? "Unmute" : "Mute")
+                                            </button>
+                                            <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="() => { menuRoomId = null; ArchiveRoomById(room.Id); }">
+                                                <i data-lucide="archive" style="width:12px;height:12px"></i> Archive
+                                            </button>
+                                        </div>
                                     }
                                 </div>
                             </div>
@@ -209,9 +226,12 @@
                                 <span class="room-preview @(room.HasUnreadMention ? "mention-hl" : "")">
                                     @(room.LastMessage ?? "")
                                 </span>
-                                <div class="room-badges">
+                                <div class="room-badges" style="position:relative">
                                     <button type="button" class="icon-btn room-pin-hover" style="border:none;background:transparent;padding:0;width:16px;height:16px;color:var(--ink-4);cursor:pointer" title="Pin conversation" @onclick="() => TogglePin(room)" @onclick:stopPropagation="true">
                                         <i data-lucide="pin" style="width:12px;height:12px"></i>
+                                    </button>
+                                    <button type="button" class="icon-btn room-pin-hover" style="border:none;background:transparent;padding:0;width:16px;height:16px;color:var(--ink-4);cursor:pointer" title="More" @onclick="() => menuRoomId = (menuRoomId == room.Id ? null : room.Id)" @onclick:stopPropagation="true">
+                                        <i data-lucide="more-horizontal" style="width:12px;height:12px"></i>
                                     </button>
                                     @if (room.IsMuted)
                                     {
@@ -220,6 +240,20 @@
                                     @if (room.UnreadCount > 0)
                                     {
                                         <span class="room-unread-pill">@room.UnreadCount</span>
+                                    }
+                                    @if (menuRoomId == room.Id)
+                                    {
+                                        <div class="app-select-pop on" style="right:0;top:20px;z-index:100;min-width:130px" @onclick:stopPropagation="true">
+                                            <button type="button" class="app-select-opt" @onclick="() => { menuRoomId = null; TogglePin(room); }">
+                                                <i data-lucide="pin" style="width:12px;height:12px"></i> Pin to top
+                                            </button>
+                                            <button type="button" class="app-select-opt" @onclick="() => { menuRoomId = null; ToggleMuteRoom(room); }">
+                                                <i data-lucide="bell-off" style="width:12px;height:12px"></i> @(room.IsMuted ? "Unmute" : "Mute")
+                                            </button>
+                                            <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="() => { menuRoomId = null; ArchiveRoomById(room.Id); }">
+                                                <i data-lucide="archive" style="width:12px;height:12px"></i> Archive
+                                            </button>
+                                        </div>
                                     }
                                 </div>
                             </div>

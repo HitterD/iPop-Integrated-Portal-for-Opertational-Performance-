@@ -528,6 +528,22 @@ public partial class Chat
         await ChatSvc.LoadRoomsAsync();
     }
 
+    private async Task ToggleMuteRoom(IPop.Application.Chat.RoomListDto room)
+    {
+        if (room.IsMuted)
+            await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/rooms/{room.Id}/mute");
+        else
+            await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{room.Id}/mute", new { duration = "forever" });
+        await ChatSvc.LoadRoomsAsync();
+    }
+
+    private async Task ArchiveRoomById(Guid roomId)
+    {
+        await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{roomId}/archive");
+        await ChatSvc.LoadRoomsAsync();
+        await ChatSvc.LoadArchivedRoomsAsync();
+    }
+
     private async Task UnarchiveRoom(Guid roomId)
     {
         await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/rooms/{roomId}/archive");

@@ -23,7 +23,7 @@
 
             @* Navigation Tabs *@
             <div class="filter-bar" style="padding:8px 14px;border-bottom:1px solid var(--line-soft)">
-                @foreach (var tab in new[] { ("labels", "Labels", "tag"), ("rules", "Rules", "filter"), ("templates", "Templates", "layout-template"), ("autoreply", "Auto-Reply", "reply") })
+                @foreach (var tab in new[] { ("labels", "Labels", "tag"), ("rules", "Rules", "filter"), ("templates", "Templates", "layout-template"), ("autoreply", "Auto-Reply", "reply"), ("signature", "Signature", "pen-tool") })
                 {
                     var t = tab;
                     var active = activeTab == t.Item1;
@@ -192,6 +192,18 @@
                     }
                 </div>
             }
+
+            @* ── SIGNATURE ── *@
+            @if (activeTab == "signature")
+            {
+                <div style="padding:14px;display:grid;gap:12px;max-width:560px">
+                    <span style="font-size:12.5px;font-weight:700">Email Signature</span>
+                    <p style="font-size:12px;color:var(--ink-2);margin:0">Create a signature that will be inserted when composing new emails.</p>
+                    <textarea class="org-input" style="min-height:120px;font-size:12.5px;resize:vertical;font-family:inherit" @bind="signatureText"
+                              placeholder="Example:&#10;Best regards,&#10;Your Name&#10;Position · Department&#10;PT Santos Jaya Abadi"></textarea>
+                    <div><button class="btn-sm accent" @onclick="SaveSignature"><i data-lucide="check" style="width:12px;height:12px"></i> Save signature</button></div>
+                </div>
+            }
         </div>
     </div>
 
@@ -235,6 +247,7 @@
     private DateTime oooFrom = DateTime.Today;
     private DateTime oooUntil = DateTime.Today.AddDays(7);
     private string oooMessage = "";
+    private string signatureText = "";
 
     protected override void OnInitialized() => Layout.SetHeader("Mail", "Advanced Mail");
 
@@ -264,6 +277,8 @@
                 if (o.UntilDate.HasValue) oooUntil = o.UntilDate.Value.ToLocalTime().Date;
                 oooMessage = o.Message ?? "";
             }
+
+            try { signatureText = await JS.InvokeAsync<string?>("localStorage.getItem", "ipop.mail.signature") ?? ""; } catch { }
         }
         catch { }
     }
@@ -353,6 +368,19 @@
         });
         if (res.IsSuccessStatusCode) Toasts.Show("Auto-reply settings saved.", ToastKind.Success);
         else Toasts.Show("Could not save auto-reply settings.", ToastKind.Error);
+    }
+
+    private async Task SaveSignature()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", "ipop.mail.signature", signatureText.Trim());
+            Toasts.Show("Email signature saved.", ToastKind.Success);
+        }
+        catch
+        {
+            Toasts.Show("Could not save signature.", ToastKind.Error);
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");

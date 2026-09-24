@@ -114,6 +114,7 @@ public partial class Chat
     private bool personFromRoom;
     private enum ChatDrawerTab { Overview, Members, Media, Pinned, Calendar }
     private ChatDrawerTab activeDrawerTab = ChatDrawerTab.Overview;
+    private Guid? menuRoomId;
     private bool drawerOpen;
     private bool groupInfoOpen;
     private bool pinnedPanelOpen;

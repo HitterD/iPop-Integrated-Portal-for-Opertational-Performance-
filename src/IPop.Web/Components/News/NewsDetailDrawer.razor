@@ -1,5 +1,7 @@
 @namespace IPop.Web.Components.News
 @using IPop.Web.Models
+@using IPop.Web.Services
+@inject ToastService Toasts
 
 @{
     var isCondolence = Detail.Type is "condolence" or "duka";
@@ -23,6 +25,7 @@
                     <button class="org-act" title="Larger text" @onclick="() => FontSize = Math.Min(22, FontSize + 1)">A+</button>
                     <button class="org-act" title="Print" @onclick="Print"><i data-lucide="printer"></i></button>
                 }
+                <button class="org-act" title="@(isSaved ? "Saved" : "Save article")" style="color:@(isSaved ? "var(--accent)" : "inherit")" @onclick="ToggleSave"><i data-lucide="bookmark" style="@(isSaved ? "fill:currentColor" : "")"></i></button>
                 <button class="org-act" title="Copy link" @onclick="OnCopyLink"><i data-lucide="share"></i></button>
                 @if (!Inline) { <button class="drawer-close" @onclick="OnClose" aria-label="Close"><i data-lucide="x"></i></button> }
             </span>
@@ -247,6 +250,12 @@
 @code {
     [Inject] private IJSRuntime JS { get; set; } = default!;
     private int FontSize = 14;
+    private bool isSaved;
+    private void ToggleSave()
+    {
+        isSaved = !isSaved;
+        Toasts.Show(isSaved ? "Article saved to bookmarks." : "Article removed from bookmarks.", ToastKind.Success);
+    }
     private async Task Print() => await JS.InvokeVoidAsync("print");
     private Task HandleCommentInput(ChangeEventArgs e) => OnCommentTextChanged.InvokeAsync(e.Value?.ToString() ?? "");
     [Parameter] public bool Inline { get; set; }

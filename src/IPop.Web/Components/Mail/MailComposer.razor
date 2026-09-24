@@ -304,6 +304,11 @@
                 }
             </div>
 
+            <button type="button" class="comp-btn" style="margin-left:8px" @onclick="InsertSignature" title="Insert email signature">
+                <i data-lucide="pen-tool"></i>
+                <span>Signature</span>
+            </button>
+
             <div style="flex:1"></div>
 
             <button type="button" class="comp-btn danger" @onclick="DiscardDraft" title="Discard draft">
@@ -484,6 +489,19 @@
     private void OnToPick(MemberSearchRow r) { if (!toRows.Any(x => x.Nik == r.Nik)) toRows.Add(r); }
     private void OnCcPick(MemberSearchRow r) { if (!ccRows.Any(x => x.Nik == r.Nik)) ccRows.Add(r); }
     private void OnBccPick(MemberSearchRow r) { if (!bccRows.Any(x => x.Nik == r.Nik)) bccRows.Add(r); }
+
+    private async Task InsertSignature()
+    {
+        string? customSig = null;
+        try { customSig = await JS.InvokeAsync<string?>("localStorage.getItem", "ipop.mail.signature"); } catch { }
+        var sigHtml = !string.IsNullOrWhiteSpace(customSig)
+            ? $"<br><br>--<br>{customSig.Replace("\n", "<br>")}"
+            : $"<br><br>--<br><b>{Auth.Me?.Name}</b><br>{Auth.Me?.Position} · {Auth.Me?.Department}<br>PT Santos Jaya Abadi";
+        body = (body ?? "") + sigHtml;
+        OnContentChanged();
+        StateHasChanged();
+        Toasts.Show("Signature inserted.", ToastKind.Success);
+    }
 
     private void OnBodyChanged(string newBody)
     {
