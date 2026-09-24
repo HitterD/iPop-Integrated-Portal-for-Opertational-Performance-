@@ -7,8 +7,8 @@
     var isAnnouncement = Detail.Type == "announcement";
 }
 
-<div class="backdrop on" @onclick="OnClose"></div>
-<div class="drawer on" role="dialog" aria-label="News detail" aria-modal="true">
+@if (!Inline) { <div class="backdrop on" @onclick="OnClose"></div> }
+<div class="@(Inline ? "news-inline-reader" : "drawer on")" role="@(Inline ? "region" : "dialog")" aria-label="News detail" aria-modal="@(!Inline)">
     <div class="tray"><div class="core" style="display:flex;flex-direction:column;height:100%;padding:0;overflow:hidden">
         <!-- Drawer Head -->
         <div class="drawer-head">
@@ -17,8 +17,14 @@
                 <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700">@Detail.Title</span>
             </span>
             <span style="display:flex;gap:6px;align-items:center">
-                <button class="org-act" title="Copy link" @onclick="OnCopyLink"><i data-lucide="link-2"></i></button>
-                <button class="drawer-close" @onclick="OnClose" aria-label="Close"><i data-lucide="x"></i></button>
+                @if (Inline)
+                {
+                    <button class="org-act" title="Smaller text" @onclick="() => FontSize = Math.Max(12, FontSize - 1)">A−</button>
+                    <button class="org-act" title="Larger text" @onclick="() => FontSize = Math.Min(22, FontSize + 1)">A+</button>
+                    <button class="org-act" title="Print" @onclick="Print"><i data-lucide="printer"></i></button>
+                }
+                <button class="org-act" title="Copy link" @onclick="OnCopyLink"><i data-lucide="share"></i></button>
+                @if (!Inline) { <button class="drawer-close" @onclick="OnClose" aria-label="Close"><i data-lucide="x"></i></button> }
             </span>
         </div>
 
@@ -105,7 +111,7 @@
             }
 
             <!-- Post Body Content -->
-            <div class="reader-body-content @(isCondolence ? "condolence-body" : isMemo ? "memo-body" : "")">@Detail.Body</div>
+            <div class="reader-body-content @(isCondolence ? "condolence-body" : isMemo ? "memo-body" : "")" style="font-size:@(FontSize)px">@Detail.Body</div>
 
             <!-- Mandatory Acknowledgement Box -->
             @if (Detail.RequiresAcknowledgement)
@@ -221,6 +227,10 @@
 </div>
 
 @code {
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+    private int FontSize = 14;
+    private async Task Print() => await JS.InvokeVoidAsync("print");
+    [Parameter] public bool Inline { get; set; }
     [Parameter] public NewsDetailDto Detail { get; set; } = default!;
     [Parameter] public IReadOnlyList<NewsAuditDto>? Audits { get; set; }
     [Parameter] public bool IsApprover { get; set; }

@@ -7,7 +7,7 @@
 
 <PageTitle>News & Memos — IPop</PageTitle>
 
-<div class="content" style="grid-template-columns:1fr">
+<div class="content news-v6">
     @if (loading && items is null)
     {
         <div class="tray rise rise-1">
@@ -51,6 +51,16 @@
                     </span>
                 </div>
 
+                <div class="news-v6-body">
+                <nav class="news-v6-categories" aria-label="News categories">
+                    <strong>CATEGORIES</strong>
+                    @foreach (var cat in new[] { ("", "All posts", "layers"), ("news", "News", "newspaper"), ("memo", "Internal Memos", "file-text"), ("announcement", "Announcements", "megaphone"), ("condolence", "Condolences", "heart") })
+                    {
+                        <button class="@(typeFilter == cat.Item1 ? "active" : "")" @onclick="() => SetCategoryTab(cat.Item1)"><i data-lucide="@cat.Item3"></i>@cat.Item2</button>
+                    }
+                    <button class="@(requiresAckOnly ? "active" : "")" @onclick="ToggleAckFilter"><i data-lucide="clipboard-check"></i>Ack required</button>
+                </nav>
+                <div class="news-v6-list">
                 <!-- Category Tabs & Filters Bar -->
                 <NewsCategoryTabs TypeFilter="@typeFilter"
                                   Total="@total"
@@ -164,31 +174,24 @@
                         </div>
                     </div>
                 }
+                </div>
+                <aside class="news-v6-reader">
+                    @if (showDetail && detail is not null)
+                    {
+                        <NewsDetailDrawer Inline="true" Detail="@detail" Audits="@audits" IsApprover="@isApprover"
+                                          CanEdit="@canEdit" AckBusy="@ackBusy" DetailError="@detailError"
+                                          OnClose="CloseDetail" OnCopyLink="CopyLink" OnEdit="OpenEdit"
+                                          OnSubmit="Submit" OnApprove="Approve" OnOpenReject="() => showReject = true"
+                                          OnUnpublish="Unpublish" OnTogglePin="TogglePin"
+                                          OnAcknowledge="Acknowledge" OnRemindAck="RemindAck" />
+                    }
+                    else { <div class="news-v6-empty"><i data-lucide="newspaper"></i>Select a post to read</div> }
+                </aside>
+                </div>
             </div>
         </div>
     }
 </div>
-
-<!-- Contextual Detail Reader (Drawer) -->
-@if (showDetail && detail is not null)
-{
-    <NewsDetailDrawer Detail="@detail"
-                      Audits="@audits"
-                      IsApprover="@isApprover"
-                      CanEdit="@canEdit"
-                      AckBusy="@ackBusy"
-                      DetailError="@detailError"
-                      OnClose="CloseDetail"
-                      OnCopyLink="CopyLink"
-                      OnEdit="OpenEdit"
-                      OnSubmit="Submit"
-                      OnApprove="Approve"
-                      OnOpenReject="() => showReject = true"
-                      OnUnpublish="Unpublish"
-                      OnTogglePin="TogglePin"
-                      OnAcknowledge="Acknowledge"
-                      OnRemindAck="RemindAck" />
-}
 
 <!-- Reject Modal -->
 @if (showReject)
@@ -289,6 +292,12 @@
     private async Task SetCategoryTab(string cat)
     {
         typeFilter = cat;
+        await Reload(1, true);
+    }
+
+    private async Task ToggleAckFilter()
+    {
+        requiresAckOnly = !requiresAckOnly;
         await Reload(1, true);
     }
 
