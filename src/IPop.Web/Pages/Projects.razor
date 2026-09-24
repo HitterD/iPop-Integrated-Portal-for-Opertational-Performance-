@@ -130,6 +130,38 @@
 
             @* Canvas Body Content *@
             <div class="proj-canvas-body">
+                @if (myTasksOnly || overdueOnly || !string.IsNullOrWhiteSpace(priorityFilter) || !string.IsNullOrWhiteSpace(taskSearchQuery))
+                {
+                    <div style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--surface-sunken);border-radius:10px;margin-bottom:10px;flex-wrap:wrap">
+                        <span style="font-size:11.5px;color:var(--ink-3);font-weight:600">@VisibleTaskCount tasks matching:</span>
+                        @if (myTasksOnly)
+                        {
+                            <span class="chip" style="font-size:11px;background:var(--surface);border:1px solid var(--line);padding:2px 8px;border-radius:6px;display:inline-flex;align-items:center;gap:4px">
+                                My Tasks <button type="button" style="border:none;background:none;cursor:pointer;padding:0;color:var(--ink-3)" @onclick="() => myTasksOnly = false">×</button>
+                            </span>
+                        }
+                        @if (overdueOnly)
+                        {
+                            <span class="chip" style="font-size:11px;background:var(--surface);border:1px solid var(--line);padding:2px 8px;border-radius:6px;display:inline-flex;align-items:center;gap:4px">
+                                Overdue <button type="button" style="border:none;background:none;cursor:pointer;padding:0;color:var(--ink-3)" @onclick="() => overdueOnly = false">×</button>
+                            </span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(priorityFilter))
+                        {
+                            <span class="chip" style="font-size:11px;background:var(--surface);border:1px solid var(--line);padding:2px 8px;border-radius:6px;display:inline-flex;align-items:center;gap:4px">
+                                @priorityFilter <button type="button" style="border:none;background:none;cursor:pointer;padding:0;color:var(--ink-3)" @onclick='() => priorityFilter = ""'>×</button>
+                            </span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(taskSearchQuery))
+                        {
+                            <span class="chip" style="font-size:11px;background:var(--surface);border:1px solid var(--line);padding:2px 8px;border-radius:6px;display:inline-flex;align-items:center;gap:4px">
+                                "@taskSearchQuery" <button type="button" style="border:none;background:none;cursor:pointer;padding:0;color:var(--ink-3)" @onclick='() => taskSearchQuery = ""'>×</button>
+                            </span>
+                        }
+                        <button type="button" class="ghost-btn" style="height:22px;font-size:11px;padding:0 8px;margin-left:auto" @onclick="ClearTaskFilters">Clear all</button>
+                    </div>
+                }
+
                 @if (tab == 4)
                 {
                     <ProjectExecutiveDashboard
@@ -317,6 +349,14 @@
             }
             return tasks.Count();
         }
+    }
+
+    private void ClearTaskFilters()
+    {
+        myTasksOnly = false;
+        overdueOnly = false;
+        priorityFilter = "";
+        taskSearchQuery = "";
     }
 
     private List<ProjectListDto> projects = [];

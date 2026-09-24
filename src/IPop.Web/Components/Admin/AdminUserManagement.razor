@@ -91,6 +91,7 @@
                         <th style="width:120px">Role</th>
                         <th style="width:110px">Status</th>
                         <th style="width:120px">Presence</th>
+                        <th style="width:80px">2FA</th>
                         <th style="width:125px;text-align:right">Action</th>
                     </tr>
                 </thead>
@@ -141,6 +142,9 @@
                                     <span class="dot"></span>
                                     <span>@StatusLabel(u.Status)</span>
                                 </span>
+                            </td>
+                            <td>
+                                <span class="tag" style="background:var(--tray);color:var(--ink-2);font-size:11px">@(u.Roles.Contains("Admin") ? "App" : "Off")</span>
                             </td>
                             <td class="acts">
                                 <button type="button" class="act-edit" title="Edit Profile" @onclick="() => OpenEdit(u)"><i data-lucide="pencil"></i></button>
