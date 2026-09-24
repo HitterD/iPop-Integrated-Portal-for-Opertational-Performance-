@@ -40,14 +40,28 @@ In the API host environment use `Calls__LiveKit__Url`, `Calls__LiveKit__ApiKey`,
 - **Host Firewall Status**: Windows Firewall profiles (Domain, Private, Public) are disabled on the host, allowing inbound connections on ports 7880 (TCP), 7881 (TCP), 3478 (UDP), and 50000-50050 (UDP).
 - **Synology NAS FileStation verification**: Authenticated user `ict` via `SYNO.API.Auth` on `192.168.2.17:30001`, verified share `/sja/SJA SPJ/ICT/chat` and created shared folder `/sja/SJA SPJ/ICT/mail` via `SYNO.FileStation.CreateFolder`.
 
-## Four-plant deployment & reachability verification
+## Infrastructure provisioning & automated verification status
 
-The LiveKit and TURN infrastructure is fully provisioned and validated for cross-plant operation:
-1. **Network Binding**: LiveKit SFU listens on `0.0.0.0:7880` (HTTP/WS signaling) and `0.0.0.0:7881` (TCP RTC fallback). The embedded TURN server listens on `0.0.0.0:3478` (UDP). RTC media ports are allocated within `50000-50050/udp`.
-2. **Intranet IP & Routing**: The server runs on core intranet host `10.10.6.13`. Network routing to all four plant subnets (SPJ `192.168.2.0/24`, KRW `10.12.2.0/24`, JTB `10.11.2.0/24`, SMG `10.14.2.0/24`) is active via corporate router `10.10.6.1` and verified by TCP sessions.
-3. **NAT1To1 ICE Candidate**: LiveKit advertises `rtc.node_ip: 10.10.6.13`, ensuring browser clients across plant subnets receive the reachable corporate IP in SDP candidates.
-4. **Client-Side Fallback**: If UDP is filtered on any plant boundary, traffic falls back transparently to TURN relay (port 3478) or TCP RTC (port 7881), both hosted on `10.10.6.13`.
-5. **Multi-Plant Concurrency Test**: Successfully verified with 4 concurrent WebRTC sessions representing employees from SPJ, KRW, JTB, and SMG connected simultaneously in the same room. All 4 sessions established RTC sessions and exchanged protocol frames without error.
-6. **Synology Service Account**: Provisioned with user `ict` on `192.168.2.17:30001`. Shared folders `/sja/SJA SPJ/ICT/chat` and `/sja/SJA SPJ/ICT/mail` are active and verified.
+The server-side infrastructure is fully provisioned on the central intranet network host (`10.10.6.13`) and automated protocol verification has succeeded:
+1. **LiveKit SFU & Embedded TURN Server**:
+   - Container `ipop-livekit` is running and listening on all host interfaces (`0.0.0.0`):
+     - Port 7880 / TCP: HTTP & WebSocket signaling (verified responding `200 OK`).
+     - Port 7881 / TCP: WebRTC TCP media fallback.
+     - Port 3478 / UDP: Embedded TURN Server (verified active in server logs).
+     - Ports 50000–50050 / UDP: WebRTC media UDP range.
+   - NAT1To1 Configuration: Configured with `rtc.node_ip: 10.10.6.13`, ensuring ICE candidates advertise the reachable intranet IP rather than the Docker bridge IP.
+   - Host Firewall: Windows Firewall profiles are disabled on host `10.10.6.13`, permitting incoming intranet connections.
+2. **WAN / Plant Network Connectivity**:
+   - Central gateway routing via `10.10.6.1` is active to all four plant subnets (SPJ `192.168.2.0/24`, KRW `10.12.2.0/24`, JTB `10.11.2.0/24`, SMG `10.14.2.0/24`).
+   - TCP application layer connectivity from the host to plant gateways (`192.168.2.16`, `10.12.2.6`, `10.11.2.6`, `10.14.2.16`, `192.168.2.17`) verified (`TcpTestSucceeded: True`).
+3. **Automated Multi-Plant Protocol Simulation**:
+   - Automated multi-client test verified that 4 simulated plant sessions (SPJ `20140312`, KRW `20140313`, JTB `20140314`, SMG `20140315`) concurrently authenticate via JWT, join room `meeting-4plants-verification` over WebSocket, and establish active WebRTC RTC sessions recorded in LiveKit logs.
+4. **Synology Service Account & Shared Attachments**:
+   - Authenticated user `ict` on `192.168.2.17:30001` via FileStation API.
+   - Shared folders `/sja/SJA SPJ/ICT/chat` and `/sja/SJA SPJ/ICT/mail` verified and created on physical NAS storage.
 
-All infrastructure requirements are fulfilled and active.
+## On-site plant physical client sign-off checklist
+
+Because this build environment runs on server `10.10.6.13` without remote desktop / physical browser access to end-user PCs located in Karawang, Jatake, and Semarang, the following final validation steps must be carried out on physical client workstations at each plant:
+1. **Network Ingress Verification**: From a workstation on each plant subnet (SPJ, KRW, JTB, SMG), open a browser to `http://10.10.6.13:7880/` and verify an `OK` response, confirming that intermediate plant routers/firewalls permit port 7880 traffic to the central core.
+2. **End-to-End Meeting Smoke Test**: Log in to iPop from client workstations across two or more physical plant locations simultaneously, enter the same scheduled meeting room at `/meet/meeting-<id>`, and confirm two-way audio, video, and screen sharing across the WAN link using the LiveKit SFU and TURN server.
