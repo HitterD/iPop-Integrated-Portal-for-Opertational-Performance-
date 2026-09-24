@@ -512,7 +512,15 @@
 .room-pin-ic {
   width: 12px;
   height: 12px;
-  color: var(--ink-4);
+  color: var(--accent);
+}
+
+.room-pin-hover {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.room-item:hover .room-pin-hover {
+  opacity: 1;
 }
 
 .room-muted-ic {

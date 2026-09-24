@@ -49,6 +49,7 @@
                     }
                 </div>
             }
+            <button @onclick="TogglePin"><i data-lucide="pin"></i> @(IsPinned ? "Unpin conversation" : "Pin conversation")</button>
             <button @onclick="ToggleMute"><i data-lucide="bell-off"></i> @muteLabel</button>
             @if (showMuteChoices)
             {
@@ -121,6 +122,18 @@
     }
 
     private record UserSearchResult(Guid Id, string Nik, string Name, string? Email);
+
+    private bool IsPinned => ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms).FirstOrDefault(r => r.Id == ChatSvc.ActiveRoom?.Id)?.IsPinned ?? false;
+
+    private async Task TogglePin()
+    {
+        if (ChatSvc.ActiveRoom is null) return;
+        var pinned = IsPinned;
+        if (pinned) await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/rooms/{ChatSvc.ActiveRoom.Id}/pin");
+        else await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{ChatSvc.ActiveRoom.Id}/pin", new { });
+        await ChatSvc.LoadRoomsAsync();
+        StateHasChanged();
+    }
 
     private void ToggleMute()
     {

@@ -166,7 +166,9 @@
                                     @(room.LastMessage ?? "")
                                 </span>
                                 <div class="room-badges">
-                                    <i data-lucide="pin" class="room-pin-ic"></i>
+                                    <button type="button" class="icon-btn" style="border:none;background:transparent;padding:0;width:16px;height:16px;color:var(--accent);cursor:pointer" title="Unpin conversation" @onclick="() => TogglePin(room)" @onclick:stopPropagation="true">
+                                        <i data-lucide="pin" class="room-pin-ic"></i>
+                                    </button>
                                     @if (room.IsMuted)
                                     {
                                         <i data-lucide="bell-off" class="room-muted-ic"></i>
@@ -208,6 +210,9 @@
                                     @(room.LastMessage ?? "")
                                 </span>
                                 <div class="room-badges">
+                                    <button type="button" class="icon-btn room-pin-hover" style="border:none;background:transparent;padding:0;width:16px;height:16px;color:var(--ink-4);cursor:pointer" title="Pin conversation" @onclick="() => TogglePin(room)" @onclick:stopPropagation="true">
+                                        <i data-lucide="pin" style="width:12px;height:12px"></i>
+                                    </button>
                                     @if (room.IsMuted)
                                     {
                                         <i data-lucide="bell-off" class="room-muted-ic"></i>
@@ -305,6 +310,13 @@
                             </button>
                         }
                     }
+                    @{
+                        var activeRoomList = ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms).FirstOrDefault(r => r.Id == ChatSvc.ActiveRoom.Id);
+                        var isActPinned = activeRoomList?.IsPinned ?? false;
+                    }
+                    <button type="button" class="header-icon-btn @(isActPinned ? "on" : "")" title="@(isActPinned ? "Unpin conversation" : "Pin conversation")" aria-label="Pin conversation" @onclick="() => { if (activeRoomList != null) TogglePin(activeRoomList); }">
+                        <i data-lucide="bookmark"></i>
+                    </button>
                     <button type="button" class="header-icon-btn @(drawerOpen && panelView == DetailPanelView.Pinned ? "on" : "")" title="Pinned messages" aria-label="Pinned messages" @onclick="OpenPinnedSection">
                         <i data-lucide="pin"></i>
                     </button>
