@@ -27,9 +27,32 @@ public sealed class MailAttachmentUploadTests
         Assert.Equal(bytes, upload.Bytes);
     }
 
+    [Fact]
+    public async Task Shared_upload_uses_service_account_and_keeps_orphan_authorization_scoped()
+    {
+        var owner = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        var storage = new RecordingFileAccessService();
+        var bytes = Encoding.UTF8.GetBytes("recipient can read this");
+        var path = $"/sja/SJA SPJ/ICT/mail/drafts/{owner:N}/document.pdf";
+
+        await MailEndpoints.UploadMailAsServiceAsync(storage, $"/sja/SJA SPJ/ICT/mail/drafts/{owner:N}",
+            "document.pdf", new MemoryStream(bytes), default);
+
+        var upload = Assert.Single(storage.ServiceUploads);
+        Assert.Equal(bytes, upload.Bytes);
+        Assert.Equal("/sja/SJA SPJ/ICT/mail/drafts/" + owner.ToString("N"), upload.Directory);
+        Assert.True(MailEndpoints.IsSharedMailPath(path));
+        Assert.True(MailEndpoints.IsOwnMailDraftPath(path, owner));
+        Assert.False(MailEndpoints.IsOwnMailDraftPath(path, other));
+        Assert.False(MailEndpoints.IsSharedMailPath($"/home/mail/drafts/{owner:N}/document.pdf"));
+        Assert.False(MailEndpoints.IsOwnMailDraftPath($"/foo/drafts/{owner:N}-other/document.pdf", owner));
+    }
+
     private sealed class RecordingFileAccessService : IFileAccessService
     {
         public List<UploadRecord> Uploads { get; } = [];
+        public List<ServiceUploadRecord> ServiceUploads { get; } = [];
 
         public async Task UploadAsync(Guid userId, string server, string dir, string filename, Stream content, CancellationToken ct)
         {
@@ -58,8 +81,14 @@ public sealed class MailAttachmentUploadTests
         public bool HasServiceAccount => false;
         public string? ServiceServer => null;
         public Task<Stream> DownloadAsServiceAsync(string path, CancellationToken ct) => throw new NotSupportedException();
-        public Task UploadAsServiceAsync(string dir, string filename, Stream content, CancellationToken ct) => throw new NotSupportedException();
+        public async Task UploadAsServiceAsync(string dir, string filename, Stream content, CancellationToken ct)
+        {
+            await using var copy = new MemoryStream();
+            await content.CopyToAsync(copy, ct);
+            ServiceUploads.Add(new ServiceUploadRecord(dir, filename, copy.ToArray()));
+        }
     }
 
+    private sealed record ServiceUploadRecord(string Directory, string FileName, byte[] Bytes);
     private sealed record UploadRecord(Guid UserId, string Server, string Directory, string FileName, byte[] Bytes);
 }

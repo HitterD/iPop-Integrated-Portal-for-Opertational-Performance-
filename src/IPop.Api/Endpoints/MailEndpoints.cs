@@ -438,12 +438,10 @@ public static class MailEndpoints
                 if (file.Length > maxFileSize)
                     return Results.Json(new { code = "file_too_large", message = $"File '{file.FileName}' exceeds the 50MB limit." }, statusCode: 422);
 
-            var cred = await db.SynologyCredentials.AsNoTracking()
-                .FirstOrDefaultAsync(c => c.UserId == userId.Value, ct);
-
             var attachments = new List<AttachmentDto>();
-            var mailRoot = cfg["Synology:MailFolder"]?.Trim().TrimEnd('/') ?? "/home/mail";
-            if (!mailRoot.StartsWith('/')) mailRoot = "/" + mailRoot;
+            var mailRoot = cfg["Synology:MailFolder"]?.Trim().TrimEnd('/') ?? "/sja/SJA SPJ/ICT/mail";
+            if (!mailRoot.StartsWith('/') || mailRoot == "/home" || mailRoot.StartsWith("/home/", StringComparison.OrdinalIgnoreCase))
+                return Results.Json(new { code = "invalid_mail_folder", message = "MailFolder must be an absolute shared folder, not /home." }, statusCode: 503);
             var mailPath = $"{mailRoot}/drafts/{userId:N}"; // pending uploads live under the composer; link later
 
             foreach (var file in files)
@@ -458,7 +456,7 @@ public static class MailEndpoints
                 string storedPath = "";
                 var uploadedToSynology = false;
 
-                if (cred is not null && !cred.IsInvalid)
+                if (fileSvc.HasServiceAccount && fileSvc.ServiceServer is { } serviceServer)
                 {
                     try
                     {
@@ -467,9 +465,8 @@ public static class MailEndpoints
                             await src.CopyToAsync(buffered, ct);
                         buffered.Position = 0;
 
-                        // Mail attachments go through the same Synology file flow as chat (server's file service).
-                        await fileSvc.UploadAsync(userId.Value, cred.Server, mailPath, uniqueName, buffered, ct);
-                        server = cred.Server;
+                        await UploadMailAsServiceAsync(fileSvc, mailPath, uniqueName, buffered, ct);
+                        server = serviceServer;
                         storedPath = $"{mailPath}/{uniqueName}";
                         thumbnailPath = isRaster ? storedPath : null;
                         uploadedToSynology = true;
@@ -477,9 +474,8 @@ public static class MailEndpoints
                     catch (Exception ex)
                     {
                         var logger = http.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("MailEndpoints");
-                        logger?.LogWarning(ex, "Synology mail upload failed for user {UserId} to {Server}:{Path}, falling back to local storage: {Error}",
-                            userId.Value, cred.Server, $"{mailPath}/{uniqueName}", ex.Message);
-                        uploadedToSynology = false;
+                        logger?.LogWarning(ex, "Shared Synology mail upload failed at {Server}:{Path}, falling back to local storage",
+                            serviceServer, $"{mailPath}/{uniqueName}");
                     }
                 }
 
@@ -529,8 +525,7 @@ public static class MailEndpoints
             // Orphan = belum ditautkan ke surat (MailId kosong). Hanya uploader yang boleh
             // menghapus orphan miliknya (path mengandung user id uploader).
             var isOrphan = attachment.MailId == Guid.Empty;
-            var isUploader = attachment.SynologyPath.StartsWith($"mail-files/{userId.Value:N}", StringComparison.OrdinalIgnoreCase)
-                || attachment.SynologyPath.Contains($"drafts/{userId.Value:N}");
+            var isUploader = IsOwnMailDraftPath(attachment.SynologyPath, userId.Value);
             if (!isOrphan || !isUploader)
                 return Results.Json(new { code = "forbidden", message = "Only draft attachments belonging to you can be deleted." }, statusCode: 403);
 
@@ -541,7 +536,7 @@ public static class MailEndpoints
 
         // GET /api/mail/attachments/{id}/download?inline=true
         g.MapGet("/attachments/{id:guid}/download", async (Guid id, bool? inline,
-            HttpContext http, IPopDbContext db, IWebHostEnvironment env, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IWebHostEnvironment env, IFileAccessService fileSvc, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -554,7 +549,7 @@ public static class MailEndpoints
             // (path encodes the uploader's user id).
             var canAccess = attachment.MailId != Guid.Empty
                 ? await db.MailRecipients.AnyAsync(r => r.MailId == attachment.MailId && r.UserId == userId.Value, ct)
-                : attachment.SynologyPath.StartsWith($"mail-files/{userId.Value:N}", StringComparison.OrdinalIgnoreCase);
+                : IsOwnMailDraftPath(attachment.SynologyPath, userId.Value);
             if (!canAccess) return Results.Forbid();
 
             if (attachment.SynologyServer == "local")
@@ -566,21 +561,59 @@ public static class MailEndpoints
                 var stream = File.OpenRead(combined);
                 return Results.File(stream, attachment.MimeType, inline == true ? null : attachment.FileName, enableRangeProcessing: true);
             }
-            // Synology: the File service's download endpoint serves the file at SynologyPath.
-            return Results.Redirect($"/api/files/download?server={Uri.EscapeDataString(attachment.SynologyServer)}&path={Uri.EscapeDataString(attachment.SynologyPath)}&inline={inline == true}");
+            try
+            {
+                // Legacy uploads remain readable with the uploader's NAS credential; new
+                // uploads use the shared service account after mail-level authorization.
+                var stream = IsSharedMailPath(attachment.SynologyPath) && fileSvc.HasServiceAccount
+                    && attachment.SynologyServer == fileSvc.ServiceServer
+                    ? await fileSvc.DownloadAsServiceAsync(attachment.SynologyPath, ct)
+                    : await fileSvc.DownloadAsync(userId.Value, attachment.SynologyServer, attachment.SynologyPath, ct);
+                return Results.File(stream, attachment.MimeType, inline == true ? null : attachment.FileName, enableRangeProcessing: true);
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure)
+            {
+                return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401);
+            }
+            catch (SynoException ex)
+            {
+                return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502);
+            }
         });
 
         // GET /api/mail/attachments/{id}/thumbnail
         g.MapGet("/attachments/{id:guid}/thumbnail", async (Guid id,
-            HttpContext http, IPopDbContext db, IWebHostEnvironment env, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IWebHostEnvironment env, IFileAccessService fileSvc, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
             var attachment = await db.MailAttachments.AsNoTracking()
                 .FirstOrDefaultAsync(a => a.Id == id && a.ThumbnailPath != null, ct);
-            if (attachment?.SynologyServer != "local")
-                return Results.Redirect($"/api/files/download?server={Uri.EscapeDataString(attachment?.SynologyServer ?? "")}&path={Uri.EscapeDataString(attachment?.ThumbnailPath ?? "")}&inline=true");
+            if (attachment is null) return Results.NotFound();
+            var canAccess = attachment.MailId != Guid.Empty
+                ? await db.MailRecipients.AnyAsync(r => r.MailId == attachment.MailId && r.UserId == userId.Value, ct)
+                : IsOwnMailDraftPath(attachment.SynologyPath, userId.Value);
+            if (!canAccess) return Results.Forbid();
+            if (attachment.SynologyServer != "local")
+            {
+                try
+                {
+                    var stream = IsSharedMailPath(attachment.ThumbnailPath!) && fileSvc.HasServiceAccount
+                        && attachment.SynologyServer == fileSvc.ServiceServer
+                        ? await fileSvc.DownloadAsServiceAsync(attachment.ThumbnailPath!, ct)
+                        : await fileSvc.DownloadAsync(userId.Value, attachment.SynologyServer, attachment.ThumbnailPath!, ct);
+                    return Results.File(stream, attachment.MimeType, enableRangeProcessing: true);
+                }
+                catch (SynoException ex) when (ex.IsAuthFailure)
+                {
+                    return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401);
+                }
+                catch (SynoException ex)
+                {
+                    return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502);
+                }
+            }
             var combined = Path.GetFullPath(Path.Combine(env.ContentRootPath, attachment.ThumbnailPath!));
             var root = Path.GetFullPath(Path.Combine(env.ContentRootPath, "mail-files"));
             if (!combined.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) || !File.Exists(combined))
@@ -903,6 +936,22 @@ public static class MailEndpoints
         });
 
         return app;
+    }
+
+    internal static bool IsOwnMailDraftPath(string path, Guid userId) =>
+        path.StartsWith($"mail-files/{userId:N}/", StringComparison.OrdinalIgnoreCase)
+        || path.Contains($"/drafts/{userId:N}/", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsSharedMailPath(string path) =>
+        path.StartsWith('/') && !path.StartsWith("/home/", StringComparison.OrdinalIgnoreCase)
+        && !path.Equals("/home", StringComparison.OrdinalIgnoreCase)
+        && path.Contains("/drafts/", StringComparison.OrdinalIgnoreCase);
+
+    internal static async Task UploadMailAsServiceAsync(IFileAccessService fileSvc,
+        string directory, string fileName, Stream content, CancellationToken ct)
+    {
+        if (content.CanSeek) content.Position = 0;
+        await fileSvc.UploadAsServiceAsync(directory, fileName, content, ct);
     }
 
     internal static async Task UploadToSynologyAsync(IFileAccessService fileSvc, Guid userId, string server,
