@@ -785,6 +785,13 @@
             return;
         }
 
+        if (parsed.TryGetValue("compose", out var compose) && compose == "1")
+        {
+            _lastHandledQuery = query;
+            OpenComposer();
+            return;
+        }
+
         if (parsed.TryGetValue("to", out var toNik) && !string.IsNullOrWhiteSpace(toNik))
         {
             _lastHandledQuery = query;

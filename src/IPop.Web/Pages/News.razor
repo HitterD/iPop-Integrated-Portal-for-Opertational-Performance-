@@ -250,7 +250,14 @@
         Layout.SearchChanged += OnLayoutSearch;
     }
 
-    protected override async Task OnInitializedAsync() => await Reload(1, true);
+    protected override async Task OnInitializedAsync()
+    {
+        await Reload(1, true);
+        // Dashboard deep links: ?post={id} opens the reader, ?new=1 opens the editor.
+        var query = System.Web.HttpUtility.ParseQueryString(Nav.ToAbsoluteUri(Nav.Uri).Query);
+        if (Guid.TryParse(query["post"], out var postId)) await OpenDetail(postId);
+        else if (query["new"] == "1") OpenCreate();
+    }
 
     private void OnLayoutSearch() => _ = InvokeAsync(async () =>
     {
