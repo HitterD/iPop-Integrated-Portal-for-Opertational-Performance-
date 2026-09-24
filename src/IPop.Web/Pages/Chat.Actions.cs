@@ -108,7 +108,8 @@ public partial class Chat
 
     private async Task StartVoiceRecord()
     {
-        var ok = await JS.InvokeAsync<bool>("ipop.startAudioRecord");
+        selfRef ??= DotNetObjectReference.Create(this);
+        var ok = await JS.InvokeAsync<bool>("ipop.startAudioRecord", selfRef);
         if (ok)
         {
             isRecordingVoice = true;
@@ -136,22 +137,25 @@ public partial class Chat
     }
 
     [Microsoft.JSInterop.JSInvokable]
-    public async Task OnVoiceRecorded(string base64Audio, long fileSize)
+    public async Task OnVoiceRecorded(string base64Audio, long fileSize, long durationMs)
     {
-        if (string.IsNullOrWhiteSpace(base64Audio) || ChatSvc.ActiveRoomId is null) return;
+        isRecordingVoice = false;
+        await InvokeAsync(StateHasChanged);
+        if (durationMs > 120000 || string.IsNullOrWhiteSpace(base64Audio) || ChatSvc.ActiveRoomId is null) return;
         try
         {
             var bytes = Convert.FromBase64String(base64Audio);
             using var form = new MultipartFormDataContent();
+            form.Add(new StringContent(ChatSvc.ActiveRoomId.Value.ToString()), "roomId");
             var byteContent = new ByteArrayContent(bytes);
             byteContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("audio/webm");
             form.Add(byteContent, "file", $"voice_{DateTime.UtcNow:yyyyMMdd_HHmmss}.webm");
 
-            var res = await Auth.SendMultipartAsync($"/api/chat/rooms/{ChatSvc.ActiveRoomId}/attachments", form);
+            var res = await Auth.SendMultipartAsync("/api/chat/attachments/upload", form);
             if (res.IsSuccessStatusCode)
             {
-                var att = await res.Content.ReadFromJsonAsync<IPop.Application.Chat.AttachmentDto>();
-                if (att is not null)
+                var attachments = await res.Content.ReadFromJsonAsync<List<IPop.Application.Chat.AttachmentDto>>();
+                if (attachments?.FirstOrDefault() is { } att)
                 {
                     await ChatSvc.SendMessageAsync("(voice)", null, "text", [att.Id], [att]);
                     scrollToBottom = true;
@@ -477,6 +481,31 @@ public partial class Chat
         await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/archive");
         CloseDetail();
         await ChatSvc.LoadRoomsAsync();
+    }
+
+    private bool dmUserBlocked;
+
+    private async Task ClearRoomHistory()
+    {
+        if (ChatSvc.ActiveRoomId is not { } roomId) return;
+        if (!await Confirm.AskAsync("Clear conversation history?", "Old messages will disappear only for you.", "Clear history")) return;
+        using var res = await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{roomId}/clear-history");
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Could not clear history.", ToastKind.Error); return; }
+        await ChatSvc.LoadActiveRoomAsync();
+        CloseDetail();
+        Toasts.Show("Conversation history cleared for you.", ToastKind.Success);
+    }
+
+    private async Task ToggleBlockDmUser()
+    {
+        var other = ChatSvc.ActiveRoom?.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
+        if (other is null) return;
+        var method = dmUserBlocked ? HttpMethod.Delete : HttpMethod.Post;
+        if (!dmUserBlocked && !await Confirm.AskAsync("Block contact?", $"{other.Name} will no longer be able to send you direct messages.", "Block")) return;
+        using var res = await Auth.SendAsync(method, $"/api/chat/users/{other.UserId}/block");
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Could not update blocked contact.", ToastKind.Error); return; }
+        dmUserBlocked = !dmUserBlocked;
+        Toasts.Show(dmUserBlocked ? "Contact blocked." : "Contact unblocked.", ToastKind.Success);
     }
 
     // ---- Read receipts toggle (reciprocal for DMs) ----

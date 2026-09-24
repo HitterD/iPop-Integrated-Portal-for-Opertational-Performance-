@@ -42,6 +42,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<ChatPinnedMessage> ChatPinnedMessages => Set<ChatPinnedMessage>();
     public DbSet<ChatSavedMessage> ChatSavedMessages => Set<ChatSavedMessage>();
     public DbSet<ChatRoomUserSettings> ChatRoomUserSettings => Set<ChatRoomUserSettings>();
+    public DbSet<UserBlock> UserBlocks => Set<UserBlock>();
     public DbSet<ChatMention> ChatMentions => Set<ChatMention>();
     public DbSet<ChatMembershipAudit> ChatMembershipAudits => Set<ChatMembershipAudit>();
 
@@ -266,6 +267,13 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasIndex(x => new { x.UserId, x.SavedAt });
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Message).WithMany().HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<UserBlock>(e =>
+        {
+            e.HasKey(x => new { x.UserId, x.BlockedUserId });
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.BlockedUser).WithMany().HasForeignKey(x => x.BlockedUserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<ChatRoomUserSettings>(e =>

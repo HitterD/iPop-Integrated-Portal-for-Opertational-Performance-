@@ -64,6 +64,10 @@ public interface IChatService
     Task<RoomSettingsResultDto> UnmuteRoomAsync(Guid userId, Guid roomId, CancellationToken ct);
     Task<RoomSettingsResultDto> ArchiveRoomAsync(Guid userId, Guid roomId, CancellationToken ct);
     Task<RoomSettingsResultDto> UnarchiveRoomAsync(Guid userId, Guid roomId, CancellationToken ct);
+    Task<RoomSettingsResultDto> ClearRoomHistoryAsync(Guid userId, Guid roomId, CancellationToken ct);
+    Task<bool> BlockUserAsync(Guid userId, Guid blockedUserId, CancellationToken ct);
+    Task<bool> UnblockUserAsync(Guid userId, Guid blockedUserId, CancellationToken ct);
+    Task<IReadOnlyList<Guid>> GetBlockedUserIdsAsync(Guid userId, CancellationToken ct);
 
     /// Toggle whether read receipts are sent for messages in this room (per-user setting).
     /// For DMs this is the reciprocal control: the other party only sees "read" if you have this enabled.

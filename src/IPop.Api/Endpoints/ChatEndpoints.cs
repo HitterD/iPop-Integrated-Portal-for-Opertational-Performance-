@@ -559,6 +559,39 @@ public static class ChatEndpoints
             return Results.Ok(ur);
         });
 
+        g.MapPost("/rooms/{roomId:guid}/clear-history", async (Guid roomId,
+            HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await svc.ClearRoomHistoryAsync(userId.Value, roomId, ct);
+            return result.Success ? Results.Ok(result)
+                : Results.Json(new { code = result.Error }, statusCode: 403);
+        });
+
+        g.MapGet("/blocked-users", async (HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            return userId is null ? Results.Unauthorized() : Results.Ok(await svc.GetBlockedUserIdsAsync(userId.Value, ct));
+        });
+
+        g.MapPost("/users/{targetUserId:guid}/block", async (Guid targetUserId,
+            HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            return await svc.BlockUserAsync(userId.Value, targetUserId, ct) ? Results.Ok() : Results.BadRequest();
+        });
+
+        g.MapDelete("/users/{targetUserId:guid}/block", async (Guid targetUserId,
+            HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            await svc.UnblockUserAsync(userId.Value, targetUserId, ct);
+            return Results.Ok();
+        });
+
         // PUT /api/chat/rooms/{roomId}/read-receipts — { "enabled": bool }
         // Per-user setting for this room. For DMs this is reciprocal: the other party only sees "read" receipts if you enable it.
         g.MapPut("/rooms/{roomId:guid}/read-receipts", async (Guid roomId, ReadReceiptsRequest req,

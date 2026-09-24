@@ -97,10 +97,10 @@
         {
             <div class="voice-record-bar">
                 <span class="rec-dot"></span>
-                <span>Recording audio...</span>
-                <button type="button" class="cancel-btn" @onclick="OnCancelVoice">Cancel</button>
+                <span>Recording audio… @($"{recordSeconds / 60}:{recordSeconds % 60:D2}") / 2:00</span>
+                <button type="button" class="cancel-btn" @onclick="CancelRecording">Cancel</button>
             </div>
-            <button type="button" class="send-btn" title="Send Voice Message" @onclick="OnStopVoice">
+            <button type="button" class="send-btn" title="Send Voice Message" @onclick="StopRecording">
                 <i data-lucide="send-horizontal"></i>
             </button>
         }
@@ -134,6 +134,8 @@
         }
     </div>
 </div>
+
+@implements IDisposable
 
 @code {
     [Parameter] public string Text { get; set; } = "";
@@ -194,4 +196,56 @@
     {
         await OnSendStickerSelected.InvokeAsync(st);
     }
+
+    private int recordSeconds = 0;
+    private System.Threading.Timer? recordTimer;
+
+    protected override void OnParametersSet()
+    {
+        if (IsRecordingVoice && recordTimer == null)
+        {
+            recordSeconds = 0;
+            recordTimer = new System.Threading.Timer(async _ =>
+            {
+                recordSeconds++;
+                if (recordSeconds >= 120)
+                {
+                    await InvokeAsync(StopRecording);
+                }
+                else
+                {
+                    await InvokeAsync(StateHasChanged);
+                }
+            }, null, 1000, 1000);
+        }
+        else if (!IsRecordingVoice && recordTimer != null)
+        {
+            StopTimer();
+        }
+    }
+
+    private async Task StopRecording()
+    {
+        StopTimer();
+        await OnStopVoice.InvokeAsync();
+    }
+
+    private async Task CancelRecording()
+    {
+        StopTimer();
+        await OnCancelVoice.InvokeAsync();
+    }
+
+    private void StopTimer()
+    {
+        recordTimer?.Dispose();
+        recordTimer = null;
+        recordSeconds = 0;
+    }
+
+    public void Dispose()
+    {
+        StopTimer();
+    }
+
 }

@@ -9,6 +9,7 @@
 @inject HttpClient Http
 @inject IPop.Web.Services.DraftStore Drafts
 @inject IPop.Web.Services.ToastService Toasts
+@inject IPop.Web.Services.ConfirmService Confirm
 @inject IPop.Web.Services.OverlayStack Overlays
 @inject IPop.Web.Services.CallState CallStateSvc
 @inject IPop.Web.Services.FavoriteContacts Favorites
@@ -1263,6 +1264,15 @@
                                                     </div>
                                                     <i data-lucide="chevron-right" class="inset-action-chev"></i>
                                                 </button>
+                                                <button type="button" class="inset-action-row" @onclick="ClearRoomHistory">
+                                                    <div class="inset-action-left"><i data-lucide="eraser"></i><span>Clear my history</span></div>
+                                                </button>
+                                                @if (ChatSvc.ActiveRoom?.Type == "dm" && ChatSvc.ActiveRoom.Members.Any(m => m.Nik != GetCurrentUserNik()))
+                                                {
+                                                    <button type="button" class="inset-action-row" @onclick="ToggleBlockDmUser">
+                                                        <div class="inset-action-left"><i data-lucide="user-x"></i><span>@(dmUserBlocked ? "Unblock contact" : "Block contact")</span></div>
+                                                    </button>
+                                                }
                                                 @if (ChatSvc.ActiveRoom?.Type == "group")
                                                 {
                                                     <button type="button" class="inset-action-row" @onclick='() => Nav.NavigateTo($"/chat/group/{ChatSvc.ActiveRoom!.Id}/settings")'>

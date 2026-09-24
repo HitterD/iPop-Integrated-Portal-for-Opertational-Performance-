@@ -155,6 +155,16 @@ public partial class Chat
             // waiting for the user to open the Pinned drawer tab first.
             _ = LoadPinnedMessagesAsync();
             _ = EnsureDmPersonLoadedAsync();
+            dmUserBlocked = false;
+            if (ChatSvc.ActiveRoom?.Type == "dm")
+            {
+                var other = ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
+                if (other is not null)
+                {
+                    var blocked = await Auth.GetAsync<List<Guid>>("/api/chat/blocked-users");
+                    dmUserBlocked = blocked?.Contains(other.UserId) == true;
+                }
+            }
             var lastMsg = ChatSvc.ActiveMessages.LastOrDefault(m => !string.Equals(m.SenderNik, Auth.Me?.Nik, StringComparison.OrdinalIgnoreCase))
                           ?? ChatSvc.ActiveMessages.LastOrDefault();
             if (lastMsg is not null)

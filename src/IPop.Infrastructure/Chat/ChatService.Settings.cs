@@ -137,4 +137,43 @@ public sealed partial class ChatService
         var dtos = rooms.Select(r => new RoomListDto(r.Id, r.Type, r.Name, null, null, null, r.LastMessageAt == default ? null : r.LastMessageAt, 0, false, true, true, null, false, false, null, true, r.AvatarColor)).ToList();
         return new PagedResult<RoomListDto>(dtos, total, page, pageSize);
     }
+
+    public async Task<RoomSettingsResultDto> ClearRoomHistoryAsync(Guid userId, Guid roomId, CancellationToken ct)
+    {
+        if (!await IsMemberAsync(userId, roomId, ct)) return new RoomSettingsResultDto(false, "forbidden");
+        var settings = await GetOrCreateSettingsAsync(userId, roomId, ct);
+        settings.ClearedAt = DateTime.UtcNow;
+        settings.LastReadMessageAt = settings.ClearedAt;
+        await db.SaveChangesAsync(ct);
+        return new RoomSettingsResultDto(true, null);
+    }
+
+    public async Task<bool> BlockUserAsync(Guid userId, Guid blockedUserId, CancellationToken ct)
+    {
+        if (userId == blockedUserId || !await db.Users.AnyAsync(u => u.Id == blockedUserId && u.IsActive, ct)) return false;
+        var existing = await db.UserBlocks.AnyAsync(b => b.UserId == userId && b.BlockedUserId == blockedUserId, ct);
+        if (existing) return true;
+
+        db.UserBlocks.Add(new UserBlock { UserId = userId, BlockedUserId = blockedUserId, CreatedAt = DateTime.UtcNow });
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    public async Task<bool> UnblockUserAsync(Guid userId, Guid blockedUserId, CancellationToken ct)
+    {
+        var existing = await db.UserBlocks.FirstOrDefaultAsync(b => b.UserId == userId && b.BlockedUserId == blockedUserId, ct);
+        if (existing is null) return true;
+
+        db.UserBlocks.Remove(existing);
+        await db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    public async Task<IReadOnlyList<Guid>> GetBlockedUserIdsAsync(Guid userId, CancellationToken ct)
+    {
+        return await db.UserBlocks.AsNoTracking()
+            .Where(b => b.UserId == userId)
+            .Select(b => b.BlockedUserId)
+            .ToListAsync(ct);
+    }
 }

@@ -73,7 +73,7 @@ window.ipop = {
       i.appendChild(svg);
       i.__lucideDone = icon;
     });
-  },
+  },
   // ContextMenu placement: measure the menu, then flip near the viewport edges.
   measure(el) {
     if (!el) return [0, 0];
@@ -1227,9 +1227,12 @@ window.ipop = {
   _mediaRecorder: null,
   _audioChunks: [],
   _audioStream: null,
+  _audioStartedAt: 0,
+  _audioLimitTimer: null,
 
-  async startAudioRecord() {
+  async startAudioRecord(dotNet) {
     try {
+      this._audioDotNet = dotNet;
       this._audioChunks = [];
       this._audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       this._mediaRecorder = new MediaRecorder(this._audioStream);
@@ -1237,6 +1240,8 @@ window.ipop = {
         if (e.data && e.data.size > 0) this._audioChunks.push(e.data);
       };
       this._mediaRecorder.start(200);
+      this._audioStartedAt = Date.now();
+      this._audioLimitTimer = setTimeout(() => this.stopAudioRecord(this._audioDotNet), 120000);
       return true;
     } catch (e) {
       console.warn("Audio record permission error:", e);
@@ -1245,12 +1250,16 @@ window.ipop = {
   },
 
   stopAudioRecord(dotNet) {
+    clearTimeout(this._audioLimitTimer);
+    this._audioLimitTimer = null;
     return new Promise(resolve => {
       if (!this._mediaRecorder || this._mediaRecorder.state === "inactive") {
         resolve(null);
         return;
       }
+      dotNet = dotNet || this._audioDotNet;
       this._mediaRecorder.onstop = async () => {
+        const durationMs = Math.min(Date.now() - this._audioStartedAt, 120000);
         const audioBlob = new Blob(this._audioChunks, { type: "audio/webm" });
         if (this._audioStream) {
           this._audioStream.getTracks().forEach(t => t.stop());
@@ -1265,7 +1274,7 @@ window.ipop = {
         }
         const b64 = btoa(binary);
         if (dotNet) {
-          dotNet.invokeMethodAsync("OnVoiceRecorded", b64, audioBlob.size);
+          dotNet.invokeMethodAsync("OnVoiceRecorded", b64, audioBlob.size, durationMs);
         }
         resolve(b64);
       };
@@ -1274,7 +1283,10 @@ window.ipop = {
   },
 
   cancelAudioRecord() {
+    clearTimeout(this._audioLimitTimer);
+    this._audioLimitTimer = null;
     if (this._mediaRecorder && this._mediaRecorder.state !== "inactive") {
+      this._mediaRecorder.onstop = null;
       this._mediaRecorder.stop();
     }
     if (this._audioStream) {

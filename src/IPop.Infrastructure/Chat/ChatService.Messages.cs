@@ -30,6 +30,23 @@ public sealed partial class ChatService
         if (projErr != null)
             return new MessageResultDto(false, null, projErr);
 
+        // Check if recipient in direct chat room has blocked the sender
+        var chatRoom = await db.ChatRooms.AsNoTracking().FirstOrDefaultAsync(r => r.Id == req.RoomId, ct);
+        if (chatRoom?.Type is "direct" or "dm")
+        {
+            var otherMemberId = await db.ChatRoomMembers.AsNoTracking()
+                .Where(m => m.RoomId == req.RoomId && m.UserId != senderId && m.LeftAt == null)
+                .Select(m => m.UserId)
+                .FirstOrDefaultAsync(ct);
+            if (otherMemberId != Guid.Empty)
+            {
+                var isBlocked = await db.UserBlocks.AsNoTracking()
+                    .AnyAsync(b => b.UserId == otherMemberId && b.BlockedUserId == senderId, ct);
+                if (isBlocked)
+                    return new MessageResultDto(false, null, "blocked");
+            }
+        }
+
         // Validate ReplyToId belongs to same room + exists + not deleted (H2)
         if (req.ReplyToId is not null)
         {
@@ -149,9 +166,15 @@ public sealed partial class ChatService
         if (!isMember)
             return new PagedResult<MessageDto>([], 0, page, pageSize);
 
+        var settings = await db.ChatRoomUserSettings.AsNoTracking()
+            .FirstOrDefaultAsync(s => s.RoomId == roomId && s.UserId == userId, ct);
+
         var query = db.ChatMessages
             .AsNoTracking()
             .Where(m => m.RoomId == roomId && m.ThreadParentId == null);
+
+        if (settings?.ClearedAt is not null)
+            query = query.Where(m => m.CreatedAt > settings.ClearedAt.Value);
 
         var totalCount = await query.CountAsync(ct);
 

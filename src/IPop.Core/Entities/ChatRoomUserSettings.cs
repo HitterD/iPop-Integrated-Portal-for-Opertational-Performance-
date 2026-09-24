@@ -16,6 +16,7 @@ public class ChatRoomUserSettings
     /// For DMs this is reciprocal — receipts are only shown to the sender if the recipient has this enabled.
     /// Default true to preserve existing behavior.
     public bool ReadReceiptsEnabled { get; set; } = true;
+    public DateTime? ClearedAt { get; set; }
 
     public User User { get; set; } = default!;
     public ChatRoom Room { get; set; } = default!;

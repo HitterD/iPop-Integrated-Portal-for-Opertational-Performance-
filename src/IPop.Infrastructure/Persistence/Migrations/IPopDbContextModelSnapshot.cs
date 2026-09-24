@@ -718,6 +718,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("RoomId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ClearedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("IsArchived")
                         .HasColumnType("boolean");
 
@@ -2594,6 +2597,24 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.UserBlock", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BlockedUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId", "BlockedUserId");
+
+                    b.HasIndex("BlockedUserId");
+
+                    b.ToTable("UserBlocks");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.UserDirGroup", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -3676,6 +3697,25 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Division");
 
                     b.Navigation("Site");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.UserBlock", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "BlockedUser")
+                        .WithMany()
+                        .HasForeignKey("BlockedUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("BlockedUser");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.UserDirGroup", b =>
