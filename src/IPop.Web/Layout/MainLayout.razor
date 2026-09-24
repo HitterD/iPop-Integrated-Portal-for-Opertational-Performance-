@@ -6,6 +6,8 @@
 @inject ChatState Chat
 @inject IPop.Web.Services.NotificationState Notifs
 @inject IPop.Web.Services.CallState CallSvc
+@inject CommandPaletteState Palette
+@inject OverlayStack Overlays
 
 <div class="shell @(collapsed ? "collapsed" : "") @(IsToolbarPage ? "toolbar-mode" : "")" id="shell">
     <aside class="sidebar">
@@ -32,7 +34,6 @@
         <div class="nav-group">
             <div class="nav-label">Resources</div>
             <NavLink class="nav-item" href="/files" data-tip="Files"><i data-lucide="folder"></i><span class="lbl">Files</span></NavLink>
-            <NavLink class="nav-item" href="/devices/link" data-tip="Link device"><i data-lucide="monitor-smartphone"></i><span class="lbl">Devices</span></NavLink>
         </div>
 
         @if (Auth.IsAdmin)
@@ -90,6 +91,12 @@
                     <i data-lucide="search"></i>
                     <input type="text" placeholder="@SearchPlaceholder" @bind="SearchQuery" @bind:event="oninput" @bind:after="NotifySearchChanged" />
                 </div>
+            }
+            @if (!ShowSearch && !IsToolbarPage)
+            {
+                <button class="search-trigger" @onclick="Palette.Open" title="Search iPop (Ctrl+K)">
+                    <i data-lucide="search"></i><span>Search iPop</span><kbd>⌘K</kbd>
+                </button>
             }
             <div class="topbar-right">
                 <SectionOutlet SectionName="topbar-actions" />
@@ -214,6 +221,8 @@
             </ErrorBoundary>
         </CascadingValue>
         <IPop.Web.Components.Chat.ToastHost />
+        <CommandPalette />
+        <ConfirmHost />
         <IPop.Web.Components.Calls.GlobalCallOverlay />
         <IPop.Web.Components.Notifications.GlobalNotificationBanner />
     </div>
@@ -413,12 +422,17 @@
     }
 
     [JSInvokable]
-    public void OnEscape()
+    public async Task OnEscape()
     {
+        // Top-most overlay first (palette, confirm, modal, context menu), then page overlays.
+        if (await Overlays.CloseTopAsync()) { StateHasChanged(); return; }
         EscapePressed?.Invoke();
         if (notifOpen) notifOpen = false;
         StateHasChanged();
     }
+
+    [JSInvokable]
+    public void OnCommandPalette() { Palette.Toggle(); StateHasChanged(); }
 
     [JSInvokable]
     public void OnToggleSidebar() { collapsed = !collapsed; StateHasChanged(); }

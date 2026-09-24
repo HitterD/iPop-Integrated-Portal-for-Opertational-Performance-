@@ -1,0 +1,169 @@
+@* Generalises AppMemberPicker: same live search over /api/directory/member-search,
+   plus optional multi-select chips and a mode switch (used by Chat's
+   "Direct message / New group" flow). Single-select emits ValueChanged;
+   multi-select emits SelectionChanged. *@
+@inject AuthState Auth
+@inject IJSRuntime JS
+
+<div class="member-picker" @ref="wrap">
+    @if (Multi && Selected.Count > 0)
+    {
+        <div class="pp-chips">
+            @foreach (var p in Selected)
+            {
+                <span class="pp-chip">
+                    <span class="avatar" style="background:@p.AvatarColor">@p.Initials</span>
+                    <span>@p.Name</span>
+                    <button type="button" title="Remove" @onclick="() => RemoveAsync(p)"><i data-lucide="x"></i></button>
+                </span>
+            }
+        </div>
+    }
+    @if (Modes.Count > 0)
+    {
+        <div class="pp-modes" role="tablist">
+            @foreach (var m in Modes)
+            {
+                var label = m;
+                <button type="button" role="tab" aria-selected="@(Mode == label)"
+                        class="pp-mode @(Mode == label ? "on" : "")" @onclick="() => SetModeAsync(label)">@label</button>
+            }
+        </div>
+    }
+    <div class="member-picker-input">
+        <i data-lucide="search"></i>
+        <input placeholder="@(Placeholder ?? "Type a name or NIK...")"
+               @oninput="OnInput" @onkeydown="OnKeyDown"
+               @ref="inputRef" aria-label="Search people" aria-expanded="@(results.Count > 0)" />
+        @if (loading)
+        {
+            <span class="member-picker-spin"><i data-lucide="loader-2" class="spin"></i></span>
+        }
+    </div>
+
+    @if (results.Count > 0)
+    {
+        <div class="member-picker-pop" @ref="popRef" style="position:fixed;z-index:100" role="listbox" aria-label="People">
+            @for (var i = 0; i < results.Count; i++)
+            {
+                var idx = i;
+                var r = results[i];
+                <button type="button" class="member-picker-opt @(activeIdx == idx ? "active" : "")" role="option"
+                        aria-selected="@(Multi ? Selected.Any(s => s.Nik == r.Nik) : activeIdx == idx)"
+                        @onmousemove="() => activeIdx = idx" @onmousedown="() => PickAsync(r)">
+                    <span class="avatar" style="background:@(r.AvatarColor)">@(r.Initials)</span>
+                    <span class="txt"><span class="n">@r.Name</span><span class="s">@r.PositionLabel</span></span>
+                    @if (Multi && Selected.Any(s => s.Nik == r.Nik))
+                    {
+                        <i data-lucide="check" class="pp-check"></i>
+                    }
+                    <span class="mono" style="font-size:10.5px;color:var(--ink-3)">@r.Nik</span>
+                </button>
+            }
+        </div>
+    }
+    else if (searched && query.Trim().Length >= 2 && !loading)
+    {
+        <div class="member-picker-empty" style="position:relative;z-index:100">No one matches. Try a name or ID.</div>
+    }
+    @if (ConfirmLabel is not null && (!Multi || Selected.Count > 0))
+    {
+        <div class="pp-actions">
+            <button type="button" class="btn-sm accent" @onclick="ConfirmAsync">@ConfirmLabel</button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public bool Multi { get; set; }
+    [Parameter] public IReadOnlyList<string> Modes { get; set; } = [];
+    [Parameter] public string? Mode { get; set; }
+    [Parameter] public string? ConfirmLabel { get; set; }
+    [Parameter] public EventCallback<MemberSearchRow> ValueChanged { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<MemberSearchRow>> SelectionChanged { get; set; }
+    [Parameter] public EventCallback<string> ModeChanged { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<MemberSearchRow>> Confirmed { get; set; }
+
+    private string query = "";
+    private List<MemberSearchRow> results = [];
+    private bool loading, searched;
+    private int activeIdx;
+    private ElementReference inputRef, wrap, popRef;
+    private CancellationTokenSource? cts;
+    private readonly List<MemberSearchRow> Selected = [];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+        if (results.Count > 0) await JS.InvokeVoidAsync("ipop.positionPopup", inputRef, popRef);
+        else await JS.InvokeVoidAsync("ipop.closePopup");
+    }
+
+    private async Task SetModeAsync(string m)
+    {
+        Mode = m;
+        await ModeChanged.InvokeAsync(m);
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        query = e.Value?.ToString() ?? "";
+        cts?.Cancel(); cts?.Dispose();
+        var token = new CancellationTokenSource();
+        cts = token;
+        var q = query.Trim();
+        if (q.Length < 2) { results = []; loading = false; searched = false; StateHasChanged(); return; }
+        loading = true; searched = true;
+        StateHasChanged();
+        try { await Task.Delay(180, token.Token); } catch (TaskCanceledException) { return; }
+        if (token.IsCancellationRequested) return;
+        var res = await Auth.GetAsync<MemberSearchRow[]>($"/api/directory/member-search?q={Uri.EscapeDataString(q)}");
+        if (token.IsCancellationRequested) return;
+        results = res?.ToList() ?? [];
+        activeIdx = 0; loading = false;
+        StateHasChanged();
+    }
+
+    private async Task PickAsync(MemberSearchRow r)
+    {
+        if (Multi)
+        {
+            var existing = Selected.FirstOrDefault(s => s.Nik == r.Nik);
+            if (existing is not null) Selected.Remove(existing); else Selected.Add(r);
+            await SelectionChanged.InvokeAsync(Selected);
+        }
+        else
+        {
+            await ValueChanged.InvokeAsync(r);
+        }
+        query = ""; results = []; searched = false; activeIdx = 0;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.focus", inputRef);
+    }
+
+    private async Task RemoveAsync(MemberSearchRow r)
+    {
+        Selected.RemoveAll(s => s.Nik == r.Nik);
+        await SelectionChanged.InvokeAsync(Selected);
+        StateHasChanged();
+    }
+
+    private async Task ConfirmAsync()
+    {
+        await Confirmed.InvokeAsync(Selected);
+        Selected.Clear();
+        StateHasChanged();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown": if (results.Count > 0) { activeIdx = (activeIdx + 1) % results.Count; StateHasChanged(); } break;
+            case "ArrowUp": if (results.Count > 0) { activeIdx = (activeIdx - 1 + results.Count) % results.Count; StateHasChanged(); } break;
+            case "Enter": if (results.Count > 0) await PickAsync(results[Math.Clamp(activeIdx, 0, results.Count - 1)]); break;
+            case "Escape": query = ""; results = []; searched = false; StateHasChanged(); break;
+        }
+    }
+}

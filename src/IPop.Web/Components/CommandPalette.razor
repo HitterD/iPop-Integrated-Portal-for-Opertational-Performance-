@@ -1,0 +1,118 @@
+@* ⌘K / Ctrl+K. In this ticket it searches people and jumps to Directory with the
+   profile drawer open; other result types arrive with their modules. *@
+@implements IDisposable
+@inject AuthState Auth
+@inject NavigationManager Nav
+@inject CommandPaletteState Palette
+@inject OverlayStack Overlays
+@inject IJSRuntime JS
+
+@if (Palette.IsOpen)
+{
+    <div class="cp-backdrop" @onclick="Palette.Close">
+        <div class="cp-card" role="dialog" aria-modal="true" aria-label="Search iPop" @onclick:stopPropagation>
+            <div class="cp-input">
+                <i data-lucide="search"></i>
+                <input @ref="inputRef" placeholder="Search iPop — people, and more as modules arrive"
+                       @oninput="OnInput" @onkeydown="OnKeyDown" aria-label="Search" />
+                <span class="cp-hint">ESC</span>
+            </div>
+            @if (results.Count > 0)
+            {
+                <div class="cp-results">
+                    <div class="cp-group">People</div>
+                    @for (var i = 0; i < results.Count; i++)
+                    {
+                        var idx = i;
+                        var r = results[i];
+                        <button class="cp-row @(activeIdx == idx ? "active" : "")" @onmousemove="() => activeIdx = idx" @onclick="() => Go(r)">
+                            <span class="avatar" style="background:@r.AvatarColor">@r.Initials</span>
+                            <span class="txt"><span class="n">@r.Name</span><span class="s">@r.PositionLabel</span></span>
+                            <span class="cp-kind">Person</span>
+                        </button>
+                    }
+                </div>
+            }
+            else if (query.Trim().Length >= 2 && !loading)
+            {
+                <div class="cp-empty">No results for "@query".</div>
+            }
+            else if (query.Trim().Length < 2)
+            {
+                <div class="cp-empty">Type at least two characters. Modules add their own result groups here.</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private string query = "";
+    private List<MemberSearchRow> results = [];
+    private bool loading;
+    private int activeIdx;
+    private ElementReference inputRef;
+    private CancellationTokenSource? cts;
+    private IDisposable? _reg;
+
+    protected override void OnInitialized()
+    {
+        Palette.Changed += OnPaletteChanged;
+        _reg = Overlays.Push(CloseAsync);
+    }
+
+    private void OnPaletteChanged() => _ = InvokeAsync(async () =>
+    {
+        if (Palette.IsOpen) { query = ""; results = []; activeIdx = 0; }
+        StateHasChanged();
+        if (Palette.IsOpen) { await Task.Yield(); await JS.InvokeVoidAsync("ipop.focus", inputRef); }
+    });
+
+    private async Task CloseAsync()
+    {
+        Palette.Close();
+        await Task.CompletedTask;
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        query = e.Value?.ToString() ?? "";
+        cts?.Cancel(); cts?.Dispose();
+        var token = new CancellationTokenSource();
+        cts = token;
+        var q = query.Trim();
+        if (q.Length < 2) { results = []; loading = false; StateHasChanged(); return; }
+        loading = true;
+        StateHasChanged();
+        try { await Task.Delay(160, token.Token); } catch (TaskCanceledException) { return; }
+        if (token.IsCancellationRequested) return;
+        var res = await Auth.GetAsync<MemberSearchRow[]>($"/api/directory/member-search?q={Uri.EscapeDataString(q)}");
+        if (token.IsCancellationRequested) return;
+        results = res?.ToList() ?? [];
+        activeIdx = 0; loading = false;
+        StateHasChanged();
+    }
+
+    private void Go(MemberSearchRow r)
+    {
+        Palette.Close();
+        Nav.NavigateTo($"/directory?open={Uri.EscapeDataString(r.Nik)}");
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "ArrowDown": if (results.Count > 0) { activeIdx = (activeIdx + 1) % results.Count; StateHasChanged(); } break;
+            case "ArrowUp": if (results.Count > 0) { activeIdx = (activeIdx - 1 + results.Count) % results.Count; StateHasChanged(); } break;
+            case "Enter": if (results.Count > 0) Go(results[Math.Clamp(activeIdx, 0, results.Count - 1)]); break;
+            case "Escape": Palette.Close(); break;
+        }
+    }
+
+    public void Dispose()
+    {
+        Palette.Changed -= OnPaletteChanged;
+        _reg?.Dispose();
+        cts?.Dispose();
+    }
+}

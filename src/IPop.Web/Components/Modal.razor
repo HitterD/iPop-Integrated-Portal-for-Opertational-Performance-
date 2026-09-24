@@ -1,0 +1,48 @@
+@implements IDisposable
+@inject OverlayStack Overlays
+
+@if (IsOpen)
+{
+    <div class="modal-backdrop" @onclick="OnBackdrop">
+        <div class="modal-card @(Wide ? "wide" : "")" role="dialog" aria-modal="true" @onclick:stopPropagation>
+            <div class="modal-head">
+                <div>
+                    <div class="modal-title">@Title</div>
+                    @if (!string.IsNullOrEmpty(Subtitle)) { <div class="modal-sub">@Subtitle</div> }
+                </div>
+                <button class="modal-x" title="Close" @onclick="Close"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">@ChildContent</div>
+            @if (Footer is not null)
+            {
+                <div class="modal-foot">@Footer</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public bool Wide { get; set; }
+    [Parameter] public bool CloseOnBackdrop { get; set; } = true;
+    [Parameter] public bool CloseOnEscape { get; set; } = true;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? Footer { get; set; }
+
+    private IDisposable? _registration;
+
+    private async Task Close() => await IsOpenChanged.InvokeAsync(false);
+    private async Task OnBackdrop() { if (CloseOnBackdrop) await Close(); }
+
+    protected override void OnParametersSet()
+    {
+        if (IsOpen && _registration is null)
+            _registration = Overlays.Push(() => CloseOnEscape ? Close() : Task.CompletedTask);
+        else if (!IsOpen) { _registration?.Dispose(); _registration = null; }
+    }
+
+    public void Dispose() => _registration?.Dispose();
+}

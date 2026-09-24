@@ -73,7 +73,15 @@ window.ipop = {
       i.appendChild(svg);
       i.__lucideDone = icon;
     });
+  },
+  // ContextMenu placement: measure the menu, then flip near the viewport edges.
+  measure(el) {
+    if (!el) return [0, 0];
+    const r = el.getBoundingClientRect();
+    return [r.width, r.height];
   },
+  viewportWidth() { return window.innerWidth; },
+  viewportHeight() { return window.innerHeight; },
   focus(el) {
     if (el) { el.focus(); el.select(); }
   },
@@ -101,6 +109,12 @@ window.ipop = {
   // MainLayout registers once; the returned handles let Blazor detach on dispose.
   shortcuts(dotnet) {
     const onKey = e => {
+      // ⌘K / Ctrl+K opens the command palette from anywhere, including inputs.
+      if (e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        dotnet.invokeMethodAsync("OnCommandPalette");
+        return;
+      }
       if (e.key === "Escape") dotnet.invokeMethodAsync("OnEscape");
       if (e.key === "[" && !/INPUT|TEXTAREA/.test(e.target.tagName)) {
         dotnet.invokeMethodAsync("OnToggleSidebar");

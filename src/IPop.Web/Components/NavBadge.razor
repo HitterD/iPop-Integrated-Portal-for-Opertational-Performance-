@@ -1,0 +1,15 @@
+@inject BadgeState Badges
+@implements IDisposable
+
+@if (Key is not null && Badges.Any(Key))
+{
+    <span class="nav-badge">@(Badges[Key] > 99 ? "99+" : Badges[Key].ToString())</span>
+}
+
+@code {
+    [Parameter] public string? Key { get; set; }
+
+    protected override void OnInitialized() => Badges.Changed += OnChanged;
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => Badges.Changed -= OnChanged;
+}

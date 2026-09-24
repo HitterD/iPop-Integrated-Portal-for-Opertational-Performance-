@@ -1,0 +1,21 @@
+@* Static set from the v6 mockup's composer. No external dependency. *@
+<div class="emoji-pop">
+    @foreach (var e in Emojis)
+    {
+        <button type="button" class="emoji-btn" title="@e" @onclick="() => Pick(e)">@e</button>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback<string> OnPick { get; set; }
+
+    private static readonly string[] Emojis =
+    [
+        "😀","😂","🙂","😉","😍","😎","🤔","😅","😢","😮",
+        "👍","👎","👏","🙏","💪","🤝","👋","✌️","🫡","🙌",
+        "❤️","🔥","✅","❌","⚠️","⭐","🎉","💡","📌","📎",
+        "😴","🤒","☕","🍽️","🚗","🏠","📅","⏰","📈","🔒",
+    ];
+
+    private async Task Pick(string e) => await OnPick.InvokeAsync(e);
+}

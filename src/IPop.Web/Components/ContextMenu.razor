@@ -1,0 +1,78 @@
+@implements IDisposable
+@inject IJSRuntime JS
+@inject OverlayStack Overlays
+
+<div class="ctx-menu-backdrop" @onclick="Close" @oncontextmenu:preventDefault="true" @oncontextmenu="Close"></div>
+<div class="ctx-menu" style="position:fixed; left:@(x)px; top:@(y)px; visibility:@(placed ? "visible" : "hidden")" @ref="menuEl">
+    @foreach (var item in Items)
+    {
+        @if (item.IsDivider)
+        {
+            <div class="ctx-sep"></div>
+        }
+        else if (item.IsHeader)
+        {
+            <div class="ctx-head">@item.Label</div>
+        }
+        else
+        {
+            <button class="ctx-item @(item.Danger ? "danger" : "")" disabled="@item.Disabled" @onclick="() => Pick(item)">
+                <i data-lucide="@item.Icon"></i>
+                <span>@item.Label</span>
+                @if (item.Checked) { <i data-lucide="check" class="ctx-check"></i> }
+            </button>
+        }
+    }
+</div>
+
+@code {
+    public record Item(string Label, string Icon = "circle", Func<Task>? OnClick = null,
+                       bool Checked = false, bool Danger = false, bool Disabled = false,
+                       bool IsDivider = false, bool IsHeader = false)
+    {
+        public static Item Divider() => new("", IsDivider: true);
+        public static Item Header(string label) => new(label, IsHeader: true);
+    }
+
+    [Parameter] public IReadOnlyList<Item> Items { get; set; } = [];
+    [Parameter] public EventCallback OnClosed { get; set; }
+
+    private double x, y;
+    private bool placed;
+    private ElementReference menuEl;
+    private IDisposable? _reg;
+
+    protected override void OnInitialized() => _reg = Overlays.Push(CloseAsync);
+
+    /// Opens at the pointer, flipping near the viewport edges so the menu stays on screen.
+    public async Task OpenAsync(double px, double py)
+    {
+        x = px; y = py; placed = false;
+        StateHasChanged();
+        var size = await JS.InvokeAsync<double[]>("ipop.measure", menuEl);
+        var w = size.Length > 0 ? size[0] : 200;
+        var h = size.Length > 1 ? size[1] : 200;
+        var vw = await JS.InvokeAsync<double>("ipop.viewportWidth");
+        var vh = await JS.InvokeAsync<double>("ipop.viewportHeight");
+        if (px + w > vw - 8) x = Math.Max(8, px - w);
+        if (py + h > vh - 8) y = Math.Max(8, py - h);
+        placed = true;
+        StateHasChanged();
+    }
+
+    private async Task Pick(Item item)
+    {
+        await CloseAsync();
+        if (item.OnClick is not null) await item.OnClick();
+    }
+
+    private void Close() => _ = CloseAsync();
+
+    private async Task CloseAsync()
+    {
+        _reg?.Dispose(); _reg = null;
+        await OnClosed.InvokeAsync();
+    }
+
+    public void Dispose() => _reg?.Dispose();
+}

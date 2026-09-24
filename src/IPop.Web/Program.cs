@@ -26,6 +26,9 @@ builder.Services.AddScoped<IPop.Web.Services.ToastService>();
 builder.Services.AddScoped<IPop.Web.Services.CallState>();
 builder.Services.AddScoped<IPop.Web.Services.DraftStore>();
 builder.Services.AddScoped<IPop.Web.Services.OverlayStack>();
+builder.Services.AddScoped<IPop.Web.Services.ConfirmService>();
+builder.Services.AddScoped<IPop.Web.Services.CommandPaletteState>();
+builder.Services.AddScoped<IPop.Web.Services.BadgeState>();
 builder.Services.AddScoped<IPop.Web.Services.MailService>();
 builder.Services.AddScoped<IPop.Web.Services.NotificationState>(sp =>
     new IPop.Web.Services.NotificationState(
