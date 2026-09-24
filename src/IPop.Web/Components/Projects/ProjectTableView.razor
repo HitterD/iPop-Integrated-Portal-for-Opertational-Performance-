@@ -48,6 +48,8 @@
     [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
     [Parameter] public string SearchQuery { get; set; } = "";
     [Parameter] public bool MyTasksOnly { get; set; }
+    [Parameter] public bool OverdueOnly { get; set; }
+    [Parameter] public string PriorityFilter { get; set; } = "";
     [Parameter] public string? CurrentUserNik { get; set; }
     [Parameter] public string StatusFilter { get; set; } = "";
 
@@ -173,6 +175,10 @@
                 list = list.Where(t => t.Status == StatusFilter);
             if (MyTasksOnly)
                 list = list.Where(t => ProjectUiHelpers.IsAssignedToUser(t, CurrentUserNik));
+            if (OverdueOnly)
+                list = list.Where(t => t.DueDate.HasValue && t.DueDate.Value.Date < DateTime.Today && t.Status != "done");
+            if (!string.IsNullOrWhiteSpace(PriorityFilter))
+                list = list.Where(t => string.Equals(t.Priority, PriorityFilter, StringComparison.OrdinalIgnoreCase));
             if (!string.IsNullOrWhiteSpace(SearchQuery))
                 list = list.Where(t => t.Title.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)
                     || (t.Tags?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? false));

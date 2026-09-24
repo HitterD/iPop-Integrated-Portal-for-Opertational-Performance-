@@ -3,7 +3,12 @@
 <div class="proj-canvas-head">
     <div class="proj-title-box">
         <h2 class="proj-title-text">@Project.Name</h2>
-        <span class="status-pill @Project.Status.ToLower()">@Project.Status</span>
+        <select class="status-pill @Project.Status.ToLower()" style="border:none;cursor:pointer;font-weight:600;padding:2px 8px;font-size:12px;background:var(--tray);color:var(--ink)" value="@Project.Status" @onchange="HandleStatusChange">
+            <option value="planning">Planning</option>
+            <option value="active">Active</option>
+            <option value="on_hold">On hold</option>
+            <option value="completed">Completed</option>
+        </select>
         <div class="proj-progress-tag">
             <div class="proj-progress-mini">
                 <div class="proj-progress-mini-fill" style="width:@Project.Progress%"></div>
@@ -54,6 +59,21 @@
         <button class="proj-btn-action export" @onclick="OnExport" title="Export Snapshot Data">
             <i data-lucide="download"></i> Export
         </button>
+
+        @* More actions dropdown *@
+        <div style="position:relative">
+            <button class="proj-btn-action" title="More options" @onclick="() => showMore = !showMore">
+                <i data-lucide="more-horizontal"></i>
+            </button>
+            @if (showMore)
+            {
+                <div class="app-select-pop on" style="right:0;top:38px;width:180px;z-index:100" @onclick:stopPropagation="true">
+                    <button type="button" class="app-select-opt" @onclick="CopyLink"><i data-lucide="link" style="width:13px;height:13px"></i> Copy link</button>
+                    <button type="button" class="app-select-opt" @onclick="MarkDone"><i data-lucide="check-circle" style="width:13px;height:13px"></i> Mark completed</button>
+                    <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="Delete"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete project</button>
+                </div>
+            }
+        </div>
     </div>
 </div>
 
@@ -65,4 +85,34 @@
     [Parameter] public EventCallback OnOpenEditModal { get; set; }
     [Parameter] public EventCallback OnOpenChatRoom { get; set; }
     [Parameter] public EventCallback OnExport { get; set; }
+    [Parameter] public EventCallback<string> OnStatusChanged { get; set; }
+    [Parameter] public EventCallback OnCopyLink { get; set; }
+    [Parameter] public EventCallback OnDeleteProject { get; set; }
+    [Parameter] public EventCallback OnMarkCompleted { get; set; }
+
+    private bool showMore;
+
+    private async Task HandleStatusChange(ChangeEventArgs e)
+    {
+        var s = e.Value?.ToString();
+        if (!string.IsNullOrEmpty(s)) await OnStatusChanged.InvokeAsync(s);
+    }
+
+    private async Task CopyLink()
+    {
+        showMore = false;
+        await OnCopyLink.InvokeAsync();
+    }
+
+    private async Task MarkDone()
+    {
+        showMore = false;
+        await OnMarkCompleted.InvokeAsync();
+    }
+
+    private async Task Delete()
+    {
+        showMore = false;
+        await OnDeleteProject.InvokeAsync();
+    }
 }

@@ -11,10 +11,16 @@
             </div>
 
             <div class="gantt-filter-chips">
-                <button type="button" class="gantt-filter-btn @(statusFilter == "" ? "active" : "")" @onclick='() => statusFilter = ""'>All</button>
-                <button type="button" class="gantt-filter-btn @(statusFilter == "todo" ? "active" : "")" @onclick='() => statusFilter = "todo"'>To Do</button>
-                <button type="button" class="gantt-filter-btn @(statusFilter == "doing" ? "active" : "")" @onclick='() => statusFilter = "doing"'>In Progress</button>
-                <button type="button" class="gantt-filter-btn @(statusFilter == "done" ? "active" : "")" @onclick='() => statusFilter = "done"'>Done</button>
+                <button type="button" class="gantt-filter-btn @(statusFilter == "" && !criticalOnly ? "active" : "")" @onclick='() => { statusFilter = ""; criticalOnly = false; }'>All</button>
+                <button type="button" class="gantt-filter-btn @(statusFilter == "todo" ? "active" : "")" @onclick='() => { statusFilter = "todo"; criticalOnly = false; }'>To Do</button>
+                <button type="button" class="gantt-filter-btn @(statusFilter == "doing" ? "active" : "")" @onclick='() => { statusFilter = "doing"; criticalOnly = false; }'>In Progress</button>
+                <button type="button" class="gantt-filter-btn @(statusFilter == "done" ? "active" : "")" @onclick='() => { statusFilter = "done"; criticalOnly = false; }'>Done</button>
+                @if (CriticalPathTaskIds.Count > 0)
+                {
+                    <button type="button" class="gantt-filter-btn @(criticalOnly ? "active" : "")" style="@(criticalOnly ? "background:#dc2626;color:#fff" : "")" @onclick='() => criticalOnly = !criticalOnly'>
+                        Critical Path (@CriticalPathTaskIds.Count)
+                    </button>
+                }
             </div>
         </div>
 
@@ -60,6 +66,8 @@
         var tasksToDisplay = Timeline.Tasks.AsEnumerable();
         if (!string.IsNullOrEmpty(statusFilter))
             tasksToDisplay = tasksToDisplay.Where(t => t.Status == statusFilter);
+        if (criticalOnly)
+            tasksToDisplay = tasksToDisplay.Where(t => CriticalPathTaskIds.Contains(t.Id));
 
         <div class="gantt-body-wrap">
             @* Gantt Header *@
@@ -86,14 +94,19 @@
             @* Gantt Task Rows *@
             @foreach (var t in tasksToDisplay.OrderBy(x => x.StartDate ?? x.DueDate ?? DateTime.MaxValue))
             {
+                var isCritical = CriticalPathTaskIds.Contains(t.Id);
                 var (left, width, hasDates, dateLabel) = ProjectUiHelpers.CalculateGanttBar(t, pBounds.start, pBounds.end);
                 var fullTask = AllTasks.FirstOrDefault(x => x.Id == t.Id);
 
-                <div class="gantt-task-row">
+                <div class="gantt-task-row @(isCritical ? "is-critical" : "")">
                     <div class="gantt-task-info">
                         <div class="gantt-task-title-group">
                             <span class="col-dot @t.Status.ToLower()" style="flex-shrink:0"></span>
                             <span class="gantt-task-title" @onclick="() => OnTaskClick.InvokeAsync(t)" title="@t.Title (@t.Status)">@t.Title</span>
+                            @if (isCritical)
+                            {
+                                <span class="badge" style="background:#dc2626;color:#fff;font-size:9px;padding:1px 5px;flex-shrink:0">Critical</span>
+                            }
                         </div>
                         <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
                             @if (fullTask != null && fullTask.Assignees.Count > 0)
@@ -120,10 +133,10 @@
                             <div class="gantt-today-line" style="left:@(todayLeftPct)%"></div>
                         }
 
-                        <div class="gantt-bar-item @t.Status.ToLower() @(!hasDates ? "no-dates" : "")"
-                             style="left:@(left.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%; width:@(width.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%"
+                        <div class="gantt-bar-item @t.Status.ToLower() @(!hasDates ? "no-dates" : "") @(isCritical ? "critical-bar" : "")"
+                             style="left:@(left.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%; width:@(width.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%; @(isCritical ? "box-shadow:0 0 0 1.5px #dc2626;" : "")"
                              @onclick="() => OnTaskClick.InvokeAsync(t)"
-                             title="@t.Title • @(hasDates ? dateLabel : "No date set") • Click to edit">
+                             title="@t.Title • @(hasDates ? dateLabel : "No date set") • @(isCritical ? "On Critical Path • " : "")Click to edit">
                             <i data-lucide="@(t.Status == "done" ? "check-circle" : (t.Status == "doing" ? "clock" : "circle"))" style="width:11px;height:11px;flex-shrink:0"></i>
                             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@t.Title</span>
                             @if (hasDates)
@@ -141,6 +154,7 @@
 @code {
     [Parameter] public ProjectTimelineDto? Timeline { get; set; }
     [Parameter] public List<ProjectTaskDto> AllTasks { get; set; } = [];
+    [Parameter] public HashSet<Guid> CriticalPathTaskIds { get; set; } = [];
 
     [Parameter] public EventCallback<TimelineTaskDto> OnTaskClick { get; set; }
     [Parameter] public EventCallback OnAddTask { get; set; }
@@ -148,6 +162,7 @@
     private string timelineScale = "monthly"; // "weekly", "monthly", "yearly"
     private DateTime timelineAnchorDate = DateTime.Today;
     private string statusFilter = "";
+    private bool criticalOnly;
 
     private void SetTimelineScale(string scale)
     {

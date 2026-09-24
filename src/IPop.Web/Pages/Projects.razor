@@ -8,6 +8,7 @@
 @implements IDisposable
 @inject AuthState Auth
 @inject ToastService Toasts
+@inject ConfirmService Confirm
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -55,19 +56,23 @@
                 OnOpenTeamModal="() => showTeamModal = true"
                 OnOpenEditModal="() => showEditModal = true"
                 OnOpenChatRoom="OpenProjectRoom"
-                OnExport="ExportSelected" />
+                OnExport="ExportSelected"
+                OnStatusChanged="HandleProjectStatusChange"
+                OnCopyLink="CopyProjectLink"
+                OnDeleteProject="HandleDeleteProject"
+                OnMarkCompleted="HandleMarkProjectCompleted" />
 
-            @* Canvas View Switcher Bar (Dashboard / Board / Table / Timeline / Workload) *@
+            @* Canvas View Switcher Bar (Overview / Board / List / Timeline / Workload) *@
             <div class="proj-canvas-bar">
                 <div class="proj-tabs">
-                    <button class="proj-tab-btn @(tab == 4 ? "active" : "")" @onclick="() => SwitchTab(4)" title="Executive Summary & Progress Monitoring">
-                        <i data-lucide="layout-dashboard"></i> Dashboard
+                    <button class="proj-tab-btn @(tab == 4 ? "active" : "")" @onclick="() => SwitchTab(4)" title="Overview & Progress">
+                        <i data-lucide="pie-chart"></i> Overview
                     </button>
                     <button class="proj-tab-btn @(tab == 0 ? "active" : "")" @onclick="() => SwitchTab(0)">
                         <i data-lucide="kanban"></i> Board
                     </button>
                     <button class="proj-tab-btn @(tab == 1 ? "active" : "")" @onclick="() => SwitchTab(1)">
-                        <i data-lucide="table"></i> Table
+                        <i data-lucide="list"></i> List
                     </button>
                     <button class="proj-tab-btn @(tab == 2 ? "active" : "")" @onclick="() => SwitchTab(2)">
                         <i data-lucide="clock"></i> Timeline
@@ -92,6 +97,23 @@
                         <i data-lucide="user" style="width:13px;height:13px"></i>
                         <span>My Tasks</span>
                     </button>
+
+                    @* Overdue only filter pill *@
+                    <button class="filter-pill-btn @(overdueOnly ? "active" : "")" @onclick="() => overdueOnly = !overdueOnly" title="Show only overdue tasks">
+                        <i data-lucide="clock-alert" style="width:13px;height:13px"></i>
+                        <span>Overdue</span>
+                    </button>
+
+                    @* Priority filter *@
+                    <select class="org-input" style="height:32px;font-size:11.5px;border-radius:999px;padding:0 8px;width:auto" @bind="priorityFilter">
+                        <option value="">All Priorities</option>
+                        <option value="urgent">Urgent</option>
+                        <option value="high">High</option>
+                        <option value="normal">Normal</option>
+                        <option value="low">Low</option>
+                    </select>
+
+                    <span class="meta" style="font-size:11.5px;color:var(--ink-3)">@VisibleTaskCount tasks</span>
 
                     @* Search tasks within active project *@
                     <div style="position:relative;display:flex;align-items:center">
@@ -128,6 +150,8 @@
                                     Members="projectMembers"
                                     SearchQuery="@taskSearchQuery"
                                     MyTasksOnly="myTasksOnly"
+                                    OverdueOnly="overdueOnly"
+                                    PriorityFilter="@priorityFilter"
                                     CurrentUserNik="@currentUserNik"
                                     HighlightTaskId="highlightTaskId"
                                     OnTaskClick="OpenTaskEditor"
@@ -145,6 +169,8 @@
                                     Members="projectMembers"
                                     SearchQuery="@taskSearchQuery"
                                     MyTasksOnly="myTasksOnly"
+                                    OverdueOnly="overdueOnly"
+                                    PriorityFilter="@priorityFilter"
                                     CurrentUserNik="@currentUserNik"
                                     StatusFilter="@listStatusFilter"
                                     OnTaskClick="OpenTaskEditor"
@@ -164,6 +190,7 @@
                                 <ProjectTimelineView
                                     Timeline="timeline"
                                     AllTasks="AllCurrentTasks"
+                                    CriticalPathTaskIds="criticalPathIds"
                                     OnTaskClick="OpenTimelineTaskEditor"
                                     OnAddTask='() => HandleQuickAdd(("todo", "New Task"))' />
                             }
@@ -267,7 +294,30 @@
     private bool loading = true;
     private bool sidebarCollapsed = false;
     private bool myTasksOnly = false;
+    private bool overdueOnly = false;
+    private string priorityFilter = "";
+    private HashSet<Guid> criticalPathIds = [];
     private string? currentUserNik;
+
+    private int VisibleTaskCount
+    {
+        get
+        {
+            var tasks = AllCurrentTasks.AsEnumerable();
+            if (myTasksOnly)
+                tasks = tasks.Where(t => ProjectUiHelpers.IsAssignedToUser(t, currentUserNik));
+            if (overdueOnly)
+                tasks = tasks.Where(t => t.DueDate.HasValue && t.DueDate.Value.Date < DateTime.Today && t.Status != "done");
+            if (!string.IsNullOrWhiteSpace(priorityFilter))
+                tasks = tasks.Where(t => string.Equals(t.Priority, priorityFilter, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(taskSearchQuery))
+            {
+                var q = taskSearchQuery.Trim().ToLowerInvariant();
+                tasks = tasks.Where(t => t.Title.ToLowerInvariant().Contains(q) || (t.Tags != null && t.Tags.ToLowerInvariant().Contains(q)));
+            }
+            return tasks.Count();
+        }
+    }
 
     private List<ProjectListDto> projects = [];
     private List<ProjectListDto> filteredProjects = [];
@@ -556,6 +606,70 @@
     {
         if (selectedProjectId == Guid.Empty) return;
         timeline = await Auth.GetAsync<ProjectTimelineDto>($"/api/projects/{selectedProjectId}/timeline");
+        try
+        {
+            var gantt = await Auth.GetAsync<ProjectGanttDto>($"/api/projects/{selectedProjectId}/gantt");
+            criticalPathIds = gantt?.CriticalPathTaskIds?.ToHashSet() ?? [];
+        }
+        catch { }
+    }
+
+    private async Task HandleProjectStatusChange(string newStatus)
+    {
+        if (selectedProject == null) return;
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{selectedProject.Id}", new
+        {
+            name = selectedProject.Name,
+            status = newStatus
+        });
+        if (res.IsSuccessStatusCode)
+        {
+            Toasts.Show($"Project status updated to {newStatus}.", ToastKind.Success);
+            await ReloadProjects();
+        }
+        else
+        {
+            Toasts.Show("Could not update project status.", ToastKind.Error);
+        }
+    }
+
+    private async Task HandleMarkProjectCompleted()
+    {
+        await HandleProjectStatusChange("completed");
+    }
+
+    private async Task HandleDeleteProject()
+    {
+        if (selectedProject == null) return;
+        var confirmed = await Confirm.AskAsync("Delete Project", $"Are you sure you want to delete project \"{selectedProject.Name}\"?", "Delete", danger: true);
+        if (!confirmed) return;
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/{selectedProject.Id}", null);
+        if (res.IsSuccessStatusCode)
+        {
+            Toasts.Show("Project deleted.", ToastKind.Success);
+            selectedProjectId = Guid.Empty;
+            selectedProject = null;
+            await ReloadProjects();
+        }
+        else
+        {
+            Toasts.Show("Could not delete project.", ToastKind.Error);
+        }
+    }
+
+    private async Task CopyProjectLink()
+    {
+        if (selectedProject == null) return;
+        var url = $"{Nav.BaseUri}projects/{selectedProject.Id}";
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
+            Toasts.Show("Project link copied to clipboard.", ToastKind.Success);
+        }
+        catch
+        {
+            Toasts.Show(url, ToastKind.Info);
+        }
     }
 
     private async Task LoadMembers()

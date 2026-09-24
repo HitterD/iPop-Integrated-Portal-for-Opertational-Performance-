@@ -12,6 +12,8 @@
     [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
     [Parameter] public string SearchQuery { get; set; } = "";
     [Parameter] public bool MyTasksOnly { get; set; }
+    [Parameter] public bool OverdueOnly { get; set; }
+    [Parameter] public string PriorityFilter { get; set; } = "";
     [Parameter] public string? CurrentUserNik { get; set; }
     [Parameter] public Guid? HighlightTaskId { get; set; }
 
@@ -122,6 +124,14 @@
         if (MyTasksOnly)
         {
             filteredItems = filteredItems.Where(t => ProjectUiHelpers.IsAssignedToUser(t, CurrentUserNik));
+        }
+        if (OverdueOnly)
+        {
+            filteredItems = filteredItems.Where(t => t.DueDate.HasValue && t.DueDate.Value.Date < DateTime.Today && t.Status != "done");
+        }
+        if (!string.IsNullOrWhiteSpace(PriorityFilter))
+        {
+            filteredItems = filteredItems.Where(t => string.Equals(t.Priority, PriorityFilter, StringComparison.OrdinalIgnoreCase));
         }
         if (!string.IsNullOrWhiteSpace(SearchQuery))
         {
