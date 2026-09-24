@@ -2,6 +2,8 @@
 @using IPop.Web.Services
 @implements IDisposable
 @inject AuthState Auth
+@inject ToastService Toasts
+@inject ConfirmService Confirm
 @inject IJSRuntime JS
 
 @* ---- Sessions KPI Summary Grid ---- *@
@@ -46,13 +48,17 @@
 
 <div class="tray rise rise-2">
     <div class="core" style="padding:0;overflow:hidden">
-        <div class="panel-head" style="border-bottom:1px solid var(--line-soft)">
+        <div class="panel-head" style="border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between">
             <div style="display:flex;align-items:center;gap:8px">
                 <i data-lucide="laptop" style="color:#4f46e5"></i>
                 <span style="font-weight:700">Active Sessions</span>
+                <span class="meta" style="margin-left:8px">@sessionList.Count active across all users</span>
             </div>
-            <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
-                <span class="meta">@sessionList.Count sessions recorded</span>
+            <div style="display:flex;align-items:center;gap:10px">
+                <button type="button" class="btn btn-sm surface" style="height:30px;padding:0 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;border-radius:8px;border:1px solid rgba(196,39,28,0.25);background:var(--surface);color:#C4271C;font-weight:600;cursor:pointer" disabled="@isRevokingOthers" @onclick="RevokeAllOtherSessions" title="Sign out all sessions except this device">
+                    <i data-lucide="log-out" style="width:13px;height:13px"></i>
+                    <span>@(isRevokingOthers ? "Signing out…" : "Sign out all other sessions")</span>
+                </button>
                 <button class="org-act" title="Refresh sessions" @onclick="LoadSessions"><i data-lucide="refresh-cw"></i></button>
             </div>
         </div>
@@ -74,7 +80,7 @@
                         <th style="width:140px">IP Address</th>
                         <th>Device / Fingerprint</th>
                         <th style="width:160px">Expires In</th>
-                        <th style="width:80px;text-align:right">Action</th>
+                        <th style="width:90px;text-align:right">Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -98,6 +104,10 @@
                             <td class="mono" style="font-size:12px;color:var(--ink-2)">
                                 <i data-lucide="monitor" style="width:12px;height:12px;display:inline-block;vertical-align:-1px;margin-right:4px;color:var(--ink-3)"></i>
                                 @(string.IsNullOrEmpty(session.DeviceFingerprint) ? "Desktop / Browser Session" : TruncateDevice(session.DeviceFingerprint))
+                                @if (session.IsCurrent)
+                                {
+                                    <span style="height:18px;padding:0 6px;border-radius:5px;background:#E4F4EA;color:#1C7A44;font-size:10px;font-weight:700;display:inline-flex;align-items:center;margin-left:8px;letter-spacing:0.3px">THIS DEVICE</span>
+                                }
                             </td>
                             <td>
                                 @{
@@ -108,10 +118,17 @@
                                     <span>@label</span>
                                 </span>
                             </td>
-                            <td class="acts">
-                                <button type="button" class="act-toggle" title="Revoke Session (Force Logout)" @onclick="() => RevokeSession(session)">
-                                    <i data-lucide="log-out"></i>
-                                </button>
+                            <td class="acts" style="text-align:right">
+                                @if (session.IsCurrent)
+                                {
+                                    <span style="font-size:11.5px;color:var(--ink-3);padding-right:6px">Current</span>
+                                }
+                                else
+                                {
+                                    <button type="button" class="act-toggle" title="Sign out session" @onclick="() => RevokeSession(session)">
+                                        <i data-lucide="log-out"></i>
+                                    </button>
+                                }
                             </td>
                         </tr>
                     }
@@ -121,26 +138,11 @@
     </div>
 </div>
 
-@* ---- Toast Feedback Banner ---- *@
-@if (!string.IsNullOrEmpty(toastMessage))
-{
-    <div class="admin-toast-wrap">
-        <div class="admin-toast @(toastIsError ? "toast-error" : "toast-success")">
-            <i data-lucide="@(toastIsError ? "alert-circle" : "check-circle")"></i>
-            <span>@toastMessage</span>
-            <button type="button" class="toast-close" @onclick="() => toastMessage = null" aria-label="Close">
-                <i data-lucide="x" style="width:14px;height:14px"></i>
-            </button>
-        </div>
-    </div>
-}
-
 @code {
     private List<AdminSessionRowDto> sessionList = [];
     private System.Threading.Timer? _pollTimer;
     private bool isLoading = true;
-    private string? toastMessage;
-    private bool toastIsError;
+    private bool isRevokingOthers;
 
     private int UniqueUsersCount => sessionList.Select(s => s.Nik).Distinct().Count();
     private int UniqueIpsCount => sessionList.Select(s => s.IpAddress).Where(ip => !string.IsNullOrEmpty(ip)).Distinct().Count();
@@ -167,37 +169,70 @@
 
     private async Task LoadSessions()
     {
-        sessionList = await Auth.GetAsync<List<AdminSessionRowDto>>("/api/admin/users/sessions") ?? [];
+        var refresh = await JS.InvokeAsync<string?>("localStorage.getItem", "ipop.refresh");
+        var url = "/api/admin/users/sessions";
+        if (!string.IsNullOrWhiteSpace(refresh))
+            url += $"?refreshToken={Uri.EscapeDataString(refresh)}";
+
+        sessionList = await Auth.GetAsync<List<AdminSessionRowDto>>(url) ?? [];
     }
 
     private async Task RevokeSession(AdminSessionRowDto session)
     {
+        var ok = await Confirm.AskAsync(
+            "Sign out this session?",
+            $"The session for {session.Name} ({session.Nik}) on {session.DeviceFingerprint ?? "desktop"} will be signed out immediately.",
+            "Sign out",
+            danger: true);
+        if (!ok) return;
+
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/admin/users/sessions/{session.Id}/revoke");
         if (res.IsSuccessStatusCode)
         {
-            ShowToast($"Session for {session.Name} ({session.Nik}) revoked successfully.", false);
+            Toasts.ShowDetailed("Session Signed Out", $"Session for {session.Name} was signed out.", ToastKind.Success, "log-out");
             await LoadSessions();
         }
         else
         {
-            ShowToast("Failed to revoke user session.", true);
+            Toasts.Show("Failed to revoke session.", ToastKind.Error);
         }
     }
 
-    private void ShowToast(string message, bool isError)
+    private async Task RevokeAllOtherSessions()
     {
-        toastMessage = message;
-        toastIsError = isError;
-        StateHasChanged();
-        _ = Task.Run(async () =>
+        var otherCount = sessionList.Count(s => !s.IsCurrent);
+        var ok = await Confirm.AskAsync(
+            "Sign out all other sessions?",
+            "Everyone except your current session on this device will need to sign in again.",
+            "Sign out all",
+            danger: true);
+        if (!ok) return;
+
+        isRevokingOthers = true;
+        try
         {
-            await Task.Delay(4000);
-            if (toastMessage == message)
+            var refresh = await JS.InvokeAsync<string?>("localStorage.getItem", "ipop.refresh");
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/users/sessions/revoke-others", new { currentRefreshToken = refresh });
+            if (res.IsSuccessStatusCode)
             {
-                toastMessage = null;
-                await InvokeAsync(StateHasChanged);
+                var result = await res.Content.ReadFromJsonAsync<RevokeOthersResultDto>();
+                var count = result?.Count ?? otherCount;
+                Toasts.ShowDetailed("Sessions Signed Out", $"{count} other session(s) signed out successfully.", ToastKind.Success, "log-out");
+                await LoadSessions();
             }
-        });
+            else
+            {
+                Toasts.Show("Failed to sign out other sessions.", ToastKind.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Toasts.Show($"Operation failed: {ex.Message}", ToastKind.Error);
+        }
+        finally
+        {
+            isRevokingOthers = false;
+        }
     }
 
     private static (string Label, string Cls) GetExpiryStatus(DateTime expiresUtc)
@@ -240,4 +275,6 @@
     {
         _pollTimer?.Dispose();
     }
+
+    private record RevokeOthersResultDto(int Count);
 }

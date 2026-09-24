@@ -1,3 +1,4 @@
+using IPop.Application.Auth;
 using IPop.Application.Realtime;
 using IPop.Core.Entities;
 using IPop.Core.Presence;
@@ -91,16 +92,39 @@ public static class AdminEndpoints
             return Results.Ok(new AdminUserStats(total, active, admins, online));
         });
 
-        g.MapGet("/sessions", async (IPopDbContext db, CancellationToken ct) =>
+        g.MapGet("/sessions", async (string? refreshToken, ITokenService tokens, IPopDbContext db, CancellationToken ct) =>
         {
             var now = DateTime.UtcNow;
+            var currentHash = !string.IsNullOrWhiteSpace(refreshToken) ? tokens.HashRefreshToken(refreshToken) : null;
             var items = await db.AuthSessions.AsNoTracking()
                 .Where(s => s.RevokedAt == null && s.ExpiresAt > now)
                 .OrderByDescending(s => s.CreatedAt).Take(200)
                 .Select(s => new AdminSessionRow(s.Id, s.User.Nik, s.User.Name,
-                    s.DeviceFingerprint, s.IpAddress, s.CreatedAt, s.ExpiresAt))
+                    s.DeviceFingerprint, s.IpAddress, s.CreatedAt, s.ExpiresAt,
+                    currentHash != null && s.RefreshTokenHash == currentHash))
                 .ToListAsync(ct);
             return Results.Ok(items);
+        });
+
+        g.MapPost("/sessions/revoke-others", async (RevokeOthersRequest? req, ITokenService tokens,
+            IPopDbContext db, HttpContext http, CancellationToken ct) =>
+        {
+            var now = DateTime.UtcNow;
+            var callerNik = CallerNik(http);
+            var currentHash = !string.IsNullOrWhiteSpace(req?.CurrentRefreshToken)
+                ? tokens.HashRefreshToken(req.CurrentRefreshToken)
+                : null;
+
+            var query = db.AuthSessions.Where(s => s.RevokedAt == null && s.ExpiresAt > now);
+            if (req?.CurrentSessionId is not null)
+                query = query.Where(s => s.Id != req.CurrentSessionId.Value);
+            else if (currentHash is not null)
+                query = query.Where(s => s.RefreshTokenHash != currentHash);
+
+            var count = await query.ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, now), ct);
+            Audit(db, callerNik, "admin.session.revoke-others", "revoked=" + count, now);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { count });
         });
 
         g.MapPost("/sessions/{id:guid}/revoke", async (Guid id, IPopDbContext db,
@@ -902,7 +926,8 @@ public static class AdminEndpoints
         string Status, DateTime UpdatedAt);
     public record AdminUserStats(int Total, int Active, int Admins, int Online);
     public record AdminSessionRow(Guid Id, string Nik, string Name, string? DeviceFingerprint,
-        string? IpAddress, DateTime CreatedAt, DateTime ExpiresAt);
+        string? IpAddress, DateTime CreatedAt, DateTime ExpiresAt, bool IsCurrent = false);
+    public record RevokeOthersRequest(string? CurrentRefreshToken = null, Guid? CurrentSessionId = null);
     public record CreateUserRequest(string Nik, string Name, string Email, string? Position,
         string? Location, string? DepartmentCode = null, string? SiteCode = null);
     public record EditUserRequest(string? Name, string? Email, string? Position, string? Location,

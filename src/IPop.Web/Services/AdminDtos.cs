@@ -20,7 +20,7 @@ public record AdminDivisionRowDto(Guid Id, string Code, string Name, string? Dep
 public record UpsertDivisionRequest(string Code, string? Name, string? DepartmentCode,
     string? SiteCode, bool? IsActive);
 public record AdminSessionRowDto(Guid Id, string Nik, string Name, string? DeviceFingerprint,
-    string? IpAddress, DateTime CreatedAt, DateTime ExpiresAt);
+    string? IpAddress, DateTime CreatedAt, DateTime ExpiresAt, bool IsCurrent = false);
 
 public record HrisSyncStatusDto(DateTime? LastSyncedAt, int EmployeeCount);
 public record AuditRowDto(Guid Id, string? ActorNik, string Action, string? Entity,
