@@ -3,7 +3,8 @@ namespace IPop.Web.Services;
 public sealed record Toast(
     Guid Id, string Message, ToastKind Kind, DateTime ShownAt,
     string? Title = null, string? Icon = null, string? TargetUrl = null,
-    bool IsExiting = false, string? NotificationId = null);
+    bool IsExiting = false, string? NotificationId = null,
+    Func<Task>? Undo = null, string? UndoLabel = null);
 
 public enum ToastKind { Success, Error, Info }
 
@@ -27,6 +28,25 @@ public sealed class ToastService
         while (_active.Count > 4) _active.RemoveAt(_active.Count - 1);
         Changed?.Invoke();
         _ = Task.Delay(6000).ContinueWith(_ => Dismiss(t.Id));
+    }
+
+    /// v6 undo toast: shown for the undo window, and the action runs only if the user
+    /// clicks Undo before it disappears. Returns the toast id.
+    public Guid ShowUndo(string message, Func<Task> undo, string undoLabel = "Undo", int ms = 5000)
+    {
+        var t = new Toast(Guid.NewGuid(), message, ToastKind.Info, DateTime.UtcNow, Undo: undo, UndoLabel: undoLabel);
+        _active.Insert(0, t);
+        while (_active.Count > 4) _active.RemoveAt(_active.Count - 1);
+        Changed?.Invoke();
+        _ = Task.Delay(ms).ContinueWith(_ => Dismiss(t.Id));
+        return t.Id;
+    }
+
+    public async Task RunUndoAsync(Guid id)
+    {
+        var undo = _active.FirstOrDefault(x => x.Id == id)?.Undo;
+        DismissImmediate(id);
+        if (undo is not null) await undo();
     }
 
     public void Dismiss(Guid id)

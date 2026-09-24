@@ -34,6 +34,10 @@
             {
                 <span class="toast-go"><i data-lucide="arrow-right"></i></span>
             }
+            @if (toast.Undo is not null)
+            {
+                <button class="toast-undo" @onclick="() => Toasts.RunUndoAsync(toast.Id)" @onclick:stopPropagation>@(toast.UndoLabel ?? "Undo")</button>
+            }
             <button class="toast-close" aria-label="Dismiss" title="Dismiss"
                     @onclick="() => Toasts.Dismiss(toast.Id)" @onclick:stopPropagation>×</button>
             @if (!string.IsNullOrEmpty(toast.NotificationId))
@@ -109,6 +113,13 @@
         transform: translateX(-4px);
         box-shadow: var(--shadow-xl);
     }
+
+    .toast-undo {
+        align-self: center; flex-shrink: 0; padding: 4px 10px; border-radius: 8px;
+        border: 1px solid var(--line); background: var(--tray); color: var(--accent-ink);
+        font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .toast-undo:hover { background: var(--accent-soft); }
 
     .toast.clickable {
         cursor: pointer;
