@@ -1,12 +1,9 @@
-using Microsoft.AspNetCore.SignalR;
+using IPop.Application.Realtime;
 
 namespace IPop.Api.Presence;
 
-/// Thin broadcast shell — the transport is a detail (spec: hub content is not asserted).
-/// All sends go through PresenceBroadcaster so endpoints/workers never touch Hub types.
-public class PresenceHub : Microsoft.AspNetCore.SignalR.Hub;
-
-public class PresenceBroadcaster(Microsoft.AspNetCore.SignalR.IHubContext<PresenceHub> hub)
+/// All presence sends go through here so endpoints/workers never touch hub types.
+public class PresenceBroadcaster(IRealtime realtime)
 {
     private readonly object gate = new();
     private readonly Dictionary<string, string> known = [];
@@ -25,5 +22,5 @@ public class PresenceBroadcaster(Microsoft.AspNetCore.SignalR.IHubContext<Presen
     }
 
     public Task BroadcastAsync(string nik, string status, CancellationToken ct = default) =>
-        hub.Clients.All.SendAsync("presenceChanged", nik, status, ct);
+        realtime.ToAllAsync(RealtimeEvents.PresenceChanged, new RealtimeArgs(nik, status), ct);
 }

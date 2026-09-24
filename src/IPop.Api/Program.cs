@@ -2,6 +2,7 @@ using System.Text;
 using IPop.Api.Chat;
 using IPop.Api.Endpoints;
 using IPop.Api.Presence;
+using IPop.Api.Realtime;
 using IPop.Application.Auth;
 using IPop.Application.Chat;
 using IPop.Application.Files;
@@ -115,6 +116,7 @@ builder.Services.AddSignalR()
     .AddStackExchangeRedis(
         redisConnection,
         options => { options.Configuration.ChannelPrefix = RedisChannel.Literal("ipop-chat"); });
+builder.Services.AddSingleton<IRealtime, HubRealtime>();
 builder.Services.AddSingleton<PresenceBroadcaster>();
 builder.Services.AddSingleton<IDirectoryChangeNotifier, DirectoryChangeNotifier>();
 builder.Services.AddSingleton<IAuditChangeNotifier, AuditChangeNotifier>();
@@ -202,9 +204,10 @@ app.MapPresence();
 app.MapDocumentDemo();
 app.MapSettings();
 app.MapAttachments();
-app.MapHub<PresenceHub>("/hubs/presence").RequireAuthorization();
 app.MapHub<ChatHub>("/hubs/chat").RequireAuthorization();
 app.MapHub<IPop.Api.Calls.CallHub>("/hubs/calls").RequireAuthorization();
 app.MapHub<IPop.Api.Notifications.NotificationHub>("/hubs/notification").RequireAuthorization();
+app.MapMe();
+app.MapHub<AppHub>("/hubs/app").RequireAuthorization();
 
 app.Run();

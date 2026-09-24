@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using IPop.Application.Realtime;
 using IPop.Web.Models;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.JSInterop;
@@ -61,22 +62,49 @@ public class AuthState(HttpClient http, IJSRuntime js)
         return res;
     }
 
+    private readonly Dictionary<Guid, Func<HubConnection, IDisposable>> _subscriptions = [];
+    private readonly Dictionary<Guid, IDisposable> _bound = [];
+
+    /// Subscribe to a hub event without editing AuthState. Survives sign-out/in (re-bound on
+    /// each new connection); dispose the result to unsubscribe.
+    public IDisposable On<T>(string evt, Action<T> handler) => Subscribe(c => c.On(evt, handler));
+    public IDisposable On<T1, T2>(string evt, Action<T1, T2> handler) => Subscribe(c => c.On(evt, handler));
+    public IDisposable On(string evt, Action handler) => Subscribe(c => c.On(evt, handler));
+
+    private IDisposable Subscribe(Func<HubConnection, IDisposable> bind)
+    {
+        var id = Guid.NewGuid();
+        _subscriptions[id] = c => _bound[id] = bind(c);
+        if (_presence is not null) _subscriptions[id](_presence);
+        return new Unsubscriber(() =>
+        {
+            _subscriptions.Remove(id);
+            if (_bound.Remove(id, out var b)) b.Dispose();
+        });
+    }
+
+    private sealed class Unsubscriber(Action dispose) : IDisposable
+    {
+        public void Dispose() => dispose();
+    }
+
     /// Starts the real-time presence connection and a 60-second visible-tab heartbeat.
     public async Task StartPresenceAsync()
     {
         if (!IsAuthenticated || _presence is not null) return;
-        var hubUrl = new Uri(new Uri(http.BaseAddress!, "/"), "hubs/presence");
+        var hubUrl = new Uri(new Uri(http.BaseAddress!, "/"), "hubs/app");
         _presence = new HubConnectionBuilder()
             .WithUrl(hubUrl, o => o.AccessTokenProvider = () => Task.FromResult(_accessToken))
             .WithAutomaticReconnect()
             .Build();
-        _presence.On<string, string>("presenceChanged", (nik, status) =>
+        _presence.On<string, string>(RealtimeEvents.PresenceChanged, (nik, status) =>
         {
             if (Me?.Nik == nik) MyStatus = status;
             PresenceChanged?.Invoke(nik, status);
         });
-        _presence.On("directoryChanged", () => DirectoryChanged?.Invoke());
-        _presence.On("auditChanged", () => AuditChanged?.Invoke());
+        _presence.On(RealtimeEvents.DirectoryChanged, () => DirectoryChanged?.Invoke());
+        _presence.On(RealtimeEvents.AuditChanged, () => AuditChanged?.Invoke());
+        foreach (var bind in _subscriptions.Values) bind(_presence);
         _presence.Reconnecting += _ => { SetConnectionState(DirectoryConnectionState.Reconnecting); return Task.CompletedTask; };
         _presence.Reconnected += _ =>
         {
@@ -234,6 +262,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
     {
         _heartbeat?.Dispose();
         _heartbeat = null;
+        _bound.Clear();   // handlers die with the connection; _subscriptions re-bind on next start
         if (_presence is not null) await _presence.DisposeAsync();
         _presence = null;
         await js.InvokeVoidAsync("localStorage.removeItem", RefreshKey);
