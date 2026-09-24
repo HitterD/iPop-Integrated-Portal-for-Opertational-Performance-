@@ -1,0 +1,134 @@
+@page "/meet/{RoomName}"
+@implements IAsyncDisposable
+@inject AuthState Auth
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>Meeting — IPop</PageTitle>
+
+<div class="meeting-room">
+    <div class="meeting-room-card">
+        <a href="/calls?tab=scheduled" class="dash-link">← Back to calls</a>
+        <h1>@(meeting?.Title ?? "Meeting")</h1>
+        @if (loading)
+        {
+            <p>Checking meeting access…</p>
+        }
+        else if (error is not null)
+        {
+            <p role="alert">@error</p>
+        }
+        else if (meeting?.LiveKitToken is null || meeting.LiveKitUrl is null)
+        {
+            <p>Video meetings aren't available yet. The LiveKit server must be configured by an administrator.</p>
+            @if (!string.IsNullOrWhiteSpace(meeting?.ExternalLink))
+            {
+                <a href="@meeting.ExternalLink" target="_blank" rel="noopener noreferrer">Open external meeting link</a>
+            }
+        }
+        else
+        {
+            <p role="status">@connectionStatus</p>
+            @if (joined)
+            {
+                <div class="meeting-room-controls">
+                    <button type="button" @onclick="ToggleMicrophone">@(muted ? "Unmute microphone" : "Mute microphone")</button>
+                    <button type="button" @onclick="ToggleCamera">@(cameraEnabled ? "Turn camera off" : "Turn camera on")</button>
+                    <button type="button" @onclick="Leave">Leave meeting</button>
+                </div>
+            }
+            else
+            {
+                <button type="button" @onclick="Join" disabled="@connecting">@(connecting ? "Connecting…" : "Join meeting")</button>
+            }
+            <div id="meeting-video" class="meeting-room-video" hidden="@(!joined)" aria-label="Meeting video streams"></div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string RoomName { get; set; } = "";
+
+    private MeetingJoinDto? meeting;
+    private bool loading = true;
+    private bool connecting;
+    private bool joined;
+    private bool muted;
+    private bool cameraEnabled;
+    private string? error;
+    private string connectionStatus = "Ready to join";
+
+    private record MeetingJoinDto(Guid MeetingId, string Title, string RoomName, string? ExternalLink, string? LiveKitUrl, string? LiveKitToken);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (joined) await JS.InvokeVoidAsync("ipopMeeting.leave");
+        joined = false;
+        loading = true;
+        error = null;
+        meeting = null;
+        try
+        {
+            meeting = await Auth.GetAsync<MeetingJoinDto>($"/api/meetings/join/{Uri.EscapeDataString(RoomName)}");
+            if (meeting is null) error = "This meeting isn't available or you aren't invited.";
+        }
+        catch
+        {
+            error = "Could not load this meeting. Please try again.";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task Join()
+    {
+        if (meeting?.LiveKitUrl is null || meeting.LiveKitToken is null || connecting) return;
+        connecting = true;
+        error = null;
+        try
+        {
+            await JS.InvokeVoidAsync("ipopMeeting.join", meeting.LiveKitUrl, meeting.LiveKitToken, "meeting-video");
+            joined = true;
+            connectionStatus = "Connected to meeting";
+        }
+        catch
+        {
+            error = "Could not connect to the meeting. Check your connection and try again.";
+            connectionStatus = "Disconnected";
+        }
+        finally
+        {
+            connecting = false;
+        }
+    }
+
+    private async Task ToggleMicrophone()
+    {
+        muted = !muted;
+        await JS.InvokeVoidAsync("ipopMeeting.setMicrophone", !muted);
+    }
+
+    private async Task ToggleCamera()
+    {
+        cameraEnabled = !cameraEnabled;
+        await JS.InvokeVoidAsync("ipopMeeting.setCamera", cameraEnabled);
+    }
+
+    private async Task Leave()
+    {
+        await JS.InvokeVoidAsync("ipopMeeting.leave");
+        joined = false;
+        cameraEnabled = false;
+        muted = false;
+        Nav.NavigateTo($"/calls?tab=scheduled&meeting={meeting?.MeetingId}");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (joined)
+            try { await JS.InvokeVoidAsync("ipopMeeting.leave"); }
+            catch (JSDisconnectedException) { }
+    }
+}
