@@ -60,7 +60,7 @@
             </button>
             <label class="btn btn-sm accent">
                 <i data-lucide="upload" style="width:14px;height:14px"></i> Upload
-                <InputFile OnChange="OnUpload" style="display:none" />
+                <InputFile OnChange="OnUpload" multiple style="display:none" />
             </label>
         </div>
 
@@ -86,7 +86,7 @@
 
         @if (needsCredential)
         {
-            <div class="tree-empty" style="padding:28px">Connect your Synology account for @serverLabel to browse. <button class="btn btn-sm" style="display:inline-flex; margin-left:8px" @onclick="() => showCred = true">Connect</button></div>
+            <div class="files-connect-hero"><i data-lucide="hard-drive"></i><h2>Connect to @serverLabel</h2><p>Browse your shares, preview documents and manage files using your Synology permissions.</p><button class="btn btn-sm" @onclick="() => showCred = true">Connect account</button></div>
         }
         else if (loadError is not null)
         {
@@ -182,6 +182,7 @@
                             <button class="files-tool-btn @(copiedPath ? "copied" : "")" title="Copy current path to clipboard" @onclick="CopyCurrentPath">
                                 <i data-lucide="@(copiedPath ? "check" : "copy")"></i> <span>@(copiedPath ? "Copied" : "Copy path")</span>
                             </button>
+                            <button class="files-tool-btn" title="@(gridView ? "List view" : "Grid view")" aria-label="@(gridView ? "List view" : "Grid view")" @onclick="() => gridView = !gridView"><i data-lucide="@(gridView ? "list" : "layout-grid")"></i></button>
                             <button class="files-tool-btn" title="Force refresh from Synology NAS" @onclick="ForceRefresh">
                                 <i data-lucide="refresh-cw"></i> <span>Refresh</span>
                             </button>
@@ -189,6 +190,8 @@
                         </div>
                     </div>
 
+                    @if (!gridView)
+                    {
                     <div class="files-head" style="grid-template-columns: 32px 1fr 100px 130px 140px">
                         <input type="checkbox" checked="@(filteredItems.Count > 0 && selectedPaths.Count == filteredItems.Count)" @onchange="ToggleSelectAll" />
                         <button @onclick='() => ToggleSort("name")'>Name <i data-lucide="@(sortBy.StartsWith("name") ? (sortBy == "name" ? "arrow-up" : "arrow-down") : "arrow-up-down")"></i></button>
@@ -196,8 +199,9 @@
                         <button @onclick='() => ToggleSort("modified")'>Modified <i data-lucide="@(sortBy.StartsWith("modified") ? (sortBy == "modified" ? "arrow-up" : "arrow-down") : "arrow-up-down")"></i></button>
                         <span style="text-align:right">Action</span>
                     </div>
+                    }
 
-                    <div class="files-list">
+                    <div class="files-list @(gridView ? "files-grid" : "")">
                         @if (loading)
                         {
                             <div class="tree-empty" style="padding:24px">Loading…</div>
@@ -226,7 +230,7 @@
                         {
                             @foreach (var it in filteredItems)
                             {
-                                <div class="file-row" style="grid-template-columns: 32px 1fr 100px 130px 140px">
+                                <div class="file-row @(infoItem?.Path == it.Path ? "is-active" : "")" style="@(gridView ? "" : "grid-template-columns: 32px 1fr 100px 130px 140px")">
                                     <input type="checkbox" checked="@selectedPaths.Contains(it.Path)" @onchange="() => ToggleSelect(it.Path)" @onclick:stopPropagation />
                                     <span class="fname" @onclick="() => OnItemClick(it)" title="@(it.IsDir ? "Open folder" : IsPreviewable(it.Name) ? "Click to preview" : "Download")">
                                         @if (it.IsDir)
@@ -244,6 +248,7 @@
                                     <span class="fmeta mono">@(it.IsDir ? "—" : FormatSize(it.Size))</span>
                                     <span class="fmeta">@FormatMtime(it.Mtime)</span>
                                     <span class="factions">
+                                        <button class="org-act" title="File info" aria-label="File info" @onclick="() => ShowInfo(it)" @onclick:stopPropagation><i data-lucide="info"></i></button>
                                         @if (it.IsDir)
                                         {
                                             <button class="org-act" title="Rename" @onclick="() => OpenRenameModal(it)" @onclick:stopPropagation><i data-lucide="edit-3"></i></button>
@@ -293,6 +298,19 @@
                         <span style="margin-left:auto; display:flex; gap:6px; align-items:center"><i data-lucide="eye" style="width:12px;height:12px"></i> Click eye to preview PDF / image, then Print</span>
                     </div>
                 </div>
+                @if (infoItem is { } info)
+                {
+                    <aside class="files-info-pane">
+                        <div class="files-info-head"><strong>File info</strong><button class="org-act" title="Close info" @onclick="() => infoItem = null"><i data-lucide="x"></i></button></div>
+                        <div class="files-info-icon"><i data-lucide="@(info.IsDir ? "folder" : GetFileIcon(info.Name))"></i></div>
+                        <h3>@info.Name</h3>
+                        <dl><dt>Type</dt><dd>@(info.IsDir ? "Folder" : GetFileExtLabel(info.Name))</dd><dt>Size</dt><dd>@(info.IsDir ? "—" : FormatSize(info.Size))</dd><dt>Modified</dt><dd>@FormatMtime(info.Mtime)</dd><dt>Path</dt><dd class="files-info-path">@info.Path</dd></dl>
+                        <div class="files-info-actions">
+                            @if (!info.IsDir) { <button class="btn btn-sm surface" @onclick="() => Download(info)">Download</button> }
+                            @if (!isRecycleBin) { <button class="btn btn-sm surface" @onclick="() => OpenShareModal(info)">Share link</button> }
+                        </div>
+                    </aside>
+                }
             </div>
         }
     </div></div>
@@ -514,6 +532,10 @@
     private bool isRecycleBin;
     private SynoStorageInfo? storageInfo;
     private HashSet<string> selectedPaths = [];
+    private bool gridView;
+    private SynoItemDto? infoItem;
+
+    private void ShowInfo(SynoItemDto item) => infoItem = item;
 
     // Modals state
     private bool showNewFolderModal;
@@ -1293,16 +1315,18 @@
 
     private async Task OnUpload(InputFileChangeEventArgs e)
     {
-        var file = e.File;
         loadError = null;
-        using var form = new MultipartFormDataContent();
-        form.Add(new StringContent(server), "server");
-        form.Add(new StringContent(currentPath), "path");
-        await using var s = file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
-        form.Add(new StreamContent(s), "file", file.Name);
-        var res = await Auth.SendMultipartAsync("/api/files/upload", form);
-        if (!res.IsSuccessStatusCode)
-            loadError = res.StatusCode == System.Net.HttpStatusCode.Unauthorized ? "Sign in again." : "Upload failed.";
+        foreach (var file in e.GetMultipleFiles(20))
+        {
+            using var form = new MultipartFormDataContent();
+            form.Add(new StringContent(server), "server");
+            form.Add(new StringContent(currentPath), "path");
+            await using var s = file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
+            form.Add(new StreamContent(s), "file", file.Name);
+            var res = await Auth.SendMultipartAsync("/api/files/upload", form);
+            if (!res.IsSuccessStatusCode)
+                loadError = res.StatusCode == System.Net.HttpStatusCode.Unauthorized ? "Sign in again." : $"Upload failed: {file.Name}";
+        }
         await Reload();
     }
 

@@ -270,6 +270,28 @@
     .files-crumb-bar .meta { display: none; }
   }
 
+  .files-connect-hero { min-height: 310px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; padding: 24px; text-align: center; color: var(--ink-2); }
+  .files-connect-hero > i { width: 42px; height: 42px; color: var(--accent); }
+  .files-connect-hero h2 { margin: 0; font-size: 20px; color: var(--ink); }
+  .files-connect-hero p { max-width: 380px; margin: 0; }
+  .files-shell:has(.files-info-pane) { grid-template-columns: 200px minmax(0, 1fr) 260px; }
+  .files-info-pane { border-left: 1px solid var(--line); padding: 18px; min-width: 0; overflow-wrap: anywhere; }
+  .files-info-head { display: flex; align-items: center; justify-content: space-between; }
+  .files-info-icon { display: grid; place-items: center; margin-top: 20px; width: 64px; height: 64px; border-radius: 16px; background: var(--accent-soft); color: var(--accent-ink); }
+  .files-info-icon i { width: 28px; height: 28px; }
+  .files-info-pane h3 { font-size: 14px; margin: 10px 0 18px; }
+  .files-info-pane dl { display: grid; grid-template-columns: 75px 1fr; gap: 12px 8px; font-size: 12px; }
+  .files-info-pane dt { color: var(--ink-3); }
+  .files-info-pane dd { margin: 0; color: var(--ink); }
+  .files-info-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+  .files-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); align-content: start; gap: 10px; padding: 12px; }
+  .files-grid .file-row { display: flex; flex-direction: column; align-items: stretch; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+  .files-grid .file-row.is-active, .file-row.is-active { border-color: var(--accent); background: var(--accent-soft); }
+  .files-grid .fname { flex-direction: column; align-items: flex-start; }
+  .files-grid .fi { width: 42px; height: 42px; }
+  .files-grid .factions { flex-wrap: wrap; justify-content: start; }
+  @media (max-width: 1100px) { .files-shell:has(.files-info-pane) { grid-template-columns: 180px minmax(0, 1fr); } .files-info-pane { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); } }
+
   /* ---- Blazor unhandled-error bar (hidden until the framework shows it) ---- */
   #blazor-error-ui {
     display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 120;
