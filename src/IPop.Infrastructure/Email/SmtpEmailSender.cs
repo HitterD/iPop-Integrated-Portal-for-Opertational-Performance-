@@ -16,8 +16,10 @@ public sealed class SmtpEmailSender(SmtpOptions opt) : IEmailSender
         mime.Body = new BodyBuilder { HtmlBody = msg.HtmlBody, TextBody = msg.TextBody }.ToMessageBody();
 
         using var client = new SmtpClient();
-        await client.ConnectAsync(opt.Host!, opt.Port,   // only registered when IsConfigured
-            opt.UseStartTls ? SecureSocketOptions.StartTls : SecureSocketOptions.Auto, ct);
+        if (opt.AllowSelfSignedCert) client.ServerCertificateValidationCallback = (_, _, _, _) => true;
+        var security = opt.UsesImplicitTls ? SecureSocketOptions.SslOnConnect
+            : opt.UseStartTls ? SecureSocketOptions.StartTls : SecureSocketOptions.Auto;
+        await client.ConnectAsync(opt.Host!, opt.Port, security, ct);   // only registered when IsConfigured
         if (!string.IsNullOrEmpty(opt.User))
             await client.AuthenticateAsync(opt.User, opt.Password ?? "", ct);
         await client.SendAsync(mime, ct);
