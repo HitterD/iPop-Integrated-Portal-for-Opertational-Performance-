@@ -8,13 +8,14 @@ using Microsoft.JSInterop;
 namespace IPop.Web.Services;
 
 /// Client auth state for Blazor WASM. Access token lives in memory only;
-/// refresh token persists in localStorage (survives reload, dies with the tab's origin).
-/// ponytail: refresh in localStorage — move to HttpOnly cookie when hosting consolidates
-/// to single origin; localStorage is XSS-readable, accepted for the dev phase.
+/// Refresh token persists in localStorage when requested, otherwise in sessionStorage.
+/// Move to HttpOnly cookies when hosting consolidates to a single origin; browser
+/// storage is XSS-readable, accepted for the development phase.
 public class AuthState(HttpClient http, IJSRuntime js)
 {
     private const string RefreshKey = "ipop.refresh";
     private string? _accessToken;
+    private bool _keepSignedIn = true;
     private HubConnection? _presence;
     private Timer? _heartbeat;
 
@@ -149,7 +150,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
         if (body is not null) MyStatus = body.Status;
     }
 
-    public async Task<(bool Ok, string? Error, bool Locked)> LoginAsync(string nik, string password, string? fingerprint)
+    public async Task<(bool Ok, string? Error, bool Locked)> LoginAsync(string nik, string password, string? fingerprint, bool keepSignedIn = true)
     {
         var res = await http.PostAsJsonAsync("/api/auth/login", new { nik, password, deviceFingerprint = fingerprint });
         if (!res.IsSuccessStatusCode)
@@ -160,7 +161,10 @@ public class AuthState(HttpClient http, IJSRuntime js)
         var body = (await res.Content.ReadFromJsonAsync<LoginDto>())!;
         _accessToken = body.AccessToken;
         MustChangePassword = body.MustChangePassword;
-        await js.InvokeVoidAsync("localStorage.setItem", RefreshKey, body.RefreshToken);
+        _keepSignedIn = keepSignedIn;
+        await js.InvokeVoidAsync("localStorage.removeItem", RefreshKey);
+        await js.InvokeVoidAsync("sessionStorage.removeItem", RefreshKey);
+        await js.InvokeVoidAsync(keepSignedIn ? "localStorage.setItem" : "sessionStorage.setItem", RefreshKey, body.RefreshToken);
         if (!MustChangePassword) await StartPresenceAsync();
         return (true, null, false);
     }
@@ -234,6 +238,8 @@ public class AuthState(HttpClient http, IJSRuntime js)
     private async Task<bool> RefreshCoreAsync()
     {
         var refresh = await js.InvokeAsync<string?>("localStorage.getItem", RefreshKey);
+        _keepSignedIn = !string.IsNullOrEmpty(refresh);
+        if (string.IsNullOrEmpty(refresh)) refresh = await js.InvokeAsync<string?>("sessionStorage.getItem", RefreshKey);
         if (string.IsNullOrEmpty(refresh)) return false;
 
         HttpResponseMessage res;
@@ -252,7 +258,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
         var body = (await res.Content.ReadFromJsonAsync<RefreshDto>())!;
         _accessToken = body.AccessToken;
         MustChangePassword = body.MustChangePassword;
-        await js.InvokeVoidAsync("localStorage.setItem", RefreshKey, body.RefreshToken);
+        await js.InvokeVoidAsync(_keepSignedIn ? "localStorage.setItem" : "sessionStorage.setItem", RefreshKey, body.RefreshToken);
         return true; // presence is started by TryRestoreAsync, once the refresh gate is released
     }
 
@@ -272,7 +278,8 @@ public class AuthState(HttpClient http, IJSRuntime js)
 
     public async Task SignOutAsync()
     {
-        var refresh = await js.InvokeAsync<string?>("localStorage.getItem", RefreshKey);
+        var refresh = await js.InvokeAsync<string?>("localStorage.getItem", RefreshKey)
+            ?? await js.InvokeAsync<string?>("sessionStorage.getItem", RefreshKey);
         if (!string.IsNullOrEmpty(refresh))
             try { await http.PostAsJsonAsync("/api/auth/logout", new { refreshToken = refresh }); } catch { /* best-effort */ }
         await ClearAsync();
@@ -286,6 +293,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
         if (_presence is not null) await _presence.DisposeAsync();
         _presence = null;
         await js.InvokeVoidAsync("localStorage.removeItem", RefreshKey);
+        await js.InvokeVoidAsync("sessionStorage.removeItem", RefreshKey);
         _accessToken = null;
         MustChangePassword = false;
         MyStatus = "off";

@@ -59,6 +59,20 @@
     box-shadow: 0 0 0 3.5px rgba(46,125,91,0.13);
   }
   .field input::placeholder { color: var(--ink-3); }
+  .auth-password-field { position: relative; display: flex; align-items: center; }
+  .auth-password-field input { padding-right: 42px; }
+  .auth-password-field button {
+    position: absolute; right: 8px; background: none; border: none; padding: 6px;
+    color: var(--ink-3); cursor: pointer; display: flex; align-items: center; justify-content: center;
+    border-radius: 8px;
+  }
+  .auth-password-field button:hover { color: var(--ink); background: var(--tray); }
+  .auth-password-field button i, .auth-password-field button svg, .auth-password-field button .lucide { width: 16px; height: 16px; }
+  .auth-remember {
+    display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2);
+    margin: 12px 0 16px; cursor: pointer; user-select: none;
+  }
+  .auth-remember input[type="checkbox"] { width: auto; margin: 0; cursor: pointer; }
   .btn {
     width: 100%; padding: 11px 14px 11px 20px; font-size: 14px; font-weight: 600; font-family: inherit;
     background: var(--accent); color: #fff; border: none; border-radius: 999px; cursor: pointer;

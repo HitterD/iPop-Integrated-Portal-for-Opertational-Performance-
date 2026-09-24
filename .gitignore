@@ -8,6 +8,7 @@ obj/
 
 ## Screenshots / scratch captures at repo root
 *.png
+!src/IPop.Web/wwwroot/img/*.png
 
 ## Reference/inspiration photo dumps (not app assets)
 /inspirasi/
