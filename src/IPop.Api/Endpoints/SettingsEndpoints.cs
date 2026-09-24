@@ -23,6 +23,9 @@ public static class SettingsEndpoints
             // Only known keys: a typo would otherwise silently create a dead setting.
             if (!SettingKeys.Defaults.ContainsKey(key))
                 return Results.BadRequest(new { code = "unknown_setting", message = $"Unknown setting '{key}'." });
+            if (key == SettingKeys.HrisAutoSyncCron && (value.ValueKind != JsonValueKind.String
+                || !IPop.Infrastructure.Hris.HrisSchedule.IsValid(value.GetString())))
+                return Results.BadRequest(new { code = "invalid_schedule", message = "Use \"off\" or a minute/hour cron such as \"0 */6 * * *\"." });
             await settings.SetAsync(key, value, http.User.FindFirst("nik")?.Value, ct);
             return Results.NoContent();
         });

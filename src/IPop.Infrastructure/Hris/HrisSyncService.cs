@@ -1,5 +1,6 @@
 using IPop.Application.Hris;
 using IPop.Application.Notifications;
+using IPop.Application.Settings;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -9,15 +10,26 @@ namespace IPop.Infrastructure.Hris;
 /// Sync upserts Users only. Departments and sites are owned by the admin, not HRIS —
 /// the feed's department codes are ignored entirely (they never set DepartmentId).
 /// HRIS updatedAt wins for profile fields unless the row was edited by an admin
-/// (IsManuallyEdited); auth fields (password_hash, must_change_password,
+/// (IsManuallyEdited) and the hris.protectManualEdits setting is on; auth fields (password_hash, must_change_password,
 /// failed_login_count, locked_until) and presence facts are never touched;
 /// statusAktif=false → soft deactivate + revoke sessions.
-public class HrisSyncService(IPopDbContext db, IHrisGateway gateway, INotificationGatewayService? notificationGateway = null) : IHrisSyncService
+/// Every run keeps a step log (HrisSyncRun.Log); a failure alerts admins when
+/// hris.notifyOnFailure is on.
+public class HrisSyncService(IPopDbContext db, IHrisGateway gateway,
+    INotificationGatewayService? notificationGateway = null, ISettings? settings = null) : IHrisSyncService
 {
-    public async Task<HrisSyncResult> RunAsync(CancellationToken ct)
+    private readonly List<string> _log = [];
+
+    private void Log(string line) => _log.Add($"{DateTime.UtcNow:HH:mm:ss} {line}");
+
+    public Task<HrisSyncResult> RunAsync(CancellationToken ct) => RunAsync(null, ct);
+
+    public async Task<HrisSyncResult> RunAsync(string? triggeredBy, CancellationToken ct)
     {
         var startedAt = DateTime.UtcNow;
-        var run = new HrisSyncRun { Id = Guid.NewGuid(), StartedAt = startedAt };
+        _log.Clear();
+        var run = new HrisSyncRun { Id = Guid.NewGuid(), StartedAt = startedAt, TriggeredBy = triggeredBy };
+        Log(triggeredBy is null ? "Scheduled run started" : $"Started by {triggeredBy}");
         db.HrisSyncRuns.Add(run);
         await db.SaveChangesAsync(ct);
         var state = await db.HrisSyncState.FirstAsync(s => s.Id == 1, ct);
@@ -36,7 +48,10 @@ public class HrisSyncService(IPopDbContext db, IHrisGateway gateway, INotificati
             run.FinishedAt = DateTime.UtcNow;
             run.Succeeded = false;
             run.Error = ex.Message.Length > 1000 ? ex.Message[..1000] : ex.Message;
+            Log($"Failed: {run.Error}");
+            run.Log = string.Join('\n', _log);
             try { await db.SaveChangesAsync(CancellationToken.None); } catch { }
+            await AlertFailureAsync(run.Error);
             throw;
         }
     }
@@ -45,6 +60,8 @@ public class HrisSyncService(IPopDbContext db, IHrisGateway gateway, INotificati
         DateTime startedAt, CancellationToken ct)
     {
         var now = startedAt;
+        var protect = settings is null || await settings.GetAsync(SettingKeys.HrisProtectManualEdits, true, ct);
+        Log($"Connecting to HRIS gateway ({(state.LastUpdated is null ? "full pull" : $"changes since {state.LastUpdated:yyyy-MM-dd HH:mm}")})");
 
         // The feed can carry the same NIK twice — duplicate source rows, or a page boundary
         // shifting under a paginated pull. `users` below is read once, before the insert loop,
@@ -54,21 +71,27 @@ public class HrisSyncService(IPopDbContext db, IHrisGateway gateway, INotificati
             .GroupBy(e => e.Nik)
             .Select(g => g.MaxBy(e => e.UpdatedAt)!)
             .ToList();
+        Log($"Fetched {employees.Count} employee records");
 
         var inserted = 0;
         var updated = 0;
         var deactivated = 0;
+        var skipped = 0;
 
         var users = await db.Users.ToDictionaryAsync(u => u.Nik, ct);
         foreach (var e in employees)
         {
             if (users.TryGetValue(e.Nik, out var u))
             {
-                var changed = false;
-                if (!u.IsManuallyEdited)
+                var changed = u.Name != e.Nama || u.Email != e.Email || u.Position != e.Jabatan
+                    || u.ManagerNik != e.NikAtasan || u.Extension != e.Ekstensi || u.Location != e.Lokasi;
+                if (changed && u.IsManuallyEdited && protect)
                 {
-                    changed = u.Name != e.Nama || u.Email != e.Email || u.Position != e.Jabatan
-                        || u.ManagerNik != e.NikAtasan || u.Extension != e.Ekstensi || u.Location != e.Lokasi;
+                    skipped++;
+                    changed = false;
+                }
+                else
+                {
                     if (changed)
                     {
                         u.Name = e.Nama;
@@ -139,8 +162,13 @@ public class HrisSyncService(IPopDbContext db, IHrisGateway gateway, INotificati
         run.Inserted = inserted;
         run.Updated = updated;
         run.Deactivated = deactivated;
+        run.Skipped = skipped;
         run.Succeeded = true;
         run.FinishedAt = DateTime.UtcNow;
+        Log($"Created {inserted}, updated {updated}, deactivated {deactivated}");
+        if (skipped > 0) Log($"Skipped {skipped} manually edited (protected)");
+        Log($"Finished in {(run.FinishedAt - startedAt).TotalSeconds:0.0}s");
+        run.Log = string.Join('\n', _log);
         await db.SaveChangesAsync(ct);
 
         if (notificationGateway != null && (inserted > 0 || updated > 0 || deactivated > 0))
@@ -164,5 +192,27 @@ public class HrisSyncService(IPopDbContext db, IHrisGateway gateway, INotificati
         }
 
         return new HrisSyncResult(inserted, updated, deactivated, now); // callers broadcast when any count > 0
+    }
+
+    /// Best effort: a failed alert must not mask the sync failure being rethrown.
+    private async Task AlertFailureAsync(string error)
+    {
+        if (notificationGateway is null) return;
+        try
+        {
+            if (settings is not null && !await settings.GetAsync(SettingKeys.HrisNotifyOnFailure, true)) return;
+            await notificationGateway.PublishInternalAsync(
+                clientSlug: "system",
+                eventType: "system.hris_sync_failed",
+                title: "HRIS sync failed",
+                message: error,
+                target: new NotificationTarget(Role: "Admin"),
+                priority: "high",
+                targetUrl: "/admin");
+        }
+        catch
+        {
+            // Non-blocking notification delivery
+        }
     }
 }

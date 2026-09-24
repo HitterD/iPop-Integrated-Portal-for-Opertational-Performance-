@@ -1,26 +1,30 @@
 using IPop.Application.Hris;
 using IPop.Application.Realtime;
+using IPop.Application.Settings;
+using IPop.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace IPop.Infrastructure.Hris;
 
-/// Spec §4: full pull on startup, then every 15 minutes. Failures are logged and
-/// retried on the next tick — the cursor only advances after a successful run.
+/// Runs the HRIS pull on the admin-configured schedule (hris.autoSync.cron, see
+/// HrisSchedule). Checks once a minute, so a schedule change applies without a restart.
+/// A failed run is retried at the next slot — the cursor only advances on success.
 public class HrisSyncWorker(IServiceScopeFactory scopes, ILogger<HrisSyncWorker> log) : BackgroundService
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan Tick = TimeSpan.FromMinutes(1);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
         {
-            await RunOnce(stoppingToken);
-            using var timer = new PeriodicTimer(Interval);
+            await CheckAsync(stoppingToken);
+            using var timer = new PeriodicTimer(Tick);
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
-                await RunOnce(stoppingToken);
+                await CheckAsync(stoppingToken);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -34,16 +38,23 @@ public class HrisSyncWorker(IServiceScopeFactory scopes, ILogger<HrisSyncWorker>
         }
     }
 
-    private async Task RunOnce(CancellationToken ct)
+    private async Task CheckAsync(CancellationToken ct)
     {
         if (ct.IsCancellationRequested) return;
 
         try
         {
             await using var scope = scopes.CreateAsyncScope();
-            var result = await scope.ServiceProvider.GetRequiredService<IHrisSyncService>().RunAsync(ct);
+            var sp = scope.ServiceProvider;
+            var cron = await sp.GetRequiredService<ISettings>()
+                .GetAsync(SettingKeys.HrisAutoSyncCron, (string)SettingKeys.Defaults[SettingKeys.HrisAutoSyncCron], ct);
+            var lastStart = await sp.GetRequiredService<IPopDbContext>().HrisSyncRuns
+                .MaxAsync(r => (DateTime?)r.StartedAt, ct);
+            if (!HrisSchedule.IsDue(cron, DateTime.Now, lastStart?.ToLocalTime())) return;
+
+            var result = await sp.GetRequiredService<IHrisSyncService>().RunAsync(null, ct);
             if (result.Inserted > 0 || result.Updated > 0 || result.Deactivated > 0)
-                await scope.ServiceProvider.GetRequiredService<IDirectoryChangeNotifier>().NotifyAsync(ct);
+                await sp.GetRequiredService<IDirectoryChangeNotifier>().NotifyAsync(ct);
             log.LogInformation("HRIS sync: {Inserted} inserted, {Updated} updated, {Deactivated} deactivated",
                 result.Inserted, result.Updated, result.Deactivated);
         }
@@ -53,7 +64,7 @@ public class HrisSyncWorker(IServiceScopeFactory scopes, ILogger<HrisSyncWorker>
         }
         catch (Exception ex)
         {
-            log.LogWarning(ex, "HRIS sync failed; will retry next tick");
+            log.LogWarning(ex, "HRIS sync failed; will retry at the next scheduled slot");
         }
     }
 }

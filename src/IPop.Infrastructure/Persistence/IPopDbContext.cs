@@ -131,6 +131,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
         {
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.StartedAt);
+            e.Property(x => x.TriggeredBy).HasMaxLength(32);
         });
         b.Entity<AuditLog>(e => e.HasIndex(x => x.CreatedAt));
         b.Entity<UserFavoriteContact>(e =>

@@ -187,4 +187,61 @@ public class HrisSyncServiceTests
         Assert.NotNull(state.LastFullSyncAt);
         Assert.Contains(await v.AuditLogs.ToListAsync(), a => a.Action == "hris.sync");
     }
+
+    [Fact]
+    public async Task Sync_HonorsProtectManualEditsSetting()
+    {
+        using var t = new TestDb();
+        var s = new IPop.Infrastructure.Settings.DbSettings(t.Db);
+        await new HrisSyncService(t.Verify(), new StubGateway([Emp("20140312", "Bagas Arif")]), settings: s).RunAsync(default);
+
+        await using (var v0 = t.Verify())
+        {
+            var u = await v0.Users.SingleAsync(x => x.Nik == "20140312");
+            u.Name = "Bagas (admin set)";
+            u.IsManuallyEdited = true;
+            await v0.SaveChangesAsync();
+        }
+
+        // When setting is false, feed overwrites even if IsManuallyEdited is true
+        await s.SetAsync(IPop.Application.Settings.SettingKeys.HrisProtectManualEdits, false, "admin");
+        var res = await new HrisSyncService(t.Verify(), new StubGateway([Emp("20140312", "Bagas From Feed")]), settings: s).RunAsync(default);
+
+        Assert.Equal(1, res.Updated);
+        await using var v1 = t.Verify();
+        Assert.Equal("Bagas From Feed", (await v1.Users.SingleAsync(x => x.Nik == "20140312")).Name);
+        var lastRun = await v1.HrisSyncRuns.OrderByDescending(r => r.StartedAt).FirstAsync();
+        Assert.Equal(0, lastRun.Skipped);
+        Assert.NotNull(lastRun.Log);
+        Assert.Contains("Created 0, updated 1, deactivated 0", lastRun.Log);
+    }
+
+    [Fact]
+    public async Task Sync_LogsStepsAndTriggeredBy()
+    {
+        using var t = new TestDb();
+        var svc = new HrisSyncService(t.Verify(), new StubGateway([Emp("20140312", "Bagas Arif")]));
+        var res = await svc.RunAsync("admin-nik", default);
+
+        Assert.Equal(1, res.Inserted);
+        await using var v = t.Verify();
+        var run = await v.HrisSyncRuns.SingleAsync();
+        Assert.Equal("admin-nik", run.TriggeredBy);
+        Assert.True(run.Succeeded);
+        Assert.NotNull(run.Log);
+        Assert.Contains("Started by admin-nik", run.Log);
+        Assert.Contains("Fetched 1 employee records", run.Log);
+        Assert.Contains("Created 1, updated 0, deactivated 0", run.Log);
+    }
+
+    [Theory]
+    [InlineData("off", true)]
+    [InlineData("invalid", false)]
+    [InlineData("0 * * * *", true)]
+    [InlineData("0 */6 * * *", true)]
+    [InlineData("0 2 * * *", true)]
+    public void HrisSchedule_EvaluatesPresets(string cron, bool isValid)
+    {
+        Assert.Equal(isValid, HrisSchedule.IsValid(cron));
+    }
 }

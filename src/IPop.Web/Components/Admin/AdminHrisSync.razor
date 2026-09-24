@@ -1,6 +1,8 @@
 @using System.Net.Http.Json
+@using System.Text.Json
 @using IPop.Web.Services
 @inject AuthState Auth
+@inject ToastService Toasts
 @inject IJSRuntime JS
 
 @* ---- HRIS Sync KPI Summary Grid ---- *@
@@ -43,71 +45,133 @@
     </div>
 </div>
 
-<div class="tray rise rise-1">
-    <div class="core" style="padding:0;overflow:hidden">
-        <div class="panel-head" style="border-bottom:1px solid var(--line-soft)">
-            <div style="display:flex;align-items:center;gap:8px">
-                <i data-lucide="refresh-cw" style="color:#0d9488"></i>
-                <span style="font-weight:700">HRIS Data Synchronization</span>
+<div style="display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px;align-items:start">
+    @* Left: Manual sync execution *@
+    <div class="tray rise rise-1" style="height:100%">
+        <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head" style="border-bottom:1px solid var(--line-soft)">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <i data-lucide="refresh-cw" style="color:#0d9488"></i>
+                    <span style="font-weight:700">HRIS Data Synchronization</span>
+                </div>
+                <span class="meta">@SyncCaption</span>
             </div>
-            <span class="meta">@SyncCaption</span>
+            <div style="display:flex;align-items:center;gap:14px;padding:16px 20px">
+                <div style="flex:1">
+                    <p style="margin:0;color:var(--ink);font-size:13px;line-height:1.5;font-weight:500">
+                        Pull and synchronize employee profiles directly from the company's centralized HRIS server.
+                    </p>
+                    <div style="color:var(--ink-3);font-size:12px;margin-top:4px">
+                        New employees are registered automatically. Manual modifications are protected when enabled.
+                    </div>
+                </div>
+                <button class="btn btn-teal" style="width:auto;margin:0;padding:10px 22px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:8px" disabled="@syncing" @onclick="SyncNow">
+                    @if (syncing)
+                    {
+                        <i data-lucide="loader-2" class="spin" style="width:16px;height:16px"></i>
+                        <span>Synchronizing...</span>
+                    }
+                    else
+                    {
+                        <i data-lucide="download" style="width:16px;height:16px"></i>
+                        <span>Start Sync</span>
+                    }
+                </button>
+            </div>
+            @if (syncResult is not null)
+            {
+                <div class="note" style="margin:0 18px 16px;border-radius:10px;background:rgba(13,148,136,0.08);border:1px solid rgba(13,148,136,0.25)">
+                    <i data-lucide="check-circle-2" style="color:#0d9488"></i>
+                    <span style="color:var(--ink);font-weight:500">@syncResult</span>
+                </div>
+            }
         </div>
-        <div style="display:flex;align-items:center;gap:14px;padding:16px 20px">
-            <div style="flex:1">
-                <p style="margin:0;color:var(--ink);font-size:13px;line-height:1.5;font-weight:500">
-                    Pull and synchronize employee profiles directly from the company's centralized HRIS server.
-                </p>
-                <div style="color:var(--ink-3);font-size:12px;margin-top:4px">
-                    New employees are automatically registered in the directory. Manual modifications to units/departments are protected from sync overwrites.
+    </div>
+
+    @* Right: Schedule & Protection Settings *@
+    <div class="tray rise rise-1" style="height:100%">
+        <div class="core" style="padding:0;overflow:hidden">
+            <div class="panel-head" style="border-bottom:1px solid var(--line-soft)">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <i data-lucide="settings-2" style="color:#0d9488"></i>
+                    <span style="font-weight:700">Sync Configuration</span>
                 </div>
             </div>
-            <button class="btn btn-teal" style="width:auto;margin:0;padding:10px 22px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:8px" disabled="@syncing" @onclick="SyncNow">
-                @if (syncing)
-                {
-                    <i data-lucide="loader-2" class="spin" style="width:16px;height:16px"></i>
-                    <span>Synchronizing...</span>
-                }
-                else
-                {
-                    <i data-lucide="download" style="width:16px;height:16px"></i>
-                    <span>Start Sync</span>
-                }
-            </button>
-        </div>
-        @if (syncResult is not null)
-        {
-            <div class="note" style="margin:0 18px 16px;border-radius:10px;background:rgba(13,148,136,0.08);border:1px solid rgba(13,148,136,0.25)">
-                <i data-lucide="check-circle-2" style="color:#0d9488"></i>
-                <span style="color:var(--ink);font-weight:500">@syncResult</span>
+            <div style="padding:8px 18px">
+                <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line-soft)">
+                    <i data-lucide="clock" style="width:18px;height:18px;color:var(--ink-3);flex-shrink:0"></i>
+                    <div style="flex:1">
+                        <div style="font-size:13px;font-weight:600">Automatic Sync</div>
+                        <div style="font-size:11.5px;color:var(--ink-3)">Background scheduler interval</div>
+                    </div>
+                    <select class="form-select" style="width:160px;padding:6px 10px;font-size:12.5px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)" value="@cronSchedule" @onchange="OnScheduleChanged" disabled="@updatingSettings">
+                        <option value="off">Off</option>
+                        <option value="0 * * * *">Every hour</option>
+                        <option value="0 */6 * * *">Every 6 hours</option>
+                        <option value="0 2 * * *">Daily at 02:00</option>
+                    </select>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line-soft)">
+                    <i data-lucide="shield" style="width:18px;height:18px;color:var(--ink-3);flex-shrink:0"></i>
+                    <div style="flex:1">
+                        <div style="font-size:13px;font-weight:600">Protect manual edits</div>
+                        <div style="font-size:11.5px;color:var(--ink-3)">Profiles edited in iPop aren't overwritten</div>
+                    </div>
+                    <div class="apple-switch @(protectManualEdits ? "on" : "")" style="cursor:pointer" @onclick="ToggleProtect">
+                        <div class="apple-switch-knob"></div>
+                    </div>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;padding:12px 0">
+                    <i data-lucide="bell" style="width:18px;height:18px;color:var(--ink-3);flex-shrink:0"></i>
+                    <div style="flex:1">
+                        <div style="font-size:13px;font-weight:600">Notify on failure</div>
+                        <div style="font-size:11.5px;color:var(--ink-3)">Send alert notification to IT admins</div>
+                    </div>
+                    <div class="apple-switch @(notifyOnFailure ? "on" : "")" style="cursor:pointer" @onclick="ToggleNotify">
+                        <div class="apple-switch-knob"></div>
+                    </div>
+                </div>
             </div>
-        }
+        </div>
     </div>
 </div>
 
 <div class="tray rise rise-2" style="margin-top:16px">
     <div class="core" style="padding:0;overflow:hidden">
-        <div class="panel-head" style="border-bottom:1px solid var(--line-soft)">
+        <div class="panel-head" style="border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between">
             <div style="display:flex;align-items:center;gap:8px">
                 <i data-lucide="history" style="color:#0d9488"></i>
                 <span style="font-weight:700">Sync Execution History</span>
             </div>
-            <span class="meta">@syncHistory.Items.Length runs recorded</span>
+            <div style="display:flex;align-items:center;gap:8px">
+                <div style="display:inline-flex;padding:2px;background:rgba(118,118,128,0.12);border-radius:10px;gap:2px">
+                    <button type="button" class="btn btn-sm @(historyFilter == "all" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(historyFilter == "all" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(historyFilter == "all" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SetFilter("all")'>All</button>
+                    <button type="button" class="btn btn-sm @(historyFilter == "success" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(historyFilter == "success" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(historyFilter == "success" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SetFilter("success")'>Success</button>
+                    <button type="button" class="btn btn-sm @(historyFilter == "failed" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(historyFilter == "failed" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(historyFilter == "failed" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SetFilter("failed")'>Failed</button>
+                </div>
+                <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;border-radius:8px;border:1px solid var(--line);background:var(--surface);cursor:pointer" disabled="@exportingCsv" @onclick="ExportCsv">
+                    <i data-lucide="download" style="width:13px;height:13px"></i>
+                    <span>@(exportingCsv ? "Exporting…" : "Export CSV")</span>
+                </button>
+            </div>
         </div>
         <table class="u-table">
             <thead>
                 <tr>
-                    <th style="width:170px">Start Time</th>
-                    <th style="width:120px">New Employees</th>
-                    <th style="width:120px">Updated</th>
-                    <th style="width:120px">Deactivated</th>
-                    <th style="width:120px">Status</th>
+                    <th style="width:160px">Start Time</th>
+                    <th style="width:80px">New</th>
+                    <th style="width:80px">Updated</th>
+                    <th style="width:90px">Removed</th>
+                    <th style="width:100px">Status</th>
+                    <th style="width:140px">By · Duration</th>
                     <th>Notes</th>
+                    <th style="width:110px;text-align:right">Actions</th>
                 </tr>
             </thead>
             <tbody>
-                @foreach (var run in syncHistory.Items)
+                @foreach (var run in FilteredRuns)
                 {
-                    <tr>
+                    <tr style="cursor:pointer" @onclick="() => OpenLog(run)">
                         <td class="mono" style="font-size:12px">
                             <i data-lucide="calendar" style="width:12px;height:12px;display:inline-block;vertical-align:-1px;margin-right:4px;color:var(--ink-3)"></i>
                             @run.StartedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")
@@ -131,25 +195,99 @@
                                 <span class="badge-active-no"><i data-lucide="x" style="width:11px;height:11px"></i> Failed</span>
                             }
                         </td>
+                        <td style="font-size:11.5px;color:var(--ink-2)">
+                            <span>@(run.TriggeredBy ?? "Scheduler")</span> ·
+                            <span>@(run.FinishedAt >= run.StartedAt ? $"{(run.FinishedAt - run.StartedAt).TotalSeconds:0.0}s" : "-")</span>
+                        </td>
                         <td style="font-size:12px;color:var(--ink-2)">
-                            @(string.IsNullOrEmpty(run.Error) ? "Completed without issues" : run.Error)
+                            @if (!string.IsNullOrEmpty(run.Error))
+                            {
+                                <span style="color:var(--danger)">@run.Error</span>
+                            }
+                            else if (run.Skipped > 0)
+                            {
+                                <span>@($"{run.Skipped} protected rows skipped")</span>
+                            }
+                            else
+                            {
+                                <span>Completed without issues</span>
+                            }
+                        </td>
+                        <td style="text-align:right" @onclick:stopPropagation>
+                            <div style="display:inline-flex;gap:4px">
+                                @if (!run.Succeeded)
+                                {
+                                    <button type="button" class="btn btn-sm" style="height:24px;padding:0 8px;font-size:11px;border-radius:6px;border:1px solid rgba(13,148,136,0.3);color:#0d9488;background:transparent;cursor:pointer" @onclick="SyncNow" title="Retry synchronization">Retry</button>
+                                }
+                                <button type="button" class="btn btn-sm surface" style="height:24px;padding:0 8px;font-size:11px;border-radius:6px;border:1px solid var(--line);cursor:pointer" @onclick="() => OpenLog(run)">Log</button>
+                            </div>
                         </td>
                     </tr>
                 }
             </tbody>
         </table>
-        @if (syncHistory.Items.Length == 0)
+        @if (!FilteredRuns.Any())
         {
-            <div class="tree-empty" style="padding:28px">No recorded HRIS sync history.</div>
+            <div class="tree-empty" style="padding:28px">No recorded HRIS sync history matching current filter.</div>
         }
     </div>
 </div>
+
+@* ---- Log Detail Modal ---- *@
+<Modal IsOpen="@showLogModal" IsOpenChanged="@((val) => showLogModal = val)" Title="@($"Sync Log · {(selectedRun != null ? selectedRun.StartedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm") : "")}")" Subtitle="@(selectedRun?.TriggeredBy is not null ? $"Triggered by {selectedRun.TriggeredBy}" : "Scheduled sync run")" Wide="true">
+    <ChildContent>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+            <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px;border-radius:6px;border:1px solid var(--line);cursor:pointer" @onclick="CopyLog">
+                <i data-lucide="copy" style="width:13px;height:13px"></i>
+                <span>Copy log</span>
+            </button>
+        </div>
+        <div style="background:#1C1C1E;color:#F2F2F7;border-radius:12px;padding:14px 16px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.7;max-height:360px;overflow-y:auto">
+            @if (loadingLog)
+            {
+                <div style="color:#8E8E93">Loading run log…</div>
+            }
+            else if (logLines.Length == 0)
+            {
+                <div style="color:#8E8E93">No step log lines recorded for this run.</div>
+            }
+            else
+            {
+                @foreach (var line in logLines)
+                {
+                    <div style="color:@(line.Contains("Failed") || line.Contains("Error") ? "#FF6961" : "#D1D1D6")">@line</div>
+                }
+            }
+        </div>
+    </ChildContent>
+</Modal>
 
 @code {
     private bool syncing;
     private string? syncResult;
     private HrisSyncStatusDto? syncStatus;
-    private SyncHistoryDto syncHistory = new(Array.Empty<HrisSyncRunDto>(), 1, 20);
+    private SyncHistoryDto syncHistory = new(Array.Empty<HrisSyncRunDto>(), 1, 50);
+
+    // Settings
+    private string cronSchedule = "0 2 * * *";
+    private bool protectManualEdits = true;
+    private bool notifyOnFailure = true;
+    private bool updatingSettings;
+
+    // Filters and Log modal
+    private string historyFilter = "all";
+    private bool showLogModal;
+    private bool loadingLog;
+    private bool exportingCsv;
+    private HrisSyncRunDto? selectedRun;
+    private string[] logLines = [];
+
+    private IEnumerable<HrisSyncRunDto> FilteredRuns => historyFilter switch
+    {
+        "success" => syncHistory.Items.Where(r => r.Succeeded),
+        "failed" => syncHistory.Items.Where(r => !r.Succeeded),
+        _ => syncHistory.Items
+    };
 
     private string SyncCaption => syncStatus?.LastSyncedAt is null
         ? "Never synchronized"
@@ -162,7 +300,7 @@
 
     public async Task Reload()
     {
-        await Task.WhenAll(ReloadSyncStatus(), LoadSyncHistory());
+        await Task.WhenAll(ReloadSyncStatus(), LoadSyncHistory(), LoadSettings());
         StateHasChanged();
     }
 
@@ -170,7 +308,176 @@
         => syncStatus = await Auth.GetAsync<HrisSyncStatusDto>("/api/admin/hris/status");
 
     private async Task LoadSyncHistory()
-        => syncHistory = await Auth.GetAsync<SyncHistoryDto>("/api/admin/hris/history?page=1&pageSize=20") ?? new([], 1, 20);
+        => syncHistory = await Auth.GetAsync<SyncHistoryDto>("/api/admin/hris/history?page=1&pageSize=50") ?? new([], 1, 50);
+
+    private async Task LoadSettings()
+    {
+        try
+        {
+            var cronRes = await Auth.GetAsync<SettingDto>("/api/admin/settings/hris.autoSync.cron");
+            if (cronRes is not null && cronRes.Value.ValueKind == JsonValueKind.String)
+                cronSchedule = cronRes.Value.GetString() ?? "0 2 * * *";
+
+            var protectRes = await Auth.GetAsync<SettingDto>("/api/admin/settings/hris.protectManualEdits");
+            if (protectRes is not null && (protectRes.Value.ValueKind == JsonValueKind.True || protectRes.Value.ValueKind == JsonValueKind.False))
+                protectManualEdits = protectRes.Value.GetBoolean();
+
+            var notifyRes = await Auth.GetAsync<SettingDto>("/api/admin/settings/hris.notifyOnFailure");
+            if (notifyRes is not null && (notifyRes.Value.ValueKind == JsonValueKind.True || notifyRes.Value.ValueKind == JsonValueKind.False))
+                notifyOnFailure = notifyRes.Value.GetBoolean();
+        }
+        catch { /* best effort fallback to defaults */ }
+    }
+
+    private async Task OnScheduleChanged(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString() ?? "off";
+        updatingSettings = true;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Put, "/api/admin/settings/hris.autoSync.cron", val);
+            if (res.IsSuccessStatusCode)
+            {
+                cronSchedule = val;
+                Toasts.ShowDetailed("Auto-Sync Updated", $"Schedule set to {ScheduleLabel(val)}", ToastKind.Success, "clock");
+            }
+            else
+            {
+                Toasts.Show("Could not update auto-sync schedule.", ToastKind.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Toasts.Show($"Failed to save setting: {ex.Message}", ToastKind.Error);
+        }
+        finally
+        {
+            updatingSettings = false;
+        }
+    }
+
+    private static string ScheduleLabel(string cron) => cron switch
+    {
+        "off" => "Off",
+        "0 * * * *" => "Every hour",
+        "0 */6 * * *" => "Every 6 hours",
+        "0 2 * * *" => "Daily at 02:00",
+        _ => cron
+    };
+
+    private async Task ToggleProtect()
+    {
+        if (updatingSettings) return;
+        updatingSettings = true;
+        var next = !protectManualEdits;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Put, "/api/admin/settings/hris.protectManualEdits", next);
+            if (res.IsSuccessStatusCode)
+            {
+                protectManualEdits = next;
+                Toasts.ShowDetailed("Setting Updated", next ? "Manual edits are protected" : "Manual edits can now be overwritten", ToastKind.Success, "shield");
+            }
+            else
+            {
+                Toasts.Show("Could not update manual edits protection setting.", ToastKind.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Toasts.Show($"Failed to save setting: {ex.Message}", ToastKind.Error);
+        }
+        finally
+        {
+            updatingSettings = false;
+        }
+    }
+
+    private async Task ToggleNotify()
+    {
+        if (updatingSettings) return;
+        updatingSettings = true;
+        var next = !notifyOnFailure;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Put, "/api/admin/settings/hris.notifyOnFailure", next);
+            if (res.IsSuccessStatusCode)
+            {
+                notifyOnFailure = next;
+                Toasts.ShowDetailed("Setting Updated", next ? "Failure notifications enabled" : "Failure notifications disabled", ToastKind.Success, "bell");
+            }
+            else
+            {
+                Toasts.Show("Could not update notification setting.", ToastKind.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Toasts.Show($"Failed to save setting: {ex.Message}", ToastKind.Error);
+        }
+        finally
+        {
+            updatingSettings = false;
+        }
+    }
+
+    private void SetFilter(string filter) => historyFilter = filter;
+
+    private async Task OpenLog(HrisSyncRunDto run)
+    {
+        selectedRun = run;
+        showLogModal = true;
+        loadingLog = true;
+        logLines = [];
+        try
+        {
+            var dto = await Auth.GetAsync<RunLogDto>($"/api/admin/hris/runs/{run.Id}/log");
+            logLines = dto?.Lines ?? [];
+        }
+        catch
+        {
+            logLines = ["Failed to load log for this run."];
+        }
+        finally
+        {
+            loadingLog = false;
+        }
+    }
+
+    private async Task CopyLog()
+    {
+        if (logLines.Length == 0) return;
+        var text = string.Join("\n", logLines);
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+        Toasts.ShowDetailed("Copied", "Sync log copied to clipboard", ToastKind.Success, "copy");
+    }
+
+    private async Task ExportCsv()
+    {
+        if (exportingCsv) return;
+        exportingCsv = true;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Get, "/api/admin/hris/history.csv");
+            if (!res.IsSuccessStatusCode)
+            {
+                Toasts.Show($"Export failed ({(int)res.StatusCode}).", ToastKind.Error);
+                return;
+            }
+            var bytes = await res.Content.ReadAsByteArrayAsync();
+            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmm");
+            await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(bytes), $"hris_sync_history-{stamp}.csv");
+            Toasts.ShowDetailed("Export Complete", "HRIS sync history CSV downloaded", ToastKind.Success, "download");
+        }
+        catch (Exception ex)
+        {
+            Toasts.Show($"Export failed: {ex.Message}", ToastKind.Error);
+        }
+        finally
+        {
+            exportingCsv = false;
+        }
+    }
 
     private async Task SyncNow()
     {
@@ -184,15 +491,18 @@
                 var r = await res.Content.ReadFromJsonAsync<SyncResultDto>();
                 syncResult = r is null ? "Synchronization completed."
                     : $"Synchronization completed: {r.Inserted} new, {r.Updated} updated, {r.Deactivated} deactivated.";
+                Toasts.ShowDetailed("Sync Complete", syncResult, ToastKind.Success, "check-circle-2");
             }
             else
             {
                 syncResult = "Synchronization failed — gateway may be busy or rate-limited. Please try again shortly.";
+                Toasts.Show(syncResult, ToastKind.Error);
             }
         }
         catch
         {
             syncResult = "Synchronization failed — cannot reach server.";
+            Toasts.Show(syncResult, ToastKind.Error);
         }
         finally
         {
@@ -209,6 +519,8 @@
 
     public record SyncHistoryDto(HrisSyncRunDto[] Items, int Page, int PageSize);
     public record HrisSyncRunDto(Guid Id, DateTime StartedAt, DateTime FinishedAt, int Inserted,
-        int Updated, int Deactivated, bool Succeeded, string? Error);
+        int Updated, int Deactivated, int Skipped, bool Succeeded, string? Error, string? TriggeredBy);
     public record SyncResultDto(int Inserted, int Updated, int Deactivated, DateTime SyncedAt);
+    public record SettingDto(string Key, JsonElement Value);
+    public record RunLogDto(Guid Id, string[] Lines);
 }

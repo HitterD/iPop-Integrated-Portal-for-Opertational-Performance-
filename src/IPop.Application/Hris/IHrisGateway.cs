@@ -28,4 +28,6 @@ public record HrisSyncResult(int Inserted, int Updated, int Deactivated, DateTim
 public interface IHrisSyncService
 {
     Task<HrisSyncResult> RunAsync(CancellationToken ct);
+    /// triggeredBy: NIK of the admin who started the run; null for scheduled runs.
+    Task<HrisSyncResult> RunAsync(string? triggeredBy, CancellationToken ct);
 }

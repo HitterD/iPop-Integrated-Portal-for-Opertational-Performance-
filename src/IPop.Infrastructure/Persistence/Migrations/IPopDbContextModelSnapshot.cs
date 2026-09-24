@@ -929,11 +929,21 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<int>("Inserted")
                         .HasColumnType("integer");
 
+                    b.Property<string>("Log")
+                        .HasColumnType("text");
+
+                    b.Property<int>("Skipped")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("Succeeded")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("TriggeredBy")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<int>("Updated")
                         .HasColumnType("integer");
