@@ -70,6 +70,23 @@ public class LiveKitTokenTests
         Assert.Contains(created.Room.Id.ToString(), payloadJson);
     }
 
+    [Fact]
+    public async Task CallService_OmitsLiveKit_WhenNotConfigured()
+    {
+        using var t = new TestDb();
+        var caller = t.AddUser("CALLER_2");
+        var callee = t.AddUser("CALLEE_2");
+
+        var lk = CreateService(apiKey: "", apiSecret: "");
+        Assert.False(lk.IsConfigured);
+        Assert.Throws<InvalidOperationException>(() => lk.GenerateToken("r", "u", "n"));
+
+        var created = await new CallService(t.Verify(), lk).CreateCallAsync(caller.Id, new CreateCallRequest(callee.Nik), default);
+        Assert.True(created.Success);
+        Assert.Null(created.Room!.LiveKitToken);
+        Assert.Null(created.Room.LiveKitUrl);
+    }
+
     private static byte[] Base64UrlDecode(string input)
     {
         var output = input.Replace('-', '+').Replace('_', '/');

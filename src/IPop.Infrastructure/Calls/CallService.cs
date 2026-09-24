@@ -233,7 +233,7 @@ public sealed class CallService(IPopDbContext db, ILiveKitTokenService? liveKit 
     private CallRoomDto ToRoom(CallRoom r, Guid? forUserId = null)
     {
         string? lkToken = null;
-        if (liveKit is not null && forUserId.HasValue)
+        if (liveKit is { IsConfigured: true } && forUserId.HasValue)
         {
             var p = r.Participants.FirstOrDefault(x => x.UserId == forUserId.Value);
             var nik = p?.User?.Nik ?? forUserId.Value.ToString();
@@ -249,7 +249,7 @@ public sealed class CallService(IPopDbContext db, ILiveKitTokenService? liveKit 
                 .Select(p => new CallParticipantDto(p.UserId, p.User?.Nik ?? "", p.User?.Name ?? "", p.Status,
                     p.IsMuted, p.IsScreenSharing, p.LeftAt))
                 .ToList(),
-            liveKit?.ServerUrl,
+            liveKit is { IsConfigured: true } ? liveKit.ServerUrl : null,
             lkToken);
     }
 

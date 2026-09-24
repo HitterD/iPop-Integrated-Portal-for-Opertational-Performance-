@@ -8,20 +8,18 @@ namespace IPop.Infrastructure.Calls;
 
 public class LiveKitTokenService(IConfiguration config) : ILiveKitTokenService
 {
-    private string? ApiKey => config["Calls:LiveKit:ApiKey"] ?? config["LiveKit:ApiKey"] ?? "devkey";
-    private string? ApiSecret => config["Calls:LiveKit:ApiSecret"] ?? config["LiveKit:ApiSecret"] ?? "secret_key_livekit_ipop_32bytes_long!";
-    public string? ServerUrl => config["Calls:LiveKit:Url"] ?? config["LiveKit:Url"] ?? "wss://livekit.sja.local";
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKey) && !string.IsNullOrWhiteSpace(ApiSecret);
+    private string? ApiKey => config["Calls:LiveKit:ApiKey"] ?? config["LiveKit:ApiKey"];
+    private string? ApiSecret => config["Calls:LiveKit:ApiSecret"] ?? config["LiveKit:ApiSecret"];
+    public string? ServerUrl => NullIfBlank(config["Calls:LiveKit:Url"] ?? config["LiveKit:Url"]);
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiKey) && !string.IsNullOrWhiteSpace(ApiSecret) && ServerUrl is not null;
 
     public string GenerateToken(string roomName, string identity, string name, TimeSpan? ttl = null)
     {
         var key = ApiKey;
         var secret = ApiSecret;
-        if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(secret))
-        {
-            key = "devkey";
-            secret = "secret_key_livekit_ipop_32bytes_long!";
-        }
+        // Fail closed: never sign with a guessable secret; callers fall back to P2P.
+        if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(secret))
+            throw new InvalidOperationException("LiveKit ApiKey/ApiSecret are not configured.");
 
         var now = DateTimeOffset.UtcNow;
         var expires = now.Add(ttl ?? TimeSpan.FromHours(6));
@@ -64,6 +62,8 @@ public class LiveKitTokenService(IConfiguration config) : ILiveKitTokenService
 
         return $"{stringToSign}.{signatureBase64}";
     }
+
+    private static string? NullIfBlank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
 
     private static string Base64UrlEncode(byte[] input)
     {
