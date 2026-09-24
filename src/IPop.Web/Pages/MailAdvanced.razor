@@ -63,7 +63,7 @@
                                     <span style="width:14px;height:14px;border-radius:4px;background:@l.Color;flex-shrink:0"></span>
                                     <span style="flex:1;font-size:12.5px;font-weight:600">@l.Name</span>
                                     <span style="font-size:11px;color:var(--ink-3)">@l.Count messages</span>
-                                    <button class="btn-sm surface danger" style="padding:2px 8px" @onclick="() => labels.Remove(l)"><i data-lucide="trash-2" style="width:11px;height:11px"></i></button>
+                                    <button class="btn-sm surface danger" style="padding:2px 8px" @onclick="() => DeleteLabel(l.Id)"><i data-lucide="trash-2" style="width:11px;height:11px"></i></button>
                                 </div>
                             }
                         </div>
@@ -113,7 +113,7 @@
                                         <div style="font-size:11px;color:var(--ink-3)">Sender contains "@r.SenderContains" → label "@r.LabelName"</div>
                                     </div>
                                     <label class="syno-toggle"><input type="checkbox" checked="@r.Enabled" @onchange="() => r.Enabled = !r.Enabled" /><span style="font-size:11px">@(r.Enabled ? "Active" : "Inactive")</span></label>
-                                    <button class="btn-sm surface danger" style="padding:2px 8px" @onclick="() => rules.Remove(r)"><i data-lucide="trash-2" style="width:11px;height:11px"></i></button>
+                                    <button class="btn-sm surface danger" style="padding:2px 8px" @onclick="() => DeleteRule(r.Id)"><i data-lucide="trash-2" style="width:11px;height:11px"></i></button>
                                 </div>
                             }
                         </div>
@@ -154,7 +154,7 @@
                                         <div style="font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">@tpl.Subject</div>
                                     </div>
                                     <button class="btn-sm surface" style="padding:2px 8px" title="Use this template to write an email" @onclick="() => UseTemplate(tpl)"><i data-lucide="pen-line" style="width:11px;height:11px"></i> Use</button>
-                                    <button class="btn-sm surface danger" style="padding:2px 8px" @onclick="() => templates.Remove(tpl)"><i data-lucide="trash-2" style="width:11px;height:11px"></i></button>
+                                    <button class="btn-sm surface danger" style="padding:2px 8px" @onclick="() => DeleteTemplate(tpl.Id)"><i data-lucide="trash-2" style="width:11px;height:11px"></i></button>
                                 </div>
                             }
                         </div>
@@ -200,37 +200,31 @@
 @code {
     [CascadingParameter] public MainLayout Layout { get; set; } = default!;
 
+    private record MailLabelDto(Guid Id, string Name, string Color, int Count);
+    private record MailRuleDto(Guid Id, string Name, string SenderContains, string LabelName, bool IsEnabled);
+    private record MailTemplateDto(Guid Id, string Name, string Subject, string Body);
+    private record MailAutoReplyDto(bool IsEnabled, DateTime? FromDate, DateTime? UntilDate, string? Message);
+
     private string activeTab = "labels";
 
     // Labels
-    private sealed class LabelItem { public string Name = ""; public string Color = "#2e7d5b"; public int Count; }
-    private List<LabelItem> labels =
-    [
-        new() { Name = "Important", Color = "#b3543f", Count = 4 },
-        new() { Name = "HR", Color = "#4f6d8f", Count = 12 },
-        new() { Name = "Projects", Color = "#2e7d5b", Count = 7 },
-    ];
+    private sealed class LabelItem { public Guid Id; public string Name = ""; public string Color = "#2e7d5b"; public int Count; }
+    private List<LabelItem> labels = [];
     private bool labelFormOpen;
     private string newLabelName = "";
     private string newLabelColor = "#2e7d5b";
 
     // Rules
-    private sealed class RuleItem { public string Name = ""; public string SenderContains = ""; public string LabelName = ""; public bool Enabled = true; }
-    private List<RuleItem> rules =
-    [
-        new() { Name = "Auto HR mail", SenderContains = "hr@", LabelName = "HR" },
-    ];
+    private sealed class RuleItem { public Guid Id; public string Name = ""; public string SenderContains = ""; public string LabelName = ""; public bool Enabled = true; }
+    private List<RuleItem> rules = [];
     private bool ruleFormOpen;
     private string newRuleName = "";
     private string newRuleSender = "";
     private string newRuleLabel = "HR";
 
     // Templates
-    private sealed class TemplateItem { public string Name = ""; public string Subject = ""; public string Body = ""; }
-    private List<TemplateItem> templates =
-    [
-        new() { Name = "Meeting Invitation", Subject = "Meeting Invitation: {topic}", Body = "Dear Team,\n\nYou are invited to attend the meeting…\n\nBest regards," },
-    ];
+    private sealed class TemplateItem { public Guid Id; public string Name = ""; public string Subject = ""; public string Body = ""; }
+    private List<TemplateItem> templates = [];
     private bool tplFormOpen;
     private string newTplName = "";
     private string newTplSubject = "";
@@ -244,31 +238,122 @@
 
     protected override void OnInitialized() => Layout.SetHeader("Mail", "Advanced Mail");
 
-    private void AddLabel()
+    protected override async Task OnInitializedAsync()
     {
-        labels.Add(new LabelItem { Name = newLabelName.Trim(), Color = newLabelColor });
-        newLabelName = ""; labelFormOpen = false;
-        Toasts.Show("Label saved (local — endpoint to follow).", ToastKind.Success);
+        await LoadAll();
     }
 
-    private void AddRule()
+    private async Task LoadAll()
     {
-        rules.Add(new RuleItem { Name = newRuleName.Trim(), SenderContains = newRuleSender.Trim(), LabelName = newRuleLabel });
-        newRuleName = ""; newRuleSender = ""; ruleFormOpen = false;
-        Toasts.Show("Rule saved (local — endpoint to follow).", ToastKind.Success);
+        try
+        {
+            var l = await Auth.GetAsync<List<MailLabelDto>>("/api/mail/labels");
+            if (l != null) labels = l.Select(x => new LabelItem { Id = x.Id, Name = x.Name, Color = x.Color, Count = x.Count }).ToList();
+
+            var r = await Auth.GetAsync<List<MailRuleDto>>("/api/mail/rules");
+            if (r != null) rules = r.Select(x => new RuleItem { Id = x.Id, Name = x.Name, SenderContains = x.SenderContains, LabelName = x.LabelName, Enabled = x.IsEnabled }).ToList();
+
+            var t = await Auth.GetAsync<List<MailTemplateDto>>("/api/mail/templates");
+            if (t != null) templates = t.Select(x => new TemplateItem { Id = x.Id, Name = x.Name, Subject = x.Subject, Body = x.Body }).ToList();
+
+            var o = await Auth.GetAsync<MailAutoReplyDto>("/api/mail/auto-reply");
+            if (o != null)
+            {
+                oooEnabled = o.IsEnabled;
+                if (o.FromDate.HasValue) oooFrom = o.FromDate.Value.ToLocalTime().Date;
+                if (o.UntilDate.HasValue) oooUntil = o.UntilDate.Value.ToLocalTime().Date;
+                oooMessage = o.Message ?? "";
+            }
+        }
+        catch { }
     }
 
-    private void AddTemplate()
+    private async Task AddLabel()
     {
-        templates.Add(new TemplateItem { Name = newTplName.Trim(), Subject = newTplSubject.Trim(), Body = newTplBody });
-        newTplName = ""; newTplSubject = ""; newTplBody = ""; tplFormOpen = false;
-        Toasts.Show("Template saved (local — endpoint to follow).", ToastKind.Success);
+        if (string.IsNullOrWhiteSpace(newLabelName)) return;
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/mail/labels", new { name = newLabelName.Trim(), color = newLabelColor });
+        if (res.IsSuccessStatusCode)
+        {
+            newLabelName = ""; labelFormOpen = false;
+            Toasts.Show("Label saved.", ToastKind.Success);
+            await LoadAll();
+        }
+        else Toasts.Show("Could not save label.", ToastKind.Error);
+    }
+
+    private async Task DeleteLabel(Guid id)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/mail/labels/{id}");
+        if (res.IsSuccessStatusCode)
+        {
+            Toasts.Show("Label deleted.", ToastKind.Success);
+            await LoadAll();
+        }
+    }
+
+    private async Task AddRule()
+    {
+        if (string.IsNullOrWhiteSpace(newRuleName) || string.IsNullOrWhiteSpace(newRuleSender)) return;
+        var targetLabel = labels.FirstOrDefault(l => l.Name.Equals(newRuleLabel, StringComparison.OrdinalIgnoreCase));
+        if (targetLabel == null) return;
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/mail/rules", new { name = newRuleName.Trim(), senderContains = newRuleSender.Trim(), labelId = targetLabel.Id });
+        if (res.IsSuccessStatusCode)
+        {
+            newRuleName = ""; newRuleSender = ""; ruleFormOpen = false;
+            Toasts.Show("Rule saved.", ToastKind.Success);
+            await LoadAll();
+        }
+        else Toasts.Show("Could not save rule.", ToastKind.Error);
+    }
+
+    private async Task DeleteRule(Guid id)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/mail/rules/{id}");
+        if (res.IsSuccessStatusCode)
+        {
+            Toasts.Show("Rule deleted.", ToastKind.Success);
+            await LoadAll();
+        }
+    }
+
+    private async Task AddTemplate()
+    {
+        if (string.IsNullOrWhiteSpace(newTplName) || string.IsNullOrWhiteSpace(newTplSubject)) return;
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/mail/templates", new { name = newTplName.Trim(), subject = newTplSubject.Trim(), body = newTplBody });
+        if (res.IsSuccessStatusCode)
+        {
+            newTplName = ""; newTplSubject = ""; newTplBody = ""; tplFormOpen = false;
+            Toasts.Show("Template saved.", ToastKind.Success);
+            await LoadAll();
+        }
+        else Toasts.Show("Could not save template.", ToastKind.Error);
+    }
+
+    private async Task DeleteTemplate(Guid id)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/mail/templates/{id}");
+        if (res.IsSuccessStatusCode)
+        {
+            Toasts.Show("Template deleted.", ToastKind.Success);
+            await LoadAll();
+        }
     }
 
     private void UseTemplate(TemplateItem tpl)
         => Nav.NavigateTo($"/mail?shareSubject={Uri.EscapeDataString(tpl.Subject)}&shareBody={Uri.EscapeDataString(tpl.Body)}");
 
-    private void SaveOoo() => Toasts.Show("Auto-reply settings saved (local — endpoint to follow).", ToastKind.Success);
+    private async Task SaveOoo()
+    {
+        var res = await Auth.SendAsync(HttpMethod.Put, "/api/mail/auto-reply", new
+        {
+            isEnabled = oooEnabled,
+            fromDate = oooFrom.ToUniversalTime(),
+            untilDate = oooUntil.ToUniversalTime(),
+            message = oooMessage.Trim()
+        });
+        if (res.IsSuccessStatusCode) Toasts.Show("Auto-reply settings saved.", ToastKind.Success);
+        else Toasts.Show("Could not save auto-reply settings.", ToastKind.Error);
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
 }
