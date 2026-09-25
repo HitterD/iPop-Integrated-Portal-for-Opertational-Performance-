@@ -379,7 +379,32 @@ public static class DirectoryEndpoints
             .Select(g => new { Id = g.Key, N = g.Count() }).ToListAsync(ct);
         var byDivision = counts.ToDictionary(c => c.Id, c => c.N);
         var noDivisionCount = await db.Users.CountAsync(u => u.IsActive && u.DivisionId == null, ct);
-        return BuildStructure(divisions, byDivision, noDivisionCount);
+        var presence = await GetPresenceCountsCore(db, ct);
+        return BuildStructure(divisions, byDivision, noDivisionCount, presence);
+    }
+
+    /// Directory-wide presence totals. ComputeStatus is not SQL-translatable, so the two
+    /// stored facts are read in one projection and bucketed in memory — one row per active
+    /// user, which is far cheaper than the page-at-a-time counting it replaces.
+    internal static async Task<DirectoryPresenceCounts> GetPresenceCountsCore(IPopDbContext db, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var facts = await db.Users.AsNoTracking().Where(u => u.IsActive)
+            .Select(u => new { u.PresenceLastSeenAt, u.PresenceManualStatus })
+            .ToListAsync(ct);
+
+        int online = 0, busy = 0, away = 0, offline = 0;
+        foreach (var f in facts)
+        {
+            switch (PresenceStatus.ComputeStatus(f.PresenceLastSeenAt, f.PresenceManualStatus, now))
+            {
+                case "on": online++; break;
+                case "busy": busy++; break;
+                case "away": away++; break;
+                default: offline++; break;
+            }
+        }
+        return new DirectoryPresenceCounts(facts.Count, online, busy, away, offline);
     }
 
     // Pure nesting step — Site ▸ Department ▸ Division with count roll-up. Internal so tests can
@@ -387,7 +412,8 @@ public static class DirectoryEndpoints
     // hosts one of its Divisions (grouping is by Site.Code then Department.Code derived from the
     // Division rows themselves, not a Site×Department cross join).
     internal static DirectoryStructure BuildStructure(IEnumerable<Core.Entities.Division> activeDivisions,
-        IReadOnlyDictionary<Guid, int> memberCountByDivisionId, int noDivisionCount)
+        IReadOnlyDictionary<Guid, int> memberCountByDivisionId, int noDivisionCount,
+        DirectoryPresenceCounts? presenceCounts = null)
     {
         var sites = activeDivisions.GroupBy(d => d.Site!.Code).Select(siteGroup =>
         {
@@ -401,7 +427,7 @@ public static class DirectoryEndpoints
             return new DirectorySiteNode(siteGroup.Key, siteGroup.First().Site!.Name,
                 depts.Sum(x => x.MemberCount), depts);
         }).OrderBy(x => x.Name).ToArray();
-        return new DirectoryStructure(sites, noDivisionCount);
+        return new DirectoryStructure(sites, noDivisionCount, presenceCounts);
     }
 
     // Full /api/directory/divisions?q= query. Empty/whitespace q → [] immediately (200, not 404).

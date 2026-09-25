@@ -13,27 +13,27 @@
     <div class="apple-segmented">
         <button type="button" class="seg-btn @(presenceFilter == "" ? "active" : "")" @onclick='() => SetPresenceFilter("")'>
             <span>All</span>
-            <span class="seg-count">@total</span>
+            <span class="seg-count">@PresenceCounts.All.ToString("N0")</span>
         </button>
         <button type="button" class="seg-btn @(presenceFilter == "on" ? "active" : "")" @onclick='() => SetPresenceFilter("on")'>
             <span class="seg-dot on"></span>
             <span>Online</span>
-            <span class="seg-count">@people.Count(p => p.Status == "on")</span>
+            <span class="seg-count">@PresenceCounts.Online.ToString("N0")</span>
         </button>
         <button type="button" class="seg-btn @(presenceFilter == "busy" ? "active" : "")" @onclick='() => SetPresenceFilter("busy")'>
             <span class="seg-dot busy"></span>
             <span>Busy</span>
-            <span class="seg-count">@people.Count(p => p.Status == "busy")</span>
+            <span class="seg-count">@PresenceCounts.Busy.ToString("N0")</span>
         </button>
         <button type="button" class="seg-btn @(presenceFilter == "away" ? "active" : "")" @onclick='() => SetPresenceFilter("away")'>
             <span class="seg-dot away"></span>
             <span>Away</span>
-            <span class="seg-count">@people.Count(p => p.Status == "away")</span>
+            <span class="seg-count">@PresenceCounts.Away.ToString("N0")</span>
         </button>
         <button type="button" class="seg-btn @(presenceFilter == "off" ? "active" : "")" @onclick='() => SetPresenceFilter("off")'>
             <span class="seg-dot off"></span>
             <span>Offline</span>
-            <span class="seg-count">@people.Count(p => p.Status == "off")</span>
+            <span class="seg-count">@PresenceCounts.Offline.ToString("N0")</span>
         </button>
     </div>
     <div class="push flex center gap-8">
@@ -67,11 +67,9 @@
         <button type="button" class="ghost-btn @(favOnly ? "on" : "")" title="Show favorites only" aria-pressed="@favOnly" @onclick="ToggleFavOnly">
             <i data-lucide="star"></i>Favorites <span class="cnt">@FavoritePeople.Count</span>
         </button>
+        <button type="button" class="ghost-btn" title="Export search/filter results to CSV" disabled="@exporting" @onclick="ExportCsv"><i data-lucide="download"></i>@(exporting ? "Exporting…" : "Export")</button>
+        <button type="button" class="ghost-btn" title="Priority contacts: favorites & frequent" @onclick='() => Nav.NavigateTo("/directory/priority")'><i data-lucide="sparkles"></i>Priority contacts</button>
     </div>
-</div>
-<div class="toolbar dir-toolbar-2">
-    <button type="button" class="ghost-btn" title="Export search/filter results to CSV" disabled="@exporting" @onclick="ExportCsv"><i data-lucide="download"></i>@(exporting ? "Exporting…" : "Export")</button>
-    <button type="button" class="ghost-btn" title="Priority contacts: favorites & frequent" @onclick='() => Nav.NavigateTo("/directory/priority")'><i data-lucide="sparkles"></i>Priority contacts</button>
 </div>
 
 <div class="body">
@@ -172,15 +170,17 @@
         <div class="col gap-14" style="min-width:0">
             @if (selectedNiks.Count > 0)
             {
-                <div style="display:flex;align-items:center;gap:10px;padding:8px 16px;background:var(--accent-soft);border-bottom:1px solid var(--line-soft);border-radius:12px">
-                    <input type="checkbox" checked="@(DisplayedPeople.Count > 0 && selectedNiks.Count == DisplayedPeople.Count)" @onchange="ToggleSelectAllPeople" />
-                    <span style="font-weight:600;font-size:12.5px;color:var(--accent-ink)">@selectedNiks.Count selected</span>
+                <div class="dir-bulk-bar">
+                    <button type="button" class="v6-cb on" role="checkbox" aria-checked="true" aria-label="Clear selection" @onclick="() => selectedNiks.Clear()">
+                        <i data-lucide="minus"></i>
+                    </button>
+                    <span class="dbb-count">@selectedNiks.Count selected</span>
                     <div style="flex:1"></div>
-                    <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px" @onclick="BulkMessage"><i data-lucide="message-circle" style="width:13px;height:13px"></i> Message</button>
-                    <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px" @onclick="BulkCreateGroup"><i data-lucide="users" style="width:13px;height:13px"></i> Create group</button>
-                    <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px" @onclick="BulkEmail"><i data-lucide="mail" style="width:13px;height:13px"></i> Email</button>
-                    <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px" @onclick="BulkFavorite"><i data-lucide="star" style="width:13px;height:13px"></i> Favorite</button>
-                    <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:11.5px" @onclick="() => selectedNiks.Clear()">Clear</button>
+                    <button type="button" class="dbb-btn" @onclick="BulkMessage"><i data-lucide="message-circle"></i>Message</button>
+                    <button type="button" class="dbb-btn" @onclick="BulkCreateGroup"><i data-lucide="users"></i>Create group</button>
+                    <button type="button" class="dbb-btn" @onclick="BulkEmail"><i data-lucide="mail"></i>Email</button>
+                    <button type="button" class="dbb-btn" @onclick="BulkFavorite"><i data-lucide="star"></i>Favorite</button>
+                    <button type="button" class="dbb-clear" @onclick="() => selectedNiks.Clear()">Clear</button>
                 </div>
             }
 
@@ -215,7 +215,11 @@
                                 var isChecked = selectedNiks.Contains(p.Nik);
                                 <div class="emp-card @(isFav ? "fav" : "")" @onclick="() => selected = p">
                                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px" @onclick:stopPropagation="true">
-                                        <input type="checkbox" checked="@isChecked" @onchange="() => TogglePersonSelection(p.Nik)" />
+                                        <button type="button" class="v6-cb @(isChecked ? "on" : "")"
+                                                role="checkbox" aria-checked="@isChecked"
+                                                aria-label="Select @p.Name" @onclick="() => TogglePersonSelection(p.Nik)">
+                                            @if (isChecked) { <i data-lucide="check"></i> }
+                                        </button>
                                         <button type="button" class="icon-btn" style="border:none;background:transparent;width:24px;height:24px" title="@(isFav ? "Remove favorite" : "Add favorite")" @onclick="() => ToggleFavorite(p.Nik)">
                                             <i data-lucide="star" style="width:14px;height:14px;color:@(isFav ? "var(--warn)" : "var(--ink-4)");fill:@(isFav ? "currentColor" : "none")"></i>
                                         </button>
@@ -250,7 +254,14 @@
                         <thead>
                             <tr>
                                 <th style="width:32px">
-                                    <input type="checkbox" checked="@(DisplayedPeople.Count > 0 && selectedNiks.Count == DisplayedPeople.Count)" @onchange="ToggleSelectAllPeople" />
+                                    <button type="button" class="v6-cb @(DisplayedPeople.Count > 0 && selectedNiks.Count == DisplayedPeople.Count ? "on" : "")"
+                                            role="checkbox" aria-checked="@(DisplayedPeople.Count > 0 && selectedNiks.Count == DisplayedPeople.Count)"
+                                            aria-label="Select all" @onclick="ToggleSelectAllPeople">
+                                        @if (DisplayedPeople.Count > 0 && selectedNiks.Count == DisplayedPeople.Count)
+                                        {
+                                            <i data-lucide="check"></i>
+                                        }
+                                    </button>
                                 </th>
                                 <th>Name</th>
                                 <th>NIK</th>
@@ -285,7 +296,11 @@
                                     var isChecked = selectedNiks.Contains(p.Nik);
                                     <tr class="@(isSel ? "sel" : "")" @onclick="() => selected = p">
                                         <td @onclick:stopPropagation="true">
-                                            <input type="checkbox" checked="@isChecked" @onchange="() => TogglePersonSelection(p.Nik)" />
+                                            <button type="button" class="v6-cb @(isChecked ? "on" : "")"
+                                                    role="checkbox" aria-checked="@isChecked"
+                                                    aria-label="Select @p.Name" @onclick="() => TogglePersonSelection(p.Nik)">
+                                                @if (isChecked) { <i data-lucide="check"></i> }
+                                            </button>
                                         </td>
                                         <td>
                                             <div class="cell-person">
@@ -380,12 +395,12 @@
         if (!selectedNiks.Add(nik)) selectedNiks.Remove(nik);
     }
 
-    private void ToggleSelectAllPeople(ChangeEventArgs e)
+    private void ToggleSelectAllPeople()
     {
-        if ((bool)(e.Value ?? false))
-            selectedNiks = DisplayedPeople.Select(p => p.Nik).ToHashSet();
-        else
+        if (DisplayedPeople.Count > 0 && selectedNiks.Count == DisplayedPeople.Count)
             selectedNiks.Clear();
+        else
+            selectedNiks = DisplayedPeople.Select(p => p.Nik).ToHashSet();
     }
 
     private void ToggleFavOnly()
@@ -442,6 +457,17 @@
     private Dictionary<string, int> divMatches = []; // division code → match count
     private bool IsSearching => searchQ is not null;
     private int TotalDivisions => dirStructure?.Sites.Sum(s => s.Departments.Sum(d => d.Divisions.Length)) ?? 0;
+
+    /// Header tab counts come from the server, not the loaded page: the list is paged, so
+    /// counting `people` reported 0 online whenever nobody on the current page was online.
+    /// Falls back to the loaded page until the structure call lands.
+    private DirectoryPresenceCountsDto PresenceCounts => dirStructure?.PresenceCounts ?? new DirectoryPresenceCountsDto(
+        total,
+        people.Count(p => p.Status == "on"),
+        people.Count(p => p.Status == "busy"),
+        people.Count(p => p.Status == "away"),
+        people.Count(p => p.Status == "off"));
+
     private string ConnectionLabel => ConnectionState switch { DirectoryConnectionState.Live => "Live", DirectoryConnectionState.Reconnecting => "Reconnecting...", DirectoryConnectionState.Connecting => "Connecting...", _ => "Offline" };
 
     protected override void OnInitialized()

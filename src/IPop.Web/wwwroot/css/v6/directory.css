@@ -84,3 +84,41 @@
 .dir-people tr:hover .row-acts .ra.fav { opacity: 1; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 [data-theme="dark"] .dir-people .tbl tr.sel td { background: rgba(48, 209, 88, 0.1); }
+
+/* ---- v6 checkbox (the mockup draws its own: 16px rounded square, green when on) ---- */
+.v6-cb {
+  width: 16px; height: 16px; box-sizing: border-box; flex: none; padding: 0;
+  border: 1.5px solid var(--ink-4); border-radius: 5px; background: var(--surface);
+  display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.v6-cb:hover { border-color: var(--accent); }
+.v6-cb.on { background: var(--accent); border-color: var(--accent); }
+.v6-cb .lucide { width: 11px; height: 11px; color: #fff; }
+
+/* ---- Bulk-selection bar (green strip that replaces the card header) ---- */
+.dir-bulk-bar {
+  display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+  background: var(--success-soft); border-bottom: 1px solid rgba(46, 158, 91, 0.2);
+}
+.dir-bulk-bar .dbb-count { font-weight: 600; color: #14532D; font-size: 13px; }
+.dir-bulk-bar .dbb-btn {
+  height: 32px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface);
+  display: inline-flex; align-items: center; gap: 6px; font-weight: 500; font-size: 13px; color: var(--ink); cursor: pointer; white-space: nowrap;
+}
+.dir-bulk-bar .dbb-btn:hover { background: var(--tray); }
+.dir-bulk-bar .dbb-btn .lucide { width: 14px; height: 14px; color: var(--accent); }
+.dir-bulk-bar .dbb-btn:nth-of-type(4) .lucide { color: var(--warn); }
+.dir-bulk-bar .dbb-clear { height: 32px; padding: 0 10px; border: none; background: transparent; color: var(--accent-ink); font-weight: 600; font-size: 13px; cursor: pointer; }
+[data-theme="dark"] .dir-bulk-bar .dbb-count { color: #7EE2A0; }
+
+/* Column widths mirror the mockup grid so Position and Division stop fighting for room. */
+.dir-people .tbl { table-layout: fixed; width: 100%; }
+.dir-people .tbl th:nth-child(1), .dir-people .tbl td:nth-child(1) { width: 44px; }
+.dir-people .tbl th:nth-child(2), .dir-people .tbl td:nth-child(2) { width: auto; }
+.dir-people .tbl th:nth-child(3), .dir-people .tbl td:nth-child(3) { width: 100px; }
+.dir-people .tbl th:nth-child(4), .dir-people .tbl td:nth-child(4) { width: 26%; }
+.dir-people .tbl th:nth-child(5), .dir-people .tbl td:nth-child(5) { width: 130px; }
+.dir-people .tbl th:nth-child(6), .dir-people .tbl td:nth-child(6) { width: 110px; }
+.dir-people .tbl th:nth-child(7), .dir-people .tbl td:nth-child(7) { width: 108px; }
+.dir-people .tbl td:nth-child(4) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dir-people .tbl td:nth-child(3) { font-variant-numeric: tabular-nums; }

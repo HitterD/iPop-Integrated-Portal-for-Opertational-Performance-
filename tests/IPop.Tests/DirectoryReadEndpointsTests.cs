@@ -143,6 +143,32 @@ public class DirectoryReadEndpointsTests
         Assert.Equal(0, result.NoDivisionCount); // u has non-null DivisionId, so excluded from the flat count
     }
 
+    /// The header tabs read directory-wide totals from this payload. Counting the loaded
+    /// page instead reported 0 online whenever nobody on page 1 happened to be online.
+    [Fact]
+    public async Task GetStructure_ReturnsPresenceCounts_ForAllActiveUsers()
+    {
+        using var t = new TestDb();
+        var now = DateTime.UtcNow;
+        // One per bucket, plus an inactive user that must not be counted.
+        t.AddUser("20080101").PresenceLastSeenAt = now;
+        t.AddUser("20080102").PresenceLastSeenAt = now.AddMinutes(-8);   // away (>5m)
+        t.AddUser("20080103").PresenceLastSeenAt = now.AddHours(-3);     // off (>15m)
+        t.AddUser("20080104").PresenceManualStatus = "busy";
+        t.AddUser("20080105", active: false).PresenceLastSeenAt = now;   // inactive -> excluded
+        t.Db.SaveChanges();
+
+        var result = await DirectoryEndpoints.GetStructureCore(t.Db, default);
+
+        var p = result.PresenceCounts;
+        Assert.NotNull(p);
+        Assert.Equal(4, p!.All);
+        Assert.Equal(1, p.Online);
+        Assert.Equal(1, p.Busy);
+        Assert.Equal(1, p.Away);
+        Assert.Equal(1, p.Offline);
+    }
+
     // --- /api/directory/divisions?q= ---
 
     [Fact]

@@ -43,7 +43,9 @@ public record MemberSearchRow(string Nik, string Name, string? Position, string?
 /// Mirrors the API's DirectoryStructure / DirectorySiteNode / DirectoryDepartmentNode /
 /// DirectoryDivisionNode (camelCase JSON both ways). Suffixed Dto*Node to avoid colliding with
 /// the existing flat DirectoryDepartmentDto / DirectorySiteDto.
-public record DirectoryStructureNodeDto(DirectorySiteNodeDto[] Sites, int NoDivisionCount);
+public record DirectoryStructureNodeDto(DirectorySiteNodeDto[] Sites, int NoDivisionCount,
+    DirectoryPresenceCountsDto? PresenceCounts = null);
+public record DirectoryPresenceCountsDto(int All, int Online, int Busy, int Away, int Offline);
 public record DirectorySiteNodeDto(string Code, string Name, int MemberCount, DirectoryDepartmentNodeDto[] Departments);
 public record DirectoryDepartmentNodeDto(string Code, string Name, int MemberCount, DirectoryDivisionNodeDto[] Divisions);
 public record DirectoryDivisionNodeDto(string Code, string Name, int MemberCount);

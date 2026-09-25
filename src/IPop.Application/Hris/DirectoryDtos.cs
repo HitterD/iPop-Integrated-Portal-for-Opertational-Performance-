@@ -30,7 +30,12 @@ public record OrgNodeMemberDto(string Nik, string Name, string? Position, string
 
 /// Site ▸ Department ▸ Division browse tree for /api/directory/structure, plus the
 /// "No Division" safety node (active users with DivisionId == null).
-public record DirectoryStructure(DirectorySiteNode[] Sites, int NoDivisionCount);
+/// PresenceCounts carries directory-wide totals so the header tabs stay correct even
+/// though the list itself is paged (counting the loaded page would show 0 for anyone
+/// whose peers happen to sit on a later page).
+public record DirectoryStructure(DirectorySiteNode[] Sites, int NoDivisionCount,
+    DirectoryPresenceCounts? PresenceCounts = null);
+public record DirectoryPresenceCounts(int All, int Online, int Busy, int Away, int Offline);
 public record DirectorySiteNode(string Code, string Name, int MemberCount, DirectoryDepartmentNode[] Departments);
 public record DirectoryDepartmentNode(string Code, string Name, int MemberCount, DirectoryDivisionNode[] Divisions);
 public record DirectoryDivisionNode(string Code, string Name, int MemberCount);
