@@ -160,7 +160,9 @@
                         AllTasks="AllCurrentTasks"
                         Members="projectMembers"
                         OnInspectTask="OpenQuickViewer"
-                        OnRequestExtension="OpenExtensionModal" />
+                        OnRequestExtension="OpenExtensionModal"
+                        OnOpenBoard="() => SwitchTab(0)"
+                        OnOpenTeamModal="() => showTeamModal = true" />
                 }
                 else
                 {

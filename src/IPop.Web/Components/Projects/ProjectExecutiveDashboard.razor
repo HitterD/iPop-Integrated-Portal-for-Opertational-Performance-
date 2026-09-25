@@ -1,297 +1,154 @@
 @using IPop.Application.Projects
+@using IPop.Web.Services
 @inject IJSRuntime JS
+@inject AuthState Auth
 
-<div class="exec-dashboard-container">
-    @* 1. Health Status Banner *@
-    <div class="exec-health-banner @HealthClass">
-        <div class="exec-health-indicator">
-            <div class="exec-health-icon @HealthClass">
-                <i data-lucide="@HealthIcon" style="width:22px;height:22px"></i>
-            </div>
-            <div>
-                <div style="display:flex;align-items:center;gap:8px">
-                    <span class="exec-health-badge @HealthClass">@HealthLabel</span>
-                    <span style="font-size:12px;color:var(--ink-3)">• Project Status Based on Actual Execution</span>
-                </div>
-                <div class="exec-health-title">@HealthSummary</div>
+<div class="ov-grid">
+    @* 1. Progress ring *@
+    <div class="ov-card ov-progress">
+        <div class="ov-ring" style="background:@RingGradient">
+            <div class="ov-ring-hole">
+                <span class="ov-ring-val">@ProgressPercentage%</span>
+                <span class="ov-ring-cap">complete</span>
             </div>
         </div>
-
-        @* Overall Progress Bar *@
-        <div class="exec-progress-box">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-                <span style="font-size:12px;font-weight:700;color:var(--ink)">Project Completion</span>
-                <span style="font-size:14px;font-weight:800;color:var(--accent)">@ProgressPercentage%</span>
-            </div>
-            <div class="exec-progress-track">
-                <div class="exec-progress-fill done" style="width:@(DonePercentage)%" title="Completed: @DoneTasks.Count tasks"></div>
-                <div class="exec-progress-fill doing" style="width:@(DoingPercentage)%" title="In Progress: @DoingTasks.Count tasks"></div>
-            </div>
-            <div class="exec-progress-legend">
-                <span><span class="col-dot done" style="width:7px;height:7px"></span> @DoneTasks.Count Completed</span>
-                <span><span class="col-dot doing" style="width:7px;height:7px"></span> @DoingTasks.Count In Progress</span>
-                <span><span class="col-dot review" style="width:7px;height:7px"></span> @ReviewTasks.Count Review</span>
-                <span><span class="col-dot todo" style="width:7px;height:7px"></span> @TodoTasks.Count To Do</span>
-                @if (OverdueTasks.Count > 0)
-                {
-                    <span style="color:#dc2626;font-weight:700"><i data-lucide="alert-circle" style="width:10px;height:10px;display:inline"></i> @OverdueTasks.Count Overdue</span>
-                }
-            </div>
+        <div class="ov-progress-col">
+            <span class="ov-progress-title">Progress</span>
+            <span class="ov-progress-line">@DoneTasks.Count of @AllTasks.Count tasks completed</span>
+            <span class="ov-progress-line"><i data-lucide="calendar"></i>@DueLabel</span>
+            <span class="ov-progress-days">@DaysLeftLabel</span>
         </div>
     </div>
 
-    @* 2. Executive KPI Cards Row *@
-    <div class="exec-kpi-grid">
-        <div class="exec-kpi-card">
-            <div class="exec-kpi-head">
-                <span class="title">Overall Progress</span>
-                <i data-lucide="pie-chart" class="icon" style="color:var(--accent)"></i>
+    @* 2. Tasks by status *@
+    <div class="ov-card ov-by-status">
+        <span class="ov-card-title">Tasks by status</span>
+        @foreach (var c in StatusCounts)
+        {
+            var row = c;
+            <div class="ov-status-row" role="button" tabindex="0" @onclick="() => OnOpenBoard.InvokeAsync()">
+                <span class="ov-status-dot" style="background:@row.Color"></span>
+                <span class="ov-status-name">@row.Name</span>
+                <div class="ov-status-bar"><div style="width:@row.Width%;background:@row.Color"></div></div>
+                <span class="ov-status-n">@row.Count</span>
             </div>
-            <div class="exec-kpi-val">@ProgressPercentage%</div>
-            <div class="exec-kpi-sub">@DoneTasks.Count of @AllTasks.Count tasks completed</div>
-        </div>
-
-        <div class="exec-kpi-card @(OverdueTasks.Count > 0 ? "danger" : "")">
-            <div class="exec-kpi-head">
-                <span class="title">Overdue Tasks</span>
-                <i data-lucide="clock-alert" class="icon" style="color:#dc2626"></i>
-            </div>
-            <div class="exec-kpi-val" style="color:@(OverdueTasks.Count > 0 ? "#dc2626" : "var(--ink)")">@OverdueTasks.Count</div>
-            <div class="exec-kpi-sub">
-                @(OverdueTasks.Count > 0 ? "Exceeded deadline — extension or action required" : "All tasks are on schedule")
-            </div>
-        </div>
-
-        <div class="exec-kpi-card">
-            <div class="exec-kpi-head">
-                <span class="title">In Progress</span>
-                <i data-lucide="activity" class="icon" style="color:#d97706"></i>
-            </div>
-            <div class="exec-kpi-val">@DoingTasks.Count</div>
-            <div class="exec-kpi-sub">@TotalActiveSteps active breakdown steps in field</div>
-        </div>
-
-        <div class="exec-kpi-card">
-            <div class="exec-kpi-head">
-                <span class="title">Extended Tasks</span>
-                <i data-lucide="calendar-sync" class="icon" style="color:#0284c7"></i>
-            </div>
-            <div class="exec-kpi-val">@ExtendedTasks.Count</div>
-            <div class="exec-kpi-sub">Deadline extension requested</div>
-        </div>
-
-        <div class="exec-kpi-card">
-            <div class="exec-kpi-head">
-                <span class="title">Estimated vs Actual</span>
-                <i data-lucide="timer" class="icon" style="color:var(--ink-2)"></i>
-            </div>
-            <div class="exec-kpi-val">@TotalActualHours <span style="font-size:13px;font-weight:500;color:var(--ink-3)">/ @TotalEstimatedHours h</span></div>
-            <div class="exec-kpi-sub">Total team time estimate</div>
-        </div>
+        }
     </div>
 
-    @* 3. Main Dashboard Widgets Grid *@
-    <div class="exec-widgets-grid">
-        @* Left Widget: Overdue & Blockers Focus Table *@
-        <div class="exec-widget-card">
-            <div class="exec-widget-head">
-                <div style="display:flex;align-items:center;gap:8px">
-                    <i data-lucide="alert-triangle" style="width:16px;height:16px;color:#dc2626"></i>
-                    <span style="font-weight:700;font-size:13.5px;color:var(--ink)">Delayed Tasks & Blockers</span>
-                    <span class="col-count" style="font-size:11px;background:#fee2e2;color:#991b1b">@(OverdueTasks.Count + ExtendedTasks.Count)</span>
-                </div>
-                <div style="font-size:11px;color:var(--ink-3)">Supervisory Focus</div>
-            </div>
-
-            <div class="exec-widget-body">
-                @if (OverdueTasks.Count == 0 && ExtendedTasks.Count == 0)
-                {
-                    <div style="padding:32px 16px;text-align:center;color:var(--ink-3)">
-                        <i data-lucide="check-circle-2" style="width:28px;height:28px;color:#059669;margin-bottom:6px"></i>
-                        <div style="font-weight:600;font-size:13px;color:var(--ink)">Great job! No pending overdue tasks.</div>
-                        <div style="font-size:11.5px;margin-top:2px">All tasks are running according to project deadlines.</div>
-                    </div>
-                }
-                else
-                {
-                    <div style="display:flex;flex-direction:column;gap:8px">
-                        @* List Overdue Tasks *@
-                        @foreach (var t in OverdueTasks)
-                        {
-                            var parsed = TaskEvidenceHelper.Parse(t.Description);
-                            var daysLate = (DateTime.UtcNow - t.DueDate!.Value).Days;
-                            if (daysLate == 0) daysLate = 1;
-
-                            <div class="exec-blocker-row">
-                                <div style="flex:1;min-width:0">
-                                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                                        <span class="badge-overdue-alert">@daysLate days late</span>
-                                        @if (parsed.Evidence.IsExtended)
-                                        {
-                                            <span class="badge-extended">Extended @(parsed.Evidence.ExtensionHistory.Count)x</span>
-                                        }
-                                        <span style="font-weight:700;font-size:12.5px;color:var(--ink)">@t.Title</span>
-                                    </div>
-                                    @if (parsed.Evidence.LatestExtension is not null)
-                                    {
-                                        <div style="font-size:11px;color:#9a3412;margin-top:3px">
-                                            <b>Obstacle:</b> @parsed.Evidence.LatestExtension.Reason
-                                        </div>
-                                    }
-                                    <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ink-3);margin-top:4px">
-                                        <span>Deadline: <b>@(t.DueDate?.ToString("dd MMM yyyy"))</b></span>
-                                        <span>•</span>
-                                        <span>Assignee: @(t.Assignees.Count > 0 ? t.Assignees[0].Name : "Unassigned")</span>
-                                    </div>
-                                </div>
-                                <div style="display:flex;gap:6px;align-items:center">
-                                    <button type="button" class="btn-sm surface" style="padding:4px 10px;font-size:11px;border-radius:999px" @onclick="() => OnInspectTask.InvokeAsync(t)">
-                                        <i data-lucide="eye" style="width:11px;height:11px"></i> Inspect
-                                    </button>
-                                    <button type="button" class="btn-sm accent" style="padding:4px 10px;font-size:11px;border-radius:999px" @onclick="() => OnRequestExtension.InvokeAsync(t)">
-                                        <i data-lucide="clock" style="width:11px;height:11px"></i> Extend
-                                    </button>
-                                </div>
-                            </div>
-                        }
-
-                        @* List other extended tasks not currently overdue *@
-                        @foreach (var t in ExtendedTasks.Where(x => !OverdueTasks.Any(o => o.Id == x.Id)))
-                        {
-                            var parsed = TaskEvidenceHelper.Parse(t.Description);
-                            <div class="exec-blocker-row" style="background:var(--tray)">
-                                <div style="flex:1;min-width:0">
-                                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                                        <span class="badge-extended">Extended @(parsed.Evidence.ExtensionHistory.Count)x</span>
-                                        <span style="font-weight:700;font-size:12.5px;color:var(--ink)">@t.Title</span>
-                                    </div>
-                                    @if (parsed.Evidence.LatestExtension is not null)
-                                    {
-                                        <div style="font-size:11px;color:var(--ink-2);margin-top:3px">
-                                            <b>Extension Reason:</b> @parsed.Evidence.LatestExtension.Reason
-                                        </div>
-                                    }
-                                    <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ink-3);margin-top:4px">
-                                        <span>New Deadline: <b>@(t.DueDate?.ToString("dd MMM yyyy"))</b></span>
-                                        <span>•</span>
-                                        <span>Status: @(t.Status == "doing" ? "In Progress" : (t.Status == "review" ? "Review" : t.Status))</span>
-                                    </div>
-                                </div>
-                                <div>
-                                    <button type="button" class="btn-sm surface" style="padding:4px 10px;font-size:11px;border-radius:999px" @onclick="() => OnInspectTask.InvokeAsync(t)">
-                                        <i data-lucide="eye" style="width:11px;height:11px"></i> Details
-                                    </button>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
+    @* 3. Needs attention *@
+    <div class="ov-card ov-attention">
+        <div class="ov-attention-head">
+            <span class="ov-card-title">Needs attention</span>
+            <span class="ov-attention-sub">Overdue or due in 3 days</span>
         </div>
-
-        @* Right Widget: Lark-Style Recent Evidence Stream (Field Photos & Deliverables) *@
-        <div class="exec-widget-card">
-            <div class="exec-widget-head">
-                <div style="display:flex;align-items:center;gap:8px">
-                    <i data-lucide="camera" style="width:16px;height:16px;color:#059669"></i>
-                    <span style="font-weight:700;font-size:13.5px;color:var(--ink)">Recent Evidence & Field Deliverables</span>
+        @if (AttentionTasks.Count == 0)
+        {
+            <div class="ov-caught-up">
+                <i data-lucide="circle-check"></i><span>Nothing urgent. Nice work.</span>
+            </div>
+        }
+        else
+        {
+            @foreach (var t in AttentionTasks.Take(5))
+            {
+                var task = t;
+                <div class="ov-attention-row" role="button" tabindex="0" @onclick="() => OnInspectTask.InvokeAsync(task.Task)">
+                    <span class="ov-attention-dot" style="background:@task.Color"></span>
+                    <span class="ov-attention-title">@task.Task.Title</span>
+                    <span class="ov-attention-pill" style="background:@task.Bg;color:@task.Color">@task.Note</span>
                 </div>
-                <div style="font-size:11px;color:var(--ink-3)">Stream</div>
-            </div>
-
-            <div class="exec-widget-body">
-                @if (RecentEvidenceList.Count == 0)
-                {
-                    <div style="padding:32px 16px;text-align:center;color:var(--ink-3)">
-                        <i data-lucide="image" style="width:28px;height:28px;margin-bottom:6px;opacity:0.5"></i>
-                        <div style="font-weight:600;font-size:12.5px">No evidence files or photos attached yet.</div>
-                        <div style="font-size:11px;margin-top:2px">Field documentation from In Progress or Completed will appear here.</div>
-                    </div>
-                }
-                else
-                {
-                    <div class="exec-evidence-stream">
-                        @foreach (var ev in RecentEvidenceList.Take(8))
-                        {
-                            <div class="exec-evidence-item" @onclick="() => OnInspectTask.InvokeAsync(ev.Task)">
-                                <div class="exec-evidence-thumb">
-                                    @if (!string.IsNullOrEmpty(ev.Item.DataUrl))
-                                    {
-                                        <img src="@ev.Item.DataUrl" alt="@ev.Item.Name" />
-                                    }
-                                    else
-                                    {
-                                        <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--ink-3)">
-                                            <i data-lucide="@(ev.Item.Type == "photo" ? "image" : "file-text")" style="width:18px;height:18px"></i>
-                                        </div>
-                                    }
-                                </div>
-                                <div class="exec-evidence-info">
-                                    <div class="task-name">@ev.Task.Title</div>
-                                    <div class="file-name">@ev.Item.Name</div>
-                                    <div class="meta">
-                                        <span class="badge-type @ev.Context">@(ev.Context == "progress" ? "Progress Evidence" : "Completed Deliverable")</span>
-                                        <span>• @ev.Item.UploadedAt.ToString("dd MMM HH:mm")</span>
-                                    </div>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
-        </div>
+            }
+        }
     </div>
 
-    @* 4. Team Workload & Capacity Row *@
-    <div class="exec-widget-card" style="margin-top:16px">
-        <div class="exec-widget-head">
-            <div style="display:flex;align-items:center;gap:8px">
-                <i data-lucide="users" style="width:16px;height:16px;color:#2563eb"></i>
-                <span style="font-weight:700;font-size:13.5px;color:var(--ink)">Team Member Workload & Capacity</span>
-            </div>
-            <div style="font-size:11px;color:var(--ink-3)">Capacity Tracking</div>
+    @* 4. Recent activity *@
+    <div class="ov-card ov-activity">
+        <span class="ov-card-title">Recent activity</span>
+        @if (activity is null)
+        {
+            @for (var i = 0; i < 3; i++) { <div class="skel" style="height:28px;border-radius:8px"></div> }
+        }
+        else if (activity.Count == 0)
+        {
+            <span class="ov-empty">No activity yet.</span>
+        }
+        else
+        {
+            @foreach (var a in activity)
+            {
+                var row = a;
+                <div class="ov-activity-row">
+                    <span class="ov-activity-av" style="background:@ProjectUiHelpers.GetAvatarBg(row.ActorName)">@ProjectUiHelpers.GetInitials(row.ActorName)</span>
+                    <span class="ov-activity-text"><b>@row.ActorName</b> @ActivityText(row)</span>
+                    <span class="ov-activity-time">@FormatWhen(row.CreatedAt)</span>
+                </div>
+            }
+        }
+    </div>
+
+    @* 5. Members + about *@
+    <div class="ov-card ov-members">
+        <div class="ov-members-head">
+            <span class="ov-card-title">Members</span>
+            <button type="button" class="ov-link" @onclick="() => OnOpenTeamModal.InvokeAsync()">Add</button>
         </div>
-
-        <div class="exec-widget-body" style="padding:12px 16px">
-            <div class="exec-team-capacity-grid">
-                @foreach (var m in Members)
-                {
-                    var memberTasks = AllTasks.Where(t => t.Assignees.Any(a => a.UserId == m.UserId)).ToList();
-                    var memberOverdue = memberTasks.Count(t => t.DueDate.HasValue && t.DueDate.Value < DateTime.UtcNow && t.Status != "done");
-                    var memberDone = memberTasks.Count(t => t.Status == "done");
-                    var memberActive = memberTasks.Count(t => t.Status != "done");
-                    var memberHours = memberTasks.Sum(t => t.EstimatedHours ?? 0);
-                    var isOverloaded = memberActive >= 5 || memberOverdue >= 2;
-
-                    <div class="exec-member-card @(isOverloaded ? "overloaded" : "")">
-                        <div style="display:flex;align-items:center;gap:8px">
-                            <div class="team-avatar-circ" style="width:28px;height:28px;font-size:11px;background:@ProjectUiHelpers.GetAvatarBg(m.Name)">
-                                @ProjectUiHelpers.GetInitials(m.Name)
-                            </div>
-                            <div style="flex:1;min-width:0">
-                                <div style="font-weight:700;font-size:12px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@m.Name</div>
-                                <div style="font-size:10.5px;color:var(--ink-3)">@m.Role · @m.Nik</div>
-                            </div>
-                        </div>
-
-                        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;font-size:11.5px">
-                            <span style="color:var(--ink-3)">Active Tasks: <b>@memberActive</b></span>
-                            <span style="color:var(--ink-3)">Completed: <b>@memberDone</b></span>
-                            @if (memberOverdue > 0)
-                            {
-                                <span style="color:#dc2626;font-weight:700">@memberOverdue Overdue</span>
-                            }
-                        </div>
-
-                        <div class="capacity-mini-bar" style="margin-top:6px">
-                            <div class="fill" style="width:@(memberTasks.Count > 0 ? (memberDone * 100 / memberTasks.Count) : 0)%"></div>
-                        </div>
-                    </div>
-                }
+        @foreach (var m in Members.Take(5))
+        {
+            var member = m;
+            <div class="ov-member-row">
+                <span class="ov-member-av" style="background:@ProjectUiHelpers.GetAvatarBg(member.Name)">@ProjectUiHelpers.GetInitials(member.Name)</span>
+                <div class="ov-member-info">
+                    <span class="ov-member-name">@member.Name</span>
+                    <span class="ov-member-role">@RoleLabel(member.Role)</span>
+                </div>
             </div>
+        }
+        <div class="ov-about">
+            <span class="ov-about-label">ABOUT</span>
+            <span class="ov-about-desc">@(string.IsNullOrWhiteSpace(Project?.Description) ? "No description yet." : Project!.Description)</span>
+            <span class="ov-about-meta">@Project?.Year · Owner @Project?.OwnerName</span>
         </div>
     </div>
 </div>
+
+@* Evidence stream is not part of the mockup's Overview grid, but it is live field data —
+   kept as a full-width card so no working feature is lost. *@
+@if (RecentEvidenceList.Count > 0)
+{
+    <div class="ov-card ov-evidence">
+        <div class="ov-attention-head">
+            <span class="ov-card-title">Recent evidence &amp; field deliverables</span>
+            <span class="ov-attention-sub">Stream</span>
+        </div>
+        <div class="exec-evidence-stream">
+            @foreach (var ev in RecentEvidenceList.Take(8))
+            {
+                <div class="exec-evidence-item" @onclick="() => OnInspectTask.InvokeAsync(ev.Task)">
+                    <div class="exec-evidence-thumb">
+                        @if (!string.IsNullOrEmpty(ev.Item.DataUrl))
+                        {
+                            <img src="@ev.Item.DataUrl" alt="@ev.Item.Name" />
+                        }
+                        else
+                        {
+                            <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--ink-3)">
+                                <i data-lucide="@(ev.Item.Type == "photo" ? "image" : "file-text")" style="width:18px;height:18px"></i>
+                            </div>
+                        }
+                    </div>
+                    <div class="exec-evidence-info">
+                        <div class="task-name">@ev.Task.Title</div>
+                        <div class="file-name">@ev.Item.Name</div>
+                        <div class="meta">
+                            <span class="badge-type @ev.Context">@(ev.Context == "progress" ? "Progress Evidence" : "Completed Deliverable")</span>
+                            <span>• @ev.Item.UploadedAt.ToString("dd MMM HH:mm")</span>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
 
 @code {
     [Parameter] public ProjectDto? Project { get; set; }
@@ -300,34 +157,127 @@
 
     [Parameter] public EventCallback<ProjectTaskDto> OnInspectTask { get; set; }
     [Parameter] public EventCallback<ProjectTaskDto> OnRequestExtension { get; set; }
+    [Parameter] public EventCallback OnOpenBoard { get; set; }
+    [Parameter] public EventCallback OnOpenTeamModal { get; set; }
 
     public record EvidenceStreamItem(ProjectTaskDto Task, TaskEvidenceItem Item, string Context);
+    private record ActivityRow(Guid Id, string TaskTitle, string ActorName, string Action, string? OldValue, string? NewValue, DateTime CreatedAt);
+    private record StatusRow(string Name, string Color, int Count, double Width);
+    private record AttentionRow(ProjectTaskDto Task, string Note, string Color, string Bg);
+
+    private List<ActivityRow>? activity;
 
     private List<ProjectTaskDto> TodoTasks => AllTasks.Where(t => t.Status == "todo").ToList();
     private List<ProjectTaskDto> DoingTasks => AllTasks.Where(t => t.Status == "doing").ToList();
     private List<ProjectTaskDto> ReviewTasks => AllTasks.Where(t => t.Status == "review").ToList();
     private List<ProjectTaskDto> DoneTasks => AllTasks.Where(t => t.Status == "done").ToList();
 
-    private List<ProjectTaskDto> OverdueTasks => AllTasks.Where(t => t.DueDate.HasValue && t.DueDate.Value < DateTime.UtcNow && t.Status != "done").ToList();
-    private List<ProjectTaskDto> ExtendedTasks => AllTasks.Where(t => TaskEvidenceHelper.Parse(t.Description).Evidence.IsExtended).ToList();
-
     private int ProgressPercentage => AllTasks.Count > 0 ? (DoneTasks.Count * 100 / AllTasks.Count) : 0;
-    private int DonePercentage => AllTasks.Count > 0 ? (DoneTasks.Count * 100 / AllTasks.Count) : 0;
-    private int DoingPercentage => AllTasks.Count > 0 ? ((DoingTasks.Count + ReviewTasks.Count) * 100 / AllTasks.Count) : 0;
 
-    private decimal TotalEstimatedHours => AllTasks.Sum(t => t.EstimatedHours ?? 0);
-    private decimal TotalActualHours => AllTasks.Sum(t => t.ActualHours ?? 0);
+    private static readonly (string Status, string Name, string Color)[] Lanes =
+    [
+        ("todo", "To Do", "#8E8E93"),
+        ("doing", "In Progress", "#0A84FF"),
+        ("review", "Review", "#FF9F0A"),
+        ("done", "Done", "#34C759"),
+    ];
 
-    private int TotalActiveSteps => DoingTasks.Sum(t => TaskEvidenceHelper.Parse(t.Description).Evidence.ProgressSteps.Count(s => !s.IsDone));
+    private List<StatusRow> StatusCounts => Lanes.Select(l =>
+    {
+        var n = AllTasks.Count(t => t.Status == l.Status);
+        var w = AllTasks.Count > 0 ? n * 100.0 / AllTasks.Count : 0;
+        return new StatusRow(l.Name, l.Color, n, w);
+    }).ToList();
 
-    private string HealthClass => OverdueTasks.Count > 0 ? "danger" : (DoingTasks.Any(t => t.DueDate.HasValue && t.DueDate.Value <= DateTime.UtcNow.AddDays(2)) ? "warning" : "good");
-    private string HealthIcon => HealthClass == "danger" ? "alert-circle" : (HealthClass == "warning" ? "alert-triangle" : "check-circle");
-    private string HealthLabel => HealthClass == "danger" ? "Attention Needed (Delayed)" : (HealthClass == "warning" ? "At Risk" : "On Track");
-    private string HealthSummary => HealthClass == "danger"
-        ? $"There are {OverdueTasks.Count} overdue tasks that require extension or impediment resolution."
-        : (HealthClass == "warning"
-            ? "Some tasks are approaching due date within 48 hours. Monitor active team progress breakdown."
-            : $"Project progressing steadily with {ProgressPercentage}% target completion. No deadline blockers.");
+    /// Overdue first, then anything due within three days — mirrors the mockup's rule.
+    private List<AttentionRow> AttentionTasks
+    {
+        get
+        {
+            var rows = new List<AttentionRow>();
+            foreach (var t in AllTasks.Where(t => t.Status != "done" && t.DueDate.HasValue))
+            {
+                var due = t.DueDate!.Value;
+                var days = (due.Date - DateTime.UtcNow.Date).Days;
+                if (days < 0)
+                {
+                    var late = -days;
+                    rows.Add(new AttentionRow(t, $"{late} day{(late == 1 ? "" : "s")} late", "#C4271C", "#FFEBEA"));
+                }
+                else if (days <= 3)
+                {
+                    rows.Add(new AttentionRow(t, days == 0 ? "Due today" : $"Due in {days} day{(days == 1 ? "" : "s")}", "#B25E00", "#FFF4E5"));
+                }
+            }
+            return rows.OrderBy(r => r.Task.DueDate).ToList();
+        }
+    }
+
+    private string RingColor => ProjectUiHelpers.GetAvatarBg(Project?.Name ?? "");
+
+    private string RingGradient => AllTasks.Count == 0
+        ? "conic-gradient(#EDEDF0 0deg, #EDEDF0 360deg)"
+        : $"conic-gradient({RingColor} {ProgressPercentage * 3.6}deg, #EDEDF0 0deg)";
+
+    private string DueLabel => Project?.Deadline is { } d ? $"Due {d.ToLocalTime():dd MMM yyyy}" : "No deadline set";
+
+    private string DaysLeftLabel
+    {
+        get
+        {
+            if (Project?.Deadline is not { } d) return "Set a deadline in Edit";
+            var days = (d.ToLocalTime().Date - DateTime.UtcNow.Date).Days;
+            return days >= 0
+                ? $"{days} day{(days == 1 ? "" : "s")} left"
+                : $"{Math.Abs(days)} day{(Math.Abs(days) == 1 ? "" : "s")} past deadline";
+        }
+    }
+
+    private static string RoleLabel(string role) => role.ToLowerInvariant() switch
+    {
+        "owner" => "Owner",
+        "manager" => "Manager",
+        "admin" => "Admin",
+        _ => "Member",
+    };
+
+    private static string ActivityText(ActivityRow a) => a.Action switch
+    {
+        "status_changed" => $"moved “{a.TaskTitle}” to {StatusName(a.NewValue)}",
+        "comment_added" => $"commented on “{a.TaskTitle}”",
+        "attachment_added" => $"attached a file to “{a.TaskTitle}”",
+        "due_changed" => $"changed the due date of “{a.TaskTitle}”",
+        "assignee_added" => $"assigned someone to “{a.TaskTitle}”",
+        "assignee_removed" => $"unassigned someone from “{a.TaskTitle}”",
+        "created" => $"created “{a.TaskTitle}”",
+        _ => $"{a.Action.Replace('_', ' ')} on “{a.TaskTitle}”",
+    };
+
+    private static string StatusName(string? s) => s?.ToLowerInvariant() switch
+    {
+        "todo" => "To Do",
+        "doing" => "In Progress",
+        "review" => "Review",
+        "done" => "Done",
+        _ => s ?? "—",
+    };
+
+    private static string FormatWhen(DateTime utc)
+    {
+        var l = DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime();
+        var span = DateTime.Now - l;
+        if (span.TotalMinutes < 1) return "just now";
+        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m ago";
+        if (l.Date == DateTime.Today) return l.ToString("HH:mm");
+        if (l.Date == DateTime.Today.AddDays(-1)) return "Yesterday";
+        return l.ToString("dd MMM");
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Project is null) { activity = []; return; }
+        activity = await Auth.GetAsync<List<ActivityRow>>($"/api/projects/{Project.Id}/activity?limit=8") ?? [];
+    }
 
     private List<EvidenceStreamItem> RecentEvidenceList
     {
@@ -349,4 +299,6 @@
             return list.OrderByDescending(x => x.Item.UploadedAt).ToList();
         }
     }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
 }

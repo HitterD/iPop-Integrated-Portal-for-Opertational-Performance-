@@ -949,6 +949,27 @@ public static class ProjectEndpoints
 
         // ── Milestone (Fase 4) ──
 
+        // GET /api/projects/{id}/activity — aktivitas terbaru seluruh tugas proyek.
+        // The v6 Overview shows a project-wide "Recent activity" feed; the per-task
+        // endpoint above is too narrow for it.
+        g.MapGet("/{id:guid}/activity", async (Guid id, int? limit, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == id && m.UserId == userId.Value, ct);
+            if (!isMember) return Results.Json(new { code = "forbidden", message = "Not a project member." }, statusCode: 403);
+
+            var take = Math.Clamp(limit ?? 20, 1, 100);
+            var rows = await db.ProjectTaskActivities.AsNoTracking()
+                .Where(a => a.Task.ProjectId == id)
+                .OrderByDescending(a => a.CreatedAt)
+                .Take(take)
+                .Select(a => new ProjectActivityDto(a.Id, a.TaskId, a.Task.Title, a.Actor.Name,
+                    a.Action, a.OldValue, a.NewValue, a.CreatedAt))
+                .ToListAsync(ct);
+            return Results.Ok(rows);
+        });
+
         // GET /api/projects/{id}/milestones — daftar milestone proyek.
         g.MapGet("/{id:guid}/milestones", async (Guid id, HttpContext http, IPopDbContext db, CancellationToken ct) =>
         {
@@ -1174,6 +1195,11 @@ public static class ProjectEndpoints
     public record TaskCommentDto(Guid Id, string AuthorName, string AuthorNik, string Content, Guid? ParentCommentId, DateTime CreatedAt);
     public record TaskActivityDto(Guid Id, string ActorName, string Action, string? OldValue, string? NewValue, DateTime CreatedAt);
     public record PagedActivities(IReadOnlyList<TaskActivityDto> Items, int TotalCount, int Page, int PageSize);
+
+    /// Project-wide activity row: carries the task title so the Overview feed can render
+    /// "<who> <what> on <task>" without an extra lookup per row.
+    public record ProjectActivityDto(Guid Id, Guid TaskId, string TaskTitle, string ActorName,
+        string Action, string? OldValue, string? NewValue, DateTime CreatedAt);
     // Lampiran berkas tugas (referensi NAS)
     public record AddTaskAttachmentRequest(string FileName, long Size, string Server, string Path);
     public record TaskAttachmentDto(Guid Id, string FileName, long FileSize, string UploadedByName, string Server, string Path, DateTime CreatedAt);
