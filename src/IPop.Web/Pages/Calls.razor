@@ -9,15 +9,15 @@
 
 <PageTitle>Calls — IPop</PageTitle>
 
-<div class="content calls-v6">
-    <div class="calls-toolbar">
+<div class="calls-v6">
+    <div class="toolbar calls-toolbar">
         <div class="calls-tabs">
             <button class="@(tab == "recents" ? "active" : "")" @onclick='() => SetTab("recents")'><i data-lucide="history"></i> Recents <span>@history.Total</span></button>
             <button class="@(tab == "scheduled" ? "active" : "")" @onclick='() => SetTab("scheduled")'><i data-lucide="calendar-clock"></i> Scheduled <span>@meetings.Count</span></button>
         </div>
-        <input aria-label="Search calls or meetings" placeholder="Search calls" @bind="search" @bind:event="oninput" />
-        <button class="btn-sm surface" @onclick="OpenSchedule"><i data-lucide="calendar-plus"></i> Schedule</button>
-        <button class="btn-sm surface" @onclick="FocusCallPicker"><i data-lucide="phone"></i> New call</button>
+        <div class="v6-search calls-search"><i data-lucide="search"></i><input type="search" aria-label="Search calls or meetings" placeholder="Search calls" @bind="search" @bind:event="oninput" /></div>
+        <button type="button" class="ghost-btn" @onclick="OpenSchedule"><i data-lucide="calendar-plus"></i>Schedule</button>
+        <button type="button" class="btn-primary" @onclick="FocusCallPicker"><i data-lucide="phone"></i>New call</button>
     </div>
 
     @if (showSchedule)
@@ -35,8 +35,9 @@
         </section>
     }
 
+    <div class="calls-split"><div class="calls-list">
     <div class="calls-favorites">
-        <div class="calls-favorites-head"><strong>FAVORITES</strong><a href="/directory">Manage in Directory</a></div>
+        <div class="calls-favorites-head"><strong>FAVORITES</strong><a href="/directory">Manage</a></div>
         @if (favorites.Count == 0) { <span>Star people in Directory to add them here.</span> }
         @foreach (var person in favorites)
         {
@@ -44,9 +45,19 @@
         }
     </div>
 
-    <div class="calls-split"><div class="calls-list">
+
+    @if (tab == "recents")
+    {
+        <div class="calls-history-filters" role="group" aria-label="Filter call history">
+            @foreach (var option in new[] { "All", "Missed", "Incoming", "Outgoing" })
+            {
+                var filter = option.ToLowerInvariant();
+                <button type="button" class="@(historyFilter == filter ? "active" : "")" @onclick="() => historyFilter = filter">@option<span>· @(filter == "all" ? history.Total : historyRows.Count(h => HistoryMatches(h, filter)))</span></button>
+            }
+        </div>
+    }
     @* ---- Header / peer picker ---- *@
-    <div class="tray rise rise-1" id="calls-picker" hidden="@(!showPicker && selectedPeer is null && tab != "recents")">
+    <div class="tray rise rise-1" id="calls-picker" hidden="@(!showPicker && selectedPeer is null)">
         <div class="core" style="padding:0;overflow:hidden">
             <div class="panel-head" style="flex-wrap:wrap;gap:10px">
                 <i data-lucide="phone"></i> <span>Calls</span>
@@ -163,12 +174,7 @@
     @* ---- Call history (grouped by date) ---- *@
     @if (tab == "recents")
     {
-    <div class="tray rise rise-3">
-        <div class="core" style="padding:0;overflow:hidden">
-            <div class="panel-head">
-                <i data-lucide="history"></i> <span>Call history</span>
-                <span class="meta">@(historyRows.Count == 0 ? "No calls yet" : $"{history.Total} calls")</span>
-            </div>
+    <div class="calls-history">
             @if (historyRows.Count == 0)
             {
                 <div class="tree-empty" style="padding:20px"><i data-lucide="phone-missed" style="width:18px;height:18px;margin-bottom:6px"></i>
@@ -177,26 +183,26 @@
             }
             else
             {
-                <div style="padding:6px 14px 14px">
-                    @foreach (var g in historyRows.Where(h => string.IsNullOrWhiteSpace(search) || h.PeerName.Contains(search, StringComparison.OrdinalIgnoreCase)).GroupBy(h => h.StartedAt.ToLocalTime().Date).OrderByDescending(g => g.Key))
+                <div class="calls-history-scroll">
+                    @foreach (var g in historyRows.Where(h => HistoryMatches(h, historyFilter) && (string.IsNullOrWhiteSpace(search) || h.PeerName.Contains(search, StringComparison.OrdinalIgnoreCase))).GroupBy(h => h.StartedAt.ToLocalTime().Date).OrderByDescending(g => g.Key))
                     {
-                        <div style="font-weight:600;font-size:12px;color:var(--ink-2);margin:10px 0 6px">@g.Key.ToString("dddd, MMM dd")</div>
+                        <div class="calls-date">@DateGroupLabel(g.Key)</div>
                         @foreach (var h in g)
                         {
-                            <div class="calls-history-row @(detailCall?.CallId == h.CallId ? "selected" : "")" role="button" tabindex="0" @onclick="() => SelectCall(h)">
-                                <div class="avatar" style="background:@(h.Direction == "outgoing" ? "var(--accent-soft)" : "var(--tray)");color:@(h.Direction == "outgoing" ? "var(--accent-ink)" : "var(--ink-3)")">
-                                    <i data-lucide="@(h.Direction == "outgoing" ? "phone-outgoing" : "phone-incoming")" style="width:13px;height:13px"></i>
-                                </div>
-                                <div style="flex:1">
-                                    <div style="font-size:12.5px;font-weight:600">@h.PeerName</div>
-                                    <div style="font-size:11px;color:var(--ink-3)">@h.StartedAt.ToLocalTime().ToString("HH:mm") · @DurationLabel(h)</div>
-                                </div>
-                                <span class="tag" style="@ResultStyle(h.Result)">@h.Result</span>
-                                @if (!string.IsNullOrWhiteSpace(h.PeerNik))
-                                {
-                                    <a class="btn-sm surface" href="@ChatHref(h.PeerNik)" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;font-size:11.5px;padding:6px 10px" title="Open chat with @h.PeerName"><i data-lucide="message-circle" style="width:12px;height:12px"></i> Chat</a>
-                                }
-                                <button class="btn-sm surface" title="Call @h.PeerName again" disabled="@(string.IsNullOrWhiteSpace(h.PeerNik))" @onclick="() => CallAgain(h.PeerNik!)"><i data-lucide="phone" style="width:11px;height:11px"></i> Call again</button>
+                            <div class="calls-history-row @(detailCall?.CallId == h.CallId ? "selected" : "")" role="button" tabindex="0" @onclick="() => SelectCall(h)" @onkeydown="e => SelectCallOnKey(e, h)">
+                                <span class="calls-history-av" style="background:@AvatarColor(h.PeerName)">@Initials(h.PeerName)</span>
+                                <span class="calls-history-info">
+                                    <strong class="@(h.Result == "missed" ? "missed" : "")">@h.PeerName</strong>
+                                    <small><i data-lucide="@CallIcon(h)"></i> @HistoryDirection(h) · @(h.Direction == "missed" || h.Result == "missed" ? "Missed" : DurationLabel(h))</small>
+                                </span>
+                                <time>@h.StartedAt.ToLocalTime().ToString("HH:mm")</time>
+                                <span class="calls-row-actions">
+                                    <button type="button" title="Call @h.PeerName" aria-label="Call @h.PeerName" disabled="@(string.IsNullOrWhiteSpace(h.PeerNik))" @onclick="() => CallAgain(h.PeerNik!)" @onclick:stopPropagation="true"><i data-lucide="phone"></i></button>
+                                    @if (!string.IsNullOrWhiteSpace(h.PeerNik))
+                                    {
+                                        <a href="@ChatHref(h.PeerNik)" title="Message @h.PeerName" aria-label="Message @h.PeerName" @onclick:stopPropagation="true"><i data-lucide="message-circle"></i></a>
+                                    }
+                                </span>
                             </div>
                         }
                     }
@@ -212,7 +218,6 @@
                     }
                 </div>
             }
-        </div>
     </div>
 
     }
@@ -250,19 +255,28 @@
         }
         else if (detailCall is { } h)
         {
-            <div class="calls-detail-hero"><h2>@h.PeerName</h2><p>@h.Result · @h.StartedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")</p></div>
-            <div class="calls-detail-actions">
-                <button class="btn-sm surface" disabled="@(h.PeerNik is null)" @onclick="() => CallAgain(h.PeerNik!)"><i data-lucide="phone"></i> Call again</button>
-                <a class="btn-sm surface" href="@ChatHref(h.PeerNik ?? "")"><i data-lucide="message-circle"></i> Message</a>
-                <button class="btn-sm surface" style="color:var(--danger)" @onclick="() => RemoveFromRecents(h.CallId)"><i data-lucide="trash-2"></i> Remove</button>
+            <div class="calls-detail-hero">
+                <span class="calls-detail-avatar" style="background:@AvatarColor(h.PeerName)">@Initials(h.PeerName)</span>
+                <h2>@h.PeerName</h2>
+                <p>@HistoryDirection(h) · @h.Result</p>
             </div>
-            <div class="calls-detail-block"><strong>CALL HISTORY</strong><p>@DurationLabel(h) · @h.Direction</p></div>
-            <div class="calls-detail-block">
-                <strong>PRIVATE NOTE</strong>
-                <textarea style="width:100%;min-height:60px;margin-top:6px;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px;background:var(--bg);color:var(--ink);box-sizing:border-box"
-                          placeholder="Add a private note about this contact…"
-                          value="@contactNote"
-                          @oninput="HandleNoteInput"></textarea>
+            <div class="calls-detail-actions call-actions">
+                <button type="button" disabled="@(string.IsNullOrWhiteSpace(h.PeerNik))" @onclick="() => CallAgain(h.PeerNik!)"><i data-lucide="phone"></i>Voice</button>
+                <a href="@ChatHref(h.PeerNik ?? "")"><i data-lucide="message-circle"></i>Message</a>
+                @if (!string.IsNullOrWhiteSpace(h.PeerNik))
+                {
+                    <a href="/directory/person/@Uri.EscapeDataString(h.PeerNik)"><i data-lucide="contact-round"></i>Profile</a>
+                }
+            </div>
+            <div class="calls-detail-block calls-contact-history"><strong>CALL HISTORY</strong><span>@historyRows.Count(x => x.PeerNik == h.PeerNik && !string.IsNullOrWhiteSpace(h.PeerNik)) calls</span>
+                @foreach (var entry in historyRows.Where(x => x.PeerNik == h.PeerNik && !string.IsNullOrWhiteSpace(h.PeerNik)).Take(5))
+                {
+                    <div class="calls-contact-row"><i data-lucide="@CallIcon(entry)"></i><span>@HistoryDirection(entry) · @entry.Result<small>@entry.StartedAt.ToLocalTime().ToString("MMM d, HH:mm")</small></span><time>@DurationLabel(entry)</time></div>
+                }
+            </div>
+            <div class="calls-detail-block calls-note">
+                <strong>NOTES</strong>
+                <div class="calls-note-unavailable">Private notes are not saved yet.</div>
             </div>
         }
         else { <div class="calls-empty">Select a call or meeting to see its details.</div> }
@@ -288,6 +302,7 @@
     private string notice = "";
     private string tab = "recents";
     private string search = "";
+    private string historyFilter = "all";
     private bool showPicker;
     private bool showSchedule;
     private bool savingMeeting;
@@ -483,6 +498,8 @@
         // ipop-49: every caller of LoadHistory is a post-call refresh, which legitimately resets
         // to page 1 — a just-ended call belongs at the top. Reset the paging cursor with it.
         historyRows = history.Items.ToList();
+        Layout.SetSubtitle($"{history.Total} calls · {meetings.Count} upcoming meetings");
+        if (detailCall is null && detailMeeting is null && historyRows.Count > 0) detailCall = historyRows[0];
         historyPage = 1;
         StateHasChanged();
     }
@@ -527,6 +544,30 @@
     {
         tab = "recents";
         showPicker = true;
+    }
+
+    private static bool HistoryMatches(CallHistoryDto h, string filter) => filter switch
+    {
+        "missed" => h.Result.Equals("missed", StringComparison.OrdinalIgnoreCase),
+        "incoming" => h.Direction.Equals("incoming", StringComparison.OrdinalIgnoreCase),
+        "outgoing" => h.Direction.Equals("outgoing", StringComparison.OrdinalIgnoreCase),
+        _ => true,
+    };
+
+    private static string HistoryDirection(CallHistoryDto h) => h.Direction.Equals("outgoing", StringComparison.OrdinalIgnoreCase) ? "Outgoing" : "Incoming";
+    private static string CallIcon(CallHistoryDto h) => h.Result.Equals("missed", StringComparison.OrdinalIgnoreCase) ? "phone-missed" : h.Direction.Equals("outgoing", StringComparison.OrdinalIgnoreCase) ? "phone-outgoing" : "phone-incoming";
+    private static string DateGroupLabel(DateTime date) => date.Date == DateTime.Today ? "Today" : date.Date == DateTime.Today.AddDays(-1) ? "Yesterday" : date.ToString("dddd, MMM d");
+    private static string AvatarColor(string name)
+    {
+        var colors = new[] { "#197D8C", "#2E9E5B", "#824BAD", "#B85540", "#527D31" };
+        var hash = 0u;
+        foreach (var c in name) hash = hash * 31 + c;
+        return colors[(int)(hash % (uint)colors.Length)];
+    }
+
+    private void SelectCallOnKey(KeyboardEventArgs e, CallHistoryDto h)
+    {
+        if (e.Key is "Enter" or " ") SelectCall(h);
     }
 
     private void SelectCall(CallHistoryDto h)
@@ -620,20 +661,6 @@
             Toasts.Show("Meeting saved.", ToastKind.Success);
         }
         finally { savingMeeting = false; }
-    }
-
-    private string contactNote = "";
-
-    private void HandleNoteInput(ChangeEventArgs e)
-    {
-        contactNote = e.Value?.ToString() ?? "";
-    }
-
-    private void RemoveFromRecents(Guid callId)
-    {
-        historyRows.RemoveAll(x => x.CallId == callId);
-        detailCall = null;
-        Toasts.Show("Removed from recents.", ToastKind.Info);
     }
 
     private async Task CopyMeetingLink(MeetingDto m)
