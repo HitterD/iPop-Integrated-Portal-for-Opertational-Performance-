@@ -10,7 +10,6 @@
 <PageTitle>Directory — IPop</PageTitle>
 
 <div class="toolbar">
-    <span class="presence-label">Presence</span>
     <div class="apple-segmented">
         <button type="button" class="seg-btn @(presenceFilter == "" ? "active" : "")" @onclick='() => SetPresenceFilter("")'>
             <span>All</span>
@@ -38,6 +37,10 @@
         </button>
     </div>
     <div class="push flex center gap-8">
+        <div class="v6-search">
+            <i data-lucide="search"></i>
+            <input type="search" placeholder="Search name, NIK or email" aria-label="Search people" value="@Layout.SearchQuery" @oninput="e => Layout.SetSearch(e.Value?.ToString())" />
+        </div>
         <div style="display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden">
             <button class="icon-btn" style="border:none;border-radius:0;background:@(!isGridView ? "var(--accent-soft)" : "transparent");color:@(!isGridView ? "var(--accent-ink)" : "var(--ink-2)")" title="List view" @onclick="() => isGridView = false"><i data-lucide="list"></i></button>
             <button class="icon-btn" style="border:none;border-radius:0;background:@(isGridView ? "var(--accent-soft)" : "transparent");color:@(isGridView ? "var(--accent-ink)" : "var(--ink-2)")" title="Grid view" @onclick="() => isGridView = true"><i data-lucide="layout-grid"></i></button>
@@ -423,7 +426,7 @@
     {
         // ipop-25: make the shell search's placeholder explicit here too, so the
         // default in SetHeader stays a fallback rather than Directory-specific copy.
-        Layout.SetHeader("Directory", "People", showSearch: true, searchPlaceholder: "Search people by name or ID");
+        Layout.SetHeader("Directory", "People");
         Layout.SearchChanged += OnSearchChanged;
         Auth.PresenceChanged += OnPresenceChanged;
         Auth.DirectoryChanged += OnDirectoryChanged;

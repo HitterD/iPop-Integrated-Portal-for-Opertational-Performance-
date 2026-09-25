@@ -10,12 +10,12 @@
 @inject BadgeState Badges
 @inject OverlayStack Overlays
 
-<div class="shell @(collapsed ? "collapsed" : "") @(IsToolbarPage ? "toolbar-mode" : "")" id="shell">
+<div class="shell @(collapsed ? "collapsed" : "")" id="shell">
     <aside class="sidebar">
         <div class="side-head">
             <img class="mark" src="img/logo.png" alt="IPop" style="width:34px;height:34px" />
-            <div class="txt"><div class="t">IPop</div><div class="s">Operational portal</div></div>
-            <button class="collapse-btn" title="Collapse sidebar ( [ )" @onclick="ToggleSidebar"><i data-lucide="panel-left-close"></i></button>
+            <div class="txt"><div class="t">iPop</div><div class="s">Operational portal</div></div>
+            <button class="collapse-btn" title="Collapse sidebar ( [ )" @onclick="ToggleSidebar"><i data-lucide="panel-left"></i></button>
         </div>
         @foreach (var group in NavGroups)
         {
@@ -39,60 +39,48 @@
             }
         }
         <div class="sidebar-foot">
-            <div class="avatar" style="background:var(--accent)">@Initials</div>
+            <div class="avatar">@Initials<span class="sdot @Auth.MyStatus"></span></div>
             <div class="who"><div class="n">@UserName</div><div class="r">@UserRole</div></div>
             <button class="out" title="Sign out" @onclick="SignOut"><i data-lucide="log-out"></i></button>
         </div>
     </aside>
 
     <div class="main">
-        <header class="topbar @(IsToolbarPage ? "apple-toolbar" : "")">
-            @if (IsToolbarPage)
-            {
-                @* Apple toolbar: large title + one-line summary. Page actions render into the
-                   "topbar-actions" section (Mail/Chat) ahead of the shell controls. *@
-                <div class="tb-title">
-                    <h1>@PageTitle</h1>
-                    @if (!string.IsNullOrEmpty(Subtitle))
-                    {
-                        <div class="tb-sub">@Subtitle</div>
-                    }
-                </div>
-            }
-            else
-            {
+        <header class="topbar v6-topbar">
+            @* v6 header: stacked title + subtitle, spacer, global search, presence, theme, bell. *@
+            <div class="tb-title">
                 <h1>@PageTitle</h1>
-                @if (!string.IsNullOrEmpty(Crumb))
+                @if (!string.IsNullOrEmpty(Subtitle))
                 {
-                    <span class="crumb">@Crumb</span>
+                    <div class="tb-sub">@Subtitle</div>
                 }
-            }
-            @if (PresenceConnected && !ShowSearch && !IsToolbarPage)
+            </div>
+            @if (IsProjectsPage && Auth.ConnectionState == DirectoryConnectionState.Live)
             {
-                <span class="meta conn" title="Real-time presence connection"><i data-lucide="plug-zap" style="width:13px;height:13px"></i> @PresenceLabel</span>
+                <span class="tb-live"><span class="d"></span>Live</span>
             }
-            @if (ShowSearch)
-            {
-                <div class="search">
-                    <i data-lucide="search"></i>
-                    <input type="text" placeholder="@SearchPlaceholder" @bind="SearchQuery" @bind:event="oninput" @bind:after="NotifySearchChanged" />
-                </div>
-            }
-            @if (!ShowSearch && !IsToolbarPage)
-            {
-                <button class="search-trigger" @onclick="Palette.Open" title="Search iPop (Ctrl+K)">
-                    <i data-lucide="search"></i><span>Search iPop</span><kbd>⌘K</kbd>
-                </button>
-            }
+            <div class="tb-spacer"></div>
+            <SectionOutlet SectionName="topbar-actions" />
+            <button class="search-trigger" @onclick="Palette.Open" title="Search iPop (Ctrl+K)">
+                <i data-lucide="search"></i><span>Search iPop</span><kbd>⌘K</kbd>
+            </button>
             <div class="topbar-right">
-                <SectionOutlet SectionName="topbar-actions" />
                 @if (Auth.Me is not null)
                 {
-                    <button class="presence-toggle" title="@(Auth.MyStatus == "busy" ? "Clear busy status" : "Set busy status")"
-                            @onclick="ToggleBusy">
-                        <span class="dot @Auth.MyStatus"></span>
-                        <span class="status-lbl">@StatusLabel</span>
-                    </button>
+                    <div class="status-wrap">
+                        <button class="presence-toggle" title="Set your status" @onclick="ToggleStatusMenu" @onclick:stopPropagation>
+                            <span class="sdot @Auth.MyStatus"></span>
+                            <span class="status-lbl">@StatusLabel</span>
+                            <i data-lucide="chevron-down" class="chev"></i>
+                        </button>
+                        @if (statusMenuOpen)
+                        {
+                            <div class="status-menu" @onclick:stopPropagation>
+                                <button @onclick="() => SetStatus(false)"><span class="sdot on"></span><span class="l">Online<small>Automatic</small></span>@if (Auth.MyStatus != "busy") {<i data-lucide="check"></i>}</button>
+                                <button @onclick="() => SetStatus(true)"><span class="sdot busy"></span><span class="l">Busy<small>Mute calls &amp; banners</small></span>@if (Auth.MyStatus == "busy") {<i data-lucide="check"></i>}</button>
+                            </div>
+                        }
+                    </div>
                 }
                 <button class="theme-btn" title="@(IsDark ? "Switch to light mode" : "Switch to dark mode")" @onclick="ToggleTheme">
                     <i data-lucide="@(IsDark ? "sun" : "moon")"></i>
@@ -215,18 +203,16 @@
 </div>
 
 @code {
-    private bool collapsed, notifOpen;
+    private bool collapsed, notifOpen, statusMenuOpen;
     private DotNetObjectReference<MainLayout>? selfRef;
     private ErrorBoundary? errorBoundary;
 
-    /// Chat and Mail use the Apple toolbar header (title + summary + page actions). The sidebar
-    /// is deliberately not touched here — it stays however the user left it.
-    private bool IsToolbarPage
+    private bool IsProjectsPage
     {
         get
         {
             var path = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0];
-            return path is "/chat" or "/mail" || path.StartsWith("/chat/") || path.StartsWith("/mail/");
+            return path == "/projects" || path.StartsWith("/projects/");
         }
     }
 
@@ -255,12 +241,12 @@
         ]),
         new("Administration", [
             new("Administration", "sliders-horizontal", "/admin", AdminOnly: true),
-            new("Notification Gateway", "bell", "/notifications/gateway", AdminOnly: true),
+            new("Notifications", "bell", "/notifications", BadgeKey: "notif"),
         ]),
     ];
 
     private string UserName => Auth.Me?.Name ?? "…";
-    private string UserRole => Auth.Me is null ? "" : $"{Auth.Me.Department} · {Auth.Me.Position}";
+    private string UserRole => Auth.Me is null ? "" : Auth.IsAdmin ? "Super admin" : (Auth.Me.Position ?? Auth.Me.Department ?? "");
     /// Unread count behind the bell badge (NotificationState; mock count until backend).
     private int NotifUnread => Notifs.UnreadCount;
     private NotificationLocalPrefs NotifPrefs { get; set; } = new();
@@ -305,7 +291,9 @@
     {
         PageTitle = title; Crumb = crumb; ShowSearch = showSearch;
         SearchPlaceholder = searchPlaceholder ?? "Search people by name or ID";
-        Subtitle = "";
+        // v6 has no crumb pill — the second argument is the subtitle under the title until
+        // the page replaces it with live counts via SetSubtitle.
+        Subtitle = crumb;
         StateHasChanged();
     }
 
@@ -317,6 +305,10 @@
     }
 
     private void NotifySearchChanged() => SearchChanged?.Invoke();
+
+    /// v6 puts module search boxes in the page toolbar, not the header; they feed the same
+    /// SearchQuery/SearchChanged contract the pages already listen to.
+    public void SetSearch(string? q) { SearchQuery = q; SearchChanged?.Invoke(); }
 
     private void OnPresenceChanged(string nik, string status)
         => _ = InvokeAsync(StateHasChanged);
@@ -419,9 +411,12 @@
         _ => "Offline"
     };
 
-    private async Task ToggleBusy()
+    private void ToggleStatusMenu() { statusMenuOpen = !statusMenuOpen; notifOpen = false; }
+
+    private async Task SetStatus(bool busy)
     {
-        await Auth.SetBusyAsync(Auth.MyStatus != "busy");
+        statusMenuOpen = false;
+        if ((Auth.MyStatus == "busy") != busy) await Auth.SetBusyAsync(busy);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -438,7 +433,7 @@
         // Top-most overlay first (palette, confirm, modal, context menu), then page overlays.
         if (await Overlays.CloseTopAsync()) { StateHasChanged(); return; }
         EscapePressed?.Invoke();
-        if (notifOpen) notifOpen = false;
+        notifOpen = false; statusMenuOpen = false;
         StateHasChanged();
     }
 
@@ -451,8 +446,8 @@
     [JSInvokable]
     public void OnClickAway()
     {
-        if (!notifOpen) return;
-        notifOpen = false;
+        if (!notifOpen && !statusMenuOpen) return;
+        notifOpen = false; statusMenuOpen = false;
         StateHasChanged();
     }
 

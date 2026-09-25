@@ -14,26 +14,6 @@
 
 <PageTitle>Mail — IPop</PageTitle>
 
-@* ============ TOPBAR ACTIONS (Injected into Shell Header) ============ *@
-<SectionContent SectionName="topbar-actions">
-    <div class="tb-actions">
-        <div class="tb-search">
-            <i data-lucide="search"></i>
-            <input type="text"
-                   placeholder="Search mail or sender…"
-                   aria-label="Search mail or sender"
-                   value="@search"
-                   @oninput="OnSearch" />
-        </div>
-        <button type="button" class="icon-btn" title="Refresh" aria-label="Refresh" @onclick="ReloadAll">
-            <i data-lucide="refresh-cw"></i>
-        </button>
-        <button type="button" class="btn-primary" @onclick="() => OpenComposer()">
-            <i data-lucide="square-pen"></i>
-            <span>Compose</span>
-        </button>
-    </div>
-</SectionContent>
 
 <div class="mail-page" @onkeydown="OnKeyDown" tabindex="0">
     @* ============ TOOLBAR (Segmented Filter + Ghost Actions) ============ *@
@@ -57,6 +37,9 @@
         </div>
 
         <div class="actions" style="margin-left:auto;display:flex;align-items:center;gap:8px">
+            @* Bulk actions only while messages are checked — the reader carries per-message actions. *@
+            @if (selected.Count > 0)
+            {
             <button type="button" class="ghost-btn" disabled="@(!CanArchive)" @onclick="ToolbarArchive" title="Archive">
                 <i data-lucide="archive"></i>
                 <span>Archive</span>
@@ -68,6 +51,18 @@
             <button type="button" class="ghost-btn" disabled="@(!CanMarkRead)" @onclick="ToolbarMarkRead" title="Mark read">
                 <i data-lucide="check-check"></i>
                 <span>Mark read</span>
+            </button>
+            }
+            <div class="v6-search">
+                <i data-lucide="search"></i>
+                <input type="search" placeholder="Search mail or sender" aria-label="Search mail or sender" value="@search" @oninput="OnSearch" />
+            </div>
+            <button type="button" class="icon-btn" title="Sync mailbox" aria-label="Sync mailbox" @onclick="ReloadAll">
+                <i data-lucide="refresh-cw"></i>
+            </button>
+            <button type="button" class="btn-dark" @onclick="() => OpenComposer()">
+                <i data-lucide="square-pen"></i>
+                <span>Compose</span>
             </button>
         </div>
     </div>

@@ -318,7 +318,7 @@
 
     protected override void OnInitialized()
     {
-        Layout.SetHeader("Calls", "Direct calls · history · preselect via drawer");
+        Layout.SetHeader("Calls", "Direct calls · meetings · history");
         CallSvc.StateChanged += OnStateChanged;
         // ipop-32d: ProfileDrawer's Call button deep-links /calls?callee=…; the drawer is
         // rendered on pages other than this one, but a same-page re-navigation would not
