@@ -30,6 +30,7 @@
             <div class="exec-progress-legend">
                 <span><span class="col-dot done" style="width:7px;height:7px"></span> @DoneTasks.Count Completed</span>
                 <span><span class="col-dot doing" style="width:7px;height:7px"></span> @DoingTasks.Count In Progress</span>
+                <span><span class="col-dot review" style="width:7px;height:7px"></span> @ReviewTasks.Count Review</span>
                 <span><span class="col-dot todo" style="width:7px;height:7px"></span> @TodoTasks.Count To Do</span>
                 @if (OverdueTasks.Count > 0)
                 {
@@ -173,7 +174,7 @@
                                     <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ink-3);margin-top:4px">
                                         <span>New Deadline: <b>@(t.DueDate?.ToString("dd MMM yyyy"))</b></span>
                                         <span>•</span>
-                                        <span>Status: @(t.Status == "doing" ? "In Progress" : t.Status)</span>
+                                        <span>Status: @(t.Status == "doing" ? "In Progress" : (t.Status == "review" ? "Review" : t.Status))</span>
                                     </div>
                                 </div>
                                 <div>
@@ -304,6 +305,7 @@
 
     private List<ProjectTaskDto> TodoTasks => AllTasks.Where(t => t.Status == "todo").ToList();
     private List<ProjectTaskDto> DoingTasks => AllTasks.Where(t => t.Status == "doing").ToList();
+    private List<ProjectTaskDto> ReviewTasks => AllTasks.Where(t => t.Status == "review").ToList();
     private List<ProjectTaskDto> DoneTasks => AllTasks.Where(t => t.Status == "done").ToList();
 
     private List<ProjectTaskDto> OverdueTasks => AllTasks.Where(t => t.DueDate.HasValue && t.DueDate.Value < DateTime.UtcNow && t.Status != "done").ToList();
@@ -311,7 +313,7 @@
 
     private int ProgressPercentage => AllTasks.Count > 0 ? (DoneTasks.Count * 100 / AllTasks.Count) : 0;
     private int DonePercentage => AllTasks.Count > 0 ? (DoneTasks.Count * 100 / AllTasks.Count) : 0;
-    private int DoingPercentage => AllTasks.Count > 0 ? (DoingTasks.Count * 100 / AllTasks.Count) : 0;
+    private int DoingPercentage => AllTasks.Count > 0 ? ((DoingTasks.Count + ReviewTasks.Count) * 100 / AllTasks.Count) : 0;
 
     private decimal TotalEstimatedHours => AllTasks.Sum(t => t.EstimatedHours ?? 0);
     private decimal TotalActualHours => AllTasks.Sum(t => t.ActualHours ?? 0);

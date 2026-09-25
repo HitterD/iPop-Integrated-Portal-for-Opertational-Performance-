@@ -57,6 +57,8 @@ public partial class Chat
     {
         createDropdownOpen = false;
         newDmModalOpen = true;
+        pickerGroupMode = false;
+        pickerPicked.Clear();
         newDmSearchQuery = "";
         newDmSearchResults = [];
     }
@@ -64,11 +66,84 @@ public partial class Chat
     private void StartNewGroup()
     {
         createDropdownOpen = false;
-        newGroupModalOpen = true;
+        newDmModalOpen = true;
+        pickerGroupMode = true;
+        pickerPicked.Clear();
         newGroupName = "";
-        newGroupSearchQuery = "";
-        newGroupSearchResults = [];
-        newGroupSelectedMembers = [];
+        newDmSearchQuery = "";
+        newDmSearchResults = [];
+    }
+
+    // ---- v6 picker: Direct ⇄ Group in one dialog -------------------------------
+
+    private void ClosePicker()
+    {
+        newDmModalOpen = false;
+        pickerPicked.Clear();
+        newDmSearchQuery = "";
+        newDmSearchResults = [];
+        newGroupName = "";
+    }
+
+    private void SetPickerMode(bool group)
+    {
+        pickerGroupMode = group;
+        // A direct message addresses exactly one person; dropping to a single pick
+        // mirrors the mockup, which truncates the selection when you switch tabs.
+        if (!group && pickerPicked.Count > 1)
+            pickerPicked.RemoveRange(1, pickerPicked.Count - 1);
+    }
+
+    private async Task SearchPickerUsers()
+    {
+        if (newDmSearchQuery.Length < 2) { newDmSearchResults = []; return; }
+        var results = await Auth.GetAsync<List<UserSearchResult>>($"/api/chat/users/search?q={Uri.EscapeDataString(newDmSearchQuery)}");
+        newDmSearchResults = results ?? [];
+    }
+
+    private void TogglePickerPerson(UserSearchResult user)
+    {
+        if (pickerGroupMode)
+        {
+            if (pickerPicked.Any(m => m.Id == user.Id))
+                pickerPicked.RemoveAll(m => m.Id == user.Id);
+            else
+                pickerPicked.Add(user);
+        }
+        else
+        {
+            var wasPicked = pickerPicked.Any(m => m.Id == user.Id);
+            pickerPicked.Clear();
+            if (!wasPicked) pickerPicked.Add(user);
+        }
+        newDmSearchQuery = "";
+        newDmSearchResults = [];
+    }
+
+    private void RemovePickerPerson(UserSearchResult user) => pickerPicked.RemoveAll(m => m.Id == user.Id);
+
+    private bool PickerCanConfirm => pickerGroupMode
+        ? !string.IsNullOrWhiteSpace(newGroupName) && pickerPicked.Count >= 2
+        : pickerPicked.Count == 1;
+
+    private string PickerHint => pickerGroupMode
+        ? $"{pickerPicked.Count} selected · min. 2"
+        : "Pick one person";
+
+    private async Task ConfirmPicker()
+    {
+        if (!PickerCanConfirm) return;
+        if (pickerGroupMode)
+        {
+            await CreateGroupWith(newGroupName.Trim(), pickerPicked);
+            ClosePicker();
+        }
+        else
+        {
+            var person = pickerPicked[0];
+            ClosePicker();
+            await CreateDmWith(person);
+        }
     }
 
     private void ClearPendingPreviews()
@@ -193,7 +268,7 @@ public partial class Chat
     }
 
     /// Directory bulk "Create group" lands here with ?new=group&members=nik1,nik2 —
-    /// open the new-group modal with those people preselected.
+    /// open the picker in group mode with those people preselected.
     private async Task StartGroupFromQuery()
     {
         StartNewGroup();
@@ -203,8 +278,8 @@ public partial class Chat
             if (nik == GetCurrentUserNik()) continue;
             var results = await Auth.GetAsync<List<UserSearchResult>>($"/api/chat/users/search?q={Uri.EscapeDataString(nik)}");
             var user = results?.FirstOrDefault(u => string.Equals(u.Nik, nik, StringComparison.OrdinalIgnoreCase));
-            if (user is not null && !newGroupSelectedMembers.Any(m => m.Id == user.Id))
-                newGroupSelectedMembers.Add(user);
+            if (user is not null && !pickerPicked.Any(m => m.Id == user.Id))
+                pickerPicked.Add(user);
         }
         StateHasChanged();
     }

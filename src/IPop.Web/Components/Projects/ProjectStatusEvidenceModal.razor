@@ -10,7 +10,7 @@
                 <div style="display:flex;align-items:center;gap:8px">
                     <span class="col-dot @TargetStatus"></span>
                     <span style="font-weight:700;font-size:14px;color:var(--ink)">
-                        @(TargetStatus == "doing" ? "Progress Breakdown & Field Evidence" : "Work Completion Evidence")
+                        @(TargetStatus == "doing" ? "Progress Breakdown & Field Evidence" : (TargetStatus == "review" ? "Review Notes & Field Evidence" : "Work Completion Evidence"))
                     </span>
                 </div>
                 <button type="button" class="btn-sm surface" style="padding:4px 8px" @onclick="HandleCancel">

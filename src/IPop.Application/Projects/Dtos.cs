@@ -10,7 +10,7 @@ public record UpdateProjectRequest(string? Name, string? Description, int? Year,
 public record ProjectDto(Guid Id, string Name, string? Description, int Year, Guid OwnerId,
     string OwnerName, string OwnerNik, DateTime? StartDate, DateTime? Deadline,
     string Status, int Progress, string? Risk, string? Obstacle, bool IsActive,
-    int MemberCount, int TaskCount, int TodoCount, int DoingCount, int DoneCount,
+    int MemberCount, int TaskCount, int TodoCount, int DoingCount, int ReviewCount, int DoneCount,
     DateTime CreatedAt, DateTime UpdatedAt);
 
 public record ProjectListDto(Guid Id, string Name, int Year, string OwnerName, string Status,
@@ -45,7 +45,10 @@ public record ProjectTaskDto(Guid Id, Guid ProjectId, Guid? ParentTaskId, string
 public record ProjectTaskAssigneeDto(Guid UserId, string Nik, string Name, string? Role, DateTime AssignedAt);
 
 // Kanban / List / Timeline DTOs
-public record KanbanBoardDto(Guid ProjectId, IReadOnlyList<ProjectTaskDto> Todo, IReadOnlyList<ProjectTaskDto> Doing, IReadOnlyList<ProjectTaskDto> Done);
+// Review is the fourth lane the v6 mockup shows between In Progress and Done.
+// Defaulted so existing construction sites (and the 3-lane history) keep compiling.
+public record KanbanBoardDto(Guid ProjectId, IReadOnlyList<ProjectTaskDto> Todo, IReadOnlyList<ProjectTaskDto> Doing,
+    IReadOnlyList<ProjectTaskDto> Done, IReadOnlyList<ProjectTaskDto>? Review = null);
 
 public record TaskMoveRequest(string Status, int? SortOrder);
 
@@ -69,7 +72,9 @@ public record ProjectWorkloadDto(
     decimal TodoEstimatedHours,
     decimal DoingEstimatedHours,
     decimal DoneEstimatedHours,
-    IReadOnlyList<AssigneeWorkloadDto> ByAssignee);
+    IReadOnlyList<AssigneeWorkloadDto> ByAssignee,
+    int ReviewTasks = 0,
+    decimal ReviewEstimatedHours = 0);
 
 public record ProjectExportDto(
     ProjectDto Project,
@@ -138,7 +143,8 @@ public record ProjectWorkCalendarDto(
 public record CalendarDayTaskDto(
     DateTime Date, int TaskCount, int TodoCount, int DoingCount, int DoneCount,
     decimal EstimatedHours, decimal ActualHours,
-    IReadOnlyList<Guid> TaskIds
+    IReadOnlyList<Guid> TaskIds,
+    int ReviewCount = 0
 );
 
 // ──────────────────────────────────────────────────────────────────────────

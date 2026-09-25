@@ -4,6 +4,7 @@
 <div class="kanban-board-grid @(draggingTaskId.HasValue ? "is-dragging" : "")">
     @RenderKanbanCol("todo", "To Do", "todo", "col-todo", Kanban?.Todo ?? [])
     @RenderKanbanCol("doing", "In Progress", "doing", "col-doing", Kanban?.Doing ?? [])
+    @RenderKanbanCol("review", "Review", "review", "col-review", Kanban?.Review ?? [])
     @RenderKanbanCol("done", "Done", "done", "col-done", Kanban?.Done ?? [])
 </div>
 
@@ -146,20 +147,33 @@
                      @ondragleave="() => { if (dragOverColumn == statusKey) { dragOverColumn = null; dragOverTargetTaskId = null; } }"
                      @ondrop="e => OnDrop(statusKey, e)">
             <div class="kanban-col-header">
+                <span class="col-dot @dotClass"></span>
                 <div class="col-title">
-                    <span class="col-dot @dotClass"></span>
                     <span>@title</span>
                 </div>
                 <span class="col-count @dotClass">@taskList.Count</span>
+                <button type="button" class="col-quick-icon" title="Add task" @onclick="() => StartQuickAdd(statusKey)">
+                    <i data-lucide="plus" style="width:15px;height:15px"></i>
+                </button>
             </div>
 
             <div class="kanban-cards-stream">
+                @if (quickAddColumn == statusKey)
+                {
+                    <div class="kanban-quick-add-box">
+                        <input class="kanban-quick-input" placeholder="Task name, then press Enter" @bind="quickColumnTitle" @bind:event="oninput"
+                               @onkeydown="@(async e => { if (e.Key == "Enter") await SubmitQuickAdd(statusKey); if (e.Key == "Escape") quickAddColumn = null; })" autofocus />
+                        <div class="kanban-quick-actions">
+                            <button type="button" class="kanban-quick-save" @onclick="() => SubmitQuickAdd(statusKey)">Add</button>
+                            <button type="button" class="kanban-quick-cancel" @onclick="() => quickAddColumn = null">Cancel</button>
+                            <span class="kanban-quick-hint">Esc to close</span>
+                        </div>
+                    </div>
+                }
+
                 @if (taskList.Count == 0 && quickAddColumn != statusKey)
                 {
-                    <div style="padding:24px 12px;text-align:center;color:var(--ink-3);font-size:11.5px;border:1px dashed var(--line-soft);border-radius:10px;margin:4px 0">
-                        <i data-lucide="inbox" style="width:16px;height:16px;margin-bottom:4px"></i>
-                        <div>No tasks yet</div>
-                    </div>
+                    <div class="kanban-empty-lane">Drop tasks here</div>
                 }
 
                 @foreach (var t in taskList)
@@ -365,24 +379,16 @@
                         <span>Drop task in @title</span>
                     </div>
                 }
-
-                @if (quickAddColumn == statusKey)
-                {
-                    <div class="kanban-quick-add-box">
-                        <input class="org-input" style="font-size:12.5px;margin-bottom:8px" placeholder="Task title..." @bind="quickColumnTitle" @onkeydown="@(async e => { if (e.Key == "Enter") await SubmitQuickAdd(statusKey); if (e.Key == "Escape") quickAddColumn = null; })" autofocus />
-                        <div style="display:flex;justify-content:flex-end;gap:6px">
-                            <button type="button" class="btn-sm surface" style="padding:4px 12px;font-size:11.5px" @onclick="() => quickAddColumn = null">Cancel</button>
-                            <button type="button" class="btn-sm accent" style="padding:4px 12px;font-size:11.5px" @onclick="() => SubmitQuickAdd(statusKey)">Add</button>
-                        </div>
-                    </div>
-                }
             </div>
 
-            <div class="kanban-col-quick-add">
-                <button type="button" class="col-quick-btn" @onclick="() => StartQuickAdd(statusKey)">
-                    <i data-lucide="plus" style="width:13px;height:13px"></i> Add Task
-                </button>
-            </div>
+            @if (quickAddColumn != statusKey)
+            {
+                <div class="kanban-col-quick-add">
+                    <button type="button" class="col-quick-btn" @onclick="() => StartQuickAdd(statusKey)">
+                        <i data-lucide="plus" style="width:13px;height:13px"></i> Add task
+                    </button>
+                </div>
+            }
         </div>;
     }
 }

@@ -378,6 +378,11 @@ public partial class Chat
     private string newDmSearchQuery = "";
     private List<UserSearchResult> newDmSearchResults = [];
 
+    // v6 picker: one modal drives both "New message" and "New group" — the segmented
+    // control at the top switches mode instead of opening a second dialog.
+    private bool pickerGroupMode;
+    private readonly List<UserSearchResult> pickerPicked = [];
+
     // ---- File Upload State ----
     private InputFile? fileInput;
     private string? uploadError;
@@ -398,11 +403,9 @@ public partial class Chat
     private List<UserSearchResult> addMemberResults = [];
 
     // ---- New Group Modal State ----
-    private bool newGroupModalOpen;
+    // Only the group name survives from the pre-v6 dialog: the picker owns member
+    // selection now (pickerPicked), so the old search/selection lists are gone.
     private string newGroupName = "";
-    private string newGroupSearchQuery = "";
-    private List<UserSearchResult> newGroupSearchResults = [];
-    private List<UserSearchResult> newGroupSelectedMembers = [];
 
     // ---- Profile Drawer (click avatar) ----
     private IPop.Web.Models.Employee? profilePerson;

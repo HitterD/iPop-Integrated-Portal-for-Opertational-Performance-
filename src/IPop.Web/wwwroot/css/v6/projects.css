@@ -99,25 +99,55 @@
 .proj-bar-2 { display: flex; align-items: center; gap: 12px; padding: 12px 24px 0; }
 .proj-bar-2 .btn-primary { display: inline-flex; align-items: center; cursor: pointer; border: none; color: #fff; }
 .proj-bar-2 .meta { font-size: 12px; color: var(--ink-3); }
+.proj-add-task { height: 32px; padding: 0 14px; border-radius: 9px; font-size: 13px; font-weight: 600; gap: 6px; }
+.proj-add-task:hover { background: var(--accent-hover); }
 .proj-canvas-body { padding: 16px 24px 24px; }
 
+/* Active-filter chips (v6: blue pills + "Clear all") */
+.proj-filter-chips { display: flex; align-items: center; gap: 6px; padding: 0 0 10px; flex-wrap: wrap; }
+.proj-filter-chips .pfc-count { font-size: 12px; color: var(--ink-3); margin-right: 4px; }
+.proj-filter-chips .pfc {
+  height: 24px; padding: 0 4px 0 10px; border-radius: 12px; background: var(--info-soft); color: #0A63D1;
+  font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 4px;
+}
+.proj-filter-chips .pfc button { border: none; background: transparent; color: #0A63D1; cursor: pointer; padding: 0 2px; display: inline-flex; align-items: center; }
+.proj-filter-chips .pfc .lucide { width: 12px; height: 12px; }
+.proj-filter-chips .pfc-clear { border: none; background: transparent; color: var(--accent-ink); font-weight: 600; font-size: 12px; cursor: pointer; }
+
 /* ---- Kanban ---- */
-.kanban-column { background: var(--tray) !important; border: none !important; border-radius: 16px; box-shadow: none; width: 230px; min-width: 230px; padding: 0 8px 8px; }
-.kanban-column.col-doing { background: #EEF4FD !important; }
+/* Four lanes to match the v6 mockup: To Do · In Progress · Review · Done. */
+.kanban-board-grid { grid-template-columns: repeat(4, minmax(230px, 1fr)); gap: 12px; align-items: start; }
+.kanban-column { background: var(--tray) !important; border: 1.5px dashed transparent !important; border-radius: 16px; box-shadow: none; width: auto; min-width: 230px; padding: 10px; }
+.kanban-column.drag-over { background: var(--accent-soft) !important; border-color: var(--accent) !important; }
+.kanban-column.col-doing { background: #F1F6FE !important; }
 [data-theme="dark"] .kanban-column.col-doing { background: rgba(10, 132, 255, 0.1) !important; }
-.kanban-column.col-done { background: #EFF7F1 !important; }
+.kanban-column.col-review { background: #FFF8EE !important; }
+[data-theme="dark"] .kanban-column.col-review { background: rgba(255, 159, 10, 0.08) !important; }
+.kanban-column.col-done { background: #EEF7F1 !important; }
 [data-theme="dark"] .kanban-column.col-done { background: rgba(48, 209, 88, 0.08) !important; }
-.kanban-col-header { padding: 14px 8px 12px; background: transparent !important; border: none; }
-.kanban-col-header .col-title { font-size: 13px; font-weight: 600; color: var(--ink); }
+.kanban-col-header { padding: 4px 4px 4px 6px; background: transparent !important; border: none; }
+.kanban-col-header .col-title { font-size: 13px; font-weight: 600; color: var(--ink); gap: 8px; }
 .kanban-col-header .col-count { background: var(--surface) !important; color: var(--ink-2) !important; font-size: 11px; font-weight: 600; min-width: 20px; height: 20px; border-radius: 10px; border: 1px solid var(--line-soft); }
-.kanban-task-card { background: var(--surface); border: 1px solid var(--line-soft); border-radius: 12px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); padding: 12px; }
-.kanban-task-card:hover { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); transform: none; }
-.kanban-task-card .task-card-title { font-size: 13px; font-weight: 600; line-height: 1.35; }
-.kanban-task-card .task-card-check { border-radius: 50%; }
+.kanban-task-card { background: var(--surface); border: 1px solid var(--line-soft); border-radius: 12px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); padding: 12px; }
+.kanban-task-card:hover { box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08); transform: none; }
+.kanban-task-card .task-card-title { font-size: 14px; font-weight: 600; line-height: 1.35; }
+.kanban-task-card .task-card-check { width: 18px; height: 18px; border-radius: 50%; }
 .kanban-task-card .task-tag { height: 20px; padding: 0 7px; border-radius: 6px; background: var(--fill); color: var(--ink-2); font-size: 11px; }
-.kanban-task-card .due-pill { border-radius: 6px; font-size: 11px; }
-.kanban-col-quick-add button { width: 100%; height: 32px; border: none !important; background: transparent !important; color: var(--ink-3); font-size: 13px; }
-.kanban-col-quick-add button:hover { color: var(--ink); background: rgba(0, 0, 0, 0.04) !important; }
+.kanban-task-card .due-pill { border-radius: 6px; font-size: 11px; font-weight: 600; }
+.kanban-col-quick-add button { width: 100%; height: 34px; border: none !important; background: transparent !important; color: var(--ink-3); font-size: 13px; font-weight: 500; }
+.kanban-col-quick-add button:hover { color: var(--ink); background: rgba(255, 255, 255, 0.8) !important; }
+.col-dot.review { background: #FF9F0A; box-shadow: 0 0 0 3px rgba(255, 159, 10, 0.2); }
+.kanban-col-header .col-count.review { color: #B25E00 !important; }
+.kanban-col-header .col-quick-icon { width: 26px; height: 26px; flex: none; margin-left: auto; border: none; border-radius: 8px; background: transparent; color: var(--ink-3); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.kanban-col-header .col-quick-icon:hover { background: rgba(255, 255, 255, 0.8); }
+.kanban-col-header .col-quick-icon .lucide { width: 15px; height: 15px; }
+.kanban-empty-lane { padding: 16px 8px; text-align: center; font-size: 12px; color: var(--ink-4); }
+.kanban-quick-add-box { background: var(--surface); border: 1.5px solid var(--accent); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.kanban-quick-input { border: none; outline: none; background: transparent; font-size: 14px; font-weight: 500; color: var(--ink); width: 100%; }
+.kanban-quick-actions { display: flex; gap: 6px; align-items: center; }
+.kanban-quick-save { height: 28px; padding: 0 12px; border: none; border-radius: 7px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
+.kanban-quick-cancel { height: 28px; padding: 0 10px; border: none; border-radius: 7px; background: var(--fill); color: var(--ink); font-weight: 500; cursor: pointer; }
+.kanban-quick-hint { margin-left: auto; font-size: 11px; color: var(--ink-3); }
 
 /* Legacy overrides */
 .proj-nav-item { text-align: left; }

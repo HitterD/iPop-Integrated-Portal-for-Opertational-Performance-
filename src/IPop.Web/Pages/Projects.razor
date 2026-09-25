@@ -66,7 +66,7 @@
             <div class="proj-canvas-bar">
                 <div class="proj-tabs">
                     <button class="proj-tab-btn @(tab == 4 ? "active" : "")" @onclick="() => SwitchTab(4)" title="Overview & Progress">
-                        <i data-lucide="pie-chart"></i> Overview
+                        <i data-lucide="layout-dashboard"></i> Overview
                     </button>
                     <button class="proj-tab-btn @(tab == 0 ? "active" : "")" @onclick="() => SwitchTab(0)">
                         <i data-lucide="kanban"></i> Board
@@ -75,10 +75,10 @@
                         <i data-lucide="list"></i> List
                     </button>
                     <button class="proj-tab-btn @(tab == 2 ? "active" : "")" @onclick="() => SwitchTab(2)">
-                        <i data-lucide="clock"></i> Timeline
+                        <i data-lucide="calendar-range"></i> Timeline
                     </button>
                     <button class="proj-tab-btn @(tab == 3 ? "active" : "")" @onclick="() => SwitchTab(3)">
-                        <i data-lucide="bar-chart-2"></i> Workload
+                        <i data-lucide="users"></i> Workload
                     </button>
                     <button class="proj-tab-btn @(tab == 5 ? "active" : "")" @onclick="() => SwitchTab(5)" title="Plans & Reports: templates, milestones, burndown, velocity">
                         <i data-lucide="clipboard-list"></i> Plans &amp; Reports
@@ -92,7 +92,7 @@
                     </div>
                     <div class="proj-filter-wrap">
                         <button type="button" class="ghost-btn @(ActiveTaskFilterCount > 0 ? "on" : "")" aria-expanded="@filterOpen" @onclick="() => filterOpen = !filterOpen">
-                            <i data-lucide="sliders-horizontal"></i>Filter
+                            <i data-lucide="list-filter"></i>Filter
                             @if (ActiveTaskFilterCount > 0) { <span class="n">@ActiveTaskFilterCount</span> }
                         </button>
                         @if (filterOpen)
@@ -113,46 +113,43 @@
                             </div>
                         }
                     </div>
+                    <button type="button" class="btn-primary proj-add-task" @onclick='() => HandleQuickAdd(("todo", "New Task"))'>
+                        <i data-lucide="plus"></i>Add task
+                    </button>
                 </div>
-            </div>
-            <div class="proj-bar-2">
-                <button type="button" class="btn-primary" @onclick='() => HandleQuickAdd(("todo", "New Task"))'>
-                    <i data-lucide="plus"></i>Add task
-                </button>
-                <span class="meta">@VisibleTaskCount tasks</span>
             </div>
 
             @* Canvas Body Content *@
             <div class="proj-canvas-body">
                 @if (myTasksOnly || overdueOnly || !string.IsNullOrWhiteSpace(priorityFilter) || !string.IsNullOrWhiteSpace(taskSearchQuery))
                 {
-                    <div style="display:flex;align-items:center;gap:6px;padding:6px 14px;background:var(--surface-sunken);border-radius:10px;margin-bottom:10px;flex-wrap:wrap">
-                        <span style="font-size:11.5px;color:var(--ink-3);font-weight:600">@VisibleTaskCount tasks matching:</span>
+                    <div class="proj-filter-chips">
+                        <span class="pfc-count">@VisibleTaskCount tasks</span>
                         @if (myTasksOnly)
                         {
-                            <span class="chip" style="font-size:11px;background:var(--surface);border:1px solid var(--line);padding:2px 8px;border-radius:6px;display:inline-flex;align-items:center;gap:4px">
-                                My Tasks <button type="button" style="border:none;background:none;cursor:pointer;padding:0;color:var(--ink-3)" @onclick="() => myTasksOnly = false">×</button>
+                            <span class="pfc">
+                                My Tasks <button type="button" @onclick="() => myTasksOnly = false" aria-label="Remove filter"><i data-lucide="x"></i></button>
                             </span>
                         }
                         @if (overdueOnly)
                         {
-                            <span class="chip" style="font-size:11px;background:var(--surface);border:1px solid var(--line);padding:2px 8px;border-radius:6px;display:inline-flex;align-items:center;gap:4px">
-                                Overdue <button type="button" style="border:none;background:none;cursor:pointer;padding:0;color:var(--ink-3)" @onclick="() => overdueOnly = false">×</button>
+                            <span class="pfc">
+                                Overdue <button type="button" @onclick="() => overdueOnly = false" aria-label="Remove filter"><i data-lucide="x"></i></button>
                             </span>
                         }
                         @if (!string.IsNullOrWhiteSpace(priorityFilter))
                         {
-                            <span class="chip" style="font-size:11px;background:var(--surface);border:1px solid var(--line);padding:2px 8px;border-radius:6px;display:inline-flex;align-items:center;gap:4px">
-                                @priorityFilter <button type="button" style="border:none;background:none;cursor:pointer;padding:0;color:var(--ink-3)" @onclick='() => priorityFilter = ""'>×</button>
+                            <span class="pfc">
+                                @priorityFilter <button type="button" @onclick='() => priorityFilter = ""' aria-label="Remove filter"><i data-lucide="x"></i></button>
                             </span>
                         }
                         @if (!string.IsNullOrWhiteSpace(taskSearchQuery))
                         {
-                            <span class="chip" style="font-size:11px;background:var(--surface);border:1px solid var(--line);padding:2px 8px;border-radius:6px;display:inline-flex;align-items:center;gap:4px">
-                                "@taskSearchQuery" <button type="button" style="border:none;background:none;cursor:pointer;padding:0;color:var(--ink-3)" @onclick='() => taskSearchQuery = ""'>×</button>
+                            <span class="pfc">
+                                "@taskSearchQuery" <button type="button" @onclick='() => taskSearchQuery = ""' aria-label="Remove filter"><i data-lucide="x"></i></button>
                             </span>
                         }
-                        <button type="button" class="ghost-btn" style="height:22px;font-size:11px;padding:0 8px;margin-left:auto" @onclick="ClearTaskFilters">Clear all</button>
+                        <button type="button" class="pfc-clear" @onclick="ClearTaskFilters">Clear all</button>
                     </div>
                 }
 
@@ -783,7 +780,7 @@
     private async Task HandleTaskMove((Guid TaskId, string TargetStatus) arg)
     {
         var task = AllCurrentTasks.FirstOrDefault(t => t.Id == arg.TaskId);
-        if (task != null && (arg.TargetStatus == "doing" || arg.TargetStatus == "done") && task.Status != arg.TargetStatus)
+        if (task != null && (arg.TargetStatus == "doing" || arg.TargetStatus == "review" || arg.TargetStatus == "done") && task.Status != arg.TargetStatus)
         {
             evidenceTask = task;
             evidenceTargetStatus = arg.TargetStatus;
@@ -831,9 +828,12 @@
         await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{arg.Task.Id}", updateReq);
         await ExecuteTaskMove(arg.Task.Id, arg.TargetStatus);
         evidenceTask = null;
-        Toasts.Show(arg.TargetStatus == "doing"
-            ? "Task moved to In Progress with progress notes."
-            : "Task completed with deliverables evidence.");
+        Toasts.Show(arg.TargetStatus switch
+        {
+            "doing" => "Task moved to In Progress with progress notes.",
+            "review" => "Task moved to Review with progress notes.",
+            _ => "Task completed with deliverables evidence.",
+        });
     }
 
     private async Task ToggleTaskComplete(ProjectTaskDto t)
@@ -845,7 +845,7 @@
     private async Task HandleStatusChangeDirect((ProjectTaskDto Task, string NewStatus) arg)
     {
         if (arg.Task.Status == arg.NewStatus) return;
-        if (arg.NewStatus == "doing" || arg.NewStatus == "done")
+        if (arg.NewStatus == "doing" || arg.NewStatus == "review" || arg.NewStatus == "done")
         {
             evidenceTask = arg.Task;
             evidenceTargetStatus = arg.NewStatus;

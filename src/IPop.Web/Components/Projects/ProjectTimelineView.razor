@@ -14,6 +14,7 @@
                 <button type="button" class="gantt-filter-btn @(statusFilter == "" && !criticalOnly ? "active" : "")" @onclick='() => { statusFilter = ""; criticalOnly = false; }'>All</button>
                 <button type="button" class="gantt-filter-btn @(statusFilter == "todo" ? "active" : "")" @onclick='() => { statusFilter = "todo"; criticalOnly = false; }'>To Do</button>
                 <button type="button" class="gantt-filter-btn @(statusFilter == "doing" ? "active" : "")" @onclick='() => { statusFilter = "doing"; criticalOnly = false; }'>In Progress</button>
+                <button type="button" class="gantt-filter-btn @(statusFilter == "review" ? "active" : "")" @onclick='() => { statusFilter = "review"; criticalOnly = false; }'>Review</button>
                 <button type="button" class="gantt-filter-btn @(statusFilter == "done" ? "active" : "")" @onclick='() => { statusFilter = "done"; criticalOnly = false; }'>Done</button>
                 @if (CriticalPathTaskIds.Count > 0)
                 {

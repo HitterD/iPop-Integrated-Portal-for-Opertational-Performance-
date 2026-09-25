@@ -137,9 +137,6 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
 
         var dtos = projects.Select(p =>
         {
-            var todo = p.Tasks.Count(t => t.Status == "todo");
-            var doing = p.Tasks.Count(t => t.Status == "doing");
-            var done = p.Tasks.Count(t => t.Status == "done");
             return new ProjectListDto(
                 p.Id, p.Name, p.Year, p.Owner.Name, p.Status, p.Progress, p.Deadline,
                 p.Members.Count, p.Tasks.Count, p.IsActive);
@@ -353,7 +350,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         if (string.IsNullOrWhiteSpace(req.Title) || req.Title.Length > 300)
             return new TaskResultDto(false, null, "invalid_title");
 
-        var validStatus = new[] { "todo", "doing", "done" };
+        var validStatus = new[] { "todo", "doing", "review", "done" };
         var status = string.IsNullOrWhiteSpace(req.Status) ? "todo" : req.Status.Trim();
         if (!validStatus.Contains(status)) return new TaskResultDto(false, null, "invalid_status");
 
@@ -492,7 +489,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
 
         if (req.Status is not null)
         {
-            var valid = new[] { "todo", "doing", "done" };
+            var valid = new[] { "todo", "doing", "review", "done" };
             if (!valid.Contains(req.Status)) return new TaskResultDto(false, null, "invalid_status");
 
             if (req.Status != task.Status)
@@ -653,7 +650,8 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
             projectId,
             all.Where(t => t.Status == "todo").Select(Map).ToList(),
             all.Where(t => t.Status == "doing").Select(Map).ToList(),
-            all.Where(t => t.Status == "done").Select(Map).ToList()
+            all.Where(t => t.Status == "done").Select(Map).ToList(),
+            all.Where(t => t.Status == "review").Select(Map).ToList()
         );
     }
 
@@ -665,7 +663,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == task.ProjectId && m.UserId == actorId, ct);
         if (!isMember) return new TaskResultDto(false, null, "forbidden");
 
-        var valid = new[] { "todo", "doing", "done" };
+        var valid = new[] { "todo", "doing", "review", "done" };
         if (!valid.Contains(req.Status)) return new TaskResultDto(false, null, "invalid_status");
 
         // DETAIL MAX: dependency guard — cannot move to "done" unless all listed dependencies are "done"
@@ -780,11 +778,13 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
 
         int todo = tasks.Count(t => t.Status == "todo");
         int doing = tasks.Count(t => t.Status == "doing");
+        int review = tasks.Count(t => t.Status == "review");
         int done = tasks.Count(t => t.Status == "done");
 
         decimal totalEst = tasks.Sum(t => t.EstimatedHours ?? 0);
         decimal todoEst = tasks.Where(t => t.Status == "todo").Sum(t => t.EstimatedHours ?? 0);
         decimal doingEst = tasks.Where(t => t.Status == "doing").Sum(t => t.EstimatedHours ?? 0);
+        decimal reviewEst = tasks.Where(t => t.Status == "review").Sum(t => t.EstimatedHours ?? 0);
         decimal doneEst = tasks.Where(t => t.Status == "done").Sum(t => t.EstimatedHours ?? 0);
 
         var byAssignee = tasks
@@ -797,7 +797,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         return new ProjectWorkloadDto(
             tasks.Count, todo, doing, done,
             totalEst, todoEst, doingEst, doneEst,
-            byAssignee);
+            byAssignee, review, reviewEst);
     }
 
     public async Task<ProjectExportDto?> GetProjectExportDataAsync(Guid projectId, Guid userId, CancellationToken ct)
@@ -1069,13 +1069,14 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
 
         var todo = p.Tasks.Count(t => t.Status == "todo");
         var doing = p.Tasks.Count(t => t.Status == "doing");
+        var review = p.Tasks.Count(t => t.Status == "review");
         var done = p.Tasks.Count(t => t.Status == "done");
 
         return new ProjectDto(
             p.Id, p.Name, p.Description, p.Year, p.OwnerId,
             p.Owner?.Name ?? "Unknown", p.Owner?.Nik ?? "Unknown",
             p.StartDate, p.Deadline, p.Status, p.Progress, p.Risk, p.Obstacle, p.IsActive,
-            p.Members.Count, p.Tasks.Count, todo, doing, done,
+            p.Members.Count, p.Tasks.Count, todo, doing, review, done,
             p.CreatedAt, p.UpdatedAt);
     }
 
@@ -1455,7 +1456,8 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
                 onDay.Count(t => t.Status == "done"),
                 onDay.Sum(t => t.EstimatedHours ?? 0),
                 onDay.Sum(t => t.ActualHours ?? 0),
-                onDay.Select(t => t.Id).ToList()));
+                onDay.Select(t => t.Id).ToList(),
+                onDay.Count(t => t.Status == "review")));
         }
 
         return new ProjectWorkCalendarDto(projectId, entries.Count, entries, dayTasks);

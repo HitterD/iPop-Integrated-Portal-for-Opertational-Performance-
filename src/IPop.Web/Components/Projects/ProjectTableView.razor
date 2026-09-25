@@ -8,6 +8,7 @@
             <button type="button" class="tbl-filter-chip @(StatusFilter == "" ? "active" : "")" @onclick='() => OnFilterChanged.InvokeAsync("")'>All Groups (@Tasks.Count)</button>
             <button type="button" class="tbl-filter-chip @(StatusFilter == "todo" ? "active" : "")" @onclick='() => OnFilterChanged.InvokeAsync("todo")'>To Do (@Tasks.Count(t => t.Status == "todo"))</button>
             <button type="button" class="tbl-filter-chip @(StatusFilter == "doing" ? "active" : "")" @onclick='() => OnFilterChanged.InvokeAsync("doing")'>In Progress (@Tasks.Count(t => t.Status == "doing"))</button>
+            <button type="button" class="tbl-filter-chip @(StatusFilter == "review" ? "active" : "")" @onclick='() => OnFilterChanged.InvokeAsync("review")'>Review (@Tasks.Count(t => t.Status == "review"))</button>
             <button type="button" class="tbl-filter-chip @(StatusFilter == "done" ? "active" : "")" @onclick='() => OnFilterChanged.InvokeAsync("done")'>Done (@Tasks.Count(t => t.Status == "done"))</button>
         </div>
         <div style="font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:6px">
@@ -26,6 +27,11 @@
         @if (ShouldShowGroup("doing"))
         {
             @RenderStatusGroup("doing", "In Progress", "col-dot doing", "tbl-strip doing", isCollapsedDoing, () => isCollapsedDoing = !isCollapsedDoing, DoingTasks)
+        }
+
+        @if (ShouldShowGroup("review"))
+        {
+            @RenderStatusGroup("review", "Review", "col-dot review", "tbl-strip review", isCollapsedReview, () => isCollapsedReview = !isCollapsedReview, ReviewTasks)
         }
 
         @if (ShouldShowGroup("done"))
@@ -67,6 +73,7 @@
 
     private bool isCollapsedTodo;
     private bool isCollapsedDoing;
+    private bool isCollapsedReview;
     private bool isCollapsedDone;
 
     private string? addingInStatus;
@@ -188,12 +195,21 @@
 
     private List<ProjectTaskDto> TodoTasks => FilteredTasks.Where(t => t.Status == "todo").ToList();
     private List<ProjectTaskDto> DoingTasks => FilteredTasks.Where(t => t.Status == "doing").ToList();
+    private List<ProjectTaskDto> ReviewTasks => FilteredTasks.Where(t => t.Status == "review").ToList();
     private List<ProjectTaskDto> DoneTasks => FilteredTasks.Where(t => t.Status == "done").ToList();
 
     private bool ShouldShowGroup(string statusKey)
     {
         return string.IsNullOrEmpty(StatusFilter) || StatusFilter == statusKey;
     }
+
+    private static string StatusLabel(string s) => s.ToLowerInvariant() switch
+    {
+        "doing" => "In Progress",
+        "review" => "Review",
+        "done" => "Done",
+        _ => "To Do",
+    };
 
     private void StartInlineAdd(string status)
     {
@@ -312,7 +328,7 @@
                                         <td style="padding:10px 12px;position:relative" @onclick:stopPropagation="true">
                                             <button type="button" class="modern-status-trigger @t.Status.ToLower()" @onclick="() => ToggleStatusDropdown(t.Id)">
                                                 <span class="col-dot @t.Status.ToLower()"></span>
-                                                <span>@(t.Status == "doing" ? "In Progress" : (t.Status == "done" ? "Done" : "To Do"))</span>
+                                                <span>@StatusLabel(t.Status)</span>
                                                 <i data-lucide="chevron-down" style="width:11px;height:11px"></i>
                                             </button>
                                             @if (openStatusDropdownTaskId == t.Id)
@@ -327,6 +343,11 @@
                                                         <span class="col-dot doing"></span>
                                                         <span>In Progress</span>
                                                         @if (t.Status == "doing") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
+                                                    </div>
+                                                    <div class="modern-status-item @(t.Status == "review" ? "active" : "")" @onclick='() => ChangeStatus(t, "review")'>
+                                                        <span class="col-dot review"></span>
+                                                        <span>Review</span>
+                                                        @if (t.Status == "review") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
                                                     </div>
                                                     <div class="modern-status-item @(t.Status == "done" ? "active" : "")" @onclick='() => ChangeStatus(t, "done")'>
                                                         <span class="col-dot done"></span>

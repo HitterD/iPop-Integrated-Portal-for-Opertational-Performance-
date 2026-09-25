@@ -89,3 +89,57 @@
 
 @media (max-width: 1100px) { .chat-area { grid-template-columns: 290px minmax(0, 1fr); } }
 @media (max-width: 768px) { .chat-area { grid-template-columns: 1fr; } }
+
+/* ---- v6 new-conversation picker (New message ⇄ New group) ---- */
+.picker-head { display: flex; align-items: center; padding: 18px 18px 12px 22px; }
+.picker-head .picker-title { flex: 1; font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+.picker-head .picker-close { width: 30px; height: 30px; border: none; border-radius: 50%; background: var(--fill); color: var(--ink-2); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.picker-head .picker-close .lucide { width: 14px; height: 14px; }
+
+.picker-seg { margin: 0 22px 12px; display: flex; padding: 2px; border-radius: 9px; background: var(--fill); }
+.picker-seg button { flex: 1; height: 28px; border: none; border-radius: 7px; background: transparent; box-shadow: none; color: var(--ink); font-weight: 600; font-size: 13px; cursor: pointer; }
+.picker-seg button.on { background: var(--surface); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+
+.picker-group-row { margin: 0 22px 12px; display: flex; align-items: center; gap: 12px; }
+.picker-group-av { width: 44px; height: 44px; flex: none; border-radius: 13px; background: var(--ink-4); color: #fff; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+.picker-group-av.empty { background: #C7C7CC; }
+.picker-group-name { flex: 1; height: 40px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-weight: 500; outline: none; }
+.picker-group-name:focus { border-color: var(--accent); }
+
+.picker-search { margin: 0 22px 10px; min-height: 40px; box-sizing: border-box; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 5px 10px; border-radius: 10px; background: var(--fill); }
+.picker-search .picker-search-ic { width: 14px; height: 14px; color: var(--ink-3); flex: none; }
+.picker-search .picker-search-input { flex: 1; min-width: 100px; height: 28px; border: none; outline: none; background: transparent; color: var(--ink); font: inherit; }
+.picker-chip { height: 26px; padding: 0 4px 0 10px; border-radius: 13px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 4px; }
+.picker-chip button { border: none; background: transparent; color: #fff; cursor: pointer; padding: 0 2px; display: inline-flex; }
+.picker-chip .lucide { width: 12px; height: 12px; }
+
+.picker-list { flex: 1; overflow: auto; padding: 0 12px; max-height: 340px; }
+.picker-section { padding: 8px 10px 4px; font-size: 11px; font-weight: 600; color: var(--ink-3); letter-spacing: 0.3px; text-transform: uppercase; }
+.picker-hint-row { padding: 22px 12px; text-align: center; font-size: 12px; color: var(--ink-3); }
+.picker-row { width: 100%; display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: none; border-radius: 10px; background: transparent; cursor: pointer; text-align: left; }
+.picker-row:hover { background: var(--tray); }
+.picker-av { position: relative; flex: none; width: 36px; height: 36px; border-radius: 50%; color: #fff; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+.picker-dot { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--surface); }
+.picker-dot.on { background: #34C759; }
+.picker-dot.off { background: #C7C7CC; }
+.picker-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.picker-name { font-weight: 600; font-size: 13px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.picker-pos { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.picker-trail { width: 16px; height: 16px; color: var(--accent); flex: none; }
+.picker-check { width: 20px; height: 20px; box-sizing: border-box; border-radius: 5px; border: 1.5px solid var(--ink-4); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.picker-check.round { border-radius: 50%; }
+.picker-check.on { background: var(--accent); border-color: var(--accent); }
+.picker-check .lucide { width: 12px; height: 12px; color: #fff; }
+
+.picker-foot { display: flex; align-items: center; gap: 10px; padding: 14px 22px; border-top: 1px solid var(--line-soft); }
+.picker-foot .picker-foot-hint { flex: 1; font-size: 12px; color: var(--ink-3); }
+.picker-btn { height: 36px; padding: 0 16px; border-radius: 10px; border: 1px solid transparent; font-weight: 600; font-size: 13px; cursor: pointer; }
+.picker-btn.ghost { background: var(--surface); border-color: var(--line); color: var(--ink); }
+.picker-btn.ghost:hover { background: var(--tray); }
+.picker-btn.primary { background: var(--accent); color: #fff; border: none; padding: 0 18px; }
+.picker-btn.primary:hover { background: var(--accent-hover); }
+.picker-btn.primary:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* The picker owns its own padding + column layout, so neutralise the generic card shell. */
+.cm-tray.cm-tray-picker { max-width: min(460px, calc(100vw - 32px)); }
+.cm-picker-card { padding: 0; display: flex; flex-direction: column; max-height: min(640px, calc(100vh - 80px)); }

@@ -364,25 +364,6 @@ public partial class Chat
         OpenRoom(roomId);
     }
 
-    private void ClearDmSearch()
-    {
-        newDmSearchQuery = "";
-        newDmSearchResults = [];
-    }
-
-    private void ClearGroupSearch()
-    {
-        newGroupSearchQuery = "";
-        newGroupSearchResults = [];
-    }
-
-    private async Task SearchDmUsers()
-    {
-        if (newDmSearchQuery.Length < 2) { newDmSearchResults = []; return; }
-        var results = await Auth.GetAsync<List<UserSearchResult>>($"/api/chat/users/search?q={Uri.EscapeDataString(newDmSearchQuery)}");
-        newDmSearchResults = results ?? [];
-    }
-
     private async Task CreateDmWith(UserSearchResult user)
     {
         newDmModalOpen = false;
@@ -399,35 +380,13 @@ public partial class Chat
         }
     }
 
-    // ---- New Group Methods ----
-    private async Task SearchGroupUsers()
+    /// Shared by the v6 picker — creates the room and opens it.
+    private async Task CreateGroupWith(string name, IReadOnlyList<UserSearchResult> members)
     {
-        if (newGroupSearchQuery.Length < 2) { newGroupSearchResults = []; return; }
-        var results = await Auth.GetAsync<List<UserSearchResult>>($"/api/chat/users/search?q={Uri.EscapeDataString(newGroupSearchQuery)}");
-        newGroupSearchResults = (results ?? []).Where(u => !newGroupSelectedMembers.Any(m => m.Id == u.Id)).ToList();
-    }
-
-    private void AddGroupMember(UserSearchResult user)
-    {
-        if (!newGroupSelectedMembers.Any(m => m.Id == user.Id))
-            newGroupSelectedMembers.Add(user);
-        newGroupSearchQuery = "";
-        newGroupSearchResults = [];
-    }
-
-    private void RemoveGroupMember(UserSearchResult user)
-    {
-        newGroupSelectedMembers.RemoveAll(m => m.Id == user.Id);
-    }
-
-    private async Task CreateGroup()
-    {
-        if (string.IsNullOrWhiteSpace(newGroupName) || newGroupSelectedMembers.Count < 2) return;
-        newGroupModalOpen = false;
         var response = await Auth.SendAsync(HttpMethod.Post, "/api/chat/rooms/group", new
         {
-            name = newGroupName.Trim(),
-            memberIds = newGroupSelectedMembers.Select(m => m.Id).ToArray()
+            name,
+            memberIds = members.Select(m => m.Id).ToArray()
         });
         if (response.IsSuccessStatusCode)
         {
@@ -439,6 +398,13 @@ public partial class Chat
                 OpenRoom(room.Id);
             }
         }
+    }
+
+    private static string FirstName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts[0];
     }
 
     // ---- Add Member to Group (Fix 4) ----

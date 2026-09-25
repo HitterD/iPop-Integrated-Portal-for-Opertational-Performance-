@@ -136,6 +136,51 @@ public class ProjectServiceTests
         Assert.Single(board.Done);
     }
 
+    /// The v6 board shows a fourth lane between In Progress and Done; the Review status
+    /// has to round-trip through create, move, and every aggregate that counts statuses.
+    [Fact]
+    public async Task Review_status_is_a_first_class_lane()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("O");
+        var creator = t.AddUser("C");
+        var svc = new ProjectService(t.Verify());
+
+        var p = (await svc.CreateProjectAsync(creator.Id, new CreateProjectRequest("RV", null, 2026, owner.Id, null, null, null, null), default)).Project!;
+
+        // Create directly in Review.
+        var created = await svc.CreateTaskAsync(creator.Id,
+            new CreateTaskRequest(p.Id, null, "Awaiting sign-off", null, "review", null, null, null, 3, null, "qa"), default);
+        Assert.True(created.Success);
+        Assert.Equal("review", created.Task!.Status);
+
+        // Move into Review from another lane.
+        var draft = (await svc.CreateTaskAsync(creator.Id,
+            new CreateTaskRequest(p.Id, null, "Draft", null, "todo", null, null, null, null, null, null), default)).Task!;
+        var moved = await svc.MoveTaskAsync(creator.Id, draft.Id, new TaskMoveRequest("review", null), default);
+        Assert.True(moved.Success);
+        Assert.Equal("review", moved.Task!.Status);
+
+        // Kanban exposes the new lane. Todo is empty: the draft was moved out of it.
+        var board = await svc.GetKanbanAsync(p.Id, creator.Id, default);
+        Assert.NotNull(board);
+        Assert.Equal(2, board!.Review!.Count);
+        Assert.Empty(board.Todo);
+        Assert.Empty(board.Doing);
+        Assert.Empty(board.Done);
+
+        // Workload and project counts include it.
+        var wl = await svc.GetProjectWorkloadAsync(p.Id, creator.Id, default);
+        Assert.NotNull(wl);
+        Assert.Equal(2, wl!.ReviewTasks);
+        Assert.Equal(3, wl.ReviewEstimatedHours);
+
+        var proj = await svc.GetProjectAsync(p.Id, creator.Id, default);
+        Assert.NotNull(proj);
+        Assert.Equal(2, proj!.ReviewCount);
+        Assert.Equal(0, proj.DoingCount);
+    }
+
     [Fact]
     public async Task Assign_unassign_and_subtasks()
     {

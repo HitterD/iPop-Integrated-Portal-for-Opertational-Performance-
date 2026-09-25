@@ -1,7 +1,7 @@
 namespace IPop.Core.Entities;
 
 /// Task within a project. Supports self-referential subtasks via ParentTaskId.
-/// Kanban status: "todo", "doing", "done".
+/// Kanban status: "todo", "doing", "review", "done".
 /// Priority: "low", "medium", "high", "urgent".
 /// Time tracking: EstimatedHours vs ActualHours.
 /// Dependency/Recurring/Template are stubbed per MVP (fields + no heavy logic).
@@ -16,7 +16,7 @@ public class ProjectTask
     public required string Title { get; set; }
     public string? Description { get; set; }
 
-    /// "todo" | "doing" | "done"
+    /// "todo" | "doing" | "review" | "done"
     public required string Status { get; set; }
 
     /// "low" | "medium" | "high" | "urgent"

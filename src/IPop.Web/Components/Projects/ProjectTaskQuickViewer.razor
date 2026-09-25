@@ -52,6 +52,9 @@
                     <button type="button" class="quick-status-chip @(editStatus == "doing" ? "active doing" : "")" @onclick='() => editStatus = "doing"'>
                         <span class="col-dot doing"></span> In Progress
                     </button>
+                    <button type="button" class="quick-status-chip @(editStatus == "review" ? "active review" : "")" @onclick='() => editStatus = "review"'>
+                        <span class="col-dot review"></span> Review
+                    </button>
                     <button type="button" class="quick-status-chip @(editStatus == "done" ? "active done" : "")" @onclick='() => editStatus = "done"'>
                         <span class="col-dot done"></span> Done
                     </button>

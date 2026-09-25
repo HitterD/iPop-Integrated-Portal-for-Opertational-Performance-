@@ -1416,219 +1416,106 @@
                   OnNavigate="a => viewerAttachment = a"
                   OnClose="CloseAttachment" />
 
-@* ---- New DM Modal ---- *@
+@* ---- v6 New-conversation picker (one modal: Direct message ⇄ New group) ---- *@
 @if (newDmModalOpen)
 {
-    <div class="backdrop on" @onclick="() => newDmModalOpen = false"></div>
+    <div class="backdrop on" @onclick="ClosePicker"></div>
     <div class="cm-center">
-        <div class="cm-tray">
-            <div class="cm-card">
-                <div class="cm-modal-head">
-                    <div class="cm-head-row">
-                        <div class="cm-head-icon"><i data-lucide="message-square-plus"></i></div>
-                        <div>
-                            <div class="cm-title">New Message (Direct Message)</div>
-                            <div class="cm-sub">Start a direct conversation with a colleague</div>
-                        </div>
-                    </div>
-                    <button type="button" class="drawer-close" @onclick="() => newDmModalOpen = false" aria-label="Close"><i data-lucide="x"></i></button>
+        <div class="cm-tray cm-tray-picker">
+            <div class="cm-card cm-picker-card">
+                <div class="picker-head">
+                    <span class="picker-title">@(pickerGroupMode ? "New group" : "New message")</span>
+                    <button type="button" class="picker-close" @onclick="ClosePicker" aria-label="Close"><i data-lucide="x"></i></button>
                 </div>
 
-                <div class="cm-field">
-                    <div class="cm-search-wrap">
-                        <i data-lucide="search" class="cm-search-icon"></i>
-                        <input type="text"
-                               class="cm-input with-icon"
-                               placeholder="Search colleague name or ID…"
-                               @bind="newDmSearchQuery"
-                               @bind:event="oninput"
-                               @bind:after="SearchDmUsers" />
-                        @if (!string.IsNullOrEmpty(newDmSearchQuery))
-                        {
-                            <button type="button" class="cm-search-clear" @onclick="ClearDmSearch" title="Clear search" aria-label="Clear search">
-                                <i data-lucide="x"></i>
-                            </button>
-                        }
-                    </div>
+                <div class="picker-seg">
+                    <button type="button" class="@(!pickerGroupMode ? "on" : "")" @onclick="() => SetPickerMode(false)">Direct message</button>
+                    <button type="button" class="@(pickerGroupMode ? "on" : "")" @onclick="() => SetPickerMode(true)">New group</button>
                 </div>
 
-                @if (string.IsNullOrWhiteSpace(newDmSearchQuery))
+                @if (pickerGroupMode)
                 {
-                    @if (ChatSvc.DirectRooms.Count > 0)
-                    {
-                        <div class="cm-list-header">
-                            <i data-lucide="clock"></i>
-                            <span>Recent Conversations</span>
+                    <div class="picker-group-row">
+                        <div class="picker-group-av @(string.IsNullOrWhiteSpace(newGroupName) ? "empty" : "")" style="@(string.IsNullOrWhiteSpace(newGroupName) ? "" : $"background:{GetUserColor(newGroupName)}")">
+                            @(string.IsNullOrWhiteSpace(newGroupName) ? "G" : GetInitialsFromName(newGroupName))
                         </div>
-                        <div class="cm-user-list">
-                            @foreach (var room in ChatSvc.DirectRooms.Take(6))
-                            {
-                                var r = room;
-                                <button type="button" class="cm-user-row" @onclick="() => OpenDmFromList(r.Id)">
-                                    <div class="avatar" style="background:@GetUserColor(r.RecipientNik ?? r.Name ?? "")">
-                                        @GetInitialsFromName(r.RecipientName ?? r.Name ?? "?")
-                                        @if (r.PresenceStatus == "online")
-                                        {
-                                            <span class="presence-dot online" title="Online"></span>
-                                        }
-                                    </div>
-                                    <div class="cm-user-info">
-                                        <div class="cm-user-name">@(r.RecipientName ?? r.Name)</div>
-                                        <div class="cm-user-sub">@(r.RecipientNik ?? "Direct Chat")</div>
-                                    </div>
-                                    <i data-lucide="message-square" class="cm-user-act"></i>
-                                </button>
-                            }
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="cm-empty">
-                            <i data-lucide="search"></i>
-                            <span>Type at least 2 characters to search by name or ID.</span>
-                        </div>
-                    }
+                        <input type="text" class="picker-group-name" placeholder="Group name (required)" maxlength="80"
+                               @bind="newGroupName" @bind:event="oninput" />
+                    </div>
                 }
-                else
-                {
-                    <div class="cm-list-header">
-                        <i data-lucide="search"></i>
-                        <span>Search Results (@newDmSearchResults.Count)</span>
-                    </div>
-                    <div class="cm-user-list">
-                        @foreach (var user in newDmSearchResults.Take(10))
+
+                <div class="picker-search">
+                    <i data-lucide="search" class="picker-search-ic"></i>
+                    @foreach (var p in pickerPicked)
+                    {
+                        var person = p;
+                        <span class="picker-chip">
+                            @FirstName(person.Name)
+                            <button type="button" @onclick="() => RemovePickerPerson(person)" aria-label="Remove"><i data-lucide="x"></i></button>
+                        </span>
+                    }
+                    <input type="text" class="picker-search-input" autofocus
+                           placeholder="@(pickerPicked.Count > 0 ? "" : "Search people")"
+                           @bind="newDmSearchQuery" @bind:event="oninput" @bind:after="SearchPickerUsers" />
+                </div>
+
+                <div class="picker-list">
+                    @if (string.IsNullOrWhiteSpace(newDmSearchQuery) && !pickerGroupMode && ChatSvc.DirectRooms.Count > 0)
+                    {
+                        <div class="picker-section">Recent conversations</div>
+                        @foreach (var room in ChatSvc.DirectRooms.Take(6))
                         {
-                            var u = user;
-                            <button type="button" class="cm-user-row" @onclick="() => CreateDmWith(u)">
-                                <div class="avatar" style="background:@GetUserColor(u.Nik)">@GetInitialsFromName(u.Name)</div>
-                                <div class="cm-user-info">
-                                    <div class="cm-user-name">@u.Name</div>
-                                    <div class="cm-user-sub">@u.Nik @(!string.IsNullOrEmpty(u.Email) ? $"· {u.Email}" : "")</div>
+                            var r = room;
+                            <button type="button" class="picker-row" @onclick="() => OpenDmFromList(r.Id)">
+                                <div class="picker-av" style="background:@GetUserColor(r.RecipientNik ?? r.Name ?? "")">
+                                    @GetInitialsFromName(r.RecipientName ?? r.Name ?? "?")
+                                    <span class="picker-dot @(r.PresenceStatus == "online" ? "on" : "off")"></span>
                                 </div>
-                                <i data-lucide="arrow-right" class="cm-user-act"></i>
+                                <div class="picker-info">
+                                    <div class="picker-name">@(r.RecipientName ?? r.Name)</div>
+                                    <div class="picker-pos">@(r.RecipientNik ?? "Direct chat")</div>
+                                </div>
+                                <i data-lucide="message-square" class="picker-trail"></i>
                             </button>
                         }
-                        @if (!newDmSearchResults.Any() && newDmSearchQuery.Length >= 2)
-                        {
-                            <div class="cm-empty"><i data-lucide="user-x"></i><span>No colleagues found matching "@newDmSearchQuery"</span></div>
-                        }
-                    </div>
-                }
-            </div>
-        </div>
-    </div>
-}
+                    }
 
-@* ---- New Group Modal ---- *@
-@if (newGroupModalOpen)
-{
-    <div class="backdrop on" @onclick="() => newGroupModalOpen = false"></div>
-    <div class="cm-center">
-        <div class="cm-tray cm-tray-group">
-            <div class="cm-card">
-                <div class="cm-modal-head">
-                    <div class="cm-head-row">
-                        <div class="cm-head-icon"><i data-lucide="users"></i></div>
-                        <div>
-                            <div class="cm-title">New Group Chat</div>
-                            <div class="cm-sub">Name the group and invite team members</div>
-                        </div>
-                    </div>
-                    <button type="button" class="drawer-close" @onclick="() => newGroupModalOpen = false" aria-label="Close"><i data-lucide="x"></i></button>
-                </div>
-
-                <div class="cm-field">
-                    <label class="cm-label">Group Identity</label>
-                    <div class="cm-group-hero">
-                        <div class="cm-group-avatar-preview @(string.IsNullOrWhiteSpace(newGroupName) ? "empty" : "")">
-                            @if (string.IsNullOrWhiteSpace(newGroupName))
-                            {
-                                <i data-lucide="users"></i>
-                            }
-                            else
-                            {
-                                <span>@GetInitialsFromName(newGroupName)</span>
-                            }
-                        </div>
-                        <input type="text"
-                               class="cm-group-name-input"
-                               placeholder="Name this group chat…"
-                               @bind="newGroupName"
-                               @bind:event="oninput"
-                               maxlength="80" />
-                    </div>
-                </div>
-
-                @if (newGroupSelectedMembers.Count > 0)
-                {
-                    <div class="cm-chips-wrap">
-                        <div class="cm-member-counter @(newGroupSelectedMembers.Count >= 2 ? "valid" : "")">
-                            <i data-lucide="@(newGroupSelectedMembers.Count >= 2 ? "check-circle" : "info")" style="width:12px;height:12px"></i>
-                            <span>@newGroupSelectedMembers.Count members selected @(newGroupSelectedMembers.Count >= 2 ? "" : "(minimum 2 members)")</span>
-                        </div>
-                        <div class="cm-chips">
-                            @foreach (var member in newGroupSelectedMembers)
-                            {
-                                var m = member;
-                                <span class="cm-chip">
-                                    <span class="chip-name">@m.Name</span>
-                                    <button type="button" class="chip-x" @onclick="() => RemoveGroupMember(m)" title="Remove" aria-label="Remove member"><i data-lucide="x"></i></button>
-                                </span>
-                            }
-                        </div>
-                    </div>
-                }
-
-                <div class="cm-field">
-                    <label class="cm-label">Add Members</label>
-                    <div class="cm-search-wrap">
-                        <i data-lucide="user-plus" class="cm-search-icon"></i>
-                        <input type="text"
-                               class="cm-input with-icon"
-                               placeholder="Search colleague name or ID…"
-                               @bind="newGroupSearchQuery"
-                               @bind:event="oninput"
-                               @bind:after="SearchGroupUsers" />
-                        @if (!string.IsNullOrEmpty(newGroupSearchQuery))
-                        {
-                            <button type="button" class="cm-search-clear" @onclick="ClearGroupSearch" title="Clear search" aria-label="Clear search">
-                                <i data-lucide="x"></i>
-                            </button>
-                        }
-                    </div>
-
-                    @if (newGroupSearchResults.Any())
+                    @if (!string.IsNullOrWhiteSpace(newDmSearchQuery) || pickerGroupMode)
                     {
-                        <div class="cm-list-header" style="margin-top:4px">
-                            <i data-lucide="user-check"></i>
-                            <span>Select Members</span>
-                        </div>
-                        <div class="cm-user-list">
-                            @foreach (var user in newGroupSearchResults.Take(8))
+                        @if (newDmSearchQuery.Length < 2)
+                        {
+                            <div class="picker-hint-row">Type at least 2 characters to search by name or ID.</div>
+                        }
+                        else if (newDmSearchResults.Count == 0)
+                        {
+                            <div class="picker-hint-row">No colleagues found matching “@newDmSearchQuery”.</div>
+                        }
+                        else
+                        {
+                            @foreach (var user in newDmSearchResults.Take(12))
                             {
                                 var u = user;
-                                <button type="button" class="cm-user-row" @onclick="() => AddGroupMember(u)">
-                                    <div class="avatar" style="background:@GetUserColor(u.Nik)">@GetInitialsFromName(u.Name)</div>
-                                    <div class="cm-user-info">
-                                        <div class="cm-user-name">@u.Name</div>
-                                        <div class="cm-user-sub">@u.Nik @(!string.IsNullOrEmpty(u.Email) ? $"· {u.Email}" : "")</div>
+                                var picked = pickerPicked.Any(m => m.Id == u.Id);
+                                <button type="button" class="picker-row" @onclick="() => TogglePickerPerson(u)">
+                                    <div class="picker-av" style="background:@GetUserColor(u.Nik)">@GetInitialsFromName(u.Name)</div>
+                                    <div class="picker-info">
+                                        <div class="picker-name">@u.Name</div>
+                                        <div class="picker-pos">@u.Nik @(!string.IsNullOrEmpty(u.Email) ? $"· {u.Email}" : "")</div>
                                     </div>
-                                    <i data-lucide="plus" class="cm-user-act"></i>
+                                    <span class="picker-check @(picked ? "on" : "") @(pickerGroupMode ? "" : "round")">
+                                        @if (picked) { <i data-lucide="check"></i> }
+                                    </span>
                                 </button>
                             }
-                        </div>
-                    }
-                    else if (newGroupSearchQuery.Length >= 2)
-                    {
-                        <div class="cm-empty" style="margin-top:6px;padding:16px 10px"><i data-lucide="user-x"></i><span>No results found</span></div>
+                        }
                     }
                 </div>
 
-                <div class="cm-actions">
-                    <button type="button" class="cm-btn ghost" @onclick="() => newGroupModalOpen = false">Cancel</button>
-                    <button type="button" class="cm-btn primary" @onclick="CreateGroup" disabled="@(newGroupSelectedMembers.Count < 2 || string.IsNullOrWhiteSpace(newGroupName))">
-                        <i data-lucide="plus"></i>
-                        <span>Create Group</span>
+                <div class="picker-foot">
+                    <span class="picker-foot-hint">@PickerHint</span>
+                    <button type="button" class="picker-btn ghost" @onclick="ClosePicker">Cancel</button>
+                    <button type="button" class="picker-btn primary" disabled="@(!PickerCanConfirm)" @onclick="ConfirmPicker">
+                        @(pickerGroupMode ? "Create group" : "Start chat")
                     </button>
                 </div>
             </div>
