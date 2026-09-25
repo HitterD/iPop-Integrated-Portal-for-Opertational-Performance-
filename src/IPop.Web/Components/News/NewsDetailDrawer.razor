@@ -2,6 +2,7 @@
 @using IPop.Web.Models
 @using IPop.Web.Services
 @inject ToastService Toasts
+@inject AuthState Auth
 
 @{
     var isCondolence = Detail.Type is "condolence" or "duka";
@@ -202,6 +203,9 @@
                     <button class="org-act" style="width:auto;padding:8px 14px;font-size:12.5px" title="@(Detail.IsPinned ? "Unpin post" : "Pin to top")" @onclick="OnTogglePin">
                         <i data-lucide="@(Detail.IsPinned ? "pin-off" : "pin")" style="width:13px;height:13px"></i> @(Detail.IsPinned ? "Unpin" : "Pin")
                     </button>
+                }
+                @if (IsApprover || (!string.IsNullOrEmpty(Detail.AuthorNik) && Detail.AuthorNik == Auth.Me?.Nik))
+                {
                     <button class="org-act" style="width:auto;padding:8px 14px;font-size:12.5px;color:var(--danger)" title="Delete post" @onclick="OnDelete">
                         <i data-lucide="trash-2" style="width:13px;height:13px"></i>
                     </button>

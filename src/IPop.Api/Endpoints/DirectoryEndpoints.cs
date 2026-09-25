@@ -310,7 +310,7 @@ public static class DirectoryEndpoints
         string? callerNik, IPopDbContext db, CancellationToken ct)
     {
         var p = Math.Max(1, page ?? 1);
-        var size = Math.Clamp(pageSize ?? 120, 1, 200);
+        var size = Math.Clamp(pageSize ?? 120, 1, 5000);
         var query = db.Users.Include(u => u.Department).Include(u => u.Site)
             .AsNoTracking().Where(u => u.IsActive);
         if (!string.IsNullOrWhiteSpace(q))

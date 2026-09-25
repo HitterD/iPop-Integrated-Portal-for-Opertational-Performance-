@@ -1046,12 +1046,14 @@
     private async Task SwitchServer(string id)
     {
         server = id; credServer = id; currentPath = "/"; search = "";
+        shares = null;
+        items = [];
         FileStateService.CurrentServer = id;
         FileStateService.CurrentPath = "/";
         backStack.Clear(); forwardStack.Clear();
         FileStateService.BackStack.Clear(); FileStateService.ForwardStack.Clear();
         _ = FileStateService.SaveLastSeenAsync(JS);
-        await Reload();
+        await Reload(bypassCache: true);
     }
 
     private async Task Reload(bool bypassCache = false)

@@ -480,8 +480,15 @@
         if (!drawer.IsCreate)
         {
             var wantedRoles = drawer.IsAdmin ? new[] { "Admin" } : Array.Empty<string>();
-            await Auth.SendAsync(HttpMethod.Put, $"/api/admin/users/{Uri.EscapeDataString(drawer.Nik)}/roles",
+            var roleRes = await Auth.SendAsync(HttpMethod.Put, $"/api/admin/users/{Uri.EscapeDataString(drawer.Nik)}/roles",
                 new { roles = wantedRoles });
+            if (!roleRes.IsSuccessStatusCode)
+            {
+                drawer.Error = "User saved, but role assignment failed.";
+                drawer.Saving = false;
+                await ReloadUsers(page?.Page ?? 1);
+                return;
+            }
         }
 
         drawer.Saving = false;
