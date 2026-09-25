@@ -5,8 +5,7 @@
         @if (!IsCollapsed)
         {
             <div class="title">
-                <i data-lucide="kanban"></i>
-                <span>Projects</span>
+                <span>All projects</span>
                 <span class="badge">@Projects.Count</span>
             </div>
         }
@@ -14,7 +13,7 @@
             @if (!IsCollapsed)
             {
                 <button class="proj-new-btn" @onclick="OnCreateClick" title="Create New Project">
-                    <i data-lucide="plus"></i> New
+                    <i data-lucide="plus"></i>New
                 </button>
             }
             <button class="proj-sidebar-toggle" @onclick="OnToggleSidebar" title="@(IsCollapsed ? "Expand navigator" : "Collapse navigator")">
@@ -26,7 +25,7 @@
     @* Quick search projects *@
     <div class="proj-search-wrap">
         <i data-lucide="search" style="width:14px;height:14px;color:var(--ink-3)"></i>
-        <input class="proj-search-input" placeholder="Search project name..." value="@SearchQuery" @oninput="HandleSearchInput" />
+        <input class="proj-search-input" placeholder="Search projects" value="@SearchQuery" @oninput="HandleSearchInput" />
     </div>
 
     @* Year filter chips *@
@@ -66,17 +65,21 @@
                     </div>
                     <div class="proj-nav-body">
                         <div class="proj-nav-head">
-                            <span class="proj-nav-name" title="@p.Name">@p.Name</span>
-                            <span class="status-pill @p.Status.ToLower()" style="font-size:9.5px;padding:1px 6px">@p.Status</span>
-                        </div>
-                        <div class="proj-nav-sub">
-                            <span>@p.Year · @p.OwnerName</span>
-                            <span style="display:flex;align-items:center;gap:3px">
-                                <i data-lucide="check-square" style="width:11px;height:11px"></i> @p.TaskCount
+                            <span class="proj-tile" style="background:@ProjectUiHelpers.GetAvatarBg(p.Name)">@ProjectUiHelpers.GetInitials(p.Name)</span>
+                            <span class="proj-nav-id">
+                                <span class="proj-nav-name" title="@p.Name">@p.Name</span>
+                                <span class="proj-nav-sub">@p.TaskCount @(p.TaskCount == 1 ? "task" : "tasks") · @p.MemberCount @(p.MemberCount == 1 ? "member" : "members")</span>
                             </span>
                         </div>
-                        <div class="proj-nav-bar">
-                            <div class="proj-nav-bar-fill" style="width:@(Math.Clamp(p.Progress, 0, 100))%"></div>
+                        <div class="proj-nav-prog">
+                            <div class="proj-nav-bar">
+                                <div class="proj-nav-bar-fill @(p.Progress >= 100 ? "done" : "")" style="width:@(Math.Clamp(p.Progress, 0, 100))%"></div>
+                            </div>
+                            <span>@(Math.Clamp(p.Progress, 0, 100))%</span>
+                        </div>
+                        <div class="proj-nav-foot">
+                            <span class="proj-st @p.Status.ToLower()">@StatusLabel(p.Status)</span>
+                            <span class="due">@(p.Deadline is { } d ? $"Due {d.ToLocalTime():MMM d}" : "No deadline")</span>
                         </div>
                     </div>
                 </div>
@@ -99,6 +102,15 @@
     [Parameter] public EventCallback<int?> OnYearChanged { get; set; }
     [Parameter] public EventCallback<string> OnSearchChanged { get; set; }
     [Parameter] public EventCallback OnCreateClick { get; set; }
+
+    private static string StatusLabel(string s) => s.ToLowerInvariant() switch
+    {
+        "active" => "Active",
+        "on_hold" => "On hold",
+        "completed" => "Done",
+        "planning" => "Planning",
+        _ => s,
+    };
 
     private async Task HandleSearchInput(ChangeEventArgs e)
     {

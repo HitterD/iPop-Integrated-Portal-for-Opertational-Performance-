@@ -2,26 +2,23 @@
 
 <div class="proj-canvas-head">
     <div class="proj-title-box">
+        <span class="proj-tile lg" style="background:@ProjectUiHelpers.GetAvatarBg(Project.Name)">@ProjectUiHelpers.GetInitials(Project.Name)</span>
+        <div class="proj-title-col">
+        <div class="proj-title-row">
         <h2 class="proj-title-text">@Project.Name</h2>
-        <select class="status-pill @Project.Status.ToLower()" style="border:none;cursor:pointer;font-weight:600;padding:2px 8px;font-size:12px;background:var(--tray);color:var(--ink)" value="@Project.Status" @onchange="HandleStatusChange">
+        <select class="proj-st-select proj-st @Project.Status.ToLower()" aria-label="Project status" value="@Project.Status" @onchange="HandleStatusChange">
             <option value="planning">Planning</option>
             <option value="active">Active</option>
             <option value="on_hold">On hold</option>
             <option value="completed">Completed</option>
         </select>
-        <div class="proj-progress-tag">
-            <div class="proj-progress-mini">
-                <div class="proj-progress-mini-fill" style="width:@Project.Progress%"></div>
-            </div>
-            <span>@Project.Progress%</span>
         </div>
-        @if (Project.Deadline.HasValue)
-        {
-            <span style="font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:4px">
-                <i data-lucide="calendar" style="width:13px;height:13px"></i>
-                Until @Project.Deadline.Value.ToString("dd MMM yyyy")
-            </span>
-        }
+        <div class="proj-title-sub">
+            @if (!string.IsNullOrWhiteSpace(Project.Description)) { <span class="desc">@Project.Description</span> }
+            <span>@Project.Progress% complete</span>
+            @if (Project.Deadline.HasValue) { <span>Due @Project.Deadline.Value.ToString("dd MMM yyyy")</span> }
+        </div>
+        </div>
     </div>
 
     @* Head Actions *@
@@ -46,23 +43,23 @@
         </div>
 
         @* Chat Interconnect *@
-        <button class="proj-btn-action chat" @onclick="OnOpenChatRoom" title="Open Project Chat Room">
-            <i data-lucide="message-square"></i> Chat
+        <button type="button" class="icon-btn proj-hbtn" @onclick="OnOpenChatRoom" title="Open project chat" aria-label="Open project chat">
+            <i data-lucide="message-circle"></i>
         </button>
 
         @* Edit Project Button *@
-        <button class="proj-btn-action edit" @onclick="OnOpenEditModal" title="Edit Project Settings">
-            <i data-lucide="edit-3"></i> Edit
+        <button type="button" class="icon-btn proj-hbtn" @onclick="OnOpenEditModal" title="Edit project" aria-label="Edit project">
+            <i data-lucide="pencil"></i>
         </button>
 
         @* Export Snapshot *@
-        <button class="proj-btn-action export" @onclick="OnExport" title="Export Snapshot Data">
-            <i data-lucide="download"></i> Export
+        <button type="button" class="icon-btn proj-hbtn" @onclick="OnExport" title="Export snapshot" aria-label="Export snapshot">
+            <i data-lucide="download"></i>
         </button>
 
         @* More actions dropdown *@
         <div style="position:relative">
-            <button class="proj-btn-action" title="More options" @onclick="() => showMore = !showMore">
+            <button type="button" class="icon-btn proj-hbtn" title="More options" aria-label="More options" @onclick="() => showMore = !showMore">
                 <i data-lucide="more-horizontal"></i>
             </button>
             @if (showMore)

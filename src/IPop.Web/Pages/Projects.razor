@@ -85,47 +85,41 @@
                     </button>
                 </div>
 
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                    @* Quick Inspector Toggle Button *@
-                    <button class="filter-pill-btn @(quickViewerTaskId.HasValue ? "active" : "")" @onclick="ToggleQuickViewerToolbar" title="Toggle Docked Quick Viewer">
-                        <i data-lucide="panel-right-open" style="width:13px;height:13px"></i>
-                        <span>Quick Viewer</span>
-                    </button>
-
-                    @* My Tasks quick filter pill *@
-                    <button class="filter-pill-btn @(myTasksOnly ? "active" : "")" @onclick="() => myTasksOnly = !myTasksOnly" title="Show only tasks assigned to me">
-                        <i data-lucide="user" style="width:13px;height:13px"></i>
-                        <span>My Tasks</span>
-                    </button>
-
-                    @* Overdue only filter pill *@
-                    <button class="filter-pill-btn @(overdueOnly ? "active" : "")" @onclick="() => overdueOnly = !overdueOnly" title="Show only overdue tasks">
-                        <i data-lucide="clock-alert" style="width:13px;height:13px"></i>
-                        <span>Overdue</span>
-                    </button>
-
-                    @* Priority filter *@
-                    <select class="org-input" style="height:32px;font-size:11.5px;border-radius:999px;padding:0 8px;width:auto" @bind="priorityFilter">
-                        <option value="">All Priorities</option>
-                        <option value="urgent">Urgent</option>
-                        <option value="high">High</option>
-                        <option value="normal">Normal</option>
-                        <option value="low">Low</option>
-                    </select>
-
-                    <span class="meta" style="font-size:11.5px;color:var(--ink-3)">@VisibleTaskCount tasks</span>
-
-                    @* Search tasks within active project *@
-                    <div style="position:relative;display:flex;align-items:center">
-                        <i data-lucide="search" style="position:absolute;left:10px;width:13px;height:13px;color:var(--ink-3);pointer-events:none"></i>
-                        <input class="org-input" style="padding-left:28px;width:150px;height:32px;font-size:11.5px;border-radius:999px" placeholder="Filter tasks..." @bind="taskSearchQuery" @bind:event="oninput" />
+                <div class="proj-bar-right">
+                    <div class="v6-search proj-task-search">
+                        <i data-lucide="search"></i>
+                        <input type="search" placeholder="Search tasks or tags" aria-label="Search tasks" @bind="taskSearchQuery" @bind:event="oninput" />
                     </div>
-
-                    @* Quick add primary button *@
-                    <button class="btn-sm accent" style="border-radius:999px;padding:6px 16px" @onclick='() => HandleQuickAdd(("todo", "New Task"))'>
-                        <i data-lucide="plus"></i> Add Task
-                    </button>
+                    <div class="proj-filter-wrap">
+                        <button type="button" class="ghost-btn @(ActiveTaskFilterCount > 0 ? "on" : "")" aria-expanded="@filterOpen" @onclick="() => filterOpen = !filterOpen">
+                            <i data-lucide="sliders-horizontal"></i>Filter
+                            @if (ActiveTaskFilterCount > 0) { <span class="n">@ActiveTaskFilterCount</span> }
+                        </button>
+                        @if (filterOpen)
+                        {
+                            <div class="proj-filter-pop" @onclick:stopPropagation="true">
+                                <label class="pf-row"><input type="checkbox" @bind="myTasksOnly" /><i data-lucide="user"></i>My tasks</label>
+                                <label class="pf-row"><input type="checkbox" @bind="overdueOnly" /><i data-lucide="clock-alert"></i>Overdue only</label>
+                                <div class="pf-label">Priority</div>
+                                <select class="pf-select" aria-label="Priority" @bind="priorityFilter">
+                                    <option value="">All priorities</option>
+                                    <option value="urgent">Urgent</option>
+                                    <option value="high">High</option>
+                                    <option value="normal">Normal</option>
+                                    <option value="low">Low</option>
+                                </select>
+                                <div class="pf-sep"></div>
+                                <button type="button" class="pf-row btn" @onclick="() => { filterOpen = false; ToggleQuickViewerToolbar(); }"><i data-lucide="panel-right-open"></i>@(quickViewerTaskId.HasValue ? "Close quick viewer" : "Open quick viewer")</button>
+                            </div>
+                        }
+                    </div>
                 </div>
+            </div>
+            <div class="proj-bar-2">
+                <button type="button" class="btn-primary" @onclick='() => HandleQuickAdd(("todo", "New Task"))'>
+                    <i data-lucide="plus"></i>Add task
+                </button>
+                <span class="meta">@VisibleTaskCount tasks</span>
             </div>
 
             @* Canvas Body Content *@
@@ -388,6 +382,9 @@
     private ProjectTaskDto? evidenceTask;
     private string evidenceTargetStatus = "doing";
 
+    private bool filterOpen;
+    private int ActiveTaskFilterCount => (myTasksOnly ? 1 : 0) + (overdueOnly ? 1 : 0) + (string.IsNullOrWhiteSpace(priorityFilter) ? 0 : 1);
+
     // Quick Viewer state
     private Guid? quickViewerTaskId;
     private ProjectTaskDto? quickViewerTask => quickViewerTaskId.HasValue ? AllCurrentTasks.FirstOrDefault(t => t.Id == quickViewerTaskId.Value) : null;
@@ -560,6 +557,7 @@
 
         var res = await Auth.GetAsync<PagedResult<ProjectListDto>>(url);
         projects = res?.Items?.ToList() ?? [];
+        Layout?.SetSubtitle($"{projects.Count} {(projects.Count == 1 ? "project" : "projects")} · {projects.Sum(p => p.TaskCount)} tasks");
         ApplyProjectFilter();
 
         availableYears = projects.Select(p => p.Year).Distinct().OrderByDescending(y => y).ToList();
