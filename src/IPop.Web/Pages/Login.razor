@@ -35,10 +35,12 @@
                     <label for="pwd">Password</label>
                     <div class="auth-password-field"><input id="pwd" type="@(showPassword ? "text" : "password")" placeholder="Your password" autocomplete="current-password" @bind="password" disabled="@(locked || busy)" /><button type="button" title="@(showPassword ? "Hide password" : "Show password")" aria-label="@(showPassword ? "Hide password" : "Show password")" @onclick="() => showPassword = !showPassword"><i data-lucide="@(showPassword ? "eye-off" : "eye")"></i></button></div>
                 </div>
-                <label class="auth-remember"><input type="checkbox" @bind="keepSignedIn" /> Keep me signed in</label>
+                <div class="auth-options">
+                    <label class="auth-remember"><input type="checkbox" @bind="keepSignedIn" /> Keep me signed in</label>
+                    <a class="auth-link" href="/forgot-password">Forgot password?</a>
+                </div>
                 <button class="btn" type="submit" disabled="@(locked || busy)">@(busy ? "Signing in…" : "Sign in") <span class="orb"><i data-lucide="arrow-right"></i></span></button>
             </form>
-            <a class="auth-link" href="/forgot-password">Forgot password?</a>
             <div class="note @(isError ? "err" : "")" @key="noteIcon">
                 <i data-lucide="@noteIcon"></i>
                 <span>@noteText</span>

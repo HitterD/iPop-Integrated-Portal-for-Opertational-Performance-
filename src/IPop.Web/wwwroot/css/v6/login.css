@@ -1,1 +1,27 @@
-/* v6 login screen — mockup parity layer (loaded after shell/v6.css). */
+/* v6 login card — preserve the existing slideshow and theme control. */
+.auth-wrap .auth-card { max-width:476px; padding:0; border:1px solid var(--line-soft); border-radius:22px; background:var(--surface); backdrop-filter:none; box-shadow:0 18px 45px rgba(0,0,0,.16); }
+.auth-wrap .auth-card .core { padding:36px; border-radius:21px; background:var(--surface); box-shadow:none; }
+.auth-wrap .auth-card .brand-row { gap:12px; margin-bottom:28px; }
+.auth-wrap .auth-card .mark { width:40px; height:40px; padding:0; border-radius:9px; background:var(--accent-soft); }
+.auth-wrap .auth-card .brand-row .t { font-size:16px; color:var(--ink); }
+.auth-wrap .auth-card .brand-row .s { font-size:12px; color:var(--ink-3); }
+.auth-wrap .auth-card h2 { margin:0 0 3px; font-size:22px; font-weight:700; letter-spacing:-.025em; }
+.auth-wrap .auth-card .sub { margin:0 0 24px; font-size:13px; color:var(--ink-3); }
+.auth-wrap .auth-card .field { margin-bottom:16px; }
+.auth-wrap .auth-card .field label { font-size:12px; font-weight:500; color:var(--ink); }
+.auth-wrap .auth-card .field input { box-sizing:border-box; height:46px; border:1px solid var(--line); border-radius:12px; padding:0 14px; background:var(--surface); font-size:13px; }
+.auth-wrap .auth-card .field input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(46,158,91,.12); }
+.auth-wrap .auth-card .auth-password-field input { padding-right:45px; }
+.auth-wrap .auth-card .auth-remember { margin:0; font-size:12px; }
+.auth-wrap .auth-card .auth-remember input { accent-color:var(--accent); }
+.auth-wrap .auth-card form { display:flex; flex-direction:column; }
+.auth-wrap .auth-card .auth-options { display:flex; align-items:center; justify-content:space-between; margin:0 0 22px; }
+.auth-wrap .auth-card .auth-options .auth-link { margin:0; font-size:12px; }
+.auth-wrap .auth-card form > .btn { height:46px; margin:0; padding:0 18px; border-radius:12px; display:flex; align-items:center; justify-content:center; gap:12px; color:#fff; font-size:14px; font-weight:600; }
+.auth-wrap .auth-card form > .btn:hover { background:var(--accent-hover); }
+.auth-wrap .auth-card form > .btn .orb { width:auto; height:auto; background:transparent; display:inline-flex; }
+.auth-wrap .auth-card form > .btn .orb .lucide { width:16px; height:16px; }
+.auth-wrap .auth-card .note { margin-top:22px; padding:12px 14px; border-radius:12px; background:var(--surface-3); color:var(--ink-2); font-size:12px; }
+.auth-wrap .auth-card .note.err { background:var(--danger-soft); color:var(--danger-ink); }
+[data-theme="dark"] .auth-wrap .auth-card { box-shadow:0 18px 45px rgba(0,0,0,.5); }
+@media(max-width:520px) { .auth-wrap .auth-card .core { padding:26px; } }
