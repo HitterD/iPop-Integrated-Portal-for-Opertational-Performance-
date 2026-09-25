@@ -1,1 +1,91 @@
 /* v6 chat screen — mockup parity layer (loaded after shell/v6.css). */
+
+.chat-area { grid-template-columns: 320px minmax(0, 1fr); background: var(--bg); }
+.chat-area .room-pane { background: var(--bg); border-right: 1px solid var(--line-soft); padding: 14px 12px 0; gap: 0; }
+.chat-area .conv-pane { background: var(--surface); }
+
+/* Search + compose */
+.chat-area .room-top-bar { display: flex; align-items: center; gap: 8px; padding: 0 2px 12px; }
+.chat-area .room-search-box input { height: 34px; border: none; border-radius: 10px; background: var(--fill); padding-left: 32px; }
+.chat-area .room-search-box input:focus { background: var(--surface); box-shadow: 0 0 0 3px rgba(46, 158, 91, 0.14); }
+.chat-area .room-search-box .lucide { left: 11px; top: 50%; transform: translateY(-50%); margin: 0; }
+.chat-area .compose-btn {
+  width: 34px; height: 34px; border: none; border-radius: 10px; background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.chat-area .compose-btn:hover { background: var(--accent-hover); }
+.chat-area .compose-btn .lucide { width: 16px; height: 16px; }
+
+/* Quick links → one card */
+.chat-area .room-nav-links {
+  display: flex; flex-direction: column; margin: 0 2px 12px; padding: 0;
+  background: var(--surface); border: 1px solid var(--line-soft); border-radius: 12px; overflow: hidden;
+}
+.chat-area .room-nav-btn {
+  height: 39px; display: flex; align-items: center; gap: 10px; padding: 0 12px; margin: 0; border: none; border-radius: 0;
+  background: transparent; color: var(--ink); font-size: 13px; text-align: left; cursor: pointer;
+}
+.chat-area .room-nav-btn + .room-nav-btn { border-top: 1px solid var(--line-soft); }
+.chat-area .room-nav-btn:hover { background: var(--surface-2); }
+.chat-area .room-nav-btn .rnb-icon { width: auto; height: auto; background: none; color: #6E6E73; display: flex; }
+.chat-area .room-nav-btn .rnb-icon .lucide { width: 15px; height: 15px; }
+.chat-area .room-nav-btn .rnb-label { flex: 1; }
+.chat-area .room-nav-btn .rnb-badge { background: none; color: var(--ink-3); font-size: 11px; font-weight: 400; min-width: 0; padding: 0; }
+.chat-area .room-nav-btn .rnb-chev { width: 14px; height: 14px; color: var(--ink-4); }
+
+/* Direct / Groups segmented */
+.chat-area .room-segmented { display: flex; gap: 2px; padding: 2px; margin: 0 2px 12px; border-radius: 10px; background: var(--fill); border: none; }
+.chat-area .room-segmented .seg-item {
+  flex: 1; height: 28px; display: flex; align-items: center; justify-content: center; gap: 6px;
+  border: none; border-radius: 8px; background: transparent; color: var(--ink); font-size: 13px; font-weight: 500; cursor: pointer; box-shadow: none;
+}
+.chat-area .room-segmented .seg-item.active { background: var(--surface); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.chat-area .room-segmented .seg-badge { background: none; color: var(--accent-ink); font-size: 11px; font-weight: 500; min-width: 0; padding: 0; height: auto; }
+
+/* Room list */
+.chat-area .room-section-label { padding: 4px 10px 6px; font-size: 11px; font-weight: 500; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
+.chat-area .room-list { padding: 0 0 12px; }
+.chat-area .room-item { padding: 10px; margin: 0 0 2px; width: 100%; border-radius: 12px; gap: 12px; }
+.chat-area .room-item:hover { background: rgba(0, 0, 0, 0.04); }
+.chat-area .room-item.active { background: var(--v6-active-bg); }
+[data-theme="dark"] .chat-area .room-item:hover { background: rgba(255, 255, 255, 0.06); }
+.chat-area .room-av { width: 42px; height: 42px; border-radius: 50%; font-size: 14px; font-weight: 600; }
+.chat-area .presence-dot { width: 11px; height: 11px; border: 2px solid var(--bg); }
+.chat-area .room-item.active .presence-dot { border-color: var(--v6-active-bg); }
+.chat-area .room-name { font-size: 13px; font-weight: 600; color: var(--ink); }
+.chat-area .room-time { font-size: 11px; color: var(--ink-3); }
+.chat-area .room-preview { font-size: 12px; color: var(--ink-3); }
+.chat-area .room-unread-pill { background: var(--accent); color: #fff; }
+
+/* Conversation header */
+.chat-area .conv-header { height: 64px; padding: 0 20px; border-bottom: 1px solid var(--line-soft); background: var(--surface); }
+.chat-area .conv-header .header-avatar-btn { width: 40px; height: 40px; }
+.chat-area .conv-header .actions button, .chat-area .conv-header > button:not(.conv-back):not(.header-avatar-btn) {
+  width: 34px; height: 34px; border-radius: 9px; color: var(--ink-2); background: transparent; border: none;
+}
+.chat-area .conv-header .actions button:hover, .chat-area .conv-header > button:not(.conv-back):not(.header-avatar-btn):hover { background: var(--tray); }
+.chat-area .conv-header .lucide { width: 17px; height: 17px; }
+
+/* Bubbles — timestamp sits under the bubble, never inside it. */
+.chat-area .msg .bubble { padding: 8px 14px; border-radius: 18px; font-size: 14px; line-height: 1.4; }
+.chat-area .msg.recv .bubble { background: #E9E9EB; color: var(--ink); border: none; }
+[data-theme="dark"] .chat-area .msg.recv .bubble { background: #2C2C2E; }
+.chat-area .msg.sent .bubble { background: var(--accent); color: #fff; }
+.chat-area .msg .bubble .time {
+  float: none; position: absolute; top: 100%; margin: 3px 0 0; opacity: 0; color: var(--ink-3) !important;
+  font-size: 10px; pointer-events: none;
+}
+.chat-area .msg.recv .bubble .time { left: 4px; }
+.chat-area .msg.sent .bubble .time { right: 4px; }
+.chat-area .msg .bubble { position: relative; }
+.chat-area .msg:hover .bubble .time, .chat-area .msg:focus-within .bubble .time { opacity: 1; }
+
+/* Composer */
+.chat-area .composer-wrap { border-top: 1px solid var(--line-soft); }
+.chat-area .composer { padding: 10px 20px 14px; gap: 10px; }
+.chat-area .composer .input-wrap { min-height: 40px; padding: 10px 16px; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); font-size: 14px; }
+.chat-area .composer .comp-btn { width: 32px; height: 32px; border-radius: 50%; color: var(--ink-2); }
+.chat-area .composer .composer-left-actions .comp-btn:first-child { border: 1px solid var(--line); }
+
+@media (max-width: 1100px) { .chat-area { grid-template-columns: 290px minmax(0, 1fr); } }
+@media (max-width: 768px) { .chat-area { grid-template-columns: 1fr; } }
