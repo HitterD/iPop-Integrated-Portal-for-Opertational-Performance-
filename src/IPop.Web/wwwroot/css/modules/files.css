@@ -1,5 +1,5 @@
   /* ---- files browser ---- */
-  .files-page { grid-template-columns: 1fr; }
+  .files-page { grid-template-columns: 1fr; align-content: start; }
   .files-servers { padding: 2px 0 4px; }
   .files-panel-head { gap: 10px; flex-wrap: wrap; }
   .files-panel-head .meta { display: inline-flex; align-items: center; gap: 6px; }

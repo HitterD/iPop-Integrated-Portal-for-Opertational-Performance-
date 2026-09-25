@@ -16,16 +16,24 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
         var single = cfg["Synology:BaseUrl"]?.Trim().TrimEnd('/');
         if (!string.IsNullOrEmpty(single))
             map["spj"] = single;
-        foreach (var key in new[] { "spj", "krw", "jtb", "smg" })
+        foreach (var key in new[] { "spj", "krw", "jtb", "smg", "ict" })
         {
-            var v = cfg[$"Synology:Servers:{key}"]?.Trim().TrimEnd('/') ?? cfg[$"Synology:{key}"]?.Trim().TrimEnd('/');
+            var v = cfg[$"Synology:{key}"]?.Trim().TrimEnd('/');
             if (!string.IsNullOrEmpty(v)) map[key] = v;
+        }
+        // Every configured server counts — the service-account NAS ("ict") is not one of the
+        // four plant tabs, and a fixed key list silently dropped it (chat/mail attachments 502'd).
+        foreach (var s in cfg.GetSection("Synology:Servers").GetChildren())
+        {
+            var v = s.Value?.Trim().TrimEnd('/');
+            if (!string.IsNullOrEmpty(v)) map[s.Key] = v;
         }
         // Fallback per IP — DSM custom port 30001, HTTPS (nginx: plain HTTP -> 400)
         if (!map.ContainsKey("spj")) map["spj"] = "https://192.168.2.16:30001";
         if (!map.ContainsKey("krw")) map["krw"] = "https://10.12.2.6:30001";
         if (!map.ContainsKey("jtb")) map["jtb"] = "https://10.11.2.6:30001";
         if (!map.ContainsKey("smg")) map["smg"] = "https://10.14.2.16:30001";
+        if (!map.ContainsKey("ict")) map["ict"] = "https://192.168.2.17:30001";
         return map;
     }
 

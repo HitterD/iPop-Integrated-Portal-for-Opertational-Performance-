@@ -301,6 +301,7 @@
 </div>
 
 @code {
+    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
     private List<NotificationItemDto> items = [];
     private HashSet<Guid> selectedIds = [];
     private bool isLoading = true;
@@ -358,6 +359,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Layout.SetHeader("Notifications", "Notification center");
         await LoadPreferences();
         await ReloadAsync();
         Notifs.UnreadChanged += OnLiveUnreadChanged;

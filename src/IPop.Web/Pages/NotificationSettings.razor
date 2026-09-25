@@ -763,6 +763,7 @@
 </style>
 
 @code {
+    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
     private string activeTab = "general";
     private NotificationPreferences settings = new();
 
@@ -786,6 +787,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Layout.SetHeader("Notifications", "Settings");
         await LoadPreferences();
         await LoadLocalPreferences();
         await SyncBrowserTimezone();

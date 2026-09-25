@@ -78,6 +78,7 @@
 </div>
 
 @code {
+    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
     private string view = "month";
     private DateTime cursor = DateTime.Today;
     private List<CalEvent> events = [];
@@ -86,6 +87,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Layout.SetHeader("Calendar", "Meetings · events");
         await LoadAsync();
     }
 
