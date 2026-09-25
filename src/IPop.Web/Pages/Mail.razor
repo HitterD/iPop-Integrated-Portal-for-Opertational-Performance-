@@ -74,7 +74,7 @@
             <div class="card-head">
                 <div>
                     <div class="card-title">Mailboxes</div>
-                    <div class="card-meta">@Folders.Length folders</div>
+                    <div class="card-meta">@(Auth.Me?.Email ?? $"{Folders.Length} folders")</div>
                 </div>
             </div>
 
@@ -126,9 +126,9 @@
             </div>
 
             <div class="folders-foot">
-                <button type="button" class="ghost-btn" style="width:100%;justify-content:center;font-size:12px" @onclick='() => Nav.NavigateTo("/mail/advanced")' title="Advanced Mail settings">
-                    <i data-lucide="settings-2"></i>
-                    <span class="lbl">Advanced</span>
+                <button type="button" class="ghost-btn" style="width:100%;justify-content:center;font-size:12px" @onclick='() => Nav.NavigateTo("/mail/advanced")' title="Mail settings">
+                    <i data-lucide="settings"></i>
+                    <span class="lbl">Mail settings</span>
                 </button>
             </div>
         </div>
@@ -146,10 +146,10 @@
                           aria-label="Select all">
                         <i data-lucide="check"></i>
                     </span>
-                    <span class="card-title">Messages</span>
+                    <span class="card-title">@FolderLabel(activeFolder)</span>
                     @if (NewCount > 0)
                     {
-                        <span class="badge mute">@NewCount new</span>
+                        <span class="v6-new-pill">@NewCount new</span>
                     }
                 </div>
                 <div class="flex center gap-6">
@@ -160,7 +160,7 @@
                         </button>
                     }
                     <button type="button" class="icon-btn @(advSearchOpen ? "on" : "")" title="Advanced filter" aria-label="Advanced filter" @onclick="() => advSearchOpen = !advSearchOpen">
-                        <i data-lucide="sliders-horizontal"></i>
+                        <i data-lucide="list-filter"></i>
                     </button>
                 </div>
             </div>
@@ -555,22 +555,22 @@
                 <div class="inline-reply-box">
                     <div class="rh">
                         <i data-lucide="reply"></i>
-                        <span class="title">Quick reply to @detail.SenderName</span>
+                        <span class="title">Reply to @detail.SenderName</span>
                         <button type="button" class="icon-btn" style="margin-left:auto;width:24px;height:24px" title="Open in composer" aria-label="Open in composer" @onclick="() => ReplyMessage(detail)">
-                            <i data-lucide="external-link" style="width:13px;height:13px"></i>
+                            <i data-lucide="maximize-2" style="width:13px;height:13px"></i>
                         </button>
                     </div>
                     <textarea rows="2"
-                              placeholder="Write a quick reply here…"
+                              placeholder="Write a reply…"
                               @bind="quickReplyText"></textarea>
                     <div class="ra">
-                        <button type="button" class="btn-primary" style="padding:6px 14px" @onclick="SendQuickReply" disabled="@quickReplySending">
+                        <button type="button" class="btn-primary" @onclick="SendQuickReply" disabled="@(quickReplySending || string.IsNullOrWhiteSpace(quickReplyText))">
                             <i data-lucide="send"></i>
                             @(quickReplySending ? "Sending…" : "Send")
                         </button>
-                        <button type="button" class="ghost-btn" @onclick="() => ForwardMessage(detail)">
-                            <i data-lucide="forward"></i>
-                            <span>Forward</span>
+                        <button type="button" class="ghost-btn" title="Attach files in the full composer" @onclick="() => ReplyMessage(detail)">
+                            <i data-lucide="paperclip"></i>
+                            <span>Attach</span>
                         </button>
                     </div>
                 </div>
