@@ -112,7 +112,7 @@
                                         <div style="font-size:12.5px;font-weight:600">@r.Name</div>
                                         <div style="font-size:11px;color:var(--ink-3)">Sender contains "@r.SenderContains" → label "@r.LabelName"</div>
                                     </div>
-                                    <label class="syno-toggle"><input type="checkbox" checked="@r.Enabled" @onchange="() => r.Enabled = !r.Enabled" /><span style="font-size:11px">@(r.Enabled ? "Active" : "Inactive")</span></label>
+                                    <label class="syno-toggle"><input type="checkbox" checked="@r.Enabled" @onchange="() => ToggleRule(r)" /><span style="font-size:11px">@(r.Enabled ? "Active" : "Inactive")</span></label>
                                     <button class="btn-sm surface danger" style="padding:2px 8px" @onclick="() => DeleteRule(r.Id)"><i data-lucide="trash-2" style="width:11px;height:11px"></i></button>
                                 </div>
                             }
@@ -328,6 +328,22 @@
         {
             Toasts.Show("Rule deleted.", ToastKind.Success);
             await LoadAll();
+        }
+    }
+
+    private async Task ToggleRule(RuleItem r)
+    {
+        var next = !r.Enabled;
+        r.Enabled = next;
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/mail/rules/{r.Id}", new { isEnabled = next });
+        if (!res.IsSuccessStatusCode)
+        {
+            r.Enabled = !next;
+            Toasts.Show("Could not update rule status.", ToastKind.Error);
+        }
+        else
+        {
+            Toasts.Show(next ? "Rule activated." : "Rule deactivated.", ToastKind.Success);
         }
     }
 

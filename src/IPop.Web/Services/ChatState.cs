@@ -154,6 +154,10 @@ public class ChatState : IAsyncDisposable
         await Task.WhenAll(directTask, groupTask);
         DirectRooms = directTask.Result?.Items.ToList() ?? [];
         GroupRooms = groupTask.Result?.Items.ToList() ?? [];
+        _directTotal = directTask.Result?.TotalCount ?? DirectRooms.Count;
+        _groupTotal = groupTask.Result?.TotalCount ?? GroupRooms.Count;
+        _directPage = 1;
+        _groupPage = 1;
         foreach (var r in DirectRooms.Concat(GroupRooms).Where(r => r.HasUnreadMention)) _mentionFlags[r.Id] = true;
         RoomListChanged?.Invoke();
         StateChanged?.Invoke();

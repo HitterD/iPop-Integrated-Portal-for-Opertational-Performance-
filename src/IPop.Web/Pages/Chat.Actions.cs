@@ -584,8 +584,11 @@ public partial class Chat
         if (ChatSvc.ActiveRoomId is null) return;
         try
         {
-            await Auth.SendAsync(HttpMethod.Post, $"/api/chat/saved/{msgId}");
-            Toasts.Show("Message saved to your personal saved list.", ToastKind.Success);
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/chat/saved/{msgId}");
+            if (res.IsSuccessStatusCode)
+                Toasts.Show("Message saved to your personal saved list.", ToastKind.Success);
+            else
+                Toasts.Show("Could not save message.", ToastKind.Error);
         }
         catch
         {
