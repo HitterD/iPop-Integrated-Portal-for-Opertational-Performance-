@@ -469,6 +469,8 @@ public partial class Chat
             await OpenRoomCore(RoomId.Value);
         else if (QueryValue("new") == "group")
             await StartGroupFromQuery();
+        else if (QueryValue("new") == "dm")
+            StartNewDm();
         else
         {
             var nik = QueryValue("nik");

@@ -12,10 +12,10 @@
     <div class="dash-hero">
         <div class="dash-hello">
             <span class="dash-date">@DateTime.Now.ToString("dddd, d MMMM yyyy")</span>
-            <span class="dash-greet">@Greeting, @(data?.FirstName ?? Auth.Me?.Name?.Split(' ')[0] ?? "there")</span>
+            <span class="dash-greet">@Greeting, @(Auth.Me?.Roles.Contains("Admin") == true ? "Administrator" : data?.FirstName ?? Auth.Me?.Name?.Split(' ')[0] ?? "there")</span>
         </div>
         <div class="dash-quick">
-            <a class="dash-pill" href="/chat"><i data-lucide="square-pen"></i>New message</a>
+            <a class="dash-pill" href="/chat?new=dm"><i data-lucide="square-pen"></i>New message</a>
             <a class="dash-pill" href="/mail?compose=1"><i data-lucide="mail-plus"></i>Compose</a>
             <a class="dash-pill" href="/projects?newTask=1"><i data-lucide="list-plus"></i>New task</a>
             <a class="dash-pill" href="/calls?tab=scheduled&amp;new=1"><i data-lucide="calendar-plus"></i>Schedule</a>
