@@ -12,27 +12,27 @@
 
 <PageTitle>Files - IPop</PageTitle>
 
-<div class="content files-page">
+<div class="files-page">
     <div class="admin-tabs files-servers">
         @foreach (var s in Servers)
         {
             <button class="admin-tab @(server == s.Id ? "active" : "")" @onclick="() => SwitchServer(s.Id)">
-                <i data-lucide="hard-drive"></i> @s.Label <span class="mono" style="font-size:10px; opacity:0.6; margin-left:4px">@s.Host</span>
+                <i data-lucide="hard-drive"></i> @s.Label <span class="mono server-host">@s.Host</span><span class="server-dot @(server == s.Id && !needsCredential ? "on" : "")"></span>
             </button>
         }
     </div>
-    <div class="tray rise rise-1"><div class="core" style="padding:0; overflow:hidden">
+    <div class="files-main"><div class="tray rise rise-1"><div class="core" style="padding:0; overflow:hidden">
         <div class="panel-head files-panel-head">
             <i data-lucide="folder"></i> <span>Files</span>
             <span class="meta">@serverLabel · @(shares?.Count ?? 0) shares</span>
-            <span class="meta"><span class="live-dot"></span> Live</span>
+            <span class="meta"><span class="live-dot"></span> @(needsCredential ? "Not connected" : "Live")</span>
             @if (!needsCredential && credential?.Username is not null)
             {
                 <span class="files-account" title="Synology account for @serverLabel - same permissions as File Explorer">
                     <i data-lucide="user-round" style="width:13px;height:13px"></i> as <strong>@credential.Username</strong>
                 </span>
             }
-            <button class="btn btn-sm surface" style="margin-left:auto" @onclick="() => showCred = true">
+            <button type="button" class="ghost-btn files-manage-btn" @onclick="() => showCred = true">
                 <i data-lucide="plug-zap" style="width:14px;height:14px"></i> @(needsCredential ? "Connect" : "Manage")
             </button>
         </div>
@@ -46,7 +46,7 @@
         }
 
         <div class="filter-bar">
-            <div class="search"><i data-lucide="search"></i><input placeholder="Search name…" @bind="search" @bind:event="oninput" /></div>
+            <div class="v6-search files-search"><i data-lucide="search"></i><input type="search" placeholder="Search @serverLabel" aria-label="Search files" @bind="search" @bind:event="oninput" /></div>
             <AppSelect Label="Type filter" Value="@typeFilter" ValueChanged="v => { typeFilter = v; StateHasChanged(); }"
                        Options="@TypeOptions" />
             <AppSelect Label="Sort" Value="@sortBy" ValueChanged="v => { sortBy = v; StateHasChanged(); }"
@@ -55,12 +55,12 @@
             {
                 <button class="btn btn-sm surface" @onclick="ClearFilters"><i data-lucide="x" style="width:12px;height:12px"></i> Clear</button>
             }
-            <button type="button" class="btn btn-sm surface" @onclick="OpenNewFolderModal">
-                <i data-lucide="folder-plus" style="width:14px;height:14px"></i> New folder
+            <button type="button" class="icon-btn files-create-btn" title="New folder" aria-label="New folder" disabled="@needsCredential" @onclick="OpenNewFolderModal">
+                <i data-lucide="folder-plus"></i>
             </button>
-            <label class="btn btn-sm accent">
-                <i data-lucide="upload" style="width:14px;height:14px"></i> Upload
-                <InputFile id="files-upload-input" OnChange="OnUpload" multiple style="display:none" />
+            <label class="btn-primary files-upload-btn @(needsCredential ? "disabled" : "")">
+                <i data-lucide="upload"></i>Upload
+                <InputFile id="files-upload-input" OnChange="OnUpload" multiple disabled="@needsCredential" style="display:none" />
             </label>
         </div>
 
@@ -86,7 +86,7 @@
 
         @if (needsCredential)
         {
-            <div class="files-connect-hero"><i data-lucide="hard-drive"></i><h2>Connect to @serverLabel</h2><p>Browse your shares, preview documents and manage files using your Synology permissions.</p><button class="btn btn-sm" @onclick="() => showCred = true">Connect account</button></div>
+            <div class="files-connect-hero"><i data-lucide="hard-drive"></i><h2>Connect to @serverLabel</h2><p>Connect your Synology account to browse shares, preview documents and manage files with its permissions.</p><button type="button" class="btn-primary" @onclick="() => showCred = true">Connect account</button></div>
         }
         else if (loadError is not null)
         {
@@ -326,7 +326,7 @@
                 }
             </div>
         }
-    </div></div>
+    </div></div></div>
 
     @if (uploading)
     {
@@ -1109,6 +1109,7 @@
             var cred = await Auth.GetAsync<CredentialStatusDto>($"/api/files/credential?server={server}");
             if (pathAtStart != currentPath || serverAtStart != server) return; // superseded by navigation
             credential = cred;
+            Layout.SetSubtitle(cred is { HasCredential: true, IsInvalid: false } ? $"{serverLabel} · Connected as {cred.Username}" : $"{serverLabel} · Not connected");
             if (cred is null || !cred.HasCredential) { needsCredential = true; return; }
             if (cred.IsInvalid) { needsCredential = true; showCred = true; return; }
             needsCredential = false;
