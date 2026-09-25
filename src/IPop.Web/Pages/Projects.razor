@@ -474,6 +474,27 @@
             {
                 await SelectProject(filteredProjects[0]);
             }
+
+            var taskIdStr = QueryValue("task");
+            if (!string.IsNullOrEmpty(taskIdStr) && Guid.TryParse(taskIdStr, out var targetTask))
+            {
+                await HighlightTask(targetTask);
+                Nav.NavigateTo("/projects", replace: true);
+            }
+        }
+
+        if (QueryValue("newTask") == "1")
+        {
+            if (selectedProjectId != Guid.Empty)
+            {
+                tab = 0;
+                await HandleQuickAdd(("todo", "New Task"));
+            }
+            else
+            {
+                showCreateModal = true;
+            }
+            Nav.NavigateTo(ProjectId is null ? "/projects" : $"/projects/{ProjectId.Value}", replace: true);
         }
     }
 
@@ -486,6 +507,11 @@
 
         tab = 0;
         highlightTaskId = taskId;
+        var foundTask = AllCurrentTasks.FirstOrDefault(t => t.Id == taskId);
+        if (foundTask != null)
+        {
+            await OpenTaskEditor(foundTask);
+        }
         StateHasChanged();
         await Task.Delay(80);
         try { await JS.InvokeVoidAsync("ipop.scrollIntoView", $"task-card-{taskId}"); } catch { }

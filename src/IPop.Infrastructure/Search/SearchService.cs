@@ -68,7 +68,7 @@ public class SearchService(IPopDbContext db) : ISearchService
                 Group: "Tasks",
                 Title: t.Title,
                 Subtitle: $"Task · {t.Status} ({t.Priority ?? "normal"})",
-                Url: $"/projects/{t.ProjectId}",
+                Url: $"/projects/{t.ProjectId}?task={t.Id}",
                 Icon: "check-square"));
         }
 
@@ -101,7 +101,7 @@ public class SearchService(IPopDbContext db) : ISearchService
                 Group: "Mail",
                 Title: m.Subject,
                 Subtitle: $"From {m.Name} · {m.SentAt:dd MMM}",
-                Url: $"/mail",
+                Url: $"/mail?mailId={m.MailId}",
                 Icon: "mail"));
         }
 

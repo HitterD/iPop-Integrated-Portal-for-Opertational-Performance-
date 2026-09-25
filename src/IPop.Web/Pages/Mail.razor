@@ -223,11 +223,17 @@
                 <div class="bulk-bar" aria-label="Bulk actions">
                     <span class="bulk-count">@selected.Count selected</span>
                     <button type="button" class="comp-btn" title="Export selected as PDF" disabled="@bulkExporting" @onclick="BulkExportPdf"><i data-lucide="file-down"></i></button>
-                    <button type="button" class="comp-btn" title="Archive" @onclick="() => BulkMove(MailFolder.Archive)"><i data-lucide="archive"></i></button>
-                    <button type="button" class="comp-btn" title="Trash" @onclick="() => BulkMove(MailFolder.Trash)"><i data-lucide="trash-2"></i></button>
-                    <button type="button" class="comp-btn" title="Star" @onclick="BulkStar" @onclick:stopPropagation><i data-lucide="star"></i></button>
-                    <button type="button" class="comp-btn" title="Restore to inbox" @onclick="() => BulkMove(MailFolder.Inbox)"><i data-lucide="inbox"></i></button>
-                    <button type="button" class="comp-btn danger" title="Delete permanently" @onclick="BulkPermanent"><i data-lucide="trash"></i></button>
+                    @if (activeFolder == MailFolder.Trash)
+                    {
+                        <button type="button" class="comp-btn" title="Restore to inbox" @onclick="BulkRestore"><i data-lucide="inbox"></i> Restore</button>
+                        <button type="button" class="comp-btn danger" title="Delete permanently" @onclick="BulkPermanent"><i data-lucide="trash"></i> Delete permanently</button>
+                    }
+                    else
+                    {
+                        <button type="button" class="comp-btn" title="Archive" @onclick="() => BulkMove(MailFolder.Archive)"><i data-lucide="archive"></i></button>
+                        <button type="button" class="comp-btn" title="Trash" @onclick="() => BulkMove(MailFolder.Trash)"><i data-lucide="trash-2"></i></button>
+                        <button type="button" class="comp-btn" title="Star" @onclick="BulkStar" @onclick:stopPropagation><i data-lucide="star"></i></button>
+                    }
                 </div>
             }
 
@@ -776,6 +782,13 @@
             else parsed[Uri.UnescapeDataString(part[..eq])] = Uri.UnescapeDataString(part[(eq + 1)..]);
         }
 
+        if (parsed.TryGetValue("mailId", out var mailIdStr) && Guid.TryParse(mailIdStr, out var mailId))
+        {
+            _lastHandledQuery = query;
+            await OpenDetail(mailId);
+            return;
+        }
+
         var hasSubject = parsed.TryGetValue("shareSubject", out var s2);
         var hasBody = parsed.TryGetValue("shareBody", out var b2);
         if (hasSubject || hasBody)
@@ -785,18 +798,39 @@
             return;
         }
 
-        if (parsed.TryGetValue("compose", out var compose) && compose == "1")
-        {
-            _lastHandledQuery = query;
-            OpenComposer();
-            return;
-        }
+        var hasCompose = parsed.TryGetValue("compose", out var composeVal);
+        var hasTo = parsed.TryGetValue("to", out var toVal);
 
-        if (parsed.TryGetValue("to", out var toNik) && !string.IsNullOrWhiteSpace(toNik))
+        if (hasCompose || hasTo)
         {
             _lastHandledQuery = query;
-            var name = await ResolveNameFromNikAsync(toNik);
-            OpenComposer(initialTo: [new MemberSearchRow(toNik, name, null, null)]);
+            var toList = new List<string>();
+
+            if (hasTo && !string.IsNullOrWhiteSpace(toVal))
+            {
+                toList.AddRange(toVal.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            }
+            if (hasCompose && !string.IsNullOrWhiteSpace(composeVal) && composeVal != "1")
+            {
+                if (!toList.Contains(composeVal, StringComparer.OrdinalIgnoreCase))
+                    toList.Add(composeVal.Trim());
+            }
+
+            if (toList.Count > 0)
+            {
+                var rows = new List<MemberSearchRow>();
+                foreach (var nik in toList)
+                {
+                    var name = await ResolveNameFromNikAsync(nik);
+                    rows.Add(new MemberSearchRow(nik, name, null, null));
+                }
+                OpenComposer(initialTo: rows);
+            }
+            else
+            {
+                OpenComposer();
+            }
+            return;
         }
     }
 
@@ -975,6 +1009,13 @@
         moreMenuOpen = false;
         detail = await MailSvc.GetAsync(id);
         if (id != selectedMail) return;
+
+        if (activeFolder == MailFolder.Draft && detail is not null)
+        {
+            composerRef?.OpenDraft(detail);
+            composerOpen = true;
+            return;
+        }
 
         if (detail?.Folder == "inbox" && !detail.IsRead)
         {
@@ -1167,9 +1208,25 @@
     private async Task ExportPdf()
     {
         if (detail is null) return;
-        await MailSvc.ExportPdfAsync(detail.Id);
-        Toasts.Show("PDF export requested.");
-        await ReloadDetail();
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/mail/{detail.Id}/export-pdf");
+            if (res.IsSuccessStatusCode)
+            {
+                var bytes = await res.Content.ReadAsByteArrayAsync();
+                var stamp = DateTime.Now.ToString("yyyyMMdd-HHmm");
+                await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(bytes), $"mail-{detail.Id.ToString("N")[..8]}-{stamp}.pdf");
+                Toasts.ShowDetailed("Export Ready", "PDF file downloaded.", ToastKind.Success, "file-down");
+            }
+            else
+            {
+                Toasts.Show("Failed to export PDF.", ToastKind.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Toasts.Show($"Export error: {ex.Message}", ToastKind.Error);
+        }
     }
 
     // ── PDF & HTML Previews ──
@@ -1342,6 +1399,18 @@
         UpdateHeader();
         await LoadPage(page);
         Toasts.Show($"Moved {n} items to {FolderLabel(f)}");
+    });
+
+    private Task BulkRestore() => RunAction(async () =>
+    {
+        if (selected.Count == 0) return;
+        var n = selected.Count;
+        await MailSvc.BulkRestoreAsync(selected.ToList());
+        selected.Clear();
+        counts = await MailSvc.GetCountsAsync();
+        UpdateHeader();
+        await LoadPage(page);
+        Toasts.Show($"Restored {n} items to Inbox.", ToastKind.Success);
     });
 
     private Task BulkStar() => RunAction(async () =>
