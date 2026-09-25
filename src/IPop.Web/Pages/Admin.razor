@@ -22,7 +22,7 @@ else if (!Auth.IsAdmin)
 }
 else
 {
-<div class="content" style="grid-template-columns:1fr">
+<div class="content admin-v6" style="grid-template-columns:1fr">
     <div class="admin-tabs rise" role="tablist" aria-label="Administration sections">
         <button class="admin-tab tab-hris @(tab == 0 ? "active" : "")" role="tab" aria-selected="@(tab == 0)" @onclick="() => SetTab(0)"><i data-lucide="refresh-cw"></i> HRIS sync</button>
         <button class="admin-tab tab-sessions @(tab == 1 ? "active" : "")" role="tab" aria-selected="@(tab == 1)" @onclick="() => SetTab(1)"><i data-lucide="laptop"></i> Sessions</button>

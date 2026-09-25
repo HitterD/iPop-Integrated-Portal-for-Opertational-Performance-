@@ -6,7 +6,7 @@
 @inject IJSRuntime JS
 
 @* ---- HRIS Sync KPI Summary Grid ---- *@
-<div class="admin-kpi-grid">
+<div class="admin-kpi-grid hris-kpis">
     <div class="admin-kpi-card">
         <div class="kpi-icon-wrap kpi-teal">
             <i data-lucide="users"></i>
@@ -31,7 +31,7 @@
         </div>
         <div class="kpi-body">
             <div class="kpi-val">@($"{syncHistory.Items.Length:N0}")</div>
-            <div class="kpi-lbl">Sync History</div>
+            <div class="kpi-lbl">Sync runs loaded</div>
         </div>
     </div>
     <div class="admin-kpi-card">
@@ -39,47 +39,37 @@
             <i data-lucide="@(syncing ? "loader-2" : "database-zap")" class="@(syncing ? "spin" : "")"></i>
         </div>
         <div class="kpi-body">
-            <div class="kpi-val" style="font-size:16px">@(syncing ? "Processing..." : "Ready to Sync")</div>
+            <div class="kpi-val" style="font-size:16px">@(syncing ? "Processing..." : "Ready")</div>
             <div class="kpi-lbl">Gateway Status</div>
         </div>
     </div>
 </div>
 
-<div style="display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px;align-items:start">
+<div class="hris-main-grid">
     @* Left: Manual sync execution *@
-    <div class="tray rise rise-1" style="height:100%">
+    <div class="tray rise rise-1 hris-sync-card">
         <div class="core" style="padding:0;overflow:hidden">
-            <div class="panel-head" style="border-bottom:1px solid var(--line-soft)">
-                <div style="display:flex;align-items:center;gap:8px">
-                    <i data-lucide="refresh-cw" style="color:#0d9488"></i>
-                    <span style="font-weight:700">HRIS Data Synchronization</span>
-                </div>
-                <span class="meta">@SyncCaption</span>
-            </div>
+            <div class="hris-sync-icon"><i data-lucide="refresh-cw"></i></div>
             <div style="display:flex;align-items:center;gap:14px;padding:16px 20px">
-                <div style="flex:1">
-                    <p style="margin:0;color:var(--ink);font-size:13px;line-height:1.5;font-weight:500">
-                        Pull and synchronize employee profiles directly from the company's centralized HRIS server.
-                    </p>
-                    <div style="color:var(--ink-3);font-size:12px;margin-top:4px">
-                        New employees are registered automatically. Manual modifications are protected when enabled.
-                    </div>
+                <div class="hris-sync-copy">
+                    <strong>HRIS data synchronization</strong>
+                    <p>Pull employee profiles from the central HRIS server. New employees are added to the directory automatically.</p>
                 </div>
                     @if (syncing)
                     {
                         <button class="btn btn-sm surface" style="width:auto;margin:0;padding:9px 16px;border-radius:10px;font-weight:600;color:var(--danger)" @onclick="CancelSync">
                             Cancel
                         </button>
-                        <button class="btn btn-teal" style="width:auto;margin:0;padding:10px 22px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:8px" disabled>
+                        <button type="button" class="btn-primary hris-run-btn" disabled>
                             <i data-lucide="loader-2" class="spin" style="width:16px;height:16px"></i>
                             <span>Synchronizing...</span>
                         </button>
                     }
                     else
                     {
-                        <button class="btn btn-teal" style="width:auto;margin:0;padding:10px 22px;border-radius:10px;font-weight:600;display:inline-flex;align-items:center;gap:8px" @onclick="SyncNow">
-                            <i data-lucide="download" style="width:16px;height:16px"></i>
-                            <span>Start Sync</span>
+                        <button type="button" class="btn-primary hris-run-btn" @onclick="SyncNow">
+                            <i data-lucide="refresh-cw"></i>
+                            <span>Start sync</span>
                         </button>
                     }
             </div>
@@ -94,12 +84,12 @@
     </div>
 
     @* Right: Schedule & Protection Settings *@
-    <div class="tray rise rise-1" style="height:100%">
+    <div class="tray rise rise-1 hris-config-card">
         <div class="core" style="padding:0;overflow:hidden">
             <div class="panel-head" style="border-bottom:1px solid var(--line-soft)">
                 <div style="display:flex;align-items:center;gap:8px">
                     <i data-lucide="settings-2" style="color:#0d9488"></i>
-                    <span style="font-weight:700">Sync Configuration</span>
+                    <span style="font-weight:700">Sync configuration</span>
                 </div>
             </div>
             <div style="padding:8px 18px">
@@ -141,18 +131,17 @@
     </div>
 </div>
 
-<div class="tray rise rise-2" style="margin-top:16px">
+<div class="tray rise rise-2 hris-history-card">
     <div class="core" style="padding:0;overflow:hidden">
         <div class="panel-head" style="border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between">
             <div style="display:flex;align-items:center;gap:8px">
-                <i data-lucide="history" style="color:#0d9488"></i>
-                <span style="font-weight:700">Sync Execution History</span>
+                <span style="font-weight:700">Sync history</span>
             </div>
             <div style="display:flex;align-items:center;gap:8px">
                 <div style="display:inline-flex;padding:2px;background:rgba(118,118,128,0.12);border-radius:10px;gap:2px">
-                    <button type="button" class="btn btn-sm @(historyFilter == "all" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(historyFilter == "all" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(historyFilter == "all" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SetFilter("all")'>All</button>
-                    <button type="button" class="btn btn-sm @(historyFilter == "success" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(historyFilter == "success" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(historyFilter == "success" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SetFilter("success")'>Success</button>
-                    <button type="button" class="btn btn-sm @(historyFilter == "failed" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(historyFilter == "failed" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(historyFilter == "failed" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SetFilter("failed")'>Failed</button>
+                    <button type="button" class="btn btn-sm @(historyFilter == "all" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(historyFilter == "all" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(historyFilter == "all" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SetFilter("all")'>All · @syncHistory.Items.Length</button>
+                    <button type="button" class="btn btn-sm @(historyFilter == "success" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(historyFilter == "success" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(historyFilter == "success" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SetFilter("success")'>Success · @syncHistory.Items.Count(r => r.Succeeded)</button>
+                    <button type="button" class="btn btn-sm @(historyFilter == "failed" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(historyFilter == "failed" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(historyFilter == "failed" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SetFilter("failed")'>Failed · @syncHistory.Items.Count(r => !r.Succeeded)</button>
                 </div>
                 <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;border-radius:8px;border:1px solid var(--line);background:var(--surface);cursor:pointer" disabled="@exportingCsv" @onclick="ExportCsv">
                     <i data-lucide="download" style="width:13px;height:13px"></i>
@@ -212,6 +201,10 @@
                             else if (run.Skipped > 0)
                             {
                                 <span>@($"{run.Skipped} protected rows skipped")</span>
+                            }
+                            else if (!run.Succeeded)
+                            {
+                                <span style="color:var(--danger)">Sync failed — open log for details</span>
                             }
                             else
                             {
