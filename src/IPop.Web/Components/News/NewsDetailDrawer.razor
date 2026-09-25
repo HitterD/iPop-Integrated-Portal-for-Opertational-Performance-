@@ -16,18 +16,30 @@
         <!-- Drawer Head -->
         <div class="drawer-head">
             <span style="display:flex;align-items:center;gap:8px;min-width:0">
-                <i data-lucide="@NewsUiHelper.GetCategoryIcon(Detail.Type)"></i>
-                <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700">@Detail.Title</span>
-            </span>
-            <span style="display:flex;gap:6px;align-items:center">
                 @if (Inline)
                 {
-                    <button class="org-act" title="Smaller text" @onclick="() => FontSize = Math.Max(12, FontSize - 1)">A−</button>
-                    <button class="org-act" title="Larger text" @onclick="() => FontSize = Math.Min(22, FontSize + 1)">A+</button>
-                    <button class="org-act" title="Print" @onclick="Print"><i data-lucide="printer"></i></button>
+                    <span class="cat-chip @Detail.Type">@NewsUiHelper.GetCategoryLabel(Detail.Type)</span>
                 }
-                <button class="org-act" title="@(isSaved ? "Saved" : "Save article")" style="color:@(isSaved ? "var(--accent)" : "inherit")" @onclick="ToggleSave"><i data-lucide="bookmark" style="@(isSaved ? "fill:currentColor" : "")"></i></button>
-                <button class="org-act" title="Copy link" @onclick="OnCopyLink"><i data-lucide="share"></i></button>
+                else
+                {
+                    <i data-lucide="@NewsUiHelper.GetCategoryIcon(Detail.Type)"></i>
+                    <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700">@Detail.Title</span>
+                }
+            </span>
+            <span class="reader-acts">
+                @if (Inline)
+                {
+                    <span class="size-seg" role="group" aria-label="Text size">
+                        <button type="button" class="@(FontSize < 16 ? "on" : "")" title="Smaller text" aria-label="Smaller text" @onclick="() => FontSize = 14">A</button>
+                        <button type="button" class="big @(FontSize >= 16 ? "on" : "")" title="Larger text" aria-label="Larger text" @onclick="() => FontSize = 17">A</button>
+                    </span>
+                }
+                <button type="button" class="org-act @(isSaved ? "on" : "")" title="@(isSaved ? "Saved" : "Save article")" aria-pressed="@isSaved" @onclick="ToggleSave"><i data-lucide="bookmark"></i></button>
+                <button type="button" class="org-act" title="Copy link" @onclick="OnCopyLink"><i data-lucide="share"></i></button>
+                @if (Inline)
+                {
+                    <button type="button" class="org-act" title="Print" @onclick="Print"><i data-lucide="printer"></i></button>
+                }
                 @if (!Inline) { <button class="drawer-close" @onclick="OnClose" aria-label="Close"><i data-lucide="x"></i></button> }
             </span>
         </div>
@@ -35,6 +47,15 @@
         <!-- Drawer Body -->
         <div class="drawer-body" style="flex:1;overflow:auto;padding:20px">
             <!-- Status & Category Badges -->
+            @if (Inline)
+            {
+                <div class="reader-kicker">
+                    @if (Detail.IsPinned) { <span><i data-lucide="pin"></i>Pinned announcement</span> }
+                    @if (Detail.Status != "published") { <span class="status-pill @Detail.Status">@NewsUiHelper.StatusLabel(Detail.Status)</span> }
+                </div>
+            }
+            else
+            {
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
                 <span class="news-type-badge type-@Detail.Type">@NewsUiHelper.GetCategoryLabel(Detail.Type)</span>
                 <span class="status-pill @Detail.Status">@NewsUiHelper.StatusLabel(Detail.Status)</span>
@@ -54,6 +75,7 @@
                     }
                 }
             </div>
+            }
 
             <!-- Contextual Header Treatment -->
             @if (isCondolence)
@@ -83,6 +105,18 @@
             <h1 class="reader-article-title">@Detail.Title</h1>
 
             <!-- Article Metadata -->
+            @if (Inline)
+            {
+                <div class="reader-author">
+                    <span class="av">@Initials(Detail.AuthorName)</span>
+                    <span class="who">
+                        <span class="n">@Detail.AuthorName</span>
+                        <span class="m">@NewsUiHelper.FormatDate(Detail.PublishedAt ?? Detail.CreatedAt) · @NewsUiHelper.ReadTime(Detail.Body) min read@(Detail.PublishAt is not null ? $" · Scheduled {NewsUiHelper.FormatDate(Detail.PublishAt)}" : "")</span>
+                    </span>
+                </div>
+            }
+            else
+            {
             <div class="reader-meta-row">
                 <span><i data-lucide="user" style="width:12px;height:12px;display:inline;vertical-align:middle"></i> @Detail.AuthorName (@Detail.AuthorNik)</span>
                 <span>·</span>
@@ -95,6 +129,7 @@
                     <span class="mono">Scheduled: @NewsUiHelper.FormatDate(Detail.PublishAt)</span>
                 }
             </div>
+            }
 
             <!-- Target Distribution -->
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">
@@ -120,7 +155,7 @@
             <!-- Mandatory Acknowledgement Box -->
             @if (Detail.RequiresAcknowledgement)
             {
-                <div class="reader-ack-box">
+                <div class="reader-ack-box @(Detail.IsAcknowledged ? "done" : "req")">
                     <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700">
                         <i data-lucide="check-circle-2" style="width:17px;height:17px;color:var(--accent)"></i>
                         <span>Acknowledgement Confirmation</span>
@@ -133,9 +168,8 @@
                     </div>
                     @if (!Detail.IsAcknowledged)
                     {
-                        <button class="btn" style="margin-top:12px;width:100%" @onclick="OnAcknowledge" disabled="@AckBusy">
-                            <span>@(AckBusy ? "Recording Confirmation…" : "I Have Read and Understood This Memo")</span>
-                            <span class="orb"><i data-lucide="check"></i></span>
+                        <button type="button" class="btn-primary ack-confirm" @onclick="OnAcknowledge" disabled="@AckBusy">
+                            <i data-lucide="check"></i>@(AckBusy ? "Recording confirmation…" : "I have read and understood")
                         </button>
                     }
                     else
@@ -147,8 +181,8 @@
                     }
                     @if (IsApprover && Detail.AckTotal > Detail.AckCount)
                     {
-                        <button class="btn" style="margin-top:10px;background:var(--surface);color:var(--ink);border:1px solid var(--line);width:100%" @onclick="OnRemindAck">
-                            <i data-lucide="bell" style="width:13px;height:13px"></i> Send Reminder to Unacknowledged Employees
+                        <button type="button" class="ghost-btn ack-remind" @onclick="OnRemindAck">
+                            <i data-lucide="bell"></i>Remind unacknowledged employees
                         </button>
                     }
                 </div>
@@ -157,7 +191,7 @@
             @if (Detail.Status == "published" && Inline)
             {
                 <div class="news-v6-discussion">
-                    <button class="org-act" @onclick="OnToggleLike" aria-label="@(Discussion?.IsLiked == true ? "Unlike post" : "Like post")">
+                    <button type="button" class="ghost-btn like-btn @(Discussion?.IsLiked == true ? "on" : "")" @onclick="OnToggleLike" aria-label="@(Discussion?.IsLiked == true ? "Unlike post" : "Like post")">
                         <i data-lucide="thumbs-up"></i> @(Discussion?.IsLiked == true ? "Liked" : "Like") · @(Discussion?.LikeCount ?? 0)
                     </button>
                     <strong>@(Discussion?.Comments.Count ?? 0) comments</strong>
@@ -165,49 +199,49 @@
                     {
                         <p><b>@comment.AuthorName</b> <span>@comment.CreatedAt.ToLocalTime().ToString("dd MMM, HH:mm")</span><br />@comment.Body</p>
                     }
-                    <div class="news-v6-comment-form"><input value="@CommentText" @oninput="HandleCommentInput" placeholder="Add a comment…" maxlength="2000" aria-label="Add a comment" /><button @onclick="OnComment" disabled="@(string.IsNullOrWhiteSpace(CommentText))">Post</button></div>
+                    <div class="news-v6-comment-form"><input value="@CommentText" @oninput="HandleCommentInput" placeholder="Add a comment…" maxlength="2000" aria-label="Add a comment" /><button type="button" class="btn-primary" @onclick="OnComment" disabled="@(string.IsNullOrWhiteSpace(CommentText))">Post</button></div>
                 </div>
             }
 
             <!-- Action Workflow Bar -->
-            <div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid var(--line-soft);padding-top:16px">
+            <div class="reader-workflow">
                 @if (CanEdit)
                 {
-                    <button class="org-act" style="width:auto;padding:8px 14px;font-size:12.5px" @onclick="OnEdit">
-                        <i data-lucide="pencil" style="width:13px;height:13px"></i> Edit
+                    <button type="button" class="ghost-btn" @onclick="OnEdit">
+                        <i data-lucide="pencil"></i>Edit
                     </button>
                 }
                 @if (Detail.Status == "draft")
                 {
-                    <button class="btn" style="width:auto;margin:0;padding:8px 16px;font-size:12.5px" @onclick="OnSubmit">
-                        Submit for Approval
+                    <button type="button" class="btn-primary" @onclick="OnSubmit">
+                        <i data-lucide="send"></i>Submit for approval
                     </button>
                 }
                 @if (IsApprover && Detail.Status == "pending")
                 {
-                    <button class="btn" style="width:auto;margin:0;padding:8px 16px;font-size:12.5px" @onclick="OnApprove">
-                        <i data-lucide="check" style="width:13px;height:13px"></i> Approve & Publish
+                    <button type="button" class="btn-primary" @onclick="OnApprove">
+                        <i data-lucide="check"></i>Approve &amp; publish
                     </button>
-                    <button class="btn" style="width:auto;margin:0;padding:8px 16px;font-size:12.5px;background:var(--danger-soft);color:var(--danger);border:1px solid rgba(179,70,47,0.2)" @onclick="OnOpenReject">
-                        <i data-lucide="x" style="width:13px;height:13px"></i> Reject
+                    <button type="button" class="ghost-btn danger" @onclick="OnOpenReject">
+                        <i data-lucide="x"></i>Reject
                     </button>
                 }
                 @if (IsApprover && Detail.Status == "published")
                 {
-                    <button class="btn" style="width:auto;margin:0;padding:8px 16px;font-size:12.5px;background:var(--surface);color:var(--ink);border:1px solid var(--line)" @onclick="OnUnpublish">
-                        Unpublish to Draft
+                    <button type="button" class="ghost-btn" @onclick="OnUnpublish">
+                        <i data-lucide="undo-2"></i>Unpublish
                     </button>
                 }
                 @if (IsApprover)
                 {
-                    <button class="org-act" style="width:auto;padding:8px 14px;font-size:12.5px" title="@(Detail.IsPinned ? "Unpin post" : "Pin to top")" @onclick="OnTogglePin">
-                        <i data-lucide="@(Detail.IsPinned ? "pin-off" : "pin")" style="width:13px;height:13px"></i> @(Detail.IsPinned ? "Unpin" : "Pin")
+                    <button type="button" class="ghost-btn" title="@(Detail.IsPinned ? "Unpin post" : "Pin to top")" @onclick="OnTogglePin">
+                        <i data-lucide="@(Detail.IsPinned ? "pin-off" : "pin")"></i>@(Detail.IsPinned ? "Unpin" : "Pin")
                     </button>
                 }
                 @if (IsApprover || (!string.IsNullOrEmpty(Detail.AuthorNik) && Detail.AuthorNik == Auth.Me?.Nik))
                 {
-                    <button class="org-act" style="width:auto;padding:8px 14px;font-size:12.5px;color:var(--danger)" title="Delete post" @onclick="OnDelete">
-                        <i data-lucide="trash-2" style="width:13px;height:13px"></i>
+                    <button type="button" class="icon-btn danger push-right" title="Delete post" aria-label="Delete post" @onclick="OnDelete">
+                        <i data-lucide="trash-2"></i>
                     </button>
                 }
             </div>
@@ -307,4 +341,9 @@
     [Parameter] public EventCallback OnAcknowledge { get; set; }
     [Parameter] public EventCallback OnRemindAck { get; set; }
     [Parameter] public EventCallback OnDelete { get; set; }
+    private static string Initials(string? name)
+    {
+        var parts = (name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch { 0 => "?", 1 => parts[0][..1].ToUpperInvariant(), _ => $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant() };
+    }
 }

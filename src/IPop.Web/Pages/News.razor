@@ -7,198 +7,144 @@
 
 <PageTitle>News & Memos — IPop</PageTitle>
 
-<div class="content news-v6">
-    @if (loading && items is null)
-    {
-        <div class="tray rise rise-1">
-            <div class="core" style="padding:0;overflow:hidden">
-                <div class="panel-head"><i data-lucide="newspaper"></i><span>News & Memos</span><span class="meta">Loading…</span></div>
-                <div style="padding:16px;display:grid;gap:12px">
-                    <div class="skel" style="height:44px;border-radius:12px"></div>
-                    <div class="skel" style="height:120px;border-radius:14px"></div>
-                    <div class="skel" style="height:120px;border-radius:14px"></div>
-                    <div class="skel" style="height:120px;border-radius:14px"></div>
-                </div>
-            </div>
+<div class="news-v6x">
+    <div class="toolbar">
+        <div class="v6-search news-search">
+            <i data-lucide="search"></i>
+            <input type="search" placeholder="Search news, memos or authors" aria-label="Search news" value="@q" @oninput="e => OnSearchInput(e.Value?.ToString() ?? string.Empty)" />
         </div>
-    }
-    else
-    {
-        <div class="tray rise rise-1">
-            <div class="core" style="padding:0;overflow:hidden">
-                <!-- Header Bar -->
-                <div class="panel-head" style="flex-wrap:wrap;gap:10px;padding:16px 20px">
-                    <div style="display:flex;align-items:center;gap:10px">
-                        <div class="head-icon-box"><i data-lucide="newspaper"></i></div>
-                        <div>
-                            <div style="display:flex;align-items:center;gap:8px">
-                                <span style="font-size:16px;font-weight:700;color:var(--ink)">News & Memos</span>
-                                <span class="meta">@(total) posts</span>
-                                @if (isApprover)
-                                {
-                                    <span class="meta" style="background:var(--accent-soft);color:var(--accent-ink);border-color:rgba(46,125,91,0.18);display:inline-flex;align-items:center;gap:6px">
-                                        <i data-lucide="shield-check" style="width:12px;height:12px"></i> Approver
-                                    </span>
-                                }
-                            </div>
-                            <div style="font-size:12px;color:var(--ink-2);margin-top:2px">Corporate announcements, internal memos, condolences, and notices</div>
-                        </div>
+        <div class="push flex center gap-8">
+            @if (isApprover)
+            {
+                <label class="v6-select" title="Filter by workflow status">
+                    <i data-lucide="filter"></i>
+                    <select aria-label="Status" @bind="statusFilter" @bind:after="() => Reload(1, true)">
+                        @foreach (var o in NewsUiHelper.StatusOptions) { <option value="@o.Value">@o.Label</option> }
+                    </select>
+                    <i data-lucide="chevron-down" class="chev"></i>
+                </label>
+            }
+            <label class="v6-select">
+                <i data-lucide="arrow-up-down"></i>
+                <select aria-label="Sort" @bind="sortOrder" @bind:after="OnSortChanged">
+                    <option value="newest">Newest</option>
+                    <option value="oldest">Oldest</option>
+                </select>
+                <i data-lucide="chevron-down" class="chev"></i>
+            </label>
+            <button type="button" class="btn-primary" @onclick="OpenCreate"><i data-lucide="square-pen"></i>New post</button>
+        </div>
+    </div>
+
+    <div class="news-cols">
+        <div class="news-side">
+            <nav class="card news-nav" aria-label="News filters">
+                <button type="button" class="nn @(!requiresAckOnly && !pinnedOnly && !includeScheduled && typeFilter == "" ? "on" : "")" @onclick="ShowAll"><i data-lucide="newspaper"></i><span class="lbl">All posts</span><span class="n">@total</span></button>
+                <button type="button" class="nn @(requiresAckOnly ? "on" : "")" @onclick="ToggleAckFilter"><i data-lucide="clipboard-check"></i><span class="lbl">Needs acknowledgement</span>@if (PendingAck > 0) { <span class="dot"></span> }<span class="n">@PendingAck</span></button>
+                <button type="button" class="nn @(pinnedOnly ? "on" : "")" @onclick="TogglePinnedFilter"><i data-lucide="pin"></i><span class="lbl">Pinned</span><span class="n">@pinnedItems.Count</span></button>
+                @if (isApprover)
+                {
+                    <button type="button" class="nn @(includeScheduled ? "on" : "")" @onclick="ToggleScheduledFilter"><i data-lucide="clock-3"></i><span class="lbl">Scheduled</span><span class="n">@scheduledItems.Count</span></button>
+                }
+                <div class="nn-label">Categories</div>
+                @foreach (var cat in Categories)
+                {
+                    var c = cat;
+                    <button type="button" class="nn @(typeFilter == c.Key ? "on" : "")" @onclick="() => SetCategoryTab(typeFilter == c.Key ? string.Empty : c.Key)"><i data-lucide="@c.Icon"></i><span class="lbl">@c.Label</span></button>
+                }
+            </nav>
+            @if (PendingAck > 0)
+            {
+                <div class="news-review">
+                    <div class="t"><i data-lucide="clipboard-check"></i><span>@PendingAck @(PendingAck == 1 ? "memo needs" : "memos need") your acknowledgement</span></div>
+                    <button type="button" @onclick="ReviewNow">Review now</button>
+                </div>
+            }
+        </div>
+
+        <div class="card news-list">
+            <div class="card-head">
+                <span class="card-title">@ListTitle</span>
+                <span class="card-meta">@total @(total == 1 ? "post" : "posts")</span>
+                @if (HasActiveFilters)
+                {
+                    <button type="button" class="link-btn" style="margin-left:auto" @onclick="ClearFilters">Clear filters</button>
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(listError))
+            {
+                <div style="padding:12px 16px"><div class="note err"><i data-lucide="alert-circle"></i><span>@listError</span></div></div>
+            }
+            <div class="news-rows">
+                @if (loading && items is null)
+                {
+                    @for (var i = 0; i < 5; i++) { <div class="skel" style="height:96px;margin:12px 16px;border-radius:10px"></div> }
+                }
+                else if (items is not null && items.Count == 0)
+                {
+                    <div class="news-empty">
+                        <i data-lucide="@NewsUiHelper.GetCategoryIcon(typeFilter)"></i>
+                        <div class="t">No posts here yet</div>
+                        <div class="s">@(HasActiveFilters ? "Try clearing the filters." : "Publish the first announcement for your team.")</div>
+                        <button type="button" class="btn-primary" @onclick="OpenCreate"><i data-lucide="square-pen"></i>New post</button>
                     </div>
-                    <span style="margin-left:auto;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                        <select class="form-select" style="height:32px;padding:0 8px;font-size:12px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink)" @bind="sortOrder" @bind:after="OnSortChanged">
-                            <option value="newest">Newest</option>
-                            <option value="oldest">Oldest</option>
-                        </select>
-                        <button type="button" class="btn" style="width:auto;margin:0;padding:8px 16px;font-size:12.5px" @onclick="OpenCreate">
-                            <i data-lucide="plus" style="width:14px;height:14px"></i> Create New Post
+                }
+                else if (items is not null)
+                {
+                    @foreach (var p in OrderedItems)
+                    {
+                        var post = p;
+                        var needsAck = post.RequiresAcknowledgement && !post.IsAcknowledged;
+                        <button type="button" class="news-row @(openDetailId == post.Id ? "sel" : "")" @onclick="() => OpenDetail(post.Id)">
+                            <div class="r1">
+                                <span class="cat-chip @post.Type">@NewsUiHelper.GetCategoryLabel(post.Type)</span>
+                                @if (post.IsPinned) { <span class="pin"><i data-lucide="pin"></i>Pinned</span> }
+                                @if (post.Status != "published") { <span class="status-pill @post.Status">@NewsUiHelper.StatusLabel(post.Status)</span> }
+                                <span class="date">@((post.PublishedAt ?? post.CreatedAt).ToLocalTime().ToString("MMM d, yyyy"))</span>
+                            </div>
+                            <div class="ttl">@if (needsAck) { <span class="udot"></span> }@post.Title</div>
+                            <div class="r3">
+                                <span class="by">@post.AuthorName · @NewsUiHelper.ReadTime(post.Title) min read</span>
+                                @if (needsAck) { <span class="ack req">Action required</span> }
+                                else if (post.RequiresAcknowledgement) { <span class="ack ok"><i data-lucide="check"></i>Acknowledged</span> }
+                            </div>
                         </button>
-                    </span>
-                </div>
-
-                <div class="news-v6-body">
-                <nav class="news-v6-categories" aria-label="News categories">
-                    <strong>CATEGORIES</strong>
-                    @foreach (var cat in new[] { ("", "All posts", "layers"), ("news", "News", "newspaper"), ("memo", "Internal Memos", "file-text"), ("announcement", "Announcements", "megaphone"), ("condolence", "Condolences", "heart") })
-                    {
-                        <button class="@(typeFilter == cat.Item1 ? "active" : "")" @onclick="() => SetCategoryTab(cat.Item1)"><i data-lucide="@cat.Item3"></i>@cat.Item2</button>
                     }
-                    <button class="@(requiresAckOnly ? "active" : "")" @onclick="ToggleAckFilter"><i data-lucide="clipboard-check"></i>Ack required</button>
-                </nav>
-                <div class="news-v6-list">
-                <!-- Category Tabs & Filters Bar -->
-                <NewsCategoryTabs TypeFilter="@typeFilter"
-                                  Total="@total"
-                                  SearchQuery="@q"
-                                  StatusFilter="@statusFilter"
-                                  PinnedOnly="@pinnedOnly"
-                                  RequiresAckOnly="@requiresAckOnly"
-                                  IncludeScheduled="@includeScheduled"
-                                  IsApprover="@isApprover"
-                                  HasActiveFilters="@HasActiveFilters"
-                                  OnSelectCategory="SetCategoryTab"
-                                  OnSearchQueryChanged="OnSearchInput"
-                                  OnStatusFilterChanged="OnStatusFilterChanged"
-                                  OnPinnedOnlyChanged="v => { pinnedOnly = v; _ = Reload(1, true); }"
-                                  OnRequiresAckOnlyChanged="v => { requiresAckOnly = v; _ = Reload(1, true); }"
-                                  OnIncludeScheduledChanged="v => { includeScheduled = v; _ = Reload(1, true); }"
-                                  OnResetFilters="ClearFilters" />
-
-                @if (!string.IsNullOrEmpty(listError))
-                {
-                    <div style="padding:12px 18px"><div class="note err"><i data-lucide="alert-circle"></i><span>@listError</span></div></div>
+                    @if (page < totalPages)
+                    {
+                        <div style="padding:14px;text-align:center">
+                            <button type="button" class="ghost-btn" style="margin:0 auto" @onclick="LoadMore">Load more (@(total - items.Count) remaining)</button>
+                        </div>
+                    }
                 }
-
-                <!-- Pinned Highlight Section -->
-                @if (pinnedItems.Count > 0)
-                {
-                    <div class="pinned-highlights-container">
-                        <div class="pinned-section-header">
-                            <span class="pinned-pill"><i data-lucide="pin" style="width:12px;height:12px"></i> PINNED HIGHLIGHTS</span>
-                            <span class="pinned-sub">Important posts pinned for all readers</span>
-                        </div>
-                        <div class="news-grid-stack">
-                            @foreach (var p in pinnedItems)
-                            {
-                                <NewsCard Item="@p" OnClick="OpenDetail" />
-                            }
-                        </div>
-                    </div>
-                }
-
-                <!-- Regular Feed Section -->
-                <div style="padding:14px 18px 20px;display:grid;gap:12px">
-                    @if (pinnedItems.Count > 0 && feedItems.Count > 0)
-                    {
-                        <div style="display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--ink-3);margin-top:8px">
-                            <i data-lucide="newspaper" style="width:13px;height:13px"></i>
-                            <span>@(string.IsNullOrEmpty(typeFilter) ? "LATEST POSTS" : $"{NewsUiHelper.GetCategoryLabel(typeFilter).ToUpper()} POSTS")</span>
-                        </div>
-                    }
-
-                    @if (items is not null && items.Count == 0)
-                    {
-                        <div class="tree-empty" style="padding:40px 20px;text-align:center">
-                            <div class="empty-icon-circle">
-                                <i data-lucide="@NewsUiHelper.GetCategoryIcon(typeFilter)" style="width:26px;height:26px;color:var(--ink-3)"></i>
-                            </div>
-                            <div style="font-weight:700;font-size:15px;color:var(--ink);margin-top:12px">No @NewsUiHelper.GetCategoryLabel(typeFilter) Posts Yet</div>
-                            <div style="font-size:12.5px;color:var(--ink-2);margin-top:4px;max-width:440px;margin-left:auto;margin-right:auto">
-                                @(string.IsNullOrEmpty(typeFilter)
-                                    ? "No company news, internal memos, announcements, or condolences published yet."
-                                    : $"No posts in category {NewsUiHelper.GetCategoryLabel(typeFilter)}. Create a draft or publish a new post.")
-                            </div>
-                            <button type="button" class="btn" style="width:auto;margin:16px auto 0;padding:9px 18px;font-size:12.5px" @onclick="OpenCreate">
-                                <i data-lucide="plus" style="width:14px;height:14px"></i> Create New Post
-                            </button>
-                        </div>
-                    }
-                    else if (items is not null)
-                    {
-                        <div class="news-grid-stack">
-                            @foreach (var p in feedItems)
-                            {
-                                <NewsCard Item="@p" OnClick="OpenDetail" />
-                            }
-                        </div>
-
-                        @if (page < totalPages)
-                        {
-                            <div style="text-align:center;margin-top:10px">
-                                <button type="button" class="btn" style="width:auto;margin:0 auto;padding:10px 22px;font-size:12.5px;background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:var(--shadow-xs)" @onclick="LoadMore">
-                                    Load more (@(total - items.Count) remaining)
-                                </button>
-                            </div>
-                        }
-                    }
-                </div>
-
-                <!-- Scheduled Queue for Approver -->
-                @if (isApprover && scheduledItems.Count > 0)
-                {
-                    <div class="scheduled-queue-container">
-                        <div class="scheduled-header">
-                            <i data-lucide="clock-3" style="width:14px;height:14px"></i> Scheduled Queue (@scheduledItems.Count)
-                        </div>
-                        <div style="display:grid;gap:10px">
-                            @foreach (var p in scheduledItems)
-                            {
-                                <div class="news-card card-scheduled" style="cursor:default">
-                                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                                        <span class="news-type-badge type-@p.Type">@NewsUiHelper.GetCategoryLabel(p.Type)</span>
-                                        <span class="status-pill @p.Status">@NewsUiHelper.StatusLabel(p.Status)</span>
-                                        <span class="mono" style="font-size:11px;color:var(--ink-3);margin-left:auto">
-                                            <i data-lucide="clock-3" style="width:11px;height:11px;display:inline;vertical-align:middle;margin-right:3px"></i>
-                                            Go live: @NewsUiHelper.FormatDate(p.PublishAt)
-                                        </span>
-                                    </div>
-                                    <div style="font-weight:700;margin-top:8px;font-size:14px">@p.Title</div>
-                                    <div style="font-size:12px;color:var(--ink-2);margin-top:4px">@NewsUiHelper.PreviewText(p.Title, p.Type)</div>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                }
-                </div>
-                <aside class="news-v6-reader">
-                    @if (showDetail && detail is not null)
-                    {
-                        <NewsDetailDrawer Inline="true" Detail="@detail" Audits="@audits" IsApprover="@isApprover"
-                                          CanEdit="@canEdit" AckBusy="@ackBusy" DetailError="@detailError"
-                                          OnClose="CloseDetail" OnCopyLink="CopyLink" OnEdit="OpenEdit"
-                                          OnSubmit="Submit" OnApprove="Approve" OnOpenReject="() => showReject = true"
-                                          OnUnpublish="Unpublish" OnTogglePin="TogglePin"
-                                          OnAcknowledge="Acknowledge" OnRemindAck="RemindAck"
-                                          OnDelete="DeleteCurrentPost"
-                                          Discussion="@discussion" CommentText="@commentText"
-                                          OnCommentTextChanged="v => commentText = v"
-                                          OnToggleLike="ToggleLike" OnComment="AddComment" />
-                    }
-                    else { <div class="news-v6-empty"><i data-lucide="newspaper"></i>Select a post to read</div> }
-                </aside>
-                </div>
             </div>
         </div>
-    }
+
+        <aside class="card news-v6-reader">
+            @if (showDetail && detail is not null)
+            {
+                <NewsDetailDrawer Inline="true" Detail="@detail" Audits="@audits" IsApprover="@isApprover"
+                                  CanEdit="@canEdit" AckBusy="@ackBusy" DetailError="@detailError"
+                                  OnClose="CloseDetail" OnCopyLink="CopyLink" OnEdit="OpenEdit"
+                                  OnSubmit="Submit" OnApprove="Approve" OnOpenReject="() => showReject = true"
+                                  OnUnpublish="Unpublish" OnTogglePin="TogglePin"
+                                  OnAcknowledge="Acknowledge" OnRemindAck="RemindAck"
+                                  OnDelete="DeleteCurrentPost"
+                                  Discussion="@discussion" CommentText="@commentText"
+                                  OnCommentTextChanged="v => commentText = v"
+                                  OnToggleLike="ToggleLike" OnComment="AddComment" />
+            }
+            else if (showDetail && detailError is not null)
+            {
+                <div class="news-v6-empty"><i data-lucide="alert-circle"></i>@detailError</div>
+            }
+            else if (showDetail)
+            {
+                <div style="padding:24px"><div class="skel" style="height:28px;width:60%;border-radius:8px"></div><div class="skel" style="height:160px;margin-top:16px;border-radius:12px"></div></div>
+            }
+            else { <div class="news-v6-empty"><i data-lucide="newspaper"></i>Select a post to read</div> }
+        </aside>
+    </div>
 </div>
 
 <!-- Reject Modal -->
@@ -314,6 +260,43 @@
         await Reload(1, true);
     }
 
+    private static readonly (string Key, string Label, string Icon)[] Categories =
+    [
+        ("news", "Company news", "building-2"),
+        ("memo", "Internal memos", "file-text"),
+        ("announcement", "Announcements", "megaphone"),
+        ("condolence", "Condolences", "heart"),
+    ];
+    private int PendingAck => items?.Count(x => x.RequiresAcknowledgement && !x.IsAcknowledged && x.Status == "published") ?? 0;
+    private IEnumerable<NewsSummaryDto> OrderedItems => pinnedItems.Concat(feedItems);
+    private string ListTitle =>
+        requiresAckOnly ? "Needs acknowledgement"
+        : pinnedOnly ? "Pinned"
+        : includeScheduled ? "Scheduled"
+        : string.IsNullOrEmpty(typeFilter) ? "All posts"
+        : Categories.FirstOrDefault(c => c.Key == typeFilter).Label ?? NewsUiHelper.GetCategoryLabel(typeFilter);
+    private async Task ShowAll()
+    {
+        typeFilter = "";
+        requiresAckOnly = pinnedOnly = includeScheduled = false;
+        await Reload(1, true);
+    }
+    private async Task TogglePinnedFilter()
+    {
+        pinnedOnly = !pinnedOnly;
+        await Reload(1, true);
+    }
+    private async Task ToggleScheduledFilter()
+    {
+        includeScheduled = !includeScheduled;
+        await Reload(1, true);
+    }
+    private async Task ReviewNow()
+    {
+        var first = items?.FirstOrDefault(x => x.RequiresAcknowledgement && !x.IsAcknowledged && x.Status == "published");
+        if (!requiresAckOnly) { requiresAckOnly = true; await Reload(1, true); }
+        if (first is not null) await OpenDetail(first.Id);
+    }
     private async Task ToggleAckFilter()
     {
         requiresAckOnly = !requiresAckOnly;
@@ -340,6 +323,7 @@
         page = res.Page;
         if (replace || items is null) items = res.Items.ToList();
         else items.AddRange(res.Items);
+        if (!HasActiveFilters) Layout.SetSubtitle($"{total} {(total == 1 ? "post" : "posts")}{(PendingAck > 0 ? $" · {PendingAck} need acknowledgement" : "")}");
         loading = false;
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
