@@ -407,6 +407,15 @@ public partial class Chat
         return parts[0];
     }
 
+    /// Second line in the picker row: "Position · Department", falling back to the NIK.
+    private static string PickerSubtitle(PickerPerson p)
+    {
+        var parts = new[] { p.Position, p.Department }
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .ToArray();
+        return parts.Length > 0 ? string.Join(" · ", parts) : p.Nik;
+    }
+
     // ---- Add Member to Group (Fix 4) ----
 
     private async Task SearchAddMember()

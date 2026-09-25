@@ -1084,6 +1084,55 @@ public static class ChatEndpoints
             return Results.Ok(users);
         });
 
+        // GET /api/chat/users/directory?q= — the new-conversation picker shows the whole
+        // staff list (not just recent chats), so it needs position + department up front.
+        // Excludes the caller: you cannot open a conversation with yourself.
+        g.MapGet("/users/directory", async (string? q, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+
+            var query = db.Users.AsNoTracking()
+                .Include(u => u.Department)
+                .Where(u => u.IsActive && u.Id != userId.Value);
+
+            if (!string.IsNullOrWhiteSpace(q))
+            {
+                var pat = $"%{EscapeLike(q.Trim())}%";
+                query = query.Where(u => EF.Functions.ILike(u.Name, pat) || EF.Functions.ILike(u.Nik, pat));
+            }
+
+            var now = DateTime.UtcNow;
+            var rows = await query
+                .OrderBy(u => u.Name)
+                .Take(300)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.Nik,
+                    u.Name,
+                    u.Email,
+                    u.Position,
+                    u.PresenceLastSeenAt,
+                    u.PresenceManualStatus,
+                    Department = u.Department != null ? u.Department.Name : null
+                })
+                .ToListAsync(ct);
+
+            // ComputeStatus is not translatable, so presence is resolved after the query.
+            return Results.Ok(rows.Select(u => new
+            {
+                u.Id,
+                u.Nik,
+                u.Name,
+                u.Email,
+                u.Position,
+                u.Department,
+                PresenceStatus = IPop.Core.Presence.PresenceStatus.ComputeStatus(
+                    u.PresenceLastSeenAt, u.PresenceManualStatus, now)
+            }));
+        });
+
         // GET /api/chat/users/{nik} — single employee profile for the chat avatar drawer.
         // Returns a DirectoryEmployee-shaped row (camelCase) so the client reuses ProfileDrawer
         // verbatim. Manager resolved Nik → Name via a second lookup (1 row, no N+1).

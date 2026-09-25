@@ -36,21 +36,10 @@
                     </button>
                 }
             </div>
-            <div class="create-wrap">
-                <button type="button" class="compose-btn" title="New conversation" aria-label="New conversation" @onclick="ToggleCreateDropdown" @onclick:stopPropagation>
-                    <i data-lucide="square-pen"></i>
-                </button>
-                <div class="create-dropdown @(createDropdownOpen ? "on" : "")">
-                    <button @onclick="StartNewDm">
-                        <i data-lucide="user"></i>
-                        <div><div>New direct message</div><div class="desc">Chat with one person</div></div>
-                    </button>
-                    <button @onclick="StartNewGroup">
-                        <i data-lucide="users"></i>
-                        <div><div>New group chat</div><div class="desc">Create a group with multiple people</div></div>
-                    </button>
-                </div>
-            </div>
+            @* v6: one button opens the picker, which carries its own Direct/Group segment. *@
+            <button type="button" class="compose-btn" title="New message" aria-label="New message" @onclick="StartNewDm" @onclick:stopPropagation>
+                <i data-lucide="square-pen"></i>
+            </button>
         </div>
 
         @* Compact navigation rows *@
@@ -1451,62 +1440,45 @@
                         var person = p;
                         <span class="picker-chip">
                             @FirstName(person.Name)
-                            <button type="button" @onclick="() => RemovePickerPerson(person)" aria-label="Remove"><i data-lucide="x"></i></button>
+                            <button type="button" @onclick="() => RemovePickerPerson(person.Id)" aria-label="Remove"><i data-lucide="x"></i></button>
                         </span>
                     }
                     <input type="text" class="picker-search-input" autofocus
                            placeholder="@(pickerPicked.Count > 0 ? "" : "Search people")"
-                           @bind="newDmSearchQuery" @bind:event="oninput" @bind:after="SearchPickerUsers" />
+                           @bind="newDmSearchQuery" @bind:event="oninput" />
                 </div>
 
                 <div class="picker-list">
-                    @if (string.IsNullOrWhiteSpace(newDmSearchQuery) && !pickerGroupMode && ChatSvc.DirectRooms.Count > 0)
+                    @if (pickerLoading)
                     {
-                        <div class="picker-section">Recent conversations</div>
-                        @foreach (var room in ChatSvc.DirectRooms.Take(6))
+                        @for (var i = 0; i < 6; i++)
                         {
-                            var r = room;
-                            <button type="button" class="picker-row" @onclick="() => OpenDmFromList(r.Id)">
-                                <div class="picker-av" style="background:@GetUserColor(r.RecipientNik ?? r.Name ?? "")">
-                                    @GetInitialsFromName(r.RecipientName ?? r.Name ?? "?")
-                                    <span class="picker-dot @(r.PresenceStatus == "online" ? "on" : "off")"></span>
-                                </div>
-                                <div class="picker-info">
-                                    <div class="picker-name">@(r.RecipientName ?? r.Name)</div>
-                                    <div class="picker-pos">@(r.RecipientNik ?? "Direct chat")</div>
-                                </div>
-                                <i data-lucide="message-square" class="picker-trail"></i>
-                            </button>
+                            <div class="picker-row"><div class="skel" style="width:36px;height:36px;border-radius:50%"></div><div class="skel" style="flex:1;height:14px;border-radius:6px"></div></div>
                         }
                     }
-
-                    @if (!string.IsNullOrWhiteSpace(newDmSearchQuery) || pickerGroupMode)
+                    else if (VisiblePickerPeople.Count == 0)
                     {
-                        @if (newDmSearchQuery.Length < 2)
+                        <div class="picker-hint-row">No colleagues match “@newDmSearchQuery”.</div>
+                    }
+                    else
+                    {
+                        @foreach (var person in VisiblePickerPeople)
                         {
-                            <div class="picker-hint-row">Type at least 2 characters to search by name or ID.</div>
-                        }
-                        else if (newDmSearchResults.Count == 0)
-                        {
-                            <div class="picker-hint-row">No colleagues found matching “@newDmSearchQuery”.</div>
-                        }
-                        else
-                        {
-                            @foreach (var user in newDmSearchResults.Take(12))
-                            {
-                                var u = user;
-                                var picked = pickerPicked.Any(m => m.Id == u.Id);
-                                <button type="button" class="picker-row" @onclick="() => TogglePickerPerson(u)">
-                                    <div class="picker-av" style="background:@GetUserColor(u.Nik)">@GetInitialsFromName(u.Name)</div>
-                                    <div class="picker-info">
-                                        <div class="picker-name">@u.Name</div>
-                                        <div class="picker-pos">@u.Nik @(!string.IsNullOrEmpty(u.Email) ? $"· {u.Email}" : "")</div>
-                                    </div>
-                                    <span class="picker-check @(picked ? "on" : "") @(pickerGroupMode ? "" : "round")">
-                                        @if (picked) { <i data-lucide="check"></i> }
-                                    </span>
-                                </button>
-                            }
+                            var p = person;
+                            var picked = IsPickerPicked(p.Id);
+                            <button type="button" class="picker-row" @onclick="() => TogglePickerPerson(p)">
+                                <div class="picker-av" style="background:@GetUserColor(p.Nik)">
+                                    @GetInitialsFromName(p.Name)
+                                    <span class="picker-dot @(p.PresenceStatus == "on" ? "on" : "off")"></span>
+                                </div>
+                                <div class="picker-info">
+                                    <div class="picker-name">@p.Name</div>
+                                    <div class="picker-pos">@PickerSubtitle(p)</div>
+                                </div>
+                                <span class="picker-check @(picked ? "on" : "") @(pickerGroupMode ? "" : "round")">
+                                    @if (picked) { <i data-lucide="check"></i> }
+                                </span>
+                            </button>
                         }
                     }
                 </div>

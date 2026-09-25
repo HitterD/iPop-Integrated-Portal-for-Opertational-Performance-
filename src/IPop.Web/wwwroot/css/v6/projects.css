@@ -69,10 +69,10 @@
 
 /* ---- View bar ---- */
 .proj-canvas-bar { padding: 14px 24px 0; border-bottom: none; background: transparent; gap: 12px; }
-.proj-tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; background: var(--fill); border: none; }
+.proj-tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; background: var(--fill); border: none; flex-wrap: nowrap; overflow-x: auto; }
 .proj-tabs .proj-tab-btn {
   height: 30px; padding: 0 12px; gap: 6px; border: none; border-radius: 8px; background: transparent; box-shadow: none;
-  color: var(--ink); font-size: 13px; font-weight: 500; display: inline-flex; align-items: center;
+  color: var(--ink); font-size: 13px; font-weight: 500; display: inline-flex; align-items: center; white-space: nowrap;
 }
 .proj-tabs .proj-tab-btn .lucide { width: 14px; height: 14px; }
 .proj-tabs .proj-tab-btn.active { background: var(--surface); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); color: var(--ink); }
@@ -99,7 +99,7 @@
 .proj-bar-2 { display: flex; align-items: center; gap: 12px; padding: 12px 24px 0; }
 .proj-bar-2 .btn-primary { display: inline-flex; align-items: center; cursor: pointer; border: none; color: #fff; }
 .proj-bar-2 .meta { font-size: 12px; color: var(--ink-3); }
-.proj-add-task { height: 32px; padding: 0 14px; border-radius: 9px; font-size: 13px; font-weight: 600; gap: 6px; }
+.proj-add-task { height: 32px; padding: 0 14px; border-radius: 9px; font-size: 13px; font-weight: 600; gap: 6px; white-space: nowrap; flex: none; }
 .proj-add-task:hover { background: var(--accent-hover); }
 .proj-canvas-body { padding: 16px 24px 24px; }
 
@@ -116,7 +116,7 @@
 
 /* ---- Kanban ---- */
 /* Four lanes to match the v6 mockup: To Do · In Progress · Review · Done. */
-.kanban-board-grid { grid-template-columns: repeat(4, minmax(230px, 1fr)); gap: 12px; align-items: start; }
+.kanban-board-grid { grid-template-columns: repeat(auto-fit, minmax(196px, 1fr)); gap: 12px; align-items: start; }
 .kanban-column { background: var(--tray) !important; border: 1.5px dashed transparent !important; border-radius: 16px; box-shadow: none; width: auto; min-width: 230px; padding: 10px; }
 .kanban-column.drag-over { background: var(--accent-soft) !important; border-color: var(--accent) !important; }
 .kanban-column.col-doing { background: #F1F6FE !important; }
@@ -186,8 +186,8 @@
 .ov-status-n { width: 20px; text-align: right; font-weight: 600; font-size: 13px; color: var(--ink); }
 
 .ov-attention-head { display: flex; align-items: center; gap: 8px; }
-.ov-attention-head .ov-card-title { flex: 1; }
-.ov-attention-sub { font-size: 11px; color: var(--ink-3); flex: none; }
+.ov-attention-head .ov-card-title { flex: none; white-space: nowrap; }
+.ov-attention-sub { font-size: 11px; color: var(--ink-3); flex: 1; text-align: right; }
 .ov-attention-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--surface-3); cursor: pointer; }
 .ov-attention-row:hover { background: var(--fill); }
 .ov-attention-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }

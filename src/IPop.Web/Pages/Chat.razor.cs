@@ -379,9 +379,12 @@ public partial class Chat
     private List<UserSearchResult> newDmSearchResults = [];
 
     // v6 picker: one modal drives both "New message" and "New group" — the segmented
-    // control at the top switches mode instead of opening a second dialog.
+    // control at the top switches mode instead of opening a second dialog. The list
+    // shows the whole staff directory (mockup behaviour), filtered client-side.
     private bool pickerGroupMode;
     private readonly List<UserSearchResult> pickerPicked = [];
+    private List<PickerPerson> pickerPeople = [];
+    private bool pickerLoading;
 
     // ---- File Upload State ----
     private InputFile? fileInput;
@@ -411,6 +414,11 @@ public partial class Chat
     private IPop.Web.Models.Employee? profilePerson;
 
     private record UserSearchResult(Guid Id, string Nik, string Name, string? Email);
+
+    /// Directory row for the new-conversation picker — position and department feed the
+    /// second line ("Packing Machine Operator · Production") the mockup shows.
+    public record PickerPerson(Guid Id, string Nik, string Name, string? Email,
+        string? Position, string? Department, string PresenceStatus);
 
     private enum RoomTab { Direct, Groups }
 

@@ -61,6 +61,7 @@ public partial class Chat
         pickerPicked.Clear();
         newDmSearchQuery = "";
         newDmSearchResults = [];
+        _ = LoadPickerPeopleAsync();
     }
 
     private void StartNewGroup()
@@ -72,6 +73,7 @@ public partial class Chat
         newGroupName = "";
         newDmSearchQuery = "";
         newDmSearchResults = [];
+        _ = LoadPickerPeopleAsync();
     }
 
     // ---- v6 picker: Direct ⇄ Group in one dialog -------------------------------
@@ -94,33 +96,51 @@ public partial class Chat
             pickerPicked.RemoveRange(1, pickerPicked.Count - 1);
     }
 
-    private async Task SearchPickerUsers()
+    /// The picker lists everyone, so one fetch covers both modes; further typing filters
+    /// the already-loaded rows instead of round-tripping (mockup filters client-side too).
+    private async Task LoadPickerPeopleAsync()
     {
-        if (newDmSearchQuery.Length < 2) { newDmSearchResults = []; return; }
-        var results = await Auth.GetAsync<List<UserSearchResult>>($"/api/chat/users/search?q={Uri.EscapeDataString(newDmSearchQuery)}");
-        newDmSearchResults = results ?? [];
+        if (pickerPeople.Count > 0) return;
+        pickerLoading = true;
+        var rows = await Auth.GetAsync<List<PickerPerson>>("/api/chat/users/directory");
+        pickerPeople = rows ?? [];
+        pickerLoading = false;
+        await InvokeAsync(StateHasChanged);
     }
 
-    private void TogglePickerPerson(UserSearchResult user)
+    private List<PickerPerson> VisiblePickerPeople
     {
+        get
+        {
+            var q = newDmSearchQuery.Trim();
+            var src = pickerPeople.AsEnumerable();
+            if (q.Length > 0)
+                src = src.Where(p => p.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || p.Nik.Contains(q, StringComparison.OrdinalIgnoreCase));
+            // Picked people stay visible so their checkbox can be unticked.
+            return src.Take(60).ToList();
+        }
+    }
+
+    private bool IsPickerPicked(Guid id) => pickerPicked.Any(m => m.Id == id);
+
+    private void TogglePickerPerson(PickerPerson person)
+    {
+        var picked = pickerPicked.Any(m => m.Id == person.Id);
         if (pickerGroupMode)
         {
-            if (pickerPicked.Any(m => m.Id == user.Id))
-                pickerPicked.RemoveAll(m => m.Id == user.Id);
-            else
-                pickerPicked.Add(user);
+            if (picked) pickerPicked.RemoveAll(m => m.Id == person.Id);
+            else pickerPicked.Add(new UserSearchResult(person.Id, person.Nik, person.Name, person.Email));
         }
         else
         {
-            var wasPicked = pickerPicked.Any(m => m.Id == user.Id);
             pickerPicked.Clear();
-            if (!wasPicked) pickerPicked.Add(user);
+            if (!picked) pickerPicked.Add(new UserSearchResult(person.Id, person.Nik, person.Name, person.Email));
         }
         newDmSearchQuery = "";
-        newDmSearchResults = [];
     }
 
-    private void RemovePickerPerson(UserSearchResult user) => pickerPicked.RemoveAll(m => m.Id == user.Id);
+    private void RemovePickerPerson(Guid id) => pickerPicked.RemoveAll(m => m.Id == id);
 
     private bool PickerCanConfirm => pickerGroupMode
         ? !string.IsNullOrWhiteSpace(newGroupName) && pickerPicked.Count >= 2
@@ -135,8 +155,10 @@ public partial class Chat
         if (!PickerCanConfirm) return;
         if (pickerGroupMode)
         {
-            await CreateGroupWith(newGroupName.Trim(), pickerPicked);
+            var name = newGroupName.Trim();
+            var members = pickerPicked.ToList();
             ClosePicker();
+            await CreateGroupWith(name, members);
         }
         else
         {
