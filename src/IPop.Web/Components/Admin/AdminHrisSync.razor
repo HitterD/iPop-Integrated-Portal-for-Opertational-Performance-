@@ -477,13 +477,17 @@
         }
     }
 
+    private CancellationTokenSource? syncCts;
+
     private async Task SyncNow()
     {
         syncing = true;
         syncResult = null;
+        syncCts?.Dispose();
+        syncCts = new CancellationTokenSource();
         try
         {
-            var res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/hris/sync");
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/hris/sync", ct: syncCts.Token);
             if (res.IsSuccessStatusCode)
             {
                 var r = await res.Content.ReadFromJsonAsync<SyncResultDto>();
@@ -497,6 +501,11 @@
                 Toasts.Show(syncResult, ToastKind.Error);
             }
         }
+        catch (OperationCanceledException)
+        {
+            syncResult = "Synchronization cancelled by user.";
+            Toasts.Show(syncResult, ToastKind.Info);
+        }
         catch
         {
             syncResult = "Synchronization failed — cannot reach server.";
@@ -505,6 +514,8 @@
         finally
         {
             syncing = false;
+            syncCts?.Dispose();
+            syncCts = null;
         }
         await ReloadSyncStatus();
         await LoadSyncHistory();
@@ -512,6 +523,7 @@
 
     private void CancelSync()
     {
+        try { syncCts?.Cancel(); } catch { }
         syncing = false;
         syncResult = "Synchronization cancelled by user.";
         Toasts.Show(syncResult, ToastKind.Info);

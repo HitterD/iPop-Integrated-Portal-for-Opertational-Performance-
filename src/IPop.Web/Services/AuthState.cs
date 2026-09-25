@@ -55,11 +55,11 @@ public class AuthState(HttpClient http, IJSRuntime js)
 
     /// Bearer + one silent-refresh retry on 401 — the public form of PostWithAuth for pages
     /// that PATCH/PUT/POST, so Admin never has to reach past Send itself.
-    public async Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, object? body = null)
+    public async Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, object? body = null, CancellationToken ct = default)
     {
-        var res = await Send(method, url, body);
+        var res = await Send(method, url, body, ct);
         if (res.StatusCode == HttpStatusCode.Unauthorized && await TryRestoreAsync())
-            res = await Send(method, url, body);
+            res = await Send(method, url, body, ct);
         return res;
     }
 

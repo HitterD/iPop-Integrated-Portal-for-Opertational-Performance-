@@ -4,6 +4,7 @@
 @implements IDisposable
 @inject AuthState Auth
 @inject IJSRuntime JS
+@inject ToastService Toasts
 
 @* ---- Admin KPI Stat Summary ---- *@
 <div class="admin-kpi-grid">
@@ -311,16 +312,29 @@
 
     private async Task ExportUsersCsv()
     {
-        if (page is null || page.Items.Length == 0) return;
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("NIK,Name,Email,Position,Department,Site,Roles,IsActive,Status");
-        foreach (var u in page.Items)
+        try
         {
-            sb.AppendLine($"{u.Nik},\"{u.Name.Replace("\"", "\"\"")}\",\"{u.Email?.Replace("\"", "\"\"")}\",\"{u.Position?.Replace("\"", "\"\"")}\",\"{u.Department?.Replace("\"", "\"\"")}\",\"{u.Site?.Replace("\"", "\"\"")}\",\"{string.Join(";", u.Roles)}\",{u.IsActive},{u.Status}");
+            var url = $"/api/admin/users?page=1&pageSize=5000"
+                + (string.IsNullOrWhiteSpace(query) ? "" : $"&q={Uri.EscapeDataString(query.Trim())}")
+                + (string.IsNullOrWhiteSpace(roleFilter) ? "" : $"&role={Uri.EscapeDataString(roleFilter.Trim())}");
+            var res = await Auth.GetAsync<AdminUserPageDto>(url);
+            var usersToExport = res?.Items ?? page?.Items ?? [];
+            if (usersToExport.Length == 0) return;
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("NIK,Name,Email,Position,Department,Site,Roles,IsActive,Status");
+            foreach (var u in usersToExport)
+            {
+                sb.AppendLine($"{u.Nik},\"{u.Name.Replace("\"", "\"\"")}\",\"{u.Email?.Replace("\"", "\"\"")}\",\"{u.Position?.Replace("\"", "\"\"")}\",\"{u.Department?.Replace("\"", "\"\"")}\",\"{u.Site?.Replace("\"", "\"\"")}\",\"{string.Join(";", u.Roles)}\",{u.IsActive},{u.Status}");
+            }
+            var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+            var b64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("ipop.download", b64, $"users-{DateTime.Now:yyyyMMdd-HHmm}.csv");
         }
-        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
-        var b64 = Convert.ToBase64String(bytes);
-        await JS.InvokeVoidAsync("ipop.download", b64, $"users-{DateTime.Now:yyyyMMdd-HHmm}.csv");
+        catch (Exception ex)
+        {
+            Toasts.Show($"Export failed: {ex.Message}", ToastKind.Error);
+        }
     }
 
     private int TotalPages => page is null ? 1 : (int)Math.Ceiling(page.Total / (double)page.PageSize);

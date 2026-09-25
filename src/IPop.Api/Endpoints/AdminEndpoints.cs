@@ -33,7 +33,7 @@ public static class AdminEndpoints
             int? pageSize, IPopDbContext db, CancellationToken ct) =>
         {
             var p = Math.Max(1, page ?? 1);
-            var size = Math.Clamp(pageSize ?? 50, 1, 200);
+            var size = Math.Clamp(pageSize ?? 50, 1, 5000);
             var query = db.Users.Include(u => u.Department).Include(u => u.Site).AsNoTracking();
             if (!string.IsNullOrWhiteSpace(q))
             {

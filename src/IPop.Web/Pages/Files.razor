@@ -829,23 +829,31 @@
 
     private async Task RestoreSingle(SynoItemDto it)
     {
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/recycle/restore", new { server, paths = new[] { it.Path }, destDir = "/" });
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/recycle/restore", new { server, paths = new[] { it.Path }, destDir = "" });
         if (res.IsSuccessStatusCode)
         {
             Toasts.ShowDetailed("Restored", $"\"{it.Name}\" restored.", ToastKind.Success, "undo-2");
             await Reload();
+        }
+        else
+        {
+            Toasts.Show("Could not restore item.");
         }
     }
 
     private async Task RestoreSelected()
     {
         if (selectedPaths.Count == 0) return;
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/recycle/restore", new { server, paths = selectedPaths.ToArray(), destDir = "/" });
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/recycle/restore", new { server, paths = selectedPaths.ToArray(), destDir = "" });
         if (res.IsSuccessStatusCode)
         {
             Toasts.ShowDetailed("Restored", $"{selectedPaths.Count} items restored.", ToastKind.Success, "undo-2");
             selectedPaths.Clear();
             await Reload();
+        }
+        else
+        {
+            Toasts.Show("Could not restore selected items.");
         }
     }
 
@@ -859,6 +867,10 @@
         {
             Toasts.ShowDetailed("Emptied", "Recycle Bin emptied successfully.", ToastKind.Success, "trash-2");
             await Reload();
+        }
+        else
+        {
+            Toasts.Show("Could not empty Recycle Bin.");
         }
     }
 

@@ -372,7 +372,23 @@ public static class FileEndpoints
             var dest = string.IsNullOrWhiteSpace(req.DestDir) ? "/" : req.DestDir.Trim();
             try
             {
-                await svc.CopyMoveAsync(userId.Value, req.Server.Trim(), req.Paths, dest, removeSrc: true, true, ct);
+                if (dest == "/" || string.IsNullOrEmpty(dest))
+                {
+                    var groups = req.Paths.GroupBy(p =>
+                    {
+                        var idx = p.IndexOf("/#recycle", StringComparison.OrdinalIgnoreCase);
+                        return idx > 0 ? p[..idx] : "/";
+                    });
+
+                    foreach (var group in groups)
+                    {
+                        await svc.CopyMoveAsync(userId.Value, req.Server.Trim(), group.ToArray(), group.Key, removeSrc: true, true, ct);
+                    }
+                }
+                else
+                {
+                    await svc.CopyMoveAsync(userId.Value, req.Server.Trim(), req.Paths, dest, removeSrc: true, true, ct);
+                }
                 await Audit(http, db, "files.recycle.restore", $"{req.Server.Trim()}:{string.Join(",", req.Paths)} -> {dest}", ct);
                 return Results.Ok();
             }
