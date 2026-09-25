@@ -10,9 +10,9 @@
 
 <PageTitle>Notification Center — IPop</PageTitle>
 
-<div style="flex:1;min-height:0;display:flex;flex-direction:column;height:calc(100vh - 56px);background:var(--bg)">
+<div class="notifs-v6">
     @* ---- Top Filter & Action Bar ---- *@
-    <div style="display:flex;align-items:center;gap:12px;padding:14px 24px;border-bottom:1px solid var(--line-soft);background:var(--surface)">
+    <div class="toolbar notifs-toolbar">
         <div style="display:inline-flex;padding:2px;background:rgba(118,118,128,0.12);border-radius:10px;gap:2px">
             <button type="button" class="btn btn-sm" style="height:28px;padding:0 14px;border-radius:8px;border:none;background:@(tabFilter == "all" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(tabFilter == "all" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SetTab("all")'>All</button>
             <button type="button" class="btn btn-sm" style="height:28px;padding:0 14px;border-radius:8px;border:none;background:@(tabFilter == "unread" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(tabFilter == "unread" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px" @onclick='() => SetTab("unread")'>
@@ -26,7 +26,7 @@
 
         <div style="flex:1"></div>
 
-        <div class="search" style="width:260px;margin:0">
+        <div class="v6-search notifs-search">
             <i data-lucide="search"></i>
             <input type="text" placeholder="Search notifications…" @bind="searchQuery" @bind:event="oninput" @bind:after="OnSearchChanged" />
         </div>
@@ -43,28 +43,28 @@
     </div>
 
     @* ---- Three Pane Layout ---- *@
-    <div style="flex:1;min-height:0;display:flex;gap:14px;padding:16px 24px 20px;overflow:hidden">
+    <div class="notifs-cols">
         @* ---- Left Pane: Category Filters & DND ---- *@
-        <div style="width:220px;flex:none;display:flex;flex-direction:column;gap:12px">
-            <div style="background:var(--surface);border:1px solid var(--line-soft);border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);padding:14px 10px;display:flex;flex-direction:column;gap:2px">
-                <span style="padding:0 8px 8px;font-weight:700;font-size:13px;color:var(--ink-2);letter-spacing:0.02em">CATEGORIES</span>
+        <div class="notifs-side">
+            <div class="card notifs-nav">
+                <span class="notifs-nav-title">Categories</span>
                 @foreach (var c in CategoryList)
                 {
                     var active = categoryFilter == c.Id;
                     var cUnread = CountCategoryUnread(c.Id);
-                    <div style="height:32px;display:flex;align-items:center;gap:10px;padding:0 10px;border-radius:8px;background:@(active ? "var(--accent-soft)" : "transparent");color:@(active ? "var(--accent-ink)" : "var(--ink)");font-weight:@(active ? "600" : "500");cursor:pointer" @onclick="() => SetCategory(c.Id)">
-                        <i data-lucide="@c.Icon" style="width:15px;height:15px;color:@(active ? "var(--accent)" : "var(--ink-3)")"></i>
-                        <span style="flex:1;font-size:12.5px">@c.Label</span>
+                    <button type="button" class="notifs-nav-item @(active ? "on" : "")" @onclick="() => SetCategory(c.Id)">
+                        <i data-lucide="@c.Icon"></i>
+                        <span class="lbl">@c.Label</span>
                         @if (cUnread > 0 && c.Id != "snoozed")
                         {
-                            <span style="min-width:16px;height:16px;padding:0 5px;box-sizing:border-box;border-radius:8px;background:#0A84FF;color:#FFFFFF;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">@cUnread</span>
+                            <span class="n">@cUnread</span>
                         }
-                    </div>
+                    </button>
                 }
             </div>
 
             @* DND Quiet Hours Switch Card *@
-            <div style="background:var(--surface);border:1px solid var(--line-soft);border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);padding:14px;display:flex;align-items:center;gap:10px">
+            <div class="card notifs-dnd">
                 <span style="width:32px;height:32px;border-radius:9px;background:#EFEAFB;display:flex;align-items:center;justify-content:center;flex-shrink:0">
                     <i data-lucide="moon" style="width:16px;height:16px;color:#7657C4"></i>
                 </span>
@@ -79,7 +79,7 @@
         </div>
 
         @* ---- Middle Pane: Notification List ---- *@
-        <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line-soft);border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);overflow:hidden">
+        <div class="card notifs-list">
             @if (selectedIds.Count > 0)
             {
                 <div style="height:48px;display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--accent-soft);border-bottom:1px solid var(--line-soft)">
@@ -131,8 +131,7 @@
                         {
                             var isSel = selectedItem?.Id == n.Id;
                             var isChecked = selectedIds.Contains(n.Id);
-                            <div style="display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line-soft);background:@(isSel ? "var(--accent-soft)" : "transparent");cursor:pointer;transition:background 0.15s ease"
-                                 @onclick="() => SelectNotification(n)">
+                            <div class="notifs-row @(isSel ? "sel" : "")" role="button" tabindex="0" @onclick="() => SelectNotification(n)" @onkeydown="e => SelectOnKey(e, n)">
                                 <div style="display:flex;align-items:center;gap:6px;padding-top:4px" @onclick:stopPropagation="true">
                                     <input type="checkbox" checked="@isChecked" @onchange="() => ToggleItemSelection(n.Id)" />
                                     <span style="width:8px;height:8px;border-radius:50%;background:@(!n.IsRead ? "#0A84FF" : "transparent");display:block"></span>
@@ -171,7 +170,7 @@
         </div>
 
         @* ---- Right Pane: Detail View or Preferences ---- *@
-        <div style="width:360px;flex:none;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line-soft);border-radius:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);overflow:hidden">
+        <div class="card notifs-detail">
             @if (showPrefs)
             {
                 <div style="display:flex;align-items:center;padding:16px 18px 12px;border-bottom:1px solid var(--line-soft)">
@@ -228,7 +227,7 @@
 
                     @if (!string.IsNullOrEmpty(selectedItem.TargetUrl))
                     {
-                        <button type="button" class="btn btn-teal" style="height:38px;padding:0 16px;border-radius:10px;font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer" @onclick="() => NavigateToTarget(selectedItem)">
+                        <button type="button" class="btn-primary notifs-target" @onclick="() => NavigateToTarget(selectedItem)">
                             <span>Open in @GetCategoryName(selectedItem.Type)</span>
                             <i data-lucide="arrow-right" style="width:14px;height:14px"></i>
                         </button>
@@ -404,6 +403,8 @@
                     i.At.Kind == DateTimeKind.Utc ? i.At.ToLocalTime() : i.At,
                     i.IsRead, i.Priority, i.TargetUrl, i.SnoozedUntil)).ToList();
                 unreadCount = res.UnreadCount;
+                Layout.SetSubtitle($"{unreadCount} unread · {items.Count} total");
+                if (selectedItem is null && !showPrefs) selectedItem = items.FirstOrDefault();
                 if (selectedItem != null)
                 {
                     selectedItem = items.FirstOrDefault(x => x.Id == selectedItem.Id);
@@ -481,6 +482,11 @@
         try { await Task.Delay(200, t.Token); }
         catch (OperationCanceledException) { return; }
         StateHasChanged();
+    }
+
+    private void SelectOnKey(KeyboardEventArgs e, NotificationItemDto item)
+    {
+        if (e.Key is "Enter" or " ") SelectNotification(item);
     }
 
     private void SelectNotification(NotificationItemDto item)
