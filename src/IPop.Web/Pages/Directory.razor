@@ -41,22 +41,37 @@
             <i data-lucide="search"></i>
             <input type="search" placeholder="Search name, NIK or email" aria-label="Search people" value="@Layout.SearchQuery" @oninput="e => Layout.SetSearch(e.Value?.ToString())" />
         </div>
-        <div style="display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden">
-            <button class="icon-btn" style="border:none;border-radius:0;background:@(!isGridView ? "var(--accent-soft)" : "transparent");color:@(!isGridView ? "var(--accent-ink)" : "var(--ink-2)")" title="List view" @onclick="() => isGridView = false"><i data-lucide="list"></i></button>
-            <button class="icon-btn" style="border:none;border-radius:0;background:@(isGridView ? "var(--accent-soft)" : "transparent");color:@(isGridView ? "var(--accent-ink)" : "var(--ink-2)")" title="Grid view" @onclick="() => isGridView = true"><i data-lucide="layout-grid"></i></button>
+        <div class="apple-segmented view-seg">
+            <button type="button" class="seg-btn @(!isGridView ? "active" : "")" title="List view" aria-label="List view" @onclick="() => isGridView = false"><i data-lucide="list"></i></button>
+            <button type="button" class="seg-btn @(isGridView ? "active" : "")" title="Grid view" aria-label="Grid view" @onclick="() => isGridView = true"><i data-lucide="layout-grid"></i></button>
         </div>
-        <select class="form-select" style="height:32px;padding:0 10px;font-size:12px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink)" @bind="selectedSort" @bind:after="OnSortChanged">
-            <option value="name-asc">Name A–Z</option>
-            <option value="name-desc">Name Z–A</option>
-            <option value="nik-asc">NIK</option>
-            <option value="status-asc">Online first</option>
-        </select>
-        <button class="ghost-btn @(favOnly ? "active" : "")" style="@(favOnly ? "background:var(--warn-soft);color:var(--warn);border-color:var(--warn)" : "")" title="Toggle favorites only" @onclick="ToggleFavOnly">
-            <i data-lucide="star" style="@(favOnly ? "fill:currentColor" : "")"></i>Favorites <span class="badge" style="margin-left:4px">@FavoritePeople.Count</span>
+        <div class="dir-sort">
+            <button type="button" class="ghost-btn" @onclick="() => sortOpen = !sortOpen" @onclick:stopPropagation="true" aria-haspopup="menu" aria-expanded="@sortOpen">
+                <i data-lucide="arrow-up-down"></i>@SortLabel(selectedSort)<i data-lucide="chevron-down" class="chev"></i>
+            </button>
+            @if (sortOpen)
+            {
+                <div class="menu-backdrop" @onclick="() => sortOpen = false"></div>
+                <div class="dir-sort-menu" role="menu">
+                    @foreach (var opt in SortOptions)
+                    {
+                        var o = opt;
+                        <button type="button" role="menuitemradio" aria-checked="@(selectedSort == o)" @onclick="() => PickSort(o)">
+                            <span>@SortLabel(o)</span>
+                            @if (selectedSort == o) { <i data-lucide="check"></i> }
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+        <button type="button" class="ghost-btn @(favOnly ? "on" : "")" title="Show favorites only" aria-pressed="@favOnly" @onclick="ToggleFavOnly">
+            <i data-lucide="star"></i>Favorites <span class="cnt">@FavoritePeople.Count</span>
         </button>
-        <button class="ghost-btn" title="Priority contacts: favorites & frequent" @onclick='() => Nav.NavigateTo("/directory/priority")'><i data-lucide="star"></i>Priority</button>
-        <button class="ghost-btn" title="Export search/filter results to CSV" disabled="@exporting" @onclick="ExportCsv"><i data-lucide="download"></i>@(exporting ? "Exporting…" : "Export CSV")</button>
     </div>
+</div>
+<div class="toolbar dir-toolbar-2">
+    <button type="button" class="ghost-btn" title="Export search/filter results to CSV" disabled="@exporting" @onclick="ExportCsv"><i data-lucide="download"></i>@(exporting ? "Exporting…" : "Export")</button>
+    <button type="button" class="ghost-btn" title="Priority contacts: favorites & frequent" @onclick='() => Nav.NavigateTo("/directory/priority")'><i data-lucide="sparkles"></i>Priority contacts</button>
 </div>
 
 <div class="body">
@@ -72,13 +87,14 @@
         </div>
     }
 
-    <div class="cols" style="grid-template-columns: 240px minmax(0, 1fr)">
+    <div class="cols dir-cols">
+        <div class="col gap-14 dir-side">
         <!-- Structure: Site ▸ Department ▸ Division -->
-        <div class="card" style="overflow:hidden">
-            <div class="card-head" style="padding:16px 16px 6px">
+        <div class="card dir-structure">
+            <div class="card-head">
                 <div>
-                    <div class="card-title" style="font-size:13.5px">Structure</div>
-                    <div class="card-meta" style="font-size:11.5px">@(structureLoading ? "Loading..." : TotalDivisions > 0 ? $"{TotalDivisions:N0} divisions" : $"{dirStructure?.NoDivisionCount:N0} people")</div>
+                    <div class="card-title">Structure</div>
+                    <div class="card-meta">@(structureLoading ? "Loading…" : TotalDivisions > 0 ? $"{allPeopleCount:N0} people · {TotalDivisions:N0} divisions" : $"{allPeopleCount:N0} people")</div>
                 </div>
             </div>
             @if (structureLoading)
@@ -94,6 +110,11 @@
             else
             {
                 <div class="tree">
+                    <button type="button" class="tree-node @(selectedDivision is null ? "on" : "")" @onclick="ClearDivisionFilter">
+                        <i data-lucide="users"></i>
+                        <span class="lbl">All people</span>
+                        <span class="tree-n">@allPeopleCount.ToString("N0")</span>
+                    </button>
                     @foreach (var site in dirStructure.Sites)
                     {
                         <div class="tree-site">@site.Name</div>
@@ -117,15 +138,34 @@
                     }
                     @if (dirStructure.NoDivisionCount > 0)
                     {
-                        var isNoDivSel = selectedDivision is null;
-                        <button type="button" class="tree-node @(isNoDivSel ? "on" : "")" style="margin-top:4px" @onclick="ClearDivisionFilter">
-                            <i data-lucide="minus-circle"></i>
-                            <span class="lbl">No Division</span>
-                            <span class="tree-n">@dirStructure.NoDivisionCount</span>
-                        </button>
+                        <div class="tree-foot"><i data-lucide="circle-dashed"></i><span class="lbl">No division</span><span class="tree-n">@dirStructure.NoDivisionCount.ToString("N0")</span></div>
                     }
                 </div>
             }
+        </div>
+
+        @if (FavoritePeople.Count > 0)
+        {
+            <div class="card dir-favs">
+                <div class="card-head">
+                    <div class="card-title">Favorites</div>
+                    <span class="card-meta" style="margin-left:auto">@FavoritePeople.Count</span>
+                </div>
+                <div class="fav-list">
+                    @foreach (var p in FavoritePeople)
+                    {
+                        <div class="fav-row" @onclick="() => selected = p">
+                            <div class="av-wrap">
+                                <div class="av" style="background:@p.Color">@p.Initials</div>
+                                <span class="presence @p.Status"></span>
+                            </div>
+                            <span class="n">@p.Name</span>
+                            <button type="button" class="act" title="Chat" aria-label="Chat with @p.Name" @onclick="() => OpenChatWith(p.Nik)" @onclick:stopPropagation="true"><i data-lucide="message-circle"></i></button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
         </div>
 
         <!-- People Section -->
@@ -144,53 +184,13 @@
                 </div>
             }
 
-            @if (!IsSearching && !favOnly && FavoritePeople.Count > 0)
-            {
-                <div class="card" style="overflow:hidden">
-                    <div class="card-head" style="padding:15px 20px 10px">
-                        <i data-lucide="star" style="width:15px;height:15px;color:var(--warn);fill:currentColor"></i>
-                        <div class="card-title" style="font-size:13.5px">Favorites</div>
-                        <div class="card-meta">@FavoritePeople.Count people</div>
-                    </div>
-                    <table class="tbl">
-                        <tbody>
-                            @foreach (var p in FavoritePeople)
-                            {
-                                var isSel = (selected?.Nik ?? people.FirstOrDefault()?.Nik) == p.Nik;
-                                <tr class="@(isSel ? "sel" : "")" @onclick="() => selected = p">
-                                    <td style="width:100%">
-                                        <div class="cell-person">
-                                            <div class="av-wrap">
-                                                <div class="av" style="background:@p.Color">@p.Initials</div>
-                                                <span class="presence @p.Status"></span>
-                                            </div>
-                                            <div>
-                                                <div class="n">@p.Name</div>
-                                                <div class="s">@p.Position · ID @p.Nik</div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <span class="badge @(p.Status == "on" ? "ok" : p.Status == "busy" ? "bad" : p.Status == "away" ? "warn" : "mute")">@p.StatusLabel</span>
-                                    </td>
-                                    <td>
-                                        <div class="flex gap-6">
-                                            <button type="button" class="icon-btn" style="width:29px;height:29px" title="Chat" @onclick="() => OpenChatWith(p.Nik)" @onclick:stopPropagation="true">
-                                                <i data-lucide="message-circle" style="width:15px;height:15px"></i>
-                                            </button>
-                                            <button type="button" class="icon-btn" style="width:29px;height:29px" title="Call" @onclick='() => StartCallWith(p.Nik)' @onclick:stopPropagation="true">
-                                                <i data-lucide="phone" style="width:15px;height:15px"></i>
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+            <div class="card dir-people">
+                <div class="card-head">
+                    <span class="card-title">@(favOnly ? "Favorites" : selectedDivision?.Name ?? "All people")</span>
+                    <span class="v6-count-pill">@DisplayedPeople.Count shown</span>
+                    <span class="card-meta" style="margin-left:auto">Click a person to open their profile</span>
                 </div>
-            }
-
-            <div class="card" style="overflow:hidden">
+                <div class="dir-scroll">
                 @if (isGridView)
                 {
                     @if (loading || structureLoading)
@@ -255,9 +255,9 @@
                                 <th>Name</th>
                                 <th>NIK</th>
                                 <th>Position</th>
-                                <th>Department</th>
+                                <th>Division</th>
                                 <th>Status</th>
-                                <th style="text-align:right">Actions</th>
+                                <th style="width:76px"><span class="sr-only">Actions</span></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -301,22 +301,22 @@
                                         </td>
                                         <td class="num dim">@p.Nik</td>
                                         <td class="dim">@p.Position</td>
-                                        <td class="dim">@p.Department</td>
+                                        <td>@if (p.Department != "—") { <span class="div-chip">@p.Department</span> } else { <span class="dim">—</span> }</td>
                                         <td>
-                                            <span class="badge @(p.Status == "on" ? "ok" : p.Status == "busy" ? "bad" : p.Status == "away" ? "warn" : "mute")">@p.StatusLabel</span>
+                                            <span class="st-pill @p.Status"><span class="d"></span>@p.StatusLabel</span>
                                         </td>
                                         <td>
-                                            <div class="flex gap-6" style="justify-content:flex-end">
-                                                <button type="button" class="icon-btn" style="width:28px;height:28px" title="Chat" @onclick="() => OpenChatWith(p.Nik)" @onclick:stopPropagation="true">
-                                                    <i data-lucide="message-circle" style="width:14px;height:14px"></i>
+                                            <div class="row-acts">
+                                                <button type="button" class="ra" title="Chat" aria-label="Chat with @p.Name" @onclick="() => OpenChatWith(p.Nik)" @onclick:stopPropagation="true">
+                                                    <i data-lucide="message-circle"></i>
                                                 </button>
-                                                <button type="button" class="icon-btn" style="width:28px;height:28px" title="Call" @onclick='() => StartCallWith(p.Nik)' @onclick:stopPropagation="true">
-                                                    <i data-lucide="phone" style="width:14px;height:14px"></i>
+                                                <button type="button" class="ra" title="Call" aria-label="Call @p.Name" @onclick='() => StartCallWith(p.Nik)' @onclick:stopPropagation="true">
+                                                    <i data-lucide="phone"></i>
                                                 </button>
-                                                <button type="button" class="icon-btn" style="width:28px;height:28px;border:none;background:transparent"
+                                                <button type="button" class="ra fav @(isFav ? "on" : "")"
                                                         title="@(isFav ? "Remove from favorites" : "Add to favorites")"
                                                         @onclick="() => ToggleFavorite(p.Nik)" @onclick:stopPropagation="true">
-                                                    <i data-lucide="star" style="width:14px;height:14px;color:@(isFav ? "var(--warn)" : "var(--ink-4)");fill:@(isFav ? "currentColor" : "none")"></i>
+                                                    <i data-lucide="star"></i>
                                                 </button>
                                             </div>
                                         </td>
@@ -328,10 +328,15 @@
                 }
                 @if (!loading && page < TotalPages)
                 {
-                    <div style="padding:14px 20px;border-top:1px solid var(--line);text-align:center">
+                    <div style="padding:14px 20px;text-align:center">
                         <button type="button" class="ghost-btn" style="margin:0 auto" @onclick="LoadMore">Show more (@(total - people.Count) remaining)</button>
                     </div>
                 }
+                </div>
+                <div class="dir-foot">
+                    <span>Showing @DisplayedPeople.Count.ToString("N0") of @total.ToString("N0") · @(string.IsNullOrEmpty(presenceFilter) ? "All statuses" : PresenceFilterLabel(presenceFilter))</span>
+                    <span>Sorted by @SortLabel(selectedSort)</span>
+                </div>
             </div>
         </div>
     </div>
@@ -350,6 +355,23 @@
     private bool isGridView;
     private bool favOnly;
     private string selectedSort = "name-asc";
+    private bool sortOpen;
+    private static readonly string[] SortOptions = ["name-asc", "name-desc", "nik-asc", "status-asc"];
+    private static string SortLabel(string key) => key switch
+    {
+        "name-desc" => "Name Z–A",
+        "nik-asc" => "NIK",
+        "status-asc" => "Online first",
+        _ => "Name A–Z",
+    };
+    private async Task PickSort(string key)
+    {
+        sortOpen = false;
+        if (selectedSort == key) return;
+        selectedSort = key;
+        await OnSortChanged();
+    }
+    private int allPeopleCount => (dirStructure?.Sites.Sum(s => s.MemberCount) ?? 0) + (dirStructure?.NoDivisionCount ?? 0);
     private HashSet<string> selectedNiks = [];
     private IReadOnlyList<Employee> DisplayedPeople => favOnly ? people.Where(p => Favorites.IsFavorite(p.Nik)).ToList() : people;
 
@@ -540,12 +562,7 @@
         structureLoading = true;
         dirStructure = await Auth.GetAsync<DirectoryStructureNodeDto>("/api/directory/structure");
         structureLoading = false;
-        if (dirStructure is not null)
-        {
-            // Auto-select the first division (deepest first in traversal order).
-            if (selectedDivision is null)
-                selectedDivision = dirStructure.Sites.SelectMany(s => s.Departments).SelectMany(d => d.Divisions).FirstOrDefault();
-        }
+        if (dirStructure is not null) Layout.SetSubtitle(TotalDivisions > 0 ? $"{allPeopleCount:N0} people · {TotalDivisions:N0} divisions" : $"{allPeopleCount:N0} people");
         StateHasChanged();
     }
 
