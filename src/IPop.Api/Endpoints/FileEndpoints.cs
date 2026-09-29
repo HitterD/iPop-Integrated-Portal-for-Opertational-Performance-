@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text.Json;
 using IPop.Api.Rbac;
+using IPop.Application.Documents;
 using IPop.Application.Files;
 using IPop.Application.Realtime;
 using IPop.Core.Entities;
@@ -117,38 +118,36 @@ public static class FileEndpoints
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
         });
 
-        g.MapGet("/preview", async (string server, string path, HttpContext http, IFileAccessService svc, IPopDbContext db, OfficeOptions office, CancellationToken ct) =>
+        // Word/PowerPoint -> PDF with the DevExpress Office File API (in-process; no LibreOffice install).
+        g.MapGet("/preview", async (string server, string path, HttpContext http, IFileAccessService svc, IPopDbContext db,
+            IWordDocumentService word, IPresentationService slides, CancellationToken ct) =>
         {
             var userId = await UserIdAsync(http);
             if (userId is null) return Results.Unauthorized();
             if (string.IsNullOrWhiteSpace(path)) return Results.BadRequest(new { code = "path_required" });
             var ext = System.IO.Path.GetExtension(path).ToLowerInvariant();
-            if (ext is not (".docx" or ".doc" or ".pptx" or ".ppt"))
-                return Results.BadRequest(new { code = "unsupported", message = "Only Word/PowerPoint files can be previewed." });
+            if (ext is not (".docx" or ".doc" or ".rtf" or ".odt" or ".pptx"))
+                return Results.BadRequest(new { code = "unsupported", message = "Only Word and PowerPoint (.pptx) files can be previewed." });
             try
             {
                 await using var src = await svc.DownloadAsync(userId.Value, server, path.Trim(), ct);
                 await Audit(http, db, "files.preview", $"{server}:{path.Trim()}", ct);
 
-                var tempDir = Path.Combine(office.TempDirectory, "ipop-office");
-                Directory.CreateDirectory(tempDir);
-                var inFile = Path.Combine(tempDir, $"{Guid.NewGuid():N}{ext}");
-                var outFile = Path.ChangeExtension(inFile, ".pdf");
+                using var buffer = new MemoryStream();
+                await src.CopyToAsync(buffer, ct);
+                buffer.Position = 0;
+                byte[] pdf;
                 try
                 {
-                    await using (var fs = File.Create(inFile))
-                        await src.CopyToAsync(fs, ct);
-                    var result = await office.ConvertAsync(inFile, tempDir, ct);
-                    if (result is not 0) return Results.Json(new { code = "conversion_failed", message = "LibreOffice could not convert this file." }, statusCode: 500);
-                    if (!File.Exists(outFile)) return Results.Json(new { code = "conversion_failed" }, statusCode: 500);
-                    var bytes = await File.ReadAllBytesAsync(outFile, ct);
-                    return Results.File(bytes, "application/pdf", $"{Path.GetFileNameWithoutExtension(path)}.pdf");
+                    pdf = ext == ".pptx"
+                        ? await slides.ConvertToPdfAsync(buffer, ct)
+                        : await word.ConvertToPdfAsync(buffer, ct);
                 }
-                finally
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    if (File.Exists(inFile)) File.Delete(inFile);
-                    if (File.Exists(outFile)) File.Delete(outFile);
+                    return Results.Json(new { code = "conversion_failed", message = "This document couldn't be rendered for preview. Download it to open locally." }, statusCode: 500);
                 }
+                return Results.File(pdf, "application/pdf", $"{Path.GetFileNameWithoutExtension(path)}.pdf");
             }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }

@@ -449,7 +449,7 @@
                 <button type="button" class="fx-tb" title="Close (Esc)" aria-label="Close" @onclick="ClosePreview"><i data-lucide="x"></i></button>
             </div>
         </header>
-        <div class="fx-ql-body @(isSheetPreview && previewSheetBytes is not null ? "is-sheet" : "")">
+        <div class="fx-ql-body @(isSheetPreview && previewError is null ? "is-sheet" : "")">
             @if (previewLoading)
             { <div class="fx-ql-msg"><i data-lucide="loader-circle" class="spin"></i><span>Loading preview…</span></div> }
             else if (previewError is not null)

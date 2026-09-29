@@ -21,7 +21,7 @@ public partial class Files
     private static string FormatMtime(long mtime) => mtime == 0 ? "—" : DateTimeOffset.FromUnixTimeSeconds(mtime).ToLocalTime().ToString("MMM dd");
     private static string GetFileExt(string name) => System.IO.Path.GetExtension(name).ToLowerInvariant();
     private static bool IsPreviewable(string name) => GetFileExt(name) is ".pdf" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" or ".xlsx" or ".xls" or ".csv" or ".docx" or ".doc" or ".pptx" or ".ppt" or ".rtf";
-    private static bool IsOfficePreviewable(string name) => GetFileExt(name) is ".docx" or ".doc" or ".pptx" or ".ppt" or ".rtf";
+    private static bool IsOfficePreviewable(string name) => GetFileExt(name) is ".docx" or ".doc" or ".rtf" or ".odt" or ".pptx";
     // Sheets renderable by RadzenSpreadsheet (XLSX/CSV). Legacy .xls stays on the SheetJS path.
     private static bool IsSheetPreviewable(string name) => GetFileExt(name) is ".xlsx" or ".csv";
     private static string GetFileIcon(string name) => GetFileExt(name) switch

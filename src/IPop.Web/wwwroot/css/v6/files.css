@@ -359,7 +359,11 @@
 .fx-ql-body.is-sheet { display:block; padding:0; background:var(--surface); }
 .fx-ql-body.is-sheet .excel-viewer-head { display:none; }
 .fx-ql-body.is-sheet .rz-spreadsheet { height:100% !important; border:0; }
-.fx-ql-body.is-sheet .excel-viewer { height:100%; }
+/* The body is a centering grid for images/PDFs; a spreadsheet must stretch instead, or Radzen
+   measures a shrink-wrapped box on first layout and renders one column wide. */
+.fx-ql-body.is-sheet, .fx-ql-body:has(> .excel-viewer) { display:flex; flex-direction:column; place-items:stretch; padding:0; background:var(--surface); }
+.fx-ql-body .excel-viewer { flex:1; min-height:0; width:100%; height:100%; display:flex; flex-direction:column; }
+.fx-ql-body .excel-viewer .rz-spreadsheet { flex:1; min-height:0; width:100% !important; }
 .fx-ql-body.is-sheet .rz-tabview-nav li, .fx-ql-body.is-sheet .rz-tabview-nav a { white-space:nowrap; }
 .fx-ql-body.is-sheet .rz-tabview-nav { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:thin; }
 /* Radzen's light :root ramp loads after our dark tokens and wins; pin the sheet to the app's dark surface here. */
