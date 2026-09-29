@@ -1,0 +1,51 @@
+/* Banner -> bell flight (js/notif-fly.js) */
+.apple-banner.nf-gone { visibility: hidden; }
+
+.nf-ghost {
+  position: fixed !important;
+  margin: 0 !important;
+  z-index: 10000;
+  pointer-events: none !important;
+  transform-origin: 50% 50%;
+  overflow: hidden;
+  will-change: transform, opacity;
+}
+.nf-ghost .apple-banner-close { display: none; }
+
+.bell-btn.nf-ring .lucide {
+  transform-origin: 50% 8%;
+  animation: nf-bell-ring 0.8s cubic-bezier(.36,.07,.19,.97);
+}
+.bell-btn.nf-ring .badge { animation: nf-badge-pop 0.5s cubic-bezier(.34,1.56,.64,1); }
+.bell-btn.nf-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent, #0a84ff) 45%, transparent);
+  animation: nf-bell-pulse 0.7s ease-out;
+  pointer-events: none;
+}
+
+@keyframes nf-bell-ring {
+  0% { transform: rotate(0); }
+  15% { transform: rotate(16deg); }
+  30% { transform: rotate(-14deg); }
+  45% { transform: rotate(10deg); }
+  60% { transform: rotate(-6deg); }
+  75% { transform: rotate(3deg); }
+  100% { transform: rotate(0); }
+}
+@keyframes nf-badge-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.45); }
+  100% { transform: scale(1); }
+}
+@keyframes nf-bell-pulse {
+  from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent, #0a84ff) 45%, transparent); }
+  to { box-shadow: 0 0 0 10px transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bell-btn.nf-ring .lucide, .bell-btn.nf-ring .badge, .bell-btn.nf-ring::after { animation: none; }
+}

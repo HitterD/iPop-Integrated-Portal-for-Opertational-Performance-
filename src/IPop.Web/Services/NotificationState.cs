@@ -344,10 +344,22 @@ public class NotificationState : IDisposable
             }
             if (!banner.Cts.Token.IsCancellationRequested)
             {
+                await FlyToBell(banner.Id);
                 DismissBanner(banner.Id);
             }
         }
         catch (OperationCanceledException) { }
+    }
+
+    /// Timed-out banners fly into the topbar bell before they're removed (js/notif-fly.js).
+    private async Task FlyToBell(Guid id)
+    {
+        if (_js is null) return;
+        try
+        {
+            await _js.InvokeAsync<bool>("ipopNotifFly.fly", id.ToString()).AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        catch { }
     }
 
     public void PauseBanner(Guid id)

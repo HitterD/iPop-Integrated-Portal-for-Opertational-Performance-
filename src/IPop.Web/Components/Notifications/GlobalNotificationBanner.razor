@@ -13,7 +13,7 @@
         var label = NotificationState.GetTypeLabel(item.Type);
         var timeLabel = FormatTime(item.At);
 
-        <div class="apple-banner @item.Type"
+        <div class="apple-banner @item.Type" data-nid="@b.Id"
              role="alert"
              @onmouseenter="() => Notifs.PauseBanner(b.Id)"
              @onmouseleave="() => Notifs.ResumeBanner(b.Id)"
