@@ -178,6 +178,7 @@ else
 builder.Services.AddHostedService<HrisSyncWorker>();
 builder.Services.AddHostedService<MailScheduledDeliveryWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Notifications.NotificationRetentionWorker>();
+builder.Services.AddHostedService<IPop.Infrastructure.Notifications.NotificationLinkBackfill>();
 builder.Services.AddHostedService<IPop.Infrastructure.Files.FileOperationWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Files.FileOperationRetentionWorker>();
 
