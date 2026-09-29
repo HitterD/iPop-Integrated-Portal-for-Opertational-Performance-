@@ -65,11 +65,7 @@
   .notification-settings-page .settings-footer button { justify-content: center; min-height: 44px; }
   .notification-settings-page .history-item { min-width: 0; }
 
-  /* ---------- Legacy inbox (NotificationInbox.razor) + Gateway (NotificationGateway.razor) ---------- */
-  .notif-tabs { overflow-x: auto; scrollbar-width: none; padding: 6px 12px 0; }
-  .notif-tabs::-webkit-scrollbar { display: none; }
-  .notif-tab { flex: none; white-space: nowrap; min-height: 40px; }
-  .notif-prefs-row { flex-direction: column; align-items: stretch; }
+  /* ---------- Gateway (NotificationGateway.razor) ---------- */
   .notif-row { min-width: 0; }
   .content .tray .filter-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .content .tray .filter-bar::-webkit-scrollbar { display: none; }

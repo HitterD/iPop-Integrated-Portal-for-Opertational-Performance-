@@ -1833,15 +1833,6 @@ details.mail-quote details.mail-quote {
   margin-bottom: 8px;
 }
 
-.notif-pref-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--ink-2);
-  font-weight: 500;
-}
-
 .composer-meeting {
   display: grid;
   gap: 8px;
