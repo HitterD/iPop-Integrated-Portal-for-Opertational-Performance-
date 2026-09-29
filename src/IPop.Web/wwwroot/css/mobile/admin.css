@@ -18,13 +18,6 @@
   .adm-seg.adm-view-seg { display:flex; width:100%; box-sizing:border-box; }
   .adm-seg.adm-view-seg button { flex:1; min-width:0; }
 
-  /* KPIs: 2 across. */
-  .adm-kpis, .admin-v6 .admin-kpi-grid, .admin-v6 .hris-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-bottom:12px; }
-  .adm-kpi, .admin-v6 .admin-kpi-card, .admin-v6 .hris-kpis .admin-kpi-card { padding:10px 12px; min-height:60px; gap:10px; }
-  .adm-kpi-ico, .admin-v6 .kpi-icon-wrap { width:34px; height:34px; }
-  .admin-v6 .kpi-val, .admin-v6 .kpi-val[style] { font-size:15px !important; }
-  .adm-kpi b { font-size:16px; }
-
   /* Card headers: search full width, chips scroll, actions share a row. */
   .adm-card-head { gap:8px; padding:12px; }
   .adm-card-title { flex:1 1 auto; }
@@ -52,23 +45,7 @@
   .adm-user-grid > .adm-cell-sub { order:5; margin-left:auto; }
   .adm-role { height:32px; padding:0 12px; }
 
-  /* Departments: name, then division / plant / head / count. */
-
-  /* Row menus: bottom sheet so they never clip or overflow sideways. */
-  .adm-menu, .adm-menu.narrow { position:fixed; left:0; right:0; top:auto; bottom:0; z-index:80; min-width:0; padding:8px 8px calc(8px + var(--m-safe-b, 0px)); border-radius:14px 14px 0 0; max-height:70dvh; overflow-y:auto; box-shadow:0 -12px 40px rgba(0,0,0,.25); }
-  .adm-menu-scrim { z-index:79; background:rgba(0,0,0,.32); }
-  .adm-menu button { height:48px; font-size:15px; }
   .adm-pager .adm-icon-btn { width:40px; height:40px; }
-
-  /* u-table sections (sessions, audit, HRIS history): each row becomes a card. */
-  .admin-v6 .u-table, .admin-v6 .u-table tbody { display:block; width:100%; }
-  .admin-v6 .u-table thead { display:none; }
-  .admin-v6 .u-table tbody tr { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:12px; border-bottom:1px solid var(--line-soft); }
-  .admin-v6 .u-table td { display:block; width:auto !important; padding:0; border:0; min-width:0; overflow-wrap:anywhere; }
-  .admin-v6 .u-table td:first-child { flex:1 1 100%; }
-  .admin-v6 .u-table td.acts, .admin-v6 .u-table td:last-child[style*="text-align:right"] { margin-left:auto; }
-  .admin-v6 .u-table .acts button, .admin-v6 .u-table .act-toggle { width:40px; height:40px; }
-  .admin-v6 .u-table td .btn { min-height:36px; }
 
   /* Panel heads + inline filter rows (audit, sessions, HRIS history) wrap. */
   .admin-v6 .panel-head { flex-wrap:wrap; gap:8px; padding:12px !important; }
@@ -82,10 +59,6 @@
   .admin-v6 div[style*="rgba(118,118,128"] > .btn { flex:none; height:34px !important; }
   .admin-v6 .tray > .core > div[style*="flex-wrap:wrap"] > div[style*="margin-left:auto"] { margin-left:0 !important; flex:1 1 100%; }
   .admin-v6 .tray > .core > div[style*="flex-wrap:wrap"] > div[style*="margin-left:auto"] .btn { width:100%; height:40px !important; justify-content:center; }
-
-  /* HRIS sync. */
-  .admin-v6 .hris-main-grid { grid-template-columns:1fr; gap:12px; }
-  .admin-v6 .hris-history-card { overflow:visible; }
 
   /* Directory tree: stacked, tree collapses via its own chevrons, capped height. */
   .adm-tree-layout { grid-template-columns:1fr; gap:12px; }
@@ -155,4 +128,11 @@
   .adm-log-detail { padding:0 10px 12px; }
   .adm-log-detail dl { grid-template-columns:1fr; gap:2px; }
   .adm-log-detail dd { margin-bottom:6px; }
+
+  /* HRIS sync: settings stack under the sync card, full-width action. */
+  .adm-hris-top { gap:10px; margin-bottom:10px; }
+  .adm-hris-now { padding:14px; gap:12px; }
+  .adm-hris-now > .adm-btn { flex:1 1 100%; justify-content:center; height:40px; }
+  .adm-set-select { width:140px; }
+  .adm-log-txt small { white-space:normal; }
 }
