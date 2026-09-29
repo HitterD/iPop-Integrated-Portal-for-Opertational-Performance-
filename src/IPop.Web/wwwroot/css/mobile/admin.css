@@ -53,10 +53,6 @@
   .adm-role { height:32px; padding:0 12px; }
 
   /* Departments: name, then division / plant / head / count. */
-  .adm-dept-grid > .adm-cell-name { flex:1 1 100%; padding-right:44px; white-space:normal; }
-  .adm-dept-grid > .adm-cell-sub { flex:1 1 100%; }
-  .adm-dept-grid > .adm-head-cell { flex:1 1 auto; }
-  .adm-dept-grid > .adm-cell-n::after { content:" employees"; font-weight:400; color:var(--ink-3); font-size:12px; }
 
   /* Row menus: bottom sheet so they never clip or overflow sideways. */
   .adm-menu, .adm-menu.narrow { position:fixed; left:0; right:0; top:auto; bottom:0; z-index:80; min-width:0; padding:8px 8px calc(8px + var(--m-safe-b, 0px)); border-radius:14px 14px 0 0; max-height:70dvh; overflow-y:auto; box-shadow:0 -12px 40px rgba(0,0,0,.25); }
@@ -98,10 +94,7 @@
   .adm-tnode.lvl1 { padding-left:28px; }
   .adm-tnode.lvl2 { padding-left:44px; }
   .adm-tree-detail { padding:14px; }
-  .adm-detail-head { flex-wrap:wrap; }
-  .adm-dept-facts { grid-template-columns:1fr; }
   .adm-people { grid-template-columns:1fr; }
-  .adm-dept-item { min-height:48px; }
 
   /* Org chart pans inside its canvas. */
   .adm-chart-hint { display:none; }
@@ -141,4 +134,10 @@
   .adm-grid-row.adm-user-grid > .adm-row-chev { top:50%; right:10px; transform:translateY(-50%); }
   .adm-list-row { min-height:48px; }
   .adm-seg.adm-role-seg button { height:36px; }
+
+  /* Organization: stacked tree then inspector, 44px targets. */
+  .adm-tree-head .adm-search { flex:1 1 0; }
+  .adm-tree-head .adm-icon-btn { width:40px; height:40px; }
+  .adm-tnode.flat { min-height:52px; }
+  .adm-facts > div { flex:1 1 0; flex-direction:column; align-items:center; gap:0; }
 }

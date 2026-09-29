@@ -56,15 +56,16 @@ else if (Current is not null)
                 break;
             case "organization":
                 <div class="adm-seg adm-view-seg" role="tablist" aria-label="Organization view">
-                    <button type="button" role="tab" class="@(orgView == 0 ? "on" : "")" aria-selected="@(orgView == 0 ? "true" : "false")" @onclick="() => SetOrgView(0)">Tree</button>
-                    <button type="button" role="tab" class="@(orgView == 1 ? "on" : "")" aria-selected="@(orgView == 1 ? "true" : "false")" @onclick="() => SetOrgView(1)">Departments</button>
-                    <button type="button" role="tab" class="@(orgView == 2 ? "on" : "")" aria-selected="@(orgView == 2 ? "true" : "false")" @onclick="() => SetOrgView(2)">Chart</button>
+                    <button type="button" role="tab" class="@(orgView == 0 ? "on" : "")" aria-selected="@(orgView == 0 ? "true" : "false")" @onclick="() => orgView = 0">Tree</button>
+                    <button type="button" role="tab" class="@(orgView == 1 ? "on" : "")" aria-selected="@(orgView == 1 ? "true" : "false")" @onclick="() => orgView = 1">Chart</button>
                 </div>
-                @switch (orgView)
+                @if (orgView == 0)
                 {
-                    case 0: <AdminDirectoryTree @ref="treeRef" InitialDepartmentCode="@treeDept" /> break;
-                    case 1: <AdminOrganization @ref="orgRef" OnShowInTree="ShowInTree" /> break;
-                    default: <AdminOrgChart @ref="chartRef" /> break;
+                    <AdminDirectoryTree @ref="treeRef" />
+                }
+                else
+                {
+                    <AdminOrgChart @ref="chartRef" />
                 }
                 break;
             case "security":
@@ -108,12 +109,10 @@ else if (Current is not null)
     private bool loaded;
     private int orgView;
     private int secView;
-    private string? treeDept;
 
     private AdminHrisSync? hrisRef;
     private AdminSessions? sessionsRef;
     private AdminAuditTrail? auditRef;
-    private AdminOrganization? orgRef;
     private AdminDirectoryTree? treeRef;
     private AdminOrgChart? chartRef;
     private AdminUserManagement? userRef;
@@ -142,26 +141,11 @@ else if (Current is not null)
             Nav.NavigateTo("/admin/users", replace: true);
             return;
         }
-        if (next != Current) treeDept = null;
         Current = next;
-    }
-
-    private void SetOrgView(int v)
-    {
-        orgView = v;
-        treeDept = null;
-    }
-
-    private void ShowInTree(string departmentCode)
-    {
-        orgView = 0;
-        treeDept = departmentCode;
-        StateHasChanged();
     }
 
     private void OnEscape()
     {
-        orgRef?.CloseAllDrawers();
         treeRef?.CloseAllDrawers();
         chartRef?.CloseAllDrawers();
         userRef?.CloseDrawer();
@@ -172,7 +156,6 @@ else if (Current is not null)
         if (hrisRef is not null) await hrisRef.Reload();
         if (sessionsRef is not null) await sessionsRef.Reload();
         if (auditRef is not null) await auditRef.Reload();
-        if (orgRef is not null) await orgRef.Reload();
         if (treeRef is not null) await treeRef.Reload();
         if (chartRef is not null) await chartRef.Reload();
         if (userRef is not null) await userRef.Reload();

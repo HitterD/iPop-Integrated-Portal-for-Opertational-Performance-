@@ -1,18 +1,38 @@
-@* Directory tree — a read-only view of Plant ▸ Division ▸ Department built from the Organization
-   data. "Add unit" and edits open the same department modal the Organization tab uses.
-   (The old free-form DirGroup editor is retired from the UI; its rows are left untouched.) *@
+@* Organization — Plant ▸ Division ▸ Department as a tree, with an inspector for the selected unit.
+   This is the one place the structure is edited: heads, rename/move (department modal), hide, delete.
+   Plants and divisions themselves are added/renamed in the "Plants & divisions" modal. *@
 @inject AuthState Auth
 @inject IJSRuntime JS
-@inject NavigationManager Nav
+@inject ToastService Toasts
+@inject ConfirmService Confirm
+
+<p class="adm-summary">
+    @if (org is null)
+    {
+        <span class="skel-inline"></span>
+    }
+    else
+    {
+        <span>@AdminHumanize.Plural(org.ActivePlants.Count(), "plant")</span>
+        <span>@AdminHumanize.Plural(org.ActiveDivisions.Count(), "division")</span>
+        <span>@AdminHumanize.Plural(org.ActiveDepartments.Count(), "department")</span>
+        <span>@AdminHumanize.Plural(org.AssignedEmployees, "person", "people") placed</span>
+        @if (Vacant > 0)
+        {
+            <button type="button" class="adm-summary-warn soft" @onclick="ShowVacant">@AdminHumanize.Plural(Vacant, "department") without a head</button>
+        }
+    }
+</p>
 
 <div class="adm-tree-layout">
     <div class="adm-card adm-tree-card">
-        <div class="adm-card-head">
-            <span class="adm-card-title">PT Santos Jaya Abadi</span>
-            <span class="adm-tree-links">
-                <button type="button" class="adm-link" @onclick="ExpandAll">Expand all</button> ·
-                <button type="button" class="adm-link" @onclick="CollapseAll">Collapse</button>
-            </span>
+        <div class="adm-card-head adm-tree-head">
+            <div class="adm-search">
+                <i data-lucide="search"></i>
+                <input placeholder="Find a department" @bind="query" @bind:event="oninput" aria-label="Find a department" />
+            </div>
+            <button type="button" class="adm-icon-btn" title="Plants &amp; divisions" aria-label="Manage plants and divisions" @onclick='() => unitsKind = "plant"'><i data-lucide="factory"></i></button>
+            <button type="button" class="adm-icon-btn add" title="Add department" aria-label="Add department" @onclick="() => OpenCreate(null, null)"><i data-lucide="plus"></i></button>
         </div>
         @if (loadError)
         {
@@ -22,16 +42,46 @@
         {
             <div style="padding:14px"><div class="skel"></div></div>
         }
+        else if (!string.IsNullOrWhiteSpace(query) || vacantOnly)
+        {
+            @* Search (or "without a head") flattens the tree into matches with their path. *@
+            <div class="adm-tree" role="listbox" aria-label="Matching departments">
+                @if (vacantOnly)
+                {
+                    <div class="adm-tree-filter">Without a head <button type="button" class="adm-link" @onclick="() => vacantOnly = false">Show all</button></div>
+                }
+                @foreach (var d in Matches)
+                {
+                    var tKey = "t:" + d.Code;
+                    <button type="button" role="option" class="adm-tnode flat @(sel == tKey ? "on" : "")" aria-selected="@(sel == tKey ? "true" : "false")" @onclick="() => Select(tKey, false)">
+                        <i data-lucide="folder"></i>
+                        <span class="lbl">@d.Name<small>@Path(d)</small></span>
+                        <span class="adm-tn">@d.ActiveMemberCount</span>
+                    </button>
+                }
+                @if (!Matches.Any())
+                {
+                    <div class="adm-empty">No department matches “@query.Trim()”.</div>
+                }
+            </div>
+        }
         else
         {
-            <div class="adm-tree" role="tree">
+            <div class="adm-tree" role="tree" aria-label="Organization">
+                <div class="adm-tree-root">
+                    <span>PT Santos Jaya Abadi</span>
+                    <span class="adm-tree-links">
+                        <button type="button" class="adm-link" @onclick="ExpandAll">Expand all</button> ·
+                        <button type="button" class="adm-link" @onclick="CollapseAll">Collapse</button>
+                    </span>
+                </div>
                 @foreach (var plant in Tree)
                 {
                     var pKey = "p:" + plant.Code;
                     <button type="button" role="treeitem" class="adm-tnode lvl0 @(sel == pKey ? "on" : "")" aria-expanded="@(open.Contains(pKey) ? "true" : "false")"
                             @onclick="() => Select(pKey, true)">
                         <i data-lucide="@(open.Contains(pKey) ? "chevron-down" : "chevron-right")" class="adm-chev"></i>
-                        <i data-lucide="factory"></i><span class="lbl">@plant.Name</span><span class="adm-tn">@plant.Count</span>
+                        <i data-lucide="factory"></i><span class="lbl">@plant.Name</span><span class="adm-tn">@plant.Count.ToString("N0")</span>
                     </button>
                     @if (open.Contains(pKey))
                     {
@@ -41,7 +91,7 @@
                             <button type="button" role="treeitem" class="adm-tnode lvl1 @(sel == dKey ? "on" : "")" aria-expanded="@(open.Contains(dKey) ? "true" : "false")"
                                     @onclick="() => Select(dKey, true)">
                                 <i data-lucide="@(open.Contains(dKey) ? "chevron-down" : "chevron-right")" class="adm-chev"></i>
-                                <i data-lucide="layers"></i><span class="lbl">@div.Name</span><span class="adm-tn">@div.Count</span>
+                                <i data-lucide="layers"></i><span class="lbl">@div.Name</span><span class="adm-tn">@div.Count.ToString("N0")</span>
                             </button>
                             @if (open.Contains(dKey))
                             {
@@ -49,7 +99,9 @@
                                 {
                                     var tKey = "t:" + dept.Code;
                                     <button type="button" role="treeitem" class="adm-tnode lvl2 @(sel == tKey ? "on" : "")" @onclick="() => Select(tKey, false)">
-                                        <i data-lucide="folder"></i><span class="lbl">@dept.Name</span><span class="adm-tn">@dept.ActiveMemberCount</span>
+                                        <i data-lucide="folder"></i><span class="lbl">@dept.Name</span>
+                                        @if (dept.HeadNik is null) { <span class="adm-vacant-dot" title="No head"></span> }
+                                        <span class="adm-tn">@dept.ActiveMemberCount</span>
                                     </button>
                                 }
                             }
@@ -58,7 +110,24 @@
                 }
                 @if (Tree.Count == 0)
                 {
-                    <div class="adm-empty">No units yet. Build the structure in the Organization tab.</div>
+                    <div class="adm-empty">No departments yet. Add plants and divisions, then your first department.</div>
+                }
+                @if (Hidden.Count > 0)
+                {
+                    <button type="button" class="adm-tnode lvl0 muted" aria-expanded="@(open.Contains("hidden") ? "true" : "false")" @onclick='() => Toggle("hidden")'>
+                        <i data-lucide="@(open.Contains("hidden") ? "chevron-down" : "chevron-right")" class="adm-chev"></i>
+                        <i data-lucide="eye-off"></i><span class="lbl">Hidden</span><span class="adm-tn">@Hidden.Count</span>
+                    </button>
+                    @if (open.Contains("hidden"))
+                    {
+                        @foreach (var dept in Hidden)
+                        {
+                            var tKey = "t:" + dept.Code;
+                            <button type="button" role="treeitem" class="adm-tnode lvl1 muted @(sel == tKey ? "on" : "")" @onclick="() => Select(tKey, false)">
+                                <i data-lucide="folder"></i><span class="lbl">@dept.Name</span>
+                            </button>
+                        }
+                    }
                 }
             </div>
         }
@@ -68,47 +137,81 @@
         @if (Current is { } c)
         {
             <div class="adm-detail-head">
-                <div>
-                    <div class="adm-detail-title">@c.Label</div>
-                    <div class="adm-cell-sub">@c.Count.ToString("N0") employees · @c.Departments.Count departments</div>
+                <span class="adm-detail-ico @c.Kind"><i data-lucide="@(c.Kind switch { "plant" => "factory", "division" => "layers", _ => "folder" })"></i></span>
+                <div class="adm-detail-txt">
+                    <div class="adm-detail-title">@c.Label @if (c.Single is { IsActive: false }) { <em class="adm-tag">Hidden</em> }</div>
+                    <div class="adm-cell-sub">@KindLabel(c.Kind)@(c.Single is { } s0 && Path(s0) is { Length: > 0 } p0 ? " · " + p0 : "")</div>
                 </div>
-                @if (c.Single is { } one)
+            </div>
+
+            <div class="adm-facts">
+                <div><b>@c.Count.ToString("N0")</b><span>@(c.Count == 1 ? "person" : "people")</span></div>
+                @if (c.Single is null)
                 {
-                    <button type="button" class="adm-btn ghost" @onclick="() => editing = one"><i data-lucide="pencil"></i> Edit</button>
-                }
-                else
-                {
-                    <button type="button" class="adm-btn primary" @onclick="() => creating = true"><i data-lucide="plus"></i> Add unit</button>
+                    <div><b>@c.Departments.Count</b><span>@(c.Departments.Count == 1 ? "department" : "departments")</span></div>
+                    <div><b>@c.Departments.Count(d => d.HeadNik is null)</b><span>without a head</span></div>
                 }
             </div>
-            @if (c.Single is null)
+
+            @if (c.Kind != "plant")
             {
-                <div class="adm-dept-list">
-                    @foreach (var d in c.Departments)
-                    {
-                        <button type="button" class="adm-dept-item" @onclick='() => Select("t:" + d.Code, false)'>
-                            <i data-lucide="folder" class="adm-folder"></i>
-                            <span class="adm-dept-item-name">@d.Name
-                                <small>@(d.HeadName is null ? "No head assigned" : $"Head: {d.HeadName}")</small>
-                            </span>
-                            <span class="adm-cell-n">@d.ActiveMemberCount</span>
-                        </button>
-                    }
-                    @if (c.Departments.Count == 0)
-                    {
-                        <div class="adm-empty">No departments here yet.</div>
-                    }
+                <div class="adm-group-label">@(c.Kind == "division" ? "Division head" : "Head")</div>
+                <div class="adm-list adm-head-pick">
+                    <AppMemberPicker Value="@HeadOf(c)" ValueChanged="v => SetHead(c, v)" Placeholder="No head · search a name or NIK" />
+                </div>
+                @if (c.Kind == "division" && c.DivisionCode is null)
+                {
+                    <p class="adm-list-hint flat">These departments have no division, so there is no head to set.</p>
+                }
+            }
+
+            @if (c.Single is { } one)
+            {
+                <div class="adm-group-label">Department</div>
+                <div class="adm-list">
+                    <div class="adm-list-row"><span>Division</span><b>@(one.DepartmentName ?? "None")</b></div>
+                    <div class="adm-list-row"><span>Plant</span><b>@(one.SiteName ?? "None")</b></div>
+                    <button type="button" class="adm-list-row link" @onclick="() => editing = one"><span><i data-lucide="pencil"></i> Rename or move</span><i data-lucide="chevron-right"></i></button>
+                    <button type="button" class="adm-list-row link" @onclick="() => ToggleHidden(one)"><span><i data-lucide="@(one.IsActive ? "eye-off" : "eye")"></i> @(one.IsActive ? "Hide department" : "Show department")</span></button>
+                    <button type="button" class="adm-list-row link danger" @onclick="() => Delete(one)"><span><i data-lucide="trash-2"></i> Delete department</span></button>
                 </div>
             }
             else
             {
-                <div class="adm-dept-facts">
-                    <div><span>Division</span><b>@(c.Single.DepartmentName ?? "—")</b></div>
-                    <div><span>Plant</span><b>@(c.Single.SiteName ?? "—")</b></div>
-                    <div><span>Head</span><b>@(c.Single.HeadName ?? "Not assigned")</b></div>
+                <div class="adm-group-label">
+                    Departments
+                    <button type="button" class="adm-link" @onclick="() => OpenCreate(c.DivisionCode, c.PlantCode)">Add department here</button>
                 </div>
+                <div class="adm-list">
+                    @foreach (var d in c.Departments)
+                    {
+                        <button type="button" class="adm-list-row link plain" @key="d.Code" @onclick='() => Select("t:" + d.Code, false)'>
+                            <span class="adm-dev"><i data-lucide="folder"></i>
+                                <span><b>@d.Name</b><small>@(d.HeadName is null ? "No head" : "Head: " + d.HeadName)@(c.Kind == "plant" && d.DepartmentName is not null ? " · " + d.DepartmentName : "")</small></span>
+                            </span>
+                            <span class="adm-row-end">@d.ActiveMemberCount <i data-lucide="chevron-right"></i></span>
+                        </button>
+                    }
+                    @if (c.Departments.Count == 0)
+                    {
+                        <div class="adm-list-row muted">No departments here yet.</div>
+                    }
+                </div>
+                @if (c.Kind == "plant" || c.DivisionCode is not null)
+                {
+                    <button type="button" class="adm-link adm-under" @onclick='() => unitsKind = c.Kind == "plant" ? "plant" : "division"'>
+                        Rename or hide this @c.Kind in Plants &amp; divisions
+                    </button>
+                }
             }
-            <div class="adm-section-label">People in this unit @(people.Length < c.Count ? "(sample)" : "")</div>
+
+            <div class="adm-group-label">
+                People
+                @if (people.Length < c.Count && c.UsersFilter != "")
+                {
+                    <button type="button" class="adm-link" disabled="@loadingPeople" @onclick="() => LoadPeople(200)">Show all @c.Count.ToString("N0")</button>
+                }
+            </div>
             <div class="adm-people">
                 @foreach (var p in people)
                 {
@@ -119,12 +222,12 @@
                 }
                 @if (people.Length == 0)
                 {
-                    <div class="adm-cell-sub">No one assigned yet — set a person's department in the Users tab.</div>
+                    <div class="adm-cell-sub">@(c.UsersFilter == "" ? "Pick a department to see its people." : "No one here yet. Set a person's department from Users.")</div>
                 }
             </div>
-            @if (c.Count > people.Length)
+            @if (people.Length >= 200 && c.Count > people.Length)
             {
-                <button type="button" class="adm-link" style="margin-top:10px" @onclick='() => Nav.NavigateTo("/directory")'>Open in Directory →</button>
+                <p class="adm-list-hint flat">Showing the first 200. Use Users or Directory to search the rest.</p>
             }
         }
         else
@@ -134,18 +237,22 @@
     </div>
 </div>
 
-@if (org is not null && (creating || editing is not null) && Current is { } cur)
+@if (org is not null && (creating is not null || editing is not null))
 {
-    <AdminDeptModal Org="org" Existing="editing" PresetPlantCode="@cur.PlantCode" PresetDivisionCode="@cur.DivisionCode"
+    <AdminDeptModal Org="org" Existing="editing" PresetPlantCode="@creating?.Plant" PresetDivisionCode="@creating?.Division"
                     OnClose="CloseModal" OnSaved="OnSaved" />
+}
+@if (unitsKind is not null && org is not null)
+{
+    <AdminUnitsModal Org="org" InitialKind="@unitsKind" OnClose="() => unitsKind = null" OnChanged="Reload" />
 }
 
 @code {
-    /// Department code to select on first load (from Organization's "View in directory tree").
-    [Parameter] public string? InitialDepartmentCode { get; set; }
-
     private AdminOrgModel? org;
-    private bool loadError, creating;
+    private bool loadError, vacantOnly, loadingPeople;
+    private string query = "";
+    private string? unitsKind;
+    private (string? Division, string? Plant)? creating;
     private AdminDivisionRowDto? editing;
     private string? sel;
     private readonly HashSet<string> open = [];
@@ -154,24 +261,34 @@
 
     private sealed record PlantNode(string Code, string Name, int Count, List<DivisionNode> Divisions);
     private sealed record DivisionNode(string Code, string Name, int Count, List<AdminDivisionRowDto> Departments);
-    private sealed record Selection(string Label, int Count, List<AdminDivisionRowDto> Departments,
+    private sealed record Selection(string Kind, string Label, int Count, List<AdminDivisionRowDto> Departments,
         AdminDivisionRowDto? Single, string? PlantCode, string? DivisionCode, string UsersFilter);
 
     private Selection? Current => Resolve(sel);
 
+    private List<AdminDivisionRowDto> Hidden => (org?.Departments ?? []).Where(d => !d.IsActive).OrderBy(d => d.Name).ToList();
+    private int Vacant => org?.ActiveDepartments.Count(d => d.HeadNik is null) ?? 0;
+
+    private IEnumerable<AdminDivisionRowDto> Matches => (org?.Departments ?? [])
+        .Where(d => vacantOnly ? d.IsActive && d.HeadNik is null
+            : d.Name.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase)
+              || (d.DepartmentName?.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase) ?? false)
+              || (d.HeadName?.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase) ?? false))
+        .OrderByDescending(d => d.IsActive).ThenBy(d => d.Name).Take(200);
+
+    private static string KindLabel(string kind) => kind switch { "plant" => "Plant", "division" => "Division", _ => "Department" };
+
+    private static string Path(AdminDivisionRowDto d) =>
+        string.Join(" · ", new[] { d.SiteName, d.DepartmentName }.Where(x => !string.IsNullOrEmpty(x)));
+
     protected override async Task OnInitializedAsync()
     {
         await Reload();
-        if (InitialDepartmentCode is { } code && org?.Departments.FirstOrDefault(d => d.Code == code) is { } d)
-        {
-            open.Add("p:" + (d.SiteCode ?? ""));
-            open.Add($"d:{d.SiteCode ?? ""}|{d.DepartmentCode ?? ""}");
-            await Select("t:" + code, false);
-        }
-        else if (Tree.Count > 0)
+        if (Tree.Count > 0)
         {
             open.Add("p:" + Tree[0].Code);
-            await Select("p:" + Tree[0].Code, false);
+            sel = "p:" + Tree[0].Code;
+            await LoadPeople();
         }
     }
 
@@ -188,6 +305,7 @@
         StateHasChanged();
     }
 
+    /// Escape hook from the Admin page (modals close themselves via OverlayStack).
     public void CloseAllDrawers() => StateHasChanged();
 
     private static List<PlantNode> Build(AdminOrgModel m)
@@ -214,7 +332,7 @@
         {
             var p = Tree.FirstOrDefault(x => "p:" + x.Code == key);
             if (p is null) return null;
-            return new Selection(p.Name, p.Count, p.Divisions.SelectMany(d => d.Departments).ToList(), null,
+            return new Selection("plant", p.Name, p.Count, p.Divisions.SelectMany(d => d.Departments).ToList(), null,
                 p.Code == "" ? null : p.Code, null, p.Code == "" ? "" : $"siteCode={Uri.EscapeDataString(p.Code)}");
         }
         if (key.StartsWith("d:"))
@@ -223,36 +341,78 @@
             var p = Tree.FirstOrDefault(x => x.Code == parts[0]);
             var d = p?.Divisions.FirstOrDefault(x => x.Code == parts[1]);
             if (p is null || d is null) return null;
-            // Users only link to the Department entity (our "Division") and Site, so filter by both.
+            // Users link to the Department entity (our "Division") and Site, so filter by both.
             var filter = string.Join("&", new[]
             {
                 d.Code == "" ? null : $"departmentCode={Uri.EscapeDataString(d.Code)}",
                 p.Code == "" ? null : $"siteCode={Uri.EscapeDataString(p.Code)}"
             }.Where(x => x is not null));
-            return new Selection(d.Name, d.Count, d.Departments, null, p.Code == "" ? null : p.Code, d.Code == "" ? null : d.Code, filter);
+            return new Selection("division", d.Name, d.Count, d.Departments, null,
+                p.Code == "" ? null : p.Code, d.Code == "" ? null : d.Code, filter);
         }
         var dept = org.Departments.FirstOrDefault(x => "t:" + x.Code == key);
         return dept is null ? null
-            : new Selection(dept.Name, dept.ActiveMemberCount, [dept], dept, dept.SiteCode, dept.DepartmentCode,
+            : new Selection("department", dept.Name, dept.ActiveMemberCount, [dept], dept, dept.SiteCode, dept.DepartmentCode,
                 $"divisionCode={Uri.EscapeDataString(dept.Code)}");
+    }
+
+    private MemberSearchRow? HeadOf(Selection c)
+    {
+        if (c.Single is { HeadNik: { } nik } d) return new MemberSearchRow(nik, d.HeadName ?? nik, d.HeadPosition, null);
+        if (c.Kind == "division" && org?.Divisions.FirstOrDefault(x => x.Code == c.DivisionCode) is { HeadNik: { } hn } div)
+            return new MemberSearchRow(hn, div.HeadName ?? hn, div.HeadPosition, null);
+        return null;
+    }
+
+    private async Task SetHead(Selection c, MemberSearchRow? v)
+    {
+        HttpResponseMessage res;
+        if (c.Single is { } d)
+            res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org/divisions/{Uri.EscapeDataString(d.Code)}",
+                new UpsertDivisionRequest(d.Code, null, d.DepartmentCode, d.SiteCode, d.IsActive, v?.Nik ?? ""));
+        else if (c.DivisionCode is { } code)
+            res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org/departments/{Uri.EscapeDataString(code)}",
+                new { code, keepParent = true, headNik = v?.Nik ?? "" });
+        else return;
+        if (!res.IsSuccessStatusCode)
+        {
+            Toasts.Show(await AdminOrgModel.ErrorText(res, "Could not set the head."), ToastKind.Error);
+            return;
+        }
+        Toasts.Show(v is null ? $"{c.Label} has no head now" : $"{v.Name} now heads {c.Label}", ToastKind.Success);
+        await Reload();
+    }
+
+    private void Toggle(string key)
+    {
+        if (!open.Remove(key)) open.Add(key);
     }
 
     private async Task Select(string key, bool toggle)
     {
-        if (toggle)
-        {
-            if (sel == key && !open.Remove(key)) open.Add(key);
-            else if (sel != key) open.Add(key);
-        }
+        if (toggle && (sel == key || !open.Contains(key))) Toggle(key);
         sel = key;
         await LoadPeople();
+        // Stacked on phones: a department tap would otherwise update an inspector below the fold.
+        if (!toggle && await JS.InvokeAsync<bool>("ipop.mobile.isMobile"))
+            await JS.InvokeAsync<bool>("ipop.scrollIntoView", ".adm-tree-detail");
     }
 
-    private async Task LoadPeople()
+    private void ShowVacant()
+    {
+        query = "";
+        vacantOnly = true;
+    }
+
+    private async Task LoadPeople(int size = 12)
     {
         var c = Current;
         if (c is null || c.UsersFilter == "") { people = []; return; }
-        var res = await Auth.GetAsync<AdminUserPageDto>($"/api/admin/users?pageSize=8&active=true&{c.UsersFilter}");
+        loadingPeople = true;
+        var key = sel;
+        var res = await Auth.GetAsync<AdminUserPageDto>($"/api/admin/users?pageSize={size}&active=true&{c.UsersFilter}");
+        loadingPeople = false;
+        if (key != sel) return;
         people = res?.Items ?? [];
         StateHasChanged();
     }
@@ -268,9 +428,11 @@
 
     private void CollapseAll() => open.Clear();
 
+    private void OpenCreate(string? division, string? plant) => creating = (division, plant);
+
     private void CloseModal()
     {
-        creating = false;
+        creating = null;
         editing = null;
     }
 
@@ -278,6 +440,46 @@
     {
         CloseModal();
         await Reload();
+    }
+
+    private async Task ToggleHidden(AdminDivisionRowDto d)
+    {
+        if (d.IsActive && !await Confirm.AskAsync($"Hide “{d.Name}”?",
+                d.ActiveMemberCount > 0
+                    ? $"It disappears from the directory and its {AdminHumanize.Plural(d.ActiveMemberCount, "person", "people")} lose their department. You can show it again later."
+                    : "It disappears from the directory. You can show it again later.",
+                "Hide"))
+            return;
+        var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org/divisions/{Uri.EscapeDataString(d.Code)}",
+            new UpsertDivisionRequest(d.Code, null, d.DepartmentCode, d.SiteCode, !d.IsActive));
+        if (!res.IsSuccessStatusCode)
+        {
+            Toasts.Show(await AdminOrgModel.ErrorText(res, "Could not update the department."), ToastKind.Error);
+            return;
+        }
+        Toasts.Show(d.IsActive ? $"“{d.Name}” hidden" : $"“{d.Name}” is visible again", ToastKind.Success);
+        if (!d.IsActive) open.Add("p:" + (d.SiteCode ?? ""));
+        await Reload();
+    }
+
+    private async Task Delete(AdminDivisionRowDto d)
+    {
+        if (!await Confirm.AskAsync($"Delete “{d.Name}”?",
+                d.MemberCount > 0
+                    ? $"{AdminHumanize.Plural(d.MemberCount, "person", "people")} lose their department. This can't be undone. Hiding keeps the history."
+                    : "This can't be undone."))
+            return;
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/org/divisions/{Uri.EscapeDataString(d.Code)}", null);
+        if (!res.IsSuccessStatusCode)
+        {
+            Toasts.Show(await AdminOrgModel.ErrorText(res, "Could not delete the department."), ToastKind.Error);
+            return;
+        }
+        Toasts.Show($"“{d.Name}” deleted", ToastKind.Success);
+        var parent = $"d:{d.SiteCode ?? ""}|{d.DepartmentCode ?? ""}";
+        sel = parent;
+        await Reload();
+        if (Current is null) sel = Tree.Count > 0 ? "p:" + Tree[0].Code : null;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
