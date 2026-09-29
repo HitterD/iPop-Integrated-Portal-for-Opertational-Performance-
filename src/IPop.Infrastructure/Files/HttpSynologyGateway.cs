@@ -339,26 +339,24 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
 
     public async Task<SynoStorageInfo> GetStorageInfoAsync(string server, string sid, CancellationToken ct)
     {
-        try
+        var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Info&version=2&method=get&_sid={Uri.EscapeDataString(sid)}";
+        using var res = await http.GetAsync(url, ct);
+        var json = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode)
+            throw new SynoException($"Synology HTTP {(int)res.StatusCode}", authFailure: false);
+        var probe = System.Text.Json.JsonSerializer.Deserialize<ErrorProbe>(json, _jsonOpts);
+        if (probe is not null && !probe.Success)
         {
-            var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Info&version=2&method=get&_sid={Uri.EscapeDataString(sid)}";
-            using var res = await http.GetAsync(url, ct);
-            if (res.IsSuccessStatusCode)
-            {
-                var json = await res.Content.ReadAsStringAsync(ct);
-                var resp = System.Text.Json.JsonSerializer.Deserialize<StorageInfoResp>(json, _jsonOpts);
-                if (resp?.Data?.TotalBytes > 0)
-                {
-                    return new SynoStorageInfo(server, resp.Data.UsedBytes, resp.Data.TotalBytes, resp.Data.TotalBytes - resp.Data.UsedBytes);
-                }
-            }
+            var code = probe.Error?.Code;
+            if (code == 119) throw new SynoException("Session expired", code, sessionExpired: true);
+            throw new SynoException($"Synology error {code}", code);
         }
-        catch { }
-
-        // Sensible fallback for UI dashboard (SPJ 3.1 TB used of 8 TB)
-        long total = 8L * 1024 * 1024 * 1024 * 1024;
-        long used = (long)(3.1 * 1024 * 1024 * 1024 * 1024);
-        return new SynoStorageInfo(server, used, total, total - used);
+        // A NAS that doesn't report volume totals yields 0/0 — the page hides the meter rather
+        // than inventing a figure (it used to fall back to a made-up "3.1 TB of 8 TB").
+        var resp = System.Text.Json.JsonSerializer.Deserialize<StorageInfoResp>(json, _jsonOpts);
+        var total = resp?.Data?.TotalBytes ?? 0;
+        var used = resp?.Data?.UsedBytes ?? 0;
+        return new SynoStorageInfo(server, used, total, Math.Max(0, total - used));
     }
 
     private record AuthResp(bool Success, AuthData? Data, [property: JsonPropertyName("error")] ErrorObj? Error)

@@ -59,6 +59,7 @@ builder.Services.AddRateLimiter(o =>
         _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) }));
 });
 builder.Services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
+builder.Services.AddSingleton<SynologySessionCache>();
 builder.Services.AddScoped<IFileAccessService, FileAccessService>();
 builder.Services.AddScoped<ISettings, DbSettings>();
 

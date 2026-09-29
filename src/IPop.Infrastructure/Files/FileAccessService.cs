@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using IPop.Application.Files;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
@@ -14,15 +13,13 @@ public class FileAccessService(
     ISynologyGateway gateway,
     IDataProtectionProvider protector,
     IConfiguration cfg,
-    ILogger<FileAccessService> log) : IFileAccessService
+    ILogger<FileAccessService> log,
+    SynologySessionCache? sessions = null) : IFileAccessService
 {
     private const string Purpose = "synology-credential";
     private readonly IDataProtector _protector = protector.CreateProtector(Purpose);
-    private readonly ConcurrentDictionary<(Guid, string), string> _sids = new();
-
-    // The service-account session is keyed on its own, never mixed with per-user sessions.
-    private string? _serviceSid;
-    private readonly SemaphoreSlim _serviceLock = new(1, 1);
+    // Singleton in the app; tests that construct the service directly get a private one.
+    private readonly SynologySessionCache _sessions = sessions ?? new SynologySessionCache();
 
     public async Task<(bool Ok, string? Error)> SetCredentialAsync(Guid userId, string server, string username, string password, CancellationToken ct)
     {
@@ -42,7 +39,7 @@ public class FileAccessService(
             return (false, $"Could not reach the NAS ({ex.GetType().Name}: {ex.Message}).");
         }
 
-        _sids[(userId, server)] = sid;
+        _sessions.Set(userId, server, sid);
         var row = await db.SynologyCredentials.FirstOrDefaultAsync(x => x.UserId == userId && x.Server == server, ct);
         if (row is null)
         {
@@ -79,16 +76,12 @@ public class FileAccessService(
         server = NormalizeServer(server);
         var row = await db.SynologyCredentials.FirstOrDefaultAsync(x => x.UserId == userId && x.Server == server, ct);
         if (row is not null) db.SynologyCredentials.Remove(row);
-        _sids.TryRemove((userId, server), out _);
+        _sessions.Remove(userId, server);
         await db.SaveChangesAsync(ct);
     }
 
-    public void DropSession(Guid userId, string server) => _sids.TryRemove((userId, NormalizeServer(server)), out _);
-    public void DropAllSessions(Guid userId)
-    {
-        foreach (var k in _sids.Keys.Where(k => k.Item1 == userId).ToList())
-            _sids.TryRemove(k, out _);
-    }
+    public void DropSession(Guid userId, string server) => _sessions.Remove(userId, NormalizeServer(server));
+    public void DropAllSessions(Guid userId) => _sessions.RemoveAll(userId);
 
     public Task<IReadOnlyList<string>> ListSharesAsync(Guid userId, string server, CancellationToken ct)
         => WithSid(server, userId, (sid, c) => gateway.ListSharesAsync(server, sid, c), ct);
@@ -136,7 +129,7 @@ public class FileAccessService(
         try { await gateway.UploadAsync(server, sid, dir, filename, content, ct); }
         catch (SynoException ex) when (ex.IsSessionExpired)
         {
-            _sids.TryRemove((userId, server), out _);
+            _sessions.Remove(userId, server);
             var fresh = await GetSidAsync(userId, server, ct);
             await gateway.UploadAsync(server, fresh, dir, filename, content, ct);
         }
@@ -149,7 +142,7 @@ public class FileAccessService(
         try { return await action(sid, ct); }
         catch (SynoException ex) when (ex.IsSessionExpired)
         {
-            _sids.TryRemove((userId, server), out _);
+            _sessions.Remove(userId, server);
             var fresh = await GetSidAsync(userId, server, ct);
             return await action(fresh, ct);
         }
@@ -161,8 +154,20 @@ public class FileAccessService(
     private async Task<string> GetSidAsync(Guid userId, string server, CancellationToken ct)
     {
         server = NormalizeServer(server);
-        if (_sids.TryGetValue((userId, server), out var cached)) return cached;
+        if (_sessions.TryGet(userId, server, out var cached)) return cached;
 
+        var gate = _sessions.LockFor(userId, server);
+        await gate.WaitAsync(ct);
+        try
+        {
+            if (_sessions.TryGet(userId, server, out var raced)) return raced;
+            return await LoginAsync(userId, server, ct);
+        }
+        finally { gate.Release(); }
+    }
+
+    private async Task<string> LoginAsync(Guid userId, string server, CancellationToken ct)
+    {
         var row = await db.SynologyCredentials.AsNoTracking().FirstOrDefaultAsync(x => x.UserId == userId && x.Server == server, ct)
             ?? throw new SynoException("No Synology credential stored", authFailure: true);
         if (row.IsInvalid)
@@ -175,14 +180,14 @@ public class FileAccessService(
         try
         {
             var sid = await gateway.AuthAsync(server, row.Username, password, ct);
-            _sids[(userId, server)] = sid;
+            _sessions.Set(userId, server, sid);
             return sid;
         }
         catch (SynoException ex) when (ex.IsAuthFailure)
         {
             await db.SynologyCredentials.Where(x => x.UserId == userId && x.Server == server)
                 .ExecuteUpdateAsync(s => s.SetProperty(x => x.IsInvalid, true), ct);
-            _sids.TryRemove((userId, server), out _);
+            _sessions.Remove(userId, server);
             throw new SynoException("Stored credential rejected — re-enter it", authFailure: true);
         }
     }
@@ -225,7 +230,7 @@ public class FileAccessService(
         try { return await action(server, sid, ct); }
         catch (SynoException ex) when (ex.IsSessionExpired)
         {
-            _serviceSid = null;
+            _sessions.ServiceSid = null;
             var fresh = await GetServiceSidAsync(server, ct);
             return await action(server, fresh, ct);
         }
@@ -233,14 +238,14 @@ public class FileAccessService(
 
     private async Task<string> GetServiceSidAsync(string server, CancellationToken ct)
     {
-        if (_serviceSid is { } cached) return cached;
+        if (_sessions.ServiceSid is { } cached) return cached;
 
         // One login at a time: a burst of attachment reads on a cold service session would
         // otherwise open a Synology session per request.
-        await _serviceLock.WaitAsync(ct);
+        await _sessions.ServiceLock.WaitAsync(ct);
         try
         {
-            if (_serviceSid is { } raced) return raced;
+            if (_sessions.ServiceSid is { } raced) return raced;
 
             var user = ServiceUser;
             var pass = ServicePass;
@@ -250,7 +255,7 @@ public class FileAccessService(
             try
             {
                 var sid = await gateway.AuthAsync(server, user, pass, ct);
-                _serviceSid = sid;
+                _sessions.ServiceSid = sid;
                 return sid;
             }
             catch (SynoException ex) when (ex.IsAuthFailure)
@@ -259,7 +264,7 @@ public class FileAccessService(
                 throw;
             }
         }
-        finally { _serviceLock.Release(); }
+        finally { _sessions.ServiceLock.Release(); }
     }
 
     private static string NormalizeServer(string s) => s.Trim().ToLowerInvariant() switch

@@ -130,7 +130,7 @@
                         </button>
                     </div>
                     <div class="note"><i data-lucide="shield-check"></i><span>Same ACLs as File Explorer.</span></div>
-                    @if (storageInfo is not null)
+                    @if (storageInfo is { TotalBytes: > 0 } && storageInfo.Server == server)
                     {
                         <div style="margin-top:auto; padding:12px; background:var(--tray); border-radius:12px; font-size:12px">
                             <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-weight:600">
@@ -1118,13 +1118,10 @@
 
         try
         {
-            var cred = await Auth.GetAsync<CredentialStatusDto>($"/api/files/credential?server={server}");
-            if (pathAtStart != currentPath || serverAtStart != server) return; // superseded by navigation
-            credential = cred;
-            Layout.SetSubtitle(cred is { HasCredential: true, IsInvalid: false } ? $"{serverLabel} · Connected as {cred.Username}" : $"{serverLabel} · Not connected");
-            if (cred is null || !cred.HasCredential) { needsCredential = true; return; }
-            if (cred.IsInvalid) { needsCredential = true; showCred = true; return; }
-            needsCredential = false;
+            // The credential check, share list and folder listing go out together: awaiting the
+            // credential first put a whole round trip in front of every folder open. A missing
+            // credential makes the listing 401, which the credential result below explains.
+            var credTask = Auth.GetAsync<CredentialStatusDto>($"/api/files/credential?server={server}");
 
             Task<List<string>?>? sharesTask = null;
             if (shares is null)
@@ -1142,9 +1139,22 @@
                 itemsTask = Auth.GetAsync<List<SynoItemDto>>($"/api/files?server={server}&path={Uri.EscapeDataString(currentPath)}");
             }
 
-            _ = Auth.GetAsync<SynoStorageInfo>($"/api/files/storage?server={server}").ContinueWith(t => {
-                if (t.IsCompletedSuccessfully && t.Result is not null) { storageInfo = t.Result; _ = InvokeAsync(StateHasChanged); }
-            });
+            var cred = await credTask;
+            if (pathAtStart != currentPath || serverAtStart != server) return; // superseded by navigation
+            credential = cred;
+            Layout.SetSubtitle(cred is { HasCredential: true, IsInvalid: false } ? $"{serverLabel} · Connected as {cred.Username}" : $"{serverLabel} · Not connected");
+            if (cred is null || !cred.HasCredential) { needsCredential = true; return; }
+            if (cred.IsInvalid) { needsCredential = true; showCred = true; return; }
+            needsCredential = false;
+
+            // Volume usage barely moves: once per server, not on every folder click.
+            if (storageInfo?.Server != server)
+            {
+                var storageServer = server;
+                _ = Auth.GetAsync<SynoStorageInfo>($"/api/files/storage?server={storageServer}").ContinueWith(t => {
+                    if (t.IsCompletedSuccessfully && t.Result is not null && storageServer == server) { storageInfo = t.Result; _ = InvokeAsync(StateHasChanged); }
+                });
+            }
 
             if (sharesTask is not null)
             {

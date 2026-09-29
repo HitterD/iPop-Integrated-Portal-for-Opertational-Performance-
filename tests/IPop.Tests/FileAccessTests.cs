@@ -198,6 +198,55 @@ public class FileAccessTests
         Assert.Equal((byte)'F', pdfBytes[3]);
     }
 
+    [Fact]
+    public async Task SessionCache_OutlivesTheScopedService()
+    {
+        // FileAccessService is scoped: each request gets a new instance. The shared cache must
+        // carry the NAS session across them, or every folder open costs a fresh DSM login.
+        using var tdb = new TestDb();
+        var gw = new StubGateway();
+        var protector = new EphemeralDataProtectionProvider();
+        var cfg = new ConfigurationBuilder().Build();
+        var cache = new SynologySessionCache();
+        FileAccessService NewScope() => new(tdb.Db, gw, protector, cfg, NullLogger<FileAccessService>.Instance, cache);
+
+        var user = tdb.AddUser("90010");
+        await NewScope().SetCredentialAsync(user.Id, "spj", "erin", "pw", default);
+        var loginsAfterConnect = gw.AuthCalls;
+
+        await NewScope().ListFolderAsync(user.Id, "spj", "/share", default);
+        await NewScope().ListSharesAsync(user.Id, "spj", default);
+        await NewScope().GetStorageInfoAsync(user.Id, "spj", default);
+
+        Assert.Equal(loginsAfterConnect, gw.AuthCalls);
+    }
+
+    [Fact]
+    public async Task ConcurrentRequests_OnAColdSession_LogInOnce()
+    {
+        using var tdb = new TestDb();
+        var gw = new StubGateway();
+        var protector = new EphemeralDataProtectionProvider();
+        var cfg = new ConfigurationBuilder().Build();
+        var cache = new SynologySessionCache();
+        FileAccessService NewScope() => new(tdb.Db, gw, protector, cfg, NullLogger<FileAccessService>.Instance, cache);
+
+        var user = tdb.AddUser("90011");
+        await NewScope().SetCredentialAsync(user.Id, "spj", "fay", "pw", default);
+        cache.Remove(user.Id, "spj");
+        gw.AuthCalls = 0;
+        gw.OnAuth = async (_, u, _, _) => { await Task.Delay(50); return "sid-" + u; };
+
+        // The page fires listing and storage together; they must share one login.
+        // (The per-session lock also serialises the credential read on the shared test DbContext.)
+        await Task.WhenAll(
+            NewScope().ListFolderAsync(user.Id, "spj", "/share", default),
+            NewScope().ListSharesAsync(user.Id, "spj", default),
+            NewScope().GetStorageInfoAsync(user.Id, "spj", default));
+
+        Assert.Equal(1, gw.AuthCalls);
+    }
+
     private sealed class DelegateHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

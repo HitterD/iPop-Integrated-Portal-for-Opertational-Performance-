@@ -136,7 +136,8 @@ public class AuthWorkflow(IPopDbContext db, IPasswordHasher hasher, ITokenServic
         var session = await db.AuthSessions.FirstOrDefaultAsync(s => s.RefreshTokenHash == hash, ct);
         if (session is not null)
         {
-            await db.SynologyCredentials.Where(c => c.UserId == session.UserId).ExecuteDeleteAsync(ct);
+            // NAS credentials deliberately survive logout: wiping them made every sign-in start
+            // with four Files re-logins. They go away on Disconnect or when the NAS rejects them.
             await db.AuthSessions
                 .Where(s => s.RefreshTokenHash == hash && s.RevokedAt == null)
                 .ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, DateTime.UtcNow), ct);
