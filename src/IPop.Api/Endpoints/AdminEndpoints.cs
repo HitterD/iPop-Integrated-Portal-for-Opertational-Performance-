@@ -126,6 +126,22 @@ public static class AdminEndpoints
             return Results.Ok(items);
         });
 
+        // One person's live sessions, for the user inspector (the global list caps at 200).
+        g.MapGet("/{nik}/sessions", async (string nik, string? refreshToken, ITokenService tokens,
+            IPopDbContext db, CancellationToken ct) =>
+        {
+            var now = DateTime.UtcNow;
+            var currentHash = !string.IsNullOrWhiteSpace(refreshToken) ? tokens.HashRefreshToken(refreshToken) : null;
+            var items = await db.AuthSessions.AsNoTracking()
+                .Where(s => s.User.Nik == nik && s.RevokedAt == null && s.ExpiresAt > now)
+                .OrderByDescending(s => s.CreatedAt).Take(50)
+                .Select(s => new AdminSessionRow(s.Id, s.User.Nik, s.User.Name,
+                    s.DeviceFingerprint, s.IpAddress, s.CreatedAt, s.ExpiresAt,
+                    currentHash != null && s.RefreshTokenHash == currentHash))
+                .ToListAsync(ct);
+            return Results.Ok(items);
+        });
+
         g.MapPost("/sessions/revoke-others", async (RevokeOthersRequest? req, ITokenService tokens,
             IPopDbContext db, HttpContext http, CancellationToken ct) =>
         {

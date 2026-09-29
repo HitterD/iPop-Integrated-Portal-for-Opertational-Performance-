@@ -40,8 +40,11 @@ public sealed class AdminOrgModel
     public static string Initials(string? name)
     {
         if (string.IsNullOrWhiteSpace(name)) return "?";
-        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return (parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}" : name.Trim()[..Math.Min(2, name.Trim().Length)]).ToUpperInvariant();
+        // Letters only, so "'IZZUDDIN 'ULWAN" reads IU rather than two apostrophes.
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => new string(p.Where(char.IsLetterOrDigit).ToArray())).Where(p => p.Length > 0).ToArray();
+        if (parts.Length == 0) return "?";
+        return (parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}" : parts[0][..Math.Min(2, parts[0].Length)]).ToUpperInvariant();
     }
 
     public static async Task<string> ErrorText(HttpResponseMessage res, string fallback)

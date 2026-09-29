@@ -132,4 +132,13 @@
   .admin-v6 .drawer input { font-size:16px; min-height:44px; }
   .admin-v6 .drawer .app-select, .admin-v6 .drawer .app-select-trigger,
   .adm-modal .app-select, .adm-modal .app-select-trigger { width:100%; max-width:none; }
+
+  /* Users: summary wraps, toolbar actions share a row, static role badge stays compact. */
+  .adm-summary { margin:0 0 10px; font-size:12.5px; }
+  .adm-toolbar-actions { flex:1 1 100%; margin-left:0; }
+  .adm-toolbar-actions > .adm-btn { flex:1 1 0; justify-content:center; height:40px; }
+  .adm-role.static { height:24px; padding:0 9px; }
+  .adm-grid-row.adm-user-grid > .adm-row-chev { top:50%; right:10px; transform:translateY(-50%); }
+  .adm-list-row { min-height:48px; }
+  .adm-seg.adm-role-seg button { height:36px; }
 }

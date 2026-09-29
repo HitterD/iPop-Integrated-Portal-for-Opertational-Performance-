@@ -4,27 +4,30 @@ namespace IPop.Web.Services;
 
 public record AdminUserRowDto(string Nik, string Name, string Email, string? Position, string? Location,
     string? Department, string? DepartmentCode, string? Site, string? SiteCode,
-    bool IsActive, bool IsManuallyEdited, string[] Roles, string Status, DateTime UpdatedAt);
+    bool IsActive, bool IsManuallyEdited, string[] Roles, string Status, DateTime UpdatedAt,
+    string? Division = null, string? DivisionCode = null, bool IsLocked = false, DateTime? LastSignInAt = null);
 
 public record AdminUserPageDto(int Total, int Page, int PageSize, AdminUserRowDto[] Items);
-public record AdminUserStatsDto(int Total, int Active, int Admins, int Online);
+public record AdminUserStatsDto(int Total, int Active, int Admins, int Online, int Locked = 0, int Inactive = 0, int Hr = 0);
 
 public record OrgDepartmentRowDto(Guid Id, string Code, string Name, string? ParentCode, bool IsActive,
-    int MemberCount, int ActiveMemberCount);
+    int MemberCount, int ActiveMemberCount, string? HeadNik = null, string? HeadName = null, string? HeadPosition = null,
+    string? SiteCode = null, int SortOrder = 0);
 public record OrgSiteRowDto(Guid Id, string Code, string Name, bool IsActive,
     int MemberCount, int ActiveMemberCount);
 public record OrgViewDto(OrgDepartmentRowDto[] Departments, OrgSiteRowDto[] Sites);
 public record AdminDivisionRowDto(Guid Id, string Code, string Name, string? DepartmentCode,
     string? DepartmentName, string? SiteCode, string? SiteName, bool IsActive,
-    int MemberCount, int ActiveMemberCount);
+    int MemberCount, int ActiveMemberCount, string? HeadNik = null, string? HeadName = null, string? HeadPosition = null);
 public record UpsertDivisionRequest(string Code, string? Name, string? DepartmentCode,
-    string? SiteCode, bool? IsActive);
+    string? SiteCode, bool? IsActive, string? HeadNik = null);
 public record AdminSessionRowDto(Guid Id, string Nik, string Name, string? DeviceFingerprint,
     string? IpAddress, DateTime CreatedAt, DateTime ExpiresAt, bool IsCurrent = false);
 
 public record HrisSyncStatusDto(DateTime? LastSyncedAt, int EmployeeCount);
 public record AuditRowDto(Guid Id, string? ActorNik, string Action, string? Entity,
-    string? EntityId, string? DetailJson, string? IpAddress, DateTime CreatedAt);
+    string? EntityId, string? DetailJson, string? IpAddress, DateTime CreatedAt,
+    string? ActorName = null, string? EntityName = null);
 public record AuditPageDto(int Total, int Page, int PageSize, AuditRowDto[] Items);
 
 // Dir-group admin DTOs — mirror AdminEndpoints.cs

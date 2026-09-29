@@ -6,29 +6,42 @@
 @inject ToastService Toasts
 @inject ConfirmService Confirm
 
-<div class="adm-kpis">
-    <div class="adm-kpi"><span class="adm-kpi-ico green"><i data-lucide="user-check"></i></span><div><b>@((stats?.Active ?? 0).ToString("N0"))</b><span>Active</span></div></div>
-    <div class="adm-kpi"><span class="adm-kpi-ico red"><i data-lucide="lock"></i></span><div><b>@((stats?.Locked ?? 0).ToString("N0"))</b><span>Locked</span></div></div>
-    <div class="adm-kpi"><span class="adm-kpi-ico gray"><i data-lucide="user-x"></i></span><div><b>@((stats?.Inactive ?? 0).ToString("N0"))</b><span>Inactive</span></div></div>
-    <div class="adm-kpi"><span class="adm-kpi-ico blue"><i data-lucide="shield"></i></span><div><b>@((stats?.Admins ?? 0).ToString("N0"))</b><span>Admins</span></div></div>
-</div>
+@* Summary line replaces the KPI cards; the counts that matter are the filter chips below. *@
+<p class="adm-summary">
+    @if (stats is null)
+    {
+        <span class="skel-inline"></span>
+    }
+    else
+    {
+        <span>@AdminHumanize.Plural(stats.Active, "active person", "active people")</span>
+        <span>@AdminHumanize.Plural(stats.Admins, "admin")</span>
+        <span><i class="adm-dot on"></i>@stats.Online.ToString("N0") online now</span>
+        @if (stats.Locked > 0)
+        {
+            <button type="button" class="adm-summary-warn" @onclick='() => SetFilter("locked")'><i data-lucide="lock"></i> @AdminHumanize.Plural(stats.Locked, "locked account")</button>
+        }
+    }
+</p>
 
 <div class="adm-card">
-    <div class="adm-card-head">
+    <div class="adm-card-head adm-toolbar">
         <div class="adm-search">
             <i data-lucide="search"></i>
             <input placeholder="Search by name or NIK" @bind="query" @bind:event="oninput" @bind:after="OnUserSearchInput" aria-label="Search users" />
+        </div>
+        <div class="adm-toolbar-actions">
+            <button type="button" class="adm-btn ghost" @onclick="ExportUsersCsv" title="Download the current list as CSV"><i data-lucide="download"></i><span>Export</span></button>
+            <button type="button" class="adm-btn primary" @onclick="OpenCreate"><i data-lucide="user-plus"></i><span>Add user</span></button>
         </div>
         <div class="adm-chips" role="group" aria-label="Filter">
             @foreach (var (key, label, count) in Chips)
             {
                 <button type="button" class="adm-fchip @(filter == key ? "on" : "")" aria-pressed="@(filter == key ? "true" : "false")" @onclick="() => SetFilter(key)">
-                    @label <span>· @count.ToString("N0")</span>
+                    @label <span>@count.ToString("N0")</span>
                 </button>
             }
         </div>
-        <button type="button" class="adm-btn ghost" @onclick="ExportUsersCsv"><i data-lucide="download"></i> Export</button>
-        <button type="button" class="adm-btn primary" @onclick="OpenCreate"><i data-lucide="user-plus"></i> Add user</button>
     </div>
 
     @if (usersError is not null)
@@ -41,13 +54,15 @@
     }
     else
     {
-        <div class="adm-grid-head adm-user-grid">
-            <span>User</span><span>NIK</span><span>Role</span><span>Status</span><span>Last sign-in</span><span></span>
+        <div class="adm-grid-head adm-user-grid" aria-hidden="true">
+            <span>Name</span><span>Role</span><span>Status</span><span>Last sign-in</span><span></span>
         </div>
         @foreach (var u in userPage.Items)
         {
             var role = PrimaryRole(u.Roles);
-            <div class="adm-grid-row adm-user-grid @(u.IsActive ? "" : "off")" @key="u.Nik">
+            <div class="adm-grid-row adm-user-grid @(u.IsActive ? "" : "off") @(sel?.Nik == u.Nik ? "sel" : "")" @key="u.Nik"
+                 role="button" tabindex="0" aria-label="Open @u.Name"
+                 @onclick="() => OpenInspector(u)" @onkeydown="e => RowKey(e, u)">
                 <span class="adm-user-cell">
                     <span class="adm-av" style="background:@AvatarPalette.For(u.Nik)">@AdminOrgModel.Initials(u.Name)</span>
                     <span class="adm-user-txt">
@@ -55,105 +70,184 @@
                         <small>@UnitLine(u)</small>
                     </span>
                 </span>
-                <span class="adm-mono">@u.Nik</span>
-                <span class="adm-pop-anchor">
-                    <button type="button" class="adm-role @RoleClass(role)" aria-haspopup="menu" aria-label="Role: @role. Change role"
-                            @onclick="() => ToggleMenu(u.Nik, MenuKind.Role)">
-                        @role <i data-lucide="chevron-down"></i>
-                    </button>
-                    @if (menuNik == u.Nik && menuKind == MenuKind.Role)
-                    {
-                        <div class="adm-menu-scrim" @onclick="CloseMenu"></div>
-                        <div class="adm-menu narrow" role="menu">
-                            @foreach (var opt in RoleOptions)
-                            {
-                                var r = opt.Value;
-                                <button type="button" role="menuitemradio" aria-checked="@(role == r ? "true" : "false")" title="@RoleHint(r)" @onclick="() => SetRole(u, r)"><span class="adm-role @RoleClass(r)">@r</span> @if (role == r) { <i data-lucide="check" class="tick"></i> }</button>
-                            }
-                        </div>
-                    }
-                </span>
+                <span><span class="adm-role static @RoleClass(role)">@role</span></span>
                 <span><span class="adm-status @StatusClass(u)">@StatusLabel(u)</span></span>
-                <span class="adm-cell-sub" title="@(u.LastSignInAt?.ToLocalTime().ToString("dd MMM yyyy HH:mm"))">@Ago(u.LastSignInAt)</span>
-                <span class="adm-pop-anchor">
-                    <button type="button" class="adm-icon-btn" aria-haspopup="menu" aria-label="More actions for @u.Name" @onclick="() => ToggleMenu(u.Nik, MenuKind.More)"><i data-lucide="more-horizontal"></i></button>
-                    @if (menuNik == u.Nik && menuKind == MenuKind.More)
-                    {
-                        <div class="adm-menu-scrim" @onclick="CloseMenu"></div>
-                        <div class="adm-menu" role="menu">
-                            <button type="button" role="menuitem" @onclick="() => { CloseMenu(); OpenEdit(u); }"><i data-lucide="pencil"></i> Edit profile</button>
-                            <button type="button" role="menuitem" @onclick="() => ResetPassword(u)"><i data-lucide="key-round"></i> Reset password</button>
-                            <button type="button" role="menuitem" @onclick="() => SignOutAll(u)"><i data-lucide="log-out"></i> Sign out all sessions</button>
-                            <div class="adm-menu-sep"></div>
-                            <button type="button" role="menuitem" @onclick="() => ToggleLock(u)"><i data-lucide="@(u.IsLocked ? "unlock" : "lock")"></i> @(u.IsLocked ? "Unlock account" : "Lock account")</button>
-                            <button type="button" role="menuitem" class="@(u.IsActive ? "danger" : "")" @onclick="() => ToggleActive(u)"><i data-lucide="@(u.IsActive ? "user-x" : "user-check")"></i> @(u.IsActive ? "Deactivate" : "Activate")</button>
-                        </div>
-                    }
-                </span>
+                <span class="adm-cell-sub" title="@(u.LastSignInAt is null ? null : AdminHumanize.Local(u.LastSignInAt).ToString("d MMM yyyy HH:mm"))">@AdminHumanize.Ago(u.LastSignInAt)</span>
+                <span class="adm-row-chev"><i data-lucide="chevron-right"></i></span>
             </div>
         }
         @if (userPage.Items.Length == 0)
         {
-            <div class="adm-empty">No users match.</div>
+            <div class="adm-empty">
+                @(string.IsNullOrWhiteSpace(query) ? "Nobody here yet." : $"No one matches \"{query.Trim()}\".")
+                @if (filter != "all" || !string.IsNullOrWhiteSpace(query))
+                {
+                    <button type="button" class="adm-link" @onclick="ClearFilters">Clear filters</button>
+                }
+            </div>
         }
         @if (TotalPages > 1)
         {
             <div class="adm-pager">
                 <button type="button" class="adm-icon-btn" aria-label="Previous page" disabled="@(userPage.Page <= 1)" @onclick="() => ReloadUsers(userPage.Page - 1)"><i data-lucide="chevron-left"></i></button>
-                <span>Page @userPage.Page of @TotalPages · @userPage.Total.ToString("N0") users</span>
+                <span>Page @userPage.Page of @TotalPages · @AdminHumanize.Plural(userPage.Total, "person", "people")</span>
                 <button type="button" class="adm-icon-btn" aria-label="Next page" disabled="@(userPage.Page >= TotalPages)" @onclick="() => ReloadUsers(userPage.Page + 1)"><i data-lucide="chevron-right"></i></button>
             </div>
         }
     }
 </div>
 
-@* ---- user drawer: create / edit share one shell ---- *@
-<div class="backdrop @(drawer is not null ? "on" : "")" @onclick="CloseDrawer"></div>
-<div class="drawer @(drawer is not null ? "on" : "")" role="dialog" aria-label="User">
+@* ---- inspector: one drawer for view, edit and create ---- *@
+<div class="backdrop @(DrawerOpen ? "on" : "")" @onclick="CloseDrawer"></div>
+<div class="drawer adm-inspector @(DrawerOpen ? "on" : "")" role="dialog" aria-label="@(form?.IsCreate == true ? "Add user" : sel?.Name ?? "User")">
     <div class="tray">
         <div class="core">
             <div class="drawer-head">
-                @(drawer?.IsCreate == true ? "Add user" : $"Edit {drawer?.Name}")
+                @if (form is not null && !form.IsCreate)
+                {
+                    <button type="button" class="adm-back" @onclick="() => form = null"><i data-lucide="chevron-left"></i> @sel?.Name</button>
+                }
+                else
+                {
+                    <span>@(form?.IsCreate == true ? "Add user" : "User details")</span>
+                }
                 <button class="drawer-close" aria-label="Close" @onclick="CloseDrawer"><i data-lucide="x"></i></button>
             </div>
-            @if (drawer is not null)
+            @if (form is not null)
             {
                 <div class="drawer-body">
-                    @if (drawer.IsCreate)
+                    @if (form.IsCreate)
                     {
-                        <div class="field"><label>Employee ID (NIK)</label><input @bind="drawer.Nik" placeholder="e.g. 20140312" /></div>
+                        <div class="field"><label>Employee ID (NIK)</label><input @bind="form.Nik" placeholder="e.g. 20140312" /></div>
                     }
-                    <div class="field"><label>Name</label><input @bind="drawer.Name" /></div>
-                    <div class="field"><label>Email</label><input @bind="drawer.Email" /></div>
-                    <div class="field"><label>Position</label><input @bind="drawer.Position" /></div>
+                    <div class="field"><label>Name</label><input @bind="form.Name" /></div>
+                    <div class="field"><label>Email</label><input @bind="form.Email" type="email" /></div>
+                    <div class="field"><label>Position</label><input @bind="form.Position" /></div>
                     <div class="field">
                         <label>Department</label>
-                        <AppSelect Label="Department" Value="@drawer.UnitCode" ValueChanged='v => drawer.UnitCode = v ?? ""' Options="@UnitOptions" />
-                        <small class="adm-field-hint">Plant and division follow the department. Manage units in the Organization tab.</small>
+                        <AppSelect Label="Department" Value="@form.UnitCode" ValueChanged='v => form.UnitCode = v ?? ""' Options="@UnitOptions" />
+                        <small class="adm-field-hint">Plant and division follow the department.</small>
                     </div>
-                    @if (!drawer.IsCreate)
-                    {
-                        <div class="field">
-                            <label>Role</label>
-                            <AppSelect Label="Role" Value="@drawer.Role" ValueChanged='v => drawer.Role = v ?? "Employee"'
-                                       Options="@RoleOptions" />
-                            <small class="adm-field-hint">@RoleHint(drawer.Role)</small>
-                        </div>
-                    }
                     <div class="note">
                         <i data-lucide="info"></i>
-                        <span>@(drawer.IsCreate
-                            ? "The new user signs in with the default password 1234 and must set their own at first login."
-                            : "Profile edits are protected from the next HRIS sync.")</span>
+                        <span>@(form.IsCreate
+                            ? "They sign in with the default password 1234 and choose their own at first sign-in."
+                            : "Your edits are kept when HRIS syncs next.")</span>
                     </div>
-                    @if (drawer.Error is not null)
+                    @if (form.Error is not null)
                     {
-                        <div class="note err"><i data-lucide="alert-circle"></i><span>@drawer.Error</span></div>
+                        <div class="note err"><i data-lucide="alert-circle"></i><span>@form.Error</span></div>
                     }
-                    <button class="btn" style="margin-top:14px" disabled="@drawer.Saving" @onclick="SaveDrawer">
-                        @(drawer.Saving ? "Saving..." : drawer.IsCreate ? "Create user" : "Save changes")
+                    <button class="btn" style="margin-top:14px" disabled="@form.Saving" @onclick="SaveForm">
+                        @(form.Saving ? "Saving..." : form.IsCreate ? "Add user" : "Save changes")
                         <span class="orb"><i data-lucide="check"></i></span>
                     </button>
+                </div>
+            }
+            else if (sel is not null)
+            {
+                var role = PrimaryRole(sel.Roles);
+                <div class="drawer-body adm-insp">
+                    <div class="adm-insp-hero">
+                        <span class="adm-av xl" style="background:@AvatarPalette.For(sel.Nik)">@AdminOrgModel.Initials(sel.Name)</span>
+                        <b>@sel.Name</b>
+                        <small>@(sel.Position ?? "No position") · NIK <span class="adm-mono">@sel.Nik</span></small>
+                        <span class="adm-status @StatusClass(sel)">@StatusLabel(sel)</span>
+                    </div>
+
+                    <div class="adm-group-label">Profile</div>
+                    <div class="adm-list">
+                        <div class="adm-list-row"><span>Email</span><b>@(string.IsNullOrWhiteSpace(sel.Email) ? "—" : sel.Email)</b></div>
+                        <div class="adm-list-row"><span>Plant</span><b>@(sel.Site ?? "—")</b></div>
+                        <div class="adm-list-row"><span>Division</span><b>@(sel.Department ?? "—")</b></div>
+                        <div class="adm-list-row"><span>Department</span><b>@(sel.Division ?? "Not assigned")</b></div>
+                        <button type="button" class="adm-list-row link" @onclick="() => OpenEdit(sel)"><span><i data-lucide="pencil"></i> Edit profile</span><i data-lucide="chevron-right"></i></button>
+                    </div>
+
+                    <div class="adm-group-label">Role</div>
+                    <div class="adm-list">
+                        <div class="adm-seg adm-role-seg" role="radiogroup" aria-label="Role">
+                            @foreach (var r in PickerRoles.Reverse())
+                            {
+                                <button type="button" role="radio" class="@(role == r ? "on" : "")" aria-checked="@(role == r ? "true" : "false")"
+                                        disabled="@busy" @onclick="() => SetRole(sel, r)">@r</button>
+                            }
+                        </div>
+                        <p class="adm-list-hint">@RoleHint(role)</p>
+                    </div>
+
+                    <div class="adm-group-label">Access</div>
+                    <div class="adm-list">
+                        <button type="button" class="adm-list-row link" disabled="@busy" @onclick="() => ResetPassword(sel)"><span><i data-lucide="key-round"></i> Reset password</span></button>
+                        <button type="button" class="adm-list-row link" disabled="@busy" @onclick="() => ToggleLock(sel)"><span><i data-lucide="@(sel.IsLocked ? "unlock" : "lock")"></i> @(sel.IsLocked ? "Unlock account" : "Lock account")</span></button>
+                        <button type="button" class="adm-list-row link @(sel.IsActive ? "danger" : "")" disabled="@busy" @onclick="() => ToggleActive(sel)"><span><i data-lucide="@(sel.IsActive ? "user-x" : "user-check")"></i> @(sel.IsActive ? "Deactivate" : "Activate")</span></button>
+                    </div>
+
+                    <div class="adm-group-label">
+                        Signed in on
+                        @if (sessions is { Count: > 1 })
+                        {
+                            <button type="button" class="adm-link" disabled="@busy" @onclick="() => SignOutAll(sel)">Sign out everywhere</button>
+                        }
+                    </div>
+                    <div class="adm-list">
+                        @if (sessions is null)
+                        {
+                            <div class="adm-list-row"><div class="skel" style="width:100%"></div></div>
+                        }
+                        else if (sessions.Count == 0)
+                        {
+                            <div class="adm-list-row muted">Not signed in anywhere.</div>
+                        }
+                        else
+                        {
+                            @foreach (var s in sessions.Take(showAllSessions ? 50 : 4))
+                            {
+                                var dev = AdminHumanize.ParseDevice(s.DeviceFingerprint);
+                                <div class="adm-list-row" @key="s.Id">
+                                    <span class="adm-dev"><i data-lucide="@dev.Icon"></i>
+                                        <span><b>@dev.Label @if (dev.Automated) { <em class="adm-tag">Automated</em> }</b>
+                                        <small>@(s.IpAddress ?? "Unknown IP") · signed in @AdminHumanize.Ago(s.CreatedAt).ToLowerInvariant()</small></span>
+                                    </span>
+                                    @if (s.IsCurrent)
+                                    {
+                                        <em class="adm-tag ok">This device</em>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="adm-link danger" disabled="@busy" @onclick="() => RevokeSession(sel, s)">Sign out</button>
+                                    }
+                                </div>
+                            }
+                            @if (!showAllSessions && sessions.Count > 4)
+                            {
+                                <button type="button" class="adm-list-row link" @onclick="() => showAllSessions = true"><span>Show @(sessions.Count - 4) more</span></button>
+                            }
+                        }
+                    </div>
+
+                    <div class="adm-group-label">Recent activity</div>
+                    <div class="adm-list">
+                        @if (activity is null)
+                        {
+                            <div class="adm-list-row"><div class="skel" style="width:100%"></div></div>
+                        }
+                        else if (activity.Count == 0)
+                        {
+                            <div class="adm-list-row muted">No activity recorded.</div>
+                        }
+                        else
+                        {
+                            @foreach (var g in activity)
+                            {
+                                <div class="adm-list-row adm-act" @key="g.First.Id" title="@g.First.Action">
+                                    <i data-lucide="@AdminHumanize.KindOf(g.First.Action).Icon"></i>
+                                    <span>@AdminHumanize.Sentence(g.First)@(g.Count > 1 ? $" · {g.Count}×" : "")</span>
+                                    <small>@AdminHumanize.Ago(g.First.CreatedAt)</small>
+                                </div>
+                            }
+                        }
+                    </div>
                 </div>
             }
         </div>
@@ -161,22 +255,24 @@
 </div>
 
 @code {
-    private enum MenuKind { None, Role, More }
-
     private string query = "";
     private string filter = "all";
     private string? usersError;
     private AdminUserPageDto? userPage;
     private AdminUserStatsDto? stats;
     private AdminOrgModel? org;
-    private DrawerState? drawer;
-    private string? menuNik;
-    private MenuKind menuKind;
+    private AdminUserRowDto? sel;
+    private FormState? form;
+    private List<AdminSessionRowDto>? sessions;
+    private List<AdminHumanize.AuditGroup>? activity;
+    private bool showAllSessions;
+    private bool busy;
     private CancellationTokenSource? userSearchCts;
 
-    private static readonly List<AppOption> RoleOptions = [new("Employee", "Employee"), new("HR", "HR"), new("Admin", "Admin")];
     // Roles the picker owns; any other stored role (e.g. a custom RBAC role) is preserved on change.
     private static readonly string[] PickerRoles = ["Admin", "HR", "Employee"];
+
+    private bool DrawerOpen => sel is not null || form is not null;
 
     private static string PrimaryRole(IEnumerable<string> roles) =>
         roles.Contains("Admin") ? "Admin" : roles.Contains("HR") ? "HR" : "Employee";
@@ -186,22 +282,24 @@
     private static string RoleHint(string role) => role switch
     {
         "Admin" => "Full access, including Administration.",
-        "HR" => "Can post, edit, pin and delete News & Memos and track acknowledgements.",
-        _ => "Reads news and memos; no publishing rights."
+        "HR" => "Can publish, pin and delete News & Memos and track acknowledgements.",
+        _ => "Reads news and memos. No publishing or admin rights."
     };
 
     private static string[] WithRole(IEnumerable<string> current, string role) =>
         current.Where(r => !PickerRoles.Contains(r)).Append(role).Distinct().ToArray();
 
+    // Locked / Inactive only earn a chip when there is something to act on (or they're selected).
     private IEnumerable<(string Key, string Label, int Count)> Chips =>
-    [
-        ("all", "All", stats?.Total ?? 0),
-        ("admin", "Admin", stats?.Admins ?? 0),
-        ("hr", "HR", stats?.Hr ?? 0),
-        ("employee", "Employee", Math.Max(0, (stats?.Total ?? 0) - (stats?.Admins ?? 0) - (stats?.Hr ?? 0))),
-        ("locked", "Locked", stats?.Locked ?? 0),
-        ("inactive", "Inactive", stats?.Inactive ?? 0),
-    ];
+        new (string Key, string Label, int Count)[]
+        {
+            ("all", "Everyone", stats?.Total ?? 0),
+            ("admin", "Admins", stats?.Admins ?? 0),
+            ("hr", "HR", stats?.Hr ?? 0),
+            ("employee", "Employees", Math.Max(0, (stats?.Total ?? 0) - (stats?.Admins ?? 0) - (stats?.Hr ?? 0))),
+            ("locked", "Locked", stats?.Locked ?? 0),
+            ("inactive", "Inactive", stats?.Inactive ?? 0),
+        }.Where(c => c.Key is not ("locked" or "inactive") || c.Count > 0 || filter == c.Key);
 
     private List<AppOption> UnitOptions => [new("", "Not assigned"),
         .. (org?.ActiveDepartments ?? []).OrderBy(d => d.SiteName).ThenBy(d => d.DepartmentName).ThenBy(d => d.Name)
@@ -232,7 +330,14 @@
 
     private async Task SetFilter(string key)
     {
-        filter = key;
+        filter = filter == key && key != "all" ? "all" : key;
+        await ReloadUsers(1);
+    }
+
+    private async Task ClearFilters()
+    {
+        filter = "all";
+        query = "";
         await ReloadUsers(1);
     }
 
@@ -257,6 +362,8 @@
         if (key != query + filter) return;
         userPage = res ?? userPage;
         usersError = res is null ? "Could not load users." : null;
+        // Keep the open inspector in step with the refreshed row.
+        if (sel is not null && userPage?.Items.FirstOrDefault(x => x.Nik == sel.Nik) is { } fresh) sel = fresh;
         StateHasChanged();
     }
 
@@ -270,102 +377,144 @@
     {
         var parts = new[] { u.Position, u.Division ?? u.Department }.Where(x => !string.IsNullOrWhiteSpace(x));
         var s = string.Join(" · ", parts);
-        return s.Length > 0 ? s : u.Email;
+        return s.Length > 0 ? s : u.Nik;
     }
 
     private static string StatusLabel(AdminUserRowDto u) => !u.IsActive ? "Inactive" : u.IsLocked ? "Locked" : "Active";
     private static string StatusClass(AdminUserRowDto u) => !u.IsActive ? "inactive" : u.IsLocked ? "locked" : "active";
 
-    private static string Ago(DateTime? at)
+    // ---- inspector ----
+
+    private async Task RowKey(KeyboardEventArgs e, AdminUserRowDto u)
     {
-        if (at is null) return "Never";
-        var d = DateTime.UtcNow - DateTime.SpecifyKind(at.Value, DateTimeKind.Utc);
-        if (d.TotalMinutes < 1) return "Just now";
-        if (d.TotalHours < 1) return $"{(int)d.TotalMinutes} min ago";
-        if (d.TotalDays < 1) return $"{(int)d.TotalHours} h ago";
-        if (d.TotalDays < 2) return "Yesterday";
-        if (d.TotalDays < 30) return $"{(int)d.TotalDays} days ago";
-        return at.Value.ToLocalTime().ToString("dd MMM yyyy");
+        if (e.Key is "Enter" or " ") await OpenInspector(u);
     }
 
-    private void ToggleMenu(string nik, MenuKind kind)
+    private async Task OpenInspector(AdminUserRowDto u)
     {
-        if (menuNik == nik && menuKind == kind) { CloseMenu(); return; }
-        menuNik = nik;
-        menuKind = kind;
+        sel = u;
+        form = null;
+        sessions = null;
+        activity = null;
+        showAllSessions = false;
+        StateHasChanged();
+        await Task.WhenAll(LoadSessions(u.Nik), LoadActivity(u.Nik));
     }
 
-    private void CloseMenu()
+    private async Task LoadSessions(string nik)
     {
-        menuNik = null;
-        menuKind = MenuKind.None;
+        var refresh = await JS.InvokeAsync<string?>("localStorage.getItem", "ipop.refresh");
+        var res = await Auth.GetAsync<List<AdminSessionRowDto>>($"/api/admin/users/{Uri.EscapeDataString(nik)}/sessions"
+            + (string.IsNullOrEmpty(refresh) ? "" : $"?refreshToken={Uri.EscapeDataString(refresh)}"));
+        if (sel?.Nik != nik) return;
+        sessions = res ?? [];
+        StateHasChanged();
+    }
+
+    private async Task LoadActivity(string nik)
+    {
+        var res = await Auth.GetAsync<AuditPageDto>($"/api/admin/audit?user={Uri.EscapeDataString(nik)}&pageSize=40");
+        if (sel?.Nik != nik) return;
+        activity = AdminHumanize.Collapse(res?.Items ?? []).Take(8).ToList();
+        StateHasChanged();
     }
 
     private async Task SetRole(AdminUserRowDto u, string role)
     {
-        CloseMenu();
-        if (PrimaryRole(u.Roles) == role) return;
+        var current = PrimaryRole(u.Roles);
+        if (current == role) return;
+        var body = role == "Admin"
+            ? $"{u.Name} gets full access, including Administration."
+            : current == "Admin"
+                ? $"{u.Name} loses access to Administration. {RoleHint(role)}"
+                : RoleHint(role);
+        if (!await Confirm.AskAsync($"Make {u.Name} {(role == "Employee" ? "an Employee" : role == "Admin" ? "an Admin" : "HR")}?", body,
+                "Change role", danger: current == "Admin"))
+            return;
+        busy = true;
         var roles = WithRole(u.Roles, role);
         var res = await Auth.SendAsync(HttpMethod.Put, $"/api/admin/users/{Uri.EscapeDataString(u.Nik)}/roles", new { roles });
+        busy = false;
         if (!res.IsSuccessStatusCode)
         {
             Toasts.Show(await AdminOrgModel.ErrorText(res, "Could not change the role."), ToastKind.Error);
             return;
         }
-        Toasts.Show($"{u.Name} is now {(role == "Employee" ? "an Employee" : role == "Admin" ? "an Admin" : "HR")}", ToastKind.Success);
-        await Refresh();
+        Toasts.Show($"{u.Name} is now {role}", ToastKind.Success);
+        await AfterChange(u.Nik);
     }
 
     private async Task ResetPassword(AdminUserRowDto u)
     {
-        CloseMenu();
         if (!await Confirm.AskAsync($"Reset {u.Name}'s password?",
-                "The password becomes 1234 and they are signed out everywhere. They must choose a new one at next sign-in.",
+                "Their password goes back to 1234 and they're signed out everywhere. They choose a new one at next sign-in.",
                 "Reset password"))
             return;
-        await Run(u, "reset-password", $"Password for {u.Name} reset to 1234");
+        await Run(u, "reset-password", $"{u.Name}'s password was reset to 1234");
     }
 
     private async Task SignOutAll(AdminUserRowDto u)
     {
-        CloseMenu();
-        if (!await Confirm.AskAsync($"Sign {u.Name} out everywhere?", "All their active sessions end now. They can sign in again.", "Sign out", false))
+        if (!await Confirm.AskAsync($"Sign {u.Name} out everywhere?", "All their sessions end now. They can sign in again.", "Sign out", false))
             return;
-        await Run(u, "sessions/revoke-all", $"{u.Name} was signed out of all sessions");
+        await Run(u, "sessions/revoke-all", $"{u.Name} was signed out everywhere");
+    }
+
+    private async Task RevokeSession(AdminUserRowDto u, AdminSessionRowDto s)
+    {
+        var dev = AdminHumanize.ParseDevice(s.DeviceFingerprint);
+        if (!await Confirm.AskAsync($"Sign out {dev.Label}?", $"{u.Name} will need to sign in again on that device.", "Sign out", false))
+            return;
+        busy = true;
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/admin/users/sessions/{s.Id}/revoke");
+        busy = false;
+        if (!res.IsSuccessStatusCode)
+        {
+            Toasts.Show("Could not end that session.", ToastKind.Error);
+            return;
+        }
+        Toasts.Show("Session ended", ToastKind.Success);
+        await LoadSessions(u.Nik);
     }
 
     private async Task ToggleLock(AdminUserRowDto u)
     {
-        CloseMenu();
         if (u.IsLocked)
         {
             await Run(u, "unlock", $"{u.Name}'s account unlocked");
             return;
         }
-        if (!await Confirm.AskAsync($"Lock {u.Name}'s account?", "They will be signed out and cannot sign in until unlocked.", "Lock"))
+        if (!await Confirm.AskAsync($"Lock {u.Name}'s account?", "They're signed out and can't sign in until you unlock them.", "Lock"))
             return;
         await Run(u, "lock", $"{u.Name}'s account locked");
     }
 
     private async Task ToggleActive(AdminUserRowDto u)
     {
-        CloseMenu();
         if (u.IsActive && !await Confirm.AskAsync($"Deactivate {u.Name}?",
-                "They are signed out, hidden from the directory, and cannot sign in. You can activate them again later.", "Deactivate"))
+                "They're signed out, hidden from the directory, and can't sign in. You can activate them again later.", "Deactivate"))
             return;
         await Run(u, u.IsActive ? "deactivate" : "reactivate", u.IsActive ? $"{u.Name} deactivated" : $"{u.Name} activated");
     }
 
     private async Task Run(AdminUserRowDto u, string action, string ok)
     {
+        busy = true;
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/admin/users/{Uri.EscapeDataString(u.Nik)}/{action}");
+        busy = false;
         if (!res.IsSuccessStatusCode)
         {
-            Toasts.Show(await AdminOrgModel.ErrorText(res, "The action failed. Try again."), ToastKind.Error);
+            Toasts.Show(await AdminOrgModel.ErrorText(res, "That didn't work. Try again."), ToastKind.Error);
             return;
         }
         Toasts.Show(ok, ToastKind.Success);
+        await AfterChange(u.Nik);
+    }
+
+    private async Task AfterChange(string nik)
+    {
         await Refresh();
+        if (sel?.Nik == nik) await Task.WhenAll(LoadSessions(nik), LoadActivity(nik));
     }
 
     private async Task ExportUsersCsv()
@@ -391,81 +540,80 @@
         }
     }
 
-    private void OpenCreate() => drawer = new DrawerState { IsCreate = true, UnitCode = "" };
+    // ---- create / edit form ----
 
-    private void OpenEdit(AdminUserRowDto u) => drawer = new DrawerState
+    private void OpenCreate()
+    {
+        sel = null;
+        form = new FormState { IsCreate = true, UnitCode = "" };
+    }
+
+    private void OpenEdit(AdminUserRowDto u) => form = new FormState
     {
         Nik = u.Nik, Name = u.Name, Email = u.Email, Position = u.Position ?? "",
         DepartmentCode = u.DepartmentCode, SiteCode = u.SiteCode,
         UnitCode = u.DivisionCode ?? "", OriginalUnitCode = u.DivisionCode ?? "",
-        Role = PrimaryRole(u.Roles), Roles = u.Roles,
     };
 
-    /// Escape hook from the Admin page.
+    /// Escape hook from the Admin page: step back from the form first, then close.
     public void CloseDrawer()
     {
-        drawer = null;
-        CloseMenu();
+        if (form is { IsCreate: false } && sel is not null) form = null;
+        else
+        {
+            form = null;
+            sel = null;
+        }
         StateHasChanged();
     }
 
-    private async Task SaveDrawer()
+    private async Task SaveForm()
     {
-        if (drawer is null) return;
-        drawer.Saving = true;
-        drawer.Error = null;
+        if (form is null) return;
+        form.Saving = true;
+        form.Error = null;
 
         // The chosen department carries its plant and division; otherwise keep the user's current ones.
-        var unit = org?.Departments.FirstOrDefault(d => d.Code == drawer.UnitCode);
-        var deptCode = unit is not null ? unit.DepartmentCode : drawer.DepartmentCode;
-        var siteCode = unit is not null ? unit.SiteCode : drawer.SiteCode;
+        var unit = org?.Departments.FirstOrDefault(d => d.Code == form.UnitCode);
+        var deptCode = unit is not null ? unit.DepartmentCode : form.DepartmentCode;
+        var siteCode = unit is not null ? unit.SiteCode : form.SiteCode;
 
-        var res = drawer.IsCreate
+        var res = form.IsCreate
             ? await Auth.SendAsync(HttpMethod.Post, "/api/admin/users",
-                new { nik = drawer.Nik, name = drawer.Name, email = drawer.Email, position = drawer.Position,
+                new { nik = form.Nik, name = form.Name, email = form.Email, position = form.Position,
                     location = (string?)null, departmentCode = deptCode, siteCode })
-            : await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/users/{Uri.EscapeDataString(drawer.Nik)}",
-                new { name = drawer.Name, email = drawer.Email, position = drawer.Position,
+            : await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/users/{Uri.EscapeDataString(form.Nik)}",
+                new { name = form.Name, email = form.Email, position = form.Position,
                     location = (string?)null, departmentCode = deptCode, siteCode });
         if (!res.IsSuccessStatusCode)
         {
-            drawer.Error = await AdminOrgModel.ErrorText(res, "Save failed — check the fields.");
-            drawer.Saving = false;
+            form.Error = await AdminOrgModel.ErrorText(res, "Couldn't save. Check the fields.");
+            form.Saving = false;
             return;
         }
 
-        var nik = drawer.Nik.Trim();
-        if (drawer.UnitCode != drawer.OriginalUnitCode)
+        var nik = form.Nik.Trim();
+        if (form.UnitCode != form.OriginalUnitCode)
         {
-            var unitRes = string.IsNullOrEmpty(drawer.UnitCode)
+            var unitRes = string.IsNullOrEmpty(form.UnitCode)
                 ? await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/org/users/{Uri.EscapeDataString(nik)}/division", null)
                 : await Auth.SendAsync(HttpMethod.Put, $"/api/admin/org/users/{Uri.EscapeDataString(nik)}/division",
-                    new { divisionCode = drawer.UnitCode });
+                    new { divisionCode = form.UnitCode });
             if (!unitRes.IsSuccessStatusCode)
             {
-                drawer.Error = "User saved, but the department could not be set.";
-                drawer.Saving = false;
+                form.Error = "Saved, but the department couldn't be set.";
+                form.Saving = false;
                 await Refresh();
                 return;
             }
         }
 
-        if (!drawer.IsCreate && drawer.Role != PrimaryRole(drawer.Roles))
-        {
-            var roles = WithRole(drawer.Roles, drawer.Role);
-            var roleRes = await Auth.SendAsync(HttpMethod.Put, $"/api/admin/users/{Uri.EscapeDataString(nik)}/roles", new { roles });
-            if (!roleRes.IsSuccessStatusCode)
-            {
-                drawer.Error = await AdminOrgModel.ErrorText(roleRes, "User saved, but the role change failed.");
-                drawer.Saving = false;
-                await Refresh();
-                return;
-            }
-        }
-
-        Toasts.Show(drawer.IsCreate ? $"{drawer.Name} added" : "Changes saved", ToastKind.Success);
-        drawer = null;
+        var created = form.IsCreate;
+        Toasts.Show(created ? $"{form.Name} added" : "Changes saved", ToastKind.Success);
+        form = null;
         await Refresh();
+        if (created && userPage?.Items.FirstOrDefault(x => x.Nik == nik) is { } row) await OpenInspector(row);
+        else if (sel is not null) await LoadActivity(sel.Nik);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
@@ -476,13 +624,11 @@
         userSearchCts?.Dispose();
     }
 
-    private sealed class DrawerState
+    private sealed class FormState
     {
         public bool IsCreate, Saving;
-        public string Role = "Employee";
         public string Nik = "", Name = "", Email = "", Position = "";
         public string? DepartmentCode, SiteCode, Error;
         public string UnitCode = "", OriginalUnitCode = "";
-        public string[] Roles = [];
     }
 }
