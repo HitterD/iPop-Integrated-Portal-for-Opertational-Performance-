@@ -2,9 +2,11 @@ using System.IO.Compression;
 using System.Text.Json;
 using IPop.Api.Rbac;
 using IPop.Application.Files;
+using IPop.Application.Realtime;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Files;
 using IPop.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 
 namespace IPop.Api.Endpoints;
@@ -152,10 +154,11 @@ public static class FileEndpoints
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
         });
 
-        g.MapPost("/upload", async (HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        g.MapPost("/upload", async (HttpContext http, IFileAccessService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await UserIdAsync(http);
             if (userId is null) return Results.Unauthorized();
+            http.Features.Set<IFormFeature>(new FormFeature(http.Request, new FormOptions { MultipartBodyLengthLimit = MaxUploadRequestBytes }));
             var form = await http.Request.ReadFormAsync(ct);
             var server = form["server"].ToString();
             var dir = form["path"].ToString();
@@ -167,14 +170,15 @@ public static class FileEndpoints
                 await using var s = file.OpenReadStream();
                 await svc.UploadAsync(userId.Value, server.Trim(), dir.Trim(), file.FileName, s, ct);
                 await Audit(http, db, "files.upload", $"{server.Trim()}:{dir.Trim()}/{file.FileName}", ct);
+                await FilesRealtime.PushAsync(realtime, server, [dir]);
                 return Results.Ok();
             }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
-        });
+        }).WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxUploadRequestBytes));
 
         // ── Rename ─────────────────────────────────────────────────────────────
-        g.MapPost("/rename", async (RenameFileRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        g.MapPost("/rename", async (RenameFileRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await UserIdAsync(http);
             if (userId is null) return Results.Unauthorized();
@@ -187,6 +191,7 @@ public static class FileEndpoints
             {
                 await svc.RenameAsync(userId.Value, req.Server.Trim(), req.Path.Trim(), req.Name.Trim(), ct);
                 await Audit(http, db, "files.rename", $"{req.Server.Trim()}:{req.Path.Trim()} -> {req.Name.Trim()}", ct);
+                await FilesRealtime.PushAsync(realtime, req.Server, [FilesRealtime.ParentDir(req.Path)]);
                 return Results.Ok();
             }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
@@ -194,7 +199,7 @@ public static class FileEndpoints
         });
 
         // ── Create Folder ──────────────────────────────────────────────────────
-        g.MapPost("/folder", async (CreateFolderRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        g.MapPost("/folder", async (CreateFolderRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await UserIdAsync(http);
             if (userId is null) return Results.Unauthorized();
@@ -207,6 +212,7 @@ public static class FileEndpoints
             {
                 await svc.CreateFolderAsync(userId.Value, req.Server.Trim(), req.Path.Trim(), req.Name.Trim(), ct);
                 await Audit(http, db, "files.folder.create", $"{req.Server.Trim()}:{req.Path.Trim()}/{req.Name.Trim()}", ct);
+                await FilesRealtime.PushAsync(realtime, req.Server, [req.Path]);
                 return Results.Ok();
             }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
@@ -214,7 +220,7 @@ public static class FileEndpoints
         });
 
         // ── Delete ─────────────────────────────────────────────────────────────
-        g.MapPost("/delete", async (DeleteFilesRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        g.MapPost("/delete", async (DeleteFilesRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await UserIdAsync(http);
             if (userId is null) return Results.Unauthorized();
@@ -228,6 +234,7 @@ public static class FileEndpoints
                     await svc.DeleteAsync(userId.Value, req.Server.Trim(), p.Trim(), ct);
                     await Audit(http, db, "files.delete", $"{req.Server.Trim()}:{p.Trim()}", ct);
                 }
+                await FilesRealtime.PushAsync(realtime, req.Server, req.Paths.Select(FilesRealtime.ParentDir));
                 return Results.Ok();
             }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
@@ -235,7 +242,7 @@ public static class FileEndpoints
         });
 
         // ── Move (Same server) ─────────────────────────────────────────────────
-        g.MapPost("/move", async (MoveFilesRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        g.MapPost("/move", async (MoveFilesRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await UserIdAsync(http);
             if (userId is null) return Results.Unauthorized();
@@ -246,6 +253,7 @@ public static class FileEndpoints
             {
                 await svc.CopyMoveAsync(userId.Value, req.Server.Trim(), req.Paths, req.DestDir.Trim(), removeSrc: true, req.Overwrite ?? false, ct);
                 await Audit(http, db, "files.move", $"{req.Server.Trim()}:{string.Join(",", req.Paths)} -> {req.DestDir.Trim()}", ct);
+                await FilesRealtime.PushAsync(realtime, req.Server, req.Paths.Select(FilesRealtime.ParentDir).Append(req.DestDir));
                 return Results.Ok();
             }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
@@ -253,7 +261,7 @@ public static class FileEndpoints
         });
 
         // ── Copy (Same server) ─────────────────────────────────────────────────
-        g.MapPost("/copy", async (CopyFilesRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        g.MapPost("/copy", async (CopyFilesRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await UserIdAsync(http);
             if (userId is null) return Results.Unauthorized();
@@ -264,6 +272,7 @@ public static class FileEndpoints
             {
                 await svc.CopyMoveAsync(userId.Value, req.Server.Trim(), req.Paths, req.DestDir.Trim(), removeSrc: false, req.Overwrite ?? false, ct);
                 await Audit(http, db, "files.copy", $"{req.Server.Trim()}:{string.Join(",", req.Paths)} -> {req.DestDir.Trim()}", ct);
+                await FilesRealtime.PushAsync(realtime, req.Server, [req.DestDir]);
                 return Results.Ok();
             }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
@@ -347,18 +356,14 @@ public static class FileEndpoints
                 if (targetPath == "/")
                 {
                     var shares = await svc.ListSharesAsync(userId.Value, server, ct);
-                    var items = new List<SynoItem>();
-                    foreach (var sh in shares)
+                    // The share listing above has already opened the NAS session, so these run
+                    // side by side on it instead of one share after another.
+                    var bins = await Task.WhenAll(shares.Select(async sh =>
                     {
-                        try
-                        {
-                            var recyclePath = $"{sh.TrimEnd('/')}/#recycle";
-                            var sub = await svc.ListFolderAsync(userId.Value, server, recyclePath, ct);
-                            items.AddRange(sub);
-                        }
-                        catch { /* share might not have #recycle */ }
-                    }
-                    return Results.Ok(items);
+                        try { return await svc.ListFolderAsync(userId.Value, server, $"{sh.TrimEnd('/')}/#recycle", ct); }
+                        catch (SynoException) { return (IReadOnlyList<SynoItem>)[]; /* share has no #recycle */ }
+                    }));
+                    return Results.Ok(bins.SelectMany(b => b).ToList());
                 }
                 else
                 {
@@ -370,7 +375,7 @@ public static class FileEndpoints
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
         });
 
-        g.MapPost("/recycle/restore", async (RestoreRecycleRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        g.MapPost("/recycle/restore", async (RestoreRecycleRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await UserIdAsync(http);
             if (userId is null) return Results.Unauthorized();
@@ -398,13 +403,18 @@ public static class FileEndpoints
                     await svc.CopyMoveAsync(userId.Value, req.Server.Trim(), req.Paths, dest, removeSrc: true, true, ct);
                 }
                 await Audit(http, db, "files.recycle.restore", $"{req.Server.Trim()}:{string.Join(",", req.Paths)} -> {dest}", ct);
+                // The recycle folders the items left, plus wherever they landed.
+                var restoredInto = dest == "/"
+                    ? req.Paths.Select(p => { var i = p.IndexOf("/#recycle", StringComparison.OrdinalIgnoreCase); return i > 0 ? p[..i] : "/"; })
+                    : [dest];
+                await FilesRealtime.PushAsync(realtime, req.Server, req.Paths.Select(FilesRealtime.ParentDir).Concat(restoredInto));
                 return Results.Ok();
             }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
         });
 
-        g.MapPost("/recycle/empty", async (EmptyRecycleRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        g.MapPost("/recycle/empty", async (EmptyRecycleRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await UserIdAsync(http);
             if (userId is null) return Results.Unauthorized();
@@ -413,6 +423,7 @@ public static class FileEndpoints
             try
             {
                 var shares = await svc.ListSharesAsync(userId.Value, req.Server.Trim(), ct);
+                var emptied = new List<string>();
                 foreach (var sh in shares)
                 {
                     try
@@ -423,10 +434,12 @@ public static class FileEndpoints
                         {
                             await svc.DeleteAsync(userId.Value, req.Server.Trim(), it.Path, ct);
                         }
+                        if (items.Count > 0) emptied.Add(recyclePath);
                     }
                     catch { }
                 }
                 await Audit(http, db, "files.recycle.empty", $"{req.Server.Trim()}:#recycle", ct);
+                await FilesRealtime.PushAsync(realtime, req.Server, emptied);
                 return Results.Ok();
             }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
@@ -448,6 +461,77 @@ public static class FileEndpoints
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
         });
 
+        // ── Search ─────────────────────────────────────────────────────────────
+        // FileStation search is a task on the NAS: start returns a task id, the page polls list
+        // until Finished (results stream in as the NAS walks the tree), delete cancels it.
+        g.MapPost("/search", async (SearchStartRequest req, HttpContext http, IFileAccessService svc, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            var pattern = req.Pattern?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(req.Server) || pattern.Length < 2)
+                return Results.BadRequest(new { code = "server_and_pattern_required" });
+            try
+            {
+                var paths = req.Paths is { Length: > 0 } ? req.Paths : (await svc.ListSharesAsync(userId.Value, req.Server, ct)).ToArray();
+                if (paths.Length == 0) return Results.Ok(new { taskId = (string?)null });
+                var taskId = await svc.SearchStartAsync(userId.Value, req.Server, paths, pattern, ct);
+                return Results.Ok(new { taskId });
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
+            catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        });
+
+        g.MapGet("/search", async (string server, string taskId, int? offset, HttpContext http, IFileAccessService svc, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            try
+            {
+                var page = await svc.SearchListAsync(userId.Value, server, taskId, Math.Max(0, offset ?? 0), 200, ct);
+                var items = page.Items.Where(i => !i.Path.Contains("/#recycle", StringComparison.OrdinalIgnoreCase)).ToList();
+                return Results.Ok(new { items, page.Total, page.Finished });
+            }
+            catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
+            catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
+        });
+
+        g.MapDelete("/search", async (string server, string taskId, HttpContext http, IFileAccessService svc, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            await svc.SearchStopAsync(userId.Value, server, taskId, ct);
+            return Results.NoContent();
+        });
+
+        // ── Personal places (stars, recents) ───────────────────────────────────
+        // Per-user JSON blob in AppSettings so stars follow the person across browsers and sites
+        // without a schema change. The page owns the shape; the API only bounds its size.
+        g.MapGet("/prefs", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            var row = await db.AppSettings.AsNoTracking().FirstOrDefaultAsync(x => x.Key == PrefsKey(userId.Value), ct);
+            return Results.Content(row?.ValueJson ?? "{}", "application/json");
+        });
+
+        g.MapPut("/prefs", async (JsonElement body, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            if (body.ValueKind != JsonValueKind.Object) return Results.BadRequest(new { code = "object_required" });
+            var json = body.GetRawText();
+            if (json.Length > 64 * 1024) return Results.BadRequest(new { code = "prefs_too_large" });
+            var key = PrefsKey(userId.Value);
+            var row = await db.AppSettings.FirstOrDefaultAsync(x => x.Key == key, ct);
+            if (row is null) db.AppSettings.Add(row = new AppSetting { Key = key, ValueJson = json });
+            row.ValueJson = json;
+            row.UpdatedAt = DateTime.UtcNow;
+            row.UpdatedByNik = http.User.FindFirst("nik")?.Value;
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
+        });
+
         // ── Sharing Links ──────────────────────────────────────────────────────
         g.MapGet("/sharing", async (string? server, string? path, HttpContext http, IFileAccessService svc, CancellationToken ct) =>
         {
@@ -464,7 +548,7 @@ public static class FileEndpoints
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
         });
 
-        g.MapPost("/sharing", async (CreateShareLinkRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        g.MapPost("/sharing", async (CreateShareLinkRequest req, HttpContext http, IFileAccessService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await UserIdAsync(http);
             if (userId is null) return Results.Unauthorized();
@@ -475,13 +559,14 @@ public static class FileEndpoints
             {
                 var link = await svc.CreateSharingLinkAsync(userId.Value, req.Server.Trim(), req.Path.Trim(), req.Password, req.ExpiresInDays ?? 14, ct);
                 await Audit(http, db, "files.share.create", $"{req.Server.Trim()}:{req.Path.Trim()} -> {link.Url}", ct);
+                await FilesRealtime.PushAsync(realtime, req.Server, [FilesRealtime.ParentDir(req.Path)]);
                 return Results.Ok(link);
             }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
         });
 
-        g.MapDelete("/sharing", async (string server, string shareId, HttpContext http, IFileAccessService svc, IPopDbContext db, CancellationToken ct) =>
+        g.MapDelete("/sharing", async (string server, string shareId, HttpContext http, IFileAccessService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await UserIdAsync(http);
             if (userId is null) return Results.Unauthorized();
@@ -492,6 +577,9 @@ public static class FileEndpoints
             {
                 await svc.DeleteSharingLinkAsync(userId.Value, server.Trim(), shareId.Trim(), ct);
                 await Audit(http, db, "files.share.delete", $"{server.Trim()}:{shareId.Trim()}", ct);
+                // Only the link id is known here, not its folder: the server-wide scope makes
+                // every open view of this server re-check its share badges.
+                await FilesRealtime.PushAsync(realtime, server, [FilesRealtime.Wildcard]);
                 return Results.Ok();
             }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
@@ -546,6 +634,11 @@ public static class FileEndpoints
         return user?.Id;
     }
 
+    private static string PrefsKey(Guid userId) => $"files.prefs:{userId:N}";
+
+    // Matches the page's 100 MB per-file limit, plus room for the multipart envelope.
+    private const long MaxUploadRequestBytes = 100L * 1024 * 1024 + 1024 * 1024;
+
     private static async Task Audit(HttpContext http, IPopDbContext db, string action, string path, CancellationToken ct)
     {
         db.AuditLogs.Add(new AuditLog { ActorNik = http.User.FindFirst("nik")?.Value, Action = action, Entity = "File", EntityId = path, IpAddress = http.Connection.RemoteIpAddress?.ToString(), CreatedAt = DateTime.UtcNow });
@@ -554,6 +647,7 @@ public static class FileEndpoints
 
     public record CredentialRequest(string Server, string Username, string Password);
     public record ConnectAllRequest(string Username, string Password);
+    public record SearchStartRequest(string Server, string[]? Paths, string? Pattern);
     public record RenameFileRequest(string Server, string Path, string Name);
     public record CreateFolderRequest(string Server, string Path, string Name);
     public record DeleteFilesRequest(string Server, string[] Paths);

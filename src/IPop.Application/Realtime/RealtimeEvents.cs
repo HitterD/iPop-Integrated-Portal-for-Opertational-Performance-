@@ -11,6 +11,7 @@ public static class RealtimeEvents
     public const string ProjectChanged = "projectChanged";     // (projectId)
     public const string FileOperationProgress = "fileOperationProgress"; // (operationId, completed, total, bytes)
     public const string FileOperationFinished = "fileOperationFinished"; // (operationId, status)
+    public const string FilesChanged = "filesChanged";                 // (scope) — to users who can see that scope
 
     public static string UserGroup(string nik) => $"user:{nik}";
 }

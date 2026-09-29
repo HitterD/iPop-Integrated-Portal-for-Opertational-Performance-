@@ -1,6 +1,7 @@
 @page "/files"
 @implements IDisposable
 @using IPop.Web.Services
+@using IPop.Web.Components.Files
 @using IPop.Application.Files
 @using System.Net.Http.Json
 @inject AuthState Auth
@@ -9,336 +10,382 @@
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @inject FileState FileStateService
+@inject HttpClient Http
 
 <PageTitle>Files - IPop</PageTitle>
 
-<div class="files-page">
-    <div class="admin-tabs files-servers">
-        @foreach (var s in Servers)
-        {
-            <button class="admin-tab @(server == s.Id ? "active" : "")" @onclick="() => SwitchServer(s.Id)">
-                <i data-lucide="hard-drive"></i> @s.Label <span class="mono server-host">@s.Host</span><span class="server-dot @SiteStatus(s.Id).Css" title="@SiteStatus(s.Id).Text"></span>
-            </button>
-        }
-    </div>
-    <div class="files-main"><div class="tray rise rise-1"><div class="core" style="padding:0; overflow:hidden">
-        <div class="panel-head files-panel-head">
-            <i data-lucide="folder"></i> <span>Files</span>
-            <span class="meta">@serverLabel · @(shares?.Count ?? 0) shares</span>
-            <span class="meta"><span class="live-dot"></span> @(needsCredential ? "Not connected" : "Live")</span>
-            @if (!needsCredential && credential?.Username is not null)
-            {
-                <span class="files-account" title="Synology account for @serverLabel - same permissions as File Explorer">
-                    <i data-lucide="user-round" style="width:13px;height:13px"></i> as <strong>@credential.Username</strong>
-                </span>
-            }
-            <button type="button" class="ghost-btn files-manage-btn" @onclick="() => showCred = true">
-                <i data-lucide="plug-zap" style="width:14px;height:14px"></i> @(needsCredential ? "Connect" : "Manage")
-            </button>
-        </div>
-        @if (!needsCredential && credential?.Username is not null)
-        {
-            <div class="files-identity" role="status">
-                <span class="files-identity-dot"></span>
-                <span>Browsing <strong>@serverLabel</strong> as <strong>@credential.Username</strong> - same ACLs as File Explorer for that account.</span>
-                <button class="files-identity-action" @onclick="() => showCred = true">Switch account</button>
+@{
+    var rows = DisplayRows();
+    var crumbs = GetBreadcrumbs();
+    var inFolder = !IsRoot && !isRecycleBin && !isStarredView && !isRecentView && !needsCredential;
+    var title = isStarredView ? "Starred" : isRecentView ? "Recent" : isRecycleBin ? "Recycle Bin" : IsRoot ? serverLabel : crumbs.LastOrDefault()?.Name ?? serverLabel;
+}
+
+<div class="files-page fx @(sideOpen ? "side-open" : "")" @ref="rootRef">
+    <div class="fx-window">
+        @* ── Sidebar ─────────────────────────────────────────────────────── *@
+        <aside class="fx-side" aria-label="Places">
+            <div class="fx-side-group">
+                <div class="fx-side-label">Favorites</div>
+                <button type="button" class="fx-place @(isStarredView ? "on" : "")" @onclick="() => { isStarredView = true; isRecentView = false; isRecycleBin = false; CancelSearch(true); selectedPaths.Clear(); focusKey = null; sideOpen = false; }">
+                    <i data-lucide="star" class="fx-ic-star"></i><span>Starred</span>@if (stars.Count > 0) { <em>@stars.Count</em> }
+                </button>
+                <button type="button" class="fx-place @(isRecentView ? "on" : "")" @onclick="EnterRecentView">
+                    <i data-lucide="clock" class="fx-ic-recent"></i><span>Recent</span>
+                </button>
             </div>
-        }
 
-        <div class="filter-bar">
-            <div class="v6-search files-search"><i data-lucide="search"></i><input type="search" placeholder="Search @serverLabel" aria-label="Search files" @bind="search" @bind:event="oninput" /></div>
-            <AppSelect Label="Type filter" Value="@typeFilter" ValueChanged="v => { typeFilter = v; StateHasChanged(); }"
-                       Options="@TypeOptions" />
-            <AppSelect Label="Sort" Value="@sortBy" ValueChanged="v => { sortBy = v; StateHasChanged(); }"
-                       Options="@SortOptions" />
-            @if (!string.IsNullOrEmpty(typeFilter) || !string.IsNullOrWhiteSpace(search))
-            {
-                <button class="btn btn-sm surface" @onclick="ClearFilters"><i data-lucide="x" style="width:12px;height:12px"></i> Clear</button>
-            }
-            <button type="button" class="icon-btn files-create-btn" title="New folder" aria-label="New folder" disabled="@needsCredential" @onclick="OpenNewFolderModal">
-                <i data-lucide="folder-plus"></i>
-            </button>
-            <label class="btn-primary files-upload-btn @(needsCredential ? "disabled" : "")">
-                <i data-lucide="upload"></i>Upload
-                <InputFile id="files-upload-input" OnChange="OnUpload" multiple disabled="@needsCredential" style="display:none" />
-            </label>
-        </div>
-
-        @if (selectedPaths.Count > 0)
-        {
-            <div style="display:flex; align-items:center; gap:8px; padding:8px 16px; background:var(--accent-soft); border-bottom:1px solid var(--line-soft)">
-                <span style="font-weight:600; font-size:12.5px; color:var(--accent-ink)">@selectedPaths.Count selected</span>
-                <div style="flex:1"></div>
-                @if (isRecycleBin)
+            <div class="fx-side-group">
+                <div class="fx-side-label">Locations</div>
+                @foreach (var s in Servers)
                 {
-                    <button type="button" class="btn btn-sm surface" @onclick="RestoreSelected"><i data-lucide="undo-2" style="width:13px;height:13px"></i> Restore</button>
-                    <button type="button" class="btn btn-sm surface" style="color:var(--danger)" @onclick="DeleteSelectedPermanently"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete forever</button>
-                }
-                else
-                {
-                    <button type="button" class="btn btn-sm surface" @onclick="DownloadSelectedZip"><i data-lucide="download" style="width:13px;height:13px"></i> Download ZIP</button>
-                    <button type="button" class="btn btn-sm surface" @onclick="OpenMoveCopySelected"><i data-lucide="folder-input" style="width:13px;height:13px"></i> Move / Copy</button>
-                    <button type="button" class="btn btn-sm surface" style="color:var(--danger)" @onclick="DeleteSelected"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Move to Bin</button>
-                }
-                <button type="button" class="btn btn-sm surface" @onclick="() => selectedPaths.Clear()"><i data-lucide="x" style="width:13px;height:13px"></i> Clear</button>
-            </div>
-        }
-
-        @if (needsCredential)
-        {
-            <div class="files-connect-hero"><i data-lucide="hard-drive"></i><h2>Connect to @serverLabel</h2><p>Connect your Synology account to browse shares, preview documents and manage files with its permissions.</p><button type="button" class="btn-primary" @onclick="() => showCred = true">Connect account</button></div>
-        }
-        else if (loadError is not null)
-        {
-            <div class="tree-empty" style="padding:28px"><p>@loadError</p><button class="btn btn-sm" style="margin:12px auto 0" @onclick="() => Reload()">Retry</button></div>
-        }
-        else
-        {
-            <div class="files-shell">
-                <aside class="files-shares">
-                    <div class="files-shares-title">Shares · @serverLabel</div>
-                    @if (loading && shares is null)
-                    {
-                        <div class="tree-empty">Loading…</div>
-                    }
-                    else if (shares is not null)
-                    {
-                        @foreach (var sh in shares)
+                    var st = SiteStatus(s.Id);
+                    var open = expandedSites.Contains(s.Id);
+                    var here = s.Id == server && !isStarredView && !isRecentView && !isRecycleBin;
+                    <div class="fx-site @(open ? "open" : "")">
+                        <div class="fx-place fx-site-row @(here && IsRoot ? "on" : "")" data-drop-server="@s.Id" data-drop-path="">
+                            <button type="button" class="fx-disclose" aria-label="@(open ? "Collapse" : "Expand") @s.Label" aria-expanded="@(open ? "true" : "false")" @onclick="() => ToggleSite(s.Id)"><i data-lucide="chevron-right"></i></button>
+                            <button type="button" class="fx-site-main" title="@s.Host · @st.Text" @onclick='() => GoTo(s.Id, "/")'>
+                                <i data-lucide="server"></i><span>@s.Label</span><span class="fx-dot @st.Css" aria-label="@st.Text"></span>
+                            </button>
+                        </div>
+                        @if (open)
                         {
-                            var active = currentPath.StartsWith(sh);
-                            <button class="share-btn @(active ? "active" : "")" @onclick="() => Enter(sh)">
-                                <i data-lucide="@(sh.Contains("homes") ? "home" : sh.Contains("team") ? "users" : "building-2")"></i>
-                                <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">@sh</span>
-                                <i data-lucide="chevron-right" class="chev"></i>
-                            </button>
-                        }
-                    }
-                    <div style="border-top:1px solid var(--line-soft); margin:8px 0; padding-top:8px; display:flex; flex-direction:column; gap:4px">
-                        <button class="share-btn @(isStarredView ? "active" : "")" @onclick="EnterStarredView">
-                            <i data-lucide="star"></i>
-                            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Starred</span>
-                            @if (starredPaths.Count > 0)
-                            {
-                                <span class="badge" style="margin-left:auto;font-size:10px">@starredPaths.Count</span>
-                            }
-                            <i data-lucide="chevron-right" class="chev"></i>
-                        </button>
-                        <button class="share-btn @(isRecycleBin ? "active" : "")" @onclick="EnterRecycleBin">
-                            <i data-lucide="trash-2"></i>
-                            <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Recycle Bin</span>
-                            <i data-lucide="chevron-right" class="chev"></i>
-                        </button>
-                    </div>
-                    <div class="note"><i data-lucide="shield-check"></i><span>Same ACLs as File Explorer.</span></div>
-                    @if (storageInfo is { TotalBytes: > 0 } && storageInfo.Server == server)
-                    {
-                        <div style="margin-top:auto; padding:12px; background:var(--tray); border-radius:12px; font-size:12px">
-                            <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-weight:600">
-                                <span>@serverLabel Storage</span>
-                                <span style="color:var(--ink-3)">@(storageInfo.TotalBytes > 0 ? (storageInfo.UsedBytes * 100 / storageInfo.TotalBytes) : 0)%</span>
-                            </div>
-                            <div style="height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-bottom:6px">
-                                <div style="height:100%; width:@(storageInfo.TotalBytes > 0 ? (storageInfo.UsedBytes * 100 / storageInfo.TotalBytes) : 0)%; background:var(--accent); border-radius:3px"></div>
-                            </div>
-                            <div style="color:var(--ink-3); font-size:11px">
-                                @FormatSize(storageInfo.UsedBytes) of @FormatSize(storageInfo.TotalBytes) used
-                            </div>
-                        </div>
-                    }
-                </aside>
-
-                <div class="files-browser" @ref="dropZoneRef">
-                    <div class="files-crumb-bar">
-                        <div class="files-nav">
-                            <button class="files-nav-btn @(backStack.Count == 0 ? "dis" : "")" title="Back" @onclick="GoBack" disabled="@(backStack.Count == 0)">
-                                <i data-lucide="arrow-left"></i>
-                            </button>
-                            <button class="files-nav-btn @(forwardStack.Count == 0 ? "dis" : "")" title="Forward" @onclick="GoForward" disabled="@(forwardStack.Count == 0)">
-                                <i data-lucide="arrow-right"></i>
-                            </button>
-                            <button class="files-nav-btn @(currentPath == "/" ? "dis" : "")" title="Up" @onclick="GoUp" disabled="@(currentPath == "/")">
-                                <i data-lucide="arrow-up"></i>
-                            </button>
-                        </div>
-                        <div class="files-crumb-trail">
-                            <button class="files-crumb-seg @(currentPath == "/" ? "active" : "")" @onclick='() => Navigate("/")' title="Root">
-                                <i data-lucide="hard-drive" style="width:12px;height:12px"></i> @serverLabel
-                            </button>
-                            @foreach (var seg in GetBreadcrumbs())
-                            {
-                                <i data-lucide="chevron-right" class="files-crumb-sep"></i>
-                                @if (seg.IsLast)
+                            var list = SharesFor(s.Id);
+                            <div class="fx-shares">
+                                @if (list is null)
                                 {
-                                    <span class="files-crumb-seg active" title="@seg.Path">@seg.Name</span>
+                                    <span class="fx-side-hint">@(st.Css == "on" ? "Loading…" : "Not connected")</span>
                                 }
                                 else
                                 {
-                                    <button class="files-crumb-seg" title="@seg.Path" @onclick="() => Navigate(seg.Path)">@seg.Name</button>
+                                    @foreach (var sh in list)
+                                    {
+                                        var active = here && (currentPath == sh || currentPath.StartsWith(sh + "/"));
+                                        <button type="button" class="fx-place fx-share @(active ? "on" : "")" data-drop-server="@s.Id" data-drop-path="@sh" @onclick="() => GoTo(s.Id, sh)">
+                                            <i data-lucide="folder"></i><span>@ShareName(sh)</span>
+                                        </button>
+                                    }
                                 }
-                            }
-                        </div>
-                        <div class="files-crumb-actions">
-                            @if (isRevalidating)
-                            {
-                                <span class="files-revalidating"><span class="spinner"></span> Syncing…</span>
-                            }
-                            @if (isRecycleBin)
-                            {
-                                <button class="files-tool-btn" style="color:var(--danger)" title="Empty Recycle Bin" @onclick="EmptyRecycleBin">
-                                    <i data-lucide="trash-2"></i> <span>Empty Bin</span>
-                                </button>
-                            }
-                            <button class="files-tool-btn @(copiedPath ? "copied" : "")" title="Copy current path to clipboard" @onclick="CopyCurrentPath">
-                                <i data-lucide="@(copiedPath ? "check" : "copy")"></i> <span>@(copiedPath ? "Copied" : "Copy path")</span>
-                            </button>
-                            <button class="files-tool-btn" title="@(gridView ? "List view" : "Grid view")" aria-label="@(gridView ? "List view" : "Grid view")" @onclick="() => gridView = !gridView"><i data-lucide="@(gridView ? "list" : "layout-grid")"></i></button>
-                            <button class="files-tool-btn" title="Force refresh from Synology NAS" @onclick="ForceRefresh">
-                                <i data-lucide="refresh-cw"></i> <span>Refresh</span>
-                            </button>
-                            <span class="meta" style="font-size:11px; color:var(--ink-3); margin-left:4px">@filteredItems.Count items</span>
-                        </div>
-                    </div>
-
-                    @if (!gridView)
-                    {
-                    <div class="files-head" style="grid-template-columns: 32px 1fr 100px 130px 140px">
-                        <input type="checkbox" checked="@(filteredItems.Count > 0 && selectedPaths.Count == filteredItems.Count)" @onchange="ToggleSelectAll" />
-                        <button @onclick='() => ToggleSort("name")'>Name <i data-lucide="@(sortBy.StartsWith("name") ? (sortBy == "name" ? "arrow-up" : "arrow-down") : "arrow-up-down")"></i></button>
-                        <button @onclick='() => ToggleSort("size")'>Size <i data-lucide="@(sortBy.StartsWith("size") ? (sortBy == "size" ? "arrow-up" : "arrow-down") : "arrow-up-down")"></i></button>
-                        <button @onclick='() => ToggleSort("modified")'>Modified <i data-lucide="@(sortBy.StartsWith("modified") ? (sortBy == "modified" ? "arrow-up" : "arrow-down") : "arrow-up-down")"></i></button>
-                        <span style="text-align:right">Action</span>
-                    </div>
-                    }
-
-                    <div class="files-drop-message"><i data-lucide="upload-cloud"></i> Drop files to upload to @currentPath · @serverLabel</div>
-                    <div class="files-list @(gridView ? "files-grid" : "")">
-                        @if (loading)
-                        {
-                            <div class="tree-empty" style="padding:24px">Loading…</div>
+                            </div>
                         }
-                        else if (filteredItems.Count == 0)
+                    </div>
+                }
+                <button type="button" class="fx-place fx-bin @(isRecycleBin ? "on" : "")" @onclick="() => { isStarredView = false; isRecentView = false; CancelSearch(true); sideOpen = false; EnterRecycleBin(); }">
+                    <i data-lucide="trash-2"></i><span>Recycle Bin</span><small>@serverLabel</small>
+                </button>
+            </div>
+
+            <div class="fx-side-foot">
+                @if (storageInfo is { TotalBytes: > 0 } && storageInfo.Server == server)
+                {
+                    var pct = (int)(storageInfo.UsedBytes * 100 / storageInfo.TotalBytes);
+                    <div class="fx-storage" title="@FileKinds.Size(storageInfo.FreeBytes) free">
+                        <div class="fx-storage-top"><span>@serverLabel storage</span><span>@pct%</span></div>
+                        <div class="fx-meter"><span class="@(pct >= 90 ? "hot" : "")" style="width:@(pct)%"></span></div>
+                        <div class="fx-storage-sub">@FileKinds.Size(storageInfo.UsedBytes) of @FileKinds.Size(storageInfo.TotalBytes)</div>
+                    </div>
+                }
+                <button type="button" class="fx-connect" @onclick="() => { credAllSites = true; showCred = true; }">
+                    <i data-lucide="key-round"></i><span>@(siteCreds.Count == 0 ? "Connect sites" : "Manage sign-in")</span>
+                </button>
+            </div>
+        </aside>
+        <div class="fx-scrim" @onclick="() => sideOpen = false"></div>
+
+        @* ── Main ────────────────────────────────────────────────────────── *@
+        <section class="fx-main" data-fx-dropzone data-drop-server="@server" data-drop-path="@(inFolder ? currentPath : "")">
+            <header class="fx-toolbar">
+                <button type="button" class="fx-tb fx-side-toggle" aria-label="Show places" @onclick="() => sideOpen = !sideOpen"><i data-lucide="panel-left"></i></button>
+                <div class="fx-nav" role="group" aria-label="History">
+                    <button type="button" class="fx-tb" title="Back (Alt+←)" disabled="@(backStack.Count == 0)" @onclick="GoBack"><i data-lucide="chevron-left"></i></button>
+                    <button type="button" class="fx-tb" title="Forward (Alt+→)" disabled="@(forwardStack.Count == 0)" @onclick="GoForward"><i data-lucide="chevron-right"></i></button>
+                </div>
+                <div class="fx-title">
+                    <h1>@title</h1>
+                    @if (isRevalidating || loading) { <i data-lucide="loader-circle" class="spin fx-busy"></i> }
+                </div>
+                <div class="fx-tools">
+                    <div class="fx-seg" role="group" aria-label="View">
+                        <button type="button" class="@(!gridView ? "on" : "")" title="as List" aria-pressed="@(!gridView ? "true" : "false")" @onclick="() => SetGridView(false)"><i data-lucide="list"></i></button>
+                        <button type="button" class="@(gridView ? "on" : "")" title="as Icons" aria-pressed="@(gridView ? "true" : "false")" @onclick="() => SetGridView(true)"><i data-lucide="layout-grid"></i></button>
+                    </div>
+                    <button type="button" class="fx-tb" title="Sort" @onclick="OpenSortMenu"><i data-lucide="arrow-up-down"></i></button>
+                    <button type="button" class="fx-tb @(showInfoPane ? "on" : "")" title="Get Info (Ctrl+I)" @onclick="ToggleInfoPane"><i data-lucide="info"></i></button>
+                    @if (inFolder)
+                    {
+                        <button type="button" class="fx-tb" title="New folder" @onclick="OpenNewFolderModal"><i data-lucide="folder-plus"></i></button>
+                        <button type="button" class="fx-upload-btn" @onclick="PickFiles" disabled="@uploading"><i data-lucide="upload"></i><span>Upload</span></button>
+                    }
+                    @if (isRecycleBin && items.Count > 0)
+                    {
+                        <button type="button" class="fx-tb fx-danger-txt" title="Empty Recycle Bin" @onclick="EmptyRecycleBin"><i data-lucide="trash-2"></i><span>Empty</span></button>
+                    }
+                    <div class="fx-search">
+                        <i data-lucide="search"></i>
+                        <input type="search" data-fx-search aria-label="Search files" placeholder="Search" value="@search" @oninput="OnSearchInput" />
+                        @if (searchRunning) { <i data-lucide="loader-circle" class="spin fx-search-busy"></i> }
+                        else if (search.Length > 0) { <button type="button" class="fx-search-x" aria-label="Clear search" @onclick="() => CancelSearch(true)"><i data-lucide="x"></i></button> }
+                    </div>
+                </div>
+                <input type="file" data-fx-upload multiple hidden />
+            </header>
+
+            @if (SearchMode)
+            {
+                <div class="fx-scope" role="group" aria-label="Search in">
+                    <span>Search:</span>
+                    @if (!IsRoot) { <button type="button" class="@(searchScope == "folder" ? "on" : "")" @onclick='() => SetSearchScope("folder")'>“@(crumbs.LastOrDefault()?.Name ?? serverLabel)”</button> }
+                    <button type="button" class="@(searchScope == "site" || (IsRoot && searchScope == "folder") ? "on" : "")" @onclick='() => SetSearchScope("site")'>@serverLabel</button>
+                    <button type="button" class="@(searchScope == "all" ? "on" : "")" @onclick='() => SetSearchScope("all")'>All sites</button>
+                    <span class="fx-scope-status">
+                        @if (searchRunning) { <text>Searching the NAS… @searchHits.Count found</text> }
+                        else { <text>@rows.Count result@(rows.Count == 1 ? "" : "s")</text> }
+                    </span>
+                    @if (searchRunning) { <button type="button" class="fx-scope-stop" @onclick="() => { searchCts?.Cancel(); searchRunning = false; }">Stop</button> }
+                </div>
+            }
+            else if (!isStarredView && !isRecentView && !IsRoot && crumbs.Count > 0)
+            {
+                <nav class="fx-path" aria-label="Path">
+                    <button type="button" class="fx-crumb" data-drop-server="@server" data-drop-path="" @onclick='() => GoTo(server, "/")'><i data-lucide="server"></i>@serverLabel</button>
+                    @foreach (var c in crumbs)
+                    {
+                        <i data-lucide="chevron-right" class="fx-crumb-sep"></i>
+                        <button type="button" class="fx-crumb @(c.IsLast ? "last" : "")" data-drop-server="@(isRecycleBin ? "" : server)" data-drop-path="@(isRecycleBin || c.IsLast ? "" : c.Path)" @onclick="() => Navigate(c.Path)">@c.Name</button>
+                    }
+                </nav>
+            }
+
+            @if (selectedPaths.Count > 0)
+            {
+                <div class="fx-selbar" role="toolbar" aria-label="Selection">
+                    <button type="button" class="fx-selbar-x" aria-label="Clear selection" @onclick="ClearSelection"><i data-lucide="x"></i></button>
+                    <strong>@selectedPaths.Count selected</strong>
+                    <span class="fx-selbar-acts">
+                        @if (isRecycleBin)
                         {
-                            @if (!string.IsNullOrWhiteSpace(search) || !string.IsNullOrEmpty(typeFilter))
-                            {
-                                <div class="files-empty-box">
-                                    <div class="empty-icon"><i data-lucide="search-x"></i></div>
-                                    <div class="empty-title">No matching files</div>
-                                    <div class="empty-desc">No items match the current filter or search query.</div>
-                                    <button class="btn btn-sm surface" style="margin-top:6px" @onclick="ClearFilters">Clear filters</button>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="files-empty-box">
-                                    <div class="empty-icon"><i data-lucide="folder-open"></i></div>
-                                    <div class="empty-title">This folder is empty</div>
-                                    <div class="empty-desc">No files or subfolders in this directory.</div>
-                                </div>
-                            }
+                            <button type="button" @onclick="RestoreSelected"><i data-lucide="undo-2"></i>Put back</button>
+                            <button type="button" class="danger" @onclick="DeleteSelectedPermanently"><i data-lucide="trash-2"></i>Delete</button>
                         }
                         else
                         {
-                            @foreach (var it in filteredItems)
+                            <button type="button" @onclick="DownloadSelectedZip"><i data-lucide="download"></i>Download</button>
+                            <button type="button" @onclick="OpenMoveCopySelected"><i data-lucide="folder-input"></i>Move / Copy</button>
+                            <button type="button" class="danger" @onclick="DeleteSelected"><i data-lucide="trash-2"></i>Delete</button>
+                        }
+                    </span>
+                </div>
+            }
+
+            <div class="fx-body">
+                <div class="fx-content" @oncontextmenu="OpenBlankMenu" @oncontextmenu:preventDefault @onclick="ClearSelection">
+                    @if (needsCredential && !isStarredView && !isRecentView)
+                    {
+                        <div class="fx-empty fx-connect-hero">
+                            <div class="fx-empty-art"><i data-lucide="key-round"></i></div>
+                            <h2>Connect to @serverLabel</h2>
+                            <p>Sign in once with your Synology account, iPop tries it on all four sites. Same permissions as File Explorer.</p>
+                            <button type="button" class="fx-primary" @onclick="() => { credAllSites = siteCreds.Count == 0; credServer = server; showCred = true; }" @onclick:stopPropagation>
+                                <i data-lucide="key-round"></i>@(siteCreds.Count == 0 ? "Sign in to all sites" : $"Sign in to {serverLabel}")
+                            </button>
+                        </div>
+                    }
+                    else if (loadError is not null && rows.Count == 0)
+                    {
+                        <div class="fx-empty">
+                            <div class="fx-empty-art warn"><i data-lucide="circle-alert"></i></div>
+                            <h2>@loadError</h2>
+                            <p>The NAS didn't answer. It may be busy or offline.</p>
+                            <button type="button" class="fx-secondary" @onclick="ForceRefresh" @onclick:stopPropagation><i data-lucide="refresh-cw"></i>Try again</button>
+                        </div>
+                    }
+                    else if (loading && rows.Count == 0)
+                    {
+                        <div class="fx-skel @(gridView ? "grid" : "")" aria-busy="true" aria-label="Loading">
+                            @for (var i = 0; i < 10; i++) { <div class="fx-skel-row" style="--d:@(i * 60)ms"><span></span><span></span></div> }
+                        </div>
+                    }
+                    else if (rows.Count == 0)
+                    {
+                        <div class="fx-empty">
+                            @if (SearchMode)
                             {
-                                <div class="file-row @(infoItem?.Path == it.Path ? "is-active" : "")" style="@(gridView ? "" : "grid-template-columns: 32px 1fr 100px 130px 140px")">
-                                    <input type="checkbox" checked="@selectedPaths.Contains(it.Path)" @onchange="() => ToggleSelect(it.Path)" @onclick:stopPropagation />
-                                    <span class="fname" @onclick="() => OnItemClick(it)" title="@(it.IsDir ? "Open folder" : IsPreviewable(it.Name) ? "Click to preview" : "Download")">
-                                        @if (it.IsDir)
-                                        {
-                                            <span class="fi" style="background:var(--accent-soft); color:var(--accent-ink)"><i data-lucide="folder"></i></span>
-                                            <span class="n">@it.Name</span> <span class="tag">dir</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="fi" style="background:@GetFileIconBg(it.Name); color:@GetFileIconColor(it.Name)"><i data-lucide="@GetFileIcon(it.Name)"></i></span>
-                                            <span class="n">@it.Name</span> <span class="tag" style="background:@GetFileTagBg(it.Name); color:@GetFileTagColor(it.Name)">@GetFileExtLabel(it.Name)</span>
-                                            @if (IsCoAuthorable(it.Name)) { <span class="tag" style="background:#e8f5e9; color:#1b7a3d; border:1px solid rgba(27,122,61,0.2)"><i data-lucide="users" style="width:10px;height:10px; display:inline; vertical-align:middle; margin-right:3px"></i>Co-author</span> }
-                                        }
+                                <div class="fx-empty-art"><i data-lucide="search-x"></i></div>
+                                <h2>@(searchRunning ? "Searching…" : "No matches")</h2>
+                                <p>@(searchRunning ? "Results appear as the NAS finds them." : searchScope == "all" ? "Nothing on any connected site matches that name." : "Try searching all sites.")</p>
+                                @if (!searchRunning && searchScope != "all") { <button type="button" class="fx-secondary" @onclick='() => SetSearchScope("all")' @onclick:stopPropagation>Search all sites</button> }
+                            }
+                            else if (isStarredView)
+                            {
+                                <div class="fx-empty-art star"><i data-lucide="star"></i></div>
+                                <h2>No starred items yet</h2>
+                                <p>Right-click a file or folder and choose Add to Starred. Stars follow you to any computer.</p>
+                            }
+                            else if (isRecentView)
+                            {
+                                <div class="fx-empty-art"><i data-lucide="clock"></i></div>
+                                <h2>Nothing opened yet</h2>
+                                <p>Files you open show up here, from every site.</p>
+                            }
+                            else if (isRecycleBin)
+                            {
+                                <div class="fx-empty-art"><i data-lucide="trash-2"></i></div>
+                                <h2>Recycle Bin is empty</h2>
+                                <p>Deleted items from @serverLabel land here first.</p>
+                            }
+                            else
+                            {
+                                <div class="fx-empty-art"><i data-lucide="folder-open"></i></div>
+                                <h2>This folder is empty</h2>
+                                <p>Drop files here to upload, or create a folder.</p>
+                                @if (inFolder)
+                                {
+                                    <span class="fx-empty-acts">
+                                        <button type="button" class="fx-primary" @onclick="PickFiles" @onclick:stopPropagation><i data-lucide="upload"></i>Upload</button>
+                                        <button type="button" class="fx-secondary" @onclick="OpenNewFolderModal" @onclick:stopPropagation><i data-lucide="folder-plus"></i>New folder</button>
                                     </span>
-                                    <span class="fmeta mono">@(it.IsDir ? "—" : FormatSize(it.Size))</span>
-                                    <span class="fmeta">@FormatMtime(it.Mtime)</span>
-                                    <span class="factions">
-                                        <button class="org-act" title="@(starredPaths.Contains(it.Path) ? "Unstar" : "Star")" style="color:@(starredPaths.Contains(it.Path) ? "var(--warn)" : "var(--ink-4)")" @onclick="() => ToggleStar(it.Path)" @onclick:stopPropagation="true">
-                                            <i data-lucide="star" style="@(starredPaths.Contains(it.Path) ? "fill:currentColor" : "")"></i>
-                                        </button>
-                                        <button class="org-act" title="File info" aria-label="File info" @onclick="() => ShowInfo(it)" @onclick:stopPropagation><i data-lucide="info"></i></button>
-                                        @if (it.IsDir)
-                                        {
-                                            <button class="org-act" title="Rename" @onclick="() => OpenRenameModal(it)" @onclick:stopPropagation><i data-lucide="edit-3"></i></button>
-                                            <button class="org-act" title="Move / Copy" @onclick="() => OpenMoveCopyModal(it)" @onclick:stopPropagation><i data-lucide="folder-input"></i></button>
-                                            <button class="org-act" title="Delete" style="color:var(--danger)" @onclick="() => DeleteSingle(it)" @onclick:stopPropagation><i data-lucide="trash-2"></i></button>
-                                            <i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--ink-3)"></i>
-                                        }
-                                        else
-                                        {
-                                            @if (IsCoAuthorable(it.Name))
-                                            {
-                                                <a href="@GetEditorUrl(it)" target="_blank" class="file-action-btn edit-collab" title="Co-author real-time in new tab (ONLYOFFICE)" @onclick:stopPropagation="true">
-                                                    <i data-lucide="users"></i>
-                                                    <span>Co-author</span>
-                                                </a>
-                                            }
-                                            @if (IsPreviewable(it.Name))
-                                            {
-                                                <button class="file-action-btn preview-btn" title="Quick document preview" @onclick="() => Preview(it)">
-                                                    <i data-lucide="eye"></i>
-                                                    <span>Preview</span>
-                                                </button>
-                                            }
-                                            <button class="org-act" title="Open in Explorer" @onclick="() => OpenInExplorerFor(it)"><i data-lucide="folder-open"></i></button>
-                                            <button class="org-act" title="Download" @onclick="() => Download(it)"><i data-lucide="download"></i></button>
-                                            @if (!isRecycleBin)
-                                            {
-                                                <button class="org-act" title="Rename" @onclick="() => OpenRenameModal(it)" @onclick:stopPropagation><i data-lucide="edit-3"></i></button>
-                                                <button class="org-act" title="Move / Copy" @onclick="() => OpenMoveCopyModal(it)" @onclick:stopPropagation><i data-lucide="folder-input"></i></button>
-                                                <button class="org-act" title="Share link" @onclick="() => OpenShareModal(it)" @onclick:stopPropagation><i data-lucide="link"></i></button>
-                                                <button class="org-act" title="Move to Bin" style="color:var(--danger)" @onclick="() => DeleteSingle(it)" @onclick:stopPropagation><i data-lucide="trash-2"></i></button>
-                                            }
-                                            else
-                                            {
-                                                <button class="org-act" title="Restore" @onclick="() => RestoreSingle(it)" @onclick:stopPropagation><i data-lucide="undo-2"></i></button>
-                                                <button class="org-act" title="Delete permanently" style="color:var(--danger)" @onclick="() => DeleteSinglePermanently(it)" @onclick:stopPropagation><i data-lucide="trash-2"></i></button>
-                                            }
-                                        }
-                                    </span>
+                                }
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="@(gridView ? "fx-grid" : "fx-list") @(ShowLocation ? "with-where" : "")" role="listbox" aria-multiselectable="true" aria-label="@title">
+                            @if (!gridView)
+                            {
+                                <div class="fx-head" role="presentation" @onclick:stopPropagation>
+                                    <button type="button" class="c-name" @onclick='() => SortBy("name")'>Name<i data-lucide="@SortIcon("name")"></i></button>
+                                    @if (ShowLocation) { <span class="c-where">Where</span> }
+                                    <button type="button" class="c-date" @onclick='() => SortBy("modified")'>@(isRecentView ? "Opened" : "Date Modified")<i data-lucide="@SortIcon("modified")"></i></button>
+                                    <button type="button" class="c-size" @onclick='() => SortBy("size")'>Size<i data-lucide="@SortIcon("size")"></i></button>
+                                    <button type="button" class="c-kind" @onclick='() => SortBy("kind")'>Kind<i data-lucide="@SortIcon("kind")"></i></button>
+                                    <span class="c-more"></span>
                                 </div>
                             }
-                        }
-                    </div>
-
-                    <div class="files-foot">
-                        <span class="dot"></span> Live pass-through - no index
-                        <span style="margin-left:auto; display:flex; gap:6px; align-items:center"><i data-lucide="eye" style="width:12px;height:12px"></i> Click eye to preview PDF / image, then Print</span>
-                    </div>
-                </div>
-                @if (infoItem is { } info)
-                {
-                    <aside class="files-info-pane">
-                        <div class="files-info-head"><strong>File info</strong><button class="org-act" title="Close info" @onclick="() => infoItem = null"><i data-lucide="x"></i></button></div>
-                        <div class="files-info-icon"><i data-lucide="@(info.IsDir ? "folder" : GetFileIcon(info.Name))"></i></div>
-                        <h3>@info.Name</h3>
-                        <dl><dt>Type</dt><dd>@(info.IsDir ? "Folder" : GetFileExtLabel(info.Name))</dd><dt>Size</dt><dd>@(info.IsDir ? "—" : FormatSize(info.Size))</dd><dt>Modified</dt><dd>@FormatMtime(info.Mtime)</dd><dt>Path</dt><dd class="files-info-path">@info.Path</dd></dl>
-                        <div class="files-info-actions">
-                            @if (!info.IsDir) { <button class="btn btn-sm surface" @onclick="() => Download(info)">Download</button> }
-                            @if (!isRecycleBin) { <button class="btn btn-sm surface" @onclick="() => OpenShareModal(info)">Share link</button> }
+                            @foreach (var r in rows)
+                            {
+                                var it = r.Item;
+                                var kind = FileKinds.Kind(it.Name, it.IsDir);
+                                var sel = IsSelected(r);
+                                var act = CanAct(r);
+                                var dropHere = it.IsDir && !isRecycleBin && r.Server == server && !ShowLocation;
+                                <div @key="r.Key" class="fx-item fk-@kind @(sel ? "is-selected" : "") @(focusKey == r.Key ? "is-focus" : "") @(!it.IsDir && !isRecycleBin && !IsRoot ? "" : "")"
+                                     role="option" aria-selected="@(sel ? "true" : "false")" title="@it.Name"
+                                     data-fx-item="@r.Key" draggable="@(act && !isRecycleBin ? "true" : "false")"
+                                     data-drop-server="@(dropHere ? r.Server : null)" data-drop-path="@(dropHere ? it.Path : null)"
+                                     @onclick="e => OnRowClick(r, e)" @onclick:stopPropagation
+                                     @ondblclick="() => OpenRow(r)"
+                                     @oncontextmenu="e => OpenItemMenu(r, e)" @oncontextmenu:preventDefault @oncontextmenu:stopPropagation>
+                                    <span class="c-name">
+                                        <span class="fx-icon"><i data-lucide="@(IsRoot && it.IsDir ? "folder-closed" : FileKinds.Icon(it.Name, it.IsDir))"></i></span>
+                                        <span class="fx-name">@it.Name</span>
+                                        @if (IsStarred(r)) { <i data-lucide="star" class="fx-star" aria-label="Starred"></i> }
+                                    </span>
+                                    @if (gridView)
+                                    {
+                                        <span class="fx-sub">@(ShowLocation ? SiteLabel(r.Server) : it.IsDir ? "" : FileKinds.Size(it.Size))</span>
+                                    }
+                                    else
+                                    {
+                                        @if (ShowLocation) { <span class="c-where" title="@Where(r)">@Where(r)</span> }
+                                        <span class="c-date">@(it.Mtime > 0 ? FileKinds.When(it.Mtime) : "—")</span>
+                                        <span class="c-size">@(it.IsDir || it.Size == 0 && ShowLocation ? "—" : FileKinds.Size(it.Size))</span>
+                                        <span class="c-kind">@FileKinds.Label(it.Name, it.IsDir)</span>
+                                    }
+                                    <button type="button" class="fx-more" aria-label="Actions for @it.Name" @onclick="e => OpenItemMenu(r, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></button>
+                                </div>
+                            }
                         </div>
+                    }
+                </div>
+
+                @if (showInfoPane)
+                {
+                    <aside class="fx-info" aria-label="Info">
+                        <button type="button" class="fx-info-x" aria-label="Close info" @onclick="ToggleInfoPane"><i data-lucide="x"></i></button>
+                        @if (infoItem is null)
+                        {
+                            <div class="fx-info-empty">
+                                <i data-lucide="info"></i>
+                                <p>Select an item to see its details.</p>
+                            </div>
+                        }
+                        else
+                        {
+                            var ik = FileKinds.Kind(infoItem.Name, infoItem.IsDir);
+                            var infoRow = new Row(infoSite ?? server, infoItem);
+                            <div class="fx-info-hero fk-@ik"><span class="fx-icon big"><i data-lucide="@FileKinds.Icon(infoItem.Name, infoItem.IsDir)"></i></span></div>
+                            <h3>@infoItem.Name</h3>
+                            <p class="fx-info-kind">@FileKinds.Label(infoItem.Name, infoItem.IsDir)@(infoItem.IsDir ? "" : " · " + FileKinds.Size(infoItem.Size))</p>
+                            <dl>
+                                <dt>Site</dt><dd>@SiteLabel(infoRow.Server)</dd>
+                                <dt>Where</dt><dd class="mono">@ParentOf(infoItem.Path)</dd>
+                                @if (infoItem.Mtime > 0) { <dt>@(isRecentView ? "Opened" : "Modified")</dt><dd>@FileKinds.When(infoItem.Mtime)</dd> }
+                            </dl>
+                            <div class="fx-info-acts">
+                                @if (!infoItem.IsDir && IsPreviewable(infoItem.Name)) { <button type="button" @onclick="() => QuickLook(infoRow)"><i data-lucide="eye"></i>Quick Look</button> }
+                                else { <button type="button" @onclick="() => OpenRow(infoRow)"><i data-lucide="folder-open"></i>Open</button> }
+                                <button type="button" @onclick="() => ToggleStar(infoRow)"><i data-lucide="star"></i>@(IsStarred(infoRow) ? "Unstar" : "Star")</button>
+                                <button type="button" @onclick='() => CopyText(infoItem.Path, "Path copied")'><i data-lucide="copy"></i>Copy path</button>
+                            </div>
+                        }
                     </aside>
                 }
             </div>
-        }
-    </div></div></div>
 
-    @if (uploading)
+            <footer class="fx-status">
+                @if (needsCredential && !isStarredView && !isRecentView) { <span>Not connected</span> }
+                else
+                {
+                    <span>@rows.Count item@(rows.Count == 1 ? "" : "s")@(selectedPaths.Count > 0 ? $", {selectedPaths.Count} selected" : "")</span>
+                    @if (credential?.Username is not null && !isStarredView && !isRecentView) { <span class="fx-status-who"><i data-lucide="user-round"></i>@credential.Username on @serverLabel</span> }
+                }
+            </footer>
+        </section>
+    </div>
+
+    @if (ctxOpen)
     {
-        <div style="position:fixed;bottom:24px;right:24px;z-index:200;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,0.15);padding:14px 18px;min-width:280px;display:flex;flex-direction:column;gap:8px">
-            <div style="display:flex;align-items:center;gap:8px">
-                <i data-lucide="upload-cloud" style="width:16px;height:16px;color:var(--accent)"></i>
-                <span style="font-weight:600;font-size:13px">Uploading files…</span>
-                <span style="margin-left:auto;font-size:11px;color:var(--ink-3)">@uploadProgressText</span>
-            </div>
-            <div style="height:4px;background:var(--line);border-radius:2px;overflow:hidden">
-                <div style="height:100%;width:@(uploadProgressPercent)%;background:var(--accent);transition:width 0.3s"></div>
-            </div>
+        <ContextMenu @ref="ctxMenu" Items="ctxItems" OnClosed="() => ctxOpen = false" />
+    }
+
+    @if (uploading || activeTransfers.Count > 0)
+    {
+        <div class="fx-tasks" role="status" aria-live="polite">
+            @if (uploading)
+            {
+                var done = uploads.Count(u => u.Ok is not null);
+                var failed = uploads.Count(u => u.Ok == false);
+                var running = uploads.Any(u => u.Ok is null) && !uploadCancelled;
+                <div class="fx-task">
+                    <div class="fx-task-head">
+                        <i data-lucide="@(running ? "cloud-upload" : failed > 0 ? "circle-alert" : "check")" class="@(failed > 0 && !running ? "err" : "")"></i>
+                        <strong>@(running ? $"Uploading {Math.Min(done + 1, uploads.Count)} of {uploads.Count}" : failed > 0 ? $"{failed} upload{(failed == 1 ? "" : "s")} failed" : uploadCancelled ? "Upload stopped" : "Uploaded")</strong>
+                        <span>@FileKinds.Size(UploadSent) / @FileKinds.Size(UploadTotal)</span>
+                        @if (running) { <button type="button" class="fx-task-x" title="Cancel" @onclick="CancelUpload"><i data-lucide="x"></i></button> }
+                        else { <button type="button" class="fx-task-x" title="Dismiss" @onclick="DismissUploads"><i data-lucide="x"></i></button> }
+                    </div>
+                    <div class="fx-meter"><span style="width:@(UploadPercent)%"></span></div>
+                    @if (!running && failed > 0)
+                    {
+                        <ul class="fx-task-errs">
+                            @foreach (var u in uploads.Where(u => u.Ok == false)) { <li><span>@u.Name</span><em>@u.Error</em></li> }
+                        </ul>
+                    }
+                </div>
+            }
+            @foreach (var t in activeTransfers.Values)
+            {
+                <div class="fx-task">
+                    <div class="fx-task-head">
+                        <i data-lucide="arrow-right-left"></i>
+                        <strong>@(t.Kind == "move" ? "Moving" : "Copying") to @SiteLabel(t.DestServer)</strong>
+                        <span>@t.Completed / @t.Total</span>
+                    </div>
+                    <div class="fx-meter"><span style="width:@(t.Total > 0 ? t.Completed * 100 / t.Total : 0)%"></span></div>
+                </div>
+            }
         </div>
     }
 </div>
@@ -437,1195 +484,85 @@
     </div>
 }
 
-@if (showNewFolderModal)
-{
-    <div class="backdrop on" @onclick="() => showNewFolderModal = false"></div>
-    <div class="drawer on" role="dialog" aria-label="New folder" style="width:min(440px, 92vw)">
-        <div class="tray"><div class="core" style="display:flex; flex-direction:column">
-            <div class="drawer-head">New folder <button class="drawer-close" @onclick="() => showNewFolderModal = false"><i data-lucide="x"></i></button></div>
-            <div class="drawer-body" style="padding:16px 20px">
-                <div class="field"><label>Folder name</label><input placeholder="Folder name" @bind="newFolderName" @bind:event="oninput" /></div>
-            </div>
-            <div style="padding:12px 20px; border-top:1px solid var(--line-soft); display:flex; gap:8px">
-                <button class="btn btn-teal" style="flex:1; margin:0" disabled="@string.IsNullOrWhiteSpace(newFolderName)" @onclick="CreateFolder">Create folder</button>
-                <button class="btn" style="width:auto; margin:0; background:var(--surface); color:var(--ink); border:1px solid var(--line)" @onclick="() => showNewFolderModal = false">Cancel</button>
-            </div>
-        </div></div>
-    </div>
-}
 
-@if (showRenameModal)
-{
-    <div class="backdrop on" @onclick="() => showRenameModal = false"></div>
-    <div class="drawer on" role="dialog" aria-label="Rename item" style="width:min(440px, 92vw)">
-        <div class="tray"><div class="core" style="display:flex; flex-direction:column">
-            <div class="drawer-head">Rename <button class="drawer-close" @onclick="() => showRenameModal = false"><i data-lucide="x"></i></button></div>
-            <div class="drawer-body" style="padding:16px 20px">
-                <div class="field"><label>New name</label><input placeholder="New name" @bind="renameTargetName" @bind:event="oninput" /></div>
-            </div>
-            <div style="padding:12px 20px; border-top:1px solid var(--line-soft); display:flex; gap:8px">
-                <button class="btn btn-teal" style="flex:1; margin:0" disabled="@string.IsNullOrWhiteSpace(renameTargetName)" @onclick="SaveRename">Save</button>
-                <button class="btn" style="width:auto; margin:0; background:var(--surface); color:var(--ink); border:1px solid var(--line)" @onclick="() => showRenameModal = false">Cancel</button>
-            </div>
-        </div></div>
-    </div>
-}
+<Modal IsOpen="showNewFolderModal" IsOpenChanged="v => showNewFolderModal = v" Title="New folder" Subtitle="@($"In {ShareName(currentPath)}")">
+    <ChildContent>
+        <form class="fx-form" @onsubmit="CreateFolder" @onsubmit:preventDefault>
+            <input class="fx-input" aria-label="Folder name" placeholder="untitled folder" @bind="newFolderName" @bind:event="oninput" autofocus />
+        </form>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="fx-secondary" @onclick="() => showNewFolderModal = false">Cancel</button>
+        <button type="button" class="fx-primary" disabled="@string.IsNullOrWhiteSpace(newFolderName)" @onclick="CreateFolder">Create</button>
+    </Footer>
+</Modal>
 
-@if (showMoveCopyModal)
-{
-    <div class="backdrop on" @onclick="() => showMoveCopyModal = false"></div>
-    <div class="drawer on" role="dialog" aria-label="Move or Copy" style="width:min(480px, 92vw)">
-        <div class="tray"><div class="core" style="display:flex; flex-direction:column">
-            <div class="drawer-head">Move / Copy Items <button class="drawer-close" @onclick="() => showMoveCopyModal = false"><i data-lucide="x"></i></button></div>
-            <div class="drawer-body" style="padding:16px 20px; display:flex; flex-direction:column; gap:12px">
-                <div class="field"><label>Action mode</label>
-                    <select class="form-select" @bind="moveCopyMode">
-                        <option value="copy">Copy</option>
-                        <option value="move">Move</option>
-                    </select>
+<Modal IsOpen="showRenameModal" IsOpenChanged="v => showRenameModal = v" Title="Rename" Subtitle="@renameTargetItem?.Name">
+    <ChildContent>
+        <form class="fx-form" @onsubmit="SaveRename" @onsubmit:preventDefault>
+            <input class="fx-input" aria-label="New name" @bind="renameTargetName" @bind:event="oninput" autofocus />
+        </form>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="fx-secondary" @onclick="() => showRenameModal = false">Cancel</button>
+        <button type="button" class="fx-primary" disabled="@(string.IsNullOrWhiteSpace(renameTargetName) || renameTargetName == renameTargetItem?.Name)" @onclick="SaveRename">Rename</button>
+    </Footer>
+</Modal>
+
+<Modal IsOpen="showMoveCopyModal" IsOpenChanged="v => showMoveCopyModal = v" Title="Move or copy" Subtitle="@(moveCopyPaths.Count == 1 ? moveCopyPaths[0] : $"{moveCopyPaths.Count} items")">
+    <ChildContent>
+        <div class="fx-form">
+            <div class="fx-seg wide" role="group" aria-label="Action">
+                <button type="button" class="@(moveCopyMode == "copy" ? "on" : "")" @onclick='() => moveCopyMode = "copy"'><i data-lucide="copy"></i>Copy</button>
+                <button type="button" class="@(moveCopyMode == "move" ? "on" : "")" @onclick='() => moveCopyMode = "move"'><i data-lucide="folder-input"></i>Move</button>
+            </div>
+            <label class="fx-field"><span>Site</span>
+                <div class="fx-seg wide" role="group" aria-label="Destination site">
+                    @foreach (var s in Servers)
+                    {
+                        <button type="button" class="@(targetServer == s.Id ? "on" : "")" disabled="@(SiteStatus(s.Id).Css != "on" && s.Id != server)" @onclick="() => targetServer = s.Id">@s.Label</button>
+                    }
                 </div>
-                <div class="field"><label>Target server</label>
-                    <select class="form-select" @bind="targetServer">
-                        @foreach (var s in Servers)
-                        {
-                            <option value="@s.Id">@s.Label (@s.Host)</option>
-                        }
-                    </select>
-                </div>
-                <div class="field"><label>Destination folder path</label><input placeholder="/home or /teams" @bind="targetDestDir" /></div>
-            </div>
-            <div style="padding:12px 20px; border-top:1px solid var(--line-soft); display:flex; gap:8px">
-                <button class="btn btn-teal" style="flex:1; margin:0" disabled="@string.IsNullOrWhiteSpace(targetDestDir)" @onclick="ExecuteMoveCopy">Confirm</button>
-                <button class="btn" style="width:auto; margin:0; background:var(--surface); color:var(--ink); border:1px solid var(--line)" @onclick="() => showMoveCopyModal = false">Cancel</button>
-            </div>
-        </div></div>
-    </div>
-}
+            </label>
+            <label class="fx-field"><span>Folder</span>
+                <input class="fx-input mono" placeholder="/share/folder" @bind="targetDestDir" @bind:event="oninput" />
+            </label>
+            @if (targetServer != server)
+            {
+                <p class="fx-hint"><i data-lucide="info"></i>Copying between sites runs in the background, progress shows bottom-right.</p>
+            }
+            <p class="fx-hint"><i data-lucide="mouse-pointer-2"></i>Tip: drag items onto a folder or a share in the sidebar. Hold Ctrl to copy.</p>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="fx-secondary" @onclick="() => showMoveCopyModal = false">Cancel</button>
+        <button type="button" class="fx-primary" disabled="@string.IsNullOrWhiteSpace(targetDestDir)" @onclick="ExecuteMoveCopy">@(moveCopyMode == "move" ? "Move" : "Copy")</button>
+    </Footer>
+</Modal>
 
-@if (showShareModal)
-{
-    <div class="backdrop on" @onclick="() => showShareModal = false"></div>
-    <div class="drawer on" role="dialog" aria-label="Share Link" style="width:min(480px, 92vw)">
-        <div class="tray"><div class="core" style="display:flex; flex-direction:column">
-            <div class="drawer-head">Share Link <button class="drawer-close" @onclick="() => showShareModal = false"><i data-lucide="x"></i></button></div>
-            <div class="drawer-body" style="padding:16px 20px; display:flex; flex-direction:column; gap:12px">
-                @if (existingShareLinks.Count > 0)
+<Modal IsOpen="showShareModal" IsOpenChanged="v => showShareModal = v" Title="Share link" Subtitle="@shareTargetItem?.Name">
+    <ChildContent>
+        <div class="fx-form">
+            @if (existingShareLinks.Count > 0)
+            {
+                @foreach (var l in existingShareLinks)
                 {
-                    <div style="display:flex; flex-direction:column; gap:8px">
-                        <label>Active share link</label>
-                        @foreach (var l in existingShareLinks)
-                        {
-                            <div style="display:flex; align-items:center; gap:8px; padding:8px 12px; background:var(--tray); border-radius:8px">
-                                <span style="flex:1; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" class="mono">@l.Url</span>
-                                <button type="button" class="org-act" title="Copy URL" @onclick="() => CopyShareUrl(l.Url)"><i data-lucide="copy"></i></button>
-                                <button type="button" class="org-act" style="color:var(--danger)" title="Remove link" @onclick="() => DeleteShareLink(l.Id)"><i data-lucide="trash-2"></i></button>
-                            </div>
-                        }
+                    <div class="fx-link">
+                        <i data-lucide="link"></i>
+                        <span class="mono">@l.Url</span>
+                        <button type="button" class="fx-tb" title="Copy link" @onclick="() => CopyShareUrl(l.Url)"><i data-lucide="copy"></i></button>
+                        <button type="button" class="fx-tb fx-danger-txt" title="Remove link" @onclick="() => DeleteShareLink(l.Id)"><i data-lucide="trash-2"></i></button>
                     </div>
                 }
-                else
-                {
-                    <p style="font-size:12.5px; color:var(--ink-2); margin:0">Create a QuickConnect link to share this file.</p>
-                    <button type="button" class="btn btn-teal" style="width:100%" @onclick="CreateShareLink">Generate share link</button>
-                }
-            </div>
-            <div style="padding:12px 20px; border-top:1px solid var(--line-soft)">
-                <button class="btn" style="width:100%; margin:0; background:var(--surface); color:var(--ink); border:1px solid var(--line)" @onclick="() => showShareModal = false">Close</button>
-            </div>
-        </div></div>
-    </div>
-}
-
-@code {
-    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
-    private string server = "spj";
-    private string credServer = "spj";
-    private string currentPath = "/";
-    private readonly List<string> backStack = [];
-    private readonly List<string> forwardStack = [];
-    private string search = "";
-    private string typeFilter = "";
-    private string sortBy = "name";
-    private bool loading, needsCredential, showCred;
-    private string? loadError, credError;
-    private string credUser = "", credPass = "";
-    // Sign-in-once: the drawer defaults to trying one account on every plant NAS.
-    private bool credAllSites = true, credBusy;
-    private Dictionary<string, CredentialStatusDto> siteCreds = new();
-    private Dictionary<string, SiteConnectResultDto> lastConnect = new();
-    private List<SynoItemDto> items = [];
-    private List<string>? shares;
-    private CredentialStatusDto? credential;
-
-    private bool showPreview;
-    private SynoItemDto? previewItem;
-    private string? previewUrl;
-    private string? previewMime;
-    private bool previewLoading;
-    private string? previewError;
-    private byte[]? previewSheetBytes;
-
-    private static readonly List<AppOption> TypeOptions =
-        [new("", "All types"), new("pdf", "PDF"), new("image", "Images"), new("sheet", "Excel"),
-         new("word", "Word"), new("slide", "Slides"), new("archive", "Archives"), new("other", "Other")];
-    private static readonly List<AppOption> SortOptions =
-        [new("name", "Name A-Z"), new("name-desc", "Name Z-A"), new("modified-desc", "Newest"),
-         new("modified", "Oldest"), new("size-desc", "Largest"), new("size", "Smallest")];
-
-    private bool isRecycleBin;
-    private bool isStarredView;
-    private HashSet<string> starredPaths = [];
-    private bool uploading;
-    private string uploadProgressText = "";
-    private int uploadProgressPercent;
-    private SynoStorageInfo? storageInfo;
-    private HashSet<string> selectedPaths = [];
-    private bool gridView;
-    private SynoItemDto? infoItem;
-    private ElementReference dropZoneRef;
-    private bool dropBound;
-
-    // Stars are per-browser (localStorage) — FileStation has no favourite API we can share.
-    private const string StarredKey = "ipop.files.starred";
-
-    private async Task ToggleStar(string path)
-    {
-        if (!starredPaths.Add(path)) starredPaths.Remove(path);
-        await JS.InvokeVoidAsync("localStorage.setItem", StarredKey, string.Join('\n', starredPaths));
-        StateHasChanged();
-    }
-
-    private void EnterStarredView()
-    {
-        isStarredView = true;
-        isRecycleBin = false;
-        currentPath = "/";
-        selectedPaths.Clear();
-        StateHasChanged();
-    }
-
-    private void ShowInfo(SynoItemDto item) => infoItem = item;
-
-    // Modals state
-    private bool showNewFolderModal;
-    private string newFolderName = "";
-
-    private bool showRenameModal;
-    private SynoItemDto? renameTargetItem;
-    private string renameTargetName = "";
-
-    private bool showMoveCopyModal;
-    private List<string> moveCopyPaths = [];
-    private string targetServer = "spj";
-    private string targetDestDir = "/";
-    private string moveCopyMode = "copy";
-
-    private bool showShareModal;
-    private SynoItemDto? shareTargetItem;
-    private List<SynoShareLink> existingShareLinks = [];
-
-    private void ToggleSelect(string path)
-    {
-        if (!selectedPaths.Add(path)) selectedPaths.Remove(path);
-    }
-
-    private void ToggleSelectAll(ChangeEventArgs e)
-    {
-        if ((bool)(e.Value ?? false))
-            selectedPaths = filteredItems.Select(x => x.Path).ToHashSet();
-        else
-            selectedPaths.Clear();
-    }
-
-    private void ToggleRecycleBin() => EnterRecycleBin();
-
-    private void EnterRecycleBin()
-    {
-        isRecycleBin = true;
-        isStarredView = false;
-        currentPath = "/";
-        selectedPaths.Clear();
-        _ = Reload();
-    }
-
-    private void OpenNewFolderModal()
-    {
-        newFolderName = "";
-        showNewFolderModal = true;
-    }
-
-    private async Task CreateFolder()
-    {
-        if (string.IsNullOrWhiteSpace(newFolderName)) return;
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/folder", new { server, path = currentPath, name = newFolderName.Trim() });
-        showNewFolderModal = false;
-        if (res.IsSuccessStatusCode)
-        {
-            Toasts.ShowDetailed("Folder Created", $"Folder \"{newFolderName}\" created.", ToastKind.Success, "folder-plus");
-            await Reload();
-        }
-        else
-        {
-            Toasts.Show("Failed to create folder.", ToastKind.Error);
-        }
-    }
-
-    private void OpenRenameModal(SynoItemDto it)
-    {
-        renameTargetItem = it;
-        renameTargetName = it.Name;
-        showRenameModal = true;
-    }
-
-    private async Task SaveRename()
-    {
-        if (renameTargetItem is null || string.IsNullOrWhiteSpace(renameTargetName)) return;
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/rename", new { server, path = renameTargetItem.Path, name = renameTargetName.Trim() });
-        showRenameModal = false;
-        if (res.IsSuccessStatusCode)
-        {
-            Toasts.ShowDetailed("Renamed", $"Item renamed to \"{renameTargetName}\".", ToastKind.Success, "edit-3");
-            await Reload();
-        }
-        else
-        {
-            Toasts.Show("Failed to rename item.", ToastKind.Error);
-        }
-    }
-
-    private void OpenMoveCopyModal(SynoItemDto it)
-    {
-        moveCopyPaths = [it.Path];
-        targetServer = server;
-        targetDestDir = currentPath;
-        moveCopyMode = "copy";
-        showMoveCopyModal = true;
-    }
-
-    private void OpenMoveCopySelected()
-    {
-        moveCopyPaths = selectedPaths.ToList();
-        targetServer = server;
-        targetDestDir = currentPath;
-        moveCopyMode = "copy";
-        showMoveCopyModal = true;
-    }
-
-    private async Task ExecuteMoveCopy()
-    {
-        showMoveCopyModal = false;
-        if (moveCopyPaths.Count == 0 || string.IsNullOrWhiteSpace(targetDestDir)) return;
-
-        if (targetServer.Equals(server, StringComparison.OrdinalIgnoreCase))
-        {
-            var endpoint = moveCopyMode == "move" ? "/api/files/move" : "/api/files/copy";
-            var res = await Auth.SendAsync(HttpMethod.Post, endpoint, new { server, paths = moveCopyPaths, destDir = targetDestDir, overwrite = true });
-            if (res.IsSuccessStatusCode)
-            {
-                Toasts.ShowDetailed("Completed", $"Items {(moveCopyMode == "move" ? "moved" : "copied")} successfully.", ToastKind.Success, "folder-check");
-                selectedPaths.Clear();
-                await Reload();
             }
             else
             {
-                Toasts.Show("Move/Copy operation failed.", ToastKind.Error);
+                <p class="fx-hint">Anyone with the link can download this item for 14 days.</p>
             }
-        }
-        else
-        {
-            var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/transfer", new { sourceServer = server, paths = moveCopyPaths, destServer = targetServer, destDir = targetDestDir, mode = moveCopyMode });
-            if (res.IsSuccessStatusCode)
-            {
-                Toasts.ShowDetailed("Transfer Started", "Cross-server file transfer queued.", ToastKind.Success, "upload-cloud");
-                selectedPaths.Clear();
-            }
-            else
-            {
-                Toasts.Show("Could not initiate cross-server transfer.", ToastKind.Error);
-            }
-        }
-    }
-
-    private async Task OpenShareModal(SynoItemDto it)
-    {
-        shareTargetItem = it;
-        existingShareLinks = [];
-        showShareModal = true;
-        try
-        {
-            var links = await Auth.GetAsync<List<SynoShareLink>>($"/api/files/sharing?server={server}&path={Uri.EscapeDataString(it.Path)}");
-            existingShareLinks = links ?? [];
-        }
-        catch { }
-    }
-
-    private async Task CreateShareLink()
-    {
-        if (shareTargetItem is null) return;
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/sharing", new { server, path = shareTargetItem.Path, expiresInDays = 14 });
-        if (res.IsSuccessStatusCode)
-        {
-            var l = await res.Content.ReadFromJsonAsync<SynoShareLink>();
-            if (l != null) existingShareLinks = [l];
-            Toasts.ShowDetailed("Link Created", "QuickConnect link generated.", ToastKind.Success, "link");
-        }
-    }
-
-    private async Task CopyShareUrl(string url)
-    {
-        await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
-        Toasts.ShowDetailed("Copied", "Share link copied to clipboard.", ToastKind.Success, "copy");
-    }
-
-    private async Task DeleteShareLink(string shareId)
-    {
-        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/files/sharing?server={server}&shareId={Uri.EscapeDataString(shareId)}");
-        if (res.IsSuccessStatusCode)
-        {
-            existingShareLinks.RemoveAll(l => l.Id == shareId);
-            Toasts.ShowDetailed("Removed", "Share link deleted.", ToastKind.Success, "trash-2");
-        }
-    }
-
-    private async Task DeleteSingle(SynoItemDto it)
-    {
-        var ok = await Confirm.AskAsync("Move to Recycle Bin?", $"Move \"{it.Name}\" to Recycle Bin?", "Move to Bin");
-        if (!ok) return;
-
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/delete", new { server, paths = new[] { it.Path } });
-        if (res.IsSuccessStatusCode)
-        {
-            Toasts.ShowDetailed("Deleted", $"\"{it.Name}\" moved to Recycle Bin.", ToastKind.Success, "trash-2");
-            await Reload();
-        }
-    }
-
-    private async Task DeleteSelected()
-    {
-        if (selectedPaths.Count == 0) return;
-        var ok = await Confirm.AskAsync("Move items to Recycle Bin?", $"Move {selectedPaths.Count} item(s) to Recycle Bin?", "Move to Bin");
-        if (!ok) return;
-
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/delete", new { server, paths = selectedPaths.ToArray() });
-        if (res.IsSuccessStatusCode)
-        {
-            Toasts.ShowDetailed("Deleted", $"{selectedPaths.Count} items moved to Recycle Bin.", ToastKind.Success, "trash-2");
-            selectedPaths.Clear();
-            await Reload();
-        }
-    }
-
-    private async Task DeleteSinglePermanently(SynoItemDto it)
-    {
-        var ok = await Confirm.AskAsync("Delete permanently?", $"\"{it.Name}\" will be permanently removed.", "Delete forever", danger: true);
-        if (!ok) return;
-
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/delete", new { server, paths = new[] { it.Path } });
-        if (res.IsSuccessStatusCode)
-        {
-            Toasts.ShowDetailed("Deleted", $"\"{it.Name}\" permanently deleted.", ToastKind.Success, "trash-2");
-            await Reload();
-        }
-    }
-
-    private async Task DeleteSelectedPermanently()
-    {
-        if (selectedPaths.Count == 0) return;
-        var ok = await Confirm.AskAsync("Delete permanently?", $"{selectedPaths.Count} item(s) will be permanently deleted.", "Delete forever", danger: true);
-        if (!ok) return;
-
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/delete", new { server, paths = selectedPaths.ToArray() });
-        if (res.IsSuccessStatusCode)
-        {
-            Toasts.ShowDetailed("Deleted", $"{selectedPaths.Count} items permanently deleted.", ToastKind.Success, "trash-2");
-            selectedPaths.Clear();
-            await Reload();
-        }
-    }
-
-    private async Task RestoreSingle(SynoItemDto it)
-    {
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/recycle/restore", new { server, paths = new[] { it.Path }, destDir = "" });
-        if (res.IsSuccessStatusCode)
-        {
-            Toasts.ShowDetailed("Restored", $"\"{it.Name}\" restored.", ToastKind.Success, "undo-2");
-            await Reload();
-        }
-        else
-        {
-            Toasts.Show("Could not restore item.");
-        }
-    }
-
-    private async Task RestoreSelected()
-    {
-        if (selectedPaths.Count == 0) return;
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/recycle/restore", new { server, paths = selectedPaths.ToArray(), destDir = "" });
-        if (res.IsSuccessStatusCode)
-        {
-            Toasts.ShowDetailed("Restored", $"{selectedPaths.Count} items restored.", ToastKind.Success, "undo-2");
-            selectedPaths.Clear();
-            await Reload();
-        }
-        else
-        {
-            Toasts.Show("Could not restore selected items.");
-        }
-    }
-
-    private async Task EmptyRecycleBin()
-    {
-        var ok = await Confirm.AskAsync("Empty Recycle Bin?", "All items in the Recycle Bin will be permanently deleted.", "Empty Bin", danger: true);
-        if (!ok) return;
-
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/recycle/empty", new { server });
-        if (res.IsSuccessStatusCode)
-        {
-            Toasts.ShowDetailed("Emptied", "Recycle Bin emptied successfully.", ToastKind.Success, "trash-2");
-            await Reload();
-        }
-        else
-        {
-            Toasts.Show("Could not empty Recycle Bin.");
-        }
-    }
-
-    private async Task DownloadSelectedZip()
-    {
-        if (selectedPaths.Count == 0) return;
-        try
-        {
-            var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/bulk-download", new { server, paths = selectedPaths.ToArray() });
-            if (res.IsSuccessStatusCode)
-            {
-                var bytes = await res.Content.ReadAsByteArrayAsync();
-                var stamp = DateTime.Now.ToString("yyyyMMdd-HHmm");
-                await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(bytes), $"files_{server}_{stamp}.zip");
-                Toasts.ShowDetailed("Download Ready", "ZIP archive downloaded.", ToastKind.Success, "download");
-            }
-        }
-        catch { }
-    }
-
-    private record ServerInfo(string Id, string Label, string Host);
-    private static readonly ServerInfo[] Servers = [
-        new("spj", "SPJ", "192.168.2.16"),
-        new("krw", "KRW", "10.12.2.6"),
-        new("jtb", "JTB", "10.11.2.6"),
-        new("smg", "SMG", "10.14.2.16"),
-    ];
-    private string serverLabel => Servers.FirstOrDefault(s => s.Id == server)?.Label ?? server.ToUpperInvariant();
-    private List<SynoItemDto> filteredItems
-    {
-        get
-        {
-            IEnumerable<SynoItemDto> q = items;
-            if (!string.IsNullOrWhiteSpace(search))
-                q = q.Where(i => i.Name.Contains(search, StringComparison.OrdinalIgnoreCase));
-            if (!string.IsNullOrEmpty(typeFilter))
-                q = q.Where(i => MatchesType(i.Name, typeFilter));
-            if (isStarredView)
-                q = q.Where(i => starredPaths.Contains(i.Path));
-            q = sortBy switch
-            {
-                "name" => q.OrderBy(i => i.IsDir ? 0 : 1).ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase),
-                "name-desc" => q.OrderBy(i => i.IsDir ? 0 : 1).ThenByDescending(i => i.Name, StringComparer.OrdinalIgnoreCase),
-                "modified" => q.OrderBy(i => i.IsDir ? 0 : 1).ThenBy(i => i.Mtime),
-                "modified-desc" => q.OrderBy(i => i.IsDir ? 0 : 1).ThenByDescending(i => i.Mtime),
-                "size" => q.OrderBy(i => i.IsDir ? 0 : 1).ThenBy(i => i.Size),
-                "size-desc" => q.OrderBy(i => i.IsDir ? 0 : 1).ThenByDescending(i => i.Size),
-                _ => q.OrderBy(i => i.IsDir ? 0 : 1).ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase),
-            };
-            return q.ToList();
-        }
-    }
-    private static bool MatchesType(string name, string filter)
-    {
-        var ext = GetFileExt(name);
-        return filter switch
-        {
-            "pdf" => ext == ".pdf",
-            "image" => ext is ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg",
-            "sheet" => ext is ".xls" or ".xlsx" or ".csv",
-            "word" => ext is ".doc" or ".docx",
-            "slide" => ext is ".ppt" or ".pptx",
-            "archive" => ext is ".zip" or ".rar" or ".7z" or ".tar" or ".gz",
-            "other" => ext == "" || ext == ".txt" || ext == ".log" || ext == ".json",
-            _ => true
-        };
-    }
-    private void ToggleSort(string key)
-    {
-        if (sortBy == key) sortBy = key + "-desc";
-        else if (sortBy == key + "-desc") sortBy = key;
-        else sortBy = key;
-        StateHasChanged();
-    }
-    private void ClearFilters()
-    {
-        search = ""; typeFilter = ""; sortBy = "name";
-        StateHasChanged();
-    }
-
-    private bool isRevalidating;
-    private bool copiedPath;
-
-    private record BreadcrumbSegment(string Name, string Path, bool IsLast);
-
-    private List<BreadcrumbSegment> GetBreadcrumbs()
-    {
-        var list = new List<BreadcrumbSegment>();
-        if (string.IsNullOrEmpty(currentPath) || currentPath == "/") return list;
-
-        var parts = currentPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        var acc = "";
-        for (int i = 0; i < parts.Length; i++)
-        {
-            acc += "/" + parts[i];
-            list.Add(new BreadcrumbSegment(parts[i], acc, i == parts.Length - 1));
-        }
-        return list;
-    }
-
-    private async Task CopyCurrentPath()
-    {
-        try
-        {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", currentPath);
-            copiedPath = true;
-            StateHasChanged();
-            await Task.Delay(1800);
-            copiedPath = false;
-            StateHasChanged();
-        }
-        catch
-        {
-            // fallback: no clipboard permission
-        }
-    }
-
-    private async Task ForceRefresh()
-    {
-        FileStateService.Invalidate(server, currentPath);
-        await Reload(bypassCache: true);
-    }
-
-    protected override void OnInitialized()
-    {
-        Layout.SetHeader("Files", "Files");
-        // Pulihkan state server dan path dari in-memory state seketika (0ms)
-        server = FileStateService.CurrentServer;
-        credServer = server;
-        currentPath = FileStateService.CurrentPath;
-
-        backStack.Clear();
-        backStack.AddRange(FileStateService.BackStack);
-        forwardStack.Clear();
-        forwardStack.AddRange(FileStateService.ForwardStack);
-
-        // Pulihkan shares dari cache jika tersedia
-        if (FileStateService.TryGetCachedShares(server, out var sCached))
-        {
-            shares = sCached;
-        }
-
-        if (currentPath == "/")
-        {
-            if (shares is not null) loading = false;
-        }
-        else
-        {
-            if (FileStateService.TryGetCachedItems(server, currentPath, out var iCached))
-            {
-                items = iCached;
-                loading = false;
-            }
-        }
-    }
-
-    protected override async Task OnInitializedAsync()
-    {
-        var starredRaw = await JS.InvokeAsync<string?>("localStorage.getItem", StarredKey);
-        if (!string.IsNullOrEmpty(starredRaw))
-            starredPaths = starredRaw.Split('\n', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
-
-        // Pulihkan persistent last-seen dari localStorage (jika browser di-refresh / tab baru)
-        var restored = await FileStateService.LoadLastSeenAsync(JS);
-        if (restored.HasValue)
-        {
-            server = FileStateService.CurrentServer;
-            credServer = server;
-            currentPath = FileStateService.CurrentPath;
-            if (FileStateService.TryGetCachedShares(server, out var sCached2))
-            {
-                shares = sCached2;
-            }
-            if (currentPath != "/" && FileStateService.TryGetCachedItems(server, currentPath, out var iCached))
-            {
-                items = iCached;
-                loading = false;
-                StateHasChanged();
-            }
-        }
-
-        await Task.WhenAll(Reload(), LoadSiteCredentials());
-    }
-
-    private async Task SwitchServer(string id)
-    {
-        server = id; credServer = id; currentPath = "/"; search = "";
-        shares = null;
-        items = [];
-        FileStateService.CurrentServer = id;
-        FileStateService.CurrentPath = "/";
-        backStack.Clear(); forwardStack.Clear();
-        FileStateService.BackStack.Clear(); FileStateService.ForwardStack.Clear();
-        _ = FileStateService.SaveLastSeenAsync(JS);
-        await Reload(bypassCache: true);
-    }
-
-    private async Task Reload(bool bypassCache = false)
-    {
-        // ipop-42: navigation paths fire-and-forget Reload after mutating currentPath.
-        // Capture at start and compare after EVERY await — a superseded continuation
-        // must write nothing, or the listing can show folder A while currentPath is B
-        // (and OnUpload then posts files into B while the user is looking at A).
-        var pathAtStart = currentPath;
-        var serverAtStart = server;
-        loadError = null;
-
-        bool hasCachedData = false;
-        // Selalu pastikan shares di-resolve dari cache terlebih dahulu
-        if (shares is null && FileStateService.TryGetCachedShares(server, out var shCache))
-        {
-            shares = shCache;
-        }
-
-        if (!bypassCache)
-        {
-            if (currentPath == "/")
-            {
-                if (shares is not null)
-                {
-                    hasCachedData = true;
-                }
-            }
-            else
-            {
-                if (FileStateService.TryGetCachedItems(server, currentPath, out var iCached))
-                {
-                    items = iCached;
-                    hasCachedData = true;
-                }
-            }
-        }
-
-        if (hasCachedData)
-        {
-            loading = false;
-            isRevalidating = true;
-            StateHasChanged();
-        }
-        else
-        {
-            loading = true;
-            if (currentPath != "/") items = [];
-        }
-
-        try
-        {
-            // The credential check, share list and folder listing go out together: awaiting the
-            // credential first put a whole round trip in front of every folder open. A missing
-            // credential makes the listing 401, which the credential result below explains.
-            var credTask = Auth.GetAsync<CredentialStatusDto>($"/api/files/credential?server={server}");
-
-            Task<List<string>?>? sharesTask = null;
-            if (shares is null)
-            {
-                sharesTask = Auth.GetAsync<List<string>>($"/api/files/shares?server={server}");
-            }
-
-            Task<List<SynoItemDto>?>? itemsTask = null;
-            if (isRecycleBin)
-            {
-                itemsTask = Auth.GetAsync<List<SynoItemDto>>($"/api/files/recycle?server={server}&path={Uri.EscapeDataString(currentPath)}");
-            }
-            else if (currentPath != "/")
-            {
-                itemsTask = Auth.GetAsync<List<SynoItemDto>>($"/api/files?server={server}&path={Uri.EscapeDataString(currentPath)}");
-            }
-
-            var cred = await credTask;
-            if (pathAtStart != currentPath || serverAtStart != server) return; // superseded by navigation
-            credential = cred;
-            Layout.SetSubtitle(cred is { HasCredential: true, IsInvalid: false } ? $"{serverLabel} · Connected as {cred.Username}" : $"{serverLabel} · Not connected");
-            if (cred is null || !cred.HasCredential) { needsCredential = true; return; }
-            if (cred.IsInvalid) { needsCredential = true; showCred = true; return; }
-            needsCredential = false;
-
-            // Volume usage barely moves: once per server, not on every folder click.
-            if (storageInfo?.Server != server)
-            {
-                var storageServer = server;
-                _ = Auth.GetAsync<SynoStorageInfo>($"/api/files/storage?server={storageServer}").ContinueWith(t => {
-                    if (t.IsCompletedSuccessfully && t.Result is not null && storageServer == server) { storageInfo = t.Result; _ = InvokeAsync(StateHasChanged); }
-                });
-            }
-
-            if (sharesTask is not null)
-            {
-                var s = await sharesTask;
-                if (pathAtStart != currentPath || serverAtStart != server) return;
-                if (s is not null)
-                {
-                    shares = s;
-                    FileStateService.SetCachedShares(server, s);
-                }
-            }
-
-            if (currentPath == "/")
-            {
-                if (shares is null)
-                {
-                    if (!hasCachedData) loadError = "Could not reach the NAS.";
-                }
-                else if (shares.Count > 0)
-                {
-                    // Auto-open share pertama jika di root "/" agar panel kanan tidak kosong
-                    var targetShare = shares.FirstOrDefault(sh => !sh.Contains("backup") && !sh.Contains("git")) ?? shares[0];
-                    currentPath = targetShare;
-                    FileStateService.CurrentPath = targetShare;
-                    _ = FileStateService.SaveLastSeenAsync(JS);
-                    _ = Reload();
-                    return;
-                }
-            }
-            else if (itemsTask is not null)
-            {
-                var list = await itemsTask;
-                if (pathAtStart != currentPath || serverAtStart != server) return; // superseded
-                if (list is null)
-                {
-                    if (!hasCachedData) loadError = "Could not load folder.";
-                }
-                else
-                {
-                    items = list;
-                    FileStateService.SetCachedItems(server, currentPath, list);
-                }
-            }
-
-            FileStateService.CurrentServer = server;
-            FileStateService.CurrentPath = currentPath;
-            FileStateService.BackStack = backStack.ToList();
-            FileStateService.ForwardStack = forwardStack.ToList();
-            _ = FileStateService.SaveLastSeenAsync(JS);
-        }
-        finally
-        {
-            // ipop-46 + ipop-42: guarantee the spinner clears on a throw, but a SUPERSEDED
-            // continuation still writes nothing — the newer Reload owns `loading` now.
-            if (pathAtStart == currentPath && serverAtStart == server)
-            {
-                loading = false;
-                isRevalidating = false;
-                StateHasChanged();
-                await JS.InvokeVoidAsync("ipop.icons");
-            }
-        }
-    }
-
-    // Push the current path onto the back stack before navigating somewhere
-    // new; forward gets cleared (a new branch invalidates the forward history).
-    private void PushHistory()
-    {
-        if (backStack.Count == 0 || backStack[^1] != currentPath) backStack.Add(currentPath);
-        forwardStack.Clear();
-        FileStateService.BackStack = backStack.ToList();
-        FileStateService.ForwardStack = forwardStack.ToList();
-    }
-
-    private void Enter(string share) { isRecycleBin = false; isStarredView = false; PushHistory(); currentPath = share; _ = Reload(); }
-    private Task OnItemClick(SynoItemDto it)
-    {
-        if (it.IsDir) { PushHistory(); currentPath = it.Path; return Reload(); }
-        if (IsPreviewable(it.Name)) return Preview(it);
-        return Download(it);
-    }
-    private void GoUp() { PushHistory(); var p = currentPath.TrimEnd('/'); var idx = p.LastIndexOf('/'); currentPath = idx <= 0 ? "/" : p[..idx]; _ = Reload(); }
-    private async Task Navigate(string path)
-    {
-        if (path == currentPath) return; // clicking the current crumb is a no-op
-        PushHistory(); currentPath = path; await Reload();
-    }
-    private void GoBack()
-    {
-        if (backStack.Count == 0) return;
-        forwardStack.Add(currentPath);
-        currentPath = backStack[^1];
-        backStack.RemoveAt(backStack.Count - 1);
-        FileStateService.BackStack = backStack.ToList();
-        FileStateService.ForwardStack = forwardStack.ToList();
-        FileStateService.CurrentPath = currentPath;
-        _ = FileStateService.SaveLastSeenAsync(JS);
-        _ = Reload();
-    }
-    private void GoForward()
-    {
-        if (forwardStack.Count == 0) return;
-        backStack.Add(currentPath);
-        currentPath = forwardStack[^1];
-        forwardStack.RemoveAt(forwardStack.Count - 1);
-        FileStateService.BackStack = backStack.ToList();
-        FileStateService.ForwardStack = forwardStack.ToList();
-        FileStateService.CurrentPath = currentPath;
-        _ = FileStateService.SaveLastSeenAsync(JS);
-        _ = Reload();
-    }
-
-    private bool isSheetPreview => previewItem is not null && IsSheetPreviewable(previewItem.Name);
-
-    private async Task Preview(SynoItemDto it)
-    {
-        previewItem = it;
-        previewError = null;
-        previewUrl = null;
-        previewMime = GetMimeType(it.Name);
-        previewLoading = true;
-        previewSheetBytes = null;
-        showPreview = true;
-        StateHasChanged();
-        if (IsSheetPreviewable(it.Name))
-        {
-            try
-            {
-                var res2 = await Auth.SendAsync(HttpMethod.Get, $"/api/files/download?server={server}&path={Uri.EscapeDataString(it.Path)}");
-                if (!res2.IsSuccessStatusCode) { previewError = "Could not load preview."; return; }
-                previewSheetBytes = await res2.Content.ReadAsByteArrayAsync();
-                previewLoading = false;
-                StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons");
-                return;
-            }
-            catch { previewError = "Preview failed."; }
-            finally { previewLoading = false; StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons"); }
-            return;
-        }
-        if (GetFileExt(it.Name) == ".xls")
-        {
-            // Legacy binary Excel - rendered client-side by SheetJS (ipop.renderOffice).
-            try
-            {
-                var res2 = await Auth.SendAsync(HttpMethod.Get, $"/api/files/download?server={server}&path={Uri.EscapeDataString(it.Path)}");
-                if (!res2.IsSuccessStatusCode) { previewError = "Could not load preview."; return; }
-                var bytes2 = await res2.Content.ReadAsByteArrayAsync();
-                var b642 = Convert.ToBase64String(bytes2);
-                previewLoading = false;
-                StateHasChanged();
-                await Task.Delay(50);
-                var ok = await JS.InvokeAsync<bool>("ipop.renderOffice", b642, "xls");
-                if (!ok) previewError = "Preview not available - use Download.";
-                await JS.InvokeVoidAsync("ipop.icons");
-                return;
-            }
-            catch { previewError = "Preview failed."; }
-            finally { previewLoading = false; StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons"); }
-            return;
-        }
-        if (IsOfficePreviewable(it.Name))
-        {
-            try
-            {
-                var res2 = await Auth.SendAsync(HttpMethod.Get, $"/api/files/preview?server={server}&path={Uri.EscapeDataString(it.Path)}");
-                if (!res2.IsSuccessStatusCode)
-                {
-                    var errText = "Document preview is unavailable.";
-                    try
-                    {
-                        var errJson = await res2.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
-                        if (errJson.TryGetProperty("message", out var m) && !string.IsNullOrWhiteSpace(m.GetString()))
-                            errText = m.GetString()!;
-                    }
-                    catch { }
-                    previewError = errText;
-                    return;
-                }
-                var bytes2 = await res2.Content.ReadAsByteArrayAsync();
-                previewUrl = await JS.InvokeAsync<string>("ipop.preview", Convert.ToBase64String(bytes2), "application/pdf", it.Name);
-                previewMime = "application/pdf";
-            }
-            catch (Exception ex) { previewError = $"Failed to load preview: {ex.Message}"; }
-            finally { previewLoading = false; StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons"); }
-            return;
-        }
-        try
-        {
-            var res = await Auth.SendAsync(HttpMethod.Get, $"/api/files/download?server={server}&path={Uri.EscapeDataString(it.Path)}");
-            if (!res.IsSuccessStatusCode) { previewError = "Could not load preview."; return; }
-            var bytes = await res.Content.ReadAsByteArrayAsync();
-            var b64 = Convert.ToBase64String(bytes);
-            previewUrl = await JS.InvokeAsync<string>("ipop.preview", b64, previewMime, it.Name);
-        }
-        catch { previewError = "Preview failed."; }
-        finally { previewLoading = false; StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons"); }
-    }
-    private string BuildExplorerUrl(SynoItemDto it) => $"ipop://open?server={Uri.EscapeDataString(server)}&path={Uri.EscapeDataString(it.Path)}";
-    private async Task OpenInExplorer()
-    {
-        if (previewItem is null) return;
-        var url = BuildExplorerUrl(previewItem);
-        await JS.InvokeVoidAsync("ipop.openExplorer", url);
-        await JS.InvokeVoidAsync("ipop.icons");
-    }
-    private async Task OpenInExplorerFor(SynoItemDto it)
-    {
-        previewItem = it;
-        await OpenInExplorer();
-    }
-
-    private async Task ClosePreview()
-    {
-        showPreview = false;
-        previewItem = null;
-        var url = previewUrl;
-        previewUrl = null;
-        previewMime = null;
-        previewError = null;
-        previewSheetBytes = null;
-        StateHasChanged();
-        if (url is not null) await JS.InvokeVoidAsync("ipop.revokePreview");
-        await JS.InvokeVoidAsync("ipop.icons");
-    }
-
-    private static bool IsCoAuthorable(string name) => GetFileExt(name) is ".docx" or ".doc" or ".xlsx" or ".xls" or ".pptx" or ".ppt" or ".rtf";
-    private string GetEditorUrl(SynoItemDto it) => $"/files/editor?server={server}&path={Uri.EscapeDataString(it.Path)}";
-
-    private async Task PrintPreview()
-    {
-        if (previewUrl is null) return;
-        await JS.InvokeVoidAsync("ipop.printUrl", previewUrl);
-    }
-
-    private async Task Download(SynoItemDto it)
-    {
-        var res = await Auth.SendAsync(HttpMethod.Get, $"/api/files/download?server={server}&path={Uri.EscapeDataString(it.Path)}");
-        if (!res.IsSuccessStatusCode) { loadError = "Download failed."; return; }
-        var bytes = await res.Content.ReadAsByteArrayAsync();
-        var b64 = Convert.ToBase64String(bytes);
-        await JS.InvokeVoidAsync("ipop.download", b64, it.Name);
-    }
-
-    private async Task OnUpload(InputFileChangeEventArgs e)
-    {
-        loadError = null;
-        if (e.FileCount > 5)
-        {
-            loadError = "Select up to five files per upload.";
-            return;
-        }
-        var files = e.GetMultipleFiles(5).ToList();
-        if (files.Count == 0) return;
-        uploading = true;
-        uploadProgressPercent = 10;
-        uploadProgressText = $"0 / {files.Count}";
-        StateHasChanged();
-        try
-        {
-            for (var i = 0; i < files.Count; i++)
-            {
-                var file = files[i];
-                uploadProgressText = $"{i + 1} / {files.Count}: {file.Name}";
-                uploadProgressPercent = (int)((i + 1) * 100.0 / files.Count);
-                StateHasChanged();
-
-                using var form = new MultipartFormDataContent();
-                form.Add(new StringContent(server), "server");
-                form.Add(new StringContent(currentPath), "path");
-                await using var s = file.OpenReadStream(maxAllowedSize: 100 * 1024 * 1024);
-                form.Add(new StreamContent(s), "file", file.Name);
-                var res = await Auth.SendMultipartAsync("/api/files/upload", form);
-                if (!res.IsSuccessStatusCode)
-                    loadError = res.StatusCode == System.Net.HttpStatusCode.Unauthorized ? "Sign in again." : $"Upload failed: {file.Name}";
-            }
-        }
-        finally
-        {
-            uploading = false;
-            await Reload();
-        }
-    }
-
-    private async Task SaveCredential()
-    {
-        credError = null;
-        if (credAllSites) { await ConnectAllSites(); return; }
-        credBusy = true;
-        try
-        {
-            var res = await Auth.SendAsync(HttpMethod.Put, "/api/files/credential", new { server = credServer, username = credUser, password = credPass });
-            if (!res.IsSuccessStatusCode) { credError = "Synology rejected the credentials."; return; }
-            showCred = false; credUser = ""; credPass = "";
-            await LoadSiteCredentials();
-            if (server != credServer) await SwitchServer(credServer); else await Reload(bypassCache: true);
-        }
-        finally { credBusy = false; StateHasChanged(); }
-    }
-
-    private async Task ConnectAllSites()
-    {
-        credBusy = true; lastConnect.Clear(); StateHasChanged();
-        try
-        {
-            var res = await Auth.SendAsync(HttpMethod.Put, "/api/files/credential/all", new { username = credUser, password = credPass });
-            var results = res.IsSuccessStatusCode ? await res.Content.ReadFromJsonAsync<List<SiteConnectResultDto>>() : null;
-            if (results is null) { credError = "Could not reach iPop, try again."; return; }
-            lastConnect = results.ToDictionary(r => r.Server);
-            await LoadSiteCredentials();
-            if (results.All(r => r.Status != "connected")) { credError = "No site accepted these credentials."; return; }
-            credPass = "";
-            // Everything connected: close. Partial: keep the drawer open so the per-site list shows
-            // which sites still need their own sign-in.
-            if (results.All(r => r.Status == "connected")) { showCred = false; credUser = ""; }
-            await Reload(bypassCache: true);
-        }
-        finally { credBusy = false; StateHasChanged(); }
-    }
-
-    private async Task LoadSiteCredentials()
-    {
-        var list = await Auth.GetAsync<List<CredentialStatusDto>>("/api/files/credentials");
-        if (list is not null) siteCreds = list.Where(c => c.Server is not null).ToDictionary(c => c.Server!);
-    }
-
-    private (string Css, string Text) SiteStatus(string id)
-    {
-        if (lastConnect.TryGetValue(id, out var r))
-            return r.Status switch
-            {
-                "connected" => ("on", "Connected"),
-                "rejected" => siteCreds.TryGetValue(id, out var own) && !own.IsInvalid
-                    ? ("on", $"Kept existing sign-in ({own.Username})")
-                    : ("warn", "Rejected, sign in to this site separately"),
-                _ => ("err", "Unreachable right now"),
-            };
-        if (siteCreds.TryGetValue(id, out var c))
-            return c.IsInvalid ? ("warn", "Password no longer accepted") : ("on", $"Signed in as {c.Username}");
-        return ("", "Not connected");
-    }
-
-    private async Task ClearCredential()
-    {
-        await Auth.SendAsync(HttpMethod.Delete, $"/api/files/credential?server={credServer}", null);
-        showCred = false;
-        await LoadSiteCredentials();
-        await Reload(bypassCache: true);
-    }
-
-    private static string FormatSize(long b) => b < 1024 ? $"{b} B" : b < 1024 * 1024 ? $"{b / 1024:N0} KB" : $"{b / 1024 / 1024:N0} MB";
-    private static string FormatMtime(long mtime) => mtime == 0 ? "—" : DateTimeOffset.FromUnixTimeSeconds(mtime).ToLocalTime().ToString("MMM dd");
-    private static string GetFileExt(string name) => System.IO.Path.GetExtension(name).ToLowerInvariant();
-    private static bool IsPreviewable(string name) => GetFileExt(name) is ".pdf" or ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" or ".xlsx" or ".xls" or ".csv" or ".docx" or ".doc" or ".pptx" or ".ppt" or ".rtf";
-    private static bool IsOfficePreviewable(string name) => GetFileExt(name) is ".docx" or ".doc" or ".pptx" or ".ppt" or ".rtf";
-    // Sheets renderable by RadzenSpreadsheet (XLSX/CSV). Legacy .xls stays on the SheetJS path.
-    private static bool IsSheetPreviewable(string name) => GetFileExt(name) is ".xlsx" or ".csv";
-    private static string GetFileIcon(string name) => GetFileExt(name) switch
-    {
-        ".xls" or ".xlsx" or ".csv" => "table",
-        ".doc" or ".docx" or ".rtf" => "file-text",
-        ".ppt" or ".pptx" => "presentation",
-        ".pdf" => "file-text",
-        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "image",
-        ".zip" or ".rar" or ".7z" or ".tar" or ".gz" => "archive",
-        ".mp4" or ".mov" or ".avi" or ".mkv" => "video",
-        ".mp3" or ".wav" or ".ogg" => "music",
-        _ => "file"
-    };
-    private static string GetFileIconBg(string name) => GetFileExt(name) switch
-    {
-        ".xls" or ".xlsx" or ".csv" => "var(--accent-soft)",
-        ".doc" or ".docx" or ".rtf" => "var(--info-soft)",
-        ".ppt" or ".pptx" => "var(--warn-soft)",
-        ".pdf" => "var(--danger-soft)",
-        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "rgba(124, 58, 237, 0.12)",
-        ".zip" or ".rar" or ".7z" => "var(--surface-3)",
-        _ => "var(--surface-2)"
-    };
-    private static string GetFileIconColor(string name) => GetFileExt(name) switch
-    {
-        ".xls" or ".xlsx" or ".csv" => "var(--accent-ink)",
-        ".doc" or ".docx" or ".rtf" => "var(--info)",
-        ".ppt" or ".pptx" => "var(--warn)",
-        ".pdf" => "var(--danger)",
-        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "#8b5cf6",
-        ".zip" or ".rar" or ".7z" => "var(--ink-3)",
-        _ => "var(--ink-3)"
-    };
-    private static string GetFileTagBg(string name) => GetFileExt(name) switch
-    {
-        ".xls" or ".xlsx" or ".csv" => "var(--accent-soft)",
-        ".doc" or ".docx" or ".rtf" => "var(--info-soft)",
-        ".ppt" or ".pptx" => "var(--warn-soft)",
-        ".pdf" => "var(--danger-soft)",
-        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "rgba(124, 58, 237, 0.12)",
-        _ => "var(--surface-2)"
-    };
-    private static string GetFileTagColor(string name) => GetFileExt(name) switch
-    {
-        ".xls" or ".xlsx" or ".csv" => "var(--accent-ink)",
-        ".doc" or ".docx" or ".rtf" => "var(--info)",
-        ".ppt" or ".pptx" => "var(--warn)",
-        ".pdf" => "var(--danger)",
-        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" => "#8b5cf6",
-        _ => "var(--ink-2)"
-    };
-    private static string GetFileExtLabel(string name)
-    {
-        var ext = GetFileExt(name);
-        return string.IsNullOrEmpty(ext) ? "FILE" : ext.TrimStart('.').ToUpperInvariant();
-    }
-    private static string GetMimeType(string name) => GetFileExt(name) switch
-    {
-        ".pdf" => "application/pdf",
-        ".png" => "image/png",
-        ".jpg" or ".jpeg" => "image/jpeg",
-        ".gif" => "image/gif",
-        ".webp" => "image/webp",
-        ".bmp" => "image/bmp",
-        ".svg" => "image/svg+xml",
-        ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ".doc" => "application/msword",
-        ".rtf" => "application/rtf",
-        ".pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        ".ppt" => "application/vnd.ms-powerpoint",
-        ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ".xls" => "application/vnd.ms-excel",
-        ".csv" => "text/csv",
-        _ => "application/octet-stream"
-    };
-    private void ShareViaMail(SynoItemDto it)
-    {
-        var subject = it.Name;
-        var body = $"File: {it.Name}\nLocation: {server}:{it.Path}";
-        Nav.NavigateTo($"/mail?shareSubject={Uri.EscapeDataString(subject)}&shareBody={Uri.EscapeDataString(body)}");
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        await JS.InvokeVoidAsync("ipop.icons");
-        if (!needsCredential && !dropBound && dropZoneRef.Context is not null)
-        {
-            await JS.InvokeVoidAsync("ipop.mailBindDropZone", dropZoneRef, "#files-upload-input");
-            dropBound = true;
-        }
-        else if (needsCredential && dropBound)
-        {
-            await JS.InvokeVoidAsync("ipop.mailUnbindDropZone", dropZoneRef);
-            dropBound = false;
-        }
-    }
-
-    public void Dispose()
-    {
-        if (dropBound) _ = JS.InvokeVoidAsync("ipop.mailUnbindDropZone", dropZoneRef);
-        _ = JS.InvokeVoidAsync("ipop.revokePreview");
-    }
-}
+        </div>
+    </ChildContent>
+    <Footer>
+        <button type="button" class="fx-secondary" @onclick="() => showShareModal = false">Done</button>
+        @if (existingShareLinks.Count == 0) { <button type="button" class="fx-primary" @onclick="CreateShareLink"><i data-lucide="link"></i>Create link</button> }
+    </Footer>
+</Modal>

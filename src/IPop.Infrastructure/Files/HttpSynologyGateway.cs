@@ -337,6 +337,50 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
             throw new SynoException($"Synology HTTP {(int)res.StatusCode}: {json[..Math.Min(300, json.Length)]}", authFailure: false);
     }
 
+    public async Task<string> SearchStartAsync(string server, string sid, IReadOnlyList<string> folderPaths, string pattern, CancellationToken ct)
+    {
+        // DSM matches the pattern as a glob on the name; wrap it so "invoice" finds "2026 invoice march.pdf".
+        var glob = pattern.Contains('*') || pattern.Contains('?') ? pattern : $"*{pattern}*";
+        var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Search&version=2&method=start&folder_path={Uri.EscapeDataString(System.Text.Json.JsonSerializer.Serialize(folderPaths))}&pattern={Uri.EscapeDataString(glob)}&recursive=true&_sid={Uri.EscapeDataString(sid)}";
+        var json = await GetCheckedAsync(url, ct);
+        var body = System.Text.Json.JsonSerializer.Deserialize<SearchStartResp>(json, _jsonOpts);
+        return body?.Data?.TaskId ?? throw new SynoException("Search did not return a task id");
+    }
+
+    public async Task<SynoSearchPage> SearchListAsync(string server, string sid, string taskId, int offset, int limit, CancellationToken ct)
+    {
+        var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Search&version=2&method=list&taskid={Uri.EscapeDataString(taskId)}&offset={offset}&limit={limit}&additional=[\"size\",\"time\"]&_sid={Uri.EscapeDataString(sid)}";
+        var json = await GetCheckedAsync(url, ct);
+        var data = System.Text.Json.JsonSerializer.Deserialize<SearchListResp>(json, _jsonOpts)?.Data;
+        var items = data?.Files?.Select(f => new SynoItem(f.Name, f.Path, f.IsDir, f.Additional?.Size ?? 0, f.Additional?.Mtime ?? 0)).ToList() ?? [];
+        return new SynoSearchPage(items, data?.Total ?? items.Count, data?.Finished ?? true);
+    }
+
+    public async Task SearchStopAsync(string server, string sid, string taskId, CancellationToken ct)
+    {
+        var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Search&version=2&method=clean&taskid={Uri.EscapeDataString(JsonList(taskId))}&_sid={Uri.EscapeDataString(sid)}";
+        await GetCheckedAsync(url, ct);
+    }
+
+    private static string JsonList(string value) => System.Text.Json.JsonSerializer.Serialize(new[] { value });
+
+    /// <summary>GET a FileStation call and map its error envelope the way the calls above do inline.</summary>
+    private async Task<string> GetCheckedAsync(string url, CancellationToken ct)
+    {
+        using var res = await http.GetAsync(url, ct);
+        var json = await res.Content.ReadAsStringAsync(ct);
+        if (!res.IsSuccessStatusCode)
+            throw new SynoException($"Synology HTTP {(int)res.StatusCode}", authFailure: false);
+        var probe = System.Text.Json.JsonSerializer.Deserialize<ErrorProbe>(json, _jsonOpts);
+        if (probe is not null && !probe.Success)
+        {
+            var code = probe.Error?.Code;
+            if (code == 119) throw new SynoException("Session expired", code, sessionExpired: true);
+            throw new SynoException($"Synology error {code}", code);
+        }
+        return json;
+    }
+
     public async Task<SynoStorageInfo> GetStorageInfoAsync(string server, string sid, CancellationToken ct)
     {
         var url = $"{BaseFor(server)}/webapi/entry.cgi?api=SYNO.FileStation.Info&version=2&method=get&_sid={Uri.EscapeDataString(sid)}";
@@ -373,6 +417,10 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
     private record FileDto(string Name, string Path, [property: JsonPropertyName("isdir")] bool IsDir, AdditionalDto? Additional);
     private record AdditionalDto(long Size, long Mtime);
     private record ErrorProbe(bool Success, ErrorObj? Error);
+    private record SearchStartResp(bool Success, SearchStartData? Data);
+    private record SearchStartData([property: JsonPropertyName("taskid")] string TaskId);
+    private record SearchListResp(bool Success, SearchListData? Data);
+    private record SearchListData(int Total, bool Finished, [property: JsonPropertyName("files")] List<FileDto>? Files);
     private record SharingCreateResp(bool Success, SharingData? Data);
     private record SharingData([property: JsonPropertyName("links")] List<ShareLinkItemDto> Links);
     private record ShareLinkItemDto(string Id, string Url, string Path, [property: JsonPropertyName("has_password")] bool HasPassword);

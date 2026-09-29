@@ -28,6 +28,11 @@ public interface IFileAccessService
     Task<IReadOnlyList<SynoShareLink>> ListSharingLinksAsync(Guid userId, string server, string? path, CancellationToken ct);
     Task DeleteSharingLinkAsync(Guid userId, string server, string id, CancellationToken ct);
     Task<SynoStorageInfo> GetStorageInfoAsync(Guid userId, string server, CancellationToken ct);
+    Task<string> SearchStartAsync(Guid userId, string server, IReadOnlyList<string> folderPaths, string pattern, CancellationToken ct)
+        => throw new NotSupportedException();
+    Task<SynoSearchPage> SearchListAsync(Guid userId, string server, string taskId, int offset, int limit, CancellationToken ct)
+        => throw new NotSupportedException();
+    Task SearchStopAsync(Guid userId, string server, string taskId, CancellationToken ct) => Task.CompletedTask;
     void DropSession(Guid userId, string server);
     void DropAllSessions(Guid userId);
 

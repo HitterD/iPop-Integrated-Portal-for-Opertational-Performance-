@@ -3,6 +3,8 @@ namespace IPop.Application.Files;
 public record SynoItem(string Name, string Path, bool IsDir, long Size, long Mtime);
 public record SynoShareLink(string Id, string Url, string Path, DateTime? DateExpired, bool HasPassword);
 public record SynoStorageInfo(string Server, long UsedBytes, long TotalBytes, long FreeBytes);
+/// <summary>One page of a running FileStation search; <c>Finished</c> once the NAS has walked the whole tree.</summary>
+public record SynoSearchPage(IReadOnlyList<SynoItem> Items, int Total, bool Finished);
 
 public class SynoException : Exception
 {
@@ -29,4 +31,12 @@ public interface ISynologyGateway
     Task<IReadOnlyList<SynoShareLink>> ListSharingLinksAsync(string server, string sid, CancellationToken ct);
     Task DeleteSharingLinkAsync(string server, string sid, string id, CancellationToken ct);
     Task<SynoStorageInfo> GetStorageInfoAsync(string server, string sid, CancellationToken ct);
+
+    // SYNO.FileStation.Search runs as a task on the NAS: start it, page through results while it
+    // walks the tree, clean it up when the user cancels. Default bodies keep test doubles compiling.
+    Task<string> SearchStartAsync(string server, string sid, IReadOnlyList<string> folderPaths, string pattern, CancellationToken ct)
+        => throw new NotSupportedException("Search is not supported by this gateway.");
+    Task<SynoSearchPage> SearchListAsync(string server, string sid, string taskId, int offset, int limit, CancellationToken ct)
+        => throw new NotSupportedException("Search is not supported by this gateway.");
+    Task SearchStopAsync(string server, string sid, string taskId, CancellationToken ct) => Task.CompletedTask;
 }

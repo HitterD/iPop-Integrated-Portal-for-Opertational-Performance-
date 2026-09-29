@@ -161,6 +161,14 @@ public class FileOperationWorker(
         op.Status = failed > 0 ? (completed > 0 ? "CompletedWithErrors" : "Failed") : "Completed";
         await db.SaveChangesAsync(ct);
 
+        // Every open view of the destination (and of the source folders, for a move) reloads.
+        if (completed > 0)
+        {
+            await FilesRealtime.PushAsync(realtime, op.DestServer, [destDir]);
+            if (op.Kind.Equals("move", StringComparison.OrdinalIgnoreCase))
+                await FilesRealtime.PushAsync(realtime, op.SourceServer, items.Select(i => FilesRealtime.ParentDir(i.Path)));
+        }
+
         if (!string.IsNullOrEmpty(op.User?.Nik))
         {
             _ = realtime.ToUserAsync(op.User.Nik, RealtimeEvents.FileOperationFinished,
@@ -173,8 +181,17 @@ public class FileOperationWorker(
                 var body = failed > 0
                     ? $"{completed} file berhasil, {failed} gagal ditransfer."
                     : $"{completed} file berhasil ditransfer ke {op.DestServer}.";
-                _ = notifs.PublishInternalAsync("files", "files.transfer", title, body,
-                    new NotificationTarget(UserId: op.UserId), failed > 0 ? "high" : "normal", "/files", ct);
+                // Awaited: the gateway uses this scope's DbContext, which is disposed as soon as
+                // we return — a fire-and-forget publish raced (or outlived) it and was lost.
+                try
+                {
+                    await notifs.PublishInternalAsync("files", "files.transfer", title, body,
+                        new NotificationTarget(UserId: op.UserId), failed > 0 ? "high" : "normal", "/files", CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Publishing the transfer notification for op {Id} failed.", op.Id);
+                }
             }
         }
 

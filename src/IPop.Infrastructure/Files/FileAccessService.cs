@@ -154,6 +154,19 @@ public class FileAccessService(
     public Task<SynoStorageInfo> GetStorageInfoAsync(Guid userId, string server, CancellationToken ct)
         => WithSid(server, userId, (sid, c) => gateway.GetStorageInfoAsync(server, sid, c), ct);
 
+    public Task<string> SearchStartAsync(Guid userId, string server, IReadOnlyList<string> folderPaths, string pattern, CancellationToken ct)
+        => WithSid(server, userId, (sid, c) => gateway.SearchStartAsync(server, sid, folderPaths, pattern, c), ct);
+
+    public Task<SynoSearchPage> SearchListAsync(Guid userId, string server, string taskId, int offset, int limit, CancellationToken ct)
+        => WithSid(server, userId, (sid, c) => gateway.SearchListAsync(server, sid, taskId, offset, limit, c), ct);
+
+    public async Task SearchStopAsync(Guid userId, string server, string taskId, CancellationToken ct)
+    {
+        // Best effort: DSM drops finished or orphaned search tasks on its own.
+        try { await WithSid(server, userId, (sid, c) => gateway.SearchStopAsync(server, sid, taskId, c), ct); }
+        catch (SynoException) { }
+    }
+
     public async Task UploadAsync(Guid userId, string server, string dir, string filename, Stream content, CancellationToken ct)
     {
         server = NormalizeServer(server);

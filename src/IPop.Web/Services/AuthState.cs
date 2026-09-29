@@ -38,6 +38,10 @@ public class AuthState(HttpClient http, IJSRuntime js)
     public event Action? DirectoryChanged;
     public event Action? AuditChanged;
 
+    /// Raised after the app hub comes back from a drop. Events pushed while it was down are
+    /// gone, so listeners re-seed over REST.
+    public event Action? HubReconnected;
+
     /// Raised once when the refresh token is refused and the session is genuinely over (14-day
     /// expiry, admin revoke, deactivation) — as opposed to the routine 15-minute access-token
     /// renewal. The shell listens and routes to /login; without it the app kept beating against a
@@ -110,6 +114,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
         _presence.Reconnected += _ =>
         {
             DirectoryChanged?.Invoke();
+            HubReconnected?.Invoke();
             return Task.CompletedTask;
         };
         _presence.Closed += _ => { SetConnectionState(DirectoryConnectionState.Offline); return Task.CompletedTask; };
