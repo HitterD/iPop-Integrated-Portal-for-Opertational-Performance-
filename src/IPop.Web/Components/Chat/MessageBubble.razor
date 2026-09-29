@@ -5,6 +5,7 @@
 @inject ChatState ChatSvc
 @inject IJSRuntime JS
 @inject AuthState Auth
+@inject NavigationManager Nav
 
 <div class="@FullMessageClass" @oncontextmenu="(e) => OnCtx.InvokeAsync((Message.Id, e))" @oncontextmenu:preventDefault>
     @if (!isSent && Message.Type != "system" && Message.Type != "emergency" && ChatSvc.ActiveRoom?.Type == "group")
@@ -56,6 +57,18 @@
                     </div>
                     <i data-lucide="chevron-right" class="ev-chev"></i>
                 </div>
+            }
+            else if (NoteCard(Message) is { } note)
+            {
+                <button type="button" class="notecard" style="--pc:@NoteAccentHex(note.Accent)" @onclick='() => Nav.NavigateTo("/notes/" + note.Id)' @onclick:stopPropagation>
+                    <div class="nc-cover" style='@(note.Cover is null ? "" : "--cover:var(--cv-" + note.Cover + ")")'><span class="nc-emo">@(note.Emoji ?? "📄")</span></div>
+                    <div class="nc-body">
+                        <div class="nc-kind"><i data-lucide="notebook-pen"></i>Note</div>
+                        <div class="nc-title">@(string.IsNullOrWhiteSpace(note.Title) ? "Tanpa judul" : note.Title)</div>
+                        @if (!string.IsNullOrWhiteSpace(note.Excerpt)) { <div class="nc-ex">@note.Excerpt</div> }
+                    </div>
+                    <div class="nc-foot"><span>Buka note</span><span class="perm"><i data-lucide="@(note.Level == "edit" ? "pencil" : note.Level == "comment" ? "message-square" : "eye")"></i>@(note.Level == "edit" ? "Bisa edit" : note.Level == "comment" ? "Bisa komentar" : "Bisa lihat")</span></div>
+                </button>
             }
             else if (IsPollMessage(Message))
             {
@@ -190,6 +203,17 @@
         }
     }
 
+    private static IPop.Application.Notes.NoteCardDto? NoteCard(MessageDto m)
+    {
+        if (string.IsNullOrEmpty(m.Content) || !m.Content.StartsWith("[note]")) return null;
+        try { return System.Text.Json.JsonSerializer.Deserialize<IPop.Application.Notes.NoteCardDto>(m.Content[6..], new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web)); }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+    private static string NoteAccentHex(string? k) => k switch
+    {
+        "indigo" => "#5856D6", "purple" => "#AF52DE", "pink" => "#FF2D55", "red" => "#FF3B30", "orange" => "#FF9500",
+        "yellow" => "#FFCC00", "green" => "#34C759", "teal" => "#30B0C7", "gray" => "#8E8E93", _ => "#0A84FF",
+    };
     private static bool IsPollMessage(MessageDto m) => !string.IsNullOrEmpty(m.Content) && m.Content.StartsWith("[poll]");
     private static string ExtractPollJson(string? content) => string.IsNullOrEmpty(content) ? "" : content.StartsWith("[poll]") ? content.Substring(6) : "";
 

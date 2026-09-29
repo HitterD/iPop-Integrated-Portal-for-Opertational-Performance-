@@ -69,6 +69,7 @@ export function preview(el, state) {
 /// opts: { apiBase, pageId, access: view|comment|edit|owner, user: {name,nik,color}, accent, pages, dotnet }
 /// dotnet callbacks: GetToken(), OnStatus(s), OnPresence(users), OnProgress(done,total), OnOpenPage(id),
 /// OnComment(quote,anchor), OnThreadClick(id), OnToast(msg), CreateSubPage() -> {id,title,emoji}, SetAccent(k),
+/// OnMeta(page) and OnThreadsChanged() (hub pushes for the open page),
 /// AvatarColor(nik)? (computed in JS from opts.user palette fallback)
 export async function mount(el, opts) {
   const net = opts.dotnet;
@@ -141,6 +142,8 @@ export async function mount(el, opts) {
     peers.set(m.connectionId, ids);
     if (isNew) sendAwareness([ydoc.clientID]); // introduce ourselves to the newcomer
   });
+  hub.on('noteMeta', m => { if (m?.id === pageId) call('OnMeta', m); });
+  hub.on('noteThreads', pid => { if (pid === pageId) call('OnThreadsChanged'); });
   hub.on('noteLeft', (pid, connectionId) => {
     if (pid !== pageId) return;
     const ids = peers.get(connectionId);
@@ -445,3 +448,20 @@ export async function mount(el, opts) {
     },
   };
 }
+
+/// Page-level shortcuts while /notes is open. Ctrl K is taken in capture phase so the global command
+/// palette stays shut here; browsers reserve Ctrl N, so a new page is Alt N.
+export function hotkeys(net) {
+  const onKey = e => {
+    const k = e.key.toLowerCase();
+    if (k === 'k' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
+      e.preventDefault(); e.stopImmediatePropagation(); net.invokeMethodAsync('OnHotkey', 'search').catch(() => {});
+    } else if (k === 'n' && e.altKey && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault(); e.stopImmediatePropagation(); net.invokeMethodAsync('OnHotkey', 'new').catch(() => {});
+    }
+  };
+  window.addEventListener('keydown', onKey, true);
+  return { dispose: () => window.removeEventListener('keydown', onKey, true) };
+}
+
+export function copyText(text) { return navigator.clipboard?.writeText(text).then(() => true, () => false) ?? false; }
