@@ -1,184 +1,153 @@
+@* Audit log as sentences ("Budi reset Sari's password"), grouped by day, with repeats folded
+   into one row ("signed in · 12×"). Opening a row shows the raw record: code, NIKs, IP, JSON. *@
 @using IPop.Web.Services
 @implements IDisposable
 @inject AuthState Auth
 @inject ToastService Toasts
 @inject IJSRuntime JS
 
-@* ---- Audit Trail KPI Summary Grid ---- *@
-<div class="admin-kpi-grid">
-    <div class="admin-kpi-card">
-        <div class="kpi-icon-wrap kpi-amber">
-            <i data-lucide="scroll-text"></i>
+<p class="adm-summary">
+    @if (audit is null)
+    {
+        <span class="skel-inline"></span>
+    }
+    else
+    {
+        <span>@AdminHumanize.Plural(audit.Total, "event")@(selectedType == "all" && string.IsNullOrWhiteSpace(filterQuery) ? " recorded" : " match")</span>
+        @if (Groups.FirstOrDefault() is { } latest)
+        {
+            <span>Latest @AdminHumanize.Ago(latest.First.CreatedAt).ToLowerInvariant()</span>
+        }
+    }
+</p>
+
+<div class="adm-card">
+    <div class="adm-card-head adm-toolbar">
+        <div class="adm-search">
+            <i data-lucide="search"></i>
+            <input placeholder="Search people, actions or IDs" @bind="filterQuery" @bind:event="oninput" @bind:after="OnFilterChanged" aria-label="Search the audit log" />
         </div>
-        <div class="kpi-body">
-            <div class="kpi-val">@($"{audit?.Total ?? 0:N0}")</div>
-            <div class="kpi-lbl">Total Log Audit</div>
+        <div class="adm-toolbar-actions">
+            <button type="button" class="adm-btn ghost" disabled="@exportingCsv" @onclick="ExportCsv" title="Download the filtered log as CSV">
+                <i data-lucide="download"></i><span>@(exportingCsv ? "Exporting…" : "Export")</span>
+            </button>
+        </div>
+        <div class="adm-chips" role="group" aria-label="Filter by kind">
+            @foreach (var (key, label) in Types)
+            {
+                <button type="button" class="adm-fchip @(selectedType == key ? "on" : "")" aria-pressed="@(selectedType == key ? "true" : "false")" @onclick="() => SelectType(key)">@label</button>
+            }
         </div>
     </div>
-    <div class="admin-kpi-card">
-        <div class="kpi-icon-wrap kpi-blue">
-            <i data-lucide="file-text"></i>
-        </div>
-        <div class="kpi-body">
-            <div class="kpi-val">@($"{audit?.Items.Length ?? 0:N0}")</div>
-            <div class="kpi-lbl">Logs on this page</div>
-        </div>
-    </div>
-    <div class="admin-kpi-card">
-        <div class="kpi-icon-wrap kpi-purple">
-            <i data-lucide="user-check"></i>
-        </div>
-        <div class="kpi-body">
-            <div class="kpi-val">@($"{UniqueActorsCount:N0}")</div>
-            <div class="kpi-lbl">Active actors</div>
-        </div>
-    </div>
-    <div class="admin-kpi-card">
-        <div class="kpi-icon-wrap kpi-green">
-            <i data-lucide="shield-check"></i>
-        </div>
-        <div class="kpi-body">
-            <div class="kpi-val" style="font-size:16px">Active & Logged</div>
-            <div class="kpi-lbl">Audit Trail System</div>
-        </div>
-    </div>
-</div>
 
-<div class="tray rise rise-2">
-    <div class="core" style="padding:0;overflow:hidden">
-        <div class="panel-head" style="border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between">
-            <div style="display:flex;align-items:center;gap:8px">
-                <i data-lucide="scroll-text" style="color:#d97706"></i>
-                <span style="font-weight:700">System Activity Audit Trail</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px">
-                <span class="meta">@($"{audit?.Total ?? 0:N0} total records")</span>
-                <button class="org-act" title="Refresh audit log" @onclick="() => LoadAudit(currentPage)"><i data-lucide="refresh-cw"></i></button>
-            </div>
+    @if (loadError)
+    {
+        <div class="adm-empty">Could not load the audit log. <button type="button" class="adm-link" @onclick="() => LoadAudit(false)">Retry</button></div>
+    }
+    else if (audit is null)
+    {
+        <div style="padding:14px"><div class="skel"></div></div>
+    }
+    else if (Groups.Count == 0)
+    {
+        <div class="adm-empty">Nothing recorded@(string.IsNullOrWhiteSpace(filterQuery) ? "" : $" for “{filterQuery.Trim()}”").</div>
+    }
+    else
+    {
+        <div class="adm-log">
+            @foreach (var day in Groups.GroupBy(g => AdminHumanize.Day(g.First.CreatedAt)))
+            {
+                <div class="adm-log-day">@day.Key</div>
+                @foreach (var g in day)
+                {
+                    var kind = AdminHumanize.KindOf(g.First.Action);
+                    var isOpen = openId == g.First.Id;
+                    <div class="adm-log-item @(isOpen ? "open" : "")" @key="g.First.Id">
+                        <button type="button" class="adm-log-row" aria-expanded="@(isOpen ? "true" : "false")" @onclick="() => openId = isOpen ? null : g.First.Id">
+                            <span class="adm-log-ico @kind.Key"><i data-lucide="@kind.Icon"></i></span>
+                            <span class="adm-log-txt">
+                                @AdminHumanize.Sentence(g.First)
+                                @if (g.Count > 1) { <em class="adm-tag">@g.Count×</em> }
+                            </span>
+                            <span class="adm-log-time">@TimeRange(g)</span>
+                            <i data-lucide="@(isOpen ? "chevron-up" : "chevron-down")" class="adm-sess-chev"></i>
+                        </button>
+                        @if (isOpen)
+                        {
+                            <div class="adm-log-detail">
+                                <dl>
+                                    <dt>Event code</dt><dd class="mono">@g.First.Action</dd>
+                                    <dt>By</dt><dd>@AdminHumanize.Actor(g.First)@(g.First.ActorNik is { } an && an != "system" ? $" ({an})" : "")</dd>
+                                    @if (g.First.EntityId is not null)
+                                    {
+                                        <dt>@(g.First.Entity ?? "Target")</dt><dd>@(g.First.EntityName is { } en ? $"{en} ({g.First.EntityId})" : g.First.EntityId)</dd>
+                                    }
+                                    <dt>IP address</dt><dd class="mono">@(string.IsNullOrWhiteSpace(g.First.IpAddress) ? "Not recorded" : g.First.IpAddress)</dd>
+                                    <dt>@(g.Count > 1 ? "Times" : "Time")</dt>
+                                    <dd>@string.Join(", ", g.Rows.Take(12).Select(r => AdminHumanize.Local(r.CreatedAt).ToString("HH:mm:ss")))@(g.Count > 12 ? $" and {g.Count - 12} more" : "")</dd>
+                                </dl>
+                                @if (!string.IsNullOrWhiteSpace(g.First.DetailJson))
+                                {
+                                    <pre class="adm-log-json">@g.First.DetailJson</pre>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            }
         </div>
-
-        <div style="display:flex;gap:12px;padding:12px 18px;border-bottom:1px solid var(--line-soft);align-items:center;flex-wrap:wrap">
-            <div class="search" style="flex:0 1 260px;margin:0">
-                <i data-lucide="search"></i>
-                <input type="text" placeholder="Search actions, actors, targets…" @bind="filterQuery" @bind:event="oninput" @bind:after="OnFilterChanged" />
-            </div>
-
-            <div style="display:inline-flex;padding:2px;background:rgba(118,118,128,0.12);border-radius:10px;gap:2px">
-                <button type="button" class="btn btn-sm @(selectedType == "all" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(selectedType == "all" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(selectedType == "all" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SelectType("all")'>All</button>
-                <button type="button" class="btn btn-sm @(selectedType == "security" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(selectedType == "security" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(selectedType == "security" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SelectType("security")'>Security</button>
-                <button type="button" class="btn btn-sm @(selectedType == "user" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(selectedType == "user" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(selectedType == "user" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SelectType("user")'>Users</button>
-                <button type="button" class="btn btn-sm @(selectedType == "sync" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(selectedType == "sync" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(selectedType == "sync" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SelectType("sync")'>Sync</button>
-                <button type="button" class="btn btn-sm @(selectedType == "org" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(selectedType == "org" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(selectedType == "org" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SelectType("org")'>Organization</button>
-                <button type="button" class="btn btn-sm @(selectedType == "settings" ? "active" : "")" style="height:26px;padding:0 10px;font-size:11.5px;border-radius:8px;border:none;background:@(selectedType == "settings" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(selectedType == "settings" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SelectType("settings")'>Settings</button>
-            </div>
-
-            <div style="margin-left:auto">
-                <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;border-radius:8px;border:1px solid var(--line);background:var(--surface);cursor:pointer" disabled="@exportingCsv" @onclick="ExportCsv">
-                    <i data-lucide="download" style="width:13px;height:13px"></i>
-                    <span>@(exportingCsv ? "Exporting…" : "Export CSV")</span>
+        @if (loaded.Count < audit.Total)
+        {
+            <div class="adm-log-more">
+                <button type="button" class="adm-btn ghost" disabled="@isLoading" @onclick="() => LoadAudit(true)">
+                    @(isLoading ? "Loading…" : $"Show older ({(audit.Total - loaded.Count):N0} left)")
                 </button>
             </div>
-        </div>
-
-        @if (isLoading)
-        {
-            <div style="padding:14px"><div class="skel"></div></div>
         }
-        else if (audit is null || audit.Items.Length == 0)
-        {
-            <div class="tree-empty" style="padding:28px">No matching audit activity logs.</div>
-        }
-        else
-        {
-            <table class="u-table">
-                <thead>
-                    <tr>
-                        <th style="width:170px">Timestamp</th>
-                        <th style="width:160px">Action</th>
-                        <th style="width:140px">Actor</th>
-                        <th style="width:130px">Entity</th>
-                        <th>Target / Details</th>
-                        <th style="width:130px">IP Address</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var row in audit.Items)
-                    {
-                        <tr @key="row.Id">
-                            <td class="mono" style="font-size:12px;color:var(--ink-2)">
-                                <i data-lucide="clock" style="width:12px;height:12px;display:inline-block;vertical-align:-1px;margin-right:4px;color:var(--ink-3)"></i>
-                                @row.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")
-                            </td>
-                            <td>
-                                <span class="badge-audit @GetActionBadgeClass(row.Action)">
-                                    @row.Action
-                                </span>
-                            </td>
-                            <td>
-                                @if (string.IsNullOrEmpty(row.ActorNik) || row.ActorNik.Equals("system", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    <span class="badge-audit system">system</span>
-                                }
-                                else
-                                {
-                                    <span class="tag">@row.ActorNik</span>
-                                }
-                            </td>
-                            <td>
-                                <span style="font-weight:600;color:var(--ink)">@(row.Entity ?? "—")</span>
-                            </td>
-                            <td class="mono" style="color:var(--ink-2);font-size:12px">
-                                @(row.EntityId ?? "—")
-                            </td>
-                            <td class="mono" style="font-size:11.5px;color:var(--ink-3)">
-                                @(string.IsNullOrWhiteSpace(row.IpAddress) ? "—" : row.IpAddress)
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-
-            @if (TotalPages > 1)
-            {
-                <div style="display:flex;gap:10px;align-items:center;justify-content:center;padding:14px;border-top:1px solid var(--line-soft)">
-                    <button class="org-act" disabled="@(currentPage <= 1)" @onclick="() => LoadAudit(currentPage - 1)"><i data-lucide="chevron-left"></i></button>
-                    <span style="font-size:12px;color:var(--ink-2)">Page @currentPage of @TotalPages</span>
-                    <button class="org-act" disabled="@(currentPage >= TotalPages)" @onclick="() => LoadAudit(currentPage + 1)"><i data-lucide="chevron-right"></i></button>
-                </div>
-            }
-        }
-    </div>
+    }
 </div>
 
 @code {
     private AuditPageDto? audit;
-    private bool isLoading = true;
-    private bool exportingCsv;
-    private int currentPage = 1;
-    private const int pageSize = 25;
+    private readonly List<AuditRowDto> loaded = [];
+    private List<AdminHumanize.AuditGroup> Groups = [];
+    private bool isLoading, loadError, exportingCsv;
+    private int page;
+    private const int pageSize = 60;
     private string filterQuery = "";
     private string selectedType = "all";
+    private Guid? openId;
     private CancellationTokenSource? searchCts;
 
-    private int TotalPages => audit is null ? 1 : (int)Math.Ceiling(audit.Total / (double)pageSize);
-    private int UniqueActorsCount => audit?.Items.Select(x => x.ActorNik ?? "system").Distinct().Count() ?? 0;
+    private static readonly (string Key, string Label)[] Types =
+    [
+        ("all", "Everything"), ("security", "Sign-ins & sessions"), ("user", "Users"),
+        ("org", "Organization"), ("sync", "HRIS sync"), ("settings", "Settings"),
+    ];
+
+    private static string TimeRange(AdminHumanize.AuditGroup g)
+    {
+        var last = AdminHumanize.Local(g.First.CreatedAt).ToString("HH:mm");
+        var first = AdminHumanize.Local(g.Oldest).ToString("HH:mm");
+        return g.Count > 1 && first != last ? $"{first}–{last}" : last;
+    }
 
     protected override async Task OnInitializedAsync()
     {
         Auth.AuditChanged += OnAuditChanged;
-        await LoadAudit(1);
+        await LoadAudit(false);
     }
 
     public async Task Reload()
     {
-        await LoadAudit(currentPage);
+        await LoadAudit(false);
         StateHasChanged();
     }
 
     private async Task SelectType(string type)
     {
         selectedType = type;
-        await LoadAudit(1);
+        await LoadAudit(false);
     }
 
     private async Task OnFilterChanged()
@@ -190,19 +159,33 @@
         try { await Task.Delay(250, t.Token); }
         catch (OperationCanceledException) { return; }
         if (t.IsCancellationRequested) return;
-        await LoadAudit(1);
+        await LoadAudit(false);
     }
 
-    private async Task LoadAudit(int page)
+    private string Filters()
     {
-        currentPage = page;
-        isLoading = true;
-        var url = $"/api/admin/audit?page={page}&pageSize={pageSize}";
-        if (!string.IsNullOrWhiteSpace(filterQuery)) url += $"&q={Uri.EscapeDataString(filterQuery.Trim())}";
-        if (!string.IsNullOrWhiteSpace(selectedType) && selectedType != "all") url += $"&type={Uri.EscapeDataString(selectedType)}";
+        var qs = "";
+        if (!string.IsNullOrWhiteSpace(filterQuery)) qs += $"&q={Uri.EscapeDataString(filterQuery.Trim())}";
+        if (selectedType != "all") qs += $"&type={Uri.EscapeDataString(selectedType)}";
+        return qs;
+    }
 
-        audit = await Auth.GetAsync<AuditPageDto>(url);
+    /// more=false starts over (filters changed, live refresh); more=true appends the next page.
+    private async Task LoadAudit(bool more)
+    {
+        isLoading = true;
+        var next = more ? page + 1 : 1;
+        var res = await Auth.GetAsync<AuditPageDto>($"/api/admin/audit?page={next}&pageSize={pageSize}{Filters()}");
         isLoading = false;
+        loadError = res is null;
+        if (res is not null)
+        {
+            if (!more) loaded.Clear();
+            loaded.AddRange(res.Items);
+            page = next;
+            audit = res;
+            Groups = AdminHumanize.Collapse(loaded);
+        }
         StateHasChanged();
     }
 
@@ -212,11 +195,7 @@
         exportingCsv = true;
         try
         {
-            var url = "/api/admin/audit/export.csv?";
-            if (!string.IsNullOrWhiteSpace(filterQuery)) url += $"&q={Uri.EscapeDataString(filterQuery.Trim())}";
-            if (!string.IsNullOrWhiteSpace(selectedType) && selectedType != "all") url += $"&type={Uri.EscapeDataString(selectedType)}";
-
-            var res = await Auth.SendAsync(HttpMethod.Get, url);
+            var res = await Auth.SendAsync(HttpMethod.Get, "/api/admin/audit/export.csv?" + Filters().TrimStart('&'));
             if (!res.IsSuccessStatusCode)
             {
                 Toasts.Show($"Export failed ({(int)res.StatusCode}).", ToastKind.Error);
@@ -225,7 +204,7 @@
             var bytes = await res.Content.ReadAsByteArrayAsync();
             var stamp = DateTime.Now.ToString("yyyyMMdd-HHmm");
             await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(bytes), $"audit_trail-{stamp}.csv");
-            Toasts.ShowDetailed("Export Complete", "Audit trail CSV downloaded", ToastKind.Success, "download");
+            Toasts.Show("Audit log downloaded", ToastKind.Success);
         }
         catch (Exception ex)
         {
@@ -237,30 +216,13 @@
         }
     }
 
-    private static string GetActionBadgeClass(string action)
-    {
-        var lower = action.ToLowerInvariant();
-        if (lower.Contains("login") || lower.Contains("auth") || lower.Contains("token") || lower.Contains("session") || lower.Contains("password"))
-            return "auth";
-        if (lower.Contains("create") || lower.Contains("insert") || lower.Contains("add"))
-            return "create";
-        if (lower.Contains("update") || lower.Contains("patch") || lower.Contains("edit") || lower.Contains("reset"))
-            return "update";
-        if (lower.Contains("delete") || lower.Contains("revoke") || lower.Contains("deactivate") || lower.Contains("remove"))
-            return "delete";
-        return "system";
-    }
-
+    // Live refresh only when the newest page is showing, so "Show older" doesn't jump back.
     private void OnAuditChanged() => _ = InvokeAsync(async () =>
     {
-        await LoadAudit(currentPage);
-        StateHasChanged();
+        if (page <= 1) await LoadAudit(false);
     });
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        await JS.InvokeVoidAsync("ipop.icons");
-    }
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
 
     public void Dispose()
     {
@@ -268,8 +230,4 @@
         searchCts?.Cancel();
         searchCts?.Dispose();
     }
-
-    public record AuditPageDto(int Total, int Page, int PageSize, AuditRowDto[] Items);
-    public record AuditRowDto(Guid Id, string? ActorNik, string Action, string? Entity,
-        string? EntityId, string? DetailJson, string? IpAddress, DateTime CreatedAt);
 }

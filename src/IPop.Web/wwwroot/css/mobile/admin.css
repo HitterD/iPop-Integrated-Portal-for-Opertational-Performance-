@@ -140,4 +140,19 @@
   .adm-tree-head .adm-icon-btn { width:40px; height:40px; }
   .adm-tnode.flat { min-height:52px; }
   .adm-facts > div { flex:1 1 0; flex-direction:column; align-items:center; gap:0; }
+
+  /* Security: full-width bulk actions, devices under the person without the indent. */
+  .adm-toolbar-actions > .adm-btn { min-width:0; }
+  .adm-toolbar-actions > .adm-btn span { overflow:hidden; text-overflow:ellipsis; }
+  .adm-toolbar-actions.stack { flex-direction:column; }
+  .adm-toolbar-actions.stack > .adm-btn { flex:0 0 auto; }
+  .adm-sess { padding:4px; }
+  .adm-sess-head { min-height:60px; }
+  .adm-sess-devices { padding:0 6px 8px; }
+  .adm-sess-devices .adm-list-row { flex-wrap:wrap; }
+  .adm-log { padding:2px 4px 6px; }
+  .adm-log-row { min-height:52px; align-items:flex-start; padding:10px 8px; }
+  .adm-log-detail { padding:0 10px 12px; }
+  .adm-log-detail dl { grid-template-columns:1fr; gap:2px; }
+  .adm-log-detail dd { margin-bottom:6px; }
 }

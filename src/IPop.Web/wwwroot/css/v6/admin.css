@@ -372,3 +372,48 @@
 .adm-list-row.plain > span:first-child { color:var(--ink); }
 .adm-row-end { display:inline-flex; align-items:center; gap:6px; flex:none; font-size:12px; color:var(--ink-3); font-variant-numeric:tabular-nums; }
 .adm-under { display:block; margin:8px 4px 0; }
+
+/* ---- Security: sessions grouped per person, audit log as sentences ---- */
+.adm-summary-live { display:inline-flex; align-items:center; }
+.adm-btn.ghost.danger { color:var(--adm-red); }
+.adm-btn:disabled { opacity:.5; cursor:default; }
+.adm-sess { padding:6px 8px 8px; }
+.adm-sess-person { border-radius:12px; }
+.adm-sess-person + .adm-sess-person { margin-top:2px; }
+.adm-sess-person.open { background:var(--surface-2, var(--fill)); }
+.adm-sess-head { display:flex; align-items:center; gap:12px; width:100%; min-height:56px; padding:8px 10px; box-sizing:border-box; border:0; border-radius:12px; background:transparent; color:var(--ink); font:inherit; font-size:13px; text-align:left; cursor:pointer; }
+.adm-sess-head:hover { background:var(--fill); }
+.adm-sess-head .adm-av { width:34px; height:34px; font-size:12px; }
+.adm-sess-head .adm-user-txt { flex:1; }
+.adm-sess-when { flex:none; font-size:12px; color:var(--ink-3); font-variant-numeric:tabular-nums; }
+.adm-sess-chev { width:15px; height:15px; flex:none; color:var(--ink-3); }
+.adm-sess-devices { padding:0 8px 8px 56px; }
+.adm-sess-devices .adm-list-row { border-radius:0; background:var(--surface); }
+.adm-sess-devices .adm-list-row:first-child { border-radius:10px 10px 0 0; }
+.adm-sess-devices .adm-list-row:last-child { border-radius:0 0 10px 10px; }
+.adm-sess-devices .adm-list-row:only-child { border-radius:10px; }
+.adm-sess-person.auto .adm-user-txt b { color:var(--ink-2); }
+.adm-sess-cap { padding:0 16px 14px; }
+
+.adm-log { padding:4px 8px 8px; }
+.adm-log-day { position:sticky; top:0; z-index:1; padding:12px 10px 6px; background:var(--surface); font-size:11px; font-weight:600; letter-spacing:.02em; text-transform:uppercase; color:var(--ink-3); }
+.adm-log-item { border-radius:10px; }
+.adm-log-item.open { background:var(--surface-2, var(--fill)); }
+.adm-log-row { display:flex; align-items:center; gap:12px; width:100%; min-height:44px; padding:6px 10px; box-sizing:border-box; border:0; border-radius:10px; background:transparent; color:var(--ink); font:inherit; font-size:13px; text-align:left; cursor:pointer; }
+.adm-log-row:hover { background:var(--fill); }
+.adm-log-ico { display:flex; align-items:center; justify-content:center; flex:none; width:28px; height:28px; border-radius:8px; background:var(--fill); color:var(--ink-3); }
+.adm-log-ico .lucide { width:14px; height:14px; }
+.adm-log-ico.security { background:var(--adm-red-soft); color:var(--adm-red); }
+.adm-log-ico.user { background:var(--adm-blue-soft); color:var(--adm-blue); }
+.adm-log-ico.org { background:var(--adm-green-soft); color:var(--adm-green); }
+.adm-log-ico.sync { background:var(--adm-violet-soft); color:var(--adm-violet); }
+.adm-log-ico.settings, .adm-log-ico.export { background:var(--adm-orange-soft); color:var(--adm-orange); }
+.adm-log-txt { flex:1; min-width:0; }
+.adm-log-time { flex:none; font-size:12px; color:var(--ink-3); font-variant-numeric:tabular-nums; }
+.adm-log-detail { padding:2px 12px 12px 50px; }
+.adm-log-detail dl { display:grid; grid-template-columns:110px minmax(0,1fr); gap:6px 12px; margin:0; font-size:12.5px; }
+.adm-log-detail dt { color:var(--ink-3); }
+.adm-log-detail dd { margin:0; color:var(--ink); overflow-wrap:anywhere; }
+.adm-log-detail .mono { font-family:var(--mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size:12px; }
+.adm-log-json { margin:10px 0 0; padding:10px 12px; max-height:220px; overflow:auto; border-radius:8px; background:var(--surface); font-size:11.5px; color:var(--ink-2); white-space:pre-wrap; overflow-wrap:anywhere; }
+.adm-log-more { display:flex; justify-content:center; padding:6px 0 16px; }

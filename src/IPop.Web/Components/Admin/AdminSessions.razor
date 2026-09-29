@@ -1,3 +1,6 @@
+@* Who is signed in, grouped per person with readable device names.
+   Headless-browser sessions (screenshots, test runs) are labelled Automated, folded into one
+   row, and can be signed out together. *@
 @using System.Net.Http.Json
 @using IPop.Web.Services
 @implements IDisposable
@@ -6,151 +9,206 @@
 @inject ConfirmService Confirm
 @inject IJSRuntime JS
 
-@* ---- Sessions KPI Summary Grid ---- *@
-<div class="admin-kpi-grid">
-    <div class="admin-kpi-card">
-        <div class="kpi-icon-wrap kpi-blue">
-            <i data-lucide="laptop"></i>
-        </div>
-        <div class="kpi-body">
-            <div class="kpi-val">@($"{sessionList.Count:N0}")</div>
-            <div class="kpi-lbl">Active Sessions</div>
-        </div>
-    </div>
-    <div class="admin-kpi-card">
-        <div class="kpi-icon-wrap kpi-purple">
-            <i data-lucide="users"></i>
-        </div>
-        <div class="kpi-body">
-            <div class="kpi-val">@($"{UniqueUsersCount:N0}")</div>
-            <div class="kpi-lbl">Unique Users</div>
-        </div>
-    </div>
-    <div class="admin-kpi-card">
-        <div class="kpi-icon-wrap kpi-cyan">
-            <i data-lucide="globe"></i>
-        </div>
-        <div class="kpi-body">
-            <div class="kpi-val">@($"{UniqueIpsCount:N0}")</div>
-            <div class="kpi-lbl">Monitored IPs</div>
-        </div>
-    </div>
-    <div class="admin-kpi-card">
-        <div class="kpi-icon-wrap kpi-teal">
-            <i data-lucide="radio"></i>
-        </div>
-        <div class="kpi-body">
-            <div class="kpi-val" style="font-size:16px">Live (30s)</div>
-            <div class="kpi-lbl">Auto Refresh</div>
-        </div>
-    </div>
-</div>
+<p class="adm-summary">
+    @if (isLoading)
+    {
+        <span class="skel-inline"></span>
+    }
+    else
+    {
+        <span>@AdminHumanize.Plural(People.Count, "person", "people") signed in</span>
+        <span>@AdminHumanize.Plural(Human.Count, "device")</span>
+        @if (Automated.Count > 0)
+        {
+            <span>@(Capped ? $"{Automated.Count}+ automated sessions" : AdminHumanize.Plural(Automated.Count, "automated session"))</span>
+        }
+        <span class="adm-summary-live"><i class="adm-dot on"></i>Updates every 30 s</span>
+    }
+</p>
 
-<div class="tray rise rise-2">
-    <div class="core" style="padding:0;overflow:hidden">
-        <div class="panel-head" style="border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between">
-            <div style="display:flex;align-items:center;gap:8px">
-                <i data-lucide="laptop" style="color:#4f46e5"></i>
-                <span style="font-weight:700">Active Sessions</span>
-                <span class="meta" style="margin-left:8px">@sessionList.Count active across all users</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px">
-                <button type="button" class="btn btn-sm surface" style="height:30px;padding:0 12px;font-size:12px;display:inline-flex;align-items:center;gap:6px;border-radius:8px;border:1px solid rgba(196,39,28,0.25);background:var(--surface);color:#C4271C;font-weight:600;cursor:pointer" disabled="@isRevokingOthers" @onclick="RevokeAllOtherSessions" title="Sign out all sessions except this device">
-                    <i data-lucide="log-out" style="width:13px;height:13px"></i>
-                    <span>@(isRevokingOthers ? "Signing out…" : "Sign out all other sessions")</span>
+<div class="adm-card">
+    <div class="adm-card-head adm-toolbar">
+        <div class="adm-search">
+            <i data-lucide="search"></i>
+            <input placeholder="Find a person, NIK or IP" @bind="query" @bind:event="oninput" aria-label="Find a session" />
+        </div>
+        <div class="adm-toolbar-actions stack">
+            @if (Automated.Count(s => !s.IsCurrent) > 0)
+            {
+                <button type="button" class="adm-btn ghost" disabled="@busy" @onclick="RevokeAutomated">
+                    <i data-lucide="bot"></i><span>Sign out @AutomatedLabel</span>
                 </button>
-                <button class="org-act" title="Refresh sessions" @onclick="LoadSessions"><i data-lucide="refresh-cw"></i></button>
-            </div>
+            }
+            <button type="button" class="adm-btn ghost danger" disabled="@busy" @onclick="RevokeAllOthers" title="Everyone except you on this device">
+                <i data-lucide="log-out"></i><span>Sign out everyone else</span>
+            </button>
         </div>
-
-        @if (isLoading)
-        {
-            <div style="padding:14px"><div class="skel"></div></div>
-        }
-        else if (sessionList.Count == 0)
-        {
-            <div class="tree-empty" style="padding:28px">No active sessions at this time.</div>
-        }
-        else
-        {
-            <table class="u-table">
-                <thead>
-                    <tr>
-                        <th style="width:260px">User</th>
-                        <th style="width:140px">IP Address</th>
-                        <th>Device / Fingerprint</th>
-                        <th style="width:160px">Expires In</th>
-                        <th style="width:90px;text-align:right">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var session in sessionList)
-                    {
-                        <tr @key="session.Id">
-                            <td>
-                                <div class="u-user-cell">
-                                    <div class="u-avatar" style="background:@GetUserColor(session.Nik)">
-                                        @GetInitialsFromName(session.Name)
-                                    </div>
-                                    <div>
-                                        <div class="u-user-name">@session.Name</div>
-                                        <div class="u-user-sub"><span class="tag">@session.Nik</span></div>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>
-                                <span class="tag">@(session.IpAddress ?? "—")</span>
-                            </td>
-                            <td class="mono" style="font-size:12px;color:var(--ink-2)">
-                                <i data-lucide="monitor" style="width:12px;height:12px;display:inline-block;vertical-align:-1px;margin-right:4px;color:var(--ink-3)"></i>
-                                @(string.IsNullOrEmpty(session.DeviceFingerprint) ? "Desktop / Browser Session" : TruncateDevice(session.DeviceFingerprint))
-                                @if (session.IsCurrent)
-                                {
-                                    <span style="height:18px;padding:0 6px;border-radius:5px;background:#E4F4EA;color:#1C7A44;font-size:10px;font-weight:700;display:inline-flex;align-items:center;margin-left:8px;letter-spacing:0.3px">THIS DEVICE</span>
-                                }
-                            </td>
-                            <td>
-                                @{
-                                    var (label, cls) = GetExpiryStatus(session.ExpiresAt);
-                                }
-                                <span class="badge-expire @cls">
-                                    <i data-lucide="clock" style="width:11px;height:11px"></i>
-                                    <span>@label</span>
-                                </span>
-                            </td>
-                            <td class="acts" style="text-align:right">
-                                @if (session.IsCurrent)
-                                {
-                                    <span style="font-size:11.5px;color:var(--ink-3);padding-right:6px">Current</span>
-                                }
-                                else
-                                {
-                                    <button type="button" class="act-toggle" title="Sign out session" @onclick="() => RevokeSession(session)">
-                                        <i data-lucide="log-out"></i>
-                                    </button>
-                                }
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        }
     </div>
+
+    @if (isLoading)
+    {
+        <div style="padding:14px"><div class="skel"></div></div>
+    }
+    else if (loadError)
+    {
+        <div class="adm-empty">Could not load sessions. <button type="button" class="adm-link" @onclick="Reload">Retry</button></div>
+    }
+    else if (People.Count == 0 && Automated.Count == 0)
+    {
+        <div class="adm-empty">No one is signed in right now.</div>
+    }
+    else
+    {
+        <div class="adm-sess">
+            @foreach (var p in People)
+            {
+                var first = p.Sessions[0];
+                var isOpen = open.Contains(p.Nik);
+                <div class="adm-sess-person @(isOpen ? "open" : "")" @key="p.Nik">
+                    <button type="button" class="adm-sess-head" aria-expanded="@(isOpen ? "true" : "false")" @onclick="() => Toggle(p.Nik)">
+                        <span class="adm-av" style="background:@AvatarPalette.For(p.Nik)">@AdminOrgModel.Initials(p.Name)</span>
+                        <span class="adm-user-txt">
+                            <b>@p.Name @if (p.Sessions.Any(s => s.IsCurrent)) { <em class="adm-tag ok">You</em> }</b>
+                            <small>@DeviceSummary(p.Sessions)</small>
+                        </span>
+                        <span class="adm-sess-when">@AdminHumanize.Ago(first.CreatedAt)</span>
+                        <i data-lucide="@(isOpen ? "chevron-up" : "chevron-down")" class="adm-sess-chev"></i>
+                    </button>
+                    @if (isOpen)
+                    {
+                        <div class="adm-sess-devices">
+                            @foreach (var s in p.Sessions)
+                            {
+                                <div class="adm-list-row" @key="s.Id">
+                                    @DeviceCell(s)
+                                    @if (s.IsCurrent)
+                                    {
+                                        <em class="adm-tag ok">This device</em>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="adm-link danger" disabled="@busy" @onclick="() => RevokeSession(s)">Sign out</button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (Automated.Count > 0)
+            {
+                var autoOpen = open.Contains("auto");
+                <div class="adm-sess-person auto @(autoOpen ? "open" : "")">
+                    <button type="button" class="adm-sess-head" aria-expanded="@(autoOpen ? "true" : "false")" @onclick='() => Toggle("auto")'>
+                        <span class="adm-av vacant"><i data-lucide="bot"></i></span>
+                        <span class="adm-user-txt">
+                            <b>Automated sessions</b>
+                            <small>Headless browsers from screenshots and test runs · @string.Join(", ", Automated.Select(s => s.Name).Distinct().Take(3))</small>
+                        </span>
+                        <span class="adm-sess-when">@Automated.Count</span>
+                        <i data-lucide="@(autoOpen ? "chevron-up" : "chevron-down")" class="adm-sess-chev"></i>
+                    </button>
+                    @if (autoOpen)
+                    {
+                        <div class="adm-sess-devices">
+                            @foreach (var s in Automated.Take(showAllAuto ? 500 : 6))
+                            {
+                                <div class="adm-list-row" @key="s.Id">
+                                    @DeviceCell(s, withName: true)
+                                    @if (s.IsCurrent)
+                                    {
+                                        <em class="adm-tag ok">This device</em>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="adm-link danger" disabled="@busy" @onclick="() => RevokeSession(s)">Sign out</button>
+                                    }
+                                </div>
+                            }
+                            @if (!showAllAuto && Automated.Count > 6)
+                            {
+                                <button type="button" class="adm-list-row link" @onclick="() => showAllAuto = true"><span>Show @(Automated.Count - 6) more</span></button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+            @if (People.Count == 0 && !string.IsNullOrWhiteSpace(query))
+            {
+                <div class="adm-empty">No one matches “@query.Trim()”.</div>
+            }
+        </div>
+        @if (Capped)
+        {
+            <p class="adm-list-hint adm-sess-cap">Showing the 200 newest sessions. Open a person in Users to see all of theirs.</p>
+        }
+    }
 </div>
 
 @code {
     private List<AdminSessionRowDto> sessionList = [];
     private System.Threading.Timer? _pollTimer;
-    private bool isLoading = true;
-    private bool isRevokingOthers;
+    private bool isLoading = true, loadError, busy, showAllAuto;
+    private string query = "";
+    private readonly HashSet<string> open = [];
 
-    private int UniqueUsersCount => sessionList.Select(s => s.Nik).Distinct().Count();
-    private int UniqueIpsCount => sessionList.Select(s => s.IpAddress).Where(ip => !string.IsNullOrEmpty(ip)).Distinct().Count();
+    private sealed record Person(string Nik, string Name, List<AdminSessionRowDto> Sessions);
+
+    private bool IsAutomated(AdminSessionRowDto s) => AdminHumanize.ParseDevice(s.DeviceFingerprint).Automated;
+
+    private IEnumerable<AdminSessionRowDto> Matching => string.IsNullOrWhiteSpace(query)
+        ? sessionList
+        : sessionList.Where(s => s.Name.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase)
+            || s.Nik.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase)
+            || (s.IpAddress?.Contains(query.Trim()) ?? false));
+
+    // The list stops at the 200 newest, but the cleanup ends every automated session server-side.
+    private bool Capped => sessionList.Count >= 200;
+    private string AutomatedLabel => Capped ? "all automated sessions"
+        : AdminHumanize.Plural(Automated.Count(s => !s.IsCurrent), "automated session");
+
+    private List<AdminSessionRowDto> Human => Matching.Where(s => !IsAutomated(s)).ToList();
+    private List<AdminSessionRowDto> Automated => Matching.Where(IsAutomated).ToList();
+
+    // Newest sign-in first; you stay on top so "This device" is easy to find.
+    private List<Person> People => Human
+        .GroupBy(s => s.Nik)
+        .Select(g => new Person(g.Key, g.First().Name, g.OrderByDescending(s => s.CreatedAt).ToList()))
+        .OrderByDescending(p => p.Sessions.Any(s => s.IsCurrent))
+        .ThenByDescending(p => p.Sessions[0].CreatedAt)
+        .ToList();
+
+    private static string DeviceSummary(List<AdminSessionRowDto> sessions)
+    {
+        var labels = sessions.Select(s => AdminHumanize.ParseDevice(s.DeviceFingerprint).Label).Distinct().ToList();
+        var head = labels.Count <= 2 ? string.Join(", ", labels) : $"{labels[0]}, {labels[1]} and {labels.Count - 2} more";
+        return sessions.Count == 1 ? head : $"{AdminHumanize.Plural(sessions.Count, "session")} · {head}";
+    }
+
+    private RenderFragment DeviceCell(AdminSessionRowDto s, bool withName = false)
+    {
+        var dev = AdminHumanize.ParseDevice(s.DeviceFingerprint);
+        return @<span class="adm-dev" title="@s.DeviceFingerprint"><i data-lucide="@dev.Icon"></i>
+            <span><b>@(withName ? s.Name : dev.Label)</b>
+            <small>@(withName ? dev.Label + " · " : "")@(s.IpAddress ?? "Unknown IP") · signed in @AdminHumanize.Ago(s.CreatedAt).ToLowerInvariant() · expires @Expires(s.ExpiresAt)</small></span>
+        </span>;
+    }
+
+    private static string Expires(DateTime utc)
+    {
+        var d = utc - DateTime.UtcNow;
+        return d.TotalHours < 1 ? $"in {Math.Max(1, (int)d.TotalMinutes)} min"
+            : d.TotalDays < 1 ? $"in {(int)d.TotalHours} h"
+            : $"in {(int)Math.Ceiling(d.TotalDays)} days";
+    }
 
     protected override async Task OnInitializedAsync()
     {
         await LoadSessions();
         isLoading = false;
+        var me = sessionList.FirstOrDefault(s => s.IsCurrent);
+        if (me is not null && !IsAutomated(me)) open.Add(me.Nik);
         _pollTimer = new System.Threading.Timer(async _ =>
         {
             await InvokeAsync(async () =>
@@ -167,114 +225,82 @@
         StateHasChanged();
     }
 
+    private void Toggle(string key)
+    {
+        if (!open.Remove(key)) open.Add(key);
+    }
+
+    private async Task<string?> RefreshToken() => await JS.InvokeAsync<string?>("localStorage.getItem", "ipop.refresh");
+
     private async Task LoadSessions()
     {
-        var refresh = await JS.InvokeAsync<string?>("localStorage.getItem", "ipop.refresh");
+        var refresh = await RefreshToken();
         var url = "/api/admin/users/sessions";
         if (!string.IsNullOrWhiteSpace(refresh))
             url += $"?refreshToken={Uri.EscapeDataString(refresh)}";
-
-        sessionList = await Auth.GetAsync<List<AdminSessionRowDto>>(url) ?? [];
+        var rows = await Auth.GetAsync<List<AdminSessionRowDto>>(url);
+        loadError = rows is null;
+        if (rows is not null) sessionList = rows;
     }
 
-    private async Task RevokeSession(AdminSessionRowDto session)
+    private async Task RevokeSession(AdminSessionRowDto s)
     {
-        var ok = await Confirm.AskAsync(
-            "Sign out this session?",
-            $"The session for {session.Name} ({session.Nik}) on {session.DeviceFingerprint ?? "desktop"} will be signed out immediately.",
-            "Sign out",
-            danger: true);
-        if (!ok) return;
-
-        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/admin/users/sessions/{session.Id}/revoke");
-        if (res.IsSuccessStatusCode)
+        var dev = AdminHumanize.ParseDevice(s.DeviceFingerprint);
+        if (!await Confirm.AskAsync($"Sign out {dev.Label}?", $"{s.Name} will need to sign in again on that device.", "Sign out", false))
+            return;
+        busy = true;
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/admin/users/sessions/{s.Id}/revoke");
+        busy = false;
+        if (!res.IsSuccessStatusCode)
         {
-            Toasts.ShowDetailed("Session Signed Out", $"Session for {session.Name} was signed out.", ToastKind.Success, "log-out");
-            await LoadSessions();
+            Toasts.Show("Could not end that session.", ToastKind.Error);
+            return;
         }
-        else
-        {
-            Toasts.Show("Failed to revoke session.", ToastKind.Error);
-        }
+        Toasts.Show("Session ended", ToastKind.Success);
+        await LoadSessions();
     }
 
-    private async Task RevokeAllOtherSessions()
+    private async Task RevokeAutomated()
     {
-        var otherCount = sessionList.Count(s => !s.IsCurrent);
-        var ok = await Confirm.AskAsync(
-            "Sign out all other sessions?",
-            "Everyone except your current session on this device will need to sign in again.",
-            "Sign out all",
-            danger: true);
-        if (!ok) return;
+        if (!await Confirm.AskAsync($"Sign out {AutomatedLabel}?",
+                "Only headless-browser sessions end. People on real devices stay signed in.", "Sign out", false))
+            return;
+        await Bulk("/api/admin/users/sessions/revoke-automated", "automated session");
+    }
 
-        isRevokingOthers = true;
+    private async Task RevokeAllOthers()
+    {
+        if (!await Confirm.AskAsync("Sign out everyone else?",
+                "Every session except yours on this device ends now. Everyone will need to sign in again.", "Sign out everyone"))
+            return;
+        await Bulk("/api/admin/users/sessions/revoke-others", "session");
+    }
+
+    private async Task Bulk(string url, string noun)
+    {
+        busy = true;
         try
         {
-            var refresh = await JS.InvokeAsync<string?>("localStorage.getItem", "ipop.refresh");
-            var res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/users/sessions/revoke-others", new { currentRefreshToken = refresh });
-            if (res.IsSuccessStatusCode)
+            var res = await Auth.SendAsync(HttpMethod.Post, url, new { currentRefreshToken = await RefreshToken() });
+            if (!res.IsSuccessStatusCode)
             {
-                var result = await res.Content.ReadFromJsonAsync<RevokeOthersResultDto>();
-                var count = result?.Count ?? otherCount;
-                Toasts.ShowDetailed("Sessions Signed Out", $"{count} other session(s) signed out successfully.", ToastKind.Success, "log-out");
-                await LoadSessions();
+                Toasts.Show("Could not sign those sessions out.", ToastKind.Error);
+                return;
             }
-            else
-            {
-                Toasts.Show("Failed to sign out other sessions.", ToastKind.Error);
-            }
-        }
-        catch (Exception ex)
-        {
-            Toasts.Show($"Operation failed: {ex.Message}", ToastKind.Error);
+            var result = await res.Content.ReadFromJsonAsync<CountDto>();
+            Toasts.Show($"Signed out {AdminHumanize.Plural(result?.Count ?? 0, noun)}", ToastKind.Success);
+            showAllAuto = false;
+            await LoadSessions();
         }
         finally
         {
-            isRevokingOthers = false;
+            busy = false;
         }
     }
 
-    private static (string Label, string Cls) GetExpiryStatus(DateTime expiresUtc)
-    {
-        var delta = expiresUtc - DateTime.UtcNow;
-        if (delta.TotalMinutes < 1) return ("Expiring soon", "urgent");
-        if (delta.TotalHours < 1) return ($"{Math.Ceiling(delta.TotalMinutes)}m left", "soon");
-        if (delta.TotalDays < 1) return ($"{Math.Ceiling(delta.TotalHours)}h left", "ok");
-        return ($"{Math.Ceiling(delta.TotalDays)}d left", "ok");
-    }
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
 
-    private static string TruncateDevice(string fp)
-        => fp.Length > 45 ? fp[..42] + "…" : fp;
+    public void Dispose() => _pollTimer?.Dispose();
 
-    private static string GetUserColor(string nik)
-        => IPop.Web.Models.AvatarPalette.For(nik);
-
-    private static string GetInitialsFromName(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return "?";
-        var clean = name.Trim().TrimStart('\'', '"', '`', '(', '[', '{');
-        if (string.IsNullOrWhiteSpace(clean)) return "?";
-        var parts = clean.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length >= 2)
-        {
-            var p0 = parts[0].TrimStart('\'', '"', '`', '(', '[');
-            var p1 = parts[1].TrimStart('\'', '"', '`', '(', '[');
-            if (p0.Length > 0 && p1.Length > 0)
-                return $"{p0[0]}{p1[0]}".ToUpperInvariant();
-        }
-        return clean.Length >= 2 ? clean[..2].ToUpperInvariant() : clean.ToUpperInvariant();
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        await JS.InvokeVoidAsync("ipop.icons");
-    }
-
-    public void Dispose()
-    {
-        _pollTimer?.Dispose();
-    }
-
-    private record RevokeOthersResultDto(int Count);
+    private sealed record CountDto(int Count);
 }

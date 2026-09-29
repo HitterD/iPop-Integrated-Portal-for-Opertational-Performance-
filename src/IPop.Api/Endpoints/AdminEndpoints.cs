@@ -163,6 +163,20 @@ public static class AdminEndpoints
             return Results.Ok(new { count });
         });
 
+        // Headless browsers (screenshots, test runs) pile up sessions; sign them out in one go.
+        g.MapPost("/sessions/revoke-automated", async (RevokeOthersRequest? req, ITokenService tokens,
+            IPopDbContext db, HttpContext http, CancellationToken ct) =>
+        {
+            var now = DateTime.UtcNow;
+            var currentHash = !string.IsNullOrWhiteSpace(req?.CurrentRefreshToken)
+                ? tokens.HashRefreshToken(req.CurrentRefreshToken)
+                : null;
+            var count = await RevokeAutomatedSessions(db, currentHash, now, ct);
+            Audit(db, CallerNik(http), "admin.session.revoke-automated", "revoked=" + count, now);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new { count });
+        });
+
         g.MapPost("/sessions/{id:guid}/revoke", async (Guid id, IPopDbContext db,
             HttpContext http, CancellationToken ct) =>
         {
@@ -1044,6 +1058,14 @@ public static class AdminEndpoints
     private static Task RevokeSessions(IPopDbContext db, Guid userId, DateTime now,
         CancellationToken ct) => db.AuthSessions
         .Where(s => s.UserId == userId && s.RevokedAt == null)
+        .ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, now), ct);
+
+    // Same "Headless" marker AdminHumanize.ParseDevice uses to label a session Automated.
+    internal static Task<int> RevokeAutomatedSessions(IPopDbContext db, string? keepHash, DateTime now,
+        CancellationToken ct) => db.AuthSessions
+        .Where(s => s.RevokedAt == null && s.ExpiresAt > now
+            && s.DeviceFingerprint != null && s.DeviceFingerprint.Contains("Headless")
+            && (keepHash == null || s.RefreshTokenHash != keepHash))
         .ExecuteUpdateAsync(s => s.SetProperty(x => x.RevokedAt, now), ct);
 
     internal static void Audit(IPopDbContext db, string? actor, string action,
