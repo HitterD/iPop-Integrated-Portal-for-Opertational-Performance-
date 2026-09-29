@@ -1,0 +1,81 @@
+/* Mobile (<= 767px) overrides for notifications. Loaded after every desktop stylesheet. */
+
+@media (max-width: 767px) {
+  /* ---------- Notification Center (Pages/Notifications.razor): list, then detail ---------- */
+  .notifs-v6 { height: 100%; min-height: 0; overflow: hidden; }
+  .notifs-v6 .notifs-toolbar { flex-wrap: wrap; gap: 8px; padding: 10px 12px 8px; }
+  .notifs-v6 .notifs-search { order: 3; flex: 1 1 100%; }
+  .notifs-toolbar-actions { width: 100%; margin: 0; }
+  .notifs-toolbar-actions .nf-btn { flex: 1; justify-content: center; height: 36px; }
+
+  .notifs-cols { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 8px; padding: 0; }
+  /* Categories: one horizontal scroll row of pills. DND stays reachable in Preferences. */
+  .notifs-side { flex: none; }
+  .notifs-dnd { display: none; }
+  .notifs-nav { flex-direction: row; gap: 6px; padding: 0 12px 2px; overflow-x: auto; scrollbar-width: none; }
+  .notifs-nav::-webkit-scrollbar { display: none; }
+  .notifs-nav-item { flex: none; width: auto; height: 34px; padding: 0 12px; gap: 6px; border-radius: 17px; background: var(--fill); white-space: nowrap; }
+  .notifs-nav-item.on { background: var(--ink); color: var(--surface); }
+  .notifs-nav-item.on .lucide, .notifs-nav-item.on .n { color: inherit; }
+  .notifs-nav-item .lbl { overflow: visible; }
+
+  .notifs-pane { display: flex; flex: 1; min-height: 0; border-radius: 0; box-shadow: none; border-top: 1px solid var(--line-soft); }
+  .notifs-list { flex: 1; border-right: 0; }
+  .notifs-detail { display: none; flex: 1; }
+  .notifs-row { padding: 12px 12px 12px 6px; }
+  /* Desktop pre-selects the first item for the reader; on a phone nothing is open yet. */
+  .notifs-row.sel:not(.checked) { background: transparent; }
+  /* No hover on touch: row actions live in the detail toolbar instead. */
+  .notifs-row-acts { display: none; }
+  .notifs-bulk .nf-btn { flex: 1; justify-content: center; height: 40px; }
+
+  /* Detail open: the page root gets .m-detail; toolbar, pills and list step aside. */
+  .notifs-v6.m-detail .notifs-toolbar,
+  .notifs-v6.m-detail .notifs-side,
+  .notifs-v6.m-detail .notifs-list { display: none; }
+  .notifs-v6.m-detail .notifs-pane { border-top: 0; }
+  .notifs-v6.m-detail .notifs-detail { display: flex; }
+  .notifs-dt-bar { padding: 6px 8px; min-height: 52px; }
+  .notifs-dt-bar .nf-icon { width: 40px; height: 40px; }
+  .notifs-dt-bar .nf-icon.wide { width: 48px; }
+  .notifs-dt-bar-title { font-size: 16px; }
+  .notifs-dt-body { padding: 18px 16px 28px; }
+  .notifs-dt-title { font-size: 20px; }
+  .notifs-target { align-self: stretch; justify-content: center; height: 44px; }
+
+  /* ---------- Settings (NotificationSettings.razor): stacked forms ---------- */
+  .notification-settings-page { padding: 12px; width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box; }
+  .notification-settings-page > * { min-width: 0; max-width: 100%; }
+  .notification-settings-page .page-header { gap: 10px; margin-bottom: 14px; }
+  .notification-settings-page .page-title { font-size: 18px; }
+  .notification-settings-page .settings-tabs { overflow-x: auto; gap: 4px; margin-bottom: 14px; scrollbar-width: none; }
+  .notification-settings-page .settings-tabs::-webkit-scrollbar { display: none; }
+  .notification-settings-page .settings-tab { flex: none; padding: 10px 12px; font-size: 13px; white-space: nowrap; min-height: 40px; }
+  .notification-settings-page .settings-panel { padding: 16px 14px; border-radius: 14px; }
+  .notification-settings-page .setting-item { gap: 12px; }
+  .notification-settings-page .setting-info { min-width: 0; }
+  .notification-settings-page .time-inputs { flex-direction: column; align-items: stretch; gap: 8px; }
+  .notification-settings-page .time-sep { display: none; }
+  .notification-settings-page .day-chips { flex-wrap: wrap; }
+  .notification-settings-page .day-chip { min-width: 40px; min-height: 40px; }
+  .notification-settings-page .history-filters { flex-direction: column; align-items: stretch; gap: 8px; }
+  .notification-settings-page .filter-select { width: 100%; min-height: 40px; }
+  .notification-settings-page .settings-footer { flex-direction: column-reverse; align-items: stretch; gap: 10px; }
+  .notification-settings-page .footer-right { flex-direction: column-reverse; gap: 8px; }
+  .notification-settings-page .settings-footer button { justify-content: center; min-height: 44px; }
+  .notification-settings-page .history-item { min-width: 0; }
+
+  /* ---------- Legacy inbox (NotificationInbox.razor) + Gateway (NotificationGateway.razor) ---------- */
+  .notif-tabs { overflow-x: auto; scrollbar-width: none; padding: 6px 12px 0; }
+  .notif-tabs::-webkit-scrollbar { display: none; }
+  .notif-tab { flex: none; white-space: nowrap; min-height: 40px; }
+  .notif-prefs-row { flex-direction: column; align-items: stretch; }
+  .notif-row { min-width: 0; }
+  .content .tray .filter-bar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .content .tray .filter-bar::-webkit-scrollbar { display: none; }
+  .content .tray .filter-bar > * { flex: none; }
+  .content .tray .filter-bar .search { flex: 1 0 200px; }
+  .content .tray .panel-head { flex-wrap: wrap; }
+  .content .tray .core:has(.u-table) { overflow-x: auto !important; }
+  .content .admin-tabs { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+}

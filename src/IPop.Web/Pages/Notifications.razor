@@ -1,4 +1,5 @@
 @page "/notifications"
+@page "/notifications/inbox"
 @using System.Net.Http.Json
 @using IPop.Web.Services
 @implements IDisposable
@@ -10,294 +11,250 @@
 
 <PageTitle>Notification Center — IPop</PageTitle>
 
-<div class="notifs-v6">
-    @* ---- Top Filter & Action Bar ---- *@
-    <div class="toolbar notifs-toolbar">
-        <div style="display:inline-flex;padding:2px;background:rgba(118,118,128,0.12);border-radius:10px;gap:2px">
-            <button type="button" class="btn btn-sm" style="height:28px;padding:0 14px;border-radius:8px;border:none;background:@(tabFilter == "all" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(tabFilter == "all" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer" @onclick='() => SetTab("all")'>All</button>
-            <button type="button" class="btn btn-sm" style="height:28px;padding:0 14px;border-radius:8px;border:none;background:@(tabFilter == "unread" ? "var(--surface)" : "transparent");color:var(--ink);box-shadow:@(tabFilter == "unread" ? "0 1px 2px rgba(0,0,0,0.1)" : "none");font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px" @onclick='() => SetTab("unread")'>
-                Unread
-                @if (unreadCount > 0)
-                {
-                    <span style="font-size:11px;color:#0A84FF;font-weight:700">@unreadCount</span>
-                }
-            </button>
-        </div>
-
-        <div style="flex:1"></div>
-
+<div class="notifs-v6 @(mDetail ? "m-detail" : "")">
+    <div class="notifs-toolbar">
         <div class="v6-search notifs-search">
             <i data-lucide="search"></i>
-            <input type="text" placeholder="Search notifications…" @bind="searchQuery" @bind:event="oninput" @bind:after="OnSearchChanged" />
+            <input type="text" placeholder="Search notifications" aria-label="Search notifications" @bind="searchQuery" @bind:event="oninput" @bind:after="OnSearchChanged" />
         </div>
-
-        <button type="button" class="btn btn-sm surface" style="height:32px;padding:0 12px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;border-radius:9px;border:1px solid var(--line);background:var(--surface);cursor:pointer" @onclick="MarkAllRead" title="Mark all read">
-            <i data-lucide="check-check" style="width:14px;height:14px"></i>
-            <span>Mark all read</span>
-        </button>
-
-        <button type="button" class="btn btn-sm surface" style="height:32px;padding:0 12px;font-size:12.5px;display:inline-flex;align-items:center;gap:6px;border-radius:9px;border:1px solid @(showPrefs ? "var(--accent)" : "var(--line)");background:@(showPrefs ? "var(--accent-soft)" : "var(--surface)");color:@(showPrefs ? "var(--accent-ink)" : "var(--ink)");cursor:pointer" @onclick="TogglePrefs">
-            <i data-lucide="settings" style="width:14px;height:14px"></i>
-            <span>Preferences</span>
-        </button>
+        <div class="notifs-toolbar-actions">
+            <button type="button" class="nf-btn" disabled="@(unreadCount == 0)" @onclick="MarkAllRead">
+                <i data-lucide="check-check"></i><span>Mark all read</span>
+            </button>
+            <button type="button" class="nf-btn @(showPrefs ? "on" : "")" aria-pressed="@(showPrefs ? "true" : "false")" @onclick="TogglePrefs">
+                <i data-lucide="sliders-horizontal"></i><span>Preferences</span>
+            </button>
+        </div>
     </div>
 
-    @* ---- Three Pane Layout ---- *@
     <div class="notifs-cols">
-        @* ---- Left Pane: Category Filters & DND ---- *@
-        <div class="notifs-side">
-            <div class="card notifs-nav">
-                <span class="notifs-nav-title">Categories</span>
+        @* Source list: flat on the page background, like the Mail sidebar. *@
+        <nav class="notifs-side" aria-label="Notification categories">
+            <div class="notifs-nav">
                 @foreach (var c in CategoryList)
                 {
                     var active = categoryFilter == c.Id;
-                    var cUnread = CountCategoryUnread(c.Id);
-                    <button type="button" class="notifs-nav-item @(active ? "on" : "")" @onclick="() => SetCategory(c.Id)">
-                        <i data-lucide="@c.Icon"></i>
+                    var cCount = CountCategoryUnread(c.Id);
+                    <button type="button" class="notifs-nav-item @(active ? "on" : "")" aria-current="@(active ? "true" : null)" @onclick="() => SetCategory(c.Id)">
+                        <i data-lucide="@c.Icon" class="k-@c.Id"></i>
                         <span class="lbl">@c.Label</span>
-                        @if (cUnread > 0 && c.Id != "snoozed")
+                        @if (cCount > 0)
                         {
-                            <span class="n">@cUnread</span>
+                            <span class="n">@cCount</span>
                         }
                     </button>
                 }
             </div>
 
-            @* DND Quiet Hours Switch Card *@
-            <div class="card notifs-dnd">
-                <span style="width:32px;height:32px;border-radius:9px;background:#EFEAFB;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-                    <i data-lucide="moon" style="width:16px;height:16px;color:#7657C4"></i>
+            <div class="notifs-dnd">
+                <i data-lucide="moon"></i>
+                <span class="notifs-dnd-txt">
+                    <b>Do Not Disturb</b>
+                    <small>@(quietHoursEnabled ? "On · 22:00 – 07:00" : "Off")</small>
                 </span>
-                <div style="flex:1">
-                    <div style="font-weight:600;font-size:12.5px;color:var(--ink)">Do Not Disturb</div>
-                    <div style="font-size:11px;color:var(--ink-3)">@(quietHoursEnabled ? "22:00 – 07:00" : "Off")</div>
-                </div>
-                <div class="apple-switch @(quietHoursEnabled ? "on" : "")" style="cursor:pointer" @onclick="ToggleDnd">
-                    <div class="apple-switch-knob"></div>
-                </div>
+                <button type="button" class="apple-switch @(quietHoursEnabled ? "on" : "")" role="switch" aria-checked="@(quietHoursEnabled ? "true" : "false")" aria-label="Do Not Disturb" @onclick="ToggleDnd">
+                    <span class="apple-switch-knob"></span>
+                </button>
             </div>
-        </div>
+        </nav>
 
-        @* ---- Middle Pane: Notification List ---- *@
-        <div class="card notifs-list">
-            @if (selectedIds.Count > 0)
-            {
-                <div style="height:48px;display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--accent-soft);border-bottom:1px solid var(--line-soft)">
-                    <input type="checkbox" checked="@(FilteredList.Count > 0 && selectedIds.Count == FilteredList.Count)" @onchange="ToggleSelectAll" />
-                    <span style="font-weight:600;font-size:12.5px;color:var(--accent-ink)">@selectedIds.Count selected</span>
-                    <div style="flex:1"></div>
-                    <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:11.5px;display:inline-flex;align-items:center;gap:5px" @onclick="BulkMarkRead"><i data-lucide="check-check" style="width:13px;height:13px"></i> Mark read</button>
-                    <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:11.5px;color:var(--danger);display:inline-flex;align-items:center;gap:5px" @onclick="BulkDelete"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete</button>
-                    <button type="button" class="btn btn-sm surface" style="height:28px;padding:0 10px;font-size:11.5px" @onclick="() => selectedIds.Clear()">Clear</button>
-                </div>
-            }
-            else
-            {
-                <div style="height:48px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--line-soft)">
-                    <input type="checkbox" checked="false" @onchange="ToggleSelectAll" title="Select all" />
-                    <span style="font-weight:700;font-size:14px;color:var(--ink)">@CurrentCategoryTitle</span>
-                    <span style="font-size:12px;color:var(--ink-3)">@($"{FilteredList.Count} items")</span>
-                    <div style="flex:1"></div>
-                    <button type="button" class="btn btn-sm surface" style="height:26px;padding:0 8px;font-size:11.5px;border-radius:6px;border:1px solid var(--line);cursor:pointer" @onclick="ReloadAsync" title="Refresh">
-                        <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
-                    </button>
-                </div>
-            }
-
-            <div style="flex:1;overflow-y:auto">
-                @if (isLoading)
-                {
-                    <div style="padding:16px"><div class="skel" style="height:60px;margin-bottom:8px"></div><div class="skel" style="height:60px"></div></div>
-                }
-                else if (FilteredList.Count == 0)
-                {
-                    <div style="padding:80px 20px;display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--ink-3);text-align:center">
-                        <span style="width:52px;height:52px;border-radius:50%;background:#E4F4EA;display:flex;align-items:center;justify-content:center">
-                            <i data-lucide="bell" style="width:24px;height:24px;color:#2E9E5B"></i>
+        <div class="notifs-pane">
+            <section class="notifs-list" aria-label="Notifications">
+                <header class="notifs-list-head">
+                    @if (selecting)
+                    {
+                        <button type="button" class="nf-link" @onclick="SelectAllToggle">@(AllSelected ? "Deselect all" : "Select all")</button>
+                        <span class="notifs-list-title center">@(selectedIds.Count == 0 ? "Select items" : $"{selectedIds.Count} selected")</span>
+                        <button type="button" class="nf-link strong" @onclick="EndSelecting">Done</button>
+                    }
+                    else
+                    {
+                        <span class="notifs-list-title">
+                            <b>@CurrentCategoryTitle</b>
+                            <small>@ListSummary</small>
                         </span>
-                        <div style="font-weight:700;color:var(--ink);font-size:15px">All caught up</div>
-                        <div style="font-size:12.5px">No notifications found in this view.</div>
+                        <button type="button" class="nf-icon" title="Refresh" aria-label="Refresh" @onclick="ReloadAsync"><i data-lucide="rotate-cw"></i></button>
+                        <button type="button" class="nf-link" disabled="@(FilteredList.Count == 0)" @onclick="() => selecting = true">Select</button>
+                    }
+                </header>
+
+                <div class="notifs-scroll">
+                    @if (isLoading && items.Count == 0)
+                    {
+                        <div class="notifs-skel"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+                    }
+                    else if (FilteredList.Count == 0)
+                    {
+                        <div class="notifs-empty">
+                            <span class="notifs-empty-ico"><i data-lucide="@(string.IsNullOrWhiteSpace(searchQuery) ? "bell" : "search")"></i></span>
+                            <b>@(string.IsNullOrWhiteSpace(searchQuery) ? "All caught up" : "No results")</b>
+                            <span>@(string.IsNullOrWhiteSpace(searchQuery) ? EmptyHint : $"Nothing matches “{searchQuery.Trim()}”.")</span>
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var grp in GroupedNotifications)
+                        {
+                            <div class="notifs-day">@grp.Key</div>
+                            @foreach (var n in grp)
+                            {
+                                var isSel = !selecting && selectedItem?.Id == n.Id;
+                                var isChecked = selectedIds.Contains(n.Id);
+                                var kind = Classify(n.Type);
+                                <div class="notifs-row @(isSel ? "sel" : "") @(n.IsRead ? "" : "unread") @(isChecked ? "checked" : "")" @key="n.Id"
+                                     role="button" tabindex="0" aria-pressed="@(selecting ? (isChecked ? "true" : "false") : null)"
+                                     @onclick="() => RowClick(n)" @onkeydown="e => SelectOnKey(e, n)">
+                                    @if (selecting)
+                                    {
+                                        <span class="notifs-check" aria-hidden="true">@if (isChecked) { <i data-lucide="check"></i> }</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="notifs-dot" title="@(n.IsRead ? null : "Unread")"></span>
+                                    }
+                                    <span class="nf-ico k-@kind"><i data-lucide="@GetIcon(n.Type)"></i></span>
+                                    <span class="notifs-row-txt">
+                                        <span class="notifs-row-top">
+                                            <span class="notifs-row-title">@n.Title</span>
+                                            <span class="notifs-row-time">@FormatTime(n.At)</span>
+                                        </span>
+                                        <span class="notifs-row-body">@n.Body</span>
+                                        @if (IsSnoozed(n))
+                                        {
+                                            <span class="notifs-row-snz"><i data-lucide="alarm-clock"></i>Until @SnoozeLabel(n.SnoozedUntil!.Value)</span>
+                                        }
+                                    </span>
+                                    @if (!selecting)
+                                    {
+                                        <span class="notifs-row-acts" @onclick:stopPropagation="true">
+                                            <button type="button" class="nf-icon sm" title="@(n.IsRead ? "Mark as unread" : "Mark as read")" aria-label="@(n.IsRead ? "Mark as unread" : "Mark as read")" @onclick="() => ToggleReadStatus(n)"><i data-lucide="@(n.IsRead ? "mail" : "mail-open")"></i></button>
+                                            <button type="button" class="nf-icon sm danger" title="Delete" aria-label="Delete" @onclick="() => DeleteItem(n)"><i data-lucide="trash-2"></i></button>
+                                        </span>
+                                    }
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+
+                @if (selecting)
+                {
+                    <footer class="notifs-bulk">
+                        <button type="button" class="nf-btn" disabled="@(selectedIds.Count == 0)" @onclick="BulkMarkRead"><i data-lucide="mail-open"></i><span>Mark as read</span></button>
+                        <button type="button" class="nf-btn danger" disabled="@(selectedIds.Count == 0)" @onclick="BulkDelete"><i data-lucide="trash-2"></i><span>Delete</span></button>
+                    </footer>
+                }
+            </section>
+
+            <section class="notifs-detail" aria-label="@(showPrefs ? "Preferences" : "Notification")">
+                @if (showPrefs)
+                {
+                    <header class="notifs-dt-bar">
+                        @if (mDetail) { <button type="button" class="m-back nf-icon" aria-label="Back" @onclick="BackToList"><i data-lucide="chevron-left"></i></button> }
+                        <span class="notifs-dt-bar-title">Preferences</span>
+                        @if (!mDetail) { <button type="button" class="nf-icon" title="Close" aria-label="Close preferences" @onclick="TogglePrefs"><i data-lucide="x"></i></button> }
+                    </header>
+                    <div class="notifs-dt-body">
+                        <div class="nf-group">
+                            <div class="nf-group-row">
+                                <span class="nf-ico sm k-dnd"><i data-lucide="moon"></i></span>
+                                <span class="nf-group-txt"><b>Do Not Disturb</b><small>Silence alerts from 22:00 to 07:00</small></span>
+                                <button type="button" class="apple-switch @(quietHoursEnabled ? "on" : "")" role="switch" aria-checked="@(quietHoursEnabled ? "true" : "false")" aria-label="Do Not Disturb" @onclick="ToggleDnd"><span class="apple-switch-knob"></span></button>
+                            </div>
+                        </div>
+
+                        <div class="nf-group-label">Allow notifications from</div>
+                        <div class="nf-group">
+                            @foreach (var c in CategoryList.Where(x => x.Id is not ("all" or "unread" or "snoozed")))
+                            {
+                                var allowed = !mutedCategories.Contains(c.Id);
+                                <div class="nf-group-row">
+                                    <span class="nf-ico sm k-@c.Id"><i data-lucide="@c.Icon"></i></span>
+                                    <span class="nf-group-txt"><b>@c.Label</b></span>
+                                    <button type="button" class="apple-switch @(allowed ? "on" : "")" role="switch" aria-checked="@(allowed ? "true" : "false")" aria-label="@c.Label" @onclick="() => ToggleMuteCategory(c.Id)"><span class="apple-switch-knob"></span></button>
+                                </div>
+                            }
+                        </div>
+                        <p class="nf-group-foot">Muted categories still collect here, but they don’t show banners or play sounds.</p>
+
+                        <a class="nf-group nf-group-link" href="/notifications/settings">
+                            <span class="nf-group-row">
+                                <span class="nf-ico sm k-system"><i data-lucide="settings"></i></span>
+                                <span class="nf-group-txt"><b>More settings</b><small>Channels, schedules and delivery history</small></span>
+                                <i data-lucide="chevron-right" class="nf-chev"></i>
+                            </span>
+                        </a>
+                    </div>
+                }
+                else if (selectedItem is not null)
+                {
+                    var kind = Classify(selectedItem.Type);
+                    var snoozed = IsSnoozed(selectedItem);
+                    var muted = mutedCategories.Contains(kind);
+                    <header class="notifs-dt-bar">
+                        @if (mDetail) { <button type="button" class="m-back nf-icon" aria-label="Back" @onclick="BackToList"><i data-lucide="chevron-left"></i></button> }
+                        <span class="notifs-dt-bar-title"></span>
+                        <button type="button" class="nf-icon" title="@(selectedItem.IsRead ? "Mark as unread" : "Mark as read")" aria-label="@(selectedItem.IsRead ? "Mark as unread" : "Mark as read")" @onclick="ToggleReadSelected"><i data-lucide="@(selectedItem.IsRead ? "mail" : "mail-open")"></i></button>
+                        <button type="button" class="nf-icon wide @(snoozed ? "on" : "")" title="Snooze" aria-label="Snooze" aria-haspopup="menu" @onclick="OpenSnoozeMenu"><i data-lucide="alarm-clock"></i><i data-lucide="chevron-down" class="nf-caret"></i></button>
+                        <button type="button" class="nf-icon @(muted ? "on" : "")" title="@(muted ? $"Unmute {GetCategoryName(selectedItem.Type)}" : $"Mute {GetCategoryName(selectedItem.Type)}")" aria-label="@(muted ? "Unmute this category" : "Mute this category")" aria-pressed="@(muted ? "true" : "false")" @onclick="() => MuteType(selectedItem.Type)"><i data-lucide="@(muted ? "bell-off" : "bell")"></i></button>
+                        <span class="nf-sep"></span>
+                        <button type="button" class="nf-icon danger" title="Delete" aria-label="Delete" @onclick="DeleteSelected"><i data-lucide="trash-2"></i></button>
+                    </header>
+                    <div class="notifs-dt-body">
+                        <div class="notifs-dt-meta">
+                            <span class="nf-ico lg k-@kind"><i data-lucide="@GetIcon(selectedItem.Type)"></i></span>
+                            <span>
+                                <b class="k-@kind">@GetCategoryName(selectedItem.Type)</b>
+                                <small>@selectedItem.At.ToString("dddd, d MMMM yyyy 'at' HH:mm")</small>
+                            </span>
+                        </div>
+
+                        <h2 class="notifs-dt-title">@selectedItem.Title</h2>
+                        @if (!string.IsNullOrWhiteSpace(selectedItem.Body))
+                        {
+                            <p class="notifs-dt-text">@selectedItem.Body</p>
+                        }
+
+                        @if (snoozed)
+                        {
+                            <div class="notifs-dt-snz">
+                                <i data-lucide="alarm-clock"></i>
+                                <span>Snoozed until @SnoozeLabel(selectedItem.SnoozedUntil!.Value)</span>
+                                <button type="button" class="nf-link" @onclick="UnsnoozeSelected">Unsnooze</button>
+                            </div>
+                        }
+
+                        @if (TargetOf(selectedItem) is not null)
+                        {
+                            <button type="button" class="notifs-target" @onclick="() => NavigateToTarget(selectedItem)">
+                                <span>Open in @TargetName(selectedItem.Type)</span><i data-lucide="arrow-up-right"></i>
+                            </button>
+                        }
+
+                        <dl class="notifs-dt-facts">
+                            <div><dt>From</dt><dd>@SourceLabel(selectedItem.Source)</dd></div>
+                            <div><dt>Priority</dt><dd class="@(IsHighPriority(selectedItem) ? "hi" : "")">@PriorityLabel(selectedItem.Priority)</dd></div>
+                            <div><dt>Status</dt><dd>@(selectedItem.IsRead ? "Read" : "Unread")</dd></div>
+                        </dl>
                     </div>
                 }
                 else
                 {
-                    @foreach (var grp in GroupedNotifications)
-                    {
-                        <div style="position:sticky;top:0;z-index:2;padding:6px 16px;background:var(--surface-sunken);font-size:11px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;color:var(--ink-3);display:flex;justify-content:space-between;border-bottom:1px solid var(--line-soft)">
-                            <span>@grp.Key</span>
-                            <span>@grp.Count()</span>
-                        </div>
-                        @foreach (var n in grp)
-                        {
-                            var isSel = selectedItem?.Id == n.Id;
-                            var isChecked = selectedIds.Contains(n.Id);
-                            <div class="notifs-row @(isSel ? "sel" : "")" role="button" tabindex="0" @onclick="() => SelectNotification(n)" @onkeydown="e => SelectOnKey(e, n)">
-                                <div style="display:flex;align-items:center;gap:6px;padding-top:4px" @onclick:stopPropagation="true">
-                                    <input type="checkbox" checked="@isChecked" @onchange="() => ToggleItemSelection(n.Id)" />
-                                    <span style="width:8px;height:8px;border-radius:50%;background:@(!n.IsRead ? "#0A84FF" : "transparent");display:block"></span>
-                                </div>
-                                <span style="width:36px;height:36px;flex:none;border-radius:10px;background:@GetBgColor(n.Type);display:flex;align-items:center;justify-content:center">
-                                    <i data-lucide="@GetIcon(n.Type)" style="width:16px;height:16px;color:@GetIconColor(n.Type)"></i>
-                                </span>
-                                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
-                                    <div style="display:flex;align-items:center;gap:8px">
-                                        <span style="flex:1;font-weight:@(!n.IsRead ? "700" : "500");font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@n.Title</span>
-                                        <span style="font-size:11px;color:var(--ink-3);flex-shrink:0">@FormatTime(n.At)</span>
-                                    </div>
-                                    <span style="font-size:12px;color:var(--ink-2);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">@n.Body</span>
-                                    <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
-                                        <span class="tag" style="font-size:10px;padding:1px 6px">@GetCategoryName(n.Type)</span>
-                                        @if (n.SnoozedUntil != null && n.SnoozedUntil > DateTime.UtcNow)
-                                        {
-                                            <span class="tag" style="background:#EFEAFB;color:#7657C4;font-size:10px;padding:1px 6px">
-                                                <i data-lucide="alarm-clock" style="width:10px;height:10px;display:inline-block;vertical-align:-1px"></i> Snoozed
-                                            </span>
-                                        }
-                                        <div style="flex:1"></div>
-                                        <button type="button" class="icon-btn" style="width:24px;height:24px;border:none;background:transparent;color:var(--ink-3)" title="@(n.IsRead ? "Mark unread" : "Mark read")" @onclick="() => ToggleReadStatus(n)" @onclick:stopPropagation="true">
-                                            <i data-lucide="@(n.IsRead ? "mail" : "check")" style="width:13px;height:13px"></i>
-                                        </button>
-                                        <button type="button" class="icon-btn" style="width:24px;height:24px;border:none;background:transparent;color:var(--danger)" title="Delete notification" @onclick="() => DeleteItem(n)" @onclick:stopPropagation="true">
-                                            <i data-lucide="trash-2" style="width:13px;height:13px"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        }
-                    }
+                    <div class="notifs-empty">
+                        <span class="notifs-empty-ico muted"><i data-lucide="bell"></i></span>
+                        <b>No notification selected</b>
+                        <span>Choose one from the list to read it here.</span>
+                    </div>
                 }
-            </div>
-        </div>
-
-        @* ---- Right Pane: Detail View or Preferences ---- *@
-        <div class="card notifs-detail">
-            @if (showPrefs)
-            {
-                <div style="display:flex;align-items:center;padding:16px 18px 12px;border-bottom:1px solid var(--line-soft)">
-                    <span style="flex:1;font-size:15px;font-weight:700">Notification Preferences</span>
-                    <button type="button" class="modal-x" @onclick="TogglePrefs" title="Close preferences"><i data-lucide="x"></i></button>
-                </div>
-                <div style="flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:16px">
-                    <div style="border-radius:12px;background:var(--tray);padding:6px 0">
-                        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px">
-                            <i data-lucide="moon" style="width:16px;height:16px;color:#7657C4"></i>
-                            <div style="flex:1">
-                                <div style="font-weight:600;font-size:12.5px">Do Not Disturb</div>
-                                <div style="font-size:11px;color:var(--ink-3)">Silence alerts 22:00 – 07:00</div>
-                            </div>
-                            <div class="apple-switch @(quietHoursEnabled ? "on" : "")" style="cursor:pointer" @onclick="ToggleDnd">
-                                <div class="apple-switch-knob"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div>
-                        <div style="font-size:11px;font-weight:700;color:var(--ink-3);letter-spacing:0.04em;text-transform:uppercase;margin-bottom:8px">MUTE CATEGORIES</div>
-                        <div style="border-radius:12px;background:var(--tray);overflow:hidden">
-                            @foreach (var c in CategoryList.Where(x => x.Id != "all" && x.Id != "unread" && x.Id != "snoozed"))
-                            {
-                                var isMuted = mutedCategories.Contains(c.Id);
-                                <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line-soft)">
-                                    <i data-lucide="@c.Icon" style="width:14px;height:14px;color:var(--ink-3)"></i>
-                                    <span style="flex:1;font-size:12.5px;font-weight:500">@c.Label</span>
-                                    <button type="button" class="btn btn-sm surface" style="height:24px;padding:0 8px;font-size:11px;border-radius:6px;border:1px solid var(--line);cursor:pointer;background:@(isMuted ? "#FFEBEA" : "var(--surface)");color:@(isMuted ? "#C4271C" : "var(--ink)")" @onclick="() => ToggleMuteCategory(c.Id)">
-                                        @(isMuted ? "Muted" : "Active")
-                                    </button>
-                                </div>
-                            }
-                        </div>
-                    </div>
-                </div>
-            }
-            else if (selectedItem is not null)
-            {
-                <div style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px">
-                    <div style="display:flex;align-items:center;gap:12px">
-                        <span style="width:42px;height:42px;border-radius:12px;background:@GetBgColor(selectedItem.Type);display:flex;align-items:center;justify-content:center">
-                            <i data-lucide="@GetIcon(selectedItem.Type)" style="width:18px;height:18px;color:@GetIconColor(selectedItem.Type)"></i>
-                        </span>
-                        <div style="display:flex;flex-direction:column">
-                            <span style="font-size:12px;font-weight:700;color:@GetIconColor(selectedItem.Type)">@GetCategoryName(selectedItem.Type)</span>
-                            <span style="font-size:11px;color:var(--ink-3)">@selectedItem.At.ToString("dd MMM yyyy, HH:mm")</span>
-                        </div>
-                    </div>
-
-                    <div style="font-size:16px;font-weight:700;color:var(--ink);letter-spacing:-0.01em;line-height:1.35">@selectedItem.Title</div>
-                    <div style="font-size:13px;color:var(--ink-2);line-height:1.6;white-space:pre-wrap">@selectedItem.Body</div>
-
-                    @if (!string.IsNullOrEmpty(selectedItem.TargetUrl))
-                    {
-                        <button type="button" class="btn-primary notifs-target" @onclick="() => NavigateToTarget(selectedItem)">
-                            <span>Open in @GetCategoryName(selectedItem.Type)</span>
-                            <i data-lucide="arrow-right" style="width:14px;height:14px"></i>
-                        </button>
-                    }
-
-                    <div style="background:var(--tray);border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;gap:6px;font-size:12px">
-                        <div style="display:flex;justify-content:space-between"><span style="color:var(--ink-3)">Source:</span><span class="mono" style="font-weight:500">@(selectedItem.Source ?? "system")</span></div>
-                        <div style="display:flex;justify-content:space-between"><span style="color:var(--ink-3)">Priority:</span><span style="font-weight:500;text-transform:capitalize">@selectedItem.Priority</span></div>
-                        @if (selectedItem.SnoozedUntil != null && selectedItem.SnoozedUntil > DateTime.UtcNow)
-                        {
-                            <div style="display:flex;justify-content:space-between"><span style="color:#7657C4;font-weight:600">Snoozed until:</span><span style="color:#7657C4;font-weight:600">@selectedItem.SnoozedUntil.Value.ToLocalTime().ToString("HH:mm, dd MMM")</span></div>
-                        }
-                    </div>
-
-                    @* Snooze Preset Buttons *@
-                    <div style="display:flex;flex-direction:column;gap:6px">
-                        <span style="font-size:11px;font-weight:700;color:var(--ink-3);letter-spacing:0.04em;text-transform:uppercase">SNOOZE UNTIL</span>
-                        <div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:6px">
-                            <button type="button" class="btn btn-sm surface" style="height:28px;font-size:11.5px;border-radius:7px;border:1px solid var(--line);cursor:pointer" @onclick="() => Snooze(1)">In 1 hour</button>
-                            <button type="button" class="btn btn-sm surface" style="height:28px;font-size:11.5px;border-radius:7px;border:1px solid var(--line);cursor:pointer" @onclick="() => SnoozeTonight()">Tonight (20:00)</button>
-                            <button type="button" class="btn btn-sm surface" style="height:28px;font-size:11.5px;border-radius:7px;border:1px solid var(--line);cursor:pointer" @onclick="() => SnoozeTomorrow()">Tomorrow (08:00)</button>
-                            <button type="button" class="btn btn-sm surface" style="height:28px;font-size:11.5px;border-radius:7px;border:1px solid var(--line);cursor:pointer" @onclick="() => SnoozeNextWeek()">Next week</button>
-                        </div>
-                    </div>
-                </div>
-
-                @* Bottom Action Bar *@
-                <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:6px;padding:10px 16px;border-top:1px solid var(--line-soft);background:var(--surface)">
-                    <button type="button" class="btn btn-sm surface" style="height:44px;border:none;border-radius:10px;background:var(--tray);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;font-weight:600" @onclick="ToggleReadSelected">
-                        <i data-lucide="@(selectedItem.IsRead ? "mail" : "check")" style="width:14px;height:14px"></i>
-                        <span>@(selectedItem.IsRead ? "Mark unread" : "Mark read")</span>
-                    </button>
-
-                    @if (selectedItem.SnoozedUntil != null && selectedItem.SnoozedUntil > DateTime.UtcNow)
-                    {
-                        <button type="button" class="btn btn-sm" style="height:44px;border:none;border-radius:10px;background:#EFEAFB;color:#7657C4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;font-weight:600" @onclick="UnsnoozeSelected">
-                            <i data-lucide="alarm-clock-off" style="width:14px;height:14px"></i>
-                            <span>Unsnooze</span>
-                        </button>
-                    }
-                    else
-                    {
-                        <button type="button" class="btn btn-sm surface" style="height:44px;border:none;border-radius:10px;background:var(--tray);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;font-weight:600" @onclick="() => Snooze(1)">
-                            <i data-lucide="alarm-clock" style="width:14px;height:14px"></i>
-                            <span>Snooze (1h)</span>
-                        </button>
-                    }
-
-                    <button type="button" class="btn btn-sm surface" style="height:44px;border:none;border-radius:10px;background:var(--tray);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;font-weight:600" @onclick="() => MuteType(selectedItem.Type)">
-                        <i data-lucide="bell-off" style="width:14px;height:14px"></i>
-                        <span>Mute type</span>
-                    </button>
-
-                    <button type="button" class="btn btn-sm" style="height:44px;border:none;border-radius:10px;background:#FFEBEA;color:#C4271C;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-size:11px;font-weight:600" @onclick="DeleteSelected">
-                        <i data-lucide="trash-2" style="width:14px;height:14px"></i>
-                        <span>Delete</span>
-                    </button>
-                </div>
-            }
-            else
-            {
-                <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--ink-3);padding:24px;text-align:center">
-                    <i data-lucide="bell" style="width:32px;height:32px;opacity:0.4"></i>
-                    <div style="font-weight:600;font-size:14px;color:var(--ink)">No notification selected</div>
-                    <div style="font-size:12px">Pick one from the list to see details and actions.</div>
-                </div>
-            }
+            </section>
         </div>
     </div>
 </div>
+
+@if (snoozeMenuOpen)
+{
+    <ContextMenu @ref="snoozeMenu" Items="SnoozeItems" OnClosed="() => snoozeMenuOpen = false" />
+}
 
 @code {
     [CascadingParameter] public MainLayout Layout { get; set; } = default!;
@@ -305,8 +262,11 @@
     private HashSet<Guid> selectedIds = [];
     private bool isLoading = true;
     private int unreadCount = 0;
-    private string tabFilter = "all";
     private string categoryFilter = "all";
+    private bool selecting;
+    private bool snoozeMenuOpen;
+    private (double X, double Y)? snoozeMenuAt;
+    private ContextMenu? snoozeMenu;
     private string searchQuery = "";
     private bool showPrefs;
     private bool quietHoursEnabled;
@@ -341,9 +301,6 @@
             var mod = Classify(n.Type);
             if (!mod.Equals(categoryFilter, StringComparison.OrdinalIgnoreCase)) return false;
         }
-
-        // Tab filter (All vs Unread)
-        if (tabFilter == "unread" && n.IsRead) return false;
 
         // Search query
         if (!string.IsNullOrWhiteSpace(searchQuery))
@@ -393,7 +350,7 @@
         isLoading = true;
         try
         {
-            var statusParam = categoryFilter == "snoozed" ? "snoozed" : (tabFilter == "unread" ? "unread" : null);
+            var statusParam = categoryFilter == "snoozed" ? "snoozed" : null;
             var url = $"/api/notifications/v1/inbox?page=1&pageSize=100" + (statusParam != null ? $"&status={statusParam}" : "");
             var res = await Auth.GetAsync<InboxResultDto>(url);
             if (res is not null)
@@ -426,19 +383,188 @@
         _ => items.Count(x => !x.IsRead && Classify(x.Type) == catId && (x.SnoozedUntil == null || x.SnoozedUntil <= DateTime.UtcNow))
     };
 
-    private void SetTab(string tab)
+    // Snoozed items only come back from the server when asked for, so entering or leaving
+    // the Snoozed view reloads; every other category filters what is already loaded.
+    private async Task SetCategory(string cat)
     {
-        tabFilter = tab;
-        selectedItem = null;
-    }
-
-    private void SetCategory(string cat)
-    {
+        var reload = (cat == "snoozed") != (categoryFilter == "snoozed");
         categoryFilter = cat;
         selectedItem = null;
+        EndSelecting();
+        if (reload) await ReloadAsync();
     }
 
-    private void TogglePrefs() => showPrefs = !showPrefs;
+    private string ListSummary
+    {
+        get
+        {
+            var list = FilteredList;
+            var unread = list.Count(x => !x.IsRead);
+            var total = list.Count == 1 ? "1 notification" : $"{list.Count} notifications";
+            return unread > 0 && categoryFilter != "unread" ? $"{total}, {unread} unread" : total;
+        }
+    }
+
+    private string EmptyHint => categoryFilter switch
+    {
+        "unread" => "You’ve read everything.",
+        "snoozed" => "Snoozed notifications wait here until their time comes.",
+        "all" => "New notifications will show up here.",
+        _ => $"Nothing from {CurrentCategoryTitle} right now."
+    };
+
+    // ---- Select mode (Mail-style "Select" → tap rows → act on the footer) ----
+    private bool AllSelected => FilteredList.Count > 0 && FilteredList.All(x => selectedIds.Contains(x.Id));
+
+    private void SelectAllToggle()
+    {
+        if (AllSelected) selectedIds.Clear();
+        else selectedIds = FilteredList.Select(x => x.Id).ToHashSet();
+    }
+
+    private void EndSelecting()
+    {
+        selecting = false;
+        selectedIds.Clear();
+    }
+
+    private void RowClick(NotificationItemDto n)
+    {
+        if (selecting) ToggleItemSelection(n.Id);
+        else SelectNotification(n);
+    }
+
+    // ---- Snooze menu ----
+    private void OpenSnoozeMenu(MouseEventArgs e)
+    {
+        snoozeMenuOpen = true;
+        snoozeMenuAt = (e.ClientX - 150, e.ClientY + 14);
+    }
+
+    private IReadOnlyList<ContextMenu.Item> SnoozeItems
+    {
+        get
+        {
+            var list = new List<ContextMenu.Item>
+            {
+                ContextMenu.Item.Header("Snooze until"),
+                new("In 1 hour", "clock", () => Snooze(1)),
+                new($"This evening ({EveningTarget:HH:mm}{(EveningTarget.Date == DateTime.Today ? "" : ", tomorrow")})", "sunset", SnoozeTonight),
+                new($"Tomorrow morning ({DateTime.Today.AddDays(1).AddHours(8):ddd} 08:00)", "sunrise", SnoozeTomorrow),
+                new($"Next week ({NextMonday:ddd d MMM}, 08:00)", "calendar", SnoozeNextWeek),
+            };
+            if (selectedItem is not null && IsSnoozed(selectedItem))
+            {
+                list.Add(ContextMenu.Item.Divider());
+                list.Add(new("Unsnooze", "alarm-clock-off", UnsnoozeSelected));
+            }
+            return list;
+        }
+    }
+
+    private static DateTime EveningTarget
+    {
+        get
+        {
+            var t = DateTime.Today.AddHours(20);
+            return t <= DateTime.Now ? t.AddDays(1) : t;
+        }
+    }
+
+    private static DateTime NextMonday
+    {
+        get
+        {
+            var days = ((int)DayOfWeek.Monday - (int)DateTime.Today.DayOfWeek + 7) % 7;
+            return DateTime.Today.AddDays(days == 0 ? 7 : days).AddHours(8);
+        }
+    }
+
+    private static bool IsSnoozed(NotificationItemDto n) => n.SnoozedUntil is { } s && s > DateTime.UtcNow;
+
+    private static string SnoozeLabel(DateTime utc)
+    {
+        var local = utc.Kind == DateTimeKind.Local ? utc : DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime();
+        if (local.Date == DateTime.Today) return $"today {local:HH:mm}";
+        if (local.Date == DateTime.Today.AddDays(1)) return $"tomorrow {local:HH:mm}";
+        return local.ToString("ddd d MMM, HH:mm");
+    }
+
+    // ---- Detail labels ----
+    private static string SourceLabel(string? source) => string.IsNullOrWhiteSpace(source) || source.Equals("system", StringComparison.OrdinalIgnoreCase)
+        ? "IPop"
+        : char.ToUpperInvariant(source[0]) + source[1..].Replace('_', ' ').Replace('-', ' ');
+
+    private static bool IsHighPriority(NotificationItemDto n) => n.Priority?.ToLowerInvariant() is "high" or "urgent" or "critical";
+
+    private static string PriorityLabel(string? p) => p?.ToLowerInvariant() switch
+    {
+        "high" => "High",
+        "urgent" or "critical" => "Urgent",
+        "low" => "Low",
+        _ => "Normal"
+    };
+
+    private static string? TargetOf(NotificationItemDto item) => !string.IsNullOrEmpty(item.TargetUrl) ? item.TargetUrl : Classify(item.Type) switch
+    {
+        "mention" or "chat" => "/chat",
+        "mail" => "/mail",
+        "task" => "/projects",
+        "meeting" => "/calls?tab=scheduled",
+        "news" => "/news",
+        _ => null
+    };
+
+    private static string TargetName(string type) => Classify(type) switch
+    {
+        "mention" or "chat" => "Chat",
+        "mail" => "Mail",
+        "task" => "Projects",
+        "meeting" => "Calls",
+        "news" => "News",
+        _ => "IPop"
+    };
+
+    private async Task TogglePrefs()
+    {
+        showPrefs = !showPrefs;
+        if (showPrefs) await OpenMobileDetail();
+        else if (mDetail) await BackToList();
+    }
+
+    // ---- Phone list/detail (see .scratch/backup-mobile/CONTRACT.md) ----
+    private bool mDetail;
+    private DotNetObjectReference<Notifications>? mRef;
+
+    private async Task OpenMobileDetail()
+    {
+        if (mDetail) return;
+        try
+        {
+            if (!await JS.InvokeAsync<bool>("ipop.mobile.isMobile")) return;
+            mRef ??= DotNetObjectReference.Create(this);
+            mDetail = true;
+            await JS.InvokeAsync<bool>("ipop.mobile.pushDetail", mRef, nameof(CloseMobileDetail));
+        }
+        catch { }
+    }
+
+    private async Task BackToList()
+    {
+        if (!mDetail) return;
+        mDetail = false;
+        if (showPrefs) showPrefs = false;
+        try { await JS.InvokeVoidAsync("ipop.mobile.popDetail"); } catch { }
+    }
+
+    /// Phone/browser Back popped our history entry.
+    [JSInvokable]
+    public Task CloseMobileDetail()
+    {
+        mDetail = false; showPrefs = false;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
 
     private async Task ToggleDnd()
     {
@@ -493,6 +619,7 @@
     {
         selectedItem = item;
         showPrefs = false;
+        _ = InvokeAsync(async () => { await OpenMobileDetail(); StateHasChanged(); });
         if (!item.IsRead)
         {
             _ = MarkReadAsync(item.Id);
@@ -519,7 +646,7 @@
         if (res.IsSuccessStatusCode)
         {
             selectedItem.SnoozedUntil = until;
-            Toasts.ShowDetailed("Snoozed", $"Notification snoozed for {hours} hour(s)", ToastKind.Success, "alarm-clock");
+            Toasts.ShowDetailed("Snoozed", hours == 1 ? "It’ll come back in an hour" : $"It’ll come back in {hours} hours", ToastKind.Success, "alarm-clock");
             await ReloadAsync();
         }
     }
@@ -529,13 +656,13 @@
         var now = DateTime.UtcNow;
         var target = DateTime.Today.AddHours(20);
         if (target <= DateTime.Now) target = target.AddDays(1);
-        await SnoozeUntilTime(target.ToUniversalTime(), "tonight (20:00)");
+        await SnoozeUntilTime(target.ToUniversalTime(), target.Date == DateTime.Today ? "this evening at 20:00" : "tomorrow at 20:00");
     }
 
     private async Task SnoozeTomorrow()
     {
         var target = DateTime.Today.AddDays(1).AddHours(8);
-        await SnoozeUntilTime(target.ToUniversalTime(), "tomorrow (08:00)");
+        await SnoozeUntilTime(target.ToUniversalTime(), "tomorrow at 08:00");
     }
 
     private async Task SnoozeNextWeek()
@@ -543,7 +670,7 @@
         var days = ((int)DayOfWeek.Monday - (int)DateTime.Today.DayOfWeek + 7) % 7;
         if (days == 0) days = 7;
         var target = DateTime.Today.AddDays(days).AddHours(8);
-        await SnoozeUntilTime(target.ToUniversalTime(), "next Monday");
+        await SnoozeUntilTime(target.ToUniversalTime(), "next Monday at 08:00");
     }
 
     private async Task SnoozeUntilTime(DateTime utc, string label)
@@ -553,7 +680,7 @@
         if (res.IsSuccessStatusCode)
         {
             selectedItem.SnoozedUntil = utc;
-            Toasts.ShowDetailed("Snoozed", $"Notification snoozed until {label}", ToastKind.Success, "alarm-clock");
+            Toasts.ShowDetailed("Snoozed", $"It’ll come back {label}", ToastKind.Success, "alarm-clock");
             await ReloadAsync();
         }
     }
@@ -565,7 +692,7 @@
         if (res.IsSuccessStatusCode)
         {
             selectedItem.SnoozedUntil = null;
-            Toasts.ShowDetailed("Unsnoozed", "Notification moved back to inbox", ToastKind.Success, "check");
+            Toasts.ShowDetailed("Unsnoozed", "Moved back to your notifications", ToastKind.Success, "check");
             await ReloadAsync();
         }
     }
@@ -573,14 +700,6 @@
     private void ToggleItemSelection(Guid id)
     {
         if (!selectedIds.Add(id)) selectedIds.Remove(id);
-    }
-
-    private void ToggleSelectAll(ChangeEventArgs e)
-    {
-        if ((bool)(e.Value ?? false))
-            selectedIds = FilteredList.Select(x => x.Id).ToHashSet();
-        else
-            selectedIds.Clear();
     }
 
     private async Task DeleteItem(NotificationItemDto n)
@@ -604,6 +723,7 @@
     {
         if (selectedItem is null) return;
         await DeleteItem(selectedItem);
+        await BackToList();
     }
 
     private async Task BulkDelete()
@@ -614,7 +734,7 @@
         {
             items.RemoveAll(x => selectedIds.Contains(x.Id));
             if (selectedItem is not null && selectedIds.Contains(selectedItem.Id)) selectedItem = null;
-            selectedIds.Clear();
+            EndSelecting();
             Toasts.Show("Notifications deleted.", ToastKind.Success);
             await ReloadAsync();
         }
@@ -627,7 +747,7 @@
         if (res.IsSuccessStatusCode)
         {
             foreach (var item in items.Where(x => selectedIds.Contains(x.Id))) item.IsRead = true;
-            selectedIds.Clear();
+            EndSelecting();
             Toasts.Show("Notifications marked as read.", ToastKind.Success);
             await ReloadAsync();
         }
@@ -699,22 +819,7 @@
 
     private void NavigateToTarget(NotificationItemDto item)
     {
-        if (!string.IsNullOrEmpty(item.TargetUrl))
-        {
-            Nav.NavigateTo(item.TargetUrl);
-            return;
-        }
-        var target = Classify(item.Type) switch
-        {
-            "mention" => "/chat",
-            "chat" => "/chat",
-            "mail" => "/mail",
-            "task" => "/projects",
-            "meeting" => "/calls?tab=scheduled",
-            "news" => "/news",
-            _ => null
-        };
-        if (target != null) Nav.NavigateTo(target);
+        if (TargetOf(item) is { } target) Nav.NavigateTo(target);
     }
 
     private static string Classify(string type)
@@ -787,11 +892,21 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await JS.InvokeVoidAsync("ipop.icons");
+        // The menu only exists after the render that set snoozeMenuOpen; place it now.
+        if (snoozeMenuAt is { } at && snoozeMenu is not null)
+        {
+            snoozeMenuAt = null;
+            // Keyboard activation has no pointer position: drop the menu under the detail toolbar.
+            if (at.Y <= 14) at = (await JS.InvokeAsync<double>("ipop.viewportWidth") - 280, 170);
+            await snoozeMenu.OpenAsync(Math.Max(8, at.X), at.Y);
+        }
     }
 
     public void Dispose()
     {
         Notifs.UnreadChanged -= OnLiveUnreadChanged;
+        if (mDetail) _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail").AsTask().ContinueWith(_ => { });
+        mRef?.Dispose();
         searchCts?.Cancel();
         searchCts?.Dispose();
     }
