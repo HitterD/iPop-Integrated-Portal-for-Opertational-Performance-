@@ -25,3 +25,6 @@ appsettings.Local.json
 
 # Local secrets for docker-compose (LiveKit keys)
 .env
+
+# Notes editor build tooling (bundle output is committed under wwwroot/js/notes)
+tools/notes-editor/node_modules/

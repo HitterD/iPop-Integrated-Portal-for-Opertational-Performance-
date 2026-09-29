@@ -354,4 +354,24 @@ public sealed partial class NoteService
         db.NoteAttachments.Add(new NoteAttachment { AttachmentId = attachmentId, PageId = pageId });
         await db.SaveChangesAsync(ct);
     }
+
+    // ── People ───────────────────────────────────────────────────────────────
+
+    public async Task<IReadOnlyList<NotePersonDto>> SearchPeopleAsync(string query, CancellationToken ct)
+    {
+        var q = query.Trim().ToLower();
+        if (q.Length < 2) return [];
+        return await db.Users.AsNoTracking()
+            .Where(u => u.IsActive && (u.Name.ToLower().Contains(q) || u.Nik.ToLower().Contains(q)))
+            .OrderBy(u => u.Name).Take(8)
+            .Select(u => new NotePersonDto(u.Id, u.Nik, u.Name, u.Position))
+            .ToListAsync(ct);
+    }
+
+    public async Task<NoteResult<IReadOnlyList<Guid>>> MentionInDocAsync(Guid userId, Guid pageId, IReadOnlyList<Guid> mentions, CancellationToken ct)
+    {
+        var access = await GetAccessAsync(userId, pageId, ct);
+        if (access < NoteAccess.Edit) return Fail<IReadOnlyList<Guid>>(Denied(access));
+        return Ok(await MentionTargetsAsync(userId, pageId, mentions, ct));
+    }
 }

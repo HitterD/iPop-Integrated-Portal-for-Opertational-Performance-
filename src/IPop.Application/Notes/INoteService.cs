@@ -104,6 +104,8 @@ public record NoteSearchHitDto(Guid Id, string Title, string? Emoji, string? Sni
 /// Chat card payload, stored as "[note]" + json in ChatMessage.Content.
 public record NoteCardDto(Guid Id, string Title, string? Emoji, string? Cover, string Accent, string Level, string? Excerpt);
 
+public record NotePersonDto(Guid Id, string Nik, string Name, string? Position);
+
 public interface INoteService
 {
     Task<NoteAccess> GetAccessAsync(Guid userId, Guid pageId, CancellationToken ct);
@@ -148,4 +150,9 @@ public interface INoteService
 
     Task<NoteResult<bool>> CanUploadAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task LinkAttachmentAsync(Guid pageId, Guid attachmentId, CancellationToken ct);
+
+    /// People picker for sharing and @mentions (active users by name or NIK).
+    Task<IReadOnlyList<NotePersonDto>> SearchPeopleAsync(string query, CancellationToken ct);
+    /// An @mention typed into the page body: returns the mentioned users who can open the page.
+    Task<NoteResult<IReadOnlyList<Guid>>> MentionInDocAsync(Guid userId, Guid pageId, IReadOnlyList<Guid> mentions, CancellationToken ct);
 }

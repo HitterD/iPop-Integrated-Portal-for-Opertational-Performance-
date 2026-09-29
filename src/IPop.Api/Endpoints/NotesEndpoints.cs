@@ -23,6 +23,7 @@ public static class NotesEndpoints
     public record ShareLevelRequest(string Level);
     public record GuideThreadRequest(string Quote, string Anchor);
     public record SendToChatRequest(Guid RoomId, string Level, string? Message);
+    public record DocMentionRequest(IReadOnlyList<Guid> UserIds, string? Context);
     public record NoteUploadDto(Guid Id, string FileName, string ContentType, long Size, string Url);
 
     public static IEndpointRouteBuilder MapNotes(this IEndpointRouteBuilder app)
@@ -38,6 +39,8 @@ public static class NotesEndpoints
             Run(http, async me => Results.Ok(await svc.SearchAsync(me.Id, q ?? "", ct))));
         g.MapGet("/trash", (HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => Results.Ok(await svc.GetTrashAsync(me.Id, ct))));
+        g.MapGet("/people", (string? q, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async _ => Results.Ok(await svc.SearchPeopleAsync(q ?? "", ct))));
 
         g.MapGet("/{id:guid}", (Guid id, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.GetPageAsync(me.Id, id, ct))));
@@ -178,6 +181,17 @@ public static class NotesEndpoints
             if (r.Success) await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThreads", id, ct);
             return From(r);
         }));
+        // An @mention typed into the page body notifies the people who can open it.
+        g.MapPost("/{id:guid}/mentions", (Guid id, DocMentionRequest req, HttpContext http, INoteService svc,
+            INotificationGatewayService notify, CancellationToken ct) => Run(http, async me =>
+        {
+            var r = await svc.MentionInDocAsync(me.Id, id, req.UserIds, ct);
+            if (!r.Success) return Error(r.Error!);
+            var title = await TitleAsync(http, id, ct);
+            foreach (var uid in r.Data!)
+                await NotifyAsync(notify, uid, "note.mention", $"{me.Name} menyebut Anda di {title}", req.Context, id, ct);
+            return Results.Ok(new { notified = r.Data.Count });
+        })).RequirePermission("notes.write");
         g.MapPost("/{id:guid}/guide-thread", (Guid id, GuideThreadRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
             Run(http, async me => From(await svc.AddGuideThreadAsync(me.Id, id, req.Quote, req.Anchor, ct))));
 
