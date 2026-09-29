@@ -305,8 +305,30 @@ window.ipop = {
     return true;
   },
   // Chat: scroll a container to its bottom (used after new message arrives)
+  // Jump to the newest message and STAY there while the list is still settling: images,
+  // link previews and reply quotes finish loading after the jump and grow the rows, which
+  // used to leave the view stranded partway up the conversation. The pin ends as soon as
+  // the reader scrolls/touches/keys, or after a short settle window.
   scrollBottom(el) {
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    if (el._ipopPin) el._ipopPin();
+    const pin = () => { el.scrollTop = el.scrollHeight; };
+    const ro = new ResizeObserver(pin);
+    ro.observe(el);
+    el.querySelectorAll("[data-msg-id], img, video").forEach((n) => ro.observe(n));
+    const mo = new MutationObserver(() => { el.querySelectorAll("[data-msg-id], img, video").forEach((n) => ro.observe(n)); pin(); });
+    mo.observe(el, { childList: true, subtree: true });
+    const imgs = [...el.querySelectorAll("img")].filter((i) => !i.complete);
+    imgs.forEach((i) => i.addEventListener("load", pin, { once: true }));
+    const stop = () => {
+      ro.disconnect(); mo.disconnect(); clearTimeout(timer);
+      ["wheel", "touchstart", "keydown", "pointerdown"].forEach((ev) => el.removeEventListener(ev, stop));
+      if (el._ipopPin === stop) delete el._ipopPin;
+    };
+    const timer = setTimeout(stop, 2500);
+    ["wheel", "touchstart", "keydown", "pointerdown"].forEach((ev) => el.addEventListener(ev, stop, { passive: true }));
+    el._ipopPin = stop;
   },
   async authBlob(url, token) {
     const res = await fetch(url, { headers: token ? { Authorization: "Bearer " + token } : {} });
