@@ -1,337 +1,189 @@
-@using System.Net.Http.Json
-@using IPop.Web.Services
-@using IPop.Web.Components
+@* Organization — the one place the Plant ▸ Division ▸ Department structure is edited.
+   The Directory tree and Org chart tabs are read-only views built from this data. *@
 @inject AuthState Auth
 @inject IJSRuntime JS
+@inject ToastService Toasts
+@inject ConfirmService Confirm
 
-@* ---- Organization KPI Summary Grid ---- *@
-<div class="admin-kpi-grid">
-    <div class="admin-kpi-card">
-        <div class="kpi-icon-wrap kpi-purple">
-            <i data-lucide="building-2"></i>
-        </div>
-        <div class="kpi-body">
-            <div class="kpi-val">@($"{org.Departments.Length:N0}")</div>
-            <div class="kpi-lbl">Departments</div>
-        </div>
-    </div>
-    <div class="admin-kpi-card">
-        <div class="kpi-icon-wrap kpi-green">
-            <i data-lucide="check-circle-2"></i>
-        </div>
-        <div class="kpi-body">
-            <div class="kpi-val">@($"{org.Departments.Count(d => d.IsActive):N0}")</div>
-            <div class="kpi-lbl">Active Depts</div>
-        </div>
-    </div>
-    <div class="admin-kpi-card">
-        <div class="kpi-icon-wrap kpi-cyan">
-            <i data-lucide="map-pin"></i>
-        </div>
-        <div class="kpi-body">
-            <div class="kpi-val">@($"{org.Sites.Length:N0}")</div>
-            <div class="kpi-lbl">Locations / Sites</div>
-        </div>
-    </div>
-    <div class="admin-kpi-card">
-        <div class="kpi-icon-wrap kpi-blue">
-            <i data-lucide="layers"></i>
-        </div>
-        <div class="kpi-body">
-            <div class="kpi-val">@($"{divisions.Length:N0}")</div>
-            <div class="kpi-lbl">Total Divisions</div>
-        </div>
-    </div>
+<div class="adm-kpis">
+    <div class="adm-kpi"><span class="adm-kpi-ico green"><i data-lucide="factory"></i></span><div><b>@(org?.ActivePlants.Count() ?? 0)</b><span>Plants</span></div></div>
+    <div class="adm-kpi"><span class="adm-kpi-ico violet"><i data-lucide="layers"></i></span><div><b>@(org?.ActiveDivisions.Count() ?? 0)</b><span>Divisions</span></div></div>
+    <div class="adm-kpi"><span class="adm-kpi-ico blue"><i data-lucide="folder"></i></span><div><b>@(org?.ActiveDepartments.Count() ?? 0)</b><span>Departments</span></div></div>
+    <div class="adm-kpi"><span class="adm-kpi-ico orange"><i data-lucide="users"></i></span><div><b>@((org?.AssignedEmployees ?? 0).ToString("N0"))</b><span>Assigned employees</span></div></div>
 </div>
 
-<div class="tray rise rise-2">
-    <div class="core" style="padding:0;overflow:hidden">
-        <div class="panel-head" style="border-bottom:1px solid var(--line-soft)">
-            <div style="display:flex;align-items:center;gap:8px">
-                <i data-lucide="building-2" style="color:#7c3aed"></i>
-                <span style="font-weight:700">Organization Structure, Locations & Divisions</span>
-            </div>
-            <span class="meta">@org.Departments.Length departments · @org.Sites.Length sites · @divisions.Length divisions</span>
+<div class="adm-card">
+    <div class="adm-card-head">
+        <span class="adm-card-title">Departments</span>
+        <div class="adm-search">
+            <i data-lucide="search"></i>
+            <input placeholder="Search departments" @bind="query" @bind:event="oninput" aria-label="Search departments" />
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
-            <div style="padding:16px 20px;border-right:1px solid var(--line-soft)">
-                <div style="font-weight:700;font-size:13px;color:var(--ink);margin-bottom:12px;display:flex;align-items:center;gap:6px">
-                    <i data-lucide="briefcase" style="width:15px;height:15px;color:#7c3aed"></i>
-                    <span>Company Departments</span>
-                </div>
-                <div style="display:flex;gap:8px;margin-bottom:12px">
-                    <input class="org-input" placeholder="Code (e.g. IT)" @bind="newDeptCode" />
-                    <input class="org-input" placeholder="Department Name" @bind="newDeptName" />
-                    <button class="org-add" style="background:#7c3aed" title="Add Department" @onclick="AddDepartment"><i data-lucide="plus"></i></button>
-                </div>
-                @foreach (var d in org.Departments.OrderBy(x => x.Name))
-                {
-                    <div class="org-row">
-                        <span class="mono" style="color:var(--ink-3);font-size:11px">@d.Code</span>
-                        <span style="font-weight:600;flex:1">@d.Name</span>
-                        @if (!d.IsActive) { <span class="tag-warn" style="font-size:10.5px">Inactive</span> }
-                        <button class="org-act" title="@(d.IsActive ? "Deactivate" : "Activate")"
-                                @onclick="() => ToggleDepartment(d)">
-                            <i data-lucide="@(d.IsActive ? "eye-off" : "eye")"></i>
-                        </button>
-                    </div>
-                }
-                @if (org.Departments.Length == 0) { <div class="tree-empty">No departments yet — add one above.</div> }
-            </div>
-            <div style="padding:16px 20px">
-                <div style="font-weight:700;font-size:13px;color:var(--ink);margin-bottom:12px;display:flex;align-items:center;gap:6px">
-                    <i data-lucide="map-pin" style="width:15px;height:15px;color:#0284c7"></i>
-                    <span>Work Locations / Sites</span>
-                </div>
-                <div style="display:flex;gap:8px;margin-bottom:12px">
-                    <input class="org-input" placeholder="Code (e.g. HO)" @bind="newSiteCode" />
-                    <input class="org-input" placeholder="Location / Site Name" @bind="newSiteName" />
-                    <button class="org-add" style="background:#0284c7" title="Add Site" @onclick="AddSite"><i data-lucide="plus"></i></button>
-                </div>
-                @foreach (var s in org.Sites.OrderBy(x => x.Name))
-                {
-                    <div class="org-row">
-                        <span class="mono" style="color:var(--ink-3);font-size:11px">@s.Code</span>
-                        <span style="font-weight:600;flex:1">@s.Name</span>
-                        @if (!s.IsActive) { <span class="tag-warn" style="font-size:10.5px">Inactive</span> }
-                        <button class="org-act" title="@(s.IsActive ? "Deactivate" : "Activate")"
-                                @onclick="() => ToggleSite(s)">
-                            <i data-lucide="@(s.IsActive ? "eye-off" : "eye")"></i>
-                        </button>
-                    </div>
-                }
-                @if (org.Sites.Length == 0) { <div class="tree-empty">No sites/locations yet — add one above.</div> }
-            </div>
-        </div>
-        <div style="padding:16px 20px;border-top:1px solid var(--line-soft)">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-                <div style="display:flex;align-items:center;gap:8px">
-                    <i data-lucide="layers" style="width:16px;height:16px;color:#7c3aed"></i>
-                    <span style="font-weight:700;font-size:14px">Divisions</span>
-                </div>
-                <span class="meta" style="margin-left:0;color:var(--ink-3);font-size:12px">Admin grouping of department + site combinations</span>
-                <button class="btn btn-sm btn-purple" style="margin-left:auto;padding:7px 14px;border-radius:8px;font-weight:600" @onclick="() => OpenDivisionEditor(null)">
-                    <i data-lucide="plus" style="width:13px;height:13px"></i> Add Division
-                </button>
-            </div>
-
-            @if (divisionError is not null)
-            {
-                <div class="note err" style="margin-bottom:12px"><i data-lucide="alert-circle"></i><span>@divisionError</span></div>
-            }
-            @if (divisionsLoading)
-            {
-                <div class="skel"></div>
-            }
-            else if (divisions.Length == 0)
-            {
-                <div class="tree-empty">No divisions yet — create one above.</div>
-            }
-            else
-            {
-                <table class="u-table">
-                    <thead>
-                        <tr><th>Code</th><th>Name</th><th>Department</th><th>Site</th><th>Active</th><th>Members</th><th></th></tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var d in divisions)
-                        {
-                            <tr @key="d.Code" class="@(d.IsActive ? "" : "inactive")">
-                                <td class="mono">@d.Code</td>
-                                <td style="font-weight:600">@d.Name</td>
-                                <td>@(d.DepartmentName ?? "—")</td>
-                                <td>@(d.SiteName ?? "—")</td>
-                                <td><span class="dot @(d.IsActive ? "on" : "busy")">@(d.IsActive ? "Active" : "Inactive")</span></td>
-                                <td class="mono">@d.ActiveMemberCount/@d.MemberCount</td>
-                                <td class="acts">
-                                    <button title="Edit" @onclick="() => OpenDivisionEditor(d)"><i data-lucide="pencil"></i></button>
-                                    <button title="@(d.IsActive ? "Deactivate" : "Reactivate")" @onclick="() => ToggleDivision(d)">
-                                        <i data-lucide="@(d.IsActive ? "eye-off" : "eye")"></i>
-                                    </button>
-                                    <button title="Delete" @onclick="() => DeleteDivision(d)"><i data-lucide="trash-2"></i></button>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            }
-        </div>
+        <button type="button" class="adm-btn ghost" @onclick="() => unitsOpen = true"><i data-lucide="factory"></i> Plants &amp; divisions</button>
+        <button type="button" class="adm-btn primary" @onclick="() => OpenCreate()"><i data-lucide="plus"></i> Add department</button>
     </div>
+
+    @if (loadError)
+    {
+        <div class="adm-empty">Could not load the organization. <button type="button" class="adm-link" @onclick="Reload">Retry</button></div>
+    }
+    else if (org is null)
+    {
+        <div style="padding:14px"><div class="skel"></div></div>
+    }
+    else
+    {
+        <div class="adm-grid-head adm-dept-grid">
+            <span>Department</span><span>Division</span><span>Plant</span><span>Head</span><span>Employees</span><span></span>
+        </div>
+        @foreach (var d in Rows)
+        {
+            <div class="adm-grid-row adm-dept-grid @(d.IsActive ? "" : "off")" @key="d.Code" role="button" tabindex="0"
+                 @onclick="() => OpenEdit(d)" @onkeydown="e => OnRowKey(e, d)">
+                <span class="adm-cell-name"><i data-lucide="folder" class="adm-folder"></i> @d.Name @if (!d.IsActive) { <em class="adm-muted-tag">hidden</em> }</span>
+                <span class="adm-cell-sub">@(d.DepartmentName ?? "—")</span>
+                <span>@if (d.SiteName is not null) { <span class="adm-chip">@d.SiteName</span> } else { <span class="adm-cell-sub">—</span> }</span>
+                <span class="adm-head-cell">
+                    @if (d.HeadName is not null)
+                    {
+                        <span class="adm-av" style="background:@AvatarPalette.For(d.HeadNik!)">@AdminOrgModel.Initials(d.HeadName)</span>
+                        <span class="adm-head-name">@d.HeadName</span>
+                    }
+                    else
+                    {
+                        <span class="adm-cell-sub">Not assigned</span>
+                    }
+                </span>
+                <span class="adm-cell-n">@d.ActiveMemberCount</span>
+                <span @onclick:stopPropagation>
+                    <button type="button" class="adm-icon-btn" aria-label="More actions for @d.Name" @onclick="() => ToggleMenu(d.Code)"><i data-lucide="more-horizontal"></i></button>
+                    @if (menuFor == d.Code)
+                    {
+                        <div class="adm-menu-scrim" @onclick="() => menuFor = null"></div>
+                        <div class="adm-menu" role="menu">
+                            <button type="button" role="menuitem" @onclick="() => { menuFor = null; OpenEdit(d); }"><i data-lucide="pencil"></i> Edit department</button>
+                            <button type="button" role="menuitem" @onclick="() => ShowInTree(d)"><i data-lucide="network"></i> View in directory tree</button>
+                            <button type="button" role="menuitem" @onclick="() => ShowInTree(d)"><i data-lucide="users"></i> Show members</button>
+                            <button type="button" role="menuitem" @onclick="() => ToggleHidden(d)"><i data-lucide="@(d.IsActive ? "eye-off" : "eye")"></i> @(d.IsActive ? "Hide department" : "Show department")</button>
+                            <div class="adm-menu-sep"></div>
+                            <button type="button" role="menuitem" class="danger" @onclick="() => Delete(d)"><i data-lucide="trash-2"></i> Delete department</button>
+                        </div>
+                    }
+                </span>
+            </div>
+        }
+        @if (!Rows.Any())
+        {
+            <div class="adm-empty">
+                @(string.IsNullOrWhiteSpace(query) ? "No departments yet. Add plants and divisions, then add your first department." : "No departments match your search.")
+            </div>
+        }
+    }
 </div>
 
-@if (divisionEditor is not null)
+@if (editor is not null && org is not null)
 {
-    <div class="backdrop on" @onclick="CloseDivisionEditor"></div>
-    <div class="drawer on" role="dialog" aria-label="Edit division">
-        <div class="tray"><div class="core" style="display:flex; flex-direction:column; height:100%">
-            <div class="drawer-head">
-                @(divisionEditor.IsCreate ? "New division" : $"Edit {divisionEditor.Code}")
-                <button class="drawer-close" @onclick="CloseDivisionEditor"><i data-lucide="x"></i></button>
-            </div>
-            <div class="drawer-body">
-                @if (divisionEditor.IsCreate)
-                {
-                    <div class="field"><label>Code</label><input @bind="divisionEditor.Code" placeholder="e.g. ENG-CORE" /></div>
-                }
-                <div class="field"><label>Name</label><input @bind="divisionEditor.Name" placeholder="e.g. Engineering Core" /></div>
-                <div class="field">
-                    <label>Department</label>
-                    <AppSelect Label="Department" Value="@divisionEditor.DepartmentCode" ValueChanged="v => divisionEditor.DepartmentCode = v"
-                               Options="@DeptOptions" />
-                </div>
-                <div class="field">
-                    <label>Site</label>
-                    <AppSelect Label="Site" Value="@divisionEditor.SiteCode" ValueChanged="v => divisionEditor.SiteCode = v"
-                               Options="@SiteOptions" />
-                </div>
-                <div class="field">
-                    <label>Active</label>
-                    <label style="display:flex;gap:8px;align-items:center;font-weight:500;text-transform:none">
-                        <input type="checkbox" style="width:auto" @bind="divisionEditor.IsActive" /> This division is active
-                    </label>
-                </div>
-                @if (divisionEditor.Error is not null)
-                {
-                    <div class="note err"><i data-lucide="alert-circle"></i><span>@divisionEditor.Error</span></div>
-                }
-                <button class="btn" style="margin-top:14px;width:100%" disabled="@divisionEditor.Saving" @onclick="SaveDivision">
-                    @(divisionEditor.Saving ? "Saving..." : divisionEditor.IsCreate ? "Create division" : "Save changes")
-                    <span class="orb"><i data-lucide="check"></i></span>
-                </button>
-            </div>
-        </div></div>
-    </div>
+    <AdminDeptModal Org="org" Existing="editor.Existing" PresetDivisionCode="@editor.DivisionCode" PresetPlantCode="@editor.PlantCode"
+                    OnClose="() => editor = null" OnSaved="OnSaved" />
+}
+@if (unitsOpen && org is not null)
+{
+    <AdminUnitsModal Org="org" OnClose="() => unitsOpen = false" OnChanged="Reload" />
 }
 
 @code {
-    private OrgViewDto org = new([], []);
-    private AdminDivisionRowDto[] divisions = [];
-    private bool divisionsLoading = true;
-    private DivisionEditorState? divisionEditor;
-    private string? divisionError;
+    /// Asks the Admin page to switch to the Directory tree with this department selected.
+    [Parameter] public EventCallback<string> OnShowInTree { get; set; }
 
-    private string newDeptCode = "", newDeptName = "", newSiteCode = "", newSiteName = "";
+    private AdminOrgModel? org;
+    private bool loadError, unitsOpen;
+    private string query = "";
+    private string? menuFor;
+    private EditorState? editor;
 
-    private List<AppOption> DeptOptions => [new("", "(none)"), .. org.Departments.Where(x => x.IsActive).OrderBy(x => x.Name).Select(d => new AppOption(d.Code, d.Name))];
-    private List<AppOption> SiteOptions => [new("", "(none)"), .. org.Sites.Where(x => x.IsActive).OrderBy(x => x.Name).Select(s => new AppOption(s.Code, s.Name))];
+    private IEnumerable<AdminDivisionRowDto> Rows => (org?.Departments ?? [])
+        .Where(d => string.IsNullOrWhiteSpace(query)
+            || d.Name.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase)
+            || (d.DepartmentName?.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase) ?? false)
+            || (d.SiteName?.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase) ?? false)
+            || (d.HeadName?.Contains(query.Trim(), StringComparison.OrdinalIgnoreCase) ?? false))
+        .OrderByDescending(d => d.IsActive).ThenBy(d => d.SiteName).ThenBy(d => d.DepartmentName).ThenBy(d => d.Name);
 
-    protected override async Task OnInitializedAsync()
-    {
-        await Reload();
-    }
+    protected override Task OnInitializedAsync() => Reload();
 
     public async Task Reload()
     {
-        org = await Auth.GetAsync<OrgViewDto>("/api/admin/org") ?? new([], []);
-        await LoadDivisions();
+        var m = await AdminOrgModel.LoadAsync(Auth);
+        loadError = m is null;
+        if (m is not null) org = m;
         StateHasChanged();
     }
 
-    private async Task LoadDivisions()
+    /// Escape hook from the Admin page (modals also close themselves via OverlayStack).
+    public void CloseAllDrawers()
     {
-        divisions = await Auth.GetAsync<AdminDivisionRowDto[]>("/api/admin/org/divisions") ?? [];
-        divisionsLoading = false;
-    }
-
-    private async Task AddDepartment()
-    {
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/org/departments",
-            new { code = newDeptCode, name = newDeptName, isActive = (bool?)null });
-        if (res.IsSuccessStatusCode) { newDeptCode = ""; newDeptName = ""; await Reload(); }
-    }
-
-    private async Task ToggleDepartment(OrgDepartmentRowDto d)
-    {
-        var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org/departments/{Uri.EscapeDataString(d.Code)}",
-            new { code = d.Code, name = (string?)null, isActive = !d.IsActive });
-        if (res.IsSuccessStatusCode) await Reload();
-    }
-
-    private async Task AddSite()
-    {
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/org/sites",
-            new { code = newSiteCode, name = newSiteName, isActive = (bool?)null });
-        if (res.IsSuccessStatusCode) { newSiteCode = ""; newSiteName = ""; await Reload(); }
-    }
-
-    private async Task ToggleSite(OrgSiteRowDto s)
-    {
-        var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org/sites/{Uri.EscapeDataString(s.Code)}",
-            new { code = s.Code, name = (string?)null, isActive = !s.IsActive });
-        if (res.IsSuccessStatusCode) await Reload();
-    }
-
-    private void OpenDivisionEditor(AdminDivisionRowDto? d)
-    {
-        divisionEditor = new DivisionEditorState
-        {
-            IsCreate = d is null,
-            Code = d?.Code ?? "",
-            Name = d?.Name ?? "",
-            DepartmentCode = d?.DepartmentCode,
-            SiteCode = d?.SiteCode,
-            IsActive = d?.IsActive ?? true,
-        };
+        menuFor = null;
         StateHasChanged();
     }
 
-    private void CloseDivisionEditor() => divisionEditor = null;
-
-    private async Task SaveDivision()
+    public void OpenCreate(string? divisionCode = null, string? plantCode = null)
     {
-        if (divisionEditor is null) return;
-        divisionEditor.Saving = true; divisionEditor.Error = null;
-        var url = divisionEditor.IsCreate ? "/api/admin/org/divisions" : $"/api/admin/org/divisions/{Uri.EscapeDataString(divisionEditor.Code)}";
-        var method = divisionEditor.IsCreate ? HttpMethod.Post : HttpMethod.Patch;
-        var res = await Auth.SendAsync(method, url, new UpsertDivisionRequest(
-            divisionEditor.Code, divisionEditor.Name, divisionEditor.DepartmentCode, divisionEditor.SiteCode, divisionEditor.IsActive));
-        if (!res.IsSuccessStatusCode)
-        {
-            divisionEditor.Error = res.StatusCode == System.Net.HttpStatusCode.Conflict
-                ? "A division with this code already exists."
-                : "Save failed — the department or site may be inactive, or the code is missing.";
-            divisionEditor.Saving = false;
-            StateHasChanged();
-            return;
-        }
-        divisionEditor.Saving = false;
-        divisionError = null;
-        CloseDivisionEditor();
+        menuFor = null;
+        editor = new EditorState(null, divisionCode, plantCode);
+    }
+
+    private void OpenEdit(AdminDivisionRowDto d) => editor = new EditorState(d, null, null);
+    private void ToggleMenu(string code) => menuFor = menuFor == code ? null : code;
+
+    private void OnRowKey(KeyboardEventArgs e, AdminDivisionRowDto d)
+    {
+        if (e.Key is "Enter" or " ") OpenEdit(d);
+    }
+
+    private async Task OnSaved()
+    {
+        editor = null;
         await Reload();
     }
 
-    private async Task ToggleDivision(AdminDivisionRowDto d)
+    private async Task ShowInTree(AdminDivisionRowDto d)
     {
+        menuFor = null;
+        await OnShowInTree.InvokeAsync(d.Code);
+    }
+
+    private async Task ToggleHidden(AdminDivisionRowDto d)
+    {
+        menuFor = null;
+        if (d.IsActive && d.ActiveMemberCount > 0
+            && !await Confirm.AskAsync($"Hide “{d.Name}”?", $"{d.ActiveMemberCount} employees will move to “No division”.", "Hide"))
+            return;
         var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org/divisions/{Uri.EscapeDataString(d.Code)}",
-            new UpsertDivisionRequest(d.Code, d.Name, d.DepartmentCode, d.SiteCode, !d.IsActive));
-        if (res.IsSuccessStatusCode) { divisionError = null; await Reload(); }
-        else { divisionError = "Could not update the division — it may be inactive or missing a parent."; StateHasChanged(); }
+            new UpsertDivisionRequest(d.Code, null, d.DepartmentCode, d.SiteCode, !d.IsActive));
+        if (!res.IsSuccessStatusCode)
+        {
+            Toasts.Show(await AdminOrgModel.ErrorText(res, "Could not update the department."), ToastKind.Error);
+            return;
+        }
+        await Reload();
     }
 
-    private async Task DeleteDivision(AdminDivisionRowDto d)
+    private async Task Delete(AdminDivisionRowDto d)
     {
-        var ok = await JS.InvokeAsync<bool>("confirm", $"Delete \"{d.Name}\"? Its members move to \"No Division\" — their site and department are kept.");
-        if (!ok) return;
+        menuFor = null;
+        if (!await Confirm.AskAsync($"Delete “{d.Name}”?", $"{d.MemberCount} employees will move to “No division”."))
+            return;
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/org/divisions/{Uri.EscapeDataString(d.Code)}", null);
-        if (res.IsSuccessStatusCode) { divisionError = null; await Reload(); }
-        else { divisionError = "Could not delete the division."; StateHasChanged(); }
+        if (!res.IsSuccessStatusCode)
+        {
+            Toasts.Show(await AdminOrgModel.ErrorText(res, "Could not delete the department."), ToastKind.Error);
+            return;
+        }
+        Toasts.Show($"Department “{d.Name}” deleted", ToastKind.Success);
+        await Reload();
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        await JS.InvokeVoidAsync("ipop.icons");
-    }
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
 
-    public void CloseAllDrawers()
-    {
-        divisionEditor = null;
-        StateHasChanged();
-    }
-
-    private sealed class DivisionEditorState
-    {
-        public bool IsCreate, Saving, IsActive;
-        public string Code = "", Name = "";
-        public string? DepartmentCode, SiteCode, Error;
-    }
+    private sealed record EditorState(AdminDivisionRowDto? Existing, string? DivisionCode, string? PlantCode);
 }

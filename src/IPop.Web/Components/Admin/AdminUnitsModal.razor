@@ -1,0 +1,242 @@
+@* Small manager for the two top levels: Plants (Site) and Divisions (Department entity).
+   Add, rename, set a Division head, hide/show. Nothing is deleted — hiding keeps history. *@
+@implements IDisposable
+@inject AuthState Auth
+@inject IJSRuntime JS
+@inject ToastService Toasts
+@inject OverlayStack Overlays
+
+<div class="proj-modal-backdrop" @onclick="Close"></div>
+<div class="proj-modal v6-project-modal adm-modal adm-units-modal" role="dialog" aria-modal="true" aria-label="Plants and divisions">
+    <div class="proj-modal-head">
+        <span class="vpm-tile adm-tile-green"><i data-lucide="factory"></i></span>
+        <span>Plants &amp; divisions</span>
+        <button type="button" class="vpm-close" aria-label="Close" @onclick="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="adm-seg" role="tablist">
+        <button type="button" role="tab" class="@(kind == "plant" ? "on" : "")" aria-selected="@(kind == "plant" ? "true" : "false")" @onclick='() => SetKind("plant")'>Plants · @Org.Plants.Length</button>
+        <button type="button" role="tab" class="@(kind == "division" ? "on" : "")" aria-selected="@(kind == "division" ? "true" : "false")" @onclick='() => SetKind("division")'>Divisions · @Org.Divisions.Length</button>
+    </div>
+    <div class="proj-modal-body">
+        <div class="adm-unit-list">
+            @if (kind == "plant")
+            {
+                @foreach (var p in Org.Plants.OrderByDescending(p => p.IsActive).ThenBy(p => p.Name))
+                {
+                    <div class="adm-unit-row @(p.IsActive ? "" : "off")" @key="p.Code">
+                        <span class="adm-unit-ico"><i data-lucide="factory"></i></span>
+                        @if (editCode == p.Code)
+                        {
+                            <input class="org-input" @bind="editName" @bind:event="oninput" aria-label="Plant name" />
+                            <button type="button" class="btn-sm adm-primary" @onclick="() => SavePlant(p)">Save</button>
+                            <button type="button" class="btn-sm surface" @onclick="CancelEdit">Cancel</button>
+                        }
+                        else
+                        {
+                            <span class="adm-unit-name"><span>@p.Name @if (!p.IsActive) { <em>hidden</em> }</span></span>
+                            <span class="adm-unit-n">@p.ActiveMemberCount</span>
+                            <button type="button" class="adm-icon-btn" title="Rename" @onclick="() => StartEdit(p.Code, p.Name, null)"><i data-lucide="pencil"></i></button>
+                            <button type="button" class="adm-icon-btn" title="@(p.IsActive ? "Hide" : "Show")" @onclick="() => TogglePlant(p)"><i data-lucide="@(p.IsActive ? "eye-off" : "eye")"></i></button>
+                        }
+                    </div>
+                }
+            }
+            else
+            {
+                @foreach (var d in DivisionsInTreeOrder())
+                {
+                    <div class="adm-unit-row @(d.IsActive ? "" : "off") @(editCode == d.Code ? "editing" : "")" @key="d.Code" style="--adm-depth:@Depth(d)">
+                        <span class="adm-unit-ico violet"><i data-lucide="layers"></i></span>
+                        @if (editCode == d.Code)
+                        {
+                            <div class="adm-unit-edit">
+                                <input class="org-input" @bind="editName" @bind:event="oninput" aria-label="Division name" />
+                                <AppMemberPicker Value="editHead" ValueChanged="v => editHead = v" Placeholder="Head — search a name or NIK" />
+                                <div class="adm-unit-edit-pair">
+                                    <label>Parent
+                                        <select class="org-input" @bind="editParent" aria-label="Parent division">
+                                            <option value="">— Top level —</option>
+                                            @foreach (var o in Org.ActiveDivisions.Where(o => !IsSelfOrDescendant(o.Code, d.Code)))
+                                            {
+                                                <option value="@o.Code">@o.Name</option>
+                                            }
+                                        </select>
+                                    </label>
+                                    <label>Plant
+                                        <select class="org-input" @bind="editSite" aria-label="Home plant" disabled="@(!string.IsNullOrEmpty(editParent))">
+                                            <option value="">— None —</option>
+                                            @foreach (var s in Org.Plants.Where(s => s.IsActive).OrderBy(s => s.Name))
+                                            {
+                                                <option value="@s.Code">@s.Name</option>
+                                            }
+                                        </select>
+                                    </label>
+                                </div>
+                                <div class="adm-unit-edit-acts">
+                                    <button type="button" class="btn-sm surface" @onclick="CancelEdit">Cancel</button>
+                                    <button type="button" class="btn-sm adm-primary" @onclick="() => SaveDivision(d)">Save</button>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <span class="adm-unit-name"><span>@d.Name @if (!d.IsActive) { <em>hidden</em> }</span>
+                                <small>@(d.HeadName is null ? "No head" : $"Head: {d.HeadName}")@(ParentName(d) is { } pn ? $" · under {pn}" : PlantName(d) is { } sn ? $" · {sn}" : "")</small>
+                            </span>
+                            <span class="adm-unit-n">@d.ActiveMemberCount</span>
+                            <button type="button" class="adm-icon-btn" title="Edit" @onclick="() => StartEditDivision(d)"><i data-lucide="pencil"></i></button>
+                            <button type="button" class="adm-icon-btn" title="@(d.IsActive ? "Hide" : "Show")" @onclick="() => ToggleDivision(d)"><i data-lucide="@(d.IsActive ? "eye-off" : "eye")"></i></button>
+                        }
+                    </div>
+                }
+            }
+            @if ((kind == "plant" ? Org.Plants.Length : Org.Divisions.Length) == 0)
+            {
+                <div class="adm-empty">No @(kind == "plant" ? "plants" : "divisions") yet.</div>
+            }
+        </div>
+        <div class="adm-unit-add">
+            <input class="org-input" placeholder="@(kind == "plant" ? "New plant name" : "New division name")" @bind="newName" @bind:event="oninput" @onkeydown="OnAddKey" aria-label="New name" />
+            <button type="button" class="btn-sm adm-primary" disabled="@(busy || string.IsNullOrWhiteSpace(newName))" @onclick="Add"><i data-lucide="plus"></i> Add</button>
+        </div>
+        <div class="adm-hint"><i data-lucide="info"></i> Hiding a unit removes it from the directory tree and unassigns its departments' people. Nothing is deleted.</div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public AdminOrgModel Org { get; set; } = default!;
+    [Parameter] public string InitialKind { get; set; } = "plant";
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private string kind = "plant";
+    private string newName = "";
+    private string? editCode;
+    private string editName = "";
+    private MemberSearchRow? editHead;
+    private string editParent = "";
+    private string editSite = "";
+    private bool busy;
+    private IDisposable? _reg;
+
+    protected override void OnInitialized()
+    {
+        kind = InitialKind;
+        _reg = Overlays.Push(Close);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+
+    private Task Close() => OnClose.InvokeAsync();
+    private void SetKind(string k) { kind = k; CancelEdit(); }
+    private void StartEdit(string code, string name, MemberSearchRow? head) { editCode = code; editName = name; editHead = head; }
+    private void CancelEdit() { editCode = null; editName = ""; editHead = null; editParent = ""; editSite = ""; }
+
+    private void StartEditDivision(OrgDepartmentRowDto d)
+    {
+        StartEdit(d.Code, d.Name, d.HeadNik is null ? null : new MemberSearchRow(d.HeadNik, d.HeadName ?? d.HeadNik, d.HeadPosition, null));
+        editParent = d.ParentCode ?? "";
+        editSite = d.SiteCode ?? "";
+    }
+
+    private OrgDepartmentRowDto? ByCode(string? code) => code is null ? null : Org.Divisions.FirstOrDefault(x => x.Code == code);
+    private string? ParentName(OrgDepartmentRowDto d) => ByCode(d.ParentCode)?.Name;
+    private string? PlantName(OrgDepartmentRowDto d) => d.SiteCode is null ? null : Org.Plants.FirstOrDefault(p => p.Code == d.SiteCode)?.Name;
+
+    // Walks up from `code`; true when it reaches `root` (so picking it as parent would make a cycle).
+    private bool IsSelfOrDescendant(string code, string root)
+    {
+        var seen = new HashSet<string>();
+        for (var c = ByCode(code); c is not null && seen.Add(c.Code); c = ByCode(c.ParentCode))
+            if (c.Code == root) return true;
+        return false;
+    }
+
+    private int Depth(OrgDepartmentRowDto d)
+    {
+        var n = 0; var seen = new HashSet<string> { d.Code };
+        for (var p = ByCode(d.ParentCode); p is not null && seen.Add(p.Code); p = ByCode(p.ParentCode)) n++;
+        return n;
+    }
+
+    // Parents first, children indented under them; hidden units sink to the bottom.
+    private IEnumerable<OrgDepartmentRowDto> DivisionsInTreeOrder()
+    {
+        var byParent = Org.Divisions.ToLookup(x => ByCode(x.ParentCode) is null ? "" : x.ParentCode!);
+        var seen = new HashSet<string>();
+        IEnumerable<OrgDepartmentRowDto> Walk(string parent) =>
+            byParent[parent].OrderByDescending(x => x.IsActive).ThenBy(x => x.SortOrder == 0 ? int.MaxValue : x.SortOrder).ThenBy(x => x.Name)
+                .Where(x => seen.Add(x.Code))
+                .SelectMany(x => new[] { x }.Concat(Walk(x.Code)));
+        var ordered = Walk("").ToList();
+        return ordered.Concat(Org.Divisions.Where(x => !seen.Contains(x.Code))); // cycle leftovers stay visible
+    }
+
+    private async Task OnAddKey(KeyboardEventArgs e) { if (e.Key == "Enter") await Add(); }
+
+    private async Task Add()
+    {
+        var name = newName.Trim();
+        if (busy || name.Length == 0) return;
+        busy = true;
+        HttpResponseMessage res;
+        if (kind == "plant")
+            res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/org/sites",
+                new { code = AdminOrgModel.NewCode(name, Org.Plants.Select(p => p.Code)), name });
+        else
+            res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/org/departments",
+                new { code = AdminOrgModel.NewCode(name, Org.Divisions.Select(d => d.Code)), name });
+        busy = false;
+        if (!res.IsSuccessStatusCode)
+        {
+            Toasts.Show(await AdminOrgModel.ErrorText(res, "Could not add it."), ToastKind.Error);
+            return;
+        }
+        newName = "";
+        Toasts.Show($"{(kind == "plant" ? "Plant" : "Division")} “{name}” added", ToastKind.Success);
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task SavePlant(OrgSiteRowDto p)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org/sites/{Uri.EscapeDataString(p.Code)}",
+            new { code = p.Code, name = editName.Trim() });
+        await Finish(res, "Plant renamed");
+    }
+
+    private async Task SaveDivision(OrgDepartmentRowDto d)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org/departments/{Uri.EscapeDataString(d.Code)}",
+            new { code = d.Code, name = editName.Trim(), parentCode = editParent, headNik = editHead?.Nik ?? "",
+                  siteCode = string.IsNullOrEmpty(editParent) ? editSite : "" });
+        await Finish(res, "Division updated");
+    }
+
+    private async Task TogglePlant(OrgSiteRowDto p)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org/sites/{Uri.EscapeDataString(p.Code)}",
+            new { code = p.Code, isActive = !p.IsActive });
+        await Finish(res, p.IsActive ? $"“{p.Name}” hidden" : $"“{p.Name}” shown");
+    }
+
+    private async Task ToggleDivision(OrgDepartmentRowDto d)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org/departments/{Uri.EscapeDataString(d.Code)}",
+            new { code = d.Code, isActive = !d.IsActive, keepParent = true });
+        await Finish(res, d.IsActive ? $"“{d.Name}” hidden" : $"“{d.Name}” shown");
+    }
+
+    private async Task Finish(HttpResponseMessage res, string ok)
+    {
+        if (!res.IsSuccessStatusCode)
+        {
+            Toasts.Show(await AdminOrgModel.ErrorText(res, "Save failed."), ToastKind.Error);
+            return;
+        }
+        CancelEdit();
+        Toasts.Show(ok, ToastKind.Success);
+        await OnChanged.InvokeAsync();
+    }
+
+    public void Dispose() => _reg?.Dispose();
+}

@@ -30,11 +30,12 @@ public static class AdminEndpoints
 
         g.MapGet("", async (string? q, bool? active, string? role, string? departmentCode,
             string? siteCode, bool? manuallyEdited, string? sort, bool? desc, int? page,
-            int? pageSize, IPopDbContext db, CancellationToken ct) =>
+            int? pageSize, string? divisionCode, bool? locked, IPopDbContext db, CancellationToken ct) =>
         {
             var p = Math.Max(1, page ?? 1);
             var size = Math.Clamp(pageSize ?? 50, 1, 5000);
-            var query = db.Users.Include(u => u.Department).Include(u => u.Site).AsNoTracking();
+            var now = DateTime.UtcNow;
+            var query = db.Users.Include(u => u.Department).Include(u => u.Site).Include(u => u.Division).AsNoTracking();
             if (!string.IsNullOrWhiteSpace(q))
             {
                 var term = q.Trim();
@@ -47,7 +48,16 @@ public static class AdminEndpoints
                 query = query.Where(u => u.Department != null && u.Department.Code == departmentCode.Trim());
             if (!string.IsNullOrWhiteSpace(siteCode))
                 query = query.Where(u => u.Site != null && u.Site.Code == siteCode.Trim());
-            if (!string.IsNullOrWhiteSpace(role))
+            if (!string.IsNullOrWhiteSpace(divisionCode))
+                query = query.Where(u => u.Division != null && u.Division.Code == divisionCode.Trim());
+            if (locked is not null)
+                query = query.Where(u => (u.LockedUntil != null && u.LockedUntil > now) == locked);
+            // "Employee" in the admin UI means "neither Admin nor HR" — the base role isn't always stored.
+            if (string.Equals(role?.Trim(), "Employee", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(u => !u.UserRoles.Any(ur => ur.Role.Name == "Admin" || ur.Role.Name == "HR"));
+            else if (string.Equals(role?.Trim(), "HR", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(u => u.UserRoles.Any(ur => ur.Role.Name == "HR") && !u.UserRoles.Any(ur => ur.Role.Name == "Admin"));
+            else if (!string.IsNullOrWhiteSpace(role))
                 query = query.Where(u => u.UserRoles.Any(ur => ur.Role.Name == role.Trim()));
 
             var total = await query.CountAsync(ct);
@@ -69,12 +79,18 @@ public static class AdminEndpoints
                     .Select(ur => new { ur.UserId, ur.Role.Name }).ToListAsync(ct))
                 .GroupBy(r => r.UserId)
                 .ToDictionary(gr => gr.Key, gr => gr.Select(x => x.Name).ToArray());
-            var now = DateTime.UtcNow;
+            // Last sign-in = newest session issued for the user.
+            var lastSignIn = (await db.AuthSessions.Where(s => ids.Contains(s.UserId))
+                    .GroupBy(s => s.UserId).Select(gr => new { Id = gr.Key, At = gr.Max(s => s.CreatedAt) })
+                    .ToListAsync(ct))
+                .ToDictionary(x => x.Id, x => x.At);
             var items = users.Select(u => new AdminUserRow(
                 u.Nik, u.Name, u.Email, u.Position, u.Location, u.Department?.Name, u.Department?.Code,
                 u.Site?.Name, u.Site?.Code, u.IsActive, u.IsManuallyEdited,
                 rolesByUser.GetValueOrDefault(u.Id, []),
-                PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now), u.UpdatedAt));
+                PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now, u.PresenceIsIdle), u.UpdatedAt,
+                u.Division?.Name, u.Division?.Code, u.LockedUntil > now,
+                lastSignIn.TryGetValue(u.Id, out var at) ? at : null));
             return Results.Ok(new { total, page = p, pageSize = size, items });
         });
 
@@ -87,9 +103,13 @@ public static class AdminEndpoints
                 ? await db.UserRoles.CountAsync(ur => ur.RoleId == adminRoleId, ct)
                 : 0;
             var now = DateTime.UtcNow;
-            var activeCutoff = now.AddMinutes(-5);
-            var online = await db.Users.CountAsync(u => u.IsActive && u.PresenceLastSeenAt >= activeCutoff, ct);
-            return Results.Ok(new AdminUserStats(total, active, admins, online));
+            var activeCutoff = now - PresenceStatus.OfflineAfter;
+            var online = await db.Users.CountAsync(u => u.IsActive && u.PresenceLastSeenAt >= activeCutoff && !u.PresenceIsIdle, ct);
+            var locked = await db.Users.CountAsync(u => u.LockedUntil != null && u.LockedUntil > now, ct);
+            // HR counts only users who aren't also Admin, so the Admin/HR/Employee chips partition the total.
+            var hr = await db.Users.CountAsync(u => u.UserRoles.Any(ur => ur.Role.Name == "HR")
+                && !u.UserRoles.Any(ur => ur.Role.Name == "Admin"), ct);
+            return Results.Ok(new AdminUserStats(total, active, admins, online, locked, total - active, hr));
         });
 
         g.MapGet("/sessions", async (string? refreshToken, ITokenService tokens, IPopDbContext db, CancellationToken ct) =>
@@ -224,6 +244,36 @@ public static class AdminEndpoints
             return Results.Ok();
         });
 
+        // Admin lock: a far-future LockedUntil blocks sign-in (AuthWorkflow) until unlocked.
+        g.MapPost("/{nik}/lock", async Task<IResult> (string nik, IPopDbContext db,
+            HttpContext http, CancellationToken ct) =>
+        {
+            if (CallerNik(http) == nik)
+                return Results.BadRequest(new { code = "self_lockout", message = "You cannot lock your own account." });
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Nik == nik, ct);
+            if (user is null) return Results.NotFound();
+            var now = DateTime.UtcNow;
+            user.LockedUntil = new DateTime(9999, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            user.UpdatedAt = now;
+            await RevokeSessions(db, user.Id, now, ct);
+            Audit(db, CallerNik(http), "admin.user.lock", nik, now);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok();
+        });
+
+        g.MapPost("/{nik}/unlock", async Task<IResult> (string nik, IPopDbContext db,
+            HttpContext http, CancellationToken ct) =>
+        {
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Nik == nik, ct);
+            if (user is null) return Results.NotFound();
+            user.LockedUntil = null;
+            user.FailedLoginCount = 0;
+            user.UpdatedAt = DateTime.UtcNow;
+            Audit(db, CallerNik(http), "admin.user.unlock", nik, user.UpdatedAt);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok();
+        });
+
         // Reset returns the account to the default flow and forces re-login everywhere.
         g.MapPost("/{nik}/reset-password", async Task<IResult> (string nik, IPopDbContext db,
             HttpContext http, CancellationToken ct) =>
@@ -275,7 +325,7 @@ public static class AdminEndpoints
 
         org.MapGet("", async (IPopDbContext db, CancellationToken ct) =>
         {
-            var depts = await db.Departments.Include(d => d.Parent).AsNoTracking().ToListAsync(ct);
+            var depts = await db.Departments.Include(d => d.Parent).Include(d => d.Site).Include(d => d.Head).AsNoTracking().ToListAsync(ct);
             var sites = await db.Sites.AsNoTracking().ToListAsync(ct);
             var deptCounts = await db.Users.GroupBy(u => u.DepartmentId)
                 .Select(g => new { Id = g.Key, Total = g.Count(), Active = g.Count(u => u.IsActive) }).ToListAsync(ct);
@@ -287,7 +337,7 @@ public static class AdminEndpoints
                 {
                     var c = deptCounts.FirstOrDefault(x => x.Id == d.Id);
                     return new OrgDepartmentRow(d.Id, d.Code, d.Name, d.Parent?.Code, d.IsActive,
-                        c?.Total ?? 0, c?.Active ?? 0);
+                        c?.Total ?? 0, c?.Active ?? 0, d.Head?.Nik, d.Head?.Name, d.Head?.Position, d.Site?.Code, d.SortOrder);
                 }),
                 sites = sites.Select(s =>
                 {
@@ -309,6 +359,14 @@ public static class AdminEndpoints
             var dept = new Department { Id = Guid.NewGuid(), Code = code, Name = req.Name.Trim(), IsActive = true };
             var parentError = await ApplyParent(dept, req.ParentCode, db, ct);
             if (parentError is not null) return parentError;
+            var siteError = await ApplyDepartmentSite(dept, req.SiteCode, db, ct);
+            if (siteError is not null) return siteError;
+            if (req.SortOrder is { } sortOrder) dept.SortOrder = Math.Max(0, sortOrder);
+            if (req.HeadNik is not null)
+            {
+                var headError = await ApplyHead(h => dept.HeadUserId = h, req.HeadNik, db, ct);
+                if (headError is not null) return headError;
+            }
             db.Departments.Add(dept);
             Audit(db, CallerNik(http), "admin.org.dept.create", code, DateTime.UtcNow);
             await db.SaveChangesAsync(ct);
@@ -323,8 +381,24 @@ public static class AdminEndpoints
             var deactivating = req.IsActive is false && dept.IsActive;
             if (req.Name?.Trim() is { Length: > 0 } name) dept.Name = name;
             if (req.IsActive is { } active) dept.IsActive = active;
-            var parentError = await ApplyParent(dept, req.ParentCode, db, ct);
-            if (parentError is not null) return parentError;
+            // KeepParent lets name/head-only edits skip the parent (a null ParentCode would clear it).
+            if (req.KeepParent != true)
+            {
+                var parentError = await ApplyParent(dept, req.ParentCode, db, ct);
+                if (parentError is not null) return parentError;
+            }
+            // SiteCode: null keeps the home plant, "" clears it.
+            if (req.SiteCode is not null)
+            {
+                var siteError = await ApplyDepartmentSite(dept, req.SiteCode, db, ct);
+                if (siteError is not null) return siteError;
+            }
+            if (req.SortOrder is { } sortOrder) dept.SortOrder = Math.Max(0, sortOrder);
+            if (req.HeadNik is not null)
+            {
+                var headError = await ApplyHead(h => dept.HeadUserId = h, req.HeadNik, db, ct);
+                if (headError is not null) return headError;
+            }
             if (deactivating)
                 await db.Users.Where(u => u.Division != null && u.Division.DepartmentId == dept.Id)
                     .ExecuteUpdateAsync(s => s.SetProperty(u => u.DivisionId, (Guid?)null), ct);
@@ -398,7 +472,7 @@ public static class AdminEndpoints
         org.MapGet("/divisions", async (IPopDbContext db, CancellationToken ct) =>
         {
             var divs = await db.Divisions
-                .Include(d => d.Department).Include(d => d.Site).AsNoTracking()
+                .Include(d => d.Department).Include(d => d.Site).Include(d => d.Head).AsNoTracking()
                 .OrderBy(d => d.Code).ToListAsync(ct);
             var counts = await db.Users.Where(u => u.DivisionId != null)
                 .GroupBy(u => u.DivisionId)
@@ -408,7 +482,8 @@ public static class AdminEndpoints
             {
                 var c = counts.FirstOrDefault(x => x.Id == d.Id);
                 return new AdminDivisionRow(d.Id, d.Code, d.Name, d.Department?.Code, d.Department?.Name,
-                    d.Site?.Code, d.Site?.Name, d.IsActive, c?.Total ?? 0, c?.Active ?? 0);
+                    d.Site?.Code, d.Site?.Name, d.IsActive, c?.Total ?? 0, c?.Active ?? 0,
+                    d.Head?.Nik, d.Head?.Name, d.Head?.Position);
             }));
         });
 
@@ -423,6 +498,11 @@ public static class AdminEndpoints
             var div = new Division { Id = Guid.NewGuid(), Code = code, Name = req.Name.Trim(), IsActive = true };
             var parentError = await ApplyDivisionParents(div, req.DepartmentCode, req.SiteCode, db, ct);
             if (parentError is not null) return parentError;
+            if (req.HeadNik is not null)
+            {
+                var headError = await ApplyHead(h => div.HeadUserId = h, req.HeadNik, db, ct);
+                if (headError is not null) return headError;
+            }
             db.Divisions.Add(div);
             Audit(db, CallerNik(http), "admin.org.division.create", code, DateTime.UtcNow, "Division");
             await db.SaveChangesAsync(ct);
@@ -439,6 +519,11 @@ public static class AdminEndpoints
             if (req.IsActive is { } active) div.IsActive = active;
             var parentError = await ApplyDivisionParents(div, req.DepartmentCode, req.SiteCode, db, ct);
             if (parentError is not null) return parentError;
+            if (req.HeadNik is not null)
+            {
+                var headError = await ApplyHead(h => div.HeadUserId = h, req.HeadNik, db, ct);
+                if (headError is not null) return headError;
+            }
             // Deactivating a Division must clear DivisionId on its members, same as delete —
             // otherwise they'd keep a non-null DivisionId pointing at a now-inactive Division and
             // silently vanish from both the /structure tree and NoDivisionCount.
@@ -519,7 +604,7 @@ public static class AdminEndpoints
                 g.Members.Select(m => new AdminDirGroupMember(
                     m.User.Nik, m.User.Name, m.User.Position,
                     m.User.Department?.Name, m.User.Site?.Name,
-                    PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now)
+                    PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now, m.User.PresenceIsIdle)
                 )).ToArray()
             )).ToArray();
         });
@@ -653,7 +738,7 @@ public static class AdminEndpoints
                 n.Members.Select(m => new AdminOrgNodeMember(
                     m.User.Nik, m.User.Name, m.User.Position,
                     m.User.Department?.Name, m.User.Site?.Name,
-                    PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now)
+                    PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now, m.User.PresenceIsIdle)
                 )).ToArray()
             )).ToArray();
         });
@@ -829,6 +914,21 @@ public static class AdminEndpoints
         return null;
     }
 
+    // Home plant of a Department — places a top-level unit in the Directory tree before it has Divisions.
+    private static async Task<IResult?> ApplyDepartmentSite(Department dept, string? siteCode,
+        IPopDbContext db, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(siteCode))
+        {
+            dept.SiteId = null;
+            return null;
+        }
+        var site = await db.Sites.SingleOrDefaultAsync(s => s.Code == siteCode.Trim() && s.IsActive, ct);
+        if (site is null) return Results.BadRequest(new { code = "invalid_site" });
+        dept.SiteId = site.Id;
+        return null;
+    }
+
     // Resolves the Division's parent Department/Site, rejecting inactive parents.
     internal static async Task<IResult?> ApplyDivisionParents(Division div, string? departmentCode,
         string? siteCode, IPopDbContext db, CancellationToken ct)
@@ -906,6 +1006,23 @@ public static class AdminEndpoints
         return null;
     }
 
+    // HeadNik "" clears the head; any other value must name an active user.
+    private static async Task<IResult?> ApplyHead(Action<Guid?> set, string headNik,
+        IPopDbContext db, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(headNik))
+        {
+            set(null);
+            return null;
+        }
+        var nik = headNik.Trim();
+        var head = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Nik == nik && u.IsActive, ct);
+        if (head is null)
+            return Results.BadRequest(new { code = "unknown_head", message = "Head must be an active user." });
+        set(head.Id);
+        return null;
+    }
+
     private static string? CallerNik(HttpContext http) => http.User.FindFirst("nik")?.Value;
 
     private static Task RevokeSessions(IPopDbContext db, Guid userId, DateTime now,
@@ -923,8 +1040,9 @@ public static class AdminEndpoints
     public record AdminUserRow(string Nik, string Name, string Email, string? Position,
         string? Location, string? Department, string? DepartmentCode, string? Site,
         string? SiteCode, bool IsActive, bool IsManuallyEdited, string[] Roles,
-        string Status, DateTime UpdatedAt);
-    public record AdminUserStats(int Total, int Active, int Admins, int Online);
+        string Status, DateTime UpdatedAt, string? Division = null, string? DivisionCode = null,
+        bool IsLocked = false, DateTime? LastSignInAt = null);
+    public record AdminUserStats(int Total, int Active, int Admins, int Online, int Locked = 0, int Inactive = 0, int Hr = 0);
     public record AdminSessionRow(Guid Id, string Nik, string Name, string? DeviceFingerprint,
         string? IpAddress, DateTime CreatedAt, DateTime ExpiresAt, bool IsCurrent = false);
     public record RevokeOthersRequest(string? CurrentRefreshToken = null, Guid? CurrentSessionId = null);
@@ -934,18 +1052,21 @@ public static class AdminEndpoints
         string? DepartmentCode = null, string? SiteCode = null);
     public record SetRolesRequest(string[] Roles);
     public record OrgDepartmentRow(Guid Id, string Code, string Name, string? ParentCode,
-        bool IsActive, int MemberCount, int ActiveMemberCount);
+        bool IsActive, int MemberCount, int ActiveMemberCount, string? HeadNik = null,
+        string? HeadName = null, string? HeadPosition = null, string? SiteCode = null, int SortOrder = 0);
     public record OrgSiteRow(Guid Id, string Code, string Name, bool IsActive,
         int MemberCount, int ActiveMemberCount);
     public record UpsertDepartmentRequest(string Code, string? Name, bool? IsActive,
-        string? ParentCode = null);
+        string? ParentCode = null, string? HeadNik = null, bool? KeepParent = null,
+        string? SiteCode = null, int? SortOrder = null);
     public record UpsertSiteRequest(string Code, string? Name, bool? IsActive);
     public record SetPlacementRequest(string? DepartmentCode, string? SiteCode);
     public record AdminDivisionRow(Guid Id, string Code, string Name, string? DepartmentCode,
         string? DepartmentName, string? SiteCode, string? SiteName, bool IsActive,
-        int MemberCount, int ActiveMemberCount);
+        int MemberCount, int ActiveMemberCount, string? HeadNik = null, string? HeadName = null,
+        string? HeadPosition = null);
     public record UpsertDivisionRequest(string Code, string? Name, string? DepartmentCode,
-        string? SiteCode, bool? IsActive);
+        string? SiteCode, bool? IsActive, string? HeadNik = null);
     public record SetUserDivisionRequest(string DivisionCode);
     public record UpsertDirGroupRequest(string? Name, Guid? ParentId, int? SortOrder, bool? IsActive);
     public record DirGroupMemberRequest(string Nik);

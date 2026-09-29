@@ -1,10 +1,12 @@
 @page "/admin"
+@page "/admin/{Section}"
 @implements IDisposable
 @inject IJSRuntime JS
 @inject AuthState Auth
+@inject NavigationManager Nav
 @using IPop.Web.Components.Admin
 
-<PageTitle>Administration — IPop</PageTitle>
+<PageTitle>@(Current?.Label ?? "Administration") — IPop</PageTitle>
 
 @if (!loaded)
 {
@@ -20,51 +22,93 @@ else if (!Auth.IsAdmin)
         </div></div>
     </div>
 }
-else
+else if (Current is not null)
 {
-<div class="content admin-v6" style="grid-template-columns:1fr">
-    <div class="admin-tabs rise" role="tablist" aria-label="Administration sections">
-        <button class="admin-tab tab-hris @(tab == 0 ? "active" : "")" role="tab" aria-selected="@(tab == 0)" @onclick="() => SetTab(0)"><i data-lucide="refresh-cw"></i> HRIS sync</button>
-        <button class="admin-tab tab-sessions @(tab == 1 ? "active" : "")" role="tab" aria-selected="@(tab == 1)" @onclick="() => SetTab(1)"><i data-lucide="laptop"></i> Sessions</button>
-        <button class="admin-tab tab-audit @(tab == 2 ? "active" : "")" role="tab" aria-selected="@(tab == 2)" @onclick="() => SetTab(2)"><i data-lucide="scroll-text"></i> Audit trail</button>
-        <button class="admin-tab tab-org @(tab == 3 ? "active" : "")" role="tab" aria-selected="@(tab == 3)" @onclick="() => SetTab(3)"><i data-lucide="building-2"></i> Organization</button>
-        <button class="admin-tab tab-tree @(tab == 4 ? "active" : "")" role="tab" aria-selected="@(tab == 4)" @onclick="() => SetTab(4)"><i data-lucide="network"></i> Directory Tree</button>
-        <button class="admin-tab tab-chart @(tab == 5 ? "active" : "")" role="tab" aria-selected="@(tab == 5)" @onclick="() => SetTab(5)"><i data-lucide="git-fork"></i> Org Chart</button>
-        <button class="admin-tab tab-users @(tab == 6 ? "active" : "")" role="tab" aria-selected="@(tab == 6)" @onclick="() => SetTab(6)"><i data-lucide="users"></i> Users</button>
-    </div>
+<div class="content admin-v6 adm-shell">
+    @* Settings-style sidebar: one route per section so back/refresh keep the place. *@
+    <nav class="adm-side" aria-label="Administration sections">
+        @foreach (var g in Groups)
+        {
+            <div class="adm-side-group">
+                <div class="adm-side-label">@g.Label</div>
+                @foreach (var s in g.Items)
+                {
+                    <a class="adm-side-item @(s == Current ? "on" : "")" href="/admin/@s.Slug"
+                       aria-current="@(s == Current ? "page" : null)">
+                        <span class="adm-side-ico @s.Tint"><i data-lucide="@s.Icon"></i></span>
+                        <span class="adm-side-txt"><b>@s.Label</b><small>@s.Hint</small></span>
+                    </a>
+                }
+            </div>
+        }
+    </nav>
 
-    @switch (tab)
-    {
-        case 0:
-            <AdminHrisSync @ref="hrisRef" />
-            break;
-        case 1:
-            <AdminSessions @ref="sessionsRef" />
-            break;
-        case 2:
-            <AdminAuditTrail @ref="auditRef" />
-            break;
-        case 3:
-            <AdminOrganization @ref="orgRef" />
-            break;
-        case 4:
-            <AdminDirectoryTree @ref="treeRef" />
-            break;
-        case 5:
-            <AdminOrgChart @ref="chartRef" />
-            break;
-        case 6:
-            <AdminUserManagement @ref="userRef" />
-            break;
-    }
+    <section class="adm-main" aria-labelledby="adm-main-title">
+        <header class="adm-main-head">
+            <h2 id="adm-main-title">@Current.Label</h2>
+            <p>@Current.Hint</p>
+        </header>
+
+        @switch (Current.Slug)
+        {
+            case "users":
+                <AdminUserManagement @ref="userRef" />
+                break;
+            case "organization":
+                <div class="adm-seg adm-view-seg" role="tablist" aria-label="Organization view">
+                    <button type="button" role="tab" class="@(orgView == 0 ? "on" : "")" aria-selected="@(orgView == 0 ? "true" : "false")" @onclick="() => SetOrgView(0)">Tree</button>
+                    <button type="button" role="tab" class="@(orgView == 1 ? "on" : "")" aria-selected="@(orgView == 1 ? "true" : "false")" @onclick="() => SetOrgView(1)">Departments</button>
+                    <button type="button" role="tab" class="@(orgView == 2 ? "on" : "")" aria-selected="@(orgView == 2 ? "true" : "false")" @onclick="() => SetOrgView(2)">Chart</button>
+                </div>
+                @switch (orgView)
+                {
+                    case 0: <AdminDirectoryTree @ref="treeRef" InitialDepartmentCode="@treeDept" /> break;
+                    case 1: <AdminOrganization @ref="orgRef" OnShowInTree="ShowInTree" /> break;
+                    default: <AdminOrgChart @ref="chartRef" /> break;
+                }
+                break;
+            case "security":
+                <div class="adm-seg adm-view-seg" role="tablist" aria-label="Security view">
+                    <button type="button" role="tab" class="@(secView == 0 ? "on" : "")" aria-selected="@(secView == 0 ? "true" : "false")" @onclick="() => secView = 0">Sessions</button>
+                    <button type="button" role="tab" class="@(secView == 1 ? "on" : "")" aria-selected="@(secView == 1 ? "true" : "false")" @onclick="() => secView = 1">Audit log</button>
+                </div>
+                @if (secView == 0)
+                {
+                    <AdminSessions @ref="sessionsRef" />
+                }
+                else
+                {
+                    <AdminAuditTrail @ref="auditRef" />
+                }
+                break;
+            case "hris":
+                <AdminHrisSync @ref="hrisRef" />
+                break;
+        }
+    </section>
 </div>
 }
 
 @code {
     [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+    [Parameter] public string? Section { get; set; }
 
+    private sealed record SectionDef(string Slug, string Label, string Hint, string Icon, string Tint);
+    private sealed record GroupDef(string Label, SectionDef[] Items);
+
+    private static readonly GroupDef[] Groups =
+    [
+        new("People", [new("users", "Users", "Accounts, roles and access", "users", "blue")]),
+        new("Structure", [new("organization", "Organization", "Plants, divisions and departments", "building-2", "green")]),
+        new("Security", [new("security", "Security", "Sessions and audit log", "shield-check", "red")]),
+        new("Integrations", [new("hris", "HRIS sync", "Employee data from HRIS", "refresh-cw", "violet")]),
+    ];
+
+    private SectionDef? Current;
     private bool loaded;
-    private int tab;
+    private int orgView;
+    private int secView;
+    private string? treeDept;
 
     private AdminHrisSync? hrisRef;
     private AdminSessions? sessionsRef;
@@ -76,7 +120,7 @@ else
 
     protected override void OnInitialized()
     {
-        Layout.SetHeader("Administration", "HRIS · Sessions · Audit · Organization · Users");
+        Layout.SetHeader("Administration", "People, structure and system settings");
         Layout.EscapePressed += OnEscape;
         Auth.DirectoryChanged += OnDirectoryChanged;
     }
@@ -87,9 +131,31 @@ else
         loaded = true;
     }
 
-    private void SetTab(int newTab)
+    // Bare /admin and unknown slugs land on Users; replace so Back doesn't bounce.
+    protected override void OnParametersSet()
     {
-        tab = newTab;
+        var next = Groups.SelectMany(g => g.Items)
+            .FirstOrDefault(s => string.Equals(s.Slug, Section, StringComparison.OrdinalIgnoreCase));
+        if (next is null)
+        {
+            Current = null;
+            Nav.NavigateTo("/admin/users", replace: true);
+            return;
+        }
+        if (next != Current) treeDept = null;
+        Current = next;
+    }
+
+    private void SetOrgView(int v)
+    {
+        orgView = v;
+        treeDept = null;
+    }
+
+    private void ShowInTree(string departmentCode)
+    {
+        orgView = 0;
+        treeDept = departmentCode;
         StateHasChanged();
     }
 

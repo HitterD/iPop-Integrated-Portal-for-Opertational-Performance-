@@ -1,0 +1,135 @@
+/* Administration — phone layout (<= 767px). See .scratch/backup-mobile/CONTRACT.md. */
+@media (max-width: 767px) {
+  .admin-v6 { padding:10px 12px 16px; overflow-x:hidden; }
+
+  /* Section nav: full-width horizontal scroll row. */
+  .admin-v6 .admin-tabs { display:flex; width:100%; box-sizing:border-box; margin:0 0 12px; overflow-x:auto; scroll-snap-type:x proximity; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+  .admin-v6 .admin-tabs::-webkit-scrollbar { display:none; }
+  .admin-v6 .admin-tab { flex:none; height:38px; padding:0 12px; scroll-snap-align:start; }
+  /* Settings sidebar collapses to a horizontal pill row. */
+  .admin-v6.adm-shell { display:block; }
+  .adm-side { position:static; flex-direction:row; gap:6px; margin:0 0 12px; padding:0; border:0; background:transparent; box-shadow:none; overflow-x:auto; scrollbar-width:none; }
+  .adm-side::-webkit-scrollbar { display:none; }
+  .adm-side-group { flex:none; }
+  .adm-side-label, .adm-side-txt small { display:none; }
+  .adm-side-item { height:38px; box-sizing:border-box; padding:0 12px 0 6px; gap:8px; border-radius:19px; background:var(--fill); }
+  .adm-side-ico { width:26px; height:26px; border-radius:13px; }
+  .adm-main-head { display:none; }
+  .adm-seg.adm-view-seg { display:flex; width:100%; box-sizing:border-box; }
+  .adm-seg.adm-view-seg button { flex:1; min-width:0; }
+
+  /* KPIs: 2 across. */
+  .adm-kpis, .admin-v6 .admin-kpi-grid, .admin-v6 .hris-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-bottom:12px; }
+  .adm-kpi, .admin-v6 .admin-kpi-card, .admin-v6 .hris-kpis .admin-kpi-card { padding:10px 12px; min-height:60px; gap:10px; }
+  .adm-kpi-ico, .admin-v6 .kpi-icon-wrap { width:34px; height:34px; }
+  .admin-v6 .kpi-val, .admin-v6 .kpi-val[style] { font-size:15px !important; }
+  .adm-kpi b { font-size:16px; }
+
+  /* Card headers: search full width, chips scroll, actions share a row. */
+  .adm-card-head { gap:8px; padding:12px; }
+  .adm-card-title { flex:1 1 auto; }
+  .adm-search { flex:1 1 100%; min-width:0; height:40px; }
+  .adm-search input { font-size:16px; }
+  .adm-card-head > .adm-search:first-child { margin-right:0; }
+  .adm-chips { flex:1 1 100%; flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
+  .adm-chips::-webkit-scrollbar { display:none; }
+  .adm-fchip { flex:none; height:36px; }
+  .adm-card-head > .adm-btn { flex:1 1 0; justify-content:center; height:40px; min-width:0; }
+  .adm-icon-btn { width:40px; height:40px; }
+  .adm-link { min-height:36px; }
+
+  /* Grid tables (users, departments) become cards instead of 760px scrollers. */
+  .adm-card:has(> .adm-grid-head) { overflow:visible; }
+  .adm-card:has(> .adm-grid-head) > .adm-card-head { position:static; }
+  .adm-grid-head { display:none; }
+  .adm-grid-row { min-width:0; display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:12px; position:relative; }
+  .adm-grid-row > span { min-width:0; }
+  .adm-grid-row > span:last-child { position:absolute; top:8px; right:6px; }
+
+  /* Users: identity line, then NIK · role · status · last sign-in. */
+  .adm-user-grid > .adm-user-cell { flex:1 1 100%; padding-right:44px; }
+  .adm-user-grid > .adm-mono { order:2; }
+  .adm-user-grid > .adm-cell-sub { order:5; margin-left:auto; }
+  .adm-role { height:32px; padding:0 12px; }
+
+  /* Departments: name, then division / plant / head / count. */
+  .adm-dept-grid > .adm-cell-name { flex:1 1 100%; padding-right:44px; white-space:normal; }
+  .adm-dept-grid > .adm-cell-sub { flex:1 1 100%; }
+  .adm-dept-grid > .adm-head-cell { flex:1 1 auto; }
+  .adm-dept-grid > .adm-cell-n::after { content:" employees"; font-weight:400; color:var(--ink-3); font-size:12px; }
+
+  /* Row menus: bottom sheet so they never clip or overflow sideways. */
+  .adm-menu, .adm-menu.narrow { position:fixed; left:0; right:0; top:auto; bottom:0; z-index:80; min-width:0; padding:8px 8px calc(8px + var(--m-safe-b, 0px)); border-radius:14px 14px 0 0; max-height:70dvh; overflow-y:auto; box-shadow:0 -12px 40px rgba(0,0,0,.25); }
+  .adm-menu-scrim { z-index:79; background:rgba(0,0,0,.32); }
+  .adm-menu button { height:48px; font-size:15px; }
+  .adm-pager .adm-icon-btn { width:40px; height:40px; }
+
+  /* u-table sections (sessions, audit, HRIS history): each row becomes a card. */
+  .admin-v6 .u-table, .admin-v6 .u-table tbody { display:block; width:100%; }
+  .admin-v6 .u-table thead { display:none; }
+  .admin-v6 .u-table tbody tr { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:12px; border-bottom:1px solid var(--line-soft); }
+  .admin-v6 .u-table td { display:block; width:auto !important; padding:0; border:0; min-width:0; overflow-wrap:anywhere; }
+  .admin-v6 .u-table td:first-child { flex:1 1 100%; }
+  .admin-v6 .u-table td.acts, .admin-v6 .u-table td:last-child[style*="text-align:right"] { margin-left:auto; }
+  .admin-v6 .u-table .acts button, .admin-v6 .u-table .act-toggle { width:40px; height:40px; }
+  .admin-v6 .u-table td .btn { min-height:36px; }
+
+  /* Panel heads + inline filter rows (audit, sessions, HRIS history) wrap. */
+  .admin-v6 .panel-head { flex-wrap:wrap; gap:8px; padding:12px !important; }
+  .admin-v6 .panel-head > div { flex-wrap:wrap; }
+  .admin-v6 .panel-head .btn, .admin-v6 .panel-head button.org-act { min-height:40px; }
+  .admin-v6 .panel-head button.org-act { width:40px; }
+  .admin-v6 .tray > .core > div[style*="flex-wrap:wrap"] { gap:8px !important; padding:10px 12px !important; }
+  .admin-v6 .tray > .core > div[style*="flex-wrap:wrap"] > .search { flex:1 1 100% !important; }
+  .admin-v6 .tray > .core > div[style*="flex-wrap:wrap"] > .search input { font-size:16px; }
+  .admin-v6 div[style*="rgba(118,118,128"] { max-width:100%; overflow-x:auto; scrollbar-width:none; }
+  .admin-v6 div[style*="rgba(118,118,128"] > .btn { flex:none; height:34px !important; }
+  .admin-v6 .tray > .core > div[style*="flex-wrap:wrap"] > div[style*="margin-left:auto"] { margin-left:0 !important; flex:1 1 100%; }
+  .admin-v6 .tray > .core > div[style*="flex-wrap:wrap"] > div[style*="margin-left:auto"] .btn { width:100%; height:40px !important; justify-content:center; }
+
+  /* HRIS sync. */
+  .admin-v6 .hris-main-grid { grid-template-columns:1fr; gap:12px; }
+  .admin-v6 .hris-history-card { overflow:visible; }
+
+  /* Directory tree: stacked, tree collapses via its own chevrons, capped height. */
+  .adm-tree-layout { grid-template-columns:1fr; gap:12px; }
+  .adm-tree { max-height:50dvh; }
+  .adm-tnode { height:44px; }
+  .adm-tnode.lvl1 { padding-left:28px; }
+  .adm-tnode.lvl2 { padding-left:44px; }
+  .adm-tree-detail { padding:14px; }
+  .adm-detail-head { flex-wrap:wrap; }
+  .adm-dept-facts { grid-template-columns:1fr; }
+  .adm-people { grid-template-columns:1fr; }
+  .adm-dept-item { min-height:48px; }
+
+  /* Org chart pans inside its canvas. */
+  .adm-chart-hint { display:none; }
+  .adm-zoom { height:40px; margin-left:auto; }
+  .adm-zoom button { min-width:40px; }
+  .adm-chart-canvas { padding:16px; max-height:65dvh; min-height:280px; overflow:auto; overscroll-behavior:contain; touch-action:pan-x pan-y; }
+
+  /* Department / plants & divisions modals: bottom sheets. */
+  .proj-modal.adm-modal { top:auto; bottom:0; left:0; right:0; transform:none; width:100%; max-width:none; max-height:92dvh; border-radius:14px 14px 0 0; animation:none; }
+  .adm-modal .proj-modal-body { padding:0 16px 14px; }
+  .adm-modal .vpm-grid, .adm-unit-edit-pair { grid-template-columns:1fr; }
+  .adm-modal .proj-modal-foot { padding:12px 16px calc(12px + var(--m-safe-b, 0px)); }
+  .adm-modal .proj-modal-foot .btn-sm { flex:1; height:44px; justify-content:center; }
+  .adm-modal .vpm-close { width:40px; height:40px; }
+  .adm-modal input, .adm-modal select, .adm-modal textarea, .adm-modal .org-input { font-size:16px; min-height:44px; }
+  .adm-seg { margin:0 16px 6px; }
+  .adm-seg button { height:36px; }
+  .adm-unit-list { max-height:none; }
+  .adm-unit-add { flex-wrap:wrap; }
+  .adm-unit-add .btn-sm { min-height:44px; }
+
+  /* User drawer: bottom sheet. */
+  .admin-v6 .drawer { top:auto; left:0; right:0; bottom:0; width:100%; max-width:none; max-height:92dvh; padding:0; transform:translateY(105%); display:flex; flex-direction:column; }
+  .admin-v6 .drawer.on { transform:none; }
+  .admin-v6 .drawer > .tray { height:auto; max-height:92dvh; min-height:0; border-radius:14px 14px 0 0; border-bottom:0; }
+  .admin-v6 .drawer .drawer-body { padding:16px 16px calc(16px + var(--m-safe-b, 0px)); }
+  .admin-v6 .drawer .drawer-close { width:40px; height:40px; }
+  .admin-v6 .drawer input { font-size:16px; min-height:44px; }
+  .admin-v6 .drawer .app-select, .admin-v6 .drawer .app-select-trigger,
+  .adm-modal .app-select, .adm-modal .app-select-trigger { width:100%; max-width:none; }
+}

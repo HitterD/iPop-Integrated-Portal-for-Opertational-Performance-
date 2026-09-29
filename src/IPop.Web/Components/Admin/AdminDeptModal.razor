@@ -1,0 +1,122 @@
+@* The single editor for a Department (Division entity): name, parent Division, Plant and Head.
+   Opened from the Organization table, its "…" menu, and the Directory tree's "Add unit". *@
+@implements IDisposable
+@inject AuthState Auth
+@inject IJSRuntime JS
+@inject ToastService Toasts
+@inject OverlayStack Overlays
+
+<div class="proj-modal-backdrop" @onclick="Close"></div>
+<div class="proj-modal v6-project-modal adm-modal" role="dialog" aria-modal="true" aria-label="@Title">
+    <div class="proj-modal-head">
+        <span class="vpm-tile adm-tile-blue"><i data-lucide="folder"></i></span>
+        <span>@Title</span>
+        <button type="button" class="vpm-close" aria-label="Close" @onclick="Close"><i data-lucide="x"></i></button>
+    </div>
+    <div class="proj-modal-body">
+        <div class="field">
+            <label for="adm-dept-name">Department name <span class="vpm-required">*</span></label>
+            <input id="adm-dept-name" class="org-input" @bind="name" @bind:event="oninput" placeholder="e.g. Quality Control" @ref="nameRef" />
+        </div>
+        <div class="vpm-grid">
+            <div class="field">
+                <label>Division</label>
+                <AppSelect Label="Division" Value="@divisionCode" ValueChanged="v => divisionCode = v" Options="@DivisionOptions" />
+            </div>
+            <div class="field">
+                <label>Plant</label>
+                <AppSelect Label="Plant" Value="@plantCode" ValueChanged="v => plantCode = v" Options="@PlantOptions" />
+            </div>
+        </div>
+        <div class="field">
+            <label>Head</label>
+            <AppMemberPicker Value="head" ValueChanged="v => head = v" Placeholder="Not assigned — search a name or NIK" />
+        </div>
+        @if (Org.ActiveDivisions.Any() is false || Org.ActivePlants.Any() is false)
+        {
+            <div class="adm-hint"><i data-lucide="info"></i> Add plants and divisions first with <strong>Plants &amp; divisions</strong>.</div>
+        }
+        @if (error is not null)
+        {
+            <div class="adm-error"><i data-lucide="alert-circle"></i> @error</div>
+        }
+    </div>
+    <div class="proj-modal-foot">
+        <button type="button" class="btn-sm surface" @onclick="Close">Cancel</button>
+        <button type="button" class="btn-sm adm-primary" disabled="@(saving || string.IsNullOrWhiteSpace(name))" @onclick="Save">
+            @(saving ? "Saving…" : Existing is null ? "Create department" : "Save changes")
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public AdminOrgModel Org { get; set; } = default!;
+    /// Null = create. Otherwise the row being edited.
+    [Parameter] public AdminDivisionRowDto? Existing { get; set; }
+    [Parameter] public string? PresetDivisionCode { get; set; }
+    [Parameter] public string? PresetPlantCode { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private string name = "";
+    private string? divisionCode, plantCode, error;
+    private MemberSearchRow? head;
+    private bool saving;
+    private ElementReference nameRef;
+    private IDisposable? _reg;
+
+    private string Title => Existing is null ? "New department" : "Edit department";
+
+    private List<AppOption> DivisionOptions => [new("", "No division"), .. Org.ActiveDivisions.Select(d => new AppOption(d.Code, d.Name))];
+    private List<AppOption> PlantOptions => [new("", "No plant"), .. Org.ActivePlants.Select(p => new AppOption(p.Code, p.Name))];
+
+    protected override void OnInitialized()
+    {
+        _reg = Overlays.Push(Close);
+        if (Existing is { } e)
+        {
+            name = e.Name;
+            divisionCode = e.DepartmentCode;
+            plantCode = e.SiteCode;
+            head = e.HeadNik is null ? null : new MemberSearchRow(e.HeadNik, e.HeadName ?? e.HeadNik, e.HeadPosition, null);
+        }
+        else
+        {
+            divisionCode = PresetDivisionCode ?? "";
+            plantCode = PresetPlantCode ?? "";
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+        if (firstRender) await nameRef.FocusAsync();
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    private async Task Save()
+    {
+        if (saving || string.IsNullOrWhiteSpace(name)) return;
+        saving = true;
+        error = null;
+        var code = Existing?.Code ?? AdminOrgModel.NewCode(name, Org.Departments.Select(d => d.Code));
+        var body = new UpsertDivisionRequest(code, name.Trim(), NullIfEmpty(divisionCode), NullIfEmpty(plantCode),
+            Existing?.IsActive ?? true, head?.Nik ?? "");
+        var res = Existing is null
+            ? await Auth.SendAsync(HttpMethod.Post, "/api/admin/org/divisions", body)
+            : await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/org/divisions/{Uri.EscapeDataString(code)}", body);
+        saving = false;
+        if (!res.IsSuccessStatusCode)
+        {
+            error = await AdminOrgModel.ErrorText(res, "Could not save the department.");
+            return;
+        }
+        Toasts.Show(Existing is null ? $"Department “{name.Trim()}” created" : "Department updated", ToastKind.Success);
+        await OnSaved.InvokeAsync();
+    }
+
+    private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
+
+    public void Dispose() => _reg?.Dispose();
+}
