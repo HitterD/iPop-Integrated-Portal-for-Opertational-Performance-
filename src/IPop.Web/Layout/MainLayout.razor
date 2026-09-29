@@ -13,8 +13,10 @@
 <div class="shell @(collapsed ? "collapsed" : "")" id="shell">
     <aside class="sidebar">
         <div class="side-head">
-            <img class="mark" src="img/logo.png" alt="IPop" style="width:34px;height:34px" />
-            <div class="txt"><div class="t">iPop</div><div class="s">Operational portal</div></div>
+            <a class="brand" href="/dashboard" title="iPop">
+                <img class="mark" src="img/brand/ipop-mark.webp" alt="iPop" width="34" height="34" />
+                <span class="txt"><img class="word lg-light" src="img/brand/ipop-word.webp" alt="iPop" height="22" /><img class="word lg-dark" src="img/brand/ipop-word-dark.webp" alt="" height="22" /></span>
+            </a>
             <button class="collapse-btn" title="Collapse sidebar ( [ )" @onclick="ToggleSidebar"><i data-lucide="panel-left"></i></button>
         </div>
         @foreach (var group in NavGroups)
@@ -48,6 +50,7 @@
     <div class="main">
         <header class="topbar v6-topbar">
             @* v6 header: stacked title + subtitle, spacer, global search, presence, theme, bell. *@
+            <img class="tb-mark" src="img/brand/ipop-mark.webp" alt="iPop" width="28" height="28" />
             <div class="tb-title">
                 <h1>@PageTitle</h1>
                 @if (!string.IsNullOrEmpty(Subtitle))

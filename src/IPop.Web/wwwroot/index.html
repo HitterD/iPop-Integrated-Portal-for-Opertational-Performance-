@@ -89,27 +89,33 @@
     <link rel="stylesheet" href="css/v6/files.css?v=20260929-fx3" />
     <link rel="stylesheet" href="css/v6/admin.css?v=20260929-hris" />
     <link rel="stylesheet" href="css/v6/notes.css?v=20260929-notes2" />
-    <link rel="stylesheet" href="css/v6/login.css?v=20260925-v6" />
+    <link rel="stylesheet" href="css/v6/login.css?v=20260930-brand" />
+    <link rel="stylesheet" href="css/v6/brand.css?v=20260930-brand" />
     <link rel="stylesheet" href="css/mobile/files.css?v=20260929-fx3" />
     <link rel="stylesheet" href="css/mobile/notifications.css?v=20260929-apple" />
     <link rel="icon" type="image/png" href="favicon.png" />
+    <link rel="apple-touch-icon" href="img/brand/apple-touch-icon.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="preload" as="image" href="img/brand/ipop-mark.webp" />
     <!-- Lucide icons: load local bundled UMD first (offline-ready for intranet), fallback to CDN if needed -->
     <script src="js/lucide.min.js"></script>
     <script>window.lucide || document.write('<script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"><\/script>')</script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="_content/Radzen.Blazor/Radzen.Blazor.js"></script>
     <script src="js/ipop.js?v=20260929-pinbottom"></script>
     <script src="js/mobile.js?v=20260927-m1"></script>
-    <script src="js/livekit-client.umd.js"></script>
     <script src="js/webrtc-audio.js?v=20260917"></script>
     <script src="js/meeting-room.js?v=20260924-v6"></script>
+    <script src="js/lazy.js?v=20260930-brand"></script>
+    <script src="js/auth-motion.js?v=20260930-brand"></script>
     <script>ipop.restoreTheme();</script>
 </head>
 
 <body>
     <div id="app">
-        <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--ink-3);font-size:13px">
-            Loading IPop…
+        <div class="boot">
+            <img src="img/brand/ipop-mark.webp" alt="iPop" width="64" height="64" />
+            <div class="boot-bar"><span></span></div>
+            <div class="boot-t">Loading iPop…</div>
         </div>
     </div>
 

@@ -1,0 +1,40 @@
+@namespace IPop.Web.Components
+@implements IDisposable
+
+@* Login backdrop. Only slide 1 is requested up front; the rest get their image once the
+   first one had time to paint, so the sign-in card isn't competing with ~1 MB of photos. *@
+<div class="slides">
+    @for (var i = 0; i < SlideCount; i++)
+    {
+        var n = i;
+        <div class="slide @(active == n ? "on" : "")" style="@(n == 0 || restLoaded ? $"background-image:url('img/slides/slide-{n + 1}.webp')" : null)"></div>
+    }
+</div>
+
+@code {
+    private const int SlideCount = 5;
+    private int active;
+    private bool restLoaded;
+    private System.Timers.Timer? timer;
+
+    protected override void OnInitialized()
+    {
+        timer = new System.Timers.Timer(5000) { AutoReset = true };
+        timer.Elapsed += async (_, _) =>
+        {
+            active = (active + 1) % SlideCount;
+            await InvokeAsync(StateHasChanged);
+        };
+        timer.Start();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await Task.Delay(1500);
+        restLoaded = true;
+        StateHasChanged();
+    }
+
+    public void Dispose() => timer?.Dispose();
+}

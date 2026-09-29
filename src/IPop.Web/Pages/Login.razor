@@ -1,6 +1,5 @@
 @page "/"
 @page "/login"
-@implements IDisposable
 @layout EmptyLayout
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -8,22 +7,13 @@
 
 <PageTitle>Sign in — IPop</PageTitle>
 
-<div class="auth-wrap">
+<div class="auth-wrap @(success ? "success" : "")">
     <button class="theme-btn auth-theme-btn" title="Toggle dark / light mode" @onclick="ToggleTheme" @onclick:stopPropagation><i data-lucide="@(IsDark ? "sun" : "moon")"></i></button>
-    <div class="slides" id="slides">
-        @for (var i = 0; i < SlideCount; i++)
-        {
-            var n = i;
-            <div class="slide @(activeSlide == n ? "on" : "")" style="background-image:url('img/slides/slide-@(n + 1).jpg')"></div>
-        }
-    </div>
+    <AuthSlides />
 
     <div class="auth-card tray rise rise-1" @ref="cardRef">
         <div class="core">
-            <div class="brand-row">
-                <img class="mark" src="img/logo.png" alt="IPop" />
-                <div><div class="t">IPop</div><div class="s">Internal operations portal</div></div>
-            </div>
+            <AuthBrand />
             <h2>Sign in</h2>
             <p class="sub">Use your employee ID and password</p>
             <form @onsubmit="TryLogin" @onsubmit:preventDefault>
@@ -39,37 +29,41 @@
                     <label class="auth-remember"><input type="checkbox" @bind="keepSignedIn" /> Keep me signed in</label>
                     <a class="auth-link" href="/forgot-password">Forgot password?</a>
                 </div>
-                <button class="btn" type="submit" disabled="@(locked || busy)">@(busy ? "Signing in…" : "Sign in") <span class="orb"><i data-lucide="arrow-right"></i></span></button>
+                <button class="btn" type="submit" disabled="@(locked || busy)">@(success ? "Signed in" : busy ? "Signing in…" : "Sign in") <span class="orb" @key="success"><i data-lucide="@(success ? "check" : "arrow-right")"></i></span></button>
             </form>
-            <div class="note @(isError ? "err" : "")" @key="noteIcon">
+            <div class="note @(isError ? "err" : isSuccess ? "ok" : "")" @key="noteIcon">
                 <i data-lucide="@noteIcon"></i>
                 <span>@noteText</span>
             </div>
         </div>
     </div>
+
+    @if (success)
+    {
+        <div class="auth-welcome" aria-live="polite">
+            <img src="img/brand/ipop-mark.webp" alt="" width="72" height="72" />
+            <div class="t">Welcome to iPop</div>
+            <div class="s">Preparing your workspace…</div>
+        </div>
+    }
 </div>
 
 @code {
     private string nik = "", password = "";
-    private string noteText = "First time? Sign in with the default password from HR, then set your own.";
+    private string noteText = "First time? Sign in with the default password 1234, then set your own.";
     private string noteIcon = "info";
-    private bool isError, locked, busy;
+    private bool isError, isSuccess, locked, busy, success;
     private bool showPassword, keepSignedIn = true;
-    private int activeSlide;
-    private const int SlideCount = 5;
     private ElementReference cardRef;
-    private System.Timers.Timer? slideTimer;
+
+    // Set / reset password sign the user out and land here with ?changed=1.
+    [SupplyParameterFromQuery(Name = "changed")] public string? Changed { get; set; }
 
     protected override void OnInitialized()
     {
-        slideTimer = new System.Timers.Timer(5000);
-        slideTimer.Elapsed += async (_, _) =>
-        {
-            activeSlide = (activeSlide + 1) % SlideCount;
-            await InvokeAsync(StateHasChanged);
-        };
-        slideTimer.AutoReset = true;
-        slideTimer.Start();
+        if (string.IsNullOrEmpty(Changed)) return;
+        isSuccess = true; noteIcon = "check-circle-2";
+        noteText = "Password updated. Please sign in again with the new password you just set.";
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -93,7 +87,7 @@
 
         async Task Fail(string icon, string msg)
         {
-            isError = true; noteIcon = icon; noteText = msg;
+            isError = true; isSuccess = false; noteIcon = icon; noteText = msg;
             await JS.InvokeVoidAsync("ipop.shake", cardRef);
         }
 
@@ -117,7 +111,14 @@
             }
 
             password = "";
-            Nav.NavigateTo(Auth.MustChangePassword ? "/set-password" : "/dashboard");
+            if (Auth.MustChangePassword) { Nav.NavigateTo("/set-password"); return; }
+
+            // Exit: check on the button, card lifts away, welcome mark; then the shell animates in.
+            success = true;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipopAuthMotion.exit", 1300);
+            await JS.InvokeVoidAsync("ipopAuthMotion.enterApp");
+            Nav.NavigateTo("/dashboard");
         }
         catch
         {
@@ -132,5 +133,4 @@
         }
     }
 
-    public void Dispose() => slideTimer?.Dispose();
 }

@@ -1,10 +1,16 @@
 /* v6 login card — preserve the existing slideshow and theme control. */
 .auth-wrap .auth-card { max-width:476px; padding:0; border:1px solid var(--line-soft); border-radius:22px; background:var(--surface); backdrop-filter:none; box-shadow:0 18px 45px rgba(0,0,0,.16); }
 .auth-wrap .auth-card .core { padding:36px; border-radius:21px; background:var(--surface); box-shadow:none; }
-.auth-wrap .auth-card .brand-row { gap:12px; margin-bottom:28px; }
-.auth-wrap .auth-card .mark { width:40px; height:40px; padding:0; border-radius:9px; background:var(--accent-soft); }
-.auth-wrap .auth-card .brand-row .t { font-size:16px; color:var(--ink); }
-.auth-wrap .auth-card .brand-row .s { font-size:12px; color:var(--ink-3); }
+/* Brand header: Kapal Api | SJA on top, iPop wordmark below. Each logo has a light and a dark file. */
+.auth-brand { display:flex; flex-direction:column; align-items:center; gap:18px; margin:-4px 0 26px; padding-bottom:22px; border-bottom:1px solid var(--line-soft); }
+.auth-brand .corp { display:flex; align-items:center; justify-content:center; gap:18px; }
+.auth-brand .corp img { height:40px; width:auto; }
+.auth-brand .corp .div { width:1px; height:34px; background:var(--line); }
+.auth-brand .app img { height:44px; width:auto; display:block; }
+.auth-brand .lg-dark { display:none !important; }
+[data-theme="dark"] .auth-brand .lg-light { display:none !important; }
+[data-theme="dark"] .auth-brand .lg-dark { display:block !important; }
+.auth-wrap .auth-card h2 { text-align:left; color:var(--ink); }
 .auth-wrap .auth-card h2 { margin:0 0 3px; font-size:22px; font-weight:700; letter-spacing:-.025em; }
 .auth-wrap .auth-card .sub { margin:0 0 24px; font-size:13px; color:var(--ink-3); }
 .auth-wrap .auth-card .field { margin-bottom:16px; }
@@ -24,4 +30,35 @@
 .auth-wrap .auth-card .note { margin-top:22px; padding:12px 14px; border-radius:12px; background:var(--surface-3); color:var(--ink-2); font-size:12px; }
 .auth-wrap .auth-card .note.err { background:var(--danger-soft); color:var(--danger-ink); }
 [data-theme="dark"] .auth-wrap .auth-card { box-shadow:0 18px 45px rgba(0,0,0,.5); }
-@media(max-width:520px) { .auth-wrap .auth-card .core { padding:26px; } }
+@media(max-width:520px) { .auth-wrap .auth-card .core { padding:26px; } .auth-brand { gap:14px; margin-bottom:20px; padding-bottom:18px; } .auth-brand .corp img { height:32px; } .auth-brand .corp { gap:14px; } .auth-brand .app img { height:38px; } }
+
+/* ---- Motion: entrance (logos stagger in after the card rises) ---- */
+.auth-brand .corp > *, .auth-brand .app { animation:auth-in .7s cubic-bezier(.2,.8,.2,1) backwards; }
+.auth-brand .corp > :nth-child(1), .auth-brand .corp > :nth-child(2) { animation-delay:.18s; }
+.auth-brand .corp .div { animation-delay:.26s; }
+.auth-brand .corp > :nth-child(4), .auth-brand .corp > :nth-child(5) { animation-delay:.32s; }
+.auth-brand .app { animation-delay:.44s; }
+.auth-wrap .auth-card h2, .auth-wrap .auth-card .sub, .auth-wrap .auth-card form, .auth-wrap .auth-card .note { animation:auth-in .6s cubic-bezier(.2,.8,.2,1) backwards; }
+.auth-wrap .auth-card h2 { animation-delay:.5s; }
+.auth-wrap .auth-card .sub { animation-delay:.56s; }
+.auth-wrap .auth-card form { animation-delay:.62s; }
+.auth-wrap .auth-card .note { animation-delay:.7s; }
+.auth-wrap .slides { animation:auth-fade 1.2s ease backwards; }
+@keyframes auth-in { from { opacity:0; transform:translateY(10px); } }
+@keyframes auth-fade { from { opacity:0; } }
+
+/* ---- Motion: success -> card lifts away, welcome mark takes over ---- */
+.auth-wrap.success .auth-card { animation:auth-out .55s cubic-bezier(.4,0,.2,1) .15s forwards; pointer-events:none; }
+.auth-wrap.success form > .btn { background:var(--accent); }
+.auth-wrap.success .slides { transition:filter .8s ease; filter:blur(6px) saturate(1.1); }
+@keyframes auth-out { to { opacity:0; transform:translateY(-18px) scale(.96); filter:blur(6px); } }
+.auth-welcome { position:absolute; inset:0; z-index:4; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; pointer-events:none; }
+.auth-welcome img { width:72px; height:72px; margin-bottom:6px; animation:welcome-mark .7s cubic-bezier(.2,1.3,.4,1) .45s backwards; }
+.auth-welcome .t { font-size:22px; font-weight:700; letter-spacing:-.02em; color:var(--ink); animation:auth-in .5s ease .6s backwards; }
+.auth-welcome .s { font-size:13px; color:var(--ink-3); animation:auth-in .5s ease .7s backwards; }
+@keyframes welcome-mark { from { opacity:0; transform:scale(.6) rotate(-20deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-brand .corp > *, .auth-brand .app, .auth-wrap .auth-card h2, .auth-wrap .auth-card .sub,
+  .auth-wrap .auth-card form, .auth-wrap .auth-card .note, .auth-wrap .slides, .auth-welcome * { animation:none; }
+}
