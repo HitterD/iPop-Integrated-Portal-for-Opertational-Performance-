@@ -474,6 +474,10 @@ public partial class Chat
             _navSubscribed = true;
             Nav.LocationChanged += OnLocationChanged;
         }
+        // Coming back to /chat from another page (sidebar): ChatSvc still holds the last open
+        // room, so its messages render immediately, but nothing here asked to scroll. Without
+        // this the reader lands at the start of the conversation instead of the newest message.
+        if (RoomId is null && ChatSvc.ActiveRoomId is not null) scrollToBottom = true;
         _ = ChatSvc.LoadArchivedRoomsAsync();
         await ChatSvc.ConnectAsync();
         if (RoomId is not null)
