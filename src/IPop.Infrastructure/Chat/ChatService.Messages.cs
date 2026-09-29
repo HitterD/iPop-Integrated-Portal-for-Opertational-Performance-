@@ -60,6 +60,8 @@ public sealed partial class ChatService
             .Include(m => m.Attachments)
             .Include(m => m.Reactions)
             .Include(m => m.ReadReceipts)
+            .Include(m => m.ReplyTo)
+                .ThenInclude(r => r!.Sender)
             .FirstOrDefaultAsync(m => m.RoomId == req.RoomId && m.IdempotencyKey == req.IdempotencyKey, ct);
 
         if (existing is not null)
@@ -138,6 +140,8 @@ public sealed partial class ChatService
                 .Include(m => m.Attachments)
                 .Include(m => m.Reactions)
                 .Include(m => m.ReadReceipts)
+                .Include(m => m.ReplyTo)
+                    .ThenInclude(r => r!.Sender)
                 .FirstOrDefaultAsync(m => m.RoomId == req.RoomId && m.IdempotencyKey == req.IdempotencyKey, ct);
 
             if (raceExisting is not null && raceExisting.Content == req.Content)
@@ -146,13 +150,16 @@ public sealed partial class ChatService
             return new MessageResultDto(false, null, "idempotency_conflict");
         }
 
-        // Reload with navigation properties for DTO mapping
+        // Reload with navigation properties for DTO mapping. ReplyTo must come along, or the
+        // ack/broadcast carries no quote and the sender's bubble loses it until a reload.
         var saved = await db.ChatMessages
             .AsNoTracking()
             .Include(m => m.Sender)
             .Include(m => m.Attachments)
             .Include(m => m.Reactions)
             .Include(m => m.ReadReceipts)
+            .Include(m => m.ReplyTo)
+                .ThenInclude(r => r!.Sender)
             .FirstAsync(m => m.Id == message.Id, ct);
 
         return new MessageResultDto(true, MapToMessageDto(saved, senderId), null);

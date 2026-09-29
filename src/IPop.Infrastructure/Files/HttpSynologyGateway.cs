@@ -415,7 +415,12 @@ public class HttpSynologyGateway(HttpClient http, IConfiguration cfg) : ISynolog
     private record FileListResp(bool Success, FileListData? Data);
     private record FileListData([property: JsonPropertyName("files")] List<FileDto> Files);
     private record FileDto(string Name, string Path, [property: JsonPropertyName("isdir")] bool IsDir, AdditionalDto? Additional);
-    private record AdditionalDto(long Size, long Mtime);
+    // FileStation nests timestamps: additional.time = { mtime, crtime, atime, ctime } (unix seconds).
+    private record AdditionalDto(long Size, TimeDto? Time)
+    {
+        public long Mtime => Time?.Mtime ?? 0;
+    }
+    private record TimeDto(long Mtime);
     private record ErrorProbe(bool Success, ErrorObj? Error);
     private record SearchStartResp(bool Success, SearchStartData? Data);
     private record SearchStartData([property: JsonPropertyName("taskid")] string TaskId);

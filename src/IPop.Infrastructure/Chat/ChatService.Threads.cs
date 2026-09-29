@@ -91,6 +91,8 @@ public sealed partial class ChatService
             .Include(m => m.Attachments)
             .Include(m => m.Reactions)
             .Include(m => m.ReadReceipts)
+            .Include(m => m.ReplyTo)
+                .ThenInclude(r => r!.Sender)
             .FirstAsync(m => m.Id == reply.Id, ct);
 
         return new MessageResultDto(true, MapToMessageDto(saved, senderId), null);
