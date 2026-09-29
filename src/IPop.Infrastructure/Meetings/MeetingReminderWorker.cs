@@ -58,7 +58,7 @@ public sealed class MeetingReminderWorker(IServiceScopeFactory scopeFactory, ILo
                 message: $"Meeting \"{row.Meeting.Title}\" starts at {row.Meeting.StartAt.ToLocalTime():dd MMM yyyy HH:mm}.",
                 target: new NotificationTarget(UserId: row.UserId),
                 priority: "high",
-                targetUrl: "/calendar",
+                targetUrl: $"/calls?tab=scheduled&meeting={row.Meeting.Id}",
                 ct: ct);
 
             if (result.Success)

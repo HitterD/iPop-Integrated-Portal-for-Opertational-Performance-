@@ -639,7 +639,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
                 message: string.IsNullOrWhiteSpace(snippet) ? preview : snippet,
                 target: new NotificationTarget(All: true),
                 priority: priority,
-                targetUrl: "/news",
+                targetUrl: $"/news/{post.Id}",
                 ct: ct);
         }
         catch

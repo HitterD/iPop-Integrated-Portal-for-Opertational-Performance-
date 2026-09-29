@@ -74,7 +74,8 @@ public class ModuleNotificationIntegrationTests
         var call = mockGateway.Calls[0];
         Assert.Equal("mail", call.ClientSlug);
         Assert.Equal("mail.new", call.EventType);
-        Assert.Equal("/mail", call.TargetUrl);
+        // Deep-links to the message itself, not just the mailbox.
+        Assert.Equal($"/mail?mailId={result.MailId}", call.TargetUrl);
         Assert.Contains(sender.Name, call.Title);
         Assert.NotNull(call.Target.UserIds);
         Assert.Contains(recipient1.Id, call.Target.UserIds!);
@@ -130,7 +131,7 @@ public class ModuleNotificationIntegrationTests
         var call = mockGateway.Calls[0];
         Assert.Equal("projects", call.ClientSlug);
         Assert.Equal("project.task_assigned", call.EventType);
-        Assert.Equal($"/projects/{projectId}", call.TargetUrl);
+        Assert.Equal($"/projects/{projectId}?task={taskId}", call.TargetUrl);
         Assert.Equal(assignee.Id, call.Target.UserId);
         Assert.Contains("Migrasi Komponen SignalR", call.Title);
     }
@@ -198,7 +199,7 @@ public class ModuleNotificationIntegrationTests
         var call = mockGateway.Calls[0];
         Assert.Equal("news", call.ClientSlug);
         Assert.Equal("news.published", call.EventType);
-        Assert.Equal("/news", call.TargetUrl);
+        Assert.Equal($"/news/{newsId}", call.TargetUrl);
         Assert.Equal("normal", call.Priority);
         Assert.True(call.Target.All);
         Assert.Contains("Hari Libur Nasional Tambahan", call.Title);
@@ -231,7 +232,7 @@ public class ModuleNotificationIntegrationTests
         var call = mockGateway.Calls[0];
         Assert.Equal("news", call.ClientSlug);
         Assert.Equal("memo.mandatory", call.EventType);
-        Assert.Equal("/news", call.TargetUrl);
+        Assert.Equal($"/news/{newsId}", call.TargetUrl);
         Assert.Equal("high", call.Priority);
         Assert.True(call.Target.All);
         Assert.Contains("[Wajib Baca]", call.Title);

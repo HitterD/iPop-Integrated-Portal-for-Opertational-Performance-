@@ -20,7 +20,7 @@ public sealed class NotificationGateway(
 {
     private const string ChatClientId = "chat"; // well-known internal client for chat-originated notifications
 
-    public async Task SendMentionNotificationAsync(Guid recipientId, string senderName, string roomName, string preview, bool isHighPriority, CancellationToken ct)
+    public async Task SendMentionNotificationAsync(Guid recipientId, string senderName, string roomName, string preview, bool isHighPriority, CancellationToken ct, Guid? messageId = null)
     {
         logger.LogInformation("Notification: Mention for {RecipientId} from {Sender} in {Room}: {Preview}", recipientId, senderName, roomName, preview);
 
@@ -48,6 +48,8 @@ public sealed class NotificationGateway(
 
         var room = await db.ChatRooms.AsNoTracking().FirstOrDefaultAsync(r => r.Name == roomName, ct);
         var targetUrl = room != null ? $"/chat/{room.Id}" : "/chat";
+        // ?jump= makes the chat page scroll to the message itself, not just open the room.
+        if (room != null && messageId is { } mid) targetUrl += $"?jump={mid}";
 
         var request = new NotificationRequest
         {

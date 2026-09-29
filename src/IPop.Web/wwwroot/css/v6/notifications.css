@@ -1,6 +1,6 @@
 /* v6 notifications screen — Mail-style: flat source list, one grouped panel (list | detail). */
 .notifs-v6 {
-  --nf-blue:#0A84FF; --nf-blue-soft:#E8F1FE;
+  --nf-accent:var(--accent); --nf-accent-soft:var(--v6-active-bg); --nf-blue:#0A63D1; --nf-blue-soft:#E8F1FE;
   --nf-green:#1C7A44; --nf-green-soft:#E4F4EA;
   --nf-violet:#7657C4; --nf-violet-soft:#EFEAFB;
   --nf-orange:#B25E00; --nf-orange-soft:#FFF1DE;
@@ -8,11 +8,11 @@
   --nf-indigo:#5E35B1; --nf-indigo-soft:#ECE7F7;
   --nf-gray:#636366; --nf-gray-soft:#EFEFF1;
   --nf-red:#D70015; --nf-red-soft:#FFEBEA;
-  --nf-sel:#EAF3FF;
+  --nf-sel:#EAF6EE;
   display:flex; flex-direction:column; height:100%; min-height:0; background:var(--bg);
 }
 [data-theme="dark"] .notifs-v6 {
-  --nf-blue:#409CFF; --nf-blue-soft:rgba(10,132,255,.18);
+  --nf-blue:#64A8FF; --nf-blue-soft:rgba(10,132,255,.18);
   --nf-green:#30D158; --nf-green-soft:rgba(48,209,88,.16);
   --nf-violet:#BF9BFF; --nf-violet-soft:rgba(175,130,255,.18);
   --nf-orange:#FFB340; --nf-orange-soft:rgba(255,159,10,.16);
@@ -20,11 +20,12 @@
   --nf-indigo:#A99BFF; --nf-indigo-soft:rgba(94,92,230,.22);
   --nf-gray:#AEAEB2; --nf-gray-soft:rgba(255,255,255,.08);
   --nf-red:#FF6961; --nf-red-soft:rgba(255,69,58,.16);
-  --nf-sel:rgba(10,132,255,.16);
+  --nf-sel:rgba(48,209,88,.14);
 }
 
 /* Category colours: icon tiles (.nf-ico.k-*) and sidebar glyphs (.lucide.k-*). */
-.notifs-v6 .k-mail, .notifs-v6 .k-unread, .notifs-v6 .k-all { --k:var(--nf-blue); --k-soft:var(--nf-blue-soft); }
+.notifs-v6 .k-mail { --k:var(--nf-blue); --k-soft:var(--nf-blue-soft); }
+.notifs-v6 .k-unread, .notifs-v6 .k-all { --k:var(--nf-accent); --k-soft:var(--nf-accent-soft); }
 .notifs-v6 .k-chat { --k:var(--nf-green); --k-soft:var(--nf-green-soft); }
 .notifs-v6 .k-mention { --k:var(--nf-teal); --k-soft:var(--nf-teal-soft); }
 .notifs-v6 .k-task, .notifs-v6 .k-dnd, .notifs-v6 .k-snoozed { --k:var(--nf-violet); --k-soft:var(--nf-violet-soft); }
@@ -43,7 +44,7 @@
 }
 .notifs-v6 .nf-btn .lucide { width:15px; height:15px; }
 .notifs-v6 .nf-btn:hover:not(:disabled) { background:rgba(118,118,128,.2); }
-.notifs-v6 .nf-btn.on { background:var(--nf-blue-soft); color:var(--nf-blue); }
+.notifs-v6 .nf-btn.on { background:var(--nf-accent-soft); color:var(--nf-accent); }
 .notifs-v6 .nf-btn.danger { color:var(--nf-red); }
 .notifs-v6 .nf-btn:disabled { opacity:.4; cursor:default; }
 
@@ -60,7 +61,7 @@
 .notifs-v6 .nf-icon.sm { width:28px; height:28px; border-radius:7px; }
 .notifs-v6 .nf-icon.sm .lucide { width:15px; height:15px; }
 .notifs-v6 .nf-sep { width:1px; height:18px; margin:0 4px; background:var(--line-soft); }
-.notifs-v6 .nf-link { border:0; background:none; padding:4px 2px; color:var(--nf-blue); font:500 13px/1 inherit; cursor:pointer; white-space:nowrap; }
+.notifs-v6 .nf-link { border:0; background:none; padding:4px 2px; color:var(--nf-accent); font:500 13px/1 inherit; cursor:pointer; white-space:nowrap; }
 .notifs-v6 .nf-link.strong { font-weight:600; }
 .notifs-v6 .nf-link:disabled { opacity:.4; cursor:default; }
 .notifs-v6 .nf-link:hover:not(:disabled) { text-decoration:underline; }
@@ -88,7 +89,7 @@
 .notifs-dnd-txt b { font-size:13px; font-weight:500; color:var(--ink); }
 .notifs-dnd-txt small { font-size:11.5px; color:var(--ink-3); }
 .notifs-v6 button.apple-switch { border:0; padding:0; cursor:pointer; }
-.notifs-v6 button.apple-switch:focus-visible { outline:2px solid var(--nf-blue); outline-offset:2px; }
+.notifs-v6 button.apple-switch:focus-visible { outline:2px solid var(--nf-accent); outline-offset:2px; }
 
 /* One panel, two panes: the list and the reader share a single rounded surface. */
 .notifs-pane {
@@ -118,14 +119,14 @@
 .notifs-row.sel, .notifs-row.checked { background:var(--nf-sel); }
 .notifs-row.sel::before, .notifs-row.sel + .notifs-row::before,
 .notifs-row.checked::before, .notifs-row.checked + .notifs-row::before { border-color:transparent; }
-.notifs-row:focus-visible { box-shadow:inset 0 0 0 2px var(--nf-blue); }
+.notifs-row:focus-visible { box-shadow:inset 0 0 0 2px var(--nf-accent); }
 .notifs-dot { width:8px; height:8px; margin-top:14px; flex:none; border-radius:50%; }
-.notifs-row.unread .notifs-dot { background:var(--nf-blue); }
+.notifs-row.unread .notifs-dot { background:var(--nf-accent); }
 .notifs-check {
   width:20px; height:20px; margin-top:8px; flex:none; border-radius:50%; box-shadow:inset 0 0 0 1.5px var(--ink-3);
   display:flex; align-items:center; justify-content:center; color:#fff;
 }
-.notifs-row.checked .notifs-check { background:var(--nf-blue); box-shadow:none; }
+.notifs-row.checked .notifs-check { background:var(--nf-accent); box-shadow:none; }
 .notifs-check .lucide { width:13px; height:13px; stroke-width:3; }
 
 .notifs-v6 .nf-ico { width:36px; height:36px; flex:none; border-radius:10px; display:flex; align-items:center; justify-content:center; background:var(--k-soft); color:var(--k); }
@@ -180,7 +181,7 @@
 .notifs-dt-snz .nf-link { color:inherit; font-weight:600; }
 .notifs-target {
   align-self:flex-start; display:inline-flex; align-items:center; gap:6px; height:36px; padding:0 18px; margin-top:4px;
-  border:0; border-radius:999px; background:var(--nf-blue); color:#fff; font:600 13.5px/1 inherit; cursor:pointer; transition:filter .15s;
+  border:0; border-radius:999px; background:var(--nf-accent); color:#fff; font:600 13.5px/1 inherit; cursor:pointer; transition:filter .15s;
 }
 .notifs-target:hover { filter:brightness(1.08); }
 .notifs-target .lucide { width:15px; height:15px; }

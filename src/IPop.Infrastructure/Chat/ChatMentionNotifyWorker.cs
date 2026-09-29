@@ -47,7 +47,7 @@ public sealed class ChatMentionNotifyWorker(IServiceScopeFactory scopeFactory) :
                             var preview = IPop.Application.Chat.Mentions.MentionPlainText.Project(mention.Message.Content, 120);
                             var roomName = mention.Message.Room?.Name ?? "Chat";
                             var senderName = mention.Message.Sender?.Name ?? "Unknown";
-                            await gateway.SendMentionNotificationAsync(mention.UserId, senderName, roomName, preview, true, stoppingToken);
+                            await gateway.SendMentionNotificationAsync(mention.UserId, senderName, roomName, preview, true, stoppingToken, mention.MessageId);
                             mention.NotifiedAt = DateTime.UtcNow;
                         }
                         catch

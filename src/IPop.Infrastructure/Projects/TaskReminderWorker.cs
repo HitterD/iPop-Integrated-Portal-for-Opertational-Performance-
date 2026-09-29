@@ -83,7 +83,7 @@ public sealed class TaskReminderWorker(IServiceScopeFactory scopeFactory, ILogge
                         message: $"Task \"{row.Task.Title}\" in {projectName} is due on {row.Task.DueDate!.Value.ToLocalTime():dd MMM yyyy} (reminder {row.OffsetHours} hours before).",
                         target: new NotificationTarget(UserId: uid),
                         priority: "high",
-                        targetUrl: $"/projects/{row.Task.ProjectId}",
+                        targetUrl: $"/projects/{row.Task.ProjectId}?task={row.Task.Id}",
                         ct: ct);
                 }
 

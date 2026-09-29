@@ -573,7 +573,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
                     message: $"You have been assigned to task \"{task.Title}\" in {projectName}.",
                     target: new NotificationTarget(UserId: userId),
                     priority: "normal",
-                    targetUrl: $"/projects/{task.ProjectId}",
+                    targetUrl: $"/projects/{task.ProjectId}?task={task.Id}",
                     ct: ct);
             }
             catch

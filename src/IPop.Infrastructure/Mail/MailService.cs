@@ -116,7 +116,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
                         message: string.IsNullOrWhiteSpace(preview) ? mail.Subject : $"{mail.Subject} — {preview}",
                         target: new NotificationTarget(UserIds: recipientIds),
                         priority: mail.Importance == "high" ? "high" : "normal",
-                        targetUrl: "/mail",
+                        targetUrl: $"/mail?mailId={mail.Id}",
                         ct: ct);
                 }
                 catch
