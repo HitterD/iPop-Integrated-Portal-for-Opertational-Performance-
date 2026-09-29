@@ -247,6 +247,45 @@ public class FileAccessTests
         Assert.Equal(1, gw.AuthCalls);
     }
 
+    [Fact]
+    public async Task ConnectAll_StoresEverywhereAccepted_AndReportsTheRest()
+    {
+        var m = Make();
+        using var tdb = m.tdb; var svc = m.svc; var gw = m.gw;
+        var user = tdb.AddUser("90012");
+        gw.OnAuth = (server, _, _, _) => server switch
+        {
+            "jtb" => throw new SynoException("bad", authFailure: true),
+            "smg" => throw new HttpRequestException("timeout"),
+            _ => Task.FromResult("sid-" + server),
+        };
+
+        var results = await svc.ConnectAllAsync(user.Id, "gina", "pw", default);
+
+        Assert.Equal("connected", results.Single(r => r.Server == "spj").Status);
+        Assert.Equal("connected", results.Single(r => r.Server == "krw").Status);
+        Assert.Equal("rejected", results.Single(r => r.Server == "jtb").Status);
+        Assert.Equal("unreachable", results.Single(r => r.Server == "smg").Status);
+        var stored = (await svc.ListCredentialsAsync(user.Id, default)).Select(c => c.Server).OrderBy(s => s);
+        Assert.Equal(["krw", "spj"], stored);
+    }
+
+    [Fact]
+    public async Task ConnectAll_RejectedSite_KeepsItsOwnCredential()
+    {
+        var m = Make();
+        using var tdb = m.tdb; var svc = m.svc; var gw = m.gw;
+        var user = tdb.AddUser("90013");
+        await svc.SetCredentialAsync(user.Id, "jtb", "jtb-local", "other", default);
+        gw.OnAuth = (server, u, _, _) => server == "jtb" && u == "hana" ? throw new SynoException("bad", authFailure: true) : Task.FromResult("sid");
+
+        await svc.ConnectAllAsync(user.Id, "hana", "pw", default);
+
+        var (_, jtb) = await svc.GetCredentialAsync(user.Id, "jtb", default);
+        Assert.Equal("jtb-local", jtb!.Username);
+        Assert.False(jtb.IsInvalid);
+    }
+
     private sealed class DelegateHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> send) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

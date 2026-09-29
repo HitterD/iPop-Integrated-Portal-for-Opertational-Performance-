@@ -52,6 +52,14 @@ public static class FileEndpoints
             return ok ? Results.Ok() : Results.Json(new { code = "synology_auth_failed", message = err }, statusCode: 400);
         });
 
+        // Sign in once for every plant: the same account is tried on all four NAS in parallel.
+        g.MapPut("/credential/all", async (ConnectAllRequest req, HttpContext http, IFileAccessService svc, CancellationToken ct) =>
+        {
+            var userId = await UserIdAsync(http);
+            if (userId is null) return Results.Unauthorized();
+            return Results.Ok(await svc.ConnectAllAsync(userId.Value, req.Username, req.Password, ct));
+        });
+
         g.MapDelete("/credential", async (string? server, HttpContext http, IFileAccessService svc, CancellationToken ct) =>
         {
             var userId = await UserIdAsync(http);
@@ -545,6 +553,7 @@ public static class FileEndpoints
     }
 
     public record CredentialRequest(string Server, string Username, string Password);
+    public record ConnectAllRequest(string Username, string Password);
     public record RenameFileRequest(string Server, string Path, string Name);
     public record CreateFolderRequest(string Server, string Path, string Name);
     public record DeleteFilesRequest(string Server, string[] Paths);

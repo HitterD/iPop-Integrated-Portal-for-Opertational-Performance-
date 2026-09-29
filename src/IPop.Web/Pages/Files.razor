@@ -17,7 +17,7 @@
         @foreach (var s in Servers)
         {
             <button class="admin-tab @(server == s.Id ? "active" : "")" @onclick="() => SwitchServer(s.Id)">
-                <i data-lucide="hard-drive"></i> @s.Label <span class="mono server-host">@s.Host</span><span class="server-dot @(server == s.Id && !needsCredential ? "on" : "")"></span>
+                <i data-lucide="hard-drive"></i> @s.Label <span class="mono server-host">@s.Host</span><span class="server-dot @SiteStatus(s.Id).Css" title="@SiteStatus(s.Id).Text"></span>
             </button>
         }
     </div>
@@ -348,22 +348,34 @@
     <div class="backdrop on" @onclick="() => showCred = false"></div>
     <div class="drawer on" role="dialog" aria-label="Connect Synology">
         <div class="tray"><div class="core" style="display:flex; flex-direction:column; height:100%">
-            <div class="drawer-head">Connect @serverLabel <button class="drawer-close" @onclick="() => showCred = false"><i data-lucide="x"></i></button></div>
+            <div class="drawer-head">@(credAllSites ? "Connect to all sites" : $"Connect {Servers.First(x => x.Id == credServer).Label}") <button class="drawer-close" @onclick="() => showCred = false"><i data-lucide="x"></i></button></div>
             <div class="drawer-body" style="flex:1; overflow:auto">
                 @if (credential?.IsInvalid == true)
                 { <div class="note err"><i data-lucide="alert-triangle"></i><span>Stored credential was rejected - please re-enter it.</span></div> }
-                <div class="field" style="margin-top:12px"><label>Server</label><div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px">
+                <div class="field" style="margin-top:12px"><label>Sign in to</label><div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px">
+                    <button class="admin-tab @(credAllSites ? "active" : "")" @onclick="() => credAllSites = true" style="padding:6px 12px; font-size:12px">All sites</button>
                     @foreach (var s in Servers)
-                    { <button class="admin-tab @(credServer == s.Id ? "active" : "")" @onclick="() => credServer = s.Id" style="padding:6px 12px; font-size:12px">@s.Label</button> }
+                    { <button class="admin-tab @(!credAllSites && credServer == s.Id ? "active" : "")" @onclick="() => { credAllSites = false; credServer = s.Id; }" style="padding:6px 12px; font-size:12px">@s.Label</button> }
                 </div></div>
+                @if (credAllSites)
+                {
+                    <div class="files-site-status">
+                        @foreach (var s in Servers)
+                        {
+                            var st = SiteStatus(s.Id);
+                            <div class="files-site-row"><span class="files-site-dot @st.Css"></span><strong>@s.Label</strong><span class="files-site-text">@st.Text</span></div>
+                        }
+                    </div>
+                }
                 <div class="field"><label>Synology username</label><input placeholder="alice" @bind="credUser" /></div>
                 <div class="field"><label>Password</label><input type="password" placeholder="••••••••" @bind="credPass" /></div>
-                <div class="note"><i data-lucide="shield"></i><span>Validated live before storage. Wrong credentials never get saved. Sealed with Data Protection, key in Postgres.</span></div>
+                <div class="note"><i data-lucide="shield"></i><span>@(credAllSites ? "One account, tried on every site at once. Sites that reject it keep their own sign-in." : "Checked with the NAS before saving.") Stays signed in until you disconnect.</span></div>
                 @if (credError is not null) { <div class="note err"><i data-lucide="alert-circle"></i><span>@credError</span></div> }
             </div>
             <div style="padding:14px 18px; border-top:1px solid var(--line-soft); display:flex; gap:8px; background:var(--bg)">
-                <button class="btn" style="flex:1; margin:0" @onclick="SaveCredential">Save &amp; connect <span class="orb"><i data-lucide="arrow-right"></i></span></button>
-                <button class="btn" style="width:auto; margin:0; background:var(--surface); color:var(--ink); border:1px solid var(--line)" @onclick="ClearCredential">Clear</button>
+                <button class="btn" style="flex:1; margin:0" disabled="@credBusy" @onclick="SaveCredential">@(credBusy ? "Connecting…" : credAllSites ? "Connect all sites" : "Save & connect") <span class="orb"><i data-lucide="arrow-right"></i></span></button>
+                @if (!credAllSites)
+                { <button class="btn" style="width:auto; margin:0; background:var(--surface); color:var(--ink); border:1px solid var(--line)" @onclick="ClearCredential">Disconnect</button> }
             </div>
         </div></div>
     </div>
@@ -537,6 +549,10 @@
     private bool loading, needsCredential, showCred;
     private string? loadError, credError;
     private string credUser = "", credPass = "";
+    // Sign-in-once: the drawer defaults to trying one account on every plant NAS.
+    private bool credAllSites = true, credBusy;
+    private Dictionary<string, CredentialStatusDto> siteCreds = new();
+    private Dictionary<string, SiteConnectResultDto> lastConnect = new();
     private List<SynoItemDto> items = [];
     private List<string>? shares;
     private CredentialStatusDto? credential;
@@ -1052,7 +1068,7 @@
             }
         }
 
-        await Reload();
+        await Task.WhenAll(Reload(), LoadSiteCredentials());
     }
 
     private async Task SwitchServer(string id)
@@ -1441,17 +1457,67 @@
     private async Task SaveCredential()
     {
         credError = null;
-        var res = await Auth.SendAsync(HttpMethod.Put, "/api/files/credential", new { server = credServer, username = credUser, password = credPass });
-        if (!res.IsSuccessStatusCode) { credError = "Synology rejected the credentials."; StateHasChanged(); return; }
-        showCred = false; credUser = ""; credPass = "";
-        server = credServer;
-        await Reload();
+        if (credAllSites) { await ConnectAllSites(); return; }
+        credBusy = true;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Put, "/api/files/credential", new { server = credServer, username = credUser, password = credPass });
+            if (!res.IsSuccessStatusCode) { credError = "Synology rejected the credentials."; return; }
+            showCred = false; credUser = ""; credPass = "";
+            await LoadSiteCredentials();
+            if (server != credServer) await SwitchServer(credServer); else await Reload(bypassCache: true);
+        }
+        finally { credBusy = false; StateHasChanged(); }
+    }
+
+    private async Task ConnectAllSites()
+    {
+        credBusy = true; lastConnect.Clear(); StateHasChanged();
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Put, "/api/files/credential/all", new { username = credUser, password = credPass });
+            var results = res.IsSuccessStatusCode ? await res.Content.ReadFromJsonAsync<List<SiteConnectResultDto>>() : null;
+            if (results is null) { credError = "Could not reach iPop, try again."; return; }
+            lastConnect = results.ToDictionary(r => r.Server);
+            await LoadSiteCredentials();
+            if (results.All(r => r.Status != "connected")) { credError = "No site accepted these credentials."; return; }
+            credPass = "";
+            // Everything connected: close. Partial: keep the drawer open so the per-site list shows
+            // which sites still need their own sign-in.
+            if (results.All(r => r.Status == "connected")) { showCred = false; credUser = ""; }
+            await Reload(bypassCache: true);
+        }
+        finally { credBusy = false; StateHasChanged(); }
+    }
+
+    private async Task LoadSiteCredentials()
+    {
+        var list = await Auth.GetAsync<List<CredentialStatusDto>>("/api/files/credentials");
+        if (list is not null) siteCreds = list.Where(c => c.Server is not null).ToDictionary(c => c.Server!);
+    }
+
+    private (string Css, string Text) SiteStatus(string id)
+    {
+        if (lastConnect.TryGetValue(id, out var r))
+            return r.Status switch
+            {
+                "connected" => ("on", "Connected"),
+                "rejected" => siteCreds.TryGetValue(id, out var own) && !own.IsInvalid
+                    ? ("on", $"Kept existing sign-in ({own.Username})")
+                    : ("warn", "Rejected, sign in to this site separately"),
+                _ => ("err", "Unreachable right now"),
+            };
+        if (siteCreds.TryGetValue(id, out var c))
+            return c.IsInvalid ? ("warn", "Password no longer accepted") : ("on", $"Signed in as {c.Username}");
+        return ("", "Not connected");
     }
 
     private async Task ClearCredential()
     {
         await Auth.SendAsync(HttpMethod.Delete, $"/api/files/credential?server={credServer}", null);
-        showCred = false; await Reload();
+        showCred = false;
+        await LoadSiteCredentials();
+        await Reload(bypassCache: true);
     }
 
     private static string FormatSize(long b) => b < 1024 ? $"{b} B" : b < 1024 * 1024 ? $"{b / 1024:N0} KB" : $"{b / 1024 / 1024:N0} MB";

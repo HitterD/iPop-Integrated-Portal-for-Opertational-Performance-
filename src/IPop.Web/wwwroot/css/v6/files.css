@@ -46,3 +46,15 @@
 .files-page .fi { border-radius:9px; }
 .files-page .files-foot { flex:none; }
 @media(max-width:900px) { .files-page { height:auto; overflow:auto; } .files-main { min-height:500px; } .files-page .filter-bar { flex-wrap:wrap; } .files-page .files-shell { grid-template-columns:1fr; } .files-page .files-shares { border-right:0; border-bottom:1px solid var(--line-soft); } }
+.files-page .files-servers .server-dot.warn { background:var(--warn); }
+.files-page .files-servers .server-dot.err { background:var(--danger); }
+
+/* Connect drawer: per-site result of "sign in once" */
+.files-site-status { display:flex; flex-direction:column; gap:2px; margin:4px 0 12px; padding:6px; border-radius:12px; background:var(--tray); }
+.files-site-row { display:flex; align-items:center; gap:10px; padding:7px 8px; font-size:13px; }
+.files-site-row strong { width:38px; font-weight:600; }
+.files-site-text { color:var(--ink-3); font-size:12px; }
+.files-site-dot { width:8px; height:8px; border-radius:50%; background:var(--ink-4); flex:none; }
+.files-site-dot.on { background:var(--success); }
+.files-site-dot.warn { background:var(--warn); }
+.files-site-dot.err { background:var(--danger); }

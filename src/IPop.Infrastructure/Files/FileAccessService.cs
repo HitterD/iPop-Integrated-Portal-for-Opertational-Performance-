@@ -39,6 +39,39 @@ public class FileAccessService(
             return (false, $"Could not reach the NAS ({ex.GetType().Name}: {ex.Message}).");
         }
 
+        await StoreAsync(userId, server, username, password, sid, ct);
+        return (true, null);
+    }
+
+    public static readonly string[] PlantServers = ["spj", "krw", "jtb", "smg"];
+
+    public async Task<IReadOnlyList<SiteConnectResult>> ConnectAllAsync(Guid userId, string username, string password, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+            return PlantServers.Select(s => new SiteConnectResult(s, "rejected", "Username and password are required.")).ToList();
+
+        // The NAS logins run in parallel (one slow plant link must not hold up the others);
+        // the DbContext writes afterwards stay sequential.
+        var user = username.Trim();
+        var attempts = await Task.WhenAll(PlantServers.Select(async server =>
+        {
+            try { return (server, sid: (string?)await gateway.AuthAsync(server, user, password, ct), status: "connected", error: (string?)null); }
+            catch (SynoException ex) when (ex.IsAuthFailure) { return (server, sid: (string?)null, status: "rejected", error: (string?)"This NAS rejected the credentials."); }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                log.LogWarning(ex, "Synology connect-all: {Server} unreachable for user {UserId}", server, userId);
+                return (server, sid: (string?)null, status: "unreachable", error: (string?)"Could not reach this NAS.");
+            }
+        }));
+
+        foreach (var a in attempts.Where(a => a.sid is not null))
+            await StoreAsync(userId, a.server, user, password, a.sid!, ct);
+
+        return attempts.Select(a => new SiteConnectResult(a.server, a.status, a.error)).ToList();
+    }
+
+    private async Task StoreAsync(Guid userId, string server, string username, string password, string sid, CancellationToken ct)
+    {
         _sessions.Set(userId, server, sid);
         var row = await db.SynologyCredentials.FirstOrDefaultAsync(x => x.UserId == userId && x.Server == server, ct);
         if (row is null)
@@ -54,7 +87,6 @@ public class FileAccessService(
             row.UpdatedAt = DateTime.UtcNow;
         }
         await db.SaveChangesAsync(ct);
-        return (true, null);
     }
 
     public async Task<(bool Found, CredentialDto? Credential)> GetCredentialAsync(Guid userId, string server, CancellationToken ct)

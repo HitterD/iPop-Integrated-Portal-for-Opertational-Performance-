@@ -76,7 +76,8 @@ public sealed class MailAttachmentUploadTests
         public Task<IReadOnlyList<SynoShareLink>> ListSharingLinksAsync(Guid userId, string server, string? path, CancellationToken ct) => throw new NotSupportedException();
         public Task DeleteSharingLinkAsync(Guid userId, string server, string id, CancellationToken ct) => throw new NotSupportedException();
         public Task<SynoStorageInfo> GetStorageInfoAsync(Guid userId, string server, CancellationToken ct) => throw new NotSupportedException();
-        public void DropSession(Guid userId, string server) => throw new NotSupportedException();
+        public Task<IReadOnlyList<SiteConnectResult>> ConnectAllAsync(Guid userId, string username, string password, CancellationToken ct) => throw new NotSupportedException();
+    public void DropSession(Guid userId, string server) => throw new NotSupportedException();
         public void DropAllSessions(Guid userId) => throw new NotSupportedException();
         public bool HasServiceAccount => false;
         public string? ServiceServer => null;
