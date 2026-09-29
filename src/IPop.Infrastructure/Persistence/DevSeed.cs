@@ -40,6 +40,8 @@ public static class DevSeed
             ("projects.read", "Browse and view projects and tasks"),
             ("projects.write", "Create and update projects and tasks"),
             ("projects.admin", "Administer and delete projects"),
+            ("notes.read", "Open notes pages shared with you and your own"),
+            ("notes.write", "Create, edit, and share notes pages"),
             ("admin.users", "Manage user accounts"),
             ("admin.organization", "Manage departments and sites"),
             ("admin.audit", "View audit records"),
@@ -51,7 +53,7 @@ public static class DevSeed
         {
             var permission = new Permission { Id = Guid.NewGuid(), Code = code, Description = description };
             db.Permissions.Add(permission);
-            if (code is "directory.read" or "files.read" or "chat.read" or "chat.send" or "calls.use" or "mail.read" or "mail.send" or "news.read" or "news.write" or "projects.read")
+            if (code is "directory.read" or "files.read" or "chat.read" or "chat.send" or "calls.use" or "mail.read" or "mail.send" or "news.read" or "news.write" or "projects.read" or "notes.read" or "notes.write")
                 db.RolePermissions.Add(new RolePermission { RoleId = (await db.Roles.SingleAsync(r => r.Name == "Employee", ct)).Id, PermissionId = permission.Id });
             db.RolePermissions.Add(new RolePermission { RoleId = admin.Id, PermissionId = permission.Id });
         }

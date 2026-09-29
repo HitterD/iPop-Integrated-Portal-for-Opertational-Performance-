@@ -169,6 +169,10 @@ builder.Services.AddSingleton<IPop.Application.Notifications.INotificationRealti
 // News & Memos module (single table with type enum: news/announcement/memo)
 builder.Services.AddScoped<IPop.Application.News.INewsService, IPop.Infrastructure.News.NewsService>();
 
+// Notes module (Notion-like pages, Yjs co-editing over /hubs/notes)
+builder.Services.AddScoped<IPop.Application.Notes.INoteService, IPop.Infrastructure.Notes.NoteService>();
+builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Infrastructure.Notes.NotesAttachmentPolicy>();
+
 builder.Services.AddScoped<IHrisSyncService, HrisSyncService>();
 // Adapter by config (spec §4): Production → HttpHrisGateway (Polly), otherwise JSON file.
 if (builder.Configuration["Hris:Mode"] == "Production")
@@ -223,6 +227,7 @@ app.MapMail();
 app.MapProjects();
 app.MapMeetings();
 app.MapNews();
+app.MapNotes();
 app.MapNotificationGateway();
 app.MapPresence();
 app.MapDocumentDemo();
@@ -231,6 +236,7 @@ app.MapAttachments();
 app.MapDashboardAndSearch();
 app.MapHub<ChatHub>("/hubs/chat").RequireAuthorization();
 app.MapHub<IPop.Api.Calls.CallHub>("/hubs/calls").RequireAuthorization();
+app.MapHub<IPop.Api.Notes.NotesHub>("/hubs/notes").RequireAuthorization();
 app.MapHub<IPop.Api.Notifications.NotificationHub>("/hubs/notification").RequireAuthorization();
 app.MapMe();
 app.MapHub<AppHub>("/hubs/app").RequireAuthorization();

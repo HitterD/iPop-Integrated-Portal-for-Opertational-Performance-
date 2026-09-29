@@ -12,6 +12,7 @@ public static class RealtimeEvents
     public const string FileOperationProgress = "fileOperationProgress"; // (operationId, completed, total, bytes)
     public const string FileOperationFinished = "fileOperationFinished"; // (operationId, status)
     public const string FilesChanged = "filesChanged";                 // (scope) — to users who can see that scope
+    public const string NotesChanged = "notesChanged";                 // () — to everyone who can see a page: sidebar/sharing changed
 
     public static string UserGroup(string nik) => $"user:{nik}";
 }

@@ -30,5 +30,6 @@ public static class AttachmentAreas
     public const string News = "news";
     public const string Mail = "mail";
     public const string Projects = "projects";
-    public static readonly IReadOnlySet<string> All = new HashSet<string> { Chat, News, Mail, Projects };
+    public const string Notes = "notes";
+    public static readonly IReadOnlySet<string> All = new HashSet<string> { Chat, News, Mail, Projects, Notes };
 }

@@ -86,6 +86,17 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<ProjectTemplateTask> ProjectTemplateTasks => Set<ProjectTemplateTask>();
     public DbSet<ProjectMilestone> ProjectMilestones => Set<ProjectMilestone>();
 
+    // Notes
+    public DbSet<NotePage> NotePages => Set<NotePage>();
+    public DbSet<NoteUpdate> NoteUpdates => Set<NoteUpdate>();
+    public DbSet<NoteShare> NoteShares => Set<NoteShare>();
+    public DbSet<NoteFavorite> NoteFavorites => Set<NoteFavorite>();
+    public DbSet<NoteVisit> NoteVisits => Set<NoteVisit>();
+    public DbSet<NoteVersion> NoteVersions => Set<NoteVersion>();
+    public DbSet<NoteThread> NoteThreads => Set<NoteThread>();
+    public DbSet<NoteComment> NoteComments => Set<NoteComment>();
+    public DbSet<NoteAttachment> NoteAttachments => Set<NoteAttachment>();
+
     // News & Memos entities (single table with type enum: news/announcement/memo)
     public DbSet<NewsPost> NewsPosts => Set<NewsPost>();
     public DbSet<NewsTarget> NewsTargets => Set<NewsTarget>();
@@ -710,6 +721,76 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasIndex(x => x.TokenHash).IsUnique();
             e.HasIndex(x => new { x.UserId, x.CreatedAt });
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NotePage>(e =>
+        {
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Emoji).HasMaxLength(16);
+            e.Property(x => x.Cover).HasMaxLength(16);
+            e.Property(x => x.Accent).HasMaxLength(16);
+            e.Property(x => x.Font).HasMaxLength(8);
+            e.Property(x => x.SeedTemplate).HasMaxLength(16);
+            e.Property(x => x.Excerpt).HasMaxLength(300);
+            e.Property(x => x.PendingContributors).HasMaxLength(2000);
+            e.HasIndex(x => new { x.OwnerId, x.DeletedAt });
+            e.HasIndex(x => x.ParentId);
+            e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Parent).WithMany().HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteUpdate>(e =>
+        {
+            e.HasIndex(x => x.PageId);
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteShare>(e =>
+        {
+            e.Property(x => x.Level).HasMaxLength(8);
+            e.HasIndex(x => x.PageId);
+            e.HasIndex(x => x.UserId);
+            e.HasIndex(x => x.RoomId);
+            e.HasOne(x => x.Page).WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Room).WithMany().HasForeignKey(x => x.RoomId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteFavorite>(e =>
+        {
+            e.HasKey(x => new { x.UserId, x.PageId });
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteVisit>(e =>
+        {
+            e.HasKey(x => new { x.UserId, x.PageId });
+            e.HasIndex(x => new { x.UserId, x.VisitedAt });
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteVersion>(e =>
+        {
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Contributors).HasMaxLength(2000);
+            e.HasIndex(x => new { x.PageId, x.CreatedAt });
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteThread>(e =>
+        {
+            e.Property(x => x.Quote).HasMaxLength(300);
+            e.Property(x => x.Anchor).HasMaxLength(2000);
+            e.HasIndex(x => x.PageId);
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.Comments).WithOne(x => x.Thread).HasForeignKey(x => x.ThreadId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteComment>(e =>
+        {
+            e.Property(x => x.Body).HasMaxLength(2000);
+            e.HasIndex(x => new { x.ThreadId, x.CreatedAt });
+            e.HasOne(x => x.Author).WithMany().HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NoteAttachment>(e =>
+        {
+            e.HasKey(x => x.AttachmentId);
+            e.HasIndex(x => x.PageId);
+            e.HasOne<NotePage>().WithMany().HasForeignKey(x => x.PageId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
