@@ -7,73 +7,39 @@
 
 <PageTitle>@(string.IsNullOrWhiteSpace(fileName) ? "Document Editor" : fileName) - iPop Docs</PageTitle>
 
-<div class="editor-page">
-    @* --- Top Bar Ramping (44px) ala Google Docs / Office 365 Web --- *@
-    <header class="editor-topbar">
-        <div class="editor-topbar-left">
-            <span class="editor-brand-pill">
-                <i data-lucide="file-edit" style="width:13px;height:13px"></i> iPop Docs
-            </span>
-
-            <div class="editor-file-info">
-                <i data-lucide="@GetFileIcon(fileName)" style="width:16px;height:16px;color:@GetFileIconColor(fileName)"></i>
-                <span class="editor-file-name" title="@fileName">@(string.IsNullOrWhiteSpace(fileName) ? "Document" : fileName)</span>
-                @if (!string.IsNullOrWhiteSpace(ServerParam))
-                {
-                    <span class="editor-server-badge">@ServerParam.ToUpperInvariant()</span>
-                }
-            </div>
-
-            <span class="editor-mode-badge" style="@(isConnecting || !string.IsNullOrEmpty(errorMessage) ? "display:none" : "display:inline-flex")" title="Real-time collaboration mode: changes and cursors of other users are visible simultaneously">
-                <i data-lucide="zap" style="width:11px;height:11px"></i> Real-time Sync
-            </span>
-
-            @* Indikator Status Dinamis (Elemen Stabil) *@
-            <div class="editor-status-pill @StatusPillClass" title="@StatusPillTooltip">
-                <span class="editor-status-dot"></span>
-                <span>@StatusPillText</span>
-            </div>
-        </div>
-
-        <div class="editor-topbar-right">
-            <button class="btn btn-sm surface" style="padding:4px 12px; font-size:12px; height:30px; display:inline-flex; align-items:center; border-radius:6px" title="Download copy of document" @onclick="DownloadFile" disabled="@isDownloading">
-                <i data-lucide="@(isDownloading ? "loader-2" : "download")" class="@(isDownloading ? "spin" : "")" style="width:13px;height:13px;margin-right:5px"></i>
-                <span>Download</span>
-            </button>
-            <button class="btn btn-sm" style="padding:4px 12px; font-size:12px; height:30px; display:inline-flex; align-items:center; border-radius:6px; background:var(--tray); color:var(--ink); border:1px solid var(--line-soft)" title="Close editor and return to Files" @onclick="CloseEditor">
-                <i data-lucide="x" style="width:13px;height:13px;margin-right:5px"></i>
-                <span>Close &amp; Return</span>
-            </button>
-        </div>
+<div class="editor-page ed">
+    <header class="ed-bar">
+        <button type="button" class="ed-btn icon" title="Back to Files" aria-label="Back to Files" @onclick="CloseEditor"><i data-lucide="chevron-left"></i></button>
+        <span class="ed-file">
+            <i data-lucide="@GetFileIcon(fileName)" style="color:@GetFileIconColor(fileName)"></i>
+            <span class="ed-name" title="@fileName">@(string.IsNullOrWhiteSpace(fileName) ? "Document" : fileName)</span>
+            @if (!string.IsNullOrWhiteSpace(ServerParam)) { <span class="ed-site">@ServerParam.ToUpperInvariant()</span> }
+        </span>
+        <span class="ed-status @StatusPillClass" title="@StatusPillTooltip"><span class="ed-dot"></span>@StatusPillText</span>
+        <span class="ed-spacer"></span>
+        <button type="button" class="ed-btn" title="Download a copy" @onclick="DownloadFile" disabled="@isDownloading">
+            <i data-lucide="@(isDownloading ? "loader-circle" : "download")" class="@(isDownloading ? "spin" : "")"></i><span>Download</span>
+        </button>
+        <button type="button" class="ed-btn" title="Close and return to Files" @onclick="CloseEditor"><span>Done</span></button>
     </header>
 
-    @* --- Fullscreen ONLYOFFICE Canvas Container (Elemen Stabil) --- *@
     <main class="editor-canvas-container">
         <div class="editor-overlay-msg @(isConnecting ? "show" : "hide")">
-            <div style="display:flex; flex-direction:column; align-items:center; gap:12px">
-                <div style="width:36px; height:36px; border:3px solid var(--line-soft); border-top-color:var(--accent); border-radius:50%; animation:spin 0.8s linear infinite"></div>
-                <div style="font-weight:600; font-size:14px; color:var(--ink)">Loading Document Editor…</div>
-                <div style="font-size:12px; color:var(--ink-2)">Preparing real-time collaboration session for <strong>@fileName</strong></div>
+            <div class="ed-msg">
+                <i data-lucide="loader-circle" class="spin ed-spin"></i>
+                <strong>Opening @(string.IsNullOrWhiteSpace(fileName) ? "document" : fileName)…</strong>
+                <span>Starting a shared editing session.</span>
             </div>
         </div>
 
         <div class="editor-overlay-msg @(!string.IsNullOrEmpty(errorMessage) ? "show" : "hide")" style="z-index:30">
-            <div style="display:flex; flex-direction:column; align-items:center; gap:14px; max-width:480px; text-align:center">
-                <div style="width:48px;height:48px;border-radius:12px;background:#fee2e2;color:#b91c1c;display:grid;place-items:center">
-                    <i data-lucide="alert-triangle" style="width:24px;height:24px"></i>
-                </div>
-                <div style="font-weight:600; font-size:16px; color:var(--ink)">Failed to Open Editor</div>
-                <div style="font-size:13px; color:var(--ink-2); line-height:1.5">@errorMessage</div>
-                <div style="display:flex; gap:10px; margin-top:8px">
-                    <button class="btn btn-sm" style="background:var(--accent); color:#fff" @onclick="LoadEditorConfig">
-                        <i data-lucide="rotate-cw" style="width:13px;height:13px;margin-right:6px"></i> Try Again
-                    </button>
-                    <button class="btn btn-sm surface" @onclick="DownloadFile">
-                        <i data-lucide="download" style="width:13px;height:13px;margin-right:6px"></i> Download File
-                    </button>
-                    <button class="btn btn-sm surface" @onclick="CloseEditor">
-                        Back to Files
-                    </button>
+            <div class="ed-msg">
+                <div class="ed-art"><i data-lucide="file-warning"></i></div>
+                <strong>Can't open the editor</strong>
+                <span>@errorMessage</span>
+                <div class="ed-acts">
+                    <button type="button" class="ed-btn primary" @onclick="LoadEditorConfig"><i data-lucide="rotate-cw"></i><span>Try again</span></button>
+                    <button type="button" class="ed-btn" @onclick="DownloadFile"><i data-lucide="download"></i><span>Download instead</span></button>
                 </div>
             </div>
         </div>
@@ -105,8 +71,8 @@
 
     private string StatusPillText =>
         isConnecting ? "Connecting…" :
-        !string.IsNullOrEmpty(errorMessage) ? "Sync failed" :
-        isSaving ? "Saving to Synology…" : "Saved to Synology";
+        !string.IsNullOrEmpty(errorMessage) ? "Not connected" :
+        isSaving ? "Saving…" : "Saved to NAS";
 
     private string StatusPillTooltip =>
         isConnecting ? "Connecting to collaboration server..." :
@@ -168,7 +134,12 @@
             var ok = await JS.InvokeAsync<bool>("ipop.initOnlyOffice", PlaceholderId, serverUrl, configJson, dotNetRef);
             if (!ok)
             {
-                errorMessage = "Failed to load ONLYOFFICE engine. Ensure ONLYOFFICE server on port 8088 is active.";
+                // The usual cause behind the proxy: an https page may not load the editor from a plain-http
+                // address, or that port isn't published. Say which address was tried so IT can fix it.
+                var pageHttps = Nav.BaseUri.StartsWith("https:", StringComparison.OrdinalIgnoreCase);
+                errorMessage = pageHttps && serverUrl.StartsWith("http:", StringComparison.OrdinalIgnoreCase)
+                    ? $"The document server at {serverUrl} is plain http, which the browser blocks on this secure page. Ask IT to publish it over https (OnlyOffice:PublicServerUrl)."
+                    : $"The document server at {serverUrl} didn't answer. It may be offline or not reachable from this network.";
                 isConnecting = false;
             }
         }

@@ -110,6 +110,23 @@
                         <button type="button" class="@(!gridView ? "on" : "")" title="as List" aria-pressed="@(!gridView ? "true" : "false")" @onclick="() => SetGridView(false)"><i data-lucide="list"></i></button>
                         <button type="button" class="@(gridView ? "on" : "")" title="as Icons" aria-pressed="@(gridView ? "true" : "false")" @onclick="() => SetGridView(true)"><i data-lucide="layout-grid"></i></button>
                     </div>
+                    @if (selectedPaths.Count > 0)
+                    {
+                        <span class="fx-selacts" role="group" aria-label="Selection">
+                            @if (isRecycleBin)
+                            {
+                                <button type="button" class="fx-tb" title="Put back" @onclick="RestoreSelected"><i data-lucide="undo-2"></i></button>
+                                <button type="button" class="fx-tb fx-danger-txt" title="Delete permanently" @onclick="DeleteSelectedPermanently"><i data-lucide="trash-2"></i></button>
+                            }
+                            else
+                            {
+                                <button type="button" class="fx-tb" title="Download" @onclick="DownloadSelectedZip"><i data-lucide="download"></i></button>
+                                <button type="button" class="fx-tb" title="Move / Copy" @onclick="OpenMoveCopySelected"><i data-lucide="folder-input"></i></button>
+                                <button type="button" class="fx-tb" title="Move to Recycle Bin (Del)" @onclick="DeleteSelected"><i data-lucide="trash-2"></i></button>
+                            }
+                        </span>
+                        <span class="fx-tb-sep"></span>
+                    }
                     <button type="button" class="fx-tb" title="Sort" @onclick="OpenSortMenu"><i data-lucide="arrow-up-down"></i></button>
                     <button type="button" class="fx-tb @(showInfoPane ? "on" : "")" title="Get Info (Ctrl+I)" @onclick="ToggleInfoPane"><i data-lucide="info"></i></button>
                     @if (inFolder)
@@ -143,38 +160,6 @@
                         else { <text>@rows.Count result@(rows.Count == 1 ? "" : "s")</text> }
                     </span>
                     @if (searchRunning) { <button type="button" class="fx-scope-stop" @onclick="() => { searchCts?.Cancel(); searchRunning = false; }">Stop</button> }
-                </div>
-            }
-            else if (!isStarredView && !isRecentView && !IsRoot && crumbs.Count > 0)
-            {
-                <nav class="fx-path" aria-label="Path">
-                    <button type="button" class="fx-crumb" data-drop-server="@server" data-drop-path="" @onclick='() => GoTo(server, "/")'><i data-lucide="server"></i>@serverLabel</button>
-                    @foreach (var c in crumbs)
-                    {
-                        <i data-lucide="chevron-right" class="fx-crumb-sep"></i>
-                        <button type="button" class="fx-crumb @(c.IsLast ? "last" : "")" data-drop-server="@(isRecycleBin ? "" : server)" data-drop-path="@(isRecycleBin || c.IsLast ? "" : c.Path)" @onclick="() => Navigate(c.Path)">@c.Name</button>
-                    }
-                </nav>
-            }
-
-            @if (selectedPaths.Count > 0)
-            {
-                <div class="fx-selbar" role="toolbar" aria-label="Selection">
-                    <button type="button" class="fx-selbar-x" aria-label="Clear selection" @onclick="ClearSelection"><i data-lucide="x"></i></button>
-                    <strong>@selectedPaths.Count selected</strong>
-                    <span class="fx-selbar-acts">
-                        @if (isRecycleBin)
-                        {
-                            <button type="button" @onclick="RestoreSelected"><i data-lucide="undo-2"></i>Put back</button>
-                            <button type="button" class="danger" @onclick="DeleteSelectedPermanently"><i data-lucide="trash-2"></i>Delete</button>
-                        }
-                        else
-                        {
-                            <button type="button" @onclick="DownloadSelectedZip"><i data-lucide="download"></i>Download</button>
-                            <button type="button" @onclick="OpenMoveCopySelected"><i data-lucide="folder-input"></i>Move / Copy</button>
-                            <button type="button" class="danger" @onclick="DeleteSelected"><i data-lucide="trash-2"></i>Delete</button>
-                        }
-                    </span>
                 </div>
             }
 
@@ -334,6 +319,17 @@
                 }
             </div>
 
+            @if (!isStarredView && !isRecentView && !IsRoot && crumbs.Count > 0)
+            {
+                <nav class="fx-path" aria-label="Path">
+                    <button type="button" class="fx-crumb" data-drop-server="@server" data-drop-path="" @onclick='() => GoTo(server, "/")'><i data-lucide="server"></i>@serverLabel</button>
+                    @foreach (var c in crumbs)
+                    {
+                        <i data-lucide="chevron-right" class="fx-crumb-sep"></i>
+                        <button type="button" class="fx-crumb @(c.IsLast ? "last" : "")" data-drop-server="@(isRecycleBin ? "" : server)" data-drop-path="@(isRecycleBin || c.IsLast ? "" : c.Path)" @onclick="() => Navigate(c.Path)">@c.Name</button>
+                    }
+                </nav>
+            }
             <footer class="fx-status">
                 @if (needsCredential && !isStarredView && !isRecentView) { <span>Not connected</span> }
                 else
@@ -430,60 +426,67 @@
 
 @if (showPreview)
 {
-    <div class="backdrop on" @onclick="ClosePreview"></div>
-    <div class="drawer on" role="dialog" aria-label="Preview" style="width:min(1200px, 92vw)">
-        <div class="tray"><div class="core" style="display:flex; flex-direction:column; height:100%">
-            <div class="drawer-head">
-                <span style="display:flex; gap:8px; align-items:center; min-width:0"><i data-lucide="eye"></i> <span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis">@previewItem?.Name</span> @if (previewMime is not null) { <span class="tag">@previewMime</span> }</span>
-                <span style="display:flex; gap:6px; align-items:center">
-                    @if (previewItem is not null && IsCoAuthorable(previewItem.Name))
-                    { <a href="@GetEditorUrl(previewItem)" target="_blank" class="file-action-btn edit-collab" style="padding:4px 12px; font-size:12px; box-shadow:0 1px 2px rgba(27,122,61,0.12)" title="Co-author real-time in new tab"><i data-lucide="users" style="width:13px;height:13px;margin-right:5px"></i> Co-author</a> }
-                    <button class="org-act" title="Open in File Explorer" @onclick="OpenInExplorer"><i data-lucide="folder-open"></i></button>
-                    <button class="org-act" title="Print" @onclick="PrintPreview"><i data-lucide="printer"></i></button>
-                    <button class="org-act" title="Download" @onclick="() => Download(previewItem!)"><i data-lucide="download"></i></button>
-                    <button class="drawer-close" @onclick="ClosePreview"><i data-lucide="x"></i></button>
-                </span>
+    @* Quick Look: one quiet header (icon, name, kind · size, icon actions), the document fills the rest. *@
+    <div class="fx-ql-scrim" @onclick="ClosePreview"></div>
+    <div class="fx-ql" role="dialog" aria-modal="true" aria-label="@($"Quick Look: {previewItem?.Name}")">
+        <header class="fx-ql-head">
+            @if (previewItem is not null)
+            {
+                var qk = FileKinds.Kind(previewItem.Name);
+                <span class="fx-icon fk-@qk"><i data-lucide="@FileKinds.Icon(previewItem.Name)"></i></span>
+                <div class="fx-ql-title">
+                    <strong title="@previewItem.Name">@previewItem.Name</strong>
+                    <small>@FileKinds.Label(previewItem.Name)@(previewItem.Size > 0 ? " · " + FileKinds.Size(previewItem.Size) : "")@(previewItem.Mtime > 0 ? " · " + FileKinds.When(previewItem.Mtime) : "")</small>
+                </div>
+            }
+            <div class="fx-ql-acts">
+                @if (previewItem is not null && IsCoAuthorable(previewItem.Name))
+                { <a href="@GetEditorUrl(previewItem)" target="_blank" class="fx-ql-open" title="Edit together in ONLYOFFICE (new tab)"><i data-lucide="users"></i><span>Open to edit</span></a> }
+                <button type="button" class="fx-tb" title="Show in File Explorer" @onclick="OpenInExplorer"><i data-lucide="folder-open"></i></button>
+                <button type="button" class="fx-tb" title="Print" @onclick="PrintPreview"><i data-lucide="printer"></i></button>
+                <button type="button" class="fx-tb" title="Download" @onclick="() => Download(previewItem!)"><i data-lucide="download"></i></button>
+                <span class="fx-tb-sep"></span>
+                <button type="button" class="fx-tb" title="Close (Esc)" aria-label="Close" @onclick="ClosePreview"><i data-lucide="x"></i></button>
             </div>
-            <div style="flex:1; overflow:auto; padding:14px; background:var(--bg); display:grid; place-items:center">
-                @if (previewLoading)
-                { <div class="tree-empty">Loading preview…</div> }
-                else if (previewError is not null)
+        </header>
+        <div class="fx-ql-body @(isSheetPreview && previewSheetBytes is not null ? "is-sheet" : "")">
+            @if (previewLoading)
+            { <div class="fx-ql-msg"><i data-lucide="loader-circle" class="spin"></i><span>Loading preview…</span></div> }
+            else if (previewError is not null)
+            {
+                <div class="fx-empty">
+                    <div class="fx-empty-art warn"><i data-lucide="circle-alert"></i></div>
+                    <h2>Can't preview this file</h2>
+                    <p>@previewError</p>
+                    @if (previewItem is not null) { <button type="button" class="fx-secondary" @onclick="() => Download(previewItem)"><i data-lucide="download"></i>Download</button> }
+                </div>
+            }
+            else if (isSheetPreview && previewSheetBytes is not null)
+            {
+                <ExcelViewer FileName="@previewItem?.Name" Bytes="@previewSheetBytes" Compact="true" Height="100%" />
+            }
+            else if (previewItem is not null && GetFileExt(previewItem.Name) == ".xls")
+            {
+                <div id="office-preview" style="width:100%"></div>
+            }
+            else if (previewUrl is not null && previewMime is not null)
+            {
+                @if (previewMime.StartsWith("image/"))
+                { <img class="fx-ql-img" src="@previewUrl" alt="@previewItem?.Name" /> }
+                else if (previewMime == "application/pdf")
+                { <iframe id="preview-frame" class="fx-ql-frame" src="@previewUrl" title="@previewItem?.Name"></iframe> }
+                else
                 {
-                    <div style="display:flex; flex-direction:column; align-items:center; gap:12px; max-width:440px; text-align:center">
-                        <div class="note err"><i data-lucide="alert-circle"></i><span>@previewError</span></div>
-                        @if (previewItem is not null)
-                        {
-                            <button class="btn" style="width:auto; margin:0; font-size:13px" @onclick="() => Download(previewItem)"><i data-lucide="download" style="margin-right:6px"></i> Download @previewItem.Name</button>
-                        }
+                    <div class="fx-empty">
+                        <div class="fx-empty-art"><i data-lucide="file"></i></div>
+                        <h2>No preview for this kind of file</h2>
+                        <p>Download it to open on your computer.</p>
                     </div>
                 }
-                else if (isSheetPreview && previewSheetBytes is not null)
-                {
-                    <ExcelViewer FileName="@previewItem?.Name" Bytes="@previewSheetBytes" />
-                }
-                else if (previewItem is not null && GetFileExt(previewItem.Name) == ".xls")
-                {
-                    <div id="office-preview" style="width:100%"></div>
-                }
-                else if (previewUrl is not null && previewMime is not null)
-                {
-                    @if (previewMime.StartsWith("image/"))
-                    { <img src="@previewUrl" alt="@previewItem?.Name" style="max-width:100%; max-height:calc(100dvh - 180px); object-fit:contain; border-radius:12px; border:1px solid var(--line-soft); background:var(--surface)" /> }
-                    else if (previewMime == "application/pdf")
-                    { <iframe id="preview-frame" src="@previewUrl" style="width:100%; height:calc(100dvh - 180px); border:1px solid var(--line-soft); border-radius:12px; background:var(--surface)"></iframe> }
-                    else
-                    { <div class="note"><i data-lucide="file-text"></i><span>Preview not available - use Download.</span></div> }
-                }
-            </div>
-            <div style="padding:12px 14px; border-top:1px solid var(--line-soft); display:flex; gap:8px; background:var(--surface)">
-                <button class="btn" style="flex:1; margin:0; background:var(--surface); color:var(--ink); border:1px solid var(--line)" @onclick="OpenInExplorer"><i data-lucide="folder-open" style="margin-right:6px"></i> Open in Explorer</button>
-                <button class="btn" style="flex:1; margin:0" @onclick="PrintPreview"><i data-lucide="printer" style="margin-right:6px"></i> Print</button>
-                <button class="btn" style="width:auto; margin:0; background:var(--surface); color:var(--ink); border:1px solid var(--line)" @onclick="() => Download(previewItem!)">Download</button>
-            </div>
-        </div></div>
+            }
+        </div>
     </div>
 }
-
 
 <Modal IsOpen="showNewFolderModal" IsOpenChanged="v => showNewFolderModal = v" Title="New folder" Subtitle="@($"In {ShareName(currentPath)}")">
     <ChildContent>

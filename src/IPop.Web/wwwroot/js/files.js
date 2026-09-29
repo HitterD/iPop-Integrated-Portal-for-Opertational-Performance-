@@ -9,8 +9,8 @@ const INTERNAL = "application/x-ipop-files";
 let s = null;
 
 const typing = el => !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
-const overlayOpen = () => !!document.querySelector(".modal-backdrop, .ctx-menu-backdrop, .drawer.on:not([aria-label='Preview'])");
-const previewOpen = () => !!document.querySelector(".drawer.on[aria-label='Preview']");
+const overlayOpen = () => !!document.querySelector(".modal-backdrop, .ctx-menu-backdrop, .drawer.on");
+const previewOpen = () => !!document.querySelector(".fx-ql");
 
 export function attach(root, dotnet) {
   detach();
@@ -29,8 +29,8 @@ export function attach(root, dotnet) {
       if (e.key === "Escape" && e.target.matches("[data-fx-search]")) { e.preventDefault(); dotnet.invokeMethodAsync("OnKey", "Escape", false, false, 1); e.target.blur(); }
       return;
     }
-    // Quick Look: Space toggles the preview closed again.
-    if (previewOpen()) { if (e.key === " ") { e.preventDefault(); dotnet.invokeMethodAsync("OnKey", " ", false, false, 1); } return; }
+    // Quick Look: Space or Esc closes it again, like Finder.
+    if (previewOpen()) { if (e.key === " " || e.key === "Escape") { e.preventDefault(); dotnet.invokeMethodAsync("OnKey", " ", false, false, 1); } return; }
     if (overlayOpen()) return;
     const handled = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", " ", "Delete", "F2", "Escape", "Home", "End"];
     const k = e.key;

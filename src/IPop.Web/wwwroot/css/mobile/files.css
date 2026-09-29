@@ -26,9 +26,8 @@
   .fx-path { padding:6px 10px; }
   .fx-crumb { height:30px; font-size:13px; }
 
-  .fx-selbar { flex-wrap:wrap; }
-  .fx-selbar-acts { margin-left:0; width:100%; }
-  .fx-selbar-acts button { flex:1; height:38px; justify-content:center; }
+  .fx-selacts { order:3; }
+  .fx-main > .fx-path { overflow-x:auto; white-space:nowrap; }
 
   .fx-content { padding:0 4px 24px; }
   .fx-head { display:none !important; }

@@ -24,8 +24,8 @@
     {
         <RadzenSpreadsheet Workbook="@Workbook"
                            ReadOnly="true"
-                           ShowToolbar="true"
-                           ShowFormulaBar="true"
+                           ShowToolbar="@(!Compact)"
+                           ShowFormulaBar="@(!Compact)"
                            ShowSheetTabs="true"
                            AllowEditing="false"
                            AllowCharts="false"
@@ -33,13 +33,16 @@
                            AllowHyperlinks="false"
                            AllowTables="false"
                            AllowConditionalFormatting="false"
-                           Style="height: calc(100dvh - 180px); width: 100%" />
+                           Style="@($"height: {Height}; width: 100%")" />
     }
 </div>
 
 @code {
     [Parameter] public string FileName { get; set; } = "workbook.xlsx";
     [Parameter] public byte[]? Bytes { get; set; }
+    /// Read-only glance (Quick Look): no toolbar or formula bar, just the grid and sheet tabs.
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public string Height { get; set; } = "calc(100dvh - 180px)";
 
     private Workbook? Workbook { get; set; }
     private string? loadError;
