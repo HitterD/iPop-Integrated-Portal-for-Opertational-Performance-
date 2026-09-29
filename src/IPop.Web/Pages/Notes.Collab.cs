@@ -170,7 +170,8 @@ public partial class Notes
             .OrderByDescending(r => r.IsPinned).ThenByDescending(r => r.LastMessageAt ?? DateTime.MinValue)];
     }
 
-    private static string RoomName(RoomListDto r) => r.Type == "direct" ? r.RecipientName ?? r.Name ?? "Chat" : r.Name ?? "Grup";
+    private static bool IsDirect(string? type) => type is "dm" or "direct";
+    private static string RoomName(RoomListDto r) => IsDirect(r.Type) ? r.RecipientName ?? r.Name ?? "Chat" : r.Name ?? "Grup";
 
     private void OnInviteInput(ChangeEventArgs e)
     {

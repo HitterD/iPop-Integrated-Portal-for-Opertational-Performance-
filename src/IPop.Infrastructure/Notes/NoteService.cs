@@ -230,7 +230,12 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var visit = await db.NoteVisits.FirstOrDefaultAsync(v => v.UserId == userId && v.PageId == pageId, ct);
         if (visit is null) db.NoteVisits.Add(new NoteVisit { UserId = userId, PageId = pageId, VisitedAt = DateTime.UtcNow });
         else visit.VisitedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException)
+        {
+            // Two tabs opening the same page race on the insert; the other one already recorded the visit.
+            db.ChangeTracker.Clear();
+        }
 
         return Ok(await BuildPageAsync(userId, pageId, chain, access, ct));
     }

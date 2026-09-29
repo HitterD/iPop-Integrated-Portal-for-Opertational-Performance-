@@ -509,8 +509,8 @@
                                     @foreach (var s in shares.Shares.Where(s => s.RoomId is not null))
                                     {
                                         <div class="nt-pr">
-                                            <span class="nt-room-av" style="background:@AvatarPalette.For(s.RoomName)"><i data-lucide="@(s.RoomType == "direct" ? "user" : "users")" class="sm"></i></span>
-                                            <div class="grow"><div class="nm">@s.RoomName</div><div class="sub">@(s.InheritedFromTitle is { } it ? $"Dari “{DisplayTitle(it)}”" : s.RoomType == "direct" ? "Chat pribadi" : $"{s.RoomMembers} anggota · ikut keanggotaan grup")</div></div>
+                                            <span class="nt-room-av" style="background:@AvatarPalette.For(s.RoomName)"><i data-lucide="@(IsDirect(s.RoomType) ? "user" : "users")" class="sm"></i></span>
+                                            <div class="grow"><div class="nm">@s.RoomName</div><div class="sub">@(s.InheritedFromTitle is { } it ? $"Dari “{DisplayTitle(it)}”" : IsDirect(s.RoomType) ? "Chat pribadi" : $"{s.RoomMembers} anggota · ikut keanggotaan grup")</div></div>
                                             @ShareRole(s)
                                         </div>
                                     }
@@ -536,8 +536,8 @@
                                 @foreach (var r in list)
                                 {
                                     <button type="button" class="nt-rm @(sendRoom == r.Id ? "on" : "")" @onclick="() => sendRoom = r.Id">
-                                        <span class="nt-room-av" style="background:@(r.AvatarColor ?? AvatarPalette.For(r.RecipientNik ?? RoomName(r)))">@(r.Type == "direct" ? Initials(RoomName(r)) : "")@if (r.Type != "direct") { <i data-lucide="users" class="sm"></i> }</span>
-                                        <span class="grow"><span class="nm" style="display:block">@RoomName(r)</span><span class="sub">@(r.Type == "direct" ? "Chat pribadi" : "Grup")</span></span>
+                                        <span class="nt-room-av" style="background:@(r.AvatarColor ?? AvatarPalette.For(r.RecipientNik ?? RoomName(r)))">@(IsDirect(r.Type) ? Initials(RoomName(r)) : "")@if (!IsDirect(r.Type)) { <i data-lucide="users" class="sm"></i> }</span>
+                                        <span class="grow"><span class="nm" style="display:block">@RoomName(r)</span><span class="sub">@(IsDirect(r.Type) ? "Chat pribadi" : "Grup")</span></span>
                                         <span class="nt-radio"></span>
                                     </button>
                                 }

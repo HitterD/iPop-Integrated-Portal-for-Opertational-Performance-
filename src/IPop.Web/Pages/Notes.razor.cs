@@ -52,8 +52,9 @@ public partial class Notes
 
     private ElementReference editorRef, scrollRef, searchRef, newTitleRef, draftRef, previewRef;
     private IJSObjectReference? module, editor, hotkeys, previewer;
+    [CascadingParameter] public IPop.Web.Layout.MainLayout? Layout { get; set; }
     private DotNetObjectReference<Notes>? selfRef;
-    private Guid? mountedId;
+    private Guid? mountedId, loadingId;
     private bool mountPending, focusNewTitle, focusDraft, focusSearch;
     private readonly List<IDisposable> subs = [];
     private bool disposed;
@@ -77,14 +78,21 @@ public partial class Notes
         await LoadSidebarAsync();
     }
 
+    private Guid? lastId;
+    private bool paramsSeen;
+
     protected override async Task OnParametersSetAsync()
     {
+        // The cascading MainLayout re-runs this on every layout render — only react to a real route change.
+        if (paramsSeen && lastId == Id) return;
+        paramsSeen = true;
+        lastId = Id;
         pop = Pop.None;
         sideOpen = false;
         if (Id is { } id)
         {
             view = View.Page;
-            if (note?.Id == id && mountedId == id) return;
+            if (loadingId == id || (note?.Id == id && mountedId == id)) return;
             await LoadPageAsync(id);
         }
         else if (view == View.Page)
@@ -100,6 +108,7 @@ public partial class Notes
         if (disposed) return;
         if (firstRender)
         {
+            Layout?.SetHeader("Notes", "Catatan & dokumen bersama");
             module = await JS.InvokeAsync<IJSObjectReference>("import", EditorModule);
             hotkeys = await module.InvokeAsync<IJSObjectReference>("hotkeys", selfRef);
             if (note is not null) mountPending = true;
@@ -143,6 +152,13 @@ public partial class Notes
     }
 
     private async Task LoadPageAsync(Guid id)
+    {
+        loadingId = id;
+        try { await LoadPageCoreAsync(id); }
+        finally { if (loadingId == id) loadingId = null; }
+    }
+
+    private async Task LoadPageCoreAsync(Guid id)
     {
         await UnmountAsync();
         note = null; pageError = null; threads = []; draft = null; focusThread = null;
