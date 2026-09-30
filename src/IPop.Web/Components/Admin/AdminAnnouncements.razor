@@ -1,0 +1,349 @@
+@* Launch videos: upload one (it becomes a published News announcement and pops up once for every
+   targeted reader after login), switch its popup off, or delete it with its post. *@
+@using System.Net.Http.Json
+@implements IDisposable
+@inject AuthState Auth
+@inject HttpClient Http
+@inject ToastService Toasts
+@inject ConfirmService Confirm
+@inject IJSRuntime JS
+
+<p class="adm-summary">
+    @if (!loaded)
+    {
+        <span class="skel-inline"></span>
+    }
+    else
+    {
+        <span>@AdminHumanize.Plural(videos.Count, "video")</span>
+        <span>@(videos.FirstOrDefault(v => v.PopupActive) is { } live ? $"“{live.Title}” pops up until {AdminHumanize.Local(live.PopupUntil):d MMM}" : "No popup running")</span>
+    }
+</p>
+
+<div class="adm-card adm-an-upload">
+    <div class="adm-card-head">
+        <span class="adm-card-title">New announcement video</span>
+    </div>
+    <div class="adm-an-form">
+        <div class="adm-an-drop @(pick is null ? "" : "has")">
+            @if (pick is null)
+            {
+                <label class="adm-an-choose" for="adm-an-file">
+                    <span class="adm-detail-ico"><i data-lucide="clapperboard"></i></span>
+                    <b>Choose a video</b>
+                    <small>MP4 or WebM, up to 500 MB</small>
+                </label>
+            }
+            else
+            {
+                <div class="adm-an-poster">
+                    @if (pick.Poster is not null) { <img src="@pick.Poster" alt="Thumbnail" /> }
+                    <span class="adm-an-dur">@NewsVideoFormat.Duration(pick.Duration)</span>
+                </div>
+                <div class="adm-an-file">
+                    <b title="@pick.Name">@pick.Name</b>
+                    <small>@NewsVideoFormat.Size(pick.Size)@(pick.Duration > 0 ? $" · {NewsVideoFormat.Duration(pick.Duration)}" : "")</small>
+                    @if (pick.Readable && pick.Duration > 0)
+                    {
+                        <label class="adm-an-frame">
+                            <span>Thumbnail at @NewsVideoFormat.Duration((int)posterAt)</span>
+                            <input type="range" min="0" max="@pick.Duration" step="1" value="@((int)posterAt)" disabled="@uploading"
+                                   @onchange="OnFrame" aria-label="Thumbnail frame" />
+                        </label>
+                    }
+                    <div class="adm-an-file-acts">
+                        <label class="adm-link" for="adm-an-poster"><i data-lucide="image"></i>Use an image</label>
+                        <label class="adm-link" for="adm-an-file"><i data-lucide="repeat"></i>Replace video</label>
+                    </div>
+                </div>
+            }
+            <input id="adm-an-file" type="file" accept="video/mp4,video/webm,.mp4,.m4v,.webm" hidden disabled="@uploading" @onchange="OnPick" />
+            <input id="adm-an-poster" type="file" accept="image/jpeg,image/png,image/webp" hidden disabled="@uploading" @onchange="OnPosterImage" />
+        </div>
+
+        <div class="adm-an-fields">
+            <div class="field">
+                <label for="adm-an-title">Title</label>
+                <input id="adm-an-title" class="org-input" maxlength="300" @bind="title" @bind:event="oninput" placeholder="e.g. Meet the new iPop" disabled="@uploading" />
+            </div>
+            <div class="field">
+                <label for="adm-an-desc">Description</label>
+                <textarea id="adm-an-desc" class="org-input" rows="3" @bind="description" @bind:event="oninput" placeholder="One or two sentences shown under the title" disabled="@uploading"></textarea>
+            </div>
+            <div class="adm-an-row">
+                <div class="field">
+                    <label>Pop up after login for</label>
+                    <AppSelect Label="Popup duration" Value="@popupDays" ValueChanged="v => popupDays = v ?? popupDays" Options="@DayOptions" />
+                </div>
+                <div class="field adm-an-aud">
+                    <label>Audience</label>
+                    <div class="adm-an-chips">
+                        @foreach (var t in targets)
+                        {
+                            var target = t;
+                            <span class="tag-target-chip">@TargetLabel(target)
+                                <button type="button" aria-label="Remove" @onclick="() => targets.Remove(target)"><i data-lucide="x"></i></button>
+                            </span>
+                        }
+                        @if (targets.Count == 0) { <span class="adm-an-all">All employees</span> }
+                    </div>
+                    <div class="adm-an-addt">
+                        <AppSelect Value="@targetKind" ValueChanged="v => targetKind = v ?? targetKind" Options="@NewsUiHelper.TargetKindOptions" Label="Target type" />
+                        @if (targetKind is "department" or "role")
+                        {
+                            <input class="org-input" @bind="targetValue" placeholder="@(targetKind == "department" ? "Dept code" : "Role")" />
+                            <button type="button" class="adm-btn ghost" @onclick="AddTarget"><i data-lucide="plus"></i>Add</button>
+                        }
+                        else if (targetKind == "user")
+                        {
+                            <AppMemberPicker Placeholder="Select employee…" ValueChanged="OnPickMember" />
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="adm-an-foot">
+        @if (uploading)
+        {
+            <div class="adm-an-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@Percent">
+                <i style="width:@(Percent)%"></i>
+            </div>
+            <span class="adm-an-pct">@(Percent < 100 ? $"Uploading {Percent}% · {NewsVideoFormat.Size(sent)} of {NewsVideoFormat.Size(total)}" : "Processing…")</span>
+            <button type="button" class="adm-btn ghost danger" @onclick="CancelUpload">Cancel</button>
+        }
+        else
+        {
+            <span class="adm-an-pct">Publishes to News right away and pops up once for each reader.</span>
+            <button type="button" class="adm-btn primary" disabled="@(!CanUpload)" @onclick="Upload"><i data-lucide="upload"></i><span>Upload &amp; publish</span></button>
+        }
+    </div>
+</div>
+
+<div class="adm-card">
+    <div class="adm-card-head"><span class="adm-card-title">Videos</span></div>
+    @if (!loaded)
+    {
+        <div style="padding:14px"><div class="skel"></div></div>
+    }
+    else if (videos.Count == 0)
+    {
+        <div class="adm-empty">No announcement videos yet.</div>
+    }
+    else
+    {
+        <div class="adm-an-list">
+            @foreach (var v in videos)
+            {
+                var video = v;
+                <div class="adm-an-item" @key="video.Id">
+                    <div class="adm-an-thumb">
+                        @if (video.HasPoster && posters.TryGetValue(video.Id, out var pu)) { <img src="@pu" alt="" loading="lazy" /> }
+                        else { <i data-lucide="film"></i> }
+                        <span class="adm-an-dur">@NewsVideoFormat.Duration(video.DurationSeconds)</span>
+                    </div>
+                    <div class="adm-an-meta">
+                        <b>@video.Title</b>
+                        <small>
+                            @NewsVideoFormat.Size(video.Size) · @AdminHumanize.Ago(video.CreatedAt)
+                            @if (!video.Archived) { <span title="Not yet copied to the NAS archive"> · not archived yet</span> }
+                        </small>
+                        <div class="adm-facts">
+                            <div><b>@video.SeenCount</b><small>saw the popup</small></div>
+                            <div><b>@video.PlayedCount</b><small>played</small></div>
+                            <div><b>@video.DownloadedCount</b><small>downloaded</small></div>
+                        </div>
+                    </div>
+                    <div class="adm-an-side">
+                        <span class="adm-status @(video.PopupActive ? "active" : "inactive")">
+                            @(video.PopupActive ? $"Popup until {AdminHumanize.Local(video.PopupUntil):d MMM}" : "Popup off")
+                        </span>
+                        <div class="adm-an-acts">
+                            <a class="adm-btn ghost" href="/news/@video.NewsPostId"><i data-lucide="newspaper"></i><span>Open</span></a>
+                            @if (video.PopupActive)
+                            {
+                                <button type="button" class="adm-btn ghost" disabled="@(busy == video.Id)" @onclick="() => SetPopup(video, false)"><i data-lucide="bell-off"></i><span>Turn off popup</span></button>
+                            }
+                            else
+                            {
+                                <button type="button" class="adm-btn ghost" disabled="@(busy == video.Id)" @onclick="() => SetPopup(video, true)"><i data-lucide="bell-ring"></i><span>Pop up again</span></button>
+                            }
+                            <button type="button" class="adm-btn ghost danger" disabled="@(busy == video.Id)" @onclick="() => Delete(video)"><i data-lucide="trash-2"></i><span>Delete</span></button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly List<AppOption> DayOptions =
+        [new("3", "3 days"), new("7", "7 days"), new("14", "14 days"), new("30", "30 days")];
+
+    private List<NewsVideoAdminDto> videos = [];
+    private readonly Dictionary<Guid, string> posters = [];
+    private bool loaded;
+    private Guid? busy;
+
+    private NewsVideoPick? pick;
+    private double posterAt;
+    private string title = "", description = "", popupDays = "14";
+    private List<NewsTargetInput> targets = [];
+    private string targetKind = "all", targetValue = "";
+    private bool uploading;
+    private long sent, total;
+    private DotNetObjectReference<AdminAnnouncements>? self;
+
+    private int Percent => total <= 0 ? 0 : (int)Math.Min(100, sent * 100 / total);
+    private bool CanUpload => pick is { Readable: true } && !string.IsNullOrWhiteSpace(title) && pick.Size <= 500L * 1024 * 1024;
+
+    protected override async Task OnInitializedAsync() => await Reload();
+
+    public async Task Reload()
+    {
+        videos = await Auth.GetAsync<List<NewsVideoAdminDto>>("/api/admin/news-videos") ?? [];
+        loaded = true;
+        // Poster URLs need a per-user ticket; the reader endpoint hands one out.
+        foreach (var v in videos.Where(v => v.HasPoster && !posters.ContainsKey(v.Id)))
+            if (await Auth.GetAsync<NewsVideoViewDto>($"/api/news/videos/{v.Id}") is { PosterUrl: { } p })
+                posters[v.Id] = Abs(p);
+        StateHasChanged();
+    }
+
+    private string Abs(string path) => Http.BaseAddress is null ? path : new Uri(Http.BaseAddress, path).ToString();
+
+    private async Task OnPick(ChangeEventArgs _)
+    {
+        pick = await JS.InvokeAsync<NewsVideoPick?>("ipopVideo.pick", "adm-an-file");
+        posterAt = pick?.At ?? 0;
+        if (pick is { Readable: false })
+            Toasts.Show("This browser can't read that video. Use an MP4 (H.264) or WebM file.", ToastKind.Error);
+        else if (pick is { Size: > 500L * 1024 * 1024 })
+            Toasts.Show("That video is larger than 500 MB.", ToastKind.Error);
+        if (pick is not null && string.IsNullOrWhiteSpace(title))
+            title = System.IO.Path.GetFileNameWithoutExtension(pick.Name).Replace('_', ' ').Replace('-', ' ');
+    }
+
+    private async Task OnFrame(ChangeEventArgs e)
+    {
+        if (pick is null || !double.TryParse(e.Value?.ToString(), out var s)) return;
+        posterAt = s;
+        var url = await JS.InvokeAsync<string?>("ipopVideo.frame", s);
+        pick = pick with { Poster = url };
+    }
+
+    private async Task OnPosterImage(ChangeEventArgs _)
+    {
+        var url = await JS.InvokeAsync<string?>("ipopVideo.posterFromInput", "adm-an-poster");
+        if (pick is not null && url is not null) pick = pick with { Poster = url };
+    }
+
+    private void AddTarget()
+    {
+        var val = targetValue.Trim();
+        if (val.Length == 0) return;
+        if (targets.All(t => t.Kind != targetKind || t.Value != val)) targets.Add(new NewsTargetInput(targetKind, val));
+        targetValue = "";
+    }
+
+    private void OnPickMember(MemberSearchRow r)
+    {
+        if (targets.All(t => t.Kind != "user" || t.Value != r.Nik)) targets.Add(new NewsTargetInput("user", r.Nik));
+    }
+
+    private static string TargetLabel(NewsTargetInput t) => t.Kind switch
+    {
+        "department" => $"Dept {t.Value}",
+        "role" => $"Role {t.Value}",
+        "user" => $"NIK {t.Value}",
+        _ => $"{t.Kind} {t.Value}",
+    };
+
+    private async Task Upload()
+    {
+        if (!CanUpload || pick is null) return;
+        uploading = true; sent = 0; total = pick.Size;
+        self ??= DotNetObjectReference.Create(this);
+        var fields = new Dictionary<string, string?>
+        {
+            ["title"] = title.Trim(), ["description"] = description.Trim(),
+            ["durationSeconds"] = pick.Duration.ToString(), ["popupDays"] = popupDays,
+            ["targets"] = targets.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(targets, System.Text.Json.JsonSerializerOptions.Web),
+        };
+        var res = await JS.InvokeAsync<NewsVideoUploadResult>("ipopVideo.upload", Abs("/api/admin/news-videos"), fields, self);
+        uploading = false;
+        if (res.Status is >= 200 and < 300)
+        {
+            Toasts.Show($"“{title.Trim()}” is live in News", ToastKind.Success);
+            pick = null; title = ""; description = ""; targets = []; popupDays = "14";
+            await Reload();
+        }
+        else if (res.Error != "cancelled")
+        {
+            Toasts.Show(res.Error switch
+            {
+                "too_large" or "" when res.Status == 413 => "That video is larger than 500 MB.",
+                "blocked_type" => "Only MP4 and WebM videos can be uploaded.",
+                "invalid_poster" => "The thumbnail must be a JPG, PNG or WebP under 5 MB.",
+                "title_required" => "Give the video a title.",
+                "network" => "The upload was interrupted. Check the connection and try again.",
+                _ => $"Upload failed ({res.Status}).",
+            }, ToastKind.Error);
+        }
+    }
+
+    private Task CancelUpload() => JS.InvokeVoidAsync("ipopVideo.cancel").AsTask();
+
+    [JSInvokable]
+    public async Task<string?> UploadToken(bool refresh)
+    {
+        if (refresh) await Auth.TryRestoreAsync();
+        return Auth.AccessToken;
+    }
+
+    [JSInvokable]
+    public void UploadProgress(long loaded, long of)
+    {
+        sent = loaded; total = of;
+        StateHasChanged();
+    }
+
+    private async Task SetPopup(NewsVideoAdminDto v, bool on)
+    {
+        busy = v.Id;
+        try
+        {
+            var until = on ? DateTime.UtcNow.AddDays(14) : (DateTime?)null;
+            var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/news-videos/{v.Id}/popup", new { popupUntil = until });
+            if (!res.IsSuccessStatusCode) { Toasts.Show("Could not change the popup.", ToastKind.Error); return; }
+            Toasts.Show(on ? "Popup is on again for 14 days" : "Popup turned off. The post stays in News.", ToastKind.Success);
+            await Reload();
+        }
+        finally { busy = null; }
+    }
+
+    private async Task Delete(NewsVideoAdminDto v)
+    {
+        if (!await Confirm.AskAsync($"Delete “{v.Title}”?",
+                "The News post, its comments and the video file are removed for everyone. This can't be undone.", "Delete")) return;
+        busy = v.Id;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/news-videos/{v.Id}");
+            if (!res.IsSuccessStatusCode) { Toasts.Show("Could not delete the video.", ToastKind.Error); return; }
+            Toasts.Show("Video deleted", ToastKind.Success);
+            posters.Remove(v.Id);
+            await Reload();
+        }
+        finally { busy = null; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+
+    public void Dispose()
+    {
+        _ = JS.InvokeVoidAsync("ipopVideo.reset");
+        self?.Dispose();
+    }
+}

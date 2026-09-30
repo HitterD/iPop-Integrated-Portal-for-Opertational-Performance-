@@ -1,0 +1,92 @@
+@* Launch-video popup: after login the newest open announcement video the reader hasn't seen pops
+   up once (the server marks it seen). Holds the tutorial invite back until it closes. *@
+@using IPop.Web.Services
+@implements IDisposable
+@inject AuthState Auth
+@inject TutorialState Tutorials
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@if (view is { } v)
+{
+    <div class="an-scrim" @onclick="Close"></div>
+    <div class="an-card" role="dialog" aria-modal="true" aria-labelledby="an-popup-title" tabindex="-1" @ref="card" @onkeydown="OnKey">
+        <button type="button" class="an-x" aria-label="Close" @onclick="Close"><i data-lucide="x"></i></button>
+        <div class="an-head">
+            <span class="an-eyebrow"><span class="dot"></span>New in iPop</span>
+            <h2 class="an-title" id="an-popup-title">@v.Video.Title</h2>
+            @if (!string.IsNullOrWhiteSpace(v.Video.Description)) { <p class="an-lede">@v.Video.Description</p> }
+            <div class="an-meta">Announcement · @v.Video.PublishedAt.ToLocalTime().ToString("d MMM yyyy") · from @v.Video.AuthorName</div>
+        </div>
+        <VideoStage StreamUrl="@v.StreamUrl" PosterUrl="@v.PosterUrl" DurationSeconds="@v.Video.DurationSeconds" Autoplay="true" OnPlayed="Played" />
+        <div class="an-foot">
+            <button type="button" class="an-btn p" @onclick="ReadInNews"><i data-lucide="newspaper"></i>Read in News</button>
+            <button type="button" class="an-btn" @onclick="Close">Close</button>
+        </div>
+    </div>
+}
+
+@code {
+    private NewsVideoViewDto? view;
+    private ElementReference card;
+    private bool focused;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Practice mode fakes /api/news; a real launch video must not pop up inside the sandbox.
+        if (Tutorials.Practicing) return;
+        Tutorials.HoldInvite(true);
+        try
+        {
+            view = await Auth.GetAsync<NewsVideoViewDto>("/api/news/videos/popup");
+        }
+        catch
+        {
+            view = null;
+        }
+        if (view is null) { Tutorials.HoldInvite(false); return; }
+        _ = Track("seen");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (view is null || focused) return;
+        focused = true;
+        await JS.InvokeVoidAsync("ipop.icons");
+        try { await card.FocusAsync(); } catch (InvalidOperationException) { }
+    }
+
+    private Task Played() => Track("played");
+
+    private async Task Track(string kind)
+    {
+        if (view is null) return;
+        try { await Auth.SendAsync(HttpMethod.Post, $"/api/news/videos/{view.Video.Id}/track/{kind}", null); } catch { }
+    }
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        // Esc in full screen only leaves full screen; a second Esc closes the popup.
+        if (e.Key == "Escape" && !await JS.InvokeAsync<bool>("ipopVideo.isFullscreen")) Close();
+    }
+
+    private void ReadInNews()
+    {
+        var post = view?.Video.NewsPostId;
+        Close();
+        if (post is { } id) Nav.NavigateTo($"/news/{id}");
+    }
+
+    private void Close()
+    {
+        if (view is null) return;
+        view = null;
+        Tutorials.HoldInvite(false);
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        if (view is not null) Tutorials.HoldInvite(false);
+    }
+}

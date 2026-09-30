@@ -1,0 +1,53 @@
+@* 16:9 player with the launch-page chrome (play, mute, seek, time, full screen). news-video.js wires
+   the controls; Autoplay tries with sound and falls back to muted + a "Turn sound on" pill. *@
+@implements IAsyncDisposable
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="an-stage" @ref="stage">
+    <video src="@Src" poster="@Poster" playsinline preload="@(Autoplay ? "auto" : "metadata")"></video>
+    @if (Autoplay)
+    {
+        <button type="button" class="an-unmute"><i data-lucide="volume-2"></i>Turn sound on</button>
+    }
+    <div class="an-ctl">
+        <button type="button" data-play aria-label="Play or pause"><i data-lucide="@(Autoplay ? "pause" : "play")"></i></button>
+        <button type="button" data-mute aria-label="Mute"><i data-lucide="volume-2"></i></button>
+        <div class="an-bar"><i></i></div><span class="an-time">0:00 / @NewsVideoFormat.Duration(DurationSeconds)</span>
+        <button type="button" data-fs aria-label="Full screen"><i data-lucide="maximize"></i></button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string StreamUrl { get; set; } = "";
+    [Parameter] public string? PosterUrl { get; set; }
+    [Parameter] public int DurationSeconds { get; set; }
+    [Parameter] public bool Autoplay { get; set; }
+    [Parameter] public EventCallback OnPlayed { get; set; }
+
+    private ElementReference stage;
+    private DotNetObjectReference<VideoStage>? self;
+
+    // "#t=0.1" makes a paused player paint its first frame when there is no poster.
+    private string Src => Abs(StreamUrl) + (Autoplay ? "" : "#t=0.1");
+    private string? Poster => PosterUrl is null ? null : Abs(PosterUrl);
+
+    private string Abs(string path) => Http.BaseAddress is null ? path : new Uri(Http.BaseAddress, path).ToString();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await JS.InvokeVoidAsync("ipop.icons");
+        self = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("ipopVideo.mount", stage, self, Autoplay);
+    }
+
+    [JSInvokable]
+    public Task Played() => OnPlayed.InvokeAsync();
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("ipopVideo.unmount", stage); } catch (JSDisconnectedException) { }
+        self?.Dispose();
+    }
+}

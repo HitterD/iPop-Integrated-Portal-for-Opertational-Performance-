@@ -82,6 +82,9 @@ else if (Current is not null)
                     <AdminAuditTrail @ref="auditRef" />
                 }
                 break;
+            case "announcements":
+                <AdminAnnouncements @ref="announceRef" />
+                break;
             case "hris":
                 <AdminHrisSync @ref="hrisRef" />
                 break;
@@ -102,6 +105,7 @@ else if (Current is not null)
         new("People", [new("users", "Users", "Accounts, roles and access", "users", "blue")]),
         new("Structure", [new("organization", "Organization", "Plants, divisions and departments", "building-2", "green")]),
         new("Security", [new("security", "Security", "Sessions and audit log", "shield-check", "red")]),
+        new("Communication", [new("announcements", "Announcements", "Launch videos that pop up after login", "clapperboard", "orange")]),
         new("Integrations", [new("hris", "HRIS sync", "Employee data from HRIS", "refresh-cw", "violet")]),
     ];
 
@@ -111,6 +115,7 @@ else if (Current is not null)
     private int secView;
 
     private AdminHrisSync? hrisRef;
+    private AdminAnnouncements? announceRef;
     private AdminSessions? sessionsRef;
     private AdminAuditTrail? auditRef;
     private AdminDirectoryTree? treeRef;
@@ -154,6 +159,7 @@ else if (Current is not null)
     private void OnDirectoryChanged() => _ = InvokeAsync(async () =>
     {
         if (hrisRef is not null) await hrisRef.Reload();
+        if (announceRef is not null) await announceRef.Reload();
         if (sessionsRef is not null) await sessionsRef.Reload();
         if (auditRef is not null) await auditRef.Reload();
         if (treeRef is not null) await treeRef.Reload();

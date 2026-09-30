@@ -55,7 +55,11 @@ public sealed class TutorialState(AuthState auth, PracticeSandbox sandbox, ChatS
     }
 
     /// Whether the first-visit invite should show on this module.
-    public bool ShouldInvite(TutorialModule m) => _loaded && !IsSeen(m.Key) && !InviteDismissedThisVisit && !Practicing;
+    public bool ShouldInvite(TutorialModule m) => _loaded && !IsSeen(m.Key) && !InviteDismissedThisVisit && !Practicing && !InviteHeld;
+
+    /// The launch-video popup holds the invite back until it closes, so the two never stack.
+    public bool InviteHeld { get; private set; }
+    public void HoldInvite(bool held) { if (InviteHeld == held) return; InviteHeld = held; Changed?.Invoke(); }
 
     public async Task MarkAsync(string key, string status)
     {
