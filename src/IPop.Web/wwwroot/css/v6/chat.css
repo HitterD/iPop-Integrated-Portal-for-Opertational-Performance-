@@ -496,7 +496,6 @@
   .chat-area .mention-popup .mi { min-height: 44px; }
 }
 /* ======================== end @MENTIONS ======================== */
-=======
 /* ---- Empty conversation pane (Apple Messages look: glyph tile, pill actions) ---- */
 .empty-state.chat-empty { gap: 0; padding: 32px 24px; color: var(--ink-3);
   background: radial-gradient(ellipse 60% 45% at 50% 42%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 70%); }
