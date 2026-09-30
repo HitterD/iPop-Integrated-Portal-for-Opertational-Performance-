@@ -6,7 +6,7 @@
    photo when the person has one. *@
 @if (CanView)
 {
-    <button type="button" class="pav pav-view @Class" style="@BoxStyle" title="Lihat foto @Name" aria-label="Lihat foto @Name"
+    <button type="button" class="pav pav-view @Class" style="@BoxStyle" title="View photo of @Name" aria-label="View photo of @Name"
             @onclick="OpenViewer" @onclick:stopPropagation="true">
         <span class="pav-in" aria-hidden="true">@Text</span>
         @if (!string.IsNullOrEmpty(Status)) { <span class="pav-dot @Status"></span> }

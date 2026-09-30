@@ -9,22 +9,22 @@
             @if (Lock.Mode == SessionLockMode.Locked)
             {
                 <div class="session-lock-ic"><i data-lucide="app-window"></i></div>
-                <h2 id="session-lock-title">iPop sedang dibuka di tab lain</h2>
-                <p>iPop hanya bisa aktif di satu tab browser. Klik <strong>Gunakan di sini</strong> untuk memakai iPop di tab ini.</p>
-                @if (Lock.EndedCallElsewhere) { <p class="session-lock-note">Panggilan di tab ini sudah diakhiri.</p> }
+                <h2 id="session-lock-title">iPop is open in another tab</h2>
+                <p>iPop can only be active in one browser tab. Click <strong>Use here</strong> to use iPop in this tab.</p>
+                @if (Lock.EndedCallElsewhere) { <p class="session-lock-note">The call in this tab was ended.</p> }
                 <div class="session-lock-actions">
-                    <button type="button" class="ui-button ui-button-ghost" @onclick="Lock.CloseTabAsync">Tutup tab</button>
-                    <button type="button" class="ui-button ui-button-primary" disabled="@Lock.IsWorking" @onclick="Lock.UseHereAsync">Gunakan di sini</button>
+                    <button type="button" class="ui-button ui-button-ghost" @onclick="Lock.CloseTabAsync">Close tab</button>
+                    <button type="button" class="ui-button ui-button-primary" disabled="@Lock.IsWorking" @onclick="Lock.UseHereAsync">Use here</button>
                 </div>
             }
             else
             {
                 <div class="session-lock-ic call"><i data-lucide="phone-call"></i></div>
-                <h2 id="session-lock-title">Sedang ada panggilan di tab lain</h2>
-                <p>iPop di tab lain sedang dipakai untuk panggilan atau rapat. Jika tetap dipakai di sini, panggilan itu akan diakhiri.</p>
+                <h2 id="session-lock-title">A call is active in another tab</h2>
+                <p>iPop in another tab is in a call or meeting. If you use it here instead, that call will end.</p>
                 <div class="session-lock-actions">
-                    <button type="button" class="ui-button ui-button-ghost" @onclick="Lock.CloseTabAsync">Tutup tab</button>
-                    <button type="button" class="ui-button ui-button-primary danger" disabled="@Lock.IsWorking" @onclick="Lock.ForceHereAsync">Tetap gunakan di sini</button>
+                    <button type="button" class="ui-button ui-button-ghost" @onclick="Lock.CloseTabAsync">Close tab</button>
+                    <button type="button" class="ui-button ui-button-primary danger" disabled="@Lock.IsWorking" @onclick="Lock.ForceHereAsync">Use here anyway</button>
                 </div>
             }
         </div>

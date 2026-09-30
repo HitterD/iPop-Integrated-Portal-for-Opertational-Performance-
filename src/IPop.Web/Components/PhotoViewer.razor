@@ -5,12 +5,12 @@
 
 @if (Viewer.IsOpen)
 {
-    <div class="photo-viewer" role="dialog" aria-modal="true" aria-label="Foto @Viewer.Name" @onclick="Viewer.Close">
+    <div class="photo-viewer" role="dialog" aria-modal="true" aria-label="Photo of @Viewer.Name" @onclick="Viewer.Close">
         <div class="photo-viewer-bar">
             @if (!string.IsNullOrEmpty(Viewer.Name)) { <span class="photo-viewer-name">@Viewer.Name</span> }
-            <button type="button" class="photo-viewer-x" title="Tutup" aria-label="Tutup" @onclick="Viewer.Close"><i data-lucide="x"></i></button>
+            <button type="button" class="photo-viewer-x" title="Close" aria-label="Close" @onclick="Viewer.Close"><i data-lucide="x"></i></button>
         </div>
-        <img src="@Viewer.Url" alt="Foto @Viewer.Name" @onclick:stopPropagation="true" />
+        <img src="@Viewer.Url" alt="Photo of @Viewer.Name" @onclick:stopPropagation="true" />
     </div>
 }
 

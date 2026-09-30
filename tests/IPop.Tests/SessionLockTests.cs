@@ -35,12 +35,12 @@ public class SessionLockTests
 
         Assert.Equal(SessionLockMode.Locked, lk.Mode);
         Assert.True(ctx.Services.GetRequiredService<AuthState>().IsSuspended);
-        cut.WaitForAssertion(() => Assert.Contains("iPop sedang dibuka di tab lain", cut.Find(".session-lock h2").TextContent));
-        Assert.Equal(["Tutup tab", "Gunakan di sini"], cut.FindAll(".session-lock-actions button").Select(b => b.TextContent.Trim()));
+        cut.WaitForAssertion(() => Assert.Contains("iPop is open in another tab", cut.Find(".session-lock h2").TextContent));
+        Assert.Equal(["Close tab", "Use here"], cut.FindAll(".session-lock-actions button").Select(b => b.TextContent.Trim()));
     }
 
     [Fact]
-    public async Task Gunakan_di_sini_takes_the_session_back()
+    public async Task Use_here_takes_the_session_back()
     {
         using var ctx = Context("active");
         var cut = ctx.Render<SessionLockHost>();
@@ -66,7 +66,7 @@ public class SessionLockTests
 
         Assert.Equal(SessionLockMode.Yield, lk.Mode);
         Assert.True(ctx.Services.GetRequiredService<AuthState>().IsSuspended);
-        cut.WaitForAssertion(() => Assert.Contains("Sedang ada panggilan di tab lain", cut.Find(".session-lock h2").TextContent));
+        cut.WaitForAssertion(() => Assert.Contains("A call is active in another tab", cut.Find(".session-lock h2").TextContent));
 
         ctx.JSInterop.Setup<string>("ipopSession.claim", true).SetResult("active");
         await cut.InvokeAsync(() => cut.Find(".session-lock-actions .danger").Click());
