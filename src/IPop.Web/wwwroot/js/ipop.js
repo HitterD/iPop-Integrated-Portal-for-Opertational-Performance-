@@ -251,7 +251,8 @@ window.ipop = {
       }
     };
     const onClick = e => {
-      if (!e.target.closest(".notif-pop") && !e.target.closest(".bell-btn")) {
+      // The account menu closes itself: clicking one of its items must reach Blazor first.
+      if (!e.target.closest(".notif-pop, .bell-btn, .me-menu, .me-card")) {
         dotnet.invokeMethodAsync("OnClickAway");
       }
     };

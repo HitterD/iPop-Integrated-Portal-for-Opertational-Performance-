@@ -5,7 +5,9 @@ public record LoginResponse(string AccessToken, string RefreshToken, DateTime Ac
 
 /// No Nik: the endpoint requires a bearer token and takes the NIK from the "nik" claim.
 /// Trusting a body-supplied NIK would let anyone reset any account (spec §3.1).
-public record ChangePasswordRequest(string NewPassword, string ConfirmPassword);
+/// CurrentPassword is required for a voluntary change (account menu), not for the forced
+/// first-login change, where the user just typed the default password to get in.
+public record ChangePasswordRequest(string NewPassword, string ConfirmPassword, string? CurrentPassword = null);
 
 public record RefreshRequest(string RefreshToken);
 /// MustChangePassword rides along so a page reload cannot bypass the force-change gate.

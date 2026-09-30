@@ -2,6 +2,7 @@
 // (JPEG where the browser cannot encode WebP). The server only checks headers, so all pixel
 // work happens here. Returns { base64, type, preview } or { error }.
 window.ipopProfilePhoto = {
+  open(input) { input?.click(); },
   async crop(input, size) {
     const file = input?.files?.[0];
     if (!file) return null;

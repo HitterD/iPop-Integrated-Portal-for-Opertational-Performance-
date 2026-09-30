@@ -217,9 +217,9 @@ public class AuthState(HttpClient http, IJSRuntime js)
         return (true, null, false);
     }
 
-    public async Task<(bool Ok, Dictionary<string, string[]>? Fields, string? Error)> ChangePasswordAsync(string newPassword, string confirm)
+    public async Task<(bool Ok, Dictionary<string, string[]>? Fields, string? Error)> ChangePasswordAsync(string newPassword, string confirm, string? currentPassword = null)
     {
-        var res = await PostWithAuth("/api/auth/change-password", new { newPassword, confirmPassword = confirm });
+        var res = await PostWithAuth("/api/auth/change-password", new { newPassword, confirmPassword = confirm, currentPassword });
         if (!res.IsSuccessStatusCode)
         {
             var err = await ReadError(res);

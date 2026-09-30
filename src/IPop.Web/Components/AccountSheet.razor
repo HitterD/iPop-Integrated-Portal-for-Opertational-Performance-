@@ -1,0 +1,294 @@
+@implements IDisposable
+@inject IJSRuntime JS
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject OverlayStack Overlays
+@inject NavigationManager Nav
+
+@* Account sheet (macOS System Settings style): photo + read-only HR details + email, and a
+   pushed "Change password" pane. Opened from the sidebar account menu. *@
+@if (IsOpen)
+{
+    <div class="acct-backdrop" @onclick="Close">
+        <div class="acct-sheet" role="dialog" aria-modal="true" aria-label="Account" @onclick:stopPropagation>
+            @if (pane == Pane.Password)
+            {
+                <header class="acct-bar">
+                    <button type="button" class="acct-back" @onclick="() => Show(Pane.Profile)"><i data-lucide="chevron-left"></i>Account</button>
+                    <span class="acct-bar-title">Change password</span>
+                    <button type="button" class="acct-x" title="Close" @onclick="Close"><i data-lucide="x"></i></button>
+                </header>
+                <form class="acct-body" @onsubmit="SavePassword" @onsubmit:preventDefault>
+                    <div class="acct-group">
+                        <label class="acct-row acct-field">
+                            <span class="acct-k">Current</span>
+                            <input type="@(showPw ? "text" : "password")" autocomplete="current-password" placeholder="Required"
+                                   @bind="currentPw" @bind:event="oninput" disabled="@busyPw" />
+                        </label>
+                        <label class="acct-row acct-field">
+                            <span class="acct-k">New</span>
+                            <input type="@(showPw ? "text" : "password")" autocomplete="new-password" placeholder="Enter password"
+                                   @bind="newPw" @bind:event="oninput" disabled="@busyPw" />
+                        </label>
+                        <label class="acct-row acct-field">
+                            <span class="acct-k">Verify</span>
+                            <input type="@(showPw ? "text" : "password")" autocomplete="new-password" placeholder="Re-enter password"
+                                   @bind="confirmPw" @bind:event="oninput" disabled="@busyPw" />
+                        </label>
+                    </div>
+                    <label class="acct-show"><input type="checkbox" @bind="showPw" /> Show passwords</label>
+
+                    <ul class="acct-req">
+                        <li class="@(R1 ? "ok" : "")"><i data-lucide="@Tick(R1)"></i>At least 8 characters</li>
+                        <li class="@(R2 ? "ok" : "")"><i data-lucide="@Tick(R2)"></i>One uppercase letter and one number</li>
+                        <li class="@(R3 ? "ok" : "")"><i data-lucide="@Tick(R3)"></i>Both new passwords match</li>
+                    </ul>
+
+                    @if (pwError is not null) { <p class="acct-err"><i data-lucide="alert-circle"></i>@pwError</p> }
+                    <p class="acct-foot-note">You'll be signed out on every device, including this one, and can sign in again with the new password.</p>
+
+                    <div class="acct-actions">
+                        <button type="button" class="ghost-btn" @onclick="() => Show(Pane.Profile)" disabled="@busyPw">Cancel</button>
+                        <button type="submit" class="btn-primary" disabled="@(!PwReady || busyPw)">@(busyPw ? "Changing…" : "Change password")</button>
+                    </div>
+                </form>
+            }
+            else
+            {
+                <header class="acct-bar">
+                    <span></span>
+                    <span class="acct-bar-title">Account</span>
+                    <button type="button" class="acct-x" title="Close" @onclick="Close"><i data-lucide="x"></i></button>
+                </header>
+                <div class="acct-body">
+                    @if (me is null)
+                    {
+                        <div class="skel" style="height:180px;border-radius:14px"></div>
+                    }
+                    else
+                    {
+                        <section class="acct-hero">
+                            <label class="acct-av-wrap @(busyPhoto ? "busy" : "")" title="Change photo">
+                                <span class="acct-av" style="@(preview is not null ? $"background:url('{preview}') center/cover" : AvatarPhotos.Style(me.Nik))">
+                                    @if (preview is null) { @Initials }
+                                </span>
+                                <span class="acct-av-edit"><i data-lucide="@(busyPhoto ? "loader-2" : "camera")"></i></span>
+                                <input type="file" accept="image/jpeg,image/png,image/webp" @ref="fileInput" @onchange="PickPhoto" disabled="@busyPhoto" hidden />
+                            </label>
+                            <h2 class="acct-name">@me.Name</h2>
+                            <p class="acct-role">@(string.Join(" · ", new[] { me.Position, me.Department }.Where(s => !string.IsNullOrWhiteSpace(s))))</p>
+                            <div class="acct-photo-links">
+                                <button type="button" class="acct-link" @onclick="OpenPicker" disabled="@busyPhoto">@(HasPhoto ? "Change photo" : "Add photo")</button>
+                                @if (HasPhoto)
+                                {
+                                    <span class="acct-dot">·</span>
+                                    <button type="button" class="acct-link danger" @onclick="RemovePhoto" disabled="@busyPhoto">Remove</button>
+                                }
+                            </div>
+                            @if (photoError is not null) { <p class="acct-err center"><i data-lucide="alert-circle"></i>@photoError</p> }
+                        </section>
+
+                        <h3 class="acct-h">Contact</h3>
+                        <div class="acct-group">
+                            @if (editingEmail)
+                            {
+                                <form class="acct-row acct-field" @onsubmit="SaveEmail" @onsubmit:preventDefault>
+                                    <span class="acct-k">Email</span>
+                                    <input type="email" autocomplete="email" @ref="emailInput" @bind="email" @bind:event="oninput" disabled="@busyEmail" aria-label="Email" />
+                                    <button type="button" class="acct-link" @onclick="CancelEmail" disabled="@busyEmail">Cancel</button>
+                                    <button type="submit" class="acct-link strong" disabled="@(busyEmail || !EmailDirty)">@(busyEmail ? "Saving…" : "Save")</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <button type="button" class="acct-row acct-nav" @onclick="EditEmail">
+                                    <span class="acct-ic mail"><i data-lucide="mail"></i></span>
+                                    <span class="acct-k">Email</span>
+                                    <span class="acct-v">@(string.IsNullOrWhiteSpace(me.Email) ? "Not set" : me.Email)</span>
+                                    <i data-lucide="pencil" class="acct-chev"></i>
+                                </button>
+                            }
+                        </div>
+                        @if (emailError is not null) { <p class="acct-err"><i data-lucide="alert-circle"></i>@emailError</p> }
+                        <p class="acct-note">Used for notifications and password reset links.</p>
+
+                        <h3 class="acct-h">Security</h3>
+                        <div class="acct-group">
+                            <button type="button" class="acct-row acct-nav" @onclick="() => Show(Pane.Password)">
+                                <span class="acct-ic key"><i data-lucide="key-round"></i></span>
+                                <span class="acct-k">Change password</span>
+                                <span class="acct-v"></span>
+                                <i data-lucide="chevron-right" class="acct-chev"></i>
+                            </button>
+                        </div>
+
+                        <h3 class="acct-h">Employee details</h3>
+                        <div class="acct-group">
+                            <div class="acct-row"><span class="acct-k">NIK</span><span class="acct-v">@me.Nik</span></div>
+                            <div class="acct-row"><span class="acct-k">Position</span><span class="acct-v">@(me.Position ?? "—")</span></div>
+                            <div class="acct-row"><span class="acct-k">Department</span><span class="acct-v">@(me.Department ?? "—")</span></div>
+                        </div>
+                        <p class="acct-note">Your name and placement come from HR. Ask your administrator if something is wrong.</p>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    public enum Pane { Profile, Password }
+
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    /// Which pane to show when the sheet opens.
+    [Parameter] public Pane Start { get; set; }
+
+    private Pane pane;
+    private IDisposable? reg;
+    private DirectoryEmployeeDto? me;
+    private ElementReference fileInput, emailInput;
+    private string email = "";
+    private string? preview, photoError, emailError, pwError;
+    private bool busyPhoto, busyEmail, busyPw, editingEmail, focusEmail, showPw;
+    private string currentPw = "", newPw = "", confirmPw = "";
+
+    private bool HasPhoto => AvatarPhotos.Url(me?.Nik) is not null;
+    private bool EmailDirty => !string.Equals(email.Trim(), me?.Email, StringComparison.Ordinal);
+    private string Initials => me is null ? "" : string.Concat(me.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+        .Select(w => w[0]).Take(2)).ToUpperInvariant();
+
+    // Same policy the server enforces (AuthWorkflow.ValidatePolicy).
+    private bool R1 => newPw.Length >= 8;
+    private bool R2 => newPw.Any(char.IsUpper) && newPw.Any(char.IsDigit);
+    private bool R3 => newPw.Length > 0 && newPw == confirmPw;
+    private bool PwReady => currentPw.Length > 0 && R1 && R2 && R3;
+    private static string Tick(bool ok) => ok ? "check-circle-2" : "circle";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && reg is null)
+        {
+            reg = Overlays.Push(Close);
+            pane = Start;
+            ResetForms();
+            me = await Auth.LoadMeAsync();
+            email = me?.Email ?? "";
+        }
+        else if (!IsOpen && reg is not null) { reg.Dispose(); reg = null; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!IsOpen) return;
+        await JS.InvokeVoidAsync("ipop.icons");
+        if (focusEmail) { focusEmail = false; try { await emailInput.FocusAsync(); } catch { } }
+    }
+
+    private async Task Close()
+    {
+        if (busyPw || busyPhoto) return;
+        await IsOpenChanged.InvokeAsync(false);
+    }
+
+    private void Show(Pane p) { pane = p; pwError = null; currentPw = newPw = confirmPw = ""; }
+
+    private void ResetForms()
+    {
+        editingEmail = false; showPw = false;
+        preview = photoError = emailError = pwError = null;
+        currentPw = newPw = confirmPw = "";
+    }
+
+    private async Task OpenPicker() => await JS.InvokeVoidAsync("ipopProfilePhoto.open", fileInput);
+
+    private async Task PickPhoto()
+    {
+        photoError = null;
+        var crop = await JS.InvokeAsync<CropResult?>("ipopProfilePhoto.crop", fileInput, 256);
+        if (crop is null) return;
+        if (crop.Error is not null) { photoError = crop.Error; return; }
+
+        busyPhoto = true; preview = crop.Preview;
+        StateHasChanged();
+        try
+        {
+            var ext = crop.Type == "image/webp" ? "webp" : "jpg";
+            var file = new ByteArrayContent(Convert.FromBase64String(crop.Base64!));
+            file.Headers.ContentType = new(crop.Type!);
+            var form = new MultipartFormDataContent { { file, "file", $"avatar.{ext}" } };
+            var res = await Auth.SendMultipartAsync("/api/me/photo", form);
+            if (!res.IsSuccessStatusCode) { photoError = await ErrorMessage(res, "Could not upload the photo."); return; }
+            await Auth.LoadPhotosAsync();
+            Toasts.Show("Profile photo updated", ToastKind.Success);
+        }
+        catch { photoError = "Could not reach the server. Try again."; }
+        finally { busyPhoto = false; preview = null; }
+    }
+
+    private async Task RemovePhoto()
+    {
+        busyPhoto = true; photoError = null;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Delete, "/api/me/photo");
+            if (!res.IsSuccessStatusCode) { photoError = "Could not remove the photo."; return; }
+            await Auth.LoadPhotosAsync();
+            Toasts.Show("Profile photo removed", ToastKind.Success);
+        }
+        catch { photoError = "Could not reach the server. Try again."; }
+        finally { busyPhoto = false; }
+    }
+
+    private void EditEmail() { email = me?.Email ?? ""; emailError = null; editingEmail = true; focusEmail = true; }
+    private void CancelEmail() { editingEmail = false; emailError = null; email = me?.Email ?? ""; }
+
+    private async Task SaveEmail()
+    {
+        if (busyEmail || !EmailDirty) return;
+        busyEmail = true; emailError = null;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Put, "/api/me/email", new { email = email.Trim() });
+            if (!res.IsSuccessStatusCode) { emailError = await ErrorMessage(res, "Could not save the email."); return; }
+            await Auth.ReloadMeAsync();
+            me = Auth.Me;
+            email = me?.Email ?? email.Trim();
+            editingEmail = false;
+            Toasts.Show("Email updated", ToastKind.Success);
+        }
+        catch { emailError = "Could not reach the server. Try again."; }
+        finally { busyEmail = false; }
+    }
+
+    private async Task SavePassword()
+    {
+        if (!PwReady || busyPw) return;
+        busyPw = true; pwError = null;
+        try
+        {
+            var (ok, fields, message) = await Auth.ChangePasswordAsync(newPw, confirmPw, currentPw);
+            if (!ok)
+            {
+                pwError = fields?.Values.SelectMany(v => v).FirstOrDefault() ?? message;
+                return;
+            }
+            busyPw = false;
+            await IsOpenChanged.InvokeAsync(false);
+            Nav.NavigateTo("/login?changed=1", replace: true);
+        }
+        catch { pwError = "Could not reach the server. Try again."; }
+        finally { busyPw = false; }
+    }
+
+    private static async Task<string> ErrorMessage(HttpResponseMessage res, string fallback)
+    {
+        try { return (await res.Content.ReadFromJsonAsync<ApiError>())?.Message ?? fallback; }
+        catch { return fallback; }
+    }
+
+    public void Dispose() => reg?.Dispose();
+
+    private record CropResult(string? Base64, string? Type, string? Preview, string? Error);
+    private record ApiError(string? Code, string? Message);
+}
