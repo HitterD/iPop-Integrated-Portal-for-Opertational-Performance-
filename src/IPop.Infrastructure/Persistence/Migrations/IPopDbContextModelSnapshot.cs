@@ -3142,6 +3142,36 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("UserRoles");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.UserTutorialState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ModuleKey")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "ModuleKey")
+                        .IsUnique();
+
+                    b.ToTable("UserTutorialStates");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.WorkCalendarEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4413,6 +4443,17 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Role");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.UserTutorialState", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("User");
                 });

@@ -304,6 +304,18 @@ public static class AdminEndpoints
             return Results.Ok();
         });
 
+        // Clears every tour/invite flag so the user sees the first-visit tutorials again.
+        g.MapPost("/{nik}/reset-tutorials", async Task<IResult> (string nik, IPopDbContext db,
+            HttpContext http, CancellationToken ct) =>
+        {
+            var userId = await db.Users.Where(u => u.Nik == nik).Select(u => (Guid?)u.Id).FirstOrDefaultAsync(ct);
+            if (userId is null) return Results.NotFound();
+            await db.UserTutorialStates.Where(t => t.UserId == userId).ExecuteDeleteAsync(ct);
+            Audit(db, CallerNik(http), "admin.user.reset-tutorials", nik, DateTime.UtcNow);
+            await db.SaveChangesAsync(ct);
+            return Results.Ok();
+        });
+
         // Reset returns the account to the default flow and forces re-login everywhere.
         g.MapPost("/{nik}/reset-password", async Task<IResult> (string nik, IPopDbContext db,
             HttpContext http, CancellationToken ct) =>

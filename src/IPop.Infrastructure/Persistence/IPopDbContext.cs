@@ -31,6 +31,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<UserPermissionOverride> UserPermissionOverrides => Set<UserPermissionOverride>();
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
     public DbSet<UserFavoriteContact> UserFavoriteContacts => Set<UserFavoriteContact>();
+    public DbSet<UserTutorialState> UserTutorialStates => Set<UserTutorialState>();
 
     // Chat entities
     public DbSet<ChatRoom> ChatRooms => Set<ChatRoom>();
@@ -153,6 +154,13 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
         {
             e.HasIndex(x => new { x.UserId, x.ContactNik }).IsUnique();
             e.Property(x => x.ContactNik).HasMaxLength(32);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<UserTutorialState>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.ModuleKey }).IsUnique();
+            e.Property(x => x.ModuleKey).HasMaxLength(32);
+            e.Property(x => x.Status).HasMaxLength(16);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<Role>(e =>
