@@ -3,7 +3,7 @@
 @using IPop.Web.Services
 
 <div class="grp-member member-row-clickable" @onclick="HandleClick" @onclick:stopPropagation>
-    <div class="avatar member-row-avatar" style="@AvatarPhotos.Style(Member.Nik)">@Initials(Member.Name)</div>
+    <PersonAvatar Nik="@Member.Nik" Name="@Member.Name" Size="32" Class="avatar member-row-avatar" Decorative="true" />
     <div class="member-row-copy">
         <div class="name">@Member.Name</div>
         <div class="role">@(IsSelf ? "You" : PresenceLabel(Member.PresenceStatus))</div>
@@ -92,10 +92,4 @@
         _ => role ?? ""
     };
 
-    private static string Initials(string name)
-    {
-        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
-    }
-    private static string GetColor(string nik) => AvatarPalette.For(nik);
 }

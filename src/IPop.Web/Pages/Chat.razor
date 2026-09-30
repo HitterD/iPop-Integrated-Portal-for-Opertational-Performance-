@@ -976,9 +976,7 @@
                                                         {
                                                             var u = user;
                                                             <div class="add-user-item" @onclick="() => AddMemberToGroup(u)">
-                                                                <div class="avatar avatar-26" style="@IPop.Web.Models.AvatarPhotos.Style(u.Nik)">
-                                                                    @GetInitialsFromName(u.Name)
-                                                                </div>
+                                                                <PersonAvatar Nik="@u.Nik" Name="@u.Name" Size="26" Class="avatar avatar-26" Decorative="true" />
                                                                 <span class="name">@u.Name</span>
                                                                 <i data-lucide="plus" class="plus-icon"></i>
                                                             </div>
@@ -1696,10 +1694,7 @@
                             var p = person;
                             var picked = IsPickerPicked(p.Id);
                             <button type="button" class="picker-row" @onclick="() => TogglePickerPerson(p)">
-                                <div class="picker-av" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">
-                                    @GetInitialsFromName(p.Name)
-                                    <span class="picker-dot @(p.PresenceStatus == "on" ? "on" : "off")"></span>
-                                </div>
+                                <PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="36" Class="picker-av" Status="@(p.PresenceStatus == "on" ? "on" : "off")" Decorative="true" />
                                 <div class="picker-info">
                                     <div class="picker-name">@p.Name</div>
                                     <div class="picker-pos">@PickerSubtitle(p)</div>

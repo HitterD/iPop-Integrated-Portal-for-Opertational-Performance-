@@ -19,7 +19,7 @@
                 @foreach (var r in (Message.ReadPreview ?? visibleAvatars))
                 {
                     var reader = r;
-                    <span class="seen-avatar avatar" style="background:@Color(reader.UserName)">@Initials(reader.UserName)</span>
+                    <PersonAvatar Nik="@NikOf(reader.UserId)" Name="@reader.UserName" Size="16" Class="seen-avatar avatar" Decorative="true" />
                 }
             }
             <span class="seen-label">@SummaryLabel</span>
@@ -90,7 +90,7 @@
     private RenderFragment Row(SeenByDto r, string? meta) => __builder =>
     {
         <div class="seen-row">
-            <span class="avatar avatar-24" style="background:@Color(r.UserName)">@Initials(r.UserName)</span>
+            <PersonAvatar Nik="@NikOf(r.UserId)" Name="@r.UserName" Size="24" Class="avatar avatar-24" Decorative="true" />
             <span class="seen-name" title="@r.UserName">@r.UserName</span>
             @if (meta is not null) { <span class="seen-time">@meta</span> }
         </div>
@@ -146,12 +146,8 @@
         if (e.Key == "Escape") listOpen = false;
     }
 
-    private static string Initials(string name)
-    {
-        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
-    }
-    private static string Color(string name) => AvatarPalette.For(name);
+    // SeenByDto carries no NIK; the active room's member list maps the user id to one.
+    private string? NikOf(Guid userId) => ChatSvc.ActiveRoom?.Members.FirstOrDefault(m => m.UserId == userId)?.Nik;
 
     public void Dispose() => ChatSvc.SeenUpdated -= OnSeenUpdate;
 }

@@ -43,7 +43,7 @@
                     {
                         var user = u;
                         <div class="group-add-row" @onclick="() => AddMember(user)">
-                            <div class="avatar avatar-24" style="background:@Color(user.Nik)">@Initials(user.Name)</div>
+                            <PersonAvatar Nik="@user.Nik" Name="@user.Name" Size="24" Class="avatar avatar-24" Decorative="true" />
                             <span class="group-add-name">@user.Name</span>
                         </div>
                     }

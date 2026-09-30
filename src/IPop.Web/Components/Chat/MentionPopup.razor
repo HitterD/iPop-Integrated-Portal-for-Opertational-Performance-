@@ -19,7 +19,7 @@
                 }
                 else
                 {
-                    <div class="avatar mention-avatar" style="background:@Color(item.Member!.Nik)">@Initials(item.Member.Name)</div>
+                    <PersonAvatar Nik="@item.Member!.Nik" Name="@item.Member.Name" Size="30" Class="avatar mention-avatar" Decorative="true" />
                     <div class="mi-text"><div class="name">@item.Member.Name</div><div class="role">@RoleLabel(item.Member)</div></div>
                 }
             </div>
@@ -90,13 +90,6 @@
     private sealed class PopupItem { public MemberDto? Member; public bool IsAll; public int AllCount; public string Label = ""; }
     public sealed record PopupPick(MemberDto? Member, bool IsAll);
 
-    private static string Initials(string name)
-    {
-        var parts = name.Split([' ', ',', '.'], StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
-    }
-    // Same palette as chat bubbles/avatars elsewhere (stable per NIK, unlike string.GetHashCode).
-    private static string Color(string nik) => AvatarPalette.For(nik);
 
     private static string RoleLabel(MemberDto m) => m.Role switch
     {
