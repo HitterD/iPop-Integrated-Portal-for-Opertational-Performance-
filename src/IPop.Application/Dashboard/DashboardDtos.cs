@@ -12,20 +12,24 @@ public record DashboardDto(
     IReadOnlyList<DashboardNewsItem> News,
     IReadOnlyList<DashboardPersonItem> Online,
     int OnlineCount,
-    IReadOnlyList<DashboardStatusItem> Status);
+    IReadOnlyList<DashboardStatusItem> Status,
+    IReadOnlyList<DashboardNoteItem> Notes,
+    IReadOnlyList<DashboardTransferItem> Transfers,
+    bool IsAdmin);
 
 public record DashboardKpis(
     int MailUnread, int MailInbox,
     int ChatUnread, int ChatRooms,
     int OpenTasks, int OverdueTasks,
     DateTime? NextMeetingAt, string? NextMeetingTitle, Guid? NextMeetingId,
-    int AckPending);
+    int AckPending,
+    int MissedCalls);
 
-/// Kind: "meeting" | "task". StartAt is UTC for meetings, the due date for tasks.
+/// Kind: "meeting" | "event" | "task". StartAt is UTC for meetings, the due date for tasks.
 public record DashboardAgendaItem(string Kind, Guid Id, string Title, string Sub, DateTime? StartAt, DateTime? EndAt,
     bool Ended, bool Overdue, string Url, string? RoomName);
 
-/// Kind: "ack" | "missed-call" | "mention" | "overdue".
+/// Kind: "ack" | "missed-call" | "mention" | "note" | "overdue".
 public record DashboardAttentionItem(string Kind, string Title, string Sub, string Cta, string Url, string? PeerNik = null);
 
 public record DashboardTaskItem(Guid Id, Guid ProjectId, string Title, string ProjectName, DateTime? DueDate, bool Overdue);
@@ -37,6 +41,13 @@ public record DashboardChatItem(Guid Id, string Type, string Name, string? LastM
 public record DashboardNewsItem(Guid Id, string Type, string Title, DateTime? PublishedAt, bool NeedsAck);
 
 public record DashboardPersonItem(string Nik, string Name, string Status);
+
+/// Pages I opened lately (or own), newest first. Sub is "Edited by …" / "You" plus when.
+public record DashboardNoteItem(Guid Id, string Title, string? Emoji, string EditedBy, DateTime UpdatedAt, bool Favorite);
+
+/// Background copy/move/delete jobs from Files. Status: "Queued" | "Running" | "Completed" | "CompletedWithErrors" | "Failed".
+public record DashboardTransferItem(Guid Id, string Kind, string Status, int TotalFiles, int CompletedFiles, int FailedFiles,
+    string Server, string? DestDir, DateTime? FinishedAt);
 
 /// State: "ok" | "warn" | "unknown".
 public record DashboardStatusItem(string Label, string State, string Note);

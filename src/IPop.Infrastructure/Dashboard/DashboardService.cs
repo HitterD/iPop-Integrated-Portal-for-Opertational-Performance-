@@ -105,9 +105,18 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
             .OrderBy(m => m.StartAt)
             .Select(m => new { m.Id, m.Title, m.StartAt, m.EndAt, m.Link, People = m.Attendees.Count + 1 })
             .ToListAsync(ct);
+        // Personal calendar entries (meetings already come from Meetings above).
+        var events = await db.CalendarEvents.AsNoTracking()
+            .Where(e => e.OwnerId == userId && e.MeetingId == null && e.StartAt < dayEndUtc && e.EndAt > dayStartUtc)
+            .OrderBy(e => e.StartAt)
+            .Select(e => new { e.Id, e.Title, e.StartAt, e.EndAt })
+            .ToListAsync(ct);
         var agenda = todays.Select(m => new DashboardAgendaItem("meeting", m.Id, m.Title,
                 $"{m.People} people", m.StartAt, m.EndAt, m.EndAt < now, false, $"/calls?tab=scheduled&meeting={m.Id}",
                 $"meeting-{m.Id:N}"))
+            .Concat(events.Select(e => new DashboardAgendaItem("event", e.Id, e.Title, "Calendar",
+                e.StartAt, e.EndAt, e.EndAt < now, false, "/calendar", null)))
+            .OrderBy(a => a.StartAt ?? DateTime.MinValue)
             .Concat(sortedTasks.Where(t => t.DueDate is { } d && d.Date <= localToday).Take(2)
                 .Select(t => new DashboardAgendaItem("task", t.Id, t.Title, t.ProjectName, t.DueDate, null, false,
                     IsOverdue(t.DueDate), $"/projects/{t.ProjectId}?task={t.Id}", null)))
@@ -176,8 +185,55 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
                 x.Type == "group" && x.Room is not null ? $"{FirstName(x.Sender)} mentioned you in {x.Room}" : $"{FirstName(x.Sender)} mentioned you",
                 Snip(x.Content, 90) ?? "", "Reply", $"/chat/{x.RoomId}")));
 
+        // Notes mentions / comment replies arrive as gateway notifications; unread ones still need a look.
+        var noteNotes = await db.NotificationDeliveries.AsNoTracking()
+            .Where(d => d.UserId == userId && d.ReadAt == null && d.CreatedAt >= now.AddDays(-7)
+                && (d.Request.EventType == "note.mention" || d.Request.EventType == "note.comment"))
+            .OrderByDescending(d => d.CreatedAt)
+            .Take(3)
+            .Select(d => new { d.Request.Title, d.Request.Body, d.Request.TargetUrl, d.CreatedAt })
+            .ToListAsync(ct);
+        attention.AddRange(noteNotes.Select(n => new DashboardAttentionItem("note", n.Title,
+            $"Notes · {LocalLabel(n.CreatedAt, tz, localToday)}", "Open", n.TargetUrl ?? "/notes")));
+
         attention.AddRange(sortedTasks.Where(t => IsOverdue(t.DueDate)).Take(3).Select(t => new DashboardAttentionItem("overdue",
             $"“{t.Title}” is overdue", $"{t.ProjectName} · due {t.DueDate:dd MMM}", "Open", $"/projects/{t.ProjectId}?task={t.Id}")));
+
+        var missedCount = await db.CallHistories.AsNoTracking()
+            .CountAsync(h => h.PerformerId == userId && h.Direction == "incoming" && h.Result == "missed" && h.StartedAt >= now.AddDays(-2), ct);
+
+        // ── Notes ── pages I visited lately, topped up with ones I own.
+        var visited = await db.NoteVisits.AsNoTracking()
+            .Where(v => v.UserId == userId && db.NotePages.Any(p => p.Id == v.PageId && p.DeletedAt == null))
+            .OrderByDescending(v => v.VisitedAt)
+            .Take(4)
+            .Select(v => v.PageId)
+            .ToListAsync(ct);
+        var owned = await db.NotePages.AsNoTracking()
+            .Where(p => p.OwnerId == userId && p.DeletedAt == null && !p.IsGuide && !visited.Contains(p.Id))
+            .OrderByDescending(p => p.UpdatedAt)
+            .Take(4)
+            .Select(p => p.Id)
+            .ToListAsync(ct);
+        var noteIds = visited.Concat(owned).Take(4).ToList();
+        var favs = await db.NoteFavorites.AsNoTracking().Where(f => f.UserId == userId && noteIds.Contains(f.PageId)).Select(f => f.PageId).ToListAsync(ct);
+        var notePages = await db.NotePages.AsNoTracking()
+            .Where(p => noteIds.Contains(p.Id))
+            .Select(p => new { p.Id, p.Title, p.Emoji, p.UpdatedAt, p.UpdatedById, Editor = db.Users.Where(u => u.Id == p.UpdatedById).Select(u => u.Name).FirstOrDefault() })
+            .ToListAsync(ct);
+        var notes = noteIds.Select(id => notePages.FirstOrDefault(p => p.Id == id)).Where(p => p is not null)
+            .Select(p => new DashboardNoteItem(p!.Id, string.IsNullOrWhiteSpace(p.Title) ? "Untitled" : p.Title, p.Emoji,
+                p.UpdatedById is null || p.UpdatedById == userId ? "You" : FirstName(p.Editor), p.UpdatedAt, favs.Contains(p.Id)))
+            .ToList();
+
+        // ── Files ── running jobs, plus ones that finished in the last day.
+        var transfers = await db.FileOperations.AsNoTracking()
+            .Where(o => o.UserId == userId && (o.Status == "Queued" || o.Status == "Running" || o.FinishedAt >= now.AddDays(-1)))
+            .OrderByDescending(o => o.CreatedAt)
+            .Take(2)
+            .Select(o => new DashboardTransferItem(o.Id, o.Kind, o.Status, o.TotalFiles, o.CompletedFiles, o.FailedFiles,
+                o.DestServer, o.DestDir, o.FinishedAt))
+            .ToListAsync(ct);
 
         // ── Team online ──
         var awayCutoff = now - PresenceStatus.OfflineAfter;
@@ -217,7 +273,7 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
         return new DashboardDto(
             FirstName(me.Name),
             new DashboardKpis(mailUnread, mailInbox, chatUnread, rooms.Count, openTasks.Count, overdue,
-                next?.StartAt, next?.Title, next?.Id, ackPending.Count),
+                next?.StartAt, next?.Title, next?.Id, ackPending.Count, missedCount),
             agenda,
             attention,
             myTasks,
@@ -226,7 +282,10 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
             news.Take(3).Select(n => new DashboardNewsItem(n.Id, n.Type, n.Title, n.PublishedAt, n.RequiresAcknowledgement && !n.Acked)).ToList(),
             online.Take(10).ToList(),
             online.Count,
-            status);
+            status,
+            notes,
+            transfers,
+            isAdmin);
     }
 
     private static string FirstName(string? name) =>

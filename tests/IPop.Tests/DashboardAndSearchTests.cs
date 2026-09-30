@@ -135,4 +135,39 @@ public class DashboardAndSearchTests
         Assert.Contains(dto.Online, p => p.Nik == "DASH_BOB" && p.Status == "on");
         Assert.Contains(dto.Status, s => s.Label == "HRIS sync");
     }
+
+    [Fact]
+    public async Task DashboardService_IncludesCalendarEventsNotesAndTransfers()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("DASH_NOTES");
+        me.TimeZoneId = "UTC";
+        var now = DateTime.UtcNow;
+        t.Db.CalendarEvents.Add(new CalendarEvent
+        {
+            Id = Guid.NewGuid(), Title = "Dentist", OwnerId = me.Id, StartAt = now.Date.AddHours(23), EndAt = now.Date.AddHours(23).AddMinutes(30), CreatedAt = now,
+        });
+        var page = new NotePage { Id = Guid.NewGuid(), OwnerId = me.Id, Title = "Rencana Q4", Accent = "default", Font = "default", CreatedAt = now, UpdatedAt = now };
+        t.Db.NotePages.Add(page);
+        t.Db.NoteFavorites.Add(new NoteFavorite { PageId = page.Id, UserId = me.Id, CreatedAt = now });
+        t.Db.FileOperations.Add(new FileOperation
+        {
+            Id = Guid.NewGuid(), UserId = me.Id, Kind = "move", SourceServer = "nas1", DestServer = "nas1", ItemsJson = "[]",
+            DestDir = "/Shared/Finance", Status = "Running", TotalFiles = 12, CompletedFiles = 7, CreatedAt = now,
+        });
+        await t.Db.SaveChangesAsync();
+
+        var dto = await new IPop.Infrastructure.Dashboard.DashboardService(t.Verify()).GetAsync(me.Id);
+
+        Assert.NotNull(dto);
+        Assert.Contains(dto.Agenda, a => a.Kind == "event" && a.Title == "Dentist");
+        var note = Assert.Single(dto.Notes);
+        Assert.Equal("Rencana Q4", note.Title);
+        Assert.True(note.Favorite);
+        Assert.Equal("You", note.EditedBy);
+        var op = Assert.Single(dto.Transfers);
+        Assert.Equal(7, op.CompletedFiles);
+        Assert.Equal(0, dto.Kpis.MissedCalls);
+        Assert.False(dto.IsAdmin);
+    }
 }
