@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iPop — Tutorials &amp; practice mode mockup</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="preconnect" href="https://rsms.me/"><link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<style>
+/* ── Tokens (mirror src/IPop.Web/wwwroot/css/core/tokens.css) ───────────── */
+:root{
+  --bg:#f5f5f7; --surface:#fff; --surface-2:#f7f7f9; --fill:rgba(118,118,128,.10);
+  --line:rgba(0,0,0,.07); --ink:#1d1d1f; --ink-2:#48484a; --ink-3:#86868b; --ink-4:#aeaeb2;
+  --accent:#2e9d6b; --danger:#ff3b30; --practice:#f5b301; --practice-ink:#5c4300;
+  --sh:0 1px 2px rgba(0,0,0,.04),0 8px 24px -12px rgba(0,0,0,.10);
+  --sh-pop:0 24px 60px -18px rgba(0,0,0,.35),0 2px 6px rgba(0,0,0,.06);
+  --r:20px; --ease:cubic-bezier(.2,.8,.2,1);
+}
+[data-theme=dark]{
+  --bg:#000; --surface:#1c1c1e; --surface-2:#2c2c2e; --fill:rgba(118,118,128,.24);
+  --line:rgba(255,255,255,.08); --ink:#f5f5f7; --ink-2:#d1d1d6; --ink-3:#8e8e93; --ink-4:#636366;
+  --practice:#ffcc33; --practice-ink:#2b2000;
+  --sh:0 0 0 1px rgba(255,255,255,.04); --sh-pop:0 0 0 1px rgba(255,255,255,.08),0 24px 60px -18px rgba(0,0,0,.8);
+}
+.m-chat{--m:#16a34a}.m-project{--m:#0d9488}.m-call{--m:#dc2626}
+
+*{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+.lucide{width:16px;height:16px;stroke-width:2}
+a{color:inherit;text-decoration:none} button{font:inherit;color:inherit}
+
+/* ── Minimal shell ──────────────────────────────────────────────────────── */
+.shell{display:flex;height:100vh;overflow:hidden}
+.side{width:232px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--line);padding:18px 12px}
+.side .b{display:flex;align-items:center;gap:8px;font-weight:700;font-size:20px;padding:4px 8px 18px}
+.side .b i{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#16a34a,#0891b2);display:block}
+.side .n{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;font-size:14px;color:var(--ink-2);cursor:pointer}
+.side .n.on{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);font-weight:600}
+.side .n .done{margin-left:auto;color:var(--accent);width:14px;height:14px}
+.side .g{font-size:11px;color:var(--ink-3);padding:14px 10px 4px}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.top{height:64px;flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 24px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--surface) 80%,transparent);backdrop-filter:blur(20px)}
+.top h1{font-size:18px;margin:0}.top small{display:block;font-size:12px;color:var(--ink-3);font-weight:400}
+.top .sp{flex:1}
+.ib{height:34px;min-width:34px;border-radius:10px;border:0;background:var(--fill);color:var(--ink-2);cursor:pointer;display:grid;place-items:center;padding:0 10px;font-size:13px;position:relative}
+.ib.help{font-weight:700}
+.ib.help.pulse::after{content:"";position:absolute;inset:-3px;border-radius:13px;border:2px solid var(--m,var(--accent));animation:ring 1.8s infinite}
+@keyframes ring{0%{opacity:.9;transform:scale(.92)}100%{opacity:0;transform:scale(1.25)}}
+.mock{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--ink-3);border-right:1px solid var(--line);padding-right:10px;margin-right:2px}
+.mock select{height:30px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:12px;padding:0 6px}
+
+/* ── Practice bar ───────────────────────────────────────────────────────── */
+.pbar{display:none;align-items:center;gap:12px;padding:8px 24px;background:var(--practice);color:var(--practice-ink);font-size:13px;font-weight:500;flex-shrink:0;background-image:repeating-linear-gradient(-45deg,transparent 0 14px,rgba(255,255,255,.14) 14px 28px)}
+.practice .pbar{display:flex}
+.pbar b{font-weight:700}
+.pbar .wait{display:inline-flex;align-items:center;gap:6px;background:rgba(0,0,0,.1);padding:3px 10px;border-radius:99px;font-weight:600;font-size:12px}
+.pbar .sp{flex:1}
+.pbar button{height:28px;padding:0 12px;border-radius:99px;border:0;cursor:pointer;font-size:12.5px;font-weight:600;background:rgba(0,0,0,.1);color:inherit;display:inline-flex;align-items:center;gap:5px}
+.pbar button.x{background:var(--practice-ink);color:var(--practice)}
+.sample{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--practice-ink);background:var(--practice);padding:1px 6px;border-radius:5px;vertical-align:1px;margin-left:5px}
+
+.page{flex:1;min-height:0;display:flex;overflow:hidden}
+.mod{display:none;flex:1;min-width:0}
+.mod.on{display:flex}
+
+/* ── Empty state (real mode, nothing yet) ───────────────────────────────── */
+.empty{margin:auto;max-width:420px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;padding:32px}
+.empty .ic{width:64px;height:64px;border-radius:20px;display:grid;place-items:center;color:#fff;background:linear-gradient(145deg,color-mix(in srgb,var(--m) 70%,#fff),var(--m));box-shadow:0 14px 30px -14px var(--m)}
+.empty .ic .lucide{width:30px;height:30px}
+.empty h2{margin:8px 0 0;font-size:21px;letter-spacing:-.01em}
+.empty p{margin:0;color:var(--ink-3);font-size:14px;line-height:1.5}
+.empty .acts{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:center}
+.btn{height:36px;padding:0 16px;border-radius:99px;border:0;cursor:pointer;font-size:13.5px;font-weight:600;display:inline-flex;align-items:center;gap:6px;background:var(--fill);color:var(--ink)}
+.btn.p{background:var(--m);color:#fff}
+.btn .lucide{width:15px;height:15px}
+
+/* ── Chat ───────────────────────────────────────────────────────────────── */
+.rooms{width:320px;flex-shrink:0;border-right:1px solid var(--line);background:var(--surface);display:flex;flex-direction:column}
+.rooms .hd{padding:16px 16px 10px;display:flex;align-items:center;gap:8px}
+.rooms .hd h2{margin:0;font-size:19px;flex:1}
+.rooms .tabs{display:flex;gap:6px;padding:0 16px 10px}
+.rooms .tabs span{font-size:12.5px;font-weight:600;padding:5px 11px;border-radius:99px;background:var(--fill);color:var(--ink-2)}
+.rooms .tabs span.on{background:var(--m);color:#fff}
+.rooms .srch{margin:0 16px 10px;height:34px;border-radius:10px;background:var(--fill);display:flex;align-items:center;gap:8px;padding:0 10px;color:var(--ink-3);font-size:13px}
+.room{display:flex;gap:11px;align-items:center;padding:10px 16px;cursor:pointer}
+.room.on{background:color-mix(in srgb,var(--m) 10%,transparent)}
+.av{width:40px;height:40px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;color:#fff;font-size:13px;font-weight:700}
+.room .tx{flex:1;min-width:0}
+.room .tx b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.room .tx>span{display:block;font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.room .rt{font-size:11.5px;color:var(--ink-3);display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.room .ud{min-width:18px;height:18px;border-radius:99px;background:var(--m);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;padding:0 5px}
+.conv{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--surface-2)}
+.conv .hd{height:60px;flex-shrink:0;display:flex;align-items:center;gap:11px;padding:0 18px;background:var(--surface);border-bottom:1px solid var(--line)}
+.conv .hd .av{width:34px;height:34px;font-size:12px}
+.conv .hd b{font-size:14.5px}.conv .hd small{display:block;font-size:12px;color:var(--ink-3)}
+.conv .hd .acts{margin-left:auto;display:flex;gap:6px}
+.msgs{flex:1;overflow:auto;padding:18px 22px;display:flex;flex-direction:column;gap:6px}
+.day{align-self:center;font-size:11.5px;font-weight:600;color:var(--ink-3);background:var(--fill);padding:3px 10px;border-radius:99px;margin:6px 0}
+.bub{max-width:62%;padding:9px 13px;border-radius:18px;font-size:14px;line-height:1.45;background:var(--surface);box-shadow:var(--sh);align-self:flex-start;animation:pop .25s var(--ease)}
+.bub.me{align-self:flex-end;background:var(--m);color:#fff;box-shadow:none}
+.bub small{display:block;font-size:11px;opacity:.6;margin-top:3px}
+.bub .mn{color:var(--m);font-weight:600}.bub.me .mn{color:#fff;text-decoration:underline}
+.bub .file{display:flex;gap:10px;align-items:center;margin-top:6px;padding:8px 10px;border-radius:12px;background:var(--fill)}
+.typing{align-self:flex-start;font-size:12px;color:var(--ink-3);padding:4px 6px;display:none}
+@keyframes pop{from{opacity:0;transform:translateY(6px) scale(.98)}to{opacity:1;transform:none}}
+.comp{margin:0 18px 16px;display:flex;align-items:center;gap:8px;background:var(--surface);border-radius:16px;box-shadow:var(--sh);padding:6px 6px 6px 10px}
+.comp input{flex:1;border:0;background:none;outline:0;font:inherit;font-size:14px;color:var(--ink);height:36px}
+.comp .send{width:36px;height:36px;border-radius:12px;border:0;background:var(--m);color:#fff;display:grid;place-items:center;cursor:pointer}
+
+/* ── Projects ───────────────────────────────────────────────────────────── */
+.proj{flex:1;display:flex;flex-direction:column;min-width:0;padding:18px 22px;gap:14px;overflow:auto}
+.proj .hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.proj .pick{display:flex;align-items:center;gap:10px;background:var(--surface);box-shadow:var(--sh);padding:6px 12px 6px 6px;border-radius:14px}
+.proj .pick .sq{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;color:#fff;font-weight:700;font-size:12px;background:var(--m)}
+.proj .pick b{font-size:14.5px}.proj .pick small{display:block;font-size:12px;color:var(--ink-3)}
+.seg{display:flex;background:var(--fill);border-radius:10px;padding:3px}
+.seg span{font-size:12.5px;font-weight:600;padding:5px 12px;border-radius:8px;color:var(--ink-2)}
+.seg span.on{background:var(--surface);color:var(--ink);box-shadow:var(--sh)}
+.proj .hd .sp{flex:1}
+.board{display:grid;grid-template-columns:repeat(3,minmax(240px,1fr));gap:14px;align-items:start}
+.lane{background:color-mix(in srgb,var(--fill) 60%,transparent);border-radius:18px;padding:10px;min-height:200px;transition:background .15s}
+.lane.over{background:color-mix(in srgb,var(--m) 14%,transparent)}
+.lane h4{margin:2px 4px 10px;font-size:13px;display:flex;align-items:center;gap:7px}
+.lane h4 i{width:8px;height:8px;border-radius:50%;display:block}
+.lane h4 span{color:var(--ink-3);font-weight:500}
+.task{background:var(--surface);border-radius:14px;box-shadow:var(--sh);padding:11px 12px;margin-bottom:8px;cursor:grab;animation:pop .25s var(--ease)}
+.task.drag{opacity:.4}
+.task b{display:block;font-size:13.5px;margin-bottom:8px}
+.task .meta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3)}
+.task .meta .av{width:22px;height:22px;font-size:9.5px;margin-left:auto}
+.due{font-size:11px;font-weight:600;padding:2px 7px;border-radius:99px;background:var(--fill)}
+.due.late{color:var(--danger);background:color-mix(in srgb,var(--danger) 12%,transparent)}
+.due.today{color:#c2410c;background:rgba(234,88,12,.12)}
+.addt{width:100%;height:34px;border:1.5px dashed var(--line);border-radius:12px;background:none;color:var(--ink-3);cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;gap:6px}
+
+/* ── Invite card (first visit) ──────────────────────────────────────────── */
+.invite{position:fixed;right:22px;bottom:22px;width:340px;background:var(--surface);border-radius:20px;box-shadow:var(--sh-pop);padding:16px;z-index:40;display:none;animation:rise .45s var(--ease)}
+.invite.on{display:block}
+.invite .x{position:absolute;top:10px;right:10px;width:28px;height:28px;border-radius:50%;border:0;background:var(--fill);cursor:pointer;display:grid;place-items:center;color:var(--ink-3)}
+.invite .ic{width:40px;height:40px;border-radius:13px;display:grid;place-items:center;color:#fff;background:linear-gradient(145deg,color-mix(in srgb,var(--m) 70%,#fff),var(--m))}
+.invite h3{margin:12px 0 4px;font-size:16px}
+.invite p{margin:0 0 14px;font-size:13.5px;color:var(--ink-2);line-height:1.45}
+.invite .acts{display:flex;gap:8px;flex-wrap:wrap}
+@keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+
+/* ── Tour (driver.js-style, themed) ─────────────────────────────────────── */
+.tour-hole{position:fixed;z-index:50;border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.52),0 0 0 3px var(--m);transition:all .35s var(--ease);pointer-events:none;display:none}
+.tour-pop{position:fixed;z-index:51;width:330px;background:var(--surface);border-radius:18px;box-shadow:var(--sh-pop);padding:16px;display:none;transition:top .35s var(--ease),left .35s var(--ease)}
+.tour-pop .st{font-size:11.5px;font-weight:700;color:var(--m);letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:center;gap:6px}
+.tour-pop .st .skip{margin-left:auto;border:0;background:none;color:var(--ink-3);cursor:pointer;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0}
+.tour-pop h3{margin:6px 0 6px;font-size:16px}
+.tour-pop p{margin:0;font-size:13.5px;line-height:1.5;color:var(--ink-2)}
+.tour-pop ul{margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--ink-2);line-height:1.55}
+.tour-pop .ft{display:flex;align-items:center;gap:8px;margin-top:14px}
+.tour-pop .dots{display:flex;gap:5px;flex:1}
+.tour-pop .dots i{width:6px;height:6px;border-radius:99px;background:var(--line);transition:width .25s}
+.tour-pop .dots i.on{width:18px;background:var(--m)}
+.tour-pop.limits{border-top:4px solid var(--practice)}
+
+/* ── Help panel ("?") ───────────────────────────────────────────────────── */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:44;display:none}
+.help-p{position:fixed;top:0;right:0;bottom:0;width:380px;max-width:100%;background:var(--surface);z-index:45;box-shadow:var(--sh-pop);transform:translateX(105%);transition:transform .35s var(--ease);display:flex;flex-direction:column}
+.help-open .help-p{transform:none}.help-open .scrim{display:block}
+.help-p .hd{padding:18px 18px 14px;display:flex;align-items:center;gap:11px;border-bottom:1px solid var(--line)}
+.help-p .hd .ic{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;color:#fff;background:var(--m)}
+.help-p .hd b{font-size:16px}.help-p .hd small{display:block;font-size:12px;color:var(--ink-3)}
+.help-p .hd .x{margin-left:auto}
+.help-p .bd{flex:1;overflow:auto;padding:16px 18px 24px}
+.help-p .cta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px}
+.help-p .cta button{height:auto;padding:12px;border-radius:14px;flex-direction:column;align-items:flex-start;gap:6px;text-align:left}
+.help-p .cta button small{font-weight:500;font-size:11.5px;opacity:.8}
+.help-p h4{margin:18px 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-3)}
+.feat{display:flex;gap:11px;padding:8px 0}
+.feat .sq{width:30px;height:30px;border-radius:9px;flex-shrink:0;display:grid;place-items:center;color:var(--m);background:color-mix(in srgb,var(--m) 13%,transparent)}
+.feat .sq .lucide{width:15px;height:15px}
+.feat b{display:block;font-size:13.5px}.feat span{font-size:12.5px;color:var(--ink-3);line-height:1.45}
+.feat.no .sq{color:var(--ink-3);background:var(--fill)}
+.kb{display:flex;justify-content:space-between;font-size:13px;padding:5px 0;color:var(--ink-2)}
+kbd{font:inherit;font-size:11.5px;font-weight:600;background:var(--fill);border-radius:6px;padding:2px 7px}
+.others{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.others span{font-size:12.5px;display:flex;align-items:center;gap:6px;padding:7px 9px;border-radius:10px;background:var(--fill);color:var(--ink-2)}
+.others span .lucide{width:14px;height:14px}
+.others span.d .lucide{color:var(--accent)}
+
+/* ── Simulated-action toast ─────────────────────────────────────────────── */
+.toast{position:fixed;left:50%;top:78px;transform:translate(-50%,-20px);opacity:0;z-index:60;background:var(--surface);box-shadow:var(--sh-pop);border-radius:16px;padding:12px 14px;display:flex;gap:11px;align-items:center;max-width:440px;transition:all .3s var(--ease);pointer-events:none;border-left:4px solid var(--practice)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.toast b{display:block;font-size:13.5px}.toast span{font-size:12.5px;color:var(--ink-3)}
+
+/* ── Mobile ─────────────────────────────────────────────────────────────── */
+@media (max-width:767px){
+  .side,.mock{display:none}
+  .top{height:56px;padding:0 14px}
+  .pbar{padding:7px 14px;font-size:12px;flex-wrap:wrap;gap:6px 10px}.pbar .long{display:none}
+  .rooms{width:100%;border:0}.conv{display:none}
+  .board{grid-template-columns:repeat(3,82vw);overflow-x:auto;scroll-snap-type:x mandatory}.lane{scroll-snap-align:start}
+  .proj{padding:14px}
+  .invite{left:12px;right:12px;bottom:12px;width:auto}
+  /* Tour step becomes a bottom sheet so it never covers the highlighted control. */
+  .tour-pop{left:0!important;right:0;top:auto!important;bottom:0;width:auto;border-radius:22px 22px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom))}
+  .help-p{width:100%;top:auto;height:86vh;border-radius:22px 22px 0 0;transform:translateY(105%)}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="b"><i></i>iPop</div>
+    <div class="g">Workspace</div>
+    <a class="n"><i data-lucide="layout-grid"></i>Dashboard</a><a class="n"><i data-lucide="users"></i>Directory</a>
+    <a class="n" data-go="projects"><i data-lucide="kanban"></i>Projects<i data-lucide="circle-check" class="done" id="dn-projects" style="display:none"></i></a>
+    <a class="n"><i data-lucide="notebook-pen"></i>Notes</a>
+    <div class="g">Communication</div>
+    <a class="n" data-go="chat"><i data-lucide="message-circle"></i>Chat<i data-lucide="circle-check" class="done" id="dn-chat" style="display:none"></i></a>
+    <a class="n"><i data-lucide="mail"></i>Mail</a><a class="n"><i data-lucide="newspaper"></i>News &amp; Memos</a><a class="n"><i data-lucide="phone"></i>Calls</a>
+    <div class="g">Resources</div>
+    <a class="n"><i data-lucide="folder"></i>Files</a><a class="n"><i data-lucide="calendar"></i>Calendar</a>
+  </aside>
+
+  <div class="main">
+    <div class="top">
+      <div><h1 id="ttl">Chat</h1><small id="sub">Messages and groups</small></div>
+      <div class="sp"></div>
+      <div class="mock">Mockup:
+        <select id="role" onchange="setRole(this.value)"><option value="emp">Employee</option><option value="hr">HR</option><option value="admin">Admin</option></select>
+        <button class="ib" onclick="firstVisit()" title="Simulate first visit">First visit</button>
+      </div>
+      <button class="ib help pulse" id="helpBtn" onclick="openHelp()" title="Help for this page (?)" aria-label="Help">?</button>
+      <button class="ib" onclick="toggleTheme()" title="Theme"><i data-lucide="moon"></i></button>
+      <button class="ib" title="Notifications"><i data-lucide="bell"></i></button>
+    </div>
+
+    <div class="pbar" role="status">
+      <i data-lucide="flask-conical"></i>
+      <span><b>Practice mode</b><span class="long"> — nothing you do here is sent or saved. Try anything.</span></span>
+      <span class="wait" title="Real notifications are held until you exit"><i data-lucide="bell" style="width:13px;height:13px"></i>3 real notifications waiting</span>
+      <span class="sp"></span>
+      <button onclick="resetSample()"><i data-lucide="rotate-ccw" style="width:13px;height:13px"></i>Reset sample</button>
+      <button class="x" onclick="setPractice(false)">Exit practice</button>
+    </div>
+
+    <div class="page">
+      <!-- ═══════════ CHAT ═══════════ -->
+      <div class="mod m-chat on" id="mod-chat">
+        <div class="empty real-only">
+          <div class="ic"><i data-lucide="message-circle"></i></div>
+          <h2>No conversations yet</h2>
+          <p>Message a colleague directly, or create a group for your team. Everyone in iPop is one search away.</p>
+          <div class="acts"><button class="btn p"><i data-lucide="message-circle-plus"></i>Start a chat</button><button class="btn" onclick="setPractice(true)"><i data-lucide="flask-conical"></i>Try with sample data</button></div>
+        </div>
+
+        <div class="rooms sample-only" id="t-rooms">
+          <div class="hd"><h2>Messages</h2><button class="ib" id="t-new" title="New chat"><i data-lucide="square-pen"></i></button></div>
+          <div class="tabs" id="t-tabs"><span class="on">All</span><span>Unread</span><span>@ Mentions</span><span>Saved</span></div>
+          <div class="srch"><i data-lucide="search"></i>Search people and messages</div>
+          <div class="room on"><span class="av" style="background:#e11d48">RP</span><span class="tx"><b>Rina Putri<span class="sample">Sample</span></b><span id="lastRina">Can you check the vendor quote?</span></span><span class="rt">09:42<span class="ud">2</span></span></div>
+          <div class="room"><span class="av" style="background:#0891b2">IT</span><span class="tx"><b>IT Infra Team<span class="sample">Sample</span></b><span>Dimas: Server patch tonight 22:00</span></span><span class="rt">08:15<span class="ud">5</span></span></div>
+          <div class="room"><span class="av" style="background:#ca8a04">DS</span><span class="tx"><b>Dimas Saputra<span class="sample">Sample</span></b><span>You: Thanks, noted 👍</span></span><span class="rt">Yesterday</span></div>
+          <div class="room"><span class="av" style="background:#2563eb">MW</span><span class="tx"><b>Maya Wulandari<span class="sample">Sample</span></b><span>📎 Q3-budget.xlsx</span></span><span class="rt">Mon</span></div>
+        </div>
+        <div class="conv sample-only">
+          <div class="hd"><span class="av" style="background:#e11d48">RP</span><div><b>Rina Putri<span class="sample">Sample</span></b><small>Procurement · Online</small></div>
+            <div class="acts" id="t-call"><button class="ib" onclick="simulate('call')" title="Voice call"><i data-lucide="phone"></i></button><button class="ib" onclick="simulate('video')" title="Video call"><i data-lucide="video"></i></button><button class="ib" title="Info"><i data-lucide="info"></i></button></div></div>
+          <div class="msgs" id="msgs">
+            <span class="day">Today</span>
+            <div class="bub">Morning! Did you get the vendor quote I sent yesterday?<small>09:38</small></div>
+            <div class="bub">Here it is again 👇<div class="file"><i data-lucide="file-spreadsheet"></i><span><b style="font-size:13px">Vendor-quote-Oct.xlsx</b><br><span style="font-size:11.5px;opacity:.7">48 KB · stored on the NAS</span></span></div><small>09:40</small></div>
+            <div class="bub">Can you check it before the 10:00 meeting? <span class="mn">@you</span><small>09:42</small></div>
+          </div>
+          <div class="typing" id="typing">Rina is typing…</div>
+          <div class="comp" id="t-comp"><button class="ib" style="background:none" onclick="simulate('attach')" title="Attach"><i data-lucide="paperclip"></i></button><input id="inp" placeholder="Reply to Rina… try it, it's practice" onkeydown="if(event.key==='Enter')send()"><button class="send" onclick="send()" aria-label="Send"><i data-lucide="send-horizontal"></i></button></div>
+        </div>
+      </div>
+
+      <!-- ═══════════ PROJECTS ═══════════ -->
+      <div class="mod m-project" id="mod-projects">
+        <div class="empty real-only">
+          <div class="ic"><i data-lucide="kanban"></i></div>
+          <h2>You're not in any project yet</h2>
+          <p id="projEmptyTxt">When someone adds you to a project, its board shows up here with the tasks assigned to you.</p>
+          <div class="acts"><button class="btn" onclick="setPractice(true)"><i data-lucide="flask-conical"></i>Try with sample data</button></div>
+        </div>
+        <div class="proj sample-only">
+          <div class="hd">
+            <div class="pick" id="t-pick"><span class="sq">OW</span><div><b>Office Wi-Fi Upgrade<span class="sample">Sample</span></b><small>IT Infra · 6 members</small></div><i data-lucide="chevron-down"></i></div>
+            <div class="seg" id="t-views"><span class="on">Board</span><span>Table</span><span>Timeline</span></div>
+            <span class="sp"></span>
+            <button class="btn p" id="t-newtask" onclick="newTask()"><i data-lucide="plus"></i>New task</button>
+          </div>
+          <div class="board" id="t-board">
+            <div class="lane" data-lane="todo"><h4><i style="background:#8e8e93"></i>To do <span>3</span></h4>
+              <div class="task" draggable="true" id="t-card"><b>Survey signal on floor 3</b><div class="meta"><span class="due today">Today</span><i data-lucide="message-square" style="width:13px;height:13px"></i>2<span class="av" style="background:#e11d48">RP</span></div></div>
+              <div class="task" draggable="true"><b>Order 12 access points</b><div class="meta"><span class="due">Fri</span><span class="av" style="background:#0d9488">ME</span></div></div>
+              <div class="task" draggable="true"><b>Update network diagram</b><div class="meta"><span class="due">8 Oct</span><span class="av" style="background:#ca8a04">DS</span></div></div>
+            </div>
+            <div class="lane" data-lane="doing"><h4><i style="background:#2563eb"></i>In progress <span>2</span></h4>
+              <div class="task" draggable="true"><b>Compare vendor quotes</b><div class="meta"><span class="due late">2d late</span><i data-lucide="paperclip" style="width:13px;height:13px"></i>1<span class="av" style="background:#0d9488">ME</span></div></div>
+              <div class="task" draggable="true"><b>Draft rollout schedule</b><div class="meta"><span class="due">Tomorrow</span><span class="av" style="background:#2563eb">MW</span></div></div>
+            </div>
+            <div class="lane" data-lane="done"><h4><i style="background:#34c759"></i>Done <span>1</span></h4>
+              <div class="task" draggable="true"><b>Get budget approval</b><div class="meta"><span class="due">28 Sep</span><span class="av" style="background:#e11d48">RP</span></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- First-visit invite -->
+<div class="invite" id="invite" role="dialog" aria-labelledby="invH">
+  <button class="x" onclick="dismissInvite()" aria-label="Dismiss"><i data-lucide="x" style="width:14px;height:14px"></i></button>
+  <div class="ic"><i data-lucide="sparkles"></i></div>
+  <h3 id="invH">New to Chat?</h3>
+  <p id="invP">Take a 1-minute tour of the main features, or explore with sample conversations first. Nothing is sent to anyone.</p>
+  <div class="acts"><button class="btn p" onclick="dismissInvite();startTour()"><i data-lucide="play"></i>Take the tour</button><button class="btn" onclick="dismissInvite();setPractice(true)"><i data-lucide="flask-conical"></i>Try with sample data</button></div>
+</div>
+
+<!-- Tour -->
+<div class="tour-hole" id="hole"></div>
+<div class="tour-pop" id="pop" role="dialog" aria-live="polite">
+  <div class="st"><span id="popStep">Step 1 of 5</span><button class="skip" onclick="endTour()">Skip tour</button></div>
+  <h3 id="popH"></h3><div id="popB"></div>
+  <div class="ft"><div class="dots" id="dots"></div><button class="btn" id="back" onclick="step(-1)">Back</button><button class="btn p" id="next" onclick="step(1)">Next</button></div>
+</div>
+
+<!-- Help panel -->
+<div class="scrim" onclick="closeHelp()"></div>
+<aside class="help-p" id="help" aria-label="Help">
+  <div class="hd"><span class="ic"><i data-lucide="circle-help"></i></span><div><b id="hlpT">Chat help</b><small>What this page does and how far it goes</small></div><button class="ib x" onclick="closeHelp()" aria-label="Close"><i data-lucide="x"></i></button></div>
+  <div class="bd" id="hlpB"></div>
+</aside>
+
+<div class="toast" id="toast"><i data-lucide="flask-conical"></i><div><b id="toT"></b><span id="toS"></span></div></div>
+
+<script>
+/* ── Content: one entry per module; the real app keeps this in a C# registry ── */
+const MODS = {
+  chat: {
+    title: 'Chat', sub: 'Messages and groups', icon: 'message-circle',
+    invite: ['New to Chat?', 'Take a 1-minute tour of the main features, or explore with sample conversations first. Nothing is sent to anyone.'],
+    steps: [
+      { el: '#t-rooms', h: 'Your conversations', b: '<p>Direct messages and groups, newest first. A coloured number means unread messages; pinned chats stay on top.</p>' },
+      { el: '#t-new', h: 'Start a chat', b: '<p>Message anyone in the company, or create a group and pick who joins. Group admins can rename it and manage members.</p>' },
+      { el: '#t-comp', h: 'Write, attach, mention', b: '<p>Press <kbd>Enter</kbd> to send, <kbd>Shift</kbd>+<kbd>Enter</kbd> for a new line. Type <b>@</b> and a name to notify someone. Use the paperclip to share files.</p>' },
+      { el: '#t-call', h: 'Call from the chat', b: '<p>Start a voice or video call with the person or group you\'re talking to. Missed calls show up on your dashboard.</p>' },
+      { el: '#t-tabs', h: 'Find it later', b: '<p>Filter to unread, see every message where you were <b>@mentioned</b>, and keep important messages under <b>Saved</b>.</p>' },
+      { limits: true, h: 'Good to know', b: '<ul><li>Only people in a conversation can read it.</li><li>Attachments are stored on the company NAS.</li><li>Chat is internal — you can\'t message people outside the company.</li></ul>' },
+    ],
+    feats: [['send','Direct & group messages','One-to-one or with your team, in real time.'],['at-sign','Mentions','@name notifies that person, even if they muted the group.'],['paperclip','Files & images','Shared files are saved to the NAS.'],['phone','Voice & video','Call straight from a conversation.'],['bookmark','Saved & pinned','Keep messages and chats you need often.']],
+    limits: ['Messages are only visible to members of the conversation.','No external contacts — company accounts only.'],
+    keys: [['Send','Enter'],['New line','Shift + Enter'],['Search','Ctrl + K']],
+  },
+  projects: {
+    title: 'Projects', sub: 'Boards, tasks and deadlines', icon: 'kanban',
+    invite: ['New to Projects?', 'See how boards and tasks work in a minute, or play with a sample project. Nobody gets assigned anything.'],
+    steps: [
+      { el: '#t-pick', h: 'Pick a project', b: '<p>Switch between the projects you\'re a member of. The name shows the department and team size.</p>' },
+      { el: '#t-board', h: 'The board', b: '<p>Each column is a stage. <b>Drag a card</b> to move it along — try it with the sample tasks.</p>' },
+      { el: '#t-card', h: 'A task at a glance', b: '<p>Due date (red when late), comments, attachments and who it\'s assigned to. Click a card for details and the discussion.</p>' },
+      { el: '#t-newtask', h: 'Add a task', b: '<p>Give it a title, an owner and a due date. The owner gets a notification.</p>' },
+      { el: '#t-views', h: 'Other views', b: '<p><b>Table</b> for sorting and bulk edits, <b>Timeline</b> to see deadlines over weeks.</p>' },
+      { limits: true, h: 'Good to know', b: '' /* per role, see ROLE_LIMITS */ },
+    ],
+    feats: [['kanban','Kanban board','Drag tasks between stages.'],['list-checks','Tasks','Owner, due date, checklist, comments and files.'],['table','Table & timeline','Sort, filter and plan across weeks.'],['bell','Notifications','Assignees hear about new and overdue tasks.']],
+    limits: [],
+    keys: [['New task','N'],['Search tasks','/']],
+  },
+};
+const ROLE_LIMITS = {
+  emp: ['You see only projects you\'re a member of.','You can create and move tasks; creating projects and managing members is for project owners and admins.'],
+  hr: ['You see only projects you\'re a member of.','You can create and move tasks; creating projects and managing members is for project owners and admins.'],
+  admin: ['As an admin you can see every project and manage its members.','Deleting a project removes its tasks for everyone — archive it instead if unsure.'],
+};
+
+let mod = 'chat', role = 'emp', practice = false, tourI = -1, steps = [];
+// Steps whose target isn't on screen (e.g. the conversation pane on a phone) are skipped.
+const visible = (s) => !s.el || $(s.el).getClientRects().length > 0;
+const $ = (s) => document.querySelector(s);
+const done = { chat: false, projects: false };
+
+function go(m) {
+  mod = m;
+  document.querySelectorAll('.mod').forEach((x) => x.classList.toggle('on', x.id === 'mod-' + m));
+  document.querySelectorAll('.side .n[data-go]').forEach((x) => x.classList.toggle('on', x.dataset.go === m));
+  $('#ttl').textContent = MODS[m].title; $('#sub').textContent = MODS[m].sub;
+  document.body.className = document.body.className.replace(/m-\w+/g, '') + ' m-' + (m === 'projects' ? 'project' : m);
+  $('#helpBtn').classList.toggle('pulse', !done[m]);
+  sync();
+}
+function sync() {
+  document.querySelectorAll('.real-only').forEach((e) => e.style.display = practice ? 'none' : '');
+  document.querySelectorAll('.sample-only').forEach((e) => e.style.display = practice ? '' : 'none');
+  document.body.classList.toggle('practice', practice);
+}
+function setPractice(on) { practice = on; sync(); if (!on) resetSample(); }
+function setRole(r) { role = r; if ($('body').classList.contains('help-open')) openHelp(); }
+
+/* ── Invite ── */
+function firstVisit() { const [h, p] = MODS[mod].invite; $('#invH').textContent = h; $('#invP').textContent = p; $('#invite').classList.add('on'); }
+function dismissInvite() { $('#invite').classList.remove('on'); }
+
+/* ── Tour ── */
+function startTour() {
+  closeHelp();
+  // The tour walks the sample layout so every step has something to point at.
+  if (!practice) { practice = true; sync(); }
+  steps = MODS[mod].steps.filter(visible); tourI = 0; $('#pop').style.display = 'block'; render();
+}
+function endTour() {
+  tourI = -1; $('#pop').style.display = 'none'; $('#hole').style.display = 'none';
+  done[mod] = true; $('#dn-' + mod).style.display = ''; $('#helpBtn').classList.remove('pulse');
+}
+function step(d) { const n = tourI + d; if (n >= steps.length) return endTour(); if (n >= 0) { tourI = n; render(); } }
+function render() {
+  const s = steps[tourI], pop = $('#pop'), hole = $('#hole');
+  $('#popStep').textContent = `Step ${tourI + 1} of ${steps.length}`;
+  $('#popH').textContent = s.h;
+  $('#popB').innerHTML = s.limits && !s.b ? '<ul>' + ROLE_LIMITS[role].map((x) => `<li>${x}</li>`).join('') + '</ul>' : s.b;
+  $('#dots').innerHTML = steps.map((_, i) => `<i class="${i === tourI ? 'on' : ''}"></i>`).join('');
+  $('#back').style.visibility = tourI ? 'visible' : 'hidden';
+  $('#next').textContent = tourI === steps.length - 1 ? 'Done' : 'Next';
+  pop.classList.toggle('limits', !!s.limits);
+  const mobile = innerWidth < 768;
+  if (s.el) {
+    const r = $(s.el).getBoundingClientRect(), pad = 6;
+    Object.assign(hole.style, { display: 'block', top: r.top - pad + 'px', left: r.left - pad + 'px', width: r.width + pad * 2 + 'px', height: r.height + pad * 2 + 'px' });
+    if (!mobile) {
+      const w = 330, h = pop.offsetHeight || 200;
+      let left = r.right + 16, top = r.top;
+      if (left + w > innerWidth - 12) { left = Math.max(12, Math.min(r.left, innerWidth - w - 12)); top = r.bottom + 16; }
+      if (top + h > innerHeight - 12) top = Math.max(12, r.top - h - 16);
+      Object.assign(pop.style, { left: left + 'px', top: top + 'px' });
+    }
+  } else {
+    Object.assign(hole.style, { display: 'block', top: '50%', left: '50%', width: '0px', height: '0px' });
+    if (!mobile) Object.assign(pop.style, { left: (innerWidth - 330) / 2 + 'px', top: innerHeight / 2 - 110 + 'px' });
+  }
+}
+addEventListener('resize', () => tourI >= 0 && render());
+addEventListener('keydown', (e) => {
+  if (tourI >= 0) { if (e.key === 'Escape') endTour(); if (e.key === 'ArrowRight') step(1); if (e.key === 'ArrowLeft') step(-1); return; }
+  if (e.key === '?' && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) openHelp();
+  if (e.key === 'Escape') closeHelp();
+});
+
+/* ── Help panel ── */
+function openHelp() {
+  const m = MODS[mod], lim = mod === 'projects' ? ROLE_LIMITS[role] : m.limits;
+  $('#hlpT').textContent = m.title + ' help';
+  $('#hlpB').innerHTML = `
+    <div class="cta">
+      <button class="btn p" onclick="startTour()"><i data-lucide="${done[mod] ? 'rotate-ccw' : 'play'}"></i>${done[mod] ? 'Replay tour' : 'Take the tour'}<small>${m.steps.length} steps · about 1 min</small></button>
+      <button class="btn" onclick="setPractice(!practice);openHelp()"><i data-lucide="flask-conical"></i>${practice ? 'Exit practice' : 'Practice mode'}<small>${practice ? 'Back to your real data' : 'Sample data, nothing is sent'}</small></button>
+    </div>
+    <h4>What you can do</h4>${m.feats.map(([i, b, s]) => `<div class="feat"><span class="sq"><i data-lucide="${i}"></i></span><div><b>${b}</b><span>${s}</span></div></div>`).join('')}
+    <h4>Good to know</h4>${lim.map((s) => `<div class="feat no"><span class="sq"><i data-lucide="info"></i></span><div><span>${s}</span></div></div>`).join('')}
+    <h4>Shortcuts</h4>${m.keys.map(([a, k]) => `<div class="kb">${a}<kbd>${k}</kbd></div>`).join('')}
+    <h4>Other tours</h4><div class="others">${[['Dashboard','layout-grid',1],['Chat','message-circle',done.chat],['Projects','kanban',done.projects],['Mail','mail'],['Notes','notebook-pen',1],['Calendar','calendar'],['Files','folder'],['News','newspaper']].map(([n, i, d]) => `<span class="${d ? 'd' : ''}"><i data-lucide="${d ? 'circle-check' : i}"></i>${n}</span>`).join('')}</div>`;
+  document.body.classList.add('help-open'); lucide.createIcons();
+}
+function closeHelp() { document.body.classList.remove('help-open'); }
+
+/* ── Practice interactions (all in memory) ── */
+const SIM = {
+  call: ['In real mode this would ring Rina Putri', 'Practice mode never places calls.'],
+  video: ['In real mode this would start a video call', 'Practice mode never places calls.'],
+  attach: ['In real mode you\'d pick a file to upload', 'Files go to the company NAS — skipped in practice.'],
+};
+function simulate(k) { $('#toT').textContent = SIM[k][0]; $('#toS').textContent = SIM[k][1]; const t = $('#toast'); t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 2800); }
+function send() {
+  const v = $('#inp').value.trim(); if (!v) return; $('#inp').value = '';
+  const now = new Date().toTimeString().slice(0, 5);
+  $('#msgs').insertAdjacentHTML('beforeend', `<div class="bub me">${v.replace(/[<>&]/g, '')}<small>${now} · practice</small></div>`);
+  $('#lastRina').textContent = 'You: ' + v; $('#msgs').scrollTop = 1e6;
+  $('#typing').style.display = 'block';
+  setTimeout(() => { $('#typing').style.display = 'none'; $('#msgs').insertAdjacentHTML('beforeend', `<div class="bub">Great, thanks! See you at 10 😊<small>${now}</small></div>`); $('#msgs').scrollTop = 1e6; }, 1400);
+}
+function newTask() {
+  const lane = $('[data-lane=todo]'); lane.insertAdjacentHTML('beforeend', `<div class="task" draggable="true"><b>My practice task</b><div class="meta"><span class="due">Tomorrow</span><span class="av" style="background:#0d9488">ME</span></div></div>`);
+  wireDrag(); count();
+}
+function count() { document.querySelectorAll('.lane').forEach((l) => l.querySelector('h4 span').textContent = l.querySelectorAll('.task').length); }
+let dragged;
+function wireDrag() {
+  document.querySelectorAll('.task').forEach((t) => { t.ondragstart = () => { dragged = t; t.classList.add('drag'); }; t.ondragend = () => t.classList.remove('drag'); });
+  document.querySelectorAll('.lane').forEach((l) => {
+    l.ondragover = (e) => { e.preventDefault(); l.classList.add('over'); };
+    l.ondragleave = () => l.classList.remove('over');
+    l.ondrop = () => { l.classList.remove('over'); if (dragged) { l.appendChild(dragged); count(); } };
+  });
+}
+const pristine = { msgs: null, board: null };
+function resetSample() {
+  $('#msgs').innerHTML = pristine.msgs; $('#t-board').innerHTML = pristine.board; $('#lastRina').textContent = 'Can you check the vendor quote?';
+  wireDrag(); lucide.createIcons();
+}
+
+function toggleTheme() { const h = document.documentElement; h.dataset.theme = h.dataset.theme === 'dark' ? 'light' : 'dark'; }
+document.querySelectorAll('.side .n[data-go]').forEach((n) => n.onclick = () => go(n.dataset.go));
+
+/* ── Boot + screenshot states: ?m=projects&practice&invite&tour=3&help&dark&role=admin ── */
+lucide.createIcons();
+pristine.msgs = $('#msgs').innerHTML; pristine.board = $('#t-board').innerHTML; wireDrag();
+const q = new URLSearchParams(location.search);
+if (q.has('dark')) document.documentElement.dataset.theme = 'dark';
+if (q.get('role')) { role = q.get('role'); $('#role').value = role; }
+go(q.get('m') || 'chat');
+if (q.has('practice')) setPractice(true);
+if (q.has('invite')) firstVisit();
+if (q.has('tour')) { startTour(); tourI = Math.max(0, (+q.get('tour') || 1) - 1); render(); }
+if (q.has('help')) openHelp();
+</script>
+</body>
+</html>
