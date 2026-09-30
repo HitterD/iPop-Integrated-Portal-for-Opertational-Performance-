@@ -1,0 +1,169 @@
+/* Notification banner v2 — each module wears its own colour + icon (Services/NotificationModules.cs).
+   --m is the module hue; everything else (rail, chip, icon tile, timer) is derived from it. */
+.nb-m-chat     { --m: #16a34a; }
+.nb-m-mention  { --m: #c026d3; }
+.nb-m-mail     { --m: #2563eb; }
+.nb-m-meeting  { --m: #0891b2; }
+.nb-m-calendar { --m: #4f46e5; }
+.nb-m-news     { --m: #ea580c; }
+.nb-m-memo     { --m: #dc2626; }
+.nb-m-project  { --m: #9333ea; }
+.nb-m-notes    { --m: #ca8a04; }
+.nb-m-files    { --m: #65a30d; }
+.nb-m-admin    { --m: #475569; }
+.nb-m-system   { --m: #6b7280; }
+
+@media (min-width: 768px) { .float-stack { width: 372px; } }
+.apple-banner.nb + .apple-banner.nb { margin-top: 10px; }
+
+.apple-banner.nb {
+  position: relative;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 14px 16px 18px;
+  border-radius: 18px;
+  overflow: hidden;
+  background:
+    linear-gradient(115deg, color-mix(in srgb, var(--m) 9%, transparent) 0%, transparent 55%),
+    rgba(255, 255, 255, 0.9);
+  border: 1px solid color-mix(in srgb, var(--m) 18%, rgba(0, 0, 0, 0.06));
+  box-shadow:
+    0 18px 40px -12px color-mix(in srgb, var(--m) 28%, rgba(0, 0, 0, 0.25)),
+    0 4px 12px -4px rgba(0, 0, 0, 0.1);
+  animation: nb-in 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+[data-theme="dark"] .apple-banner.nb {
+  background:
+    linear-gradient(115deg, color-mix(in srgb, var(--m) 20%, transparent) 0%, transparent 60%),
+    rgba(28, 27, 25, 0.92);
+  border-color: color-mix(in srgb, var(--m) 30%, rgba(255, 255, 255, 0.08));
+  box-shadow: 0 20px 44px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+}
+.apple-banner.nb:hover { transform: translateY(-2px) scale(1.01); }
+
+/* Coloured rail on the leading edge. */
+.nb-rail {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, var(--m), color-mix(in srgb, var(--m) 55%, #fff));
+}
+
+/* Module icon tile with a soft glow ring that pulses once on arrival. */
+.nb-ic {
+  position: relative;
+  width: 40px; height: 40px;
+  border-radius: 12px;
+  flex-shrink: 0;
+  display: grid; place-items: center;
+  color: #fff;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--m) 78%, #fff), var(--m));
+  box-shadow: 0 6px 14px -4px color-mix(in srgb, var(--m) 60%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.nb-ic .lucide { width: 19px; height: 19px; stroke-width: 2.2; }
+.nb-ic::after {
+  content: "";
+  position: absolute; inset: -3px;
+  border-radius: 15px;
+  border: 2px solid var(--m);
+  opacity: 0;
+  animation: nb-glow 1.1s 0.25s ease-out;
+}
+
+.nb-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; padding-right: 26px; }
+.nb-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.nb-mod {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--m) 88%, #000);
+  background: color-mix(in srgb, var(--m) 13%, transparent);
+  padding: 2px 8px; border-radius: 99px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+[data-theme="dark"] .nb-mod { color: color-mix(in srgb, var(--m) 60%, #fff); background: color-mix(in srgb, var(--m) 24%, transparent); }
+.nb-mod::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--m); flex-shrink: 0; }
+.nb-time { font-size: 11px; color: var(--ink-3); white-space: nowrap; margin-left: auto; font-variant-numeric: tabular-nums; }
+
+.nb-title {
+  font-size: 13.5px; font-weight: 700; color: var(--ink); line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.nb-desc {
+  font-size: 12.5px; color: var(--ink-2); line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.nb-open {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-top: 4px;
+  font-size: 11.5px; font-weight: 600;
+  color: color-mix(in srgb, var(--m) 85%, #000);
+  opacity: 0; transform: translateX(-4px);
+  transition: opacity 0.18s var(--ease), transform 0.18s var(--ease);
+}
+[data-theme="dark"] .nb-open { color: color-mix(in srgb, var(--m) 55%, #fff); }
+.nb-open .lucide { width: 13px; height: 13px; }
+.apple-banner.nb:hover .nb-open { opacity: 1; transform: none; }
+
+.apple-banner.nb .apple-banner-close {
+  position: absolute; top: 10px; right: 10px;
+  width: 22px; height: 22px;
+  opacity: 0; transition: opacity 0.15s var(--ease), background 0.15s var(--ease);
+}
+.apple-banner.nb:hover .apple-banner-close,
+.apple-banner.nb .apple-banner-close:focus-visible { opacity: 1; }
+@media (hover: none) { .apple-banner.nb .apple-banner-close { opacity: 1; } }
+
+/* Countdown until the card flies into the bell; freezes while hovered (the timer pauses too). */
+.nb-timer {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 3px;
+  background: color-mix(in srgb, var(--m) 12%, transparent);
+}
+.nb-timer::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: var(--m);
+  opacity: 0.75;
+  transform-origin: left;
+  animation: nb-timer 5s linear forwards;
+}
+.apple-banner.nb:hover .nb-timer::after { animation-play-state: paused; }
+
+/* Urgent (priority "high") cards keep a stronger outline. */
+.apple-banner.nb.nb-high { border-color: color-mix(in srgb, var(--m) 55%, transparent); }
+.nb-high .nb-mod::after { content: "Penting"; margin-left: 2px; padding-left: 6px; border-left: 1px solid currentColor; opacity: 0.85; }
+
+/* Bell tray rows reuse the module tile. */
+.apple-notif-ic.nb-tile {
+  color: #fff;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--m) 78%, #fff), var(--m));
+  box-shadow: 0 4px 10px -4px color-mix(in srgb, var(--m) 60%, transparent);
+}
+.apple-notif-mod {
+  display: block;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--m) 85%, #000);
+  margin-bottom: 1px;
+}
+[data-theme="dark"] .apple-notif-mod { color: color-mix(in srgb, var(--m) 55%, #fff); }
+
+@keyframes nb-in {
+  0% { opacity: 0; transform: translateX(56px) scale(0.94); }
+  60% { opacity: 1; transform: translateX(-4px) scale(1.005); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes nb-glow {
+  0% { opacity: 0.7; transform: scale(0.92); }
+  100% { opacity: 0; transform: scale(1.25); }
+}
+@keyframes nb-timer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+@media (max-width: 767px) {
+  .apple-banner.nb { padding: 12px 12px 14px 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .apple-banner.nb, .nb-ic::after { animation: none; }
+  .nb-timer::after { animation: none; transform: scaleX(0.5); }
+}

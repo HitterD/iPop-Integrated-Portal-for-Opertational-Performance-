@@ -9,35 +9,32 @@
     {
         var b = banner;
         var item = b.Item;
-        var icon = NotificationState.GetTypeIcon(item.Type);
-        var label = NotificationState.GetTypeLabel(item.Type);
+        var mod = NotificationModules.For(item);
         var timeLabel = FormatTime(item.At);
 
-        <div class="apple-banner @item.Type" data-nid="@b.Id"
+        <div class="apple-banner nb nb-m-@mod.Key @(item.Priority == "high" ? "nb-high" : "")" data-nid="@b.Id"
              role="alert"
              @onmouseenter="() => Notifs.PauseBanner(b.Id)"
              @onmouseleave="() => Notifs.ResumeBanner(b.Id)"
              @onclick="() => HandleClick(b)">
-            <div class="apple-banner-head">
-                <div class="apple-banner-icon @item.Type">
-                    <i data-lucide="@icon"></i>
+            <span class="nb-rail"></span>
+            <div class="nb-ic"><i data-lucide="@mod.Icon"></i></div>
+            <div class="nb-main">
+                <div class="nb-head">
+                    <span class="nb-mod">@mod.Label</span>
+                    <span class="nb-time">@timeLabel</span>
                 </div>
-                <div class="apple-banner-meta">
-                    <span class="apple-banner-app">iPop · @label</span>
-                    <span class="apple-banner-dot">·</span>
-                    <span class="apple-banner-time">@timeLabel</span>
-                </div>
-                <button type="button" class="apple-banner-close" title="Close" @onclick="() => Notifs.DismissBanner(b.Id)" @onclick:stopPropagation>
-                    <i data-lucide="x"></i>
-                </button>
-            </div>
-            <div class="apple-banner-body">
-                <div class="apple-banner-title">@item.Title</div>
-                @if (Notifs.CurrentShowPreview)
+                <div class="nb-title">@item.Title</div>
+                @if (Notifs.CurrentShowPreview && !string.IsNullOrWhiteSpace(item.Body))
                 {
-                    <div class="apple-banner-desc">@item.Body</div>
+                    <div class="nb-desc">@item.Body</div>
                 }
+                <span class="nb-open">Buka di @mod.Label <i data-lucide="arrow-right"></i></span>
             </div>
+            <button type="button" class="apple-banner-close" title="Tutup" aria-label="Tutup notifikasi" @onclick="() => Notifs.DismissBanner(b.Id)" @onclick:stopPropagation>
+                <i data-lucide="x"></i>
+            </button>
+            <span class="nb-timer"></span>
         </div>
     }
 </div>

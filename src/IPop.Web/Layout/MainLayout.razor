@@ -140,15 +140,16 @@
                                         @foreach (var item in Notifs.RecentNotifications)
                                         {
                                             var notif = item;
-                                            var icon = NotificationState.GetTypeIcon(notif.Type);
+                                            var mod = NotificationModules.For(notif);
                                             var timeText = FormatNotifTime(notif.At);
 
                                             <div class="apple-notif-row @(notif.IsRead ? "read" : "unread")"
                                                  @onclick="() => OnNotifClicked(notif)">
-                                                <div class="apple-notif-ic @notif.Type">
-                                                    <i data-lucide="@icon"></i>
+                                                <div class="apple-notif-ic nb-tile nb-m-@mod.Key">
+                                                    <i data-lucide="@mod.Icon"></i>
                                                 </div>
-                                                <div class="apple-notif-info">
+                                                <div class="apple-notif-info nb-m-@mod.Key">
+                                                    <span class="apple-notif-mod">@mod.Label</span>
                                                     <div class="apple-notif-row-top">
                                                         <span class="apple-notif-row-title">@notif.Title</span>
                                                         <span class="apple-notif-row-time">@timeText</span>
