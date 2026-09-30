@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iPop — Dashboard v2 mockup</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<link rel="preconnect" href="https://rsms.me/"><link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+<style>
+/* ── Tokens (mirror src/IPop.Web/wwwroot/css/core/tokens.css) ───────────── */
+:root{
+  --bg:#f5f5f7; --surface:#fff; --surface-2:#f7f7f9; --fill:rgba(118,118,128,.10);
+  --line:rgba(0,0,0,.07); --ink:#1d1d1f; --ink-2:#48484a; --ink-3:#86868b; --ink-4:#aeaeb2;
+  --accent:#2e9d6b; --danger:#ff3b30;
+  --sh:0 1px 2px rgba(0,0,0,.04),0 8px 24px -12px rgba(0,0,0,.10);
+  --sh-hover:0 2px 4px rgba(0,0,0,.05),0 16px 36px -14px rgba(0,0,0,.18);
+  --r:20px; --ease:cubic-bezier(.2,.8,.2,1);
+}
+[data-theme=dark]{
+  --bg:#000; --surface:#1c1c1e; --surface-2:#2c2c2e; --fill:rgba(118,118,128,.24);
+  --line:rgba(255,255,255,.08); --ink:#f5f5f7; --ink-2:#d1d1d6; --ink-3:#8e8e93; --ink-4:#636366;
+  --sh:0 0 0 1px rgba(255,255,255,.04); --sh-hover:0 0 0 1px rgba(255,255,255,.08),0 16px 36px -14px rgba(0,0,0,.6);
+}
+/* Module hues — same as notif-toast.css */
+.m-chat{--m:#16a34a}.m-mention{--m:#db2777}.m-mail{--m:#2563eb}.m-meeting{--m:#0891b2}.m-calendar{--m:#e11d48}
+.m-news{--m:#ea580c}.m-memo{--m:#dc2626}.m-project{--m:#0d9488}.m-notes{--m:#ca8a04}.m-files{--m:#65a30d}
+.m-admin{--m:#475569}.m-call{--m:#dc2626}.m-team{--m:#0369a1}
+
+*{box-sizing:border-box} body{margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+.lucide{width:16px;height:16px;stroke-width:2}
+a{color:inherit;text-decoration:none}
+
+/* ── Minimal shell (the real one is MainLayout) ─────────────────────────── */
+.shell{display:flex;min-height:100vh}
+.side{width:232px;flex-shrink:0;background:var(--surface);border-right:1px solid var(--line);padding:18px 12px}
+.side .b{display:flex;align-items:center;gap:8px;font-weight:700;font-size:20px;padding:4px 8px 18px}
+.side .b i{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#16a34a,#0891b2);display:block}
+.side .n{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;font-size:14px;color:var(--ink-2)}
+.side .n.on{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);font-weight:600}
+.side .g{font-size:11px;color:var(--ink-3);padding:14px 10px 4px}
+.main{flex:1;min-width:0}
+.top{height:64px;display:flex;align-items:center;padding:0 28px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--surface) 80%,transparent);backdrop-filter:blur(20px);position:sticky;top:0;z-index:5}
+.top h1{font-size:18px;margin:0}.top small{display:block;font-size:12px;color:var(--ink-3);font-weight:400}
+.top .sp{flex:1}.top .ctl{display:flex;gap:10px}
+.top .ctl button{height:34px;min-width:34px;border-radius:10px;border:0;background:var(--fill);color:var(--ink-2);cursor:pointer;display:grid;place-items:center;padding:0 10px;font:inherit;font-size:13px}
+
+/* ── Dashboard ──────────────────────────────────────────────────────────── */
+.dash{padding:28px 28px 48px;max-width:1480px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+
+.hero{display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap}
+.hero .d{font-size:13px;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.05em}
+.hero h2{font-size:32px;letter-spacing:-.02em;margin:4px 0 2px;font-weight:700}
+.hero p{margin:0;color:var(--ink-2);font-size:14px}
+.hero p b{color:var(--ink)}
+.qa{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.qa a{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 14px 0 6px;border-radius:99px;background:var(--surface);box-shadow:var(--sh);font-size:13px;font-weight:600;transition:transform .2s var(--ease),box-shadow .2s}
+.qa a:hover{transform:translateY(-1px);box-shadow:var(--sh-hover)}
+.qa a .ic{width:26px;height:26px;border-radius:99px;display:grid;place-items:center;background:var(--m);color:#fff}
+.qa a .ic .lucide{width:14px;height:14px}
+
+/* Card */
+.card{background:var(--surface);border-radius:var(--r);box-shadow:var(--sh);padding:18px 18px 16px;display:flex;flex-direction:column;min-width:0;transition:box-shadow .25s var(--ease),transform .25s var(--ease)}
+.card:hover{box-shadow:var(--sh-hover)}
+.ch{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.ch .ic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;color:#fff;background:linear-gradient(145deg,color-mix(in srgb,var(--m) 75%,#fff),var(--m))}
+.ch .ic .lucide{width:14px;height:14px}
+.ch h3{margin:0;font-size:15px;font-weight:700;letter-spacing:-.01em}
+.ch .ct{font-size:12px;color:var(--ink-3);font-weight:500}
+.ch .more{margin-left:auto;font-size:13px;font-weight:600;color:var(--m);display:inline-flex;align-items:center;gap:2px}
+.ch .more .lucide{width:14px;height:14px}
+
+/* KPI widgets */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.kpi{position:relative;overflow:hidden;cursor:pointer}
+.kpi::before{content:"";position:absolute;inset:0;background:radial-gradient(120% 80% at 100% 0%,color-mix(in srgb,var(--m) 14%,transparent),transparent 60%);pointer-events:none}
+.kpi .row{display:flex;align-items:center;justify-content:space-between}
+.kpi .ic{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;color:#fff;background:linear-gradient(145deg,color-mix(in srgb,var(--m) 75%,#fff),var(--m));box-shadow:0 6px 14px -6px var(--m)}
+.kpi .ic .lucide{width:17px;height:17px}
+.kpi .chev{color:var(--ink-4)}
+.kpi .v{font-size:40px;font-weight:700;letter-spacing:-.03em;line-height:1;margin:16px 0 6px;font-variant-numeric:tabular-nums}
+.kpi .l{font-size:14px;font-weight:600}
+.kpi .s{font-size:12.5px;color:var(--ink-3);margin-top:2px}
+.kpi .s.warn{color:var(--danger);font-weight:600}
+.kpi .s.ok{color:var(--accent);font-weight:600}
+
+/* Grids */
+.r2{display:grid;grid-template-columns:1.5fr 1fr;gap:14px}
+.r3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.r4{display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:14px}
+.r5{display:grid;grid-template-columns:1.5fr 1fr;gap:14px}
+
+/* Up next */
+.upnext{display:grid;grid-template-columns:minmax(220px,.9fr) 1.1fr;gap:18px}
+.hero-ev{border-radius:16px;padding:16px;color:#fff;background:linear-gradient(150deg,#0ea5c6,#0369a1);display:flex;flex-direction:column;gap:6px;position:relative;overflow:hidden}
+.hero-ev::after{content:"";position:absolute;right:-40px;top:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.12)}
+.hero-ev .k{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;opacity:.85;display:flex;align-items:center;gap:6px}
+.hero-ev .k .dot{width:7px;height:7px;border-radius:50%;background:#fff;animation:pulse 1.6s infinite}
+.hero-ev .t{font-size:34px;font-weight:700;letter-spacing:-.02em;line-height:1.05}
+.hero-ev .t small{font-size:15px;font-weight:600;opacity:.85}
+.hero-ev .n{font-size:15px;font-weight:600}
+.hero-ev .w{font-size:12.5px;opacity:.85;display:flex;align-items:center;gap:6px}
+.hero-ev .w .lucide{width:13px;height:13px}
+.hero-ev .acts{margin-top:auto;display:flex;gap:8px;padding-top:10px}
+.hero-ev .acts a{height:32px;padding:0 14px;border-radius:99px;display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;background:#fff;color:#0369a1}
+.hero-ev .acts a.g{background:rgba(255,255,255,.2);color:#fff}
+.tl{display:flex;flex-direction:column}
+.tl .it{display:grid;grid-template-columns:52px 4px 1fr auto;gap:10px;align-items:center;padding:8px 0}
+.tl .it+.it{border-top:1px solid var(--line)}
+.tl .tm{font-size:12.5px;font-weight:600;color:var(--ink-2);font-variant-numeric:tabular-nums;text-align:right}
+.tl .bar{align-self:stretch;border-radius:2px;background:var(--m)}
+.tl .tx b{display:block;font-size:13.5px;font-weight:600}
+.tl .tx span{font-size:12px;color:var(--ink-3)}
+.tl .tag{font-size:11px;font-weight:700;color:var(--m);background:color-mix(in srgb,var(--m) 12%,transparent);padding:2px 8px;border-radius:99px}
+.tl .it.past{opacity:.45}
+
+/* Lists */
+.li{display:flex;align-items:center;gap:12px;padding:9px 6px;margin:0 -6px;border-radius:12px;transition:background .15s}
+.li:hover{background:var(--fill)}
+.li+.li{box-shadow:0 -1px 0 var(--line)}
+.li:hover+.li,.li:hover{box-shadow:none}
+.li .av{width:34px;height:34px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;color:#fff;font-size:12px;font-weight:700;position:relative}
+.li .sq{width:34px;height:34px;border-radius:10px;flex-shrink:0;display:grid;place-items:center;color:var(--m);background:color-mix(in srgb,var(--m) 13%,transparent)}
+.li .sq .lucide{width:16px;height:16px}
+.li .tx{flex:1;min-width:0}
+.li .tx b{display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .tx span{display:block;font-size:12.5px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.li .rt{font-size:12px;color:var(--ink-3);text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.li .ud{width:9px;height:9px;border-radius:50%;background:var(--m)}
+.li .btn{height:28px;padding:0 12px;border-radius:99px;font-size:12.5px;font-weight:600;color:var(--m);background:color-mix(in srgb,var(--m) 12%,transparent);display:inline-flex;align-items:center}
+.chk{width:20px;height:20px;border-radius:50%;border:2px solid var(--ink-4);flex-shrink:0}
+.due{font-size:11.5px;font-weight:600;padding:2px 8px;border-radius:99px}
+.due.late{color:var(--danger);background:color-mix(in srgb,var(--danger) 12%,transparent)}
+.due.today{color:#c2410c;background:rgba(234,88,12,.12)}
+.due.soon{color:var(--ink-3);background:var(--fill)}
+.pbar{height:6px;border-radius:99px;background:var(--fill);overflow:hidden;margin-top:6px}
+.pbar i{display:block;height:100%;border-radius:99px;background:var(--m)}
+.pc{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+
+/* News */
+.news{display:grid;grid-template-columns:1.3fr 1fr;gap:14px}
+.news .lead{border-radius:14px;overflow:hidden;background:var(--surface-2);display:flex;flex-direction:column}
+.news .lead .img{height:120px;background:linear-gradient(135deg,#f97316,#be123c)}
+.news .lead .b{padding:12px}
+.news .lead b{font-size:14.5px;display:block;margin:4px 0}
+.news .lead span{font-size:12.5px;color:var(--ink-3)}
+.pill{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--m);background:color-mix(in srgb,var(--m) 12%,transparent);padding:2px 8px;border-radius:99px;display:inline-block}
+
+/* Team */
+.team{display:flex;flex-wrap:wrap;gap:12px}
+.tm-a{display:flex;flex-direction:column;align-items:center;gap:5px;width:58px;font-size:11.5px;color:var(--ink-2);text-align:center}
+.tm-a .av{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;font-size:14px;position:relative}
+.tm-a .av::after,.li .av.on::after{content:"";position:absolute;right:0;bottom:0;width:12px;height:12px;border-radius:50%;background:#34c759;border:2.5px solid var(--surface)}
+.tm-a .av.idle::after{background:#ff9f0a}
+.tm-a span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%}
+
+/* Bottom strip */
+.strip{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.mini{display:flex;flex-direction:row;align-items:center;gap:14px;padding:14px 16px}
+.mini .ic{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;color:#fff;background:linear-gradient(145deg,color-mix(in srgb,var(--m) 75%,#fff),var(--m));flex-shrink:0}
+.mini .tx{flex:1;min-width:0}
+.mini .tx b{font-size:14px;display:block}
+.mini .tx>span{font-size:12.5px;color:var(--ink-3)}
+.mini .stat span{font-size:12.5px;color:var(--ink-2)}
+.mini .prog{margin-top:7px}
+.mini .tx b,.mini .tx>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mini .tx>span{display:block}
+.mini .a{flex-shrink:0}
+.mini .a{height:30px;padding:0 14px;border-radius:99px;background:var(--fill);font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px}
+.stat{display:flex;gap:6px 14px;flex-wrap:wrap}
+.stat span{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--ink-2);font-weight:500}
+.stat i.d{width:8px;height:8px;border-radius:50%;background:#34c759}
+.stat i.d.w{background:#ff9f0a}
+.adm{font-size:10px;font-weight:700;letter-spacing:.05em;color:var(--ink-3);border:1px solid var(--line);padding:1px 6px;border-radius:6px;margin-left:6px}
+
+/* Empty state */
+.empty{flex:1;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px;padding:28px 20px;border-radius:16px;background:radial-gradient(90% 90% at 50% 0%,color-mix(in srgb,#f59e0b 16%,transparent),transparent 70%),var(--surface-2)}
+.empty .e{font-size:44px;line-height:1}
+.empty b{display:block;font-size:17px}.empty span{font-size:13px;color:var(--ink-3)}
+.empty .nx{font-size:12.5px;color:var(--ink-2)}.empty .nx b{display:inline;font-size:12.5px}
+.empty a{margin-top:6px;height:30px;padding:0 14px;border-radius:99px;background:var(--m);color:#fff;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px}
+
+/* Motion */
+.dash>*{animation:rise .6s var(--ease) both}
+.dash>*:nth-child(2){animation-delay:.05s}.dash>*:nth-child(3){animation-delay:.1s}.dash>*:nth-child(4){animation-delay:.15s}
+.dash>*:nth-child(5){animation-delay:.2s}.dash>*:nth-child(6){animation-delay:.25s}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes pulse{50%{opacity:.35}}
+@media (prefers-reduced-motion:reduce){.dash>*,.hero-ev .k .dot{animation:none}}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width:1200px){.r3,.r4{grid-template-columns:1fr 1fr}.r4>:last-child{grid-column:1/-1}}
+@media (max-width:900px){.r2,.r5,.upnext,.news,.strip{grid-template-columns:1fr}.r3,.r4{grid-template-columns:1fr}}
+@media (max-width:767px){
+  .side{display:none}
+  .top{height:56px;padding:0 16px}
+  .dash{padding:16px 14px 90px;gap:14px}
+  .hero h2{font-size:26px}
+  .qa{margin:4px -14px 0;padding:2px 14px 6px;width:calc(100% + 28px);flex-wrap:nowrap;overflow-x:auto;gap:14px;scrollbar-width:none}
+  .qa a{white-space:nowrap;flex-direction:column;height:auto;padding:0;background:none;box-shadow:none;gap:6px;font-size:11.5px;font-weight:500;color:var(--ink-2);min-width:62px}
+  .qa a .ic{width:52px;height:52px;border-radius:16px;box-shadow:0 8px 18px -10px var(--m)}
+  .qa a .ic .lucide{width:22px;height:22px}
+  .kpis{grid-template-columns:1fr 1fr;gap:12px}
+  .kpi .v{font-size:32px;margin:12px 0 4px}
+  .card{padding:16px 14px 14px;border-radius:18px}
+  .li{min-height:48px}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="b"><i></i>iPop</div>
+    <div class="g">Workspace</div>
+    <a class="n on"><i data-lucide="layout-grid"></i>Dashboard</a><a class="n"><i data-lucide="users"></i>Directory</a>
+    <a class="n"><i data-lucide="kanban"></i>Projects</a><a class="n"><i data-lucide="notebook-pen"></i>Notes</a>
+    <div class="g">Communication</div>
+    <a class="n"><i data-lucide="message-circle"></i>Chat</a><a class="n"><i data-lucide="mail"></i>Mail</a>
+    <a class="n"><i data-lucide="newspaper"></i>News &amp; Memos</a><a class="n"><i data-lucide="phone"></i>Calls</a>
+    <div class="g">Resources</div>
+    <a class="n"><i data-lucide="folder"></i>Files</a><a class="n"><i data-lucide="calendar"></i>Calendar</a>
+  </aside>
+
+  <div class="main">
+    <div class="top">
+      <div><h1>Dashboard</h1><small>Overview of your day</small></div>
+      <div class="sp"></div>
+      <div class="ctl">
+        <button onclick="setEmpty()" title="Toggle empty day">Empty day</button>
+        <button onclick="toggleTheme()" title="Theme"><i data-lucide="moon"></i></button>
+        <button><i data-lucide="bell"></i></button>
+      </div>
+    </div>
+
+    <div class="dash">
+      <!-- 1 · Hero -->
+      <div class="hero">
+        <div>
+          <div class="d">Wednesday, 30 September</div>
+          <h2>Good morning, Bagas</h2>
+          <p>You have <b>2 meetings</b>, <b>3 tasks due</b> and <b>4 things</b> that need your attention.</p>
+        </div>
+        <div class="qa">
+          <a href="#" class="m-chat"><span class="ic"><i data-lucide="message-circle-plus"></i></span>New message</a>
+          <a href="#" class="m-mail"><span class="ic"><i data-lucide="pen-line"></i></span>Compose</a>
+          <a href="#" class="m-project"><span class="ic"><i data-lucide="list-plus"></i></span>New task</a>
+          <a href="#" class="m-meeting"><span class="ic"><i data-lucide="calendar-plus"></i></span>Schedule</a>
+          <a href="#" class="m-notes"><span class="ic"><i data-lucide="file-plus-2"></i></span>New note</a>
+          <a href="#" class="m-news"><span class="ic"><i data-lucide="megaphone"></i></span>New post</a>
+        </div>
+      </div>
+
+      <!-- 2 · KPIs -->
+      <div class="kpis">
+        <a class="card kpi m-mail"><div class="row"><span class="ic"><i data-lucide="mail"></i></span><i data-lucide="chevron-right" class="chev"></i></div>
+          <div class="v" data-count="5">5</div><div class="l">Unread mail</div><div class="s">13 in inbox</div></a>
+        <a class="card kpi m-chat"><div class="row"><span class="ic"><i data-lucide="message-circle"></i></span><i data-lucide="chevron-right" class="chev"></i></div>
+          <div class="v" data-count="12">12</div><div class="l">Unread chats</div><div class="s">in 4 conversations</div></a>
+        <a class="card kpi m-project"><div class="row"><span class="ic"><i data-lucide="check-circle-2"></i></span><i data-lucide="chevron-right" class="chev"></i></div>
+          <div class="v" data-count="7">7</div><div class="l">Open tasks</div><div class="s warn">2 overdue</div></a>
+        <a class="card kpi m-call"><div class="row"><span class="ic"><i data-lucide="phone-missed"></i></span><i data-lucide="chevron-right" class="chev"></i></div>
+          <div class="v" data-count="3">3</div><div class="l">Missed calls</div><div class="s">last 2 days</div></a>
+      </div>
+
+      <!-- 3 · Up next + attention -->
+      <div class="r2">
+        <div class="card m-calendar" id="today">
+          <div class="ch"><span class="ic"><i data-lucide="calendar-days"></i></span><h3>Up next</h3><span class="ct">Today · 4 items</span><a class="more">Calendar <i data-lucide="chevron-right"></i></a></div>
+          <div class="upnext" id="upFull">
+            <div class="hero-ev">
+              <div class="k"><span class="dot"></span>Starts in 25 min</div>
+              <div class="t">10:00 <small>– 11:00</small></div>
+              <div class="n">Weekly Sync IT</div>
+              <div class="w"><i data-lucide="video"></i>iPop Meeting · 8 people</div>
+              <div class="acts"><a href="#"><i data-lucide="video"></i>Join</a><a href="#" class="g">Details</a></div>
+            </div>
+            <div class="tl">
+              <div class="it past m-calendar"><span class="tm">08:00</span><span class="bar"></span><span class="tx"><b>Morning briefing</b><span>Calendar · Ruang 3</span></span><span class="tag">Event</span></div>
+              <div class="it m-meeting"><span class="tm">10:00</span><span class="bar"></span><span class="tx"><b>Weekly Sync IT</b><span>Meeting · 8 people</span></span><span class="tag">Meeting</span></div>
+              <div class="it m-project"><span class="tm">Today</span><span class="bar"></span><span class="tx"><b>Deploy iPop v6 to staging</b><span>Project iPop</span></span><span class="tag">Due</span></div>
+              <div class="it m-calendar"><span class="tm">15:30</span><span class="bar"></span><span class="tx"><b>Townhall Q4</b><span>Calendar · Aula</span></span><span class="tag">Event</span></div>
+            </div>
+          </div>
+          <div class="empty m-meeting" id="upEmpty" style="display:none">
+            <span class="e">☀️</span><div><b>Your day is clear</b><span>No meetings, events or tasks due today.</span></div>
+            <div class="nx">Next up: <b>Townhall Q4</b> · Thu 1 Oct, 15:30</div>
+            <a href="#"><i data-lucide="calendar-plus"></i>Schedule</a>
+          </div>
+        </div>
+
+        <div class="card m-memo">
+          <div class="ch"><span class="ic"><i data-lucide="bell-ring"></i></span><h3>Needs your attention</h3><span class="ct">4</span><a class="more">All <i data-lucide="chevron-right"></i></a></div>
+          <a class="li m-memo"><span class="sq"><i data-lucide="megaphone"></i></span><span class="tx"><b>Kebijakan Cuti 2027</b><span>Memo · must read by 5 Oct</span></span><span class="btn">Read</span></a>
+          <a class="li m-call"><span class="sq"><i data-lucide="phone-missed"></i></span><span class="tx"><b>Missed call from Jason Kristanto</b><span>Yesterday, 14:21</span></span><span class="btn">Call back</span></a>
+          <a class="li m-notes"><span class="sq"><i data-lucide="at-sign"></i></span><span class="tx"><b>Andi mentioned you in Rencana Q4</b><span>Notes · 1h ago</span></span><span class="btn">Open</span></a>
+          <a class="li m-project"><span class="sq"><i data-lucide="alarm-clock"></i></span><span class="tx"><b>Update SOP gudang</b><span>Overdue by 2 days</span></span><span class="btn">View</span></a>
+        </div>
+      </div>
+
+      <!-- 4 · Tasks / messages / projects -->
+      <div class="r4">
+        <div class="card m-project">
+          <div class="ch"><span class="ic"><i data-lucide="check-circle-2"></i></span><h3>My tasks</h3><span class="ct">7</span><a class="more">View all <i data-lucide="chevron-right"></i></a></div>
+          <div class="li"><span class="chk"></span><span class="tx"><b>Update SOP gudang</b><span>Perbaikan iPop</span></span><span class="due late">2d late</span></div>
+          <div class="li"><span class="chk"></span><span class="tx"><b>Deploy iPop v6 to staging</b><span>Project iPop</span></span><span class="due today">Today</span></div>
+          <div class="li"><span class="chk"></span><span class="tx"><b>Review kanban permissions</b><span>Hermes FIX3</span></span><span class="due soon">Fri</span></div>
+          <div class="li"><span class="chk"></span><span class="tx"><b>QA kanban task</b><span>Hermes FIX3</span></span><span class="due soon">No date</span></div>
+        </div>
+        <div class="card m-chat">
+          <div class="ch"><span class="ic"><i data-lucide="message-circle"></i></span><h3>Recent messages</h3><a class="more">Open Chat <i data-lucide="chevron-right"></i></a></div>
+          <a class="li"><span class="av on" style="background:#4d7c0f">JK</span><span class="tx"><b>Jason Kristanto</b><span>test notif animasi</span></span><span class="rt">08:05<span class="ud"></span></span></a>
+          <a class="li"><span class="av" style="background:#0369a1">IS</span><span class="tx"><b>IT Support</b><span>Bahkan chatnya beranimasi seperti WhatsApp</span></span><span class="rt">08:05<span class="ud"></span></span></a>
+          <a class="li"><span class="av" style="background:#15803d">D1</span><span class="tx"><b>Demo Karyawan 1</b><span>Message deleted</span></span><span class="rt">Yesterday</span></a>
+          <a class="li"><span class="av" style="background:#92400e">SS</span><span class="tx"><b>Siva Stephanie Soejatno</b><span>No messages</span></span><span class="rt">28 Sep</span></a>
+        </div>
+        <div class="card m-project">
+          <div class="ch"><span class="ic"><i data-lucide="kanban"></i></span><h3>Projects</h3><a class="more">View all <i data-lucide="chevron-right"></i></a></div>
+          <a class="li"><span class="sq" style="--m:#0d9488">HP</span><span class="tx"><b>Hermes FIX3 verify proj</b><span>1/6 tasks · Planning</span><div class="pbar"><i style="width:17%"></i></div></span><span class="pc">17%</span></a>
+          <a class="li"><span class="sq" style="--m:#15803d">PI</span><span class="tx"><b>Perbaikan iPop</b><span>0/1 tasks · Planning</span><div class="pbar"><i style="width:0"></i></div></span><span class="pc">0%</span></a>
+          <a class="li"><span class="sq" style="--m:#b91c1c">PI</span><span class="tx"><b>Project iPop</b><span>4/9 tasks · Active</span><div class="pbar"><i style="width:44%"></i></div></span><span class="pc">44%</span></a>
+        </div>
+      </div>
+
+      <!-- 5 · Notes / news / team -->
+      <div class="r3">
+        <div class="card m-notes">
+          <div class="ch"><span class="ic"><i data-lucide="notebook-pen"></i></span><h3>Recent notes</h3><a class="more">Open Notes <i data-lucide="chevron-right"></i></a></div>
+          <a class="li"><span class="sq">📋</span><span class="tx"><b>Rencana Q4</b><span>Edited by Andi · 1h ago</span></span><i data-lucide="star" style="color:#ca8a04;fill:#ca8a04"></i></a>
+          <a class="li"><span class="sq">🧪</span><span class="tx"><b>QA checklist v6</b><span>You · yesterday</span></span></a>
+          <a class="li"><span class="sq">🤝</span><span class="tx"><b>Notulen Weekly Sync</b><span>Shared with you · 28 Sep</span></span></a>
+          <a class="li"><span class="sq">💡</span><span class="tx"><b>Ide fitur Dashboard</b><span>You · 27 Sep</span></span></a>
+        </div>
+        <div class="card m-news">
+          <div class="ch"><span class="ic"><i data-lucide="newspaper"></i></span><h3>Latest news</h3><a class="more">News &amp; Memos <i data-lucide="chevron-right"></i></a></div>
+          <div class="news" style="grid-template-columns:1fr">
+            <a class="lead"><div class="img"></div><div class="b"><span class="pill">News</span><b>Peluncuran Kapal Api Special Mix</b><span>Corporate Communication · 2h ago</span></div></a>
+          </div>
+          <a class="li m-memo" style="margin-top:6px"><span class="sq"><i data-lucide="megaphone"></i></span><span class="tx"><b>Kebijakan Cuti 2027</b><span>Memo · HR · yesterday</span></span></a>
+        </div>
+        <div class="card m-team">
+          <div class="ch"><span class="ic"><i data-lucide="users"></i></span><h3>Team online</h3><span class="ct">6 online</span><a class="more">Directory <i data-lucide="chevron-right"></i></a></div>
+          <div class="team">
+            <div class="tm-a"><span class="av" style="background:#4d7c0f">JK</span><span>Jason</span></div>
+            <div class="tm-a"><span class="av idle" style="background:#db2777">YA</span><span>Yudi</span></div>
+            <div class="tm-a"><span class="av" style="background:#0e7490">SS</span><span>Siva</span></div>
+            <div class="tm-a"><span class="av" style="background:#b45309">AN</span><span>Andi</span></div>
+            <div class="tm-a"><span class="av" style="background:#be123c">RW</span><span>Rina</span></div>
+            <div class="tm-a"><span class="av idle" style="background:#1d4ed8">DK</span><span>Dewi</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6 · Files + system status -->
+      <div class="strip">
+        <div class="card mini m-files">
+          <span class="ic"><i data-lucide="folder-sync"></i></span>
+          <span class="tx"><b>Moving 12 files to /Shared/Finance</b><span>NAS Santos · 64% · about 1 min left</span>
+            <div class="prog"><div class="pbar"><i style="width:64%"></i></div></div></span>
+          <a class="a" href="#">Open Files <i data-lucide="chevron-right"></i></a>
+        </div>
+        <div class="card mini m-admin">
+          <span class="ic"><i data-lucide="activity"></i></span>
+          <span class="tx"><b>System status <span class="adm">ADMIN</span></b>
+            <div class="stat" style="margin-top:4px"><span><i class="d"></i>Chat &amp; Calls</span><span><i class="d"></i>Mail outbox</span><span><i class="d w"></i>HRIS · 2h ago</span><span><i class="d"></i>NAS</span></div></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+lucide.createIcons();
+function toggleTheme(){const h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark'}
+function setEmpty(on){const e=on??document.getElementById('upEmpty').style.display==='none';
+  document.getElementById('upEmpty').style.display=e?'flex':'none';document.getElementById('upFull').style.display=e?'none':'grid'}
+const q=new URLSearchParams(location.search);
+if(q.has('dark'))document.documentElement.dataset.theme='dark';
+if(q.has('empty'))setEmpty(true);
+// Count-up once on load
+if(!matchMedia('(prefers-reduced-motion: reduce)').matches&&!q.has('static'))
+  document.querySelectorAll('[data-count]').forEach(el=>{const n=+el.dataset.count,t0=performance.now();
+    const f=t=>{const p=Math.min(1,(t-t0)/700);el.textContent=Math.round(n*(1-Math.pow(1-p,3)));if(p<1)requestAnimationFrame(f)};el.textContent='0';requestAnimationFrame(f)});
+</script>
+</body>
+</html>

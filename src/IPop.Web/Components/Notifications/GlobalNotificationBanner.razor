@@ -29,9 +29,9 @@
                 {
                     <div class="nb-desc">@item.Body</div>
                 }
-                <span class="nb-open">Buka di @mod.Label <i data-lucide="arrow-right"></i></span>
+                <span class="nb-open">Open in @mod.Label <i data-lucide="arrow-right"></i></span>
             </div>
-            <button type="button" class="apple-banner-close" title="Tutup" aria-label="Tutup notifikasi" @onclick="() => Notifs.DismissBanner(b.Id)" @onclick:stopPropagation>
+            <button type="button" class="apple-banner-close" title="Close" aria-label="Close notification" @onclick="() => Notifs.DismissBanner(b.Id)" @onclick:stopPropagation>
                 <i data-lucide="x"></i>
             </button>
             <span class="nb-timer"></span>
