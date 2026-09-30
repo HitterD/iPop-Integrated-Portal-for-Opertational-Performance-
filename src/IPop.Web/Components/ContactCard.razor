@@ -11,9 +11,7 @@
         <!-- Hero -->
         <div class="contact-hero">
             <div class="contact-av-wrap">
-                <div class="contact-av" style="background:@Person.Color">
-                    @Person.Initials
-                </div>
+                <PersonAvatar Nik="@Person.Nik" Name="@Person.Name" Size="72" Color="@Person.Color" Class="contact-av" Viewable="true" />
                 @if (!string.IsNullOrWhiteSpace(Person.Status))
                 {
                     <span class="presence @Person.Status"></span>
@@ -98,9 +96,7 @@
                     @if (!string.IsNullOrWhiteSpace(Person.Manager) && Person.Manager != "—")
                     {
                         <div class="contact-manager-row">
-                            <div class="contact-manager-av" style="background:@AvatarPalette.For(Person.Manager)">
-                                @GetManagerInitials(Person.Manager)
-                            </div>
+                            <PersonAvatar Nik="@Person.ManagerNik" Name="@Person.Manager" Size="36" Class="contact-manager-av" />
                             <div class="contact-manager-info">
                                 <div class="contact-manager-name">@Person.Manager</div>
                                 <div class="contact-manager-sub">Direct Manager</div>
@@ -151,13 +147,6 @@
         var s = string.IsNullOrWhiteSpace(person.Site) || person.Site == "—" ? null : person.Site;
         if (d is not null && s is not null) return $"{d} · {s}";
         return d ?? s;
-    }
-
-    private static string GetManagerInitials(string manager)
-    {
-        if (string.IsNullOrWhiteSpace(manager)) return "";
-        var parts = manager.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : manager.Length >= 2 ? manager[..2].ToUpperInvariant() : manager.ToUpperInvariant();
     }
 
     private async Task HandleMessage()

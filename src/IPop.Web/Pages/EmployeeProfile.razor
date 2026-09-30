@@ -57,9 +57,7 @@
                     </span>
                 </div>
                 <div class="emp-id" style="display:flex;align-items:flex-start;gap:18px;padding:20px">
-                    <div class="avatar" style="@IPop.Web.Models.AvatarPhotos.Style(person.Nik);width:84px;height:84px;font-size:28px;border-radius:22px;flex-shrink:0">
-                        @Initials(person.Name)
-                    </div>
+                    <PersonAvatar Nik="@person.Nik" Name="@person.Name" Size="84" Viewable="true" />
                     <div style="flex:1;min-width:0">
                         <div style="font-size:19px;font-weight:700;letter-spacing:-0.01em">@person.Name</div>
                         <div style="font-size:13px;color:var(--ink-2);margin-top:2px">@(person.Position ?? "—")</div>
@@ -101,7 +99,7 @@
                         <div>
                             <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-3);margin-bottom:6px">Direct Manager</div>
                             <div class="notif-row" role="button" @onclick="() => OpenPerson(manager.Nik)">
-                                <div class="notif-row-ic" style="@IPop.Web.Models.AvatarPhotos.Style(manager.Nik)">@Initials(manager.Name)</div>
+                                <PersonAvatar Nik="@manager.Nik" Name="@manager.Name" Size="34" Decorative="true" />
                                 <div class="notif-row-main">
                                     <div class="notif-row-t">@manager.Name <span class="mono" style="font-size:11px;color:var(--ink-3)">@manager.Nik</span></div>
                                     <div class="notif-row-s">@(manager.Position ?? "—")</div>
@@ -127,7 +125,7 @@
                                 {
                                     var report = r;
                                     <div class="notif-row" role="listitem" @onclick="() => OpenPerson(report.Nik)">
-                                        <div class="notif-row-ic" style="@IPop.Web.Models.AvatarPhotos.Style(report.Nik)">@Initials(report.Name)</div>
+                                        <PersonAvatar Nik="@report.Nik" Name="@report.Name" Size="34" Decorative="true" />
                                         <div class="notif-row-main">
                                             <div class="notif-row-t">@report.Name <span class="mono" style="font-size:11px;color:var(--ink-3)">@report.Nik</span></div>
                                             <div class="notif-row-s">@(report.Position ?? "—")</div>
@@ -242,12 +240,6 @@
         "away" => "Away",
         _ => "Offline"
     };
-
-    private static string Initials(string name)
-    {
-        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
-    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
 

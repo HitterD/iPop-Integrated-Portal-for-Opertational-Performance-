@@ -1,0 +1,34 @@
+@implements IDisposable
+@inject PhotoViewerState Viewer
+@inject OverlayStack Overlays
+
+@if (Viewer.IsOpen)
+{
+    <div class="photo-viewer" role="dialog" aria-modal="true" aria-label="Foto @Viewer.Name" @onclick="Viewer.Close">
+        <div class="photo-viewer-bar">
+            @if (!string.IsNullOrEmpty(Viewer.Name)) { <span class="photo-viewer-name">@Viewer.Name</span> }
+            <button type="button" class="photo-viewer-x" title="Tutup" aria-label="Tutup" @onclick="Viewer.Close"><i data-lucide="x"></i></button>
+        </div>
+        <img src="@Viewer.Url" alt="Foto @Viewer.Name" @onclick:stopPropagation="true" />
+    </div>
+}
+
+@code {
+    private IDisposable? _registration;
+
+    protected override void OnInitialized() => Viewer.Changed += OnChanged;
+
+    private void OnChanged()
+    {
+        if (Viewer.IsOpen && _registration is null)
+            _registration = Overlays.Push(() => { Viewer.Close(); return Task.CompletedTask; });
+        else if (!Viewer.IsOpen) { _registration?.Dispose(); _registration = null; }
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Viewer.Changed -= OnChanged;
+        _registration?.Dispose();
+    }
+}

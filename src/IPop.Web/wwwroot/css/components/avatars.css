@@ -1,0 +1,82 @@
+/* Person avatars are rounded squares everywhere (like the Direct Manager tile), with the
+   presence dot in the bottom-right corner. Loaded after the module sheets so it wins ties by
+   load order; percentage radii keep the shape in step with each avatar's size. */
+
+/* ---- Shared <PersonAvatar> ---- */
+.pav {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  flex: none; color: #fff; font-weight: 650; letter-spacing: -0.01em; line-height: 1;
+  padding: 0; border: 0; box-sizing: border-box; user-select: none;
+}
+[data-theme="dark"] .pav { color: #0e0d0b; }
+.pav .pav-in { pointer-events: none; }
+.pav .pav-dot {
+  position: absolute; right: calc(var(--pav-dot) * -0.2); bottom: calc(var(--pav-dot) * -0.2);
+  width: var(--pav-dot); height: var(--pav-dot); border-radius: 50%;
+  border: 2px solid var(--surface); box-sizing: border-box; background: var(--ink-4);
+}
+.pav .pav-dot.on { background: var(--accent); }
+.pav .pav-dot.busy { background: var(--danger); }
+.pav .pav-dot.away { background: #e0a320; }
+.pav-view { cursor: zoom-in; transition: transform .16s var(--ease), box-shadow .16s var(--ease); }
+.pav-view:hover { transform: scale(1.03); box-shadow: 0 4px 14px rgba(0, 0, 0, .14); }
+.pav-view:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---- Existing avatar classes: circle → rounded square ---- */
+.avatar,
+.member-chip .avatar,
+.cm-chip .chip-av,
+.calls-fav-avatar,
+.adm-av,
+.cal-person-av,
+.calls-history-av,
+.calls-detail-avatar,
+.callx-avatar,
+.mtg-av,
+.chat-area .room-av.person-av,
+.picker-av,
+.chat-area .mention-popup .mi .avatar,
+.dw .av,
+.news-v6x .reader-author .av,
+.ack-row .av.sm,
+.td-avatar,
+.td-time-avatar,
+.vpm-member-avatar,
+.ov-activity-av,
+.ov-member-av,
+.timesheet-avatar,
+.team-avatar-circ,
+.thr-avatar,
+.contact-av,
+.contact-manager-av { border-radius: 26%; }
+.room-item .avatar.round { border-radius: 26%; }
+.contact-av { border-radius: 20px; }
+.chat-area .panel-hero-av:not(.group-av) { border-radius: 20px; }
+
+/* Presence dots sit on the bottom-right corner of the square. */
+.contact-av-wrap .presence { right: -3px; bottom: -3px; }
+.dir-card .dc-av .presence { right: -3px; bottom: -3px; }
+.vpm-member-avatar .presence { right: -3px; bottom: -3px; }
+.dw-tm .av::after { right: -3px; bottom: -3px; }
+
+/* ---- Clickable big avatars (ContactCard hero, profile, directory detail) ---- */
+.avatar-viewable { cursor: zoom-in; }
+
+/* ---- Full-size photo viewer ---- */
+.photo-viewer {
+  position: fixed; inset: 0; z-index: 4200; display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, .8); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  padding: 64px 24px 24px; cursor: zoom-out; animation: photo-viewer-in .16s var(--ease);
+}
+.photo-viewer img {
+  max-width: min(100%, 1024px); max-height: 100%; object-fit: contain; border-radius: 18px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .5); cursor: default; background: rgba(255, 255, 255, .04);
+}
+.photo-viewer-bar { position: fixed; top: 14px; left: 20px; right: 16px; display: flex; align-items: center; gap: 12px; }
+.photo-viewer-name { flex: 1; color: #fff; font-size: 14px; font-weight: 600; text-shadow: 0 1px 4px rgba(0, 0, 0, .4); }
+.photo-viewer-x {
+  margin-left: auto; width: 38px; height: 38px; border-radius: 50%; border: 0; cursor: pointer;
+  background: rgba(255, 255, 255, .14); color: #fff; display: flex; align-items: center; justify-content: center;
+}
+.photo-viewer-x:hover { background: rgba(255, 255, 255, .24); }
+@keyframes photo-viewer-in { from { opacity: 0; } to { opacity: 1; } }

@@ -1,0 +1,65 @@
+@implements IDisposable
+@inject PhotoViewerState Viewer
+
+@* The one person avatar: a rounded square with the profile photo (or palette colour + initials)
+   and an optional presence dot in the bottom-right corner. Viewable avatars open the full-size
+   photo when the person has one. *@
+@if (CanView)
+{
+    <button type="button" class="pav pav-view @Class" style="@BoxStyle" title="Lihat foto @Name" aria-label="Lihat foto @Name"
+            @onclick="OpenViewer" @onclick:stopPropagation="true">
+        <span class="pav-in" aria-hidden="true">@Text</span>
+        @if (!string.IsNullOrEmpty(Status)) { <span class="pav-dot @Status"></span> }
+    </button>
+}
+else
+{
+    <span class="pav @Class" style="@BoxStyle" title="@Title" aria-hidden="@(Decorative ? "true" : null)">
+        <span class="pav-in">@Text</span>
+        @if (!string.IsNullOrEmpty(Status)) { <span class="pav-dot @Status"></span> }
+    </span>
+}
+
+@code {
+    [Parameter] public string? Nik { get; set; }
+    [Parameter] public string? Name { get; set; }
+    /// Edge length in px; radius and font scale with it.
+    [Parameter] public int Size { get; set; } = 32;
+    [Parameter] public string? Class { get; set; }
+    /// "on" | "away" | "busy" | "off"; null hides the dot.
+    [Parameter] public string? Status { get; set; }
+    /// Click opens the full-size photo (only when there is one).
+    [Parameter] public bool Viewable { get; set; }
+    /// Overrides the palette colour (e.g. the contact's own colour).
+    [Parameter] public string? Color { get; set; }
+    /// Replaces the initials (e.g. a group glyph); defaults to the name's initials.
+    [Parameter] public string? Initials { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public bool Decorative { get; set; }
+
+    private string? PhotoUrl => AvatarPhotos.Url(Nik);
+    private bool CanView => Viewable && PhotoUrl is not null;
+    private string Text => Initials ?? AvatarPhotos.Initials(Name);
+
+    public static int Radius(int size) => Math.Max(4, (int)Math.Round(size * 0.27));
+
+    private string BoxStyle
+    {
+        get
+        {
+            var color = Color ?? AvatarPalette.For(Nik ?? Name);
+            var bg = PhotoUrl is { } url ? $"background:{color} url('{url}') center/cover no-repeat;color:transparent" : $"background:{color}";
+            var font = Math.Max(8, (int)Math.Round(Size * 0.36));
+            var dot = Math.Clamp((int)Math.Round(Size * 0.26), 8, 18);
+            return $"{bg};width:{Size}px;height:{Size}px;border-radius:{Radius(Size)}px;font-size:{font}px;--pav-dot:{dot}px";
+        }
+    }
+
+    private void OpenViewer() => Viewer.Open(Nik, Name);
+
+    private void OnPhotosChanged() => _ = InvokeAsync(StateHasChanged);
+
+    protected override void OnInitialized() => AvatarPhotos.Changed += OnPhotosChanged;
+
+    public void Dispose() => AvatarPhotos.Changed -= OnPhotosChanged;
+}

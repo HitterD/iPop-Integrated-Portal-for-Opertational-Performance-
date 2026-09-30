@@ -13,6 +13,7 @@
 @inject IPop.Web.Services.OverlayStack Overlays
 @inject IPop.Web.Services.CallState CallStateSvc
 @inject IPop.Web.Services.FavoriteContacts Favorites
+@inject IPop.Web.Services.PhotoViewerState PhotoViewer
 @using IPop.Application.Chat.Mentions
 @using Microsoft.JSInterop
 @using IPop.Application.Chat
@@ -315,7 +316,8 @@
                 @if (ChatSvc.ActiveRoom.Type == "dm")
                 {
                     var dmMember = ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
-                    <button type="button" class="header-avatar-btn person-av" style="background:@GetActiveRoomColor()" title="View profile" aria-label="View profile" @onclick="() => OpenUserProfile(dmMember?.Nik)">
+                    var hasPhoto = IPop.Web.Models.AvatarPhotos.Url(dmMember?.Nik) is not null;
+                    <button type="button" class="header-avatar-btn person-av @(hasPhoto ? "avatar-viewable" : "")" style="background:@GetActiveRoomColor()" title="@(hasPhoto ? "Lihat foto" : "View profile")" aria-label="@(hasPhoto ? "Lihat foto" : "View profile")" @onclick="() => OpenHeaderAvatar(dmMember?.Nik, dmMember?.Name)">
                         @GetActiveRoomInitials()
                     </button>
                 }

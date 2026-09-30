@@ -560,7 +560,7 @@ public partial class Chat
     private static IPop.Web.Models.Employee MapEmployee(IPop.Web.Services.DirectoryEmployeeDto d)
         => new(d.Name, d.Position ?? "—", d.Nik, d.Extension ?? "—", d.Location ?? "—",
                d.Department ?? "—", d.DepartmentCode, d.Site ?? "—", d.SiteCode,
-               d.Manager ?? "—", d.Email, d.Status, IPop.Web.Models.AvatarPalette.For(d.Nik), d.PhotoPath);
+               d.Manager ?? "—", d.Email, d.Status, IPop.Web.Models.AvatarPalette.For(d.Nik), d.PhotoPath, d.ManagerNik);
 
     private const long MaxUploadBytes = 50L * 1024 * 1024;
 

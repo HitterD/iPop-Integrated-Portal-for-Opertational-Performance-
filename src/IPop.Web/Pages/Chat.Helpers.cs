@@ -82,6 +82,12 @@ public partial class Chat
         return WithPhoto(color, peer);
     }
 
+    /// DM header avatar: the full-size photo when the peer has one, otherwise their profile.
+    private async Task OpenHeaderAvatar(string? nik, string? name)
+    {
+        if (!PhotoViewer.Open(nik, name)) await OpenUserProfile(nik);
+    }
+
     /// Group photo URLs are API-relative; the WASM host is a different origin.
     private string PhotoUrl(string path) => new Uri(Http.BaseAddress!, path).ToString();
 

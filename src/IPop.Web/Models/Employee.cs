@@ -14,7 +14,8 @@ public record Employee(
     string Email,
     string Status, // "on" | "away" | "busy" | "off"
     string Color,
-    string? PhotoPath = null)
+    string? PhotoPath = null,
+    string? ManagerNik = null)
 {
     public string Initials =>
         string.Concat(Name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
