@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject SessionLockState Lock
+@inject IJSRuntime JS
 
 @if (Lock.Mode != SessionLockMode.None)
 {
@@ -32,6 +33,10 @@
 
 @code {
     protected override void OnInitialized() => Lock.Changed += OnChanged;
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (Lock.Mode != SessionLockMode.None) _ = JS.InvokeVoidAsync("ipop.icons").AsTask().ContinueWith(_ => { });
+    }
     private void OnChanged() => _ = InvokeAsync(StateHasChanged);
     public void Dispose() => Lock.Changed -= OnChanged;
 }

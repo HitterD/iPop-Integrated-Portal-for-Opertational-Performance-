@@ -1,6 +1,7 @@
 @implements IDisposable
 @inject PhotoViewerState Viewer
 @inject OverlayStack Overlays
+@inject IJSRuntime JS
 
 @if (Viewer.IsOpen)
 {
@@ -17,6 +18,11 @@
     private IDisposable? _registration;
 
     protected override void OnInitialized() => Viewer.Changed += OnChanged;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (Viewer.IsOpen) _ = JS.InvokeVoidAsync("ipop.icons").AsTask().ContinueWith(_ => { });
+    }
 
     private void OnChanged()
     {
