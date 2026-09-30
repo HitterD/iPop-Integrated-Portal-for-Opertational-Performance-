@@ -201,8 +201,22 @@ public partial class CallState : IAsyncDisposable
 
     private async Task HandleCallRoomChangedAsync(CallRoomDto room)
     {
-        // Group calls have their own flow (LiveKit media, per-member decline/leave, chat banners).
-        if (room.Kind == CallKind.Group) { await HandleGroupRoomAsync(room); return; }
+        // Someone added a person to my 1:1 call: it moved to LiveKit for good (never back to P2P).
+        if (room.Kind == CallKind.AdHoc && Current?.Id == room.Id && Current.Kind == CallKind.User)
+        {
+            await UpgradeToLiveKitAsync(room);
+            return;
+        }
+        // Group and ad-hoc calls have their own flow (LiveKit media, per-member decline/leave, chat banners).
+        if (CallKind.IsLiveKit(room.Kind))
+        {
+            // Another device of mine owns this call; only a fresh ring for me is news here.
+            if (_elsewhereCallId == room.Id
+                && room.Participants.FirstOrDefault(p => p.Nik == _auth.Me?.Nik)?.Status != CallParticipantStatus.Invited)
+                return;
+            await HandleGroupRoomAsync(room);
+            return;
+        }
         // Busy in a group call: a new 1:1 ring is not allowed to replace it.
         if (IsGroup && HasLiveCall && Current!.Id != room.Id) return;
 

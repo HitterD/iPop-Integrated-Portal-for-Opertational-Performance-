@@ -18,12 +18,20 @@
     var room = CallSvc.Current!;
     var starter = room.Participants.FirstOrDefault(p => p.UserId == room.CreatorId)?.Name ?? "Rekan kerja";
     var joined = CallSvc.GroupJoinedCount;
-    <div class="callx-incoming callx-group" role="alertdialog" aria-live="assertive" aria-label="Panggilan grup @CallSvc.GroupName dari @starter">
+    var inviteLine = CallSvc.InviteLine;
+    <div class="callx-incoming callx-group" role="alertdialog" aria-live="assertive" aria-label="@(inviteLine ?? $"Panggilan grup {CallSvc.GroupName} dari {starter}")">
         <div class="callx-incoming-main">
             @GroupAvatar(room, "callx-ring")
             <div class="callx-incoming-text">
                 <strong>@CallSvc.GroupName</strong>
-                <span><i data-lucide="users"></i> Panggilan grup dari @FirstName(starter)</span>
+                @if (inviteLine is not null)
+                {
+                    <span class="callx-invite-line"><i data-lucide="user-plus"></i> @inviteLine</span>
+                }
+                else
+                {
+                    <span><i data-lucide="users"></i> Panggilan grup dari @FirstName(starter)</span>
+                }
                 <small class="callx-sub">@joined orang di panggilan</small>
             </div>
         </div>
@@ -101,6 +109,10 @@ else if (CallSvc.IsInGroupCall)
                     <p class="callx-warn"><i data-lucide="shield-alert"></i> Mikrofon butuh HTTPS — anggota lain tidak bisa mendengar Anda.</p>
                 }
             </div>
+            @if (showAddPerson)
+            {
+                <CallAddPerson OnClose="CloseAddPerson" />
+            }
             @if (showDevices)
             {
                 <div class="callx-devices">
@@ -122,6 +134,10 @@ else if (CallSvc.IsInGroupCall)
                 <button type="button" class="callx-ctrl @(muted ? "on" : "")" @onclick="ToggleMute" aria-pressed="@(muted ? "true" : "false")">
                     <span><i data-lucide="@(muted ? "mic-off" : "mic")"></i></span>@(muted ? "Nyalakan" : "Bisukan")
                 </button>
+                @if (CanAddPerson)
+                {
+                    @AddPersonButton()
+                }
                 <button type="button" class="callx-ctrl @(showDevices ? "on" : "")" @onclick="ToggleDevices" aria-expanded="@(showDevices ? "true" : "false")">
                     <span><i data-lucide="settings-2"></i></span>Perangkat
                 </button>
@@ -228,6 +244,10 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
                 }
             </div>
 
+            @if (showAddPerson && CanAddPerson)
+            {
+                <CallAddPerson OnClose="CloseAddPerson" />
+            }
             @if (showDevices)
             {
                 <div class="callx-devices">
@@ -253,6 +273,10 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
                     <button type="button" class="callx-ctrl @(muted ? "on" : "")" @onclick="ToggleMute" aria-pressed="@(muted ? "true" : "false")">
                         <span><i data-lucide="@(muted ? "mic-off" : "mic")"></i></span>@(muted ? "Nyalakan" : "Bisukan")
                     </button>
+                }
+                @if (CanAddPerson)
+                {
+                    @AddPersonButton()
                 }
                 <button type="button" class="callx-ctrl @(showDevices ? "on" : "")" @onclick="ToggleDevices" aria-expanded="@(showDevices ? "true" : "false")">
                     <span><i data-lucide="settings-2"></i></span>Perangkat
@@ -284,6 +308,7 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
     private bool isMinimized;
     private bool showReplies;
     private bool showDevices;
+    private bool showAddPerson;
     private bool busy;
     private string customReply = "";
     private AudioDevices devices = new([], []);
@@ -375,6 +400,7 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
             isMinimized = false;
             showReplies = false;
             showDevices = false;
+            showAddPerson = false;
             customReply = "";
         }
         UpdateTicker();
@@ -453,16 +479,50 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
     private string TileState(IPop.Application.Calls.CallParticipantDto p, bool inCall, GroupMediaParticipant? media)
     {
         if (!inCall)
-        {
-            var ringing = CallSvc.Current is { } c && DateTime.UtcNow - DateTime.SpecifyKind(c.StartedAt, DateTimeKind.Utc) < TimeSpan.FromSeconds(CallSvc.RingTimeoutSeconds);
-            return ringing ? "Memanggil…" : "Belum bergabung";
-        }
+            return CallSvc.IsRinging(p) ? "Memanggil…" : "Belum bergabung";
         if (p.Nik == Auth.Me?.Nik) return CallSvc.WebRtcState == "connected" ? "Terhubung" : "Menghubungkan…";
         return media is null ? "Menghubungkan…" : media.Speaking && !media.Muted ? "Berbicara" : "Terhubung";
     }
 
+    /// Any accepted participant may ring someone in: a group/ad-hoc call any time, a 1:1 once answered.
+    /// Not in scheduled meetings (no server call room).
+    private bool CanAddPerson =>
+        !CallSvc.IsMeeting && CallSvc.ActiveMe?.Status == IPop.Application.Calls.CallParticipantStatus.Accepted
+        && (CallSvc.IsGroup ? CallSvc.HasLiveCall : CallSvc.IsActiveCall);
+
+    private RenderFragment AddPersonButton() => __builder =>
+    {
+        <button type="button" class="callx-ctrl callx-add-person @(showAddPerson ? "on" : "")" @onclick="ToggleAddPerson"
+                aria-expanded="@(showAddPerson ? "true" : "false")" title="Add person to the call">
+            <span><i data-lucide="user-plus"></i></span>Add person
+        </button>
+    };
+
+    private void ToggleAddPerson()
+    {
+        showAddPerson = !showAddPerson;
+        if (showAddPerson) showDevices = false;
+    }
+
+    private void CloseAddPerson() => showAddPerson = false;
+
     private RenderFragment GroupAvatar(IPop.Application.Calls.CallRoomDto room, string extra) => __builder =>
     {
+        if (room.Kind == IPop.Application.Calls.CallKind.AdHoc)
+        {
+            // Ad-hoc call: no group picture — the person who rang me in (ring) or a people glyph.
+            var by = extra.Contains("callx-ring") && CallSvc.ActiveMe?.InvitedById is { } id
+                ? room.Participants.FirstOrDefault(p => p.UserId == id) : null;
+            if (by is not null)
+            {
+                <PersonAvatar Nik="@by.Nik" Name="@by.Name" Size="52" Class="@($"callx-avatar {extra}")" Decorative="true" />
+            }
+            else
+            {
+                <span class="callx-avatar callx-group-av callx-adhoc-av @extra"><i data-lucide="users"></i></span>
+            }
+            return;
+        }
         var name = string.IsNullOrWhiteSpace(room.Title) ? "Grup" : room.Title!;
         var color = string.IsNullOrWhiteSpace(room.AvatarColor) ? AvatarColor(name) : room.AvatarColor;
         <span class="callx-avatar callx-group-av @extra" style="background:@color">
@@ -488,6 +548,7 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
     private async Task ToggleDevices()
     {
         showDevices = !showDevices;
+        if (showDevices) showAddPerson = false;
         if (showDevices) devices = await CallSvc.ListDevicesAsync();
     }
 

@@ -1,0 +1,111 @@
+@using IPop.Application.Calls
+@inject AuthState Auth
+@inject CallState CallSvc
+@inject ToastService Toasts
+@inject IJSRuntime JS
+
+@* "Add person" panel of the call window: live search over /api/directory/member-search
+   (same source as AppMemberPicker). People already in the call are left out; people still
+   being rung show "Calling…". Picking someone rings them into the call. *@
+<div class="callx-add" role="group" aria-label="Add person to call">
+    <div class="callx-add-input">
+        <i data-lucide="search"></i>
+        <input @ref="inputRef" placeholder="Search people…" aria-label="Search people to add" value="@query"
+               @oninput="OnInput" @onkeydown="OnKeyDown" />
+        <button type="button" class="callx-icon" aria-label="Close add person" @onclick="OnClose"><i data-lucide="x"></i></button>
+    </div>
+    @if (query.Trim().Length < 2)
+    {
+        <small class="callx-add-hint">Type at least 2 letters of a name or NIK.</small>
+    }
+    else if (loading && results.Count == 0)
+    {
+        <small class="callx-add-hint">Searching…</small>
+    }
+    else if (Rows.Count == 0)
+    {
+        <small class="callx-add-hint">No one to add matches “@query.Trim()”.</small>
+    }
+    else
+    {
+        <ul class="callx-add-list" role="listbox" aria-label="People">
+            @foreach (var r in Rows)
+            {
+                var calling = IsCalling(r.Nik);
+                <li>
+                    <button type="button" class="callx-add-opt" role="option" aria-selected="false" disabled="@(calling || busyNik is not null)"
+                            @onclick="() => Add(r)">
+                        <PersonAvatar Nik="@r.Nik" Name="@r.Name" Size="28" Decorative="true" />
+                        <span class="callx-add-txt"><strong>@r.Name</strong><small>@r.PositionLabel</small></span>
+                        <span class="callx-add-state">@(calling ? "Calling…" : busyNik == r.Nik ? "Adding…" : "Add")</span>
+                    </button>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string query = "";
+    private List<MemberSearchRow> results = [];
+    private bool loading;
+    private string? busyNik;
+    private ElementReference inputRef;
+    private CancellationTokenSource? cts;
+    private bool focused;
+
+    /// Search hits minus people already in the call (accepted); invitees stay listed as "Calling…".
+    private List<MemberSearchRow> Rows =>
+        results.Where(r => r.Nik != Auth.Me?.Nik && Participant(r.Nik)?.Status != CallParticipantStatus.Accepted).ToList();
+
+    private CallParticipantDto? Participant(string nik) =>
+        CallSvc.Current?.Participants.FirstOrDefault(p => p.Nik == nik);
+
+    private bool IsCalling(string nik) => Participant(nik) is { } p && CallSvc.IsRinging(p);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!focused)
+        {
+            focused = true;
+            try { await inputRef.FocusAsync(); } catch (Exception ex) when (ex is JSException or InvalidOperationException) { }
+        }
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch (JSException) { }
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        query = e.Value?.ToString() ?? "";
+        cts?.Cancel();
+        cts?.Dispose();
+        var token = new CancellationTokenSource();
+        cts = token;
+        var q = query.Trim();
+        if (q.Length < 2) { results = []; loading = false; return; }
+        loading = true;
+        try { await Task.Delay(180, token.Token); } catch (TaskCanceledException) { return; }
+        var res = await Auth.GetAsync<MemberSearchRow[]>($"/api/directory/member-search?q={Uri.EscapeDataString(q)}");
+        if (token.IsCancellationRequested) return;
+        results = res?.ToList() ?? [];
+        loading = false;
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await OnClose.InvokeAsync();
+    }
+
+    private async Task Add(MemberSearchRow r)
+    {
+        busyNik = r.Nik;
+        try
+        {
+            var error = await CallSvc.InviteAsync(r.Nik);
+            if (error is null) Toasts.Show($"Calling {r.Name}…", ToastKind.Success);
+            else Toasts.Show(error, ToastKind.Error);
+        }
+        finally { busyNik = null; }
+    }
+}

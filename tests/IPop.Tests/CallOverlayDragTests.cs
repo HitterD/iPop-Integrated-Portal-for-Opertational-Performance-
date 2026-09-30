@@ -53,6 +53,51 @@ public class CallOverlayDragTests
         Assert.Empty(cut.FindAll(".callx-window, .callx-pill"));
     }
 
+    [Fact]
+    public void Add_person_button_renders_for_active_calls_and_opens_the_picker()
+    {
+        using var ctx = Context(out var calls);
+        SetCurrent(calls, ActiveCall());
+        SetMe(calls, "100");
+
+        var cut = ctx.Render<GlobalCallOverlay>();
+
+        var add = cut.Find(".callx-controls .callx-add-person");
+        Assert.Contains("Add person", add.TextContent);
+        Assert.NotNull(add.QuerySelector("[data-lucide='user-plus']"));
+        Assert.Empty(cut.FindAll(".callx-add"));
+        add.Click();
+        Assert.NotEmpty(cut.FindAll(".callx-add input[aria-label='Search people to add']"));
+        Assert.Null(cut.Find(".callx-window").GetAttribute("style"));
+
+        // Also in a group/ad-hoc call window.
+        SetCurrent(calls, ActiveCall() with { Kind = CallKind.AdHoc });
+        cut.Render();
+        Assert.NotEmpty(cut.FindAll(".callx-group-window .callx-add-person"));
+    }
+
+    [Fact]
+    public void Add_person_is_hidden_while_the_1to1_call_still_rings()
+    {
+        using var ctx = Context(out var calls);
+        var ringing = ActiveCall() with { Status = CallStatus.Ringing, EstablishedAt = null };
+        SetCurrent(calls, ringing with { CreatorId = ringing.Participants[0].UserId });
+        SetMe(calls, "100");
+
+        var cut = ctx.Render<GlobalCallOverlay>();
+
+        Assert.NotEmpty(cut.FindAll(".callx-window"));
+        Assert.Empty(cut.FindAll(".callx-add-person"));
+    }
+
+    private static void SetMe(CallState calls, string nik)
+    {
+        var auth = (AuthState)typeof(CallState).GetField("_auth", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(calls)!;
+        var me = System.Text.Json.JsonSerializer.Deserialize<DirectoryEmployeeDto>($$"""{"nik":"{{nik}}","name":"Jane Kurniawan"}""",
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
+        typeof(AuthState).GetProperty(nameof(AuthState.Me))!.SetValue(auth, me);
+    }
+
     private static CallRoomDto ActiveCall() => new(
         Guid.NewGuid(), CallKind.User, CallStatus.Active, null, Guid.NewGuid(),
         DateTime.UtcNow, DateTime.UtcNow, null, null,

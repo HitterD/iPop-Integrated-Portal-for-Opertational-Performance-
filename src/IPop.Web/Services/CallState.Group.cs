@@ -22,10 +22,135 @@ public partial class CallState
     /// Live group calls by chat group (from hub broadcasts / banner fetches).
     private readonly Dictionary<Guid, CallRoomDto> _groupCalls = [];
 
-    public bool IsGroup => Current?.Kind == CallKind.Group;
+    /// The current call runs on LiveKit with group semantics: a chat-group call or an ad-hoc
+    /// call (a 1:1 someone added a person to).
+    public bool IsGroup => CallKind.IsLiveKit(Current?.Kind);
 
-    /// Group name for the ring card and call window.
-    public string GroupName => string.IsNullOrWhiteSpace(Current?.Title) ? "Panggilan grup" : Current!.Title!;
+    /// An ad-hoc multi-party call (no chat group behind it).
+    public bool IsAdHoc => Current?.Kind == CallKind.AdHoc;
+
+    /// Group name for the ring card and call window; ad-hoc calls list the other people.
+    public string GroupName => IsAdHoc ? AdHocName(Current!)
+        : string.IsNullOrWhiteSpace(Current?.Title) ? "Panggilan grup" : Current!.Title!;
+
+    /// "Call with Jason, Beny, +1": everyone but me who is in or being called into the call.
+    private string AdHocName(CallRoomDto room)
+    {
+        var names = room.Participants
+            .Where(p => p.Nik != _auth.Me?.Nik && p.Status is CallParticipantStatus.Accepted or CallParticipantStatus.Invited)
+            .Select(p => FirstNameOf(p.Name)).ToList();
+        if (names.Count == 0) return "Call";
+        var shown = string.Join(", ", names.Take(2));
+        return names.Count > 2 ? $"Call with {shown}, +{names.Count - 2}" : $"Call with {shown}";
+    }
+
+    /// Ring text for someone added to a running call: "Beny invited you to a call with Jason"
+    /// or "Beny invited you to ICT IPOP call". Null for an ordinary ring.
+    public string? InviteLine
+    {
+        get
+        {
+            if (Current is not { } room || ActiveMe is not { InvitedById: { } by } me) return null;
+            var inviter = FirstNameOf(room.Participants.FirstOrDefault(p => p.UserId == by)?.Name ?? "Someone");
+            if (room.Kind == CallKind.Group)
+                return $"{inviter} invited you to {GroupName} call";
+            var others = room.Participants
+                .Where(p => p.UserId != me.UserId && p.UserId != by && p.Status == CallParticipantStatus.Accepted)
+                .Select(p => FirstNameOf(p.Name)).ToList();
+            return others.Count == 0 ? $"{inviter} invited you to a call"
+                : $"{inviter} invited you to a call with {string.Join(", ", others.Take(3))}{(others.Count > 3 ? $", +{others.Count - 3}" : "")}";
+        }
+    }
+
+    /// When my ring started: my own invite time (people added later ring in full), else the call start.
+    public static DateTime RingStart(CallRoomDto room, CallParticipantDto? p) =>
+        DateTime.SpecifyKind(p is { Status: CallParticipantStatus.Invited, InvitedById: not null, JoinedAt: { } at } ? at : room.StartedAt, DateTimeKind.Utc);
+
+    /// The participant is still being rung (invited, inside their ring window).
+    public bool IsRinging(CallParticipantDto p) =>
+        Current is { } room && p.Status == CallParticipantStatus.Invited
+        && DateTime.UtcNow - RingStart(room, p) < TimeSpan.FromSeconds(RingTimeoutSeconds);
+
+    private static string FirstNameOf(string name) => name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+
+    /// "Add person": ring a directory user into the current call. Null on success, else the error
+    /// to show. Adding to a 1:1 call switches it to LiveKit (the response carries my token).
+    public async Task<string?> InviteAsync(string nik)
+    {
+        if (Current is not { } room || IsMeeting) return "There is no call to add people to.";
+        try
+        {
+            using var res = await _auth.SendAsync(HttpMethod.Post, $"/api/calls/{room.Id}/invite", new { nik });
+            if (!res.IsSuccessStatusCode)
+            {
+                try
+                {
+                    var err = await res.Content.ReadFromJsonAsync<CallApiError>();
+                    if (!string.IsNullOrWhiteSpace(err?.Message)) return err.Message;
+                }
+                catch (JsonException) { }
+                return res.StatusCode == HttpStatusCode.ServiceUnavailable
+                    ? "Adding people is not available: the call media server is not configured."
+                    : $"Could not add that person ({(int)res.StatusCode}).";
+            }
+            var after = await res.Content.ReadFromJsonAsync<CallRoomDto>();
+            if (after is not null && Current?.Id == after.Id) await HandleCallRoomChangedAsync(after);
+            return null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            return "The call server could not be reached.";
+        }
+    }
+
+    /// My P2P 1:1 call became an ad-hoc LiveKit call: drop the peer connection and join the
+    /// LiveKit room with a fresh token (a short audio gap). Current switches to the ad-hoc room
+    /// first, so later updates take the group path and this never runs twice for one call.
+    private async Task UpgradeToLiveKitAsync(CallRoomDto room)
+    {
+        var wasMuted = ActiveMe?.IsMuted == true;
+        Current = room;
+        _webRtcActiveCallId = null;
+        _peerConnection = null;
+        _peerCallId = null;
+        WebRtcState = "connecting";
+        StateChanged?.Invoke();
+        try { await _js.InvokeVoidAsync("ipopAudio.endCall"); } catch (JSException) { }
+
+        var joined = room;
+        if (string.IsNullOrEmpty(room.LiveKitToken))
+        {
+            try
+            {
+                using var res = await _auth.SendAsync(HttpMethod.Post, $"/api/calls/{room.Id}/join");
+                joined = res.IsSuccessStatusCode ? await res.Content.ReadFromJsonAsync<CallRoomDto>() ?? room : room;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException) { }
+        }
+        if (Current?.Id != room.Id) return; // ended meanwhile
+        if (string.IsNullOrEmpty(joined.LiveKitUrl) || string.IsNullOrEmpty(joined.LiveKitToken))
+        {
+            WebRtcState = "failed";
+            LastError = "Could not switch the call to multi-party audio.";
+            StateChanged?.Invoke();
+            return;
+        }
+        Current = Current with { LiveKitUrl = joined.LiveKitUrl, LiveKitToken = joined.LiveKitToken, LiveKitRoom = joined.LiveKitRoom };
+        _groupMediaCallId = room.Id;
+        _selfRef ??= DotNetObjectReference.Create(this);
+        try
+        {
+            var ok = await _js.InvokeAsync<bool>("ipopGroupCall.join", joined.LiveKitUrl, joined.LiveKitToken, _selfRef, _groupInputDeviceId);
+            if (!ok) WebRtcState = "failed";
+            else if (wasMuted) await _js.InvokeVoidAsync("ipopGroupCall.setMuted", true);
+        }
+        catch (JSException ex)
+        {
+            WebRtcState = "failed";
+            LastError = "Could not switch the call to multi-party audio: " + ex.Message;
+        }
+        StateChanged?.Invoke();
+    }
 
     /// I am connected (accepted) in the current group call.
     public bool IsInGroupCall =>
@@ -158,9 +283,10 @@ public partial class CallState
         Current = null;
         WebRtcState = null;
         _groupMedia = [];
+        var left = room.Kind == CallKind.AdHoc ? "Left the call" : "Keluar dari panggilan grup";
         LastEndReason = room.EstablishedAt is { } est
-            ? $"Keluar dari panggilan grup · {FormatDuration(DateTime.UtcNow - DateTime.SpecifyKind(est, DateTimeKind.Utc))}"
-            : "Keluar dari panggilan grup";
+            ? $"{left} · {FormatDuration(DateTime.UtcNow - DateTime.SpecifyKind(est, DateTimeKind.Utc))}"
+            : left;
         StateChanged?.Invoke();
         try
         {
@@ -205,8 +331,8 @@ public partial class CallState
                     await HandleCallEndedAsync(room.Status == CallStatus.Missed
                         ? "Tidak ada anggota yang bergabung"
                         : room.EstablishedAt is { } est && room.EndedAt is { } end
-                            ? $"Panggilan grup selesai · {FormatDuration(end - est)}"
-                            : "Panggilan grup selesai");
+                            ? $"{(room.Kind == CallKind.AdHoc ? "Call ended" : "Panggilan grup selesai")} · {FormatDuration(end - est)}"
+                            : room.Kind == CallKind.AdHoc ? "Call ended" : "Panggilan grup selesai");
                 else
                 {
                     CancelGroupRing();
@@ -231,7 +357,7 @@ public partial class CallState
 
         // Someone else's view of a call I'm not showing: ring me if I'm invited and it's fresh.
         if (live && !HasLiveCall && me?.Status == CallParticipantStatus.Invited
-            && DateTime.UtcNow - DateTime.SpecifyKind(room.StartedAt, DateTimeKind.Utc) < TimeSpan.FromSeconds(RingTimeoutSeconds))
+            && DateTime.UtcNow - RingStart(room, me) < TimeSpan.FromSeconds(RingTimeoutSeconds))
         {
             Current = room;
             LastError = null;
@@ -247,7 +373,8 @@ public partial class CallState
         CancelGroupRing();
         _groupRingCts = new CancellationTokenSource();
         var token = _groupRingCts.Token;
-        var left = TimeSpan.FromSeconds(RingTimeoutSeconds) - (DateTime.UtcNow - DateTime.SpecifyKind(room.StartedAt, DateTimeKind.Utc));
+        var left = TimeSpan.FromSeconds(RingTimeoutSeconds)
+            - (DateTime.UtcNow - RingStart(room, room.Participants.FirstOrDefault(p => p.Nik == _auth.Me?.Nik)));
         if (left < TimeSpan.Zero) left = TimeSpan.Zero;
         _ = Task.Delay(left, token).ContinueWith(async t =>
         {
@@ -256,7 +383,7 @@ public partial class CallState
             {
                 try { await _js.InvokeVoidAsync("ipopAudio.stopAudioTones"); } catch (JSException) { }
                 Current = null;
-                LastEndReason = $"Panggilan grup tak terjawab · {room.Title}";
+                LastEndReason = room.Kind == CallKind.AdHoc ? "Missed call" : $"Panggilan grup tak terjawab · {room.Title}";
                 StateChanged?.Invoke();
             }
         }, TaskScheduler.Default);
