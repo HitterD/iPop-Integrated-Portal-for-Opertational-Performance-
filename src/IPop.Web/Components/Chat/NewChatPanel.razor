@@ -1,0 +1,157 @@
+@using IPop.Web.Components
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject IJSRuntime JS
+@implements IDisposable
+
+@* WhatsApp-Web style "New chat" panel. It takes over the conversation-list column (the
+   page hides the list while it is open) and walks three steps:
+     Chat    — search + "New group" row + people; a click opens the DM straight away.
+     Members — chips in their own row, full-width search, checkbox list, "Next".
+     Details — group photo + name, "Create group". *@
+<section class="nc-panel" aria-label="@Title">
+    <header class="nc-head">
+        <button type="button" class="nc-back" @onclick="Back" aria-label="Back" title="Back"><i data-lucide="arrow-left"></i></button>
+        <div class="nc-titles">
+            <h2 class="nc-title">@Title</h2>
+            @if (step == NewChatStep.Members)
+            {
+                <span class="nc-sub">@(picked.Count == 0 ? "Select at least 2 people" : $"{picked.Count} selected")</span>
+            }
+        </div>
+    </header>
+
+    @if (step == NewChatStep.Details)
+    {
+        <div class="nc-details">
+            <div class="nc-photo">
+                <InputFile OnChange="OnPhotoSelected" accept="image/png,image/jpeg,image/webp,image/gif" id="@photoInputId" class="nc-file" />
+                <label for="@photoInputId" class="nc-photo-btn" title="@(photoPreview is null ? "Add group photo" : "Change group photo")" aria-label="@(photoPreview is null ? "Add group photo" : "Change group photo")">
+                    @if (photoPreview is not null)
+                    {
+                        <img class="nc-photo-img" src="@photoPreview" alt="Group photo" />
+                    }
+                    else
+                    {
+                        <span class="nc-photo-av @(string.IsNullOrWhiteSpace(groupName) ? "empty" : "")" style="@(string.IsNullOrWhiteSpace(groupName) ? "" : $"background:{AvatarPalette.For(groupName.Trim())}")">
+                            @if (string.IsNullOrWhiteSpace(groupName)) { <i data-lucide="users"></i> } else { @AvatarPhotos.Initials(groupName) }
+                        </span>
+                    }
+                    <span class="nc-photo-edit"><i data-lucide="camera"></i></span>
+                </label>
+                @if (photoPreview is not null)
+                {
+                    <button type="button" class="nc-link" @onclick="ClearPhoto">Remove photo</button>
+                }
+            </div>
+
+            <div class="nc-group">
+                <input @ref="nameRef" type="text" class="nc-name-input" placeholder="Group name" maxlength="100" aria-label="Group name"
+                       value="@groupName" @oninput="e => groupName = e.Value?.ToString() ?? string.Empty" @onkeydown="OnNameKey" />
+            </div>
+
+            <div class="nc-h">Members · @picked.Count</div>
+            <div class="nc-group nc-member-sum">
+                @foreach (var m in picked)
+                {
+                    <div class="nc-row static">
+                        <PersonAvatar Nik="@m.Nik" Name="@m.Name" Size="32" Decorative="true" />
+                        <div class="nc-info">
+                            <div class="nc-name">@m.Name</div>
+                            <div class="nc-pos">@Subtitle(m)</div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <button type="button" class="nc-primary" disabled="@(!CanCreate)" @onclick="CreateGroupAsync">
+                @if (creating) { <i data-lucide="loader-circle" class="spin"></i> <span>Creating…</span> }
+                else { <span>Create group</span> }
+            </button>
+        </div>
+    }
+    else
+    {
+        @if (step == NewChatStep.Members && picked.Count > 0)
+        {
+            <div class="nc-chips" aria-label="Selected members">
+                @foreach (var m in picked)
+                {
+                    var person = m;
+                    <span class="nc-chip">
+                        <PersonAvatar Nik="@person.Nik" Name="@person.Name" Size="20" Decorative="true" />
+                        <span class="nc-chip-name">@FirstName(person.Name)</span>
+                        <button type="button" @onclick="() => Remove(person.Id)" aria-label="@($"Remove {person.Name}")"><i data-lucide="x"></i></button>
+                    </span>
+                }
+            </div>
+        }
+
+        <div class="nc-search">
+            <i data-lucide="search" class="nc-search-ic"></i>
+            <input @ref="searchRef" type="text" class="nc-search-input" aria-label="Search people"
+                   placeholder="@(step == NewChatStep.Members ? "Search people to add" : "Search name or ID")"
+                   value="@query" @oninput="OnSearchChanged" @onkeydown="OnSearchKey" />
+            @if (query.Length > 0)
+            {
+                <button type="button" class="nc-search-clear" @onclick="ClearSearch" aria-label="Clear search"><i data-lucide="x"></i></button>
+            }
+        </div>
+
+        <div class="nc-list" role="list">
+            @if (step == NewChatStep.Chat && query.Length == 0)
+            {
+                <button type="button" class="nc-row nc-new-group" @onclick="GoToMembers">
+                    <span class="nc-row-ic"><i data-lucide="users"></i></span>
+                    <div class="nc-info"><div class="nc-name">New group</div></div>
+                </button>
+                <div class="nc-h">People</div>
+            }
+
+            @if (loading)
+            {
+                @for (var i = 0; i < 6; i++)
+                {
+                    <div class="nc-row static"><div class="skel" style="width:40px;height:40px;border-radius:11px"></div><div class="skel" style="flex:1;height:14px;border-radius:6px"></div></div>
+                }
+            }
+            else if (Visible.Count == 0)
+            {
+                <div class="nc-hint">@(searching ? "Searching…" : query.Trim().Length > 0 ? $"No colleagues match “{query.Trim()}”." : "No colleagues to show.")</div>
+            }
+            else
+            {
+                @foreach (var person in Visible)
+                {
+                    var p = person;
+                    var on = IsPicked(p.Id);
+                    <button type="button" class="nc-row @(on ? "on" : "")" role="listitem" aria-pressed="@(step == NewChatStep.Members ? (on ? "true" : "false") : null)"
+                            disabled="@(startingDm is not null)" @onclick="() => OnPersonClick(p)">
+                        <PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="40" Status="@(p.PresenceStatus == "on" ? "on" : null)" Decorative="true" />
+                        <div class="nc-info">
+                            <div class="nc-name">@p.Name</div>
+                            <div class="nc-pos">@Subtitle(p)</div>
+                        </div>
+                        @if (step == NewChatStep.Members)
+                        {
+                            <span class="nc-check @(on ? "on" : "")" aria-hidden="true">@if (on) { <i data-lucide="check"></i> }</span>
+                        }
+                        else if (startingDm == p.Id)
+                        {
+                            <i data-lucide="loader-circle" class="spin nc-trail"></i>
+                        }
+                    </button>
+                }
+            }
+        </div>
+
+        @if (step == NewChatStep.Members)
+        {
+            <div class="nc-foot">
+                <button type="button" class="nc-next" disabled="@(picked.Count < MinGroupPicks)" @onclick="GoToDetails" aria-label="Next">
+                    <span>Next</span><i data-lucide="arrow-right"></i>
+                </button>
+            </div>
+        }
+    }
+</section>

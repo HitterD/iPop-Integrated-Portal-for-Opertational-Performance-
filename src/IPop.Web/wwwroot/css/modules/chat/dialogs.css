@@ -37,40 +37,14 @@
 .chat-modal-body { padding:12px 16px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;flex:1;min-height:0; }
 .chat-modal-foot { padding:10px 16px;border-top:1px solid var(--line-soft);display:flex;align-items:center;gap:8px;justify-content:flex-end;flex-shrink:0; }
 
-/* /* Centered modal shell used by New DM / New Group / Emergency (tray + inner card pattern) */
+/* Centered modal shell (Emergency broadcast). */
 .cm-center {
   position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;padding:16px;
 }
-.cm-tray {
-  width:100%;
-  max-width:min(480px, calc(100vw - 32px));
-  background:var(--drawer-tray, rgba(239,237,232,0.95));
-  border:1px solid var(--line-soft);
-  border-radius:var(--radius-tray);
-  padding:6px;
-  backdrop-filter:blur(16px);
-  box-shadow:0 24px 64px -16px rgba(23,22,20,0.35);
-  animation:cm-appear 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
-.cm-tray.cm-tray-group {
-  max-width:min(500px, calc(100vw - 32px));
-}
-
 @keyframes cm-appear {
   from { opacity: 0; transform: scale(0.96) translateY(8px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
 }
-
-.cm-card {
-  background:var(--surface);
-  border-radius:calc(var(--radius-tray) - 6px);
-  padding:20px;
-  display:flex;
-  flex-direction:column;
-  gap:14px;
-}
-.cm-card.compact { padding:18px 16px; }
 
 /* Small utility for inline danger emergency card */
 .em-card {

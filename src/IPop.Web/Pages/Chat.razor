@@ -22,9 +22,16 @@
 
 <PageTitle>Messages — IPop</PageTitle>
 
-<div class="chat-area @(mobileRoomsOpen ? "rooms-open" : "") @(ChatSvc.ActiveRoomId is not null ? "m-detail" : "") @(drawerOpen ? "with-drawer" : "") @(globalDrawerView is not null ? "with-global-drawer" : "")" @onclick="CloseCtx">
+<div class="chat-area @(mobileRoomsOpen ? "rooms-open" : "") @(ChatSvc.ActiveRoomId is not null && !newChatOpen ? "m-detail" : "") @(drawerOpen ? "with-drawer" : "") @(globalDrawerView is not null ? "with-global-drawer" : "")" @onclick="CloseCtx">
     @* ============ ROOM PANE ============ *@
-    <div class="room-pane rise rise-1">
+    <div class="room-pane rise rise-1 @(newChatOpen ? "nc-open" : "")">
+        @* New chat / New group: takes over this column (WhatsApp Web style); the list below
+           is hidden by CSS while it is open so its scroll position and state survive. *@
+        @if (newChatOpen)
+        {
+            <NewChatPanel @key="newChatKey" @ref="newChatPanel" GroupMode="newChatGroupMode" Preselected="newChatPreselected"
+                          OnClose="CloseNewChat" OnStartDm="StartDmFromPanel" OnCreateGroup="CreateGroupFromPanel" />
+        }
         @* Top bar: search field + compose button *@
         <div class="room-top-bar">
             <div class="room-search-box">
@@ -37,7 +44,7 @@
                     </button>
                 }
             </div>
-            @* v6: one button opens the picker, which carries its own Direct/Group segment. *@
+            @* Opens the New chat panel; "New group" is its first row. *@
             <button type="button" class="compose-btn" title="New message" aria-label="New message" @onclick="StartNewDm" @onclick:stopPropagation>
                 <i data-lucide="square-pen"></i>
             </button>
@@ -1631,93 +1638,6 @@
 <AttachmentViewer Attachment="viewerAttachment" Siblings="viewerSiblings"
                   OnNavigate="a => viewerAttachment = a"
                   OnClose="CloseAttachment" />
-
-@* ---- v6 New-conversation picker (one modal: Direct message ⇄ New group) ---- *@
-@if (newDmModalOpen)
-{
-    <div class="backdrop on" @onclick="ClosePicker"></div>
-    <div class="cm-center">
-        <div class="cm-tray cm-tray-picker">
-            <div class="cm-card cm-picker-card">
-                <div class="picker-head">
-                    <span class="picker-title">@(pickerGroupMode ? "New group" : "New message")</span>
-                    <button type="button" class="picker-close" @onclick="ClosePicker" aria-label="Close"><i data-lucide="x"></i></button>
-                </div>
-
-                <div class="picker-seg">
-                    <button type="button" class="@(!pickerGroupMode ? "on" : "")" @onclick="() => SetPickerMode(false)">Direct message</button>
-                    <button type="button" class="@(pickerGroupMode ? "on" : "")" @onclick="() => SetPickerMode(true)">New group</button>
-                </div>
-
-                @if (pickerGroupMode)
-                {
-                    <div class="picker-group-row">
-                        <div class="picker-group-av @(string.IsNullOrWhiteSpace(newGroupName) ? "empty" : "")" style="@(string.IsNullOrWhiteSpace(newGroupName) ? "" : $"background:{GetUserColor(newGroupName)}")">
-                            @(string.IsNullOrWhiteSpace(newGroupName) ? "G" : GetInitialsFromName(newGroupName))
-                        </div>
-                        <input type="text" class="picker-group-name" placeholder="Group name (required)" maxlength="80"
-                               @bind="newGroupName" @bind:event="oninput" />
-                    </div>
-                }
-
-                <div class="picker-search">
-                    <i data-lucide="search" class="picker-search-ic"></i>
-                    @foreach (var p in pickerPicked)
-                    {
-                        var person = p;
-                        <span class="picker-chip">
-                            @FirstName(person.Name)
-                            <button type="button" @onclick="() => RemovePickerPerson(person.Id)" aria-label="Remove"><i data-lucide="x"></i></button>
-                        </span>
-                    }
-                    <input type="text" class="picker-search-input" autofocus
-                           placeholder="@(pickerPicked.Count > 0 ? "" : "Search people")"
-                           value="@newDmSearchQuery" @oninput="OnPickerSearchChanged" />
-                </div>
-
-                <div class="picker-list">
-                    @if (pickerLoading)
-                    {
-                        @for (var i = 0; i < 6; i++)
-                        {
-                            <div class="picker-row"><div class="skel" style="width:36px;height:36px;border-radius:50%"></div><div class="skel" style="flex:1;height:14px;border-radius:6px"></div></div>
-                        }
-                    }
-                    else if (VisiblePickerPeople.Count == 0)
-                    {
-                        <div class="picker-hint-row">@(pickerSearching ? "Searching…" : $"No colleagues match “{newDmSearchQuery}”.")</div>
-                    }
-                    else
-                    {
-                        @foreach (var person in VisiblePickerPeople)
-                        {
-                            var p = person;
-                            var picked = IsPickerPicked(p.Id);
-                            <button type="button" class="picker-row" @onclick="() => TogglePickerPerson(p)">
-                                <PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="36" Class="picker-av" Status="@(p.PresenceStatus == "on" ? "on" : "off")" Decorative="true" />
-                                <div class="picker-info">
-                                    <div class="picker-name">@p.Name</div>
-                                    <div class="picker-pos">@PickerSubtitle(p)</div>
-                                </div>
-                                <span class="picker-check @(picked ? "on" : "") @(pickerGroupMode ? "" : "round")">
-                                    @if (picked) { <i data-lucide="check"></i> }
-                                </span>
-                            </button>
-                        }
-                    }
-                </div>
-
-                <div class="picker-foot">
-                    <span class="picker-foot-hint">@PickerHint</span>
-                    <button type="button" class="picker-btn ghost" @onclick="ClosePicker">Cancel</button>
-                    <button type="button" class="picker-btn primary" disabled="@(!PickerCanConfirm)" @onclick="ConfirmPicker">
-                        @(pickerGroupMode ? "Create group" : "Start chat")
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-}
 
 @* ---- Ctrl+K Quick Switcher ---- *@
 @if (qsOpen)

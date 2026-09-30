@@ -522,25 +522,14 @@ public partial class Chat
         return pin is null || CanUnpin(pin);
     }
 
-    // ---- New DM Modal State ----
-    private bool newDmModalOpen;
-    private string newDmSearchQuery = "";
-    private List<UserSearchResult> newDmSearchResults = [];
-
-    // v6 picker: one modal drives both "New message" and "New group" — the segmented
-    // control at the top switches mode instead of opening a second dialog. The list
-    // shows the whole staff directory (mockup behaviour), filtered client-side.
-    private bool pickerGroupMode;
-    private readonly List<UserSearchResult> pickerPicked = [];
-    private List<PickerPerson> pickerPeople = [];
-    private bool pickerLoading;
-    // Server search (2+ chars): results, the query they answer, and the in-flight request.
-    private List<PickerPerson>? pickerSearchPeople;
-    private string? pickerSearchFor;
-    private CancellationTokenSource? pickerSearchCts;
-    private bool pickerSearching;
-    // Rows seen for picked people, so they keep position/department once off-list.
-    private readonly Dictionary<Guid, PickerPerson> pickerKnown = [];
+    // ---- New chat panel ----
+    // Replaces the conversation list while open (WhatsApp Web "New chat"). newChatKey
+    // forces a fresh NewChatPanel per open so its step/search/selection reset.
+    private bool newChatOpen;
+    private bool newChatGroupMode;
+    private int newChatKey;
+    private IReadOnlyList<IPop.Web.Components.Chat.NewChatPerson> newChatPreselected = [];
+    private IPop.Web.Components.Chat.NewChatPanel? newChatPanel;
 
     // ---- File Upload State ----
     private InputFile? fileInput;
@@ -561,20 +550,10 @@ public partial class Chat
     private string addMemberQuery = "";
     private List<UserSearchResult> addMemberResults = [];
 
-    // ---- New Group Modal State ----
-    // Only the group name survives from the pre-v6 dialog: the picker owns member
-    // selection now (pickerPicked), so the old search/selection lists are gone.
-    private string newGroupName = "";
-
     // ---- Profile Drawer (click avatar) ----
     private IPop.Web.Models.Employee? profilePerson;
 
     private record UserSearchResult(Guid Id, string Nik, string Name, string? Email);
-
-    /// Directory row for the new-conversation picker — position and department feed the
-    /// second line ("Packing Machine Operator · Production") the mockup shows.
-    public record PickerPerson(Guid Id, string Nik, string Name, string? Email,
-        string? Position, string? Department, string PresenceStatus);
 
     private enum RoomTab { Direct, Groups }
 
@@ -635,8 +614,14 @@ public partial class Chat
         if (forwardOpen) { forwardOpen = false; return true; }
         if (roomEventModalOpen) { roomEventModalOpen = false; return true; }
         if (roomEventFormOpen) { roomEventFormOpen = false; return true; }
-        if (newDmModalOpen) { ClosePicker(); return true; }
         if (addMemberOpen) { addMemberOpen = false; return true; }
+        // New chat panel: Escape walks back one step (Details → Members → New chat → closed).
+        if (newChatOpen)
+        {
+            if (newChatPanel is not null) _ = newChatPanel.Back();
+            else CloseNewChat();
+            return true;
+        }
 
         // 3. Composer-adjacent state: menus, mention autocomplete, reply quote, inline edit.
         if (ctxMsgId is not null || plusMenuOpen || pickerOpen || stickerOpen || reactPickerMsgId is not null)
@@ -722,9 +707,6 @@ public partial class Chat
         // pinned panel only fetched on open, so a colleague's pin/unpin never appeared
         // until it was closed and reopened. Reload live while the panel is open.
         ChatSvc.PinnedChanged += OnPinnedChanged;
-        // Room-list/member presence is patched by ChatState; the new-conversation picker
-        // holds its own directory rows, so patch those here.
-        Auth.PresenceChanged += OnPickerPresenceChanged;
         // ipop-32c: ProfileDrawer lives INSIDE this page. Its Chat button navigates
         // /chat?nik=…, which changes the URL without remounting us — OnInitializedAsync
         // never re-runs, so the ?nik= path would silently no-op from exactly the page
@@ -915,7 +897,7 @@ public partial class Chat
     {
         try
         {
-            var roomOpen = ChatSvc.ActiveRoomId is not null;
+            var roomOpen = ChatSvc.ActiveRoomId is not null && !newChatOpen;
             if (roomOpen != mTabbarHidden)
             {
                 mTabbarHidden = roomOpen;
@@ -984,7 +966,6 @@ public partial class Chat
         selfRef?.Dispose();
         if (_navSubscribed) Nav.LocationChanged -= OnLocationChanged;
         ChatSvc.PinnedChanged -= OnPinnedChanged;
-        Auth.PresenceChanged -= OnPickerPresenceChanged;
         ChatSvc.ThreadReplyReceived -= OnThreadReplyReceived;
         UnsubscribeGroupCall();
         ChatSvc.StateChanged -= OnStateChanged;
@@ -995,14 +976,6 @@ public partial class Chat
     }
 
     // ---- Event handlers ----
-
-    private void OnPickerPresenceChanged(string nik, string status)
-    {
-        var i = pickerPeople.FindIndex(p => string.Equals(p.Nik, nik, StringComparison.OrdinalIgnoreCase));
-        if (i < 0 || pickerPeople[i].PresenceStatus == status) return;
-        pickerPeople[i] = pickerPeople[i] with { PresenceStatus = status };
-        _ = InvokeAsync(StateHasChanged);
-    }
 
     private void OnStateChanged()
     {

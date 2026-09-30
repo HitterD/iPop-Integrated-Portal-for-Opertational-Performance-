@@ -5,6 +5,7 @@
 // _Imports.razor only reaches .razor files, so usings are restated in each part.
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
+using IPop.Web.Components.Chat;
 
 namespace IPop.Web.Pages;
 
@@ -53,175 +54,35 @@ public partial class Chat
 
     private void ToggleCreateDropdown() => createDropdownOpen = !createDropdownOpen;
 
-    private void StartNewDm()
+    // ---- New chat panel (WhatsApp-style; takes over the conversation-list column) ----
+
+    private void StartNewDm() => OpenNewChat(group: false);
+
+    private void StartNewGroup() => OpenNewChat(group: true);
+
+    private void OpenNewChat(bool group)
     {
         createDropdownOpen = false;
-        newDmModalOpen = true;
-        pickerGroupMode = false;
-        pickerPicked.Clear();
-        newDmSearchQuery = "";
-        newDmSearchResults = [];
-        _ = LoadPickerPeopleAsync();
+        newChatGroupMode = group;
+        newChatPreselected = [];
+        // A fresh component per open: every open starts on its first step with an empty search.
+        newChatKey++;
+        newChatOpen = true;
     }
 
-    private void StartNewGroup()
+    private void CloseNewChat()
     {
-        createDropdownOpen = false;
-        newDmModalOpen = true;
-        pickerGroupMode = true;
-        pickerPicked.Clear();
-        newGroupName = "";
-        newDmSearchQuery = "";
-        newDmSearchResults = [];
-        _ = LoadPickerPeopleAsync();
+        newChatOpen = false;
+        newChatPreselected = [];
     }
 
-    // ---- v6 picker: Direct ⇄ Group in one dialog -------------------------------
+    private Task StartDmFromPanel(NewChatPerson p) =>
+        CreateDmWith(new UserSearchResult(p.Id, p.Nik, p.Name, p.Email));
 
-    private void ClosePicker()
+    private async Task<bool> CreateGroupFromPanel(NewGroupDraft draft)
     {
-        newDmModalOpen = false;
-        pickerPicked.Clear();
-        newDmSearchQuery = "";
-        newDmSearchResults = [];
-        newGroupName = "";
-        ResetPickerSearch();
-    }
-
-    private void SetPickerMode(bool group)
-    {
-        pickerGroupMode = group;
-        // A direct message addresses exactly one person; dropping to a single pick
-        // mirrors the mockup, which truncates the selection when you switch tabs.
-        if (!group && pickerPicked.Count > 1)
-            pickerPicked.RemoveRange(1, pickerPicked.Count - 1);
-    }
-
-    /// The default (empty-query) list: one fetch covers both modes. The endpoint caps it at
-    /// 300 names, so typing 2+ characters searches the server instead (OnPickerSearchChanged).
-    private async Task LoadPickerPeopleAsync()
-    {
-        if (pickerPeople.Count > 0) return;
-        pickerLoading = true;
-        var rows = await Auth.GetAsync<List<PickerPerson>>("/api/chat/users/directory");
-        pickerPeople = rows ?? [];
-        pickerLoading = false;
-        await InvokeAsync(StateHasChanged);
-    }
-
-    /// Debounced (250ms) server search for the picker. The preloaded list only holds the
-    /// first 300 staff by name, so anyone past that was unfindable by typing. Each keystroke
-    /// cancels the previous request; one character still filters the preloaded list locally.
-    private async Task OnPickerSearchChanged(ChangeEventArgs e)
-    {
-        newDmSearchQuery = e.Value?.ToString() ?? "";
-        ResetPickerSearch();
-        var q = newDmSearchQuery.Trim();
-        if (q.Length < 2) return;
-
-        var cts = new CancellationTokenSource();
-        pickerSearchCts = cts;
-        pickerSearching = true;
-        try
-        {
-            await Task.Delay(250, cts.Token);
-            var rows = await Auth.GetAsync<List<PickerPerson>>($"/api/chat/users/directory?q={Uri.EscapeDataString(q)}", cts.Token);
-            if (cts.IsCancellationRequested) return;
-            pickerSearchPeople = rows ?? [];
-            pickerSearchFor = q;
-            foreach (var p in pickerSearchPeople) pickerKnown[p.Id] = p;
-        }
-        catch (OperationCanceledException) { return; }
-        catch
-        {
-            // Network hiccup: fall back to filtering the preloaded list for this query.
-            if (cts.IsCancellationRequested) return;
-            pickerSearchPeople = null;
-        }
-        pickerSearching = false;
-        StateHasChanged();
-    }
-
-    private void ResetPickerSearch()
-    {
-        pickerSearchCts?.Cancel();
-        pickerSearchCts?.Dispose();
-        pickerSearchCts = null;
-        pickerSearchPeople = null;
-        pickerSearchFor = null;
-        pickerSearching = false;
-    }
-
-    private static bool PickerMatches(string name, string nik, string q) =>
-        q.Length == 0 || name.Contains(q, StringComparison.OrdinalIgnoreCase) || nik.Contains(q, StringComparison.OrdinalIgnoreCase);
-
-    private List<PickerPerson> VisiblePickerPeople
-    {
-        get
-        {
-            var q = newDmSearchQuery.Trim();
-            // Server results once they're in for this exact query; until then (and for
-            // 1-char queries) the preloaded list, filtered locally.
-            var rows = (pickerSearchPeople is not null && pickerSearchFor == q
-                    ? pickerSearchPeople
-                    : pickerPeople.Where(p => PickerMatches(p.Name, p.Nik, q)))
-                .Take(60).ToList();
-            // Picked people stay visible (and untickable) even when the current list
-            // doesn't hold them, e.g. someone found by an earlier server search.
-            var extra = pickerPicked
-                .Where(m => rows.All(r => r.Id != m.Id) && PickerMatches(m.Name, m.Nik, q))
-                .Select(m => pickerKnown.GetValueOrDefault(m.Id)
-                             ?? new PickerPerson(m.Id, m.Nik, m.Name, m.Email, null, null, "off"));
-            return extra.Concat(rows).ToList();
-        }
-    }
-
-    private bool IsPickerPicked(Guid id) => pickerPicked.Any(m => m.Id == id);
-
-    private void TogglePickerPerson(PickerPerson person)
-    {
-        var picked = pickerPicked.Any(m => m.Id == person.Id);
-        if (pickerGroupMode)
-        {
-            if (picked) pickerPicked.RemoveAll(m => m.Id == person.Id);
-            else pickerPicked.Add(new UserSearchResult(person.Id, person.Nik, person.Name, person.Email));
-        }
-        else
-        {
-            pickerPicked.Clear();
-            if (!picked) pickerPicked.Add(new UserSearchResult(person.Id, person.Nik, person.Name, person.Email));
-        }
-        pickerKnown[person.Id] = person;
-        newDmSearchQuery = "";
-        ResetPickerSearch();
-    }
-
-    private void RemovePickerPerson(Guid id) => pickerPicked.RemoveAll(m => m.Id == id);
-
-    private bool PickerCanConfirm => pickerGroupMode
-        ? !string.IsNullOrWhiteSpace(newGroupName) && pickerPicked.Count >= 2
-        : pickerPicked.Count == 1;
-
-    private string PickerHint => pickerGroupMode
-        ? $"{pickerPicked.Count} selected · min. 2"
-        : "Pick one person";
-
-    private async Task ConfirmPicker()
-    {
-        if (!PickerCanConfirm) return;
-        if (pickerGroupMode)
-        {
-            var name = newGroupName.Trim();
-            var members = pickerPicked.ToList();
-            ClosePicker();
-            await CreateGroupWith(name, members);
-        }
-        else
-        {
-            var person = pickerPicked[0];
-            ClosePicker();
-            await CreateDmWith(person);
-        }
+        var members = draft.Members.Select(m => new UserSearchResult(m.Id, m.Nik, m.Name, m.Email)).ToList();
+        return await CreateGroupWith(draft.Name, members, draft.Photo, draft.PhotoContentType, draft.PhotoFileName);
     }
 
     private void ClearPendingPreviews()
@@ -395,15 +256,18 @@ public partial class Chat
     private async Task StartGroupFromQuery()
     {
         StartNewGroup();
+        var found = new List<NewChatPerson>();
         var niks = (QueryValue("members") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         foreach (var nik in niks)
         {
             if (nik == GetCurrentUserNik()) continue;
             var results = await Auth.GetAsync<List<UserSearchResult>>($"/api/chat/users/search?q={Uri.EscapeDataString(nik)}");
             var user = results?.FirstOrDefault(u => string.Equals(u.Nik, nik, StringComparison.OrdinalIgnoreCase));
-            if (user is not null && !pickerPicked.Any(m => m.Id == user.Id))
-                pickerPicked.Add(user);
+            if (user is not null && newChatPreselected.All(m => m.Id != user.Id))
+                found.Add(new NewChatPerson(user.Id, user.Nik, user.Name, user.Email, null, null, "off"));
         }
+        // New list instance so the panel's parameter change is noticed.
+        newChatPreselected = [.. newChatPreselected, .. found];
         StateHasChanged();
     }
 

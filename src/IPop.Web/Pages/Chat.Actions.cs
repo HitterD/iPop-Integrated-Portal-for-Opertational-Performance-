@@ -390,64 +390,80 @@ public partial class Chat
         emergencyConfirmOpen = false;
     }
 
-    // ---- New DM Methods ----
-    private void OpenDmFromList(Guid roomId)
-    {
-        newDmModalOpen = false;
-        activeTab = RoomTab.Direct;
-        OpenRoom(roomId);
-    }
+    // ---- New DM / group creation (driven by the New chat panel) ----
 
     private async Task CreateDmWith(UserSearchResult user)
     {
-        newDmModalOpen = false;
         var response = await Auth.SendAsync(HttpMethod.Post, "/api/chat/rooms/dm", new { recipientId = user.Id });
         if (response.IsSuccessStatusCode)
         {
             var room = await response.Content.ReadFromJsonAsync<IPop.Application.Chat.ChatRoomDto>();
             if (room is not null)
             {
+                newChatOpen = false;
                 await ChatSvc.LoadRoomsAsync();
                 activeTab = RoomTab.Direct;
                 OpenRoom(room.Id);
+                return;
             }
         }
+        Toasts.Show("Could not start the conversation.", ToastKind.Error);
     }
 
-    /// Shared by the v6 picker — creates the room and opens it.
-    private async Task CreateGroupWith(string name, IReadOnlyList<UserSearchResult> members)
+    /// Creates the room, uploads the optional photo, then opens it. False keeps the panel
+    /// open so the user can retry.
+    private async Task<bool> CreateGroupWith(string name, IReadOnlyList<UserSearchResult> members,
+        byte[]? photo = null, string? photoType = null, string? photoName = null)
     {
         var response = await Auth.SendAsync(HttpMethod.Post, "/api/chat/rooms/group", new
         {
             name,
             memberIds = members.Select(m => m.Id).ToArray()
         });
-        if (response.IsSuccessStatusCode)
+        if (!response.IsSuccessStatusCode)
         {
-            var room = await response.Content.ReadFromJsonAsync<IPop.Application.Chat.ChatRoomDto>();
-            if (room is not null)
+            var code = await ErrorCodeAsync(response);
+            Toasts.Show(code switch
             {
-                await ChatSvc.LoadRoomsAsync();
-                activeTab = RoomTab.Groups;
-                OpenRoom(room.Id);
-            }
+                "group_too_small" => "A group needs at least 2 other members.",
+                "group_full" => "That is more members than a group can hold.",
+                _ => "Could not create the group.",
+            }, ToastKind.Error);
+            return false;
         }
+        var room = await response.Content.ReadFromJsonAsync<IPop.Application.Chat.ChatRoomDto>();
+        if (room is null) { Toasts.Show("Could not create the group.", ToastKind.Error); return false; }
+
+        if (photo is { Length: > 0 })
+        {
+            try
+            {
+                var content = new MultipartFormDataContent();
+                var part = new ByteArrayContent(photo);
+                part.Headers.ContentType = new(photoType ?? "image/jpeg");
+                content.Add(part, "file", photoName ?? "group.jpg");
+                var up = await Auth.SendMultipartAsync($"/api/chat/rooms/{room.Id}/avatar", content);
+                if (!up.IsSuccessStatusCode)
+                    Toasts.Show("Group created, but the photo could not be uploaded.", ToastKind.Warning);
+            }
+            catch { Toasts.Show("Group created, but the photo could not be uploaded.", ToastKind.Warning); }
+        }
+
+        newChatOpen = false;
+        await ChatSvc.LoadRoomsAsync();
+        activeTab = RoomTab.Groups;
+        OpenRoom(room.Id);
+        return true;
     }
 
-    private static string FirstName(string? name)
+    private static async Task<string?> ErrorCodeAsync(HttpResponseMessage res)
     {
-        if (string.IsNullOrWhiteSpace(name)) return "?";
-        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts[0];
-    }
-
-    /// Second line in the picker row: "Position · Department", falling back to the NIK.
-    private static string PickerSubtitle(PickerPerson p)
-    {
-        var parts = new[] { p.Position, p.Department }
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .ToArray();
-        return parts.Length > 0 ? string.Join(" · ", parts) : p.Nik;
+        try
+        {
+            var b = await res.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+            return b?.GetValueOrDefault("code")?.ToString();
+        }
+        catch { return null; }
     }
 
     // ---- Add Member to Group (Fix 4) ----
