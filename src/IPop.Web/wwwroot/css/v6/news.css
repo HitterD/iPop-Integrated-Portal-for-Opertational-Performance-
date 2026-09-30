@@ -261,3 +261,8 @@
 .news-editor .ed-foot .push-right { margin-left: auto; }
 .news-editor .ed-foot button:disabled { opacity: .55; cursor: default; }
 @keyframes news-spin { to { transform: rotate(360deg); } }
+
+/* "Newest" feed: pinned posts in a compact section above the date-ordered list. */
+.news-sec { padding: 12px 16px 6px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--line-soft); }
+.news-row.compact { padding: 10px 16px; gap: 4px; }
+.news-row.compact .pin { display: none; }

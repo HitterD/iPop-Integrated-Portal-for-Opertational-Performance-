@@ -95,14 +95,24 @@
                 }
                 else if (items is not null)
                 {
+                    // "Newest" lists pinned posts first (server order); label them as their own compact section so the
+                    // date-ordered feed below reads as newest-first.
+                    var sectioned = sortOrder == "newest" && activeView != "pinned" && items.Any(i => i.IsPinned);
+                    bool? lastPinned = null;
                     @foreach (var p in items)
                     {
                         var post = p;
+                        var compact = sectioned && post.IsPinned;
+                        @if (sectioned && post.IsPinned != lastPinned)
+                        {
+                            <div class="news-sec">@(post.IsPinned ? "Pinned" : "Latest")</div>
+                        }
+                        lastPinned = post.IsPinned;
                         var needsAck = post.Status == "published" && post.RequiresAcknowledgement && !post.IsAcknowledged;
                         var unread = post.Status == "published" && !post.IsRead;
                         var scheduled = post.Status == "published" && post.PublishAt > DateTime.UtcNow;
-                        <button type="button" class="news-row @(openDetailId == post.Id ? "sel" : "") @(unread ? "unread" : "") @(post.Video is null ? "" : "has-video")" @onclick="() => OpenDetail(post.Id)">
-                            @if (post.Video is { } video) { <IPop.Web.Components.News.NewsVideoThumb Video="@video" /> }
+                        <button type="button" class="news-row @(openDetailId == post.Id ? "sel" : "") @(unread ? "unread" : "") @(post.Video is null || compact ? "" : "has-video") @(compact ? "compact" : "")" @onclick="() => OpenDetail(post.Id)">
+                            @if (post.Video is { } video && !compact) { <IPop.Web.Components.News.NewsVideoThumb Video="@video" /> }
                             <div class="r1">
                                 <span class="cat-chip @post.Type">@NewsUiHelper.GetCategoryLabel(post.Type)</span>
                                 @if (post.IsPinned) { <span class="pin"><i data-lucide="pin"></i>Pinned</span> }
@@ -111,7 +121,7 @@
                                 <span class="date">@((post.PublishedAt ?? post.CreatedAt).ToLocalTime().ToString("MMM d, yyyy"))</span>
                             </div>
                             <div class="ttl">@if (unread) { <span class="udot" title="Unread"></span> }@post.Title</div>
-                            @if (!string.IsNullOrEmpty(post.Summary)) { <div class="sum">@post.Summary</div> }
+                            @if (!string.IsNullOrEmpty(post.Summary) && !compact) { <div class="sum">@post.Summary</div> }
                             <div class="r3">
                                 <span class="by">@post.AuthorName@(post.ViewCount > 0 ? $" · {post.ViewCount} views" : "")</span>
                                 @if (post.AttachmentCount > 0) { <span class="clip" title="@post.AttachmentCount attachment(s)"><i data-lucide="paperclip"></i>@post.AttachmentCount</span> }
