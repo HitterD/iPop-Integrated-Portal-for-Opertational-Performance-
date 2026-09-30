@@ -26,6 +26,7 @@ public class ChatComponentsRenderTests
             BaseAddress = new Uri("http://localhost/")
         }, ctx.JSInterop.JSRuntime));
         ctx.Services.AddSingleton(new ToastService());
+        ctx.Services.AddScoped<PhotoViewerState>();
         return ctx;
     }
 
@@ -53,6 +54,7 @@ public class ChatComponentsRenderTests
         ctx.Services.AddSingleton(new FavoriteContacts(ctx.JSInterop.JSRuntime, auth));
         ctx.Services.AddSingleton(new CallState(auth, Http(), ctx.JSInterop.JSRuntime));
         ctx.Services.AddSingleton(Http());
+        ctx.Services.AddScoped<PhotoViewerState>();
         return ctx;
     }
 
