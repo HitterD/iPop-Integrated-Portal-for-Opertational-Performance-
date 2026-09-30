@@ -274,7 +274,7 @@
                     <ul class="cal-people">
                         @foreach (var p in detail.Attendees)
                         {
-                            <li><span class="cal-person-av" style="background:@IPop.Web.Models.AvatarPalette.For(p.Nik)">@Initials(p.Name)</span><span>@p.Name</span><span class="cal-rsvp-tag rsvp-@p.Rsvp">@RsvpLabel(p.Rsvp)</span></li>
+                            <li><PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="26" Class="cal-person-av" Decorative="true" /><span>@p.Name</span><span class="cal-rsvp-tag rsvp-@p.Rsvp">@RsvpLabel(p.Rsvp)</span></li>
                         }
                     </ul>
                 }
@@ -316,7 +316,7 @@
                                 @foreach (var p in form.People)
                                 {
                                     var person = p;
-                                    <span class="cal-person-chip"><span class="cal-person-av" style="background:@IPop.Web.Models.AvatarPalette.For(person.Nik)">@Initials(person.Name)</span>@person.Name
+                                    <span class="cal-person-chip"><PersonAvatar Nik="@person.Nik" Name="@person.Name" Size="22" Class="cal-person-av" Decorative="true" />@person.Name
                                         <button title="Remove" aria-label="Remove @person.Name" @onclick="() => form.People.Remove(person)"><i data-lucide="x"></i></button></span>
                                 }
                             </div>

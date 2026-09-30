@@ -440,12 +440,6 @@ public partial class Calendar
 
     private static string RsvpLabel(string r) => r switch { "accept" => "Going", "maybe" => "Maybe", "decline" => "Declined", _ => "Invited" };
 
-    private static string Initials(string name)
-    {
-        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
-    }
-
     private string? MyRsvp => detail?.Attendees.FirstOrDefault(a => a.Nik == Auth.Me?.Nik)?.Rsvp;
 
     // ── Opening items ──
