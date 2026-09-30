@@ -10,7 +10,7 @@
 <div class="@FullMessageClass" @oncontextmenu="(e) => OnCtx.InvokeAsync((Message.Id, e))" @oncontextmenu:preventDefault>
     @if (!isSent && Message.Type != "system" && Message.Type != "emergency" && ChatSvc.ActiveRoom?.Type == "group")
     {
-        <button type="button" class="msg-avatar avatar avatar-btn hover-lift" style="background:@Color(Message.SenderNik)" @onclick="() => OnProfile.InvokeAsync(Message.SenderNik)">
+        <button type="button" class="msg-avatar avatar avatar-btn hover-lift" style="@AvatarPhotos.Style(Message.SenderNik)" @onclick="() => OnProfile.InvokeAsync(Message.SenderNik)">
             @Initials(Message.SenderName)
             <span class="avatar-ring"></span>
         </button>

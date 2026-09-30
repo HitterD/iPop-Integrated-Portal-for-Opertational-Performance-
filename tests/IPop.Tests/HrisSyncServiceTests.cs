@@ -46,25 +46,33 @@ public class HrisSyncServiceTests
         Assert.Equal(3, await v2.Users.CountAsync());
     }
 
-    /// Admin edits beat the feed: a row flagged IsManuallyEdited keeps the admin's values
-    /// even when HRIS reports something different on the next sync.
+    /// Insert-only: once a NIK exists, iPop owns its profile. A later feed row with different
+    /// values — even for a row nobody edited — changes nothing.
     [Fact]
-    public async Task Sync_SkipsProfileOverwrite_WhenRowWasManuallyEdited()
+    public async Task Sync_NeverOverwritesExistingProfile()
     {
         using var t = new TestDb();
         await new HrisSyncService(t.Verify(), new StubGateway([Emp("20140312", "Bagas Arif")])).RunAsync(default);
         await using (var v0 = t.Verify())
         {
             var u = await v0.Users.SingleAsync(x => x.Nik == "20140312");
-            u.Name = "Bagas (corrected)";
-            u.IsManuallyEdited = true;
+            u.Email = "bagas.personal@santos.co.id";
             await v0.SaveChangesAsync();
         }
 
-        await new HrisSyncService(t.Verify(), new StubGateway([Emp("20140312", "Bagas A. Renamed")])).RunAsync(default);
+        var changed = new HrisEmployee("20140312", "Bagas A. Renamed", "new@t.co", "Manager", "IT", "Dept IT",
+            null, "99999999", "200", "Plant 2", true, new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc));
+        var r = await new HrisSyncService(t.Verify(), new StubGateway([changed])).RunAsync(default);
 
+        Assert.Equal(0, r.Updated);
         await using var v1 = t.Verify();
-        Assert.Equal("Bagas (corrected)", (await v1.Users.SingleAsync(x => x.Nik == "20140312")).Name);
+        var after = await v1.Users.SingleAsync(x => x.Nik == "20140312");
+        Assert.Equal("Bagas Arif", after.Name);
+        Assert.Equal("bagas.personal@santos.co.id", after.Email);
+        Assert.Equal("Engineer", after.Position);
+        Assert.Null(after.ManagerNik);
+        Assert.Equal("100", after.Extension);
+        Assert.Equal("HQ", after.Location);
     }
 
     [Fact]
@@ -120,12 +128,11 @@ public class HrisSyncServiceTests
         u.LockedUntil = DateTime.UtcNow.AddMinutes(5);
         await v0.SaveChangesAsync();
 
-        // HRIS renames the person — profile fields update, auth fields survive.
-        await new HrisSyncService(t.Verify(), new StubGateway([Emp("20140312", "Bagas A. Renamed")])).RunAsync(default);
+        await new HrisSyncService(t.Verify(), new StubGateway([Emp("20140312", "Bagas A. Renamed", active: false)])).RunAsync(default);
 
         await using var v1 = t.Verify();
         var after = await v1.Users.SingleAsync(x => x.Nik == "20140312");
-        Assert.Equal("Bagas A. Renamed", after.Name);
+        Assert.False(after.IsActive);
         Assert.Equal("salt$hash", after.PasswordHash);
         Assert.False(after.MustChangePassword);
         Assert.Equal(4, after.FailedLoginCount);
@@ -146,7 +153,7 @@ public class HrisSyncServiceTests
             await v0.SaveChangesAsync();
         }
 
-        await new HrisSyncService(t.Verify(), new StubGateway([Emp("20140312", "Bagas Renamed")])).RunAsync(default);
+        await new HrisSyncService(t.Verify(), new StubGateway([Emp("20140312", "Bagas Renamed", active: false)])).RunAsync(default);
 
         await using var v1 = t.Verify();
         var after = await v1.Users.SingleAsync(x => x.Nik == "20140312");
@@ -189,30 +196,19 @@ public class HrisSyncServiceTests
     }
 
     [Fact]
-    public async Task Sync_HonorsProtectManualEditsSetting()
+    public async Task Sync_ReactivatesReturningEmployee_WithoutTouchingProfile()
     {
         using var t = new TestDb();
-        var s = new IPop.Infrastructure.Settings.DbSettings(t.Db);
-        await new HrisSyncService(t.Verify(), new StubGateway([Emp("20140312", "Bagas Arif")]), settings: s).RunAsync(default);
+        await new HrisSyncService(t.Verify(), new StubGateway([Emp("20140312", "Bagas Arif", active: false)])).RunAsync(default);
 
-        await using (var v0 = t.Verify())
-        {
-            var u = await v0.Users.SingleAsync(x => x.Nik == "20140312");
-            u.Name = "Bagas (admin set)";
-            u.IsManuallyEdited = true;
-            await v0.SaveChangesAsync();
-        }
-
-        // When setting is false, feed overwrites even if IsManuallyEdited is true
-        await s.SetAsync(IPop.Application.Settings.SettingKeys.HrisProtectManualEdits, false, "admin");
-        var res = await new HrisSyncService(t.Verify(), new StubGateway([Emp("20140312", "Bagas From Feed")]), settings: s).RunAsync(default);
+        var res = await new HrisSyncService(t.Verify(), new StubGateway([Emp("20140312", "Bagas From Feed")])).RunAsync(default);
 
         Assert.Equal(1, res.Updated);
         await using var v1 = t.Verify();
-        Assert.Equal("Bagas From Feed", (await v1.Users.SingleAsync(x => x.Nik == "20140312")).Name);
+        var u = await v1.Users.SingleAsync(x => x.Nik == "20140312");
+        Assert.True(u.IsActive);
+        Assert.Equal("Bagas Arif", u.Name);
         var lastRun = await v1.HrisSyncRuns.OrderByDescending(r => r.StartedAt).FirstAsync();
-        Assert.Equal(0, lastRun.Skipped);
-        Assert.NotNull(lastRun.Log);
         Assert.Contains("Created 0, updated 1, deactivated 0", lastRun.Log);
     }
 

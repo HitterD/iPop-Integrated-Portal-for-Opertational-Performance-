@@ -239,6 +239,7 @@ app.MapHub<IPop.Api.Calls.CallHub>("/hubs/calls").RequireAuthorization();
 app.MapHub<IPop.Api.Notes.NotesHub>("/hubs/notes").RequireAuthorization();
 app.MapHub<IPop.Api.Notifications.NotificationHub>("/hubs/notification").RequireAuthorization();
 app.MapMe();
+app.MapProfile();
 app.MapHub<AppHub>("/hubs/app").RequireAuthorization();
 
 app.Run();

@@ -66,7 +66,7 @@
                 var isOpen = open.Contains(p.Nik);
                 <div class="adm-sess-person @(isOpen ? "open" : "")" @key="p.Nik">
                     <button type="button" class="adm-sess-head" aria-expanded="@(isOpen ? "true" : "false")" @onclick="() => Toggle(p.Nik)">
-                        <span class="adm-av" style="background:@AvatarPalette.For(p.Nik)">@AdminOrgModel.Initials(p.Name)</span>
+                        <span class="adm-av" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">@AdminOrgModel.Initials(p.Name)</span>
                         <span class="adm-user-txt">
                             <b>@p.Name @if (p.Sessions.Any(s => s.IsCurrent)) { <em class="adm-tag ok">You</em> }</b>
                             <small>@DeviceSummary(p.Sessions)</small>

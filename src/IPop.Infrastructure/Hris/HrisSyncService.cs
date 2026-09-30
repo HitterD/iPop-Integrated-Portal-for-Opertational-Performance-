@@ -9,10 +9,10 @@ namespace IPop.Infrastructure.Hris;
 
 /// Sync upserts Users only. Departments and sites are owned by the admin, not HRIS —
 /// the feed's department codes are ignored entirely (they never set DepartmentId).
-/// HRIS updatedAt wins for profile fields unless the row was edited by an admin
-/// (IsManuallyEdited) and the hris.protectManualEdits setting is on; auth fields (password_hash, must_change_password,
-/// failed_login_count, locked_until) and presence facts are never touched;
-/// statusAktif=false → soft deactivate + revoke sessions.
+/// Insert-only for profiles: a NIK already in iPop keeps every field as iPop has it
+/// (admins and the user own them from then on). The one thing the feed still drives on an
+/// existing row is activation — statusAktif=false → soft deactivate + revoke sessions, so
+/// a leaver cannot keep signing in.
 /// Every run keeps a step log (HrisSyncRun.Log); a failure alerts admins when
 /// hris.notifyOnFailure is on.
 public class HrisSyncService(IPopDbContext db, IHrisGateway gateway,
@@ -60,7 +60,6 @@ public class HrisSyncService(IPopDbContext db, IHrisGateway gateway,
         DateTime startedAt, CancellationToken ct)
     {
         var now = startedAt;
-        var protect = settings is null || await settings.GetAsync(SettingKeys.HrisProtectManualEdits, true, ct);
         Log($"Connecting to HRIS gateway ({(state.LastUpdated is null ? "full pull" : $"changes since {state.LastUpdated:yyyy-MM-dd HH:mm}")})");
 
         // The feed can carry the same NIK twice — duplicate source rows, or a page boundary
@@ -76,33 +75,13 @@ public class HrisSyncService(IPopDbContext db, IHrisGateway gateway,
         var inserted = 0;
         var updated = 0;
         var deactivated = 0;
-        var skipped = 0;
 
         var users = await db.Users.ToDictionaryAsync(u => u.Nik, ct);
         foreach (var e in employees)
         {
             if (users.TryGetValue(e.Nik, out var u))
             {
-                var changed = u.Name != e.Nama || u.Email != e.Email || u.Position != e.Jabatan
-                    || u.ManagerNik != e.NikAtasan || u.Extension != e.Ekstensi || u.Location != e.Lokasi;
-                if (changed && u.IsManuallyEdited && protect)
-                {
-                    skipped++;
-                    changed = false;
-                }
-                else
-                {
-                    if (changed)
-                    {
-                        u.Name = e.Nama;
-                        u.Email = e.Email;
-                        u.Position = e.Jabatan;
-                        u.ManagerNik = e.NikAtasan;
-                        u.Extension = e.Ekstensi;
-                        u.Location = e.Lokasi;
-                        u.UpdatedAt = now;
-                    }
-                }
+                var changed = false;
 
                 if (!e.StatusAktif && u.IsActive)
                 {
@@ -162,11 +141,9 @@ public class HrisSyncService(IPopDbContext db, IHrisGateway gateway,
         run.Inserted = inserted;
         run.Updated = updated;
         run.Deactivated = deactivated;
-        run.Skipped = skipped;
         run.Succeeded = true;
         run.FinishedAt = DateTime.UtcNow;
         Log($"Created {inserted}, updated {updated}, deactivated {deactivated}");
-        if (skipped > 0) Log($"Skipped {skipped} manually edited (protected)");
         Log($"Finished in {(run.FinishedAt - startedAt).TotalSeconds:0.0}s");
         run.Log = string.Join('\n', _log);
         await db.SaveChangesAsync(ct);

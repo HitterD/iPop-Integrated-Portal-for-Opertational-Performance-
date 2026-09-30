@@ -11,7 +11,6 @@ public interface ISettings
 public static class SettingKeys
 {
     public const string HrisAutoSyncCron = "hris.autoSync.cron";
-    public const string HrisProtectManualEdits = "hris.protectManualEdits";
     public const string HrisNotifyOnFailure = "hris.notifyOnFailure";
     public const string NotifDndStart = "notif.dnd.start";
     public const string NotifDndEnd = "notif.dnd.end";
@@ -20,7 +19,6 @@ public static class SettingKeys
     public static readonly IReadOnlyDictionary<string, object> Defaults = new Dictionary<string, object>
     {
         [HrisAutoSyncCron] = "0 2 * * *",
-        [HrisProtectManualEdits] = true,
         [HrisNotifyOnFailure] = true,
         [NotifDndStart] = "22:00",
         [NotifDndEnd] = "07:00",

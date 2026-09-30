@@ -283,7 +283,7 @@
     private RenderFragment RenderContactRow(ContactRow person, bool isFav) => __builder =>
     {
         <div class="notif-row" role="listitem">
-            <div class="notif-row-ic" style="background:@IPop.Web.Models.AvatarPalette.For(person.Nik)">
+            <div class="notif-row-ic" style="@IPop.Web.Models.AvatarPhotos.Style(person.Nik)">
                 @Initials(person.Name)
             </div>
             <div class="notif-row-main">
