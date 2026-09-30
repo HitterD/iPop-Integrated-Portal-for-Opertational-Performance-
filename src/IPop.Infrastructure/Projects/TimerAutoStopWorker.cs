@@ -57,8 +57,8 @@ public sealed class TimerAutoStopWorker(IServiceScopeFactory scopeFactory, ILogg
                     await gateway.PublishInternalAsync(
                         clientSlug: "projects",
                         eventType: "project.timer_auto_stopped",
-                        title: $"Timer dihentikan otomatis: {s.TaskTitle}",
-                        message: $"Timer untuk \"{s.TaskTitle}\" berjalan lebih dari 10 jam, jadi dicatat 10 jam. Koreksi durasinya di task bila perlu.",
+                        title: $"Timer auto-stopped: {s.TaskTitle}",
+                        message: $"The timer for \"{s.TaskTitle}\" ran for more than 10 hours, so 10 hours were logged. Correct the duration on the task if needed.",
                         target: new NotificationTarget(UserId: s.UserId),
                         priority: "normal",
                         targetUrl: $"/projects/{s.ProjectId}",

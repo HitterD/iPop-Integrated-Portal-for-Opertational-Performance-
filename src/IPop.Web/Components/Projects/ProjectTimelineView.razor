@@ -97,7 +97,7 @@
                         }
                         @if (task.IsBlocked)
                         {
-                            <span class="blocked-badge" title="Menunggu task lain selesai"><i data-lucide="lock" aria-hidden="true"></i>Menunggu</span>
+                            <span class="blocked-badge" title="Waiting on other tasks to finish"><i data-lucide="lock" aria-hidden="true"></i>Waiting</span>
                         }
                     </div>
                     <div class="gantt-track-area" role="cell" aria-label="@task.Title: @placement.Tooltip">

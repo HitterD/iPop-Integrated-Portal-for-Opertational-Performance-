@@ -402,7 +402,7 @@
                 // Sisa pada titik lampau = belum selesai kini + yang selesai SETELAH titik
                 // itu (UpdatedAt > weekEnd). Tugas overdue tetap terhitung sisa.
                 var remaining = scope.Count(t => t.Status != "done" || t.UpdatedAt.Date > weekEnd);
-                points.Add(new BurndownPoint(w == 0 ? "Kini" : $"M-{w}", remaining));
+                points.Add(new BurndownPoint(w == 0 ? "Now" : $"W-{w}", remaining));
             }
             return points;
         }
@@ -437,7 +437,7 @@
             var max = Math.Max(1, counts.Max());
             var bars = new List<VelocityBar>();
             for (var i = 0; i < counts.Count; i++)
-                bars.Add(new VelocityBar(i == counts.Count - 1 ? "Kini" : $"M-{counts.Count - 1 - i}", counts[i], (int)(100.0 * counts[i] / max)));
+                bars.Add(new VelocityBar(i == counts.Count - 1 ? "Now" : $"W-{counts.Count - 1 - i}", counts[i], (int)(100.0 * counts[i] / max)));
             return bars;
         }
     }

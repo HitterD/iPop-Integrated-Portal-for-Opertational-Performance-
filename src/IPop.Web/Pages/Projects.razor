@@ -237,8 +237,8 @@
                                         <div class="project-fields-create">
                                             <strong>Add field</strong>
                                             <div class="project-field-presets">
-                                                <button type="button" @onclick="PresetBiaya">Biaya · Rp</button>
-                                                <button type="button" @onclick="PresetLokasi">Lokasi · Text</button>
+                                                <button type="button" @onclick="PresetBiaya">Cost · Rp</button>
+                                                <button type="button" @onclick="PresetLokasi">Location · Text</button>
                                                 <button type="button" @onclick="PresetVendor">Vendor · Dropdown</button>
                                             </div>
                                             <input aria-label="Field name" maxlength="100" placeholder="Field name" @bind="newFieldName" />
@@ -1116,8 +1116,8 @@
         taskFieldValues.Clear();
     }
 
-    private void PresetBiaya() => SelectFieldPreset("Biaya", "Number");
-    private void PresetLokasi() => SelectFieldPreset("Lokasi", "Text");
+    private void PresetBiaya() => SelectFieldPreset("Cost", "Number");
+    private void PresetLokasi() => SelectFieldPreset("Location", "Text");
     private void PresetVendor() => SelectFieldPreset("Vendor", "Dropdown");
 
     private void SelectFieldPreset(string name, string type)
@@ -1133,7 +1133,7 @@
             ? newFieldOptions.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
             : null;
         var result = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/fields", new CreateProjectFieldRequest(newFieldName, newFieldType, options));
-        if (!result.IsSuccessStatusCode) { Toasts.Show("Field belum dapat dibuat. Periksa nama dan opsi.", ToastKind.Error); return; }
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Couldn't create the field. Check the name and options.", ToastKind.Error); return; }
         addingField = false;
         newFieldName = newFieldOptions = "";
         newFieldType = "Text";
@@ -1147,7 +1147,7 @@
         var field = projectFields.FirstOrDefault(f => f.Id == fieldId);
         if (field is null || !await Confirm.AskAsync("Delete field", $"Delete {field.Name} and all its task values? This cannot be undone.", "Delete", danger: true)) return;
         var result = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/{selectedProjectId}/fields/{fieldId}");
-        if (!result.IsSuccessStatusCode) { Toasts.Show("Field belum dapat dihapus.", ToastKind.Error); return; }
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Couldn't delete the field.", ToastKind.Error); return; }
         await LoadFields();
         StateHasChanged();
     }
@@ -1163,7 +1163,7 @@
     {
         if (selectedProjectId == Guid.Empty) return;
         var result = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{selectedProjectId}/tasks/{update.TaskId}/fields/{update.FieldId}", new SetProjectFieldValueRequest(update.Value));
-        if (!result.IsSuccessStatusCode) { Toasts.Show("Nilai field belum dapat disimpan.", ToastKind.Error); return; }
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Couldn't save the field value.", ToastKind.Error); return; }
         await LoadFieldValues(update.TaskId);
         StateHasChanged();
     }
@@ -1216,7 +1216,7 @@
     private async Task HandleMoveTaskToGroup((Guid TaskId, Guid GroupId) move)
     {
         var result = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{move.TaskId}/group", new MoveTaskToGroupRequest(move.GroupId));
-        if (!result.IsSuccessStatusCode) { Toasts.Show("Task belum dapat dipindah.", ToastKind.Error); return; }
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Couldn't move the task.", ToastKind.Error); return; }
         await ReloadCurrentView();
         RefreshEditingTask();
         StateHasChanged();
@@ -1226,7 +1226,7 @@
     {
         if (selectedProjectId == Guid.Empty) return;
         var result = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/groups", new CreateProjectGroupRequest(name));
-        if (!result.IsSuccessStatusCode) { Toasts.Show("Group belum dapat dibuat.", ToastKind.Error); return; }
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Couldn't create the group.", ToastKind.Error); return; }
         await LoadGroups();
         StateHasChanged();
     }
@@ -1234,7 +1234,7 @@
     private async Task UpdateGroup((Guid Id, string Name, string Color) update)
     {
         var result = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/groups/{update.Id}", new UpdateProjectGroupRequest(update.Name, update.Color));
-        if (!result.IsSuccessStatusCode) { Toasts.Show("Group belum dapat diubah.", ToastKind.Error); return; }
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Couldn't update the group.", ToastKind.Error); return; }
         await LoadGroups();
         StateHasChanged();
     }
@@ -1247,7 +1247,7 @@
         if (index < 0 || target < 0 || target >= groups.Count) return;
         (groups[index], groups[target]) = (groups[target], groups[index]);
         var result = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{selectedProjectId}/groups/order", new ReorderProjectGroupsRequest(groups.Select(g => g.Id).ToList()));
-        if (!result.IsSuccessStatusCode) Toasts.Show("Urutan group belum dapat disimpan.", ToastKind.Error);
+        if (!result.IsSuccessStatusCode) Toasts.Show("Couldn't save the group order.", ToastKind.Error);
         await LoadGroups();
         StateHasChanged();
     }
@@ -1257,20 +1257,20 @@
         var group = projectGroups.FirstOrDefault(g => g.Id == id);
         if (group is null || projectGroups.Count <= 1) return;
         var result = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/groups/{id}");
-        if (!result.IsSuccessStatusCode) { Toasts.Show("Group belum dapat dihapus.", ToastKind.Error); return; }
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Couldn't delete the group.", ToastKind.Error); return; }
         var deleted = (await result.Content.ReadFromJsonAsync<DeleteGroupResultDto>())?.Deleted;
         await ReloadCurrentView();
         StateHasChanged();
         if (deleted is null) return;
         var moved = deleted.TaskIds.Count;
-        Toasts.ShowUndo(moved == 0 ? $"Group \"{deleted.Name}\" dihapus." : $"Group \"{deleted.Name}\" dihapus, {moved} task dipindah.",
-            () => RestoreGroup(deleted), "Batalkan", 8000);
+        Toasts.ShowUndo(moved == 0 ? $"Group \"{deleted.Name}\" deleted." : $"Group \"{deleted.Name}\" deleted, {moved} {(moved == 1 ? "task" : "tasks")} moved.",
+            () => RestoreGroup(deleted), "Undo", 8000);
     }
 
     private async Task RestoreGroup(DeletedProjectGroupDto deleted)
     {
         var result = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{deleted.ProjectId}/groups/restore", deleted);
-        if (!result.IsSuccessStatusCode) { Toasts.Show("Group belum dapat dikembalikan.", ToastKind.Error); return; }
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Couldn't restore the group.", ToastKind.Error); return; }
         if (deleted.ProjectId == selectedProjectId) await ReloadCurrentView();
         await InvokeAsync(StateHasChanged);
     }
@@ -1440,7 +1440,7 @@
         if (selectedProjectId == Guid.Empty || string.IsNullOrWhiteSpace(arg.Title)) return;
         var req = new CreateTaskRequest(selectedProjectId, null, arg.Title.Trim(), null, "todo", null, null, null, null, null, null, arg.GroupId);
         var response = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/tasks", req);
-        if (!response.IsSuccessStatusCode) { Toasts.Show("Task belum dapat dibuat.", ToastKind.Error); return; }
+        if (!response.IsSuccessStatusCode) { Toasts.Show("Couldn't create the task.", ToastKind.Error); return; }
         await ReloadCurrentView();
         StateHasChanged();
     }
@@ -1568,7 +1568,7 @@
             await LoadKanban();
             await LoadTaskList();
             StateHasChanged();
-            ShowDeleteUndo(await ReadDeleteResult(res), "Subtask dihapus.");
+            ShowDeleteUndo(await ReadDeleteResult(res), "Subtask deleted.");
         }
         else
         {
@@ -1587,13 +1587,13 @@
     {
         if (result?.BatchId is not { } batchId) { Toasts.Show(message, ToastKind.Success); return; }
         var projectId = selectedProjectId;
-        Toasts.ShowUndo(message, () => RestoreTasks(projectId, batchId), "Batalkan", 8000);
+        Toasts.ShowUndo(message, () => RestoreTasks(projectId, batchId), "Undo", 8000);
     }
 
     private async Task RestoreTasks(Guid projectId, Guid batchId)
     {
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{projectId}/tasks/restore", new RestoreTasksRequest(batchId));
-        if (!res.IsSuccessStatusCode) { Toasts.Show("Task belum dapat dikembalikan.", ToastKind.Error); return; }
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't restore the task.", ToastKind.Error); return; }
         if (projectId == selectedProjectId)
         {
             await ReloadCurrentView();
@@ -1621,12 +1621,12 @@
             if (first is null) return;
             bulkEvidenceStatus = arg.Value;
             evidenceTargetStatus = arg.Value;
-            evidenceTask = first with { Id = Guid.Empty, Title = $"{selectedTaskIds.Count} task terpilih", Description = null };
+            evidenceTask = first with { Id = Guid.Empty, Title = $"{selectedTaskIds.Count} selected {(selectedTaskIds.Count == 1 ? "task" : "tasks")}", Description = null };
             showEvidenceModal = true;
             return;
         }
         if (arg.Action == "delete"
-            && !await Confirm.AskAsync("Hapus task terpilih?", $"{selectedTaskIds.Count} task beserta subtask-nya akan dihapus. Anda bisa membatalkannya selama 8 detik.", "Hapus"))
+            && !await Confirm.AskAsync("Delete selected tasks?", $"{selectedTaskIds.Count} {(selectedTaskIds.Count == 1 ? "task" : "tasks")} and their subtasks will be deleted. You can undo this for 8 seconds.", "Delete"))
             return;
         await RunBulk(arg.Action, arg.Value, null);
     }
@@ -1646,9 +1646,9 @@
             {
                 Toasts.Show(result?.Error switch
                 {
-                    "forbidden" => "Anda tidak punya akses untuk aksi ini.",
-                    "invalid_tasks" => "Sebagian task sudah tidak ada. Muat ulang lalu coba lagi.",
-                    _ => "Aksi massal belum dapat dijalankan.",
+                    "forbidden" => "You don't have access to do this.",
+                    "invalid_tasks" => "Some tasks no longer exist. Reload and try again.",
+                    _ => "Couldn't run the bulk action.",
                 }, ToastKind.Error);
                 return;
             }
@@ -1656,15 +1656,15 @@
             await ReloadCurrentView();
             RefreshEditingTask();
             if (action == "delete" && result.BatchId is { } batchId)
-                Toasts.ShowUndo($"{result.Updated} task dihapus.", () => RestoreTasks(projectId, batchId), "Batalkan", 8000);
+                Toasts.ShowUndo($"{result.Updated} {(result.Updated == 1 ? "task" : "tasks")} deleted.", () => RestoreTasks(projectId, batchId), "Undo", 8000);
             else
-                Toasts.Show($"{result.Updated} task diperbarui.", ToastKind.Success);
+                Toasts.Show($"{result.Updated} {(result.Updated == 1 ? "task" : "tasks")} updated.", ToastKind.Success);
             var blocked = result.Skipped.Count(x => x.Reason == "unmet_dependencies");
             var tooLong = result.Skipped.Count(x => x.Reason == "description_too_long");
             var parentFirst = result.Skipped.Count(x => x.Reason == "move_parent_instead");
-            if (blocked > 0) Toasts.Show($"{blocked} task dilewati: menunggu task lain.", ToastKind.Warning);
-            if (tooLong > 0) Toasts.Show($"{tooLong} task dilewati: deskripsi terlalu panjang untuk bukti.", ToastKind.Warning);
-            if (parentFirst > 0) Toasts.Show($"{parentFirst} subtask dilewati: pindahkan task induknya.", ToastKind.Warning);
+            if (blocked > 0) Toasts.Show($"{blocked} {(blocked == 1 ? "task" : "tasks")} skipped: waiting on other tasks.", ToastKind.Warning);
+            if (tooLong > 0) Toasts.Show($"{tooLong} {(tooLong == 1 ? "task" : "tasks")} skipped: description too long for evidence.", ToastKind.Warning);
+            if (parentFirst > 0) Toasts.Show($"{parentFirst} {(parentFirst == 1 ? "subtask" : "subtasks")} skipped: move the parent task instead.", ToastKind.Warning);
         }
         finally
         {
@@ -1755,11 +1755,11 @@
 
     private static string SavedViewError(string? code) => code switch
     {
-        "invalid_name" => "Nama tampilan wajib diisi (maks. 40 karakter).",
-        "too_many_views" => "Maksimal 20 tampilan per proyek.",
-        "forbidden" => "Anda tidak punya akses untuk mengubah tampilan ini.",
-        "view_not_found" => "Tampilan sudah tidak ada.",
-        _ => "Tampilan belum dapat disimpan.",
+        "invalid_name" => "View name is required (max. 40 characters).",
+        "too_many_views" => "A project can have at most 20 views.",
+        "forbidden" => "You don't have access to change this view.",
+        "view_not_found" => "This view no longer exists.",
+        _ => "Couldn't save the view.",
     };
 
     private async Task<SavedViewResultDto?> SendSavedView(HttpMethod method, string url, SaveProjectViewRequest req)
@@ -1779,7 +1779,7 @@
         if (selectedProjectId == Guid.Empty) return;
         var json = System.Text.Json.JsonSerializer.Serialize(CurrentViewState());
         if (await SendSavedView(HttpMethod.Post, $"/api/projects/{selectedProjectId}/views", new SaveProjectViewRequest(name, json)) is not null)
-            Toasts.Show($"Tampilan \"{name}\" disimpan.", ToastKind.Success);
+            Toasts.Show($"View \"{name}\" saved.", ToastKind.Success);
     }
 
     private Task RenameSavedView((ProjectSavedViewDto View, string Name) arg) =>
@@ -1788,24 +1788,24 @@
     private async Task ToggleShareSavedView(ProjectSavedViewDto view)
     {
         if (await SendSavedView(HttpMethod.Put, $"/api/projects/views/{view.Id}", new SaveProjectViewRequest(view.Name, view.StateJson, !view.IsShared)) is not null)
-            Toasts.Show(view.IsShared ? "Tampilan kini pribadi." : "Tampilan dibagikan ke anggota proyek.", ToastKind.Success);
+            Toasts.Show(view.IsShared ? "View is now private." : "View shared with project members.", ToastKind.Success);
     }
 
     private async Task DeleteSavedView(ProjectSavedViewDto view)
     {
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/views/{view.Id}", null);
-        if (!res.IsSuccessStatusCode) { Toasts.Show("Tampilan belum dapat dihapus.", ToastKind.Error); return; }
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't delete the view.", ToastKind.Error); return; }
         await LoadSavedViews();
         StateHasChanged();
         var projectId = view.ProjectId;
         // Undo re-creates it (new id); only the owner's views can be restored this way.
         if (view.IsMine)
-            Toasts.ShowUndo($"Tampilan \"{view.Name}\" dihapus.", async () =>
+            Toasts.ShowUndo($"View \"{view.Name}\" deleted.", async () =>
             {
                 await SendSavedView(HttpMethod.Post, $"/api/projects/{projectId}/views", new SaveProjectViewRequest(view.Name, view.StateJson, view.IsShared));
-            }, "Batalkan", 8000);
+            }, "Undo", 8000);
         else
-            Toasts.Show($"Tampilan \"{view.Name}\" dihapus.", ToastKind.Success);
+            Toasts.Show($"View \"{view.Name}\" deleted.", ToastKind.Success);
     }
 
     // Drawer saved dependencies/recurrence itself: show the fresh task and refresh the views
@@ -1851,12 +1851,12 @@
         var (start, due) = ProjectCalendarLayout.MoveTo(arg.Task, arg.Day);
         var oldStart = arg.Task.StartDate;
         var oldDue = arg.Task.DueDate;
-        if (!await SaveTaskDates(arg.Task.Id, start, due)) { Toasts.Show("Tanggal task belum dapat diubah.", ToastKind.Error); return; }
-        Toasts.ShowUndo($"\"{arg.Task.Title}\" dipindah ke {DatePickerMath.FormatDateCompact(arg.Day)}.", async () =>
+        if (!await SaveTaskDates(arg.Task.Id, start, due)) { Toasts.Show("Couldn't change the task dates.", ToastKind.Error); return; }
+        Toasts.ShowUndo($"\"{arg.Task.Title}\" moved to {DatePickerMath.FormatDateCompact(arg.Day)}.", async () =>
         {
-            if (!await SaveTaskDates(arg.Task.Id, oldStart, oldDue)) Toasts.Show("Tanggal belum dapat dikembalikan.", ToastKind.Error);
+            if (!await SaveTaskDates(arg.Task.Id, oldStart, oldDue)) Toasts.Show("Couldn't restore the dates.", ToastKind.Error);
             await InvokeAsync(StateHasChanged);
-        }, "Batalkan", 8000);
+        }, "Undo", 8000);
     }
 
     private async Task<bool> SaveTaskDates(Guid taskId, DateTime? start, DateTime? due)
@@ -1879,7 +1879,7 @@
         var due = arg.Day.ToDateTime(TimeOnly.MinValue);
         var req = new CreateTaskRequest(selectedProjectId, null, arg.Title, null, "todo", null, null, due, null, null, null, selectedGroupId);
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/tasks", req);
-        if (!res.IsSuccessStatusCode) { Toasts.Show("Task belum dapat dibuat.", ToastKind.Error); return; }
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't create the task.", ToastKind.Error); return; }
         await ReloadCalendar();
         await LoadKanban();
         await LoadTaskList();
@@ -1889,7 +1889,7 @@
     private void NotifyRecurringSpawn(ProjectTaskDto? task)
     {
         if (task?.NextRecurringTaskId is not null)
-            Toasts.Show("Task berulang: task berikutnya sudah dibuat.", ToastKind.Info);
+            Toasts.Show("Recurring task: the next one has been created.", ToastKind.Info);
     }
 
     private async Task HandleSaveTask(ProjectTaskDrawer.TaskSaveModel m)
@@ -1991,7 +1991,7 @@
             if (selectedProjectId != Guid.Empty)
                 selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");
             StateHasChanged();
-            ShowDeleteUndo(await ReadDeleteResult(res), "Task dihapus.");
+            ShowDeleteUndo(await ReadDeleteResult(res), "Task deleted.");
         }
         else
         {
@@ -2137,10 +2137,10 @@
         try
         {
             portfolioData = await Auth.GetAsync<PortfolioDto>($"/api/projects/portfolio?localToday={DateTime.Today:yyyy-MM-dd}&page={portfolioData?.Projects.Page ?? 1}&pageSize=20");
-            if (portfolioData is null) Toasts.Show("Ringkasan project belum dapat dimuat.", ToastKind.Error);
+            if (portfolioData is null) Toasts.Show("Couldn't load the project summary.", ToastKind.Error);
             if (portfolioTaskFilter is not null) await LoadPortfolioTaskPage(portfolioTasks?.Page ?? 1);
         }
-        catch { portfolioData = null; Toasts.Show("Ringkasan project belum dapat dimuat.", ToastKind.Error); }
+        catch { portfolioData = null; Toasts.Show("Couldn't load the project summary.", ToastKind.Error); }
         finally { portfolioLoading = false; StateHasChanged(); }
     }
 

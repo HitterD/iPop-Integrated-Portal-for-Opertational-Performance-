@@ -7,38 +7,38 @@
 <section class="timesheet @Class" aria-labelledby="@headingId">
     <div class="timesheet-head">
         <div>
-            <h3 id="@headingId">Timesheet mingguan</h3>
-            <p>@(ProjectId is null ? "Waktu tercatat di semua project yang bisa Anda lihat." : "Waktu tercatat per anggota di project ini.")</p>
+            <h3 id="@headingId">Weekly timesheet</h3>
+            <p>@(ProjectId is null ? "Time logged across the projects you can see." : "Time logged per member in this project.")</p>
         </div>
-        <div class="timesheet-nav" role="group" aria-label="Pilih minggu">
-            <button type="button" aria-label="Minggu sebelumnya" @onclick="() => Shift(-1)"><i data-lucide="chevron-left"></i></button>
-            <button type="button" class="timesheet-today" disabled="@IsThisWeek" @onclick="ThisWeek">Minggu ini</button>
-            <button type="button" aria-label="Minggu berikutnya" disabled="@IsThisWeek" @onclick="() => Shift(1)"><i data-lucide="chevron-right"></i></button>
+        <div class="timesheet-nav" role="group" aria-label="Choose week">
+            <button type="button" aria-label="Previous week" @onclick="() => Shift(-1)"><i data-lucide="chevron-left"></i></button>
+            <button type="button" class="timesheet-today" disabled="@IsThisWeek" @onclick="ThisWeek">This week</button>
+            <button type="button" aria-label="Next week" disabled="@IsThisWeek" @onclick="() => Shift(1)"><i data-lucide="chevron-right"></i></button>
             <span class="timesheet-range" aria-live="polite">@ProjectTimeFormat.WeekLabel(weekStart)</span>
         </div>
     </div>
 
     @if (sheet is null)
     {
-        <p class="timesheet-muted" role="status">@(error ?? "Memuat timesheet…")</p>
+        <p class="timesheet-muted" role="status">@(error ?? "Loading timesheet…")</p>
     }
     else if (sheet.Rows.Count == 0)
     {
-        <p class="timesheet-muted" role="status">Belum ada waktu tercatat minggu ini.</p>
+        <p class="timesheet-muted" role="status">No time logged this week.</p>
     }
     else
     {
         <div class="timesheet-scroll">
             <table class="timesheet-table">
-                <caption class="sr-only">Menit tercatat per orang per hari, @ProjectTimeFormat.WeekLabel(weekStart)</caption>
+                <caption class="sr-only">Minutes logged per person per day, @ProjectTimeFormat.WeekLabel(weekStart)</caption>
                 <thead>
                     <tr>
-                        <th scope="col">Anggota</th>
+                        <th scope="col">Member</th>
                         @for (var d = 0; d < 7; d++)
                         {
                             var day = weekStart.AddDays(d);
                             <th scope="col" class="@(day.Date == DateTime.Today ? "today" : "")">
-                                <span>@IPop.Web.Components.DatePickerMath.WeekdayLong[d][..3]</span><small>@day.Day</small>
+                                <span>@IPop.Web.Components.DatePickerMath.WeekdayShort[d]</span><small>@day.Day</small>
                             </th>
                         }
                         <th scope="col" class="total">Total</th>
@@ -57,7 +57,7 @@
                             @for (var d = 0; d < 7; d++)
                             {
                                 var m = row.DayMinutes[d];
-                                <td class="@(m == 0 ? "zero" : m > 8 * 60 ? "over" : "")" title="@(m > 8 * 60 ? "Lebih dari 8 jam" : null)">@(m == 0 ? "—" : ProjectTimeFormat.Minutes(m))</td>
+                                <td class="@(m == 0 ? "zero" : m > 8 * 60 ? "over" : "")" title="@(m > 8 * 60 ? "More than 8 hours" : null)">@(m == 0 ? "—" : ProjectTimeFormat.Minutes(m))</td>
                             }
                             <td class="total">@ProjectTimeFormat.Minutes(row.TotalMinutes)</td>
                         </tr>
@@ -126,11 +126,11 @@
             var fresh = await Auth.GetAsync<TimesheetDto>(url);
             if (seq != loadSeq) return;
             sheet = fresh;
-            error = fresh is null ? "Timesheet tidak bisa dimuat." : null;
+            error = fresh is null ? "Couldn't load the timesheet." : null;
         }
         catch
         {
-            if (seq == loadSeq) { sheet = null; error = "Timesheet tidak bisa dimuat."; }
+            if (seq == loadSeq) { sheet = null; error = "Couldn't load the timesheet."; }
         }
     }
 

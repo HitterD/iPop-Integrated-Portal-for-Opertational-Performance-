@@ -208,7 +208,7 @@ public static class ProjectUiHelpers
 
 /// Month/week calendar placement: each task spans StartDate..DueDate (either alone is a one-day
 /// bar); spans are cut per week row and packed into lanes, and lanes past MaxLanes are counted
-/// per day as "+N lagi".
+/// per day as "+N more".
 public static class ProjectCalendarLayout
 {
     public sealed record Segment(CalendarTaskDto Task, int Lane, int StartCol, int Span, bool ContinuesBefore, bool ContinuesAfter);
@@ -264,7 +264,7 @@ public static class ProjectCalendarLayout
         return rows;
     }
 
-    /// Tasks touching one day, for the agenda list and the "+N lagi" popover.
+    /// Tasks touching one day, for the agenda list and the "+N more" popover.
     public static List<CalendarTaskDto> TasksOn(DateOnly day, IEnumerable<CalendarTaskDto> tasks) =>
         tasks.Where(t => SpanOf(t) is { } s && s.Start <= day && s.End >= day)
             .OrderBy(t => t.Status == "done").ThenBy(t => t.Title, StringComparer.OrdinalIgnoreCase).ToList();
@@ -291,13 +291,13 @@ public static class ProjectTimeFormat
         return h > 0 ? $"{h}:{span.Minutes:00}:{span.Seconds:00}" : $"{span.Minutes}:{span.Seconds:00}";
     }
 
-    /// Logged minutes as "1j 30m", "45m", "2j"; zero is "0m".
+    /// Logged minutes as "1h 30m", "45m", "2h"; zero is "0m".
     public static string Minutes(int minutes)
     {
         if (minutes <= 0) return "0m";
         var h = minutes / 60;
         var m = minutes % 60;
-        return h == 0 ? $"{m}m" : m == 0 ? $"{h}j" : $"{h}j {m}m";
+        return h == 0 ? $"{m}m" : m == 0 ? $"{h}h" : $"{h}h {m}m";
     }
 
     /// Minutes for a manual entry typed as hours + minutes; null when out of range (1 min .. 24 h).
@@ -322,7 +322,7 @@ public static class ProjectTimeFormat
         return Uri.EscapeDataString(utc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", System.Globalization.CultureInfo.InvariantCulture));
     }
 
-    /// "22–28 Sep 2026" or "29 Sep – 5 Okt 2026".
+    /// "22–28 Sep 2026" or "29 Sep – 5 Oct 2026".
     public static string WeekLabel(DateTime weekStartLocal)
     {
         var mon = IPop.Web.Components.DatePickerMath.MonthShort;

@@ -140,24 +140,24 @@
                             }
                             <input aria-label="Add tag" placeholder="+ Add tag" @bind="newTag" @onkeydown="OnTagKeyDown" />
                         </div>
-                        <span class="td-label"><i data-lucide="link-2"></i>Menunggu</span>
+                        <span class="td-label"><i data-lucide="link-2"></i>Waiting on</span>
                         <div class="td-deps">
                             @foreach (var d in Task.DependsOn ?? [])
                             {
                                 <span class="td-dep-chip @(d.Status == "done" ? "done" : "")" title="@ProjectUiHelpers.StatusLabel(d.Status)">
                                     <span class="col-dot @d.Status"></span><span class="td-dep-title">@d.Title</span>
-                                    <button type="button" aria-label="Hapus dependensi @d.Title" disabled="@depBusy" @onclick="() => RemoveDependency(d.Id)"><i data-lucide="x"></i></button>
+                                    <button type="button" aria-label="Remove dependency @d.Title" disabled="@depBusy" @onclick="() => RemoveDependency(d.Id)"><i data-lucide="x"></i></button>
                                 </span>
                             }
                             <div class="td-dep-picker">
-                                <button type="button" class="td-add-assignee" data-menu-trigger aria-haspopup="menu" aria-expanded="@(depOpen ? "true" : "false")" @onclick="ToggleDepMenu"><i data-lucide="plus"></i>Tambah</button>
+                                <button type="button" class="td-add-assignee" data-menu-trigger aria-haspopup="menu" aria-expanded="@(depOpen ? "true" : "false")" @onclick="ToggleDepMenu"><i data-lucide="plus"></i>Add</button>
                                 @if (depOpen)
                                 {
                                     <div class="td-menu-backdrop" @onclick="() => depOpen = false"></div>
-                                    <div class="td-assign-menu td-dep-menu" role="menu" aria-label="Pilih task yang ditunggu" @ref="menuRef">
-                                        <input class="td-dep-search" placeholder="Cari task…" aria-label="Cari task" @bind="depQuery" @bind:event="oninput" />
+                                    <div class="td-assign-menu td-dep-menu" role="menu" aria-label="Choose the task to wait on" @ref="menuRef">
+                                        <input class="td-dep-search" placeholder="Search tasks…" aria-label="Search tasks" @bind="depQuery" @bind:event="oninput" />
                                         @{ var candidates = DependencyCandidates.Take(30).ToList(); }
-                                        @if (candidates.Count == 0) { <div class="td-dep-empty">Tidak ada task yang cocok.</div> }
+                                        @if (candidates.Count == 0) { <div class="td-dep-empty">No matching tasks.</div> }
                                         @foreach (var c in candidates)
                                         {
                                             <button type="button" role="menuitem" @onclick="() => AddDependency(c.Id)">
@@ -167,12 +167,12 @@
                                     </div>
                                 }
                             </div>
-                            @if (Task.IsBlocked) { <span class="td-blocked-note"><i data-lucide="lock"></i>Belum bisa Done sampai task di atas selesai</span> }
+                            @if (Task.IsBlocked) { <span class="td-blocked-note"><i data-lucide="lock"></i>Can't be Done until the tasks above are finished</span> }
                             @if (depError is not null) { <span class="td-inline-error" role="alert">@depError</span> }
                         </div>
-                        <span class="td-label"><i data-lucide="repeat"></i>Ulangi</span>
+                        <span class="td-label"><i data-lucide="repeat"></i>Repeat</span>
                         <div class="td-recur">
-                            <div class="td-seg" role="radiogroup" aria-label="Ulangi">
+                            <div class="td-seg" role="radiogroup" aria-label="Repeat">
                                 @foreach (var (freq, label) in RecurFreqs)
                                 {
                                     <button type="button" role="radio" aria-checked="@(recurFreq == freq ? "true" : "false")" class="@(recurFreq == freq ? "on" : "")" disabled="@recurBusy" @onclick="() => SetRecurFreq(freq)">@label</button>
@@ -180,7 +180,7 @@
                             </div>
                             @if (recurFreq == "WEEKLY")
                             {
-                                <div class="td-weekdays" role="group" aria-label="Hari">
+                                <div class="td-weekdays" role="group" aria-label="Days">
                                     @for (var i = 0; i < 7; i++)
                                     {
                                         var day = (DayOfWeek)((i + 1) % 7);
@@ -191,13 +191,13 @@
                             }
                             else if (recurFreq == "MONTHLY")
                             {
-                                <label class="td-monthday">Tanggal
-                                    <input type="number" min="1" max="31" aria-label="Tanggal tiap bulan" value="@recurMonthDay" disabled="@recurBusy" @onchange="SetRecurMonthDay" />
+                                <label class="td-monthday">Day
+                                    <input type="number" min="1" max="31" aria-label="Day of the month" value="@recurMonthDay" disabled="@recurBusy" @onchange="SetRecurMonthDay" />
                                 </label>
                             }
                             @if (RecurNextPreview is { } next)
                             {
-                                <span class="td-recur-next">Berikutnya: @DatePickerMath.FormatDateCompact(DateOnly.FromDateTime(next)) · dibuat saat task selesai</span>
+                                <span class="td-recur-next">Next: @DatePickerMath.FormatDateCompact(DateOnly.FromDateTime(next)) · created when this task is done</span>
                             }
                             @if (recurError is not null) { <span class="td-inline-error" role="alert">@recurError</span> }
                         </div>
@@ -887,18 +887,18 @@
             else
             {
                 var body = await res.Content.ReadAsStringAsync();
-                depError = body.Contains("dependency_cycle") ? "Tidak bisa: task itu sudah (tidak langsung) menunggu task ini."
-                    : body.Contains("too_many_dependencies") ? "Maksimal 20 dependensi per task."
-                    : body.Contains("forbidden") ? "Anda tidak punya akses mengubah task ini."
-                    : "Dependensi belum dapat disimpan.";
+                depError = body.Contains("dependency_cycle") ? "Not allowed: that task already waits on this one (indirectly)."
+                    : body.Contains("too_many_dependencies") ? "A task can have at most 20 dependencies."
+                    : body.Contains("forbidden") ? "You don't have access to change this task."
+                    : "Couldn't save the dependency.";
             }
         }
-        catch { depError = "Dependensi belum dapat disimpan."; }
+        catch { depError = "Couldn't save the dependency."; }
         finally { depBusy = false; }
     }
 
     private static readonly (string Freq, string Label)[] RecurFreqs =
-        [("", "Tidak"), ("DAILY", "Harian"), ("WEEKLY", "Mingguan"), ("MONTHLY", "Bulanan")];
+        [("", "Never"), ("DAILY", "Daily"), ("WEEKLY", "Weekly"), ("MONTHLY", "Monthly")];
     private string recurFreq = "";
     private HashSet<DayOfWeek> recurDays = [];
     private int recurMonthDay = 1;
@@ -968,11 +968,11 @@
             }
             else
             {
-                recurError = "Pengulangan belum dapat disimpan.";
+                recurError = "Couldn't save the repeat setting.";
                 LoadRecurrence(Task);
             }
         }
-        catch { recurError = "Pengulangan belum dapat disimpan."; }
+        catch { recurError = "Couldn't save the repeat setting."; }
         finally { recurBusy = false; }
     }
 

@@ -7,15 +7,15 @@
 @inject IPop.Web.Services.ConfirmService Confirm
 
 @* Phase 3: the task's timer, logged time and entries. Actual hours = the sum of these entries. *@
-<section class="td-section td-time" aria-label="Waktu">
+<section class="td-section td-time" aria-label="Time">
     <div class="td-section-head">
-        <span class="td-section-title">WAKTU</span>
-        <span class="td-time-total" title="Total waktu tercatat">@ProjectTimeFormat.Minutes(data?.TotalMinutes ?? 0)@(Estimated is > 0 ? $" / {Estimated:0.#}j estimasi" : "")</span>
+        <span class="td-section-title">TIME</span>
+        <span class="td-time-total" title="Total time logged">@ProjectTimeFormat.Minutes(data?.TotalMinutes ?? 0)@(Estimated is > 0 ? $" / {Estimated:0.#}h estimated" : "")</span>
     </div>
 
     @if (data is null)
     {
-        <div class="td-hint">@(loadError ?? "Memuat…")</div>
+        <div class="td-hint">@(loadError ?? "Loading…")</div>
     }
     else
     {
@@ -28,36 +28,36 @@
                     <i data-lucide="@(running ? "pause" : "play")"></i>
                     @if (running && Timer.Running is { } run)
                     {
-                        <span>Jeda · <span class="td-timer-clock">@ProjectTimeFormat.Elapsed(DateTime.UtcNow - run.StartedAt)</span></span>
+                        <span>Pause · <span class="td-timer-clock">@ProjectTimeFormat.Elapsed(DateTime.UtcNow - run.StartedAt)</span></span>
                     }
                     else
                     {
-                        <span>Mulai timer</span>
+                        <span>Start timer</span>
                     }
                 </button>
                 <button type="button" class="td-time-add-toggle" aria-expanded="@(addOpen ? "true" : "false")" @onclick="ToggleAdd">
-                    <i data-lucide="plus"></i>Tambah waktu manual
+                    <i data-lucide="plus"></i>Add time manually
                 </button>
             }
             else
             {
-                <span class="td-hint">Hanya anggota project (bukan viewer) yang bisa mencatat waktu.</span>
+                <span class="td-hint">Only project members (not viewers) can log time.</span>
             }
         </div>
 
         @if (addOpen)
         {
             <form class="td-time-form" @onsubmit="SubmitManual" @onsubmit:preventDefault>
-                <label class="td-time-dur">Durasi
-                    <span><input type="number" min="0" max="24" inputmode="numeric" aria-label="Jam" @bind="formHours" />j</span>
-                    <span><input type="number" min="0" max="59" inputmode="numeric" aria-label="Menit" @bind="formMinutes" />m</span>
+                <label class="td-time-dur">Duration
+                    <span><input type="number" min="0" max="24" inputmode="numeric" aria-label="Hours" @bind="formHours" />h</span>
+                    <span><input type="number" min="0" max="59" inputmode="numeric" aria-label="Minutes" @bind="formMinutes" />m</span>
                 </label>
-                <label>Tanggal<input type="date" @bind="formDate" max="@DateTime.Now.ToString("yyyy-MM-dd")" /></label>
-                <label class="td-time-note">Catatan<input type="text" maxlength="200" placeholder="Opsional" @bind="formNote" /></label>
+                <label>Date<input type="date" @bind="formDate" max="@DateTime.Now.ToString("yyyy-MM-dd")" /></label>
+                <label class="td-time-note">Note<input type="text" maxlength="200" placeholder="Optional" @bind="formNote" /></label>
                 @if (formError is not null) { <div class="td-time-error" role="alert">@formError</div> }
                 <div class="td-time-form-foot">
-                    <button type="button" @onclick="CloseForm">Batal</button>
-                    <button type="submit" class="primary" disabled="@busy">@(editingId is null ? "Tambah" : "Simpan")</button>
+                    <button type="button" @onclick="CloseForm">Cancel</button>
+                    <button type="submit" class="primary" disabled="@busy">@(editingId is null ? "Add" : "Save")</button>
                 </div>
             </form>
         }
@@ -72,13 +72,13 @@
                         <PersonAvatar Nik="@entry.UserNik" Name="@entry.UserName" Size="22" Class="td-time-avatar" Title="@entry.UserName" />
                         <div class="td-time-main">
                             <div class="td-time-line">
-                                <strong>@(entry.EndedAt is null ? "Berjalan" : ProjectTimeFormat.Minutes(entry.Minutes))</strong>
+                                <strong>@(entry.EndedAt is null ? "Running" : ProjectTimeFormat.Minutes(entry.Minutes))</strong>
                                 <span class="td-time-meta">@entry.UserName · @entry.StartedAt.ToLocalTime().ToString("d MMM, HH:mm")@SourceLabel(entry.Source)</span>
                             </div>
                             @if (!string.IsNullOrEmpty(entry.Note)) { <div class="td-time-notetext">@entry.Note</div> }
                             @if (entry.AutoStopped)
                             {
-                                <div class="td-time-warn"><i data-lucide="alert-triangle"></i>Dihentikan otomatis di 10 jam — koreksi durasinya.</div>
+                                <div class="td-time-warn"><i data-lucide="alert-triangle"></i>Auto-stopped at 10 hours — correct the duration.</div>
                             }
                         </div>
                         @if (entry.CanEdit)
@@ -86,9 +86,9 @@
                             <div class="td-time-tools">
                                 @if (entry.EndedAt is not null)
                                 {
-                                    <button type="button" title="Ubah" aria-label="Ubah entri" @onclick="() => StartEdit(entry)"><i data-lucide="pencil"></i></button>
+                                    <button type="button" title="Edit" aria-label="Edit entry" @onclick="() => StartEdit(entry)"><i data-lucide="pencil"></i></button>
                                 }
-                                <button type="button" title="Hapus" aria-label="Hapus entri" @onclick="() => DeleteEntry(entry)"><i data-lucide="trash-2"></i></button>
+                                <button type="button" title="Delete" aria-label="Delete entry" @onclick="() => DeleteEntry(entry)"><i data-lucide="trash-2"></i></button>
                             </div>
                         }
                     </li>
@@ -97,7 +97,7 @@
         }
         else if (!addOpen)
         {
-            <div class="td-hint">Belum ada waktu tercatat.</div>
+            <div class="td-hint">No time logged yet.</div>
         }
     }
 </section>
@@ -148,9 +148,9 @@
             var fresh = await Auth.GetAsync<TaskTimeDto>($"/api/projects/tasks/{id}/time");
             if (id != TaskId) return;
             data = fresh;
-            loadError = fresh is null ? "Waktu tidak bisa dimuat." : null;
+            loadError = fresh is null ? "Couldn't load time entries." : null;
         }
-        catch { loadError = "Waktu tidak bisa dimuat."; }
+        catch { loadError = "Couldn't load time entries."; }
     }
 
     // Timer started/stopped elsewhere (topbar, List row, another tab): the entry list changed.
@@ -205,9 +205,9 @@
     private async Task SubmitManual()
     {
         var minutes = ProjectTimeFormat.ToMinutes(formHours, formMinutes);
-        if (minutes is null) { formError = "Durasi 1 menit sampai 24 jam (menit 0–59)."; return; }
-        if (formDate is null) { formError = "Pilih tanggal."; return; }
-        if (formDate.Value.Date > DateTime.Today) { formError = "Tanggal tidak boleh di masa depan."; return; }
+        if (minutes is null) { formError = "Duration must be 1 minute to 24 hours (minutes 0–59)."; return; }
+        if (formDate is null) { formError = "Choose a date."; return; }
+        if (formDate.Value.Date > DateTime.Today) { formError = "Date can't be in the future."; return; }
 
         busy = true;
         formError = null;
@@ -236,7 +236,7 @@
                     new AddTimeEntryRequest(minutes.Value, DateTime.SpecifyKind(start, DateTimeKind.Local).ToUniversalTime(), formNote));
             }
             if (!res.IsSuccessStatusCode) { formError = ErrorText(await CodeAsync(res)); return; }
-            Toasts.Show(editingId is null ? "Waktu ditambahkan." : "Entri diperbarui.", IPop.Web.Services.ToastKind.Success);
+            Toasts.Show(editingId is null ? "Time added." : "Entry updated.", IPop.Web.Services.ToastKind.Success);
             CloseForm();
             await LoadAsync();
         }
@@ -245,7 +245,7 @@
 
     private async Task DeleteEntry(TimeEntryDto e)
     {
-        var ok = await Confirm.AskAsync("Hapus entri waktu?", $"{ProjectTimeFormat.Minutes(e.Minutes)} oleh {e.UserName} akan dihapus dari total.", "Hapus", danger: true);
+        var ok = await Confirm.AskAsync("Delete time entry?", $"{ProjectTimeFormat.Minutes(e.Minutes)} by {e.UserName} will be removed from the total.", "Delete", danger: true);
         if (!ok) return;
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/time/{e.Id}");
         if (!res.IsSuccessStatusCode) { Toasts.Show(ErrorText(await CodeAsync(res)), IPop.Web.Services.ToastKind.Error); return; }
@@ -256,7 +256,7 @@
     private static string SourceLabel(string source) => source switch
     {
         "manual" => " · manual",
-        "legacy" => " · data lama",
+        "legacy" => " · legacy",
         _ => "",
     };
 
@@ -272,14 +272,14 @@
 
     private static string ErrorText(string code) => code switch
     {
-        "forbidden" => "Anda tidak punya akses untuk ini.",
-        "invalid_minutes" => "Durasi 1 menit sampai 24 jam.",
-        "invalid_date" => "Tanggal tidak boleh di masa depan.",
-        "invalid_note" => "Catatan maksimal 200 karakter.",
-        "timer_running" => "Hentikan timer dulu sebelum mengubah durasinya.",
-        "timer_conflict" => "Timer baru saja dimulai di tab lain. Coba lagi.",
-        "task_not_found" or "entry_not_found" => "Data sudah tidak ada.",
-        _ => "Gagal menyimpan waktu.",
+        "forbidden" => "You don't have access to do this.",
+        "invalid_minutes" => "Duration must be 1 minute to 24 hours.",
+        "invalid_date" => "Date can't be in the future.",
+        "invalid_note" => "Note can be at most 200 characters.",
+        "timer_running" => "Stop the timer before changing its duration.",
+        "timer_conflict" => "A timer was just started in another tab. Try again.",
+        "task_not_found" or "entry_not_found" => "This item no longer exists.",
+        _ => "Couldn't save time.",
     };
 
     public void Dispose()

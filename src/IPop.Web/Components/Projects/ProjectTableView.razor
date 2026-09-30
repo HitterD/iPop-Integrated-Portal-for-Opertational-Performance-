@@ -10,7 +10,7 @@
     <div class="plist-row plist-head" style="@ColumnsStyle">
         <span class="plist-lead">
             @{ var visibleIds = VisibleOrder; var allOn = visibleIds.Count > 0 && visibleIds.All(SelectedIds.Contains); }
-            <input type="checkbox" class="plist-sel" aria-label="Pilih semua task yang tampil" checked="@allOn"
+            <input type="checkbox" class="plist-sel" aria-label="Select all visible tasks" checked="@allOn"
                    @onchange="() => SetSelection(allOn ? SelectedIds.Except(visibleIds) : SelectedIds.Union(visibleIds))" />
         </span><span>Task</span><span>Status</span><span>Priority</span><span>Assignee</span><span>Due</span><span>Subtasks</span>
         @foreach (var field in VisibleFields)
@@ -171,7 +171,7 @@
     }
 
     private static string BlockedTitle(ProjectTaskDto t) =>
-        "Menunggu: " + string.Join(", ", (t.DependsOn ?? []).Where(d => d.Status != "done").Select(d => d.Title));
+        "Waiting on: " + string.Join(", ", (t.DependsOn ?? []).Where(d => d.Status != "done").Select(d => d.Title));
 
     // Field columns: hide/resize is a local, per-user-per-project preference; values stay editable in the drawer.
     private const int MinFieldWidth = 80, MaxFieldWidth = 480;
@@ -255,7 +255,7 @@
         await SaveColumnPrefs();
     }
     private static readonly string[] GroupColors = ["#8E8E93", "#0A84FF", "#FF9F0A", "#34C759", "#7657C4", "#C0513A"];
-    private static string ColorName(string hex) => hex switch { "#8E8E93" => "Abu-abu", "#0A84FF" => "Biru", "#FF9F0A" => "Oranye", "#34C759" => "Hijau", "#7657C4" => "Ungu", "#C0513A" => "Merah bata", _ => hex };
+    private static string ColorName(string hex) => hex switch { "#8E8E93" => "Gray", "#0A84FF" => "Blue", "#FF9F0A" => "Orange", "#34C759" => "Green", "#7657C4" => "Purple", "#C0513A" => "Brick red", _ => hex };
     private readonly HashSet<Guid> collapsedGroups = [];
     private bool addingGroup;
     private string newGroupName = "";
@@ -522,7 +522,7 @@
         try
         {
             var err = Timer.IsRunning(taskId) ? await Timer.StopTimerAsync() : await Timer.StartTimerAsync(taskId);
-            if (err is not null) Toasts.Show(err == "forbidden" ? "Anda tidak bisa mencatat waktu di project ini." : "Timer gagal diubah.", IPop.Web.Services.ToastKind.Error);
+            if (err is not null) Toasts.Show(err == "forbidden" ? "You can't log time in this project." : "Couldn't update the timer.", IPop.Web.Services.ToastKind.Error);
         }
         finally { timerBusy = null; }
     }
@@ -593,7 +593,7 @@
                     <div class="plist-row plist-task @(t.Status == "done" ? "is-done" : "") @(selected ? "is-selected" : "") @(SelectedIds.Count > 0 ? "selecting" : "")" style="@ColumnsStyle" draggable="true" @ondragstart="() => dragTaskId = t.Id" @ondragend="() => dragTaskId = null"
                          @onclick="() => RowClick(t)" @onpointerdown="e => StartLongPress(t.Id, e)" @onpointerup="CancelLongPress" @onpointerleave="CancelLongPress" @onpointercancel="CancelLongPress">
                         <span class="plist-lead" @onclick:stopPropagation="true">
-                            <input type="checkbox" class="plist-sel" aria-label="Pilih @t.Title" checked="@selected" @onclick="e => ToggleSelect(t.Id, e.ShiftKey)" />
+                            <input type="checkbox" class="plist-sel" aria-label="Select @t.Title" checked="@selected" @onclick="e => ToggleSelect(t.Id, e.ShiftKey)" />
                             <button type="button" class="plist-check @(t.Status == "done" ? "done" : "")"
                                     aria-label="@(t.Status == "done" ? "Mark incomplete" : "Mark complete")"
                                     @onclick='() => ChangeStatus(t, t.Status == "done" ? "todo" : "done")'>
@@ -607,19 +607,19 @@
                             {
                                 var timing = Timer.IsRunning(t.Id);
                                 <button type="button" class="plist-timer @(timing ? "running" : "")" @onclick:stopPropagation="true"
-                                        aria-pressed="@(timing ? "true" : "false")" title="@(timing ? "Jeda timer" : "Mulai timer")"
-                                        aria-label="@(timing ? "Jeda timer" : "Mulai timer") @t.Title" disabled="@(timerBusy == t.Id)"
+                                        aria-pressed="@(timing ? "true" : "false")" title="@(timing ? "Pause timer" : "Start timer")"
+                                        aria-label="@(timing ? "Pause timer" : "Start timer") @t.Title" disabled="@(timerBusy == t.Id)"
                                         @onclick="() => ToggleTimer(t.Id)">
                                     <i data-lucide="@(timing ? "pause" : "play")"></i>
                                 </button>
                             }
                             @if (t.IsBlocked)
                             {
-                                <span class="blocked-badge" title="@BlockedTitle(t)"><i data-lucide="lock"></i>Menunggu</span>
+                                <span class="blocked-badge" title="@BlockedTitle(t)"><i data-lucide="lock"></i>Waiting</span>
                             }
                             @if (t.IsRecurring)
                             {
-                                <span class="cm" title="Task berulang"><i data-lucide="repeat"></i></span>
+                                <span class="cm" title="Recurring task"><i data-lucide="repeat"></i></span>
                             }
                             @if (t.CommentCount > 0)
                             {

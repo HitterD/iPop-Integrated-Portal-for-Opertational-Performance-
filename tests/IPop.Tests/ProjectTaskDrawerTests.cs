@@ -180,7 +180,7 @@ public class ProjectTaskDrawerTests
         Assert.Single(cut.Find(".td-hours").QuerySelectorAll("input"));
         var time = cut.Find("section.td-time");
         Assert.Null(time.Closest("details"));
-        Assert.Contains("WAKTU", time.TextContent);
+        Assert.Contains("TIME", time.TextContent);
     }
 
     [Fact]

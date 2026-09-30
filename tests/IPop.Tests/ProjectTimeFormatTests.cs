@@ -9,9 +9,9 @@ public class ProjectTimeFormatTests
     [InlineData(0, "0m")]
     [InlineData(-5, "0m")]
     [InlineData(45, "45m")]
-    [InlineData(60, "1j")]
-    [InlineData(90, "1j 30m")]
-    [InlineData(600, "10j")]
+    [InlineData(60, "1h")]
+    [InlineData(90, "1h 30m")]
+    [InlineData(600, "10h")]
     public void Minutes_formats_hours_and_minutes(int minutes, string expected) =>
         Assert.Equal(expected, ProjectTimeFormat.Minutes(minutes));
 
@@ -46,9 +46,9 @@ public class ProjectTimeFormatTests
     }
 
     [Fact]
-    public void Week_label_spans_months_in_indonesian()
+    public void Week_label_spans_months_in_english()
     {
         Assert.Equal("21–27 Sep 2026", ProjectTimeFormat.WeekLabel(new DateTime(2026, 9, 21)));
-        Assert.Equal("28 Sep – 4 Okt 2026", ProjectTimeFormat.WeekLabel(new DateTime(2026, 9, 28)));
+        Assert.Equal("28 Sep – 4 Oct 2026", ProjectTimeFormat.WeekLabel(new DateTime(2026, 9, 28)));
     }
 }

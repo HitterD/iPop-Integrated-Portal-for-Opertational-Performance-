@@ -900,7 +900,7 @@ public static class ProjectEndpoints
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
             if (!await IsTaskMember(db, taskId, userId.Value, ct))
-                return Results.Json(new { code = "forbidden", message = "Bukan anggota proyek." }, statusCode: 403);
+                return Results.Json(new { code = "forbidden", message = "Not a project member." }, statusCode: 403);
 
             var rows = await db.ProjectTaskReminders.AsNoTracking()
                 .Where(r => r.TaskId == taskId)

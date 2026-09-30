@@ -3,8 +3,8 @@
 
 @* Fase 2c: floating bar over the List while tasks are selected. The page performs the bulk call;
    this only collects the action and its value. *@
-<div class="pbulk" role="toolbar" aria-label="Aksi untuk @Count task terpilih" @onkeydown="OnKey">
-    <span class="pbulk-count">@Count dipilih</span>
+<div class="pbulk" role="toolbar" aria-label="Actions for @Count selected tasks" @onkeydown="OnKey">
+    <span class="pbulk-count">@Count selected</span>
     <div class="pbulk-actions">
         <div class="pbulk-wrap">
             <button type="button" class="pbulk-btn" aria-haspopup="menu" aria-expanded="@(open == "status" ? "true" : "false")" @onclick='() => Toggle("status")'><i data-lucide="circle-dot"></i>Status</button>
@@ -23,13 +23,13 @@
             @if (open == "assign")
             {
                 <div class="pbulk-menu" role="menu">
-                    @if (Members.Count == 0) { <p class="pbulk-empty">Belum ada anggota.</p> }
+                    @if (Members.Count == 0) { <p class="pbulk-empty">No members yet.</p> }
                     @foreach (var m in Members)
                     {
                         <div class="pbulk-member">
                             <span class="nm">@m.Name</span>
-                            <button type="button" role="menuitem" title="Tambahkan @m.Name" aria-label="Tambahkan @m.Name" @onclick='() => Pick("assign", m.UserId.ToString())'><i data-lucide="plus"></i></button>
-                            <button type="button" role="menuitem" title="Lepaskan @m.Name" aria-label="Lepaskan @m.Name" @onclick='() => Pick("unassign", m.UserId.ToString())'><i data-lucide="minus"></i></button>
+                            <button type="button" role="menuitem" title="Add @m.Name" aria-label="Add @m.Name" @onclick='() => Pick("assign", m.UserId.ToString())'><i data-lucide="plus"></i></button>
+                            <button type="button" role="menuitem" title="Remove @m.Name" aria-label="Remove @m.Name" @onclick='() => Pick("unassign", m.UserId.ToString())'><i data-lucide="minus"></i></button>
                         </div>
                     }
                 </div>
@@ -39,11 +39,11 @@
             <button type="button" class="pbulk-btn" aria-haspopup="dialog" aria-expanded="@(open == "due" ? "true" : "false")" @onclick='() => Toggle("due")'><i data-lucide="calendar"></i>Due</button>
             @if (open == "due")
             {
-                <div class="pbulk-menu" role="dialog" aria-label="Ubah due date">
+                <div class="pbulk-menu" role="dialog" aria-label="Change due date">
                     <input type="date" aria-label="Due date" @bind="dueValue" />
                     <div class="pbulk-row">
-                        <button type="button" class="btn-sm" @onclick='() => Pick("due", "")'>Hapus due</button>
-                        <button type="button" class="btn-sm accent" disabled="@(dueValue is null)" @onclick='() => Pick("due", dueValue!.Value.ToString("yyyy-MM-dd"))'>Terapkan</button>
+                        <button type="button" class="btn-sm" @onclick='() => Pick("due", "")'>Clear due</button>
+                        <button type="button" class="btn-sm accent" disabled="@(dueValue is null)" @onclick='() => Pick("due", dueValue!.Value.ToString("yyyy-MM-dd"))'>Apply</button>
                     </div>
                 </div>
             }
@@ -68,16 +68,16 @@
             @if (open == "priority")
             {
                 <div class="pbulk-menu" role="menu">
-                    @foreach (var (key, label) in new[] { ("urgent", "Urgent"), ("high", "High"), ("normal", "Normal"), ("low", "Low"), ("", "Tanpa prioritas") })
+                    @foreach (var (key, label) in new[] { ("urgent", "Urgent"), ("high", "High"), ("normal", "Normal"), ("low", "Low"), ("", "No priority") })
                     {
                         <button type="button" role="menuitem" @onclick='() => Pick("priority", key)'>@label</button>
                     }
                 </div>
             }
         </div>
-        <button type="button" class="pbulk-btn danger" @onclick='() => Pick("delete", null)'><i data-lucide="trash-2"></i>Hapus</button>
+        <button type="button" class="pbulk-btn danger" @onclick='() => Pick("delete", null)'><i data-lucide="trash-2"></i>Delete</button>
     </div>
-    <button type="button" class="pbulk-close" aria-label="Batalkan pilihan (Esc)" title="Batalkan pilihan (Esc)" @onclick="() => OnClear.InvokeAsync()"><i data-lucide="x"></i></button>
+    <button type="button" class="pbulk-close" aria-label="Clear selection (Esc)" title="Clear selection (Esc)" @onclick="() => OnClear.InvokeAsync()"><i data-lucide="x"></i></button>
     @if (open is not null) { <div class="pbulk-backdrop" @onclick="() => open = null"></div> }
 </div>
 

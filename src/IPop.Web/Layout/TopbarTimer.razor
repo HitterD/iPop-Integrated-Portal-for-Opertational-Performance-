@@ -14,7 +14,7 @@
             <span class="tb-timer-time">@ProjectTimeFormat.Elapsed(DateTime.UtcNow - run.StartedAt)</span>
             <span class="tb-timer-task">@run.TaskTitle</span>
         </button>
-        <button type="button" class="tb-timer-stop" title="Hentikan timer" aria-label="Hentikan timer @run.TaskTitle"
+        <button type="button" class="tb-timer-stop" title="Stop timer" aria-label="Stop timer @run.TaskTitle"
                 disabled="@busy" @onclick="StopAsync">
             <i data-lucide="square"></i>
         </button>
@@ -40,7 +40,7 @@
         try
         {
             var err = await Timer.StopTimerAsync();
-            if (err is not null) Toasts.Show("Timer gagal dihentikan.", ToastKind.Error);
+            if (err is not null) Toasts.Show("Couldn't stop the timer.", ToastKind.Error);
         }
         finally { busy = false; }
     }
