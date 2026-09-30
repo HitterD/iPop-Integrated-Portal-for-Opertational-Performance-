@@ -5,7 +5,7 @@ namespace IPop.Application.Projects;
 public record RunningTimerDto(Guid EntryId, Guid TaskId, string TaskTitle, Guid ProjectId, string ProjectName, DateTime StartedAt);
 
 public record TimeEntryDto(Guid Id, Guid TaskId, Guid UserId, string UserName, DateTime StartedAt, DateTime? EndedAt,
-    int Minutes, string? Note, string Source, bool AutoStopped, bool CanEdit);
+    int Minutes, string? Note, string Source, bool AutoStopped, bool CanEdit, string? UserNik = null);
 
 public record TaskTimeDto(Guid TaskId, int TotalMinutes, IReadOnlyList<TimeEntryDto> Entries, bool CanTrack);
 
@@ -14,7 +14,7 @@ public record AddTimeEntryRequest(int Minutes, DateTime StartedAt, string? Note)
 public record UpdateTimeEntryRequest(int? Minutes, DateTime? StartedAt, string? Note);
 
 /// One person's week: minutes per day (index 0 = the first day of the week in the viewer's zone).
-public record TimesheetRowDto(Guid UserId, string Name, IReadOnlyList<int> DayMinutes, int TotalMinutes);
+public record TimesheetRowDto(Guid UserId, string Name, IReadOnlyList<int> DayMinutes, int TotalMinutes, string? Nik = null);
 public record TimesheetDto(DateTime WeekStart, IReadOnlyList<TimesheetRowDto> Rows, IReadOnlyList<int> DayTotals, int TotalMinutes);
 
 /// A timer the 10-hour cap stopped; the worker turns each into a notification.

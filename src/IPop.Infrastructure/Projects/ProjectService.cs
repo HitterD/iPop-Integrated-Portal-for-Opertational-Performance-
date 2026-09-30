@@ -943,7 +943,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         var cutoff = (localToday ?? DateTime.Today).Date;
         var members = await db.ProjectMembers.AsNoTracking()
             .Where(m => m.ProjectId == projectId)
-            .Select(m => new { m.UserId, m.User.Name, m.User.Position })
+            .Select(m => new { m.UserId, m.User.Name, m.User.Position, m.User.Nik })
             .ToListAsync(ct);
         var tasks = await db.ProjectTasks
             .AsNoTracking()
@@ -962,17 +962,17 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         decimal reviewEst = tasks.Where(t => t.Status == "review").Sum(t => t.EstimatedHours ?? 0);
         decimal doneEst = tasks.Where(t => t.Status == "done").Sum(t => t.EstimatedHours ?? 0);
 
-        AssigneeWorkloadDto Summarize(Guid id, string name, string? position, IEnumerable<ProjectTask> assigned, bool isUnassigned = false)
+        AssigneeWorkloadDto Summarize(Guid id, string name, string? position, IEnumerable<ProjectTask> assigned, bool isUnassigned = false, string? nik = null)
         {
             var rows = assigned.ToList();
             return new AssigneeWorkloadDto(id, name, rows.Count, rows.Sum(t => t.EstimatedHours ?? 0),
                 position, rows.Count(t => t.Status == "todo"), rows.Count(t => t.Status == "doing"),
                 rows.Count(t => t.Status == "review"), rows.Count(t => t.Status == "done"),
-                rows.Count(t => t.Status != "done" && t.DueDate.HasValue && t.DueDate.Value.Date < cutoff), isUnassigned);
+                rows.Count(t => t.Status != "done" && t.DueDate.HasValue && t.DueDate.Value.Date < cutoff), isUnassigned, nik);
         }
 
         var byAssignee = members.Select(m => Summarize(m.UserId, m.Name, m.Position,
-                tasks.Where(t => t.Assignees.Any(a => a.UserId == m.UserId))))
+                tasks.Where(t => t.Assignees.Any(a => a.UserId == m.UserId)), nik: m.Nik))
             .OrderByDescending(x => x.EstimatedHours).ThenBy(x => x.Name).ToList();
         var unassigned = tasks.Where(t => !t.Assignees.Any()).ToList();
         if (unassigned.Count > 0)

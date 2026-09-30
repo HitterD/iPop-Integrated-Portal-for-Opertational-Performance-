@@ -692,7 +692,7 @@
                                     <span class="avs">
                                         @foreach (var a in t.Assignees.Take(3))
                                         {
-                                            <span class="kc-av sm" style="background:@ProjectUiHelpers.GetAvatarBg(a.Name)" title="@a.Name">@ProjectUiHelpers.GetInitials(a.Name)</span>
+                                            <PersonAvatar Nik="@a.Nik" Name="@a.Name" Size="22" Class="kc-av sm" Title="@a.Name" />
                                         }
                                     </span>
                                     <span class="lbl">@string.Join(", ", t.Assignees.Select(a => a.Name))</span>
@@ -725,9 +725,7 @@
                                                 var isAssigned = t.Assignees.Any(a => a.UserId == m.UserId);
                                                 <div class="quick-assign-item @(isAssigned ? "assigned" : "")" role="menuitemcheckbox" tabindex="-1" aria-checked="@(isAssigned ? "true" : "false")"
                                                      @onclick="() => OnToggleAssignee.InvokeAsync((t.Id, m.UserId, isAssigned))">
-                                                    <div class="team-avatar-circ" style="width:22px;height:22px;font-size:9.5px;background:@ProjectUiHelpers.GetAvatarBg(m.Name)">
-                                                        @ProjectUiHelpers.GetInitials(m.Name)
-                                                    </div>
+                                                    <PersonAvatar Nik="@m.Nik" Name="@m.Name" Size="22" Class="team-avatar-circ" Decorative="true" />
                                                     <div class="quick-assign-item-info">
                                                         <div class="name">@m.Name</div>
                                                         <div class="role">@m.Role · @m.Nik</div>

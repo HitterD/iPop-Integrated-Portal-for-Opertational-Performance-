@@ -28,9 +28,7 @@
         <div class="proj-team-pile" @onclick="OnOpenTeamModal" style="cursor:pointer" title="Manage Team Members (@Members.Count members)">
             @foreach (var m in Members.Take(4))
             {
-                <div class="team-avatar-circ" style="background:@ProjectUiHelpers.GetAvatarBg(m.Name)" title="@m.Name (@m.Role)">
-                    @ProjectUiHelpers.GetInitials(m.Name)
-                </div>
+                <PersonAvatar Nik="@m.Nik" Name="@m.Name" Size="30" Class="team-avatar-circ" Title="@($"{m.Name} ({m.Role})")" />
             }
             @if (Members.Count > 4)
             {

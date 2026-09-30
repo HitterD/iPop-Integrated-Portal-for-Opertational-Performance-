@@ -87,7 +87,7 @@ public sealed class ProjectTimeService(IPopDbContext db) : IProjectTimeService
         var entries = await db.TaskTimeEntries.AsNoTracking().Where(e => e.TaskId == taskId)
             .OrderByDescending(e => e.StartedAt).Take(200)
             .Select(e => new TimeEntryDto(e.Id, e.TaskId, e.UserId, e.User.Name, e.StartedAt, e.EndedAt,
-                e.Minutes, e.Note, e.Source, e.AutoStopped, manager || (canTrack && e.UserId == actorId)))
+                e.Minutes, e.Note, e.Source, e.AutoStopped, manager || (canTrack && e.UserId == actorId), e.User.Nik))
             .ToListAsync(ct);
         var total = await db.TaskTimeEntries.Where(e => e.TaskId == taskId && e.EndedAt != null).SumAsync(e => e.Minutes, ct);
         return new(new(taskId, total, entries, canTrack), null);
@@ -173,8 +173,9 @@ public sealed class ProjectTimeService(IPopDbContext db) : IProjectTimeService
         var memberIds = await db.ProjectMembers.AsNoTracking().Where(m => m.ProjectId == projectId)
             .Select(m => m.UserId).ToListAsync(ct);
         var ids = memberIds.Concat(entries.Select(e => e.UserId)).Distinct().ToList();
-        var names = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Name, ct);
-        return new(Build(from, ids, names, entries.Select(e => (e.UserId, e.StartedAt, e.Minutes))), null);
+        var users = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).Select(u => new { u.Id, u.Name, u.Nik }).ToListAsync(ct);
+        return new(Build(from, ids, users.ToDictionary(u => u.Id, u => u.Name), entries.Select(e => (e.UserId, e.StartedAt, e.Minutes)),
+            users.ToDictionary(u => u.Id, u => u.Nik)), null);
     }
 
     public async Task<TimesheetDto> GetPortfolioTimesheetAsync(Guid actorId, DateTime weekStart, CancellationToken ct)
@@ -188,8 +189,9 @@ public sealed class ProjectTimeService(IPopDbContext db) : IProjectTimeService
         if (!all) q = q.Where(e => e.Task.Project.Members.Any(m => m.UserId == actorId));
         var entries = await q.Select(e => new { e.UserId, e.StartedAt, e.Minutes }).ToListAsync(ct);
         var ids = entries.Select(e => e.UserId).Distinct().ToList();
-        var names = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => u.Name, ct);
-        return Build(from, ids, names, entries.Select(e => (e.UserId, e.StartedAt, e.Minutes)));
+        var users = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).Select(u => new { u.Id, u.Name, u.Nik }).ToListAsync(ct);
+        return Build(from, ids, users.ToDictionary(u => u.Id, u => u.Name), entries.Select(e => (e.UserId, e.StartedAt, e.Minutes)),
+            users.ToDictionary(u => u.Id, u => u.Nik));
     }
 
     public async Task<IReadOnlyList<AutoStoppedTimerDto>> AutoStopAsync(DateTime now, CancellationToken ct)
@@ -239,7 +241,7 @@ public sealed class ProjectTimeService(IPopDbContext db) : IProjectTimeService
     /// Days are 24-hour slices from the viewer's local Monday midnight (sent as a UTC instant),
     /// so an entry lands on the day the viewer lived it.
     internal static TimesheetDto Build(DateTime from, IReadOnlyList<Guid> ids, IReadOnlyDictionary<Guid, string> names,
-        IEnumerable<(Guid UserId, DateTime StartedAt, int Minutes)> entries)
+        IEnumerable<(Guid UserId, DateTime StartedAt, int Minutes)> entries, IReadOnlyDictionary<Guid, string>? niks = null)
     {
         var grid = ids.ToDictionary(id => id, _ => new int[7]);
         foreach (var (userId, startedAt, minutes) in entries)
@@ -247,7 +249,7 @@ public sealed class ProjectTimeService(IPopDbContext db) : IProjectTimeService
             var day = (int)Math.Floor((startedAt - from).TotalDays);
             if (day is >= 0 and < 7 && grid.TryGetValue(userId, out var row)) row[day] += minutes;
         }
-        var rows = grid.Select(kv => new TimesheetRowDto(kv.Key, names.GetValueOrDefault(kv.Key) ?? "—", kv.Value, kv.Value.Sum()))
+        var rows = grid.Select(kv => new TimesheetRowDto(kv.Key, names.GetValueOrDefault(kv.Key) ?? "—", kv.Value, kv.Value.Sum(), niks?.GetValueOrDefault(kv.Key)))
             .OrderByDescending(r => r.TotalMinutes).ThenBy(r => r.Name).ToList();
         var totals = Enumerable.Range(0, 7).Select(d => rows.Sum(r => r.DayMinutes[d])).ToList();
         return new(from, rows, totals, totals.Sum());
@@ -256,7 +258,7 @@ public sealed class ProjectTimeService(IPopDbContext db) : IProjectTimeService
     private Task<TimeEntryDto> EntryDtoAsync(Guid entryId, CancellationToken ct) =>
         db.TaskTimeEntries.IgnoreQueryFilters().AsNoTracking().Where(e => e.Id == entryId)
             .Select(e => new TimeEntryDto(e.Id, e.TaskId, e.UserId, e.User.Name, e.StartedAt, e.EndedAt,
-                e.Minutes, e.Note, e.Source, e.AutoStopped, true))
+                e.Minutes, e.Note, e.Source, e.AutoStopped, true, e.User.Nik))
             .FirstAsync(ct);
 
     /// Instants arrive as UTC ("Z"), as local (model binding converts) or unspecified (treated as UTC).

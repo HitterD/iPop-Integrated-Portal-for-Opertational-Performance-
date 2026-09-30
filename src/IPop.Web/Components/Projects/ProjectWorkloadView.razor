@@ -39,16 +39,14 @@
                     var doneWidth = GetSegmentWidth(member.DoneCount, member.TodoCount + member.DoingCount + member.ReviewCount);
                     <div class="v6-workload__row" role="row" @key="(member.UserId, member.IsUnassigned)">
                         <div class="v6-workload__person" role="cell">
-                            <span class="v6-workload__avatar" style="background:@(member.IsUnassigned ? "var(--tray)" : ProjectUiHelpers.GetAvatarBg(member.Name))" aria-hidden="true">
-                                @if (member.IsUnassigned)
-                                {
-                                    <i data-lucide="user-round-question"></i>
-                                }
-                                else
-                                {
-                                    @ProjectUiHelpers.GetInitials(member.Name)
-                                }
-                            </span>
+                            @if (member.IsUnassigned)
+                            {
+                                <span class="v6-workload__avatar" style="background:var(--tray)" aria-hidden="true"><i data-lucide="user-round-question"></i></span>
+                            }
+                            else
+                            {
+                                <PersonAvatar Nik="@member.Nik" Name="@member.Name" Size="34" Class="v6-workload__avatar" Decorative="true" />
+                            }
                             <span class="v6-workload__identity">
                                 <strong>@member.Name</strong>
                                 <span>@(member.IsUnassigned ? "No assignee" : string.IsNullOrWhiteSpace(member.Position) ? "Team member" : member.Position)</span>

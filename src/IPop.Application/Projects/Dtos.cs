@@ -83,7 +83,7 @@ public record ProjectTimelineDto(Guid ProjectId, string ProjectName, DateTime? P
 // Workload & Export (DETAIL MAX stubs)
 public record AssigneeWorkloadDto(Guid UserId, string Name, int TaskCount, decimal EstimatedHours,
     string? Position = null, int TodoCount = 0, int DoingCount = 0, int ReviewCount = 0,
-    int DoneCount = 0, int OverdueCount = 0, bool IsUnassigned = false);
+    int DoneCount = 0, int OverdueCount = 0, bool IsUnassigned = false, string? Nik = null);
 
 public record ProjectWorkloadDto(
     int TotalTasks,

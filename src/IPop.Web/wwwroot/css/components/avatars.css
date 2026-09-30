@@ -84,3 +84,8 @@
 /* Call overlay: the pulse ring and muted badge follow the square avatar. */
 .callx-avatar.callx-ring::after { border-radius: 30%; }
 .callx-tile-av { position: relative; display: inline-flex; }
+
+/* Stacked avatars keep their separator ring (.pav resets border), and tinted tiles keep white initials. */
+.pav.kc-av, .pav.team-avatar-circ { border: 2px solid var(--surface); }
+.ack-row .av.sm.pav, .pav.thr-avatar { color: #fff; }
+[data-theme="dark"] .ack-row .av.sm.pav, [data-theme="dark"] .pav.thr-avatar { color: #0e0d0b; }

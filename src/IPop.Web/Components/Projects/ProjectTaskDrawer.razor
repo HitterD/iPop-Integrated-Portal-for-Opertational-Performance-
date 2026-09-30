@@ -99,7 +99,7 @@
                             @foreach (var a in Task.Assignees)
                             {
                                 <span class="td-assign-pill">
-                                    <span class="td-avatar" style="background:@ProjectUiHelpers.GetAvatarBg(a.Name)">@ProjectUiHelpers.GetInitials(a.Name)</span>@a.Name
+                                    <PersonAvatar Nik="@a.Nik" Name="@a.Name" Size="20" Class="td-avatar" Decorative="true" />@a.Name
                                     <button type="button" title="Remove assignee" @onclick="() => OnToggleAssignee.InvokeAsync((Task.Id, a.UserId, true))"><i data-lucide="x"></i></button>
                                 </span>
                             }
@@ -114,7 +114,7 @@
                                             @foreach (var m in Members.Where(m => !Task.Assignees.Any(a => a.UserId == m.UserId)))
                                             {
                                                 <button type="button" role="menuitem" @onclick="async () => { assignOpen = false; await OnToggleAssignee.InvokeAsync((Task.Id, m.UserId, false)); }">
-                                                    <span class="td-avatar" style="background:@ProjectUiHelpers.GetAvatarBg(m.Name)">@ProjectUiHelpers.GetInitials(m.Name)</span>
+                                                    <PersonAvatar Nik="@m.Nik" Name="@m.Name" Size="20" Class="td-avatar" Decorative="true" />
                                                     <span>@m.Name<small>@m.Role · @m.Nik</small></span>
                                                 </button>
                                             }
@@ -476,7 +476,7 @@
         try
         {
             var comments = await Auth.GetAsync<List<CommentRow>>($"/api/projects/tasks/{Task.Id}/comments") ?? [];
-            commentItems = comments.Select(c => new TaskDiscussion.TaskCommentItem(c.Id, c.AuthorName, c.Content, c.CreatedAt, [], c.ParentCommentId)).ToList();
+            commentItems = comments.Select(c => new TaskDiscussion.TaskCommentItem(c.Id, c.AuthorName, c.Content, c.CreatedAt, [], c.ParentCommentId, c.AuthorNik)).ToList();
 
             var acts = await Auth.GetAsync<ActivityPage>($"/api/projects/tasks/{Task.Id}/activity?pageSize=50");
             activityItems = (acts?.Items ?? []).Select(a => new TaskActivityTimeline.TaskActivityItem(a.ActorName, ActivityLabel(a.Action), a.NewValue ?? a.OldValue, a.CreatedAt)).ToList();

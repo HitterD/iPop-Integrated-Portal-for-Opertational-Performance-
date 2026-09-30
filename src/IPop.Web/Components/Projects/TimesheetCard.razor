@@ -50,7 +50,7 @@
                         <tr>
                             <th scope="row">
                                 <span class="timesheet-who">
-                                    <span class="timesheet-avatar" style="background:@ProjectUiHelpers.GetAvatarBg(row.Name)" aria-hidden="true">@ProjectUiHelpers.GetInitials(row.Name)</span>
+                                    <PersonAvatar Nik="@row.Nik" Name="@row.Name" Size="22" Class="timesheet-avatar" Decorative="true" />
                                     <span class="timesheet-name">@row.Name</span>
                                 </span>
                             </th>

@@ -69,7 +69,7 @@
                 {
                     var entry = e;
                     <li class="td-time-entry @(entry.EndedAt is null ? "running" : "") @(entry.AutoStopped ? "auto" : "")">
-                        <span class="td-time-avatar" style="background:@ProjectUiHelpers.GetAvatarBg(entry.UserName)" title="@entry.UserName">@ProjectUiHelpers.GetInitials(entry.UserName)</span>
+                        <PersonAvatar Nik="@entry.UserNik" Name="@entry.UserName" Size="22" Class="td-time-avatar" Title="@entry.UserName" />
                         <div class="td-time-main">
                             <div class="td-time-line">
                                 <strong>@(entry.EndedAt is null ? "Berjalan" : ProjectTimeFormat.Minutes(entry.Minutes))</strong>

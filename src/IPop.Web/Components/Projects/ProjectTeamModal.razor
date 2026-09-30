@@ -12,7 +12,7 @@
             @foreach (var m in Members)
             {
                 <div class="vpm-member">
-                    <span class="vpm-member-avatar" style="background:@ProjectUiHelpers.GetAvatarBg(m.Name)">@ProjectUiHelpers.GetInitials(m.Name)<span class="presence"></span></span>
+                    <PersonAvatar Nik="@m.Nik" Name="@m.Name" Size="36" Class="vpm-member-avatar" Status="on" Decorative="true" />
                     <span class="vpm-member-text"><strong>@m.Name</strong><small>@m.Nik · @m.Role</small></span>
                     @if (m.Role != "owner") { <button type="button" class="vpm-member-remove" @onclick="() => OnRemoveMember.InvokeAsync(m.UserId)" title="Remove from team" aria-label="Remove @m.Name"><i data-lucide="x"></i></button> }
                     else { <span class="vpm-member-owner">Owner</span> }

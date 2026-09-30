@@ -42,7 +42,7 @@
 @code {
     /// Satu komentar (atau balasan) pada tugas.
     public sealed record TaskCommentItem(Guid Id, string Author, string Text, DateTime At,
-        IReadOnlyList<string> Attachments, Guid? ParentCommentId);
+        IReadOnlyList<string> Attachments, Guid? ParentCommentId, string? AuthorNik = null);
 
     [Parameter] public IReadOnlyList<TaskCommentItem> Items { get; set; } = [];
     /// Dipanggil saat pengguna mengirim komentar/balasan baru.
@@ -68,7 +68,7 @@
     private RenderFragment RenderComment(TaskCommentItem c, bool isReply) => __builder =>
     {
         <div class="task-comment @(isReply ? "reply" : "")" @key="c.Id">
-            <div class="team-avatar-circ" style="width:26px;height:26px;font-size:10px;background:@ProjectUiHelpers.GetAvatarBg(c.Author);flex-shrink:0">@ProjectUiHelpers.GetInitials(c.Author)</div>
+            <PersonAvatar Nik="@c.AuthorNik" Name="@c.Author" Size="26" Class="team-avatar-circ" Decorative="true" />
             <div style="flex:1;min-width:0">
                 <div style="font-size:12px"><b>@c.Author</b> <span style="color:var(--ink-3);font-size:11px">· @c.At.ToLocalTime().ToString("dd MMM HH:mm")</span></div>
                 <div style="font-size:12.5px;color:var(--ink);margin-top:2px;white-space:pre-wrap">@c.Text</div>

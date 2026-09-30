@@ -78,7 +78,7 @@
             {
                 var row = a;
                 <div class="ov-activity-row">
-                    <span class="ov-activity-av" style="background:@ProjectUiHelpers.GetAvatarBg(row.ActorName)">@ProjectUiHelpers.GetInitials(row.ActorName)</span>
+                    <PersonAvatar Nik="@(row.ActorNik ?? Members.FirstOrDefault(m => m.Name == row.ActorName)?.Nik)" Name="@row.ActorName" Size="28" Class="ov-activity-av" Decorative="true" />
                     <span class="ov-activity-text"><b>@row.ActorName</b> @ActivityText(row)</span>
                     <span class="ov-activity-time">@FormatWhen(row.CreatedAt)</span>
                 </div>
@@ -96,7 +96,7 @@
         {
             var member = m;
             <div class="ov-member-row">
-                <span class="ov-member-av" style="background:@ProjectUiHelpers.GetAvatarBg(member.Name)">@ProjectUiHelpers.GetInitials(member.Name)</span>
+                <PersonAvatar Nik="@member.Nik" Name="@member.Name" Size="30" Class="ov-member-av" Decorative="true" />
                 <div class="ov-member-info">
                     <span class="ov-member-name">@member.Name</span>
                     <span class="ov-member-role">@RoleLabel(member.Role)</span>
@@ -161,7 +161,7 @@
     [Parameter] public EventCallback OnOpenTeamModal { get; set; }
 
     public record EvidenceStreamItem(ProjectTaskDto Task, TaskEvidenceItem Item, string Context);
-    private record ActivityRow(Guid Id, string TaskTitle, string ActorName, string Action, string? OldValue, string? NewValue, DateTime CreatedAt);
+    private record ActivityRow(Guid Id, string TaskTitle, string ActorName, string Action, string? OldValue, string? NewValue, DateTime CreatedAt, string? ActorNik = null);
     private record StatusRow(string Name, string Color, int Count, double Width);
     private record AttentionRow(ProjectTaskDto Task, string Note, string Color, string Bg);
 

@@ -1067,7 +1067,7 @@ public static class ProjectEndpoints
                 .OrderByDescending(a => a.CreatedAt)
                 .Take(take)
                 .Select(a => new ProjectActivityDto(a.Id, a.TaskId, a.Task.Title, a.Actor.Name,
-                    a.Action, a.OldValue, a.NewValue, a.CreatedAt))
+                    a.Action, a.OldValue, a.NewValue, a.CreatedAt, a.Actor.Nik))
                 .ToListAsync(ct);
             return Results.Ok(rows);
         });
@@ -1423,7 +1423,7 @@ public static class ProjectEndpoints
     /// Project-wide activity row: carries the task title so the Overview feed can render
     /// "<who> <what> on <task>" without an extra lookup per row.
     public record ProjectActivityDto(Guid Id, Guid TaskId, string TaskTitle, string ActorName,
-        string Action, string? OldValue, string? NewValue, DateTime CreatedAt);
+        string Action, string? OldValue, string? NewValue, DateTime CreatedAt, string? ActorNik = null);
     // Lampiran berkas tugas (referensi NAS)
     public record AddTaskAttachmentRequest(string FileName, long Size, string Server, string Path);
     public record TaskAttachmentDto(Guid Id, string FileName, long FileSize, string UploadedByName, string Server, string Path, DateTime CreatedAt);
