@@ -721,7 +721,7 @@
                                     <div class="picker-stickers custom">
                                         @if (stickerTab == "mine")
                                         {
-                                            <button type="button" class="picker-sticker sticker-add" title="Buat stiker dari gambar (PNG, JPG, GIF, WebP · maks 512 KB)" disabled="@stickerUploading" @onclick="PickStickerFile">
+                                            <button type="button" class="picker-sticker sticker-add" title="Buat stiker dari gambar (PNG, JPG, GIF, WebP · max 10 MB)" disabled="@stickerUploading" @onclick="PickStickerFile">
                                                 <i data-lucide="@(stickerUploading ? "loader" : "plus")"></i>
                                             </button>
                                         }

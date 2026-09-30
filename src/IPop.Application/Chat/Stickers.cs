@@ -22,10 +22,15 @@ public interface IStickerService
 
 public static class StickerLimits
 {
-    public const long MaxUploadBytes = 512 * 1024;
+    /// Source uploads may be phone photos: the server fits and re-encodes them anyway.
+    public const long MaxUploadBytes = 10L * 1024 * 1024;
     /// A chat image turned into a sticker is normalized anyway, so the source may be bigger.
     public const long MaxSourceBytes = 20L * 1024 * 1024;
-    public const int Size = 256;
+    /// Stored stickers are Size×Size WebP (older ones are 256; they render the same).
+    public const int Size = 512;
+    /// Soft output targets: quality (and for animations, frame count) drops until the file fits.
+    public const long TargetStaticBytes = 300 * 1024;
+    public const long TargetAnimatedBytes = 1024 * 1024;
     public const int MaxPerUser = 200;
     public const string ContentPrefix = "custom:";
 

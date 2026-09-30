@@ -1,6 +1,6 @@
 namespace IPop.Core.Entities;
 
-/// A custom image sticker: 256×256 WebP on the NAS (or chat-files/stickers when there is no service account).
+/// A custom image sticker: 512×512 WebP (256×256 before Oct 2026) on the NAS (or chat-files/stickers when there is no service account).
 /// Sent as a chat message with Type "sticker" and Content "custom:{Id:N}".
 public class ChatSticker
 {

@@ -94,8 +94,8 @@ public class ChatStickerTests
     [Theory]
     [InlineData("a.png", 1000, null)]
     [InlineData("A.WEBP", 1000, null)]
-    [InlineData("a.gif", 512 * 1024, null)]
-    [InlineData("a.gif", 512 * 1024 + 1, "too_large")]
+    [InlineData("a.gif", 10 * 1024 * 1024, null)]
+    [InlineData("a.jpg", 10 * 1024 * 1024 + 1, "too_large")]
     [InlineData("a.svg", 1000, "not_an_image")]
     [InlineData("a.bmp", 1000, "not_an_image")]
     [InlineData("a.png", 0, "no_file")]
@@ -104,19 +104,71 @@ public class ChatStickerTests
         Assert.Equal(expected, StickerEndpoints.Validate(name, length));
 
     [Fact]
-    public void Normalize_center_crops_to_a_256_square_webp()
+    public void Normalize_fits_into_a_512_transparent_square_without_cropping()
     {
-        using var src = new Image<Rgba32>(600, 300);
+        // A wide red bar: fitted, not cropped, so its full width survives and top/bottom are transparent.
+        using var src = new Image<Rgba32>(600, 300, new Rgba32(220, 20, 20, 255));
+        var webp = StickerEndpoints.Normalize(Png(src));
+
+        Assert.Equal("WEBP", Image.DetectFormat(webp).Name.ToUpperInvariant());
+        using var result = Image.Load<Rgba32>(webp);
+        Assert.Equal(512, result.Width);
+        Assert.Equal(512, result.Height);
+        Assert.True(result[256, 10].A < 16, "padding above the image is transparent");
+        Assert.True(result[256, 500].A < 16, "padding below the image is transparent");
+        Assert.True(result[4, 256].A > 240, "the left edge of the image is kept");
+        Assert.True(result[507, 256].A > 240, "the right edge of the image is kept");
+        Assert.True(result[256, 256].R > 180);
+    }
+
+    [Fact]
+    public void Normalize_keeps_an_editor_made_512_square_as_is()
+    {
+        using var src = new Image<Rgba32>(512, 512, new Rgba32(0, 0, 0, 0));
+        for (var x = 100; x < 412; x++) for (var y = 100; y < 412; y++) src[x, y] = new Rgba32(30, 120, 250, 255);
+        using var result = Image.Load<Rgba32>(StickerEndpoints.Normalize(Png(src)));
+        Assert.Equal(512, result.Width);
+        Assert.True(result[50, 50].A < 16);
+        Assert.True(result[105, 105].A > 240, "no re-crop or re-pad shifts the content");
+    }
+
+    [Fact]
+    public void Normalize_squeezes_a_noisy_photo_under_the_static_target()
+    {
+        var rnd = new Random(7);
+        using var src = new Image<Rgba32>(2000, 2000);
+        src.ProcessPixelRows(rows =>
+        {
+            for (var y = 0; y < rows.Height; y++)
+                foreach (ref var p in rows.GetRowSpan(y))
+                    p = new Rgba32((byte)rnd.Next(256), (byte)rnd.Next(256), (byte)rnd.Next(256), 255);
+        });
+        var webp = StickerEndpoints.Normalize(Png(src));
+        Assert.True(webp.Length <= StickerLimits.TargetStaticBytes, $"{webp.Length} bytes");
+    }
+
+    [Fact]
+    public void Normalize_keeps_animation_frames()
+    {
+        using var gif = new Image<Rgba32>(200, 100, new Rgba32(255, 0, 0, 255));
+        using (var f2 = new Image<Rgba32>(200, 100, new Rgba32(0, 0, 255, 255))) gif.Frames.AddFrame(f2.Frames.RootFrame);
         using var ms = new MemoryStream();
-        src.SaveAsPng(ms);
+        gif.SaveAsGif(ms);
         ms.Position = 0;
 
         var webp = StickerEndpoints.Normalize(ms);
 
         using var result = Image.Load(webp);
-        Assert.Equal(256, result.Width);
-        Assert.Equal(256, result.Height);
-        Assert.Equal("WEBP", Image.DetectFormat(webp).Name.ToUpperInvariant());
+        Assert.Equal(2, result.Frames.Count);
+        Assert.Equal(512, result.Width);
+    }
+
+    private static MemoryStream Png(Image image)
+    {
+        var ms = new MemoryStream();
+        image.SaveAsPng(ms);
+        ms.Position = 0;
+        return ms;
     }
 
     [Theory]

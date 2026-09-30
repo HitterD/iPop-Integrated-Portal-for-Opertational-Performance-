@@ -3,12 +3,14 @@ using IPop.Application.Files;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Gif;
 using SixLabors.ImageSharp.Formats.Webp;
+using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 
 namespace IPop.Api.Endpoints;
 
-/// Custom image stickers. Files are 256×256 WebP stored like chat attachments (service account on
+/// Custom image stickers. Files are 512×512 WebP (older ones 256×256) stored like chat attachments (service account on
 /// the NAS, chat-files/stickers locally), and served without auth like group photos: an &lt;img&gt;
 /// cannot send the bearer header and the id is an unguessable GUID.
 public static class StickerEndpoints
@@ -25,7 +27,7 @@ public static class StickerEndpoints
             return userId is null ? Results.Unauthorized() : Results.Ok(await svc.ListAsync(userId.Value, ct));
         });
 
-        // Upload a new sticker (PNG/JPG/GIF/WebP ≤ 512 KB), center-cropped to a square.
+        // Upload a new sticker (PNG/JPG/GIF/WebP ≤ 10 MB), fitted into a transparent square.
         g.MapPost("", async (HttpContext http, IStickerService svc, IFileAccessService fileSvc, IConfiguration cfg,
             IWebHostEnvironment env, IPopDbContext db, CancellationToken ct) =>
         {
@@ -40,7 +42,7 @@ public static class StickerEndpoints
             return await StoreAsync(src, userId.Value, svc, fileSvc, cfg, env, ct);
         }).DisableAntiforgery();
 
-        // "Jadikan stiker" from an image in a chat the caller can read.
+        // "Make sticker" from an image in a chat the caller can read.
         g.MapPost("/from-attachment/{attachmentId:guid}", async (Guid attachmentId, HttpContext http, IStickerService svc,
             IFileAccessService fileSvc, IConfiguration cfg, IWebHostEnvironment env, IPopDbContext db, CancellationToken ct) =>
         {
@@ -114,14 +116,73 @@ public static class StickerEndpoints
         return null;
     }
 
-    /// Center-crops to a square and scales to size×size WebP. Animated GIF/WebP keep their frames.
+    /// Fits the image inside a size×size square (contain, transparent padding: never crops a face
+    /// off) and encodes WebP. A client-made sticker is already exactly size×size and is only
+    /// re-encoded. Animated GIF/WebP keep their frames. Quality steps down until the file meets
+    /// the static/animated target; animations then drop every other frame (keeping total timing).
     public static byte[] Normalize(Stream input, int size = StickerLimits.Size)
     {
-        using var image = Image.Load(input);
-        image.Mutate(x => x.Resize(new ResizeOptions { Size = new Size(size, size), Mode = ResizeMode.Crop }));
+        using var image = Image.Load<Rgba32>(input);
+        var animated = image.Frames.Count > 1;
+        if (animated) CarryOverFrameTiming(image);
+        image.Mutate(x =>
+        {
+            x.AutoOrient();
+            if (image.Width != size || image.Height != size)
+                x.Resize(new ResizeOptions
+                {
+                    Size = new Size(size, size), Mode = ResizeMode.Pad, PadColor = Color.Transparent,
+                    Sampler = KnownResamplers.Lanczos3,
+                });
+        });
+
+        var target = animated ? StickerLimits.TargetAnimatedBytes : StickerLimits.TargetStaticBytes;
+        int[] qualities = animated ? [80, 65, 50] : [88, 80, 70, 60, 50, 40];
+        while (true)
+        {
+            byte[] best = [];
+            foreach (var q in qualities)
+            {
+                best = Encode(image, q);
+                if (best.Length <= target) return best;
+            }
+            // Still too big: an animation can lose frames, a still image has nothing left to give.
+            if (!animated || image.Frames.Count < 4) return best;
+            DropEveryOtherFrame(image);
+        }
+    }
+
+    private static byte[] Encode(Image image, int quality)
+    {
         using var ms = new MemoryStream();
-        image.SaveAsWebp(ms, new WebpEncoder { FileFormat = WebpFileFormatType.Lossy, Quality = 85 });
+        image.SaveAsWebp(ms, new WebpEncoder
+        {
+            FileFormat = WebpFileFormatType.Lossy, Quality = quality, TransparentColorMode = WebpTransparentColorMode.Preserve,
+        });
         return ms.ToArray();
+    }
+
+    /// GIF frame delays (centiseconds) → WebP frame delays (ms), so a converted GIF keeps its speed.
+    private static void CarryOverFrameTiming(Image image)
+    {
+        if (image.Metadata.TryGetGifMetadata(out var gif))
+            image.Metadata.GetWebpMetadata().RepeatCount = gif.RepeatCount;
+        foreach (var frame in image.Frames)
+        {
+            if (frame.Metadata.TryGetGifMetadata(out var g))
+                frame.Metadata.GetWebpMetadata().FrameDelay = (uint)Math.Max(2, g.FrameDelay) * 10;
+        }
+    }
+
+    private static void DropEveryOtherFrame(Image image)
+    {
+        var last = image.Frames.Count - 1;
+        for (var i = last % 2 == 1 ? last : last - 1; i >= 1; i -= 2)
+        {
+            var dropped = image.Frames[i].Metadata.GetWebpMetadata().FrameDelay;
+            image.Frames[i - 1].Metadata.GetWebpMetadata().FrameDelay += dropped;
+            image.Frames.RemoveFrame(i);
+        }
     }
 
     private static async Task<IResult> StoreAsync(Stream source, Guid userId, IStickerService svc, IFileAccessService fileSvc,

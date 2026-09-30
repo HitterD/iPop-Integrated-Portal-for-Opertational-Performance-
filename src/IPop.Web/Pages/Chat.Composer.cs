@@ -220,7 +220,7 @@ public partial class Chat
     private async Task OnStickerFileSelected(InputFileChangeEventArgs e)
     {
         var file = e.File;
-        if (file.Size > IPop.Application.Chat.StickerLimits.MaxUploadBytes) { stickerError = "Gambar terlalu besar (maks 512 KB)."; return; }
+        if (file.Size > IPop.Application.Chat.StickerLimits.MaxUploadBytes) { stickerError = "Image is too large (max 10 MB)."; return; }
         stickerUploading = true;
         stickerError = null;
         StateHasChanged();
@@ -280,7 +280,7 @@ public partial class Chat
 
     private static string StickerErrorText(string code) => code switch
     {
-        "too_large" => "Gambar terlalu besar (maks 512 KB).",
+        "too_large" => "Image is too large (max 10 MB).",
         "not_an_image" or "invalid_image" => "File harus gambar PNG, JPG, GIF, atau WebP.",
         "limit_reached" => "Stiker saya sudah penuh (maks 200). Hapus beberapa dulu.",
         "not_found" => "Stiker atau gambar tidak ditemukan.",
