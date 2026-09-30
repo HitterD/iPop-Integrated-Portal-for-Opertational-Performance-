@@ -79,8 +79,8 @@ else if (CallSvc.IsInGroupCall)
                         var pMuted = isMe ? muted : media?.Muted == true || p.IsMuted;
                         var speaking = inCall && media?.Speaking == true && !pMuted;
                         <li class="callx-tile @(inCall ? "" : "pending") @(speaking ? "is-speaking" : "")" data-nik="@p.Nik">
-                            <span class="callx-avatar @(speaking ? "speaking" : "")" style="background:@AvatarColor(p.Name)">
-                                @Initials(p.Name)
+                            <span class="callx-tile-av">
+                                <PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="48" Class="@($"callx-avatar {(speaking ? "speaking" : "")}")" Decorative="true" />
                                 @if (inCall && pMuted) { <span class="callx-muted-badge" title="Mikrofon mati"><i data-lucide="mic-off"></i></span> }
                             </span>
                             <span class="callx-tile-name">@(isMe ? "Anda" : FirstName(p.Name))</span>
@@ -131,9 +131,10 @@ else if (CallSvc.IsInGroupCall)
 else if (CallSvc.IsIncomingRing)
 {
     var caller = CallSvc.RemotePeer?.Name ?? "Rekan kerja";
+    var callerNik = CallSvc.RemotePeer?.Nik;
     <div class="callx-incoming" role="alertdialog" aria-live="assertive" aria-label="Panggilan masuk dari @caller">
         <div class="callx-incoming-main">
-            <span class="callx-avatar callx-ring" style="background:@AvatarColor(caller)">@Initials(caller)</span>
+            <PersonAvatar Nik="@callerNik" Name="@caller" Size="52" Class="callx-avatar callx-ring" Decorative="true" />
             <div class="callx-incoming-text">
                 <strong>@caller</strong>
                 <span><i data-lucide="phone-incoming"></i> Panggilan suara masuk…</span>
@@ -167,6 +168,7 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
 {
     var isOutgoing = CallSvc.IsOutgoingRing;
     var peerName = CallSvc.RemotePeer?.Name ?? "Rekan kerja";
+    var peerNik = CallSvc.RemotePeer?.Nik;
     var muted = CallSvc.ActiveMe?.IsMuted == true;
     var (stateLabel, stateClass) = ConnectionBadge(isOutgoing);
 
@@ -174,7 +176,7 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
     {
         <div class="callx-pill" role="region" aria-label="Panggilan dengan @peerName">
             <button type="button" class="callx-pill-open" @onclick="() => isMinimized = false" title="Buka jendela panggilan">
-                <span class="callx-avatar sm avatar-remote-speaker @(isOutgoing ? "callx-ring" : "")" style="background:@AvatarColor(peerName)">@Initials(peerName)</span>
+                <PersonAvatar Nik="@peerNik" Name="@peerName" Size="34" Class="@($"callx-avatar sm avatar-remote-speaker {(isOutgoing ? "callx-ring" : "")}")" Decorative="true" />
                 <span class="callx-pill-text">
                     <strong>@peerName</strong>
                     <small class="callx-state-text @stateClass">@(isOutgoing ? "Memanggil…" : FormattedElapsed)</small>
@@ -196,7 +198,7 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
             </div>
 
             <div class="callx-body">
-                <span class="callx-avatar lg avatar-remote-speaker @(isOutgoing ? "callx-ring" : "")" style="background:@AvatarColor(peerName)">@Initials(peerName)</span>
+                <PersonAvatar Nik="@peerNik" Name="@peerName" Size="96" Class="@($"callx-avatar lg avatar-remote-speaker {(isOutgoing ? "callx-ring" : "")}")" Decorative="true" />
                 <h2>@peerName</h2>
                 <div class="callx-timer" aria-live="off">
                     @if (isOutgoing) { <span>Memanggil… @RingCountdown</span> }

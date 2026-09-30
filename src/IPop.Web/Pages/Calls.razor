@@ -84,7 +84,7 @@
                             {
                                 var g = grp;
                                 <button type="button" role="option" class="mtg-group @(formRoomId == g.Id ? "on" : "")" aria-selected="@(formRoomId == g.Id ? "true" : "false")" disabled="@(expandingGroup is not null)" @onclick="() => InviteGroup(g)">
-                                    <span class="mtg-av" style="background:@(g.AvatarColor ?? AvatarPalette.For(g.Name ?? ""))">@Initials(g.Name ?? "?")</span>
+                                    <span class="mtg-av" style="background:@(g.AvatarColor ?? AvatarPalette.For(g.Name ?? ""))">@AvatarPhotos.Initials(g.Name)</span>
                                     <span class="mtg-group-name">@g.Name</span>
                                     @if (expandingGroup == g.Id) { <i data-lucide="loader-2" class="spin"></i> }
                                     else if (formRoomId == g.Id) { <i data-lucide="check"></i> }
@@ -103,7 +103,7 @@
                             @foreach (var person in formInvitees)
                             {
                                 var who = person;
-                                <span class="mtg-invitee"><span class="mtg-av sm" style="background:@AvatarPalette.For(who.Nik)">@Initials(who.Name)</span>@who.Name
+                                <span class="mtg-invitee"><PersonAvatar Nik="@who.Nik" Name="@who.Name" Size="20" Class="mtg-av sm" Decorative="true" />@who.Name
                                     <button type="button" title="Hapus @who.Name" aria-label="Hapus @who.Name" @onclick="() => formInvitees.Remove(who)"><i data-lucide="x"></i></button></span>
                             }
                         </div>
@@ -134,7 +134,7 @@
         @if (favorites.Count == 0) { <span>Star people in Directory to add them here.</span> }
         @foreach (var person in favorites)
         {
-            <button title="Call @person.Name" @onclick="() => CallAgain(person.Nik)"><span class="calls-fav-avatar">@Initials(person.Name)</span>@person.Name</button>
+            <button title="Call @person.Name" @onclick="() => CallAgain(person.Nik)"><PersonAvatar Nik="@person.Nik" Name="@person.Name" Size="44" Class="calls-fav-avatar" Decorative="true" />@person.Name</button>
         }
     </div>
 
@@ -198,7 +198,7 @@
                                 @if (CallsSchedule.IsOnline(mt.Location)) { <span class="mtg-badge online"><i data-lucide="video"></i>Online</span> }
                                 else { <span class="mtg-place"><i data-lucide="map-pin"></i>@mt.Location</span> }
                                 <span class="mtg-stack" title="@string.Join(", ", mt.Attendees.Select(a => a.Name))">
-                                    @foreach (var a in mt.Attendees.Take(4)) { <span class="mtg-av xs" style="background:@AvatarPalette.For(a.Nik)">@Initials(a.Name)</span> }
+                                    @foreach (var a in mt.Attendees.Take(4)) { <PersonAvatar Nik="@a.Nik" Name="@a.Name" Size="22" Class="mtg-av xs" Decorative="true" /> }
                                     @if (mt.Attendees.Count > 4) { <span class="mtg-av xs more">+@(mt.Attendees.Count - 4)</span> }
                                 </span>
                                 @if (!mine) { <span class="mtg-host">oleh @mt.OrganizerName</span> }
@@ -257,7 +257,7 @@
                         @foreach (var h in g)
                         {
                             <div class="calls-history-row @(detailCall?.CallId == h.CallId ? "selected" : "") @(h.Seen ? "" : "unseen")" role="button" tabindex="0" @onclick="() => OpenCall(h)" @onkeydown="e => SelectCallOnKey(e, h)">
-                                <span class="calls-history-av" style="background:@AvatarColor(h.PeerName)">@Initials(h.PeerName)</span>
+                                <PersonAvatar Nik="@h.PeerNik" Name="@h.PeerName" Size="40" Class="calls-history-av" Decorative="true" />
                                 <span class="calls-history-info">
                                     <strong class="@(h.Result == "missed" ? "missed" : "")">@h.PeerName</strong>
                                     <small class="calls-result @ResultClass(h)"><i data-lucide="@CallIcon(h)"></i> @HistoryDirection(h) · @ResultLabel(h)</small>
@@ -335,7 +335,7 @@
         else if (detailCall is { } h)
         {
             <div class="calls-detail-hero">
-                <span class="calls-detail-avatar" style="background:@AvatarColor(h.PeerName)">@Initials(h.PeerName)</span>
+                <PersonAvatar Nik="@h.PeerNik" Name="@h.PeerName" Size="84" Class="calls-detail-avatar" Viewable="true" />
                 <h2>@h.PeerName</h2>
                 <p><span class="calls-result-chip @ResultClass(h)"><i data-lucide="@CallIcon(h)"></i> @HistoryDirection(h) · @ResultLabel(h)</span></p>
                 <p>@h.StartedAt.ToLocalTime().ToString("dddd, dd MMM yyyy · HH:mm")</p>
@@ -730,13 +730,6 @@
     private static string FormatSeconds(int s) =>
         s < 60 ? $"{s}d" : s < 3600 ? $"{s / 60}m {s % 60}d" : $"{s / 3600}j {(s % 3600) / 60}m";
     private static string DateGroupLabel(DateTime date) => date.Date == DateTime.Today ? "Today" : date.Date == DateTime.Today.AddDays(-1) ? "Yesterday" : date.ToString("dddd, MMM d");
-    private static string AvatarColor(string name)
-    {
-        var colors = new[] { "#197D8C", "#2E9E5B", "#824BAD", "#B85540", "#527D31" };
-        var hash = 0u;
-        foreach (var c in name) hash = hash * 31 + c;
-        return colors[(int)(hash % (uint)colors.Length)];
-    }
 
     private void SelectCallOnKey(KeyboardEventArgs e, CallHistoryDto h)
     {
@@ -1040,10 +1033,6 @@
         }
         finally { rsvpBusy = false; }
     }
-
-    private static string Initials(string name) =>
-        string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Select(w => w.FirstOrDefault(char.IsLetterOrDigit)).Where(c => c != default).Take(2)).ToUpperInvariant();
 
     private static string DurationLabel(CallHistoryDto h) =>
         h.DurationSeconds < 60 ? $"{h.DurationSeconds}s"
