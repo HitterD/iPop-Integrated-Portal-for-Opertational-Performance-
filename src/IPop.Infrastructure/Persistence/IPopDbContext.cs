@@ -114,6 +114,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<NewsRead> NewsReads => Set<NewsRead>();
     public DbSet<NewsBookmark> NewsBookmarks => Set<NewsBookmark>();
     public DbSet<NewsAttachment> NewsAttachments => Set<NewsAttachment>();
+    public DbSet<NewsVideo> NewsVideos => Set<NewsVideo>();
+    public DbSet<NewsVideoView> NewsVideoViews => Set<NewsVideoView>();
 
     // Calls stub entities (signaling only — no media transport this wave)
     public DbSet<CallRoom> CallRooms => Set<CallRoom>();
@@ -724,6 +726,24 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.RejectionReason).HasMaxLength(2000);
             e.HasOne(x => x.Author).WithMany().HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Approver).WithMany().HasForeignKey(x => x.ApproverId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<NewsVideo>(e =>
+        {
+            e.HasIndex(x => x.NewsPostId).IsUnique();
+            e.HasIndex(x => x.PopupUntil);
+            e.Property(x => x.FileName).HasMaxLength(255);
+            e.Property(x => x.ContentType).HasMaxLength(127);
+            e.Property(x => x.Sha256).HasMaxLength(64);
+            e.Property(x => x.LocalPath).HasMaxLength(500);
+            e.Property(x => x.NasPath).HasMaxLength(1000);
+            e.Property(x => x.ThumbnailPath).HasMaxLength(500);
+            e.HasOne(x => x.NewsPost).WithOne().HasForeignKey<NewsVideo>(x => x.NewsPostId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NewsVideoView>(e =>
+        {
+            e.HasKey(x => new { x.NewsVideoId, x.UserId });
+            e.HasOne(x => x.NewsVideo).WithMany(v => v.Views).HasForeignKey(x => x.NewsVideoId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<NewsTarget>(e =>
         {

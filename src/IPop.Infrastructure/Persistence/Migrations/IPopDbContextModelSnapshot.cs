@@ -1849,6 +1849,92 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("NewsTargets");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NewsVideo", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(127)
+                        .HasColumnType("character varying(127)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("LocalPath")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("NasPath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("NewsPostId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("PopupUntil")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ThumbnailPath")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("UploaderId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NewsPostId")
+                        .IsUnique();
+
+                    b.HasIndex("PopupUntil");
+
+                    b.ToTable("NewsVideos");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsVideoView", b =>
+                {
+                    b.Property<Guid>("NewsVideoId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DownloadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("PlayedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("PopupSeenAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("NewsVideoId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("NewsVideoViews");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NoteAttachment", b =>
                 {
                     b.Property<Guid>("AttachmentId")
@@ -4354,6 +4440,36 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("NewsPost");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NewsVideo", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.NewsPost", "NewsPost")
+                        .WithOne()
+                        .HasForeignKey("IPop.Core.Entities.NewsVideo", "NewsPostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("NewsPost");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsVideoView", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.NewsVideo", "NewsVideo")
+                        .WithMany("Views")
+                        .HasForeignKey("NewsVideoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("NewsVideo");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NoteAttachment", b =>
                 {
                     b.HasOne("IPop.Core.Entities.NotePage", null)
@@ -5148,6 +5264,11 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Audits");
 
                     b.Navigation("Targets");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsVideo", b =>
+                {
+                    b.Navigation("Views");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NoteThread", b =>

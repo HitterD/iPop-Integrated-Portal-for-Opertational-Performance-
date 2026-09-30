@@ -179,6 +179,9 @@ builder.Services.AddSingleton<IPop.Application.Notifications.INotificationRealti
 
 // News & Memos module (single table with type enum: news/announcement/memo)
 builder.Services.AddScoped<IPop.Application.News.INewsService, IPop.Infrastructure.News.NewsService>();
+// news-videos/ under ContentRoot holds the streaming copies; the NAS keeps the archive.
+builder.Services.AddSingleton(new IPop.Infrastructure.News.NewsVideoOptions { LocalRoot = Path.Combine(builder.Environment.ContentRootPath, "news-videos") });
+builder.Services.AddScoped<IPop.Application.News.INewsVideoService, IPop.Infrastructure.News.NewsVideoService>();
 builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Infrastructure.News.NewsAttachmentPolicy>();
 
 // Notes module (Notion-like pages, Yjs co-editing over /hubs/notes)
@@ -252,6 +255,7 @@ app.MapProjectPortfolio();
 app.MapMeetings();
 app.MapCalendar();
 app.MapNews();
+app.MapNewsVideos();
 app.MapNotes();
 app.MapNotificationGateway();
 app.MapPresence();
