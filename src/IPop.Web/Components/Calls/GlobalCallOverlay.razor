@@ -8,7 +8,10 @@
 @* One call UI for the whole app (styles: css/v6/calls.css):
    incoming ring (Accept / Decline / Decline & message), outgoing ring and the in-call
    window (timer, connection badge, level meters, mute, devices), a minimized pill,
-   and a short "call ended" toast. The Calls page only lists history. *@
+   and a short "call ended" toast. The Calls page only lists history.
+   The window and pill are draggable (and the window resizable) by js/call-drag.js, which
+   owns their inline style: never render a style attribute on the @ref="dragEl" elements. *@
+@{ renderedDragKind = DragKind; }
 
 @if (CallSvc.IsIncomingRing && CallSvc.IsGroup)
 {
@@ -43,7 +46,7 @@ else if (CallSvc.IsInGroupCall)
     var alone = joined <= 1 && room.EstablishedAt is null;
     @if (isMinimized)
     {
-        <div class="callx-pill" role="region" aria-label="Panggilan grup @CallSvc.GroupName">
+        <div @ref="dragEl" class="callx-pill" role="region" aria-label="Panggilan grup @CallSvc.GroupName">
             <button type="button" class="callx-pill-open" @onclick="() => isMinimized = false" title="Buka jendela panggilan">
                 @GroupAvatar(room, "sm" + (AnyoneSpeaking ? " speaking" : ""))
                 <span class="callx-pill-text">
@@ -57,13 +60,14 @@ else if (CallSvc.IsInGroupCall)
     }
     else
     {
-        <div class="callx-window callx-group-window" role="dialog" aria-label="Panggilan grup @CallSvc.GroupName">
-            <div class="callx-head">
+        <div @ref="dragEl" class="callx-window callx-group-window" role="dialog" aria-label="Panggilan grup @CallSvc.GroupName">
+            <span class="callx-resize" aria-hidden="true" title="Seret untuk mengubah ukuran"></span>
+            <div class="callx-head callx-drag-handle" title="Seret untuk memindahkan">
                 <span class="callx-badge @stateClass"><span class="callx-dot"></span>@stateLabel</span>
                 <button type="button" class="callx-icon" @onclick="() => isMinimized = true" title="Perkecil" aria-label="Perkecil jendela panggilan"><i data-lucide="minimize-2"></i></button>
             </div>
             <div class="callx-body callx-group-body">
-                <div class="callx-group-title">
+                <div class="callx-group-title callx-drag-handle">
                     @GroupAvatar(room, "sm")
                     <div>
                         <h2>@CallSvc.GroupName</h2>
@@ -174,7 +178,7 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
 
     @if (isMinimized)
     {
-        <div class="callx-pill" role="region" aria-label="Panggilan dengan @peerName">
+        <div @ref="dragEl" class="callx-pill" role="region" aria-label="Panggilan dengan @peerName">
             <button type="button" class="callx-pill-open" @onclick="() => isMinimized = false" title="Buka jendela panggilan">
                 <PersonAvatar Nik="@peerNik" Name="@peerName" Size="34" Class="@($"callx-avatar sm avatar-remote-speaker {(isOutgoing ? "callx-ring" : "")}")" Decorative="true" />
                 <span class="callx-pill-text">
@@ -191,8 +195,9 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
     }
     else
     {
-        <div class="callx-window" role="dialog" aria-label="Panggilan suara dengan @peerName">
-            <div class="callx-head">
+        <div @ref="dragEl" class="callx-window" role="dialog" aria-label="Panggilan suara dengan @peerName">
+            <span class="callx-resize" aria-hidden="true" title="Seret untuk mengubah ukuran"></span>
+            <div class="callx-head callx-drag-handle" title="Seret untuk memindahkan">
                 <span class="callx-badge @stateClass"><span class="callx-dot"></span>@stateLabel</span>
                 <button type="button" class="callx-icon" @onclick="() => isMinimized = true" title="Perkecil" aria-label="Perkecil jendela panggilan"><i data-lucide="minimize-2"></i></button>
             </div>
@@ -287,6 +292,43 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
     private System.Threading.Timer? ticker;
     private System.Threading.CancellationTokenSource? endReasonCts;
     private Guid? lastCallId;
+
+    // Drag/resize wiring (js/call-drag.js). renderedDragKind is captured during render so
+    // OnAfterRenderAsync acts on what was actually rendered, not on newer call state.
+    private ElementReference dragEl;
+    private string? renderedDragKind;
+    private string? attachedDragId;
+
+    /// "window" / "pill" when the draggable in-call UI is on screen; null for rings/toasts.
+    /// Mirrors the branch order of the markup above.
+    private string? DragKind =>
+        CallSvc.IsIncomingRing && CallSvc.IsGroup ? null
+        : CallSvc.IsInGroupCall ? (isMinimized ? "pill" : "window")
+        : CallSvc.IsIncomingRing ? null
+        : CallSvc.IsOutgoingRing || CallSvc.IsActiveCall ? (isMinimized ? "pill" : "window")
+        : null;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            if (renderedDragKind is null)
+            {
+                if (attachedDragId is null) return;
+                attachedDragId = null;
+                await JS.InvokeVoidAsync("ipopCallDrag.detach");
+            }
+            else if (dragEl.Id != attachedDragId)
+            {
+                // A new element (pill <-> window, 1:1 <-> group, a new call): re-attach.
+                attachedDragId = dragEl.Id;
+                await JS.InvokeVoidAsync("ipopCallDrag.attach", dragEl, renderedDragKind);
+            }
+        }
+        catch (JSException) { /* script missing/old cache: the overlay just stays fixed */ }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+    }
 
     private string FormattedElapsed
     {
@@ -478,6 +520,12 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
     public void Dispose()
     {
         CallSvc.StateChanged -= OnStateChanged;
+        if (attachedDragId is not null)
+        {
+            attachedDragId = null;
+            try { _ = JS.InvokeVoidAsync("ipopCallDrag.detach").AsTask().ContinueWith(_ => { }, TaskScheduler.Default); }
+            catch (JSDisconnectedException) { }
+        }
         ticker?.Dispose();
         endReasonCts?.Cancel();
         endReasonCts?.Dispose();

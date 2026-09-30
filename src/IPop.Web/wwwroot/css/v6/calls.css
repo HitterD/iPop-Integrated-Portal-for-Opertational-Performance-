@@ -391,3 +391,36 @@ body:has(.modal-backdrop .mtg-form) > .member-picker-pop, body:has(.modal-backdr
   .mtg-row { padding:12px; gap:10px; }
   .mtg-side { grid-column:1 / -1; }
 }
+
+/* ── Draggable / resizable call overlay (js/call-drag.js) ──
+   The script writes left/top/width/height inline and marks the element [data-free] once the
+   user has moved it (or a saved position exists) and [data-sized] once a size applies. Until
+   then the rules above (and the mobile ones) lay it out as before. */
+.callx-drag-handle { cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; }
+.callx-drag-handle .callx-icon { cursor:pointer; }
+.callx-pill { cursor:grab; touch-action:none; user-select:none; -webkit-user-select:none; }
+.callx-pill .callx-round { touch-action:manipulation; }
+.callx-window, .callx-pill { box-sizing:border-box; }
+.callx-resize { position:absolute; top:3px; left:3px; z-index:2; width:16px; height:16px; cursor:nwse-resize; touch-action:none; border-top-left-radius:14px; }
+.callx-resize::before { content:""; position:absolute; top:4px; left:4px; width:7px; height:7px; border-top:2px solid var(--ink-4, var(--ink-3)); border-left:2px solid var(--ink-4, var(--ink-3)); border-top-left-radius:4px; opacity:.55; transition:opacity .12s; }
+.callx-window:hover .callx-resize::before, .callx-resize:hover::before { opacity:1; }
+html.callx-dragging, html.callx-dragging * { user-select:none !important; -webkit-user-select:none !important; }
+html.callx-dragging .callx-drag-handle, html.callx-dragging .callx-pill { cursor:grabbing; }
+html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
+/* Moved: the stylesheet corner/stretch offsets no longer apply (inline left/top win). */
+.callx-window[data-free], .callx-pill[data-free] { right:auto; bottom:auto; }
+.callx-pill[data-free] { max-width:calc(100vw - 16px); }
+/* Sized: the body scrolls inside the fixed box and the grid fills the extra room. */
+.callx-window[data-sized] { min-width:0; overflow:hidden; }
+.callx-window[data-sized] .callx-body { flex:1 1 auto; min-height:0; overflow-y:auto; }
+.callx-window[data-sized] .callx-grid { max-height:none; overflow:visible; }
+.callx-window[data-sized] .callx-controls, .callx-window[data-sized] .callx-devices, .callx-window[data-sized] .callx-head { flex:none; }
+@media (max-width:640px) {
+  .callx-window[data-free], .callx-pill[data-free] { right:auto; bottom:auto; }
+  .callx-pill[data-free] { justify-content:flex-start; }
+}
+@media (max-width:767px) {
+  .callx-window[data-free], .callx-pill[data-free],
+  body.m-hide-tabbar .callx-window[data-free], body.m-hide-tabbar .callx-pill[data-free] { right:auto; bottom:auto; }
+  .callx-window[data-sized] .callx-grid { max-height:none; }
+}
