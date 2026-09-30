@@ -122,7 +122,7 @@
                     <div class="nt-avatars hide-sm" title="@string.Join(", ", presence.Select(u => u.Name)) sedang membuka">
                         @foreach (var u in presence.Take(4))
                         {
-                            <span class="nt-av s24 live" style="background:@u.Color">@Initials(u.Name)</span>
+                            <PersonAvatar Nik="@u.Nik" Name="@u.Name" Size="24" Color="@u.Color" Class="nt-av s24 live" Decorative="true" />
                         }
                         @if (presence.Count > 4) { <span class="nt-av s24 more">+@(presence.Count - 4)</span> }
                     </div>
@@ -368,7 +368,8 @@
                     @foreach (var c in t.Comments)
                     {
                         <div class="nt-c-msg">
-                            <span class="nt-av s24 @(c.AuthorNik is null ? "bot" : "")" style="@(c.AuthorNik is null ? "" : $"background:{AvatarPalette.For(c.AuthorNik)}")">@(c.AuthorNik is null ? "iP" : Initials(c.AuthorName))</span>
+                            @if (c.AuthorNik is null) { <span class="nt-av s24 bot">iP</span> }
+                            else { <PersonAvatar Nik="@c.AuthorNik" Name="@c.AuthorName" Size="24" Class="nt-av s24" Decorative="true" /> }
                             <div style="min-width:0">
                                 <div class="who">@c.AuthorName<span class="when">@Ago(c.CreatedAt)</span></div>
                                 <div class="txt">@c.Body</div>
@@ -484,7 +485,7 @@
                                     @foreach (var p in inviteHits)
                                     {
                                         <button type="button" @onclick="() => Invite(p)">
-                                            <span class="nt-av s30" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">@Initials(p.Name)</span>
+                                            <PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="30" Class="nt-av s30" Decorative="true" />
                                             <span><span class="nm">@p.Name</span><br /><span class="sub" style="font-size:11.5px;color:var(--ink-3)">@(p.Position ?? p.Nik)</span></span>
                                         </button>
                                     }
@@ -497,14 +498,14 @@
                             <div class="nt-plist">
                                 <div class="lbl">ORANG</div>
                                 <div class="nt-pr">
-                                    <span class="nt-av s30" style="@IPop.Web.Models.AvatarPhotos.Style(shares.OwnerNik)">@Initials(shares.OwnerName)</span>
+                                    <PersonAvatar Nik="@shares.OwnerNik" Name="@shares.OwnerName" Size="30" Class="nt-av s30" Decorative="true" />
                                     <div class="grow"><div class="nm">@shares.OwnerName @(shares.OwnerNik.Equals(Auth.Me?.Nik, StringComparison.OrdinalIgnoreCase) ? "(kamu)" : "")</div><div class="sub">@(shares.OwnerPosition ?? shares.OwnerNik)</div></div>
                                     <span class="nt-role static">Owner</span>
                                 </div>
                                 @foreach (var s in shares.Shares.Where(s => s.UserId is not null))
                                 {
                                     <div class="nt-pr">
-                                        <span class="nt-av s30" style="@IPop.Web.Models.AvatarPhotos.Style(s.UserNik)">@Initials(s.UserName)</span>
+                                        <PersonAvatar Nik="@s.UserNik" Name="@s.UserName" Size="30" Class="nt-av s30" Decorative="true" />
                                         <div class="grow"><div class="nm">@s.UserName</div><div class="sub">@(s.InheritedFromTitle is { } it ? $"Dari “{DisplayTitle(it)}”" : s.UserPosition ?? s.UserNik)</div></div>
                                         @ShareRole(s)
                                     </div>
@@ -542,7 +543,8 @@
                                 @foreach (var r in list)
                                 {
                                     <button type="button" class="nt-rm @(sendRoom == r.Id ? "on" : "")" @onclick="() => sendRoom = r.Id">
-                                        <span class="nt-room-av" style="background:@(r.AvatarColor ?? AvatarPalette.For(r.RecipientNik ?? RoomName(r)))">@(IsDirect(r.Type) ? Initials(RoomName(r)) : "")@if (!IsDirect(r.Type)) { <i data-lucide="users" class="sm"></i> }</span>
+                                        @if (IsDirect(r.Type)) { <PersonAvatar Nik="@r.RecipientNik" Name="@RoomName(r)" Size="30" Class="nt-room-av" Decorative="true" /> }
+                                        else { <span class="nt-room-av" style="background:@(r.AvatarColor ?? AvatarPalette.For(r.RecipientNik ?? RoomName(r)))"><i data-lucide="users" class="sm"></i></span> }
                                         <span class="grow"><span class="nm" style="display:block">@RoomName(r)</span><span class="sub">@(IsDirect(r.Type) ? "Chat pribadi" : "Grup")</span></span>
                                         <span class="nt-radio"></span>
                                     </button>
@@ -597,7 +599,7 @@
                                 <button type="button" class="hi @(selVersion == v.Id ? "on" : "")" @onclick="() => SelectVersion(v.Id)">
                                     <div class="d">@v.CreatedAt.ToLocalTime().ToString("d MMM yyyy, HH:mm")</div>
                                     <div class="w">
-                                        @foreach (var n in v.Contributors.Take(3)) { <span class="nt-av s20" style="background:@AvatarPalette.For(n)">@Initials(n)</span> }
+                                        @foreach (var n in v.Contributors.Take(3)) { <PersonAvatar Nik="@ContributorNik(n)" Name="@n" Size="20" Class="nt-av s20" Decorative="true" /> }
                                         <span>@string.Join(", ", v.Contributors.Select(FirstName))</span>
                                     </div>
                                 </button>

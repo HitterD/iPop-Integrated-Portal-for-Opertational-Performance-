@@ -537,7 +537,11 @@ public partial class Notes
     // ── Formatting helpers ───────────────────────────────────────────────────
 
     private static string DisplayTitle(string? t) => string.IsNullOrWhiteSpace(t) ? "Tanpa judul" : t;
-    private static string Initials(string? name) => AdminOrgModel.Initials(name);
+    /// Versions list contributors by name only; match them to a NIK from people already on screen.
+    private string? ContributorNik(string name) =>
+        presence.FirstOrDefault(u => u.Name == name)?.Nik
+        ?? (shares is { } sh ? (sh.OwnerName == name ? sh.OwnerNik : sh.Shares.FirstOrDefault(s => s.UserName == name)?.UserNik) : null)
+        ?? (Auth.Me?.Name == name ? Auth.Me?.Nik : null);
     private static string FirstName(string? name) => (name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
     private static string LevelLabel(string level) => level switch { "edit" => "Can edit", "comment" => "Can comment", _ => "Can view" };
 
