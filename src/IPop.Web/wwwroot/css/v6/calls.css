@@ -34,6 +34,10 @@
 .calls-history-info { min-width:0; flex:1; display:flex; flex-direction:column; gap:3px; text-align:left; }
 .calls-history-info strong { font-size:13px; font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .calls-history-info strong.missed { color:var(--danger-ink); }
+.calls-history-row.unseen .calls-history-info strong { font-weight:700; }
+.calls-unseen-dot { width:8px; height:8px; border-radius:50%; background:var(--danger-ink); flex:none; }
+.calls-history-filters .calls-mark-seen { margin-left:auto; display:inline-flex; align-items:center; gap:6px; }
+.calls-history-filters .calls-mark-seen i, .calls-history-filters .calls-mark-seen svg { width:14px; height:14px; }
 .calls-history-info small { display:flex; align-items:center; gap:4px; color:var(--ink-3); font-size:11px; white-space:nowrap; }
 .calls-history-info small .lucide { width:12px; height:12px; color:var(--accent); }
 .calls-history-row time { color:var(--ink-3); font-size:11px; }

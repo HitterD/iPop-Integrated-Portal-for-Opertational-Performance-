@@ -8,6 +8,7 @@
 @inject NavigationManager Nav
 @inject ToastService Toasts
 @inject ConfirmService Confirm
+@inject BadgeState Badges
 
 <PageTitle>Calls — IPop</PageTitle>
 
@@ -146,6 +147,10 @@
                 var filter = option.ToLowerInvariant();
                 <button type="button" class="@(historyFilter == filter ? "active" : "")" @onclick="() => historyFilter = filter">@option<span>· @(filter == "all" ? history.Total : historyRows.Count(h => HistoryMatches(h, filter)))</span></button>
             }
+            @if (historyRows.Any(h => !h.Seen))
+            {
+                <button type="button" class="calls-mark-seen" @onclick="MarkAllSeen"><i data-lucide="check-check"></i>Tandai semua dibaca</button>
+            }
         </div>
     }
     @* ---- Header / peer picker ---- *@
@@ -251,12 +256,16 @@
                         <div class="calls-date">@DateGroupLabel(g.Key)</div>
                         @foreach (var h in g)
                         {
-                            <div class="calls-history-row @(detailCall?.CallId == h.CallId ? "selected" : "")" role="button" tabindex="0" @onclick="() => OpenCall(h)" @onkeydown="e => SelectCallOnKey(e, h)">
+                            <div class="calls-history-row @(detailCall?.CallId == h.CallId ? "selected" : "") @(h.Seen ? "" : "unseen")" role="button" tabindex="0" @onclick="() => OpenCall(h)" @onkeydown="e => SelectCallOnKey(e, h)">
                                 <span class="calls-history-av" style="background:@AvatarColor(h.PeerName)">@Initials(h.PeerName)</span>
                                 <span class="calls-history-info">
                                     <strong class="@(h.Result == "missed" ? "missed" : "")">@h.PeerName</strong>
                                     <small class="calls-result @ResultClass(h)"><i data-lucide="@CallIcon(h)"></i> @HistoryDirection(h) · @ResultLabel(h)</small>
                                 </span>
+                                @if (!h.Seen)
+                                {
+                                    <span class="calls-unseen-dot" title="Panggilan tak terjawab baru" aria-label="Belum dibaca"></span>
+                                }
                                 <time>@h.StartedAt.ToLocalTime().ToString("HH:mm")</time>
                                 <span class="calls-row-actions">
                                     <button type="button" title="Call @h.PeerName" aria-label="Call @h.PeerName" disabled="@(string.IsNullOrWhiteSpace(h.PeerNik))" @onclick="() => CallAgain(h.PeerNik!)" @onclick:stopPropagation="true"><i data-lucide="phone"></i></button>
@@ -557,6 +566,9 @@
         {
             await CallSvc.ConnectAsync();
             await LoadHistory();
+            // Opening /calls counts as seeing the missed calls: clear the sidebar badge now,
+            // but keep this visit's "new" dots until the user dismisses them.
+            if (historyRows.Any(h => !h.Seen)) await PostSeenAsync(null);
         }
     }
 
@@ -607,6 +619,32 @@
         if (detailCall is null && detailMeeting is null && historyRows.Count > 0) detailCall = historyRows[0];
         historyPage = 1;
         StateHasChanged();
+    }
+
+    /// "Tandai semua dibaca": server-side it is usually done already (page open), this clears the dots.
+    private async Task MarkAllSeen()
+    {
+        historyRows = historyRows.Select(h => h.Seen ? h : h with { Seen = true }).ToList();
+        if (detailCall is { Seen: false } d) detailCall = d with { Seen = true };
+        await PostSeenAsync(null);
+    }
+
+    private void ReplaceRow(Guid callId, Func<CallHistoryDto, CallHistoryDto> change)
+    {
+        var i = historyRows.FindIndex(r => r.CallId == callId);
+        if (i >= 0) historyRows[i] = change(historyRows[i]);
+    }
+
+    private async Task PostSeenAsync(Guid? callId)
+    {
+        try
+        {
+            var url = callId is { } id ? $"/api/calls/history/{id}/seen" : "/api/calls/history/seen";
+            using var res = await Auth.SendAsync(HttpMethod.Post, url);
+            // The hub pushes badgeChanged too; re-reading covers a disconnected hub.
+            if (res.IsSuccessStatusCode) await Badges.RefreshAsync();
+        }
+        catch { /* the badge re-seeds on the next navigation */ }
     }
 
     /// ipop-49: append the next page of call history.
@@ -724,6 +762,12 @@
 
     private async Task OpenCall(CallHistoryDto h)
     {
+        if (!h.Seen)
+        {
+            ReplaceRow(h.CallId, r => r with { Seen = true });
+            h = h with { Seen = true };
+            await PostSeenAsync(h.CallId);
+        }
         SelectCall(h);
         await OpenMobileDetail();
     }

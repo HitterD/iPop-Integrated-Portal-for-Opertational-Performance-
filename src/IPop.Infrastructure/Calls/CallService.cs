@@ -163,7 +163,8 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
             .OrderByDescending(h => h.StartedAt)
             .Skip((p - 1) * size).Take(size)
             .Select(h => new CallHistoryDto(
-                h.CallId, h.Direction, h.Result, h.DurationSeconds, h.StartedAt, h.EndedAt, "?", null))
+                h.CallId, h.Direction, h.Result, h.DurationSeconds, h.StartedAt, h.EndedAt, "?", null, null,
+                h.Direction != "incoming" || h.Result != "missed" || h.SeenAt != null))
             .ToListAsync(ct);
 
         var callIds = raw.Select(i => i.CallId).Distinct().ToList();
@@ -185,16 +186,29 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
 
         var items = raw
             .Select(i => groupMap.TryGetValue(i.CallId, out var grp)
-                ? new CallHistoryDto(i.CallId, i.Direction, i.Result, i.DurationSeconds,
-                    i.StartedAt, i.EndedAt, string.IsNullOrWhiteSpace(grp.Name) ? "Panggilan grup" : grp.Name, null, grp.ChatRoomId)
+                ? i with { PeerName = string.IsNullOrWhiteSpace(grp.Name) ? "Panggilan grup" : grp.Name, ChatRoomId = grp.ChatRoomId }
                 : peerMap.TryGetValue(i.CallId, out var peer)
-                ? new CallHistoryDto(i.CallId, i.Direction, i.Result, i.DurationSeconds,
-                    i.StartedAt, i.EndedAt, peer.Name, peer.Nik)
-                : new CallHistoryDto(i.CallId, i.Direction, i.Result, i.DurationSeconds,
-                    i.StartedAt, i.EndedAt, "Unknown", null))
+                ? i with { PeerName = peer.Name, PeerNik = peer.Nik }
+                : i with { PeerName = "Unknown" })
             .ToList();
 
         return new CallHistoryPage(items, total, p, size);
+    }
+
+    public async Task<int> MarkHistorySeenAsync(Guid userId, Guid? callId, CancellationToken ct)
+    {
+        var unseen = db.CallHistories.Where(h => h.PerformerId == userId && h.Direction == "incoming"
+            && h.Result == "missed" && h.SeenAt == null);
+        if (callId is { } id) unseen = unseen.Where(h => h.CallId == id);
+        var rows = await unseen.ToListAsync(ct);
+        var now = DateTime.UtcNow;
+        foreach (var h in rows) h.SeenAt = now;
+        if (rows.Count > 0) await db.SaveChangesAsync(ct);
+
+        // Same window as CallsBadgeProvider.
+        var cutoff = now.AddDays(-7);
+        return await db.CallHistories.AsNoTracking().CountAsync(h => h.PerformerId == userId
+            && h.Direction == "incoming" && h.Result == "missed" && h.SeenAt == null && h.StartedAt >= cutoff, ct);
     }
 
     public async Task<IReadOnlyList<CallRoomDto>> ExpireRingingAsync(DateTime cutoff, CancellationToken ct)

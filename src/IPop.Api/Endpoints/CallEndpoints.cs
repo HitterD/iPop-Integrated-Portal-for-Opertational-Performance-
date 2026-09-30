@@ -1,6 +1,7 @@
 using IPop.Api.Calls;
 using IPop.Api.Rbac;
 using IPop.Application.Calls;
+using IPop.Application.Realtime;
 using IPop.Infrastructure.Notifications.Push;
 using IPop.Infrastructure.Persistence;
 using Microsoft.AspNetCore.SignalR;
@@ -130,6 +131,12 @@ public static class CallEndpoints
             return Results.Ok(result);
         });
 
+        // Mark missed calls as seen (all, or one) — clears the sidebar badge on every open tab.
+        g.MapPost("/history/seen", (HttpContext http, ICallService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct)
+            => MarkSeenAsync(http, null, svc, db, realtime, ct));
+        g.MapPost("/history/{callId:guid}/seen", (Guid callId, HttpContext http, ICallService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct)
+            => MarkSeenAsync(http, callId, svc, db, realtime, ct));
+
         // ICE servers (STUN + the LAN TURN) for the browser's RTCPeerConnection.
         g.MapGet("/config", (IConfiguration cfg) =>
         {
@@ -200,6 +207,17 @@ public static class CallEndpoints
     private sealed record IceServerDto(string[] Urls,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Username,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Credential);
+
+    private static async Task<IResult> MarkSeenAsync(HttpContext http, Guid? callId, ICallService svc,
+        IPopDbContext db, IRealtime realtime, CancellationToken ct)
+    {
+        var userId = await GetUserIdAsync(http, db, ct);
+        if (userId is null) return Results.Unauthorized();
+        var count = await svc.MarkHistorySeenAsync(userId.Value, callId, ct);
+        var nik = http.User.FindFirst("nik")!.Value;
+        await realtime.ToUserAsync(nik, RealtimeEvents.BadgeChanged, new RealtimeArgs("calls", count), ct);
+        return Results.Ok(new { count });
+    }
 
     private static async Task<Guid?> GetUserIdAsync(HttpContext http, IPopDbContext db, CancellationToken ct)
     {

@@ -49,7 +49,9 @@ public record CallHistoryDto(
     string PeerName,
     string? PeerNik = null,
     // Group calls: the chat group (PeerName is then the group name and PeerNik is null).
-    Guid? ChatRoomId = null);
+    Guid? ChatRoomId = null,
+    // False only for a missed incoming call the user hasn't seen yet (bold + dot on /calls).
+    bool Seen = true);
 
 public record CallHistoryPage(IReadOnlyList<CallHistoryDto> Items, int Total, int Page, int PageSize);
 

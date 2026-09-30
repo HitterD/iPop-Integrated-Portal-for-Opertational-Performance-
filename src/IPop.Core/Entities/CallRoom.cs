@@ -76,4 +76,7 @@ public class CallHistory
 
     public DateTime StartedAt { get; set; }
     public DateTime EndedAt { get; set; }
+
+    /// When the performer saw a missed call on /calls (clears the sidebar badge). Null = unseen.
+    public DateTime? SeenAt { get; set; }
 }

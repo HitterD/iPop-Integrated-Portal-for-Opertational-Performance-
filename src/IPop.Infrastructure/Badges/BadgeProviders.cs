@@ -72,7 +72,7 @@ public sealed class NewsBadgeProvider(IPopDbContext db) : IBadgeProvider
     }
 }
 
-/// Missed incoming calls in the last 7 days.
+/// Unseen missed incoming calls in the last 7 days (opening /calls marks them seen).
 public sealed class CallsBadgeProvider(IPopDbContext db) : IBadgeProvider
 {
     public string Key => "calls";
@@ -81,7 +81,7 @@ public sealed class CallsBadgeProvider(IPopDbContext db) : IBadgeProvider
     {
         var cutoff = DateTime.UtcNow.AddDays(-7);
         return db.CallHistories.AsNoTracking()
-            .CountAsync(h => h.PerformerId == userId && h.Direction == "incoming" && h.Result == "missed" && h.StartedAt >= cutoff, ct);
+            .CountAsync(h => h.PerformerId == userId && h.Direction == "incoming" && h.Result == "missed" && h.SeenAt == null && h.StartedAt >= cutoff, ct);
     }
 }
 

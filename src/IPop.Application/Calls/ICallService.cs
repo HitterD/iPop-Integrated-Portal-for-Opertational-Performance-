@@ -21,6 +21,9 @@ public interface ICallService
     /// Call history grouped by date on the UI. Includes both sides (outgoing + incoming).
     Task<CallHistoryPage> GetHistoryAsync(Guid userId, int page, int pageSize, CancellationToken ct);
 
+    /// Marks the user's unseen missed calls as seen (all, or just one call). Returns the new badge count.
+    Task<int> MarkHistorySeenAsync(Guid userId, Guid? callId, CancellationToken ct);
+
     /// Rings started before cutoff become "missed" (no-answer for the caller).
     /// Returns the closed rooms so the caller can broadcast their final state.
     Task<IReadOnlyList<CallRoomDto>> ExpireRingingAsync(DateTime cutoff, CancellationToken ct);
