@@ -131,7 +131,7 @@ if ($liveKitUp) { Ok "LiveKit is running (group calls)." }
 
 Write-Host ""
 Write-Host "  Public:   $PublicUrl" -ForegroundColor White
-Write-Host "  LAN:      http://10.10.6.13:$WebPort" -ForegroundColor White
+Write-Host "  LAN:      http://10.10.6.13:$WebPort (redirects to $PublicUrl - Windows notifications need https)" -ForegroundColor White
 Write-Host "  Upstream: Web http :$WebPort / https :$WebHttpsPort, API http :$ApiPort, LiveKit :7880 (media UDP 50000-50100)" -ForegroundColor DarkGray
 Write-Host "  Close the 'IPop API', 'IPop Web' and 'IPop LiveKit' windows, or run start-ipop.bat -Stop, to stop." -ForegroundColor DarkGray
 Write-Host ""

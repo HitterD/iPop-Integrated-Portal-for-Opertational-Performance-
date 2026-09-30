@@ -48,12 +48,13 @@ public class PushState(AuthState auth, HttpClient http, IJSRuntime js)
     /// From a click only: the browser shows its "Allow notifications" prompt.
     public async Task EnableAsync()
     {
+        BannerVisible = false;
+        Changed?.Invoke();
         try { await js.InvokeAsync<JsState>("ipop.enableDesktopAlerts"); } catch { }
         _turnedOff = false;
         await SetLocalAsync(OffKey, null);
         await ReadStateAsync();
         if (Permission == "granted") await RegisterAsync();
-        BannerVisible = false;
         Changed?.Invoke();
     }
 

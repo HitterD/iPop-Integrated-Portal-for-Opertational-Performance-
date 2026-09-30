@@ -44,14 +44,19 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
         if (!transport.IsConfigured || userIds.Count == 0) return;
         var subs = await db.PushSubscriptions.Where(s => userIds.Contains(s.UserId)).ToListAsync(ct);
         var gone = new List<PushSubscription>();
+        var sent = 0;
+        string? kind = null;
         foreach (var sub in subs)
         {
             var payload = payloadFor(sub.UserId);
             if (payload is null) continue;
+            kind = payload.Kind;
             var json = JsonSerializer.Serialize(payload with { ApiBase = sub.ApiBase }, Json);
             var result = await transport.SendAsync(sub, json, ttl, urgent, TopicOf(payload.Tag), ct);
             if (result == PushSendResult.Gone) gone.Add(sub);
+            else if (result == PushSendResult.Sent) sent++;
         }
+        if (kind is not null) log.LogDebug("Web push {Kind}: {Sent}/{Total} delivered to the push service.", kind, sent, subs.Count);
         if (gone.Count > 0)
         {
             db.PushSubscriptions.RemoveRange(gone);

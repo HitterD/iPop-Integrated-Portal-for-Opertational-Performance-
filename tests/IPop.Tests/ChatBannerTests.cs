@@ -104,7 +104,7 @@ public class ChatBannerTests
     }
 
     [Fact]
-    public void Chat_banner_is_mirrored_to_a_desktop_notification_tagged_per_room()
+    public void Chat_banner_leaves_windows_toasts_to_web_push()
     {
         using var ctx = new BunitContext();
         var s = State(ctx);
@@ -112,12 +112,8 @@ public class ChatBannerTests
         s.ShowChatMessage(In(Msg("satu")), "/home");
         s.ShowChatMessage(In(Msg("dua")), "/home");
 
-        var calls = ctx.JSInterop.Invocations["ipop.desktopNotify"];
-        Assert.Equal(2, calls.Count);
-        var last = calls[^1].Arguments;
-        Assert.Equal("Tim Ops · 2 pesan baru", last[0]);
-        Assert.Equal($"/chat/{RoomId:D}", last[2]);
-        Assert.Equal(calls[0].Arguments[3], last[3]); // same tag → replaces, never stacks
+        // The service worker shows the toast (server push); the page never raises its own.
+        Assert.Empty(ctx.JSInterop.Invocations["ipop.desktopNotify"]);
     }
 
     [Fact]

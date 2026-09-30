@@ -7,6 +7,12 @@
     <meta name="theme-color" content="#F5F5F7" />
     <title>IPop</title>
     <base href="/" />
+    <!-- The plain-http LAN address can't use Web Push / notifications (secure context only):
+         send it to the public https host. localhost and other hosts are left alone. -->
+    <script>
+        if (location.protocol === "http:" && location.hostname === "10.10.6.13")
+            location.replace("https://ipop.santos.co.id" + location.pathname + location.search + location.hash);
+    </script>
     <link rel="preload" id="webassembly" />
     <!-- Inter is self-hosted (see css/core/typography.css @font-face).
          No external Google Fonts request — required for intranet/offline use. -->
