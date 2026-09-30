@@ -10,12 +10,18 @@ namespace IPop.Api.Chat;
 /// All notifications route through SignalR groups (pattern: "chat:{roomId}") or user connections.
 /// Cross-node delivery is handled by the Redis backplane configured on the SignalR pipeline.
 /// </summary>
-public sealed class ChatNotifier(IHubContext<ChatHub> hub, IPopDbContext db) : IChatNotifier
+public sealed class ChatNotifier(IHubContext<ChatHub> hub, IPopDbContext db,
+    IPop.Infrastructure.Notifications.Push.PushQueue? push = null) : IChatNotifier
 {
     private static string Group(Guid roomId) => $"chat:{roomId}";
 
     public Task NotifyNewMessageAsync(Guid roomId, MessageDto message, CancellationToken ct)
-        => hub.Clients.Group(Group(roomId)).SendAsync("newMessage", message, ct);
+    {
+        // Windows toast for the other members; recipients and preferences are resolved off the request.
+        var messageId = message.Id;
+        push?.Enqueue((p, token) => p.NotifyChatMessageAsync(messageId, token));
+        return hub.Clients.Group(Group(roomId)).SendAsync("newMessage", message, ct);
+    }
 
     public Task NotifyMessageEditedAsync(Guid roomId, MessageDto message, CancellationToken ct)
         => hub.Clients.Group(Group(roomId)).SendAsync("messageEdited", message, ct);

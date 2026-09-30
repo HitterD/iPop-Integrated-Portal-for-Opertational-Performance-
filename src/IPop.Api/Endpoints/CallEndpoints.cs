@@ -1,6 +1,7 @@
 using IPop.Api.Calls;
 using IPop.Api.Rbac;
 using IPop.Application.Calls;
+using IPop.Infrastructure.Notifications.Push;
 using IPop.Infrastructure.Persistence;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -21,7 +22,7 @@ public static class CallEndpoints
 
         // Start a call (invite a peer). Returns the ringing room.
         g.MapPost("", async (CreateCallRequest req, HttpContext http,
-            ICallService svc, IPopDbContext db, IHubContext<CallHub> hub, CancellationToken ct) =>
+            ICallService svc, IPopDbContext db, IHubContext<CallHub> hub, PushQueue push, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
@@ -34,6 +35,7 @@ public static class CallEndpoints
             // Signal() today — create must broadcast too).
             foreach (var p in result.Room.Participants)
                 await hub.Clients.Group($"user:{p.UserId}").SendAsync("callStateChanged", result.Room, ct);
+            SyncCallToast(push, result.Room);
 
             return Results.Created($"/api/calls/{result.Room.Id}", result.Room);
         });
@@ -41,7 +43,7 @@ public static class CallEndpoints
         // Group call for a chat group: create (rings every other member) or join the live one.
         // The response carries the caller's LiveKit token; media never falls back to P2P.
         g.MapPost("/group/{chatRoomId:guid}", async (Guid chatRoomId, HttpContext http,
-            ICallService svc, IPopDbContext db, IHubContext<CallHub> hub, ILiveKitTokenService liveKit, CancellationToken ct) =>
+            ICallService svc, IPopDbContext db, IHubContext<CallHub> hub, ILiveKitTokenService liveKit, PushQueue push, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
@@ -49,13 +51,13 @@ public static class CallEndpoints
                 return Results.Json(new { code = CallErrors.MediaUnavailable, message = "Server media panggilan grup belum dikonfigurasi." }, statusCode: 503);
             var result = await svc.StartGroupCallAsync(userId.Value, chatRoomId, ct);
             if (result.Room is null) return GroupError(result);
-            await BroadcastGroupAsync(hub, db, result.Room, ct);
+            await BroadcastGroupAsync(hub, db, result.Room, ct, push);
             return Results.Ok(await WithTokenAsync(result.Room, userId.Value, db, liveKit, ct));
         });
 
         // Join a group call (accept the ring, or late join from the chat banner) → LiveKit token.
         g.MapPost("/{callId:guid}/join", async (Guid callId, HttpContext http,
-            ICallService svc, IPopDbContext db, IHubContext<CallHub> hub, ILiveKitTokenService liveKit, CancellationToken ct) =>
+            ICallService svc, IPopDbContext db, IHubContext<CallHub> hub, ILiveKitTokenService liveKit, PushQueue push, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
@@ -63,7 +65,7 @@ public static class CallEndpoints
                 return Results.Json(new { code = CallErrors.MediaUnavailable, message = "Server media panggilan grup belum dikonfigurasi." }, statusCode: 503);
             var result = await svc.JoinGroupCallAsync(userId.Value, callId, ct);
             if (result.Room is null) return GroupError(result);
-            await BroadcastGroupAsync(hub, db, result.Room, ct);
+            await BroadcastGroupAsync(hub, db, result.Room, ct, push);
             return Results.Ok(await WithTokenAsync(result.Room, userId.Value, db, liveKit, ct));
         });
 
@@ -80,7 +82,7 @@ public static class CallEndpoints
 
         // Signaling lifecycle: accept / decline / leave / end + mute/screen toggles.
         g.MapPost("/signal", async (CallSignalRequest req, HttpContext http,
-            ICallService svc, IPopDbContext db, IHubContext<CallHub> hub, CancellationToken ct) =>
+            ICallService svc, IPopDbContext db, IHubContext<CallHub> hub, PushQueue push, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
@@ -90,7 +92,7 @@ public static class CallEndpoints
 
             // Ended rooms go out as state too, so each side can say why (declined, missed…).
             // Group calls reach every group member (banners), not only the participants.
-            await BroadcastGroupAsync(hub, db, result.Room, ct);
+            await BroadcastGroupAsync(hub, db, result.Room, ct, push);
 
             return Results.Ok(result.Room);
         });
@@ -176,8 +178,10 @@ public static class CallEndpoints
     }
 
     /// callStateChanged to every participant and, for group calls, to every current group member.
-    internal static async Task BroadcastGroupAsync(IHubContext<CallHub> hub, IPopDbContext db, CallRoomDto room, CancellationToken ct)
+    internal static async Task BroadcastGroupAsync(IHubContext<CallHub> hub, IPopDbContext db, CallRoomDto room, CancellationToken ct,
+        PushQueue? push = null)
     {
+        SyncCallToast(push, room);
         var targets = room.Participants.Select(p => p.UserId).ToHashSet();
         if (room.ChatRoomId is { } chatId)
         {
@@ -188,6 +192,10 @@ public static class CallEndpoints
         foreach (var uid in targets)
             await hub.Clients.Group($"user:{uid}").SendAsync("callStateChanged", room, ct);
     }
+
+    /// Ring (or close) the Windows call toast of invited users to match this call state.
+    internal static void SyncCallToast(PushQueue? push, CallRoomDto room) =>
+        push?.Enqueue((p, token) => p.SyncCallAsync(room, token));
 
     private sealed record IceServerDto(string[] Urls,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Username,

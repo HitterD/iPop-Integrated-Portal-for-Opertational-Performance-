@@ -57,6 +57,10 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy("auth-reset", http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 5, Window = TimeSpan.FromMinutes(15) }));
+    // Call toast "Tolak" is anonymous (signed token); cap it per IP.
+    o.AddPolicy("push-action", http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) }));
 });
 builder.Services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
 builder.Services.AddSingleton<SynologySessionCache>();
@@ -176,6 +180,16 @@ builder.Services.AddScoped<IPop.Application.Projects.IProjectTimeService, IPop.I
 builder.Services.AddScoped<INotificationGatewayService, NotificationGatewayService>();
 // Real-time notification push (SignalR) — broadcaster impl + hub registered with hubs below.
 builder.Services.AddSingleton<IPop.Application.Notifications.INotificationRealtimeBroadcaster, IPop.Api.Notifications.NotificationBroadcaster>();
+// Web Push → Windows toasts. No VAPID keys (Push:VapidPublicKey/PrivateKey) = push off, fail-closed.
+var push = IPop.Infrastructure.Notifications.Push.PushOptions.Bind(builder.Configuration);
+builder.Services.AddSingleton(push);
+if (push.IsConfigured)
+    builder.Services.AddSingleton<IPop.Infrastructure.Notifications.Push.IWebPushTransport, IPop.Infrastructure.Notifications.Push.WebPushTransport>();
+else
+    builder.Services.AddSingleton<IPop.Infrastructure.Notifications.Push.IWebPushTransport, IPop.Infrastructure.Notifications.Push.DisabledWebPushTransport>();
+builder.Services.AddSingleton<IPop.Infrastructure.Notifications.Push.PushQueue>();
+builder.Services.AddScoped<IPop.Infrastructure.Notifications.Push.PushDispatcher>();
+builder.Services.AddHostedService<IPop.Infrastructure.Notifications.Push.PushWorker>();
 
 // News & Memos module (single table with type enum: news/announcement/memo)
 builder.Services.AddScoped<IPop.Application.News.INewsService, IPop.Infrastructure.News.NewsService>();
@@ -258,6 +272,7 @@ app.MapNews();
 app.MapNewsVideos();
 app.MapNotes();
 app.MapNotificationGateway();
+app.MapPush();
 app.MapPresence();
 app.MapDocumentDemo();
 app.MapSettings();

@@ -16,7 +16,8 @@ namespace IPop.Infrastructure.Chat;
 public sealed class NotificationGateway(
     ILogger<NotificationGateway> logger,
     IPopDbContext db,
-    INotificationRealtimeBroadcaster broadcaster) : INotificationGateway
+    INotificationRealtimeBroadcaster broadcaster,
+    IPop.Infrastructure.Notifications.Push.PushQueue? push = null) : INotificationGateway
 {
     private const string ChatClientId = "chat"; // well-known internal client for chat-originated notifications
 
@@ -111,6 +112,18 @@ public sealed class NotificationGateway(
         {
             logger.LogDebug(ex, "Failed to broadcast mention notification (non-fatal)");
         }
+
+        // Windows toast. Room mute/archive was checked by the caller; quiet hours and
+        // a muted "chat" type still apply unless the mention is high priority and allowed.
+        if (push is not null)
+        {
+            var (priority, body, requestId) = (request.Priority, request.Body, request.Id);
+            var title = $"{senderName} menyebut Anda · {roomName}";
+            var silenced = await IPop.Infrastructure.Notifications.Push.PushDispatcher.SilencedAsync(
+                db, [recipientId], "chat.mention", priority, now, ct);
+            if (silenced.Count == 0)
+                push.Enqueue((p, token) => p.NotifyRequestAsync([recipientId], "chat.mention", priority, title, body, targetUrl, requestId, token));
+        }
     }
 
     public async Task SendEmergencyNotificationAsync(IReadOnlyList<Guid> recipientIds, string senderName, string roomName, string content, CancellationToken ct)
@@ -187,6 +200,13 @@ public sealed class NotificationGateway(
         catch (Exception ex)
         {
             logger.LogDebug(ex, "Failed to broadcast emergency (non-fatal)");
+        }
+
+        // Emergency toasts bypass quiet hours and mutes by design.
+        if (push is not null)
+        {
+            var (title, body, requestId, ids) = (request.Title, request.Body, request.Id, recipientIds.ToList());
+            push.Enqueue((p, token) => p.NotifyRequestAsync(ids, "chat.emergency", "high", title, body, targetUrl, requestId, token));
         }
     }
 }

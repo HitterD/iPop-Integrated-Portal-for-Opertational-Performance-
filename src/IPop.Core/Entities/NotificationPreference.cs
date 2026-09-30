@@ -23,6 +23,9 @@ public class NotificationPreference
     /// Jenis notifikasi yang dibisukan, dipisah koma (mis. "chat,news"). Kosong = semua tampil.
     public string MutedTypes { get; set; } = "";
 
+    /// Windows toasts (Web Push) show the chat message text; off = "Pesan baru" only.
+    public bool PushShowPreview { get; set; } = true;
+
     public DateTime UpdatedAt { get; set; }
 
     public User User { get; set; } = default!;

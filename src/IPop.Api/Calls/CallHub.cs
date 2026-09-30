@@ -12,7 +12,8 @@ namespace IPop.Api.Calls;
 /// (create/signal/get) and receives lifecycle broadcasts on its user group
 /// ("user:{id}") — ringing, state-changed, participant-joined/left, ended.
 /// </summary>
-public class CallHub(ICallService callService, IPopDbContext db, IPermissionEvaluator perms, CallConnections connections, IHubContext<CallHub> hub) : Hub
+public class CallHub(ICallService callService, IPopDbContext db, IPermissionEvaluator perms, CallConnections connections, IHubContext<CallHub> hub,
+    IPop.Infrastructure.Notifications.Push.PushQueue push) : Hub
 {
     public override async Task OnConnectedAsync()
     {
@@ -35,7 +36,7 @@ public class CallHub(ICallService callService, IPopDbContext db, IPermissionEval
         if (!result.Success || result.Room is null) return; // 422 handled over REST; hub is best-effort signaling
 
         // Group calls reach every group member (chat banners), 1:1 only the two participants.
-        await IPop.Api.Endpoints.CallEndpoints.BroadcastGroupAsync(hub, db, result.Room, Context.ConnectionAborted);
+        await IPop.Api.Endpoints.CallEndpoints.BroadcastGroupAsync(hub, db, result.Room, Context.ConnectionAborted, push);
     }
 
     /// WebRTC signaling relay: forwards offer, answer, ice-candidates to the other participant.

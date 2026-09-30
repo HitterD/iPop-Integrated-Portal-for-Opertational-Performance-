@@ -8,10 +8,11 @@ namespace IPop.Api.Calls;
 public static class CallBroadcast
 {
     public static async Task EndedAsync(IHubContext<CallHub> hub, IEnumerable<CallRoomDto> rooms, CancellationToken ct,
-        IPop.Infrastructure.Persistence.IPopDbContext? db = null)
+        IPop.Infrastructure.Persistence.IPopDbContext? db = null, IPop.Infrastructure.Notifications.Push.PushQueue? push = null)
     {
         foreach (var room in rooms)
         {
+            IPop.Api.Endpoints.CallEndpoints.SyncCallToast(push, room);
             // Group calls: every group member's banner must learn the call changed/ended.
             if (db is not null && room.ChatRoomId is not null)
             {
@@ -67,7 +68,8 @@ public class CallConnections(IServiceScopeFactory scopes, IHubContext<CallHub> h
             var calls = scope.ServiceProvider.GetRequiredService<ICallService>();
             var ended = await calls.EndForUserAsync(userId, CancellationToken.None);
             await CallBroadcast.EndedAsync(hub, ended, CancellationToken.None,
-                scope.ServiceProvider.GetRequiredService<IPop.Infrastructure.Persistence.IPopDbContext>());
+                scope.ServiceProvider.GetRequiredService<IPop.Infrastructure.Persistence.IPopDbContext>(),
+                scope.ServiceProvider.GetService<IPop.Infrastructure.Notifications.Push.PushQueue>());
         }
         catch (Exception ex)
         {
@@ -93,7 +95,8 @@ public class CallRingTimeoutWorker(IServiceScopeFactory scopes, IHubContext<Call
                 var calls = scope.ServiceProvider.GetRequiredService<ICallService>();
                 var expired = await calls.ExpireRingingAsync(DateTime.UtcNow - CallService.RingTimeout, stoppingToken);
                 await CallBroadcast.EndedAsync(hub, expired, stoppingToken,
-                    scope.ServiceProvider.GetRequiredService<IPop.Infrastructure.Persistence.IPopDbContext>());
+                    scope.ServiceProvider.GetRequiredService<IPop.Infrastructure.Persistence.IPopDbContext>(),
+                    scope.ServiceProvider.GetService<IPop.Infrastructure.Notifications.Push.PushQueue>());
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception ex)

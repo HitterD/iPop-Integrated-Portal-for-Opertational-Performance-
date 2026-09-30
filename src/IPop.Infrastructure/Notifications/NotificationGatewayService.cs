@@ -20,7 +20,8 @@ public sealed class NotificationGatewayService(
     IPopDbContext db,
     IPasswordHasher passwordHasher,
     ILogger<NotificationGatewayService> logger,
-    INotificationRealtimeBroadcaster broadcaster) : INotificationGatewayService
+    INotificationRealtimeBroadcaster broadcaster,
+    Push.PushQueue? push = null) : INotificationGatewayService
 {
     private const int MaxAttempts = 3;
 
@@ -270,6 +271,7 @@ public sealed class NotificationGatewayService(
             .Where(u => deliveries.Select(d => d.UserId).Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, u => u.PresenceLastSeenAt, ct);
 
+        var silenced = new HashSet<Guid>(); // quiet hours / muted type: no Windows toast either
         foreach (var d in deliveries)
         {
             var lastSeen = userPresence.GetValueOrDefault(d.UserId);
@@ -298,6 +300,7 @@ public sealed class NotificationGatewayService(
                         if (request.Priority != "high" || !pref.AllowImportant)
                         {
                             d.Channel = NotificationChannel.Push; // deferred — not shown as toast
+                            silenced.Add(d.UserId);
                             logger.LogDebug("Notification deferred (quiet hours): user {UserId}, request {RequestId}", d.UserId, d.RequestId);
                         }
                     }
@@ -310,6 +313,7 @@ public sealed class NotificationGatewayService(
                     if (muted.Contains(mod, StringComparer.OrdinalIgnoreCase) || muted.Contains(request.EventType, StringComparer.OrdinalIgnoreCase))
                     {
                         d.Channel = NotificationChannel.Push; // suppressed from realtime SignalR toast
+                        silenced.Add(d.UserId);
                         logger.LogDebug("Notification suppressed (muted type {Type}): user {UserId}, request {RequestId}", mod, d.UserId, d.RequestId);
                     }
                 }
@@ -346,6 +350,15 @@ public sealed class NotificationGatewayService(
             .ToList();
         if (states.Count > 0)
             await broadcaster.BroadcastAsync(states, ct);
+
+        // Windows toast (Web Push) for every recipient not silenced by their preferences —
+        // online or not; the service worker skips it when an iPop window is in focus.
+        var toast = deliveries.Select(d => d.UserId).Where(u => !silenced.Contains(u)).Distinct().ToList();
+        if (push is not null && toast.Count > 0)
+        {
+            var (type, priority, title, body, url) = (request.EventType, request.Priority, request.Title, request.Body, request.TargetUrl);
+            push.Enqueue((p, token) => p.NotifyRequestAsync(toast, type, priority, title, body, url, requestId, token));
+        }
     }
 
     /// <summary>
