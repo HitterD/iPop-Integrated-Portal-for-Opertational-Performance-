@@ -11,7 +11,8 @@ public class CallRoom
     public Guid CreatorId { get; set; }
     public User Creator { get; set; } = default!;
 
-    /// Identifies what is being called: "user" (1:1 P2P) or "group" (chat-group call over LiveKit).
+    /// Identifies what is being called: "user" (1:1 P2P), "group" (chat-group call over LiveKit)
+    /// or "adhoc" (a 1:1 call upgraded to LiveKit when a person was added; never downgraded).
     public required string Kind { get; set; }
 
     /// Group calls: the chat group being called (Kind == "group"); null for 1:1 calls.
@@ -52,8 +53,13 @@ public class CallParticipant
     public bool IsMuted { get; set; }
     public bool IsScreenSharing { get; set; }
 
+    /// Join time; while "invited" it is the time the ring started (per-invitee ring timeout).
     public DateTime JoinedAt { get; set; }
     public DateTime? LeftAt { get; set; }
+
+    /// Who added this person to a running call ("Add person"); null for the original invitees.
+    /// Soft reference (no FK): only used to word the ring ("Beny invited you…").
+    public Guid? InvitedById { get; set; }
 }
 
 /// Completed call record for the call log (grouped by date on the UI).

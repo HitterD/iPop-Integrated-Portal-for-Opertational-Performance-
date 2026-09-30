@@ -70,6 +70,28 @@ public static class CallEndpoints
             return Results.Ok(await WithTokenAsync(result.Room, userId.Value, db, liveKit, ct));
         });
 
+        // "Add person": an accepted participant rings a directory user into this call. A 1:1 call
+        // becomes an ad-hoc LiveKit call; everyone gets the new state (the P2P pair re-joins via
+        // /join for a token) and the invitee gets the ring + a push toast.
+        g.MapPost("/{callId:guid}/invite", async (Guid callId, InviteToCallRequest req, HttpContext http,
+            ICallService svc, IPopDbContext db, IHubContext<CallHub> hub, ILiveKitTokenService liveKit, PushQueue push, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            if (!liveKit.IsConfigured)
+                return Results.Json(new { code = CallErrors.MediaUnavailable, message = "Adding people needs the call media server, which is not configured." }, statusCode: 503);
+            var result = await svc.InviteAsync(userId.Value, callId, req.Nik, ct);
+            if (result.Room is null)
+                return result.ErrorCode switch
+                {
+                    CallErrors.AlreadyInCall => Results.Json(new { code = result.ErrorCode, message = result.Error }, statusCode: 409),
+                    CallErrors.PeerNotFound => Results.Json(new { code = result.ErrorCode, message = result.Error }, statusCode: 404),
+                    _ => GroupError(result),
+                };
+            await BroadcastGroupAsync(hub, db, result.Room, ct, push);
+            return Results.Ok(await WithTokenAsync(result.Room, userId.Value, db, liveKit, ct));
+        });
+
         // The chat group's live call (banner "Panggilan grup sedang berlangsung"), or null.
         g.MapGet("/group/{chatRoomId:guid}/active", async (Guid chatRoomId, HttpContext http,
             ICallService svc, IPopDbContext db, CancellationToken ct) =>

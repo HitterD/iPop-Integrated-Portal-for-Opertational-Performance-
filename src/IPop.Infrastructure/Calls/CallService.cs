@@ -63,7 +63,8 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
         if (room.Status is CallStatus.Ended or CallStatus.Declined or CallStatus.Missed)
             return Fail(CallErrors.CallAlreadyEnded, "Call has already ended.");
 
-        if (room.Kind == CallKind.Group)
+        // Group and ad-hoc calls share the LiveKit flow (per-member decline/leave).
+        if (CallKind.IsLiveKit(room.Kind))
             return await GroupSignalAsync(room, userId, req, ct);
 
         var me = room.Participants.FirstOrDefault(p => p.UserId == userId);
@@ -139,12 +140,16 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
     {
         // A ring older than the timeout is stale (the worker will mark it missed) — never resurrect it.
         var cutoff = DateTime.UtcNow - RingTimeout;
-        // Group calls keep ringing invitees for the window even once someone has joined (Active).
+        // Group/ad-hoc calls keep ringing invitees for the window even once someone has joined (Active);
+        // a person added later ("Add person") rings from their own invite time (JoinedAt), in full.
         var room = await db.CallRooms.AsNoTracking()
             .Include(r => r.ChatRoom)
             .Include(r => r.Participants).ThenInclude(p => p.User)
-            .Where(r => (r.Status == CallStatus.Ringing || (r.Kind == CallKind.Group && r.Status == CallStatus.Active)) && r.StartedAt >= cutoff &&
-                        r.Participants.Any(p => p.UserId == userId && p.Status == CallParticipantStatus.Invited))
+            .Where(r => (r.Kind == CallKind.User && r.Status == CallStatus.Ringing && r.StartedAt >= cutoff &&
+                            r.Participants.Any(p => p.UserId == userId && p.Status == CallParticipantStatus.Invited))
+                     || (r.Kind != CallKind.User && (r.Status == CallStatus.Ringing || r.Status == CallStatus.Active) &&
+                            r.Participants.Any(p => p.UserId == userId && p.Status == CallParticipantStatus.Invited
+                                && (p.InvitedById == null ? r.StartedAt : p.JoinedAt) >= cutoff)))
             .OrderByDescending(r => r.StartedAt)
             .FirstOrDefaultAsync(ct);
         return room is null ? null : ToRoom(room);
@@ -168,14 +173,19 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
             .ToListAsync(ct);
 
         var callIds = raw.Select(i => i.CallId).Distinct().ToList();
-        var peers = await db.CallRooms.AsNoTracking()
+        var others = await db.CallRooms.AsNoTracking()
             .Where(r => callIds.Contains(r.Id))
             .SelectMany(r => r.Participants.Where(pt => pt.UserId != userId),
-                (r, pt) => new { r.Id, pt.User.Name, pt.User.Nik })
-            .GroupBy(x => x.Id)
-            .Select(g => new { g.Key, Name = g.First().Name, Nik = g.First().Nik })
+                (r, pt) => new { r.Id, r.Kind, IsCreator = pt.UserId == r.CreatorId, pt.JoinedAt, pt.User.Name, pt.User.Nik })
             .ToListAsync(ct);
-        var peerMap = peers.ToDictionary(x => x.Key, x => x);
+        var peerMap = others.GroupBy(x => x.Id).ToDictionary(g => g.Key, g =>
+        {
+            var ordered = g.OrderByDescending(x => x.IsCreator).ThenBy(x => x.JoinedAt).ToList();
+            // Ad-hoc calls (a person was added): "Call with A, B, +N", no single peer to call back.
+            return g.First().Kind == CallKind.AdHoc
+                ? (Name: AdHocLabel(ordered.Select(x => x.Name).ToList()), Nik: (string?)null)
+                : (Name: ordered[0].Name, Nik: (string?)ordered[0].Nik);
+        });
 
         // Group calls are labelled with the chat group, not with one of the participants.
         var groups = await db.CallRooms.AsNoTracking()
@@ -218,10 +228,15 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
             .ToListAsync(ct);
         if (rooms.Count == 0) return [];
 
+        // A person added to a still-ringing group call gets their full ring before the call gives up.
+        rooms = rooms.Where(r => !CallKind.IsLiveKit(r.Kind) || !r.Participants.Any(p =>
+            p.Status == CallParticipantStatus.Invited && p.InvitedById != null && p.JoinedAt >= cutoff)).ToList();
+        if (rooms.Count == 0) return [];
+
         var now = DateTime.UtcNow;
         foreach (var room in rooms)
         {
-            if (room.Kind == CallKind.Group)
+            if (CallKind.IsLiveKit(room.Kind))
             {
                 // Nobody joined the creator within the window: the whole group call is missed.
                 EndGroupRoom(room, now, timedOut: true);
@@ -251,7 +266,7 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
         foreach (var room in rooms)
         {
             var me = room.Participants.First(p => p.UserId == userId);
-            if (room.Kind == CallKind.Group)
+            if (CallKind.IsLiveKit(room.Kind))
             {
                 // A dropped member leaves the group call; it ends only when nobody is left in it.
                 if (me.Status == CallParticipantStatus.Accepted)
@@ -334,12 +349,21 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
         r.Participants
             .OrderBy(p => p.JoinedAt)
             .Select(p => new CallParticipantDto(p.UserId, p.User?.Nik ?? "", p.User?.Name ?? "", p.Status,
-                p.IsMuted, p.IsScreenSharing, p.LeftAt))
+                p.IsMuted, p.IsScreenSharing, p.LeftAt, p.JoinedAt, p.InvitedById))
             .ToList(),
         ChatRoomId: r.ChatRoomId,
         Title: r.ChatRoom?.Name,
         AvatarColor: r.ChatRoom?.AvatarColor,
         AvatarUrl: r.ChatRoom?.AvatarUrl);
+
+    /// "Call with Jason, Beny, +2" — first names of the other participants, two at most.
+    internal static string AdHocLabel(IReadOnlyList<string> names)
+    {
+        static string First(string n) => n.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? n;
+        if (names.Count == 0) return "Call";
+        var shown = string.Join(", ", names.Take(2).Select(First));
+        return names.Count > 2 ? $"Call with {shown}, +{names.Count - 2}" : $"Call with {shown}";
+    }
 
     private static string? NormalizeQuality(string? q) => q switch
     {

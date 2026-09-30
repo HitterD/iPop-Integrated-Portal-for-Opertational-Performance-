@@ -65,7 +65,7 @@ public sealed partial class CallService
     {
         var room = await db.CallRooms.Include(r => r.ChatRoom).Include(r => r.Participants).ThenInclude(p => p.User)
             .FirstOrDefaultAsync(r => r.Id == callId, ct);
-        if (room is null || room.Kind != CallKind.Group) return Fail(CallErrors.RoomNotFound, "Call not found.");
+        if (room is null || !CallKind.IsLiveKit(room.Kind)) return Fail(CallErrors.RoomNotFound, "Call not found.");
         if (room.Status is not (CallStatus.Ringing or CallStatus.Active))
             return Fail(CallErrors.CallAlreadyEnded, "Call has already ended.");
 
@@ -74,7 +74,8 @@ public sealed partial class CallService
         if (me is null)
         {
             // Joined the group after the call started: a current member may still come in.
-            var isMember = await db.ChatRoomMembers.AnyAsync(
+            // Anyone else needs a participant row (added via "Add person"); ad-hoc calls have no group.
+            var isMember = room.ChatRoomId is not null && await db.ChatRoomMembers.AnyAsync(
                 m => m.RoomId == room.ChatRoomId && m.UserId == userId && m.LeftAt == null, ct);
             if (!isMember) return Fail(CallErrors.NotParticipant, "You are not in this call.");
             me = new CallParticipant
@@ -113,6 +114,58 @@ public sealed partial class CallService
         if (!isMember) return Fail(CallErrors.NotGroupMember, "You are not a member of this group.");
         var liveId = await LiveGroupCallIdAsync(chatRoomId, ct);
         return new CallResultDto(true, null, null, liveId is { } id ? await GetRoomCoreAsync(id, userId, ct) : null);
+    }
+
+    public async Task<CallResultDto> InviteAsync(Guid inviterId, Guid callId, string nik, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(nik)) return Fail(CallErrors.PeerNotFound, "Choose a person to add.");
+        var room = await db.CallRooms.Include(r => r.ChatRoom).Include(r => r.Participants).ThenInclude(p => p.User)
+            .FirstOrDefaultAsync(r => r.Id == callId, ct);
+        if (room is null) return Fail(CallErrors.RoomNotFound, "Call not found.");
+        if (room.Status is not (CallStatus.Ringing or CallStatus.Active))
+            return Fail(CallErrors.CallAlreadyEnded, "Call has already ended.");
+
+        var me = room.Participants.FirstOrDefault(p => p.UserId == inviterId);
+        if (me is null || me.Status != CallParticipantStatus.Accepted)
+            return Fail(CallErrors.NotParticipant, "Only people in the call can add someone.");
+        // A 1:1 call is upgraded only once it is answered (a ringing one has no media yet).
+        if (room.Kind == CallKind.User && room.Status != CallStatus.Active)
+            return Fail(CallErrors.InvalidSignal, "Wait until the call is answered to add someone.");
+
+        var target = await db.Users.FirstOrDefaultAsync(u => u.Nik == nik.Trim() && u.IsActive, ct);
+        if (target is null) return Fail(CallErrors.PeerNotFound, "That person was not found or is inactive.");
+
+        var now = DateTime.UtcNow;
+        var existing = room.Participants.FirstOrDefault(p => p.UserId == target.Id);
+        if (existing is not null)
+        {
+            if (existing.Status == CallParticipantStatus.Accepted)
+                return Fail(CallErrors.AlreadyInCall, $"{target.Name} is already in the call.");
+            if (existing.Status == CallParticipantStatus.Invited && existing.JoinedAt >= now - RingTimeout)
+                return Fail(CallErrors.AlreadyInCall, $"{target.Name} is already being called.");
+            // Left, declined or missed the ring: ring again (a fresh per-invitee window).
+            existing.Status = CallParticipantStatus.Invited;
+            existing.JoinedAt = now;
+            existing.LeftAt = null;
+            existing.IsMuted = false;
+            existing.InvitedById = inviterId;
+        }
+        else
+        {
+            var added = new CallParticipant
+            {
+                Id = Guid.NewGuid(), CallId = room.Id, UserId = target.Id, User = target,
+                Status = CallParticipantStatus.Invited, JoinedAt = now, InvitedById = inviterId,
+            };
+            db.CallParticipants.Add(added);   // EF fixup puts it in room.Participants
+            if (!room.Participants.Contains(added)) room.Participants.Add(added);
+        }
+
+        // First extra person on a P2P call: move it to LiveKit for good (never back to P2P).
+        if (room.Kind == CallKind.User) room.Kind = CallKind.AdHoc;
+        room.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+        return new CallResultDto(true, null, null, ToRoom(room));
     }
 
     private Task<Guid?> LiveGroupCallIdAsync(Guid chatRoomId, CancellationToken ct) =>

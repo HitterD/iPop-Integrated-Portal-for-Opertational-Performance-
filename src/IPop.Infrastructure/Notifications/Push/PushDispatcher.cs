@@ -36,7 +36,8 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
     /// (callId, userId) pairs whose ring toast is showing — so a ring is sent once and closed once.
     /// In-process: after a restart an open ring toast is not closed, but its push TTL (the ring
     /// timeout) keeps it from arriving late.
-    private static readonly ConcurrentDictionary<(Guid CallId, Guid UserId), byte> Rung = new();
+    /// The value is the ring start (participant JoinedAt ticks): a re-invite ("Add person") rings again.
+    private static readonly ConcurrentDictionary<(Guid CallId, Guid UserId), long> Rung = new();
 
     public async Task SendAsync(IReadOnlyCollection<Guid> userIds, Func<Guid, PushPayload?> payloadFor,
         bool urgent, TimeSpan ttl, CancellationToken ct)
@@ -158,13 +159,20 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
     /// toast; once they answer, decline, or the call ends, the toast is closed on all devices.
     public async Task SyncCallAsync(CallRoomDto room, CancellationToken ct)
     {
-        var live = room.Status == CallStatus.Ringing || (room.Kind == CallKind.Group && room.Status == CallStatus.Active);
+        var live = room.Status == CallStatus.Ringing || (CallKind.IsLiveKit(room.Kind) && room.Status == CallStatus.Active);
         var invited = live
             ? room.Participants.Where(p => p.Status == CallParticipantStatus.Invited && p.UserId != room.CreatorId)
-                .Select(p => p.UserId).ToHashSet()
+                .ToDictionary(p => p.UserId, p => p.JoinedAt?.Ticks ?? 0)
             : [];
-        var ringNow = invited.Where(u => Rung.TryAdd((room.Id, u), 0)).ToList();
-        var closeNow = Rung.Keys.Where(k => k.CallId == room.Id && !invited.Contains(k.UserId)).Select(k => k.UserId).ToList();
+        var ringNow = new List<Guid>();
+        foreach (var (u, since) in invited)
+        {
+            var key = (room.Id, u);
+            if (Rung.TryGetValue(key, out var was) && was == since) continue;
+            Rung[key] = since;
+            ringNow.Add(u);
+        }
+        var closeNow = Rung.Keys.Where(k => k.CallId == room.Id && !invited.ContainsKey(k.UserId)).Select(k => k.UserId).ToList();
         foreach (var u in closeNow) Rung.TryRemove((room.Id, u), out _);
 
         var tag = $"call:{room.Id}";
@@ -176,12 +184,30 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
             var body = isGroup ? $"{caller} memulai panggilan grup" : "Panggilan suara iPop";
             var protector = dataProtection.CreateProtector(CallActionPurpose).ToTimeLimitedDataProtector();
             await SendAsync(ringNow,
-                uid => new PushPayload("call", title, body, "/calls", tag, RequireInteraction: true, CallId: room.Id,
-                    ActionToken: protector.Protect($"{room.Id:N}|{uid:N}", CallActionLifetime)),
+                uid => InviteText(room, uid) is { } invite
+                    ? new PushPayload("call", invite.Title, invite.Body, "/calls", tag, RequireInteraction: true, CallId: room.Id,
+                        ActionToken: protector.Protect($"{room.Id:N}|{uid:N}", CallActionLifetime))
+                    : new PushPayload("call", title, body, "/calls", tag, RequireInteraction: true, CallId: room.Id,
+                        ActionToken: protector.Protect($"{room.Id:N}|{uid:N}", CallActionLifetime)),
                 urgent: true, IPop.Infrastructure.Calls.CallService.RingTimeout, ct);
         }
         if (closeNow.Count > 0)
             await SendAsync(closeNow, new PushPayload("close", "", "", null, tag), urgent: true, ct);
+    }
+
+    /// Toast text for someone added to a running call ("Add person"); null for the original invitees.
+    internal static (string Title, string Body)? InviteText(CallRoomDto room, Guid userId)
+    {
+        var me = room.Participants.FirstOrDefault(p => p.UserId == userId);
+        if (me?.InvitedById is not { } by) return null;
+        var inviter = room.Participants.FirstOrDefault(p => p.UserId == by)?.Name ?? "Someone";
+        var others = room.Participants
+            .Where(p => p.UserId != userId && p.UserId != by && p.Status == CallParticipantStatus.Accepted)
+            .Select(p => p.Name).Take(3).ToList();
+        var target = room.Kind == CallKind.Group ? $"the {room.Title ?? "group"} call"
+            : others.Count > 0 ? "a call with " + string.Join(", ", others)
+            : "a call";
+        return ($"{inviter} is calling", $"{inviter} invited you to {target}");
     }
 
     /// Reads a toast action token back into (callId, userId); null when forged or expired.

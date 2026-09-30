@@ -287,6 +287,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("CallId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("InvitedById")
+                        .HasColumnType("uuid");
+
                     b.Property<bool>("IsMuted")
                         .HasColumnType("boolean");
 

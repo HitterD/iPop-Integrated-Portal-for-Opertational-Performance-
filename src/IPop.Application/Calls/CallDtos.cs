@@ -12,9 +12,15 @@ public record CallSignalRequest(Guid CallId, string Action, bool? IsMuted = null
 public record WebRtcSignalDto(Guid CallId, string Type, string Payload, string? From = null);
 
 /// A participant in a call (with name resolved for the UI).
+/// JoinedAt: when they joined — or, while "invited", when their ring started (per-invitee timeout).
+/// InvitedById: who added them to a running call ("Add person"); null for the original invitees.
 public record CallParticipantDto(
     Guid UserId, string Nik, string Name, string Status,
-    bool IsMuted, bool IsScreenSharing, DateTime? LeftAt);
+    bool IsMuted, bool IsScreenSharing, DateTime? LeftAt,
+    DateTime? JoinedAt = null, Guid? InvitedById = null);
+
+/// "Add person": invite a directory user (by NIK) into a running call.
+public record InviteToCallRequest(string Nik);
 
 /// Room state returned by invite/accept/decline/leave + hub broadcasts.
 public record CallRoomDto(
@@ -68,12 +74,21 @@ public static class CallErrors
     public const string GroupNotFound = "group_not_found";
     public const string NotGroupMember = "not_group_member";
     public const string MediaUnavailable = "media_unavailable";
+    public const string AlreadyInCall = "already_in_call";
 }
 
 public static class CallKind
 {
+    /// 1:1 peer-to-peer WebRTC call.
     public const string User = "user";
+    /// Chat-group call over LiveKit (ChatRoomId set).
     public const string Group = "group";
+    /// Ad-hoc multi-party call over LiveKit, no chat group: a 1:1 call someone added a person to.
+    public const string AdHoc = "adhoc";
+
+    /// Media runs through the LiveKit SFU (group and ad-hoc calls), with group-call semantics:
+    /// per-member decline/leave, the call ends when the last connected participant leaves.
+    public static bool IsLiveKit(string? kind) => kind is Group or AdHoc;
 }
 
 public static class CallStatus

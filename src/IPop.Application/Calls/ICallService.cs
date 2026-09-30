@@ -39,6 +39,11 @@ public interface ICallService
     /// The chat group's ringing/active call, or null. Only group members may see it.
     Task<CallResultDto> GetActiveGroupCallAsync(Guid userId, Guid chatRoomId, CancellationToken ct);
 
+    /// "Add person": an accepted participant invites a directory user into a running call (or re-rings
+    /// someone who left/declined/missed). A 1:1 call is converted to an ad-hoc LiveKit call
+    /// (Kind "adhoc", never back to P2P); the participants then fetch LiveKit tokens via join.
+    Task<CallResultDto> InviteAsync(Guid inviterId, Guid callId, string nik, CancellationToken ct);
+
     /// The user's last connection dropped: end their active calls and cancel rings they started.
     Task<IReadOnlyList<CallRoomDto>> EndForUserAsync(Guid userId, CancellationToken ct);
 }
