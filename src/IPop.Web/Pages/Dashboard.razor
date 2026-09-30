@@ -156,7 +156,14 @@
                 @foreach (var c in data.Chats)
                 {
                     <a class="li" href="/chat/@c.Id">
-                        <span class="av @(c.Type == "group" ? "grp" : "")" style="background:@(c.AvatarColor ?? AvatarPalette.For(c.Name))">@Initials(c.Name)</span>
+                        @if (c.Type == "group")
+                        {
+                            <span class="av grp" style="background:@(c.AvatarColor ?? AvatarPalette.For(c.Name))">@Initials(c.Name)</span>
+                        }
+                        else
+                        {
+                            <PersonAvatar Nik="@c.PeerNik" Name="@c.Name" Size="34" Class="av" Decorative="true" />
+                        }
                         <span class="tx"><b>@c.Name</b><span>@(c.LastMessage ?? "No messages")</span></span>
                         <span class="rt">@(c.LastMessageAt is { } lm ? When(lm) : "")@if (c.Unread > 0) { <span class="ud"></span> }</span>
                     </a>
@@ -236,7 +243,7 @@
                     @foreach (var p in data.Online)
                     {
                         <a class="dw-tm" href="/directory/person/@p.Nik" title="@p.Name · @PresenceLabel(p.Status)">
-                            <span class="av st-@p.Status" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">@Initials(p.Name)</span>
+                            <PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="46" Class="@($"av st-{p.Status}")" Decorative="true" />
                             <span>@p.Name.Split(' ')[0]</span>
                         </a>
                     }
@@ -301,7 +308,7 @@
     private record AttentionDto(string Kind, string Title, string Sub, string Cta, string Url, string? PeerNik);
     private record TaskDto(Guid Id, Guid ProjectId, string Title, string ProjectName, DateTime? DueDate, bool Overdue);
     private record ProjectDto(Guid Id, string Name, string Status, int Done, int Total, int Progress);
-    private record ChatDto(Guid Id, string Type, string Name, string? LastMessage, DateTime? LastMessageAt, int Unread, string? AvatarColor);
+    private record ChatDto(Guid Id, string Type, string Name, string? LastMessage, DateTime? LastMessageAt, int Unread, string? AvatarColor, string? PeerNik = null);
     private record NewsDto(Guid Id, string Type, string Title, DateTime? PublishedAt, bool NeedsAck);
     private record PersonDto(string Nik, string Name, string Status);
     private record StatusDto(string Label, string State, string Note);

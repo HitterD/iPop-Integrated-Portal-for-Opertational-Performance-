@@ -36,7 +36,9 @@ public record DashboardTaskItem(Guid Id, Guid ProjectId, string Title, string Pr
 
 public record DashboardProjectItem(Guid Id, string Name, string Status, int Done, int Total, int Progress);
 
-public record DashboardChatItem(Guid Id, string Type, string Name, string? LastMessage, DateTime? LastMessageAt, int Unread, string? AvatarColor);
+/// PeerNik: the other person in a DM (for their photo); null for groups.
+public record DashboardChatItem(Guid Id, string Type, string Name, string? LastMessage, DateTime? LastMessageAt, int Unread, string? AvatarColor,
+    string? PeerNik = null);
 
 public record DashboardNewsItem(Guid Id, string Type, string Title, DateTime? PublishedAt, bool NeedsAck);
 

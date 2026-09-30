@@ -60,14 +60,15 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
             .ToListAsync(ct);
         var dmPeers = await db.ChatRoomMembers.AsNoTracking()
             .Where(m => topIds.Contains(m.RoomId) && m.UserId != userId)
-            .Select(m => new { m.RoomId, m.User.Name })
+            .Select(m => new { m.RoomId, m.User.Name, m.User.Nik })
             .ToListAsync(ct);
         var chats = topRooms.Select(r =>
         {
             var last = lastMsgs.FirstOrDefault(m => m.RoomId == r.Id);
-            var name = r.Type == "dm" ? dmPeers.FirstOrDefault(p => p.RoomId == r.Id)?.Name ?? "Direct message" : r.Name ?? "Group";
+            var peer = r.Type == "dm" ? dmPeers.FirstOrDefault(p => p.RoomId == r.Id) : null;
+            var name = r.Type == "dm" ? peer?.Name ?? "Direct message" : r.Name ?? "Group";
             var text = last is null ? null : last.IsDeleted ? "Message deleted" : Snip(last.Content, 80);
-            return new DashboardChatItem(r.Id, r.Type, name, text, last?.CreatedAt ?? r.LastMessageAt, UnreadIn(r.Id), r.AvatarColor);
+            return new DashboardChatItem(r.Id, r.Type, name, text, last?.CreatedAt ?? r.LastMessageAt, UnreadIn(r.Id), r.AvatarColor, peer?.Nik);
         }).ToList();
 
         // ── Tasks ──
