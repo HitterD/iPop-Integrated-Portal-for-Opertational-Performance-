@@ -25,7 +25,7 @@ public partial class CallState
         if (HasLiveCall)
         {
             if (IsMeeting && Current!.LiveKitRoom == roomName) return true;
-            LastError = "Masih ada panggilan yang berlangsung.";
+            LastError = "Another call is still in progress.";
             StateChanged?.Invoke();
             return false;
         }
@@ -37,10 +37,10 @@ public partial class CallState
             {
                 LastError = res.StatusCode switch
                 {
-                    HttpStatusCode.Forbidden => "Anda tidak diundang ke rapat ini.",
-                    HttpStatusCode.Conflict => "Rapat ini sudah dibatalkan.",
-                    HttpStatusCode.NotFound => "Rapat tidak ditemukan.",
-                    _ => $"Gagal membuka rapat ({(int)res.StatusCode}).",
+                    HttpStatusCode.Forbidden => "You're not invited to this meeting.",
+                    HttpStatusCode.Conflict => "This meeting was cancelled.",
+                    HttpStatusCode.NotFound => "Meeting not found.",
+                    _ => $"Couldn't open the meeting ({(int)res.StatusCode}).",
                 };
                 StateChanged?.Invoke();
                 return false;
@@ -49,7 +49,7 @@ public partial class CallState
             if (join is null) return false;
             if (string.IsNullOrEmpty(join.LiveKitUrl) || string.IsNullOrEmpty(join.LiveKitToken))
             {
-                LastError = "Server media rapat belum dikonfigurasi.";
+                LastError = "The meeting media server isn't configured.";
                 StateChanged?.Invoke();
                 return false;
             }
@@ -62,7 +62,7 @@ public partial class CallState
             LastError = null;
             LastEndReason = null;
             Current = new CallRoomDto(join.MeetingId, CallKind.Group, CallStatus.Active, null, Guid.Empty, now, now, null, null,
-                [new CallParticipantDto(Guid.Empty, me?.Nik ?? "", me?.Name ?? "Anda", CallParticipantStatus.Accepted, false, false, null)],
+                [new CallParticipantDto(Guid.Empty, me?.Nik ?? "", me?.Name ?? "You", CallParticipantStatus.Accepted, false, false, null)],
                 join.LiveKitUrl, join.LiveKitToken, null, join.Title, null, null, join.RoomName);
             WebRtcState = "connecting";
             StateChanged?.Invoke();
@@ -76,7 +76,7 @@ public partial class CallState
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or JSException)
         {
-            LastError = "Gagal bergabung ke rapat: " + ex.Message;
+            LastError = "Couldn't join the meeting: " + ex.Message;
             StateChanged?.Invoke();
             return false;
         }
@@ -95,8 +95,8 @@ public partial class CallState
         WebRtcState = null;
         _groupMedia = [];
         LastEndReason = room.EstablishedAt is { } est
-            ? $"Keluar dari rapat · {FormatDuration(DateTime.UtcNow - DateTime.SpecifyKind(est, DateTimeKind.Utc))}"
-            : "Keluar dari rapat";
+            ? $"Left the meeting · {FormatDuration(DateTime.UtcNow - DateTime.SpecifyKind(est, DateTimeKind.Utc))}"
+            : "Left the meeting";
         StateChanged?.Invoke();
         try { await _js.InvokeVoidAsync("ipopAudio.playEndTone"); } catch (JSException) { }
         CallEnded?.Invoke();

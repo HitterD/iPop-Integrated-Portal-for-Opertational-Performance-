@@ -31,7 +31,7 @@ public partial class CallState
 
     /// Group name for the ring card and call window; ad-hoc calls list the other people.
     public string GroupName => IsAdHoc ? AdHocName(Current!)
-        : string.IsNullOrWhiteSpace(Current?.Title) ? "Panggilan grup" : Current!.Title!;
+        : string.IsNullOrWhiteSpace(Current?.Title) ? "Group call" : Current!.Title!;
 
     /// "Call with Jason, Beny, +1": everyone but me who is in or being called into the call.
     private string AdHocName(CallRoomDto room)
@@ -205,7 +205,7 @@ public partial class CallState
         if (PracticeCall?.Invoke("") == true) return null;
         if (HasLiveCall && !(IsGroup && ActiveMe?.Status == CallParticipantStatus.Invited))
         {
-            LastError = "Masih ada panggilan yang berlangsung.";
+            LastError = "Another call is still in progress.";
             StateChanged?.Invoke();
             return null;
         }
@@ -246,14 +246,14 @@ public partial class CallState
             else
             {
                 WebRtcState = "failed";
-                LastError = "Server media panggilan grup tidak tersedia.";
+                LastError = "The group call media server isn't available.";
             }
             StateChanged?.Invoke();
             return Current;
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or JSException)
         {
-            LastError = "Panggilan grup gagal: " + ex.Message;
+            LastError = "Group call failed: " + ex.Message;
             StateChanged?.Invoke();
             return null;
         }
@@ -283,7 +283,7 @@ public partial class CallState
         Current = null;
         WebRtcState = null;
         _groupMedia = [];
-        var left = room.Kind == CallKind.AdHoc ? "Left the call" : "Keluar dari panggilan grup";
+        var left = room.Kind == CallKind.AdHoc ? "Left the call" : "Left the group call";
         LastEndReason = room.EstablishedAt is { } est
             ? $"{left} · {FormatDuration(DateTime.UtcNow - DateTime.SpecifyKind(est, DateTimeKind.Utc))}"
             : left;
@@ -329,10 +329,10 @@ public partial class CallState
                 // Server closed it (last one left, ring timeout, or I dropped).
                 if (IsInGroupCall || _groupMediaCallId == room.Id)
                     await HandleCallEndedAsync(room.Status == CallStatus.Missed
-                        ? "Tidak ada anggota yang bergabung"
+                        ? "No one joined"
                         : room.EstablishedAt is { } est && room.EndedAt is { } end
-                            ? $"{(room.Kind == CallKind.AdHoc ? "Call ended" : "Panggilan grup selesai")} · {FormatDuration(end - est)}"
-                            : room.Kind == CallKind.AdHoc ? "Call ended" : "Panggilan grup selesai");
+                            ? $"{(room.Kind == CallKind.AdHoc ? "Call ended" : "Group call ended")} · {FormatDuration(end - est)}"
+                            : room.Kind == CallKind.AdHoc ? "Call ended" : "Group call ended");
                 else
                 {
                     CancelGroupRing();
@@ -383,7 +383,7 @@ public partial class CallState
             {
                 try { await _js.InvokeVoidAsync("ipopAudio.stopAudioTones"); } catch (JSException) { }
                 Current = null;
-                LastEndReason = room.Kind == CallKind.AdHoc ? "Missed call" : $"Panggilan grup tak terjawab · {room.Title}";
+                LastEndReason = room.Kind == CallKind.AdHoc ? "Missed call" : $"Missed group call · {room.Title}";
                 StateChanged?.Invoke();
             }
         }, TaskScheduler.Default);
@@ -404,7 +404,7 @@ public partial class CallState
         if (!IsGroup) return;
         WebRtcState = state switch { "disconnected" => "failed", _ => state };
         if (state == "connected") LastError = null;
-        if (state == "disconnected") LastError = "Terputus dari server media panggilan grup.";
+        if (state == "disconnected") LastError = "Disconnected from the group call media server.";
         StateChanged?.Invoke();
     }
 

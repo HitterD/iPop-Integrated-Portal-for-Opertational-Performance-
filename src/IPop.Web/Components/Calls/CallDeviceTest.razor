@@ -9,20 +9,20 @@
     <div class="callx-dialog-backdrop" @onclick="Close"></div>
     <div class="callx-dialog" role="dialog" aria-modal="true" aria-labelledby="callx-test-title">
         <div class="callx-dialog-head">
-            <h2 id="callx-test-title"><i data-lucide="headphones"></i> Tes perangkat</h2>
-            <button type="button" class="callx-icon" aria-label="Tutup" @onclick="Close"><i data-lucide="x"></i></button>
+            <h2 id="callx-test-title"><i data-lucide="headphones"></i> Test devices</h2>
+            <button type="button" class="callx-icon" aria-label="Close" @onclick="Close"><i data-lucide="x"></i></button>
         </div>
 
         @if (support is { Secure: false })
         {
-            <p class="callx-warn"><i data-lucide="shield-alert"></i> Halaman ini dibuka lewat http. Browser hanya mengizinkan mikrofon di https atau localhost — buka versi https (port 7103).</p>
+            <p class="callx-warn"><i data-lucide="shield-alert"></i> This page was opened over http. Browsers only allow the microphone on https or localhost — open the https version (port 7103).</p>
         }
 
         <section class="callx-test-block">
-            <label>Mikrofon
+            <label>Microphone
                 <select @onchange="OnInputChanged" disabled="@(devices.Inputs.Count == 0)">
                     @foreach (var d in devices.Inputs) { <option value="@d.Id" selected="@(d.Id == inputId)">@d.Label</option> }
-                    @if (devices.Inputs.Count == 0) { <option value="">Belum ada mikrofon terdeteksi</option> }
+                    @if (devices.Inputs.Count == 0) { <option value="">No microphone detected yet</option> }
                 </select>
             </label>
             <div class="callx-test-meter">
@@ -31,7 +31,7 @@
             </div>
             <small class="@(micStatus.StartsWith("✓") ? "ok" : micError ? "bad" : "")">@micStatus</small>
             <button type="button" class="callx-btn callx-ghost" @onclick="ToggleMic">
-                <i data-lucide="@(micOn ? "square" : "mic")"></i> @(micOn ? "Hentikan tes mikrofon" : "Tes mikrofon")
+                <i data-lucide="@(micOn ? "square" : "mic")"></i> @(micOn ? "Stop microphone test" : "Test microphone")
             </button>
         </section>
 
@@ -39,16 +39,16 @@
             <label>Speaker
                 <select @onchange="e => outputId = e.Value?.ToString() ?? string.Empty" disabled="@(support?.OutputSelect != true)">
                     @foreach (var d in devices.Outputs) { <option value="@d.Id" selected="@(d.Id == outputId)">@d.Label</option> }
-                    @if (devices.Outputs.Count == 0) { <option value="">Default sistem</option> }
+                    @if (devices.Outputs.Count == 0) { <option value="">System default</option> }
                 </select>
             </label>
-            @if (support?.OutputSelect != true) { <small>Browser ini memakai speaker default sistem.</small> }
+            @if (support?.OutputSelect != true) { <small>This browser uses the system default speaker.</small> }
             <small class="@(speakerError ? "bad" : "")">@speakerStatus</small>
-            <button type="button" class="callx-btn callx-ghost" @onclick="PlayTone"><i data-lucide="volume-2"></i> Putar nada tes</button>
+            <button type="button" class="callx-btn callx-ghost" @onclick="PlayTone"><i data-lucide="volume-2"></i> Play test tone</button>
         </section>
 
         <div class="callx-dialog-foot">
-            <button type="button" class="callx-btn callx-accept" @onclick="Close">Selesai</button>
+            <button type="button" class="callx-btn callx-accept" @onclick="Close">Done</button>
         </div>
     </div>
 }
@@ -64,7 +64,7 @@
     private string outputId = "";
     private bool micOn;
     private bool micError;
-    private string micStatus = "Bicara setelah menekan Tes mikrofon — bar hijau harus bergerak.";
+    private string micStatus = "Press Test microphone, then speak — the green bar should move.";
     private bool speakerError;
     private string speakerStatus = "";
 
@@ -90,7 +90,7 @@
         var r = await JS.InvokeAsync<MicCheck>("ipopAudio.startMicTest", inputId);
         micOn = r.Ok;
         micError = !r.Ok;
-        micStatus = r.Ok ? $"✓ Mikrofon aktif{(string.IsNullOrEmpty(r.Label) ? "" : $": {r.Label}")}. Bicaralah untuk melihat levelnya." : r.Message ?? "Mikrofon tidak bisa dibuka.";
+        micStatus = r.Ok ? $"✓ Microphone on{(string.IsNullOrEmpty(r.Label) ? "" : $": {r.Label}")}. Speak to see the level." : r.Message ?? "Couldn't open the microphone.";
         // Labels are only visible after permission is granted — refresh the list.
         if (r.Ok) devices = await CallSvc.ListDevicesAsync();
     }
@@ -111,7 +111,7 @@
     {
         var r = await JS.InvokeAsync<MicCheck>("ipopAudio.playTestTone", outputId);
         speakerError = !r.Ok;
-        speakerStatus = r.Ok ? "Terdengar tiga nada? Speaker siap." : r.Message ?? "Nada tes gagal diputar.";
+        speakerStatus = r.Ok ? "Heard three tones? Your speaker is ready." : r.Message ?? "Couldn't play the test tone.";
     }
 
     private async Task Close()

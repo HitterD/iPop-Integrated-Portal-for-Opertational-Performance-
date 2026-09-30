@@ -49,7 +49,7 @@ public static class CallEndpoints
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
             if (!liveKit.IsConfigured)
-                return Results.Json(new { code = CallErrors.MediaUnavailable, message = "Server media panggilan grup belum dikonfigurasi." }, statusCode: 503);
+                return Results.Json(new { code = CallErrors.MediaUnavailable, message = "The group call media server isn't configured." }, statusCode: 503);
             var result = await svc.StartGroupCallAsync(userId.Value, chatRoomId, ct);
             if (result.Room is null) return GroupError(result);
             await BroadcastGroupAsync(hub, db, result.Room, ct, push);
@@ -63,7 +63,7 @@ public static class CallEndpoints
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
             if (!liveKit.IsConfigured)
-                return Results.Json(new { code = CallErrors.MediaUnavailable, message = "Server media panggilan grup belum dikonfigurasi." }, statusCode: 503);
+                return Results.Json(new { code = CallErrors.MediaUnavailable, message = "The group call media server isn't configured." }, statusCode: 503);
             var result = await svc.JoinGroupCallAsync(userId.Value, callId, ct);
             if (result.Room is null) return GroupError(result);
             await BroadcastGroupAsync(hub, db, result.Room, ct, push);

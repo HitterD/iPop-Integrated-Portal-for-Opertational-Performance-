@@ -196,7 +196,7 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
 
         var items = raw
             .Select(i => groupMap.TryGetValue(i.CallId, out var grp)
-                ? i with { PeerName = string.IsNullOrWhiteSpace(grp.Name) ? "Panggilan grup" : grp.Name, ChatRoomId = grp.ChatRoomId }
+                ? i with { PeerName = string.IsNullOrWhiteSpace(grp.Name) ? "Group call" : grp.Name, ChatRoomId = grp.ChatRoomId }
                 : peerMap.TryGetValue(i.CallId, out var peer)
                 ? i with { PeerName = peer.Name, PeerNik = peer.Nik }
                 : i with { PeerName = "Unknown" })

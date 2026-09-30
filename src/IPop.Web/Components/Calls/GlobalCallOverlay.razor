@@ -16,10 +16,10 @@
 @if (CallSvc.IsIncomingRing && CallSvc.IsGroup)
 {
     var room = CallSvc.Current!;
-    var starter = room.Participants.FirstOrDefault(p => p.UserId == room.CreatorId)?.Name ?? "Rekan kerja";
+    var starter = room.Participants.FirstOrDefault(p => p.UserId == room.CreatorId)?.Name ?? "Colleague";
     var joined = CallSvc.GroupJoinedCount;
     var inviteLine = CallSvc.InviteLine;
-    <div class="callx-incoming callx-group" role="alertdialog" aria-live="assertive" aria-label="@(inviteLine ?? $"Panggilan grup {CallSvc.GroupName} dari {starter}")">
+    <div class="callx-incoming callx-group" role="alertdialog" aria-live="assertive" aria-label="@(inviteLine ?? $"Group call {CallSvc.GroupName} from {starter}")">
         <div class="callx-incoming-main">
             @GroupAvatar(room, "callx-ring")
             <div class="callx-incoming-text">
@@ -30,18 +30,18 @@
                 }
                 else
                 {
-                    <span><i data-lucide="users"></i> Panggilan grup dari @FirstName(starter)</span>
+                    <span><i data-lucide="users"></i> Group call from @FirstName(starter)</span>
                 }
-                <small class="callx-sub">@joined orang di panggilan</small>
+                <small class="callx-sub">@People(joined) in the call</small>
             </div>
         </div>
         @if (CallSvc.NeedsHttps)
         {
-            <p class="callx-warn"><i data-lucide="shield-alert"></i> Halaman ini http — mikrofon Anda tidak bisa dipakai. Anda hanya bisa mendengar.</p>
+            <p class="callx-warn"><i data-lucide="shield-alert"></i> This page is on http — your microphone can't be used. You can only listen.</p>
         }
         <div class="callx-incoming-actions callx-two">
-            <button type="button" class="callx-btn callx-decline" disabled="@busy" @onclick="DeclineCall"><i data-lucide="phone-off"></i> Tolak</button>
-            <button type="button" class="callx-btn callx-accept" disabled="@busy" @onclick="AcceptCall"><i data-lucide="phone"></i> Gabung</button>
+            <button type="button" class="callx-btn callx-decline" disabled="@busy" @onclick="DeclineCall"><i data-lucide="phone-off"></i> Decline</button>
+            <button type="button" class="callx-btn callx-accept" disabled="@busy" @onclick="AcceptCall"><i data-lucide="phone"></i> Join</button>
         </div>
     </div>
 }
@@ -54,35 +54,35 @@ else if (CallSvc.IsInGroupCall)
     var alone = joined <= 1 && room.EstablishedAt is null;
     @if (isMinimized)
     {
-        <div @ref="dragEl" class="callx-pill" role="region" aria-label="Panggilan grup @CallSvc.GroupName">
-            <button type="button" class="callx-pill-open" @onclick="() => isMinimized = false" title="Buka jendela panggilan">
+        <div @ref="dragEl" class="callx-pill" role="region" aria-label="Group call @CallSvc.GroupName">
+            <button type="button" class="callx-pill-open" @onclick="() => isMinimized = false" title="Open call window">
                 @GroupAvatar(room, "sm" + (AnyoneSpeaking ? " speaking" : ""))
                 <span class="callx-pill-text">
                     <strong>@CallSvc.GroupName</strong>
-                    <small class="callx-state-text @stateClass">Grup · @joined orang · @(alone ? "Memanggil…" : FormattedElapsed)</small>
+                    <small class="callx-state-text @stateClass">Group · @People(joined) · @(alone ? "Calling…" : FormattedElapsed)</small>
                 </span>
             </button>
-            <button type="button" class="callx-round @(muted ? "on" : "")" @onclick="ToggleMute" aria-pressed="@(muted ? "true" : "false")" title="@(muted ? "Nyalakan mikrofon" : "Bisukan mikrofon")"><i data-lucide="@(muted ? "mic-off" : "mic")"></i></button>
-            <button type="button" class="callx-round hangup" @onclick="EndCall" title="Keluar dari panggilan"><i data-lucide="phone-off"></i></button>
+            <button type="button" class="callx-round @(muted ? "on" : "")" @onclick="ToggleMute" aria-pressed="@(muted ? "true" : "false")" title="@(muted ? "Unmute microphone" : "Mute microphone")"><i data-lucide="@(muted ? "mic-off" : "mic")"></i></button>
+            <button type="button" class="callx-round hangup" @onclick="EndCall" title="Leave the call"><i data-lucide="phone-off"></i></button>
         </div>
     }
     else
     {
-        <div @ref="dragEl" class="callx-window callx-group-window" role="dialog" aria-label="Panggilan grup @CallSvc.GroupName">
-            <span class="callx-resize" aria-hidden="true" title="Seret untuk mengubah ukuran"></span>
-            <div class="callx-head callx-drag-handle" title="Seret untuk memindahkan">
+        <div @ref="dragEl" class="callx-window callx-group-window" role="dialog" aria-label="Group call @CallSvc.GroupName">
+            <span class="callx-resize" aria-hidden="true" title="Drag to resize"></span>
+            <div class="callx-head callx-drag-handle" title="Drag to move">
                 <span class="callx-badge @stateClass"><span class="callx-dot"></span>@stateLabel</span>
-                <button type="button" class="callx-icon" @onclick="() => isMinimized = true" title="Perkecil" aria-label="Perkecil jendela panggilan"><i data-lucide="minimize-2"></i></button>
+                <button type="button" class="callx-icon" @onclick="() => isMinimized = true" title="Minimize" aria-label="Minimize call window"><i data-lucide="minimize-2"></i></button>
             </div>
             <div class="callx-body callx-group-body">
                 <div class="callx-group-title callx-drag-handle">
                     @GroupAvatar(room, "sm")
                     <div>
                         <h2>@CallSvc.GroupName</h2>
-                        <div class="callx-timer" aria-live="off">@joined orang · @(alone ? $"Memanggil anggota… {RingCountdown}" : FormattedElapsed)</div>
+                        <div class="callx-timer" aria-live="off">@People(joined) · @(alone ? $"Calling members… {RingCountdown}" : FormattedElapsed)</div>
                     </div>
                 </div>
-                <ul class="callx-grid" aria-label="Peserta">
+                <ul class="callx-grid" aria-label="Participants">
                     @foreach (var p in GridParticipants(room))
                     {
                         var media = CallSvc.GroupMedia.GetValueOrDefault(p.Nik);
@@ -93,9 +93,9 @@ else if (CallSvc.IsInGroupCall)
                         <li class="callx-tile @(inCall ? "" : "pending") @(speaking ? "is-speaking" : "")" data-nik="@p.Nik">
                             <span class="callx-tile-av">
                                 <PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="48" Class="@($"callx-avatar {(speaking ? "speaking" : "")}")" Decorative="true" />
-                                @if (inCall && pMuted) { <span class="callx-muted-badge" title="Mikrofon mati"><i data-lucide="mic-off"></i></span> }
+                                @if (inCall && pMuted) { <span class="callx-muted-badge" title="Microphone off"><i data-lucide="mic-off"></i></span> }
                             </span>
-                            <span class="callx-tile-name">@(isMe ? "Anda" : FirstName(p.Name))</span>
+                            <span class="callx-tile-name">@(isMe ? "You" : FirstName(p.Name))</span>
                             <small class="callx-tile-state">@TileState(p, inCall, media)</small>
                         </li>
                     }
@@ -106,7 +106,7 @@ else if (CallSvc.IsInGroupCall)
                 }
                 else if (CallSvc.NeedsHttps)
                 {
-                    <p class="callx-warn"><i data-lucide="shield-alert"></i> Mikrofon butuh HTTPS — anggota lain tidak bisa mendengar Anda.</p>
+                    <p class="callx-warn"><i data-lucide="shield-alert"></i> The microphone needs HTTPS — other members can't hear you.</p>
                 }
             </div>
             @if (showAddPerson)
@@ -116,33 +116,33 @@ else if (CallSvc.IsInGroupCall)
             @if (showDevices)
             {
                 <div class="callx-devices">
-                    <label>Mikrofon
+                    <label>Microphone
                         <select @onchange="OnInputChanged">
                             @foreach (var d in devices.Inputs) { <option value="@d.Id" selected="@(d.Id == inputId)">@d.Label</option> }
-                            @if (devices.Inputs.Count == 0) { <option value="">Tidak ada mikrofon</option> }
+                            @if (devices.Inputs.Count == 0) { <option value="">No microphone</option> }
                         </select>
                     </label>
                     <label>Speaker
                         <select @onchange="OnOutputChanged" disabled="@(CallSvc.Support?.OutputSelect != true)">
                             @foreach (var d in devices.Outputs) { <option value="@d.Id" selected="@(d.Id == outputId)">@d.Label</option> }
-                            @if (devices.Outputs.Count == 0) { <option value="">Default sistem</option> }
+                            @if (devices.Outputs.Count == 0) { <option value="">System default</option> }
                         </select>
                     </label>
                 </div>
             }
             <div class="callx-controls">
                 <button type="button" class="callx-ctrl @(muted ? "on" : "")" @onclick="ToggleMute" aria-pressed="@(muted ? "true" : "false")">
-                    <span><i data-lucide="@(muted ? "mic-off" : "mic")"></i></span>@(muted ? "Nyalakan" : "Bisukan")
+                    <span><i data-lucide="@(muted ? "mic-off" : "mic")"></i></span>@(muted ? "Unmute" : "Mute")
                 </button>
                 @if (CanAddPerson)
                 {
                     @AddPersonButton()
                 }
                 <button type="button" class="callx-ctrl @(showDevices ? "on" : "")" @onclick="ToggleDevices" aria-expanded="@(showDevices ? "true" : "false")">
-                    <span><i data-lucide="settings-2"></i></span>Perangkat
+                    <span><i data-lucide="settings-2"></i></span>Devices
                 </button>
                 <button type="button" class="callx-ctrl hangup" @onclick="EndCall">
-                    <span><i data-lucide="phone-off"></i></span>Keluar
+                    <span><i data-lucide="phone-off"></i></span>Leave
                 </button>
             </div>
         </div>
@@ -150,86 +150,86 @@ else if (CallSvc.IsInGroupCall)
 }
 else if (CallSvc.IsIncomingRing)
 {
-    var caller = CallSvc.RemotePeer?.Name ?? "Rekan kerja";
+    var caller = CallSvc.RemotePeer?.Name ?? "Colleague";
     var callerNik = CallSvc.RemotePeer?.Nik;
-    <div class="callx-incoming" role="alertdialog" aria-live="assertive" aria-label="Panggilan masuk dari @caller">
+    <div class="callx-incoming" role="alertdialog" aria-live="assertive" aria-label="Incoming call from @caller">
         <div class="callx-incoming-main">
             <PersonAvatar Nik="@callerNik" Name="@caller" Size="52" Class="callx-avatar callx-ring" Decorative="true" />
             <div class="callx-incoming-text">
                 <strong>@caller</strong>
-                <span><i data-lucide="phone-incoming"></i> Panggilan suara masuk…</span>
+                <span><i data-lucide="phone-incoming"></i> Incoming voice call…</span>
             </div>
         </div>
         @if (CallSvc.NeedsHttps)
         {
-            <p class="callx-warn"><i data-lucide="shield-alert"></i> Halaman ini http — mikrofon Anda tidak bisa dipakai. Anda hanya bisa mendengar.</p>
+            <p class="callx-warn"><i data-lucide="shield-alert"></i> This page is on http — your microphone can't be used. You can only listen.</p>
         }
         @if (showReplies)
         {
-            <div class="callx-replies" role="group" aria-label="Tolak dan kirim pesan">
+            <div class="callx-replies" role="group" aria-label="Decline and send a message">
                 @foreach (var reply in QuickReplies)
                 {
                     <button type="button" disabled="@busy" @onclick="() => DeclineWithMessage(reply)">@reply</button>
                 }
                 <form class="callx-reply-custom" @onsubmit="() => DeclineWithMessage(customReply)" @onsubmit:preventDefault="true">
-                    <input aria-label="Pesan lain" placeholder="Tulis pesan lain…" maxlength="500" @bind="customReply" @bind:event="oninput" />
-                    <button type="submit" disabled="@(busy || string.IsNullOrWhiteSpace(customReply))" aria-label="Tolak dan kirim"><i data-lucide="send"></i></button>
+                    <input aria-label="Other message" placeholder="Write another message…" maxlength="500" @bind="customReply" @bind:event="oninput" />
+                    <button type="submit" disabled="@(busy || string.IsNullOrWhiteSpace(customReply))" aria-label="Decline and send"><i data-lucide="send"></i></button>
                 </form>
             </div>
         }
         <div class="callx-incoming-actions">
-            <button type="button" class="callx-btn callx-decline" disabled="@busy" @onclick="DeclineCall"><i data-lucide="phone-off"></i> Tolak</button>
-            <button type="button" class="callx-btn callx-ghost @(showReplies ? "on" : "")" aria-expanded="@(showReplies ? "true" : "false")" @onclick="() => showReplies = !showReplies"><i data-lucide="message-square-text"></i> Pesan</button>
-            <button type="button" class="callx-btn callx-accept" disabled="@busy" @onclick="AcceptCall"><i data-lucide="phone"></i> Terima</button>
+            <button type="button" class="callx-btn callx-decline" disabled="@busy" @onclick="DeclineCall"><i data-lucide="phone-off"></i> Decline</button>
+            <button type="button" class="callx-btn callx-ghost @(showReplies ? "on" : "")" aria-expanded="@(showReplies ? "true" : "false")" @onclick="() => showReplies = !showReplies"><i data-lucide="message-square-text"></i> Message</button>
+            <button type="button" class="callx-btn callx-accept" disabled="@busy" @onclick="AcceptCall"><i data-lucide="phone"></i> Accept</button>
         </div>
     </div>
 }
 else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
 {
     var isOutgoing = CallSvc.IsOutgoingRing;
-    var peerName = CallSvc.RemotePeer?.Name ?? "Rekan kerja";
+    var peerName = CallSvc.RemotePeer?.Name ?? "Colleague";
     var peerNik = CallSvc.RemotePeer?.Nik;
     var muted = CallSvc.ActiveMe?.IsMuted == true;
     var (stateLabel, stateClass) = ConnectionBadge(isOutgoing);
 
     @if (isMinimized)
     {
-        <div @ref="dragEl" class="callx-pill" role="region" aria-label="Panggilan dengan @peerName">
-            <button type="button" class="callx-pill-open" @onclick="() => isMinimized = false" title="Buka jendela panggilan">
+        <div @ref="dragEl" class="callx-pill" role="region" aria-label="Call with @peerName">
+            <button type="button" class="callx-pill-open" @onclick="() => isMinimized = false" title="Open call window">
                 <PersonAvatar Nik="@peerNik" Name="@peerName" Size="34" Class="@($"callx-avatar sm avatar-remote-speaker {(isOutgoing ? "callx-ring" : "")}")" Decorative="true" />
                 <span class="callx-pill-text">
                     <strong>@peerName</strong>
-                    <small class="callx-state-text @stateClass">@(isOutgoing ? "Memanggil…" : FormattedElapsed)</small>
+                    <small class="callx-state-text @stateClass">@(isOutgoing ? "Calling…" : FormattedElapsed)</small>
                 </span>
             </button>
             @if (CallSvc.IsActiveCall)
             {
-                <button type="button" class="callx-round @(muted ? "on" : "")" @onclick="ToggleMute" aria-pressed="@(muted ? "true" : "false")" title="@(muted ? "Nyalakan mikrofon" : "Bisukan mikrofon")"><i data-lucide="@(muted ? "mic-off" : "mic")"></i></button>
+                <button type="button" class="callx-round @(muted ? "on" : "")" @onclick="ToggleMute" aria-pressed="@(muted ? "true" : "false")" title="@(muted ? "Unmute microphone" : "Mute microphone")"><i data-lucide="@(muted ? "mic-off" : "mic")"></i></button>
             }
-            <button type="button" class="callx-round hangup" @onclick="EndCall" title="@(isOutgoing ? "Batalkan" : "Akhiri panggilan")"><i data-lucide="phone-off"></i></button>
+            <button type="button" class="callx-round hangup" @onclick="EndCall" title="@(isOutgoing ? "Cancel" : "End call")"><i data-lucide="phone-off"></i></button>
         </div>
     }
     else
     {
-        <div @ref="dragEl" class="callx-window" role="dialog" aria-label="Panggilan suara dengan @peerName">
-            <span class="callx-resize" aria-hidden="true" title="Seret untuk mengubah ukuran"></span>
-            <div class="callx-head callx-drag-handle" title="Seret untuk memindahkan">
+        <div @ref="dragEl" class="callx-window" role="dialog" aria-label="Voice call with @peerName">
+            <span class="callx-resize" aria-hidden="true" title="Drag to resize"></span>
+            <div class="callx-head callx-drag-handle" title="Drag to move">
                 <span class="callx-badge @stateClass"><span class="callx-dot"></span>@stateLabel</span>
-                <button type="button" class="callx-icon" @onclick="() => isMinimized = true" title="Perkecil" aria-label="Perkecil jendela panggilan"><i data-lucide="minimize-2"></i></button>
+                <button type="button" class="callx-icon" @onclick="() => isMinimized = true" title="Minimize" aria-label="Minimize call window"><i data-lucide="minimize-2"></i></button>
             </div>
 
             <div class="callx-body">
                 <PersonAvatar Nik="@peerNik" Name="@peerName" Size="96" Class="@($"callx-avatar lg avatar-remote-speaker {(isOutgoing ? "callx-ring" : "")}")" Decorative="true" />
                 <h2>@peerName</h2>
                 <div class="callx-timer" aria-live="off">
-                    @if (isOutgoing) { <span>Memanggil… @RingCountdown</span> }
+                    @if (isOutgoing) { <span>Calling… @RingCountdown</span> }
                     else { <span>@FormattedElapsed</span> }
                 </div>
 
                 @if (CallSvc.IsActiveCall)
                 {
                     <div class="callx-meters" aria-hidden="true">
-                        <div><i data-lucide="@(muted ? "mic-off" : "mic")"></i><span class="callx-meter" data-meter="local"><span></span></span><small>Anda</small></div>
+                        <div><i data-lucide="@(muted ? "mic-off" : "mic")"></i><span class="callx-meter" data-meter="local"><span></span></span><small>You</small></div>
                         <div><i data-lucide="volume-2"></i><span class="callx-meter" data-meter="remote"><span></span></span><small>@FirstName(peerName)</small></div>
                     </div>
                 }
@@ -240,7 +240,7 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
                 }
                 else if (CallSvc.NeedsHttps)
                 {
-                    <p class="callx-warn"><i data-lucide="shield-alert"></i> Mikrofon butuh HTTPS — lawan bicara tidak bisa mendengar Anda.</p>
+                    <p class="callx-warn"><i data-lucide="shield-alert"></i> The microphone needs HTTPS — the other person can't hear you.</p>
                 }
             </div>
 
@@ -251,19 +251,19 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
             @if (showDevices)
             {
                 <div class="callx-devices">
-                    <label>Mikrofon
+                    <label>Microphone
                         <select @onchange="OnInputChanged">
                             @foreach (var d in devices.Inputs) { <option value="@d.Id" selected="@(d.Id == inputId)">@d.Label</option> }
-                            @if (devices.Inputs.Count == 0) { <option value="">Tidak ada mikrofon</option> }
+                            @if (devices.Inputs.Count == 0) { <option value="">No microphone</option> }
                         </select>
                     </label>
                     <label>Speaker
                         <select @onchange="OnOutputChanged" disabled="@(CallSvc.Support?.OutputSelect != true)">
                             @foreach (var d in devices.Outputs) { <option value="@d.Id" selected="@(d.Id == outputId)">@d.Label</option> }
-                            @if (devices.Outputs.Count == 0) { <option value="">Default sistem</option> }
+                            @if (devices.Outputs.Count == 0) { <option value="">System default</option> }
                         </select>
                     </label>
-                    @if (CallSvc.Support?.OutputSelect != true) { <small>Browser ini memakai speaker default sistem.</small> }
+                    @if (CallSvc.Support?.OutputSelect != true) { <small>This browser uses the system default speaker.</small> }
                 </div>
             }
 
@@ -271,7 +271,7 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
                 @if (CallSvc.IsActiveCall)
                 {
                     <button type="button" class="callx-ctrl @(muted ? "on" : "")" @onclick="ToggleMute" aria-pressed="@(muted ? "true" : "false")">
-                        <span><i data-lucide="@(muted ? "mic-off" : "mic")"></i></span>@(muted ? "Nyalakan" : "Bisukan")
+                        <span><i data-lucide="@(muted ? "mic-off" : "mic")"></i></span>@(muted ? "Unmute" : "Mute")
                     </button>
                 }
                 @if (CanAddPerson)
@@ -279,10 +279,10 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
                     @AddPersonButton()
                 }
                 <button type="button" class="callx-ctrl @(showDevices ? "on" : "")" @onclick="ToggleDevices" aria-expanded="@(showDevices ? "true" : "false")">
-                    <span><i data-lucide="settings-2"></i></span>Perangkat
+                    <span><i data-lucide="settings-2"></i></span>Devices
                 </button>
                 <button type="button" class="callx-ctrl hangup" @onclick="EndCall">
-                    <span><i data-lucide="phone-off"></i></span>@(isOutgoing ? "Batalkan" : "Akhiri")
+                    <span><i data-lucide="phone-off"></i></span>@(isOutgoing ? "Cancel" : "End")
                 </button>
             </div>
         </div>
@@ -293,16 +293,16 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
     <div class="callx-toast" role="status">
         <i data-lucide="phone-off"></i>
         <span>@CallSvc.LastEndReason</span>
-        <button type="button" class="callx-icon" aria-label="Tutup" @onclick="() => CallSvc.DismissEndReason()"><i data-lucide="x"></i></button>
+        <button type="button" class="callx-icon" aria-label="Close" @onclick="() => CallSvc.DismissEndReason()"><i data-lucide="x"></i></button>
     </div>
 }
 
 @code {
     private static readonly string[] QuickReplies =
     [
-        "Sedang rapat, nanti saya telepon balik.",
-        "Sebentar lagi saya hubungi.",
-        "Bisa lewat chat saja?",
+        "In a meeting, I'll call you back.",
+        "I'll call you shortly.",
+        "Can we chat instead?",
     ];
 
     private bool isMinimized;
@@ -372,19 +372,19 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
         {
             if (CallSvc.Current is not { } c) return "";
             var left = CallSvc.RingTimeoutSeconds - (int)(DateTime.UtcNow - DateTime.SpecifyKind(c.StartedAt, DateTimeKind.Utc)).TotalSeconds;
-            return left is > 0 and <= 60 ? $"({left} dtk)" : "";
+            return left is > 0 and <= 60 ? $"({left}s)" : "";
         }
     }
 
     private (string Label, string Css) ConnectionBadge(bool isOutgoing)
     {
-        if (isOutgoing) return ("Memanggil", "ringing");
+        if (isOutgoing) return ("Calling", "ringing");
         return CallSvc.WebRtcState switch
         {
-            "connected" => ("Terhubung", "ok"),
-            "reconnecting" => ("Menyambung ulang…", "warn"),
-            "failed" => ("Audio gagal tersambung", "bad"),
-            _ => ("Menyambungkan audio…", "warn"),
+            "connected" => ("Connected", "ok"),
+            "reconnecting" => ("Reconnecting…", "warn"),
+            "failed" => ("Audio failed to connect", "bad"),
+            _ => ("Connecting audio…", "warn"),
         };
     }
 
@@ -442,7 +442,7 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
         try
         {
             var room = await CallSvc.AcceptCurrentAsync();
-            if (room is null) Toasts.Show(CallSvc.LastError ?? "Gagal menerima panggilan.", ToastKind.Error);
+            if (room is null) Toasts.Show(CallSvc.LastError ?? "Couldn't accept the call.", ToastKind.Error);
         }
         finally { busy = false; }
     }
@@ -461,7 +461,7 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
         try
         {
             var sent = await CallSvc.DeclineWithMessageAsync(text);
-            Toasts.Show(sent ? "Panggilan ditolak, pesan terkirim." : "Panggilan ditolak, tapi pesan gagal dikirim.",
+            Toasts.Show(sent ? "Call declined, message sent." : "Call declined, but the message couldn't be sent.",
                 sent ? ToastKind.Success : ToastKind.Error);
         }
         finally { busy = false; }
@@ -479,9 +479,9 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
     private string TileState(IPop.Application.Calls.CallParticipantDto p, bool inCall, GroupMediaParticipant? media)
     {
         if (!inCall)
-            return CallSvc.IsRinging(p) ? "Memanggil…" : "Belum bergabung";
-        if (p.Nik == Auth.Me?.Nik) return CallSvc.WebRtcState == "connected" ? "Terhubung" : "Menghubungkan…";
-        return media is null ? "Menghubungkan…" : media.Speaking && !media.Muted ? "Berbicara" : "Terhubung";
+            return CallSvc.IsRinging(p) ? "Calling…" : "Not joined yet";
+        if (p.Nik == Auth.Me?.Nik) return CallSvc.WebRtcState == "connected" ? "Connected" : "Connecting…";
+        return media is null ? "Connecting…" : media.Speaking && !media.Muted ? "Speaking" : "Connected";
     }
 
     /// Any accepted participant may ring someone in: a group/ad-hoc call any time, a 1:1 once answered.
@@ -523,7 +523,7 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
             }
             return;
         }
-        var name = string.IsNullOrWhiteSpace(room.Title) ? "Grup" : room.Title!;
+        var name = string.IsNullOrWhiteSpace(room.Title) ? "Group" : room.Title!;
         var color = string.IsNullOrWhiteSpace(room.AvatarColor) ? AvatarColor(name) : room.AvatarColor;
         <span class="callx-avatar callx-group-av @extra" style="background:@color">
             @if (!string.IsNullOrEmpty(room.AvatarUrl))
@@ -555,7 +555,7 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
     private async Task OnInputChanged(ChangeEventArgs e)
     {
         inputId = e.Value?.ToString() ?? "";
-        if (!await CallSvc.SetInputDeviceAsync(inputId)) Toasts.Show("Mikrofon itu tidak bisa dipakai.", ToastKind.Error);
+        if (!await CallSvc.SetInputDeviceAsync(inputId)) Toasts.Show("That microphone can't be used.", ToastKind.Error);
     }
 
     private async Task OnOutputChanged(ChangeEventArgs e)
@@ -566,6 +566,8 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
 
     private static string Initials(string name) =>
         string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w[0]).Take(2)).ToUpperInvariant();
+
+    private static string People(int n) => n == 1 ? "1 person" : $"{n} people";
 
     private static string FirstName(string name) => name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
 

@@ -92,10 +92,10 @@
 
     function micError(e) {
         const n = e?.name || '';
-        if (n === 'NotAllowedError' || n === 'SecurityError') return 'Akses mikrofon ditolak. Izinkan mikrofon di browser untuk bicara.';
-        if (n === 'NotFoundError' || n === 'OverconstrainedError') return 'Mikrofon tidak ditemukan. Anda hanya bisa mendengar.';
-        if (n === 'NotReadableError') return 'Mikrofon sedang dipakai aplikasi lain.';
-        return 'Mikrofon tidak bisa dipakai: ' + (e?.message || n);
+        if (n === 'NotAllowedError' || n === 'SecurityError') return 'Microphone access was denied. Allow the microphone in your browser to talk.';
+        if (n === 'NotFoundError' || n === 'OverconstrainedError') return 'No microphone found. You can only listen.';
+        if (n === 'NotReadableError') return 'The microphone is being used by another app.';
+        return 'The microphone can\'t be used: ' + (e?.message || n);
     }
 
     async function leave() {
@@ -113,7 +113,7 @@
         await leave();
         dotnet = dotnetRef;
         const lk = LK();
-        if (!lk?.Room) { error('Klien media grup tidak tersedia.'); state('failed'); return false; }
+        if (!lk?.Room) { error('The group media client isn\'t available.'); state('failed'); return false; }
         const target = resolveUrl(url);
         const next = new lk.Room({
             adaptiveStream: false,
@@ -133,7 +133,7 @@
             .on(E.SignalReconnecting, () => state('reconnecting'))
             .on(E.Reconnected, () => { state('connected'); schedule(); })
             .on(E.AudioPlaybackStatusChanged, () => {
-                if (!next.canPlaybackAudio) error('Klik di halaman untuk mengaktifkan suara panggilan.');
+                if (!next.canPlaybackAudio) error('Click anywhere on the page to turn on call audio.');
             })
             .on(E.Disconnected, reason => {
                 if (room !== next) return;
@@ -148,7 +148,7 @@
         } catch (e) {
             log('connect failed', target, e);
             try { await next.disconnect(); } catch { }
-            error('Gagal tersambung ke server media (' + target + '): ' + (e?.message || e));
+            error('Couldn\'t connect to the media server (' + target + '): ' + (e?.message || e));
             state('failed');
             return false;
         }

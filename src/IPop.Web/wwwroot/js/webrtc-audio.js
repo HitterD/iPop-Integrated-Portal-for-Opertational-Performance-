@@ -74,20 +74,20 @@
         switch (err && err.name) {
             case 'NotAllowedError':
             case 'SecurityError':
-                return { code: 'denied', message: 'Izin mikrofon ditolak. Klik ikon gembok di address bar, izinkan Mikrofon, lalu coba lagi.' };
+                return { code: 'denied', message: 'Microphone permission was denied. Click the lock icon in the address bar, allow Microphone, then try again.' };
             case 'NotFoundError':
             case 'DevicesNotFoundError':
             case 'OverconstrainedError':
-                return { code: 'no-device', message: 'Tidak ada mikrofon terdeteksi. Colokkan headset/mic, atau lanjut dalam mode hanya mendengar.' };
+                return { code: 'no-device', message: 'No microphone detected. Plug in a headset or mic, or continue in listen-only mode.' };
             case 'NotReadableError':
             case 'TrackStartError':
-                return { code: 'busy', message: 'Mikrofon sedang dipakai aplikasi lain (Zoom/Teams?). Tutup aplikasi itu lalu coba lagi.' };
+                return { code: 'busy', message: 'The microphone is being used by another app (Zoom/Teams?). Close that app, then try again.' };
             default:
-                return { code: 'error', message: 'Mikrofon tidak bisa dibuka: ' + ((err && err.message) || 'unknown error') };
+                return { code: 'error', message: 'Couldn\'t open the microphone: ' + ((err && err.message) || 'unknown error') };
         }
     }
 
-    const insecureMessage = 'Panggilan butuh HTTPS: browser hanya mengizinkan mikrofon di halaman https atau localhost.';
+    const insecureMessage = 'Calls need HTTPS: browsers only allow the microphone on https or localhost pages.';
 
     async function openMic(deviceId) {
         const base = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
@@ -109,7 +109,7 @@
         if (deviceId !== undefined) inputDeviceId = deviceId || null;
         const support = checkSupport();
         if (!support.mediaDevices) {
-            return { ok: false, code: support.secure ? 'unsupported' : 'insecure', message: support.secure ? 'Browser ini tidak mendukung mikrofon.' : insecureMessage };
+            return { ok: false, code: support.secure ? 'unsupported' : 'insecure', message: support.secure ? 'This browser doesn\'t support the microphone.' : insecureMessage };
         }
         if (localStream && localStream.getAudioTracks().some(t => t.readyState === 'live')) {
             return { ok: true };
@@ -262,7 +262,7 @@
         const map = (kind, fallback) => all
             .filter(d => d.kind === kind && d.deviceId !== 'communications')
             .map((d, i) => ({ id: d.deviceId === 'default' ? '' : d.deviceId, label: d.label || `${fallback} ${i + 1}` }));
-        return { inputs: map('audioinput', 'Mikrofon'), outputs: map('audiooutput', 'Speaker') };
+        return { inputs: map('audioinput', 'Microphone'), outputs: map('audiooutput', 'Speaker') };
     }
 
     /// Switch microphone mid-call without renegotiating (replaceTrack on the audio sender).
@@ -294,7 +294,7 @@
         outputDeviceId = deviceId || null;
         if (remoteAudioEl && remoteAudioEl.setSinkId) {
             try { await remoteAudioEl.setSinkId(outputDeviceId || ''); }
-            catch (e) { reportError('Speaker tidak bisa dipilih: ' + e.message); return false; }
+            catch (e) { reportError('Couldn\'t select the speaker: ' + e.message); return false; }
         }
         return true;
     }
@@ -305,7 +305,7 @@
         stopMicTest();
         const support = checkSupport();
         if (!support.mediaDevices) {
-            return { ok: false, code: support.secure ? 'unsupported' : 'insecure', message: support.secure ? 'Browser ini tidak mendukung mikrofon.' : insecureMessage };
+            return { ok: false, code: support.secure ? 'unsupported' : 'insecure', message: support.secure ? 'This browser doesn\'t support the microphone.' : insecureMessage };
         }
         try {
             testStream = await openMic(deviceId || null);
@@ -347,7 +347,7 @@
             await el.play();
         } catch (e) {
             ctx.close();
-            return { ok: false, message: 'Speaker tidak bisa memutar suara: ' + e.message };
+            return { ok: false, message: 'The speaker couldn\'t play sound: ' + e.message };
         }
         setTimeout(() => { el.pause(); el.srcObject = null; ctx.close(); }, 900);
         return { ok: true };
@@ -386,7 +386,7 @@
         const playPromise = remoteAudioEl.play();
         if (playPromise !== undefined) {
             playPromise.catch(() => {
-                reportError('Browser memblokir suara lawan bicara. Klik di mana saja pada halaman untuk mengaktifkan audio.');
+                reportError('The browser blocked the other person\'s audio. Click anywhere on the page to turn on audio.');
                 document.addEventListener('click', () => { if (remoteAudioEl) remoteAudioEl.play().catch(() => { }); }, { once: true });
             });
         }
@@ -410,7 +410,7 @@
         connectTimer = setTimeout(() => {
             if (!peerConnection || peerConnection.connectionState === 'connected') return;
             reportState('failed');
-            reportError('Audio tidak bisa tersambung dalam 20 detik. Kemungkinan jaringan/firewall memblokir; coba panggil ulang.');
+            reportError('Audio couldn\'t connect within 20 seconds. A network or firewall may be blocking it; try calling again.');
         }, CONNECT_TIMEOUT_MS);
     }
 
@@ -438,12 +438,12 @@
                 restartedIce = true;
                 reportState('reconnecting');
                 peerConnection.restartIce();
-                sendOffer({ iceRestart: true }).catch(e => reportError('Gagal menyambung ulang: ' + e.message));
+                sendOffer({ iceRestart: true }).catch(e => reportError('Couldn\'t reconnect: ' + e.message));
                 armConnectTimer();
             } else {
                 clearConnectTimer();
                 reportState('failed');
-                reportError('Koneksi audio terputus. Coba panggil ulang.');
+                reportError('The audio connection dropped. Try calling again.');
             }
         }
     }
@@ -463,7 +463,7 @@
         restartedIce = false;
 
         if (typeof RTCPeerConnection === 'undefined') {
-            const err = 'Browser ini tidak mendukung panggilan suara (WebRTC).';
+            const err = 'This browser doesn\'t support voice calls (WebRTC).';
             reportError(err);
             reportState('failed');
             return { success: false, error: err };
@@ -478,7 +478,7 @@
                 const mic = await prepareMic();
                 if (!mic.ok) {
                     // Keep the call alive in listen-only mode; tell the user why they can't be heard.
-                    reportError(mic.message + ' (Anda tetap bisa mendengar.)');
+                    reportError(mic.message + ' (You can still listen.)');
                 }
                 if (localStream) {
                     localStream.getAudioTracks().forEach(track => { track.enabled = true; });
@@ -510,7 +510,7 @@
                 if (isCaller) await sendOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
                 return { success: true };
             } catch (err) {
-                const msg = err.message || 'Gagal memulai audio.';
+                const msg = err.message || 'Couldn\'t start audio.';
                 reportError(msg);
                 reportState('failed');
                 return { success: false, error: msg };
@@ -559,7 +559,7 @@
             }
         } catch (err) {
             console.error('[IPop WebRTC] Error handling signal:', type, err);
-            reportError(`Sinyal panggilan (${type}) gagal diproses: ${err.message}`);
+            reportError(`Couldn't process the call signal (${type}): ${err.message}`);
         }
     }
 

@@ -161,7 +161,7 @@ public static class MeetingEndpoints
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
             var isMember = await db.ChatRoomMembers.AnyAsync(m => m.RoomId == roomId && m.UserId == userId.Value, ct);
-            if (!isMember) return Results.Json(new { code = "forbidden", message = "Bukan anggota ruang." }, statusCode: 403);
+            if (!isMember) return Results.Json(new { code = "forbidden", message = "Not a room member." }, statusCode: 403);
 
             var rows = await db.CalendarEvents.AsNoTracking()
                 .Where(e => e.RoomId == roomId)
@@ -387,8 +387,8 @@ public static class MeetingEndpoints
     public static Task PublishInvitedAsync(INotificationGatewayService notifs, MeetingDto dto, IReadOnlyList<Guid> invited, CancellationToken ct, ILogger? log = null)
     {
         var when = dto.StartAt.ToLocalTime();
-        return PublishBestEffortAsync(notifs, log, "meeting.invited", $"Undangan rapat: {dto.Title}",
-            $"{dto.OrganizerName} mengundang Anda ke \"{dto.Title}\" pada {when:dd MMM, HH:mm}.",
+        return PublishBestEffortAsync(notifs, log, "meeting.invited", $"Meeting invite: {dto.Title}",
+            $"{dto.OrganizerName} invited you to \"{dto.Title}\" on {when:dd MMM, HH:mm}.",
             invited, "normal", $"/calls?tab=scheduled&meeting={dto.Id}");
     }
 

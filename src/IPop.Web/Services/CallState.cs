@@ -280,13 +280,13 @@ public partial class CallState : IAsyncDisposable
 
     private string EndReason(CallRoomDto room, bool isCaller) => room.Status switch
     {
-        CallStatus.Declined => "Panggilan ditolak",
+        CallStatus.Declined => "Call declined",
         CallStatus.Missed when isCaller => room.EndedAt is { } end && end - room.StartedAt >= TimeSpan.FromSeconds(RingTimeoutSeconds - 1)
-            ? "Tidak dijawab" : "Panggilan dibatalkan",
-        CallStatus.Missed => "Panggilan tak terjawab",
+            ? "No answer" : "Call canceled",
+        CallStatus.Missed => "Missed call",
         _ => room.EstablishedAt is { } est && room.EndedAt is { } ended
-            ? $"Panggilan selesai · {FormatDuration(ended - est)}"
-            : "Panggilan selesai",
+            ? $"Call ended · {FormatDuration(ended - est)}"
+            : "Call ended",
     };
 
     /// Another device of this account placed or answered the call: close it here quietly.
@@ -318,7 +318,7 @@ public partial class CallState : IAsyncDisposable
                 await _js.InvokeVoidAsync("ipopAudio.endCall");
             }
             catch (JSException) { }
-            LastEndReason = isCaller ? "Panggilan berlangsung di perangkat lain" : "Panggilan dijawab di perangkat lain";
+            LastEndReason = isCaller ? "Call continued on another device" : "Call answered on another device";
             StateChanged?.Invoke();
         }
     }
@@ -342,9 +342,9 @@ public partial class CallState : IAsyncDisposable
         _webRtcActiveCallId = null;
         LastEndReason = reason ?? (Current?.Status switch
         {
-            CallStatus.Declined => "Panggilan ditolak",
-            CallStatus.Missed => "Tidak dijawab",
-            _ => "Panggilan selesai"
+            CallStatus.Declined => "Call declined",
+            CallStatus.Missed => "No answer",
+            _ => "Call ended"
         });
         Current = null;
         WebRtcState = null;
@@ -372,7 +372,7 @@ public partial class CallState : IAsyncDisposable
         if (PracticeCall?.Invoke(peerNik) == true) return null;
         if (HasLiveCall)
         {
-            LastError = "Masih ada panggilan yang berlangsung.";
+            LastError = "Another call is still in progress.";
             StateChanged?.Invoke();
             return null;
         }
@@ -416,7 +416,7 @@ public partial class CallState : IAsyncDisposable
         catch (Exception ex)
         {
             await _js.InvokeVoidAsync("ipopAudio.endCall");
-            LastError = "Panggilan gagal dimulai: " + ex.Message;
+            LastError = "Couldn't start the call: " + ex.Message;
             StateChanged?.Invoke();
             return null;
         }
@@ -441,7 +441,7 @@ public partial class CallState : IAsyncDisposable
                     await HandleCallEndedAsync();
                     return null;
                 }
-                LastError = $"Aksi panggilan gagal ({(int)res.StatusCode}).";
+                LastError = $"Call action failed ({(int)res.StatusCode}).";
                 StateChanged?.Invoke();
                 return null;
             }
@@ -454,7 +454,7 @@ public partial class CallState : IAsyncDisposable
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
         {
-            LastError = "Server panggilan tidak terjangkau. Periksa koneksi Anda.";
+            LastError = "Can't reach the call server. Check your connection.";
             StateChanged?.Invoke();
             return null;
         }

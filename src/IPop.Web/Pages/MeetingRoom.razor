@@ -31,7 +31,7 @@
         {
             @* Same LiveKit client + call window as group calls (CallState.JoinMeetingAsync). *@
             <p role="status">@connectionStatus</p>
-            <button type="button" class="btn-primary" @onclick="Join" disabled="@connecting">@(connecting ? "Menghubungkan…" : "Gabung rapat")</button>
+            <button type="button" class="btn-primary" @onclick="Join" disabled="@connecting">@(connecting ? "Connecting…" : "Join meeting")</button>
         }
     </div>
 </div>

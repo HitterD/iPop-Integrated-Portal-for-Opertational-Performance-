@@ -10,13 +10,13 @@ public class CallsScheduleTests
     private static readonly DateTime Today = new(2026, 9, 27); // Sunday
 
     [Fact]
-    public void DayLabel_TodayTomorrowThenIndonesianShortDate()
+    public void DayLabel_TodayTomorrowThenEnglishShortDate()
     {
-        Assert.Equal("Hari ini", CallsSchedule.DayLabel(Today.AddHours(15), Today));
-        Assert.Equal("Besok", CallsSchedule.DayLabel(Today.AddDays(1), Today));
-        Assert.Equal("Sel, 29 Sep", CallsSchedule.DayLabel(Today.AddDays(2), Today));
-        Assert.Equal("Sen, 5 Okt", CallsSchedule.DayLabel(new DateTime(2026, 10, 5), Today));
-        Assert.Equal("Sen, 4 Jan 2027", CallsSchedule.DayLabel(new DateTime(2027, 1, 4), Today));
+        Assert.Equal("Today", CallsSchedule.DayLabel(Today.AddHours(15), Today));
+        Assert.Equal("Tomorrow", CallsSchedule.DayLabel(Today.AddDays(1), Today));
+        Assert.Equal("Tue, Sep 29", CallsSchedule.DayLabel(Today.AddDays(2), Today));
+        Assert.Equal("Mon, Oct 5", CallsSchedule.DayLabel(new DateTime(2026, 10, 5), Today));
+        Assert.Equal("Mon, Jan 4, 2027", CallsSchedule.DayLabel(new DateTime(2027, 1, 4), Today));
     }
 
     [Fact]
@@ -32,11 +32,11 @@ public class CallsScheduleTests
     }
 
     [Theory]
-    [InlineData("accept", "Hadir")]
-    [InlineData("maybe", "Mungkin")]
-    [InlineData("decline", "Tidak")]
-    [InlineData("pending", "Belum dijawab")]
-    [InlineData(null, "Belum dijawab")]
+    [InlineData("accept", "Going")]
+    [InlineData("maybe", "Maybe")]
+    [InlineData("decline", "Not going")]
+    [InlineData("pending", "No response")]
+    [InlineData(null, "No response")]
     public void RsvpLabel_Translates(string? status, string label) => Assert.Equal(label, CallsSchedule.RsvpLabel(status));
 
     [Fact]
@@ -44,9 +44,9 @@ public class CallsScheduleTests
     {
         Assert.Equal(30, CallsSchedule.ChipFor(TimeSpan.FromMinutes(30)));
         Assert.Null(CallsSchedule.ChipFor(TimeSpan.FromMinutes(45)));
-        Assert.Equal("15 mnt", CallsSchedule.DurationLabel(TimeSpan.FromMinutes(15)));
-        Assert.Equal("1 jam", CallsSchedule.DurationLabel(TimeSpan.FromMinutes(60)));
-        Assert.Equal("1 j 30 mnt", CallsSchedule.DurationLabel(TimeSpan.FromMinutes(90)));
+        Assert.Equal("15 min", CallsSchedule.DurationLabel(TimeSpan.FromMinutes(15)));
+        Assert.Equal("1 hr", CallsSchedule.DurationLabel(TimeSpan.FromMinutes(60)));
+        Assert.Equal("1 hr 30 min", CallsSchedule.DurationLabel(TimeSpan.FromMinutes(90)));
     }
 
     [Fact]

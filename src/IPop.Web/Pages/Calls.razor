@@ -19,26 +19,26 @@
             <button class="@(tab == "scheduled" ? "active" : "")" @onclick='() => SetTab("scheduled")'><i data-lucide="calendar-clock"></i> Scheduled <span>@meetings.Count</span></button>
         </div>
         <div class="v6-search calls-search"><i data-lucide="search"></i><input type="search" aria-label="Search calls or meetings" placeholder="Search calls" @bind="search" @bind:event="oninput" /></div>
-        <button type="button" class="ghost-btn" @onclick="() => showDeviceTest = true"><i data-lucide="headphones"></i>Tes perangkat</button>
+        <button type="button" class="ghost-btn" @onclick="() => showDeviceTest = true"><i data-lucide="headphones"></i>Test devices</button>
         <button type="button" class="ghost-btn" @onclick="OpenSchedule"><i data-lucide="calendar-plus"></i>Schedule</button>
         <button type="button" class="btn-primary" @onclick="FocusCallPicker"><i data-lucide="phone"></i>New call</button>
     </div>
 
     <Modal IsOpen="showSchedule" IsOpenChanged="v => showSchedule = v" Wide="true" CloseOnBackdrop="false"
-           Title="@(editingMeetingId is null ? "Jadwalkan rapat" : "Ubah rapat")"
-           Subtitle="@(editingMeetingId is null ? "Undang orang atau satu grup, peserta langsung dapat notifikasi." : "Peserta yang baru ditambahkan akan diberi tahu.")">
+           Title="@(editingMeetingId is null ? "Schedule a meeting" : "Edit meeting")"
+           Subtitle="@(editingMeetingId is null ? "Invite people or a group — attendees are notified right away." : "Newly added attendees will be notified.")">
         <ChildContent>
             <div class="mtg-form">
-                <label class="mtg-field"><span class="mtg-label">Judul</span>
-                    <input class="mtg-input" @bind="formTitle" @bind:event="oninput" maxlength="300" placeholder="mis. Sprint review" aria-label="Judul rapat" /></label>
+                <label class="mtg-field"><span class="mtg-label">Title</span>
+                    <input class="mtg-input" @bind="formTitle" @bind:event="oninput" maxlength="300" placeholder="e.g. Sprint review" aria-label="Meeting title" /></label>
                 <div class="mtg-grid">
-                    <div class="mtg-field"><span class="mtg-label">Mulai</span>
-                        <AppDateTimePicker TValue="DateTime" Value="formStart" ValueChanged="OnStartChanged" Min="@(editingMeetingId is null ? DateTime.Now : null)" Class="dp-block" AriaLabel="Waktu mulai" /></div>
-                    <div class="mtg-field"><span class="mtg-label">Pengingat</span>
-                        <AppSelect Value="@formReminder" ValueChanged="OnReminderChanged" Options="ReminderOptions" Label="Pengingat" CssClass="mtg-select" /></div>
+                    <div class="mtg-field"><span class="mtg-label">Start</span>
+                        <AppDateTimePicker TValue="DateTime" Value="formStart" ValueChanged="OnStartChanged" Min="@(editingMeetingId is null ? DateTime.Now : null)" Class="dp-block" AriaLabel="Start time" /></div>
+                    <div class="mtg-field"><span class="mtg-label">Reminder</span>
+                        <AppSelect Value="@formReminder" ValueChanged="OnReminderChanged" Options="ReminderOptions" Label="Reminder" CssClass="mtg-select" /></div>
                 </div>
-                <div class="mtg-field"><span class="mtg-label">Durasi</span>
-                    <div class="mtg-chips" role="group" aria-label="Durasi">
+                <div class="mtg-field"><span class="mtg-label">Duration</span>
+                    <div class="mtg-chips" role="group" aria-label="Duration">
                         @foreach (var minutes in CallsSchedule.DurationChoices)
                         {
                             var d = minutes;
@@ -48,38 +48,38 @@
                     </div>
                     @if (durationChip is null)
                     {
-                        <div class="mtg-end"><span class="mtg-label">Selesai</span>
-                            <AppDateTimePicker TValue="DateTime" Value="formEnd" ValueChanged="OnEndChanged" Min="formStart" Class="dp-block" AriaLabel="Waktu selesai" /></div>
+                        <div class="mtg-end"><span class="mtg-label">End</span>
+                            <AppDateTimePicker TValue="DateTime" Value="formEnd" ValueChanged="OnEndChanged" Min="formStart" Class="dp-block" AriaLabel="End time" /></div>
                     }
                     else
                     {
-                        <small class="mtg-hint">Selesai pukul @formEnd.ToString("HH:mm")</small>
+                        <small class="mtg-hint">Ends at @formEnd.ToString("HH:mm")</small>
                     }
                 </div>
-                <div class="mtg-field"><span class="mtg-label">Lokasi</span>
+                <div class="mtg-field"><span class="mtg-label">Location</span>
                     <div class="mtg-loc">
-                        <input class="mtg-input" @bind="formLocation" @bind:event="oninput" disabled="@formOnline" placeholder="@(formOnline ? CallsSchedule.OnlineLocation : "Ruang rapat, gedung…")" aria-label="Lokasi" />
+                        <input class="mtg-input" @bind="formLocation" @bind:event="oninput" disabled="@formOnline" placeholder="@(formOnline ? CallsSchedule.OnlineLocation : "Meeting room, building…")" aria-label="Location" />
                         <button type="button" class="mtg-toggle @(formOnline ? "on" : "")" role="switch" aria-checked="@(formOnline ? "true" : "false")" @onclick="() => formOnline = !formOnline">
                             <span class="mtg-switch"></span><i data-lucide="video"></i>Online · iPop Meeting
                         </button>
                     </div>
                 </div>
                 <label class="mtg-field"><span class="mtg-label">Agenda</span>
-                    <textarea class="mtg-input" rows="3" @bind="formAgenda" maxlength="4000" placeholder="Poin yang akan dibahas" aria-label="Agenda"></textarea></label>
-                <div class="mtg-field"><span class="mtg-label">Peserta <em>@formInvitees.Count</em></span>
+                    <textarea class="mtg-input" rows="3" @bind="formAgenda" maxlength="4000" placeholder="Points to discuss" aria-label="Agenda"></textarea></label>
+                <div class="mtg-field"><span class="mtg-label">Attendees <em>@formInvitees.Count</em></span>
                     <div class="mtg-invite-tabs" role="tablist">
-                        <button type="button" role="tab" class="@(inviteMode == "people" ? "on" : "")" aria-selected="@(inviteMode == "people" ? "true" : "false")" @onclick='() => inviteMode = "people"'><i data-lucide="user-plus"></i>Orang</button>
-                        <button type="button" role="tab" class="@(inviteMode == "group" ? "on" : "")" aria-selected="@(inviteMode == "group" ? "true" : "false")" @onclick="OpenGroupInvite"><i data-lucide="users"></i>Undang grup</button>
+                        <button type="button" role="tab" class="@(inviteMode == "people" ? "on" : "")" aria-selected="@(inviteMode == "people" ? "true" : "false")" @onclick='() => inviteMode = "people"'><i data-lucide="user-plus"></i>People</button>
+                        <button type="button" role="tab" class="@(inviteMode == "group" ? "on" : "")" aria-selected="@(inviteMode == "group" ? "true" : "false")" @onclick="OpenGroupInvite"><i data-lucide="users"></i>Invite group</button>
                     </div>
                     @if (inviteMode == "people")
                     {
-                        <PeoplePicker Placeholder="Cari nama atau NIK…" ValueChanged="AddInvitee" />
+                        <PeoplePicker Placeholder="Search name or NIK…" ValueChanged="AddInvitee" />
                     }
                     else
                     {
-                        <div class="mtg-groups" role="listbox" aria-label="Grup saya">
-                            @if (groupsLoading) { <div class="mtg-groups-empty">Memuat grup…</div> }
-                            else if (myGroups.Count == 0) { <div class="mtg-groups-empty">Anda belum tergabung di grup mana pun.</div> }
+                        <div class="mtg-groups" role="listbox" aria-label="My groups">
+                            @if (groupsLoading) { <div class="mtg-groups-empty">Loading groups…</div> }
+                            else if (myGroups.Count == 0) { <div class="mtg-groups-empty">You're not in any groups yet.</div> }
                             @foreach (var grp in myGroups)
                             {
                                 var g = grp;
@@ -94,8 +94,8 @@
                     }
                     @if (formRoomName is not null)
                     {
-                        <div class="mtg-linked"><i data-lucide="users"></i>Terhubung ke grup <strong>@formRoomName</strong>
-                            <button type="button" title="Lepas grup" aria-label="Lepas grup" @onclick="() => { formRoomId = null; formRoomName = null; }"><i data-lucide="x"></i></button></div>
+                        <div class="mtg-linked"><i data-lucide="users"></i>Linked to group <strong>@formRoomName</strong>
+                            <button type="button" title="Unlink group" aria-label="Unlink group" @onclick="() => { formRoomId = null; formRoomName = null; }"><i data-lucide="x"></i></button></div>
                     }
                     @if (formInvitees.Count > 0)
                     {
@@ -104,7 +104,7 @@
                             {
                                 var who = person;
                                 <span class="mtg-invitee"><PersonAvatar Nik="@who.Nik" Name="@who.Name" Size="20" Class="mtg-av sm" Decorative="true" />@who.Name
-                                    <button type="button" title="Hapus @who.Name" aria-label="Hapus @who.Name" @onclick="() => formInvitees.Remove(who)"><i data-lucide="x"></i></button></span>
+                                    <button type="button" title="Remove @who.Name" aria-label="Remove @who.Name" @onclick="() => formInvitees.Remove(who)"><i data-lucide="x"></i></button></span>
                             }
                         </div>
                     }
@@ -113,8 +113,8 @@
             </div>
         </ChildContent>
         <Footer>
-            <button type="button" class="btn-sm surface" @onclick="() => showSchedule = false">Batal</button>
-            <button type="button" class="btn-primary" disabled="@savingMeeting" @onclick="SaveMeeting">@(savingMeeting ? "Menyimpan…" : editingMeetingId is null ? "Jadwalkan" : "Simpan perubahan")</button>
+            <button type="button" class="btn-sm surface" @onclick="() => showSchedule = false">Cancel</button>
+            <button type="button" class="btn-primary" disabled="@savingMeeting" @onclick="SaveMeeting">@(savingMeeting ? "Saving…" : editingMeetingId is null ? "Schedule" : "Save changes")</button>
         </Footer>
     </Modal>
 
@@ -122,8 +122,8 @@
     {
         <div class="calls-https-banner" role="note">
             <i data-lucide="shield-alert"></i>
-            <span><strong>Panggilan butuh HTTPS.</strong> Di alamat http ini browser memblokir mikrofon, jadi lawan bicara tidak akan mendengar Anda.</span>
-            <a href="@SecureUrl">Buka versi aman</a>
+            <span><strong>Calls need HTTPS.</strong> On this http address the browser blocks the microphone, so the other person won't hear you.</span>
+            <a href="@SecureUrl">Open secure version</a>
         </div>
     }
     <CallDeviceTest Open="showDeviceTest" OpenChanged="v => showDeviceTest = v" />
@@ -149,7 +149,7 @@
             }
             @if (historyRows.Any(h => !h.Seen))
             {
-                <button type="button" class="calls-mark-seen" @onclick="MarkAllSeen"><i data-lucide="check-check"></i>Tandai semua dibaca</button>
+                <button type="button" class="calls-mark-seen" @onclick="MarkAllSeen"><i data-lucide="check-check"></i>Mark all as read</button>
             }
         </div>
     }
@@ -162,7 +162,7 @@
             </div>
             <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;flex-wrap:wrap">
                 <div style="flex:1 1 260px;min-width:220px">
-                    <div style="font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:6px">Mulai panggilan dengan…</div>
+                    <div style="font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:6px">Start a call with…</div>
                     <AppMemberPicker Placeholder="Type a name or NIK…" Value="@selectedPeer" ValueChanged="OnPickPeer" />
                 </div>
                 <button class="btn" style="width:auto;margin:0;padding:10px 18px;align-self:end" disabled="@(selectedPeer is null)" @onclick="CallPeer">
@@ -201,22 +201,22 @@
                                     @foreach (var a in mt.Attendees.Take(4)) { <PersonAvatar Nik="@a.Nik" Name="@a.Name" Size="22" Class="mtg-av xs" Decorative="true" /> }
                                     @if (mt.Attendees.Count > 4) { <span class="mtg-av xs more">+@(mt.Attendees.Count - 4)</span> }
                                 </span>
-                                @if (!mine) { <span class="mtg-host">oleh @mt.OrganizerName</span> }
+                                @if (!mine) { <span class="mtg-host">by @mt.OrganizerName</span> }
                             </div>
                         </div>
                         <div class="mtg-side" @onclick:stopPropagation="true">
                             @if (mine)
                             {
-                                <span class="mtg-rsvp host">Penyelenggara</span>
+                                <span class="mtg-rsvp host">Organizer</span>
                                 <span class="mtg-icon-btns">
                                     <button type="button" class="mtg-icon" title="Edit" aria-label="Edit @mt.Title" @onclick="() => EditMeeting(mt)"><i data-lucide="pencil"></i></button>
-                                    <button type="button" class="mtg-icon danger" title="Batalkan" aria-label="Batalkan @mt.Title" @onclick="() => CancelMeeting(mt)"><i data-lucide="calendar-x"></i></button>
+                                    <button type="button" class="mtg-icon danger" title="Cancel" aria-label="Cancel @mt.Title" @onclick="() => CancelMeeting(mt)"><i data-lucide="calendar-x"></i></button>
                                 </span>
                             }
                             else
                             {
                                 <span class="mtg-rsvp rsvp-@mt.MyResponse">@CallsSchedule.RsvpLabel(mt.MyResponse)</span>
-                                <span class="mtg-rsvp-btns" role="group" aria-label="Jawab undangan">
+                                <span class="mtg-rsvp-btns" role="group" aria-label="Respond to invitation">
                                     @foreach (var r in RsvpChoices)
                                     {
                                         var choice = r;
@@ -224,8 +224,8 @@
                                     }
                                 </span>
                             }
-                            <span class="mtg-join-wrap" title="@(canJoin ? "Gabung ke rapat" : CallsSchedule.JoinTooltip)">
-                                <button type="button" class="mtg-join" disabled="@(!canJoin || mt.RoomName is null)" @onclick="() => JoinMeeting(mt)"><i data-lucide="video"></i>Gabung</button>
+                            <span class="mtg-join-wrap" title="@(canJoin ? "Join the meeting" : CallsSchedule.JoinTooltip)">
+                                <button type="button" class="mtg-join" disabled="@(!canJoin || mt.RoomName is null)" @onclick="() => JoinMeeting(mt)"><i data-lucide="video"></i>Join</button>
                             </span>
                         </div>
                     </div>
@@ -233,8 +233,8 @@
             }
             @if (visibleMeetings.Count == 0)
             {
-                <div class="calls-empty mtg-empty"><i data-lucide="calendar-clock"></i><p>@(meetings.Count == 0 ? "Belum ada rapat terjadwal." : "Tidak ada rapat yang cocok.")</p>
-                    <button type="button" class="btn-sm accent" @onclick="OpenSchedule"><i data-lucide="calendar-plus"></i>Jadwalkan rapat</button></div>
+                <div class="calls-empty mtg-empty"><i data-lucide="calendar-clock"></i><p>@(meetings.Count == 0 ? "No scheduled meetings yet." : "No matching meetings.")</p>
+                    <button type="button" class="btn-sm accent" @onclick="OpenSchedule"><i data-lucide="calendar-plus"></i>Schedule a meeting</button></div>
             }
         </section>
     }
@@ -264,7 +264,7 @@
                                 </span>
                                 @if (!h.Seen)
                                 {
-                                    <span class="calls-unseen-dot" title="Panggilan tak terjawab baru" aria-label="Belum dibaca"></span>
+                                    <span class="calls-unseen-dot" title="New missed call" aria-label="Unread"></span>
                                 }
                                 <time>@h.StartedAt.ToLocalTime().ToString("HH:mm")</time>
                                 <span class="calls-row-actions">
@@ -299,12 +299,12 @@
         {
             var cancelled = m.Status == MeetingCancelled;
             var detailCanJoin = !cancelled && CallsSchedule.CanJoin(m.StartAt, m.EndAt, DateTime.UtcNow);
-            <div class="calls-detail-hero"><span class="tag @(cancelled ? "mtg-tag-cancelled" : "")">@(cancelled ? "Dibatalkan" : CallsSchedule.DayLabel(m.StartAt.ToLocalTime(), DateTime.Today))</span><h2>@m.Title</h2><p>@m.StartAt.ToLocalTime().ToString("dddd, dd MMM yyyy · HH:mm") – @m.EndAt.ToLocalTime().ToString("HH:mm")</p></div>
+            <div class="calls-detail-hero"><span class="tag @(cancelled ? "mtg-tag-cancelled" : "")">@(cancelled ? "Cancelled" : CallsSchedule.DayLabel(m.StartAt.ToLocalTime(), DateTime.Today))</span><h2>@m.Title</h2><p>@m.StartAt.ToLocalTime().ToString("dddd, MMM d, yyyy · HH:mm", System.Globalization.CultureInfo.InvariantCulture) – @m.EndAt.ToLocalTime().ToString("HH:mm")</p></div>
             <div class="calls-detail-actions">
                 @if (m.EndAt > DateTime.UtcNow && !cancelled)
                 {
-                    <span class="mtg-join-wrap" title="@(detailCanJoin ? "Gabung ke rapat" : CallsSchedule.JoinTooltip)">
-                        <button type="button" class="mtg-join" disabled="@(!detailCanJoin || m.RoomName is null)" @onclick="() => JoinMeeting(m)"><i data-lucide="video"></i>Gabung</button>
+                    <span class="mtg-join-wrap" title="@(detailCanJoin ? "Join the meeting" : CallsSchedule.JoinTooltip)">
+                        <button type="button" class="mtg-join" disabled="@(!detailCanJoin || m.RoomName is null)" @onclick="() => JoinMeeting(m)"><i data-lucide="video"></i>Join</button>
                     </span>
                 }
                 <button type="button" class="btn-sm surface" @onclick="() => CopyMeetingLink(m)"><i data-lucide="link"></i> Copy link</button>
@@ -312,13 +312,13 @@
                 @if (m.OrganizerNik == Auth.Me?.Nik && !cancelled)
                 {
                     <button class="btn-sm surface" @onclick="() => EditMeeting(m)"><i data-lucide="pencil"></i> Edit</button>
-                    <button class="btn-sm surface" style="color:var(--danger)" @onclick="() => CancelMeeting(m)"><i data-lucide="calendar-x"></i> Batalkan</button>
+                    <button class="btn-sm surface" style="color:var(--danger)" @onclick="() => CancelMeeting(m)"><i data-lucide="calendar-x"></i> Cancel</button>
                 }
             </div>
             @if (m.OrganizerNik != Auth.Me?.Nik && !cancelled)
             {
-                <div class="calls-rsvp">Jawaban Anda: <strong class="mtg-rsvp rsvp-@m.MyResponse">@CallsSchedule.RsvpLabel(m.MyResponse)</strong>
-                    <span class="mtg-rsvp-btns" role="group" aria-label="Jawab undangan">
+                <div class="calls-rsvp">Your response: <strong class="mtg-rsvp rsvp-@m.MyResponse">@CallsSchedule.RsvpLabel(m.MyResponse)</strong>
+                    <span class="mtg-rsvp-btns" role="group" aria-label="Respond to invitation">
                         @foreach (var r in RsvpChoices)
                         {
                             var choice = r;
@@ -327,8 +327,8 @@
                     </span>
                 </div>
             }
-            <div class="calls-detail-block"><strong>DETAIL RAPAT</strong><p>Penyelenggara: @m.OrganizerName</p><p>Lokasi: @(CallsSchedule.IsOnline(m.Location) ? CallsSchedule.OnlineLocation : m.Location)</p><p>Agenda: @(m.Agenda ?? "Tidak ada agenda")</p><p>Pengingat: @(m.ReminderMinutes is { } rm ? ReminderLabel(rm) : "Tanpa pengingat")</p><p>Tautan: <a href="/meet/@m.RoomName">Buka rapat</a></p></div>
-            <div class="calls-detail-block"><strong>PESERTA · @m.Attendees.Count</strong>
+            <div class="calls-detail-block"><strong>MEETING DETAILS</strong><p>Organizer: @m.OrganizerName</p><p>Location: @(CallsSchedule.IsOnline(m.Location) ? CallsSchedule.OnlineLocation : m.Location)</p><p>Agenda: @(m.Agenda ?? "No agenda")</p><p>Reminder: @(m.ReminderMinutes is { } rm ? ReminderLabel(rm) : "No reminder")</p><p>Link: <a href="/meet/@m.RoomName">Open meeting</a></p></div>
+            <div class="calls-detail-block"><strong>ATTENDEES · @m.Attendees.Count</strong>
                 @foreach (var person in m.Attendees) { <p>@person.Name · @CallsSchedule.RsvpLabel(person.RsvpStatus)</p> }
             </div>
         }
@@ -338,28 +338,28 @@
                 <PersonAvatar Nik="@h.PeerNik" Name="@h.PeerName" Size="84" Class="calls-detail-avatar" Viewable="true" />
                 <h2>@h.PeerName</h2>
                 <p><span class="calls-result-chip @ResultClass(h)"><i data-lucide="@CallIcon(h)"></i> @HistoryDirection(h) · @ResultLabel(h)</span></p>
-                <p>@h.StartedAt.ToLocalTime().ToString("dddd, dd MMM yyyy · HH:mm")</p>
+                <p>@h.StartedAt.ToLocalTime().ToString("dddd, MMM d, yyyy · HH:mm", System.Globalization.CultureInfo.InvariantCulture)</p>
             </div>
             <div class="calls-detail-actions call-actions">
-                <button type="button" disabled="@(string.IsNullOrWhiteSpace(h.PeerNik) || CallSvc.HasLiveCall)" @onclick="() => CallAgain(h.PeerNik!)"><i data-lucide="phone"></i>Panggil</button>
+                <button type="button" disabled="@(string.IsNullOrWhiteSpace(h.PeerNik) || CallSvc.HasLiveCall)" @onclick="() => CallAgain(h.PeerNik!)"><i data-lucide="phone"></i>Call</button>
                 @if (!string.IsNullOrWhiteSpace(h.PeerNik))
                 {
                     <a href="@ChatHref(h.PeerNik)"><i data-lucide="message-circle"></i>Chat</a>
-                    <a href="/directory/person/@Uri.EscapeDataString(h.PeerNik)"><i data-lucide="contact-round"></i>Profil</a>
+                    <a href="/directory/person/@Uri.EscapeDataString(h.PeerNik)"><i data-lucide="contact-round"></i>Profile</a>
                 }
             </div>
             var withPeer = historyRows.Where(x => !string.IsNullOrWhiteSpace(h.PeerNik) && x.PeerNik == h.PeerNik).ToList();
             var talked = withPeer.Where(x => x.Result == "completed").Sum(x => x.DurationSeconds);
             <div class="calls-detail-stats">
-                <div><strong>@withPeer.Count</strong><span>Panggilan</span></div>
-                <div><strong>@withPeer.Count(x => x.Result == "completed")</strong><span>Tersambung</span></div>
-                <div><strong>@withPeer.Count(x => x.Result == "missed")</strong><span>Tak terjawab</span></div>
-                <div><strong>@FormatSeconds(talked)</strong><span>Total bicara</span></div>
+                <div><strong>@withPeer.Count</strong><span>Calls</span></div>
+                <div><strong>@withPeer.Count(x => x.Result == "completed")</strong><span>Connected</span></div>
+                <div><strong>@withPeer.Count(x => x.Result == "missed")</strong><span>Missed</span></div>
+                <div><strong>@FormatSeconds(talked)</strong><span>Talk time</span></div>
             </div>
             <div class="calls-detail-block calls-contact-history"><strong>CALL HISTORY</strong><span>@historyRows.Count(x => x.PeerNik == h.PeerNik && !string.IsNullOrWhiteSpace(h.PeerNik)) calls</span>
                 @foreach (var entry in historyRows.Where(x => x.PeerNik == h.PeerNik && !string.IsNullOrWhiteSpace(h.PeerNik)).Take(5))
                 {
-                    <div class="calls-contact-row @ResultClass(entry)"><i data-lucide="@CallIcon(entry)"></i><span>@HistoryDirection(entry) · @ResultLabel(entry)<small>@entry.StartedAt.ToLocalTime().ToString("MMM d, HH:mm")</small></span><time>@(entry.Result == "completed" ? DurationLabel(entry) : "—")</time></div>
+                    <div class="calls-contact-row @ResultClass(entry)"><i data-lucide="@CallIcon(entry)"></i><span>@HistoryDirection(entry) · @ResultLabel(entry)<small>@entry.StartedAt.ToLocalTime().ToString("MMM d, HH:mm", System.Globalization.CultureInfo.InvariantCulture)</small></span><time>@(entry.Result == "completed" ? DurationLabel(entry) : "—")</time></div>
                 }
             </div>
             <div class="calls-detail-block calls-note">
@@ -412,7 +412,7 @@
     private Guid? expandingGroup;
     private System.Threading.Timer? clock;
     private const string MeetingCancelled = "cancelled"; // MeetingStatus.Cancelled on the server
-    private static readonly (string Value, string Label)[] RsvpChoices = [("accept", "Hadir"), ("maybe", "Mungkin"), ("decline", "Tidak")];
+    private static readonly (string Value, string Label)[] RsvpChoices = [("accept", "Yes"), ("maybe", "Maybe"), ("decline", "No")];
     private Guid? editingMeetingId;
     private MeetingDto? detailMeeting;
     private CallHistoryDto? detailCall;
@@ -445,7 +445,7 @@
         // rendered on pages other than this one, but a same-page re-navigation would not
         // remount us, so parse per URL change too. PRESELECT only — never auto-ring.
         Nav.LocationChanged += OnLocationChanged;
-        // "Gabung" opens 10 minutes before the start: re-evaluate the window while the page is open.
+        // "Join" opens 10 minutes before the start: re-evaluate the window while the page is open.
         clock = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
         meetingSub = Auth.On<Guid>(IPop.Application.Realtime.RealtimeEvents.MeetingChanged, OnMeetingChanged);
     }
@@ -575,7 +575,7 @@
     // The ringing / in-call UI lives in GlobalCallOverlay; this page only reflects it.
     private void OnStateChanged() => _ = InvokeAsync(() =>
     {
-        // "Memanggil…" only while our outgoing call rings; the overlay shows the rest.
+        // "Calling…" only while our outgoing call rings; the overlay shows the rest.
         if (!CallSvc.IsOutgoingRing) notice = "";
         StateHasChanged();
         _ = JS.InvokeVoidAsync("ipop.icons");
@@ -602,8 +602,8 @@
     {
         if (selectedPeer is null) return;
         var room = await CallSvc.CreateAsync(selectedPeer.Nik);
-        if (room is null) { Toasts.Show(CallSvc.LastError ?? "Panggilan gagal dimulai. Coba lagi.", ToastKind.Error); return; }
-        notice = $"Memanggil {selectedPeer.Name}…";
+        if (room is null) { Toasts.Show(CallSvc.LastError ?? "Couldn't start the call. Try again.", ToastKind.Error); return; }
+        notice = $"Calling {selectedPeer.Name}…";
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
     }
@@ -621,7 +621,7 @@
         StateHasChanged();
     }
 
-    /// "Tandai semua dibaca": server-side it is usually done already (page open), this clears the dots.
+    /// "Mark all as read": server-side it is usually done already (page open), this clears the dots.
     private async Task MarkAllSeen()
     {
         historyRows = historyRows.Select(h => h.Seen ? h : h with { Seen = true }).ToList();
@@ -712,10 +712,10 @@
     private static string ResultLabel(CallHistoryDto h) => h.Result switch
     {
         "completed" => DurationLabel(h),
-        "missed" => "Tak terjawab",
-        "declined" => "Ditolak",
-        "canceled" => "Dibatalkan",
-        "no-answer" => "Tidak dijawab",
+        "missed" => "Missed",
+        "declined" => "Declined",
+        "canceled" => "Canceled",
+        "no-answer" => "No answer",
         _ => h.Result,
     };
 
@@ -728,8 +728,8 @@
     };
 
     private static string FormatSeconds(int s) =>
-        s < 60 ? $"{s}d" : s < 3600 ? $"{s / 60}m {s % 60}d" : $"{s / 3600}j {(s % 3600) / 60}m";
-    private static string DateGroupLabel(DateTime date) => date.Date == DateTime.Today ? "Today" : date.Date == DateTime.Today.AddDays(-1) ? "Yesterday" : date.ToString("dddd, MMM d");
+        s < 60 ? $"{s}s" : s < 3600 ? $"{s / 60}m {s % 60}s" : $"{s / 3600}h {(s % 3600) / 60}m";
+    private static string DateGroupLabel(DateTime date) => date.Date == DateTime.Today ? "Today" : date.Date == DateTime.Today.AddDays(-1) ? "Yesterday" : date.ToString("dddd, MMM d", System.Globalization.CultureInfo.InvariantCulture);
 
     private void SelectCallOnKey(KeyboardEventArgs e, CallHistoryDto h)
     {
@@ -864,7 +864,7 @@
     }
 
     private static string ReminderLabel(int minutes) =>
-        CallsSchedule.ReminderChoices.FirstOrDefault(c => c.Value == minutes.ToString()).Label ?? $"{minutes} menit sebelumnya";
+        CallsSchedule.ReminderChoices.FirstOrDefault(c => c.Value == minutes.ToString()).Label ?? $"{minutes} minutes before";
 
     private void OnReminderChanged(string? value) => formReminder = value ?? "";
 
@@ -879,7 +879,7 @@
     private void OnEndChanged(DateTime value)
     {
         formEnd = value;
-        formError = formEnd <= formStart ? "Waktu selesai harus setelah waktu mulai." : null;
+        formError = formEnd <= formStart ? "End time must be after start time." : null;
     }
 
     private void PickDuration(int minutes)
@@ -917,14 +917,14 @@
         finally { groupsLoading = false; }
     }
 
-    /// "Undang grup": expand the group to its members and link the meeting to it (RoomId).
+    /// "Invite group": expand the group to its members and link the meeting to it (RoomId).
     private async Task InviteGroup(IPop.Application.Chat.RoomListDto group)
     {
         expandingGroup = group.Id;
         try
         {
             var room = await Auth.GetAsync<IPop.Application.Chat.ChatRoomDto>($"/api/chat/rooms/{group.Id}");
-            if (room is null) { Toasts.Show("Anggota grup tidak bisa dimuat.", ToastKind.Error); return; }
+            if (room is null) { Toasts.Show("Couldn't load the group members.", ToastKind.Error); return; }
             var added = 0;
             foreach (var member in room.Members)
             {
@@ -933,10 +933,10 @@
                 added++;
             }
             if (editingMeetingId is null) { formRoomId = group.Id; formRoomName = group.Name; }
-            if (string.IsNullOrWhiteSpace(formTitle)) formTitle = $"Rapat {group.Name}";
-            Toasts.Show(added == 0 ? "Semua anggota grup sudah diundang." : $"{added} anggota {group.Name} ditambahkan.", ToastKind.Success);
+            if (string.IsNullOrWhiteSpace(formTitle)) formTitle = $"{group.Name} meeting";
+            Toasts.Show(added == 0 ? "All group members are already invited." : $"Added {added} {(added == 1 ? "member" : "members")} of {group.Name}.", ToastKind.Success);
         }
-        catch { Toasts.Show("Anggota grup tidak bisa dimuat.", ToastKind.Error); }
+        catch { Toasts.Show("Couldn't load the group members.", ToastKind.Error); }
         finally { expandingGroup = null; }
     }
 
@@ -963,17 +963,17 @@
             if (!response.IsSuccessStatusCode)
             {
                 formError = (int)response.StatusCode == 403
-                    ? "Anda tidak punya izin menjadwalkan rapat ini."
-                    : "Rapat tidak bisa disimpan. Periksa isian lalu coba lagi.";
+                    ? "You don't have permission to schedule this meeting."
+                    : "Couldn't save the meeting. Check the form and try again.";
                 return;
             }
             var saved = await response.Content.ReadFromJsonAsync<MeetingDto>();
             showSchedule = false;
             await LoadMeetings();
             if (saved is not null) await SelectMeeting(saved.Id);
-            Toasts.Show(isNew ? (formInvitees.Count > 0 ? $"Rapat dijadwalkan · {formInvitees.Count} undangan terkirim." : "Rapat dijadwalkan.") : "Rapat diperbarui.", ToastKind.Success);
+            Toasts.Show(isNew ? (formInvitees.Count > 0 ? $"Meeting scheduled · {formInvitees.Count} {(formInvitees.Count == 1 ? "invitation" : "invitations")} sent." : "Meeting scheduled.") : "Meeting updated.", ToastKind.Success);
         }
-        catch { formError = "Rapat tidak bisa disimpan. Coba lagi."; }
+        catch { formError = "Couldn't save the meeting. Try again."; }
         finally { savingMeeting = false; }
     }
 
@@ -986,7 +986,7 @@
     {
         if (m.RoomName is null) return;
         if (!await CallSvc.JoinMeetingAsync(m.RoomName))
-            Toasts.Show(CallSvc.LastError ?? "Gagal bergabung ke rapat.", ToastKind.Error);
+            Toasts.Show(CallSvc.LastError ?? "Couldn't join the meeting.", ToastKind.Error);
     }
 
     private async Task CopyMeetingLink(MeetingDto m)
@@ -1005,11 +1005,11 @@
 
     private async Task CancelMeeting(MeetingDto m)
     {
-        if (!await Confirm.AskAsync("Batalkan rapat?", $"\"{m.Title}\" akan dibatalkan dan semua peserta diberi tahu.", "Batalkan rapat", true)) return;
+        if (!await Confirm.AskAsync("Cancel meeting?", $"\"{m.Title}\" will be cancelled and all attendees notified.", "Cancel meeting", true)) return;
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/meetings/{m.Id}/cancel", new { });
         if (res.IsSuccessStatusCode)
         {
-            Toasts.Show("Rapat dibatalkan.", ToastKind.Success);
+            Toasts.Show("Meeting cancelled.", ToastKind.Success);
             await LoadMeetings();
             // The cancelled meeting leaves /upcoming; re-read it so the detail shows its new state.
             detailCall = null;
@@ -1017,7 +1017,7 @@
         }
         else
         {
-            Toasts.Show("Rapat tidak bisa dibatalkan.", ToastKind.Error);
+            Toasts.Show("Couldn't cancel the meeting.", ToastKind.Error);
         }
     }
 
@@ -1028,7 +1028,7 @@
         try
         {
             var result = await Auth.SendAsync(HttpMethod.Post, $"/api/meetings/{id}/rsvp", new { response });
-            if (!result.IsSuccessStatusCode) Toasts.Show("Jawaban tidak bisa disimpan.", ToastKind.Error);
+            if (!result.IsSuccessStatusCode) Toasts.Show("Couldn't save your response.", ToastKind.Error);
             else await LoadMeetings();
         }
         finally { rsvpBusy = false; }
@@ -1046,7 +1046,7 @@
         var room = await CallSvc.CreateAsync(peerNik);
         if (room is null)
         {
-            var msg = !string.IsNullOrWhiteSpace(CallSvc.LastError) ? CallSvc.LastError : "Panggilan gagal dimulai.";
+            var msg = !string.IsNullOrWhiteSpace(CallSvc.LastError) ? CallSvc.LastError : "Couldn't start the call.";
             Toasts.Show(msg, ToastKind.Error);
             return;
         }
