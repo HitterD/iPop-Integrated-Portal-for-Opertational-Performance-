@@ -210,37 +210,18 @@ public partial class Chat
         scrollToBottom = true;
     }
 
-    private async Task PickStickerFile()
+    /// "+ Create" tile: the picker closes and the editor opens empty (file or paste).
+    private void OpenStickerEditor()
     {
-        stickerError = null;
-        if (stickerInput?.Element is { } input) await JS.InvokeVoidAsync("ipop.clickFileInput", input);
+        stickerOpen = false;
+        stickerEditor?.Open();
     }
 
-    private async Task OnStickerFileSelected(InputFileChangeEventArgs e)
+    private async Task OnStickerEditorSaved((Guid Id, bool Send) saved)
     {
-        var file = e.File;
-        if (file.Size > IPop.Application.Chat.StickerLimits.MaxUploadBytes) { stickerError = "Image is too large (max 10 MB)."; return; }
-        stickerUploading = true;
-        stickerError = null;
-        StateHasChanged();
-        try
-        {
-            var err = await ChatSvc.StickerActionAsync(async () =>
-            {
-                using var form = new MultipartFormDataContent();
-                var part = new StreamContent(file.OpenReadStream(IPop.Application.Chat.StickerLimits.MaxUploadBytes));
-                part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(ChatAttachments.Mime(file.ContentType, file.Name));
-                form.Add(part, "file", file.Name);
-                return await Auth.SendMultipartAsync("/api/chat/stickers", form);
-            });
-            if (err is null) ChatSvc.StickerTab = "mine";
-            else stickerError = StickerErrorText(err);
-        }
-        finally
-        {
-            stickerUploading = false;
-            StateHasChanged();
-        }
+        ChatSvc.StickerTab = "mine";
+        if (saved.Send) await SendStickerKey(IPop.Application.Chat.StickerLimits.Content(saved.Id));
+        else Toasts.Show("Added to My stickers.", ToastKind.Success);
     }
 
     private async Task RemoveSticker(Guid id)
@@ -266,13 +247,12 @@ public partial class Chat
         else Toasts.Show("Couldn't update favorites. Try again.", ToastKind.Error);
     }
 
-    private async Task MakeStickerFromAttachment(IPop.Application.Chat.AttachmentDto a)
+    /// "Make sticker" on a chat image: still images open in the editor; animated ones are detected
+    /// there and saved through the server's from-attachment conversion so the frames survive.
+    private void MakeStickerFromAttachment(IPop.Application.Chat.AttachmentDto a)
     {
         ctxMsgId = null;
-        Toasts.Show("Creating sticker…", ToastKind.Info);
-        var err = await ChatSvc.StickerActionAsync(() => Auth.SendAsync(HttpMethod.Post, $"/api/chat/stickers/from-attachment/{a.Id}"));
-        if (err is null) { ChatSvc.StickerTab = "mine"; Toasts.Show("Sticker created. Find it in My stickers.", ToastKind.Success); }
-        else Toasts.Show(StickerErrorText(err), ToastKind.Error);
+        stickerEditor?.OpenAttachment(a.Id);
     }
 
     private async Task SetStickerOfficial(Guid id, bool official)

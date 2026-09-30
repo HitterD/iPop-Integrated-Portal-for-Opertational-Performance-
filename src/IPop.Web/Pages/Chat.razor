@@ -690,9 +690,8 @@
                         }
                         @if (stickerOpen)
                         {
-                            <StickerPicker OnSend="SendStickerKey" OnClose="() => stickerOpen = false" OnCreate="PickStickerFile" OnRemove="RemoveSticker" OnSave="SaveStickerFromMessage" Error="@stickerError" />
+                            <StickerPicker OnSend="SendStickerKey" OnClose="() => stickerOpen = false" OnCreate="OpenStickerEditor" OnRemove="RemoveSticker" OnSave="SaveStickerFromMessage" Error="@stickerError" />
                         }
-                        <InputFile @ref="stickerInput" OnChange="OnStickerFileSelected" class="hidden-input" accept=".png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp" />
                         @if (plusMenuOpen)
                         {
                             <div class="v6-pop v6-plus-menu" role="menu" @onclick:stopPropagation>
@@ -1649,6 +1648,9 @@
 }
 
 @* ---- Context Menu ---- *@
+@* Sticker editor modal: "+ Create" in the picker and "Make sticker" on chat images. *@
+<StickerEditor @ref="stickerEditor" OnSaved="OnStickerEditorSaved" />
+
 @if (ctxMsgId is not null)
 {
     <div class="ctx-menu-backdrop" @onclick="CloseCtx" @oncontextmenu="CloseCtx" @oncontextmenu:preventDefault></div>

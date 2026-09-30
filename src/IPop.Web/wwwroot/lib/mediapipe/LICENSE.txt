@@ -1,0 +1,7 @@
+MediaPipe Tasks Vision (@mediapipe/tasks-vision 1.0.1) and the Selfie Segmenter model
+(selfie_segmenter.tflite, float16, renamed .bin so static hosting serves it) are
+Copyright Google LLC, licensed under the Apache License, Version 2.0:
+https://www.apache.org/licenses/LICENSE-2.0
+
+Files: tasks-vision.esm.js (vision_bundle.mjs), wasm/vision_wasm_internal.{js,wasm},
+selfie_segmenter.bin. Self-hosted for the chat sticker editor; loaded only when it opens.
