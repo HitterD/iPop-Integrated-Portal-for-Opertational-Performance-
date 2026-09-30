@@ -93,7 +93,7 @@ public partial class Notes
         {
             var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{note.Id}/threads",
                 new CreateNoteThreadRequest(draft.Quote, draft.Anchor, draft.Body.Trim(), null));
-            if (!res.IsSuccessStatusCode) { Toasts.Show("Komentar gagal dikirim", ToastKind.Error); return; }
+            if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't post your comment", ToastKind.Error); return; }
             var t = await res.Content.ReadFromJsonAsync<NoteThreadDto>(Json);
             draft = null;
             if (t is not null)
@@ -118,7 +118,7 @@ public partial class Notes
         if (string.IsNullOrEmpty(body)) return;
         replies[t.Id] = null;
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{note.Id}/threads/{t.Id}/replies", new NoteReplyRequest(body, null));
-        if (!res.IsSuccessStatusCode) { replies[t.Id] = body; Toasts.Show("Balasan gagal dikirim", ToastKind.Error); return; }
+        if (!res.IsSuccessStatusCode) { replies[t.Id] = body; Toasts.Show("Couldn't send your reply", ToastKind.Error); return; }
         var updated = await res.Content.ReadFromJsonAsync<NoteThreadDto>(Json);
         if (updated is not null) threads = threads.Select(x => x.Id == updated.Id ? updated : x).ToList();
     }
@@ -128,7 +128,7 @@ public partial class Notes
         if (note is null) return;
         var resolve = t.ResolvedAt is null;
         var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{note.Id}/threads/{t.Id}/resolved", new { resolved = resolve });
-        if (!res.IsSuccessStatusCode) { Toasts.Show("Gagal memperbarui komentar", ToastKind.Error); return; }
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't update the comment", ToastKind.Error); return; }
         threads = threads.Select(x => x.Id == t.Id ? x with { ResolvedAt = resolve ? DateTime.UtcNow : null } : x).ToList();
         if (resolve && focusThread == t.Id) focusThread = null;
         await PushThreadsAsync();
@@ -171,7 +171,7 @@ public partial class Notes
     }
 
     private static bool IsDirect(string? type) => type is "dm" or "direct";
-    private static string RoomName(RoomListDto r) => IsDirect(r.Type) ? r.RecipientName ?? r.Name ?? "Chat" : r.Name ?? "Grup";
+    private static string RoomName(RoomListDto r) => IsDirect(r.Type) ? r.RecipientName ?? r.Name ?? "Chat" : r.Name ?? "Group";
 
     private void OnInviteInput(ChangeEventArgs e)
     {
@@ -199,8 +199,8 @@ public partial class Notes
         if (note is null) return;
         inviteHits = []; inviteQ = "";
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{note.Id}/shares", new AddNoteShareRequest(p.Id, null, inviteLevel));
-        if (!res.IsSuccessStatusCode) { Toasts.Show($"Gagal membagikan ke {p.Name}", ToastKind.Error); return; }
-        Toasts.Show($"{FirstName(p.Name)} sekarang bisa {LevelVerb(inviteLevel)} note ini", ToastKind.Success);
+        if (!res.IsSuccessStatusCode) { Toasts.Show($"Couldn't share with {p.Name}", ToastKind.Error); return; }
+        Toasts.Show($"{FirstName(p.Name)} can now {LevelVerb(inviteLevel)} this note", ToastKind.Success);
         await LoadSharesAsync();
         await ReloadPageMetaAsync();
     }
@@ -217,7 +217,7 @@ public partial class Notes
         {
             res = await Auth.SendAsync(HttpMethod.Patch, $"/api/notes/{note.Id}/shares/{s.Id}", new { level });
         }
-        if (!res.IsSuccessStatusCode) Toasts.Show("Gagal mengubah akses", ToastKind.Error);
+        if (!res.IsSuccessStatusCode) Toasts.Show("Couldn't change access", ToastKind.Error);
         await LoadSharesAsync();
         await ReloadPageMetaAsync();
     }
@@ -232,18 +232,18 @@ public partial class Notes
                 new { roomId, level = sendLevel, message = string.IsNullOrWhiteSpace(sendMsg) ? null : sendMsg.Trim() });
             if (!res.IsSuccessStatusCode)
             {
-                Toasts.Show(res.StatusCode == System.Net.HttpStatusCode.Forbidden ? "Kamu bukan anggota chat itu" : "Gagal mengirim ke chat", ToastKind.Error);
+                Toasts.Show(res.StatusCode == System.Net.HttpStatusCode.Forbidden ? "You're not a member of that chat" : "Couldn't send to chat", ToastKind.Error);
                 return;
             }
             var name = rooms?.FirstOrDefault(r => r.Id == roomId) is { } r ? RoomName(r) : "chat";
-            Toasts.Show($"Terkirim ke {name}", ToastKind.Success);
+            Toasts.Show($"Sent to {name}", ToastKind.Success);
             pop = Pop.None;
             await ReloadPageMetaAsync();
         }
         finally { busy = false; }
     }
 
-    private static string LevelVerb(string level) => level switch { "edit" => "mengedit", "comment" => "mengomentari", _ => "melihat" };
+    private static string LevelVerb(string level) => level switch { "edit" => "edit", "comment" => "comment on", _ => "view" };
 
     /// Sharing changes the "Shared"/rooms props on the page header.
     private async Task ReloadPageMetaAsync()
@@ -288,7 +288,7 @@ public partial class Notes
         await DestroyPreviewAsync();
         if (module is null || selVersionState is null || pop != Pop.History) return;
         try { previewer = await module.InvokeAsync<IJSObjectReference>("preview", previewRef, selVersionState); }
-        catch (JSException) { Toasts.Show("Versi ini tidak bisa ditampilkan", ToastKind.Error); }
+        catch (JSException) { Toasts.Show("This version can't be displayed", ToastKind.Error); }
     }
 
     private async Task DestroyPreviewAsync()
@@ -305,14 +305,14 @@ public partial class Notes
     {
         if (editor is null || selVersionState is null || versions is null) return;
         var v = versions.First(x => x.Id == selVersion);
-        if (!await Confirm.AskAsync("Kembalikan versi ini?", $"Isi halaman diganti dengan versi {v.CreatedAt.ToLocalTime():d MMM yyyy, HH:mm}. Versi sekarang tetap tersimpan di riwayat.", "Kembalikan", danger: false)) return;
+        if (!await Confirm.AskAsync("Restore this version?", $"The page content will be replaced with the version from {StampDate(v.CreatedAt)}. The current version stays in the history.", "Restore", danger: false)) return;
         busy = true;
         try
         {
             await editor.InvokeVoidAsync("restore", selVersionState);
             await DestroyPreviewAsync();
             pop = Pop.None;
-            Toasts.Show("Versi dikembalikan", ToastKind.Success);
+            Toasts.Show("Version restored", ToastKind.Success);
         }
         finally { busy = false; }
     }

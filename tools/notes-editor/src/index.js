@@ -248,7 +248,7 @@ export async function mount(el, opts) {
       CollaborationCaret.configure({ provider: { awareness }, user: { name: opts.user.name, nik: opts.user.nik, color: opts.user.color } }),
       Placeholder.configure({
         includeChildren: true,
-        placeholder: ({ node }) => node.type.name === 'heading' ? `Heading ${node.attrs.level}` : node.type.name === 'detailsSummary' ? 'Toggle' : "Ketik '/' untuk perintah…",
+        placeholder: ({ node }) => node.type.name === 'heading' ? `Heading ${node.attrs.level}` : node.type.name === 'detailsSummary' ? 'Toggle' : "Type '/' for commands…",
       }),
       SlashMenu.configure({ host }),
       CommentHighlights.configure({ resolve: resolveAnchor, onClick: id => call('OnThreadClick', id) }),
@@ -356,7 +356,7 @@ export async function mount(el, opts) {
   function commentSelection() {
     if (!canComment) return;
     const { from, to, empty } = editor.state.selection;
-    if (empty) { host.toast('Pilih teks yang ingin dikomentari'); return; }
+    if (empty) { host.toast('Select the text you want to comment on'); return; }
     const quote = editor.state.doc.textBetween(from, to, ' ').trim().slice(0, 280);
     if (!quote) return;
     toolbar.hide();
@@ -391,13 +391,13 @@ export async function mount(el, opts) {
         const form = new FormData(); form.append('file', f, f.name);
         try {
           const r = await api(`/api/notes/${pageId}/uploads`, { method: 'POST', body: form });
-          if (!r.ok) { const e = await r.json().catch(() => ({})); host.toast(e.message || `Gagal mengunggah ${f.name}`); continue; }
+          if (!r.ok) { const e = await r.json().catch(() => ({})); host.toast(e.message || `Couldn't upload ${f.name}`); continue; }
           const u = await r.json();
           const node = { type: u.contentType?.startsWith('image/') ? 'noteImage' : 'noteFile', attrs: { id: u.id, name: u.fileName, size: u.size } };
           at = Math.min(at, editor.state.doc.content.size);
           editor.chain().insertContentAt(at, node).run();
           at = editor.state.selection.to;
-        } catch { host.toast(`Gagal mengunggah ${f.name}`); }
+        } catch { host.toast(`Couldn't upload ${f.name}`); }
       }
     })();
     return true;

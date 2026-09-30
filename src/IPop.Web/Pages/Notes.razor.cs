@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20260929-notes";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261001-en";
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History }
@@ -108,7 +108,7 @@ public partial class Notes
         if (disposed) return;
         if (firstRender)
         {
-            Layout?.SetHeader("Notes", "Catatan & dokumen bersama");
+            Layout?.SetHeader("Notes", "Shared notes & docs");
             module = await JS.InvokeAsync<IJSObjectReference>("import", EditorModule);
             hotkeys = await module.InvokeAsync<IJSObjectReference>("hotkeys", selfRef);
             if (note is not null) mountPending = true;
@@ -195,7 +195,7 @@ public partial class Notes
             apiBase = Http.BaseAddress?.ToString() ?? "",
             pageId = p.Id,
             access = p.Access,
-            user = new { name = me?.Name ?? "Saya", nik = me?.Nik ?? "", color = AvatarPalette.For(me?.Nik) },
+            user = new { name = me?.Name ?? "Me", nik = me?.Nik ?? "", color = AvatarPalette.For(me?.Nik) },
             accent = p.Accent,
             pages = (sidebar?.Pages ?? []).Select(x => new { id = x.Id, title = DisplayTitle(x.Title), emoji = x.Emoji ?? "📄" }),
             dotnet = selfRef,
@@ -214,7 +214,7 @@ public partial class Notes
         {
             mountedId = null;
             if (ex.Message.Contains("forbidden")) pageError = "forbidden";
-            else Toasts.Show("Gagal membuka editor. Coba muat ulang halaman.", ToastKind.Error);
+            else Toasts.Show("Couldn't open the editor. Try reloading the page.", ToastKind.Error);
             StateHasChanged();
         }
     }
@@ -307,7 +307,7 @@ public partial class Notes
     {
         if (note is null || !CanEdit) return null;
         var res = await Auth.SendAsync(HttpMethod.Post, "/api/notes", new CreateNoteRequest(note.Id, null, "📄", null, null, null));
-        if (!res.IsSuccessStatusCode) { Toasts.Show("Gagal membuat sub-halaman", ToastKind.Error); return null; }
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't create the sub-page", ToastKind.Error); return null; }
         var created = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
         if (created is null) return null;
         expanded.Add(note.Id);
@@ -340,7 +340,7 @@ public partial class Notes
         if (note is null || !CanEdit) return;
         var id = note.Id;
         var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/notes/{id}", req);
-        if (!res.IsSuccessStatusCode) { Toasts.Show("Perubahan gagal disimpan", ToastKind.Error); return; }
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't save your changes", ToastKind.Error); return; }
         var updated = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
         if (updated is null || note?.Id != id) return;
         note = updated with { IsFavorite = note.IsFavorite };
@@ -388,7 +388,7 @@ public partial class Notes
         var fav = !note.IsFavorite;
         note = note with { IsFavorite = fav };
         var res = await Auth.SendAsync(HttpMethod.Put, $"/api/notes/{note.Id}/favorite", new { favorite = fav });
-        if (!res.IsSuccessStatusCode) { note = note with { IsFavorite = !fav }; Toasts.Show("Gagal menyimpan favorit", ToastKind.Error); }
+        if (!res.IsSuccessStatusCode) { note = note with { IsFavorite = !fav }; Toasts.Show("Couldn't update favorites", ToastKind.Error); }
         await LoadSidebarAsync();
     }
 
@@ -397,12 +397,12 @@ public partial class Notes
         if (note is null) return;
         pop = Pop.None;
         var p = note;
-        var msg = p.Children.Count > 0 ? $"“{DisplayTitle(p.Title)}” dan {p.Children.Count} sub-halamannya dipindahkan ke Sampah. Bisa dikembalikan kapan saja."
-            : $"“{DisplayTitle(p.Title)}” dipindahkan ke Sampah. Bisa dikembalikan kapan saja.";
-        if (!await Confirm.AskAsync("Pindahkan ke Sampah?", msg, "Pindahkan")) return;
+        var msg = p.Children.Count > 0 ? $"“{DisplayTitle(p.Title)}” and its {p.Children.Count} sub-page{(p.Children.Count == 1 ? "" : "s")} will move to Trash. You can restore them anytime."
+            : $"“{DisplayTitle(p.Title)}” will move to Trash. You can restore it anytime.";
+        if (!await Confirm.AskAsync("Move to Trash?", msg, "Move")) return;
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notes/{p.Id}");
-        if (!res.IsSuccessStatusCode) { Toasts.Show("Gagal menghapus halaman", ToastKind.Error); return; }
-        Toasts.Show("Dipindahkan ke Sampah", ToastKind.Success);
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't delete the page", ToastKind.Error); return; }
+        Toasts.Show("Moved to Trash", ToastKind.Success);
         await LoadSidebarAsync();
         Nav.NavigateTo(p.ParentId is { } parent && sidebar?.Pages.Any(x => x.Id == parent) == true ? $"/notes/{parent}" : "/notes");
     }
@@ -411,7 +411,7 @@ public partial class Notes
     {
         if (note is null || module is null) return;
         var ok = await module.InvokeAsync<bool>("copyText", Nav.ToAbsoluteUri($"/notes/{note.Id}").ToString());
-        Toasts.Show(ok ? "Link disalin — hanya orang dengan akses yang bisa membukanya" : "Gagal menyalin link", ok ? ToastKind.Success : ToastKind.Error);
+        Toasts.Show(ok ? "Link copied — only people with access can open it" : "Couldn't copy the link", ok ? ToastKind.Success : ToastKind.Error);
         if (pop == Pop.More) pop = Pop.None;
     }
 
@@ -452,17 +452,17 @@ public partial class Notes
     private async Task RestorePage(Guid id)
     {
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notes/{id}/restore");
-        if (!res.IsSuccessStatusCode) { Toasts.Show("Gagal mengembalikan halaman", ToastKind.Error); return; }
-        Toasts.Show("Halaman dikembalikan", ToastKind.Success);
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't restore the page", ToastKind.Error); return; }
+        Toasts.Show("Page restored", ToastKind.Success);
         await LoadSidebarAsync();
         await LoadTrashAsync();
     }
 
     private async Task PurgePage(NoteListItemDto t)
     {
-        if (!await Confirm.AskAsync("Hapus permanen?", $"“{DisplayTitle(t.Title)}” beserta sub-halaman, komentar, dan riwayatnya akan dihapus selamanya.", "Hapus permanen")) return;
+        if (!await Confirm.AskAsync("Delete forever?", $"“{DisplayTitle(t.Title)}” and its sub-pages, comments and history will be deleted permanently.", "Delete forever")) return;
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notes/{t.Id}/purge");
-        if (!res.IsSuccessStatusCode) { Toasts.Show("Gagal menghapus", ToastKind.Error); return; }
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't delete", ToastKind.Error); return; }
         await LoadTrashAsync();
     }
 
@@ -493,7 +493,7 @@ public partial class Notes
             var title = string.IsNullOrWhiteSpace(newTitle) ? t?.Name ?? "" : newTitle.Trim();
             var res = await Auth.SendAsync(HttpMethod.Post, "/api/notes",
                 new CreateNoteRequest(newParent, title, t?.Emoji ?? "📄", template, t?.Accent, t?.Cover));
-            if (!res.IsSuccessStatusCode) { Toasts.Show("Gagal membuat halaman", ToastKind.Error); return; }
+            if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't create the page", ToastKind.Error); return; }
             var created = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
             if (created is null) return;
             if (newParent is { } p) expanded.Add(p);
@@ -536,7 +536,7 @@ public partial class Notes
 
     // ── Formatting helpers ───────────────────────────────────────────────────
 
-    private static string DisplayTitle(string? t) => string.IsNullOrWhiteSpace(t) ? "Tanpa judul" : t;
+    private static string DisplayTitle(string? t) => string.IsNullOrWhiteSpace(t) ? "Untitled" : t;
     /// Versions list contributors by name only; match them to a NIK from people already on screen.
     private string? ContributorNik(string name) =>
         presence.FirstOrDefault(u => u.Name == name)?.Nik
@@ -548,11 +548,30 @@ public partial class Notes
     private static string Ago(DateTime utc)
     {
         var d = DateTime.UtcNow - DateTime.SpecifyKind(utc, DateTimeKind.Utc);
-        if (d.TotalMinutes < 1) return "baru saja";
-        if (d.TotalMinutes < 60) return $"{(int)d.TotalMinutes} mnt lalu";
-        if (d.TotalHours < 24) return $"{(int)d.TotalHours} jam lalu";
-        if (d.TotalDays < 7) return $"{(int)d.TotalDays} hari lalu";
-        return utc.ToLocalTime().ToString("d MMM yyyy");
+        if (d.TotalMinutes < 1) return "just now";
+        if (d.TotalMinutes < 60) return $"{(int)d.TotalMinutes} min ago";
+        if (d.TotalHours < 24) return $"{(int)d.TotalHours} hr ago";
+        if (d.TotalDays < 2) return "yesterday";
+        if (d.TotalDays < 7) return $"{(int)d.TotalDays} days ago";
+        return ShortDate(utc);
+    }
+
+    // en-US month abbreviations, with "Sept" as used elsewhere in the English UI.
+    private static readonly string[] Months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"];
+
+    /// "Sept 21" this year, "Sept 21, 2025" otherwise (local time).
+    private static string ShortDate(DateTime utc)
+    {
+        var l = DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime();
+        var s = $"{Months[l.Month - 1]} {l.Day}";
+        return l.Year == DateTime.Now.Year ? s : $"{s}, {l.Year}";
+    }
+
+    /// "Sept 21, 2026, 14:05" — version history timestamps.
+    private static string StampDate(DateTime utc)
+    {
+        var l = DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime();
+        return $"{Months[l.Month - 1]} {l.Day}, {l.Year}, {l:HH:mm}";
     }
 
     private static readonly Dictionary<string, string> Accents = new()
@@ -568,10 +587,10 @@ public partial class Notes
     private record TemplateInfo(string Key, string Name, string Desc, string Emoji, string Color, string Accent, string? Cover);
     private static readonly TemplateInfo[] Templates =
     [
-        new("meeting", "Notulen rapat", "Agenda, catatan, keputusan, action items", "📅", "blue", "blue", "ocean"),
-        new("todo", "To-do list", "Hari ini, besok, nanti", "✅", "green", "green", null),
-        new("brief", "Project brief", "Tujuan, ruang lingkup, timeline", "🎯", "purple", "purple", "lavender"),
-        new("sop", "SOP", "Prosedur langkah demi langkah", "📖", "orange", "orange", "sand"),
+        new("meeting", "Meeting notes", "Agenda, notes, decisions, action items", "📅", "blue", "blue", "ocean"),
+        new("todo", "To-do list", "Today, tomorrow, later", "✅", "green", "green", null),
+        new("brief", "Project brief", "Goals, scope, timeline", "🎯", "purple", "purple", "lavender"),
+        new("sop", "SOP", "Step-by-step procedure", "📖", "orange", "orange", "sand"),
     ];
 
     private static readonly string[] Emojis =

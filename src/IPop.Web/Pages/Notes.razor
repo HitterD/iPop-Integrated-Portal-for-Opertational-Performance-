@@ -17,23 +17,23 @@
     <aside class="nt-side" aria-label="Notes">
         <div class="nt-side-head">
             <h1>Notes</h1>
-            <button type="button" class="nt-icon-btn" title="Halaman baru (Alt N)" @onclick="() => OpenNewPage(null)"><i data-lucide="square-pen"></i></button>
-            <button type="button" class="nt-icon-btn nt-mobile-only" title="Tutup" @onclick="() => sideOpen = false"><i data-lucide="x"></i></button>
+            <button type="button" class="nt-icon-btn" title="New page (Alt N)" @onclick="() => OpenNewPage(null)"><i data-lucide="square-pen"></i></button>
+            <button type="button" class="nt-icon-btn nt-mobile-only" title="Close" @onclick="() => sideOpen = false"><i data-lucide="x"></i></button>
         </div>
         <label class="nt-search">
             <i data-lucide="search" class="sm"></i>
-            <input @ref="searchRef" placeholder="Cari note" value="@searchQ" @oninput="OnSearchInput" @onkeydown="OnSearchKey" aria-label="Cari note" />
+            <input @ref="searchRef" placeholder="Search notes" value="@searchQ" @oninput="OnSearchInput" @onkeydown="OnSearchKey" aria-label="Search notes" />
             @if (string.IsNullOrEmpty(searchQ)) { <kbd>Ctrl K</kbd> }
-            else { <button type="button" class="nt-icon-btn" style="width:20px;height:20px" title="Hapus" @onclick="ClearSearch"><i data-lucide="x" class="sm"></i></button> }
+            else { <button type="button" class="nt-icon-btn" style="width:20px;height:20px" title="Clear" @onclick="ClearSearch"><i data-lucide="x" class="sm"></i></button> }
         </label>
 
         <div class="nt-side-scroll">
             @if (!string.IsNullOrWhiteSpace(searchQ))
             {
-                <div class="nt-sect">Hasil pencarian</div>
+                <div class="nt-sect">Search results</div>
                 <div class="nt-hits">
-                    @if (hits is null) { <div class="nt-side-empty">Mencari…</div> }
-                    else if (hits.Count == 0) { <div class="nt-side-empty">Tidak ada yang cocok dengan “@searchQ”.</div> }
+                    @if (hits is null) { <div class="nt-side-empty">Searching…</div> }
+                    else if (hits.Count == 0) { <div class="nt-side-empty">Nothing matches “@searchQ”.</div> }
                     else
                     {
                         @foreach (var h in hits)
@@ -48,7 +48,7 @@
             }
             else if (sidebar is null)
             {
-                <div class="nt-side-empty" style="padding-top:12px">Memuat…</div>
+                <div class="nt-side-empty" style="padding-top:12px">Loading…</div>
             }
             else
             {
@@ -57,7 +57,7 @@
                 {
                     <button type="button" class="nt-row guide @(IsActive(guide.Id) ? "active" : "")" @onclick="() => Open(guide.Id)">
                         <span class="emo">@(guide.Emoji ?? "👋")</span>
-                        <span class="t">Mulai di sini</span>
+                        <span class="t">Start here</span>
                         <span class="pill @(guide.TodoTotal > 0 && guide.TodoDone == guide.TodoTotal ? "done" : "")">@guide.TodoDone/@guide.TodoTotal</span>
                     </button>
                 }
@@ -65,7 +65,7 @@
                 var recent = sidebar.Recent.Select(id => sidebar.Pages.FirstOrDefault(p => p.Id == id)).Where(p => p is not null && !p.IsGuide).Take(4).ToList();
                 if (recent.Count > 0)
                 {
-                    <div class="nt-sect">Terakhir dibuka</div>
+                    <div class="nt-sect">Recently opened</div>
                     @foreach (var p in recent)
                     {
                         <button type="button" class="nt-row @(IsActive(p!.Id) ? "active" : "")" @onclick="() => Open(p.Id)">
@@ -78,33 +78,33 @@
                 var favs = sidebar.Pages.Where(p => p.IsFavorite).ToList();
                 if (favs.Count > 0)
                 {
-                    <div class="nt-sect">Favorit</div>
+                    <div class="nt-sect">Favorites</div>
                     @foreach (var p in favs) { @Row(p, 0, false) }
                 }
 
                 var shared = Roots(false);
-                <div class="nt-sect">Dibagikan ke saya</div>
-                @if (shared.Count == 0) { <div class="nt-side-empty">Belum ada. Note yang dikirim ke chat muncul di sini.</div> }
+                <div class="nt-sect">Shared with me</div>
+                @if (shared.Count == 0) { <div class="nt-side-empty">Nothing yet. Notes sent to your chats show up here.</div> }
                 @foreach (var p in shared) { @Row(p, 0, true) }
 
-                <div class="nt-sect">Pribadi <button type="button" title="Halaman baru" @onclick="() => OpenNewPage(null)"><i data-lucide="plus" class="sm"></i></button></div>
+                <div class="nt-sect">Private <button type="button" title="New page" @onclick="() => OpenNewPage(null)"><i data-lucide="plus" class="sm"></i></button></div>
                 @foreach (var p in Roots(true).Where(p => !p.IsGuide)) { @Row(p, 0, true) }
-                @if (!Roots(true).Any(p => !p.IsGuide)) { <div class="nt-side-empty">Klik + untuk membuat halaman pertama.</div> }
+                @if (!Roots(true).Any(p => !p.IsGuide)) { <div class="nt-side-empty">Click + to create your first page.</div> }
             }
         </div>
         <div class="nt-side-foot">
-            <button type="button" class="nt-row @(view == View.Trash ? "active" : "")" @onclick="OpenTrash"><span class="sico"><i data-lucide="trash-2" class="sm"></i></span><span class="t">Sampah</span></button>
-            <button type="button" class="nt-icon-btn" title="Halaman baru (Alt N)" @onclick="() => OpenNewPage(null)"><i data-lucide="plus"></i></button>
+            <button type="button" class="nt-row @(view == View.Trash ? "active" : "")" @onclick="OpenTrash"><span class="sico"><i data-lucide="trash-2" class="sm"></i></span><span class="t">Trash</span></button>
+            <button type="button" class="nt-icon-btn" title="New page (Alt N)" @onclick="() => OpenNewPage(null)"><i data-lucide="plus"></i></button>
         </div>
     </aside>
 
     @* ── Document ─────────────────────────────────────────────────────────── *@
     <main class="nt-doc">
         <div class="nt-doc-top">
-            <button type="button" class="nt-icon-btn nt-mobile-only" title="Daftar note" @onclick="() => sideOpen = true"><i data-lucide="panel-left"></i></button>
+            <button type="button" class="nt-icon-btn nt-mobile-only" title="Notes list" @onclick="() => sideOpen = true"><i data-lucide="panel-left"></i></button>
             @if (view == View.Page && note is not null)
             {
-                <nav class="nt-crumbs" aria-label="Lokasi">
+                <nav class="nt-crumbs" aria-label="Breadcrumb">
                     @foreach (var c in note.Breadcrumb)
                     {
                         <a @onclick="() => Open(c.Id)">@(c.Emoji ?? "📄") @DisplayTitle(c.Title)</a><i data-lucide="chevron-right"></i>
@@ -112,14 +112,14 @@
                     <a class="cur">@(note.Emoji ?? "📄") @DisplayTitle(note.Title)</a>
                 </nav>
                 <span class="nt-saved hide-sm @(saveState == "offline" ? "offline" : "")">
-                    @if (saveState == "saving") { <i data-lucide="loader"></i><span>Menyimpan…</span> }
-                    else if (saveState == "offline") { <i data-lucide="wifi-off"></i><span>Offline — perubahan disimpan saat tersambung</span> }
-                    else if (!CanEdit) { <i data-lucide="eye"></i><span>@(note.Access == "comment" ? "Bisa komentar" : "Hanya lihat")</span> }
-                    else { <i data-lucide="check"></i><span>Tersimpan</span> }
+                    @if (saveState == "saving") { <i data-lucide="loader"></i><span>Saving…</span> }
+                    else if (saveState == "offline") { <i data-lucide="wifi-off"></i><span>Offline — changes will save when you reconnect</span> }
+                    else if (!CanEdit) { <i data-lucide="eye"></i><span>@(note.Access == "comment" ? "Can comment" : "View only")</span> }
+                    else { <i data-lucide="check"></i><span>Saved</span> }
                 </span>
                 @if (presence.Count > 0)
                 {
-                    <div class="nt-avatars hide-sm" title="@string.Join(", ", presence.Select(u => u.Name)) sedang membuka">
+                    <div class="nt-avatars hide-sm" title="@string.Join(", ", presence.Select(u => u.Name)) viewing now">
                         @foreach (var u in presence.Take(4))
                         {
                             <PersonAvatar Nik="@u.Nik" Name="@u.Name" Size="24" Color="@u.Color" Class="nt-av s24 live" Decorative="true" />
@@ -132,17 +132,17 @@
                 {
                     <button type="button" class="nt-btn ghost hide-sm" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
                 }
-                <button type="button" class="nt-icon-btn @(commentsOpen ? "on" : "")" title="Komentar" @onclick="ToggleComments"><i data-lucide="message-square"></i></button>
-                <button type="button" class="nt-icon-btn fav @(note.IsFavorite ? "on" : "")" title="@(note.IsFavorite ? "Hapus dari favorit" : "Tambah ke favorit")" @onclick="ToggleFavorite"><i data-lucide="star"></i></button>
+                <button type="button" class="nt-icon-btn @(commentsOpen ? "on" : "")" title="Comments" @onclick="ToggleComments"><i data-lucide="message-square"></i></button>
+                <button type="button" class="nt-icon-btn fav @(note.IsFavorite ? "on" : "")" title="@(note.IsFavorite ? "Remove from favorites" : "Add to favorites")" @onclick="ToggleFavorite"><i data-lucide="star"></i></button>
                 @if (IsOwner)
                 {
                     <button type="button" class="nt-btn primary" @onclick="OpenShare"><i data-lucide="share" class="sm"></i>Share</button>
                 }
-                <button type="button" class="nt-icon-btn" title="Lainnya" @onclick="() => pop = Pop.More"><i data-lucide="ellipsis"></i></button>
+                <button type="button" class="nt-icon-btn" title="More" @onclick="() => pop = Pop.More"><i data-lucide="ellipsis"></i></button>
             }
             else
             {
-                <nav class="nt-crumbs"><a class="cur">@(view == View.Trash ? "🗑 Sampah" : view == View.New ? "Halaman baru" : "Notes")</a></nav>
+                <nav class="nt-crumbs"><a class="cur">@(view == View.Trash ? "🗑 Trash" : view == View.New ? "New page" : "Notes")</a></nav>
             }
         </div>
 
@@ -150,10 +150,10 @@
             @if (view == View.Trash)
             {
                 <div class="nt-trash">
-                    <h2>Sampah</h2>
-                    <div class="sub">Halaman yang dihapus bisa dikembalikan. Sub-halaman ikut kembali.</div>
-                    @if (trash is null) { <div class="nt-loading">Memuat…</div> }
-                    else if (trash.Count == 0) { <div class="nt-side-empty">Sampah kosong.</div> }
+                    <h2>Trash</h2>
+                    <div class="sub">Deleted pages can be restored. Their sub-pages come back too.</div>
+                    @if (trash is null) { <div class="nt-loading">Loading…</div> }
+                    else if (trash.Count == 0) { <div class="nt-side-empty">Trash is empty.</div> }
                     else
                     {
                         @foreach (var t in trash)
@@ -162,8 +162,8 @@
                                 <span>@(t.Emoji ?? "📄")</span>
                                 <span class="t">@DisplayTitle(t.Title)</span>
                                 <span class="m">@Ago(t.UpdatedAt)</span>
-                                <button type="button" class="nt-btn ghost" @onclick="() => RestorePage(t.Id)"><i data-lucide="rotate-ccw" class="sm"></i>Kembalikan</button>
-                                @if (t.IsMine) { <button type="button" class="nt-btn ghost danger" @onclick="() => PurgePage(t)"><i data-lucide="trash-2" class="sm"></i>Hapus permanen</button> }
+                                <button type="button" class="nt-btn ghost" @onclick="() => RestorePage(t.Id)"><i data-lucide="rotate-ccw" class="sm"></i>Restore</button>
+                                @if (t.IsMine) { <button type="button" class="nt-btn ghost danger" @onclick="() => PurgePage(t)"><i data-lucide="trash-2" class="sm"></i>Delete forever</button> }
                             </div>
                         }
                     }
@@ -174,11 +174,11 @@
                 <section class="nt-pageview" style="--pc:@AccentHex(newAccent)">
                     <div class="nt-page no-cover">
                         <div class="nt-page-icon" style="cursor:default">📄</div>
-                        <input class="nt-page-title" placeholder="Tanpa judul" @bind="newTitle" @bind:event="oninput" @onkeydown="OnNewTitleKey" @ref="newTitleRef" />
+                        <input class="nt-page-title" placeholder="Untitled" @bind="newTitle" @bind:event="oninput" @onkeydown="OnNewTitleKey" @ref="newTitleRef" />
                         <div class="nt-page-props">
-                            <span class="nt-prop"><i data-lucide="lock"></i>@(newParent is null ? "Pribadi — hanya kamu" : "Sub-halaman")</span>
+                            <span class="nt-prop"><i data-lucide="lock"></i>@(newParent is null ? "Private — only you" : "Sub-page")</span>
                         </div>
-                        <div class="nt-tpl-hint">MULAI DARI TEMPLATE — ATAU TEKAN ENTER UNTUK HALAMAN KOSONG</div>
+                        <div class="nt-tpl-hint">START FROM A TEMPLATE — OR PRESS ENTER FOR A BLANK PAGE</div>
                         <div class="nt-tpl-grid">
                             @foreach (var t in Templates)
                             {
@@ -189,20 +189,20 @@
                             }
                             <button type="button" class="nt-tpl c-gray" disabled="@creating" @onclick="() => CreatePage(null)">
                                 <span class="ti">📄</span>
-                                <span><span class="tn">Halaman kosong</span><br /><span class="td">Mulai dari nol</span></span>
+                                <span><span class="tn">Blank page</span><br /><span class="td">Start from scratch</span></span>
                             </button>
                         </div>
                         @if (GuideId is { } gid)
                         {
                             <button type="button" class="nt-new-guide" @onclick="() => Open(gid)">
                                 <span class="emo">👋</span>
-                                <span><b>Baru pertama kali?</b><br /><span class="muted">Buka panduan singkat — 13 langkah yang bisa dicoba langsung.</span></span>
+                                <span><b>New here?</b><br /><span class="muted">Open the quick guide — 13 hands-on steps.</span></span>
                             </button>
                         }
                         @* The guide page teaches the blocks; the tour shows where things are on screen. *@
                         <button type="button" class="nt-new-guide" @onclick='() => Tutorials.StartTourAsync(TutorialRegistry.Get("notes")!)'>
                             <span class="emo">🧭</span>
-                            <span><b>Tur 1 menit</b><br /><span class="muted">Tunjukkan letak halaman, berbagi dan pencarian. Buka lagi kapan saja lewat tombol ? di atas.</span></span>
+                            <span><b>1-minute tour</b><br /><span class="muted">See where pages, sharing and search live. Reopen it anytime from the ? button at the top.</span></span>
                         </button>
                     </div>
                 </section>
@@ -213,14 +213,14 @@
                 {
                     <div class="nt-error">
                         <div class="emo">@(pageError == "not_found" ? "🔍" : "🔒")</div>
-                        <b>@(pageError == "not_found" ? "Halaman tidak ditemukan" : "Kamu tidak punya akses ke halaman ini")</b>
-                        <span>@(pageError == "not_found" ? "Mungkin sudah dihapus atau dipindahkan ke Sampah." : "Minta pemiliknya membagikan note ini ke kamu atau ke grup chat-mu.")</span>
-                        <button type="button" class="nt-btn" @onclick="GoHome">Kembali ke Notes</button>
+                        <b>@(pageError == "not_found" ? "Page not found" : "You don't have access to this page")</b>
+                        <span>@(pageError == "not_found" ? "It may have been deleted or moved to Trash." : "Ask the owner to share this note with you or one of your group chats.")</span>
+                        <button type="button" class="nt-btn" @onclick="GoHome">Back to Notes</button>
                     </div>
                 }
                 else if (note is null)
                 {
-                    <div class="nt-loading">Memuat halaman…</div>
+                    <div class="nt-loading">Loading page…</div>
                 }
                 else
                 {
@@ -231,40 +231,40 @@
                                 @if (CanEdit)
                                 {
                                     <div class="nt-cover-actions">
-                                        <button type="button" @onclick="() => pop = Pop.Style"><i data-lucide="image" class="sm"></i>Ganti cover</button>
-                                        <button type="button" @onclick='() => PatchAsync(new UpdateNoteMetaRequest(null, null, "", null, null, null, null))'>Hapus</button>
+                                        <button type="button" @onclick="() => pop = Pop.Style"><i data-lucide="image" class="sm"></i>Change cover</button>
+                                        <button type="button" @onclick='() => PatchAsync(new UpdateNoteMetaRequest(null, null, "", null, null, null, null))'>Remove</button>
                                     </div>
                                 }
                             </div>
                         }
                         <div class="nt-page @(note.FullWidth ? "wide" : "") @(note.Cover is null ? "no-cover" : "")">
-                            <div class="nt-page-icon" title="@(CanEdit ? "Ganti ikon" : "")" style="@(CanEdit ? "" : "cursor:default")" @onclick="() => { if (CanEdit) pop = Pop.Emoji; }">@(note.Emoji ?? "📄")</div>
+                            <div class="nt-page-icon" title="@(CanEdit ? "Change icon" : "")" style="@(CanEdit ? "" : "cursor:default")" @onclick="() => { if (CanEdit) pop = Pop.Emoji; }">@(note.Emoji ?? "📄")</div>
                             @if (CanEdit && note.Cover is null)
                             {
                                 <div class="nt-add-row">
-                                    <button type="button" @onclick='() => PatchAsync(new UpdateNoteMetaRequest(null, null, "ocean", null, null, null, null))'><i data-lucide="image" class="sm"></i>Tambah cover</button>
-                                    <button type="button" @onclick="ToggleComments"><i data-lucide="message-square" class="sm"></i>Komentar</button>
+                                    <button type="button" @onclick='() => PatchAsync(new UpdateNoteMetaRequest(null, null, "ocean", null, null, null, null))'><i data-lucide="image" class="sm"></i>Add cover</button>
+                                    <button type="button" @onclick="ToggleComments"><i data-lucide="message-square" class="sm"></i>Comment</button>
                                 </div>
                             }
-                            <input class="nt-page-title" placeholder="Tanpa judul" value="@titleDraft" readonly="@(!CanEdit)"
-                                   @oninput="OnTitleInput" @onkeydown="OnTitleKey" @onblur="FlushTitle" aria-label="Judul" />
+                            <input class="nt-page-title" placeholder="Untitled" value="@titleDraft" readonly="@(!CanEdit)"
+                                   @oninput="OnTitleInput" @onkeydown="OnTitleKey" @onblur="FlushTitle" aria-label="Title" />
                             <div class="nt-page-props">
                                 @if (!note.OwnerNik.Equals(Auth.Me?.Nik, StringComparison.OrdinalIgnoreCase))
                                 {
                                     <span class="nt-prop"><i data-lucide="user"></i>@note.OwnerName</span>
                                 }
-                                <span class="nt-prop"><i data-lucide="clock"></i>Diubah @Ago(note.UpdatedAt)@(note.UpdatedByName is { } ub ? $" oleh {FirstName(ub)}" : "")</span>
+                                <span class="nt-prop"><i data-lucide="clock"></i>Edited @Ago(note.UpdatedAt)@(note.UpdatedByName is { } ub ? $" by {FirstName(ub)}" : "")</span>
                                 @if (note.Rooms.Count > 0)
                                 {
-                                    <span class="nt-prop acc" title="@string.Join(", ", note.Rooms.Select(r => r.Name))"><i data-lucide="users"></i>@(note.Rooms.Count == 1 ? note.Rooms[0].Name : $"{note.Rooms.Count} chat")</span>
+                                    <span class="nt-prop acc" title="@string.Join(", ", note.Rooms.Select(r => r.Name))"><i data-lucide="users"></i>@(note.Rooms.Count == 1 ? note.Rooms[0].Name : $"{note.Rooms.Count} chats")</span>
                                 }
                                 else if (note.IsShared)
                                 {
-                                    <span class="nt-prop acc"><i data-lucide="users"></i>Dibagikan</span>
+                                    <span class="nt-prop acc"><i data-lucide="users"></i>Shared</span>
                                 }
                                 else
                                 {
-                                    <span class="nt-prop"><i data-lucide="lock"></i>Pribadi</span>
+                                    <span class="nt-prop"><i data-lucide="lock"></i>Private</span>
                                 }
                                 @if (note.TodoTotal > 0)
                                 {
@@ -274,7 +274,7 @@
                             <div @ref="editorRef" @key="note.Id"></div>
                             @if (showTemplates)
                             {
-                                <div class="nt-tpl-hint">ATAU MULAI DARI TEMPLATE</div>
+                                <div class="nt-tpl-hint">OR START FROM A TEMPLATE</div>
                                 <div class="nt-tpl-grid">
                                     @foreach (var t in Templates)
                                     {
@@ -287,7 +287,7 @@
                             }
                             @if (note.Children.Count > 0)
                             {
-                                <div class="nt-tpl-hint">SUB-HALAMAN</div>
+                                <div class="nt-tpl-hint">SUB-PAGES</div>
                                 @foreach (var c in note.Children)
                                 {
                                     <button type="button" class="nt-row" @onclick="() => Open(c.Id)"><span class="emo">@(c.Emoji ?? "📄")</span><span class="t">@DisplayTitle(c.Title)</span></button>
@@ -301,9 +301,9 @@
             {
                 <div class="nt-home">
                     <h2>Notes</h2>
-                    <div class="sub">Catatan, SOP, dan notulen — bisa dibagikan ke chat dan diedit bersama.</div>
+                    <div class="sub">Notes, SOPs and meeting minutes — share them to chat and edit together.</div>
                     <div class="nt-cards">
-                        <button type="button" class="nt-card" @onclick="() => OpenNewPage(null)"><span class="emo">➕</span><span class="t">Halaman baru</span><span class="m">Alt N</span></button>
+                        <button type="button" class="nt-card" @onclick="() => OpenNewPage(null)"><span class="emo">➕</span><span class="t">New page</span><span class="m">Alt N</span></button>
                         @if (sidebar is not null)
                         {
                             @foreach (var p in sidebar.Pages.OrderByDescending(p => p.IsGuide).ThenByDescending(p => p.UpdatedAt).Take(11))
@@ -321,24 +321,24 @@
     </main>
 
     @* ── Comments ─────────────────────────────────────────────────────────── *@
-    <aside class="nt-comments @(commentsOpen && view == View.Page ? "open" : "")" aria-label="Komentar">
+    <aside class="nt-comments @(commentsOpen && view == View.Page ? "open" : "")" aria-label="Comments">
         <div class="nt-cp-head">
-            <h2>Komentar</h2>
+            <h2>Comments</h2>
             <div class="nt-seg">
-                <button type="button" class="@(showResolved ? "" : "on")" @onclick="() => showResolved = false">Terbuka</button>
-                <button type="button" class="@(showResolved ? "on" : "")" @onclick="() => showResolved = true">Semua</button>
+                <button type="button" class="@(showResolved ? "" : "on")" @onclick="() => showResolved = false">Open</button>
+                <button type="button" class="@(showResolved ? "on" : "")" @onclick="() => showResolved = true">All</button>
             </div>
-            <button type="button" class="nt-icon-btn" title="Tutup" @onclick="() => commentsOpen = false"><i data-lucide="x"></i></button>
+            <button type="button" class="nt-icon-btn" title="Close" @onclick="() => commentsOpen = false"><i data-lucide="x"></i></button>
         </div>
         <div class="nt-cp-body">
             @if (draft is not null)
             {
                 <div class="nt-thread draft">
                     <div class="quoteline"><span>@draft.Quote</span></div>
-                    <textarea @ref="draftRef" placeholder="Tulis komentar… (@@ untuk menyebut)" @bind="draft.Body" @bind:event="oninput" @onkeydown="OnDraftKey"></textarea>
+                    <textarea @ref="draftRef" placeholder="Write a comment… (@@ to mention)" @bind="draft.Body" @bind:event="oninput" @onkeydown="OnDraftKey"></textarea>
                     <div class="acts">
-                        <button type="button" class="nt-btn ghost" @onclick="() => draft = null">Batal</button>
-                        <button type="button" class="nt-btn primary" disabled="@(string.IsNullOrWhiteSpace(draft.Body) || busy)" @onclick="PostDraft">Kirim</button>
+                        <button type="button" class="nt-btn ghost" @onclick="() => draft = null">Cancel</button>
+                        <button type="button" class="nt-btn primary" disabled="@(string.IsNullOrWhiteSpace(draft.Body) || busy)" @onclick="PostDraft">Send</button>
                     </div>
                 </div>
             }
@@ -346,8 +346,8 @@
             @if (shown.Count == 0 && draft is null)
             {
                 <div class="nt-cp-empty">
-                    @(threads.Count == 0 ? "Belum ada komentar." : "Semua komentar sudah selesai.")<br />
-                    @if (CanComment) { <span>Blok teks lalu klik <b>💬 Comment</b> atau tekan <kbd>Ctrl Shift M</kbd>.</span> }
+                    @(threads.Count == 0 ? "No comments yet." : "All comments are resolved.")<br />
+                    @if (CanComment) { <span>Select text, then click <b>💬 Comment</b> or press <kbd>Ctrl Shift M</kbd>.</span> }
                 </div>
             }
             @foreach (var t in shown)
@@ -359,7 +359,7 @@
                             <span>@t.Quote</span>
                             @if (CanComment)
                             {
-                                <button type="button" title="@(t.ResolvedAt is null ? "Tandai selesai" : "Buka lagi")" @onclick="() => Resolve(t)" @onclick:stopPropagation>
+                                <button type="button" title="@(t.ResolvedAt is null ? "Resolve" : "Reopen")" @onclick="() => Resolve(t)" @onclick:stopPropagation>
                                     <i data-lucide="@(t.ResolvedAt is null ? "circle-check" : "rotate-ccw")" class="sm"></i>
                                 </button>
                             }
@@ -379,8 +379,8 @@
                     @if (CanComment && t.ResolvedAt is null)
                     {
                         <div class="nt-c-reply" @onclick:stopPropagation>
-                            <input placeholder="Balas…" value="@(replies.GetValueOrDefault(t.Id) ?? "")" @oninput="e => replies[t.Id] = e.Value?.ToString()" @onkeydown="e => OnReplyKey(e, t)" />
-                            <button type="button" class="nt-icon-btn" title="Kirim" @onclick="() => Reply(t)"><i data-lucide="arrow-up"></i></button>
+                            <input placeholder="Reply…" value="@(replies.GetValueOrDefault(t.Id) ?? "")" @oninput="e => replies[t.Id] = e.Value?.ToString()" @onkeydown="e => OnReplyKey(e, t)" />
+                            <button type="button" class="nt-icon-btn" title="Send" @onclick="() => Reply(t)"><i data-lucide="arrow-up"></i></button>
                         </div>
                     }
                 </div>
@@ -400,17 +400,17 @@
                 @if (CanEdit)
                 {
                     <button type="button" class="mi" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
-                    <button type="button" class="mi" @onclick="() => OpenNewPage(note.Id)"><i data-lucide="file-plus" class="sm"></i>Tambah sub-halaman</button>
+                    <button type="button" class="mi" @onclick="() => OpenNewPage(note.Id)"><i data-lucide="file-plus" class="sm"></i>Add sub-page</button>
                 }
                 <button type="button" class="mi" @onclick="OpenHistory"><i data-lucide="history" class="sm"></i>Version history</button>
-                <button type="button" class="mi" @onclick="CopyLink"><i data-lucide="link" class="sm"></i>Salin link</button>
+                <button type="button" class="mi" @onclick="CopyLink"><i data-lucide="link" class="sm"></i>Copy link</button>
                 @if (CanEdit)
                 {
                     <hr />
-                    <button type="button" class="mi danger" @onclick="TrashPage"><i data-lucide="trash-2" class="sm"></i>Pindahkan ke Sampah</button>
+                    <button type="button" class="mi danger" @onclick="TrashPage"><i data-lucide="trash-2" class="sm"></i>Move to Trash</button>
                 }
                 <hr />
-                <div class="mh" style="font-weight:400">Dibuat @note.CreatedAt.ToLocalTime().ToString("d MMM yyyy") · @note.OwnerName</div>
+                <div class="mh" style="font-weight:400">Created @ShortDate(note.CreatedAt) · @note.OwnerName</div>
             </div>
             break;
 
@@ -419,7 +419,7 @@
                 <section>
                     <h4>COVER</h4>
                     <div class="nt-covers">
-                        <button type="button" class="none @(note.Cover is null ? "on" : "")" @onclick='() => PatchAsync(new UpdateNoteMetaRequest(null, null, "", null, null, null, null))'>Tanpa</button>
+                        <button type="button" class="none @(note.Cover is null ? "on" : "")" @onclick='() => PatchAsync(new UpdateNoteMetaRequest(null, null, "", null, null, null, null))'>None</button>
                         @foreach (var c in Covers)
                         {
                             <button type="button" class="@(note.Cover == c ? "on" : "")" style="--cv:var(--cv-@c)" title="@c" @onclick="() => PatchAsync(new UpdateNoteMetaRequest(null, null, c, null, null, null, null))"></button>
@@ -427,7 +427,7 @@
                     </div>
                 </section>
                 <section>
-                    <h4>WARNA AKSEN</h4>
+                    <h4>ACCENT COLOR</h4>
                     <div class="nt-accents">
                         @foreach (var a in Accents)
                         {
@@ -444,8 +444,8 @@
                     </div>
                 </section>
                 <section>
-                    <div class="nt-switch-row"><span>Lebar penuh</span><button type="button" class="nt-switch @(note.FullWidth ? "on" : "")" aria-label="Lebar penuh" @onclick="() => PatchAsync(new UpdateNoteMetaRequest(null, null, null, null, null, !note.FullWidth, null))"></button></div>
-                    <div class="nt-switch-row"><span>Teks kecil</span><button type="button" class="nt-switch @(note.SmallText ? "on" : "")" aria-label="Teks kecil" @onclick="() => PatchAsync(new UpdateNoteMetaRequest(null, null, null, null, null, null, !note.SmallText))"></button></div>
+                    <div class="nt-switch-row"><span>Full width</span><button type="button" class="nt-switch @(note.FullWidth ? "on" : "")" aria-label="Full width" @onclick="() => PatchAsync(new UpdateNoteMetaRequest(null, null, null, null, null, !note.FullWidth, null))"></button></div>
+                    <div class="nt-switch-row"><span>Small text</span><button type="button" class="nt-switch @(note.SmallText ? "on" : "")" aria-label="Small text" @onclick="() => PatchAsync(new UpdateNoteMetaRequest(null, null, null, null, null, null, !note.SmallText))"></button></div>
                 </section>
             </div>
             break;
@@ -459,23 +459,23 @@
                     }
                 </div>
                 <div class="foot">
-                    <button type="button" class="nt-btn ghost" @onclick="() => SetEmoji(Emojis[Random.Shared.Next(Emojis.Length)])"><i data-lucide="shuffle" class="sm"></i>Acak</button>
-                    <button type="button" class="nt-btn ghost" @onclick='() => SetEmoji("")'>Hapus ikon</button>
+                    <button type="button" class="nt-btn ghost" @onclick="() => SetEmoji(Emojis[Random.Shared.Next(Emojis.Length)])"><i data-lucide="shuffle" class="sm"></i>Random</button>
+                    <button type="button" class="nt-btn ghost" @onclick='() => SetEmoji("")'>Remove icon</button>
                 </div>
             </div>
             break;
 
         case Pop.Share:
-            <div class="nt-layer nt-share" role="dialog" aria-label="Bagikan">
+            <div class="nt-layer nt-share" role="dialog" aria-label="Share">
                 <div class="nt-share-tabs">
-                    <button type="button" class="@(shareTab == 0 ? "on" : "")" @onclick="() => shareTab = 0">Bagikan</button>
-                    <button type="button" class="@(shareTab == 1 ? "on" : "")" @onclick="OpenSendTab">Kirim ke chat</button>
+                    <button type="button" class="@(shareTab == 0 ? "on" : "")" @onclick="() => shareTab = 0">Share</button>
+                    <button type="button" class="@(shareTab == 1 ? "on" : "")" @onclick="OpenSendTab">Send to chat</button>
                 </div>
                 @if (shareTab == 0)
                 {
                     <div class="nt-share-pane">
                         <div class="nt-inv">
-                            <label class="nt-field"><i data-lucide="user-plus" class="sm"></i><input placeholder="Cari nama atau NIK" value="@inviteQ" @oninput="OnInviteInput" /></label>
+                            <label class="nt-field"><i data-lucide="user-plus" class="sm"></i><input placeholder="Search name or NIK" value="@inviteQ" @oninput="OnInviteInput" /></label>
                             <select class="nt-role" style="border:1px solid var(--line);height:34px" @bind="inviteLevel">
                                 <option value="edit">Can edit</option><option value="comment">Can comment</option><option value="view">Can view</option>
                             </select>
@@ -492,21 +492,21 @@
                                 </div>
                             }
                         </div>
-                        @if (shares is null) { <div class="nt-loading">Memuat…</div> }
+                        @if (shares is null) { <div class="nt-loading">Loading…</div> }
                         else
                         {
                             <div class="nt-plist">
-                                <div class="lbl">ORANG</div>
+                                <div class="lbl">PEOPLE</div>
                                 <div class="nt-pr">
                                     <PersonAvatar Nik="@shares.OwnerNik" Name="@shares.OwnerName" Size="30" Class="nt-av s30" Decorative="true" />
-                                    <div class="grow"><div class="nm">@shares.OwnerName @(shares.OwnerNik.Equals(Auth.Me?.Nik, StringComparison.OrdinalIgnoreCase) ? "(kamu)" : "")</div><div class="sub">@(shares.OwnerPosition ?? shares.OwnerNik)</div></div>
+                                    <div class="grow"><div class="nm">@shares.OwnerName @(shares.OwnerNik.Equals(Auth.Me?.Nik, StringComparison.OrdinalIgnoreCase) ? "(you)" : "")</div><div class="sub">@(shares.OwnerPosition ?? shares.OwnerNik)</div></div>
                                     <span class="nt-role static">Owner</span>
                                 </div>
                                 @foreach (var s in shares.Shares.Where(s => s.UserId is not null))
                                 {
                                     <div class="nt-pr">
                                         <PersonAvatar Nik="@s.UserNik" Name="@s.UserName" Size="30" Class="nt-av s30" Decorative="true" />
-                                        <div class="grow"><div class="nm">@s.UserName</div><div class="sub">@(s.InheritedFromTitle is { } it ? $"Dari “{DisplayTitle(it)}”" : s.UserPosition ?? s.UserNik)</div></div>
+                                        <div class="grow"><div class="nm">@s.UserName</div><div class="sub">@(s.InheritedFromTitle is { } it ? $"From “{DisplayTitle(it)}”" : s.UserPosition ?? s.UserNik)</div></div>
                                         @ShareRole(s)
                                     </div>
                                 }
@@ -517,7 +517,7 @@
                                     {
                                         <div class="nt-pr">
                                             <span class="nt-room-av" style="background:@AvatarPalette.For(s.RoomName)"><i data-lucide="@(IsDirect(s.RoomType) ? "user" : "users")" class="sm"></i></span>
-                                            <div class="grow"><div class="nm">@s.RoomName</div><div class="sub">@(s.InheritedFromTitle is { } it ? $"Dari “{DisplayTitle(it)}”" : IsDirect(s.RoomType) ? "Chat pribadi" : $"{s.RoomMembers} anggota · ikut keanggotaan grup")</div></div>
+                                            <div class="grow"><div class="nm">@s.RoomName</div><div class="sub">@(s.InheritedFromTitle is { } it ? $"From “{DisplayTitle(it)}”" : IsDirect(s.RoomType) ? "Direct message" : $"{s.RoomMembers} members · follows group membership")</div></div>
                                             @ShareRole(s)
                                         </div>
                                     }
@@ -525,7 +525,7 @@
                             </div>
                             <div class="nt-general">
                                 <span class="gi"><i data-lucide="@(shares.Shares.Count == 0 ? "lock" : "users")" class="sm"></i></span>
-                                <div><div style="font-weight:500">@(shares.Shares.Count == 0 ? "Hanya kamu" : "Terbatas")</div><div class="sub">Hanya orang dan anggota chat di atas yang bisa membuka.</div></div>
+                                <div><div style="font-weight:500">@(shares.Shares.Count == 0 ? "Only you" : "Restricted")</div><div class="sub">Only the people and chat members above can open it.</div></div>
                             </div>
                         }
                     </div>
@@ -533,52 +533,52 @@
                 else
                 {
                     <div class="nt-share-pane">
-                        <label class="nt-field"><i data-lucide="search" class="sm"></i><input placeholder="Cari chat atau grup" @bind="roomQ" @bind:event="oninput" /></label>
+                        <label class="nt-field"><i data-lucide="search" class="sm"></i><input placeholder="Search chats or groups" @bind="roomQ" @bind:event="oninput" /></label>
                         <div class="nt-rooms">
-                            @if (rooms is null) { <div class="nt-loading">Memuat chat…</div> }
+                            @if (rooms is null) { <div class="nt-loading">Loading chats…</div> }
                             else
                             {
                                 var list = rooms.Where(r => string.IsNullOrWhiteSpace(roomQ) || RoomName(r).Contains(roomQ, StringComparison.OrdinalIgnoreCase)).Take(60).ToList();
-                                if (list.Count == 0) { <div class="nt-side-empty">Tidak ada chat yang cocok.</div> }
+                                if (list.Count == 0) { <div class="nt-side-empty">No matching chats.</div> }
                                 @foreach (var r in list)
                                 {
                                     <button type="button" class="nt-rm @(sendRoom == r.Id ? "on" : "")" @onclick="() => sendRoom = r.Id">
                                         @if (IsDirect(r.Type)) { <PersonAvatar Nik="@r.RecipientNik" Name="@RoomName(r)" Size="30" Class="nt-room-av" Decorative="true" /> }
                                         else { <span class="nt-room-av" style="background:@(r.AvatarColor ?? AvatarPalette.For(r.RecipientNik ?? RoomName(r)))"><i data-lucide="users" class="sm"></i></span> }
-                                        <span class="grow"><span class="nm" style="display:block">@RoomName(r)</span><span class="sub">@(IsDirect(r.Type) ? "Chat pribadi" : "Grup")</span></span>
+                                        <span class="grow"><span class="nm" style="display:block">@RoomName(r)</span><span class="sub">@(IsDirect(r.Type) ? "Direct message" : "Group")</span></span>
                                         <span class="nt-radio"></span>
                                     </button>
                                 }
                             }
                         </div>
                         <div class="nt-send-opts">
-                            <span style="color:var(--ink-3);font-size:12.5px">Anggota bisa</span>
+                            <span style="color:var(--ink-3);font-size:12.5px">Members can</span>
                             <div class="nt-seg">
-                                <button type="button" class="@(sendLevel == "view" ? "on" : "")" @onclick='() => sendLevel = "view"'>Lihat</button>
-                                <button type="button" class="@(sendLevel == "comment" ? "on" : "")" @onclick='() => sendLevel = "comment"'>Komentar</button>
+                                <button type="button" class="@(sendLevel == "view" ? "on" : "")" @onclick='() => sendLevel = "view"'>View</button>
+                                <button type="button" class="@(sendLevel == "comment" ? "on" : "")" @onclick='() => sendLevel = "comment"'>Comment</button>
                                 <button type="button" class="@(sendLevel == "edit" ? "on" : "")" @onclick='() => sendLevel = "edit"'>Edit</button>
                             </div>
                         </div>
-                        <textarea class="nt-msg-field" placeholder="Tambahkan pesan (opsional)" @bind="sendMsg" @bind:event="oninput"></textarea>
-                        <div class="nt-note-hint"><i data-lucide="info" class="sm"></i><span>Akses mengikuti anggota chat: anggota baru otomatis bisa membuka, yang keluar kehilangan akses. Sub-halaman ikut terbagi.</span></div>
+                        <textarea class="nt-msg-field" placeholder="Add a message (optional)" @bind="sendMsg" @bind:event="oninput"></textarea>
+                        <div class="nt-note-hint"><i data-lucide="info" class="sm"></i><span>Access follows chat membership: new members can open it automatically, and anyone who leaves loses access. Sub-pages are shared too.</span></div>
                     </div>
                 }
                 <div class="nt-share-foot">
-                    <button type="button" class="nt-link" @onclick="CopyLink"><i data-lucide="link" class="sm"></i>Salin link</button>
+                    <button type="button" class="nt-link" @onclick="CopyLink"><i data-lucide="link" class="sm"></i>Copy link</button>
                     @if (shareTab == 1)
                     {
-                        <button type="button" class="nt-btn primary" disabled="@(sendRoom is null || busy)" @onclick="SendToChat"><i data-lucide="send" class="sm"></i>Kirim</button>
+                        <button type="button" class="nt-btn primary" disabled="@(sendRoom is null || busy)" @onclick="SendToChat"><i data-lucide="send" class="sm"></i>Send</button>
                     }
                     else
                     {
-                        <button type="button" class="nt-btn" @onclick="ClosePop">Selesai</button>
+                        <button type="button" class="nt-btn" @onclick="ClosePop">Done</button>
                     }
                 </div>
             </div>
             break;
 
         case Pop.History:
-            <div class="nt-layer nt-history" role="dialog" aria-label="Riwayat versi">
+            <div class="nt-layer nt-history" role="dialog" aria-label="Version history">
                 <div class="nt-h-prev">
                     @if (versions is { Count: > 0 } && selVersion is not null)
                     {
@@ -586,18 +586,18 @@
                         <div class="nt-page-title" style="margin-top:0">@DisplayTitle(v.Title)</div>
                     }
                     <div class="nt-pageview" style="--pc:@AccentHex(note.Accent)"><div @ref="previewRef"></div></div>
-                    @if (versions is { Count: 0 }) { <div class="nt-cp-empty">Belum ada versi tersimpan. Versi dibuat otomatis saat halaman diedit.</div> }
+                    @if (versions is { Count: 0 }) { <div class="nt-cp-empty">No saved versions yet. Versions are created automatically as the page is edited.</div> }
                 </div>
                 <div class="nt-h-list">
-                    <div class="hd"><h3>Riwayat versi</h3><button type="button" class="nt-icon-btn" title="Tutup" @onclick="ClosePop"><i data-lucide="x"></i></button></div>
+                    <div class="hd"><h3>Version history</h3><button type="button" class="nt-icon-btn" title="Close" @onclick="ClosePop"><i data-lucide="x"></i></button></div>
                     <div class="items">
-                        @if (versions is null) { <div class="nt-loading">Memuat…</div> }
+                        @if (versions is null) { <div class="nt-loading">Loading…</div> }
                         else
                         {
                             @foreach (var v in versions)
                             {
                                 <button type="button" class="hi @(selVersion == v.Id ? "on" : "")" @onclick="() => SelectVersion(v.Id)">
-                                    <div class="d">@v.CreatedAt.ToLocalTime().ToString("d MMM yyyy, HH:mm")</div>
+                                    <div class="d">@StampDate(v.CreatedAt)</div>
                                     <div class="w">
                                         @foreach (var n in v.Contributors.Take(3)) { <PersonAvatar Nik="@ContributorNik(n)" Name="@n" Size="20" Class="nt-av s20" Decorative="true" /> }
                                         <span>@string.Join(", ", v.Contributors.Select(FirstName))</span>
@@ -608,7 +608,7 @@
                     </div>
                     @if (CanEdit)
                     {
-                        <div class="ft"><button type="button" class="nt-btn primary" disabled="@(selVersion is null || busy)" @onclick="RestoreVersion"><i data-lucide="rotate-ccw" class="sm"></i>Kembalikan versi ini</button></div>
+                        <div class="ft"><button type="button" class="nt-btn primary" disabled="@(selVersion is null || busy)" @onclick="RestoreVersion"><i data-lucide="rotate-ccw" class="sm"></i>Restore this version</button></div>
                     }
                 </div>
             </div>
@@ -630,7 +630,7 @@
                 <span class="actions">
                     @if (p.Access is "owner" or "edit")
                     {
-                        <span title="Tambah sub-halaman" @onclick="() => OpenNewPage(p.Id)" @onclick:stopPropagation><i data-lucide="plus"></i></span>
+                        <span title="Add sub-page" @onclick="() => OpenNewPage(p.Id)" @onclick:stopPropagation><i data-lucide="plus"></i></span>
                     }
                 </span>
             </div>
@@ -655,7 +655,7 @@
                 <option value="edit">Can edit</option>
                 <option value="comment">Can comment</option>
                 <option value="view">Can view</option>
-                <option value="remove">Hapus akses</option>
+                <option value="remove">Remove access</option>
             </select>
         }
     };

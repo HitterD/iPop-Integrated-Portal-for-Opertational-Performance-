@@ -55,7 +55,7 @@ export function slashCommands(host) {
     ['Media', 'Code', 'Capture a code snippet', '</>', '```', setBlock(byKey('code'))],
     ['Inline', 'Mention person', 'Notify someone', '@', '@', ({ editor, range }) => editor.chain().focus().deleteRange(range).insertContent('@').run()],
     ['Inline', 'Date', 'Insert today\'s date', '📅', '', ({ editor, range }) => editor.chain().focus().deleteRange(range)
-      .insertContent(new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) + ' ').run()],
+      .insertContent(new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) + ' ').run()],
   ].map(([group, name, desc, box, kbd, run]) => ({ group, name, desc, box, kbd, run }));
 }
 
@@ -132,7 +132,7 @@ export function mentionSuggestion(host) {
       host.mentioned(props);
     },
     render: () => listPopup(p => `<span class="nt-av" style="background:${host.avatarColor(p.nik)}">${esc(host.initials(p.name))}</span><div><div class="nm">${esc(p.name)}</div><div class="ds">${esc(p.position || p.nik)}</div></div>`,
-      'Ketik minimal 2 huruf nama'),
+      'Type at least 2 letters of a name'),
   };
 }
 
@@ -218,7 +218,7 @@ export function createToolbar(editor, host) {
 // ── Block handle + menu ─────────────────────────────────────────────────────
 
 export function createHandle(host) {
-  const dom = $el('nt-handle', '<button type="button" class="add" title="Tambah blok di bawah">+</button><button type="button" class="grip" title="Seret untuk memindahkan · Klik untuk opsi" data-drag-handle>⠿</button>');
+  const dom = $el('nt-handle', '<button type="button" class="add" title="Add block below">+</button><button type="button" class="grip" title="Drag to move · Click for options" data-drag-handle>⠿</button>');
   return dom;
 }
 

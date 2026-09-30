@@ -25,114 +25,114 @@ const quote = (...parts) => ({ type: 'blockquote', content: [p(...parts)] });
 const doc = (...content) => ({ type: 'doc', content });
 
 /// The phrase the tutorial's example comment is anchored to.
-export const GUIDE_COMMENT_TEXT = 'klik teks kuning ini untuk melihat komentar';
+export const GUIDE_COMMENT_TEXT = 'click this yellow text to see the comment';
 
 const guide = () => doc(
-  callout('👋', 'orange', p('Selamat datang di ', b('Notes'), ' — tempat menyimpan catatan, SOP, notulen rapat, dan apa saja. Halaman ini adalah ',
-    b('contoh yang bisa langsung kamu coba'), ': centang tiap langkah setelah mencobanya. Tenang, tidak ada yang bisa rusak — halaman ini hanya milikmu.')),
+  callout('👋', 'orange', p('Welcome to ', b('Notes'), ' — the place for notes, SOPs, meeting minutes, and anything else. This page is ',
+    b('a hands-on example you can try right away'), ': tick each step once you have tried it. Don\'t worry, nothing can break — this page is yours alone.')),
   widget('progress'),
 
-  h(2, '1️⃣ Menulis'),
+  h(2, '1️⃣ Writing'),
   todos([
-    ['Klik di mana saja lalu mulai mengetik. ', b('Tersimpan otomatis'), ' — tidak ada tombol Simpan.'],
-    ['Klik emoji 👋 di atas judul untuk mengganti ikon halaman.'],
-    ['Ketik ', code('/'), ' di baris kosong untuk memilih jenis blok: judul, daftar, to-do, gambar, kode, dan lainnya.'],
+    ['Click anywhere and start typing. ', b('Saved automatically'), ' — there is no Save button.'],
+    ['Click the 👋 emoji above the title to change the page icon.'],
+    ['Type ', code('/'), ' on an empty line to pick a block type: heading, list, to-do, image, code, and more.'],
   ]),
-  p(i('Coba di sini → ')),
-  toggle(['Lebih cepat dengan shortcut Markdown ', color('— klik panah untuk membuka', 'gray')],
+  p(i('Try it here → ')),
+  toggle(['Faster with Markdown shortcuts ', color('— click the arrow to open', 'gray')],
     bullets([
-      [code('# '), ' judul besar · ', code('## '), ' judul sedang · ', code('### '), ' judul kecil'],
-      [code('- '), ' daftar bullet · ', code('1. '), ' daftar bernomor · ', code('[ ] '), ' to-do'],
-      [code('> '), ' kutipan · ', code('```'), ' blok kode · ', code('---'), ' garis pemisah'],
-      [code('@'), ' sebut rekan kerja — dia mendapat notifikasi'],
+      [code('# '), ' large heading · ', code('## '), ' medium heading · ', code('### '), ' small heading'],
+      [code('- '), ' bulleted list · ', code('1. '), ' numbered list · ', code('[ ] '), ' to-do'],
+      [code('> '), ' quote · ', code('```'), ' code block · ', code('---'), ' divider'],
+      [code('@'), ' mention a colleague — they get a notification'],
     ])),
 
-  h(2, '2️⃣ Menyusun halaman'),
+  h(2, '2️⃣ Organizing pages'),
   todos([
-    ['Arahkan kursor ke sebuah blok — muncul ⠿ di kirinya. ', b('Seret'), ' untuk memindahkan, ', b('klik'), ' untuk ubah jenis, warna latar, atau hapus. Coba pada baris ini!'],
-    ['Buat halaman di dalam halaman — ketik ', code('/page'), ' atau klik ', b('+'), ' di sebelah nama halaman di sidebar.'],
+    ['Hover over a block — a ⠿ appears on its left. ', b('Drag'), ' to move it, ', b('click'), ' to change its type or background colour, or delete it. Try it on this line!'],
+    ['Create a page inside a page — type ', code('/page'), ' or click ', b('+'), ' next to the page name in the sidebar.'],
   ]),
 
-  h(2, '3️⃣ Warna & gaya'),
-  p('Setiap halaman punya ', b('warna aksen, cover, dan font'), ' sendiri — tidak harus hijau semua 🙂 Warna aksen dipakai untuk checklist, mention, kutipan, dan penomoran.'),
-  todos([['Ganti warna aksen halaman ini — klik salah satu:']]),
+  h(2, '3️⃣ Colours & style'),
+  p('Every page has its own ', b('accent colour, cover, and font'), ' — it doesn\'t all have to be green 🙂 The accent colour is used for checklists, mentions, quotes, and numbering.'),
+  todos([['Change this page\'s accent colour — click one:']]),
   widget('accents'),
   todos([
-    ['Klik ', b('Style'), ' di kanan atas untuk mengganti cover, font (Default · Serif · Mono), dan lebar halaman.'],
-    [b('Blok teks ini'), ', lalu klik ', b('A'), ' di toolbar yang muncul untuk memberi ', color('warna teks', 'red'), ' atau ', hl('sorotan', 'yellow'), '.'],
+    ['Click ', b('Style'), ' in the top right to change the cover, font (Default · Serif · Mono), and page width.'],
+    [b('Select this text'), ', then click ', b('A'), ' in the toolbar that appears to add ', color('text colour', 'red'), ' or a ', hl('highlight', 'yellow'), '.'],
   ]),
-  p(color('Callout berwarna untuk menandai hal penting — warnanya bisa diganti lewat ⠿:', 'gray')),
-  callout('💡', 'blue', p(b('Tips'), ' — info yang membantu')),
-  callout('⚠️', 'yellow', p(b('Perhatian'), ' — cek sebelum lanjut')),
-  callout('⛔', 'red', p(b('Penting'), ' — jangan dilewati')),
-  callout('✅', 'green', p(b('Selesai'), ' — sudah dikerjakan')),
+  p(color('Coloured callouts flag important things — change the colour via ⠿:', 'gray')),
+  callout('💡', 'blue', p(b('Tip'), ' — helpful info')),
+  callout('⚠️', 'yellow', p(b('Caution'), ' — check before continuing')),
+  callout('⛔', 'red', p(b('Important'), ' — don\'t skip this')),
+  callout('✅', 'green', p(b('Done'), ' — already handled')),
 
-  h(2, '4️⃣ Berbagi & edit bersama'),
-  p('Note bisa dikirim ke ', b('chat pribadi maupun grup'), '. Semua anggota chat langsung bisa membukanya — dan kalau diberi izin ', i('Can edit'), ', kalian bisa menulis ', b('bersamaan secara langsung'), '.'),
+  h(2, '4️⃣ Sharing & editing together'),
+  p('Notes can be sent to ', b('direct or group chats'), '. Everyone in the chat can open them right away — and with ', i('Can edit'), ' permission, you can write ', b('together in real time'), '.'),
   numbers([
-    ['Klik ', b('Share'), ' di kanan atas.'],
-    ['Pilih tab ', b('Send to chat'), ', lalu pilih DM atau grup.'],
-    ['Tentukan izinnya: ', b('View'), ', ', b('Comment'), ', atau ', b('Edit'), '.'],
-    ['Klik ', b('Send'), ' — note muncul sebagai kartu di chat.'],
+    ['Click ', b('Share'), ' in the top right.'],
+    ['Pick the ', b('Send to chat'), ' tab, then choose a DM or group.'],
+    ['Set the permission: ', b('View'), ', ', b('Comment'), ', or ', b('Edit'), '.'],
+    ['Click ', b('Send'), ' — the note shows up as a card in the chat.'],
   ]),
   widget('perms'),
-  callout('👥', 'green', p(b('Akses mengikuti anggota chat.'), ' Anggota baru grup otomatis bisa membuka note; yang keluar dari grup kehilangan akses. Sub-halaman ikut terbagi.')),
-  p('Saat orang lain sedang mengedit, kursor dan namanya terlihat langsung. Avatar mereka juga muncul di kanan atas.'),
-  todos([['Kirim sebuah note ke chat, lalu buka lagi dari kartunya di chat.']]),
+  callout('👥', 'green', p(b('Access follows chat membership.'), ' New group members can open the note automatically; people who leave the group lose access. Sub-pages are shared too.')),
+  p('When others are editing, you see their cursor and name live. Their avatars also appear in the top right.'),
+  todos([['Send a note to a chat, then open it again from its card in the chat.']]),
 
-  h(2, '5️⃣ Komentar & mention'),
+  h(2, '5️⃣ Comments & mentions'),
   todos([
-    ['Pilih teks lalu klik ', b('Comment'), ' (atau ', code('Ctrl Shift M'), '). Contoh: ', GUIDE_COMMENT_TEXT, '.'],
-    ['Ketik ', code('@'), ' untuk menyebut rekan — dia akan mendapat notifikasi di iPop.'],
+    ['Select text and click ', b('Comment'), ' (or ', code('Ctrl Shift M'), '). Example: ', GUIDE_COMMENT_TEXT, '.'],
+    ['Type ', code('@'), ' to mention a colleague — they will get a notification in iPop.'],
   ]),
 
-  h(2, '6️⃣ Gambar, file & riwayat'),
+  h(2, '6️⃣ Images, files & history'),
   todos([
-    ['Seret atau tempel gambar/file langsung ke halaman — tersimpan aman di NAS kantor.'],
-    ['Salah hapus? Buka ', b('⋯ → Version history'), ' untuk melihat dan ', b('mengembalikan'), ' versi lama.'],
+    ['Drag or paste images/files straight into the page — stored safely on the office NAS.'],
+    ['Deleted something by mistake? Open ', b('⋯ → Version history'), ' to view and ', b('restore'), ' older versions.'],
   ]),
   hr,
-  toggle('⌨️ Semua shortcut keyboard', bullets([
-    [code('Ctrl K'), ' cari note · ', code('Ctrl B'), ' tebal · ', code('Ctrl I'), ' miring · ', code('Ctrl U'), ' garis bawah'],
-    [code('Ctrl Shift M'), ' komentar · ', code('Ctrl Z'), ' undo · ', code('Tab'), ' masuk (indent)'],
+  toggle('⌨️ All keyboard shortcuts', bullets([
+    [code('Ctrl K'), ' search notes · ', code('Ctrl B'), ' bold · ', code('Ctrl I'), ' italic · ', code('Ctrl U'), ' underline'],
+    [code('Ctrl Shift M'), ' comment · ', code('Ctrl Z'), ' undo · ', code('Tab'), ' indent'],
   ])),
-  callout('🙋', 'gray', p('Masih bingung? Tanya tim ICT lewat chat.')),
+  callout('🙋', 'gray', p('Still unsure? Ask the ICT team via chat.')),
 );
 
 const meeting = () => {
-  const today = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   return doc(
-    callout('📅', 'blue', p(b('Tanggal: '), today), p(b('Peserta: '), '@')),
+    callout('📅', 'blue', p(b('Date: '), today), p(b('Attendees: '), '@')),
     h(2, 'Agenda'), numbers([[''], [''], ['']]),
-    h(2, 'Catatan'), bullets([['']]),
-    h(2, 'Keputusan'), callout('✅', 'green', p('')),
+    h(2, 'Notes'), bullets([['']]),
+    h(2, 'Decisions'), callout('✅', 'green', p('')),
     h(2, 'Action items'), todos([[''], ['']]),
   );
 };
 
 const todo = () => {
-  const day = d => new Date(Date.now() + d * 864e5).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' });
+  const day = d => new Date(Date.now() + d * 864e5).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'short' });
   return doc(
-    h(2, `Hari ini · ${day(0)}`), todos([[''], ['']]),
-    h(2, `Besok · ${day(1)}`), todos([['']]),
-    h(2, 'Nanti'), todos([['']]),
+    h(2, `Today · ${day(0)}`), todos([[''], ['']]),
+    h(2, `Tomorrow · ${day(1)}`), todos([['']]),
+    h(2, 'Later'), todos([['']]),
   );
 };
 
 const brief = () => doc(
-  callout('🎯', 'purple', p(b('Tujuan: '), 'apa yang ingin dicapai dan kenapa penting.')),
-  h(2, 'Ruang lingkup'), bullets([['Termasuk: '], ['Tidak termasuk: ']]),
-  h(2, 'Timeline'), todos([['Minggu 1 — '], ['Minggu 2 — '], ['Minggu 3 — ']]),
-  h(2, 'Penanggung jawab'), bullets([['Owner: @'], ['Tim: ']]),
-  h(2, 'Risiko & pertanyaan terbuka'), bullets([['']]),
+  callout('🎯', 'purple', p(b('Goal: '), 'what we want to achieve and why it matters.')),
+  h(2, 'Scope'), bullets([['In scope: '], ['Out of scope: ']]),
+  h(2, 'Timeline'), todos([['Week 1 — '], ['Week 2 — '], ['Week 3 — ']]),
+  h(2, 'Owners'), bullets([['Owner: @'], ['Team: ']]),
+  h(2, 'Risks & open questions'), bullets([['']]),
 );
 
 const sop = () => doc(
-  callout('📖', 'orange', p(b('Tujuan SOP: '), 'jelaskan singkat untuk apa prosedur ini.')),
-  h(2, 'Sebelum mulai'), todos([['Siapkan '], ['Pastikan ']]),
-  h(2, 'Langkah-langkah'), numbers([[''], [''], ['']]),
-  callout('⚠️', 'yellow', p(b('Perhatian: '), 'hal yang sering terlewat.')),
-  h(2, 'Jika terjadi masalah'), bullets([['Hubungi ']]),
+  callout('📖', 'orange', p(b('SOP purpose: '), 'briefly explain what this procedure is for.')),
+  h(2, 'Before you start'), todos([['Prepare '], ['Make sure ']]),
+  h(2, 'Steps'), numbers([[''], [''], ['']]),
+  callout('⚠️', 'yellow', p(b('Caution: '), 'things that are often missed.')),
+  h(2, 'If something goes wrong'), bullets([['Contact ']]),
 );
 
 export const TEMPLATES = { guide, meeting, todo, brief, sop };

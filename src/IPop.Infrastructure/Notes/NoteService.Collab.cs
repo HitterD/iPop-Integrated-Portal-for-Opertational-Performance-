@@ -334,7 +334,7 @@ public sealed partial class NoteService
         thread.Comments.Add(new NoteComment
         {
             Id = Guid.NewGuid(), ThreadId = thread.Id, AuthorId = null, CreatedAt = now,
-            Body = "Ini contoh komentar 👋 Blok teks lalu klik 💬 untuk berdiskusi di bagian tertentu. Klik ✓ untuk menandai selesai.",
+            Body = "This is a sample comment 👋 Select text and click 💬 to discuss a specific part. Click ✓ to mark it resolved.",
         });
         db.NoteThreads.Add(thread);
         await db.SaveChangesAsync(ct);

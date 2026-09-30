@@ -105,7 +105,7 @@ public static class NotesEndpoints
             if (r.Success)
             {
                 await ChangedAsync(svc, rt, http, id, ct);
-                if (req.UserId is { } uid) await NotifyAsync(notify, uid, "note.shared", $"{me.Name} membagikan catatan",
+                if (req.UserId is { } uid) await NotifyAsync(notify, uid, "note.shared", $"{me.Name} shared a note with you",
                     await TitleAsync(http, id, ct), id, ct);
             }
             return From(r);
@@ -160,7 +160,7 @@ public static class NotesEndpoints
             await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThreads", id, ct);
             var title = await TitleAsync(http, id, ct);
             foreach (var uid in r.Data!.NotifyUserIds)
-                await NotifyAsync(notify, uid, "note.mention", $"{me.Name} menyebut Anda di {title}", req.Body, id, ct);
+                await NotifyAsync(notify, uid, "note.mention", $"{me.Name} mentioned you in {title}", req.Body, id, ct);
             return Results.Ok(r.Data.Thread);
         }));
         g.MapPost("/{id:guid}/threads/{threadId:guid}/replies", (Guid id, Guid threadId, NoteReplyRequest req, HttpContext http,
@@ -171,7 +171,7 @@ public static class NotesEndpoints
             await hub.Clients.Group(NotesHub.Group(id)).SendAsync("noteThreads", id, ct);
             var title = await TitleAsync(http, id, ct);
             foreach (var uid in r.Data!.NotifyUserIds)
-                await NotifyAsync(notify, uid, "note.comment", $"{me.Name} membalas komentar di {title}", req.Body, id, ct);
+                await NotifyAsync(notify, uid, "note.comment", $"{me.Name} replied to a comment in {title}", req.Body, id, ct);
             return Results.Ok(r.Data.Thread);
         }));
         g.MapPut("/{id:guid}/threads/{threadId:guid}/resolved", (Guid id, Guid threadId, ResolveRequest req, HttpContext http,
@@ -189,7 +189,7 @@ public static class NotesEndpoints
             if (!r.Success) return Error(r.Error!);
             var title = await TitleAsync(http, id, ct);
             foreach (var uid in r.Data!)
-                await NotifyAsync(notify, uid, "note.mention", $"{me.Name} menyebut Anda di {title}", req.Context, id, ct);
+                await NotifyAsync(notify, uid, "note.mention", $"{me.Name} mentioned you in {title}", req.Context, id, ct);
             return Results.Ok(new { notified = r.Data.Count });
         })).RequirePermission("notes.write");
         g.MapPost("/{id:guid}/guide-thread", (Guid id, GuideThreadRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
@@ -257,7 +257,7 @@ public static class NotesEndpoints
     {
         var db = http.RequestServices.GetRequiredService<IPopDbContext>();
         var t = await db.NotePages.AsNoTracking().Where(p => p.Id == id).Select(p => p.Title).FirstOrDefaultAsync(ct);
-        return string.IsNullOrWhiteSpace(t) ? "Tanpa judul" : t;
+        return string.IsNullOrWhiteSpace(t) ? "Untitled" : t;
     }
 
     /// Tells everyone who can see the page (its sidebar may have changed) to refetch.

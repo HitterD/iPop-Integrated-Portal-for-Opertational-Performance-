@@ -14,7 +14,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
     private const int MaxDepth = 32;
     private const int MaxUpdateBytes = 512 * 1024;
     private static readonly TimeSpan VersionEvery = TimeSpan.FromMinutes(10);
-    public const string GuideTitle = "Mulai di sini: Panduan Notes";
+    public const string GuideTitle = "Start here: Notes guide";
 
     // ── Access ───────────────────────────────────────────────────────────────
 

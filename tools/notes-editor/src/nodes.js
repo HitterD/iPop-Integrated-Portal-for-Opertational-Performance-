@@ -88,10 +88,10 @@ export const NoteWidget = Node.create({
       let off = null;
       if (node.attrs.kind === 'progress') {
         dom.innerHTML = `<svg class="nt-ring" viewBox="0 0 44 44"><circle class="bg" cx="22" cy="22" r="18"/><circle class="fg" cx="22" cy="22" r="18" stroke-dasharray="113.1" stroke-dashoffset="113.1"/></svg>
-          <div class="nt-prog-txt"><div class="pt"></div><div class="ps">Progres tersimpan otomatis. Panduan bisa dibuka lagi kapan saja dari baris 👋 di atas sidebar.</div></div>`;
+          <div class="nt-prog-txt"><div class="pt"></div><div class="ps">Progress is saved automatically. You can reopen the guide any time from the 👋 row at the top of the sidebar.</div></div>`;
         const paint = () => {
           const { done, total } = countTodos(editor.state.doc);
-          dom.querySelector('.pt').textContent = total && done === total ? '🎉 Semua langkah selesai — kamu siap!' : `${done} dari ${total} langkah selesai`;
+          dom.querySelector('.pt').textContent = total && done === total ? '🎉 All steps done — you are all set!' : `${done} of ${total} steps done`;
           dom.querySelector('.fg').style.strokeDashoffset = String(113.1 * (1 - (total ? done / total : 0)));
         };
         paint(); editor.on('update', paint); off = () => editor.off('update', paint);
@@ -106,7 +106,7 @@ export const NoteWidget = Node.create({
       } else if (node.attrs.kind === 'perms') {
         const y = '<span class="yes">●</span>', n = '<span class="no">—</span>';
         const row = (lbl, ...c) => `<div class="tr"><div>${lbl}</div>${c.map(x => `<div>${x ? y : n}</div>`).join('')}</div>`;
-        dom.innerHTML = `<div class="tr"><div>Izin</div><div>Membaca</div><div>Komentar</div><div>Mengedit</div><div>Berbagi</div></div>`
+        dom.innerHTML = `<div class="tr"><div>Permission</div><div>Read</div><div>Comment</div><div>Edit</div><div>Share</div></div>`
           + row('👁 Can view', 1, 0, 0, 0) + row('💬 Can comment', 1, 1, 0, 0) + row('✏️ Can edit', 1, 1, 1, 0) + row('👑 Owner', 1, 1, 1, 1);
       }
       return { dom, ignoreMutation: () => true, stopEvent: () => true, destroy: () => off?.() };
@@ -123,7 +123,7 @@ export const SubPage = Node.create({
   addAttributes() {
     return {
       id: { default: null, parseHTML: e => e.getAttribute('data-id') },
-      title: { default: 'Tanpa judul', parseHTML: e => e.getAttribute('data-title') },
+      title: { default: 'Untitled', parseHTML: e => e.getAttribute('data-title') },
       emoji: { default: '📄', parseHTML: e => e.getAttribute('data-emoji') },
     };
   },
@@ -137,7 +137,7 @@ export const SubPage = Node.create({
       dom.contentEditable = 'false';
       const paint = n => {
         const live = host.pageInfo?.(n.attrs.id);
-        dom.innerHTML = `<span class="emo">${esc(live?.emoji || n.attrs.emoji || '📄')}</span><span class="t">${esc(live?.title || n.attrs.title || 'Tanpa judul')}</span>`;
+        dom.innerHTML = `<span class="emo">${esc(live?.emoji || n.attrs.emoji || '📄')}</span><span class="t">${esc(live?.title || n.attrs.title || 'Untitled')}</span>`;
       };
       paint(node);
       dom.addEventListener('click', () => node.attrs.id && host.openPage?.(node.attrs.id));
@@ -185,7 +185,7 @@ export const NoteImage = Node.create({
       if (node.attrs.id) loadBlob(host, node.attrs.id).then(url => {
         const img = document.createElement('img'); img.src = url; img.alt = node.attrs.name;
         dom.querySelector('.nt-img-box').replaceChildren(img);
-      }).catch(() => { dom.querySelector('.nt-img-wait').textContent = 'Gambar tidak dapat dimuat'; });
+      }).catch(() => { dom.querySelector('.nt-img-wait').textContent = "Couldn't load the image"; });
       return { dom, ignoreMutation: () => true };
     };
   },
@@ -216,7 +216,7 @@ export const NoteFile = Node.create({
         try {
           const url = await loadBlob(host, node.attrs.id);
           const a = document.createElement('a'); a.href = url; a.download = node.attrs.name || 'file'; a.click();
-        } catch { host.toast?.('File tidak dapat diunduh'); }
+        } catch { host.toast?.("Couldn't download the file"); }
       });
       return { dom, ignoreMutation: () => true };
     };
