@@ -91,6 +91,74 @@ public class ChatStickerTests
         Assert.Equal(StickerLimits.MaxPerUser, await t.Verify().ChatStickers.CountAsync());
     }
 
+    [Fact]
+    public async Task Sending_a_sticker_puts_it_on_top_of_recent()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("U1");
+        var room = t.AddRoom("group");
+        t.AddMember(room.Id, me.Id);
+        var chat = t.NewChatService();
+
+        foreach (var key in new[] { "fluent:red-heart", "rocket", "fluent:red-heart" })
+            Assert.True((await chat.SendMessageAsync(me.Id, new SendMessageRequest(room.Id, key, Guid.NewGuid(), null, "sticker"), default)).Success);
+        await chat.SendMessageAsync(me.Id, new SendMessageRequest(room.Id, "just text", Guid.NewGuid(), null, "text"), default);
+
+        var list = await new StickerService(t.Verify()).ListAsync(me.Id, default);
+        Assert.Equal(["fluent:red-heart", "rocket"], list.Recent);
+        Assert.Equal(2, t.Verify().StickerUsages.Single(u => u.StickerKey == "fluent:red-heart").UseCount);
+        Assert.Empty(list.Favorites);
+    }
+
+    [Fact]
+    public async Task Recent_is_capped_and_newest_first()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("U1");
+        for (var i = 0; i < StickerLimits.MaxRecent + 5; i++)
+            Assert.True(await new StickerService(t.Verify()).RecordUseAsync(me.Id, $"fluent:s{i}", default));
+
+        var recent = (await new StickerService(t.Verify()).ListAsync(me.Id, default)).Recent;
+        Assert.Equal(StickerLimits.MaxRecent, recent.Count);
+        Assert.Equal($"fluent:s{StickerLimits.MaxRecent + 4}", recent[0]);
+        Assert.False(await new StickerService(t.Verify()).RecordUseAsync(me.Id, "<script>", default));
+    }
+
+    [Fact]
+    public async Task Favorites_cover_custom_and_default_stickers_and_are_per_user()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("U1");
+        var other = t.AddUser("U2");
+        var custom = StickerLimits.Content(Guid.NewGuid());
+
+        Assert.True(await new StickerService(t.Verify()).SetFavoriteAsync(me.Id, "fluent:thumbs-up", true, default));
+        Assert.True(await new StickerService(t.Verify()).SetFavoriteAsync(me.Id, custom, true, default));
+        Assert.True(await new StickerService(t.Verify()).SetFavoriteAsync(me.Id, custom, true, default)); // idempotent
+        Assert.False(await new StickerService(t.Verify()).SetFavoriteAsync(me.Id, "custom:nope", true, default));
+
+        var mine = await new StickerService(t.Verify()).ListAsync(me.Id, default);
+        Assert.Equal(2, mine.Favorites.Count);
+        Assert.Contains("fluent:thumbs-up", mine.Favorites);
+        Assert.Empty(mine.Recent); // starring is not sending
+        Assert.Empty((await new StickerService(t.Verify()).ListAsync(other.Id, default)).Favorites);
+
+        Assert.True(await new StickerService(t.Verify()).SetFavoriteAsync(me.Id, custom, false, default));
+        Assert.Equal(["fluent:thumbs-up"], (await new StickerService(t.Verify()).ListAsync(me.Id, default)).Favorites);
+    }
+
+    [Theory]
+    [InlineData("custom:0123456789abcdef0123456789abcdef", true)]
+    [InlineData("fluent:red-heart", true)]
+    [InlineData("rocket", true)]
+    [InlineData("check-circle", true)]
+    [InlineData("fluent:", false)]
+    [InlineData("fluent:Red Heart", false)]
+    [InlineData("custom:xyz", false)]
+    [InlineData("", false)]
+    [InlineData("../etc/passwd", false)]
+    public void Sticker_key_validation(string key, bool valid) => Assert.Equal(valid, StickerLimits.IsValidKey(key));
+
     [Theory]
     [InlineData("a.png", 1000, null)]
     [InlineData("A.WEBP", 1000, null)]

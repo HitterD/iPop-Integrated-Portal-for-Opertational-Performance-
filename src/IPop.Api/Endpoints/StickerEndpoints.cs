@@ -85,6 +85,14 @@ public static class StickerEndpoints
             return await svc.RemoveAsync(userId.Value, id, ct) ? Results.NoContent() : Results.NotFound();
         });
 
+        // Star / un-star any sticker (custom, Fluent default or legacy built-in) by its message key.
+        g.MapPut("/favorites", async (FavoriteRequest req, HttpContext http, IStickerService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            return await svc.SetFavoriteAsync(userId.Value, req.Key ?? "", req.Favorite, ct) ? Results.NoContent() : Error("invalid_key");
+        });
+
         g.MapPut("/{id:guid}/official", async (Guid id, SetOfficialRequest req, IStickerService svc, CancellationToken ct) =>
             await svc.SetOfficialAsync(id, req.Official, ct) ? Results.NoContent() : Results.NotFound())
             .RequireAuthorization("AdminOnly");
@@ -106,6 +114,7 @@ public static class StickerEndpoints
     }
 
     public record SetOfficialRequest(bool Official);
+    public record FavoriteRequest(string? Key, bool Favorite);
 
     /// Null when acceptable; otherwise no_file / not_an_image / too_large.
     public static string? Validate(string? fileName, long length)

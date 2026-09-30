@@ -26,7 +26,7 @@ public class ChatState : IAsyncDisposable
 
     // ---- Custom stickers ----
 
-    public StickerListDto Stickers { get; private set; } = new([], []);
+    public StickerListDto Stickers { get; private set; } = new([], [], [], []);
     private bool _stickersLoaded;
     public event Action? StickersChanged;
 

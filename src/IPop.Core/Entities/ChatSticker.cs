@@ -26,3 +26,18 @@ public class UserSticker
     public User User { get; set; } = default!;
     public ChatSticker Sticker { get; set; } = default!;
 }
+
+/// Per-user sticker history and favourites, keyed by the sticker message content so it covers
+/// every kind: "custom:{id:N}", "fluent:{slug}" and the older Lucide names ("rocket").
+public class StickerUsage
+{
+    public Guid UserId { get; set; }
+    public required string StickerKey { get; set; }
+    /// Null for a favourite that was never sent.
+    public DateTime? LastUsedAt { get; set; }
+    public int UseCount { get; set; }
+    public bool IsFavorite { get; set; }
+    public DateTime? FavoritedAt { get; set; }
+
+    public User User { get; set; } = default!;
+}

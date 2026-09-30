@@ -50,6 +50,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<ChatMembershipAudit> ChatMembershipAudits => Set<ChatMembershipAudit>();
     public DbSet<ChatSticker> ChatStickers => Set<ChatSticker>();
     public DbSet<UserSticker> UserStickers => Set<UserSticker>();
+    public DbSet<StickerUsage> StickerUsages => Set<StickerUsage>();
 
     // Notification Gateway entities
     public DbSet<NotificationGatewayClient> NotificationGatewayClients => Set<NotificationGatewayClient>();
@@ -346,6 +347,14 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasIndex(x => x.StickerId);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Sticker).WithMany().HasForeignKey(x => x.StickerId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<StickerUsage>(e =>
+        {
+            e.HasKey(x => new { x.UserId, x.StickerKey });
+            e.Property(x => x.StickerKey).HasMaxLength(80);
+            e.HasIndex(x => new { x.UserId, x.LastUsedAt });
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<UserBlock>(e =>

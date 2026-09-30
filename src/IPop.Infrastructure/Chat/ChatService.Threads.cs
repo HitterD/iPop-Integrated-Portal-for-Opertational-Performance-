@@ -84,6 +84,7 @@ public sealed partial class ChatService
         parent.LastThreadReplyAt = now;
 
         await db.SaveChangesAsync(ct);
+        if (reply.Type == "sticker") await StickerService.RecordUseAsync(db, senderId, reply.Content, ct);
 
         var saved = await db.ChatMessages
             .AsNoTracking()

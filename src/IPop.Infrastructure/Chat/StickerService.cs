@@ -20,7 +20,59 @@ public sealed class StickerService(IPopDbContext db) : IStickerService
             .OrderBy(s => s.CreatedAt)
             .Select(s => new StickerDto(s.Id, true, false))
             .ToListAsync(ct);
-        return new StickerListDto(mine, official.Select(s => s with { IsMine = mineIds.Contains(s.Id) }).ToList());
+        var usage = await db.StickerUsages.AsNoTracking().Where(u => u.UserId == userId).ToListAsync(ct);
+        var recent = usage.Where(u => u.LastUsedAt != null).OrderByDescending(u => u.LastUsedAt)
+            .Take(StickerLimits.MaxRecent).Select(u => u.StickerKey).ToList();
+        var favorites = usage.Where(u => u.IsFavorite).OrderByDescending(u => u.FavoritedAt)
+            .Select(u => u.StickerKey).ToList();
+        return new StickerListDto(mine, official.Select(s => s with { IsMine = mineIds.Contains(s.Id) }).ToList(),
+            recent, favorites);
+    }
+
+    public async Task<bool> SetFavoriteAsync(Guid userId, string key, bool favorite, CancellationToken ct)
+    {
+        if (!StickerLimits.IsValidKey(key)) return false;
+        var now = DateTime.UtcNow;
+        var row = await db.StickerUsages.FirstOrDefaultAsync(u => u.UserId == userId && u.StickerKey == key, ct);
+        if (row is null)
+        {
+            if (!favorite) return true;
+            db.StickerUsages.Add(new StickerUsage { UserId = userId, StickerKey = key, IsFavorite = true, FavoritedAt = now });
+        }
+        else if (row.IsFavorite != favorite)
+        {
+            row.IsFavorite = favorite;
+            row.FavoritedAt = favorite ? now : null;
+        }
+        await SaveIgnoringRaceAsync(ct);
+        return true;
+    }
+
+    public Task<bool> RecordUseAsync(Guid userId, string key, CancellationToken ct) => RecordUseAsync(db, userId, key, ct);
+
+    /// Shared with the chat send path. Best effort: history is never worth failing a send over.
+    internal static async Task<bool> RecordUseAsync(IPopDbContext db, Guid userId, string key, CancellationToken ct)
+    {
+        if (!StickerLimits.IsValidKey(key)) return false;
+        var now = DateTime.UtcNow;
+        try
+        {
+            var updated = await db.StickerUsages.Where(u => u.UserId == userId && u.StickerKey == key)
+                .ExecuteUpdateAsync(u => u.SetProperty(x => x.LastUsedAt, now).SetProperty(x => x.UseCount, x => x.UseCount + 1), ct);
+            if (updated > 0) return true;
+            var row = new StickerUsage { UserId = userId, StickerKey = key, LastUsedAt = now, UseCount = 1 };
+            db.StickerUsages.Add(row);
+            try { await db.SaveChangesAsync(ct); }
+            catch (DbUpdateException) { db.Entry(row).State = EntityState.Detached; }
+            return true;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { return false; }
+    }
+
+    private async Task SaveIgnoringRaceAsync(CancellationToken ct)
+    {
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException) { db.ChangeTracker.Clear(); }
     }
 
     public async Task<StickerResultDto> CreateAsync(Guid userId, StickerFile file, long sizeBytes, CancellationToken ct)

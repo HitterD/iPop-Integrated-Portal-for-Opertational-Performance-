@@ -150,6 +150,8 @@ public sealed partial class ChatService
             return new MessageResultDto(false, null, "idempotency_conflict");
         }
 
+        if (message.Type == "sticker") await StickerService.RecordUseAsync(db, senderId, message.Content, ct);
+
         // Reload with navigation properties for DTO mapping. ReplyTo must come along, or the
         // ack/broadcast carries no quote and the sender's bubble loses it until a reload.
         var saved = await db.ChatMessages

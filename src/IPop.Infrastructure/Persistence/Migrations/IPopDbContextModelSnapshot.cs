@@ -3418,6 +3418,34 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("Sites");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.StickerUsage", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("StickerKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<DateTime?>("FavoritedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsFavorite")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("UseCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("UserId", "StickerKey");
+
+                    b.HasIndex("UserId", "LastUsedAt");
+
+                    b.ToTable("StickerUsages");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.SynologyCredential", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -5141,6 +5169,17 @@ namespace IPop.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.SearchHistory", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.StickerUsage", b =>
                 {
                     b.HasOne("IPop.Core.Entities.User", "User")
                         .WithMany()
