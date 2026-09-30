@@ -29,7 +29,7 @@
             <header class="thr-head" role="button" tabindex="0"
                     @onclick="() => Toggle(m.Id)"
                     @onkeydown="e => OnHeadKey(e, m.Id)">
-                <span class="thr-avatar">@Initials(m.SenderName)</span>
+                <PersonAvatar Nik="@m.SenderNik" Name="@m.SenderName" Size="28" Class="thr-avatar" Decorative="true" />
 
                 <div class="thr-who">
                     <span class="thr-name">@m.SenderName</span>
@@ -179,9 +179,6 @@
         if (names.Count == 0) return "—";
         return names.Count <= 2 ? string.Join(", ", names) : $"{names[0]} +{names.Count - 1}";
     }
-
-    private static string Initials(string name)
-        => string.Concat((name ?? "U").Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w[0]).Take(2)).ToUpperInvariant();
 
     private static string ShortStamp(DateTime? t)
     {

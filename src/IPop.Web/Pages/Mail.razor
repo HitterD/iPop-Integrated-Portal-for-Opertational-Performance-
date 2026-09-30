@@ -566,9 +566,7 @@
                 <div class="detail-sender-block">
                     <div class="sender-top">
                         <div class="av-wrap">
-                            <div class="av @AvatarClass(detail.SenderNik)">
-                                @Initials(detail.SenderName)
-                            </div>
+                            <PersonAvatar Nik="@detail.SenderNik" Name="@detail.SenderName" Size="44" Class="av" Viewable="true" />
                             <span class="presence @SenderPresence(detail.SenderNik)"></span>
                         </div>
                         <div class="sender-details">
@@ -2239,9 +2237,6 @@
 
     private string RecipientsShort => detail is null ? "" : string.Join(", ", detail.Recipients.Where(r => r.RecipientType is "to" or "cc").Select(r => r.Name));
     private string? CcShort => detail is null ? null : string.Join(", ", detail.Recipients.Where(r => r.RecipientType == "cc").Select(r => r.Name));
-    private static string Initials(string name)
-        => string.Concat((name ?? "U").Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w[0]).Take(2)).ToUpperInvariant();
-
     private static string FormatTime(DateTime? t)
     {
         if (t is null) return "";
@@ -2253,13 +2248,6 @@
 
     private static string FormatDetailDate(DateTime? t)
         => t is null ? "" : t.Value.ToLocalTime().ToString("ddd, dd MMM yyyy, HH:mm");
-
-    private static string AvatarClass(string? nik)
-    {
-        if (string.IsNullOrEmpty(nik)) return "av-1";
-        var idx = (Math.Abs(nik.GetHashCode()) % 8) + 1;
-        return $"av-{idx}";
-    }
 
     private string SenderPresence(string? nik)
     {
