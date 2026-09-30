@@ -19,7 +19,7 @@
                @ref="input" @oninput="OnInput" @onblur="OnBlur" @onclick="OnInputClick"
                @onkeydown="OnInputKey" @onkeydown:stopPropagation="open" />
         <button type="button" class="dp-toggle" tabindex="-1" disabled="@Disabled"
-                aria-label="@(Mode == DatePickerMode.Time ? "Pilih waktu" : "Buka kalender")"
+                aria-label="@(Mode == DatePickerMode.Time ? "Choose time" : "Open calendar")"
                 @onclick="ToggleFromButton">
             @(Mode == DatePickerMode.Time ? ClockIcon : CalendarIcon)
         </button>
@@ -35,8 +35,8 @@
                         <div class="dp-cal">
                             <div class="dp-head">
                                 <div class="dp-title" id="@titleId" aria-live="polite">@DatePickerMath.MonthTitle(focusDay.Year, focusDay.Month)</div>
-                                <button type="button" class="dp-nav" aria-label="Bulan sebelumnya" @onclick="() => ShiftMonth(-1)">@ChevLeft</button>
-                                <button type="button" class="dp-nav" aria-label="Bulan berikutnya" @onclick="() => ShiftMonth(1)">@ChevRight</button>
+                                <button type="button" class="dp-nav" aria-label="Previous month" @onclick="() => ShiftMonth(-1)">@ChevLeft</button>
+                                <button type="button" class="dp-nav" aria-label="Next month" @onclick="() => ShiftMonth(1)">@ChevRight</button>
                             </div>
                             <div class="dp-grid" role="grid" aria-labelledby="@titleId" @onkeydown="OnGridKey">
                                 <div class="dp-row dp-wk" role="row">
@@ -80,17 +80,17 @@
                     </div>
                     <div class="dp-foot">
                         <div class="dp-chips">
-                            @QuickChip("Hari ini", Today)
-                            @QuickChip("Besok", Today.AddDays(1))
-                            @QuickChip("Senin depan", DatePickerMath.NextMonday(Today))
+                            @QuickChip("Today", Today)
+                            @QuickChip("Tomorrow", Today.AddDays(1))
+                            @QuickChip("Next Monday", DatePickerMath.NextMonday(Today))
                         </div>
                         @if (AllowClear && Nullable && Value is not null)
                         {
-                            <button type="button" class="dp-chip dp-clear" @onclick="ClearAsync">Hapus</button>
+                            <button type="button" class="dp-chip dp-clear" @onclick="ClearAsync">Clear</button>
                         }
                         @if (Mode == DatePickerMode.DateTime)
                         {
-                            <button type="button" class="dp-done" @onclick="() => CloseAsync(true)">Selesai</button>
+                            <button type="button" class="dp-done" @onclick="() => CloseAsync(true)">Done</button>
                         }
                     </div>
                 }
@@ -99,7 +99,7 @@
                     <div class="dp-body">@TimeColumn</div>
                     @if (AllowClear && Nullable && Value is not null)
                     {
-                        <div class="dp-foot"><button type="button" class="dp-chip dp-clear" @onclick="ClearAsync">Hapus</button></div>
+                        <div class="dp-foot"><button type="button" class="dp-chip dp-clear" @onclick="ClearAsync">Clear</button></div>
                     }
                 }
             </div>
@@ -160,7 +160,7 @@
     };
 
     private string PopLabel => AriaLabel is { Length: > 0 } a ? a
-        : Mode == DatePickerMode.Time ? "Pilih waktu" : Mode == DatePickerMode.DateTime ? "Pilih tanggal dan waktu" : "Pilih tanggal";
+        : Mode == DatePickerMode.Time ? "Choose time" : Mode == DatePickerMode.DateTime ? "Choose date and time" : "Choose date";
 
     protected override void OnParametersSet()
     {
@@ -433,7 +433,7 @@
     private RenderFragment TimeColumn => __builder =>
     {
         TimeOnly? selT = Value is { } v ? TimeOnly.FromDateTime(v) : null;
-        <div class="dp-times" role="listbox" aria-label="Waktu" @onkeydown="OnTimeKey">
+        <div class="dp-times" role="listbox" aria-label="Time" @onkeydown="OnTimeKey">
             @for (var i = 0; i < slots.Count; i++)
             {
                 var idx = i;

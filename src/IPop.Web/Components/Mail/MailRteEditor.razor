@@ -433,7 +433,7 @@
         var f = e.File;
         if (f.Size > MaxImageBytes)
         {
-            await OnNotice.InvokeAsync("Gambar maksimal 2 MB. Untuk file yang lebih besar, lampirkan sebagai attachment.");
+            await OnNotice.InvokeAsync("Images can be up to 2 MB. For larger files, add them as an attachment.");
             return;
         }
         using var ms = new MemoryStream();

@@ -744,13 +744,13 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
                 try
                 {
                     var senderUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == senderId, ct);
-                    var senderDisplayName = senderUser?.Name ?? "Seseorang";
+                    var senderDisplayName = senderUser?.Name ?? "Someone";
                     var preview = Truncate(MailHtml.ToPlainText(mail.Body), 120);
 
                     await notificationGateway.PublishInternalAsync(
                         clientSlug: "mail",
                         eventType: "mail.new",
-                        title: $"Email baru dari {senderDisplayName}",
+                        title: $"New email from {senderDisplayName}",
                         message: string.IsNullOrWhiteSpace(preview) ? mail.Subject : $"{mail.Subject} — {preview}",
                         target: new NotificationTarget(UserIds: recipientIds),
                         priority: mail.Importance == "high" ? "high" : "normal",
@@ -1027,7 +1027,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
                     Id = Guid.NewGuid(),
                     SenderId = s.UserId,
                     Subject = "Re: " + original.Subject,
-                    Body = s.Message ?? "Saya sedang tidak di tempat.",
+                    Body = s.Message ?? "I'm currently out of the office.",
                     IsHtml = false,
                     Signature = "auto-reply",
                     InReplyToId = original.Id,

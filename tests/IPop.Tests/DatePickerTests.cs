@@ -29,7 +29,8 @@ public class DatePickerMathTests
     [InlineData("1/2/2026", 2026, 2, 1)]
     [InlineData("28.09.26", 2026, 9, 28)]
     [InlineData("28 Sep 2026", 2026, 9, 28)]
-    [InlineData("Sen, 28 Sep 2026", 2026, 9, 28)]
+    [InlineData("Mon, 28 Sep 2026", 2026, 9, 28)]
+    [InlineData("28 August 2026", 2026, 8, 28)]
     [InlineData("5 Agustus 2026", 2026, 8, 5)]
     [InlineData("  29/02/2028 ", 2028, 2, 29)]
     public void TryParseDate_AcceptsSupportedForms(string input, int y, int m, int d)
@@ -80,11 +81,11 @@ public class DatePickerMathTests
     public void Formatting_UsesIndonesianNames()
     {
         var d = new DateOnly(2026, 9, 28);
-        Assert.Equal("Sen, 28 Sep 2026", DatePickerMath.FormatDate(d));
-        Assert.Equal("Senin, 28 September 2026", DatePickerMath.FormatLong(d));
+        Assert.Equal("Mon, 28 Sep 2026", DatePickerMath.FormatDate(d));
+        Assert.Equal("Monday, 28 September 2026", DatePickerMath.FormatLong(d));
         Assert.Equal("28 Sep 2026 · 09:45", DatePickerMath.FormatDateTime(new DateTime(2026, 9, 28, 9, 45, 0)));
-        Assert.Equal("Agustus 2026", DatePickerMath.MonthTitle(2026, 8));
-        Assert.Equal("Mg", DatePickerMath.WeekdayMin[DatePickerMath.MondayIndex(DayOfWeek.Sunday)]);
+        Assert.Equal("August 2026", DatePickerMath.MonthTitle(2026, 8));
+        Assert.Equal("Su", DatePickerMath.WeekdayMin[DatePickerMath.MondayIndex(DayOfWeek.Sunday)]);
     }
 
     [Fact]
@@ -144,7 +145,7 @@ public class DatePickerRenderTests
     {
         using var ctx = NewContext();
         var cut = ctx.Render<AppDatePicker<DateTime?>>(p => p.Add(x => x.Value, new DateTime(2026, 9, 28)));
-        Assert.Equal("Sen, 28 Sep 2026", cut.Find("input.dp-input").GetAttribute("value"));
+        Assert.Equal("Mon, 28 Sep 2026", cut.Find("input.dp-input").GetAttribute("value"));
     }
 
     [Fact]
@@ -172,7 +173,7 @@ public class DatePickerRenderTests
         cut.Find("input.dp-input").Input("31/02/2026");
         cut.Find("input.dp-input").Blur();
         Assert.False(changed);
-        Assert.Equal("Sen, 28 Sep 2026", cut.Find("input.dp-input").GetAttribute("value"));
+        Assert.Equal("Mon, 28 Sep 2026", cut.Find("input.dp-input").GetAttribute("value"));
         Assert.Contains("dp-invalid", cut.Find(".dp").ClassList);
     }
 
@@ -202,9 +203,9 @@ public class DatePickerRenderTests
 
         Assert.Equal("September 2026", cut.Find(".dp-title").TextContent);
         var heads = cut.FindAll(".dp-wd").Select(e => e.TextContent).ToArray();
-        Assert.Equal(new[] { "Sn", "Sl", "Rb", "Km", "Jm", "Sb", "Mg" }, heads);
+        Assert.Equal(new[] { "Mo", "Tu", "We", "Th", "Fr", "Sa", "Su" }, heads);
         var sel = cut.Find(".dp-day[aria-selected='true']");
-        Assert.Equal("Senin, 28 September 2026", sel.GetAttribute("aria-label"));
+        Assert.Equal("Monday, 28 September 2026", sel.GetAttribute("aria-label"));
         Assert.Equal("true", cut.Find(".dp-day[data-date='2026-09-04']").GetAttribute("aria-disabled"));
         Assert.Equal("0", sel.GetAttribute("tabindex"));
         Assert.NotNull(cut.Find(".dp-clear"));
@@ -231,7 +232,7 @@ public class DatePickerRenderTests
         var grid = cut.Find(".dp-grid");
         grid.KeyDown("ArrowRight");
         cut.Find(".dp-grid").KeyDown("PageDown");
-        Assert.Equal("Oktober 2026", cut.Find(".dp-title").TextContent);
+        Assert.Equal("October 2026", cut.Find(".dp-title").TextContent);
         cut.Find(".dp-grid").KeyDown("Enter");
         Assert.Equal(new DateTime(2026, 10, 29), got);
         Assert.Empty(cut.FindAll(".dp-pop"));

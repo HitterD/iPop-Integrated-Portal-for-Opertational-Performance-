@@ -90,7 +90,7 @@ public static class OnlyOfficeEndpoints
                 editorConfig = new
                 {
                     mode = "edit",
-                    lang = "id",
+                    lang = "en",
                     coEditing = new
                     {
                         mode = "fast",

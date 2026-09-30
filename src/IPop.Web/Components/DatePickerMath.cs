@@ -6,17 +6,17 @@ namespace IPop.Web.Components;
 public enum DatePickerMode { Date, Time, DateTime }
 
 /// Pure calendar / parsing helpers behind the shared date & time pickers.
-/// Indonesian names are explicit arrays so output never depends on the WASM
+/// English names are explicit arrays so output never depends on the WASM
 /// globalization data that happens to be loaded. Weeks start on Monday.
 public static partial class DatePickerMath
 {
-    public static readonly string[] WeekdayMin = ["Sn", "Sl", "Rb", "Km", "Jm", "Sb", "Mg"];
-    public static readonly string[] WeekdayShort = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
-    public static readonly string[] WeekdayLong = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"];
+    public static readonly string[] WeekdayMin = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+    public static readonly string[] WeekdayShort = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    public static readonly string[] WeekdayLong = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
     public static readonly string[] MonthLong =
-        ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+        ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
     public static readonly string[] MonthShort =
-        ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+        ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
     /// Anchor date used when a time-only value travels through the DateTime-based core.
     public static readonly DateTime TimeAnchor = DateTime.MinValue;
@@ -73,14 +73,14 @@ public static partial class DatePickerMath
 
     // ---- formatting -------------------------------------------------------
 
-    /// "Sen, 28 Sep 2026"
+    /// "Mon, 28 Sep 2026"
     public static string FormatDate(DateOnly d)
         => $"{WeekdayShort[MondayIndex(d.DayOfWeek)]}, {d.Day:00} {MonthShort[d.Month - 1]} {d.Year}";
 
     /// "28 Sep 2026" (dense table cells)
     public static string FormatDateCompact(DateOnly d) => $"{d.Day:00} {MonthShort[d.Month - 1]} {d.Year}";
 
-    /// "Senin, 28 September 2026" (screen-reader labels)
+    /// "Monday, 28 September 2026" (screen-reader labels)
     public static string FormatLong(DateOnly d)
         => $"{WeekdayLong[MondayIndex(d.DayOfWeek)]}, {d.Day} {MonthLong[d.Month - 1]} {d.Year}";
 
@@ -100,13 +100,15 @@ public static partial class DatePickerMath
     private static Dictionary<string, int> BuildMonthNames()
     {
         var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        string[] en = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+        // Indonesian names stay accepted so typed input like "28 Agustus 2026" still parses.
+        string[] id = ["januari", "februari", "maret", "april", "mei", "juni", "juli", "agustus", "september", "oktober", "november", "desember"];
+        string[] idShort = ["jan", "feb", "mar", "apr", "mei", "jun", "jul", "agu", "sep", "okt", "nov", "des"];
         for (var i = 0; i < 12; i++)
         {
             map[MonthLong[i]] = i + 1;
             map[MonthShort[i]] = i + 1;
-            map[en[i]] = i + 1;
-            map[en[i][..3]] = i + 1;
+            map[id[i]] = i + 1;
+            map[idShort[i]] = i + 1;
         }
         map["agt"] = 8; map["ags"] = 8; map["sept"] = 9; map["peb"] = 2; map["nop"] = 11;
         return map;
@@ -126,7 +128,7 @@ public static partial class DatePickerMath
         => Spaces().Replace(s.Replace('·', ' ').Replace(' ', ' ').Trim().ToLowerInvariant(), " ");
 
     /// Accepts dd/MM/yyyy (also d/M/yy, dots or dashes), yyyy-MM-dd, "28 Sep 2026"
-    /// and the display form "Sen, 28 Sep 2026".
+    /// and the display form "Mon, 28 Sep 2026".
     public static bool TryParseDate(string? input, out DateOnly date)
     {
         date = default;

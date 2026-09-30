@@ -177,10 +177,10 @@ public class FileOperationWorker(
             var duration = (op.FinishedAt.Value - op.StartedAt!.Value).TotalSeconds;
             if (notifs != null && (duration > 30 || failed > 0))
             {
-                var title = failed > 0 ? "Transfer Selesai dengan Masalah" : "Transfer File Selesai";
+                var title = failed > 0 ? "Transfer Finished with Errors" : "File Transfer Complete";
                 var body = failed > 0
-                    ? $"{completed} file berhasil, {failed} gagal ditransfer."
-                    : $"{completed} file berhasil ditransfer ke {op.DestServer}.";
+                    ? $"{completed} file(s) transferred, {failed} failed."
+                    : $"{completed} file(s) transferred to {op.DestServer}.";
                 // Awaited: the gateway uses this scope's DbContext, which is disposed as soon as
                 // we return — a fire-and-forget publish raced (or outlived) it and was lost.
                 try

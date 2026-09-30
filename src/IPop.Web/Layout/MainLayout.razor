@@ -101,19 +101,19 @@
                                 <div class="status-sep"></div>
                                 @if (!Push.Secure || Push.Permission == "unsupported")
                                 {
-                                    <div class="status-note"><i data-lucide="bell-off"></i><span class="l">Notifikasi Windows tidak tersedia<small>Buka iPop lewat https://ipop.santos.co.id</small></span></div>
+                                    <div class="status-note"><i data-lucide="bell-off"></i><span class="l">Windows notifications unavailable<small>Open iPop via https://ipop.santos.co.id</small></span></div>
                                 }
                                 else if (Push.Permission == "denied")
                                 {
-                                    <button class="status-alerts" @onclick='() => { statusMenuOpen = false; Nav.NavigateTo("/notifications/settings"); }'><i data-lucide="bell-off"></i><span class="l">Notifikasi Windows diblokir<small>Lihat cara mengizinkannya</small></span></button>
+                                    <button class="status-alerts" @onclick='() => { statusMenuOpen = false; Nav.NavigateTo("/notifications/settings"); }'><i data-lucide="bell-off"></i><span class="l">Windows notifications blocked<small>See how to allow them</small></span></button>
                                 }
                                 else if (Push.Permission == "default" || !Push.Subscribed || Push.Idle == "prompt")
                                 {
-                                    <button class="status-alerts" @onclick="EnableDesktopAlerts"><i data-lucide="bell-ring"></i><span class="l">Aktifkan notifikasi Windows<small>Toast Windows + deteksi idle (Away)</small></span></button>
+                                    <button class="status-alerts" @onclick="EnableDesktopAlerts"><i data-lucide="bell-ring"></i><span class="l">Turn on Windows notifications<small>Windows toasts + idle detection (Away)</small></span></button>
                                 }
                                 else
                                 {
-                                    <div class="status-note"><i data-lucide="bell-ring"></i><span class="l">Notifikasi Windows aktif<small>Muncul saat iPop tidak sedang dilihat</small></span></div>
+                                    <div class="status-note"><i data-lucide="bell-ring"></i><span class="l">Windows notifications on<small>Shown when you're not looking at iPop</small></span></div>
                                 }
                             </div>
                         }
@@ -213,10 +213,10 @@
         {
             <div class="push-banner" role="status">
                 <i data-lucide="bell-ring"></i>
-                <span><b>Aktifkan notifikasi Windows</b><span class="long"> — pesan, panggilan, dan notifikasi iPop tetap muncul walau tab tertutup</span></span>
+                <span><b>Turn on Windows notifications</b><span class="long"> — messages, calls, and iPop notifications still appear when the tab is closed</span></span>
                 <span class="sp"></span>
-                <button type="button" class="p" @onclick="EnableDesktopAlerts">Aktifkan</button>
-                <button type="button" @onclick="Push.DismissBannerAsync">Nanti</button>
+                <button type="button" class="p" @onclick="EnableDesktopAlerts">Turn on</button>
+                <button type="button" @onclick="Push.DismissBannerAsync">Later</button>
             </div>
         }
 
@@ -257,7 +257,7 @@
         </div>
     </div>
 
-    @* Phone tab bar + "Lainnya" sheet. Rendered once; css/mobile/shell.css hides both above 767px. *@
+    @* Phone tab bar + "More" sheet. Rendered once; css/mobile/shell.css hides both above 767px. *@
     <nav class="m-tabbar" aria-label="Main">
         @foreach (var item in TabItems)
         {
@@ -278,13 +278,13 @@
                     <span class="m-tab-badge dot"></span>
                 }
             </span>
-            <span class="m-tab-lbl">Lainnya</span>
+            <span class="m-tab-lbl">More</span>
         </button>
     </nav>
     @if (moreOpen)
     {
         <div class="m-sheet-backdrop" @onclick="CloseMore"></div>
-        <div class="m-sheet m-more" role="dialog" aria-modal="true" aria-label="Lainnya">
+        <div class="m-sheet m-more" role="dialog" aria-modal="true" aria-label="More">
             <div class="m-sheet-grip"></div>
             <div class="m-more-user">
                 <div class="avatar">@Initials<span class="sdot @Auth.MyStatus"></span></div>
@@ -354,7 +354,7 @@
         ]),
     ];
 
-    /// Phone tab bar (<= 767px): four primary modules plus "Lainnya", which lists the rest.
+    /// Phone tab bar (<= 767px): four primary modules plus "More", which lists the rest.
     /// Both lists are drawn from NavGroups so labels, icons and badge keys stay in sync.
     private static readonly string[] TabHrefs = ["/dashboard", "/chat", "/mail", "/projects"];
     private static readonly NavItem[] TabItems =

@@ -929,7 +929,7 @@ window.ipop = {
         wrap.appendChild(img);
         const handle = document.createElement("span");
         handle.className = "rte-img-resize";
-        handle.title = "Tarik untuk mengubah ukuran";
+        handle.title = "Drag to resize";
         wrap.appendChild(handle);
         return wrap;
       };
@@ -1562,7 +1562,7 @@ window.ipop = {
         try { dotNetHelper.invokeMethodAsync("OnDocumentStateChange", !!(event && event.data)); } catch {}
       };
       config.events.onError = (event) => {
-        let msg = "Terjadi kendala pada dokumen editor.";
+        let msg = "The document editor ran into a problem.";
         if (event) {
           if (typeof event.data === "string") {
             msg = event.data;
@@ -1797,7 +1797,7 @@ window.ipop = {
           const src = img.getAttribute("src") || "";
           if (src.length > this._maxDataImage || !/^data:image\/(png|jpeg|gif|webp);/i.test(src)) { img.remove(); dropped++; }
         });
-        if (dropped) dotNet.invokeMethodAsync("OnNotice", "Gambar lebih dari 2 MB atau formatnya tidak didukung, jadi tidak disisipkan.").catch(() => { });
+        if (dropped) dotNet.invokeMethodAsync("OnNotice", "The image is larger than 2 MB or its format isn't supported, so it wasn't inserted.").catch(() => { });
       };
       ed.e.on("change", () => {
         clearTimeout(st.changeT);
