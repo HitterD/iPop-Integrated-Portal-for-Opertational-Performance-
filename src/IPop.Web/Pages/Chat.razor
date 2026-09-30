@@ -192,6 +192,9 @@
                                             <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="() => { menuRoomId = null; ArchiveRoomById(room.Id); }">
                                                 <i data-lucide="archive" style="width:12px;height:12px"></i> Archive
                                             </button>
+                                            <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="async () => { menuRoomId = null; await OpenDeleteRoom(room); }">
+                                                <i data-lucide="trash-2" style="width:12px;height:12px"></i> Hapus chat
+                                            </button>
                                         </div>
                                     }
                                 </div>
@@ -262,6 +265,9 @@
                                             </button>
                                             <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="() => { menuRoomId = null; ArchiveRoomById(room.Id); }">
                                                 <i data-lucide="archive" style="width:12px;height:12px"></i> Archive
+                                            </button>
+                                            <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="async () => { menuRoomId = null; await OpenDeleteRoom(room); }">
+                                                <i data-lucide="trash-2" style="width:12px;height:12px"></i> Hapus chat
                                             </button>
                                         </div>
                                     }
@@ -1398,6 +1404,51 @@
             <CreatePollDialog IsOpen="@pollModalOpen"
                               IsOpenChanged="v => pollModalOpen = v"
                               OnPollCreated="OnPollCreated" />
+
+            @* ---- Hapus chat (for me / whole group) ---- *@
+            <Modal IsOpen="deleteRoom is not null" IsOpenChanged="v => { if (!v) deleteRoom = null; }"
+                   Title="Hapus chat" Subtitle="@(deleteRoom is null ? null : GetRoomName(deleteRoom))">
+                <ChildContent>
+                    @if (deleteRoom is not null)
+                    {
+                        <div class="delete-room">
+                            @if (deleteRoomCanPurge)
+                            {
+                                <label class="delete-room-opt @(deleteRoomForAll ? "" : "on")">
+                                    <input type="radio" name="delete-room-scope" checked="@(!deleteRoomForAll)" @onchange="() => deleteRoomForAll = false" />
+                                    <span><strong>Hapus untuk saya</strong><small>Riwayat dikosongkan dan grup hilang dari daftar Anda sampai ada pesan baru.</small></span>
+                                </label>
+                                <label class="delete-room-opt danger @(deleteRoomForAll ? "on" : "")">
+                                    <input type="radio" name="delete-room-scope" checked="@deleteRoomForAll" @onchange="() => deleteRoomForAll = true" />
+                                    <span><strong>Hapus grup untuk semua anggota</strong><small>Grup, semua pesan, dan file lampirannya dihapus permanen. Tidak bisa dibatalkan.</small></span>
+                                </label>
+                                @if (deleteRoomForAll)
+                                {
+                                    <label class="delete-room-confirm">
+                                        Ketik <strong>@deleteRoom.Name</strong> untuk konfirmasi
+                                        <input class="fx-input" aria-label="Nama grup" @bind="deleteRoomConfirm" @bind:event="oninput" autocomplete="off" />
+                                    </label>
+                                }
+                            }
+                            else
+                            {
+                                <p class="delete-room-note">
+                                    @(deleteRoom.Type == "dm"
+                                        ? "Riwayat chat ini dihapus dan percakapan hilang dari daftar Anda. Lawan bicara tetap menyimpan riwayatnya. Percakapan muncul lagi bila ada pesan baru."
+                                        : "Riwayat chat ini dihapus dan grup hilang dari daftar Anda sampai ada pesan baru. Anggota lain tidak terpengaruh.")
+                                </p>
+                            }
+                            @if (!string.IsNullOrEmpty(deleteRoomError)) { <p class="delete-room-error" role="alert">@deleteRoomError</p> }
+                        </div>
+                    }
+                </ChildContent>
+                <Footer>
+                    <button type="button" class="comp-btn" @onclick="() => deleteRoom = null">Batal</button>
+                    <button type="button" class="cm-btn primary danger" disabled="@(deleteRoomBusy || !DeleteRoomReady)" @onclick="ConfirmDeleteRoom">
+                        @(deleteRoomBusy ? "Menghapus…" : deleteRoomForAll ? "Hapus untuk semua" : "Hapus chat")
+                    </button>
+                </Footer>
+            </Modal>
 
             @* ---- Leave Group Confirm ---- *@
             @if (leaveConfirmOpen)

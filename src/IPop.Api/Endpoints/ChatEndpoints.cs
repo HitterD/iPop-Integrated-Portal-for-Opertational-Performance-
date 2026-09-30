@@ -639,6 +639,58 @@ public static class ChatEndpoints
                 : Results.Json(new { code = result.Error }, statusCode: 403);
         });
 
+        // "Hapus chat" for me: history cleared + room hidden until a new message arrives.
+        g.MapPost("/rooms/{roomId:guid}/delete-for-me", async (Guid roomId,
+            HttpContext http, IChatService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await svc.DeleteRoomForMeAsync(userId.Value, roomId, ct);
+            if (!result.Success) return Results.Json(new { code = result.Error }, statusCode: 403);
+            await RoomsChangedAsync(http, realtime, ct);
+            return Results.Ok(result);
+        });
+
+        // Group owner/admin: delete the group, its messages and its files for everyone.
+        g.MapPost("/rooms/{roomId:guid}/delete-for-everyone", async (Guid roomId, DeleteRoomRequest req,
+            HttpContext http, IChatService svc, IChatNotifier notifier, IFileAccessService fileSvc,
+            IWebHostEnvironment env, IPopDbContext db, ILoggerFactory logs, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await svc.DeleteGroupForEveryoneAsync(userId.Value, roomId, req.ConfirmName, ct);
+            if (!result.Success)
+                return Results.Json(new { code = result.Error }, statusCode: result.Error switch
+                {
+                    "room_not_found" => 404,
+                    "forbidden" => 403,
+                    _ => 422,
+                });
+
+            foreach (var member in result.MemberIds)
+                await notifier.NotifyRemovedAsync(member, roomId, ct);
+
+            var log = logs.CreateLogger("ChatEndpoints");
+            foreach (var file in result.OrphanFiles)
+            {
+                try
+                {
+                    if (file.Server == "local")
+                    {
+                        if (TryLocalFile(env.ContentRootPath, file.Server, file.Path, out var local)) File.Delete(local);
+                    }
+                    else if (fileSvc.HasServiceAccount)
+                        await fileSvc.DeleteAsServiceAsync(file.Path, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // The rows are gone already; a leftover file is only wasted space.
+                    log.LogWarning(ex, "Could not delete chat file {Path} of deleted room {RoomId}", file.Path, roomId);
+                }
+            }
+            return Results.Ok(new { success = true });
+        });
+
         g.MapGet("/blocked-users", async (HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
@@ -1623,6 +1675,7 @@ public static class ChatEndpoints
     }
 
     // Request DTOs
+    public record DeleteRoomRequest(string? ConfirmName);
     public record CreateDmRequest(Guid RecipientId);
     public record SendMessageBody(string Content, Guid IdempotencyKey, Guid? ReplyToId, string? Type, Guid? RoomId, IReadOnlyList<Guid>? AttachmentIds = null);
     public record EditRequest(string Content);

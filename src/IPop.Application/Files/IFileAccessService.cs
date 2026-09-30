@@ -42,4 +42,5 @@ public interface IFileAccessService
 
     Task<Stream> DownloadAsServiceAsync(string path, CancellationToken ct);
     Task UploadAsServiceAsync(string dir, string filename, Stream content, CancellationToken ct);
+    Task DeleteAsServiceAsync(string path, CancellationToken ct) => throw new NotSupportedException();
 }

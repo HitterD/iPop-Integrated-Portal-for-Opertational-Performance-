@@ -17,7 +17,12 @@ public sealed partial class ChatService
         // Fast path: reuse existing DM
         var existing = await FindExistingDmAsync(creatorId, recipientId, ct);
         if (existing is not null)
+        {
+            // Starting a chat with someone again brings a DM deleted for me back into my list.
+            var mine = await db.ChatRoomUserSettings.FirstOrDefaultAsync(s => s.UserId == creatorId && s.RoomId == existing.Id, ct);
+            if (mine?.DeletedAt is not null) { mine.DeletedAt = null; await db.SaveChangesAsync(ct); }
             return existing;
+        }
 
         var now = DateTime.UtcNow;
         var room = new ChatRoom
@@ -196,9 +201,11 @@ public sealed partial class ChatService
             .Where(s => s.UserId == userId && s.IsArchived)
             .Select(s => s.RoomId);
 
+        var hiddenIds = HiddenRoomIds(userId);
+
         var baseQuery = db.ChatRooms
             .AsNoTracking()
-            .Where(r => memberRoomIds.Contains(r.Id) && r.Type == roomType && r.IsActive && !archivedIds.Contains(r.Id));
+            .Where(r => memberRoomIds.Contains(r.Id) && r.Type == roomType && r.IsActive && !archivedIds.Contains(r.Id) && !hiddenIds.Contains(r.Id));
 
         var totalCount = await baseQuery.CountAsync(ct);
 

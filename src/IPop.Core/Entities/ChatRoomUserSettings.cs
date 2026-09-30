@@ -18,6 +18,9 @@ public class ChatRoomUserSettings
     public bool ReadReceiptsEnabled { get; set; } = true;
     public DateTime? ClearedAt { get; set; }
 
+    /// "Hapus chat" for me: the room stays out of my list until a message newer than this arrives.
+    public DateTime? DeletedAt { get; set; }
+
     public User User { get; set; } = default!;
     public ChatRoom Room { get; set; } = default!;
 }

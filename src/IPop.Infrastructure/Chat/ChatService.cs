@@ -158,6 +158,12 @@ public sealed partial class ChatService : IChatService
             .Where(m => m.RoomId == roomId && m.UserId == userId && m.LeftAt == null)
             .Select(m => m.Role).FirstOrDefaultAsync(ct);
 
+    /// Rooms I deleted for me ("Hapus chat") that have had no message since.
+    private IQueryable<Guid> HiddenRoomIds(Guid userId)
+        => db.ChatRoomUserSettings
+            .Where(s => s.UserId == userId && s.DeletedAt != null && s.Room.LastMessageAt <= s.DeletedAt)
+            .Select(s => s.RoomId);
+
     private Task<bool> IsMemberAsync(Guid userId, Guid roomId, CancellationToken ct)
         => db.ChatRoomMembers.AsNoTracking()
             .AnyAsync(m => m.RoomId == roomId && m.UserId == userId && m.LeftAt == null, ct);

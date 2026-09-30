@@ -170,6 +170,61 @@ public sealed partial class ChatService
         return new RoomSettingsResultDto(true, null);
     }
 
+    public async Task<RoomSettingsResultDto> DeleteRoomForMeAsync(Guid userId, Guid roomId, CancellationToken ct)
+    {
+        if (!await IsMemberAsync(userId, roomId, ct)) return new RoomSettingsResultDto(false, "forbidden");
+        var settings = await GetOrCreateSettingsAsync(userId, roomId, ct);
+        var now = DateTime.UtcNow;
+        settings.ClearedAt = now;
+        settings.LastReadMessageAt = now;
+        settings.DeletedAt = now;
+        settings.IsArchived = false;
+        settings.IsPinned = false;
+        await db.SaveChangesAsync(ct);
+        return new RoomSettingsResultDto(true, null);
+    }
+
+    public async Task<DeleteRoomResultDto> DeleteGroupForEveryoneAsync(Guid userId, Guid roomId, string? confirmName, CancellationToken ct)
+    {
+        static DeleteRoomResultDto Fail(string error) => new(false, error, [], []);
+
+        var room = await db.ChatRooms.AsNoTracking().FirstOrDefaultAsync(r => r.Id == roomId, ct);
+        if (room is null) return Fail("room_not_found");
+        if (room.Type != "group") return Fail("not_a_group");
+        if (await GetMemberRoleAsync(userId, roomId, ct) is not ("owner" or "admin")) return Fail("forbidden");
+        // A project's room lives and dies with the project.
+        if (await db.ProjectRooms.AnyAsync(p => p.RoomId == roomId, ct)) return Fail("project_room");
+        if (!string.Equals(confirmName?.Trim(), room.Name?.Trim(), StringComparison.OrdinalIgnoreCase))
+            return Fail("name_mismatch");
+
+        var memberIds = await db.ChatRoomMembers.AsNoTracking()
+            .Where(m => m.RoomId == roomId && m.LeftAt == null).Select(m => m.UserId).ToListAsync(ct);
+
+        // Forwarded messages copy the attachment row but share the stored file, so a file is only
+        // removed when no attachment outside this room still points at it.
+        var files = await db.ChatAttachments.AsNoTracking()
+            .Where(a => a.Message.RoomId == roomId)
+            .Select(a => new { a.SynologyServer, a.SynologyPath, a.ThumbnailPath }).ToListAsync(ct);
+        var paths = files.SelectMany(f => new[] { f.SynologyPath, f.ThumbnailPath })
+            .Where(p => !string.IsNullOrEmpty(p)).Select(p => p!).Distinct().ToList();
+        var stillUsed = await db.ChatAttachments.AsNoTracking()
+            .Where(a => a.Message.RoomId != roomId && (paths.Contains(a.SynologyPath) || (a.ThumbnailPath != null && paths.Contains(a.ThumbnailPath))))
+            .Select(a => new { a.SynologyPath, a.ThumbnailPath }).ToListAsync(ct);
+        var used = stillUsed.SelectMany(a => new[] { a.SynologyPath, a.ThumbnailPath }).Where(p => p is not null).ToHashSet();
+        var orphans = files
+            .SelectMany(f => new[] { new StoredChatFile(f.SynologyServer, f.SynologyPath) }
+                .Concat(f.ThumbnailPath is { } t && t != f.SynologyPath ? [new StoredChatFile(f.SynologyServer, t)] : []))
+            .Where(f => !used.Contains(f.Path)).Distinct().ToList();
+
+        // Thread replies point at their parent with ON DELETE RESTRICT, so they go first;
+        // everything else hangs off the room or its messages and cascades.
+        while (await db.ChatMessages.Where(m => m.RoomId == roomId && m.ThreadParentId != null
+                   && !db.ChatMessages.Any(c => c.ThreadParentId == m.Id)).ExecuteDeleteAsync(ct) > 0) { }
+        await db.ChatRooms.Where(r => r.Id == roomId).ExecuteDeleteAsync(ct);
+
+        return new DeleteRoomResultDto(true, null, memberIds, orphans);
+    }
+
     public async Task<bool> BlockUserAsync(Guid userId, Guid blockedUserId, CancellationToken ct)
     {
         if (userId == blockedUserId || !await db.Users.AnyAsync(u => u.Id == blockedUserId && u.IsActive, ct)) return false;

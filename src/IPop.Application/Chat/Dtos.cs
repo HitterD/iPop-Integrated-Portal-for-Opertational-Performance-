@@ -89,6 +89,9 @@ public record PinnedResultDto(bool Success, string? Error, Guid? RoomId = null);
 public record ReactionResultDto(bool Success, ReactionDto? Reaction, string? Error);
 public record PagedResult<T>(IReadOnlyList<T> Items, int TotalCount, int Page, int PageSize);
 public record RoomSettingsResultDto(bool Success, string? Error);
+/// A group deleted for everyone: who to tell, and the stored files nothing else references any more.
+public record DeleteRoomResultDto(bool Success, string? Error, IReadOnlyList<Guid> MemberIds, IReadOnlyList<StoredChatFile> OrphanFiles);
+public record StoredChatFile(string Server, string Path);
 
 // Hub-specific DTOs
 public record SendMessageHubRequest(Guid RoomId, string Content, Guid IdempotencyKey, Guid? ReplyToId, string? Type, IReadOnlyList<Guid>? AttachmentIds = null);

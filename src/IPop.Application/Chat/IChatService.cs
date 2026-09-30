@@ -72,6 +72,11 @@ public interface IChatService
     Task<RoomSettingsResultDto> ArchiveRoomAsync(Guid userId, Guid roomId, CancellationToken ct);
     Task<RoomSettingsResultDto> UnarchiveRoomAsync(Guid userId, Guid roomId, CancellationToken ct);
     Task<RoomSettingsResultDto> ClearRoomHistoryAsync(Guid userId, Guid roomId, CancellationToken ct);
+    /// "Hapus chat" for me: clears my history and hides the room until a new message arrives.
+    Task<RoomSettingsResultDto> DeleteRoomForMeAsync(Guid userId, Guid roomId, CancellationToken ct);
+    /// Group owner/admin only: removes the group and all its messages for every member.
+    /// <paramref name="confirmName"/> must match the group name.
+    Task<DeleteRoomResultDto> DeleteGroupForEveryoneAsync(Guid userId, Guid roomId, string? confirmName, CancellationToken ct);
     Task<bool> BlockUserAsync(Guid userId, Guid blockedUserId, CancellationToken ct);
     Task<bool> UnblockUserAsync(Guid userId, Guid blockedUserId, CancellationToken ct);
     Task<IReadOnlyList<Guid>> GetBlockedUserIdsAsync(Guid userId, CancellationToken ct);

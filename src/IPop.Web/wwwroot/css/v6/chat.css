@@ -524,3 +524,16 @@
 [data-theme="dark"] .empty-state.chat-empty .empty-acts button:not(.ce-primary) { background: color-mix(in srgb, var(--accent) 20%, transparent); }
 @media (min-width: 769px) { .empty-state.chat-empty .empty-acts .mobile-only { display: none; } }
 @media (max-width: 768px) { .empty-state.chat-empty .empty-acts .mobile-only { display: inline-flex; } }
+
+/* ---- Hapus chat dialog ---- */
+.delete-room { display: flex; flex-direction: column; gap: 10px; min-width: min(420px, 80vw); }
+.delete-room-opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.delete-room-opt.on { border-color: var(--accent); background: var(--surface-2); }
+.delete-room-opt.danger.on { border-color: var(--danger); }
+.delete-room-opt input { margin-top: 3px; accent-color: var(--accent); }
+.delete-room-opt.danger input { accent-color: var(--danger); }
+.delete-room-opt span { display: flex; flex-direction: column; gap: 2px; }
+.delete-room-opt strong { font-size: 13px; color: var(--ink); }
+.delete-room-opt small, .delete-room-note { font-size: 12px; color: var(--ink-3); line-height: 1.45; margin: 0; }
+.delete-room-confirm { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--ink-2); }
+.delete-room-error { margin: 0; font-size: 12px; color: var(--danger-ink); }

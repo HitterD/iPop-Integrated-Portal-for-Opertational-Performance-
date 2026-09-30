@@ -396,7 +396,8 @@ public sealed partial class ChatService
 
         var archivedIds = db.ChatRoomUserSettings
             .Where(s => s.UserId == userId && s.IsArchived)
-            .Select(s => s.RoomId);
+            .Select(s => s.RoomId)
+            .Concat(HiddenRoomIds(userId));
 
         var roomsByName = db.ChatRooms
             .Where(r => memberRoomIds.Contains(r.Id) && r.IsActive && !archivedIds.Contains(r.Id) && r.Name != null && EF.Functions.ILike(r.Name, pattern));

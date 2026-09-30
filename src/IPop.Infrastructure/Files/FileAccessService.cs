@@ -266,6 +266,13 @@ public class FileAccessService(
             return true;
         }, ct);
 
+    public Task DeleteAsServiceAsync(string path, CancellationToken ct)
+        => WithServiceSid(async (srv, sid, c) =>
+        {
+            await gateway.DeleteAsync(srv, sid, path, c);
+            return true;
+        }, ct);
+
     private async Task<T> WithServiceSid<T>(Func<string, string, CancellationToken, Task<T>> action, CancellationToken ct)
     {
         var server = ServiceServer

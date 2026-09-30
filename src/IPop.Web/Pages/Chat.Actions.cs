@@ -537,6 +537,68 @@ public partial class Chat
         await ChatSvc.LoadRoomsAsync();
     }
 
+    // ---- Hapus chat (room "..." menu) ----
+
+    private IPop.Application.Chat.RoomListDto? deleteRoom;
+    private bool deleteRoomCanPurge;
+    private bool deleteRoomForAll;
+    private bool deleteRoomBusy;
+    private string deleteRoomConfirm = "";
+    private string? deleteRoomError;
+
+    private bool DeleteRoomReady => !deleteRoomForAll
+        || string.Equals(deleteRoomConfirm.Trim(), deleteRoom?.Name?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private async Task OpenDeleteRoom(IPop.Application.Chat.RoomListDto room)
+    {
+        deleteRoom = room;
+        deleteRoomForAll = false;
+        deleteRoomConfirm = "";
+        deleteRoomError = null;
+        deleteRoomCanPurge = false;
+        // Only a group's owner/admin may delete it for everyone; DMs are always "for me".
+        if (room.Type == "group")
+        {
+            var role = room.Id == ChatSvc.ActiveRoomId ? ChatSvc.ActiveRoom?.CurrentUserRole
+                : (await Auth.GetAsync<IPop.Application.Chat.ChatRoomDto>($"/api/chat/rooms/{room.Id}"))?.CurrentUserRole;
+            deleteRoomCanPurge = role is "owner" or "admin";
+        }
+        StateHasChanged();
+    }
+
+    private async Task ConfirmDeleteRoom()
+    {
+        if (deleteRoom is not { } room || !DeleteRoomReady) return;
+        deleteRoomBusy = true;
+        deleteRoomError = null;
+        try
+        {
+            using var res = deleteRoomForAll
+                ? await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{room.Id}/delete-for-everyone", new { confirmName = deleteRoomConfirm })
+                : await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{room.Id}/delete-for-me");
+            if (!res.IsSuccessStatusCode)
+            {
+                deleteRoomError = res.StatusCode switch
+                {
+                    System.Net.HttpStatusCode.Forbidden => "Anda tidak punya izin menghapus chat ini.",
+                    System.Net.HttpStatusCode.UnprocessableEntity when deleteRoomForAll => "Nama grup tidak cocok, atau grup ini milik proyek.",
+                    _ => "Chat tidak bisa dihapus. Coba lagi.",
+                };
+                return;
+            }
+            var forAll = deleteRoomForAll;
+            deleteRoom = null;
+            if (room.Id == ChatSvc.ActiveRoomId) { CloseDetail(); CloseActiveConversation(); }
+            await ChatSvc.LoadRoomsAsync();
+            Toasts.Show(forAll ? "Grup dihapus untuk semua anggota." : "Chat dihapus.", ToastKind.Success);
+        }
+        finally
+        {
+            deleteRoomBusy = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task ToggleMuteRoom(IPop.Application.Chat.RoomListDto room)
     {
         if (room.IsMuted)

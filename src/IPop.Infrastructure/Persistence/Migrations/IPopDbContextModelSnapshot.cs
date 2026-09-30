@@ -754,6 +754,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ClearedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("IsArchived")
                         .HasColumnType("boolean");
 
