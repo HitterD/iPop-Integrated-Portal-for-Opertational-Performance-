@@ -27,6 +27,10 @@ public class AuthState(HttpClient http, IJSRuntime js)
     public bool MustChangePassword { get; private set; }
     public bool IsAuthenticated => _accessToken is not null;
 
+    /// Another tab of this browser owns the session (SessionLockState): realtime stays off and
+    /// the hub retry loops stand down until this tab takes it back.
+    public bool IsSuspended { get; set; }
+
     /// The current access token for Hub connections (ChatState, etc.). Null when signed out.
     public string? AccessToken => _accessToken;
     public string MyStatus { get; private set; } = "off";
@@ -109,7 +113,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
     /// Starts the real-time presence connection, idle detection, and a 30-second heartbeat.
     public async Task StartPresenceAsync()
     {
-        if (!IsAuthenticated || _presence is not null) return;
+        if (!IsAuthenticated || IsSuspended || _presence is not null) return;
         var hubUrl = new Uri(new Uri(http.BaseAddress!, "/"), "hubs/app");
         _presence = new HubConnectionBuilder()
             .WithUrl(hubUrl, o => o.AccessTokenProvider = () => Task.FromResult(_accessToken))
@@ -129,7 +133,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
         _presence.Closed += ex =>
         {
             SetConnectionState(DirectoryConnectionState.Offline);
-            _ = HubRetry.RunAsync(conn, () => _presence == conn && IsAuthenticated, OnHubBack);
+            _ = HubRetry.RunAsync(conn, () => _presence == conn && IsAuthenticated && !IsSuspended, OnHubBack);
             return Task.CompletedTask;
         };
         try
@@ -322,6 +326,20 @@ public class AuthState(HttpClient http, IJSRuntime js)
         // return 200 + Content-Length: 0 → ReadFromJsonAsync would throw and crash the page.
         if (res.Content.Headers.ContentLength is 0) return default;
         return await res.Content.ReadFromJsonAsync<T>(cancellationToken: ct);
+    }
+
+    /// Session moved to another tab: drop the app hub, idle detection and the heartbeat, but keep
+    /// the tokens so "Gunakan di sini" can reconnect without signing in again.
+    public async Task StopPresenceAsync()
+    {
+        _heartbeat?.Dispose();
+        _heartbeat = null;
+        try { await js.InvokeVoidAsync("ipop.presenceStop"); } catch { }
+        _bound.Clear();
+        var conn = _presence;
+        _presence = null;
+        if (conn is not null) await conn.DisposeAsync();
+        SetConnectionState(DirectoryConnectionState.Offline);
     }
 
     public async Task SignOutAsync()

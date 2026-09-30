@@ -1,0 +1,37 @@
+@implements IDisposable
+@inject SessionLockState Lock
+
+@if (Lock.Mode != SessionLockMode.None)
+{
+    <div class="session-lock" role="alertdialog" aria-modal="true" aria-labelledby="session-lock-title">
+        <div class="session-lock-card">
+            @if (Lock.Mode == SessionLockMode.Locked)
+            {
+                <div class="session-lock-ic"><i data-lucide="app-window"></i></div>
+                <h2 id="session-lock-title">iPop sedang dibuka di tab lain</h2>
+                <p>iPop hanya bisa aktif di satu tab browser. Klik <strong>Gunakan di sini</strong> untuk memakai iPop di tab ini.</p>
+                @if (Lock.EndedCallElsewhere) { <p class="session-lock-note">Panggilan di tab ini sudah diakhiri.</p> }
+                <div class="session-lock-actions">
+                    <button type="button" class="ui-button ui-button-ghost" @onclick="Lock.CloseTabAsync">Tutup tab</button>
+                    <button type="button" class="ui-button ui-button-primary" disabled="@Lock.IsWorking" @onclick="Lock.UseHereAsync">Gunakan di sini</button>
+                </div>
+            }
+            else
+            {
+                <div class="session-lock-ic call"><i data-lucide="phone-call"></i></div>
+                <h2 id="session-lock-title">Sedang ada panggilan di tab lain</h2>
+                <p>iPop di tab lain sedang dipakai untuk panggilan atau rapat. Jika tetap dipakai di sini, panggilan itu akan diakhiri.</p>
+                <div class="session-lock-actions">
+                    <button type="button" class="ui-button ui-button-ghost" @onclick="Lock.CloseTabAsync">Tutup tab</button>
+                    <button type="button" class="ui-button ui-button-primary danger" disabled="@Lock.IsWorking" @onclick="Lock.ForceHereAsync">Tetap gunakan di sini</button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized() => Lock.Changed += OnChanged;
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => Lock.Changed -= OnChanged;
+}

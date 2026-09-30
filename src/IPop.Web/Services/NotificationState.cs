@@ -82,7 +82,7 @@ public class NotificationState : IDisposable
     public async Task ConnectAsync()
     {
         if (_hub != null) return;
-        if (!_auth.IsAuthenticated) return;
+        if (!_auth.IsAuthenticated || _auth.IsSuspended) return;
 
         var baseUrl = _http.BaseAddress!;
         var hubUrl = new Uri(baseUrl, "hubs/notification");
@@ -102,7 +102,7 @@ public class NotificationState : IDisposable
         _hub.Reconnected += _ => { ScheduleResync(); return Task.CompletedTask; };
         _hub.Closed += ex =>
         {
-            _ = HubRetry.RunAsync(hub, () => _hub == hub && _auth.IsAuthenticated, ScheduleResync);
+            _ = HubRetry.RunAsync(hub, () => _hub == hub && _auth.IsAuthenticated && !_auth.IsSuspended, ScheduleResync);
             return Task.CompletedTask;
         };
 
@@ -618,6 +618,9 @@ public class NotificationState : IDisposable
             _ => "System"
         };
     }
+
+    /// Session moved to another tab (SessionLockState); ConnectAsync resumes.
+    public Task DisconnectAsync() => DisposeHubAsync();
 
     private async Task DisposeHubAsync()
     {

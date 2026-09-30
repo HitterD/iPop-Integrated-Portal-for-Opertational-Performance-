@@ -2129,6 +2129,7 @@ window.ipop = {
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.addEventListener("message", e => {
     if (!e.data || e.data.type !== "ipop-open" || !e.data.url) return;
+    if (window.ipopSession?.isLocked()) { ipopSession.forwardOpen(e.data.url); return; }
     try { Blazor.navigateTo(e.data.url); } catch { location.href = e.data.url; }
   });
 }

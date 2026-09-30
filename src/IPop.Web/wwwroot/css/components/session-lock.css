@@ -1,0 +1,22 @@
+/* Single-active-tab lock (SessionLockHost). Sits above everything, including call overlays. */
+.session-lock {
+  position: fixed; inset: 0; z-index: 5000; display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: rgba(20, 18, 15, .42); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+}
+.session-lock-card {
+  width: min(420px, 100%); padding: 28px 26px 22px; border-radius: 22px; text-align: center;
+  background: var(--surface); color: var(--ink); box-shadow: 0 30px 80px rgba(0, 0, 0, .28);
+}
+.session-lock-ic {
+  width: 56px; height: 56px; margin: 0 auto 14px; border-radius: 16px; display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent-ink);
+}
+.session-lock-ic.call { background: var(--warn-soft, #fdf1dc); color: var(--warn, #b7791f); }
+.session-lock-ic .lucide { width: 26px; height: 26px; }
+.session-lock h2 { margin: 0 0 8px; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.session-lock p { margin: 0 0 8px; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+.session-lock .session-lock-note { color: var(--ink-3); font-size: 12.5px; }
+.session-lock-actions { display: flex; gap: 10px; justify-content: center; margin-top: 18px; }
+.session-lock-actions .ui-button { padding: 10px 18px; border-radius: 12px; font-size: 13px; }
+.session-lock-actions .ui-button-primary.danger { background: var(--danger); }
+.session-lock-actions .ui-button[disabled] { opacity: .6; cursor: default; }

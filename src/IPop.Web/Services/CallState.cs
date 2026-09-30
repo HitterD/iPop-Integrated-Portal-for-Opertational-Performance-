@@ -82,7 +82,7 @@ public partial class CallState : IAsyncDisposable
 
     public async Task ConnectAsync()
     {
-        if (_hub is not null || !_auth.IsAuthenticated) return;
+        if (_hub is not null || !_auth.IsAuthenticated || _auth.IsSuspended) return;
         var hubUrl = new Uri(new Uri(_http.BaseAddress!, "/"), "hubs/calls");
         _hub = new HubConnectionBuilder()
             .WithUrl(hubUrl, o => o.AccessTokenProvider = () => Task.FromResult(_auth.AccessToken))
@@ -126,7 +126,7 @@ public partial class CallState : IAsyncDisposable
         _hub.Closed += ex =>
         {
             StateChanged?.Invoke();
-            _ = HubRetry.RunAsync(hub, () => _hub == hub && _auth.IsAuthenticated, () => _ = RefreshAsync());
+            _ = HubRetry.RunAsync(hub, () => _hub == hub && _auth.IsAuthenticated && !_auth.IsSuspended, () => _ = RefreshAsync());
             return Task.CompletedTask;
         };
 
@@ -580,6 +580,15 @@ public partial class CallState : IAsyncDisposable
     {
         Current = null;
         _webRtcActiveCallId = null;
+        StateChanged?.Invoke();
+    }
+
+    /// Session moved to another tab (SessionLockState): stop ringing here; ConnectAsync resumes.
+    public async Task DisconnectAsync()
+    {
+        var hub = _hub;
+        _hub = null;
+        if (hub is not null) await hub.DisposeAsync();
         StateChanged?.Invoke();
     }
 

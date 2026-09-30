@@ -154,7 +154,7 @@ public class ChatState : IAsyncDisposable
     public async Task ConnectAsync()
     {
         if (_hub is not null || _connecting) return;
-        if (!_auth.IsAuthenticated) return;
+        if (!_auth.IsAuthenticated || _auth.IsSuspended) return;
         _connecting = true;
 
         // Subscribe to presence changes so room-list presence dots update in real-time
@@ -206,7 +206,7 @@ public class ChatState : IAsyncDisposable
         {
             ConnectionChanged?.Invoke();
             // Auto-reconnect gave up: keep retrying so chat never dies until a page refresh.
-            _ = HubRetry.RunAsync(hub, () => _hub == hub && _auth.IsAuthenticated,
+            _ = HubRetry.RunAsync(hub, () => _hub == hub && _auth.IsAuthenticated && !_auth.IsSuspended,
                 () => { ConnectionChanged?.Invoke(); _ = SafeAsync(RefreshOnReconnectAsync); });
             return Task.CompletedTask;
         };
@@ -1127,6 +1127,13 @@ public class ChatState : IAsyncDisposable
     private static async Task SafeAsync(Func<Task> fn) { try { await fn(); } catch { /* ponytail: log to telemetry when available */ } }
 
     // ---- Dispose ----
+
+    /// Session moved to another tab (SessionLockState); ConnectAsync brings it back.
+    public async Task DisconnectAsync()
+    {
+        await DisposeHubAsync();
+        ConnectionChanged?.Invoke();
+    }
 
     private async Task DisposeHubAsync()
     {

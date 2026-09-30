@@ -12,6 +12,7 @@
 @inject OverlayStack Overlays
 @inject TutorialState Tutorials
 @inject IPop.Web.Services.PushState Push
+@inject IPop.Web.Services.SessionLockState SessionLock
 
 <div class="shell @(collapsed ? "collapsed" : "")" id="shell">
     <aside class="sidebar">
@@ -246,6 +247,7 @@
         <IPop.Web.Components.News.AnnouncementPopup />
         <ConfirmHost />
         <PhotoViewer />
+        <SessionLockHost />
         <AccountSheet @bind-IsOpen="accountOpen" Start="accountPane" />
         <IPop.Web.Components.Calls.GlobalCallOverlay />
         @* One floating column: incoming-notification banners above action toasts, so they never overlap. *@
@@ -680,6 +682,9 @@
         Tutorials.Changed += OnTutorialsChanged;
         _ = Tutorials.LoadAsync();
         await Auth.LoadPhotosAsync();
+        // Another tab in a call keeps the session: this one shows the yield prompt and the
+        // hub connects below all no-op (Auth.IsSuspended) until "Tetap gunakan di sini".
+        await SessionLock.StartAsync();
         await Auth.StartPresenceAsync();
         await Badges.StartAsync();
         await Timer.StartAsync();
