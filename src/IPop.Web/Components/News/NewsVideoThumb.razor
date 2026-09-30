@@ -1,0 +1,25 @@
+@* 16:9 poster with a play badge and duration for a video post in the News feed. *@
+@inject AuthState Auth
+@inject HttpClient Http
+
+<div class="an-thumb">
+    @if (poster is not null) { <img src="@poster" alt="" loading="lazy" /> }
+    <span class="play"><i data-lucide="play"></i></span>
+    @if (Video.DurationSeconds > 0) { <span class="dur">@NewsVideoFormat.Duration(Video.DurationSeconds)</span> }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public NewsVideoBriefDto Video { get; set; } = default!;
+
+    private string? poster;
+    private Guid loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Video.Id == loadedFor || !Video.HasPoster) return;
+        loadedFor = Video.Id;
+        // The poster URL needs a per-user ticket; the reader endpoint hands one out.
+        if (await Auth.GetAsync<NewsVideoViewDto>($"/api/news/videos/{Video.Id}") is { PosterUrl: { } p })
+            poster = Http.BaseAddress is null ? p : new Uri(Http.BaseAddress, p).ToString();
+    }
+}

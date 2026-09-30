@@ -101,7 +101,8 @@
                         var needsAck = post.Status == "published" && post.RequiresAcknowledgement && !post.IsAcknowledged;
                         var unread = post.Status == "published" && !post.IsRead;
                         var scheduled = post.Status == "published" && post.PublishAt > DateTime.UtcNow;
-                        <button type="button" class="news-row @(openDetailId == post.Id ? "sel" : "") @(unread ? "unread" : "")" @onclick="() => OpenDetail(post.Id)">
+                        <button type="button" class="news-row @(openDetailId == post.Id ? "sel" : "") @(unread ? "unread" : "") @(post.Video is null ? "" : "has-video")" @onclick="() => OpenDetail(post.Id)">
+                            @if (post.Video is { } video) { <IPop.Web.Components.News.NewsVideoThumb Video="@video" /> }
                             <div class="r1">
                                 <span class="cat-chip @post.Type">@NewsUiHelper.GetCategoryLabel(post.Type)</span>
                                 @if (post.IsPinned) { <span class="pin"><i data-lucide="pin"></i>Pinned</span> }

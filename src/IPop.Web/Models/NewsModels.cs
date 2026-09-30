@@ -23,7 +23,8 @@ public record NewsSummaryDto(
     int ViewCount = 0,
     int AttachmentCount = 0,
     DateTime? AckDueAt = null,
-    DateTime? EditedAt = null
+    DateTime? EditedAt = null,
+    NewsVideoBriefDto? Video = null
 );
 
 public record NewsTargetDto(string Kind, string? Value);
@@ -63,7 +64,8 @@ public record NewsDetailDto(
     bool CanManage = false,
     bool CanEdit = false,
     bool CanDelete = false,
-    bool CanPublish = false
+    bool CanPublish = false,
+    NewsVideoBriefDto? Video = null
 );
 
 public record NewsAttachmentDto(Guid Id, string FileName, string ContentType, long Size);

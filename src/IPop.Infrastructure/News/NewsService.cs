@@ -441,6 +441,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         var files = await db.NewsAttachments.AsNoTracking()
             .Where(a => postIds.Contains(a.NewsPostId) && a.Attachment.DeletedAt == null)
             .GroupBy(a => a.NewsPostId).Select(g => new { g.Key, N = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.N, ct);
+        var videos = await VideoBriefsAsync(postIds, ct);
 
         var summaries = items.Select(p => new NewsSummaryDto(
             p.Id, p.Type, p.Title, NormalizeStatus(p.Status), p.Author.Name, p.Author.Nik,
@@ -453,7 +454,8 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
             ViewCount: views.GetValueOrDefault(p.Id),
             AttachmentCount: files.GetValueOrDefault(p.Id),
             AckDueAt: p.AckDueAt,
-            EditedAt: p.EditedAt)).ToList();
+            EditedAt: p.EditedAt,
+            Video: videos.GetValueOrDefault(p.Id))).ToList();
 
         return new PagedResult<NewsSummaryDto>(summaries, total, page, size);
     }
@@ -724,8 +726,15 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
             CanManage: canManage,
             CanEdit: canManage || isAuthor,
             CanDelete: canManage || isAuthor,
-            CanPublish: canManage);
+            CanPublish: canManage,
+            Video: (await VideoBriefsAsync([newsId], ct)).GetValueOrDefault(newsId));
     }
+
+    /// Launch videos attached to these posts (one per post), for the feed card and detail player.
+    private Task<Dictionary<Guid, NewsVideoBriefDto>> VideoBriefsAsync(List<Guid> postIds, CancellationToken ct) =>
+        db.NewsVideos.AsNoTracking().Where(v => postIds.Contains(v.NewsPostId))
+            .ToDictionaryAsync(v => v.NewsPostId,
+                v => new NewsVideoBriefDto(v.Id, v.DurationSeconds, v.ThumbnailPath != null, v.FileName, v.Size), ct);
 
     /// Active users in the post's audience ("all" when it has no targets).
     private async Task<HashSet<Guid>> GetTargetedUserIdsAsync(Guid newsId, CancellationToken ct)

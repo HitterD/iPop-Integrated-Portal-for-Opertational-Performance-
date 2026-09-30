@@ -53,7 +53,8 @@ public record NewsSummaryDto(
     int ViewCount = 0,
     int AttachmentCount = 0,
     DateTime? AckDueAt = null,
-    DateTime? EditedAt = null);
+    DateTime? EditedAt = null,
+    NewsVideoBriefDto? Video = null);
 
 public record NewsDetailDto(
     Guid Id,
@@ -88,7 +89,8 @@ public record NewsDetailDto(
     bool CanManage = false,       // HR/Admin: ack report, audits, remind
     bool CanEdit = false,         // author of the post, or HR/Admin
     bool CanDelete = false,       // author of the post, or HR/Admin
-    bool CanPublish = false);     // publish / unpublish / pin: HR/Admin only
+    bool CanPublish = false,      // publish / unpublish / pin: HR/Admin only
+    NewsVideoBriefDto? Video = null);
 
 public record NewsAttachmentDto(Guid Id, string FileName, string ContentType, long Size);
 

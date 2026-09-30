@@ -1,0 +1,41 @@
+@* The launch video on a News post: the player, then a download link with name and size. Stream and
+   download URLs carry a short-lived ticket, so they are fetched per video. *@
+@inject AuthState Auth
+@inject HttpClient Http
+
+<div class="an-detail">
+    @if (view is { } v)
+    {
+        <VideoStage @key="v.Video.Id" StreamUrl="@v.StreamUrl" PosterUrl="@v.PosterUrl" DurationSeconds="@v.Video.DurationSeconds" OnPlayed="Played" />
+        <a class="an-dl" href="@Abs(v.DownloadUrl)" download="@v.Video.FileName">
+            <span class="ic"><i data-lucide="download"></i></span>
+            <span><b>Download video</b><small>@v.Video.FileName · @NewsVideoFormat.Size(v.Video.Size)</small></span>
+        </a>
+    }
+    else
+    {
+        <div class="an-stage an-stage-loading"></div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public NewsVideoBriefDto Video { get; set; } = default!;
+
+    private NewsVideoViewDto? view;
+    private Guid loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Video.Id == loadedFor) return;
+        loadedFor = Video.Id;
+        view = null;
+        view = await Auth.GetAsync<NewsVideoViewDto>($"/api/news/videos/{Video.Id}");
+    }
+
+    private string Abs(string path) => Http.BaseAddress is null ? path : new Uri(Http.BaseAddress, path).ToString();
+
+    private async Task Played()
+    {
+        try { await Auth.SendAsync(HttpMethod.Post, $"/api/news/videos/{Video.Id}/track/played"); } catch { }
+    }
+}
