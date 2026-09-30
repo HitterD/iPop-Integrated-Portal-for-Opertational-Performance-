@@ -5,6 +5,43 @@ namespace IPop.Web.Services;
 /// Pure formatters (no I/O, no JS).
 public static class ChatFormatters
 {
+    /// Messages of only 1–3 emoji render big without a bubble; returns that count, else 0.
+    /// Whitespace between emoji is allowed; any other character (text, digits) disqualifies.
+    public static int JumboEmojiCount(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || text.Length > 64) return 0;
+        var count = 0;
+        var e = System.Globalization.StringInfo.GetTextElementEnumerator(text.Trim());
+        while (e.MoveNext())
+        {
+            var el = (string)e.Current;
+            if (string.IsNullOrWhiteSpace(el)) continue;
+            if (!IsEmojiElement(el) || ++count > 3) return 0;
+        }
+        return count;
+    }
+
+    private static bool IsEmojiElement(string el)
+    {
+        var pictographic = false;
+        var keycap = el.Contains('⃣');
+        foreach (var r in el.EnumerateRunes())
+        {
+            var v = r.Value;
+            if (v is 0x200D or 0xFE0F or 0xFE0E or 0x20E3 || v is >= 0x1F3FB and <= 0x1F3FF || v is >= 0xE0020 and <= 0xE007F) continue;
+            if (keycap && (v is '#' or '*' || v is >= '0' and <= '9')) { pictographic = true; continue; }
+            if (v is >= 0x1F000 and <= 0x1FAFF   // pictographs, emoticons, transport, flags (regional indicators)…
+                || v is >= 0x2600 and <= 0x27BF  // misc symbols, dingbats
+                || v is >= 0x2B00 and <= 0x2BFF  // ⭐ ⬛ arrows
+                || v is >= 0x2190 and <= 0x21FF || v is >= 0x2300 and <= 0x23FF
+                || v is 0x00A9 or 0x00AE or 0x203C or 0x2049 or 0x2122 or 0x2139 or 0x3030 or 0x303D or 0x3297 or 0x3299
+                || v is >= 0x25A0 and <= 0x25FF || v is >= 0x2900 and <= 0x297F)
+            { pictographic = true; continue; }
+            return false;
+        }
+        return pictographic;
+    }
+
     /// Renders lightweight markdown formatting (bold, italic, code, strikethrough) and preserves linebreaks.
     public static string FormatMarkdown(string html)
     {

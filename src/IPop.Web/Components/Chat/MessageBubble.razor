@@ -186,6 +186,11 @@
         Message.Type != "emergency" &&
         Message.Type != "sticker";
 
+    /// 1–3 emoji and nothing else (plain text message, no reply/forward/attachments) → big emoji.
+    private int JumboCount =>
+        Message.Type is null or "" or "text" && !Message.IsDeleted && Attachments.Count == 0 && Message.ReplyPreview is null && !IsForwarded
+            ? ChatFormatters.JumboEmojiCount(Message.Content) : 0;
+
     private bool hasOnlyImages => Attachments.Count > 0 && Attachments.All(ChatAttachments.IsImage);
 
     private string BubbleModifierClass
@@ -194,6 +199,7 @@
         {
             if (isMediaOnly)
                 return hasOnlyImages ? "media-only media-image-only" : "media-only media-card-only";
+            if (JumboCount > 0) return $"jumbo-emoji jumbo-{JumboCount}";
             return (Attachments.Count > 0 && !string.IsNullOrWhiteSpace(Message.Content) && !IsAttachmentPlaceholder(Message)) ? "has-media-and-text" : "";
         }
     }

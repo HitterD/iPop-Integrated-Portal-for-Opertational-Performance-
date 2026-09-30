@@ -1264,3 +1264,20 @@
 .chat-area .audit-state, .chat-area .audit-error { padding: 12px; color: var(--ink-3); font-size: 12px; text-align: center; }
 .chat-area .audit-error { color: var(--danger); }
 .chat-area .audit-load-more { display: block; width: 100%; padding: 8px; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
+
+/* Emoji-only messages (1–3 emoji): big, no bubble — like iMessage/WhatsApp. */
+.msg .bubble.jumbo-emoji {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 2px 0 !important;
+}
+.msg .bubble.jumbo-emoji .message-text {
+  line-height: 1.15;
+  letter-spacing: 2px;
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+}
+.msg .bubble.jumbo-1 .message-text { font-size: 48px; }
+.msg .bubble.jumbo-2 .message-text { font-size: 40px; }
+.msg .bubble.jumbo-3 .message-text { font-size: 32px; }
+.msg:hover .bubble.jumbo-emoji { filter: none; }
