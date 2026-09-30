@@ -127,7 +127,7 @@
         else
         {
             <div class="adm-pcard @(lead ? "lead" : "")">
-                <span class="adm-av" style="background:@AvatarPalette.For(nik)">@AdminOrgModel.Initials(name)</span>
+                <span class="adm-av" style="@IPop.Web.Models.AvatarPhotos.Style(nik)">@AdminOrgModel.Initials(name)</span>
                 <span class="adm-pcard-txt"><b>@name</b><small>@(string.IsNullOrWhiteSpace(title) ? unit : $"{title} · {unit}")</small></span>
             </div>
         }

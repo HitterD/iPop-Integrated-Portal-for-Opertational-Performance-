@@ -236,7 +236,7 @@
                     @foreach (var p in data.Online)
                     {
                         <a class="dw-tm" href="/directory/person/@p.Nik" title="@p.Name · @PresenceLabel(p.Status)">
-                            <span class="av st-@p.Status" style="background:@AvatarPalette.For(p.Nik)">@Initials(p.Name)</span>
+                            <span class="av st-@p.Status" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">@Initials(p.Name)</span>
                             <span>@p.Name.Split(' ')[0]</span>
                         </a>
                     }

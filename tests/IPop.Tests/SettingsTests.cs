@@ -20,10 +20,10 @@ public class SettingsTests
     {
         using var t = new TestDb();
         var s = new DbSettings(t.Db);
-        await s.SetAsync(SettingKeys.HrisProtectManualEdits, false, "admin");
-        await s.SetAsync(SettingKeys.HrisProtectManualEdits, true, "admin");
+        await s.SetAsync(SettingKeys.HrisNotifyOnFailure, false, "admin");
+        await s.SetAsync(SettingKeys.HrisNotifyOnFailure, true, "admin");
 
-        Assert.True(await new DbSettings(t.Verify()).GetAsync(SettingKeys.HrisProtectManualEdits, false));
+        Assert.True(await new DbSettings(t.Verify()).GetAsync(SettingKeys.HrisNotifyOnFailure, false));
         Assert.Equal(1, await t.Verify().AppSettings.CountAsync());
     }
 

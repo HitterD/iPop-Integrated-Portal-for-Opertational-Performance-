@@ -38,6 +38,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<ChatRoomMember> ChatRoomMembers => Set<ChatRoomMember>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<ChatMessageEdit> ChatMessageEdits => Set<ChatMessageEdit>();
+    public DbSet<UserPhoto> UserPhotos => Set<UserPhoto>();
     public DbSet<ChatAttachment> ChatAttachments => Set<ChatAttachment>();
     public DbSet<ChatReaction> ChatReactions => Set<ChatReaction>();
     public DbSet<ChatReadReceipt> ChatReadReceipts => Set<ChatReadReceipt>();
@@ -148,6 +149,12 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasOne(x => x.Department).WithMany(d => d.Members).HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.Site).WithMany().HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.SetNull);
             e.HasOne(x => x.Division).WithMany().HasForeignKey(x => x.DivisionId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<UserPhoto>(e =>
+        {
+            e.HasIndex(x => x.UserId);
+            e.Property(x => x.ContentType).HasMaxLength(32);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<AuthSession>(e =>
         {

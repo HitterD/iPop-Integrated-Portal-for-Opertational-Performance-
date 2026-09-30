@@ -64,7 +64,7 @@
                  role="button" tabindex="0" aria-label="Open @u.Name"
                  @onclick="() => OpenInspector(u)" @onkeydown="e => RowKey(e, u)">
                 <span class="adm-user-cell">
-                    <span class="adm-av" style="background:@AvatarPalette.For(u.Nik)">@AdminOrgModel.Initials(u.Name)</span>
+                    <span class="adm-av" style="@IPop.Web.Models.AvatarPhotos.Style(u.Nik)">@AdminOrgModel.Initials(u.Name)</span>
                     <span class="adm-user-txt">
                         <b>@u.Name</b>
                         <small>@UnitLine(u)</small>
@@ -149,7 +149,7 @@
                 var role = PrimaryRole(sel.Roles);
                 <div class="drawer-body adm-insp">
                     <div class="adm-insp-hero">
-                        <span class="adm-av xl" style="background:@AvatarPalette.For(sel.Nik)">@AdminOrgModel.Initials(sel.Name)</span>
+                        <span class="adm-av xl" style="@IPop.Web.Models.AvatarPhotos.Style(sel.Nik)">@AdminOrgModel.Initials(sel.Name)</span>
                         <b>@sel.Name</b>
                         <small>@(sel.Position ?? "No position") · NIK <span class="adm-mono">@sel.Nik</span></small>
                         <span class="adm-status @StatusClass(sel)">@StatusLabel(sel)</span>

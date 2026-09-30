@@ -654,7 +654,7 @@
                                                     {
                                                         var u = user;
                                                         <div class="add-user-item" @onclick="() => OnAddMember.InvokeAsync(u)">
-                                                            <div class="avatar avatar-26" style="background:@GetUserColor(u.Nik)">
+                                                            <div class="avatar avatar-26" style="@IPop.Web.Models.AvatarPhotos.Style(u.Nik)">
                                                                 @GetInitialsFromName(u.Name)
                                                             </div>
                                                             <span class="name">@u.Name</span>

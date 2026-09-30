@@ -43,9 +43,21 @@
             }
         }
         <div class="sidebar-foot">
-            <div class="avatar">@Initials<span class="sdot @Auth.MyStatus"></span></div>
-            <div class="who"><div class="n">@UserName</div><div class="r">@UserRole</div></div>
-            <button class="out" title="Sign out" @onclick="SignOut"><i data-lucide="log-out"></i></button>
+            <button type="button" class="me-card" title="Your account" aria-haspopup="menu" aria-expanded="@(meMenuOpen ? "true" : "false")"
+                    @onclick="ToggleMeMenu" @onclick:stopPropagation>
+                <span class="avatar" style="@AvatarPhotos.Style(Auth.Me?.Nik)">@Initials<span class="sdot @Auth.MyStatus"></span></span>
+                <span class="who"><span class="n">@UserName</span><span class="r">@UserRole</span></span>
+                <i data-lucide="chevrons-up-down" class="chev"></i>
+            </button>
+            @if (meMenuOpen)
+            {
+                <div class="me-menu" role="menu" @onclick:stopPropagation>
+                    <button role="menuitem" @onclick='() => GoTo("/profile")'><i data-lucide="user-round-pen"></i>Edit profile</button>
+                    <button role="menuitem" @onclick='() => GoTo("/set-password")'><i data-lucide="key-round"></i>Change password</button>
+                    <div class="sep"></div>
+                    <button role="menuitem" class="danger" @onclick="SignOut"><i data-lucide="log-out"></i>Sign out</button>
+                </div>
+            }
         </div>
     </aside>
 
@@ -285,7 +297,7 @@
 </div>
 
 @code {
-    private bool collapsed, notifOpen, statusMenuOpen;
+    private bool collapsed, notifOpen, statusMenuOpen, meMenuOpen;
     private DotNetObjectReference<MainLayout>? selfRef;
     private ErrorBoundary? errorBoundary;
 
@@ -539,7 +551,7 @@
     private async Task ToggleStatusMenu()
     {
         statusMenuOpen = !statusMenuOpen;
-        notifOpen = false;
+        notifOpen = false; meMenuOpen = false;
         if (statusMenuOpen)
         {
             try { desktopAlerts = await JS.InvokeAsync<DesktopAlertsState>("ipop.desktopAlertsState"); }
@@ -569,6 +581,16 @@
         _ = JS.InvokeVoidAsync("ipop.setTitleBadge", n).AsTask().ContinueWith(_ => { }, TaskScheduler.Default);
     }
 
+    private void ToggleMeMenu() { meMenuOpen = !meMenuOpen; notifOpen = false; statusMenuOpen = false; }
+
+    private void GoTo(string href) { meMenuOpen = false; Nav.NavigateTo(href); }
+
+    private void OnMeChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void OnPhotosChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void OnDirectoryChanged() => _ = InvokeAsync(Auth.LoadPhotosAsync);
+
     private async Task SetStatus(bool busy)
     {
         statusMenuOpen = false;
@@ -578,6 +600,7 @@
 
     private async Task SignOut()
     {
+        meMenuOpen = false;
         Badges.Stop(); Badges.Clear();
         Timer.Stop();
         await Auth.SignOutAsync();
@@ -590,7 +613,7 @@
         // Top-most overlay first (palette, confirm, modal, context menu), then page overlays.
         if (await Overlays.CloseTopAsync()) { StateHasChanged(); return; }
         EscapePressed?.Invoke();
-        notifOpen = false; statusMenuOpen = false;
+        notifOpen = false; statusMenuOpen = false; meMenuOpen = false;
         StateHasChanged();
     }
 
@@ -603,8 +626,8 @@
     [JSInvokable]
     public void OnClickAway()
     {
-        if (!notifOpen && !statusMenuOpen) return;
-        notifOpen = false; statusMenuOpen = false;
+        if (!notifOpen && !statusMenuOpen && !meMenuOpen) return;
+        notifOpen = false; statusMenuOpen = false; meMenuOpen = false;
         StateHasChanged();
     }
 
@@ -622,9 +645,13 @@
         Notifs.PreferencesChanged += OnNotifPreferencesChanged;
         Nav.LocationChanged += OnLocationChanged;
         Badges.Changed += OnBadgesChanged;
+        Auth.MeChanged += OnMeChanged;
+        Auth.DirectoryChanged += OnDirectoryChanged;
+        AvatarPhotos.Changed += OnPhotosChanged;
         await Auth.LoadMeAsync();
         Tutorials.Changed += OnTutorialsChanged;
         _ = Tutorials.LoadAsync();
+        await Auth.LoadPhotosAsync();
         await Auth.StartPresenceAsync();
         await Badges.StartAsync();
         await Timer.StartAsync();
@@ -708,6 +735,9 @@
         Nav.LocationChanged -= OnLocationChanged;
         Tutorials.Changed -= OnTutorialsChanged;
         Badges.Changed -= OnBadgesChanged;
+        Auth.MeChanged -= OnMeChanged;
+        Auth.DirectoryChanged -= OnDirectoryChanged;
+        AvatarPhotos.Changed -= OnPhotosChanged;
         Badges.Stop();
         Timer.Stop();
         _ = JS.InvokeVoidAsync("ipop.shortcutsOff");

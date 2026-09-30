@@ -69,17 +69,28 @@ public partial class Chat
         => IPop.Web.Models.AvatarPalette.ForHash(hash);
 
     private static string GetRoomColor(IPop.Application.Chat.RoomListDto room)
-        => !string.IsNullOrWhiteSpace(room.AvatarColor) ? room.AvatarColor : ColorForHash(room.Id.GetHashCode());
+        => WithPhoto(!string.IsNullOrWhiteSpace(room.AvatarColor) ? room.AvatarColor : ColorForHash(room.Id.GetHashCode()),
+            room.Type == "dm" ? room.RecipientNik : null);
 
     private string GetActiveRoomColor()
     {
         if (ChatSvc.ActiveRoom is null) return "var(--accent)";
-        if (!string.IsNullOrWhiteSpace(ChatSvc.ActiveRoom.AvatarColor)) return ChatSvc.ActiveRoom.AvatarColor;
-        return ColorForHash(ChatSvc.ActiveRoom.Id.GetHashCode());
+        var color = !string.IsNullOrWhiteSpace(ChatSvc.ActiveRoom.AvatarColor)
+            ? ChatSvc.ActiveRoom.AvatarColor : ColorForHash(ChatSvc.ActiveRoom.Id.GetHashCode());
+        var peer = ChatSvc.ActiveRoom.Type == "dm"
+            ? ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik())?.Nik : null;
+        return WithPhoto(color, peer);
     }
 
     /// Group photo URLs are API-relative; the WASM host is a different origin.
     private string PhotoUrl(string path) => new Uri(Http.BaseAddress!, path).ToString();
+
+    /// Room avatars are rendered as style="background:@…", so a DM peer's photo rides along
+    /// in the returned value: the colour stays underneath and the initials turn transparent.
+    private static string WithPhoto(string color, string? nik)
+        => IPop.Web.Models.AvatarPhotos.Url(nik) is { } url
+            ? $"{color} url('{url}') center/cover no-repeat;color:transparent"
+            : color;
 
     private static string GetUserColor(string nik)
         => IPop.Web.Models.AvatarPalette.For(nik);

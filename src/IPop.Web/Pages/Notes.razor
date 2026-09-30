@@ -484,7 +484,7 @@
                                     @foreach (var p in inviteHits)
                                     {
                                         <button type="button" @onclick="() => Invite(p)">
-                                            <span class="nt-av s30" style="background:@AvatarPalette.For(p.Nik)">@Initials(p.Name)</span>
+                                            <span class="nt-av s30" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">@Initials(p.Name)</span>
                                             <span><span class="nm">@p.Name</span><br /><span class="sub" style="font-size:11.5px;color:var(--ink-3)">@(p.Position ?? p.Nik)</span></span>
                                         </button>
                                     }
@@ -497,14 +497,14 @@
                             <div class="nt-plist">
                                 <div class="lbl">ORANG</div>
                                 <div class="nt-pr">
-                                    <span class="nt-av s30" style="background:@AvatarPalette.For(shares.OwnerNik)">@Initials(shares.OwnerName)</span>
+                                    <span class="nt-av s30" style="@IPop.Web.Models.AvatarPhotos.Style(shares.OwnerNik)">@Initials(shares.OwnerName)</span>
                                     <div class="grow"><div class="nm">@shares.OwnerName @(shares.OwnerNik.Equals(Auth.Me?.Nik, StringComparison.OrdinalIgnoreCase) ? "(kamu)" : "")</div><div class="sub">@(shares.OwnerPosition ?? shares.OwnerNik)</div></div>
                                     <span class="nt-role static">Owner</span>
                                 </div>
                                 @foreach (var s in shares.Shares.Where(s => s.UserId is not null))
                                 {
                                     <div class="nt-pr">
-                                        <span class="nt-av s30" style="background:@AvatarPalette.For(s.UserNik)">@Initials(s.UserName)</span>
+                                        <span class="nt-av s30" style="@IPop.Web.Models.AvatarPhotos.Style(s.UserNik)">@Initials(s.UserName)</span>
                                         <div class="grow"><div class="nm">@s.UserName</div><div class="sub">@(s.InheritedFromTitle is { } it ? $"Dari “{DisplayTitle(it)}”" : s.UserPosition ?? s.UserNik)</div></div>
                                         @ShareRole(s)
                                     </div>

@@ -177,6 +177,35 @@ body {
 }
 .sidebar-foot .out .lucide { width: 14px; height: 14px; }
 
+/* Account card: the whole row opens the account menu. Rounded-square avatar to match the
+   Directory cards (38px / 12px there, so 32px / 10px here). */
+.sidebar-foot { position: relative; }
+.sidebar-foot .me-card {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px;
+  padding: 4px; margin: -4px; border: none; border-radius: 10px;
+  background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.sidebar-foot .me-card:hover, .sidebar-foot .me-card[aria-expanded="true"] { background: var(--tray); }
+.sidebar-foot .me-card .who { display: flex; flex-direction: column; }
+.sidebar-foot .me-card .chev { width: 14px; height: 14px; color: var(--ink-3); flex: none; }
+.sidebar-foot .avatar { border-radius: 10px; }
+.shell.collapsed .sidebar-foot .me-card { flex: none; margin: 0; }
+.shell.collapsed .sidebar-foot .me-card .chev { display: none; }
+.sidebar-foot .me-menu {
+  position: absolute; left: 0; bottom: calc(100% + 8px); width: 220px; padding: 6px;
+  background: var(--surface); border: 1px solid var(--line-soft); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14); z-index: 60;
+}
+.sidebar-foot .me-menu button {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border: none; border-radius: 8px; background: transparent; color: var(--ink);
+  font-size: 13px; text-align: left; cursor: pointer;
+}
+.sidebar-foot .me-menu button:hover { background: var(--tray); }
+.sidebar-foot .me-menu .lucide { width: 15px; height: 15px; color: var(--ink-3); }
+.sidebar-foot .me-menu .danger, .sidebar-foot .me-menu .danger .lucide { color: var(--danger, #d4402b); }
+.sidebar-foot .me-menu .sep { height: 1px; margin: 4px 6px; background: var(--line-soft); }
+
 /* status dots (shared by header pill, avatar, menus) */
 .sdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--v6-status-off); flex: none; }
 .sdot.on { background: var(--v6-status-on); }

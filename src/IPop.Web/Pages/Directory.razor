@@ -152,7 +152,7 @@
                     {
                         <div class="fav-row" @onclick="() => selected = p">
                             <div class="av-wrap">
-                                <div class="av" style="background:@p.Color">@p.Initials</div>
+                                <div class="av" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">@p.Initials</div>
                                 <span class="presence @p.Status"></span>
                             </div>
                             <span class="n">@p.Name</span>
@@ -225,7 +225,7 @@
                                             <i data-lucide="star"></i>
                                         </button>
                                     </div>
-                                    <div class="dc-av" style="background:@p.Color">@p.Initials<span class="presence @p.Status"></span></div>
+                                    <div class="dc-av" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">@p.Initials<span class="presence @p.Status"></span></div>
                                     <span class="dc-name" title="@p.Name">@p.Name</span>
                                     <span class="dc-pos">@p.Position</span>
                                     <span class="dc-meta">@(p.Department) · @p.Nik</span>
@@ -297,7 +297,7 @@
                                         <td>
                                             <div class="cell-person">
                                                 <div class="av-wrap">
-                                                    <div class="av" style="background:@p.Color">@p.Initials</div>
+                                                    <div class="av" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">@p.Initials</div>
                                                     <span class="presence @p.Status"></span>
                                                 </div>
                                                 <div class="cp-text">

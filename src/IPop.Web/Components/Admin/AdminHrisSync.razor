@@ -55,13 +55,6 @@
             <AppSelect Label="Automatic sync" Value="@cronSchedule" ValueChanged="OnScheduleChanged" Options="@ScheduleOptions" CssClass="adm-set-select" />
         </div>
         <div class="adm-set-row">
-            <div class="adm-set-txt"><b>Protect manual edits</b><small>Profiles edited in iPop keep their changes</small></div>
-            <button type="button" class="apple-switch @(protectManualEdits ? "on" : "")" role="switch" aria-label="Protect manual edits"
-                    aria-checked="@(protectManualEdits ? "true" : "false")" disabled="@updatingSettings" @onclick="ToggleProtect">
-                <span class="apple-switch-knob"></span>
-            </button>
-        </div>
-        <div class="adm-set-row">
             <div class="adm-set-txt"><b>Alert on failure</b><small>Notify IT admins when a sync fails</small></div>
             <button type="button" class="apple-switch @(notifyOnFailure ? "on" : "")" role="switch" aria-label="Alert on failure"
                     aria-checked="@(notifyOnFailure ? "true" : "false")" disabled="@updatingSettings" @onclick="ToggleNotify">
@@ -144,7 +137,6 @@
                 <div><b>@r.Inserted</b><small>New</small></div>
                 <div><b>@r.Updated</b><small>Updated</small></div>
                 <div><b>@r.Deactivated</b><small>Removed</small></div>
-                <div><b>@r.Skipped</b><small>Protected</small></div>
             </div>
         }
         <div class="adm-runlog-head">
@@ -179,7 +171,6 @@
 
     // Settings
     private string cronSchedule = "0 2 * * *";
-    private bool protectManualEdits = true;
     private bool notifyOnFailure = true;
     private bool updatingSettings;
 
@@ -291,10 +282,6 @@
             if (cronRes is not null && cronRes.Value.ValueKind == JsonValueKind.String)
                 cronSchedule = cronRes.Value.GetString() ?? "0 2 * * *";
 
-            var protectRes = await Auth.GetAsync<SettingDto>("/api/admin/settings/hris.protectManualEdits");
-            if (protectRes is not null && (protectRes.Value.ValueKind == JsonValueKind.True || protectRes.Value.ValueKind == JsonValueKind.False))
-                protectManualEdits = protectRes.Value.GetBoolean();
-
             var notifyRes = await Auth.GetAsync<SettingDto>("/api/admin/settings/hris.notifyOnFailure");
             if (notifyRes is not null && (notifyRes.Value.ValueKind == JsonValueKind.True || notifyRes.Value.ValueKind == JsonValueKind.False))
                 notifyOnFailure = notifyRes.Value.GetBoolean();
@@ -332,34 +319,6 @@
 
     private static string ScheduleLabel(string cron) =>
         ScheduleOptions.FirstOrDefault(o => o.Value == cron)?.Label ?? cron;
-
-    private async Task ToggleProtect()
-    {
-        if (updatingSettings) return;
-        updatingSettings = true;
-        var next = !protectManualEdits;
-        try
-        {
-            var res = await Auth.SendAsync(HttpMethod.Put, "/api/admin/settings/hris.protectManualEdits", next);
-            if (res.IsSuccessStatusCode)
-            {
-                protectManualEdits = next;
-                Toasts.Show(next ? "Manual edits are protected" : "HRIS can now overwrite manual edits", ToastKind.Success);
-            }
-            else
-            {
-                Toasts.Show("Could not change that setting.", ToastKind.Error);
-            }
-        }
-        catch (Exception ex)
-        {
-            Toasts.Show($"Could not save: {ex.Message}", ToastKind.Error);
-        }
-        finally
-        {
-            updatingSettings = false;
-        }
-    }
 
     private async Task ToggleNotify()
     {

@@ -216,7 +216,7 @@
                 @foreach (var p in people)
                 {
                     <div class="adm-person" @key="p.Nik">
-                        <span class="adm-av" style="background:@AvatarPalette.For(p.Nik)">@AdminOrgModel.Initials(p.Name)</span>
+                        <span class="adm-av" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">@AdminOrgModel.Initials(p.Name)</span>
                         <span><b>@p.Name</b><small>@(p.Position ?? p.Nik)</small></span>
                     </div>
                 }

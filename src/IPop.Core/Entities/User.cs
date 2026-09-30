@@ -19,6 +19,7 @@ public class User
     public string? ManagerNik { get; set; }
     public string? Extension { get; set; }
     public string? Location { get; set; }
+    /// Id of the current UserPhoto row, or null for the initials avatar.
     public string? PhotoPath { get; set; }
 
     public bool IsActive { get; set; } = true;
@@ -28,8 +29,8 @@ public class User
     /// Zona waktu pengguna (mis. "SE Asia Standard Time" untuk WIB). Null = gunakan default server.
     public string? TimeZoneId { get; set; }
 
-    /// Set by an admin edit; HRIS sync skips profile overwrites on this row so a manual
-    /// correction is not reverted by the next sync. Activation still follows the feed.
+    /// Set by an admin edit, for the admin list's "edited" filter. HRIS sync never overwrites
+    /// existing rows either way.
     public bool IsManuallyEdited { get; set; }
 
     // Presence stores raw facts only; the effective status is computed on read.

@@ -3,7 +3,7 @@
 @using IPop.Web.Services
 
 <div class="grp-member member-row-clickable" @onclick="HandleClick" @onclick:stopPropagation>
-    <div class="avatar member-row-avatar" style="background:@GetColor(Member.Nik)">@Initials(Member.Name)</div>
+    <div class="avatar member-row-avatar" style="@AvatarPhotos.Style(Member.Nik)">@Initials(Member.Name)</div>
     <div class="member-row-copy">
         <div class="name">@Member.Name</div>
         <div class="role">@(IsSelf ? "You" : PresenceLabel(Member.PresenceStatus))</div>

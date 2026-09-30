@@ -57,6 +57,19 @@ public class AuthState(HttpClient http, IJSRuntime js)
     public async Task<DirectoryEmployeeDto?> LoadMeAsync()
         => Me ??= await GetAsync<DirectoryEmployeeDto>("/api/directory/me");
 
+    /// Raised when Me is re-read after a self-service profile edit (email, photo).
+    public event Action? MeChanged;
+
+    public async Task ReloadMeAsync()
+    {
+        Me = await GetAsync<DirectoryEmployeeDto>("/api/directory/me") ?? Me;
+        MeChanged?.Invoke();
+    }
+
+    /// Reloads the NIK → photo map every avatar renders from.
+    public async Task LoadPhotosAsync()
+        => IPop.Web.Models.AvatarPhotos.Set(http.BaseAddress!, await GetAsync<Dictionary<string, string>>("/api/photos"));
+
     /// Bearer + one silent-refresh retry on 401 — the public form of PostWithAuth for pages
     /// that PATCH/PUT/POST, so Admin never has to reach past Send itself.
     public async Task<HttpResponseMessage> SendAsync(HttpMethod method, string url, object? body = null, CancellationToken ct = default)
@@ -335,6 +348,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
         MustChangePassword = false;
         MyStatus = "off";
         Me = null;
+        IPop.Web.Models.AvatarPhotos.Clear();
         SetConnectionState(DirectoryConnectionState.Connecting);
     }
 
