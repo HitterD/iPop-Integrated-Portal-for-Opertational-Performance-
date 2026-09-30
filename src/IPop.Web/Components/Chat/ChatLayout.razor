@@ -820,15 +820,15 @@
         {
             @* ---- Empty state ---- *@
             <div class="empty-state chat-empty">
-                <i data-lucide="messages-square"></i>
-                <div class="title">Select a conversation</div>
-                <div class="sub">Choose a chat from the list, or start a new one.</div>
+                <span class="ce-glyph"><i data-lucide="message-circle"></i></span>
+                <div class="title">No conversation selected</div>
+                <div class="sub">Pick a chat from the list, or start a new one.</div>
                 <div class="empty-acts">
                     <button type="button" class="ghost mobile-only" @onclick="() => OnToggleMobileRooms.InvokeAsync(true)">
                         <i data-lucide="list"></i> Browse conversations
                     </button>
-                    <button type="button" @onclick="OnStartDm"><i data-lucide="user-plus"></i> New message</button>
-                    <button type="button" class="ghost" @onclick="OnStartGroup"><i data-lucide="users"></i> New group</button>
+                    <button type="button" class="ce-primary" @onclick="OnStartDm"><i data-lucide="square-pen"></i> New message</button>
+                    <button type="button" @onclick="OnStartGroup"><i data-lucide="users"></i> New group</button>
                 </div>
             </div>
         }

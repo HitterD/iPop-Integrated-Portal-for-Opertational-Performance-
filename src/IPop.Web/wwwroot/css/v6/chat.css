@@ -444,8 +444,7 @@
 .chat-area .gs-panel .gs-danger-row .gs-btn { justify-content: center; }
 [data-theme="dark"] .chat-area .gs-panel .gs-card { background: #2C2C2E; }
 
-/* ============================================================================
-   @MENTIONS (2026-09-28) — bubble tokens + composer suggestion list.
+/* =====================================================================   @MENTIONS (2026-09-28) — bubble tokens + composer suggestion list.
    The only bubble .mention rules used to live in the unloaded ipop.css monolith,
    so mentions rendered as plain black text. Tokens use the v6 accent ramp and
    work in light + dark; "me" uses the same orange as the .mention-me ring.
@@ -497,3 +496,31 @@
   .chat-area .mention-popup .mi { min-height: 44px; }
 }
 /* ======================== end @MENTIONS ======================== */
+=======
+/* ---- Empty conversation pane (Apple Messages look: glyph tile, pill actions) ---- */
+.empty-state.chat-empty { gap: 0; padding: 32px 24px; color: var(--ink-3);
+  background: radial-gradient(ellipse 60% 45% at 50% 42%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 70%); }
+.empty-state.chat-empty .ce-glyph { width: 72px; height: 72px; border-radius: 22px; margin-bottom: 18px;
+  display: flex; align-items: center; justify-content: center; color: #fff;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 78%, #fff), var(--accent));
+  box-shadow: 0 10px 24px -10px color-mix(in srgb, var(--accent) 70%, transparent), inset 0 1px 0 rgba(255,255,255,.25); }
+.empty-state.chat-empty .ce-glyph .lucide { width: 34px; height: 34px; stroke-width: 1.8; color: #fff; fill: rgba(255,255,255,.18); }
+.empty-state.chat-empty .title { font-size: 19px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
+.empty-state.chat-empty .sub { margin-top: 6px; font-size: 13px; line-height: 1.45; color: var(--ink-3); max-width: 280px; }
+.empty-state.chat-empty .empty-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 22px; }
+.empty-state.chat-empty .empty-acts button {
+  display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 18px; border-radius: 999px;
+  border: none; box-shadow: none; cursor: pointer; font: 600 13px/1 inherit; letter-spacing: -0.01em;
+  background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent);
+  transition: background .2s var(--ease), transform .12s var(--ease);
+}
+.empty-state.chat-empty .empty-acts button .lucide { width: 15px; height: 15px; color: currentColor; }
+.empty-state.chat-empty .empty-acts button:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.empty-state.chat-empty .empty-acts button:active { transform: scale(0.96); }
+.empty-state.chat-empty .empty-acts button.ce-primary { background: var(--accent); color: #fff;
+  box-shadow: 0 4px 12px -4px color-mix(in srgb, var(--accent) 60%, transparent); }
+.empty-state.chat-empty .empty-acts button.ce-primary:hover { filter: brightness(1.06); }
+.empty-state.chat-empty .empty-acts button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[data-theme="dark"] .empty-state.chat-empty .empty-acts button:not(.ce-primary) { background: color-mix(in srgb, var(--accent) 20%, transparent); }
+@media (min-width: 769px) { .empty-state.chat-empty .empty-acts .mobile-only { display: none; } }
+@media (max-width: 768px) { .empty-state.chat-empty .empty-acts .mobile-only { display: inline-flex; } }
