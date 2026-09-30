@@ -103,7 +103,7 @@
             <h1 class="reader-article-title">@Detail.Title</h1>
 
             <div class="reader-author">
-                <span class="av">@Initials(Detail.AuthorName)</span>
+                <PersonAvatar Nik="@Detail.AuthorNik" Name="@Detail.AuthorName" Size="38" Class="av" Decorative="true" />
                 <span class="who">
                     <span class="n">@Detail.AuthorName</span>
                     <span class="m">
@@ -214,7 +214,7 @@
                                 @foreach (var e in rows.Take(200))
                                 {
                                     <div class="ack-row">
-                                        <span class="av sm">@Initials(e.Name)</span>
+                                        <PersonAvatar Nik="@e.Nik" Name="@e.Name" Size="28" Class="av sm" Decorative="true" />
                                         <span class="who"><span class="n">@e.Name</span><span class="m">@e.Nik@(string.IsNullOrEmpty(e.Department) ? "" : $" · {e.Department}")</span></span>
                                         @if (e.AcknowledgedAt is { } at) { <span class="ack ok" title="@NewsUiHelper.FormatDate(at)"><i data-lucide="check"></i>@at.ToLocalTime().ToString("dd MMM, HH:mm")</span> }
                                         else { <span class="ack req">Pending</span> }
@@ -424,10 +424,4 @@
 
     private async Task Print() => await JS.InvokeVoidAsync("print");
     private Task HandleCommentInput(ChangeEventArgs e) => OnCommentTextChanged.InvokeAsync(e.Value?.ToString() ?? "");
-
-    private static string Initials(string? name)
-    {
-        var parts = (name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length switch { 0 => "?", 1 => parts[0][..1].ToUpperInvariant(), _ => $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant() };
-    }
 }
