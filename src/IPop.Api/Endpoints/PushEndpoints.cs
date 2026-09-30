@@ -85,7 +85,7 @@ public static class PushEndpoints
             if (userId is null) return Results.Unauthorized();
             var uid = userId.Value;
             push.Enqueue((p, token) => p.SendAsync([uid],
-                new PushPayload("test", "iPop", "Notifikasi desktop aktif ✔", "/settings/notifications", $"test:{Guid.NewGuid():N}"),
+                new PushPayload("test", "iPop", "Notifikasi desktop aktif ✔", "/notifications/settings", $"test:{Guid.NewGuid():N}"),
                 urgent: true, token));
             return Results.Accepted();
         }).RequireAuthorization();

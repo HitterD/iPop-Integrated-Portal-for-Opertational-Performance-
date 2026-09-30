@@ -6,6 +6,8 @@
 @inject HttpClient Http
 @inject AuthState Auth
 @inject NotificationState Notifs
+@inject PushState Push
+@implements IDisposable
 
 <PageTitle>Notification Preferences — IPop</PageTitle>
 
@@ -93,6 +95,88 @@
                             <span class="toggle-slider"></span>
                         </label>
                     </div>
+                </div>
+
+                <div class="setting-group push-group">
+                    <h3 class="setting-title">Notifikasi Windows</h3>
+                    <p class="setting-desc">Toast di pojok kanan bawah Windows — tetap muncul walau tab iPop ditutup, selama Chrome berjalan</p>
+
+                    @if (!Push.ServerEnabled)
+                    {
+                        <div class="push-note"><i data-lucide="info"></i><span>Notifikasi Windows belum diaktifkan di server iPop.</span></div>
+                    }
+                    else if (!Push.Secure || Push.Permission == "unsupported")
+                    {
+                        <div class="push-note"><i data-lucide="lock"></i><span>Browser hanya mengizinkan notifikasi di alamat aman. Buka iPop lewat <b>https://ipop.santos.co.id</b>.</span></div>
+                    }
+                    else if (Push.Permission == "denied")
+                    {
+                        <div class="push-note warn">
+                            <i data-lucide="bell-off"></i>
+                            <div>
+                                <b>Notifikasi diblokir di browser ini.</b> Cara mengizinkan:
+                                <ol>
+                                    <li>Klik ikon di kiri address bar (gembok / pengaturan situs).</li>
+                                    <li>Pada <b>Notifications</b> pilih <b>Allow</b>.</li>
+                                    <li>Muat ulang halaman ini.</li>
+                                </ol>
+                                Jika tetap tidak muncul: Windows <b>Settings → System → Notifications</b>, pastikan Notifications dan <b>Google Chrome</b> menyala, dan <b>Do not disturb</b> mati.
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <div class="setting-name">Toast di browser ini</div>
+                                <div class="setting-hint">@(Push.Subscribed ? "Aktif — pesan, panggilan, dan notifikasi iPop dikirim ke perangkat ini" : "Mati — aktifkan untuk menerima toast Windows")</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" checked="@Push.Subscribed" disabled="@pushBusy" @onchange="TogglePush" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <div class="setting-name">Isi pesan chat di toast</div>
+                                <div class="setting-hint">Matikan agar toast hanya menulis "Pesan baru" — untuk layar yang bisa dilihat orang lain</div>
+                            </div>
+                            <label class="toggle">
+                                <input type="checkbox" checked="@pushPreview" @onchange="TogglePushPreview" />
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        @if (Push.Subscribed)
+                        {
+                            <div class="setting-item">
+                                <div class="setting-info">
+                                    <div class="setting-name">Kirim toast percobaan</div>
+                                    <div class="setting-hint">@(pushTestNote ?? "Toast muncul di semua perangkat Anda yang aktif")</div>
+                                </div>
+                                <button type="button" class="btn-secondary" disabled="@pushBusy" @onclick="SendPushTest">Kirim tes</button>
+                            </div>
+                        }
+                    }
+
+                    @if (pushDevices.Count > 0)
+                    {
+                        <div class="push-devices">
+                            <div class="setting-name">Perangkat yang menerima toast</div>
+                            @foreach (var d in pushDevices)
+                            {
+                                <div class="push-device">
+                                    <i data-lucide="monitor"></i>
+                                    <div class="setting-info">
+                                        <div class="setting-name">@d.Label @if (d.Endpoint == Push.Endpoint) {<span class="push-this">perangkat ini</span>}</div>
+                                        <div class="setting-hint">Terakhir aktif @FormatTime(d.LastSeenAt.ToLocalTime())</div>
+                                    </div>
+                                    <button type="button" class="btn-secondary" @onclick="() => RemovePushDevice(d)">Hapus</button>
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
             </div>
         }
@@ -570,6 +654,16 @@
         gap: 12px;
     }
 
+    .push-note { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); color: var(--ink-2); font-size: 13px; line-height: 1.5; }
+    .push-note.warn { background: color-mix(in srgb, #ff9500 12%, var(--surface)); }
+    .push-note ol { margin: 6px 0 6px 18px; padding: 0; }
+    .push-note .lucide, .push-note svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 2px; }
+    .push-devices { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+    .push-device { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: 12px; }
+    .push-device > .lucide, .push-device > svg { width: 18px; height: 18px; color: var(--ink-3); }
+    .push-device .setting-info { flex: 1; }
+    .push-this { margin-left: 6px; padding: 1px 8px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-size: 11px; font-weight: 600; }
+
     .btn-primary {
         display: flex;
         align-items: center;
@@ -788,6 +882,9 @@
     protected override async Task OnInitializedAsync()
     {
         Layout.SetHeader("Notifications", "Settings");
+        Push.Changed += OnPushChanged;
+        await Push.RefreshAsync();
+        await LoadPush();
         await LoadPreferences();
         await LoadLocalPreferences();
         await SyncBrowserTimezone();
@@ -820,6 +917,60 @@
         "Asia/Jayapura" => "Tokyo Standard Time",     // WIT — closest Windows id at UTC+9
         _ => null // biarkan server default bila di luar Indonesia
     };
+
+    // ── Windows toasts (Web Push) ──
+    private bool pushBusy;
+    private bool pushPreview = true;
+    private string? pushTestNote;
+    private List<PushDeviceDto> pushDevices = [];
+
+    private sealed record PushDeviceDto(Guid Id, string Label, string Endpoint, DateTime CreatedAt, DateTime LastSeenAt);
+    private sealed record PushPreferencesDto(bool ShowPreview);
+
+    private async Task LoadPush()
+    {
+        pushDevices = await Auth.GetAsync<List<PushDeviceDto>>("/api/push/devices") ?? [];
+        pushPreview = (await Auth.GetAsync<PushPreferencesDto>("/api/push/preferences"))?.ShowPreview ?? true;
+    }
+
+    private void OnPushChanged() => _ = InvokeAsync(async () => { StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons"); });
+
+    private async Task TogglePush(ChangeEventArgs e)
+    {
+        pushBusy = true;
+        if (e.Value is true) await Push.EnableAsync();
+        else await Push.DisableAsync();
+        await LoadPush();
+        pushBusy = false;
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task TogglePushPreview(ChangeEventArgs e)
+    {
+        pushPreview = e.Value is true;
+        using var res = await Auth.SendAsync(HttpMethod.Put, "/api/push/preferences", new PushPreferencesDto(pushPreview));
+        if (!res.IsSuccessStatusCode) pushPreview = !pushPreview;
+    }
+
+    private async Task SendPushTest()
+    {
+        pushBusy = true;
+        using var res = await Auth.SendAsync(HttpMethod.Post, "/api/push/test");
+        pushTestNote = res.IsSuccessStatusCode
+            ? "Terkirim — toast muncul dalam beberapa detik. Tidak muncul? Cek Focus Assist / Do not disturb di Windows."
+            : "Gagal mengirim tes. Coba lagi.";
+        pushBusy = false;
+    }
+
+    private async Task RemovePushDevice(PushDeviceDto d)
+    {
+        if (d.Endpoint == Push.Endpoint) await Push.DisableAsync();
+        else await Auth.SendAsync(HttpMethod.Delete, $"/api/push/devices/{d.Id}");
+        await LoadPush();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    public void Dispose() => Push.Changed -= OnPushChanged;
 
     private async Task LoadPreferences()
     {

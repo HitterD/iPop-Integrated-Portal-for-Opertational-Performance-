@@ -11,6 +11,7 @@
 @inject TimerState Timer
 @inject OverlayStack Overlays
 @inject TutorialState Tutorials
+@inject IPop.Web.Services.PushState Push
 
 <div class="shell @(collapsed ? "collapsed" : "")" id="shell">
     <aside class="sidebar">
@@ -96,25 +97,22 @@
                             <div class="status-menu" @onclick:stopPropagation>
                                 <button @onclick="() => SetStatus(false)"><span class="sdot on"></span><span class="l">Online<small>Automatic</small></span>@if (Auth.MyStatus != "busy") {<i data-lucide="check"></i>}</button>
                                 <button @onclick="() => SetStatus(true)"><span class="sdot busy"></span><span class="l">Busy<small>Mute calls &amp; banners</small></span>@if (Auth.MyStatus == "busy") {<i data-lucide="check"></i>}</button>
-                                @if (desktopAlerts is { } da)
+                                <div class="status-sep"></div>
+                                @if (!Push.Secure || Push.Permission == "unsupported")
                                 {
-                                    <div class="status-sep"></div>
-                                    @if (!da.Secure)
-                                    {
-                                        <div class="status-note"><i data-lucide="bell-off"></i><span class="l">Notifikasi desktop tidak tersedia<small>Browser hanya mengizinkannya di alamat https</small></span></div>
-                                    }
-                                    else if (da.Notify == "default" || da.Idle == "prompt")
-                                    {
-                                        <button class="status-alerts" @onclick="EnableDesktopAlerts"><i data-lucide="bell-ring"></i><span class="l">Aktifkan notifikasi desktop<small>Notif Windows + deteksi idle (Away)</small></span></button>
-                                    }
-                                    else if (da.Notify == "denied")
-                                    {
-                                        <div class="status-note"><i data-lucide="bell-off"></i><span class="l">Notifikasi desktop diblokir<small>Izinkan lewat ikon gembok di address bar</small></span></div>
-                                    }
-                                    else
-                                    {
-                                        <div class="status-note"><i data-lucide="bell-ring"></i><span class="l">Notifikasi desktop aktif<small>Muncul saat tab iPop tidak dilihat</small></span></div>
-                                    }
+                                    <div class="status-note"><i data-lucide="bell-off"></i><span class="l">Notifikasi Windows tidak tersedia<small>Buka iPop lewat https://ipop.santos.co.id</small></span></div>
+                                }
+                                else if (Push.Permission == "denied")
+                                {
+                                    <button class="status-alerts" @onclick='() => { statusMenuOpen = false; Nav.NavigateTo("/notifications/settings"); }'><i data-lucide="bell-off"></i><span class="l">Notifikasi Windows diblokir<small>Lihat cara mengizinkannya</small></span></button>
+                                }
+                                else if (Push.Permission == "default" || !Push.Subscribed || Push.Idle == "prompt")
+                                {
+                                    <button class="status-alerts" @onclick="EnableDesktopAlerts"><i data-lucide="bell-ring"></i><span class="l">Aktifkan notifikasi Windows<small>Toast Windows + deteksi idle (Away)</small></span></button>
+                                }
+                                else
+                                {
+                                    <div class="status-note"><i data-lucide="bell-ring"></i><span class="l">Notifikasi Windows aktif<small>Muncul saat iPop tidak sedang dilihat</small></span></div>
                                 }
                             </div>
                         }
@@ -210,6 +208,16 @@
             </div>
         </header>
         <IPop.Web.Components.Tutorial.PracticeBar />
+        @if (Push.BannerVisible)
+        {
+            <div class="push-banner" role="status">
+                <i data-lucide="bell-ring"></i>
+                <span><b>Aktifkan notifikasi Windows</b><span class="long"> — pesan, panggilan, dan notifikasi iPop tetap muncul walau tab tertutup</span></span>
+                <span class="sp"></span>
+                <button type="button" class="p" @onclick="EnableDesktopAlerts">Aktifkan</button>
+                <button type="button" @onclick="Push.DismissBannerAsync">Nanti</button>
+            </div>
+        }
 
         <CascadingValue Value="this">
             <ErrorBoundary @ref="errorBoundary">
@@ -554,23 +562,29 @@
     {
         statusMenuOpen = !statusMenuOpen;
         notifOpen = false; meMenuOpen = false;
-        if (statusMenuOpen)
-        {
-            try { desktopAlerts = await JS.InvokeAsync<DesktopAlertsState>("ipop.desktopAlertsState"); }
-            catch { desktopAlerts = null; }
-        }
+        if (statusMenuOpen) await Push.RefreshAsync();
     }
 
-    private sealed record DesktopAlertsState(bool Secure, string Notify, string Idle);
-    private DesktopAlertsState? desktopAlerts;
-
-    /// Browsers only grant notification/idle permission from a click, hence the menu item.
+    /// Browsers only grant notification/idle permission from a click, hence the banner and menu item.
     private async Task EnableDesktopAlerts()
     {
-        try { desktopAlerts = await JS.InvokeAsync<DesktopAlertsState>("ipop.enableDesktopAlerts"); }
-        catch { }
+        statusMenuOpen = false;
+        await Push.EnableAsync();
+        if (Push.Permission == "denied") Nav.NavigateTo("/notifications/settings");
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private void OnPushChanged() => _ = InvokeAsync(async () => { StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons"); });
+
+    /// "Jawab" on the call toast opens /calls?answer={id}: accept that ring if it is still ringing here.
+    private async Task AnswerFromToastAsync()
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(Nav.Uri, @"[?&]answer=([0-9a-fA-F-]{36})");
+        if (!m.Success || !Guid.TryParse(m.Groups[1].Value, out var callId)) return;
+        Nav.NavigateTo("/calls", replace: true);
+        if (CallSvc.Current?.Id != callId) await CallSvc.RefreshAsync();
+        if (CallSvc.Current?.Id == callId && CallSvc.IsIncomingRing) await CallSvc.AcceptCurrentAsync();
     }
 
     /// "(3) Messages — IPop": unread chat + mail in the tab title so a background tab still says so.
@@ -613,6 +627,7 @@
     private async Task SignOut()
     {
         meMenuOpen = false;
+        await Push.SignOutAsync();
         Badges.Stop(); Badges.Clear();
         Timer.Stop();
         await Auth.SignOutAsync();
@@ -672,6 +687,9 @@
         await Notifs.ConnectAsync();
         await Notifs.LoadRecentAsync(6);
         await CallSvc.ConnectAsync();
+        Push.Changed += OnPushChanged;
+        await Push.StartAsync();
+        await AnswerFromToastAsync();
         var s = await Auth.GetAsync<SyncStatusDto>("/api/admin/hris/status");
         if (s is not null) { syncedAt = s.LastSyncedAt?.ToLocalTime(); syncCount = s.EmployeeCount; }
     }
@@ -687,6 +705,7 @@
     {
         errorBoundary?.Recover();
         CloseMore();
+        if (e.Location.Contains("answer=")) _ = InvokeAsync(AnswerFromToastAsync);
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -738,6 +757,7 @@
         Auth.PresenceChanged -= OnPresenceChanged;
         Auth.ConnectionStateChanged -= OnConnectionStateChanged;
         Auth.SessionEnded -= OnSessionEnded;
+        Push.Changed -= OnPushChanged;
         Chat.RoomListChanged -= OnChatUnreadChanged;
         Chat.IncomingMessage -= OnChatIncoming;
         Chat.RoomOpened -= OnChatRoomOpened;

@@ -31,6 +31,7 @@ builder.Services.AddScoped<IPop.Web.Services.ChatState>();
 builder.Services.AddScoped<IPop.Web.Services.ChatAttachments>();
 builder.Services.AddScoped<IPop.Web.Services.ToastService>();
 builder.Services.AddScoped<IPop.Web.Services.CallState>();
+builder.Services.AddScoped<IPop.Web.Services.PushState>();
 builder.Services.AddScoped<IPop.Web.Services.DraftStore>();
 builder.Services.AddScoped<IPop.Web.Services.OverlayStack>();
 builder.Services.AddScoped<IPop.Web.Services.ConfirmService>();

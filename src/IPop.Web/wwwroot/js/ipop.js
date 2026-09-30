@@ -178,18 +178,42 @@ window.ipop = {
     } catch { return false; }
   },
 
-  // ── Desktop alerts (Windows notifications + computer-wide idle) ──
-  // Both permissions must be requested from a click, so the shell offers one "Turn on" button.
-  desktopAlertsState() {
+  // ── Desktop alerts: Web Push → Windows toasts (wwwroot/sw.js) + computer-wide idle ──
+  // Toasts come from the service worker, so they arrive even with every iPop tab closed.
+  // Permission prompts must come from a click, hence the "Aktifkan" banner / menu item.
+  _swReg: null,
+  _pushSupported() {
+    return window.isSecureContext && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  },
+  async _serviceWorker() {
+    if (!ipop._pushSupported()) return null;
+    if (!ipop._swReg) {
+      ipop._swReg = navigator.serviceWorker.register(new URL("sw.js", document.baseURI).href, { scope: document.baseURI })
+        .then(() => navigator.serviceWorker.ready)
+        .catch(() => { ipop._swReg = null; return null; });
+    }
+    return await ipop._swReg;
+  },
+  async _pushSubscription() {
+    const reg = await ipop._serviceWorker();
+    return reg ? await reg.pushManager.getSubscription() : null;
+  },
+  async desktopAlertsState() {
     const secure = window.isSecureContext;
+    const supported = ipop._pushSupported();
+    let endpoint = null;
+    if (supported && Notification.permission === "granted") {
+      try { endpoint = (await ipop._pushSubscription())?.endpoint || null; } catch { }
+    }
     return {
       secure,
-      notify: !("Notification" in window) || !secure ? "unsupported" : Notification.permission,
+      notify: supported ? Notification.permission : "unsupported",
       idle: !("IdleDetector" in window) || !secure ? "unsupported" : (ipop._idle.detector ? "granted" : "prompt"),
+      endpoint,
     };
   },
   async enableDesktopAlerts() {
-    if ("Notification" in window && window.isSecureContext && Notification.permission === "default") {
+    if (ipop._pushSupported() && Notification.permission === "default") {
       try { await Notification.requestPermission(); } catch { }
     }
     if ("IdleDetector" in window && window.isSecureContext && !ipop._idle.detector) {
@@ -199,21 +223,33 @@ window.ipop = {
     }
     return ipop.desktopAlertsState();
   },
-  // Only while no iPop tab is being looked at — in-app banners cover the visible case.
-  desktopNotify(title, body, url, tag) {
-    if (!("Notification" in window) || Notification.permission !== "granted") return false;
-    if (document.visibilityState === "visible") return false;
+  // Subscribes this browser (never prompts). Returns { endpoint, p256dh, auth } for the API, or null.
+  async pushSubscribe(publicKey) {
+    if (!ipop._pushSupported() || Notification.permission !== "granted" || !publicKey) return null;
     try {
-      const n = new Notification(title, { body: body || "", tag: tag || undefined, renotify: !!tag, icon: "/img/logo.png" });
-      n.onclick = () => {
-        window.focus();
-        if (url) {
-          try { Blazor.navigateTo(url); } catch { location.href = url; }
-        }
-        n.close();
-      };
-      return true;
-    } catch { return false; }
+      const reg = await ipop._serviceWorker();
+      if (!reg) return null;
+      const key = Uint8Array.from(atob(publicKey.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
+      let sub = await reg.pushManager.getSubscription();
+      // A subscription made for another VAPID key can never be delivered to — replace it.
+      if (sub && sub.options && sub.options.applicationServerKey) {
+        const old = new Uint8Array(sub.options.applicationServerKey);
+        if (old.length !== key.length || old.some((b, i) => b !== key[i])) { await sub.unsubscribe(); sub = null; }
+      }
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+      const json = sub.toJSON();
+      return { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth };
+    } catch { return null; }
+  },
+  // Drops this browser's subscription; returns its endpoint so the API can forget it too.
+  async pushUnsubscribe() {
+    try {
+      const sub = await ipop._pushSubscription();
+      if (!sub) return null;
+      const endpoint = sub.endpoint;
+      await sub.unsubscribe();
+      return endpoint;
+    } catch { return null; }
   },
 
   // ── Unread count in the tab title: "(3) Messages — IPop" ──
@@ -2088,3 +2124,11 @@ window.ipop = {
     document.addEventListener("keydown", handler, true);
   },
 };
+
+// A toast click in sw.js asks an open iPop window to go to the toast's page.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", e => {
+    if (!e.data || e.data.type !== "ipop-open" || !e.data.url) return;
+    try { Blazor.navigateTo(e.data.url); } catch { location.href = e.data.url; }
+  });
+}

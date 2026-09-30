@@ -392,3 +392,16 @@ a { color: var(--accent-ink); }
 }
 .v6-topbar .topbar-right button:hover { transform: none; }
 .v6-topbar .topbar-right .theme-btn .lucide, .v6-topbar .topbar-right .bell-btn .lucide { width: 16px; height: 16px; }
+
+/* "Aktifkan notifikasi Windows" — under the topbar until allowed, or dismissed for 7 days. */
+.push-banner { display: flex; align-items: center; gap: 12px; padding: 8px 24px; background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border-bottom: 1px solid var(--line-soft); color: var(--ink); font-size: 13px; flex-shrink: 0; }
+.push-banner > .lucide, .push-banner > svg { width: 16px; height: 16px; color: var(--accent); flex-shrink: 0; }
+.push-banner b { font-weight: 650; }
+.push-banner .long { color: var(--ink-2); }
+.push-banner .sp { flex: 1; }
+.push-banner button { height: 28px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.push-banner button.p { background: var(--accent); border-color: transparent; color: #fff; }
+@media (max-width: 767px) {
+  .push-banner { padding: 8px 14px; flex-wrap: wrap; gap: 6px 10px; }
+  .push-banner .long { display: none; }
+}

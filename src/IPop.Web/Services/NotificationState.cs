@@ -421,21 +421,8 @@ public class NotificationState : IDisposable
         var banner = new ShellNotificationBanner(item.Id, item);
         _activeBanners.Add(banner);
         BannersChanged?.Invoke();
-        ShowDesktop(item);
 
         _ = StartBannerTimer(banner, 5000);
-    }
-
-    /// Mirrors a banner as a Windows notification. ipop.desktopNotify only fires while the iPop
-    /// tab is hidden (the banner covers the visible case) and permission was granted. Chat cards
-    /// share a per-room tag so a burst replaces one notification instead of stacking.
-    private void ShowDesktop(ShellNotificationItem item)
-    {
-        if (_js is null) return;
-        var tag = item.Type == ChatMessageType ? "chat-" + item.TargetUrl : item.Id.ToString();
-        var body = _prefs.ShowPreview ? item.Body : "";
-        _ = _js.InvokeAsync<bool>("ipop.desktopNotify", item.Title, body, item.TargetUrl, tag)
-            .AsTask().ContinueWith(_ => { }, TaskScheduler.Default);
     }
 
     private async Task StartBannerTimer(ShellNotificationBanner banner, int durationMs)
