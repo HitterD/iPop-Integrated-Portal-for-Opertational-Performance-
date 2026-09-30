@@ -111,7 +111,7 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
         var previewOff = emergency ? [] : await PreviewOffAsync(recipients, ct);
         var title = emergency ? $"🚨 DARURAT · {msg.RoomName ?? msg.SenderName}"
             : msg.RoomType == "group" ? $"{msg.SenderName} · {msg.RoomName ?? "Grup"}" : msg.SenderName;
-        var preview = msg.Type == "sticker" ? "🎨 Stiker" : ChatPreview(msg.Content, msg.Files);
+        var preview = msg.Type == "sticker" ? "🎨 Sticker" : ChatPreview(msg.Content, msg.Files);
         var url = $"/chat/{msg.RoomId}";
         var tag = $"chat:{msg.RoomId}";
 

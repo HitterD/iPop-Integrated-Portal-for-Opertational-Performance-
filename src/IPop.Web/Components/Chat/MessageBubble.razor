@@ -49,7 +49,11 @@
             {
                 @if (StickerLimits.CustomId(Message.Type, Message.Content) is { } stickerId)
                 {
-                    <div class="sticker-msg custom"><img class="sticker-img" src="@ChatSvc.StickerImageUrl(stickerId)" alt="Stiker" loading="lazy" draggable="false" /></div>
+                    <div class="sticker-msg custom"><img class="sticker-img" src="@ChatSvc.StickerImageUrl(stickerId)" alt="Sticker" loading="lazy" draggable="false" /></div>
+                }
+                else if (FluentStickers.Find(StickerLimits.FluentSlug(Message.Type, Message.Content)) is { } fluent)
+                {
+                    <div class="sticker-msg custom fluent"><img class="sticker-img" src="@fluent.ImagePath" alt="@fluent.Label" title="@fluent.Label" loading="lazy" draggable="false" /></div>
                 }
                 else
                 {
@@ -201,6 +205,12 @@
         Message.Type is null or "" or "text" && !Message.IsDeleted && Attachments.Count == 0 && Message.ReplyPreview is null && !IsForwarded
             ? ChatFormatters.JumboEmojiCount(Message.Content) : 0;
 
+    /// Custom and Fluent stickers float without a bubble; legacy Lucide stickers keep their tray card.
+    private bool IsImageSticker =>
+        !Message.IsDeleted && Message.ReplyPreview is null && !IsForwarded
+        && (StickerLimits.CustomId(Message.Type, Message.Content) is not null
+            || FluentStickers.Find(StickerLimits.FluentSlug(Message.Type, Message.Content)) is not null);
+
     private bool hasOnlyImages => Attachments.Count > 0 && Attachments.All(ChatAttachments.IsImage);
 
     private string BubbleModifierClass
@@ -210,6 +220,7 @@
             if (isMediaOnly)
                 return hasOnlyImages ? "media-only media-image-only" : "media-only media-card-only";
             if (JumboCount > 0) return $"jumbo-emoji jumbo-{JumboCount}";
+            if (IsImageSticker) return "sticker-only";
             return (Attachments.Count > 0 && !string.IsNullOrWhiteSpace(Message.Content) && !IsAttachmentPlaceholder(Message)) ? "has-media-and-text" : "";
         }
     }

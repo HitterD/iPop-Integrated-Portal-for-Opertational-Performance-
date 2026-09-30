@@ -622,4 +622,11 @@
 .sticker-empty, .sticker-error { margin: 0; padding: 0 14px 12px; font-size: 12px; color: var(--ink-3); line-height: 1.45; }
 .sticker-error { color: var(--danger-ink); }
 .msg .sticker-msg.custom { padding: 0; background: none; }
-.msg .sticker-msg .sticker-img { display: block; width: 128px; height: 128px; object-fit: contain; }
+.msg .sticker-msg .sticker-img { display: block; width: 160px; height: 160px; object-fit: contain; }
+/* Image stickers float on the chat background like WhatsApp: no bubble, no tail, no shadow. */
+.msg .bubble.sticker-only { background: transparent !important; border: none !important; box-shadow: none !important; padding: 2px 0 !important; }
+.msg .bubble.sticker-only::before, .msg .bubble.sticker-only::after { display: none !important; }
+.msg:hover .bubble.sticker-only { filter: none; }
+@media (max-width: 768px) {
+  .msg .sticker-msg .sticker-img { width: 128px; height: 128px; }
+}

@@ -266,6 +266,52 @@ public class ChatStickerTests
         var builtin = ctx.Render<MessageBubble>(p => p.Add(m => m.Message, Msg("rocket")));
         Assert.Equal("rocket", builtin.Find(".sticker-big i").GetAttribute("data-lucide"));
         Assert.Empty(builtin.FindAll("img.sticker-img"));
+        Assert.DoesNotContain("sticker-only", builtin.Find(".bubble").ClassName);
+    }
+
+    [Fact]
+    public void Fluent_sticker_renders_its_self_hosted_image_without_a_bubble()
+    {
+        using var ctx = Context();
+        var cut = ctx.Render<MessageBubble>(p => p.Add(m => m.Message, Msg("fluent:red-heart")));
+        var img = cut.Find(".sticker-msg.fluent img.sticker-img");
+        Assert.Equal("stickers/fluent/red-heart.webp", img.GetAttribute("src"));
+        Assert.Equal("Red heart", img.GetAttribute("alt"));
+        Assert.Contains("sticker-only", cut.Find(".bubble").ClassName);
+
+        // An unknown slug never becomes an <img> (nor an arbitrary path).
+        var unknown = ctx.Render<MessageBubble>(p => p.Add(m => m.Message, Msg("fluent:not-a-sticker")));
+        Assert.Empty(unknown.FindAll("img.sticker-img"));
+    }
+
+    [Fact]
+    public void Fluent_pack_is_complete_on_disk_and_licensed()
+    {
+        var dir = Path.Combine(RepoRoot(), "src", "IPop.Web", "wwwroot", "stickers", "fluent");
+        Assert.True(FluentStickers.All.Count >= 48);
+        Assert.Equal(FluentStickers.All.Count, FluentStickers.All.Select(s => s.Slug).Distinct().Count());
+        foreach (var s in FluentStickers.All)
+        {
+            Assert.True(StickerLimits.IsValidKey(s.Key), s.Key);
+            Assert.True(System.IO.File.Exists(Path.Combine(dir, s.Slug + ".webp")), s.Slug);
+        }
+        Assert.Contains("MIT License", System.IO.File.ReadAllText(Path.Combine(dir, "LICENSE.txt")));
+    }
+
+    [Fact]
+    public void Fluent_previews_say_sticker()
+    {
+        Assert.Equal("🎨 Sticker", RoomPreview.Build("dm", "sticker", "fluent:red-heart", false, "Beny", false));
+        Assert.Equal("red-heart", StickerLimits.FluentSlug("sticker", "fluent:red-heart"));
+        Assert.Null(StickerLimits.FluentSlug("text", "fluent:red-heart"));
+        Assert.Null(StickerLimits.FluentSlug("sticker", "fluent:../x"));
+    }
+
+    private static string RepoRoot()
+    {
+        var d = new DirectoryInfo(AppContext.BaseDirectory);
+        while (d is not null && !System.IO.File.Exists(Path.Combine(d.FullName, "IPop.slnx"))) d = d.Parent;
+        return d!.FullName;
     }
 
     private static MessageDto Msg(string content) => new(
