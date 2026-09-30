@@ -238,7 +238,7 @@
         mounting = true;
         try
         {
-            module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/sticker-editor.js?v=20261001-st");
+            module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/sticker-editor.js?v=20261001-seg");
             selfRef ??= DotNetObjectReference.Create(this);
             editorId = await module.InvokeAsync<int>("mount", stageRef, selfRef, fileRef);
             await module.InvokeVoidAsync("call", editorId, "setBrush", brushColor, brushWidth);

@@ -606,20 +606,24 @@ class Editor {
   }
 }
 
-/** Person coverage + bbox (normalized) of a confidence mask, or null when no person is present. */
-export function maskInfo(conf, w, h, threshold = 0.5, minCoverage = 0.025) {
-  let n = 0, x0 = w, y0 = h, x1 = -1, y1 = -1;
+/** Person coverage + bbox (normalized) of a confidence mask, or null when no person is present.
+ *  A real person is segmented with near-certain confidence (~0.98 mean); objects the selfie model
+ *  half-mistakes for skin/hair stay around 0.7, so most mask pixels must also be "sure". */
+export function maskInfo(conf, w, h, threshold = 0.5, minCoverage = 0.025, sure = 0.9, minSureShare = 0.6) {
+  let n = 0, s = 0, x0 = w, y0 = h, x1 = -1, y1 = -1;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (conf[y * w + x] > threshold) {
+      const v = conf[y * w + x];
+      if (v > threshold) {
         n++;
+        if (v > sure) s++;
         if (x < x0) x0 = x; if (x > x1) x1 = x;
         if (y < y0) y0 = y; if (y > y1) y1 = y;
       }
     }
   }
   const coverage = n / (w * h);
-  if (coverage < minCoverage) return null;
+  if (coverage < minCoverage || s < n * minSureShare) return null;
   return { coverage, box: [x0 / w, y0 / h, (x1 + 1) / w, (y1 + 1) / h] };
 }
 

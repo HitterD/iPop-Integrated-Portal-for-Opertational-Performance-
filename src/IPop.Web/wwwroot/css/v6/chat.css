@@ -607,7 +607,7 @@
 .delete-room-error { margin: 0; font-size: 12px; color: var(--danger-ink); }
 
 /* ---- Custom stickers ---- */
-.chat-area .v6-sticker-pop { width: min(320px, calc(100vw - 48px)); }
+.chat-area .v6-sticker-pop { width: min(368px, calc(100vw - 48px)); }
 .chat-area .v6-sticker-pop { position: absolute; }
 .sticker-tabs { display: flex; gap: 2px; padding: 8px 8px 0; overflow-x: auto; scrollbar-width: none; }
 .sticker-tabs::-webkit-scrollbar { display: none; }
