@@ -1,0 +1,120 @@
+@implements IDisposable
+@inject TutorialState Tutorials
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@* First-visit invite and the "?" help slide-over for whichever module the route belongs to. *@
+@if (Module is { } m)
+{
+    <div style="--tut-m:@m.Color">
+        @if (Tutorials.ShouldInvite(m))
+        {
+            <div class="tut-invite" role="dialog" aria-labelledby="tutInvH">
+                <button type="button" class="tut-x" aria-label="Dismiss" @onclick="() => Tutorials.DismissInviteAsync(m.Key)"><i data-lucide="x"></i></button>
+                <span class="ic"><i data-lucide="@m.Icon"></i></span>
+                <h3 id="tutInvH">@m.InviteTitle</h3>
+                <p>@m.InviteText</p>
+                <div class="acts">
+                    <button type="button" class="tut-btn p" @onclick="() => Tutorials.StartTourAsync(m)"><i data-lucide="play"></i>Take the tour</button>
+                    @if (m.HasPractice)
+                    {
+                        <button type="button" class="tut-btn" @onclick="() => Tutorials.EnterPracticeAsync(m.Key)"><i data-lucide="flask-conical"></i>Try with sample data</button>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (Tutorials.HelpOpen)
+        {
+            var done = Tutorials.IsDone(m.Key);
+            var practisingHere = Tutorials.PracticeModule == m.Key;
+            <div class="tut-scrim" @onclick="Tutorials.CloseHelp"></div>
+            <aside class="tut-help" aria-label="Help">
+                <div class="hd">
+                    <span class="ic"><i data-lucide="circle-help"></i></span>
+                    <div><b>@m.Title help</b><small>What this page does and how far it goes</small></div>
+                    <button type="button" class="tut-x" aria-label="Close" @onclick="Tutorials.CloseHelp"><i data-lucide="x"></i></button>
+                </div>
+                <div class="bd">
+                    <div class="cta">
+                        <button type="button" class="tut-btn p" @onclick="() => Tutorials.StartTourAsync(m)">
+                            <i data-lucide="@(done ? "rotate-ccw" : "play")"></i>@(done ? "Replay tour" : "Take the tour")
+                            <small>@m.Steps.Count steps · about 1 min</small>
+                        </button>
+                        @if (m.HasPractice)
+                        {
+                            <button type="button" class="tut-btn" @onclick="() => practisingHere ? Tutorials.ExitPracticeAsync() : Tutorials.EnterPracticeAsync(m.Key)">
+                                <i data-lucide="flask-conical"></i>@(practisingHere ? "Exit practice" : "Practice mode")
+                                <small>@(practisingHere ? "Back to your real data" : "Sample data, nothing is sent")</small>
+                            </button>
+                        }
+                    </div>
+
+                    <h4>What you can do</h4>
+                    @foreach (var f in m.Feats)
+                    {
+                        <div class="tut-feat"><span class="sq"><i data-lucide="@f.Icon"></i></span><div><b>@f.Title</b><span>@f.Text</span></div></div>
+                    }
+
+                    <h4>Good to know</h4>
+                    @foreach (var l in m.LimitsFor(Tutorials.Role))
+                    {
+                        <div class="tut-feat no"><span class="sq"><i data-lucide="info"></i></span><div><span>@l</span></div></div>
+                    }
+
+                    @if (m.Keys.Count > 0)
+                    {
+                        <h4>Shortcuts</h4>
+                        @foreach (var k in m.Keys)
+                        {
+                            <div class="tut-kb">@k.Action<kbd>@k.Keys</kbd></div>
+                        }
+                    }
+
+                    <h4>Other tours</h4>
+                    <div class="tut-others">
+                        @foreach (var o in Others)
+                        {
+                            var d = Tutorials.IsDone(o.Key);
+                            <a href="@Home(o.Key)" class="@(d ? "d" : "")" @onclick="Tutorials.CloseHelp"><i data-lucide="@(d ? "circle-check" : o.Icon)"></i>@o.Title</a>
+                        }
+                    </div>
+                </div>
+            </aside>
+        }
+    </div>
+}
+
+@code {
+    private TutorialModule? Module => TutorialRegistry.ForPath(Nav.ToBaseRelativePath(Nav.Uri));
+
+    private IEnumerable<TutorialModule> Others => TutorialRegistry.All.Where(o =>
+        o.Key != Module?.Key && (o.Key != "admin" || Tutorials.Role == "admin"));
+
+    private static string Home(string key) => "/" + key;
+
+    protected override void OnInitialized()
+    {
+        Tutorials.Changed += OnChanged;
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        Tutorials.CloseHelp();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { /* prerender / disposed */ }
+    }
+
+    public void Dispose()
+    {
+        Tutorials.Changed -= OnChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}

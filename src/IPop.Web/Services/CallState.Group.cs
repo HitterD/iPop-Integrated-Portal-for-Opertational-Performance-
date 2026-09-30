@@ -77,6 +77,7 @@ public partial class CallState
 
     private async Task<CallRoomDto?> EnterGroupAsync(string url)
     {
+        if (PracticeCall?.Invoke("") == true) return null;
         if (HasLiveCall && !(IsGroup && ActiveMe?.Status == CallParticipantStatus.Invited))
         {
             LastError = "Masih ada panggilan yang berlangsung.";

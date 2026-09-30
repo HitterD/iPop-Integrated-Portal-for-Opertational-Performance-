@@ -10,6 +10,7 @@
 @inject BadgeState Badges
 @inject TimerState Timer
 @inject OverlayStack Overlays
+@inject TutorialState Tutorials
 
 <div class="shell @(collapsed ? "collapsed" : "")" id="shell">
     <aside class="sidebar">
@@ -107,6 +108,7 @@
                         }
                     </div>
                 }
+                <button class="theme-btn tut-help-btn @(TutorialPulse ? "pulse" : "")" title="Help for this page" aria-label="Help" @onclick="Tutorials.ToggleHelp">?</button>
                 <button class="theme-btn" title="@(IsDark ? "Switch to light mode" : "Switch to dark mode")" @onclick="ToggleTheme">
                     <i data-lucide="@(IsDark ? "sun" : "moon")"></i>
                 </button>
@@ -195,6 +197,7 @@
                 </div>
             </div>
         </header>
+        <IPop.Web.Components.Tutorial.PracticeBar />
 
         <CascadingValue Value="this">
             <ErrorBoundary @ref="errorBoundary">
@@ -219,6 +222,7 @@
             </ErrorBoundary>
         </CascadingValue>
         <CommandPalette />
+        <IPop.Web.Components.Tutorial.TutorialHost />
         <ConfirmHost />
         <IPop.Web.Components.Calls.GlobalCallOverlay />
         @* One floating column: incoming-notification banners above action toasts, so they never overlap. *@
@@ -606,6 +610,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Tutorials.ResumePractice();
         Auth.PresenceChanged += OnPresenceChanged;
         Auth.ConnectionStateChanged += OnConnectionStateChanged;
         Auth.SessionEnded += OnSessionEnded;
@@ -618,6 +623,8 @@
         Nav.LocationChanged += OnLocationChanged;
         Badges.Changed += OnBadgesChanged;
         await Auth.LoadMeAsync();
+        Tutorials.Changed += OnTutorialsChanged;
+        _ = Tutorials.LoadAsync();
         await Auth.StartPresenceAsync();
         await Badges.StartAsync();
         await Timer.StartAsync();
@@ -631,6 +638,10 @@
     }
 
     // Re-render so the toolbar/standard header switch follows the route.
+    /// The "?" pulses until this module's tour has been seen once.
+    private bool TutorialPulse => TutorialRegistry.ForPath(Nav.ToBaseRelativePath(Nav.Uri)) is { } m && !Tutorials.IsSeen(m.Key);
+    private void OnTutorialsChanged() => _ = InvokeAsync(StateHasChanged);
+
     private void OnBadgesChanged() => _ = InvokeAsync(() => { SyncTitleBadge(); StateHasChanged(); });
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
@@ -695,6 +706,7 @@
         Notifs.NotificationsChanged -= OnNotificationsChanged;
         Notifs.PreferencesChanged -= OnNotifPreferencesChanged;
         Nav.LocationChanged -= OnLocationChanged;
+        Tutorials.Changed -= OnTutorialsChanged;
         Badges.Changed -= OnBadgesChanged;
         Badges.Stop();
         Timer.Stop();

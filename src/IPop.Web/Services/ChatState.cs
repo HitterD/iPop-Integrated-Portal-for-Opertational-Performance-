@@ -37,6 +37,11 @@ public class ChatState : IAsyncDisposable
     public Guid? ActiveRoomId { get; private set; }
     public ChatRoomDto? ActiveRoom { get; private set; }
     public List<MessageDto> ActiveMessages { get; private set; } = [];
+
+    /// Set while practising: sends stay in the sample room and the sample person answers;
+    /// real incoming messages are only counted (PracticeHeld) until practice ends.
+    public Func<Guid, string, (MessageDto Mine, Func<MessageDto> Reply)?>? PracticeSend { get; set; }
+    public event Action? PracticeHeld;
     public int MessagePage { get; private set; } = 1;
     public bool HasOlderMessages { get; private set; }
     public int TotalUnread => DirectRooms.Sum(r => r.UnreadCount) + GroupRooms.Sum(r => r.UnreadCount);
@@ -469,6 +474,15 @@ public class ChatState : IAsyncDisposable
         var roomId = ActiveRoomId;
         if (roomId is null) return;
 
+        if (PracticeSend?.Invoke(roomId.Value, content) is var (mine, reply))
+        {
+            ActiveMessages.Add(mine);
+            StateChanged?.Invoke();
+            await Task.Delay(1400);
+            if (ActiveRoomId == roomId) { ActiveMessages.Add(reply()); StateChanged?.Invoke(); }
+            return;
+        }
+
         var temp = AddOptimistic(roomId.Value, content, key, replyToId, type, attachmentPreviews);
 
         if (_hub?.State != HubConnectionState.Connected)
@@ -625,6 +639,7 @@ public class ChatState : IAsyncDisposable
 
     private void OnNewMessage(MessageDto message)
     {
+        if (PracticeSend is not null) { PracticeHeld?.Invoke(); return; } // real chat waits until practice ends
         if (message.ThreadParentId != null) return; // thread replies via OnThreadReply
         var isOwn = string.Equals(message.SenderNik, _auth.Me?.Nik, StringComparison.OrdinalIgnoreCase);
         if (!isOwn && _hub?.State == HubConnectionState.Connected)

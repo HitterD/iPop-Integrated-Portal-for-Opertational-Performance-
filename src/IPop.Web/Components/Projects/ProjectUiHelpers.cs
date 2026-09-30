@@ -24,6 +24,8 @@ public static class ProjectUiHelpers
     {
         if (string.IsNullOrWhiteSpace(name)) return "?";
         var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        // "Budget (draft)" → "BD", not "B(".
+        if (parts.Count(w => char.IsLetterOrDigit(w[0])) is > 0) parts = parts.Where(w => char.IsLetterOrDigit(w[0])).ToArray();
         if (parts.Length == 1) return parts[0][..Math.Min(2, parts[0].Length)].ToUpper();
         return $"{parts[0][0]}{parts[^1][0]}".ToUpper();
     }

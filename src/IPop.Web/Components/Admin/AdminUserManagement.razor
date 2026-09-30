@@ -179,6 +179,7 @@
                     <div class="adm-group-label">Access</div>
                     <div class="adm-list">
                         <button type="button" class="adm-list-row link" disabled="@busy" @onclick="() => ResetPassword(sel)"><span><i data-lucide="key-round"></i> Reset password</span></button>
+                        <button type="button" class="adm-list-row link" disabled="@busy" @onclick='() => Run(sel, "reset-tutorials", $"{sel.Name} will see the page tours again")'><span><i data-lucide="graduation-cap"></i> Reset tutorials</span></button>
                         <button type="button" class="adm-list-row link" disabled="@busy" @onclick="() => ToggleLock(sel)"><span><i data-lucide="@(sel.IsLocked ? "unlock" : "lock")"></i> @(sel.IsLocked ? "Unlock account" : "Lock account")</span></button>
                         <button type="button" class="adm-list-row link @(sel.IsActive ? "danger" : "")" disabled="@busy" @onclick="() => ToggleActive(sel)"><span><i data-lucide="@(sel.IsActive ? "user-x" : "user-check")"></i> @(sel.IsActive ? "Deactivate" : "Activate")</span></button>
                     </div>

@@ -1,0 +1,97 @@
+/* Tours, help panel and practice mode — sits on the real shell and uses its tokens. */
+:root { --practice: #f5b301; --practice-ink: #5c4300; --tut-ease: cubic-bezier(.2,.8,.2,1); --tut-m: var(--accent); }
+[data-theme="dark"] { --practice: #ffcc33; --practice-ink: #2b2000; }
+
+/* "?" in the topbar, same footprint as the theme button */
+.tut-help-btn { font-weight: 700; font-size: 15px; position: relative; }
+.tut-help-btn.pulse::after { content: ""; position: absolute; inset: -3px; border-radius: inherit; border: 2px solid var(--tut-m); animation: tutPulse 1.8s var(--tut-ease) infinite; pointer-events: none; }
+@keyframes tutPulse { from { opacity: .9; transform: scale(.92); } to { opacity: 0; transform: scale(1.25); } }
+
+/* Practice bar under the topbar */
+.tut-pbar { display: flex; align-items: center; gap: 12px; padding: 7px 24px; background: var(--practice); color: var(--practice-ink); font-size: 13px; font-weight: 500; flex-shrink: 0;
+  background-image: repeating-linear-gradient(-45deg, transparent 0 14px, rgba(255,255,255,.14) 14px 28px); }
+.tut-pbar b { font-weight: 700; }
+.tut-pbar .wait { display: inline-flex; align-items: center; gap: 6px; background: rgba(0,0,0,.1); padding: 3px 10px; border-radius: 99px; font-weight: 600; font-size: 12px; }
+.tut-pbar .sp { flex: 1; }
+.tut-pbar button { height: 28px; padding: 0 12px; border-radius: 99px; border: 0; cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 600; background: rgba(0,0,0,.1); color: inherit; display: inline-flex; align-items: center; gap: 5px; }
+.tut-pbar button.x { background: var(--practice-ink); color: var(--practice); }
+.tut-pbar svg { width: 14px; height: 14px; }
+
+/* Shared buttons */
+.tut-btn { height: 34px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.tut-btn.p { background: var(--tut-m); border-color: transparent; color: #fff; }
+.tut-btn svg { width: 15px; height: 15px; }
+.tut-x { width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--tray); color: var(--ink-3); cursor: pointer; display: grid; place-items: center; }
+.tut-x svg { width: 15px; height: 15px; }
+
+/* First-visit invite card */
+.tut-invite { position: fixed; right: 22px; bottom: 22px; width: 340px; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--sh-pop); padding: 16px; z-index: 900; animation: tutRise .45s var(--tut-ease); }
+.tut-invite .tut-x { position: absolute; top: 10px; right: 10px; }
+.tut-invite .ic { width: 40px; height: 40px; border-radius: 13px; display: grid; place-items: center; color: #fff; background: linear-gradient(145deg, color-mix(in srgb, var(--tut-m) 70%, #fff), var(--tut-m)); }
+.tut-invite .ic svg { width: 20px; height: 20px; }
+.tut-invite h3 { margin: 12px 0 4px; font-size: 16px; font-weight: 700; color: var(--ink); }
+.tut-invite p { margin: 0 0 14px; font-size: 13.5px; color: var(--ink-2); line-height: 1.45; }
+.tut-invite .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+@keyframes tutRise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+
+/* driver.js, themed to the module colour */
+.driver-active-element { outline: 3px solid var(--tut-m); outline-offset: 3px; border-radius: 12px; }
+.driver-popover.tut-pop { width: 330px; min-width: 0; max-width: calc(100vw - 24px); background: var(--surface); color: var(--ink); border-radius: 18px; box-shadow: var(--sh-pop); padding: 16px; font-family: inherit; }
+.driver-popover.tut-pop .driver-popover-arrow-side-left { border-left-color: var(--surface); }
+.driver-popover.tut-pop .driver-popover-arrow-side-right { border-right-color: var(--surface); }
+.driver-popover.tut-pop .driver-popover-arrow-side-top { border-top-color: var(--surface); }
+.driver-popover.tut-pop .driver-popover-arrow-side-bottom { border-bottom-color: var(--surface); }
+.driver-popover.tut-pop .driver-popover-progress-text { position: absolute; top: 16px; left: 16px; font-size: 11.5px; font-weight: 700; color: var(--tut-m); letter-spacing: .04em; text-transform: uppercase; }
+.driver-popover.tut-pop .tut-skip { position: absolute; top: 13px; right: 14px; border: 0; background: none; color: var(--ink-3); cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; }
+.driver-popover.tut-pop .driver-popover-close-btn { display: none; }
+.driver-popover.tut-pop .driver-popover-title { margin: 22px 0 6px; font-family: inherit; font-size: 16px; font-weight: 700; line-height: 1.3; color: var(--ink); }
+.driver-popover.tut-pop .driver-popover-description { font-family: inherit; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+.driver-popover.tut-pop .driver-popover-description p { margin: 0; }
+.driver-popover.tut-pop .driver-popover-description ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.55; }
+.driver-popover.tut-pop kbd, .tut-help kbd { font: inherit; font-size: 11.5px; font-weight: 600; background: var(--tray); border-radius: 6px; padding: 1px 6px; }
+.driver-popover.tut-pop .driver-popover-footer { margin-top: 14px; display: flex; align-items: center; gap: 8px; }
+.driver-popover.tut-pop .driver-popover-footer .driver-popover-progress-text { display: none; }
+.driver-popover.tut-pop .tut-dots { display: flex; gap: 5px; flex: 1; }
+.driver-popover.tut-pop .tut-dots i { width: 6px; height: 6px; border-radius: 99px; background: var(--line-strong, var(--line)); }
+.driver-popover.tut-pop .tut-dots i.on { width: 18px; background: var(--tut-m); }
+.driver-popover.tut-pop .driver-popover-navigation-btns { display: flex; gap: 8px; flex-grow: 0; }
+.driver-popover.tut-pop .driver-popover-footer button { height: 32px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; text-shadow: none; cursor: pointer; zoom: 1; }
+.driver-popover.tut-pop .driver-popover-footer .driver-popover-next-btn { background: var(--tut-m); border-color: transparent; color: #fff; }
+.driver-popover.tut-pop .driver-popover-btn-disabled { visibility: hidden; }
+.driver-popover.tut-pop.tut-limits { border-top: 4px solid var(--practice); }
+
+/* Help slide-over */
+.tut-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.25); z-index: 940; }
+.tut-help { position: fixed; top: 0; right: 0; bottom: 0; width: 380px; max-width: 100%; background: var(--surface); color: var(--ink); z-index: 941; box-shadow: var(--sh-pop); display: flex; flex-direction: column; animation: tutSlide .35s var(--tut-ease); }
+@keyframes tutSlide { from { transform: translateX(105%); } to { transform: none; } }
+.tut-help .hd { padding: 18px 18px 14px; display: flex; align-items: center; gap: 11px; border-bottom: 1px solid var(--line); }
+.tut-help .hd .ic { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; color: #fff; background: var(--tut-m); flex-shrink: 0; }
+.tut-help .hd .ic svg { width: 19px; height: 19px; }
+.tut-help .hd b { font-size: 16px; } .tut-help .hd small { display: block; font-size: 12px; color: var(--ink-3); }
+.tut-help .hd .tut-x { margin-left: auto; flex-shrink: 0; }
+.tut-help .bd { flex: 1; overflow: auto; padding: 16px 18px 24px; }
+.tut-help .cta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 6px; }
+.tut-help .cta .tut-btn { height: auto; padding: 12px; border-radius: 14px; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left; }
+.tut-help .cta .tut-btn:only-child { grid-column: 1 / -1; }
+.tut-help .cta small { font-weight: 500; font-size: 11.5px; opacity: .8; }
+.tut-help h4 { margin: 18px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); font-weight: 700; }
+.tut-feat { display: flex; gap: 11px; padding: 7px 0; }
+.tut-feat .sq { width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0; display: grid; place-items: center; color: var(--tut-m); background: color-mix(in srgb, var(--tut-m) 13%, transparent); }
+.tut-feat .sq svg { width: 15px; height: 15px; }
+.tut-feat b { display: block; font-size: 13.5px; } .tut-feat span { font-size: 12.5px; color: var(--ink-3); line-height: 1.45; }
+.tut-feat.no .sq { color: var(--ink-3); background: var(--tray); }
+.tut-kb { display: flex; justify-content: space-between; font-size: 13px; padding: 5px 0; color: var(--ink-2); }
+.tut-others { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tut-others a { font-size: 12.5px; display: flex; align-items: center; gap: 6px; padding: 7px 9px; border-radius: 10px; background: var(--tray); color: var(--ink-2); text-decoration: none; }
+.tut-others svg { width: 14px; height: 14px; } .tut-others .d svg { color: var(--accent); }
+
+@media (max-width: 767px) {
+  .tut-pbar { padding: 7px 14px; font-size: 12px; flex-wrap: wrap; gap: 6px 10px; } .tut-pbar .long { display: none; }
+  .tut-invite { left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); width: auto; }
+  /* Tour card becomes a bottom sheet so it never covers what it points at. */
+  .driver-popover.tut-pop { position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0 !important; width: auto; max-width: none; border-radius: 22px 22px 0 0; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+  .driver-popover.tut-pop .driver-popover-arrow { display: none; }
+  .tut-help { width: 100%; top: auto; height: 86vh; border-radius: 22px 22px 0 0; animation-name: tutSheet; }
+  @keyframes tutSheet { from { transform: translateY(105%); } to { transform: none; } }
+}
+@media (prefers-reduced-motion: reduce) { .tut-help, .tut-invite, .tut-help-btn.pulse::after { animation: none !important; } }

@@ -1,0 +1,24 @@
+@implements IDisposable
+@inject TutorialState Tutorials
+
+@* Sits right under the topbar while practising, on every page, so it's never unclear which data is real. *@
+@if (Tutorials.Practicing)
+{
+    <div class="tut-pbar" role="status">
+        <i data-lucide="flask-conical"></i>
+        <span><b>Practice mode</b><span class="long"> — nothing you do here is sent or saved</span></span>
+        @if (Tutorials.HeldNotifications > 0)
+        {
+            <span class="wait"><i data-lucide="bell"></i>@Tutorials.HeldNotifications real notification@(Tutorials.HeldNotifications == 1 ? "" : "s") waiting</span>
+        }
+        <span class="sp"></span>
+        <button type="button" @onclick="Tutorials.ResetPractice"><i data-lucide="rotate-ccw"></i>Reset sample</button>
+        <button type="button" class="x" @onclick="Tutorials.ExitPracticeAsync">Exit practice</button>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized() => Tutorials.Changed += OnChanged;
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => Tutorials.Changed -= OnChanged;
+}

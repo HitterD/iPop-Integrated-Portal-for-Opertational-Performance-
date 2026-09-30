@@ -8,6 +8,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @inject HttpClient Http
+@inject TutorialState Tutorials
 
 <PageTitle>@(note is null ? "Notes" : $"{DisplayTitle(note.Title)} - Notes") - IPop</PageTitle>
 
@@ -198,6 +199,11 @@
                                 <span><b>Baru pertama kali?</b><br /><span class="muted">Buka panduan singkat — 13 langkah yang bisa dicoba langsung.</span></span>
                             </button>
                         }
+                        @* The guide page teaches the blocks; the tour shows where things are on screen. *@
+                        <button type="button" class="nt-new-guide" @onclick='() => Tutorials.StartTourAsync(TutorialRegistry.Get("notes")!)'>
+                            <span class="emo">🧭</span>
+                            <span><b>Tur 1 menit</b><br /><span class="muted">Tunjukkan letak halaman, berbagi dan pencarian. Buka lagi kapan saja lewat tombol ? di atas.</span></span>
+                        </button>
                     </div>
                 </section>
             }

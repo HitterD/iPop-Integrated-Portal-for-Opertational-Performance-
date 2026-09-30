@@ -168,8 +168,12 @@ public class NotificationState : IDisposable
         }, TaskScheduler.Default);
     }
 
+    /// Set while practising: real notifications are counted by the practice bar, not shown.
+    public Action? PracticeHold { get; set; }
+
     private void OnNotificationReceived(NotificationDeliveryState delivery)
     {
+        if (PracticeHold is { } hold) { hold(); return; }
         // Bump unread count
         SetUnread(UnreadCount + 1);
 
@@ -359,6 +363,7 @@ public class NotificationState : IDisposable
 
     public void ShowChatMessage(IncomingChatMessage m, string currentPath)
     {
+        if (PracticeHold is not null) return;
         if (!ShouldBannerChat(m, currentPath) || ShouldSuppress("chat")) return;
 
         var roomId = m.Message.RoomId;

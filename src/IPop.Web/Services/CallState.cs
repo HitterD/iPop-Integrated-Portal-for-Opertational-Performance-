@@ -350,8 +350,12 @@ public partial class CallState : IAsyncDisposable
         StateChanged?.Invoke();
     }
 
+    /// Set while practising: returns true when the call was simulated instead of placed.
+    public Func<string, bool>? PracticeCall { get; set; }
+
     public async Task<CallRoomDto?> CreateAsync(string peerNik)
     {
+        if (PracticeCall?.Invoke(peerNik) == true) return null;
         if (HasLiveCall)
         {
             LastError = "Masih ada panggilan yang berlangsung.";
