@@ -63,7 +63,7 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.create", result.Project!.Id.ToString(), ct);
-            await realtime.ToAllAsync(RealtimeEvents.ProjectChanged, result.Project!.Id, ct);
+            await PushProjectChangedAsync(realtime, result.Project!.Id);
             return Results.Ok(result.Project);
         }); // any signed-in user may create a project (decision 2026-09-23)
 
@@ -87,7 +87,7 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.update", id.ToString(), ct);
-            await realtime.ToAllAsync(RealtimeEvents.ProjectChanged, id, ct);
+            await PushProjectChangedAsync(realtime, id);
             return Results.Ok(result.Project);
         }).RequirePermission("projects.write");
 
@@ -111,9 +111,96 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.delete", id.ToString(), ct);
-            await realtime.ToAllAsync(RealtimeEvents.ProjectChanged, id, ct);
+            await PushProjectChangedAsync(realtime, id);
             return Results.Ok(result);
         }).RequirePermission("projects.admin");
+
+        // ──────────────────────────────────────────────────────────────────────
+        // Groups
+        // ──────────────────────────────────────────────────────────────────────
+
+        g.MapGet("/{id:guid}/groups", async (Guid id, DateTime? localToday, HttpContext http,
+            IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var actor = await GetUserIdAsync(http, db);
+            if (actor is null) return Results.Unauthorized();
+            var groups = await svc.GetGroupsAsync(id, actor.Value, ct, localToday);
+            return groups is null ? Results.NotFound() : Results.Ok(groups);
+        });
+
+        g.MapPost("/{id:guid}/groups", async (Guid id, CreateProjectGroupRequest req, HttpContext http,
+            IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var actor = await GetUserIdAsync(http, db);
+            if (actor is null) return Results.Unauthorized();
+            var result = await svc.CreateGroupAsync(actor.Value, id, req, ct);
+            if (!result.Success) return GroupError(result.Error);
+            await Audit(http, db, "projects.group.create", result.Group!.Id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(result.Group);
+        }).RequirePermission("projects.write");
+
+        g.MapPut("/groups/{groupId:guid}", async (Guid groupId, UpdateProjectGroupRequest req, HttpContext http,
+            IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var actor = await GetUserIdAsync(http, db);
+            if (actor is null) return Results.Unauthorized();
+            var result = await svc.UpdateGroupAsync(actor.Value, groupId, req, ct);
+            if (!result.Success) return GroupError(result.Error);
+            await Audit(http, db, "projects.group.update", groupId.ToString(), ct);
+            await PushProjectChangedAsync(realtime, result.Group!.ProjectId);
+            return Results.Ok(result.Group);
+        }).RequirePermission("projects.write");
+
+        g.MapPut("/{id:guid}/groups/order", async (Guid id, ReorderProjectGroupsRequest req, HttpContext http,
+            IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var actor = await GetUserIdAsync(http, db);
+            if (actor is null) return Results.Unauthorized();
+            var result = await svc.ReorderGroupsAsync(actor.Value, id, req, ct);
+            if (!result.Success) return GroupError(result.Error);
+            await Audit(http, db, "projects.group.reorder", id.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(result);
+        }).RequirePermission("projects.write");
+
+        g.MapDelete("/groups/{groupId:guid}", async (Guid groupId, HttpContext http,
+            IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var actor = await GetUserIdAsync(http, db);
+            if (actor is null) return Results.Unauthorized();
+            var projectId = await db.ProjectGroups.Where(g => g.Id == groupId).Select(g => (Guid?)g.ProjectId).FirstOrDefaultAsync(ct);
+            var result = await svc.DeleteGroupAsync(actor.Value, groupId, ct);
+            if (!result.Success) return GroupError(result.Error);
+            await Audit(http, db, "projects.group.delete", groupId.ToString(), ct);
+            await PushProjectChangedAsync(realtime, projectId);
+            return Results.Ok(result);
+        }).RequirePermission("projects.write");
+
+        // POST /api/projects/{id}/groups/restore — Undo for a group delete (body = the delete snapshot)
+        g.MapPost("/{id:guid}/groups/restore", async (Guid id, DeletedProjectGroupDto snapshot, HttpContext http,
+            IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var actor = await GetUserIdAsync(http, db);
+            if (actor is null) return Results.Unauthorized();
+            var result = await svc.RestoreGroupAsync(actor.Value, id, snapshot, ct);
+            if (!result.Success) return GroupError(result.Error);
+            await Audit(http, db, "projects.group.restore", snapshot.GroupId.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(result.Group);
+        }).RequirePermission("projects.write");
+
+        g.MapPut("/tasks/{taskId:guid}/group", async (Guid taskId, MoveTaskToGroupRequest req, HttpContext http,
+            IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var actor = await GetUserIdAsync(http, db);
+            if (actor is null) return Results.Unauthorized();
+            var result = await svc.MoveTaskToGroupAsync(actor.Value, taskId, req, ct);
+            if (!result.Success) return GroupError(result.Error);
+            await Audit(http, db, "projects.task.group", taskId.ToString(), ct);
+            await PushProjectChangedAsync(realtime, result.Task!.ProjectId);
+            return Results.Ok(result.Task);
+        }).RequirePermission("projects.write");
 
         // ──────────────────────────────────────────────────────────────────────
         // Members
@@ -136,7 +223,7 @@ public static class ProjectEndpoints
 
         // POST /api/projects/{id}/members — { userId, role }
         g.MapPost("/{id:guid}/members", async (Guid id, AddProjectMemberRequest req,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -153,12 +240,13 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.member.add", $"{id}:{req.UserId}", ct);
+            await PushProjectChangedAsync(realtime, id);
             return Results.Ok(result);
         }).RequirePermission("projects.write");
 
         // DELETE /api/projects/{id}/members/{userId}
         g.MapDelete("/{id:guid}/members/{userId:guid}", async (Guid id, Guid userId,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var actorId = await GetUserIdAsync(http, db);
             if (actorId is null) return Results.Unauthorized();
@@ -176,6 +264,7 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.member.remove", $"{id}:{userId}", ct);
+            await PushProjectChangedAsync(realtime, id);
             return Results.Ok(result);
         }).RequirePermission("projects.write");
 
@@ -226,7 +315,7 @@ public static class ProjectEndpoints
 
             // Ensure projectId matches body
             var req = new CreateTaskRequest(projectId, body.ParentTaskId, body.Title, body.Description,
-                body.Status, body.Priority, body.StartDate, body.DueDate, body.EstimatedHours, body.Dependencies, body.Tags);
+                body.Status, body.Priority, body.StartDate, body.DueDate, body.EstimatedHours, body.Dependencies, body.Tags, body.GroupId);
 
             var result = await svc.CreateTaskAsync(userId.Value, req, ct);
             if (!result.Success)
@@ -241,7 +330,7 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.task.create", result.Task!.Id.ToString(), ct);
-            await realtime.ToAllAsync(RealtimeEvents.ProjectChanged, projectId, ct);
+            await PushProjectChangedAsync(realtime, projectId);
             return Results.Ok(result.Task);
         }).RequirePermission("projects.write");
 
@@ -265,7 +354,7 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.task.update", taskId.ToString(), ct);
-            await realtime.ToAllAsync(RealtimeEvents.ProjectChanged, result.Task!.ProjectId, ct);
+            await PushProjectChangedAsync(realtime, result.Task!.ProjectId);
             return Results.Ok(result.Task);
         }).RequirePermission("projects.write");
 
@@ -290,13 +379,13 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.task.delete", taskId.ToString(), ct);
-            if (task != null) await realtime.ToAllAsync(RealtimeEvents.ProjectChanged, task.ProjectId, ct);
+            await PushProjectChangedAsync(realtime, task?.ProjectId);
             return Results.Ok(result);
         }).RequirePermission("projects.write");
 
         // Assignees
         g.MapPost("/tasks/{taskId:guid}/assignees", async (Guid taskId, AssignRequest req,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -309,11 +398,12 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.task.assign", $"{taskId}:{req.UserId}", ct);
+            await PushProjectChangedAsync(realtime, await TaskProjectIdAsync(db, taskId, ct));
             return Results.Ok(result);
         }).RequirePermission("projects.write");
 
         g.MapDelete("/tasks/{taskId:guid}/assignees/{userId:guid}", async (Guid taskId, Guid userId,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var actorId = await GetUserIdAsync(http, db);
             if (actorId is null) return Results.Unauthorized();
@@ -326,6 +416,7 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.task.unassign", $"{taskId}:{userId}", ct);
+            await PushProjectChangedAsync(realtime, await TaskProjectIdAsync(db, taskId, ct));
             return Results.Ok(result);
         }).RequirePermission("projects.write");
 
@@ -334,13 +425,13 @@ public static class ProjectEndpoints
         // ──────────────────────────────────────────────────────────────────────
 
         // GET /api/projects/{id}/kanban
-        g.MapGet("/{id:guid}/kanban", async (Guid id,
+        g.MapGet("/{id:guid}/kanban", async (Guid id, Guid? groupId,
             HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
-            var board = await svc.GetKanbanAsync(id, userId.Value, ct);
+            var board = await svc.GetKanbanAsync(id, userId.Value, ct, groupId);
             return board is not null
                 ? Results.Ok(board)
                 : Results.Json(new { code = "project_not_found", message = "Not a member of this project." }, statusCode: 404);
@@ -366,6 +457,7 @@ public static class ProjectEndpoints
             }
 
             await Audit(http, db, "projects.task.move", taskId.ToString(), ct);
+            await PushProjectChangedAsync(realtime, result.Task?.ProjectId ?? await TaskProjectIdAsync(db, taskId, ct));
             return Results.Ok(result.Task);
         }).RequirePermission("projects.write");
 
@@ -373,8 +465,8 @@ public static class ProjectEndpoints
         // List (paged) + Timeline (Gantt stub)
         // ──────────────────────────────────────────────────────────────────────
 
-        // GET /api/projects/{id}/tasks/list?status=&page=1&pageSize=50
-        g.MapGet("/{id:guid}/tasks/list", async (Guid id, string? status, int? page, int? pageSize,
+        // GET /api/projects/{id}/tasks/list?status=&assigneeId=&unassigned=&page=1&pageSize=50
+        g.MapGet("/{id:guid}/tasks/list", async (Guid id, string? status, Guid? assigneeId, bool? unassigned, Guid? groupId, int? page, int? pageSize,
             HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
@@ -386,18 +478,18 @@ public static class ProjectEndpoints
             var p = Math.Max(1, page ?? 1);
             var size = Math.Clamp(pageSize ?? 50, 1, 200);
 
-            var result = await svc.GetTaskListAsync(id, userId.Value, status, p, size, ct);
+            var result = await svc.GetTaskListAsync(id, userId.Value, status, p, size, ct, assigneeId, unassigned == true, groupId);
             return Results.Ok(result);
         });
 
         // GET /api/projects/{id}/timeline — returns flat list of tasks with dates for Gantt (no critical path calc in v1)
-        g.MapGet("/{id:guid}/timeline", async (Guid id,
+        g.MapGet("/{id:guid}/timeline", async (Guid id, Guid? groupId,
             HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
-            var timeline = await svc.GetTimelineAsync(id, userId.Value, ct);
+            var timeline = await svc.GetTimelineAsync(id, userId.Value, ct, groupId);
             return timeline is not null
                 ? Results.Ok(timeline)
                 : Results.Json(new { code = "project_not_found", message = "Not a member of this project." }, statusCode: 404);
@@ -407,14 +499,14 @@ public static class ProjectEndpoints
         // DETAIL MAX: Workload, Export, Recurring, Dependency Validation
         // ──────────────────────────────────────────────────────────────────────
 
-        // GET /api/projects/{id}/workload — sums estimates by status and assignee
-        g.MapGet("/{id:guid}/workload", async (Guid id,
+        // GET /api/projects/{id}/workload?localToday=2026-09-27 — local calendar cutoff for overdue counts
+        g.MapGet("/{id:guid}/workload", async (Guid id, DateTime? localToday, Guid? groupId,
             HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
-            var wl = await svc.GetProjectWorkloadAsync(id, userId.Value, ct);
+            var wl = await svc.GetProjectWorkloadAsync(id, userId.Value, ct, localToday, groupId);
             return wl is not null
                 ? Results.Ok(wl)
                 : Results.Json(new { code = "project_not_found", message = "Not a member of this project." }, statusCode: 404);
@@ -513,13 +605,13 @@ public static class ProjectEndpoints
         // ──────────────────────────────────────────────────────────────────────
 
         // GET /api/projects/{id}/gantt — date-mapped chart data with critical path
-        g.MapGet("/{id:guid}/gantt", async (Guid id,
+        g.MapGet("/{id:guid}/gantt", async (Guid id, Guid? groupId,
             HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
-            var gantt = await svc.GetGanttAsync(id, userId.Value, ct);
+            var gantt = await svc.GetGanttAsync(id, userId.Value, ct, groupId);
             return gantt is not null
                 ? Results.Ok(gantt)
                 : Results.Json(new { code = "project_not_found", message = "Not a member of this project." }, statusCode: 404);
@@ -546,7 +638,7 @@ public static class ProjectEndpoints
 
         // PUT /api/projects/{id}/work-calendar/entries — { date, kind, title?, note? }
         g.MapPut("/{id:guid}/work-calendar/entries", async (Guid id, UpsertCalendarEntryRequest req,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -562,12 +654,13 @@ public static class ProjectEndpoints
                 };
                 return Results.Json(new { code = result.Error, message = result.Error }, statusCode: statusCode);
             }
+            await PushProjectChangedAsync(realtime, id);
             return Results.Ok(result);
         }).RequirePermission("projects.write");
 
         // DELETE /api/projects/{id}/work-calendar/entries?date=2026-06-01
         g.MapDelete("/{id:guid}/work-calendar/entries", async (Guid id, DateTime date,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -578,6 +671,7 @@ public static class ProjectEndpoints
                 var statusCode = result.Error == "forbidden" ? 403 : 422;
                 return Results.Json(new { code = result.Error, message = result.Error }, statusCode: statusCode);
             }
+            await PushProjectChangedAsync(realtime, id);
             return Results.Ok(result);
         }).RequirePermission("projects.write");
 
@@ -622,7 +716,7 @@ public static class ProjectEndpoints
 
         // POST /api/projects/tasks/{taskId}/comments — komentar baru / balasan.
         g.MapPost("/tasks/{taskId:guid}/comments", async (Guid taskId, AddTaskCommentRequest req,
-            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -652,12 +746,13 @@ public static class ProjectEndpoints
             await db.SaveChangesAsync(ct);
 
             var author = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+            await PushProjectChangedAsync(realtime, await TaskProjectIdAsync(db, taskId, ct));
             return Results.Ok(new TaskCommentDto(comment.Id, author?.Name ?? "Unknown", author?.Nik ?? "", comment.Content, comment.ParentCommentId, comment.CreatedAt));
         });
 
         // DELETE /api/projects/tasks/{taskId}/comments/{id} — hapus (penulis atau pemilik proyek).
         g.MapDelete("/tasks/{taskId:guid}/comments/{commentId:guid}", async (Guid taskId, Guid commentId,
-            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -679,6 +774,7 @@ public static class ProjectEndpoints
                 Action = "comment_deleted", CreatedAt = DateTime.UtcNow
             });
             await db.SaveChangesAsync(ct);
+            await PushProjectChangedAsync(realtime, taskProjectId);
             return Results.Ok(new { success = true });
         });
 
@@ -724,7 +820,7 @@ public static class ProjectEndpoints
 
         // POST /api/projects/tasks/{taskId}/attachments — tautkan berkas NAS (referensi).
         g.MapPost("/tasks/{taskId:guid}/attachments", async (Guid taskId, AddTaskAttachmentRequest req,
-            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -751,6 +847,7 @@ public static class ProjectEndpoints
             await db.SaveChangesAsync(ct);
 
             var uploader = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
+            await PushProjectChangedAsync(realtime, await TaskProjectIdAsync(db, taskId, ct));
             return Results.Ok(new TaskAttachmentDto(att.Id, att.FileName, att.FileSize, uploader?.Name ?? "Unknown", att.SynologyServer, att.SynologyPath, att.CreatedAt));
         });
 
@@ -774,7 +871,7 @@ public static class ProjectEndpoints
 
         // DELETE /api/projects/tasks/{taskId}/attachments/{id} — hapus tautan (soft delete).
         g.MapDelete("/tasks/{taskId:guid}/attachments/{attachmentId:guid}", async (Guid taskId, Guid attachmentId,
-            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -792,6 +889,7 @@ public static class ProjectEndpoints
                 Action = "attachment_removed", OldValue = att.FileName, CreatedAt = DateTime.UtcNow
             });
             await db.SaveChangesAsync(ct);
+            await PushProjectChangedAsync(realtime, await TaskProjectIdAsync(db, taskId, ct));
             return Results.Ok(new { success = true });
         });
 
@@ -813,7 +911,7 @@ public static class ProjectEndpoints
 
         // PUT /api/projects/tasks/{taskId}/reminders — ganti himpunan pengingat (offset jam).
         g.MapPut("/tasks/{taskId:guid}/reminders", async (Guid taskId, SetTaskRemindersRequest req,
-            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -840,6 +938,7 @@ public static class ProjectEndpoints
             await db.SaveChangesAsync(ct);
 
             var rows = await db.ProjectTaskReminders.AsNoTracking().Where(r => r.TaskId == taskId).OrderByDescending(r => r.OffsetHours).ToListAsync(ct);
+            await PushProjectChangedAsync(realtime, await TaskProjectIdAsync(db, taskId, ct));
             return Results.Ok(rows.Select(r => new TaskReminderDto(r.Id, r.OffsetHours, r.SentAt)));
         });
 
@@ -914,7 +1013,7 @@ public static class ProjectEndpoints
 
         // POST /api/projects/from-template — buat proyek baru dari template.
         g.MapPost("/from-template", async (CreateProjectFromTemplateRequest req,
-            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -924,7 +1023,7 @@ public static class ProjectEndpoints
                 .FirstOrDefaultAsync(t => t.Id == req.TemplateId && t.IsActive, ct);
             if (tpl is null) return Results.Json(new { code = "template_not_found", message = "Template not found." }, statusCode: 404);
 
-            var startDate = req.StartDate ?? DateTime.UtcNow.Date;
+            var startDate = IPop.Application.UtcDates.AsUtcDate(req.StartDate ?? DateTime.UtcNow.Date);
             var createReq = new CreateProjectRequest(req.Name ?? tpl.Name, req.Description ?? tpl.Description,
                 req.Year ?? DateTime.UtcNow.Year, req.OwnerId ?? userId.Value, startDate, req.Deadline, null, null);
             var result = await svc.CreateProjectAsync(userId.Value, createReq, ct);
@@ -938,12 +1037,15 @@ public static class ProjectEndpoints
                 {
                     Id = Guid.NewGuid(), ProjectId = result.Project.Id, Title = tt.Title, Description = tt.Description,
                     Status = "todo", Priority = tt.Priority,
+                    GroupId = await db.ProjectGroups.Where(g => g.ProjectId == result.Project.Id)
+                        .OrderBy(g => g.SortOrder).Select(g => g.Id).FirstAsync(ct),
                     DueDate = tt.DueOffsetDays is { } d ? startDate.AddDays(d) : null,
                     SortOrder = tt.SortOrder,
                     CreatedById = userId.Value, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
                 });
             }
             await db.SaveChangesAsync(ct);
+            await PushProjectChangedAsync(realtime, result.Project.Id);
             return Results.Ok(result.Project);
         }).RequirePermission("projects.write");
 
@@ -989,7 +1091,7 @@ public static class ProjectEndpoints
         });
 
         // POST /api/projects/{id}/milestones
-        g.MapPost("/{id:guid}/milestones", async (Guid id, CreateMilestoneRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        g.MapPost("/{id:guid}/milestones", async (Guid id, CreateMilestoneRequest req, HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -1007,15 +1109,16 @@ public static class ProjectEndpoints
             var m = new ProjectMilestone
             {
                 Id = Guid.NewGuid(), ProjectId = id, Title = title,
-                DueDate = req.DueDate, TaskId = req.TaskId, CreatedAt = DateTime.UtcNow
+                DueDate = IPop.Application.UtcDates.AsUtcDate(req.DueDate), TaskId = req.TaskId, CreatedAt = DateTime.UtcNow
             };
             db.ProjectMilestones.Add(m);
             await db.SaveChangesAsync(ct);
+            await PushProjectChangedAsync(realtime, id);
             return Results.Ok(new ProjectMilestoneDto(m.Id, m.Title, m.DueDate, m.TaskId, null, false, m.DueDate < DateTime.UtcNow));
         }).RequirePermission("projects.write");
 
         // PUT /api/projects/{id}/milestones/{milestoneId}
-        g.MapPut("/{id:guid}/milestones/{milestoneId:guid}", async (Guid id, Guid milestoneId, UpdateMilestoneRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        g.MapPut("/{id:guid}/milestones/{milestoneId:guid}", async (Guid id, Guid milestoneId, UpdateMilestoneRequest req, HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -1028,7 +1131,7 @@ public static class ProjectEndpoints
                 if (title.Length == 0 || title.Length > 300) return Results.Json(new { code = "invalid_title", message = "Invalid title." }, statusCode: 422);
                 m.Title = title;
             }
-            if (req.DueDate is { } dd) m.DueDate = dd;
+            if (req.DueDate is { } dd) m.DueDate = IPop.Application.UtcDates.AsUtcDate(dd);
             if (req.TaskId is { } tid)
             {
                 var taskOk = await db.ProjectTasks.AnyAsync(t => t.Id == tid && t.ProjectId == id, ct);
@@ -1042,11 +1145,12 @@ public static class ProjectEndpoints
             if (req.Achieved == true && m.AchievedAt is null) m.AchievedAt = DateTime.UtcNow;
             if (req.Achieved == false) m.AchievedAt = null;
             await db.SaveChangesAsync(ct);
+            await PushProjectChangedAsync(realtime, id);
             return Results.Ok(new ProjectMilestoneDto(m.Id, m.Title, m.DueDate, m.TaskId, null, m.AchievedAt != null, m.AchievedAt == null && m.DueDate < DateTime.UtcNow));
         }).RequirePermission("projects.write");
 
         // DELETE /api/projects/{id}/milestones/{milestoneId}
-        g.MapDelete("/{id:guid}/milestones/{milestoneId:guid}", async (Guid id, Guid milestoneId, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        g.MapDelete("/{id:guid}/milestones/{milestoneId:guid}", async (Guid id, Guid milestoneId, HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -1054,18 +1158,7 @@ public static class ProjectEndpoints
             if (m is null) return Results.Json(new { code = "not_found", message = "Milestone not found." }, statusCode: 404);
             db.ProjectMilestones.Remove(m);
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new { success = true });
-        }).RequirePermission("projects.write");
-
-        // DELETE /api/projects/{id}/milestones/{milestoneId}
-        g.MapDelete("/{id:guid}/milestones/{milestoneId:guid}", async (Guid id, Guid milestoneId, HttpContext http, IPopDbContext db, CancellationToken ct) =>
-        {
-            var userId = await GetUserIdAsync(http, db);
-            if (userId is null) return Results.Unauthorized();
-            var m = await db.ProjectMilestones.FirstOrDefaultAsync(x => x.Id == milestoneId && x.ProjectId == id, ct);
-            if (m is null) return Results.Json(new { code = "not_found", message = "Milestone not found." }, statusCode: 404);
-            db.ProjectMilestones.Remove(m);
-            await db.SaveChangesAsync(ct);
+            await PushProjectChangedAsync(realtime, id);
             return Results.Ok(new { success = true });
         }).RequirePermission("projects.write");
 
@@ -1140,8 +1233,124 @@ public static class ProjectEndpoints
             return Results.Ok(new VelocityDto(points, avg));
         });
 
+        // ──────────────────────────────────────────────────────────────────────
+        // Phase 2: dependencies, soft-delete restore, bulk, saved views, calendar
+        // ──────────────────────────────────────────────────────────────────────
+
+        // PUT /api/projects/tasks/{taskId}/dependencies — replace the "waiting on" set
+        g.MapPut("/tasks/{taskId:guid}/dependencies", async (Guid taskId, SetTaskDependenciesRequest req,
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await svc.SetTaskDependenciesAsync(userId.Value, taskId, req, ct);
+            if (!result.Success) return Phase2Error(result.Error);
+            await Audit(http, db, "projects.task.dependencies", taskId.ToString(), ct);
+            await PushProjectChangedAsync(realtime, result.Task!.ProjectId);
+            return Results.Ok(result.Task);
+        }).RequirePermission("projects.write");
+
+        // POST /api/projects/{id}/tasks/restore — undo a (bulk) delete by batch id
+        g.MapPost("/{id:guid}/tasks/restore", async (Guid id, RestoreTasksRequest req,
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await svc.RestoreTasksAsync(userId.Value, id, req.BatchId, ct);
+            if (!result.Success) return Phase2Error(result.Error);
+            await Audit(http, db, "projects.task.restore", req.BatchId.ToString(), ct);
+            await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(result);
+        }).RequirePermission("projects.write");
+
+        // POST /api/projects/{projectId}/tasks/bulk — status|assign|unassign|due|group|priority|delete
+        g.MapPost("/{projectId:guid}/tasks/bulk", async (Guid projectId, BulkTaskRequest req,
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await svc.BulkUpdateTasksAsync(userId.Value, projectId, req, ct);
+            if (!result.Success) return Phase2Error(result.Error);
+            await Audit(http, db, $"projects.task.bulk.{req.Action}", projectId.ToString(), ct);
+            await PushProjectChangedAsync(realtime, projectId);
+            return Results.Ok(result);
+        }).RequirePermission("projects.write");
+
+        // GET /api/projects/{id}/views — own + shared saved views
+        g.MapGet("/{id:guid}/views", async (Guid id, HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var views = await svc.GetSavedViewsAsync(id, userId.Value, ct);
+            return views is not null ? Results.Ok(views) : Phase2Error("project_not_found");
+        });
+
+        g.MapPost("/{id:guid}/views", async (Guid id, SaveProjectViewRequest req,
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await svc.CreateSavedViewAsync(userId.Value, id, req, ct);
+            if (!result.Success) return Phase2Error(result.Error);
+            await Audit(http, db, "projects.view.create", result.View!.Id.ToString(), ct);
+            if (result.View.IsShared) await PushProjectChangedAsync(realtime, id);
+            return Results.Ok(result.View);
+        }).RequirePermission("projects.write");
+
+        g.MapPut("/views/{viewId:guid}", async (Guid viewId, SaveProjectViewRequest req,
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await svc.UpdateSavedViewAsync(userId.Value, viewId, req, ct);
+            if (!result.Success) return Phase2Error(result.Error);
+            await Audit(http, db, "projects.view.update", viewId.ToString(), ct);
+            await PushProjectChangedAsync(realtime, result.View!.ProjectId);
+            return Results.Ok(result.View);
+        }).RequirePermission("projects.write");
+
+        g.MapDelete("/views/{viewId:guid}", async (Guid viewId,
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var projectId = await svc.SavedViewProjectIdAsync(viewId, ct);
+            var result = await svc.DeleteSavedViewAsync(userId.Value, viewId, ct);
+            if (!result.Success) return Phase2Error(result.Error);
+            await Audit(http, db, "projects.view.delete", viewId.ToString(), ct);
+            await PushProjectChangedAsync(realtime, projectId);
+            return Results.Ok(result);
+        }).RequirePermission("projects.write");
+
+        // GET /api/projects/{id}/calendar?from=2026-10-01&to=2026-11-01&groupId=
+        g.MapGet("/{id:guid}/calendar", async (Guid id, DateTime from, DateTime to, Guid? groupId,
+            HttpContext http, IProjectService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            if (to < from || (to - from).TotalDays > 62) return Phase2Error("invalid_range");
+            var cal = await svc.GetProjectCalendarAsync(id, userId.Value, from, to, groupId, ct);
+            return cal is not null ? Results.Ok(cal) : Phase2Error("project_not_found");
+        });
+
         return app;
     }
+
+    private static IResult Phase2Error(string? code) => Results.Json(new { code, message = code },
+        statusCode: code switch
+        {
+            "forbidden" => 403,
+            not null when code.EndsWith("_not_found") => 404,
+            _ => 422
+        });
+
+    private static IResult GroupError(string? code) => Results.Json(new { code, message = code },
+        statusCode: code switch
+        {
+            "forbidden" => 403,
+            "group_not_found" or "task_not_found" => 404,
+            _ => 422
+        });
 
     // Keanggotaan lewat tugas → proyek (anggota proyek boleh berdiskusi di tugasnya).
     private static async Task<bool> IsTaskMember(IPopDbContext db, Guid taskId, Guid userId, CancellationToken ct)
@@ -1173,6 +1382,21 @@ public static class ProjectEndpoints
         var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Nik == nik);
         return user?.Id;
     }
+
+    /// Live update for every open Projects page: the client filters by projectId and refetches
+    /// through the membership-checked endpoints, so the payload leaks nothing but the id.
+    /// Best effort: the mutation has already committed, so a failed push must not fail the
+    /// request, and it is not tied to the request token (a caller hanging up should not
+    /// silence everyone else's update).
+    private static async Task PushProjectChangedAsync(IRealtime realtime, Guid? projectId)
+    {
+        if (projectId is not { } id) return;
+        try { await realtime.ToAllAsync(RealtimeEvents.ProjectChanged, id); }
+        catch (Exception) { /* advisory; clients also reload on navigation and reconnect */ }
+    }
+
+    private static Task<Guid?> TaskProjectIdAsync(IPopDbContext db, Guid taskId, CancellationToken ct) =>
+        db.ProjectTasks.AsNoTracking().Where(t => t.Id == taskId).Select(t => (Guid?)t.ProjectId).FirstOrDefaultAsync(ct);
 
     private static async Task Audit(HttpContext http, IPopDbContext db, string action, string entityId, CancellationToken ct)
     {

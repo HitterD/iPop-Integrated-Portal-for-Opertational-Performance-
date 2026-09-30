@@ -70,7 +70,10 @@ else builder.Services.AddSingleton<IEmailSender, LogEmailSender>();
 builder.Services.AddScoped<IEmailQueue, DbEmailQueue>();
 builder.Services.AddScoped<EmailOutboxProcessor>();
 builder.Services.AddHostedService<EmailOutboxWorker>();
-builder.Services.AddSingleton(AttachmentOptions.Bind(builder.Configuration));
+// Reuses Synology:ServiceAccount + Synology:{Area}Folder when no "Attachments" section exists;
+// attachment-files/ under ContentRoot is the local fallback (like chat-files/ and mail-files/).
+builder.Services.AddSingleton(AttachmentOptions.Bind(builder.Configuration,
+    Path.Combine(builder.Environment.ContentRootPath, "attachment-files")));
 builder.Services.AddSingleton<AttachmentSession>();
 builder.Services.AddScoped<IAttachmentStore, SynologyAttachmentStore>();
 builder.Services.AddScoped<OfficeOptions>(_ => new OfficeOptions
@@ -133,6 +136,7 @@ builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.Notificati
 builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.NewsBadgeProvider>();
 builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.CallsBadgeProvider>();
 builder.Services.AddSingleton<PresenceBroadcaster>();
+builder.Services.AddSingleton<PresenceConnections>();
 builder.Services.AddSingleton<IDirectoryChangeNotifier, DirectoryChangeNotifier>();
 builder.Services.AddSingleton<IAuditChangeNotifier, AuditChangeNotifier>();
 builder.Services.AddHostedService<PresenceSweepWorker>();
@@ -150,17 +154,24 @@ builder.Services.AddScoped<INotificationGateway, NotificationGateway>();
 builder.Services.AddHostedService<ChatAttachmentGcWorker>();
 builder.Services.AddHostedService<ChatMentionNotifyWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Projects.TaskReminderWorker>();
+builder.Services.AddHostedService<IPop.Infrastructure.Projects.DeletedTaskPurgeWorker>();
+builder.Services.AddHostedService<IPop.Infrastructure.Projects.TimerAutoStopWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Meetings.MeetingReminderWorker>();
 
 // Mail module
 builder.Services.AddScoped<IMailService, MailService>();
 
-// Calls module (WebRTC signaling + LiveKit SFU access tokens)
+// Calls module (1:1 P2P WebRTC signaling; LiveKit tokens are for meetings only)
 builder.Services.AddSingleton<IPop.Application.Calls.ILiveKitTokenService, IPop.Infrastructure.Calls.LiveKitTokenService>();
 builder.Services.AddScoped<IPop.Application.Calls.ICallService, IPop.Infrastructure.Calls.CallService>();
+builder.Services.AddSingleton<IPop.Api.Calls.CallConnections>();
+builder.Services.AddHostedService<IPop.Api.Calls.CallRingTimeoutWorker>();
 
 // Projects module
 builder.Services.AddScoped<IPop.Application.Projects.IProjectService, IPop.Infrastructure.Projects.ProjectService>();
+builder.Services.AddScoped<IPop.Application.Projects.IProjectFieldService, IPop.Infrastructure.Projects.ProjectFieldService>();
+builder.Services.AddScoped<IPop.Application.Projects.IPortfolioService, IPop.Infrastructure.Projects.PortfolioService>();
+builder.Services.AddScoped<IPop.Application.Projects.IProjectTimeService, IPop.Infrastructure.Projects.ProjectTimeService>();
 
 builder.Services.AddScoped<INotificationGatewayService, NotificationGatewayService>();
 // Real-time notification push (SignalR) — broadcaster impl + hub registered with hubs below.
@@ -168,6 +179,7 @@ builder.Services.AddSingleton<IPop.Application.Notifications.INotificationRealti
 
 // News & Memos module (single table with type enum: news/announcement/memo)
 builder.Services.AddScoped<IPop.Application.News.INewsService, IPop.Infrastructure.News.NewsService>();
+builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Infrastructure.News.NewsAttachmentPolicy>();
 
 // Notes module (Notion-like pages, Yjs co-editing over /hubs/notes)
 builder.Services.AddScoped<IPop.Application.Notes.INoteService, IPop.Infrastructure.Notes.NoteService>();
@@ -207,7 +219,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("web-dev");
-app.UseHttpsRedirection();
+// Dev serves http and https side by side (http for LAN browsing, https for calls' microphone);
+// redirecting would push http pages onto the self-signed port and break their CORS preflights.
+if (!app.Environment.IsDevelopment()) app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
@@ -222,10 +236,21 @@ app.MapDirectory();
 app.MapFiles();
 app.MapOnlyOffice();
 app.MapChat();
+// Group photos: random 128-bit file names, served without auth so <img> tags work.
+app.MapGet("/api/chat-avatars/{name}", (string name, IWebHostEnvironment env) =>
+{
+    var path = IPop.Api.Endpoints.ChatEndpoints.GroupAvatarPath(env.ContentRootPath, name);
+    if (path is null || !File.Exists(path)) return Results.NotFound();
+    return Results.File(path, "image/jpeg", enableRangeProcessing: false);
+}).AllowAnonymous();
 app.MapCalls();
 app.MapMail();
 app.MapProjects();
+app.MapProjectFields();
+app.MapProjectTime();
+app.MapProjectPortfolio();
 app.MapMeetings();
+app.MapCalendar();
 app.MapNews();
 app.MapNotes();
 app.MapNotificationGateway();

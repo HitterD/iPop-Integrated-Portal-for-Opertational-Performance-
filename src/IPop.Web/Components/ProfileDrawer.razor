@@ -2,10 +2,10 @@
 @inject IJSRuntime JS
 
 <div class="profile-sheet-backdrop @(Person is not null ? "on" : "")" @onclick="Close"></div>
-<aside class="profile-sheet @(Person is not null ? "on" : "")" role="dialog" aria-label="Profile">
+<aside class="profile-sheet @(Person is not null ? "on" : "")" role="dialog" aria-label="Contact info">
     <div class="profile-sheet-card">
         <div class="profile-sheet-head">
-            <div class="profile-sheet-title">Profile</div>
+            <div class="profile-sheet-title">Contact info</div>
             <button type="button" class="profile-sheet-close" @onclick="Close" title="Close" aria-label="Close">
                 <i data-lucide="x"></i>
             </button>

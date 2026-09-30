@@ -81,9 +81,7 @@
                             <i data-lucide="clock-alert" style="width:10px;height:10px"></i> Extend
                         </button>
                     </div>
-                    <input type="date" class="org-input" style="width:100%;height:30px;font-size:11.5px;margin-top:4px"
-                           value="@(editDue?.ToString("yyyy-MM-dd"))"
-                           @onchange="e => editDue = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null" />
+                    <AppDatePicker @bind-Value="editDue" AllowClear="true" Compact="true" Style="width:100%;margin-top:4px" AriaLabel="Due date" />
                 </div>
             </div>
 
@@ -258,9 +256,40 @@
 
     private TaskEvidenceData evidence = new();
 
+    // Same rule as ProjectTaskDrawer: same instance = no-op; a live refresh of the same task only
+    // updates the fields the user hasn't edited; another task resets the form.
+    private ProjectTaskDto? _shownTask;
+
     protected override async Task OnParametersSetAsync()
     {
-        if (Task is not null)
+        if (Task is null) { _shownTask = null; return; }
+        if (ReferenceEquals(Task, _shownTask)) return;
+        var previous = _shownTask;
+        _shownTask = Task;
+        if (previous is not null && previous.Id == Task.Id)
+        {
+            if (editTitle == previous.Title) editTitle = Task.Title;
+            if (editStatus == previous.Status) editStatus = Task.Status;
+            if (editPriority == previous.Priority) editPriority = Task.Priority;
+            if (editStartDate == previous.StartDate) editStartDate = Task.StartDate;
+            if (editDue == previous.DueDate) editDue = Task.DueDate;
+            if (editEstH == previous.EstimatedHours) editEstH = Task.EstimatedHours;
+            if (editActH == previous.ActualHours) editActH = Task.ActualHours;
+            if (editTags == previous.Tags) editTags = Task.Tags;
+            var oldParsed = TaskEvidenceHelper.Parse(previous.Description);
+            if (TaskEvidenceHelper.Serialize(editDesc, evidence) != TaskEvidenceHelper.Serialize(oldParsed.CleanDescription, oldParsed.Evidence))
+                return;
+            var fresh = TaskEvidenceHelper.Parse(Task.Description);
+            editDesc = fresh.CleanDescription;
+            evidence = fresh.Evidence;
+            foreach (var item in evidence.FieldPhotos.Concat(evidence.CompletionDeliverables.Where(d => d.Type == "photo")))
+            {
+                if (!string.IsNullOrEmpty(item.DataUrl)) continue;
+                try { item.DataUrl = await JS.InvokeAsync<string?>("localStorage.getItem", $"ipop_evidence_{item.Id}"); }
+                catch { }
+            }
+        }
+        else
         {
             editTitle = Task.Title;
             var parsed = TaskEvidenceHelper.Parse(Task.Description);

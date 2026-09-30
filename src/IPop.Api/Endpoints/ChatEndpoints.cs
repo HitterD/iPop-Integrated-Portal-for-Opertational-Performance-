@@ -2,6 +2,7 @@ using IPop.Api.Rbac;
 using IPop.Application.Chat;
 using IPop.Application.Files;
 using IPop.Application.Rbac;
+using IPop.Application.Realtime;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -54,18 +55,19 @@ public static class ChatEndpoints
 
         // POST /api/chat/rooms/dm — { recipientId }
         g.MapPost("/rooms/dm", async (CreateDmRequest req,
-            HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IChatService svc, IChatNotifier notifier, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
             var room = await svc.CreateDirectRoomAsync(userId.Value, req.RecipientId, ct);
+            await notifier.NotifyAddedAsync(room.Members.Select(m => m.UserId), room.Id, ct);
             return Results.Ok(room);
         }).RequirePermission("chat.send");
 
         // POST /api/chat/rooms/group — { name, memberIds[] }
         g.MapPost("/rooms/group", async (CreateGroupRequest req,
-            HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IChatService svc, IChatNotifier notifier, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -73,6 +75,7 @@ public static class ChatEndpoints
             try
             {
                 var room = await svc.CreateGroupRoomAsync(userId.Value, req, ct);
+                await notifier.NotifyAddedAsync(room.Members.Select(m => m.UserId), room.Id, ct);
                 return Results.Ok(room);
             }
             catch (InvalidOperationException ex) when (ex.Message is "group_too_small" or "group_full")
@@ -106,7 +109,9 @@ public static class ChatEndpoints
         // ──────────────────────────────────────────────────────────────────────
 
         // GET /api/chat/rooms/{roomId}/messages?page=1&pageSize=50
-        g.MapGet("/rooms/{roomId:guid}/messages", async (Guid roomId, int? page, int? pageSize,
+        // GET /api/chat/rooms/{roomId}/messages?before=<ISO-8601 UTC>&pageSize=50 — keyset
+        // "load older": immune to new messages shifting offsets. `page` is ignored with it.
+        g.MapGet("/rooms/{roomId:guid}/messages", async (Guid roomId, int? page, int? pageSize, string? before,
             HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
@@ -114,6 +119,16 @@ public static class ChatEndpoints
 
             var p = Math.Max(1, page ?? 1);
             var size = Math.Clamp(pageSize ?? 50, 1, 100);
+
+            if (!string.IsNullOrWhiteSpace(before))
+            {
+                // Parsed by hand so the cursor is always a UTC DateTime (timestamptz rejects
+                // Unspecified kinds); an offset-less value is taken as UTC.
+                if (!DateTimeOffset.TryParse(before, System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AssumeUniversal, out var cursor))
+                    return Results.Json(new { code = "invalid_cursor", message = "before must be an ISO-8601 timestamp." }, statusCode: 400);
+                return Results.Ok(await svc.GetMessagesBeforeAsync(roomId, userId.Value, cursor.UtcDateTime, size, ct));
+            }
 
             var result = await svc.GetMessagesAsync(roomId, userId.Value, p, size, ct);
             return Results.Ok(result);
@@ -312,6 +327,30 @@ public static class ChatEndpoints
             return Results.Ok(result);
         }).RequirePermission("chat.send");
 
+        // POST /api/chat/messages/{id}/poll/vote — toggle my vote; broadcast as an edit so tallies update live
+        g.MapPost("/messages/{id:guid}/poll/vote", async (Guid id, PollVoteRequest req,
+            HttpContext http, IChatService svc, IChatNotifier notifier, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+
+            var result = await svc.VotePollAsync(userId.Value, id, req.OptionIndex, ct);
+            if (!result.Success)
+            {
+                var (statusCode, code) = result.Error switch
+                {
+                    "message_not_found" => (404, "message_not_found"),
+                    "not a member" => (403, "forbidden"),
+                    "conflict" => (409, "conflict"),
+                    var e => (422, e ?? "invalid"),
+                };
+                return Results.Json(new { code, message = result.Error }, statusCode: statusCode);
+            }
+
+            await notifier.NotifyMessageEditedAsync(result.Message!.RoomId, result.Message, ct);
+            return Results.Ok(result);
+        }).RequirePermission("chat.send");
+
         // GET /api/chat/messages/{id}/seen — seen-by list (requires room membership)
         g.MapGet("/messages/{id:guid}/seen", async (Guid id, HttpContext http, IPopDbContext db, IChatService svc, CancellationToken ct) =>
         {
@@ -324,6 +363,35 @@ public static class ChatEndpoints
             var isMember2 = await db.ChatRoomMembers.AsNoTracking().AnyAsync(m => m.RoomId == msg2.RoomId && m.UserId == userId.Value && m.LeftAt == null, ct);
             if (!isMember2) return Results.Json(new { code = "forbidden", message = "Not a member of this room." }, statusCode: 403);
             return Results.Ok(detail);
+        });
+
+        // GET /api/chat/rooms/{roomId}/read-counts?ids=a,b — per-message "read by N of M" for the
+        // caller's own group messages, so every bubble can show its count after a seenUpdate.
+        g.MapGet("/rooms/{roomId:guid}/read-counts", async (Guid roomId, string? ids, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var isMember = await db.ChatRoomMembers.AsNoTracking().AnyAsync(m => m.RoomId == roomId && m.UserId == userId.Value && m.LeftAt == null, ct);
+            if (!isMember) return Results.Json(new { code = "forbidden", message = "Not a member of this room." }, statusCode: 403);
+            var idList = (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(s => Guid.TryParse(s, out var g2) ? g2 : Guid.Empty).Where(g2 => g2 != Guid.Empty).Distinct().Take(200).ToList();
+            if (idList.Count == 0) return Results.Ok(Array.Empty<MessageReadCountDto>());
+            var total = await db.ChatRoomMembers.AsNoTracking().CountAsync(m => m.RoomId == roomId && m.LeftAt == null && m.UserId != userId.Value, ct);
+            var activeIds = db.ChatRoomMembers.Where(m => m.RoomId == roomId && m.LeftAt == null && m.UserId != userId.Value).Select(m => m.UserId);
+            var own = db.ChatMessages.Where(m => m.RoomId == roomId && m.SenderId == userId.Value && idList.Contains(m.Id)).Select(m => m.Id);
+            var reads = await db.ChatReadReceipts.AsNoTracking()
+                .Where(r => own.Contains(r.MessageId) && r.ReadAt != null && activeIds.Contains(r.UserId))
+                .Select(r => new { r.MessageId, r.UserId, r.User.Name, r.User.PhotoPath, r.DeliveredAt, r.ReadAt })
+                .ToListAsync(ct);
+            var byMsg = reads.GroupBy(r => r.MessageId).ToDictionary(gr => gr.Key, gr => gr.ToList());
+            var ownIds = await own.ToListAsync(ct);
+            return Results.Ok(ownIds.Select(id =>
+            {
+                var list = byMsg.GetValueOrDefault(id) ?? [];
+                var preview = list.OrderByDescending(r => r.ReadAt).Take(3)
+                    .Select(r => new SeenByDto(r.UserId, r.Name, r.PhotoPath, r.DeliveredAt, r.ReadAt)).ToList();
+                return new MessageReadCountDto(id, list.Count, total, preview);
+            }).ToList());
         });
 
         // ──────────────────────────────────────────────────────────────────────
@@ -352,13 +420,10 @@ public static class ChatEndpoints
 
             if (!result.Success)
             {
-                var statusCode = result.Error switch
-                {
-                    var e when e?.Contains("permission") == true || e?.Contains("role") == true => 403,
-                    var e when e?.Contains("limit") == true => 422,
-                    _ => 422
-                };
-                var code = result.Error?.Contains("limit") == true ? "pin_limit_reached" : "forbidden";
+                // The service reports "forbidden" (not a member) — that's a 403, not a
+                // validation failure; the pin limit and a missing message stay 422.
+                var statusCode = result.Error == "forbidden" ? 403 : 422;
+                var code = result.Error ?? "forbidden";
                 return Results.Json(new { code, message = result.Error }, statusCode: statusCode);
             }
 
@@ -382,8 +447,8 @@ public static class ChatEndpoints
 
             if (!result.Success)
             {
-                var statusCode = result.Error?.Contains("permission") == true || result.Error?.Contains("role") == true ? 403 : 422;
-                return Results.Json(new { code = "forbidden", message = result.Error }, statusCode: statusCode);
+                var statusCode = result.Error == "forbidden" ? 403 : 422;
+                return Results.Json(new { code = result.Error ?? "forbidden", message = result.Error }, statusCode: statusCode);
             }
 
             var broadcastRoomId2 = result.RoomId ?? roomId;
@@ -509,7 +574,7 @@ public static class ChatEndpoints
 
         // POST /api/chat/rooms/{roomId}/mute — { duration }
         g.MapPost("/rooms/{roomId:guid}/mute", async (Guid roomId, MuteRequest req,
-            HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IChatService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -520,51 +585,56 @@ public static class ChatEndpoints
 
             var muteResult = await svc.MuteRoomAsync(userId.Value, roomId, duration.Value, ct);
             if (!muteResult.Success) return Results.Json(new { code = muteResult.Error ?? "forbidden", message = muteResult.Error }, statusCode: 403);
+            await RoomsChangedAsync(http, realtime, ct);
             return Results.Ok(muteResult);
         });
 
         // DELETE /api/chat/rooms/{roomId}/mute
         g.MapDelete("/rooms/{roomId:guid}/mute", async (Guid roomId,
-            HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IChatService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
             var r2 = await svc.UnmuteRoomAsync(userId.Value, roomId, ct);
             if (!r2.Success) return Results.Json(new { code = r2.Error ?? "forbidden", message = r2.Error }, statusCode: 403);
+            await RoomsChangedAsync(http, realtime, ct);
             return Results.Ok(r2);
         });
 
         // POST /api/chat/rooms/{roomId}/archive
         g.MapPost("/rooms/{roomId:guid}/archive", async (Guid roomId,
-            HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IChatService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
             var ar = await svc.ArchiveRoomAsync(userId.Value, roomId, ct);
             if (!ar.Success) return Results.Json(new { code = ar.Error ?? "forbidden", message = ar.Error }, statusCode: 403);
+            await RoomsChangedAsync(http, realtime, ct);
             return Results.Ok(ar);
         });
 
         // DELETE /api/chat/rooms/{roomId}/archive
         g.MapDelete("/rooms/{roomId:guid}/archive", async (Guid roomId,
-            HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IChatService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
             var ur = await svc.UnarchiveRoomAsync(userId.Value, roomId, ct);
             if (!ur.Success) return Results.Json(new { code = ur.Error ?? "forbidden", message = ur.Error }, statusCode: 403);
+            await RoomsChangedAsync(http, realtime, ct);
             return Results.Ok(ur);
         });
 
         g.MapPost("/rooms/{roomId:guid}/clear-history", async (Guid roomId,
-            HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IChatService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
             var result = await svc.ClearRoomHistoryAsync(userId.Value, roomId, ct);
+            if (result.Success) await RoomsChangedAsync(http, realtime, ct);
             return result.Success ? Results.Ok(result)
                 : Results.Json(new { code = result.Error }, statusCode: 403);
         });
@@ -621,6 +691,50 @@ public static class ChatEndpoints
             if (roomEntity != null) await notifier.NotifyRoomUpdatedAsync(roomId, new RoomUpdateDto(roomId, roomEntity.Name, roomEntity.LastMessageAt), ct);
             return Results.Ok(r);
         });
+        // Group photo: images only, ≤2 MB, owner/admin. Stored as a 256px JPEG under a random
+        // name and served anonymously (an <img> cannot send the bearer header; the name is unguessable).
+        g.MapPost("/rooms/{roomId:guid}/avatar", async (Guid roomId, HttpContext http, IChatService svc, IChatNotifier notifier,
+            IPopDbContext db, IWebHostEnvironment env, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            if (!http.Request.HasFormContentType) return Results.Json(new { code = "no_file", message = "Choose an image." }, statusCode: 422);
+            var form = await http.Request.ReadFormAsync(ct);
+            var file = form.Files.FirstOrDefault();
+            var check = ValidateGroupAvatar(file?.FileName, file?.Length ?? 0);
+            if (check is not null) return Results.Json(new { code = check, message = check }, statusCode: 422);
+            byte[] jpeg;
+            try
+            {
+                await using var src = file!.OpenReadStream();
+                jpeg = CreateSquareAvatar(src, 256);
+            }
+            catch { return Results.Json(new { code = "invalid_image", message = "The file is not a readable image." }, statusCode: 422); }
+
+            var name = $"{Guid.NewGuid():N}.jpg";
+            var url = $"/api/chat-avatars/{name}";
+            var r = await svc.SetGroupAvatarAsync(userId.Value, roomId, url, ct);
+            if (!r.Success) return Results.Json(new { code = r.Error ?? "forbidden", message = r.Error }, statusCode: r.Error == "forbidden" ? 403 : 422);
+            var dir = Path.Combine(env.ContentRootPath, "chat-files", "avatars");
+            Directory.CreateDirectory(dir);
+            await File.WriteAllBytesAsync(Path.Combine(dir, name), jpeg, ct);
+            DeleteGroupAvatarFile(env.ContentRootPath, r.Error);
+            var room = await db.ChatRooms.AsNoTracking().FirstAsync(x => x.Id == roomId, ct);
+            await notifier.NotifyRoomUpdatedAsync(roomId, new RoomUpdateDto(roomId, room.Name, room.LastMessageAt), ct);
+            return Results.Ok(new { avatarUrl = url });
+        }).DisableAntiforgery();
+        g.MapDelete("/rooms/{roomId:guid}/avatar", async (Guid roomId, HttpContext http, IChatService svc, IChatNotifier notifier,
+            IPopDbContext db, IWebHostEnvironment env, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await svc.SetGroupAvatarAsync(userId.Value, roomId, null, ct);
+            if (!r.Success) return Results.Json(new { code = r.Error ?? "forbidden", message = r.Error }, statusCode: r.Error == "forbidden" ? 403 : 422);
+            DeleteGroupAvatarFile(env.ContentRootPath, r.Error);
+            var room = await db.ChatRooms.AsNoTracking().FirstAsync(x => x.Id == roomId, ct);
+            await notifier.NotifyRoomUpdatedAsync(roomId, new RoomUpdateDto(roomId, room.Name, room.LastMessageAt), ct);
+            return Results.NoContent();
+        });
         g.MapGet("/rooms/{roomId:guid}/audit", async (Guid roomId, int? page, int? pageSize, HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
@@ -639,20 +753,22 @@ public static class ChatEndpoints
             }
             return Results.Ok(result);
         });
-        g.MapPost("/rooms/{roomId:guid}/pin", async (Guid roomId, HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+        g.MapPost("/rooms/{roomId:guid}/pin", async (Guid roomId, HttpContext http, IChatService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
             var r = await svc.PinRoomAsync(userId.Value, roomId, ct);
             if (!r.Success) return Results.Json(new { code = r.Error ?? "forbidden", message = r.Error }, statusCode: r.Error == "pin_limit_reached" ? 422 : 403);
+            await RoomsChangedAsync(http, realtime, ct);
             return Results.Ok(r);
         });
-        g.MapDelete("/rooms/{roomId:guid}/pin", async (Guid roomId, HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+        g.MapDelete("/rooms/{roomId:guid}/pin", async (Guid roomId, HttpContext http, IChatService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
             var r = await svc.UnpinRoomAsync(userId.Value, roomId, ct);
             if (!r.Success) return Results.Json(new { code = r.Error ?? "forbidden", message = r.Error }, statusCode: 403);
+            await RoomsChangedAsync(http, realtime, ct);
             return Results.Ok(r);
         });
         g.MapGet("/rooms/archived", async (int? page, int? pageSize, HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
@@ -696,6 +812,7 @@ public static class ChatEndpoints
             var target = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == req.UserId, ct);
             await notifier.NotifyMemberChangeAsync(roomId, new MemberChangeDto(
                 roomId, "added", actor?.Name ?? "Unknown", target?.Name ?? "Unknown", req.UserId), ct);
+            await notifier.NotifyAddedAsync([req.UserId], roomId, ct);
 
             return Results.Ok(result);
         }).RequirePermission("chat.send");
@@ -1115,6 +1232,7 @@ public static class ChatEndpoints
                     u.Position,
                     u.PresenceLastSeenAt,
                     u.PresenceManualStatus,
+                    u.PresenceIsIdle,
                     Department = u.Department != null ? u.Department.Name : null
                 })
                 .ToListAsync(ct);
@@ -1129,7 +1247,7 @@ public static class ChatEndpoints
                 u.Position,
                 u.Department,
                 PresenceStatus = IPop.Core.Presence.PresenceStatus.ComputeStatus(
-                    u.PresenceLastSeenAt, u.PresenceManualStatus, now)
+                    u.PresenceLastSeenAt, u.PresenceManualStatus, now, u.PresenceIsIdle)
             }));
         });
 
@@ -1147,7 +1265,7 @@ public static class ChatEndpoints
             if (!string.IsNullOrEmpty(u.ManagerNik))
                 manager = await db.Users.AsNoTracking().Where(x => x.Nik == u.ManagerNik).Select(x => x.Name).FirstOrDefaultAsync(ct);
 
-            var status = IPop.Core.Presence.PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, DateTime.UtcNow);
+            var status = IPop.Core.Presence.PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, DateTime.UtcNow, u.PresenceIsIdle);
             return Results.Ok(new IPop.Application.Hris.DirectoryEmployee(
                 u.Nik, u.Name, u.Position, u.Department?.Name, u.Department?.Code,
                 u.Site?.Name, u.Site?.Code, manager, u.Email, u.Extension, u.Location, status, null, u.PhotoPath));
@@ -1159,6 +1277,15 @@ public static class ChatEndpoints
     // ──────────────────────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────────────────────
+
+    /// Per-user room state (mute/archive/pin/cleared) changed: the caller's other tabs
+    /// reload their room list. Payload-less; the client re-fetches over REST.
+    private static Task RoomsChangedAsync(HttpContext http, IRealtime realtime, CancellationToken ct)
+    {
+        var nik = http.User.FindFirst("nik")?.Value;
+        return string.IsNullOrEmpty(nik) ? Task.CompletedTask
+            : realtime.ToUserAsync(nik, RealtimeEvents.ChatRoomsChanged, ct: ct);
+    }
 
     private static async Task<Guid?> GetUserIdAsync(HttpContext http, IPopDbContext db)
     {
@@ -1444,6 +1571,43 @@ public static class ChatEndpoints
     private static string EscapeLike(string query) =>
         query.Replace(@"\", @"\\").Replace("%", @"\%").Replace("_", @"\_");
 
+    public const long MaxGroupAvatarBytes = 2 * 1024 * 1024;
+    private static readonly string[] GroupAvatarExtensions = [".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"];
+
+    /// Null when acceptable; otherwise an error code (no_file / not_an_image / too_large).
+    public static string? ValidateGroupAvatar(string? fileName, long length)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) || length <= 0) return "no_file";
+        if (!GroupAvatarExtensions.Contains(Path.GetExtension(fileName).ToLowerInvariant())) return "not_an_image";
+        if (length > MaxGroupAvatarBytes) return "too_large";
+        return null;
+    }
+
+    /// Center-crops to a square and scales down to size×size JPEG.
+    public static byte[] CreateSquareAvatar(Stream input, int size)
+    {
+        using var image = Image.Load(input);
+        image.Mutate(x => x.Resize(new ResizeOptions { Size = new Size(size, size), Mode = ResizeMode.Crop }));
+        using var ms = new MemoryStream();
+        image.SaveAsJpeg(ms);
+        return ms.ToArray();
+    }
+
+    /// Resolves "/api/chat-avatars/{name}" to its file; null for anything else (no path traversal).
+    public static string? GroupAvatarPath(string contentRoot, string? urlOrName)
+    {
+        if (string.IsNullOrWhiteSpace(urlOrName)) return null;
+        var name = urlOrName.StartsWith("/api/chat-avatars/") ? urlOrName["/api/chat-avatars/".Length..] : urlOrName;
+        if (!System.Text.RegularExpressions.Regex.IsMatch(name, "^[0-9a-f]{32}\\.jpg$")) return null;
+        return Path.Combine(contentRoot, "chat-files", "avatars", name);
+    }
+
+    private static void DeleteGroupAvatarFile(string contentRoot, string? previousUrl)
+    {
+        var path = GroupAvatarPath(contentRoot, previousUrl);
+        try { if (path is not null && File.Exists(path)) File.Delete(path); } catch { /* orphan file is harmless */ }
+    }
+
     // ponytail: real thumbnails only for raster images; fallback is the full file path
     private static byte[] CreateThumbnail(Stream input, int maxWidth)
     {
@@ -1464,6 +1628,7 @@ public static class ChatEndpoints
     public record EditRequest(string Content);
     public record ForwardRequest(Guid TargetRoomId);
     public record ReactRequest(string Emoji);
+    public record PollVoteRequest(int OptionIndex);
     public record MuteRequest(string Duration);
     public record AddMemberRequest(Guid UserId);
     public record ChangeRoleRequest(string Role);

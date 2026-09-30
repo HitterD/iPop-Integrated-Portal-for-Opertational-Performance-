@@ -129,7 +129,7 @@ public sealed partial class ChatService
                 .ThenInclude(r => r!.Sender)
             .ToListAsync(ct);
 
-        var dtos = replies.Select(m => MapToMessageDto(m, userId)).ToList();
+        var dtos = await MapWithMentionsAsync(replies, userId, ct);
         return new PagedResult<MessageDto>(dtos, totalCount, page, pageSize);
     }
 }

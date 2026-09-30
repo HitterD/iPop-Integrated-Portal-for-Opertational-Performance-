@@ -63,7 +63,8 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             db.MailRecipients.Add(MakeRecipient(mail.Id, u.Id, type, isScheduled ? "pending" : "inbox", now));
         }
 
-        mail.HasAttachment = await LinkAttachmentsAsync(mail.Id, req.AttachmentIds, ct);
+        mail.HasAttachment = await LinkAttachmentsAsync(mail.Id, senderId, req.AttachmentIds, ct);
+        await ApplySenderLabelsAsync(mail.Id, senderId, req.LabelIds, now, ct);
         await db.SaveChangesAsync(ct);
 
         // Fase 3 — aturan label otomatis: untuk tiap penerima non-pengirim, tempel label
@@ -76,55 +77,10 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         if (!isScheduled)
             await SendAutoRepliesAsync(mail, recipientUsers, ct);
 
-        if (!isScheduled && realtime != null)
-        {
-            foreach (var u in recipientUsers.Where(u => u.Id != senderId))
-            {
-                var unread = await db.MailRecipients.AsNoTracking()
-                    .CountAsync(r => r.UserId == u.Id && r.Folder == "inbox" && !r.IsRead && !r.IsMuted, ct);
-                _ = realtime.ToUserAsync(u.Nik, RealtimeEvents.BadgeChanged, new RealtimeArgs("mail", unread), ct);
-                _ = realtime.ToUserAsync(u.Nik, "mailReceived", new { mailId = mail.Id, subject = mail.Subject }, ct);
-            }
-        }
-
-        if (!isScheduled && notificationGateway != null)
-        {
-            var mutedUserIds = mail.ThreadRootId != null
-                ? await db.MailRecipients.AsNoTracking()
-                    .Where(r => (r.MailId == mail.ThreadRootId || r.Mail.ThreadRootId == mail.ThreadRootId) && r.IsMuted)
-                    .Select(r => r.UserId).ToListAsync(ct)
-                : new List<Guid>();
-
-            var recipientIds = recipientUsers
-                .Where(u => u.Id != senderId && !mutedUserIds.Contains(u.Id))
-                .Select(u => u.Id)
-                .Distinct()
-                .ToList();
-
-            if (recipientIds.Count > 0)
-            {
-                try
-                {
-                    var senderUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == senderId, ct);
-                    var senderDisplayName = senderUser?.Name ?? "Seseorang";
-                    var preview = Truncate(MailHtml.ToPlainText(mail.Body), 120);
-
-                    await notificationGateway.PublishInternalAsync(
-                        clientSlug: "mail",
-                        eventType: "mail.new",
-                        title: $"Email baru dari {senderDisplayName}",
-                        message: string.IsNullOrWhiteSpace(preview) ? mail.Subject : $"{mail.Subject} — {preview}",
-                        target: new NotificationTarget(UserIds: recipientIds),
-                        priority: mail.Importance == "high" ? "high" : "normal",
-                        targetUrl: $"/mail?mailId={mail.Id}",
-                        ct: ct);
-                }
-                catch
-                {
-                    // Non-blocking notification delivery
-                }
-            }
-        }
+        if (!isScheduled)
+            await NotifyDeliveredAsync(mail, senderId, recipientUsers, ct);
+        else
+            await SyncUserAsync(senderId, ct);
 
         return new SendMailResult(true, mail.Id, null);
     }
@@ -154,8 +110,9 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         db.Mails.Add(mail);
         // Drafts only have the author's row — no recipients are touched.
         db.MailRecipients.Add(MakeRecipient(mail.Id, userId, "from", "draft", now));
-        mail.HasAttachment = await LinkAttachmentsAsync(mail.Id, req.AttachmentIds, ct);
+        mail.HasAttachment = await LinkAttachmentsAsync(mail.Id, userId, req.AttachmentIds, ct);
         await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
         return new SendMailResult(true, mail.Id, null);
     }
 
@@ -179,7 +136,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         mail.InReplyToId = req.InReplyToId;
         mail.ThreadRootId = req.ThreadRootId ?? req.InReplyToId;
         mail.UpdatedAt = DateTime.UtcNow;
-        mail.HasAttachment = await LinkAttachmentsAsync(mail.Id, req.AttachmentIds, ct);
+        mail.HasAttachment = await LinkAttachmentsAsync(mail.Id, userId, req.AttachmentIds, ct, syncDraft: true);
         await db.SaveChangesAsync(ct);
         return new SendMailResult(true, mailId, null);
     }
@@ -192,6 +149,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
 
         db.MailRecipients.Remove(recipient);
         await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
         return new SendMailResult(true, mailId, null);
     }
 
@@ -211,9 +169,12 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         if (!result.Success) return result;
 
         var newMail = await db.Mails.FindAsync([result.MailId!.Value], ct);
-        if (newMail is not null && original.Attachments.Count > 0)
+        var carried = req.ForwardAttachmentIds is null
+            ? original.Attachments.ToList()
+            : original.Attachments.Where(a => req.ForwardAttachmentIds.Contains(a.Id)).ToList();
+        if (newMail is not null && carried.Count > 0)
         {
-            foreach (var a in original.Attachments)
+            foreach (var a in carried)
             {
                 db.MailAttachments.Add(new MailAttachment
                 {
@@ -397,7 +358,8 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
                 .OrderBy(r => r.RecipientType == "to" ? 0 : r.RecipientType == "cc" ? 1 : r.RecipientType == "bcc" ? 2 : 3)
                 .Select(r => new MailRecipientDto(r.UserId, r.User.Name, r.User.Nik, r.User.Email, r.RecipientType))
                 .ToList(),
-            mail.Attachments.Select(a => new AttachmentDto(a.Id, a.FileName, a.FileSize, a.MimeType, a.ThumbnailPath)).ToList(),
+            mail.Attachments.OrderBy(a => a.SortOrder).ThenBy(a => a.CreatedAt)
+                .Select(a => new AttachmentDto(a.Id, a.FileName, a.FileSize, a.MimeType, a.ThumbnailPath)).ToList(),
             visibleDelivery
                 .Select(r => new DeliveryReadStateDto(r.UserId, r.User.Name, r.User.Nik, r.RecipientType, r.DeliveredAt, r.ReadAt))
                 .ToList(),
@@ -407,7 +369,11 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             recipient.IsMuted,
             MailHtml.ToPlainText(mail.Body))
         {
-            LinkedProjects = await ExtractLinkedProjectsAsync(mail.Body, userId, ct)
+            LinkedProjects = await ExtractLinkedProjectsAsync(mail.Body, userId, ct),
+            LabelIds = await db.MailLabelAssignments.AsNoTracking()
+                .Where(a => a.MailId == mailId && a.Label.UserId == userId)
+                .Select(a => a.LabelId)
+                .ToListAsync(ct),
         };
     }
 
@@ -447,6 +413,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             recipient.IsRead = true;
             recipient.ReadAt = recipient.ReadAt ?? DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
+            await SyncUserAsync(userId, ct);
         }
         return new SendMailResult(true, mailId, null);
     }
@@ -460,6 +427,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             recipient.IsRead = false;
             recipient.ReadAt = null;
             await db.SaveChangesAsync(ct);
+            await SyncUserAsync(userId, ct);
         }
         return new SendMailResult(true, mailId, null);
     }
@@ -470,6 +438,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         if (recipient is null) return new SendMailResult(false, null, "mail_not_found");
         recipient.IsStarred = !recipient.IsStarred;
         await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
         return new SendMailResult(true, mailId, null);
     }
 
@@ -486,6 +455,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         if (recipient.Folder == folderStr) return new SendMailResult(true, mailId, null);
         recipient.Folder = folderStr;
         await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
         return new SendMailResult(true, mailId, null);
     }
 
@@ -500,11 +470,13 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         {
             db.MailRecipients.Remove(recipient);
             await db.SaveChangesAsync(ct);
+            await SyncUserAsync(userId, ct);
             return new SendMailResult(true, mailId, null);
         }
 
         recipient.Folder = "trash";
         await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
         return new SendMailResult(true, mailId, null);
     }
 
@@ -516,6 +488,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
 
         db.MailRecipients.RemoveRange(trashed);
         await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
         return count;
     }
 
@@ -526,6 +499,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
 
         recipient.IsMuted = !recipient.IsMuted;
         await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
         return recipient.IsMuted;
     }
 
@@ -544,6 +518,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             .ToListAsync(ct);
         foreach (var r in rows) r.Folder = folderStr;
         await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
         return new BulkResultDto(rows.Count);
     }
 
@@ -560,6 +535,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         else
             foreach (var r in rows) r.IsStarred = false;
         await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
         return new BulkResultDto(rows.Count);
     }
 
@@ -575,6 +551,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         foreach (var r in rows.Except(permanent)) r.Folder = "trash";
         foreach (var r in permanent) db.MailRecipients.Remove(r);
         await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
         return new BulkResultDto(rows.Count);
     }
 
@@ -587,6 +564,20 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             .ToListAsync(ct);
         foreach (var row in rows) row.Folder = "inbox";
         await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
+        return new BulkResultDto(rows.Count);
+    }
+
+    public async Task<BulkResultDto> BulkMarkReadAsync(Guid userId, IReadOnlyList<Guid> mailIds, CancellationToken ct)
+    {
+        if (mailIds.Count == 0) return new BulkResultDto(0);
+        var now = DateTime.UtcNow;
+        var rows = await db.MailRecipients
+            .Where(r => r.UserId == userId && mailIds.Contains(r.MailId) && !r.IsRead)
+            .ToListAsync(ct);
+        foreach (var r in rows) { r.IsRead = true; r.ReadAt = r.ReadAt ?? now; }
+        await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
         return new BulkResultDto(rows.Count);
     }
 
@@ -600,6 +591,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             .ToListAsync(ct);
         foreach (var r in rows) { r.IsRead = true; r.ReadAt = r.ReadAt ?? now; }
         await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
         return new BulkResultDto(rows.Count);
     }
 
@@ -651,6 +643,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         }
 
         await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
         return new SendMailResult(true, mailId, null);
     }
 
@@ -667,6 +660,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         mail.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
         return new SendMailResult(true, mailId, null);
     }
 
@@ -687,13 +681,18 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         await BumpThreadAsync(mail, now, ct);
 
         senderRecipient.Folder = "sent";
-        foreach (var r in mail.Recipients.Where(r => r.Folder == "pending"))
+        var delivered = mail.Recipients.Where(r => r.Folder == "pending").ToList();
+        foreach (var r in delivered)
         {
             r.Folder = "inbox";
             r.DeliveredAt = now;
         }
 
         await db.SaveChangesAsync(ct);
+
+        var deliveredIds = delivered.Select(r => r.UserId).ToList();
+        var deliveredUsers = await db.Users.AsNoTracking().Where(u => deliveredIds.Contains(u.Id)).ToListAsync(ct);
+        await NotifyDeliveredAsync(mail, userId, deliveredUsers, ct);
         return new SendMailResult(true, mailId, null);
     }
 
@@ -704,7 +703,67 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
 
         recipient.IsPinned = !recipient.IsPinned;
         await db.SaveChangesAsync(ct);
+        await SyncUserAsync(userId, ct);
         return new SendMailResult(true, mailId, null);
+    }
+
+    /// Badge + "mail.new" banner for everyone who just got the mail in their inbox.
+    /// Shared by immediate send and scheduled delivery so both surface the same way.
+    private async Task NotifyDeliveredAsync(MailEntity mail, Guid senderId, IReadOnlyList<User> recipientUsers, CancellationToken ct)
+    {
+        if (realtime != null)
+        {
+            foreach (var u in recipientUsers.Where(u => u.Id != senderId))
+            {
+                var unread = await db.MailRecipients.AsNoTracking()
+                    .CountAsync(r => r.UserId == u.Id && r.Folder == "inbox" && !r.IsRead && !r.IsMuted, ct);
+                _ = realtime.ToUserAsync(u.Nik, RealtimeEvents.BadgeChanged, new RealtimeArgs("mail", unread), ct);
+                _ = realtime.ToUserAsync(u.Nik, "mailReceived", new { mailId = mail.Id, subject = mail.Subject }, ct);
+                _ = realtime.ToUserAsync(u.Nik, RealtimeEvents.MailChanged, ct: ct);
+            }
+            // Sender's Sent folder in their other tabs (and any OOO auto-reply that just landed).
+            await SyncUserAsync(senderId, ct);
+        }
+
+        if (notificationGateway != null)
+        {
+            var mutedUserIds = mail.ThreadRootId != null
+                ? await db.MailRecipients.AsNoTracking()
+                    .Where(r => (r.MailId == mail.ThreadRootId || r.Mail.ThreadRootId == mail.ThreadRootId) && r.IsMuted)
+                    .Select(r => r.UserId).ToListAsync(ct)
+                : new List<Guid>();
+
+            var recipientIds = recipientUsers
+                .Where(u => u.Id != senderId && !mutedUserIds.Contains(u.Id))
+                .Select(u => u.Id)
+                .Distinct()
+                .ToList();
+
+            if (recipientIds.Count > 0)
+            {
+                try
+                {
+                    var senderUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == senderId, ct);
+                    var senderDisplayName = senderUser?.Name ?? "Seseorang";
+                    var preview = Truncate(MailHtml.ToPlainText(mail.Body), 120);
+
+                    await notificationGateway.PublishInternalAsync(
+                        clientSlug: "mail",
+                        eventType: "mail.new",
+                        title: $"Email baru dari {senderDisplayName}",
+                        message: string.IsNullOrWhiteSpace(preview) ? mail.Subject : $"{mail.Subject} — {preview}",
+                        target: new NotificationTarget(UserIds: recipientIds),
+                        priority: mail.Importance == "high" ? "high" : "normal",
+                        targetUrl: $"/mail?mailId={mail.Id}",
+                        ct: ct);
+                }
+                catch
+                {
+                    // Non-blocking notification delivery
+                }
+            }
+        }
+
     }
 
     public async Task<int> DeliverDueScheduledMailsAsync(CancellationToken ct)
@@ -738,12 +797,41 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         }
 
         await db.SaveChangesAsync(ct);
+
+        // Scheduled mail used to land silently: no badge, no banner.
+        foreach (var mail in dueMails)
+        {
+            var ids = mail.Recipients.Where(r => r.Folder == "inbox" && r.DeliveredAt == now).Select(r => r.UserId).ToList();
+            if (ids.Count == 0) continue;
+            var users = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).ToListAsync(ct);
+            await NotifyDeliveredAsync(mail, mail.SenderId, users, ct);
+        }
         return dueMails.Count;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
     // Private helpers
     // ──────────────────────────────────────────────────────────────────────────
+
+    /// MailChanged + a fresh mail badge to one user so their other tabs and nav badge resync
+    /// after a per-user action. Best-effort: a hub failure never fails the request.
+    private async Task SyncUserAsync(Guid userId, CancellationToken ct)
+    {
+        if (realtime is null) return;
+        try
+        {
+            var nik = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Nik).FirstOrDefaultAsync(ct);
+            if (string.IsNullOrEmpty(nik)) return;
+            var unread = await db.MailRecipients.AsNoTracking()
+                .CountAsync(r => r.UserId == userId && r.Folder == "inbox" && !r.IsRead && !r.IsMuted, ct);
+            await realtime.ToUserAsync(nik, RealtimeEvents.BadgeChanged, new RealtimeArgs("mail", unread), ct);
+            await realtime.ToUserAsync(nik, RealtimeEvents.MailChanged, ct: ct);
+        }
+        catch
+        {
+            // Realtime is a hint; clients re-fetch over REST on next load.
+        }
+    }
 
     private async Task<MailRecipient?> FindRecipientAsync(Guid userId, Guid mailId, CancellationToken ct)
         => await db.MailRecipients.FirstOrDefaultAsync(r => r.MailId == mailId && r.UserId == userId, ct);
@@ -768,6 +856,19 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
 
     /// JSON clients may omit cc/bcc/subject/body entirely — System.Text.Json leaves reference types
     /// null rather than empty. Normalize so every consumer can .Count/.Concat/.Trim safely.
+    /// Labels are per user, so only labels the sender owns are attached — to the sender's copy.
+    private async Task ApplySenderLabelsAsync(Guid mailId, Guid senderId, IReadOnlyList<Guid>? labelIds, DateTime now, CancellationToken ct)
+    {
+        if (labelIds is null || labelIds.Count == 0) return;
+        var ids = labelIds.Distinct().ToList();
+        var owned = await db.MailLabels
+            .Where(l => l.UserId == senderId && ids.Contains(l.Id))
+            .Select(l => l.Id)
+            .ToListAsync(ct);
+        foreach (var id in owned)
+            db.MailLabelAssignments.Add(new MailLabelAssignment { Id = Guid.NewGuid(), LabelId = id, MailId = mailId, CreatedAt = now });
+    }
+
     private static ComposeMailRequest Normalize(ComposeMailRequest req)
         => req with
         {
@@ -789,14 +890,49 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         return users.Count == niks.Count ? users : null;
     }
 
-    private async Task<bool> LinkAttachmentsAsync(Guid mailId, IReadOnlyList<Guid>? ids, CancellationToken ct)
+    /// Attaches the composer's files to <paramref name="mailId"/>. A file can be claimed when it is
+    /// a pending upload of this user (MailId null, UploaderId = user) or already sits on another of
+    /// this user's drafts (autosave links uploads to the draft; sending then moves them to the sent
+    /// mail). Anyone else's pending upload is ignored. With <paramref name="syncDraft"/>, files on
+    /// the draft that the composer no longer lists go back to pending. Returns whether the mail has
+    /// any attachment afterwards.
+    private async Task<bool> LinkAttachmentsAsync(Guid mailId, Guid userId, IReadOnlyList<Guid>? ids, CancellationToken ct, bool syncDraft = false)
     {
-        if (ids is not { Count: > 0 }) return false;
-        var orphans = await db.MailAttachments
-            .Where(a => ids.Contains(a.Id) && a.MailId == Guid.Empty)
-            .ToListAsync(ct);
-        foreach (var a in orphans) a.MailId = mailId;
-        return orphans.Count > 0;
+        ids ??= [];
+        var claimed = 0;
+        if (ids.Count > 0)
+        {
+            var ownDraftMailIds = db.MailRecipients
+                .Where(r => r.UserId == userId && r.Folder == "draft" && r.MailId != mailId)
+                .Select(r => (Guid?)r.MailId);
+            var rows = await db.MailAttachments
+                .Where(a => ids.Contains(a.Id)
+                    && ((a.MailId == null && a.UploaderId == userId) || ownDraftMailIds.Contains(a.MailId)))
+                .ToListAsync(ct);
+            foreach (var a in rows)
+            {
+                a.MailId = mailId;
+                a.SortOrder = IndexOf(ids, a.Id);
+            }
+            claimed = rows.Count;
+        }
+
+        var existing = await db.MailAttachments.Where(a => a.MailId == mailId && !ids.Contains(a.Id)).ToListAsync(ct);
+        if (syncDraft)
+        {
+            // Removed in the composer: back to pending for the uploader (the DELETE endpoint or a
+            // later draft can still reach it); nothing is deleted here.
+            foreach (var a in existing) a.MailId = null;
+            existing.Clear();
+        }
+        return claimed > 0 || existing.Count > 0
+            || await db.MailAttachments.AnyAsync(a => a.MailId == mailId && ids.Contains(a.Id), ct);
+    }
+
+    private static int IndexOf(IReadOnlyList<Guid> ids, Guid id)
+    {
+        for (var i = 0; i < ids.Count; i++) if (ids[i] == id) return i;
+        return 0;
     }
 
     /// Reply/forward threading: count + last-activity live on the thread root so the inbox list

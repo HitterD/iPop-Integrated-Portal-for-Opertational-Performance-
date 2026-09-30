@@ -1,139 +1,345 @@
 @page "/calendar"
 @using IPop.Web.Services
+@implements IDisposable
 @inject AuthState Auth
+@inject ChatState ChatSvc
 @inject NavigationManager Nav
 @inject ToastService Toasts
+@inject ConfirmService Confirm
+@inject IJSRuntime JS
 
-@* Penampil Kalender (Fase 3): tampilan Hari/Minggu/Bulan/Agenda.
-   Frontend wave: kerangka tampilan; data event menyusul dari endpoint kalender. *@
+@* Unified calendar: one feed (GET /api/calendar/feed) from personal events, meetings, chat
+   groups, projects (my tasks, milestones, off days), scheduled mail and news. Clicking an item
+   opens its source module; own events and meetings open the event drawer. *@
 
 <PageTitle>Calendar — IPop</PageTitle>
 
-<div class="content" style="grid-template-columns:1fr">
-    <div class="tray rise rise-1">
-        <div class="core" style="padding:0;overflow:hidden">
-            <div class="panel-head" style="flex-wrap:wrap;gap:10px">
-                <i data-lucide="calendar"></i> <span>Calendar</span>
-                <span class="meta">@RangeLabel</span>
-                <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
-                    <button class="btn-sm surface" @onclick="Prev" title="Previous"><i data-lucide="chevron-left" style="width:13px;height:13px"></i></button>
-                    <button class="btn-sm surface" @onclick="Today">Today</button>
-                    <button class="btn-sm surface" @onclick="Next" title="Next"><i data-lucide="chevron-right" style="width:13px;height:13px"></i></button>
-                    <span style="display:inline-flex;border:1px solid var(--line-soft);border-radius:999px;overflow:hidden">
-                        @foreach (var v in new[] { ("day", "Day"), ("week", "Week"), ("month", "Month"), ("agenda", "Agenda") })
-                        {
-                            <button class="cal-view-btn @(view == v.Item1 ? "active" : "")" @onclick="() => view = v.Item1">@v.Item2</button>
-                        }
-                    </span>
-                </span>
-            </div>
+<div class="cal-page">
+    <aside class="cal-rail">
+        <button class="cal-create" @onclick="() => OpenCreate(DefaultStart())"><i data-lucide="plus"></i> New event</button>
 
-            @* Minggu: grid jam 7 hari. Bulan: petak tanggal. Agenda/Hari: daftar. *@
-            @if (view == "month")
+        <div class="cal-mini" aria-label="Mini calendar">
+            <div class="cal-mini-head">
+                <span>@miniMonth.ToString("MMMM yyyy")</span>
+                <button class="cal-icon" title="Previous month" aria-label="Previous month" @onclick="() => miniMonth = miniMonth.AddMonths(-1)"><i data-lucide="chevron-left"></i></button>
+                <button class="cal-icon" title="Next month" aria-label="Next month" @onclick="() => miniMonth = miniMonth.AddMonths(1)"><i data-lucide="chevron-right"></i></button>
+            </div>
+            <div class="cal-mini-grid">
+                @foreach (var d in WeekdayShort) { <span class="cal-mini-dow">@d</span> }
+                @foreach (var day in MonthCells(miniMonth))
+                {
+                    var dd = day;
+                    <button class="cal-mini-day @(dd.Month != miniMonth.Month ? "out" : "") @(dd == DateTime.Today ? "today" : "") @(InRange(dd) ? "in-range" : "") @(dd == anchor ? "sel" : "")"
+                            @onclick="() => PickDate(dd)" aria-label="@dd.ToString("dddd d MMMM yyyy")">
+                        @dd.Day
+                        @if (HasItems(dd)) { <span class="cal-mini-dot"></span> }
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="cal-sources">
+            <div class="cal-rail-title">Calendars</div>
+            @foreach (var s in Sources)
             {
-                <div class="cal-month">
-                    @foreach (var d in MonthDays)
+                var src = s;
+                var on = !hidden.Contains(src.Key);
+                <label class="cal-source src-@src.Key">
+                    <input type="checkbox" checked="@on" @onchange="() => ToggleSourceAsync(src.Key)" />
+                    <span class="cal-check" aria-hidden="true">@if (on) { <i data-lucide="check"></i> }</span>
+                    <i data-lucide="@src.Icon" class="cal-source-icon"></i>
+                    <span class="cal-source-name">@src.Label</span>
+                    <span class="cal-source-count">@items.Count(i => i.Source == src.Key)</span>
+                </label>
+            }
+        </div>
+
+        @if (UpcomingPending.Count > 0)
+        {
+            <div class="cal-invites">
+                <div class="cal-rail-title">Awaiting your reply</div>
+                @foreach (var inv in UpcomingPending)
+                {
+                    var it = inv;
+                    <button class="cal-invite" @onclick="() => OpenItemAsync(it)">
+                        <span class="cal-invite-title">@it.Title</span>
+                        <span class="cal-invite-when">@When(it)</span>
+                    </button>
+                }
+            </div>
+        }
+    </aside>
+
+    <section class="cal-main">
+        <header class="cal-toolbar">
+            <button class="cal-btn" @onclick="GoToday">Today</button>
+            <div class="cal-nav">
+                <button class="cal-icon" title="Previous" aria-label="Previous" @onclick="() => ShiftAsync(-1)"><i data-lucide="chevron-left"></i></button>
+                <button class="cal-icon" title="Next" aria-label="Next" @onclick="() => ShiftAsync(1)"><i data-lucide="chevron-right"></i></button>
+            </div>
+            <h2 class="cal-range">@RangeLabel</h2>
+            @if (loadingFeed) { <i data-lucide="loader-circle" class="cal-spin"></i> }
+            <div class="cal-seg" role="tablist" aria-label="View">
+                @foreach (var (key, label) in Views)
+                {
+                    var k = key;
+                    <button role="tab" aria-selected="@(view == k ? "true" : "false")" class="cal-seg-item @(view == k ? "on" : "")" @onclick="() => SetViewAsync(k)">@label</button>
+                }
+            </div>
+        </header>
+
+        @if (loadError)
+        {
+            <div class="cal-error" role="alert"><i data-lucide="alert-triangle"></i> Could not load the calendar. <button class="cal-link" @onclick="LoadAsync">Retry</button></div>
+        }
+
+        @if (view is "day" or "week")
+        {
+            var days = VisibleDays().ToList();
+            <div class="cal-grid-wrap" style="--cal-days:@days.Count">
+                <div class="cal-grid-head">
+                    <div class="cal-gutter"></div>
+                    @foreach (var d in days)
                     {
-                        var dayEvents = EventsOn(d);
-                        <div class="cal-mday @(d.Month == cursor.Month ? "" : "other") @(d.Date == DateTime.Today ? "today" : "")">
-                            <span class="d">@d.Day</span>
-                            @foreach (var ev in dayEvents.Take(3))
+                        var dd = d;
+                        <button class="cal-col-head @(dd == DateTime.Today ? "today" : "")" @onclick="() => PickDayView(dd)">
+                            <span class="cal-dow">@dd.ToString("ddd")</span><span class="cal-dnum">@dd.Day</span>
+                        </button>
+                    }
+                </div>
+                <div class="cal-allday">
+                    <div class="cal-gutter">all-day</div>
+                    @foreach (var d in days)
+                    {
+                        var dd = d;
+                        <div class="cal-allday-cell" @ondblclick="() => OpenCreate(dd, allDay: true)">
+                            @foreach (var it in AllDayOn(dd))
                             {
-                                <div class="cal-ev" title="@ev.Title">@ev.Title</div>
+                                var item = it;
+                                <button class="cal-chip src-@item.Source kind-@item.Kind @(item.Rsvp == "pending" ? "pending" : "")" title="@Tooltip(item)" @onclick="() => OpenItemAsync(item)" @onclick:stopPropagation="true">
+                                    <i data-lucide="@IconFor(item)"></i><span>@item.Title</span>
+                                </button>
                             }
-                            @if (dayEvents.Count > 3) { <div class="cal-ev-more">+@(dayEvents.Count - 3) more</div> }
                         </div>
                     }
                 </div>
-            }
-            else if (view == "agenda" || view == "day" || view == "week")
-            {
-                var list = view == "day" ? EventsOn(cursor) : EventsInRange();
-                if (list.Count == 0)
+                <div class="cal-grid-scroll" id="cal-grid-scroll">
+                    <div class="cal-grid-body">
+                        <div class="cal-hours">
+                            @for (var h = 0; h < 24; h++) { <div class="cal-hour-label">@(h == 0 ? "" : $"{h:00}:00")</div> }
+                        </div>
+                        @foreach (var d in days)
+                        {
+                            var dd = d;
+                            <div class="cal-day-col @(dd == DateTime.Today ? "today" : "")">
+                                @for (var h = 0; h < 24; h++)
+                                {
+                                    var hh = h;
+                                    <div class="cal-slot" @onclick="() => OpenCreate(dd.AddHours(hh))" title="New event at @($"{hh:00}:00")"></div>
+                                }
+                                @foreach (var p in LayoutDay(dd))
+                                {
+                                    if (p.Item is null)
+                                    {
+                                        <button class="cal-event cal-overflow" style="top:@Px(p.Top);height:@Px(p.Height);left:calc(@Pct(p.Col, p.Cols) + 2px);width:calc(@Pct(1, p.Cols) - 4px)"
+                                                title="Show all in Agenda" @onclick="() => ShowAgendaAsync(dd)" @onclick:stopPropagation="true">+@p.Hidden more</button>
+                                        continue;
+                                    }
+                                    var item = p.Item;
+                                    <button class="cal-event src-@item.Source kind-@item.Kind @(item.Rsvp == "pending" ? "pending" : "") @(item.Rsvp == "decline" ? "declined" : "")"
+                                            style="top:@Px(p.Top);height:@Px(p.Height);left:calc(@Pct(p.Col, p.Cols) + 2px);width:calc(@Pct(1, p.Cols) - 4px)"
+                                            title="@Tooltip(item)" @onclick="() => OpenItemAsync(item)" @onclick:stopPropagation="true">
+                                        <span class="cal-event-title"><i data-lucide="@IconFor(item)"></i>@item.Title</span>
+                                        @if (p.Height >= 34) { <span class="cal-event-time">@TimeRange(item)</span> }
+                                    </button>
+                                }
+                                @if (dd == DateTime.Today)
+                                {
+                                    <div class="cal-now" style="top:@Px((DateTime.Now - DateTime.Today).TotalHours * HourPx)"><span></span></div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+        else if (view == "month")
+        {
+            <div class="cal-month">
+                @foreach (var d in WeekdayShort) { <div class="cal-month-dow">@d</div> }
+                @foreach (var day in MonthCells(anchor))
                 {
-                    <div class="cal-empty">
-                        <i data-lucide="calendar-days" style="width:26px;height:26px"></i>
-                        <div style="font-size:13.5px;font-weight:600;color:var(--ink-2)">No events</div>
-                        <div class="meta" style="font-size:12px;color:var(--ink-3)">Add an event or accept a meeting invitation to see it here.</div>
+                    var dd = day;
+                    var dayItems = ItemsOn(dd).ToList();
+                    <div class="cal-month-cell @(dd.Month != anchor.Month ? "out" : "") @(dd == DateTime.Today ? "today" : "")" @ondblclick="() => OpenCreate(dd.AddHours(9))">
+                        <button class="cal-month-num" @onclick="() => PickDayView(dd)" aria-label="Open @dd.ToString("d MMMM")">@dd.Day</button>
+                        @foreach (var it in dayItems.Take(3))
+                        {
+                            var item = it;
+                            <button class="cal-chip src-@item.Source kind-@item.Kind @(item.Rsvp == "pending" ? "pending" : "")" title="@Tooltip(item)" @onclick="() => OpenItemAsync(item)">
+                                @if (!IsAllDayLike(item)) { <span class="cal-chip-time">@item.Start.ToString("HH:mm")</span> }
+                                <span>@item.Title</span>
+                            </button>
+                        }
+                        @if (dayItems.Count > 3)
+                        {
+                            <button class="cal-more" @onclick="() => PickDayView(dd)">+@(dayItems.Count - 3) more</button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            var groups = AgendaDays().ToList();
+            <div class="cal-agenda">
+                @if (groups.Count == 0 && !loadingFeed)
+                {
+                    <div class="cal-empty"><i data-lucide="calendar-check"></i><div>Nothing scheduled in the next 30 days.</div></div>
+                }
+                @foreach (var g in groups)
+                {
+                    <div class="cal-agenda-day">
+                        <div class="cal-agenda-date @(g.Day == DateTime.Today ? "today" : "")">
+                            <span class="cal-dnum">@g.Day.Day</span>
+                            <span><b>@g.Day.ToString("dddd")</b><small>@g.Day.ToString("MMMM yyyy")</small></span>
+                        </div>
+                        <div class="cal-agenda-items">
+                            @foreach (var it in g.Items)
+                            {
+                                var item = it;
+                                <button class="cal-agenda-item src-@item.Source kind-@item.Kind" @onclick="() => OpenItemAsync(item)">
+                                    <span class="cal-agenda-time">@(IsAllDayLike(item) ? "All day" : TimeRange(item))</span>
+                                    <span class="cal-agenda-bar"></span>
+                                    <i data-lucide="@IconFor(item)"></i>
+                                    <span class="cal-agenda-body">
+                                        <span class="cal-agenda-title">@item.Title</span>
+                                        <span class="cal-agenda-sub">@SourceLabel(item.Source)@(item.Subtitle is null ? "" : $" · {item.Subtitle}")@(item.Location is null ? "" : $" · {item.Location}")</span>
+                                    </span>
+                                    @if (item.Rsvp is "pending") { <span class="cal-badge">Reply</span> }
+                                    else if (item.Rsvp is "maybe") { <span class="cal-badge soft">Maybe</span> }
+                                    else if (item.Rsvp is "decline") { <span class="cal-badge soft">Declined</span> }
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+@* ---- Event drawer: view / create / edit ---- *@
+@if (drawerOpen)
+{
+    <div class="cal-drawer-backdrop" @onclick="CloseDrawer"></div>
+    <aside class="cal-drawer" role="dialog" aria-modal="true" aria-label="@(editing ? (form.Id is null ? "New event" : "Edit event") : "Event")" @onkeydown="DrawerKey">
+        <header class="cal-drawer-head">
+            <h3>@(editing ? (form.Id is null ? "New event" : "Edit event") : "Event")</h3>
+            @if (!editing && detail is { CanEdit: true })
+            {
+                <button class="cal-icon" title="Edit" aria-label="Edit" @onclick="StartEdit"><i data-lucide="pencil"></i></button>
+                <button class="cal-icon danger" title="@(detail.MeetingId is null ? "Delete" : "Cancel meeting")" aria-label="Delete" @onclick="DeleteAsync"><i data-lucide="trash-2"></i></button>
+            }
+            <button class="cal-icon" title="Close" aria-label="Close" @onclick="CloseDrawer"><i data-lucide="x"></i></button>
+        </header>
+
+        @if (!editing && detail is not null)
+        {
+            <div class="cal-drawer-body">
+                <div class="cal-detail-title"><span class="cal-dot src-@(detail.RoomId is not null ? "chat" : detail.MeetingId is not null ? "meetings" : "personal")"></span>@detail.Title</div>
+                <div class="cal-detail-row"><i data-lucide="clock"></i><span>@DetailWhen(detail)</span></div>
+                @if (detail.MeetingStatus is "cancelled") { <div class="cal-detail-row warn"><i data-lucide="ban"></i><span>This meeting was cancelled.</span></div> }
+                @if (detail.Location is not null) { <div class="cal-detail-row"><i data-lucide="map-pin"></i><span>@detail.Location</span></div> }
+                @if (detail.Link is not null) { <div class="cal-detail-row"><i data-lucide="video"></i><a href="@detail.Link" target="_blank" rel="noopener">@detail.Link</a></div> }
+                @if (detail.RoomName is not null) { <div class="cal-detail-row"><i data-lucide="users"></i><a href="/chat/@detail.RoomId">@detail.RoomName</a></div> }
+                @if (detail.ReminderMinutes is > 0) { <div class="cal-detail-row"><i data-lucide="bell"></i><span>@ReminderLabel(detail.ReminderMinutes.Value) before</span></div> }
+                <div class="cal-detail-row"><i data-lucide="user"></i><span>Organizer: @detail.OwnerName</span></div>
+                @if (detail.Notes is not null) { <div class="cal-detail-notes">@detail.Notes</div> }
+
+                @if (detail.MeetingId is not null && detail.MeetingStatus is not "cancelled" && MyRsvp is not null && !detail.CanEdit)
+                {
+                    <div class="cal-rsvp">
+                        <span>Going?</span>
+                        @foreach (var (key, label) in RsvpOptions)
+                        {
+                            var k = key;
+                            <button class="cal-rsvp-btn @(MyRsvp == k ? "on" : "")" @onclick="() => RsvpAsync(k)">@label</button>
+                        }
+                    </div>
+                }
+                @if (detail.Attendees.Count > 0)
+                {
+                    <div class="cal-rail-title">Participants · @detail.Attendees.Count</div>
+                    <ul class="cal-people">
+                        @foreach (var p in detail.Attendees)
+                        {
+                            <li><span class="cal-person-av" style="background:@IPop.Web.Models.AvatarPalette.For(p.Nik)">@Initials(p.Name)</span><span>@p.Name</span><span class="cal-rsvp-tag rsvp-@p.Rsvp">@RsvpLabel(p.Rsvp)</span></li>
+                        }
+                    </ul>
+                }
+                @if (detail.MeetingId is not null)
+                {
+                    <a class="cal-btn" href="@(detail.RoomId is not null ? $"/chat/{detail.RoomId}" : $"/calls?tab=scheduled&meeting={detail.MeetingId}")"><i data-lucide="external-link"></i> Open in @(detail.RoomId is not null ? "Chat" : "Calls")</a>
+                }
+            </div>
+        }
+        else if (editing)
+        {
+            <div class="cal-drawer-body cal-form">
+                <input class="cal-title-input" placeholder="Add title" @bind="form.Title" @bind:event="oninput" maxlength="200" aria-label="Title" />
+                <label class="cal-toggle"><input type="checkbox" @bind="form.AllDay" /> All day</label>
+                <div class="cal-when">
+                    <label>Start<AppDatePicker @bind-Value="form.StartDate" AriaLabel="Start date" />@if (!form.AllDay) { <AppTimePicker @bind-Value="form.StartTime" AriaLabel="Start time" /> }</label>
+                    <label>End<AppDatePicker @bind-Value="form.EndDate" AriaLabel="End date" />@if (!form.AllDay) { <AppTimePicker @bind-Value="form.EndTime" AriaLabel="End time" /> }</label>
+                </div>
+                <label>Location<input placeholder="Room, address…" @bind="form.Location" maxlength="300" /></label>
+                <label>Meeting link<input placeholder="https://" @bind="form.Link" maxlength="1000" /></label>
+                <label>Reminder
+                    <select @bind="form.Reminder">
+                        @foreach (var (min, label) in ReminderOptions) { <option value="@min">@label</option> }
+                    </select>
+                </label>
+                <label>Chat group
+                    <select @bind="form.RoomIdText" disabled="@(form.Id is not null && form.MeetingId is not null)">
+                        <option value="">None — personal or invite people</option>
+                        @foreach (var r in ChatSvc.GroupRooms) { <option value="@r.Id">@r.Name</option> }
+                    </select>
+                </label>
+                @if (string.IsNullOrEmpty(form.RoomIdText))
+                {
+                    <div class="cal-field">
+                        <span>Participants</span>
+                        @if (form.People.Count > 0)
+                        {
+                            <div class="cal-people-chips">
+                                @foreach (var p in form.People)
+                                {
+                                    var person = p;
+                                    <span class="cal-person-chip"><span class="cal-person-av" style="background:@IPop.Web.Models.AvatarPalette.For(person.Nik)">@Initials(person.Name)</span>@person.Name
+                                        <button title="Remove" aria-label="Remove @person.Name" @onclick="() => form.People.Remove(person)"><i data-lucide="x"></i></button></span>
+                                }
+                            </div>
+                        }
+                        <PeoplePicker Placeholder="Invite people by name or NIK" ValueChanged="AddPerson" />
+                        <small>Inviting people or a group turns this into a meeting with RSVP.</small>
                     </div>
                 }
                 else
                 {
-                    <div class="cal-agenda">
-                        @foreach (var ev in list)
-                        {
-                            <div class="cal-agenda-item">
-                                <span class="cal-dot"></span>
-                                <div style="flex:1;min-width:0">
-                                    <div style="font-size:13px;font-weight:600;color:var(--ink)">@ev.Title</div>
-                                    <div style="font-size:11px;color:var(--ink-3)">@ev.StartAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm") · @(ev.Type == "rapat" ? "Meeting" : "Work")</div>
-                                </div>
-                            </div>
-                        }
-                    </div>
+                    <small class="cal-hint">All group members are invited; the meeting appears in the group chat.</small>
                 }
-            }
-        </div>
-    </div>
-</div>
-
-@code {
-    [CascadingParameter] public MainLayout Layout { get; set; } = default!;
-    private string view = "month";
-    private DateTime cursor = DateTime.Today;
-    private List<CalEvent> events = [];
-
-    private sealed record CalEvent(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string Type);
-
-    protected override async Task OnInitializedAsync()
-    {
-        Layout.SetHeader("Calendar", "Meetings · events");
-        await LoadAsync();
-    }
-
-    private async Task LoadAsync()
-    {
-        try
-        {
-            var from = cursor.AddDays(-40).ToString("yyyy-MM-dd");
-            var to = cursor.AddDays(60).ToString("yyyy-MM-dd");
-            var rows = await Auth.GetAsync<List<CalEventDto>>($"/api/meetings/calendar?from={from}&to={to}");
-            events = (rows ?? []).Select(r => new CalEvent(r.Id, r.Title, r.StartAt, r.EndAt, r.Type)).ToList();
+                <label>Notes<textarea rows="4" @bind="form.Notes" maxlength="4000" placeholder="Agenda, details…"></textarea></label>
+                @if (formError is not null) { <div class="cal-form-error" role="alert">@formError</div> }
+            </div>
+            <footer class="cal-drawer-foot">
+                <button class="cal-btn" @onclick="CancelEdit">Cancel</button>
+                <button class="cal-btn primary" disabled="@(saving || string.IsNullOrWhiteSpace(form.Title))" @onclick="SaveAsync">@(saving ? "Saving…" : "Save")</button>
+            </footer>
         }
-        catch { events = []; }
-    }
-
-    private sealed record CalEventDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string Type, Guid? MeetingId, Guid? RoomId);
-
-    private List<CalEvent> EventsOn(DateTime day) =>
-        events.Where(e => e.StartAt.Date <= day.Date && e.EndAt.Date >= day.Date).OrderBy(e => e.StartAt).ToList();
-
-    private List<CalEvent> EventsInRange() => view switch
-    {
-        "day" => EventsOn(cursor),
-        "week" => events.Where(e => e.StartAt.Date < cursor.AddDays(7).Date && e.EndAt.Date >= cursor.Date).OrderBy(e => e.StartAt).ToList(),
-        _ => events.Where(e => e.StartAt >= cursor.AddDays(-7)).OrderBy(e => e.StartAt).ToList(),
-    };
-
-    private string RangeLabel => view switch
-    {
-        "day" => cursor.ToString("dddd, dd MMM yyyy"),
-        "week" => $"Week of {cursor:dd MMM}",
-        "agenda" => "Agenda",
-        _ => cursor.ToString("MMMM yyyy")
-    };
-
-    private List<DateTime> MonthDays
-    {
-        get
+        else
         {
-            var first = new DateTime(cursor.Year, cursor.Month, 1);
-            var start = first.AddDays(-(int)first.DayOfWeek);
-            return Enumerable.Range(0, 42).Select(i => start.AddDays(i)).ToList();
+            <div class="cal-drawer-body"><div class="cal-empty"><i data-lucide="loader-circle" class="cal-spin"></i></div></div>
         }
-    }
-
-    private void Prev() { cursor = view switch { "month" => cursor.AddMonths(-1), "week" => cursor.AddDays(-7), _ => cursor.AddDays(-1) }; _ = LoadAsync(); }
-    private void Next() { cursor = view switch { "month" => cursor.AddMonths(1), "week" => cursor.AddDays(7), _ => cursor.AddDays(1) }; _ = LoadAsync(); }
-    private void Today() { cursor = DateTime.Today; _ = LoadAsync(); }
+    </aside>
 }

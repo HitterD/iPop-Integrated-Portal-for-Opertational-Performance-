@@ -176,6 +176,46 @@ public class FileOperationsTests
         Assert.Equal("report.pdf", gw.Uploads[0].Name);
         Assert.Single(gw.Deletes);
         Assert.Equal("/home/report.pdf", gw.Deletes[0]);
+
+        // Live refresh: the destination folder and (for a move) the source folder.
+        var scopes = realtime.Events.Where(e => e.Event == RealtimeEvents.FilesChanged).Select(e => e.Payload as string).ToList();
+        Assert.Contains("smg:/teams", scopes);
+        Assert.Contains("spj:/home", scopes);
+        Assert.Contains(realtime.Events, e => e.Event == RealtimeEvents.FileOperationFinished);
+    }
+
+    [Theory]
+    [InlineData("SPJ", "/home/docs/", "spj:/home/docs")]
+    [InlineData("spj", "home", "spj:/home")]
+    [InlineData("krw", "", "krw:/")]
+    [InlineData("krw", "/", "krw:/")]
+    [InlineData("smg", "*", "smg:*")]
+    public void FilesRealtime_Scope_IsNormalized(string server, string dir, string expected)
+        => Assert.Equal(expected, FilesRealtime.Scope(server, dir));
+
+    [Theory]
+    [InlineData("/home/docs/a.pdf", "/home/docs")]
+    [InlineData("/home", "/")]
+    [InlineData("/home/docs/", "/home")]
+    public void FilesRealtime_ParentDir(string path, string expected)
+        => Assert.Equal(expected, FilesRealtime.ParentDir(path));
+
+    [Fact]
+    public async Task FilesRealtime_Push_SwallowsFailures_AndDedupes()
+    {
+        var ok = new MockRealtime();
+        await FilesRealtime.PushAsync(ok, "spj", ["/a", "/a/", "/b"]);
+        Assert.Equal(["spj:/a", "spj:/b"], ok.Events.Select(e => (string)e.Payload!).ToArray());
+
+        await FilesRealtime.PushAsync(new ThrowingRealtime(), "spj", ["/a"]); // must not throw
+    }
+
+    private sealed class ThrowingRealtime : IRealtime
+    {
+        public Task ToAllAsync(string evt, object? payload = null, CancellationToken ct = default) => throw new InvalidOperationException("hub down");
+        public Task ToUserAsync(string nik, string evt, object? payload = null, CancellationToken ct = default) => throw new InvalidOperationException("hub down");
+        public Task ToUsersAsync(IEnumerable<string> niks, string evt, object? payload = null, CancellationToken ct = default) => throw new InvalidOperationException("hub down");
+        public Task ToGroupAsync(string group, string evt, object? payload = null, CancellationToken ct = default) => throw new InvalidOperationException("hub down");
     }
 
     [Fact]

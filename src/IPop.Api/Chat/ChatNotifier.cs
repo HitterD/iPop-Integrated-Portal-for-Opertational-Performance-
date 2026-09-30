@@ -58,6 +58,9 @@ public sealed class ChatNotifier(IHubContext<ChatHub> hub, IPopDbContext db) : I
     public Task NotifyRemovedAsync(Guid removedUserId, Guid roomId, CancellationToken ct)
         => hub.Clients.User(removedUserId.ToString()).SendAsync("removedFromRoom", roomId, ct);
 
+    public Task NotifyAddedAsync(IEnumerable<Guid> userIds, Guid roomId, CancellationToken ct)
+        => hub.Clients.Users(userIds.Select(u => u.ToString()).ToList()).SendAsync("addedToRoom", roomId, ct);
+
     public Task NotifyRoomUpdatedAsync(Guid roomId, RoomUpdateDto update, CancellationToken ct)
         => hub.Clients.Group(Group(roomId)).SendAsync("roomUpdated", update, ct);
 

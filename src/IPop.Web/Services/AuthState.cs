@@ -38,8 +38,8 @@ public class AuthState(HttpClient http, IJSRuntime js)
     public event Action? DirectoryChanged;
     public event Action? AuditChanged;
 
-    /// Raised after the app hub comes back from a drop. Events pushed while it was down are
-    /// gone, so listeners re-seed over REST.
+    /// Raised after the app hub comes back from a drop (auto-reconnect or a Closed retry).
+    /// Events pushed while it was down are gone, so listeners re-seed over REST.
     public event Action? HubReconnected;
 
     /// Raised once when the refresh token is refused and the session is genuinely over (14-day
@@ -93,7 +93,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
         public void Dispose() => dispose();
     }
 
-    /// Starts the real-time presence connection and a 60-second visible-tab heartbeat.
+    /// Starts the real-time presence connection, idle detection, and a 30-second heartbeat.
     public async Task StartPresenceAsync()
     {
         if (!IsAuthenticated || _presence is not null) return;
@@ -111,23 +111,55 @@ public class AuthState(HttpClient http, IJSRuntime js)
         _presence.On(RealtimeEvents.AuditChanged, () => AuditChanged?.Invoke());
         foreach (var bind in _subscriptions.Values) bind(_presence);
         _presence.Reconnecting += _ => { SetConnectionState(DirectoryConnectionState.Reconnecting); return Task.CompletedTask; };
-        _presence.Reconnected += _ =>
+        _presence.Reconnected += _ => { OnHubBack(); return Task.CompletedTask; };
+        var conn = _presence;
+        _presence.Closed += ex =>
         {
-            DirectoryChanged?.Invoke();
-            HubReconnected?.Invoke();
+            SetConnectionState(DirectoryConnectionState.Offline);
+            _ = HubRetry.RunAsync(conn, () => _presence == conn && IsAuthenticated, OnHubBack);
             return Task.CompletedTask;
         };
-        _presence.Closed += _ => { SetConnectionState(DirectoryConnectionState.Offline); return Task.CompletedTask; };
         try
         {
             await _presence.StartAsync();
             SetConnectionState(DirectoryConnectionState.Live);
         }
         catch { await _presence.DisposeAsync(); _presence = null; SetConnectionState(DirectoryConnectionState.Offline); }
-        if (_presence is not null) await BeatWhenVisibleAsync();
+        if (_presence is null) return;
 
-        if (_presence is not null)
-            _heartbeat = new Timer(_ => _ = BeatWhenVisibleAsync(), null, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
+        try
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            await js.InvokeVoidAsync("ipop.presenceStart", _selfRef);
+        }
+        catch { /* idle detection is best-effort; beats still flow */ }
+        await SafeBeatAsync();
+        _heartbeat = new Timer(_ => _ = SafeBeatAsync(), null, HeartbeatInterval, HeartbeatInterval);
+    }
+
+    /// Back online after a drop: presence pushed meanwhile was missed, so beat now (our own
+    /// status reads "on" again for everyone) and have listeners re-fetch.
+    private void OnHubBack()
+    {
+        SetConnectionState(DirectoryConnectionState.Live);
+        _ = SafeBeatAsync();
+        DirectoryChanged?.Invoke();
+        HubReconnected?.Invoke();
+    }
+
+    /// Every open tab beats, visible or not: an open iPop tab means the user is at their
+    /// computer. Hidden tabs are throttled by the browser to ~1/min, which the server's
+    /// two-minute offline threshold tolerates.
+    private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(30);
+    private DotNetObjectReference<AuthState>? _selfRef;
+    private bool _idle;
+
+    /// Called from ipop.js when the computer goes idle/locked (away) or becomes active again.
+    [JSInvokable]
+    public Task OnIdleChanged(bool idle)
+    {
+        _idle = idle;
+        return SafeBeatAsync();
     }
 
     public async Task SetBusyAsync(bool busy)
@@ -138,18 +170,16 @@ public class AuthState(HttpClient http, IJSRuntime js)
         if (body is not null) { MyStatus = body.Status; PresenceChanged?.Invoke(Me?.Nik ?? "", MyStatus); }
     }
 
-    private async Task BeatWhenVisibleAsync()
+    private async Task SafeBeatAsync()
     {
-        try
-        {
-            if (await js.InvokeAsync<string>("ipop.visibility") == "visible") await BeatAsync();
-        }
+        try { await BeatAsync(); }
         catch { /* presence must never take down the shell */ }
     }
 
     private async Task BeatAsync()
     {
-        var res = await PostWithAuth("/api/presence/beat", new { });
+        if (!IsAuthenticated) return;
+        var res = await PostWithAuth("/api/presence/beat", new { idle = _idle });
         if (!res.IsSuccessStatusCode) return;
         var body = await res.Content.ReadFromJsonAsync<PresenceDto>();
         if (body is not null) MyStatus = body.Status;
@@ -294,6 +324,8 @@ public class AuthState(HttpClient http, IJSRuntime js)
     {
         _heartbeat?.Dispose();
         _heartbeat = null;
+        _idle = false;
+        try { await js.InvokeVoidAsync("ipop.presenceStop"); } catch { }
         _bound.Clear();   // handlers die with the connection; _subscriptions re-bind on next start
         if (_presence is not null) await _presence.DisposeAsync();
         _presence = null;

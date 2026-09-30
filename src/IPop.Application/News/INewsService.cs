@@ -21,6 +21,17 @@ public interface INewsService
     Task<NewsResultDto> AcknowledgeAsync(Guid userId, Guid newsId, CancellationToken ct);
     Task<NewsResultDto> RemindAckAsync(Guid actorId, Guid newsId, CancellationToken ct);
     Task<IReadOnlyList<NewsAuditDto>> GetAuditsAsync(Guid newsId, Guid viewerId, CancellationToken ct);
+    Task<NewsAckReportDto?> GetAckReportAsync(Guid actorId, Guid newsId, CancellationToken ct);
+
+    // HR/Admin management (news.publish, or news.write outside the Employee baseline)
+    Task<bool> CanManageAsync(Guid userId, CancellationToken ct);
+    Task<bool> CanViewAsync(Guid userId, Guid newsId, CancellationToken ct);
+    Task<NewsResultDto> DeleteAsync(Guid actorId, Guid newsId, CancellationToken ct);
+
+    // Reader state
+    Task MarkReadAsync(Guid userId, Guid newsId, bool read, CancellationToken ct);
+    Task<bool> SetBookmarkAsync(Guid userId, Guid newsId, bool saved, CancellationToken ct);
+    Task<NewsCountsDto> GetCountsAsync(Guid viewerId, CancellationToken ct);
 }
 
 public record NewsListFilter(
@@ -31,5 +42,7 @@ public record NewsListFilter(
     string? Search = null,        // title/body ilike
     int Page = 1,
     int PageSize = 20,
-    bool IncludeScheduled = false  // if false, scheduled future posts are hidden from reader feed
+    bool IncludeScheduled = false,  // if false, scheduled future posts are hidden from reader feed
+    string? View = null,          // "unread" | "saved" | "drafts" | "scheduled" (last two HR/Admin)
+    string? Sort = null           // "newest" (default) | "oldest" | "mostRead"
 );

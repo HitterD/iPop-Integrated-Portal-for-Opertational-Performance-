@@ -1,4 +1,11 @@
-// webrtc-audio.js — WebRTC Voice Call & Audio Synthesizer for IPop
+// webrtc-audio.js — 1:1 voice calls (peer-to-peer WebRTC over STUN/TURN) + call tones for IPop.
+// .NET drives it through window.ipopAudio; state flows back via the CallState DotNetObjectReference:
+//   OnOfferGenerated / OnAnswerGenerated / OnIceCandidateGenerated — signaling to relay over SignalR
+//   OnConnectionStateChanged("connecting" | "connected" | "reconnecting" | "failed")
+//   OnWebRtcError(message) — shown in the call overlay
+// Levels are written straight to the DOM (no interop per frame): any element with
+// data-meter="local" | "remote" | "test" gets the CSS variable --level (0..1), and
+// .avatar-local-speaker / .avatar-remote-speaker get .speaking while that side talks.
 (function () {
     let audioCtx = null;
     let ringOsc1 = null;
@@ -7,27 +14,117 @@
     let ringInterval = null;
 
     let peerConnection = null;
-    let liveKitRoom = null;
     let localStream = null;
     let remoteAudioEl = null;
     let dotNetRef = null;
     let currentCallId = null;
+    let isCallerSide = false;
+    let connectTimer = null;
+    let restartedIce = false;
 
-    let localAnalyser = null;
-    let remoteAnalyser = null;
-    let visualizerTimer = null;
+    let inputDeviceId = null;
+    let outputDeviceId = null;
+
+    const analysers = { local: null, remote: null, test: null };
+    let meterFrame = null;
+    let testStream = null;
+
+    const defaultIceServers = [{ urls: ['stun:stun.l.google.com:19302'] }];
+    let rtcConfig = { iceServers: defaultIceServers };
+
+    const CONNECT_TIMEOUT_MS = 20000;
+
+    function notify(method, ...args) {
+        if (!dotNetRef) return;
+        try { dotNetRef.invokeMethodAsync(method, ...args).catch(() => { }); } catch (e) { }
+    }
+
+    function reportError(message) {
+        console.warn('[IPop Calls]', message);
+        notify('OnWebRtcError', message);
+    }
+
+    function reportState(state) {
+        notify('OnConnectionStateChanged', state);
+    }
 
     function getAudioContext() {
         if (!audioCtx || audioCtx.state === 'closed') {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         }
         if (audioCtx.state === 'suspended') {
-            audioCtx.resume();
+            audioCtx.resume().catch(() => { });
         }
         return audioCtx;
     }
 
-    // --- Audio Tone Synthesizer ---
+    // ── Environment checks ───────────────────────────────────────────────────
+
+    /// What the browser allows here. The microphone is only exposed on https or localhost.
+    function checkSupport() {
+        return {
+            secure: !!window.isSecureContext,
+            mediaDevices: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+            webRtc: typeof RTCPeerConnection !== 'undefined',
+            outputSelect: typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype
+        };
+    }
+
+    function micErrorMessage(err) {
+        switch (err && err.name) {
+            case 'NotAllowedError':
+            case 'SecurityError':
+                return { code: 'denied', message: 'Izin mikrofon ditolak. Klik ikon gembok di address bar, izinkan Mikrofon, lalu coba lagi.' };
+            case 'NotFoundError':
+            case 'DevicesNotFoundError':
+            case 'OverconstrainedError':
+                return { code: 'no-device', message: 'Tidak ada mikrofon terdeteksi. Colokkan headset/mic, atau lanjut dalam mode hanya mendengar.' };
+            case 'NotReadableError':
+            case 'TrackStartError':
+                return { code: 'busy', message: 'Mikrofon sedang dipakai aplikasi lain (Zoom/Teams?). Tutup aplikasi itu lalu coba lagi.' };
+            default:
+                return { code: 'error', message: 'Mikrofon tidak bisa dibuka: ' + ((err && err.message) || 'unknown error') };
+        }
+    }
+
+    const insecureMessage = 'Panggilan butuh HTTPS: browser hanya mengizinkan mikrofon di halaman https atau localhost.';
+
+    async function openMic(deviceId) {
+        const base = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+        const audio = deviceId ? { ...base, deviceId: { exact: deviceId } } : base;
+        try {
+            return await navigator.mediaDevices.getUserMedia({ audio, video: false });
+        } catch (e) {
+            // A remembered device may have been unplugged — fall back to the default one.
+            if (deviceId && (e.name === 'OverconstrainedError' || e.name === 'NotFoundError')) {
+                return await navigator.mediaDevices.getUserMedia({ audio: base, video: false });
+            }
+            throw e;
+        }
+    }
+
+    /// Pre-call check: asks for the microphone before we ring anyone, so a denied
+    /// permission is reported to the caller instead of producing a silent call.
+    async function prepareMic(deviceId) {
+        if (deviceId !== undefined) inputDeviceId = deviceId || null;
+        const support = checkSupport();
+        if (!support.mediaDevices) {
+            return { ok: false, code: support.secure ? 'unsupported' : 'insecure', message: support.secure ? 'Browser ini tidak mendukung mikrofon.' : insecureMessage };
+        }
+        if (localStream && localStream.getAudioTracks().some(t => t.readyState === 'live')) {
+            return { ok: true };
+        }
+        try {
+            localStream = await openMic(inputDeviceId);
+            return { ok: true };
+        } catch (e) {
+            const err = micErrorMessage(e);
+            return { ok: false, code: err.code, message: err.message };
+        }
+    }
+
+    // ── Tones ────────────────────────────────────────────────────────────────
+
     function stopAudioTones() {
         if (ringInterval) {
             clearInterval(ringInterval);
@@ -40,148 +137,233 @@
         } catch (e) { }
     }
 
+    function startDualTone(ctx, f1, f2, volume) {
+        ringGain = ctx.createGain();
+        ringGain.gain.setValueAtTime(0, ctx.currentTime);
+        ringOsc1 = ctx.createOscillator();
+        ringOsc1.type = 'sine';
+        ringOsc1.frequency.setValueAtTime(f1, ctx.currentTime);
+        ringOsc2 = ctx.createOscillator();
+        ringOsc2.type = 'sine';
+        ringOsc2.frequency.setValueAtTime(f2, ctx.currentTime);
+        ringOsc1.connect(ringGain);
+        ringOsc2.connect(ringGain);
+        ringGain.connect(ctx.destination);
+        ringOsc1.start();
+        ringOsc2.start();
+        return (on) => {
+            try { if (ringGain) ringGain.gain.setTargetAtTime(on ? volume : 0, ctx.currentTime, 0.015); } catch (e) { }
+        };
+    }
+
+    /// Incoming ring: two short bursts every 3 s.
     function playRingtone() {
         stopAudioTones();
-        const ctx = getAudioContext();
-        let ringState = false;
-
-        const pulseRing = () => {
-            try {
-                if (ringOsc1) { ringOsc1.stop(); ringOsc1.disconnect(); }
-                if (ringOsc2) { ringOsc2.stop(); ringOsc2.disconnect(); }
-                if (ringGain) { ringGain.disconnect(); }
-
-                if (!ringState) {
-                    ringState = true;
-                    ringGain = ctx.createGain();
-                    ringGain.gain.setValueAtTime(0.18, ctx.currentTime);
-
-                    ringOsc1 = ctx.createOscillator();
-                    ringOsc1.type = 'sine';
-                    ringOsc1.frequency.setValueAtTime(440, ctx.currentTime);
-
-                    ringOsc2 = ctx.createOscillator();
-                    ringOsc2.type = 'sine';
-                    ringOsc2.frequency.setValueAtTime(480, ctx.currentTime);
-
-                    ringOsc1.connect(ringGain);
-                    ringOsc2.connect(ringGain);
-                    ringGain.connect(ctx.destination);
-
-                    ringOsc1.start();
-                    ringOsc2.start();
-
-                    // Ring pulse: 1.5s active, then silence until 3.5s cycle
-                    setTimeout(() => {
-                        try {
-                            if (ringGain) {
-                                ringGain.gain.setValueAtTime(0, ctx.currentTime);
-                            }
-                        } catch (e) { }
-                    }, 1500);
-                } else {
-                    ringState = false;
-                }
-            } catch (e) {
-                console.warn('Ringtone error:', e);
-            }
-        };
-
-        pulseRing();
-        ringInterval = setInterval(pulseRing, 3500);
+        try {
+            const set = startDualTone(getAudioContext(), 440, 480, 0.16);
+            const burst = () => {
+                set(true);
+                setTimeout(() => set(false), 400);
+                setTimeout(() => set(true), 600);
+                setTimeout(() => set(false), 1000);
+            };
+            burst();
+            ringInterval = setInterval(burst, 3000);
+        } catch (e) { console.warn('Ringtone error:', e); }
     }
 
+    /// Outgoing ringback: 1 s tone, 3 s silence.
     function playDialTone() {
         stopAudioTones();
-        const ctx = getAudioContext();
         try {
-            ringGain = ctx.createGain();
-            ringGain.gain.setValueAtTime(0.1, ctx.currentTime);
-
-            ringOsc1 = ctx.createOscillator();
-            ringOsc1.type = 'sine';
-            ringOsc1.frequency.setValueAtTime(440, ctx.currentTime);
-
-            ringOsc2 = ctx.createOscillator();
-            ringOsc2.type = 'sine';
-            ringOsc2.frequency.setValueAtTime(480, ctx.currentTime);
-
-            ringOsc1.connect(ringGain);
-            ringOsc2.connect(ringGain);
-            ringGain.connect(ctx.destination);
-
-            ringOsc1.start();
-            ringOsc2.start();
-
-            // Intermittent dial beep: 1.2s tone, 2.5s silence
-            const beep = () => {
-                try {
-                    if (ringGain) ringGain.gain.setValueAtTime(0.1, ctx.currentTime);
-                    setTimeout(() => {
-                        if (ringGain) ringGain.gain.setValueAtTime(0, ctx.currentTime);
-                    }, 1200);
-                } catch (e) { }
-            };
+            const set = startDualTone(getAudioContext(), 440, 480, 0.08);
+            const beep = () => { set(true); setTimeout(() => set(false), 1000); };
             beep();
-            ringInterval = setInterval(beep, 3700);
-        } catch (e) {
-            console.warn('Dial tone error:', e);
-        }
+            ringInterval = setInterval(beep, 4000);
+        } catch (e) { console.warn('Dial tone error:', e); }
     }
 
-    // --- Audio Visualizer & Level Meter ---
-    function setupVisualizer(stream, type) {
+    /// Short descending beep when a call ends.
+    function playEndTone() {
+        stopAudioTones();
+        try {
+            const ctx = getAudioContext();
+            const gain = ctx.createGain();
+            gain.connect(ctx.destination);
+            [[620, 0], [480, 0.18]].forEach(([f, at]) => {
+                const osc = ctx.createOscillator();
+                osc.frequency.setValueAtTime(f, ctx.currentTime + at);
+                osc.connect(gain);
+                osc.start(ctx.currentTime + at);
+                osc.stop(ctx.currentTime + at + 0.15);
+            });
+            gain.gain.setValueAtTime(0.08, ctx.currentTime);
+            gain.gain.setValueAtTime(0, ctx.currentTime + 0.36);
+        } catch (e) { }
+    }
+
+    // ── Level meters ─────────────────────────────────────────────────────────
+
+    function attachMeter(stream, type) {
         try {
             const ctx = getAudioContext();
             const source = ctx.createMediaStreamSource(stream);
             const analyser = ctx.createAnalyser();
-            analyser.fftSize = 64;
+            analyser.fftSize = 256;
             source.connect(analyser);
-
-            if (type === 'local') localAnalyser = analyser;
-            else remoteAnalyser = analyser;
-
-            if (!visualizerTimer) {
-                const dataArray = new Uint8Array(32);
-                visualizerTimer = setInterval(() => {
-                    if (localAnalyser) {
-                        localAnalyser.getByteFrequencyData(dataArray);
-                        let sum = 0;
-                        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-                        const avg = sum / dataArray.length;
-                        const isSpeaking = avg > 14;
-                        document.querySelectorAll('.avatar-local-speaker').forEach(el => {
-                            el.classList.toggle('speaking', isSpeaking);
-                        });
-                    }
-                    if (remoteAnalyser) {
-                        remoteAnalyser.getByteFrequencyData(dataArray);
-                        let sum = 0;
-                        for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-                        const avg = sum / dataArray.length;
-                        const isSpeaking = avg > 14;
-                        document.querySelectorAll('.avatar-remote-speaker').forEach(el => {
-                            el.classList.toggle('speaking', isSpeaking);
-                        });
-                    }
-                }, 100);
-            }
+            analysers[type] = analyser;
+            if (!meterFrame) meterFrame = requestAnimationFrame(tickMeters);
         } catch (e) {
-            console.warn('Visualizer setup error:', e);
+            console.warn('Meter setup error:', e);
         }
     }
 
-    // --- WebRTC Peer Connection ---
-    const rtcConfig = {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' }
-        ]
-    };
+    const levelBuffer = new Uint8Array(256);
+    function levelOf(analyser) {
+        analyser.getByteTimeDomainData(levelBuffer);
+        let sum = 0;
+        for (let i = 0; i < levelBuffer.length; i++) {
+            const v = (levelBuffer[i] - 128) / 128;
+            sum += v * v;
+        }
+        // RMS → a perceptual-ish 0..1 (speech sits around 0.02–0.2 RMS).
+        return Math.min(1, Math.sqrt(sum / levelBuffer.length) * 4);
+    }
+
+    const levels = { local: 0, remote: 0, test: 0 };
+    function tickMeters() {
+        meterFrame = null;
+        let any = false;
+        for (const type of ['local', 'remote', 'test']) {
+            const analyser = analysers[type];
+            if (!analyser) continue;
+            any = true;
+            let level = levelOf(analyser);
+            if (type === 'local' && localStream && !localStream.getAudioTracks().some(t => t.enabled)) level = 0;
+            // Fast attack, slow release so the bar does not flicker.
+            levels[type] = level > levels[type] ? level : levels[type] * 0.85 + level * 0.15;
+            document.querySelectorAll(`[data-meter="${type}"]`).forEach(el => el.style.setProperty('--level', levels[type].toFixed(3)));
+            if (type !== 'test') {
+                document.querySelectorAll(`.avatar-${type}-speaker`).forEach(el => el.classList.toggle('speaking', levels[type] > 0.12));
+            }
+        }
+        if (any) meterFrame = requestAnimationFrame(tickMeters);
+    }
+
+    function getLevels() {
+        return { local: levels.local, remote: levels.remote, test: levels.test };
+    }
+
+    // ── Devices ──────────────────────────────────────────────────────────────
+
+    async function listDevices() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return { inputs: [], outputs: [] };
+        const all = await navigator.mediaDevices.enumerateDevices();
+        const map = (kind, fallback) => all
+            .filter(d => d.kind === kind && d.deviceId !== 'communications')
+            .map((d, i) => ({ id: d.deviceId === 'default' ? '' : d.deviceId, label: d.label || `${fallback} ${i + 1}` }));
+        return { inputs: map('audioinput', 'Mikrofon'), outputs: map('audiooutput', 'Speaker') };
+    }
+
+    /// Switch microphone mid-call without renegotiating (replaceTrack on the audio sender).
+    async function setInputDevice(deviceId) {
+        inputDeviceId = deviceId || null;
+        if (!localStream && !peerConnection) return { ok: true };
+        try {
+            const fresh = await openMic(inputDeviceId);
+            const track = fresh.getAudioTracks()[0];
+            const wasMuted = localStream ? !localStream.getAudioTracks().some(t => t.enabled) : false;
+            track.enabled = !wasMuted;
+            if (peerConnection) {
+                const sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'audio')
+                    || peerConnection.getTransceivers().map(t => t.sender).find(s => !s.track);
+                if (sender) await sender.replaceTrack(track);
+            }
+            if (localStream) localStream.getTracks().forEach(t => t.stop());
+            localStream = fresh;
+            attachMeter(localStream, 'local');
+            return { ok: true };
+        } catch (e) {
+            const err = micErrorMessage(e);
+            reportError(err.message);
+            return { ok: false, code: err.code, message: err.message };
+        }
+    }
+
+    async function setOutputDevice(deviceId) {
+        outputDeviceId = deviceId || null;
+        if (remoteAudioEl && remoteAudioEl.setSinkId) {
+            try { await remoteAudioEl.setSinkId(outputDeviceId || ''); }
+            catch (e) { reportError('Speaker tidak bisa dipilih: ' + e.message); return false; }
+        }
+        return true;
+    }
+
+    // ── Device test (no call needed) ─────────────────────────────────────────
+
+    async function startMicTest(deviceId) {
+        stopMicTest();
+        const support = checkSupport();
+        if (!support.mediaDevices) {
+            return { ok: false, code: support.secure ? 'unsupported' : 'insecure', message: support.secure ? 'Browser ini tidak mendukung mikrofon.' : insecureMessage };
+        }
+        try {
+            testStream = await openMic(deviceId || null);
+            attachMeter(testStream, 'test');
+            const label = testStream.getAudioTracks()[0]?.label || '';
+            return { ok: true, label };
+        } catch (e) {
+            const err = micErrorMessage(e);
+            return { ok: false, code: err.code, message: err.message };
+        }
+    }
+
+    function stopMicTest() {
+        if (testStream) testStream.getTracks().forEach(t => t.stop());
+        testStream = null;
+        analysers.test = null;
+        levels.test = 0;
+        document.querySelectorAll('[data-meter="test"]').forEach(el => el.style.setProperty('--level', '0'));
+    }
+
+    /// Plays a short chime on the chosen speaker (setSinkId where supported).
+    async function playTestTone(deviceId) {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const dest = ctx.createMediaStreamDestination();
+        const gain = ctx.createGain();
+        gain.connect(dest);
+        [523.25, 659.25, 783.99].forEach((f, i) => {
+            const osc = ctx.createOscillator();
+            osc.frequency.value = f;
+            osc.connect(gain);
+            osc.start(ctx.currentTime + i * 0.18);
+            osc.stop(ctx.currentTime + i * 0.18 + 0.22);
+        });
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        const el = new Audio();
+        el.srcObject = dest.stream;
+        try {
+            if (deviceId && el.setSinkId) await el.setSinkId(deviceId);
+            await el.play();
+        } catch (e) {
+            ctx.close();
+            return { ok: false, message: 'Speaker tidak bisa memutar suara: ' + e.message };
+        }
+        setTimeout(() => { el.pause(); el.srcObject = null; ctx.close(); }, 900);
+        return { ok: true };
+    }
+
+    // ── WebRTC ───────────────────────────────────────────────────────────────
 
     let initPromise = null;
     let candidateQueue = [];
+
+    /// ICE servers from /api/calls/config (STUN + the LAN TURN). Kept for later inits.
+    function configure(iceServers) {
+        if (Array.isArray(iceServers) && iceServers.length > 0) {
+            rtcConfig = { iceServers };
+        }
+    }
 
     function ensureRemoteAudio(stream) {
         if (!remoteAudioEl) {
@@ -191,31 +373,21 @@
                 remoteAudioEl.id = 'ipop-remote-audio';
                 remoteAudioEl.autoplay = true;
                 remoteAudioEl.playsInline = true;
-                // Position off-screen so modern browsers never pause or throttle playback
-                remoteAudioEl.style.position = 'fixed';
-                remoteAudioEl.style.left = '-9999px';
-                remoteAudioEl.style.top = '-9999px';
-                remoteAudioEl.style.width = '1px';
-                remoteAudioEl.style.height = '1px';
-                remoteAudioEl.style.opacity = '0';
+                // Off-screen rather than display:none so browsers never pause or throttle playback.
+                Object.assign(remoteAudioEl.style, { position: 'fixed', left: '-9999px', top: '-9999px', width: '1px', height: '1px', opacity: '0' });
                 document.body.appendChild(remoteAudioEl);
             }
         }
         remoteAudioEl.srcObject = stream;
         remoteAudioEl.volume = 1.0;
         remoteAudioEl.muted = false;
+        if (outputDeviceId && remoteAudioEl.setSinkId) remoteAudioEl.setSinkId(outputDeviceId).catch(() => { });
 
         const playPromise = remoteAudioEl.play();
         if (playPromise !== undefined) {
-            playPromise.then(() => {
-                console.log('[IPop WebRTC] Remote audio playback active.');
-            }).catch(e => {
-                console.warn('[IPop WebRTC] Remote audio autoplay blocked by browser:', e);
-                const resumeOnGesture = () => {
-                    if (remoteAudioEl) remoteAudioEl.play();
-                    document.removeEventListener('click', resumeOnGesture);
-                };
-                document.addEventListener('click', resumeOnGesture, { once: true });
+            playPromise.catch(() => {
+                reportError('Browser memblokir suara lawan bicara. Klik di mana saja pada halaman untuk mengaktifkan audio.');
+                document.addEventListener('click', () => { if (remoteAudioEl) remoteAudioEl.play().catch(() => { }); }, { once: true });
             });
         }
     }
@@ -224,183 +396,123 @@
         if (!peerConnection || !peerConnection.remoteDescription) return;
         while (candidateQueue.length > 0) {
             const cand = candidateQueue.shift();
-            try {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(cand));
-                console.log('[IPop WebRTC] Added queued ICE candidate.');
-            } catch (err) {
-                console.warn('[IPop WebRTC] Failed to add queued candidate:', err);
+            try { await peerConnection.addIceCandidate(new RTCIceCandidate(cand)); }
+            catch (err) { console.warn('[IPop WebRTC] Failed to add queued candidate:', err); }
+        }
+    }
+
+    function clearConnectTimer() {
+        if (connectTimer) { clearTimeout(connectTimer); connectTimer = null; }
+    }
+
+    function armConnectTimer() {
+        clearConnectTimer();
+        connectTimer = setTimeout(() => {
+            if (!peerConnection || peerConnection.connectionState === 'connected') return;
+            reportState('failed');
+            reportError('Audio tidak bisa tersambung dalam 20 detik. Kemungkinan jaringan/firewall memblokir; coba panggil ulang.');
+        }, CONNECT_TIMEOUT_MS);
+    }
+
+    async function sendOffer(options) {
+        const offer = await peerConnection.createOffer(options);
+        await peerConnection.setLocalDescription(offer);
+        notify('OnOfferGenerated', currentCallId, JSON.stringify(offer));
+    }
+
+    function onConnectionState() {
+        if (!peerConnection) return;
+        const s = peerConnection.connectionState;
+        if (s === 'connected') {
+            clearConnectTimer();
+            restartedIce = false;
+            reportState('connected');
+        } else if (s === 'connecting' || s === 'new') {
+            reportState('connecting');
+        } else if (s === 'disconnected') {
+            // Usually a network blip; ICE recovers on its own within a few seconds.
+            reportState('reconnecting');
+            armConnectTimer();
+        } else if (s === 'failed') {
+            if (isCallerSide && !restartedIce && peerConnection.restartIce) {
+                restartedIce = true;
+                reportState('reconnecting');
+                peerConnection.restartIce();
+                sendOffer({ iceRestart: true }).catch(e => reportError('Gagal menyambung ulang: ' + e.message));
+                armConnectTimer();
+            } else {
+                clearConnectTimer();
+                reportState('failed');
+                reportError('Koneksi audio terputus. Coba panggil ulang.');
             }
         }
     }
 
-    async function initCall(callId, isCaller, helper, liveKitUrl, liveKitToken) {
+    async function initCall(callId, isCaller, helper, iceServers) {
         dotNetRef = helper || dotNetRef;
-        currentCallId = callId;
+        configure(iceServers);
         stopAudioTones();
 
-        // Dynamically fetch ICE / LiveKit configuration from the backend if available
-        try {
-            const cfgRes = await fetch('/api/calls/config');
-            if (cfgRes.ok) {
-                const cfg = await cfgRes.json();
-                if (cfg && cfg.iceServers && cfg.iceServers.length > 0) {
-                    rtcConfig.iceServers = cfg.iceServers;
-                }
-                if (!liveKitUrl && cfg && cfg.liveKitUrl) {
-                    liveKitUrl = cfg.liveKitUrl;
-                }
-            }
-        } catch (e) { }
+        // Already set up for this call (e.g. an early offer started the callee side).
+        if (peerConnection && currentCallId === callId) return { success: true };
+        if (initPromise) return initPromise;
 
-        // LiveKit Media Transport: if LiveKit URL and Token are present, connect to SFU
-        if (liveKitUrl && liveKitToken) {
-            console.log('[IPop Calls] LiveKit credentials detected. Connecting to LiveKit SFU at', liveKitUrl);
-            try {
-                if (window.LivekitClient && window.LivekitClient.Room) {
-                    const room = new window.LivekitClient.Room({
-                        adaptiveStream: true,
-                        dynacast: true,
-                        audioCaptureDefaults: { autoGainControl: true, echoCancellation: true, noiseSuppression: true }
-                    });
-                    await room.connect(liveKitUrl, liveKitToken);
-                    console.log('[IPop Calls] Connected to LiveKit Room:', room.name);
-                    const localTrack = await window.LivekitClient.createLocalAudioTrack();
-                    await room.localParticipant.publishTrack(localTrack);
-                    room.on(window.LivekitClient.RoomEvent.TrackSubscribed, (track) => {
-                        if (track.kind === 'audio') {
-                            const el = track.attach();
-                            ensureRemoteAudio(el.srcObject);
-                        }
-                    });
-                    liveKitRoom = room;
-                    if (dotNetRef) dotNetRef.invokeMethodAsync('OnWebRtcStateChanged', 'LiveKit Connected');
-                    return { success: true, mode: 'livekit' };
-                } else {
-                    console.log('[IPop Calls] LiveKit token verified:', liveKitToken.substring(0, 16) + '…');
-                }
-            } catch (lkErr) {
-                console.warn('[IPop Calls] LiveKit connection attempt failed, falling back to direct WebRTC:', lkErr);
-            }
-        }
+        if (currentCallId !== callId) candidateQueue = [];
+        currentCallId = callId;
+        isCallerSide = !!isCaller;
+        restartedIce = false;
 
-        if (initPromise) {
-            console.log('[IPop WebRTC] initCall already in progress, awaiting existing promise...');
-            return initPromise;
-        }
-
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            const err = 'Microphone access is not supported on this browser context (requires HTTPS or localhost).';
-            console.error('[IPop WebRTC]', err);
-            if (dotNetRef) dotNetRef.invokeMethodAsync('OnWebRtcError', err);
+        if (typeof RTCPeerConnection === 'undefined') {
+            const err = 'Browser ini tidak mendukung panggilan suara (WebRTC).';
+            reportError(err);
+            reportState('failed');
             return { success: false, error: err };
         }
 
         initPromise = (async () => {
             try {
+                reportState('connecting');
                 const ctx = getAudioContext();
-                if (ctx && ctx.state === 'suspended') {
-                    await ctx.resume();
-                }
+                if (ctx && ctx.state === 'suspended') await ctx.resume().catch(() => { });
 
-                if (!localStream) {
-                    console.log('[IPop WebRTC] Requesting local microphone stream...');
-                    try {
-                        localStream = await navigator.mediaDevices.getUserMedia({
-                            audio: {
-                                echoCancellation: true,
-                                noiseSuppression: true,
-                                autoGainControl: true
-                            },
-                            video: false
-                        });
-                    } catch (e1) {
-                        console.warn('[IPop WebRTC] Failed with advanced audio constraints, retrying basic audio...', e1);
-                        try {
-                            localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-                        } catch (e2) {
-                            if (e2.name === 'NotFoundError' || e2.name === 'DevicesNotFoundError') {
-                                console.warn('[IPop WebRTC] No microphone hardware found on this machine. Entering listen-only mode.');
-                                if (dotNetRef) {
-                                    dotNetRef.invokeMethodAsync('OnWebRtcError', 'Tidak ada mikrofon terdeteksi (mode hanya mendengar). Colokkan headset/mic jika ingin berbicara.');
-                                }
-                            } else {
-                                throw e2;
-                            }
-                        }
-                    }
-                    if (localStream) {
-                        console.log('[IPop WebRTC] Local microphone acquired.');
-                        setupVisualizer(localStream, 'local');
-                    }
+                const mic = await prepareMic();
+                if (!mic.ok) {
+                    // Keep the call alive in listen-only mode; tell the user why they can't be heard.
+                    reportError(mic.message + ' (Anda tetap bisa mendengar.)');
                 }
-
                 if (localStream) {
                     localStream.getAudioTracks().forEach(track => { track.enabled = true; });
+                    attachMeter(localStream, 'local');
                 }
 
-                if (peerConnection) {
-                    console.log('[IPop WebRTC] Closing existing peer connection.');
-                    peerConnection.close();
-                    peerConnection = null;
-                }
-
-                console.log('[IPop WebRTC] Initializing RTCPeerConnection...');
+                if (peerConnection) { peerConnection.close(); peerConnection = null; }
                 peerConnection = new RTCPeerConnection(rtcConfig);
-                candidateQueue = [];
 
                 if (localStream) {
-                    localStream.getAudioTracks().forEach(track => {
-                        peerConnection.addTrack(track, localStream);
-                    });
+                    localStream.getAudioTracks().forEach(track => peerConnection.addTrack(track, localStream));
+                } else if (isCaller) {
+                    peerConnection.addTransceiver('audio', { direction: 'recvonly' });
                 }
 
                 peerConnection.ontrack = (event) => {
-                    console.log('[IPop WebRTC] Remote audio track received!', event);
-                    const stream = (event.streams && event.streams[0])
-                        ? event.streams[0]
-                        : new MediaStream([event.track]);
+                    const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
                     ensureRemoteAudio(stream);
-                    setupVisualizer(stream, 'remote');
+                    attachMeter(stream, 'remote');
                 };
-
                 peerConnection.onicecandidate = (event) => {
-                    if (event.candidate && dotNetRef && currentCallId) {
-                        console.log('[IPop WebRTC] Sending local ICE candidate to peer...');
-                        dotNetRef.invokeMethodAsync('OnIceCandidateGenerated', currentCallId, JSON.stringify(event.candidate));
+                    if (event.candidate && currentCallId) {
+                        notify('OnIceCandidateGenerated', currentCallId, JSON.stringify(event.candidate));
                     }
                 };
+                peerConnection.onconnectionstatechange = onConnectionState;
 
-                peerConnection.onconnectionstatechange = () => {
-                    console.log('[IPop WebRTC] Peer connection state:', peerConnection.connectionState);
-                    if (dotNetRef && peerConnection) {
-                        dotNetRef.invokeMethodAsync('OnConnectionStateChanged', peerConnection.connectionState);
-                    }
-                };
-
-                peerConnection.oniceconnectionstatechange = () => {
-                    console.log('[IPop WebRTC] ICE connection state:', peerConnection.iceConnectionState);
-                };
-
-                if (isCaller) {
-                    console.log('[IPop WebRTC] Creating offer (caller)...');
-                    const offer = await peerConnection.createOffer({
-                        offerToReceiveAudio: true,
-                        offerToReceiveVideo: false
-                    });
-                    await peerConnection.setLocalDescription(offer);
-                    console.log('[IPop WebRTC] Local offer set, dispatching to peer...');
-                    if (dotNetRef) {
-                        await dotNetRef.invokeMethodAsync('OnOfferGenerated', currentCallId, JSON.stringify(offer));
-                    }
-                }
-
+                armConnectTimer();
+                if (isCaller) await sendOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
                 return { success: true };
             } catch (err) {
-                console.error('[IPop WebRTC] Error initializing call:', err);
-                const msg = err.name === 'NotAllowedError'
-                    ? 'Microphone permission denied by user.'
-                    : err.message || 'Failed to acquire microphone.';
-                if (dotNetRef) dotNetRef.invokeMethodAsync('OnWebRtcError', msg);
+                const msg = err.message || 'Gagal memulai audio.';
+                reportError(msg);
+                reportState('failed');
                 return { success: false, error: msg };
             }
         })();
@@ -413,115 +525,82 @@
     }
 
     async function handleSignal(callId, type, payload) {
-        console.log(`[IPop WebRTC] Received signal "${type}" for call:`, callId);
-
-        if (!peerConnection) {
-            if (type === 'offer' || type === 'answer') {
-                console.log('[IPop WebRTC] Peer connection not ready, initializing as callee...');
-                await initCall(callId, false, dotNetRef);
-            } else if (type === 'candidate') {
-                try {
-                    const c = JSON.parse(payload);
-                    candidateQueue.push(c);
-                    console.log('[IPop WebRTC] Early candidate queued.');
-                } catch (e) { }
-                return;
-            }
-        }
-
-        if (initPromise) {
-            await initPromise;
-        }
-
-        if (!peerConnection) {
-            console.warn('[IPop WebRTC] Cannot handle signal: peerConnection is null');
-            return;
-        }
-
         try {
-            if (type === 'offer') {
-                const offer = JSON.parse(payload);
-                console.log('[IPop WebRTC] Setting remote description from offer...');
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-                await drainCandidateQueue();
+            if (!peerConnection && !initPromise) {
+                if (type === 'candidate') {
+                    candidateQueue.push(JSON.parse(payload));
+                    return;
+                }
+                // The offer can beat our own "active" state update — set up the callee side now.
+                await initCall(callId, false, dotNetRef);
+            }
+            if (initPromise) await initPromise;
+            if (!peerConnection || callId !== currentCallId) return;
 
-                console.log('[IPop WebRTC] Creating and setting answer...');
+            if (type === 'offer') {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(JSON.parse(payload)));
+                await drainCandidateQueue();
                 const answer = await peerConnection.createAnswer();
                 await peerConnection.setLocalDescription(answer);
-
-                if (dotNetRef) {
-                    console.log('[IPop WebRTC] Dispatching answer to caller...');
-                    await dotNetRef.invokeMethodAsync('OnAnswerGenerated', callId, JSON.stringify(answer));
-                }
+                notify('OnAnswerGenerated', callId, JSON.stringify(answer));
             } else if (type === 'answer') {
-                const answer = JSON.parse(payload);
-                console.log('[IPop WebRTC] Setting remote description from answer...');
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                // Only an answer to our own pending offer applies; a late or duplicate
+                // answer (already "stable") is harmless and must not surface as an error.
+                if (peerConnection.signalingState !== 'have-local-offer') return;
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(JSON.parse(payload)));
                 await drainCandidateQueue();
             } else if (type === 'candidate') {
                 const candidate = JSON.parse(payload);
                 if (peerConnection.remoteDescription && peerConnection.remoteDescription.type) {
                     await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-                    console.log('[IPop WebRTC] Added ICE candidate.');
                 } else {
                     candidateQueue.push(candidate);
-                    console.log('[IPop WebRTC] Queued ICE candidate (waiting for remote description).');
                 }
             }
         } catch (err) {
             console.error('[IPop WebRTC] Error handling signal:', type, err);
+            reportError(`Sinyal panggilan (${type}) gagal diproses: ${err.message}`);
         }
     }
 
     function setMute(isMuted) {
-        if (localStream) {
-            localStream.getAudioTracks().forEach(track => {
-                track.enabled = !isMuted;
-            });
-            console.log('[IPop WebRTC] Microphone muted state:', isMuted);
-        }
+        if (localStream) localStream.getAudioTracks().forEach(track => { track.enabled = !isMuted; });
     }
 
     function endCall() {
-        console.log('[IPop WebRTC] Ending call, releasing resources...');
         stopAudioTones();
+        clearConnectTimer();
         candidateQueue = [];
         initPromise = null;
-
-        if (visualizerTimer) {
-            clearInterval(visualizerTimer);
-            visualizerTimer = null;
-        }
-        if (liveKitRoom) {
-            try { liveKitRoom.disconnect(); } catch (e) { }
-            liveKitRoom = null;
-        }
-        if (localStream) {
-            localStream.getTracks().forEach(track => track.stop());
-            localStream = null;
-        }
-        if (peerConnection) {
-            peerConnection.close();
-            peerConnection = null;
-        }
-        if (remoteAudioEl) {
-            remoteAudioEl.srcObject = null;
-            remoteAudioEl.pause();
-        }
-        localAnalyser = null;
-        remoteAnalyser = null;
+        if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
+        if (peerConnection) { peerConnection.close(); peerConnection = null; }
+        if (remoteAudioEl) { remoteAudioEl.srcObject = null; remoteAudioEl.pause(); }
+        analysers.local = null;
+        analysers.remote = null;
+        levels.local = 0;
+        levels.remote = 0;
+        document.querySelectorAll('.avatar-local-speaker, .avatar-remote-speaker').forEach(el => el.classList.remove('speaking'));
         currentCallId = null;
-        console.log('[IPop WebRTC] Call resources released.');
     }
 
-    // Expose on global window object
     window.ipopAudio = {
+        checkSupport,
+        prepareMic,
+        configure,
         playRingtone,
         playDialTone,
+        playEndTone,
         stopAudioTones,
         initCall,
         handleSignal,
         setMute,
-        endCall
+        endCall,
+        getLevels,
+        listDevices,
+        setInputDevice,
+        setOutputDevice,
+        startMicTest,
+        stopMicTest,
+        playTestTone
     };
 })();

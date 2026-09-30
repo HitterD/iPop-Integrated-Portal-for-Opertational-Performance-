@@ -819,10 +819,10 @@
         else
         {
             @* ---- Empty state ---- *@
-            <div class="empty-state">
-                <i data-lucide="message-circle"></i>
+            <div class="empty-state chat-empty">
+                <i data-lucide="messages-square"></i>
                 <div class="title">Select a conversation</div>
-                <div class="sub">Choose from your existing conversations, or start a new one.</div>
+                <div class="sub">Choose a chat from the list, or start a new one.</div>
                 <div class="empty-acts">
                     <button type="button" class="ghost mobile-only" @onclick="() => OnToggleMobileRooms.InvokeAsync(true)">
                         <i data-lucide="list"></i> Browse conversations

@@ -118,8 +118,11 @@
   gap: var(--space-2);
 }
 
-/* Icon buttons */
-.topbar-right button {
+/* Square icon buttons. The status pill and the status menu are not squares: the pill is
+   a labelled control and the menu rows are full-width. Both override this rule from
+   shell/v6.css by matching its (0,3,1) specificity and loading later, so no :not()
+   exclusions belong here — each one would raise this rule past those overrides. */
+.topbar-right button:not(.apple-notif-footer):not(.apple-notif-readall-btn) {
   width: 36px;
   height: 36px;
   border-radius: var(--radius-md);
@@ -134,17 +137,17 @@
   position: relative;
 }
 
-.topbar-right button:hover {
+.topbar-right button:not(.apple-notif-footer):not(.apple-notif-readall-btn):hover {
   background: var(--tray);
   color: var(--ink);
   transform: translateY(-1px);
 }
 
-.topbar-right button:active {
+.topbar-right button:not(.apple-notif-footer):not(.apple-notif-readall-btn):active {
   transform: translateY(0) scale(0.95);
 }
 
-.topbar-right button .lucide {
+.topbar-right button:not(.apple-notif-footer):not(.apple-notif-readall-btn) .lucide {
   width: 18px;
   height: 18px;
 }
@@ -445,136 +448,4 @@
   place-items: center;
   letter-spacing: -0.02em;
   flex-shrink: 0;
-}
-
-/* ============ APPLE TOOLBAR (Chat / Mail) ============
-   Large title + one-line summary on the left; page actions (SectionOutlet
-   "topbar-actions") then the shell's status/theme/bell on the right. Mirrors
-   docs/mockups/ipop-apple: no pills, no crumb, calm hairline. */
-.topbar.apple-toolbar {
-  height: 54px;
-  padding: 0 20px 0 24px;
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border-bottom: 1px solid var(--line);
-}
-
-[data-theme="dark"] .topbar.apple-toolbar {
-  background: rgba(24, 24, 27, 0.94);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.topbar.apple-toolbar .tb-title {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 0;
-}
-
-.topbar.apple-toolbar h1 {
-  font-size: 18px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-}
-
-.topbar.apple-toolbar .tb-sub {
-  font-size: 11.5px;
-  color: var(--ink-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-variant-numeric: tabular-nums;
-}
-
-.topbar.apple-toolbar .topbar-right {
-  gap: 8px;
-}
-
-/* Page actions keep their natural size; only the shell's square controls are 36×36. */
-.topbar-right .tb-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-right: 6px;
-  padding-right: 12px;
-  border-right: 1px solid var(--line);
-}
-
-.topbar-right .tb-actions button {
-  width: auto;
-  height: 34px;
-  transform: none;
-}
-
-.topbar-right .tb-actions button:hover {
-  transform: none;
-}
-
-.topbar-right .tb-actions .icon-btn {
-  width: 34px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--r-ctl);
-  background: var(--surface);
-}
-
-.topbar-right .tb-actions .icon-btn:hover {
-  background: var(--surface-2);
-}
-
-.topbar-right .tb-actions .btn-primary {
-  padding: 0 16px;
-  background: var(--ink);
-  font-weight: 600;
-}
-
-[data-theme="dark"] .topbar-right .tb-actions .btn-primary {
-  background: var(--accent);
-}
-
-.topbar-right .tb-actions .tb-search {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 34px;
-  width: 280px;
-  padding: 0 10px 0 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  background: var(--surface);
-  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
-}
-
-.topbar-right .tb-actions .tb-search:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.14);
-}
-
-.topbar-right .tb-actions .tb-search .lucide {
-  width: 15px;
-  height: 15px;
-  color: var(--ink-3);
-  flex-shrink: 0;
-}
-
-.topbar-right .tb-actions .tb-search input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  font: inherit;
-  font-size: 13px;
-  color: var(--ink);
-}
-
-.topbar-right .tb-actions .tb-search input::placeholder {
-  color: var(--ink-4);
-}
-
-@media (max-width: 1280px) {
-  .topbar-right .tb-actions .tb-search { width: 200px; }
-  .topbar.apple-toolbar .presence-toggle .status-lbl { display: none; }
 }

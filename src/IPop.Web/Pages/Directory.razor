@@ -9,7 +9,7 @@
 
 <PageTitle>Directory — IPop</PageTitle>
 
-<div class="toolbar">
+<div class="toolbar dir-toolbar">
     <div class="apple-segmented">
         <button type="button" class="seg-btn @(presenceFilter == "" ? "active" : "")" @onclick='() => SetPresenceFilter("")'>
             <span>All</span>
@@ -46,7 +46,7 @@
             <button type="button" class="seg-btn @(isGridView ? "active" : "")" title="Grid view" aria-label="Grid view" @onclick="() => isGridView = true"><i data-lucide="layout-grid"></i></button>
         </div>
         <div class="dir-sort">
-            <button type="button" class="ghost-btn" @onclick="() => sortOpen = !sortOpen" @onclick:stopPropagation="true" aria-haspopup="menu" aria-expanded="@sortOpen">
+            <button type="button" class="ghost-btn" @onclick="() => sortOpen = !sortOpen" @onclick:stopPropagation="true" aria-haspopup="menu" aria-expanded="@(sortOpen ? "true" : "false")">
                 <i data-lucide="arrow-up-down"></i>@SortLabel(selectedSort)<i data-lucide="chevron-down" class="chev"></i>
             </button>
             @if (sortOpen)
@@ -56,7 +56,7 @@
                     @foreach (var opt in SortOptions)
                     {
                         var o = opt;
-                        <button type="button" role="menuitemradio" aria-checked="@(selectedSort == o)" @onclick="() => PickSort(o)">
+                        <button type="button" role="menuitemradio" aria-checked="@(selectedSort == o ? "true" : "false")" @onclick="() => PickSort(o)">
                             <span>@SortLabel(o)</span>
                             @if (selectedSort == o) { <i data-lucide="check"></i> }
                         </button>
@@ -64,15 +64,21 @@
                 </div>
             }
         </div>
-        <button type="button" class="ghost-btn @(favOnly ? "on" : "")" title="Show favorites only" aria-pressed="@favOnly" @onclick="ToggleFavOnly">
+        <button type="button" class="ghost-btn @(favOnly ? "on" : "")" title="Show favorites only" aria-pressed="@(favOnly ? "true" : "false")" @onclick="ToggleFavOnly">
             <i data-lucide="star"></i>Favorites <span class="cnt">@FavoritePeople.Count</span>
         </button>
         <button type="button" class="ghost-btn" title="Export search/filter results to CSV" disabled="@exporting" @onclick="ExportCsv"><i data-lucide="download"></i>@(exporting ? "Exporting…" : "Export")</button>
-        <button type="button" class="ghost-btn" title="Priority contacts: favorites & frequent" @onclick='() => Nav.NavigateTo("/directory/priority")'><i data-lucide="sparkles"></i>Priority contacts</button>
     </div>
 </div>
 
-<div class="body">
+<div class="body dir-body @(treeOpen ? "m-tree-open" : "")">
+    @* Phone only: the Structure/Favorites column collapses behind this toggle. *@
+    <button type="button" class="m-dir-filter @(selection is not null ? "on" : "")" aria-expanded="@(treeOpen ? "true" : "false")" @onclick="ToggleTree">
+        <i data-lucide="network"></i>
+        <span class="lbl">@(selection?.Name ?? "All people")</span>
+        <span class="v6-count-pill">@DisplayedPeople.Count</span>
+        <i data-lucide="@(treeOpen ? "chevron-up" : "chevron-down")" class="chev"></i>
+    </button>
     @if (notice is not null)
     {
         <div class="module-notice" style="margin:0 0 10px">
@@ -87,12 +93,12 @@
 
     <div class="cols dir-cols">
         <div class="col gap-14 dir-side">
-        <!-- Structure: Site ▸ Department ▸ Division -->
+        <!-- Structure: Plant ▸ Division ▸ Department (Site ▸ Department ▸ Division entities) -->
         <div class="card dir-structure">
             <div class="card-head">
                 <div>
                     <div class="card-title">Structure</div>
-                    <div class="card-meta">@(structureLoading ? "Loading…" : TotalDivisions > 0 ? $"{allPeopleCount:N0} people · {TotalDivisions:N0} divisions" : $"{allPeopleCount:N0} people")</div>
+                    <div class="card-meta">@(structureLoading ? "Loading…" : TotalDivisions > 0 ? $"{allPeopleCount:N0} people · {TotalDivisions:N0} departments" : $"{allPeopleCount:N0} people")</div>
                 </div>
             </div>
             @if (structureLoading)
@@ -108,35 +114,27 @@
             else
             {
                 <div class="tree">
-                    <button type="button" class="tree-node @(selectedDivision is null ? "on" : "")" @onclick="ClearDivisionFilter">
+                    <button type="button" class="tree-node @(selection is null ? "on" : "")" @onclick="ClearDivisionFilter">
                         <i data-lucide="users"></i>
                         <span class="lbl">All people</span>
                         <span class="tree-n">@allPeopleCount.ToString("N0")</span>
                     </button>
                     @foreach (var site in dirStructure.Sites)
                     {
-                        <div class="tree-site">@site.Name</div>
+                        var siteSel = IsSelected("site", site.Code);
+                        <button type="button" class="tree-node tree-site-node @(siteSel ? "on" : "")"
+                                aria-pressed="@(siteSel ? "true" : "false")" @onclick='() => SelectNode("site", site.Code, site.Name)'>
+                            <span class="lbl">@site.Name</span>
+                            <span class="tree-n">@site.MemberCount</span>
+                        </button>
                         @foreach (var dept in site.Departments)
                         {
-                            <button type="button" class="tree-node lv2">
-                                <i data-lucide="chevron-down"></i>
-                                <span class="lbl">@dept.Name</span>
-                                <span class="tree-n">@dept.MemberCount</span>
-                            </button>
-                            @foreach (var div in dept.Divisions)
-                            {
-                                var isSel = selectedDivision?.Code == div.Code;
-                                <button type="button" class="tree-node lv3 @(isSel ? "on" : "")"
-                                        @onclick="() => SelectDivision(div)">
-                                    <span class="lbl">@div.Name</span>
-                                    <span class="tree-n">@div.MemberCount</span>
-                                </button>
-                            }
+                            @DeptNode(site.Code, dept, 0)
                         }
                     }
                     @if (dirStructure.NoDivisionCount > 0)
                     {
-                        <div class="tree-foot"><i data-lucide="circle-dashed"></i><span class="lbl">No division</span><span class="tree-n">@dirStructure.NoDivisionCount.ToString("N0")</span></div>
+                        <div class="tree-foot"><i data-lucide="circle-dashed"></i><span class="lbl">No department</span><span class="tree-n">@dirStructure.NoDivisionCount.ToString("N0")</span></div>
                     }
                 </div>
             }
@@ -168,28 +166,31 @@
 
         <!-- People Section -->
         <div class="col gap-14" style="min-width:0">
-            @if (selectedNiks.Count > 0)
-            {
-                <div class="dir-bulk-bar">
-                    <button type="button" class="v6-cb on" role="checkbox" aria-checked="true" aria-label="Clear selection" @onclick="() => selectedNiks.Clear()">
-                        <i data-lucide="minus"></i>
-                    </button>
-                    <span class="dbb-count">@selectedNiks.Count selected</span>
-                    <div style="flex:1"></div>
-                    <button type="button" class="dbb-btn" @onclick="BulkMessage"><i data-lucide="message-circle"></i>Message</button>
-                    <button type="button" class="dbb-btn" @onclick="BulkCreateGroup"><i data-lucide="users"></i>Create group</button>
-                    <button type="button" class="dbb-btn" @onclick="BulkEmail"><i data-lucide="mail"></i>Email</button>
-                    <button type="button" class="dbb-btn" @onclick="BulkFavorite"><i data-lucide="star"></i>Favorite</button>
-                    <button type="button" class="dbb-clear" @onclick="() => selectedNiks.Clear()">Clear</button>
-                </div>
-            }
-
             <div class="card dir-people">
-                <div class="card-head">
-                    <span class="card-title">@(favOnly ? "Favorites" : selectedDivision?.Name ?? "All people")</span>
-                    <span class="v6-count-pill">@DisplayedPeople.Count shown</span>
-                    <span class="card-meta" style="margin-left:auto">Click a person to open their profile</span>
-                </div>
+                @if (selectedNiks.Count > 0)
+                {
+                    <div class="dir-bulk-bar">
+                        <button type="button" class="v6-cb on" role="checkbox" aria-checked="true" aria-label="Clear selection" @onclick="() => selectedNiks.Clear()">
+                            <i data-lucide="minus"></i>
+                        </button>
+                        <span class="dbb-count">@selectedNiks.Count selected</span>
+                        <div style="flex:1"></div>
+                        <button type="button" class="dbb-btn" @onclick="BulkMessage"><i data-lucide="message-circle"></i>Message</button>
+                        <button type="button" class="dbb-btn" @onclick="BulkCreateGroup"><i data-lucide="users"></i>Create group</button>
+                        <button type="button" class="dbb-btn" @onclick="BulkEmail"><i data-lucide="mail"></i>Email</button>
+                        <button type="button" class="dbb-btn fav" @onclick="BulkFavorite"><i data-lucide="star"></i>Favorite</button>
+                        <button type="button" class="dbb-btn plain" @onclick="BulkExport"><i data-lucide="download"></i>Export</button>
+                        <button type="button" class="dbb-clear" @onclick="() => selectedNiks.Clear()">Clear</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="card-head">
+                        <span class="card-title">@(favOnly ? "Favorites" : selection?.Name ?? "All people")</span>
+                        <span class="v6-count-pill">@DisplayedPeople.Count shown</span>
+                        <span class="card-meta" style="margin-left:auto">Click a person to open their profile</span>
+                    </div>
+                }
                 <div class="dir-scroll">
                 @if (isGridView)
                 {
@@ -213,35 +214,25 @@
                             {
                                 var isFav = Favorites.IsFavorite(p.Nik);
                                 var isChecked = selectedNiks.Contains(p.Nik);
-                                <div class="emp-card @(isFav ? "fav" : "")" @onclick="() => selected = p">
-                                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px" @onclick:stopPropagation="true">
+                                <div class="dir-card @(isFav ? "fav" : "") @(isChecked ? "checked" : "")" @onclick="() => selected = p">
+                                    <div class="dc-top" @onclick:stopPropagation="true">
                                         <button type="button" class="v6-cb @(isChecked ? "on" : "")"
-                                                role="checkbox" aria-checked="@isChecked"
+                                                role="checkbox" aria-checked="@(isChecked ? "true" : "false")"
                                                 aria-label="Select @p.Name" @onclick="() => TogglePersonSelection(p.Nik)">
                                             @if (isChecked) { <i data-lucide="check"></i> }
                                         </button>
-                                        <button type="button" class="icon-btn" style="border:none;background:transparent;width:24px;height:24px" title="@(isFav ? "Remove favorite" : "Add favorite")" @onclick="() => ToggleFavorite(p.Nik)">
-                                            <i data-lucide="star" style="width:14px;height:14px;color:@(isFav ? "var(--warn)" : "var(--ink-4)");fill:@(isFav ? "currentColor" : "none")"></i>
+                                        <button type="button" class="dc-star @(isFav ? "on" : "")" title="@(isFav ? "Remove favorite" : "Add favorite")" @onclick="() => ToggleFavorite(p.Nik)">
+                                            <i data-lucide="star"></i>
                                         </button>
                                     </div>
-                                    <div class="top">
-                                        <div class="av-wrap">
-                                            <div class="avatar" style="background:@p.Color">@p.Initials</div>
-                                            <span class="presence @p.Status"></span>
-                                        </div>
-                                        <div style="min-width:0;flex:1">
-                                            <div class="n" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@p.Name</div>
-                                            <div class="p" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@p.Position</div>
-                                        </div>
-                                    </div>
-                                    <div class="foot">
-                                        <span>@(p.Department) · @p.Nik</span>
-                                        <span class="badge @(p.Status == "on" ? "ok" : p.Status == "busy" ? "bad" : p.Status == "away" ? "warn" : "mute")">@p.StatusLabel</span>
-                                    </div>
-                                    <div style="display:flex;gap:6px;margin-top:10px;border-top:1px solid var(--line-soft);padding-top:8px" @onclick:stopPropagation="true">
-                                        <button type="button" class="ghost-btn" style="flex:1;height:28px;font-size:11px;padding:0 6px" title="Chat" @onclick="() => OpenChatWith(p.Nik)"><i data-lucide="message-circle" style="width:12px;height:12px"></i>Chat</button>
-                                        <button type="button" class="ghost-btn" style="flex:1;height:28px;font-size:11px;padding:0 6px" title="Call" @onclick="() => StartCallWith(p.Nik)"><i data-lucide="phone" style="width:12px;height:12px"></i>Call</button>
-                                        <button type="button" class="ghost-btn" style="flex:1;height:28px;font-size:11px;padding:0 6px" title="Email" @onclick="() => OpenMailWith(p.Nik)"><i data-lucide="mail" style="width:12px;height:12px"></i>Mail</button>
+                                    <div class="dc-av" style="background:@p.Color">@p.Initials<span class="presence @p.Status"></span></div>
+                                    <span class="dc-name" title="@p.Name">@p.Name</span>
+                                    <span class="dc-pos">@p.Position</span>
+                                    <span class="dc-meta">@(p.Department) · @p.Nik</span>
+                                    <div class="dc-acts" @onclick:stopPropagation="true">
+                                        <button type="button" class="dc-msg" @onclick="() => OpenChatWith(p.Nik)"><i data-lucide="message-circle"></i>Message</button>
+                                        <button type="button" class="dc-ic" title="Call" aria-label="Call @p.Name" @onclick="() => StartCallWith(p.Nik)"><i data-lucide="phone"></i></button>
+                                        <button type="button" class="dc-ic" title="Email" aria-label="Email @p.Name" @onclick="() => OpenMailWith(p.Nik)"><i data-lucide="mail"></i></button>
                                     </div>
                                 </div>
                             }
@@ -250,14 +241,15 @@
                 }
                 else
                 {
+                    var allSelected = DisplayedPeople.Count > 0 && selectedNiks.Count == DisplayedPeople.Count;
                     <table class="tbl">
                         <thead>
                             <tr>
                                 <th style="width:32px">
-                                    <button type="button" class="v6-cb @(DisplayedPeople.Count > 0 && selectedNiks.Count == DisplayedPeople.Count ? "on" : "")"
-                                            role="checkbox" aria-checked="@(DisplayedPeople.Count > 0 && selectedNiks.Count == DisplayedPeople.Count)"
+                                    <button type="button" class="v6-cb @(allSelected ? "on" : "")"
+                                            role="checkbox" aria-checked="@(allSelected ? "true" : "false")"
                                             aria-label="Select all" @onclick="ToggleSelectAllPeople">
-                                        @if (DisplayedPeople.Count > 0 && selectedNiks.Count == DisplayedPeople.Count)
+                                        @if (allSelected)
                                         {
                                             <i data-lucide="check"></i>
                                         }
@@ -266,9 +258,9 @@
                                 <th>Name</th>
                                 <th>NIK</th>
                                 <th>Position</th>
-                                <th>Division</th>
+                                <th>Department</th>
                                 <th>Status</th>
-                                <th style="width:76px"><span class="sr-only">Actions</span></th>
+                                <th class="th-acts">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -284,7 +276,7 @@
                             else if (DisplayedPeople.Count == 0 && FavoritePeople.Count == 0)
                             {
                                 <tr>
-                                    <td colspan="7" style="text-align:center;padding:32px;color:var(--ink-3)">@(loadError ?? "No one in this division yet.")</td>
+                                    <td colspan="7" style="text-align:center;padding:32px;color:var(--ink-3)">@(loadError ?? "No one in this department yet.")</td>
                                 </tr>
                             }
                             else
@@ -297,7 +289,7 @@
                                     <tr class="@(isSel ? "sel" : "")" @onclick="() => selected = p">
                                         <td @onclick:stopPropagation="true">
                                             <button type="button" class="v6-cb @(isChecked ? "on" : "")"
-                                                    role="checkbox" aria-checked="@isChecked"
+                                                    role="checkbox" aria-checked="@(isChecked ? "true" : "false")"
                                                     aria-label="Select @p.Name" @onclick="() => TogglePersonSelection(p.Nik)">
                                                 @if (isChecked) { <i data-lucide="check"></i> }
                                             </button>
@@ -308,9 +300,9 @@
                                                     <div class="av" style="background:@p.Color">@p.Initials</div>
                                                     <span class="presence @p.Status"></span>
                                                 </div>
-                                                <div>
-                                                    <div class="n">@p.Name</div>
-                                                    <div class="s">@p.Email</div>
+                                                <div class="cp-text">
+                                                    <div class="n" title="@p.Name">@p.Name</div>
+                                                    <div class="s" title="@p.Email">@p.Email</div>
                                                 </div>
                                             </div>
                                         </td>
@@ -437,6 +429,23 @@
         selectedNiks.Clear();
     }
 
+    // Selection is always drawn from loaded rows, so the CSV is built client-side
+    // rather than round-tripping NIKs through the filter-based export endpoint.
+    private async Task BulkExport()
+    {
+        var rows = people.Concat(favoritePeople)
+            .Where(p => selectedNiks.Contains(p.Nik))
+            .DistinctBy(p => p.Nik)
+            .ToList();
+        static string Q(string? v) => "\"" + (v ?? "").Replace("\"", "\"\"") + "\"";
+        var sb = new System.Text.StringBuilder("Name,NIK,Email,Position,Division,Status\n");
+        foreach (var p in rows)
+            sb.AppendLine(string.Join(",", Q(p.Name), Q(p.Nik), Q(p.Email), Q(p.Position), Q(p.Department), Q(p.StatusLabel)));
+        var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+        await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(bytes), $"directory-selected-{DateTime.Now:yyyyMMdd-HHmm}.csv");
+        Toasts.Show($"Exported {rows.Count} people to CSV.", ToastKind.Success);
+    }
+
     private void OpenMailWith(string nik)
         => Nav.NavigateTo($"/mail?to={Uri.EscapeDataString(nik)}&compose=1");
 
@@ -446,7 +455,11 @@
     // Master-detail tree state
     private DirectoryStructureNodeDto? dirStructure;
     private bool structureLoading = true;
-    private DirectoryDivisionNodeDto? selectedDivision;
+    // Tree selection: a Plant (site), a Division/sub-division (department subtree) or a
+    // Department (division) — each filters the list through its own employees query param.
+    private sealed record TreeSelection(string Kind, string Code, string Name);
+    private TreeSelection? selection;
+    private readonly HashSet<string> collapsedDepts = [];
     private bool treeOpen;
     private string? notice;
     private bool noticeIsError;
@@ -456,7 +469,8 @@
     private string? searchQ;
     private Dictionary<string, int> divMatches = []; // division code → match count
     private bool IsSearching => searchQ is not null;
-    private int TotalDivisions => dirStructure?.Sites.Sum(s => s.Departments.Sum(d => d.Divisions.Length)) ?? 0;
+    private int TotalDivisions => dirStructure?.Sites.Sum(s => s.Departments.Sum(CountDivisions)) ?? 0;
+    private static int CountDivisions(DirectoryDepartmentNodeDto d) => d.Divisions.Length + (d.Children ?? []).Sum(CountDivisions);
 
     /// Header tab counts come from the server, not the loaded page: the list is paged, so
     /// counting `people` reported 0 online whenever nobody on the current page was online.
@@ -531,8 +545,7 @@
             // Ekspor server-side: filter yang sama (divisi + kata kunci + kehadiran)
             // berlaku untuk SELURUH himpunan hasil, bukan satu halaman yang terlihat.
             // Diunduh via fetch ber-Bearer (window.open tak membawa header auth).
-            var divCode = selectedDivision?.Code ?? "";
-            var url = $"/api/directory/employees/export.csv?divisionCode={Uri.EscapeDataString(divCode)}"
+            var url = $"/api/directory/employees/export.csv?{SelectionParam}"
                 + (searchQ is null ? "" : $"&q={Uri.EscapeDataString(searchQ)}")
                 + (string.IsNullOrEmpty(presenceFilter) ? "" : $"&presence={presenceFilter}");
             var res = await Auth.SendAsync(HttpMethod.Get, url);
@@ -588,23 +601,74 @@
         structureLoading = true;
         dirStructure = await Auth.GetAsync<DirectoryStructureNodeDto>("/api/directory/structure");
         structureLoading = false;
-        if (dirStructure is not null) Layout.SetSubtitle(TotalDivisions > 0 ? $"{allPeopleCount:N0} people · {TotalDivisions:N0} divisions" : $"{allPeopleCount:N0} people");
+        if (dirStructure is not null) Layout.SetSubtitle($"{allPeopleCount:N0} people · {PresenceCounts.Online:N0} online");
         StateHasChanged();
     }
 
-    private async Task SelectDivision(DirectoryDivisionNodeDto? d)
+    private bool IsSelected(string kind, string code) => selection?.Kind == kind && selection.Code == code;
+
+    private string SelectionParam => selection switch
     {
-        if (selectedDivision?.Code == d?.Code && d is not null)
-            selectedDivision = null;
-        else
-            selectedDivision = d;
+        { Kind: "site" } s => $"siteCode={Uri.EscapeDataString(s.Code)}",
+        { Kind: "dept" } s => $"departmentCode={Uri.EscapeDataString(s.Code)}",
+        { } s => $"divisionCode={Uri.EscapeDataString(s.Code)}",
+        null => "divisionCode=",
+    };
+
+    // Clicking the selected node again clears the filter (same toggle the division rows had).
+    private async Task SelectNode(string kind, string code, string name)
+    {
+        selection = IsSelected(kind, code) ? null : new TreeSelection(kind, code, name);
         treeOpen = false;
         await Reload(1, replace: true);
     }
 
+    private Task SelectDivision(DirectoryDivisionNodeDto d) => SelectNode("div", d.Code, d.Name);
+
+    private void ToggleCollapse(string key)
+    {
+        if (!collapsedDepts.Remove(key)) collapsedDepts.Add(key);
+    }
+
+    // One department row plus, unless collapsed, its divisions and sub-departments one level in.
+    private RenderFragment DeptNode(string siteCode, DirectoryDepartmentNodeDto dept, int level) => __builder =>
+    {
+        var key = $"{siteCode}/{dept.Code}";
+        var open = !collapsedDepts.Contains(key);
+        var hasKids = dept.Divisions.Length > 0 || (dept.Children?.Length ?? 0) > 0;
+        var sel = IsSelected("dept", dept.Code);
+        <div class="tree-row" style="--lv:@level">
+            <button type="button" class="tree-twist" disabled="@(!hasKids)" aria-expanded="@(open ? "true" : "false")"
+                    aria-label="@(open ? "Collapse" : "Expand") @dept.Name" @onclick="() => ToggleCollapse(key)">
+                @if (hasKids) { <i data-lucide="@(open ? "chevron-down" : "chevron-right")"></i> }
+            </button>
+            <button type="button" class="tree-node tree-dept @(sel ? "on" : "")" aria-pressed="@(sel ? "true" : "false")"
+                    @onclick='() => SelectNode("dept", dept.Code, dept.Name)'>
+                <span class="lbl">@dept.Name</span>
+                <span class="tree-n">@dept.MemberCount</span>
+            </button>
+        </div>
+        @if (open)
+        {
+            @foreach (var div in dept.Divisions)
+            {
+                var isSel = IsSelected("div", div.Code);
+                <button type="button" class="tree-node tree-div @(isSel ? "on" : "")" style="--lv:@(level + 1)"
+                        aria-pressed="@(isSel ? "true" : "false")" @onclick="() => SelectDivision(div)">
+                    <span class="lbl">@div.Name</span>
+                    <span class="tree-n">@div.MemberCount</span>
+                </button>
+            }
+            @foreach (var child in dept.Children ?? [])
+            {
+                @DeptNode(siteCode, child, level + 1)
+            }
+        }
+    };
+
     private async Task ClearDivisionFilter()
     {
-        selectedDivision = null;
+        selection = null;
         treeOpen = false;
         await Reload(1, replace: true);
     }
@@ -686,14 +750,13 @@
     {
         var qAtStart = searchQ;
         loading = true;
-        var divCode = selectedDivision?.Code ?? "";
         var q = searchQ is null ? "" : $"&q={Uri.EscapeDataString(searchQ)}";
         var presence = string.IsNullOrEmpty(presenceFilter) ? "" : $"&presence={presenceFilter}";
         var sortParts = selectedSort.Split('-');
         var sort = sortParts[0];
         var desc = sortParts.Length > 1 && sortParts[1] == "desc";
         var sortParam = $"&sort={sort}&desc={desc}";
-        var url = $"/api/directory/employees?page={requestedPage}&pageSize={PageSize}&divisionCode={Uri.EscapeDataString(divCode)}{q}{presence}{sortParam}";
+        var url = $"/api/directory/employees?page={requestedPage}&pageSize={PageSize}&{SelectionParam}{q}{presence}{sortParam}";
         var result = await Auth.GetAsync<DirectoryPageDto>(url);
         if (qAtStart != searchQ) return; // superseded by a keystroke or clear
         loading = false;
@@ -716,15 +779,78 @@
     private void OnPresenceChanged(string nik, string status) => _ = InvokeAsync(() =>
     {
         var index = people.FindIndex(p => p.Nik == nik);
-        if (index < 0) return;
-        var updated = people[index] with { Status = status };
-        people[index] = updated;
-        if (selected?.Nik == nik) selected = updated;
-        StateHasChanged();
+        if (index >= 0)
+        {
+            var updated = people[index] with { Status = status };
+            people[index] = updated;
+            if (selected?.Nik == nik) selected = updated;
+            StateHasChanged();
+        }
+        SchedulePresenceRefresh();
     });
+
+    // The tab counts and "N online" subtitle come from /api/directory/structure, and a
+    // presence-filtered list gains/loses people as statuses change — re-read both, debounced
+    // so a burst of logins is one round-trip. Quiet: no skeleton, loaded list kept otherwise.
+    private CancellationTokenSource? _presenceRefresh;
+
+    private void SchedulePresenceRefresh()
+    {
+        _presenceRefresh?.Cancel();
+        var cts = _presenceRefresh = new CancellationTokenSource();
+        _ = InvokeAsync(async () =>
+        {
+            try { await Task.Delay(1000, cts.Token); } catch (OperationCanceledException) { return; }
+            var fresh = await Auth.GetAsync<DirectoryStructureNodeDto>("/api/directory/structure");
+            if (cts.IsCancellationRequested) return;
+            if (fresh is not null)
+            {
+                dirStructure = fresh;
+                Layout.SetSubtitle($"{allPeopleCount:N0} people · {PresenceCounts.Online:N0} online");
+            }
+            if (!string.IsNullOrEmpty(presenceFilter)) await Reload(1, replace: true);
+            else StateHasChanged();
+        });
+    }
 
     private void OnConnectionStateChanged() => _ = InvokeAsync(StateHasChanged);
     private void OnCardKey(KeyboardEventArgs e, Employee p) { if (e.Key is "Enter" or " ") selected = p; }
-    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
-    public void Dispose() { Nav.LocationChanged -= OnLocationChanged; Layout.SearchChanged -= OnSearchChanged; Auth.PresenceChanged -= OnPresenceChanged; Auth.DirectoryChanged -= OnDirectoryChanged; Auth.ConnectionStateChanged -= OnConnectionStateChanged; Favorites.Changed -= OnFavoritesChanged; }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+        await SyncMobileDetailAsync();
+    }
+
+    // ── Phone layout (<= 767px): the profile sheet is a full-screen detail; phone Back closes it.
+    //    `selected` is set from many click handlers, so history is synced after render. ──
+    private DotNetObjectReference<Directory>? _selfRef;
+    private bool _mobileDetailPushed;
+
+    private async Task SyncMobileDetailAsync()
+    {
+        try
+        {
+            if (selected is not null && !_mobileDetailPushed)
+            {
+                _selfRef ??= DotNetObjectReference.Create(this);
+                _mobileDetailPushed = await JS.InvokeAsync<bool>("ipop.mobile.pushDetail", _selfRef, nameof(MobileBack));
+            }
+            else if (selected is null && _mobileDetailPushed)
+            {
+                _mobileDetailPushed = false;
+                await JS.InvokeVoidAsync("ipop.mobile.popDetail");
+            }
+        }
+        catch (JSException) { }
+    }
+
+    [JSInvokable]
+    public Task MobileBack() => InvokeAsync(() =>
+    {
+        _mobileDetailPushed = false; // the browser already popped the entry
+        selected = null;
+        StateHasChanged();
+    });
+
+    public void Dispose() { _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail").AsTask().ContinueWith(_ => { }); _selfRef?.Dispose(); Nav.LocationChanged -= OnLocationChanged; Layout.SearchChanged -= OnSearchChanged; Auth.PresenceChanged -= OnPresenceChanged; _presenceRefresh?.Cancel(); Auth.DirectoryChanged -= OnDirectoryChanged; Auth.ConnectionStateChanged -= OnConnectionStateChanged; Favorites.Changed -= OnFavoritesChanged; }
 }

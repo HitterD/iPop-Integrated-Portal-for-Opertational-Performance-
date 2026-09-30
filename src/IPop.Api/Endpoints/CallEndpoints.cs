@@ -38,6 +38,46 @@ public static class CallEndpoints
             return Results.Created($"/api/calls/{result.Room.Id}", result.Room);
         });
 
+        // Group call for a chat group: create (rings every other member) or join the live one.
+        // The response carries the caller's LiveKit token; media never falls back to P2P.
+        g.MapPost("/group/{chatRoomId:guid}", async (Guid chatRoomId, HttpContext http,
+            ICallService svc, IPopDbContext db, IHubContext<CallHub> hub, ILiveKitTokenService liveKit, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            if (!liveKit.IsConfigured)
+                return Results.Json(new { code = CallErrors.MediaUnavailable, message = "Server media panggilan grup belum dikonfigurasi." }, statusCode: 503);
+            var result = await svc.StartGroupCallAsync(userId.Value, chatRoomId, ct);
+            if (result.Room is null) return GroupError(result);
+            await BroadcastGroupAsync(hub, db, result.Room, ct);
+            return Results.Ok(await WithTokenAsync(result.Room, userId.Value, db, liveKit, ct));
+        });
+
+        // Join a group call (accept the ring, or late join from the chat banner) → LiveKit token.
+        g.MapPost("/{callId:guid}/join", async (Guid callId, HttpContext http,
+            ICallService svc, IPopDbContext db, IHubContext<CallHub> hub, ILiveKitTokenService liveKit, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            if (!liveKit.IsConfigured)
+                return Results.Json(new { code = CallErrors.MediaUnavailable, message = "Server media panggilan grup belum dikonfigurasi." }, statusCode: 503);
+            var result = await svc.JoinGroupCallAsync(userId.Value, callId, ct);
+            if (result.Room is null) return GroupError(result);
+            await BroadcastGroupAsync(hub, db, result.Room, ct);
+            return Results.Ok(await WithTokenAsync(result.Room, userId.Value, db, liveKit, ct));
+        });
+
+        // The chat group's live call (banner "Panggilan grup sedang berlangsung"), or null.
+        g.MapGet("/group/{chatRoomId:guid}/active", async (Guid chatRoomId, HttpContext http,
+            ICallService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var result = await svc.GetActiveGroupCallAsync(userId.Value, chatRoomId, ct);
+            if (!result.Success) return GroupError(result);
+            return Results.Ok(result.Room);
+        });
+
         // Signaling lifecycle: accept / decline / leave / end + mute/screen toggles.
         g.MapPost("/signal", async (CallSignalRequest req, HttpContext http,
             ICallService svc, IPopDbContext db, IHubContext<CallHub> hub, CancellationToken ct) =>
@@ -48,17 +88,9 @@ public static class CallEndpoints
             if (result.Room is null)
                 return Results.Json(new { code = result.ErrorCode, message = result.Error }, statusCode: 422);
 
-            foreach (var p in result.Room.Participants)
-            {
-                if (result.Room.Status is CallStatus.Ended or CallStatus.Declined or CallStatus.Missed)
-                {
-                    await hub.Clients.Group($"user:{p.UserId}").SendAsync("callEnded", ct);
-                }
-                else
-                {
-                    await hub.Clients.Group($"user:{p.UserId}").SendAsync("callStateChanged", result.Room, ct);
-                }
-            }
+            // Ended rooms go out as state too, so each side can say why (declined, missed…).
+            // Group calls reach every group member (banners), not only the participants.
+            await BroadcastGroupAsync(hub, db, result.Room, ct);
 
             return Results.Ok(result.Room);
         });
@@ -96,20 +128,70 @@ public static class CallEndpoints
             return Results.Ok(result);
         });
 
-        // Config endpoint returning ICE/STUN or LiveKit URL
+        // ICE servers (STUN + the LAN TURN) for the browser's RTCPeerConnection.
         g.MapGet("/config", (IConfiguration cfg) =>
         {
-            var iceServers = cfg.GetSection("Calls:IceServers").Get<object[]>() ?? [
-                new { urls = "stun:stun.l.google.com:19302" },
-                new { urls = "stun:stun1.l.google.com:19302" },
-                new { urls = "stun:stun2.l.google.com:19302" }
-            ];
-            var liveKitUrl = cfg["Calls:LiveKit:Url"];
-            return Results.Ok(new { iceServers, liveKitUrl });
+            // Read explicitly: binding to object[] yields empty objects, so TURN never reached the browser.
+            // Layered files can give "urls" both a scalar (base file) and children (Local array);
+            // the array is the more specific one, so it wins.
+            var iceServers = cfg.GetSection("Calls:IceServers").GetChildren()
+                .Select(s =>
+                {
+                    var urls = s.GetSection("urls");
+                    var list = urls.GetChildren().Select(u => u.Value).OfType<string>().ToArray();
+                    return new IceServerDto(list.Length > 0 ? list : urls.Value is { } one ? [one] : [],
+                        s["username"], s["credential"]);
+                })
+                .Where(s => s.Urls.Length > 0)
+                .ToList();
+            if (iceServers.Count == 0) iceServers.Add(new IceServerDto(["stun:stun.l.google.com:19302"], null, null));
+            return Results.Ok(new { iceServers, ringTimeoutSeconds = (int)IPop.Infrastructure.Calls.CallService.RingTimeout.TotalSeconds });
         });
 
         return app;
     }
+
+    private static IResult GroupError(CallResultDto result) => result.ErrorCode switch
+    {
+        CallErrors.GroupNotFound or CallErrors.RoomNotFound =>
+            Results.Json(new { code = result.ErrorCode, message = result.Error }, statusCode: 404),
+        CallErrors.NotGroupMember or CallErrors.NotParticipant =>
+            Results.Json(new { code = result.ErrorCode, message = result.Error }, statusCode: 403),
+        _ => Results.Json(new { code = result.ErrorCode, message = result.Error }, statusCode: 422),
+    };
+
+    /// Mint the caller's LiveKit token for a group call. Identity = NIK (same as meeting rooms).
+    /// LiveKitUrl is the configured server; a browser on https swaps it for wss://{page host}.
+    private static async Task<CallRoomDto> WithTokenAsync(CallRoomDto room, Guid userId, IPopDbContext db,
+        ILiveKitTokenService liveKit, CancellationToken ct)
+    {
+        var me = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => new { u.Nik, u.Name }).FirstAsync(ct);
+        var name = IPop.Infrastructure.Calls.CallService.LiveKitRoomName(room.Id);
+        return room with
+        {
+            LiveKitUrl = liveKit.ServerUrl,
+            LiveKitToken = liveKit.GenerateToken(name, me.Nik, me.Name, TimeSpan.FromHours(6)),
+            LiveKitRoom = name,
+        };
+    }
+
+    /// callStateChanged to every participant and, for group calls, to every current group member.
+    internal static async Task BroadcastGroupAsync(IHubContext<CallHub> hub, IPopDbContext db, CallRoomDto room, CancellationToken ct)
+    {
+        var targets = room.Participants.Select(p => p.UserId).ToHashSet();
+        if (room.ChatRoomId is { } chatId)
+        {
+            var members = await db.ChatRoomMembers.AsNoTracking()
+                .Where(m => m.RoomId == chatId && m.LeftAt == null).Select(m => m.UserId).ToListAsync(ct);
+            targets.UnionWith(members);
+        }
+        foreach (var uid in targets)
+            await hub.Clients.Group($"user:{uid}").SendAsync("callStateChanged", room, ct);
+    }
+
+    private sealed record IceServerDto(string[] Urls,
+        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Username,
+        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Credential);
 
     private static async Task<Guid?> GetUserIdAsync(HttpContext http, IPopDbContext db, CancellationToken ct)
     {

@@ -1153,3 +1153,114 @@
   color: var(--ink-3);
   flex-shrink: 0;
 }
+
+/* ── Seen-by summary + "Message info" popover (group rooms, own latest message) ── */
+.seen-wrap { position: relative; display: flex; justify-content: flex-end; align-self: flex-end; }
+.msg .seen-by.seen-clickable {
+  border: 0; background: transparent; cursor: pointer; font: inherit;
+  border-radius: 999px; padding: 2px 6px 2px 3px;
+}
+.msg .seen-by.seen-clickable:hover,
+.msg .seen-by.seen-clickable[aria-expanded="true"] { background: var(--tray); }
+.msg .seen-by.seen-clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Everyone has read it: a coloured double tick + "Read all" replaces the avatar stack. */
+.msg .seen-by .seen-all-icon {
+  width: 14px; height: 14px; flex-shrink: 0;
+  fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;
+}
+.msg .seen-by.seen-all .seen-label { margin-left: 2px; color: var(--accent); font-weight: var(--font-semibold, 600); }
+.seen-backdrop { position: fixed; inset: 0; z-index: 39; }
+.seen-pop {
+  position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 40;
+  width: 280px; max-width: min(280px, 80vw);
+  display: flex; flex-direction: column;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-lg);
+  text-align: left; font-style: normal; animation: seen-pop-in .12s ease-out;
+}
+@keyframes seen-pop-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.seen-pop-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 8px 14px; border-bottom: 1px solid var(--line); }
+.seen-pop-title { font-weight: 600; font-size: 13px; }
+.seen-pop-count { font-size: 11px; color: var(--ink-3); background: var(--tray); border-radius: 999px; padding: 1px 7px; }
+.seen-close {
+  margin-left: auto; width: 26px; height: 26px; display: grid; place-items: center;
+  border: 0; border-radius: 8px; background: transparent; color: var(--ink-3); cursor: pointer; padding: 0;
+}
+.seen-close:hover { background: var(--tray); color: var(--ink); }
+.seen-close .lucide { width: 15px; height: 15px; }
+.seen-pop-body { max-height: 300px; overflow-y: auto; padding: 4px 6px 8px; }
+.seen-section {
+  display: flex; align-items: center; gap: 6px; padding: 8px 8px 4px;
+  font-size: 11px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--ink-3);
+}
+.seen-section b { color: var(--ink-2); }
+.seen-section .lucide { width: 13px; height: 13px; }
+.seen-row { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 8px; font-size: 12.5px; }
+.seen-row:hover { background: var(--tray); }
+.seen-row .avatar-24 {
+  width: 24px; height: 24px; flex: none; border-radius: 50%;
+  display: grid; place-items: center; font-size: 9.5px; font-weight: 700; color: #fff;
+}
+.seen-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.seen-time { flex: none; margin-left: auto; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+.seen-state { padding: 14px; font-size: 12px; color: var(--ink-3); }
+.seen-error { color: var(--danger); }
+
+/* ── System events as a centred pill ── */
+.msg.system .bubble {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 999px;
+  background: var(--tray); font-style: normal; font-size: 12px; color: var(--ink-2);
+}
+.msg.system .bubble .sys-icon { width: 13px; height: 13px; flex: none; color: var(--ink-3); }
+.msg.system .v6-meta { display: none; }
+
+/* ── Polls ── */
+.poll-card { display: flex; flex-direction: column; gap: 8px; min-width: 240px; max-width: 360px; }
+.poll-question { font-weight: 600; font-size: 13.5px; line-height: 1.35; }
+.poll-options { display: flex; flex-direction: column; gap: 6px; }
+.poll-opt {
+  position: relative; overflow: hidden; display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface); color: var(--ink); cursor: pointer; font-size: 13px;
+  transition: border-color .12s;
+}
+.poll-opt:hover { border-color: var(--accent); }
+.poll-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.poll-opt.voted { border-color: var(--accent); }
+.poll-opt.busy { cursor: progress; opacity: .8; }
+.poll-opt-progress { position: absolute; inset: 0 auto 0 0; background: var(--accent-soft); transition: width .25s ease; }
+.poll-opt-text, .poll-opt-pct { position: relative; }
+.poll-opt-text { flex: 1; min-width: 0; display: flex; gap: 8px; }
+.poll-opt-pct { flex: none; font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.poll-meta { display: flex; justify-content: space-between; font-size: 11px; color: var(--ink-3); }
+.poll-error { font-size: 11.5px; color: var(--danger); }
+
+/* ---- Group Members panel: role tags, per-member ⋯ menu, membership history ---- */
+.chat-area .grp-member .tag { padding: 2px 7px; border-radius: 999px; background: var(--tray); color: var(--ink-2); font-weight: 600; }
+.chat-area .grp-member .tag.owner { background: var(--accent-soft); color: var(--accent); }
+.chat-area .grp-member .tag.admin { background: var(--tray); color: var(--ink); }
+.chat-area .member-menu-wrap { position: relative; flex: none; }
+.chat-area .member-more { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--ink-3); cursor: pointer; }
+.chat-area .member-more:hover, .chat-area .member-more[aria-expanded="true"] { background: var(--tray); color: var(--ink); }
+.chat-area .member-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.chat-area .member-more .lucide { width: 16px; height: 16px; }
+.chat-area .member-menu-backdrop { position: fixed; inset: 0; z-index: 40; }
+.chat-area .member-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 41; min-width: 180px; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-lg); }
+.chat-area .member-menu button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--ink); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.chat-area .member-menu button:hover, .chat-area .member-menu button:focus-visible { background: var(--tray); outline: none; }
+.chat-area .member-menu button.danger { color: var(--danger); }
+.chat-area .member-menu .lucide { width: 14px; height: 14px; }
+.chat-area .member-history { margin-top: 12px; border: 1px solid var(--line-soft, var(--line)); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.chat-area .member-history-toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.chat-area .member-history-toggle:hover { background: var(--tray); }
+.chat-area .member-history-toggle .lucide { width: 14px; height: 14px; color: var(--ink-3); }
+.chat-area .member-history-toggle .mh-chev { margin-left: auto; }
+.chat-area .member-history-list { max-height: 260px; overflow-y: auto; border-top: 1px solid var(--line-soft, var(--line)); }
+.chat-area .audit-entry { padding: 8px 12px; border-bottom: 1px solid var(--line-soft, var(--line)); color: var(--ink-2); font-size: 12px; line-height: 1.45; }
+.chat-area .audit-entry:last-child { border-bottom: 0; }
+.chat-area .audit-entry b { color: var(--ink); font-weight: 600; }
+.chat-area .audit-muted { color: var(--ink-3); font-size: 11px; }
+.chat-area .audit-state, .chat-area .audit-error { padding: 12px; color: var(--ink-3); font-size: 12px; text-align: center; }
+.chat-area .audit-error { color: var(--danger); }
+.chat-area .audit-load-more { display: block; width: 100%; padding: 8px; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }

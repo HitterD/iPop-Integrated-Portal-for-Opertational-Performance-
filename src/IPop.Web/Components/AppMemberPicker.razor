@@ -23,9 +23,9 @@
     {
         <div class="member-picker-input">
             <i data-lucide="search"></i>
-            <input placeholder="@(Placeholder ?? "Type a name or NIK...")"
+            <input placeholder="@(Placeholder ?? "Type a name or NIK...")" value="@query"
                    @oninput="OnInput" @onkeydown="OnKeyDown"
-                   @ref="inputRef" aria-label="Search people" aria-expanded="@(results.Count > 0)" />
+                   @ref="inputRef" aria-label="Search people" aria-expanded="@(results.Count > 0 ? "true" : "false")" />
             @if (loading)
             {
                 <span class="member-picker-spin"><i data-lucide="loader-2" class="spin"></i></span>
@@ -40,7 +40,7 @@
             {
                 var idx = i;
                 var r = results[i];
-                <button type="button" class="member-picker-opt @(activeIdx == idx ? "active" : "")" role="option" aria-selected="@(activeIdx == idx)"
+                <button type="button" class="member-picker-opt @(activeIdx == idx ? "active" : "")" role="option" aria-selected="@(activeIdx == idx ? "true" : "false")"
                         @onmousemove="() => activeIdx = idx" @onmousedown="() => Pick(r)">
                     <span class="avatar" style="background:@(r.AvatarColor)">@(r.Initials)</span>
                     <span class="txt"><span class="n">@r.Name</span><span class="s">@r.PositionLabel</span></span>
@@ -69,9 +69,21 @@
     private ElementReference wrap;
     private ElementReference popRef;
     private System.Threading.CancellationTokenSource? cts;
+    // The trimmed query the current `results` were fetched for; Enter only picks when it matches.
+    private string resultsFor = "";
+    private bool refocus;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (refocus)
+        {
+            refocus = false;
+            // After a pick the parent may swap the input for the selected chip (Value set); only refocus a live input.
+            if (Value is null)
+            {
+                try { await inputRef.FocusAsync(); } catch { /* input not rendered */ }
+            }
+        }
         await JS.InvokeVoidAsync("ipop.icons");
         if (results.Count > 0)
         {
@@ -91,9 +103,17 @@
         var token = new CancellationTokenSource();
         cts = token;
         var q = query.Trim();
+        // A new query invalidates the previous suggestions: never show (or Enter-pick) stale rows.
+        if (q != resultsFor)
+        {
+            results = [];
+            resultsFor = "";
+            activeIdx = 0;
+        }
         if (q.Length < 2)
         {
             results = [];
+            resultsFor = "";
             loading = false;
             searched = false;
             StateHasChanged();
@@ -106,6 +126,7 @@
         var res = await Auth.GetAsync<MemberSearchRow[]>($"/api/directory/member-search?q={Uri.EscapeDataString(q)}");
         if (token.IsCancellationRequested) return;
         results = res?.ToList() ?? [];
+        resultsFor = q;
         activeIdx = 0;
         loading = false;
         StateHasChanged();
@@ -113,25 +134,35 @@
 
     private async Task Pick(MemberSearchRow r)
     {
+        ResetSearch();
         await ValueChanged.InvokeAsync(r);
-        query = "";
-        results = [];
-        searched = false;
-        activeIdx = 0;
+        refocus = true;
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
     }
 
-    private async Task Clear()
+    /// Empties the box and drops any in-flight search so late results can't reappear.
+    private void ResetSearch()
     {
+        cts?.Cancel();
         query = "";
         results = [];
+        resultsFor = "";
+        loading = false;
         searched = false;
         activeIdx = 0;
+    }
+
+    private async Task Clear()
+    {
+        ResetSearch();
+        refocus = true;
         await ValueChanged.InvokeAsync(null);
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
     }
+
+    private bool CanPickOnEnter => !loading && results.Count > 0 && resultsFor.Length > 0 && resultsFor == query.Trim();
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
@@ -144,14 +175,16 @@
                 if (results.Count > 0) { activeIdx = (activeIdx - 1 + results.Count) % results.Count; StateHasChanged(); }
                 break;
             case "Enter":
-                if (results.Count > 0)
+                // Only pick what is on screen for the text as typed now — not while a search
+                // is pending or when the list still belongs to an earlier query.
+                if (CanPickOnEnter)
                 {
                     var r = results[Math.Clamp(activeIdx, 0, results.Count - 1)];
                     await Pick(r);
                 }
                 break;
             case "Escape":
-                query = ""; results = []; searched = false; StateHasChanged();
+                ResetSearch(); refocus = true; StateHasChanged();
                 break;
         }
     }

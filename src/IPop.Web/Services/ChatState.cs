@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using IPop.Application.Chat;
 using IPop.Application.Chat.Mentions;
+using IPop.Application.Realtime;
 using Microsoft.AspNetCore.SignalR.Client;
 
 namespace IPop.Web.Services;
@@ -55,6 +56,9 @@ public class ChatState : IAsyncDisposable
     public event Action? MembersChanged;
     public event Action? PinnedChanged;
     public event Action<MessageDto>? ThreadReplyReceived;
+    /// Someone else's message landed in a room that isn't on screen — the shell turns it into a banner.
+    public event Action<IncomingChatMessage>? IncomingMessage;
+    public event Action<Guid>? RoomOpened;
     private readonly Dictionary<Guid, bool> _mentionFlags = [];
     public bool HasUnreadMention(Guid roomId) => _mentionFlags.TryGetValue(roomId, out var v) && v;
     public void ClearMentionFlag(Guid roomId) { _mentionFlags[roomId] = false; StateChanged?.Invoke(); }
@@ -88,6 +92,9 @@ public class ChatState : IAsyncDisposable
     public Task LoadMoreArchivedAsync() => LoadArchivedRoomsAsync(_archivedPage + 1);
 
     private bool _presenceSubscribed;
+    private IDisposable? _roomsChangedSub;
+    private string _roomSearch = "";
+    private CancellationTokenSource? _roomsReloadCts;
     private bool _connecting;
     private CancellationTokenSource? _openCts;
     public bool IsOpening => _openCts is not null;
@@ -101,7 +108,14 @@ public class ChatState : IAsyncDisposable
         _connecting = true;
 
         // Subscribe to presence changes so room-list presence dots update in real-time
-        if (!_presenceSubscribed) { _auth.PresenceChanged += OnPresenceChanged; _presenceSubscribed = true; }
+        if (!_presenceSubscribed)
+        {
+            _auth.PresenceChanged += OnPresenceChanged;
+            _auth.HubReconnected += OnAppHubReconnected;
+            _presenceSubscribed = true;
+        }
+        // Per-user room state (mute/archive/pin/read) changed in another of this user's tabs.
+        _roomsChangedSub ??= _auth.On(RealtimeEvents.ChatRoomsChanged, ScheduleRoomsReload);
 
         var baseUrl = _http.BaseAddress!;
         var hubUrl = new Uri(baseUrl, "hubs/chat");
@@ -126,11 +140,26 @@ public class ChatState : IAsyncDisposable
         _hub.On<RoomUpdateDto>("roomUpdated", ru => { _ = SafeAsync(async () => { await LoadRoomsAsync(); await LoadActiveRoomAsync(); }); });
         _hub.On<MessageDto>("threadReply", OnThreadReply);
         _hub.On<MessageDto>("emergencyBroadcast", OnNewMessage);
-        _hub.On<Guid>("removedFromRoom", roomId => _ = SafeAsync(() => OnRemovedFromRoomAsync(roomId)));
+        _hub.On<Guid>("addedToRoom", roomId => _ = SafeAsync(async () =>
+        {
+            // Hub groups are joined on connect; a room created/joined mid-session needs this
+            // explicit subscribe or its messages never arrive until the next reconnect.
+            await _hub!.InvokeAsync("JoinRoom", roomId);
+            await LoadRoomsAsync();
+        }));
+        _hub.On<Guid>("removedFromRoom",roomId => _ = SafeAsync(() => OnRemovedFromRoomAsync(roomId)));
 
         _hub.Reconnecting += ex => { ConnectionChanged?.Invoke(); return Task.CompletedTask; };
         _hub.Reconnected += cid => { ConnectionChanged?.Invoke(); _ = RefreshOnReconnectAsync(); return Task.CompletedTask; };
-        _hub.Closed += ex => { ConnectionChanged?.Invoke(); return Task.CompletedTask; };
+        var hub = _hub;
+        _hub.Closed += ex =>
+        {
+            ConnectionChanged?.Invoke();
+            // Auto-reconnect gave up: keep retrying so chat never dies until a page refresh.
+            _ = HubRetry.RunAsync(hub, () => _hub == hub && _auth.IsAuthenticated,
+                () => { ConnectionChanged?.Invoke(); _ = SafeAsync(RefreshOnReconnectAsync); });
+            return Task.CompletedTask;
+        };
 
         try
         {
@@ -205,6 +234,7 @@ public class ChatState : IAsyncDisposable
     /// unchanged while a query is active; empty query restores the normal lists.
     public async Task SearchRoomsAsync(string query)
     {
+        _roomSearch = query;
         if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 2)
         {
             await LoadRoomsAsync();
@@ -235,6 +265,7 @@ public class ChatState : IAsyncDisposable
         var ct = cts.Token;
 
         ActiveRoomId = roomId;
+        RoomOpened?.Invoke(roomId);
         ActiveMessages = [];
         MessagePage = 1;
         HasOlderMessages = false;
@@ -307,14 +338,64 @@ public class ChatState : IAsyncDisposable
             ActiveMessages = result.Items.ToList();
         }
         else
-            ActiveMessages.InsertRange(0, result.Items);
+        {
+            // Offset pages shift as messages arrive; never let a re-served row duplicate an @key.
+            var known = ActiveMessages.Select(m => m.Id).ToHashSet();
+            ActiveMessages.InsertRange(0, result.Items.Where(m => known.Add(m.Id)));
+        }
         MessagePage = page;
         HasOlderMessages = page * result.PageSize < result.TotalCount;
         StateChanged?.Invoke();
+        // Group bubbles show reader avatars; the page payload only carries counts.
+        if (ActiveRoom is { Type: "group" }) _ = RefreshGroupReadCountsAsync(roomId.Value, immediate: true);
     }
 
+    /// Single-flight: a double click (or JumpToMessage looping while a click is in flight)
+    /// used to fetch the same page twice, and the duplicate ids crashed the renderer on
+    /// @key. Callers awaiting while a load runs share that load instead of starting another.
+    private Task? _olderLoad;
+    private Guid? _olderLoadRoomId;
+
     public Task LoadOlderMessagesAsync()
-        => HasOlderMessages ? LoadMessagesAsync(MessagePage + 1) : Task.CompletedTask;
+    {
+        if (!HasOlderMessages) return Task.CompletedTask;
+        if (_olderLoad is { IsCompleted: false } && _olderLoadRoomId == ActiveRoomId) return _olderLoad;
+        _olderLoadRoomId = ActiveRoomId;
+        return _olderLoad = LoadOlderCoreAsync();
+    }
+
+    /// Keyset paging (?before=<oldest CreatedAt>): new messages arriving while you read no
+    /// longer shift the offset window, which used to re-serve rows already on screen.
+    private async Task LoadOlderCoreAsync()
+    {
+        var roomId = ActiveRoomId;
+        // Optimistic bubbles are always newest, so the oldest loaded row is a server row.
+        var oldest = ActiveMessages.FirstOrDefault();
+        if (roomId is null || oldest is null) return;
+        var ct = _openCts?.Token ?? CancellationToken.None;
+        // Server timestamps are UTC; an offset-less value must not be shifted by the local zone.
+        var cursor = oldest.CreatedAt.Kind == DateTimeKind.Local
+            ? oldest.CreatedAt.ToUniversalTime()
+            : DateTime.SpecifyKind(oldest.CreatedAt, DateTimeKind.Utc);
+        var before = Uri.EscapeDataString(cursor.ToString("O"));
+        PagedResult<MessageDto>? result;
+        try { result = await _auth.GetAsync<PagedResult<MessageDto>>($"/api/chat/rooms/{roomId}/messages?before={before}&pageSize=50", ct); }
+        catch (OperationCanceledException) { return; }
+        if (result is null) return;
+        if (ct.IsCancellationRequested || roomId != ActiveRoomId) return;
+        // The list was replaced meanwhile (room re-opened, reconnect reloaded page 1):
+        // this page no longer lines up with what's on screen.
+        if (ActiveMessages.Count == 0 || ActiveMessages[0].Id != oldest.Id) return;
+        // De-dup by id anyway: a message can land via the hub between the two requests,
+        // and a duplicate @key takes the whole message list down.
+        var known = ActiveMessages.Select(m => m.Id).ToHashSet();
+        var fresh = result.Items.Where(m => known.Add(m.Id)).ToList();
+        ActiveMessages.InsertRange(0, fresh);
+        MessagePage++;
+        HasOlderMessages = result.Items.Count > 0 && result.Items.Count < result.TotalCount;
+        StateChanged?.Invoke();
+        if (ActiveRoom is { Type: "group" }) _ = RefreshGroupReadCountsAsync(roomId.Value, immediate: true);
+    }
 
     public async Task JoinRoomAsync(Guid roomId)
     {
@@ -326,6 +407,27 @@ public class ChatState : IAsyncDisposable
     {
         if (_hub?.State == HubConnectionState.Connected)
             await _hub.InvokeAsync("LeaveRoom", roomId);
+    }
+
+    /// Dismisses the open conversation without leaving its hub group, so unread badges and
+    /// previews keep streaming for it in the background. Used by Escape-to-dismiss; the
+    /// page then returns to the conversation list.
+    public void CloseActiveRoom()
+    {
+        if (ActiveRoomId is null && ActiveRoom is null) return;
+        ActiveRoomId = null;
+        ActiveRoom = null;
+        ActiveMessages = [];
+        MessagePage = 1;
+        HasOlderMessages = false;
+        _openingRoomId = null;
+        // An in-flight open must not paint the room we just dismissed. Its finally block
+        // still owns the CTS disposal.
+        _openCts?.Cancel();
+        foreach (var cts in _typingCts.Values) { cts.Cancel(); cts.Dispose(); }
+        _typingCts.Clear();
+        TypingUsers.Clear();
+        StateChanged?.Invoke();
     }
 
     // ---- Send Message ----
@@ -563,7 +665,19 @@ public class ChatState : IAsyncDisposable
             }
         }
         BumpRoomPreview(message, isOpen, incrementUnread: !isOpen && !isOwn);
+        if (!isOwn && !message.IsDeleted) RaiseIncoming(message, isOpen);
         StateChanged?.Invoke();
+    }
+
+    private void RaiseIncoming(MessageDto message, bool isActiveRoom)
+    {
+        var room = DirectRooms.Concat(GroupRooms).FirstOrDefault(r => r.Id == message.RoomId);
+        var myNik = _auth.Me?.Nik;
+        var mentionsMe = myNik != null
+            && (message.MentionsAll || message.MentionedNiks.Contains(myNik, StringComparer.OrdinalIgnoreCase));
+        var isMuted = room is { IsMuted: true } && (room.MuteExpiresAt is null || room.MuteExpiresAt > DateTime.UtcNow);
+        // ActiveRoomId survives navigating away from /chat, so the shell still checks the route.
+        IncomingMessage?.Invoke(new IncomingChatMessage(message, room, isActiveRoom, mentionsMe, isMuted));
     }
 
     private void OnThreadReply(MessageDto reply)
@@ -591,8 +705,8 @@ public class ChatState : IAsyncDisposable
             var idx = list.FindIndex(r => r.Id == message.RoomId);
             if (idx < 0) return false;
             var r = list[idx];
-            var preview = message.IsDeleted ? "This message was deleted"
-                : MentionPlainText.Project(message.Content, 100);
+            var preview = RoomPreview.Build(r.Type, message.Type, message.Content, message.IsDeleted, message.SenderName,
+                string.Equals(message.SenderNik, _auth.Me?.Nik, StringComparison.OrdinalIgnoreCase));
             var updated = r with
             {
                 LastMessage = preview,
@@ -708,6 +822,41 @@ public class ChatState : IAsyncDisposable
 
         SeenUpdated?.Invoke(update);
         if (changed) StateChanged?.Invoke();
+        // A read marks every earlier message too, so refresh the per-bubble counts for all own messages.
+        if (isGroup && ActiveRoom is { } room) _ = RefreshGroupReadCountsAsync(room.Id);
+    }
+
+    private int _readCountsGen;
+
+    /// Pulls "read by N of M" for the viewer's own messages in the open group and patches the bubbles.
+    private async Task RefreshGroupReadCountsAsync(Guid roomId, bool immediate = false)
+    {
+        var gen = ++_readCountsGen;
+        if (!immediate) await Task.Delay(250); // coalesce bursts of seenUpdate (one per reader, per message)
+        if (gen != _readCountsGen || ActiveRoom?.Id != roomId) return;
+        var ids = ActiveMessages
+            .Where(m => string.Equals(m.SenderNik, _auth.Me?.Nik, StringComparison.OrdinalIgnoreCase)
+                        && m.Type != "system" && !m.IsDeleted && !IsPending(m.Id) && !IsFailed(m.Id))
+            .Select(m => m.Id).TakeLast(200).ToList();
+        if (ids.Count == 0) return;
+        List<MessageReadCountDto>? counts;
+        try { counts = await _auth.GetAsync<List<MessageReadCountDto>>($"/api/chat/rooms/{roomId}/read-counts?ids={string.Join(',', ids)}"); }
+        catch { return; }
+        if (counts is null || ActiveRoom?.Id != roomId) return;
+        var map = counts.ToDictionary(c => c.MessageId);
+        bool changed = false;
+        for (int i = 0; i < ActiveMessages.Count; i++)
+        {
+            var m = ActiveMessages[i];
+            if (!map.TryGetValue(m.Id, out var c)) continue;
+            var samePreview = (m.ReadPreview ?? []).Select(p => p.UserId).SequenceEqual((c.Preview ?? []).Select(p => p.UserId));
+            if (m.ReadCount == c.ReadCount && m.ReadTotal == c.ReadTotal && samePreview) continue;
+            var status = c.ReadTotal > 0 && c.ReadCount >= c.ReadTotal ? "read"
+                : m.DeliveryStatus == "sent" && c.ReadCount > 0 ? "delivered" : m.DeliveryStatus;
+            ActiveMessages[i] = m with { ReadCount = c.ReadCount, ReadTotal = c.ReadTotal, ReadPreview = c.Preview, DeliveryStatus = status };
+            changed = true;
+        }
+        if (changed) StateChanged?.Invoke();
     }
 
     /// Applies an authoritative reaction count from the hub, patching the single affected
@@ -813,8 +962,63 @@ public class ChatState : IAsyncDisposable
 
     private void OnPresenceChanged(string nik, string status)
     {
-        // Trigger UI re-render so presence dots in room list update immediately
+        // Patch the pushed status into the room lists (DM partner) and the open room's
+        // members, so dots, header status and "N online" update without a reload.
+        DirectRooms = PatchRoomPresence(DirectRooms, nik, status);
+        GroupRooms = PatchRoomPresence(GroupRooms, nik, status);
+        ArchivedRooms = PatchRoomPresence(ArchivedRooms, nik, status);
+        if (ActiveRoom is not null) ActiveRoom = PatchMemberPresence(ActiveRoom, nik, status);
         StateChanged?.Invoke();
+    }
+
+    internal static List<RoomListDto> PatchRoomPresence(List<RoomListDto> rooms, string nik, string status)
+    {
+        var i = rooms.FindIndex(r => r.Type == "dm" && string.Equals(r.RecipientNik, nik, StringComparison.OrdinalIgnoreCase));
+        if (i < 0) return rooms;
+        var copy = new List<RoomListDto>(rooms);
+        // A NIK has one DM with the viewer, but patch every match in case of duplicates.
+        for (; i < copy.Count; i++)
+            if (copy[i].Type == "dm" && string.Equals(copy[i].RecipientNik, nik, StringComparison.OrdinalIgnoreCase)
+                && copy[i].PresenceStatus != status)
+                copy[i] = copy[i] with { PresenceStatus = status };
+        return copy;
+    }
+
+    /// OnlineCount mirrors the server (ChatService.GetRoomAsync): members whose status is "on".
+    internal static ChatRoomDto PatchMemberPresence(ChatRoomDto room, string nik, string status)
+    {
+        if (!room.Members.Any(m => string.Equals(m.Nik, nik, StringComparison.OrdinalIgnoreCase) && m.PresenceStatus != status))
+            return room;
+        var members = room.Members
+            .Select(m => string.Equals(m.Nik, nik, StringComparison.OrdinalIgnoreCase) ? m with { PresenceStatus = status } : m)
+            .ToList();
+        return room with { Members = members, OnlineCount = members.Count(m => m.PresenceStatus == "on") };
+    }
+
+    /// presenceChanged/chatRoomsChanged pushes sent while the app hub was down are lost:
+    /// re-read the room list and the open room's members (not its messages).
+    private void OnAppHubReconnected()
+    {
+        ScheduleRoomsReload();
+        if (ActiveRoomId is not null) _ = SafeAsync(() => LoadActiveRoomAsync());
+    }
+
+    /// chatRoomsChanged: reload only the room lists (debounced 300ms so a burst of mark-reads is
+    /// one fetch). Never touches ActiveMessages or scroll.
+    private void ScheduleRoomsReload()
+    {
+        _roomsReloadCts?.Cancel();
+        var cts = _roomsReloadCts = new CancellationTokenSource();
+        _ = Task.Delay(300, cts.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled || !_auth.IsAuthenticated) return Task.CompletedTask;
+            return SafeAsync(async () =>
+            {
+                // An active sidebar search stays applied rather than snapping back to the full list.
+                await SearchRoomsAsync(_roomSearch);
+                if (ArchivedRooms.Count > 0 || ArchivedTotal > 0) await LoadArchivedRoomsAsync();
+            });
+        }, TaskScheduler.Default);
     }
 
     private async Task RefreshOnReconnectAsync()
@@ -881,7 +1085,17 @@ public class ChatState : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (_presenceSubscribed) { _auth.PresenceChanged -= OnPresenceChanged; _presenceSubscribed = false; }
+        if (_presenceSubscribed)
+        {
+            _auth.PresenceChanged -= OnPresenceChanged;
+            _auth.HubReconnected -= OnAppHubReconnected;
+            _presenceSubscribed = false;
+        }
+        _roomsChangedSub?.Dispose(); _roomsChangedSub = null;
+        _roomsReloadCts?.Cancel();
         await DisposeHubAsync();
     }
 }
+
+/// A message from someone else that arrived while its room wasn't the active one.
+public sealed record IncomingChatMessage(MessageDto Message, RoomListDto? Room, bool IsActiveRoom, bool MentionsMe, bool RoomMuted);

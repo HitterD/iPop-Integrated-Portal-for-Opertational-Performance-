@@ -13,313 +13,308 @@
         <div class="composer-backdrop" @onclick="Restore"></div>
     }
 
-    <div class="outlook-composer @GetStateClass()" role="dialog" aria-label="Mail Composer">
-        @* Header *@
+    <div class="outlook-composer mc-sheet @GetStateClass()" role="dialog" aria-label="@(IsForward ? "Forward message" : "New message")" @onkeydown="OnSheetKey">
+        @* Header: title echo, message options, window buttons *@
         <div class="composer-head" @onclick="OnHeadClick">
             <span class="title">
-                <i data-lucide="mail"></i>
-                @(string.IsNullOrWhiteSpace(subject) ? "New message" : subject)
+                <i data-lucide="@(IsForward ? "forward" : "mail")"></i>
+                <span class="title-text">@HeaderTitle</span>
             </span>
-            <span class="draft-status">@(draftSaving ? "Saving draft…" : draftSaved ? "Draft saved" : "")</span>
+            @if (dockState != ComposerDockState.Minimized)
+            {
+                <div class="mc-opts" @onclick:stopPropagation>
+                    <div class="mrte-pop-wrap">
+                        <button type="button" class="mc-opt @(importance != "normal" ? "on" : "") @(importance == "high" ? "high" : "")" title="Priority" aria-label="Priority"
+                                aria-haspopup="true" aria-expanded="@(headPop == "prio" ? "true" : "false")" @onclick='() => ToggleHead("prio")'>
+                            <i data-lucide="@(importance == "low" ? "arrow-down" : "flag")"></i>
+                        </button>
+                        @if (headPop == "prio")
+                        {
+                            <div class="mrte-pop mc-head-pop">
+                                <div class="mrte-pop-title">Priority</div>
+                                @foreach (var (val, label, icon) in Priorities)
+                                {
+                                    <button type="button" class="mrte-menu-item @(importance == val ? "on" : "")" @onclick="() => SetImportance(val)">
+                                        <i data-lucide="@icon"></i> @label @if (importance == val) { <i data-lucide="check" class="mc-check"></i> }
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
+                    @if (labels.Count > 0)
+                    {
+                        <div class="mrte-pop-wrap">
+                            <button type="button" class="mc-opt @(selectedLabelIds.Count > 0 ? "on" : "")" title="Labels" aria-label="Labels"
+                                    aria-haspopup="true" aria-expanded="@(headPop == "label" ? "true" : "false")" @onclick='() => ToggleHead("label")'>
+                                <i data-lucide="tag"></i>
+                                @if (selectedLabelIds.Count > 0) { <span class="mc-opt-count">@selectedLabelIds.Count</span> }
+                            </button>
+                            @if (headPop == "label")
+                            {
+                                <div class="mrte-pop mc-head-pop">
+                                    <div class="mrte-pop-title">Label your copy</div>
+                                    @foreach (var l in labels)
+                                    {
+                                        var on = selectedLabelIds.Contains(l.Id);
+                                        <button type="button" class="mrte-menu-item @(on ? "on" : "")" role="menuitemcheckbox" aria-checked="@(on ? "true" : "false")" @onclick="() => ToggleLabel(l.Id)">
+                                            <span class="mc-label-dot" style="background:@(l.Color ?? "var(--accent)")"></span> @l.Name
+                                            @if (on) { <i data-lucide="check" class="mc-check"></i> }
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                    <button type="button" class="mc-opt @(isMeeting ? "on" : "")" title="Meeting invite" aria-label="Meeting invite" aria-pressed="@(isMeeting ? "true" : "false")"
+                            @onclick="ToggleMeeting"><i data-lucide="calendar-clock"></i></button>
+                    <div class="mrte-pop-wrap">
+                        <button type="button" class="mc-opt mc-opt-text" title="Insert a saved template" aria-label="Template"
+                                aria-haspopup="true" aria-expanded="@(headPop == "tpl" ? "true" : "false")" @onclick="ToggleTemplates">
+                            <i data-lucide="layout-template"></i><span>Template</span>
+                        </button>
+                        @if (headPop == "tpl")
+                        {
+                            <div class="mrte-pop mc-head-pop mc-tpl-pop">
+                                @if (pendingTemplate is { } pending)
+                                {
+                                    <div class="mrte-pop-title">Use “@pending.Name”</div>
+                                    <div class="mc-tpl-note">Your message already has text. What should the template do?</div>
+                                    <button type="button" class="mrte-menu-item" @onclick="() => ApplyTemplate(pending, replace: true)"><i data-lucide="replace"></i> Replace message</button>
+                                    <button type="button" class="mrte-menu-item" @onclick="() => ApplyTemplate(pending, replace: false)"><i data-lucide="text-cursor-input"></i> Insert at cursor</button>
+                                    <button type="button" class="mrte-menu-item" @onclick="() => pendingTemplate = null"><i data-lucide="arrow-left"></i> Back</button>
+                                }
+                                else
+                                {
+                                    <div class="mrte-pop-title">Templates</div>
+                                    @if (templates.Count == 0)
+                                    {
+                                        <div class="mc-tpl-note">No templates yet. Save emails you send often and reuse them here.</div>
+                                        <button type="button" class="mrte-menu-item" @onclick="OpenTemplateSettings"><i data-lucide="settings-2"></i> Create a template</button>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var tpl in templates)
+                                        {
+                                            <button type="button" class="mrte-menu-item" @onclick="() => PickTemplate(tpl)"><i data-lucide="file-text"></i> @tpl.Name</button>
+                                        }
+                                        <button type="button" class="mrte-menu-item mc-tpl-manage" @onclick="OpenTemplateSettings"><i data-lucide="settings-2"></i> Manage templates</button>
+                                    }
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
             <div class="head-actions" @onclick:stopPropagation>
                 @if (dockState == ComposerDockState.Minimized)
                 {
-                    <button class="icon-btn" title="Restore" aria-label="Restore" @onclick="Restore">
-                        <i data-lucide="maximize-2"></i>
-                    </button>
+                    <button type="button" class="icon-btn" title="Restore" aria-label="Restore" @onclick="Restore"><i data-lucide="chevron-up"></i></button>
                 }
                 else
                 {
-                    <button class="icon-btn" title="Minimize" aria-label="Minimize" @onclick="Minimize">
-                        <i data-lucide="minus"></i>
-                    </button>
+                    <button type="button" class="icon-btn" title="Minimise (Esc)" aria-label="Minimise" @onclick="Minimize"><i data-lucide="minus"></i></button>
                     @if (dockState == ComposerDockState.Maximized)
                     {
-                        <button class="icon-btn" title="Restore size" aria-label="Restore size" @onclick="Restore">
-                            <i data-lucide="minimize-2"></i>
-                        </button>
+                        <button type="button" class="icon-btn" title="Exit full screen" aria-label="Exit full screen" @onclick="Restore"><i data-lucide="minimize-2"></i></button>
                     }
                     else
                     {
-                        <button class="icon-btn" title="Maximize" aria-label="Maximize" @onclick="Maximize">
-                            <i data-lucide="square"></i>
-                        </button>
+                        <button type="button" class="icon-btn" title="Full screen" aria-label="Full screen" @onclick="Maximize"><i data-lucide="maximize-2"></i></button>
                     }
                 }
-                <button class="icon-btn" title="Close" aria-label="Close" @onclick="Close">
-                    <i data-lucide="x"></i>
-                </button>
+                <button type="button" class="icon-btn" title="Close" aria-label="Close" @onclick="Close"><i data-lucide="x"></i></button>
             </div>
         </div>
+        @if (headPop is not null)
+        {
+            <div class="mrte-pop-scrim" @onclick="() => headPop = null"></div>
+        }
 
-        @* Body — drag-drop files zone (Phase 2) *@
         <div class="composer-body-wrap" @ref="dropZoneRef">
             <div class="composer-drop-hint">
                 <i data-lucide="upload-cloud"></i> Drop files here to attach
             </div>
             <div class="recipients-block">
-                @* To Row *@
                 <div class="recipient-row">
-                    <span class="recipient-label">To</span>
+                    <span class="recipient-label">To:</span>
                     <div class="recipient-input-wrap">
-                        <AppMemberPicker ValueChanged="OnToPick" Placeholder="Add recipients…" />
-                        <div class="chips">
-                            @foreach (var r in toRows)
-                            {
-                                <span class="chip">
-                                    @r.Name
-                                    <button type="button" class="chip-x" title="Remove" aria-label="Remove" @onclick="() => toRows.Remove(r)">
-                                        <i data-lucide="x"></i>
-                                    </button>
-                                </span>
-                            }
-                        </div>
+                        @foreach (var r in toRows)
+                        {
+                            <span class="chip">@r.Name
+                                <button type="button" class="chip-x" title="Remove" aria-label="@($"Remove {r.Name}")" @onclick="() => RemoveRecipient(toRows, r)"><i data-lucide="x"></i></button>
+                            </span>
+                        }
+                        <AppMemberPicker ValueChanged="OnToPick" Placeholder="@(toRows.Count == 0 ? "Add recipients…" : "")" />
                     </div>
                     <div class="cc-bcc-toggles">
                         @if (!showCc) { <button type="button" @onclick="() => showCc = true">Cc</button> }
                         @if (!showBcc) { <button type="button" @onclick="() => showBcc = true">Bcc</button> }
                     </div>
                 </div>
-
-                @* Cc Row *@
                 @if (showCc)
                 {
                     <div class="recipient-row">
-                        <span class="recipient-label">Cc</span>
+                        <span class="recipient-label">Cc:</span>
                         <div class="recipient-input-wrap">
-                            <AppMemberPicker ValueChanged="OnCcPick" Placeholder="Add Cc recipients…" />
-                            <div class="chips">
-                                @foreach (var r in ccRows)
-                                {
-                                    <span class="chip">
-                                        @r.Name
-                                        <button type="button" class="chip-x" title="Remove" aria-label="Remove" @onclick="() => ccRows.Remove(r)">
-                                            <i data-lucide="x"></i>
-                                        </button>
-                                    </span>
-                                }
-                            </div>
+                            @foreach (var r in ccRows)
+                            {
+                                <span class="chip">@r.Name
+                                    <button type="button" class="chip-x" title="Remove" aria-label="@($"Remove {r.Name}")" @onclick="() => RemoveRecipient(ccRows, r)"><i data-lucide="x"></i></button>
+                                </span>
+                            }
+                            <AppMemberPicker ValueChanged="OnCcPick" Placeholder="@(ccRows.Count == 0 ? "Add Cc…" : "")" />
                         </div>
                     </div>
                 }
-
-                @* Bcc Row *@
                 @if (showBcc)
                 {
                     <div class="recipient-row">
-                        <span class="recipient-label">Bcc</span>
+                        <span class="recipient-label">Bcc:</span>
                         <div class="recipient-input-wrap">
-                            <AppMemberPicker ValueChanged="OnBccPick" Placeholder="Add Bcc recipients…" />
-                            <div class="chips">
-                                @foreach (var r in bccRows)
-                                {
-                                    <span class="chip">
-                                        @r.Name
-                                        <button type="button" class="chip-x" title="Remove" aria-label="Remove" @onclick="() => bccRows.Remove(r)">
-                                            <i data-lucide="x"></i>
-                                        </button>
-                                    </span>
-                                }
-                            </div>
+                            @foreach (var r in bccRows)
+                            {
+                                <span class="chip">@r.Name
+                                    <button type="button" class="chip-x" title="Remove" aria-label="@($"Remove {r.Name}")" @onclick="() => RemoveRecipient(bccRows, r)"><i data-lucide="x"></i></button>
+                                </span>
+                            }
+                            <AppMemberPicker ValueChanged="OnBccPick" Placeholder="@(bccRows.Count == 0 ? "Add Bcc…" : "")" />
                         </div>
                     </div>
                 }
-            </div>
-
-            @* Subject and Importance *@
-            <div class="subject-row">
-                <input type="text"
-                       class="subject-input"
-                       placeholder="Add a subject"
-                       @bind="subject"
-                       @bind:event="oninput"
-                       @bind:after="OnContentChanged" />
-
-                <select class="importance-select" @bind="importance" title="Message Importance">
-                    <option value="normal">Normal Priority</option>
-                    <option value="high">❗ High Importance</option>
-                    <option value="low">↓ Low Importance</option>
-                </select>
-            </div>
-
-            @* Template + mail label (Phase 2) — template populates subject+body; label for classification *@
-            @if (templates.Count > 0 || labels.Count > 0)
-            {
-                <div class="composer-tpl-row">
-                    @if (templates.Count > 0)
-                    {
-                        <i data-lucide="layout-template" style="width:13px;height:13px;color:var(--ink-3)"></i>
-                        <select class="filter-select composer-tpl-select" value="" @onchange="ApplyTemplate" title="Use email template" aria-label="Use email template">
-                            <option value="">Use template…</option>
-                            @foreach (var tpl in templates)
-                            {
-                                <option value="@tpl.Name">@tpl.Name</option>
-                            }
-                        </select>
-                    }
-                    @if (labels.Count > 0)
-                    {
-                        <i data-lucide="tag" style="width:13px;height:13px;color:var(--ink-3)"></i>
-                        <select class="filter-select composer-tpl-select" value="" @onchange="ApplyLabel" title="Tag with label" aria-label="Tag with label">
-                            <option value="">Label…</option>
-                            @foreach (var l in labels)
-                            {
-                                <option value="@l.Id">@l.Name</option>
-                            }
-                        </select>
-                        @foreach (var lid in selectedLabelIds)
-                        {
-                            var lbl = labels.FirstOrDefault(x => x.Id == lid);
-                            if (lbl is not null)
-                            {
-                                <span class="chip" style="background:@(lbl.Color ?? "var(--accent-soft)")">
-                                    @lbl.Name
-                                    <button type="button" class="chip-x" title="Remove" aria-label="Remove" @onclick="() => selectedLabelIds.Remove(lid)"><i data-lucide="x"></i></button>
-                                </span>
-                            }
-                        }
-                    }
+                <div class="recipient-row subject-row">
+                    <span class="recipient-label">Subject:</span>
+                    <input type="text" class="subject-input" aria-label="Subject" @bind="subject" @bind:event="oninput" @bind:after="OnContentChanged" />
+                    @if (importance == "high") { <span class="mc-badge high" title="High importance"><i data-lucide="flag"></i> High</span> }
+                    else if (importance == "low") { <span class="mc-badge" title="Low importance"><i data-lucide="arrow-down"></i> Low</span> }
                 </div>
-            }
+            </div>
 
-            @* Attachments Tray — reorder up/down + delete *@
-            @if (composerAtts.Count > 0)
+            @if (selectedLabelIds.Count > 0)
             {
-                <div class="composer-atts">
-                    <div class="composer-atts-head">
-                        <i data-lucide="paperclip"></i>
-                        <span>@composerAtts.Count attachment@(composerAtts.Count == 1 ? "" : "s")</span>
-                        <span class="meta" style="font-size:10.5px;color:var(--ink-3)">order used when sent</span>
-                    </div>
-                    @foreach (var (a, i) in composerAtts.Select((x, idx) => (x, idx)))
+                <div class="mc-label-row">
+                    @foreach (var lid in selectedLabelIds.ToList())
                     {
-                        <span class="composer-att-chip">
-                            <i data-lucide="paperclip"></i>
-                            <span class="name">@a.FileName</span>
-                            <span class="size">(@HumanSize(a.FileSize))</span>
-                            <button type="button" class="act-mini" title="Move up" aria-label="Move up" disabled="@(i == 0)" @onclick="() => MoveAtt(a, -1)">
-                                <i data-lucide="arrow-up"></i>
-                            </button>
-                            <button type="button" class="act-mini" title="Move down" aria-label="Move down" disabled="@(i == composerAtts.Count - 1)" @onclick="() => MoveAtt(a, 1)">
-                                <i data-lucide="arrow-down"></i>
-                            </button>
-                            <button type="button" class="del-btn" title="Remove attachment" aria-label="Remove attachment" @onclick="() => RemoveAtt(a)">
-                                <i data-lucide="x"></i>
-                            </button>
+                        var lbl = labels.FirstOrDefault(x => x.Id == lid);
+                        if (lbl is null) continue;
+                        <span class="chip mc-label-chip"><span class="mc-label-dot" style="background:@(lbl.Color ?? "var(--accent)")"></span>@lbl.Name
+                            <button type="button" class="chip-x" title="Remove label" aria-label="@($"Remove label {lbl.Name}")" @onclick="() => ToggleLabel(lid)"><i data-lucide="x"></i></button>
                         </span>
                     }
                 </div>
             }
 
-            @* Meeting invitation (Phase 2) — schedule, location/link, reminder; sent as email *@
-            <div class="composer-meeting-toggle">
-                <label class="notif-pref-toggle" style="cursor:pointer">
-                    <input type="checkbox" @bind="isMeeting" /> <i data-lucide="calendar-clock" style="width:13px;height:13px"></i> Turn into meeting invite
-                </label>
-            </div>
             @if (isMeeting)
             {
                 <div class="composer-meeting">
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                        <label style="font-size:11.5px;color:var(--ink-3)">Start</label>
-                        <input type="datetime-local" class="org-input" style="height:30px;font-size:12px" @bind="meetingStart" />
-                        <label style="font-size:11.5px;color:var(--ink-3)">End</label>
-                        <input type="datetime-local" class="org-input" style="height:30px;font-size:12px" @bind="meetingEnd" />
-                        <label style="font-size:11.5px;color:var(--ink-3)">Reminder</label>
-                        <select class="filter-select" style="height:30px;font-size:12px" @bind="meetingReminderMin">
-                            <option value="10">10 minutes</option>
-                            <option value="30">30 minutes</option>
-                            <option value="60">1 hour</option>
-                            <option value="1440">1 day</option>
-                        </select>
+                    <div class="mc-meet-grid">
+                        <label>Start<AppDateTimePicker @bind-Value="meetingStart" @bind-Value:after="OnContentChanged" AriaLabel="Meeting start" /></label>
+                        <label>End<AppDateTimePicker @bind-Value="meetingEnd" @bind-Value:after="OnContentChanged" AriaLabel="Meeting end" /></label>
+                        <label>Reminder
+                            <select class="mc-field" @bind="meetingReminderMin">
+                                <option value="10">10 minutes</option>
+                                <option value="30">30 minutes</option>
+                                <option value="60">1 hour</option>
+                                <option value="1440">1 day</option>
+                            </select>
+                        </label>
                     </div>
-                    <input class="org-input" style="height:30px;font-size:12px" placeholder="Meeting location or link…" @bind="meetingLocation" />
-                    <div style="font-size:11px;color:var(--ink-3)">Attendees = email recipients (To/Cc). Meeting is created when email is sent.</div>
+                    <input class="mc-field" placeholder="Location or meeting link" aria-label="Meeting location" @bind="meetingLocation" />
+                    <div class="mc-hint">Attendees are the To and Cc recipients. The meeting is created when the email is sent.</div>
                 </div>
             }
 
-            @* Rich Text Editor *@
-            <MailRteEditor @ref="rteRef" Value="@body" ValueChanged="OnBodyChanged" />
+            @if (composerAtts.Count > 0 || forwardAtts.Count > 0)
+            {
+                <div class="composer-atts">
+                    @foreach (var a in forwardAtts)
+                    {
+                        <span class="composer-att-chip fwd" title="From the original message">
+                            <i data-lucide="@FileIcon(a)"></i>
+                            <span class="name">@a.FileName</span>
+                            <span class="size">@HumanSize(a.FileSize)</span>
+                            <button type="button" class="del-btn" title="Don't forward this file" aria-label="@($"Remove {a.FileName}")" @onclick="() => forwardAtts.Remove(a)"><i data-lucide="x"></i></button>
+                        </span>
+                    }
+                    @foreach (var (a, i) in composerAtts.Select((x, idx) => (x, idx)))
+                    {
+                        <span class="composer-att-chip">
+                            <i data-lucide="@FileIcon(a)"></i>
+                            <span class="name">@a.FileName</span>
+                            <span class="size">@HumanSize(a.FileSize)</span>
+                            @if (composerAtts.Count > 1)
+                            {
+                                <button type="button" class="act-mini" title="Move earlier" aria-label="Move earlier" disabled="@(i == 0)" @onclick="() => MoveAtt(a, -1)"><i data-lucide="chevron-left"></i></button>
+                                <button type="button" class="act-mini" title="Move later" aria-label="Move later" disabled="@(i == composerAtts.Count - 1)" @onclick="() => MoveAtt(a, 1)"><i data-lucide="chevron-right"></i></button>
+                            }
+                            <button type="button" class="del-btn" title="Remove attachment" aria-label="@($"Remove {a.FileName}")" @onclick="() => RemoveAtt(a)"><i data-lucide="x"></i></button>
+                        </span>
+                    }
+                    @if (uploading) { <span class="composer-att-chip uploading"><i data-lucide="loader"></i> Uploading…</span> }
+                </div>
+            }
+
+            <MailRteEditor @ref="rteRef" Value="@body" ValueChanged="OnBodyChanged" OnSubmit="SendNow" OnNotice="OnEditorNotice"
+                           Placeholder="Write your message…" />
         </div>
 
-        @* Footer & Actions *@
         <div class="composer-foot">
-            @* Split Send Button *@
             <div class="split-send">
-                <button type="button" class="send-main" @onclick="SendNow" disabled="@sending">
+                <button type="button" class="send-main" @onclick="SendNow" disabled="@sending" title="Send (Ctrl+Enter)">
                     <i data-lucide="send"></i>
                     @(sending ? "Sending…" : "Send")
                 </button>
-                <button type="button" class="send-arrow" @onclick="() => sendDropdownOpen = !sendDropdownOpen" title="Send options" aria-label="Send options">
+                <button type="button" class="send-arrow" @onclick="() => { sendDropdownOpen = !sendDropdownOpen; attDropdownOpen = false; }" title="Schedule send" aria-label="Schedule send" aria-haspopup="true" aria-expanded="@(sendDropdownOpen ? "true" : "false")">
                     <i data-lucide="chevron-down"></i>
                 </button>
-
-                @* Dropdown for Schedule Send *@
                 @if (sendDropdownOpen)
                 {
                     <div class="send-dropdown" @onclick:stopPropagation>
-                        <button type="button" class="send-dropdown-item" @onclick="SendNow">
-                            <i data-lucide="send"></i>
-                            <span>Send now</span>
-                        </button>
                         <button type="button" class="send-dropdown-item" @onclick="() => ScheduleSendPreset(1)">
-                            <i data-lucide="clock"></i>
-                            <span>Tomorrow morning</span>
-                            <span class="hint">08:00</span>
+                            <i data-lucide="sunrise"></i><span>Tomorrow morning</span><span class="hint">08:00</span>
                         </button>
                         <button type="button" class="send-dropdown-item" @onclick="() => ScheduleSendPreset(2)">
-                            <i data-lucide="clock"></i>
-                            <span>Tomorrow afternoon</span>
-                            <span class="hint">13:00</span>
+                            <i data-lucide="sun"></i><span>Tomorrow afternoon</span><span class="hint">13:00</span>
                         </button>
                         <button type="button" class="send-dropdown-item" @onclick="OpenCustomSchedule">
-                            <i data-lucide="calendar-clock"></i>
-                            <span>Custom date & time…</span>
+                            <i data-lucide="calendar-clock"></i><span>Pick date & time…</span>
                         </button>
                     </div>
                 }
             </div>
 
-            @* Attachments Button & Dropdown *@
             <div class="att-split-wrap">
-                <button type="button" class="att-btn" @onclick="() => attDropdownOpen = !attDropdownOpen">
-                    <i data-lucide="paperclip"></i>
-                    <span>Attach</span>
-                    <i data-lucide="chevron-down" style="width:12px;height:12px;margin-left:2px"></i>
+                <button type="button" class="comp-btn" title="Attach files" @onclick="() => { attDropdownOpen = !attDropdownOpen; sendDropdownOpen = false; }" aria-haspopup="true" aria-expanded="@(attDropdownOpen ? "true" : "false")">
+                    <i data-lucide="paperclip"></i><span>Attach</span><i data-lucide="chevron-down" class="mc-caret"></i>
                 </button>
-                <InputFile @ref="fileInputRef" OnChange="OnLocalFileSelected" style="display:none" multiple />
-
+                <InputFile @ref="fileInputRef" OnChange="OnLocalFileSelected" class="mc-file-input" style="display:none" multiple />
                 @if (attDropdownOpen)
                 {
                     <div class="att-dropdown" @onclick:stopPropagation>
-                        <button type="button" @onclick="TriggerLocalUpload">
-                            <i data-lucide="laptop"></i>
-                            <span>Upload from Computer</span>
-                        </button>
-                        <button type="button" @onclick="OpenSynologyPicker">
-                            <i data-lucide="hard-drive"></i>
-                            <span>Browse iPop Files</span>
-                        </button>
+                        <button type="button" @onclick="TriggerLocalUpload"><i data-lucide="laptop"></i><span>From this computer</span></button>
+                        <button type="button" @onclick="OpenSynologyPicker"><i data-lucide="hard-drive"></i><span>From iPop Files</span></button>
                     </div>
                 }
             </div>
 
-            <button type="button" class="comp-btn" style="margin-left:8px" @onclick="InsertSignature" title="Insert email signature">
-                <i data-lucide="pen-tool"></i>
-                <span>Signature</span>
+            <button type="button" class="comp-btn" @onclick="InsertSignature" title="Insert signature at the cursor">
+                <i data-lucide="signature"></i><span>Signature</span>
             </button>
 
             <div style="flex:1"></div>
 
-            <button type="button" class="comp-btn danger" @onclick="DiscardDraft" title="Discard draft">
+            <span class="draft-status" aria-live="polite">@DraftStatus</span>
+
+            <button type="button" class="comp-btn icon-only danger" @onclick="DiscardDraft" title="Discard" aria-label="Discard">
                 <i data-lucide="trash-2"></i>
-                <span>Discard</span>
             </button>
         </div>
+        @if (sendDropdownOpen || attDropdownOpen)
+        {
+            <div class="mrte-pop-scrim" @onclick="() => { sendDropdownOpen = false; attDropdownOpen = false; }"></div>
+        }
     </div>
 }
 
-@* Custom Schedule Datetime Modal *@
 @if (showCustomScheduleModal)
 {
     <div class="syno-modal-overlay" @onclick="() => showCustomScheduleModal = false">
@@ -334,10 +329,7 @@
                 </p>
                 <label style="display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:var(--ink)">
                     Select Date & Time:
-                    <input type="datetime-local"
-                           @bind="customScheduleTime"
-                           min="@DateTime.Now.ToString("yyyy-MM-ddTHH:mm")"
-                           style="padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font-size:13px;" />
+                    <AppDateTimePicker @bind-Value="customScheduleTime" Min="DateTime.Now" Class="dp-block" AriaLabel="Send at" />
                 </label>
             </div>
             <div class="syno-picker-foot">
@@ -348,7 +340,6 @@
     </div>
 }
 
-@* Synology File Picker Dialog *@
 <SynologyFilePickerDialog IsOpen="@showSynologyPicker"
                           IsOpenChanged="v => showSynologyPicker = v"
                           OnFilesSelected="OnSynologyFilesSelected" />
@@ -360,6 +351,11 @@
     [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
     [Parameter] public EventCallback OnSent { get; set; }
     [Parameter] public EventCallback OnDiscard { get; set; }
+    /// Opens Mail settings on the Templates section (the composer tucks itself away first).
+    [Parameter] public EventCallback OnOpenTemplates { get; set; }
+
+    private static readonly (string Val, string Label, string Icon)[] Priorities =
+        [("high", "High importance", "flag"), ("normal", "Normal", "minus"), ("low", "Low importance", "arrow-down")];
 
     private ComposerDockState dockState = ComposerDockState.Docked;
     private MailRteEditor? rteRef;
@@ -378,33 +374,40 @@
     private Guid? editingDraftId;
     private Guid? inReplyToId;
     private Guid? threadRootId;
+    // Forward mode: the original's attachments travel server-side; the user may drop some.
+    private Guid? forwardOfId;
+    private List<MailAttachment> forwardAtts = [];
+    private bool IsForward => forwardOfId.HasValue;
 
     private bool sending;
+    private bool uploading;
     private bool draftSaving;
-    private bool draftSaved;
+    private DateTime? draftSavedAt;
     private bool sendDropdownOpen;
     private bool attDropdownOpen;
+    private string? headPop;
     private bool showCustomScheduleModal;
     private bool showSynologyPicker;
     private DateTime customScheduleTime = DateTime.Now.AddHours(2);
     private CancellationTokenSource? autosaveCts;
 
-    // Zona seret-lepas berkas (Fase 2)
     private ElementReference dropZoneRef;
 
-    // Undangan rapat (Fase 2)
     private bool isMeeting;
-    private DateTime meetingStart = DateTime.Now.Date.AddDays(1).AddHours(9);
-    private DateTime meetingEnd = DateTime.Now.Date.AddDays(1).AddHours(10);
+    private DateTime meetingStart;
+    private DateTime meetingEnd;
     private int meetingReminderMin = 30;
     private string meetingLocation = "";
+
+    private string HeaderTitle => !string.IsNullOrWhiteSpace(subject) ? subject : IsForward ? "Forward" : inReplyToId.HasValue ? "Reply" : "New Message";
+    private string DraftStatus => draftSaving ? "Saving…" : draftSavedAt is { } t ? $"Saved {t:HH:mm}" : "";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (IsOpen)
         {
             await JS.InvokeVoidAsync("ipop.icons");
-            await JS.InvokeVoidAsync("ipop.mailBindDropZone", dropZoneRef, "input[type=file]");
+            await JS.InvokeVoidAsync("ipop.mailBindDropZone", dropZoneRef, ".mc-file-input");
         }
         else
         {
@@ -419,6 +422,46 @@
         _ => "docked"
     };
 
+    /// Every open path starts from here, so nothing from the previous message leaks in.
+    private void ResetState()
+    {
+        CancelAutosave();
+        editingDraftId = null;
+        inReplyToId = null;
+        threadRootId = null;
+        forwardOfId = null;
+        forwardAtts = [];
+        subject = "";
+        body = "";
+        importance = "normal";
+        toRows = [];
+        ccRows = [];
+        bccRows = [];
+        composerAtts = [];
+        showCc = false;
+        showBcc = false;
+        selectedLabelIds = [];
+        isMeeting = false;
+        meetingStart = DateTime.Now.Date.AddDays(1).AddHours(9);
+        meetingEnd = meetingStart.AddHours(1);
+        meetingReminderMin = 30;
+        meetingLocation = "";
+        draftSaving = false;
+        draftSavedAt = null;
+        sending = false;
+        sendDropdownOpen = false;
+        attDropdownOpen = false;
+        headPop = null;
+        dockState = ComposerDockState.Docked;
+    }
+
+    private void Show()
+    {
+        IsOpen = true;
+        IsOpenChanged.InvokeAsync(true);
+        StateHasChanged();
+    }
+
     public void OpenNew(
         Guid? inReplyTo = null,
         Guid? threadRoot = null,
@@ -426,22 +469,23 @@
         string? initialBody = null,
         List<MemberSearchRow>? initialTo = null)
     {
-        editingDraftId = null;
+        ResetState();
         inReplyToId = inReplyTo;
         threadRootId = threadRoot;
         subject = initialSubject ?? "";
         body = initialBody ?? "";
-        importance = "normal";
         toRows = initialTo ?? [];
-        ccRows = [];
-        bccRows = [];
-        composerAtts = [];
-        showCc = false;
-        showBcc = false;
-        dockState = ComposerDockState.Docked;
-        IsOpen = true;
-        IsOpenChanged.InvokeAsync(true);
-        StateHasChanged();
+        Show();
+    }
+
+    public void OpenForward(MailDetail original, string initialSubject, string initialBody)
+    {
+        ResetState();
+        forwardOfId = original.Id;
+        forwardAtts = original.Attachments.ToList();
+        subject = initialSubject;
+        body = initialBody;
+        Show();
     }
 
     public void SetCcRows(List<MemberSearchRow> cc)
@@ -453,6 +497,7 @@
 
     public void OpenDraft(MailDetail draft)
     {
+        ResetState();
         editingDraftId = draft.Id;
         inReplyToId = draft.InReplyToId;
         threadRootId = draft.ThreadRootId;
@@ -465,13 +510,10 @@
         showCc = ccRows.Count > 0;
         showBcc = bccRows.Count > 0;
         composerAtts = draft.Attachments.ToList();
-        dockState = ComposerDockState.Docked;
-        IsOpen = true;
-        IsOpenChanged.InvokeAsync(true);
-        StateHasChanged();
+        Show();
     }
 
-    private void Minimize() => dockState = ComposerDockState.Minimized;
+    private void Minimize() { headPop = null; dockState = ComposerDockState.Minimized; }
     private void Maximize() => dockState = ComposerDockState.Maximized;
     private void Restore() => dockState = ComposerDockState.Docked;
 
@@ -480,28 +522,69 @@
         if (dockState == ComposerDockState.Minimized) Restore();
     }
 
+    private void OnSheetKey(KeyboardEventArgs e)
+    {
+        if (e.Key != "Escape" || dockState == ComposerDockState.Minimized) return;
+        // Esc first closes whichever menu is open; with none open it tucks the sheet away (nothing is lost).
+        if (headPop is not null || sendDropdownOpen || attDropdownOpen)
+        {
+            headPop = null; sendDropdownOpen = false; attDropdownOpen = false;
+            return;
+        }
+        if (rteRef?.ConsumeEscape() == true) return;
+        Minimize();
+    }
+
     public void Close()
     {
+        CancelAutosave();
         IsOpen = false;
         IsOpenChanged.InvokeAsync(false);
     }
 
-    private void OnToPick(MemberSearchRow r) { if (!toRows.Any(x => x.Nik == r.Nik)) toRows.Add(r); }
-    private void OnCcPick(MemberSearchRow r) { if (!ccRows.Any(x => x.Nik == r.Nik)) ccRows.Add(r); }
-    private void OnBccPick(MemberSearchRow r) { if (!bccRows.Any(x => x.Nik == r.Nik)) bccRows.Add(r); }
+    private void ToggleHead(string name) => headPop = headPop == name ? null : name;
+
+    private void SetImportance(string val)
+    {
+        headPop = null;
+        if (importance == val) return;
+        importance = val;
+        OnContentChanged();
+    }
+
+    private void ToggleLabel(Guid id)
+    {
+        if (!selectedLabelIds.Remove(id)) selectedLabelIds.Add(id);
+    }
+
+    private void ToggleMeeting()
+    {
+        headPop = null;
+        isMeeting = !isMeeting;
+    }
+
+    private void OnToPick(MemberSearchRow r) { if (!toRows.Any(x => x.Nik == r.Nik)) { toRows.Add(r); OnContentChanged(); } }
+    private void OnCcPick(MemberSearchRow r) { if (!ccRows.Any(x => x.Nik == r.Nik)) { ccRows.Add(r); OnContentChanged(); } }
+    private void OnBccPick(MemberSearchRow r) { if (!bccRows.Any(x => x.Nik == r.Nik)) { bccRows.Add(r); OnContentChanged(); } }
+
+    private void RemoveRecipient(List<MemberSearchRow> list, MemberSearchRow r)
+    {
+        list.Remove(r);
+        OnContentChanged();
+    }
 
     private async Task InsertSignature()
     {
         string? customSig = null;
         try { customSig = await JS.InvokeAsync<string?>("localStorage.getItem", "ipop.mail.signature"); } catch { }
         var sigHtml = !string.IsNullOrWhiteSpace(customSig)
-            ? $"<br><br>--<br>{customSig.Replace("\n", "<br>")}"
-            : $"<br><br>--<br><b>{Auth.Me?.Name}</b><br>{Auth.Me?.Position} · {Auth.Me?.Department}<br>PT Santos Jaya Abadi";
-        body = (body ?? "") + sigHtml;
-        OnContentChanged();
-        StateHasChanged();
-        Toasts.Show("Signature inserted.", ToastKind.Success);
+            ? $"<p><br></p><p>--<br>{System.Net.WebUtility.HtmlEncode(customSig).Replace("\n", "<br>")}</p>"
+            : $"<p><br></p><p>--<br><b>{Enc(Auth.Me?.Name)}</b><br>{Enc(Auth.Me?.Position)} · {Enc(Auth.Me?.Department)}<br>PT Santos Jaya Abadi</p>";
+        // At the cursor and undoable, instead of replacing the whole body.
+        if (rteRef is not null) await rteRef.InsertHtml(sigHtml);
     }
+
+    private static string Enc(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
 
     private void OnBodyChanged(string newBody)
     {
@@ -509,11 +592,12 @@
         OnContentChanged();
     }
 
-    // ---- Template surat (Fase 3) ----
+    private void OnEditorNotice(string msg) => Toasts.Show(msg, ToastKind.Error);
+
     private sealed record TemplateRow(string Name, string Subject, string Body);
     private List<TemplateRow> templates = [];
 
-    // ---- Label surat (Fase 2) — klasifikasi yang diterapkan saat kirim ----
+    // Labels are per user; the server applies them to the sender's own copy.
     private sealed record LabelRow(Guid Id, string Name, string? Color);
     private List<LabelRow> labels = [];
     private HashSet<Guid> selectedLabelIds = [];
@@ -526,47 +610,99 @@
 
     private async Task LoadTemplatesAsync()
     {
-        try
-        {
-            templates = await Auth.GetAsync<List<TemplateRow>>("/api/mail/templates") ?? [];
-        }
+        try { templates = await Auth.GetAsync<List<TemplateRow>>("/api/mail/templates") ?? []; }
         catch { templates = []; }
     }
 
     private async Task LoadLabelsAsync()
     {
-        try
-        {
-            labels = await Auth.GetAsync<List<LabelRow>>("/api/mail/labels") ?? [];
-        }
+        try { labels = await Auth.GetAsync<List<LabelRow>>("/api/mail/labels") ?? []; }
         catch { labels = []; }
     }
 
-    private void ApplyLabel(ChangeEventArgs e)
+    private TemplateRow? pendingTemplate;
+
+    private async Task ToggleTemplates()
     {
-        if (Guid.TryParse(e.Value?.ToString(), out var id))
-            selectedLabelIds.Add(id);
-        StateHasChanged();
+        pendingTemplate = null;
+        if (headPop == "tpl") { headPop = null; return; }
+        headPop = "tpl";
+        // Pick up templates created in Mail settings since the composer was first shown.
+        await LoadTemplatesAsync();
     }
 
-    private void ApplyTemplate(ChangeEventArgs e)
+    private async Task OpenTemplateSettings()
     {
-        var name = e.Value?.ToString();
-        if (string.IsNullOrEmpty(name)) return;
-        var tpl = templates.FirstOrDefault(t => t.Name == name);
-        if (tpl is null) return;
-        subject = tpl.Subject;
-        body = tpl.Body; // RTE tersinkron lewat Value ↔ lastSyncedValue pada render berikutnya
+        headPop = null;
+        pendingTemplate = null;
+        Minimize();
+        await OnOpenTemplates.InvokeAsync();
+    }
+
+    /// Empty body → apply straight away; otherwise ask Replace vs Insert at cursor.
+    private async Task PickTemplate(TemplateRow tpl)
+    {
+        if (IsBodyEmpty(body)) { await ApplyTemplate(tpl, replace: true); return; }
+        pendingTemplate = tpl;
+    }
+
+    public static bool IsBodyEmpty(string? html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return true;
+        if (System.Text.RegularExpressions.Regex.IsMatch(html, "<(img|table|hr|iframe|video)\\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) return false;
+        var text = System.Text.RegularExpressions.Regex.Replace(html, "<[^>]*>", "");
+        text = System.Net.WebUtility.HtmlDecode(text).Replace(' ', ' ').Replace("​", "");
+        return string.IsNullOrWhiteSpace(text);
+    }
+
+    private async Task ApplyTemplate(TemplateRow tpl, bool replace)
+    {
+        headPop = null;
+        pendingTemplate = null;
+        // Recipients are never touched; the subject only fills in when still blank.
+        if (string.IsNullOrWhiteSpace(subject)) subject = tpl.Subject;
+        if (replace)
+        {
+            body = tpl.Body;
+            // Keeps undo history, so Ctrl+Z brings back what was there before the template.
+            if (rteRef is not null) await rteRef.ReplaceHtml(tpl.Body);
+        }
+        else if (rteRef is not null)
+        {
+            // Goes in at the saved caret (undoable); the editor pushes the new body back via ValueChanged.
+            await rteRef.InsertHtml(tpl.Body);
+        }
         OnContentChanged();
+    }
+
+    private void CancelAutosave()
+    {
+        autosaveCts?.Cancel();
+        autosaveCts?.Dispose();
+        autosaveCts = null;
     }
 
     private void OnContentChanged()
     {
-        draftSaved = false;
-        autosaveCts?.Cancel();
+        if (!IsOpen || sending) return;
+        CancelAutosave();
         autosaveCts = new CancellationTokenSource();
         _ = AutosaveDebouncedAsync(autosaveCts.Token);
     }
+
+    private MailSendRequest BuildRequest(DateTime? scheduledAt = null) => new(
+        Subject: subject,
+        Body: body,
+        To: toRows.Select(r => r.Nik).ToList(),
+        Cc: ccRows.Select(r => r.Nik).ToList(),
+        Bcc: bccRows.Select(r => r.Nik).ToList(),
+        AttachmentIds: composerAtts.Select(a => a.Id).ToList(),
+        InReplyToId: inReplyToId,
+        ThreadRootId: threadRootId,
+        ScheduledAt: scheduledAt,
+        Importance: importance,
+        LabelIds: selectedLabelIds.Count > 0 ? selectedLabelIds.ToList() : null,
+        ForwardAttachmentIds: IsForward ? forwardAtts.Select(a => a.Id).ToList() : null);
 
     private async Task AutosaveDebouncedAsync(CancellationToken ct)
     {
@@ -578,17 +714,7 @@
             draftSaving = true;
             StateHasChanged();
 
-            var req = new MailSendRequest(
-                Subject: subject,
-                Body: body,
-                To: toRows.Select(r => r.Nik).ToList(),
-                Cc: ccRows.Select(r => r.Nik).ToList(),
-                Bcc: bccRows.Select(r => r.Nik).ToList(),
-                AttachmentIds: composerAtts.Select(a => a.Id).ToList(),
-                InReplyToId: inReplyToId,
-                ThreadRootId: threadRootId,
-                Importance: importance);
-
+            var req = BuildRequest();
             if (editingDraftId.HasValue)
             {
                 await MailSvc.UpdateDraftAsync(editingDraftId.Value, req, ct);
@@ -598,9 +724,9 @@
                 var res = await MailSvc.SaveDraftAsync(req, ct);
                 if (res?.Success == true) editingDraftId = res.MailId;
             }
-
+            if (ct.IsCancellationRequested) return;
             draftSaving = false;
-            draftSaved = true;
+            draftSavedAt = DateTime.Now;
             StateHasChanged();
         }
         catch (OperationCanceledException) { }
@@ -617,10 +743,7 @@
     {
         sendDropdownOpen = false;
         var tomorrow = DateTime.Today.AddDays(1);
-        var targetTime = preset == 1
-            ? tomorrow.AddHours(8) // 08:00
-            : tomorrow.AddHours(13); // 13:00
-
+        var targetTime = preset == 1 ? tomorrow.AddHours(8) : tomorrow.AddHours(13);
         await DoSendAsync(targetTime.ToUniversalTime());
     }
 
@@ -639,60 +762,52 @@
 
     private async Task DoSendAsync(DateTime? scheduledAt)
     {
+        if (sending) return;
         if (toRows.Count == 0 && ccRows.Count == 0 && bccRows.Count == 0)
         {
-            Toasts.Show("Please add at least one recipient.");
+            Toasts.Show("Please add at least one recipient.", ToastKind.Warning);
+            return;
+        }
+        if (isMeeting && meetingEnd <= meetingStart)
+        {
+            Toasts.Show("The meeting must end after it starts.", ToastKind.Warning);
             return;
         }
 
+        CancelAutosave();
         sending = true;
         StateHasChanged();
         try
         {
-            var req = new MailSendRequest(
-                Subject: subject,
-                Body: body,
-                To: toRows.Select(r => r.Nik).ToList(),
-                Cc: ccRows.Select(r => r.Nik).ToList(),
-                Bcc: bccRows.Select(r => r.Nik).ToList(),
-                AttachmentIds: composerAtts.Select(a => a.Id).ToList(),
-                InReplyToId: inReplyToId,
-                ThreadRootId: threadRootId,
-                ScheduledAt: scheduledAt,
-                Importance: importance);
-
-            var res = await MailSvc.SendAsync(req);
+            var req = BuildRequest(scheduledAt);
+            var res = forwardOfId is { } fwd
+                ? await MailSvc.ForwardAsync(fwd, req)
+                : await MailSvc.SendAsync(req);
             if (res?.Success == true)
             {
-                // If this was editing an existing draft, remove old draft
                 if (editingDraftId.HasValue)
-                {
                     _ = MailSvc.DiscardDraftAsync(editingDraftId.Value);
-                }
 
-                // Undangan rapat (Fase 2): buat Meeting setelah surat terkirim — peserta
-                // adalah penerima (To/Cc). Ditunggu agar kegagalan terlihat; rapat dihubungkan
-                // ke surat undangan lewat SourceMailId.
+                // Awaited so a failure is visible; the meeting links back through SourceMailId.
                 if (isMeeting && res.MailId.HasValue)
-                {
                     await CreateMeetingAsync(res.MailId.Value);
-                }
 
                 Toasts.Show(scheduledAt.HasValue
                     ? $"Email scheduled for {scheduledAt.Value.ToLocalTime():dd MMM yyyy HH:mm}."
-                    : isMeeting ? "Meeting invitation sent." : "Email sent successfully.");
+                    : isMeeting ? "Meeting invitation sent." : "Email sent.", ToastKind.Success);
 
+                sending = false;
                 Close();
                 await OnSent.InvokeAsync();
             }
             else
             {
-                Toasts.Show(res?.Error ?? "Failed to send email.");
+                Toasts.Show(res?.Error ?? "Failed to send email.", ToastKind.Error);
             }
         }
         catch (Exception ex)
         {
-            Toasts.Show(ex.Message);
+            Toasts.Show(ex.Message, ToastKind.Error);
         }
         finally
         {
@@ -701,8 +816,6 @@
         }
     }
 
-    // Meeting invitation: create Meeting from email recipients (To+Cc → attendee, send NIK),
-    // linked to email via SourceMailId. Failure reported to user.
     private async Task CreateMeetingAsync(Guid mailId)
     {
         var attendeeNiks = toRows.Concat(ccRows).Select(r => r.Nik).Distinct().ToList();
@@ -729,10 +842,9 @@
 
     private async Task DiscardDraft()
     {
+        CancelAutosave();
         if (editingDraftId.HasValue)
-        {
             await MailSvc.DiscardDraftAsync(editingDraftId.Value);
-        }
         Close();
         await OnDiscard.InvokeAsync();
     }
@@ -740,7 +852,7 @@
     private async Task TriggerLocalUpload()
     {
         attDropdownOpen = false;
-        await JS.InvokeVoidAsync("ipop.triggerFileInput");
+        await JS.InvokeVoidAsync("ipop.triggerFileInput", ".outlook-composer .mc-file-input");
     }
 
     private void OpenSynologyPicker()
@@ -751,21 +863,34 @@
 
     private async Task OnLocalFileSelected(InputFileChangeEventArgs e)
     {
-        var files = e.GetMultipleFiles(5);
+        const int maxFiles = 5; // server limit per upload
+        if (e.FileCount > maxFiles) Toasts.Show($"Only the first {maxFiles} files were attached.", ToastKind.Warning);
+        var files = e.GetMultipleFiles(maxFiles);
         if (files.Count == 0) return;
 
-        using var content = new MultipartFormDataContent();
-        foreach (var file in files)
+        uploading = true;
+        StateHasChanged();
+        try
         {
-            var streamContent = new StreamContent(file.OpenReadStream(50 * 1024 * 1024));
-            streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType ?? "application/octet-stream");
-            content.Add(streamContent, "files", file.Name);
+            using var content = new MultipartFormDataContent();
+            foreach (var file in files)
+            {
+                var streamContent = new StreamContent(file.OpenReadStream(50 * 1024 * 1024));
+                streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(file.ContentType) ? "application/octet-stream" : file.ContentType);
+                content.Add(streamContent, "files", file.Name);
+            }
+            var (uploaded, error) = await MailSvc.UploadWithErrorAsync(content);
+            if (uploaded != null)
+            {
+                composerAtts.AddRange(uploaded);
+                OnContentChanged();
+            }
+            else Toasts.Show($"Upload failed: {error ?? "unknown error"}", ToastKind.Error);
         }
-
-        var uploaded = await MailSvc.UploadAsync(content);
-        if (uploaded != null)
+        catch (Exception ex) { Toasts.Show(ex.Message, ToastKind.Error); }
+        finally
         {
-            composerAtts.AddRange(uploaded);
+            uploading = false;
             StateHasChanged();
         }
     }
@@ -773,33 +898,41 @@
     private void OnSynologyFilesSelected(List<MailAttachment> files)
     {
         composerAtts.AddRange(files);
+        OnContentChanged();
         StateHasChanged();
     }
 
-    // Panel kelola lampiran: geser urutan (atas/bawah).
     private void MoveAtt(MailAttachment a, int delta)
     {
         var i = composerAtts.IndexOf(a);
         var j = i + delta;
         if (i < 0 || j < 0 || j >= composerAtts.Count) return;
         (composerAtts[i], composerAtts[j]) = (composerAtts[j], composerAtts[i]);
-        StateHasChanged();
     }
 
-    // Hapus lampiran: dari UI + server (orphan milik uploader). Gagal server tetap
-    // menghapus dari UI agar tidak menghalangi — berkas orphan dibersihkan worker.
+    // Removed from the UI even if the server call fails; the worker cleans up orphans.
     private async Task RemoveAtt(MailAttachment a)
     {
         composerAtts.Remove(a);
+        OnContentChanged();
         StateHasChanged();
-        try
-        {
-            await Auth.SendAsync(HttpMethod.Delete, $"/api/mail/attachments/{a.Id}");
-        }
+        try { await Auth.SendAsync(HttpMethod.Delete, $"/api/mail/attachments/{a.Id}"); }
         catch { /* best-effort */ }
     }
 
-    private static string HumanSize(long bytes)
+    internal static string FileIcon(MailAttachment a)
+    {
+        var mime = a.MimeType ?? "";
+        var ext = Path.GetExtension(a.FileName ?? "").ToLowerInvariant();
+        if (mime.StartsWith("image/")) return "file-image";
+        if (mime == "application/pdf" || ext == ".pdf") return "file-text";
+        if (ext is ".xls" or ".xlsx" or ".csv") return "file-spreadsheet";
+        if (ext is ".zip" or ".rar" or ".7z") return "file-archive";
+        if (mime.StartsWith("video/")) return "file-video";
+        return "file";
+    }
+
+    internal static string HumanSize(long bytes)
     {
         if (bytes < 1024) return $"{bytes} B";
         if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
@@ -808,8 +941,7 @@
 
     public void Dispose()
     {
-        autosaveCts?.Cancel();
-        autosaveCts?.Dispose();
+        CancelAutosave();
         if (dropZoneRef.Id is not null)
             _ = JS.InvokeVoidAsync("ipop.mailUnbindDropZone", dropZoneRef);
     }

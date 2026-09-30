@@ -6,12 +6,15 @@ using Microsoft.EntityFrameworkCore;
 namespace IPop.Infrastructure.Calls;
 
 /// <summary>
-/// Calls service state machine with WebRTC signaling and LiveKit SFU access token generation.
-/// Keeps the room/participant/history state consistent, and the hub broadcasts signaling events over it.
-/// Every action that would be a 500 on a bad payload returns CallResultDto(Success=false).
+/// 1:1 calls state machine. Media is peer-to-peer WebRTC (STUN/TURN from /api/calls/config);
+/// this service keeps the room/participant/history state consistent, and the hub relays
+/// signaling over it. Every action that would be a 500 on a bad payload returns CallResultDto(Success=false).
 /// </summary>
-public sealed class CallService(IPopDbContext db, ILiveKitTokenService? liveKit = null) : ICallService
+public sealed partial class CallService(IPopDbContext db) : ICallService
 {
+    /// A ringing call nobody answers becomes "missed" after this long (worker + /ringing filter).
+    public static readonly TimeSpan RingTimeout = TimeSpan.FromSeconds(45);
+
     public async Task<CallResultDto> CreateCallAsync(Guid callerId, CreateCallRequest req, CancellationToken ct)
     {
         // Peer addressed by NIK (directory identity) — resolved server-side.
@@ -60,6 +63,9 @@ public sealed class CallService(IPopDbContext db, ILiveKitTokenService? liveKit 
         if (room.Status is CallStatus.Ended or CallStatus.Declined or CallStatus.Missed)
             return Fail(CallErrors.CallAlreadyEnded, "Call has already ended.");
 
+        if (room.Kind == CallKind.Group)
+            return await GroupSignalAsync(room, userId, req, ct);
+
         var me = room.Participants.FirstOrDefault(p => p.UserId == userId);
         if (me is null) return Fail(CallErrors.NotParticipant, "You are not in this call.");
 
@@ -80,7 +86,7 @@ public sealed class CallService(IPopDbContext db, ILiveKitTokenService? liveKit 
                 me.Status = CallParticipantStatus.Declined;
                 room.Status = CallStatus.Declined;
                 room.EndedAt = now;
-                await RecordHistoryAsync(room, now, ct);
+                RecordHistory(room, now);
                 break;
 
             case "leave":
@@ -91,17 +97,14 @@ public sealed class CallService(IPopDbContext db, ILiveKitTokenService? liveKit 
                 room.UpdatedAt = now;
                 if (!room.Participants.Any(p => p.Status == CallParticipantStatus.Accepted))
                 {
-                    room.Status = CallStatus.Ended;
-                    room.EndedAt = now;
-                    await RecordHistoryAsync(room, now, ct);
+                    EndRoom(room, now);
                 }
                 break;
 
             case "end":
-                // Initiator (or any participant) hangs up → everyone is done.
-                room.Status = CallStatus.Ended;
-                room.EndedAt = now;
-                await RecordHistoryAsync(room, now, ct);
+                // Any participant hangs up → everyone is done. While still ringing this is
+                // the caller cancelling: "canceled" for them, "missed" for the callee.
+                EndRoom(room, now);
                 break;
 
             case "update":
@@ -124,22 +127,27 @@ public sealed class CallService(IPopDbContext db, ILiveKitTokenService? liveKit 
     public async Task<CallRoomDto?> GetRoomAsync(Guid callId, Guid userId, CancellationToken ct)
     {
         var room = await db.CallRooms.AsNoTracking()
+            .Include(r => r.ChatRoom)
             .Include(r => r.Participants).ThenInclude(p => p.User)
             .FirstOrDefaultAsync(r => r.Id == callId, ct);
         if (room is null) return null;
         if (!room.Participants.Any(p => p.UserId == userId)) return null; // only participants see state
-        return ToRoom(room, userId);
+        return ToRoom(room);
     }
 
     public async Task<CallRoomDto?> GetRingingCallAsync(Guid userId, CancellationToken ct)
     {
+        // A ring older than the timeout is stale (the worker will mark it missed) — never resurrect it.
+        var cutoff = DateTime.UtcNow - RingTimeout;
+        // Group calls keep ringing invitees for the window even once someone has joined (Active).
         var room = await db.CallRooms.AsNoTracking()
+            .Include(r => r.ChatRoom)
             .Include(r => r.Participants).ThenInclude(p => p.User)
-            .Where(r => r.Status == CallStatus.Ringing &&
+            .Where(r => (r.Status == CallStatus.Ringing || (r.Kind == CallKind.Group && r.Status == CallStatus.Active)) && r.StartedAt >= cutoff &&
                         r.Participants.Any(p => p.UserId == userId && p.Status == CallParticipantStatus.Invited))
             .OrderByDescending(r => r.StartedAt)
             .FirstOrDefaultAsync(ct);
-        return room is null ? null : ToRoom(room, userId);
+        return room is null ? null : ToRoom(room);
     }
 
     public async Task<CallHistoryPage> GetHistoryAsync(Guid userId, int page, int pageSize, CancellationToken ct)
@@ -168,8 +176,18 @@ public sealed class CallService(IPopDbContext db, ILiveKitTokenService? liveKit 
             .ToListAsync(ct);
         var peerMap = peers.ToDictionary(x => x.Key, x => x);
 
+        // Group calls are labelled with the chat group, not with one of the participants.
+        var groups = await db.CallRooms.AsNoTracking()
+            .Where(r => callIds.Contains(r.Id) && r.ChatRoomId != null)
+            .Select(r => new { r.Id, r.ChatRoomId, Name = r.ChatRoom!.Name })
+            .ToListAsync(ct);
+        var groupMap = groups.ToDictionary(x => x.Id, x => x);
+
         var items = raw
-            .Select(i => peerMap.TryGetValue(i.CallId, out var peer)
+            .Select(i => groupMap.TryGetValue(i.CallId, out var grp)
+                ? new CallHistoryDto(i.CallId, i.Direction, i.Result, i.DurationSeconds,
+                    i.StartedAt, i.EndedAt, string.IsNullOrWhiteSpace(grp.Name) ? "Panggilan grup" : grp.Name, null, grp.ChatRoomId)
+                : peerMap.TryGetValue(i.CallId, out var peer)
                 ? new CallHistoryDto(i.CallId, i.Direction, i.Result, i.DurationSeconds,
                     i.StartedAt, i.EndedAt, peer.Name, peer.Nik)
                 : new CallHistoryDto(i.CallId, i.Direction, i.Result, i.DurationSeconds,
@@ -179,26 +197,95 @@ public sealed class CallService(IPopDbContext db, ILiveKitTokenService? liveKit 
         return new CallHistoryPage(items, total, p, size);
     }
 
+    public async Task<IReadOnlyList<CallRoomDto>> ExpireRingingAsync(DateTime cutoff, CancellationToken ct)
+    {
+        var rooms = await db.CallRooms.Include(r => r.ChatRoom).Include(r => r.Participants).ThenInclude(p => p.User)
+            .Where(r => r.Status == CallStatus.Ringing && r.StartedAt < cutoff)
+            .ToListAsync(ct);
+        if (rooms.Count == 0) return [];
+
+        var now = DateTime.UtcNow;
+        foreach (var room in rooms)
+        {
+            if (room.Kind == CallKind.Group)
+            {
+                // Nobody joined the creator within the window: the whole group call is missed.
+                EndGroupRoom(room, now, timedOut: true);
+                continue;
+            }
+            room.Status = CallStatus.Missed;
+            room.EndedAt = now;
+            room.UpdatedAt = now;
+            RecordHistory(room, now);
+        }
+        await db.SaveChangesAsync(ct);
+        return rooms.Select(r => ToRoom(r)).ToList();
+    }
+
+    public async Task<IReadOnlyList<CallRoomDto>> EndForUserAsync(Guid userId, CancellationToken ct)
+    {
+        // Every open call the user is live in: active calls, and rings they started.
+        // A callee who drops while being rung is left to the timeout (another tab may still answer).
+        var rooms = await db.CallRooms.Include(r => r.ChatRoom).Include(r => r.Participants).ThenInclude(p => p.User)
+            .Where(r => (r.Status == CallStatus.Active &&
+                            r.Participants.Any(p => p.UserId == userId && p.Status == CallParticipantStatus.Accepted))
+                     || (r.Status == CallStatus.Ringing && r.CreatorId == userId))
+            .ToListAsync(ct);
+        if (rooms.Count == 0) return [];
+
+        var now = DateTime.UtcNow;
+        foreach (var room in rooms)
+        {
+            var me = room.Participants.First(p => p.UserId == userId);
+            if (room.Kind == CallKind.Group)
+            {
+                // A dropped member leaves the group call; it ends only when nobody is left in it.
+                if (me.Status == CallParticipantStatus.Accepted)
+                {
+                    me.Status = CallParticipantStatus.Left;
+                    me.LeftAt = now;
+                }
+                room.UpdatedAt = now;
+                if (!room.Participants.Any(p => p.Status == CallParticipantStatus.Accepted))
+                    EndGroupRoom(room, now, timedOut: false);
+                continue;
+            }
+            me.Status = CallParticipantStatus.Left;
+            me.LeftAt = now;
+            EndRoom(room, now);
+        }
+        await db.SaveChangesAsync(ct);
+        return rooms.Select(r => ToRoom(r)).ToList();
+    }
+
     // ── internals ──────────────────────────────────────────────────────────────
 
     private async Task<CallRoomDto?> GetRoomCoreAsync(Guid callId, Guid userId, CancellationToken ct)
     {
         var room = await db.CallRooms.AsNoTracking()
+            .Include(r => r.ChatRoom)
             .Include(r => r.Participants).ThenInclude(p => p.User)
             .FirstOrDefaultAsync(r => r.Id == callId, ct);
-        return room is null ? null : ToRoom(room, userId);
+        return room is null ? null : ToRoom(room);
     }
 
-    private async Task RecordHistoryAsync(CallRoom room, DateTime endedAt, CancellationToken ct)
+    /// Ringing → the caller gave up, so it is "missed" for the callee; active → a normal end.
+    private void EndRoom(CallRoom room, DateTime now)
     {
-        var duration = room.EstablishedAt is null ? 0
-            : Math.Max(0, (int)(endedAt - room.EstablishedAt.Value).TotalSeconds);
+        var canceled = room.EstablishedAt is null;
+        room.Status = canceled ? CallStatus.Missed : CallStatus.Ended;
+        room.EndedAt = now;
+        room.UpdatedAt = now;
+        RecordHistory(room, now, callerCanceled: canceled);
+    }
 
-        // Performer = initiator. Direction outgoing for initiator; each peer gets an incoming row.
-        var incomingPeerIds = room.Participants
-            .Where(p => p.UserId != room.CreatorId)
-            .Select(p => p.UserId)
-            .ToList();
+    /// History results — caller: completed | canceled | declined | no-answer;
+    /// callee: completed | missed | declined. Duration counts from pickup, not from ringing.
+    private void RecordHistory(CallRoom room, DateTime endedAt, bool callerCanceled = false)
+    {
+        var established = room.EstablishedAt is not null;
+        var duration = room.EstablishedAt is { } est ? Math.Max(0, (int)(endedAt - est).TotalSeconds) : 0;
+        var declined = room.Status == CallStatus.Declined;
 
         db.CallHistories.Add(new CallHistory
         {
@@ -206,14 +293,12 @@ public sealed class CallService(IPopDbContext db, ILiveKitTokenService? liveKit 
             CallId = room.Id,
             PerformerId = room.CreatorId,
             Direction = "outgoing",
-            Result = room.Status == CallStatus.Declined ? "declined"
-                : room.Status == CallStatus.Missed ? "missed"
-                : room.EstablishedAt is null ? "canceled" : "completed",
+            Result = established ? "completed" : declined ? "declined" : callerCanceled ? "canceled" : "no-answer",
             DurationSeconds = duration,
             StartedAt = room.StartedAt,
             EndedAt = endedAt,
         });
-        foreach (var pid in incomingPeerIds)
+        foreach (var pid in room.Participants.Where(p => p.UserId != room.CreatorId).Select(p => p.UserId))
         {
             db.CallHistories.Add(new CallHistory
             {
@@ -221,8 +306,7 @@ public sealed class CallService(IPopDbContext db, ILiveKitTokenService? liveKit 
                 CallId = room.Id,
                 PerformerId = pid,
                 Direction = "incoming",
-                Result = room.Status == CallStatus.Declined ? "missed"
-                    : room.EstablishedAt is null ? "canceled" : "completed",
+                Result = established ? "completed" : declined ? "declined" : "missed",
                 DurationSeconds = duration,
                 StartedAt = room.StartedAt,
                 EndedAt = endedAt,
@@ -230,28 +314,18 @@ public sealed class CallService(IPopDbContext db, ILiveKitTokenService? liveKit 
         }
     }
 
-    private CallRoomDto ToRoom(CallRoom r, Guid? forUserId = null)
-    {
-        string? lkToken = null;
-        if (liveKit is { IsConfigured: true } && forUserId.HasValue)
-        {
-            var p = r.Participants.FirstOrDefault(x => x.UserId == forUserId.Value);
-            var nik = p?.User?.Nik ?? forUserId.Value.ToString();
-            var name = p?.User?.Name ?? nik;
-            lkToken = liveKit.GenerateToken(r.Id.ToString(), nik, name);
-        }
-
-        return new CallRoomDto(
-            r.Id, r.Kind, r.Status, r.Token, r.CreatorId, r.StartedAt,
-            r.EstablishedAt, r.EndedAt, r.Quality,
-            r.Participants
-                .OrderBy(p => p.JoinedAt)
-                .Select(p => new CallParticipantDto(p.UserId, p.User?.Nik ?? "", p.User?.Name ?? "", p.Status,
-                    p.IsMuted, p.IsScreenSharing, p.LeftAt))
-                .ToList(),
-            liveKit is { IsConfigured: true } ? liveKit.ServerUrl : null,
-            lkToken);
-    }
+    private static CallRoomDto ToRoom(CallRoom r) => new(
+        r.Id, r.Kind, r.Status, r.Token, r.CreatorId, r.StartedAt,
+        r.EstablishedAt, r.EndedAt, r.Quality,
+        r.Participants
+            .OrderBy(p => p.JoinedAt)
+            .Select(p => new CallParticipantDto(p.UserId, p.User?.Nik ?? "", p.User?.Name ?? "", p.Status,
+                p.IsMuted, p.IsScreenSharing, p.LeftAt))
+            .ToList(),
+        ChatRoomId: r.ChatRoomId,
+        Title: r.ChatRoom?.Name,
+        AvatarColor: r.ChatRoom?.AvatarColor,
+        AvatarUrl: r.ChatRoom?.AvatarUrl);
 
     private static string? NormalizeQuality(string? q) => q switch
     {

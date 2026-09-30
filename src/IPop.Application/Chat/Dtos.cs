@@ -16,7 +16,12 @@ public record MessageDto(Guid Id, Guid RoomId, Guid SenderId, string SenderName,
     /// Respects per-DM ReadReceiptsEnabled reciprocal toggle.
     string? DeliveryStatus = null,
     /// Metadata teruskan: nama pengirim asli bila pesan ini hasil forward.
-    string? ForwardedFromSenderName = null);
+    string? ForwardedFromSenderName = null,
+    /// Group messages sent by the viewer: members (excluding the sender) who have read it,
+    /// out of ReadTotal active members. Null outside groups and for received messages.
+    int? ReadCount = null,
+    int? ReadTotal = null,
+    IReadOnlyList<SeenByDto>? ReadPreview = null);
 public record MessageAckDto(Guid MessageId, DateTime ServerTimestamp, Guid IdempotencyKey);
 public record ReplyPreviewDto(string SenderName, string Content);
 
@@ -28,13 +33,17 @@ public record RoomListDto(Guid Id, string Type, string? Name, string? RecipientN
     /// For the current user: whether read receipts are enabled for this room (reciprocal for DMs).
     bool ReadReceiptsEnabled = true,
     /// Warna avatar grup pilihan admin; null = palet default dari nama.
-    string? AvatarColor = null);
+    string? AvatarColor = null,
+    /// URL foto grup (relatif ke API); null = avatar inisial.
+    string? AvatarUrl = null);
 public record ChatRoomDto(Guid Id, string Type, string? Name, string? Description, int MemberCount,
     int OnlineCount, IReadOnlyList<MemberDto> Members, string? CurrentUserRole, IReadOnlyList<MentionUserDto> MentionDirectory,
     /// Current user's per-room setting for read receipts (reciprocal for DMs).
     bool ReadReceiptsEnabled = true,
     /// Warna avatar grup pilihan admin; null = palet default dari nama.
-    string? AvatarColor = null);
+    string? AvatarColor = null,
+    /// URL foto grup (relatif ke API); null = avatar inisial.
+    string? AvatarUrl = null);
 public record MentionUserDto(Guid UserId, string Nik, string Name, bool IsActive);
 public record CreateGroupRequest(string Name, IReadOnlyList<Guid> MemberIds);
 public record UpdateGroupIdentityRequest(string Name, string? Description, string? AvatarColor = null);
@@ -48,8 +57,12 @@ public record ReactionDto(Guid MessageId, string Emoji, int Count, Guid UserId, 
 
 // Seen DTOs
 public record SeenByDto(Guid UserId, string UserName, string? AvatarUrl, DateTime? DeliveredAt, DateTime? ReadAt);
+/// Preview = up to 3 most recent readers, for the avatar stack under each own group bubble.
+public record MessageReadCountDto(Guid MessageId, int ReadCount, int ReadTotal, IReadOnlyList<SeenByDto>? Preview = null);
 public record SeenUpdateDto(Guid MessageId, SeenByDto Reader, int TotalReadCount, int TotalMemberCount);
-public record SeenListDto(IReadOnlyList<SeenByDto> Readers, int TotalReaders, int ActiveMemberCount);
+/// Pending = active members (sender excluded) who have not read the message yet.
+public record SeenListDto(IReadOnlyList<SeenByDto> Readers, int TotalReaders, int ActiveMemberCount,
+    IReadOnlyList<SeenByDto>? Pending = null);
 
 // Typing DTOs
 public record TypingDto(Guid RoomId, string UserNik, string DisplayName, bool IsTyping);
@@ -59,7 +72,8 @@ public record MemberDto(Guid UserId, string Nik, string Name, string Role, strin
 public record MemberChangeDto(Guid RoomId, string Action, string ActorName, string TargetName, Guid? TargetUserId);
 
 // Pinned DTOs
-public record PinnedMessageDto(Guid Id, Guid MessageId, string SenderName, string Content, DateTime PinnedAt);
+/// PinnedByUserId lets the client show Unpin only to whoever may unpin (pinner or group owner/admin).
+public record PinnedMessageDto(Guid Id, Guid MessageId, string SenderName, string Content, DateTime PinnedAt, Guid? PinnedByUserId = null);
 /// Simpanan pribadi per pengguna: membawa RoomId agar daftar bisa dikelompokkan per ruang.
 public record SavedMessageDto(Guid Id, Guid RoomId, Guid MessageId, string SenderName, string Content, DateTime SavedAt);
 public record SavedResultDto(bool Success, string? Error);

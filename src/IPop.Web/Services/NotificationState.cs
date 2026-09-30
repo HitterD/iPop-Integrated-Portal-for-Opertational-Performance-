@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.JSInterop;
 using IPop.Application.Notifications;
+using IPop.Application.Realtime;
 
 namespace IPop.Web.Services;
 
@@ -47,9 +48,11 @@ public class NotificationState : IDisposable
 {
     private readonly AuthState _auth;
     private readonly HttpClient _http;
-    private readonly ToastService? _toasts;
+
     private readonly IJSRuntime? _js;
     private HubConnection? _hub;
+    private IDisposable? _changedSub;
+    private CancellationTokenSource? _resyncCts;
 
     private readonly List<ShellNotificationItem> _recentNotifications = [];
     public IReadOnlyList<ShellNotificationItem> RecentNotifications => _recentNotifications;
@@ -72,7 +75,7 @@ public class NotificationState : IDisposable
     {
         _auth = auth;
         _http = http;
-        _toasts = toasts;
+
         _js = js;
     }
 
@@ -90,10 +93,18 @@ public class NotificationState : IDisposable
             .Build();
 
         _hub.On<NotificationDeliveryState>("notificationReceived", OnNotificationReceived);
+        // Read/cleared in another tab of this user (app hub) → re-fetch the bell.
+        _changedSub ??= _auth.On(RealtimeEvents.NotificationsChanged, ScheduleResync);
 
+        var hub = _hub;
         _hub.Reconnecting += _ => Task.CompletedTask;
-        _hub.Reconnected += _ => Task.CompletedTask;
-        _hub.Closed += _ => Task.CompletedTask;
+        // Anything pushed while disconnected was missed: re-seed count + recent list.
+        _hub.Reconnected += _ => { ScheduleResync(); return Task.CompletedTask; };
+        _hub.Closed += ex =>
+        {
+            _ = HubRetry.RunAsync(hub, () => _hub == hub && _auth.IsAuthenticated, ScheduleResync);
+            return Task.CompletedTask;
+        };
 
         try
         {
@@ -144,6 +155,19 @@ public class NotificationState : IDisposable
         }
     }
 
+    /// Debounced (300ms) re-fetch: a "mark all read" in another tab, or a reconnect burst,
+    /// becomes one inbox request rather than several.
+    private void ScheduleResync()
+    {
+        _resyncCts?.Cancel();
+        var cts = _resyncCts = new CancellationTokenSource();
+        _ = Task.Delay(300, cts.Token).ContinueWith(async t =>
+        {
+            if (t.IsCanceled || !_auth.IsAuthenticated) return;
+            await LoadRecentAsync(Math.Max(6, _recentNotifications.Count));
+        }, TaskScheduler.Default);
+    }
+
     private void OnNotificationReceived(NotificationDeliveryState delivery)
     {
         // Bump unread count
@@ -173,19 +197,13 @@ public class NotificationState : IDisposable
         // Add to floating banners queue (max 3 concurrent) — kecuali preferensi membisukan.
         // Prioritas diteruskan agar AllowImportant bisa menembus jam senyap untuk "high".
         var suppress = ShouldSuppress(item.Type, item.Priority);
-        if (!suppress) AddBanner(item);
+        if (suppress) return;
 
-        // Toast interaktif (Fase 4): kartu elegan yang bisa diklik menuju sumber.
-        if (!suppress)
-        {
-            _toasts?.ShowDetailed(
-                item.Title,
-                item.Body,
-                ToastKind.Info,
-                GetTypeIcon(item.Type),
-                string.IsNullOrWhiteSpace(item.TargetUrl) ? null : item.TargetUrl,
-                item.Id.ToString());
-        }
+        // The banner is the single on-screen surface for incoming notifications; toasts are
+        // reserved for feedback on the user's own actions, so the two never duplicate.
+        AddBanner(item);
+        if (_prefs.PlaySound && _js is not null)
+            _ = _js.InvokeVoidAsync("ipop.playNotificationSound").AsTask().ContinueWith(_ => { }, TaskScheduler.Default);
     }
 
     // ── Preferensi notifikasi (Fase 4) — jam senyap + jenis dibisukan. ──
@@ -318,6 +336,75 @@ public class NotificationState : IDisposable
             d.TimeZoneId);
     }
 
+    // ── Incoming chat banners ──
+    // Chat messages are banner-only (never the bell/inbox) and fold into one card per room:
+    // a second message updates that card to "N pesan baru" instead of stacking another.
+    // Mentions and emergencies are skipped here because the server already sends them as
+    // chat.mention / chat.emergency notifications (and those break through room mute).
+    public const string ChatMessageType = "chat.message";
+    private readonly Dictionary<Guid, (Guid BannerId, int Count)> _chatBanners = [];
+    private DateTime _lastChatSound = DateTime.MinValue;
+
+    internal static bool ShouldBannerChat(IncomingChatMessage m, string currentPath)
+        => !m.RoomMuted && !m.MentionsMe
+           && m.Message.Type is not ("system" or "emergency")
+           && !(m.IsActiveRoom && IsChatRoomPath(currentPath, m.Message.RoomId));
+
+    /// The open conversation is only on screen while the route is /chat or /chat/{thatRoom}.
+    internal static bool IsChatRoomPath(string path, Guid roomId)
+    {
+        var p = (path ?? "").Split('?', '#')[0].TrimEnd('/').ToLowerInvariant();
+        return p == "/chat" || p == $"/chat/{roomId:D}";
+    }
+
+    public void ShowChatMessage(IncomingChatMessage m, string currentPath)
+    {
+        if (!ShouldBannerChat(m, currentPath) || ShouldSuppress("chat")) return;
+
+        var roomId = m.Message.RoomId;
+        var count = 1;
+        if (_chatBanners.TryGetValue(roomId, out var existing) && _activeBanners.Any(b => b.Id == existing.BannerId))
+        {
+            count = existing.Count + 1;
+            DismissBanner(existing.BannerId);
+        }
+
+        var item = BuildChatItem(m, count);
+        _chatBanners[roomId] = (item.Id, count);
+        AddBanner(item);
+
+        // One chime per burst, not per message.
+        if (_prefs.PlaySound && _js is not null && DateTime.UtcNow - _lastChatSound > TimeSpan.FromSeconds(3))
+        {
+            _lastChatSound = DateTime.UtcNow;
+            _ = _js.InvokeVoidAsync("ipop.playNotificationSound").AsTask().ContinueWith(_ => { }, TaskScheduler.Default);
+        }
+    }
+
+    internal static ShellNotificationItem BuildChatItem(IncomingChatMessage m, int count)
+    {
+        var msg = m.Message;
+        var isGroup = m.Room is { Type: "group" };
+        var name = isGroup
+            ? (string.IsNullOrWhiteSpace(m.Room!.Name) ? "Group" : m.Room.Name!)
+            : (m.Room?.RecipientName ?? msg.SenderName);
+        var preview = IPop.Application.Chat.Mentions.MentionPlainText.Project(msg.Content ?? "", 120);
+        if (string.IsNullOrWhiteSpace(preview))
+            preview = msg.Attachments.Count > 0 ? "Mengirim lampiran" : "Pesan baru";
+        var body = isGroup || m.Room is null ? $"{msg.SenderName}: {preview}" : preview;
+        var title = count > 1 ? $"{name} · {count} pesan baru" : name;
+        return new ShellNotificationItem(Guid.NewGuid(), ChatMessageType, title, body, "chat",
+            DateTime.Now, true, "normal", $"/chat/{msg.RoomId:D}");
+    }
+
+    /// Opening a room means its messages are being read — drop that room's card.
+    public void ClearChatBanner(Guid roomId)
+    {
+        if (_chatBanners.Remove(roomId, out var entry)) DismissBanner(entry.BannerId);
+    }
+
+    public static bool IsLocalOnly(ShellNotificationItem item) => item.Type == ChatMessageType;
+
     private void AddBanner(ShellNotificationItem item)
     {
         while (_activeBanners.Count >= 3)
@@ -329,8 +416,21 @@ public class NotificationState : IDisposable
         var banner = new ShellNotificationBanner(item.Id, item);
         _activeBanners.Add(banner);
         BannersChanged?.Invoke();
+        ShowDesktop(item);
 
         _ = StartBannerTimer(banner, 5000);
+    }
+
+    /// Mirrors a banner as a Windows notification. ipop.desktopNotify only fires while the iPop
+    /// tab is hidden (the banner covers the visible case) and permission was granted. Chat cards
+    /// share a per-room tag so a burst replaces one notification instead of stacking.
+    private void ShowDesktop(ShellNotificationItem item)
+    {
+        if (_js is null) return;
+        var tag = item.Type == ChatMessageType ? "chat-" + item.TargetUrl : item.Id.ToString();
+        var body = _prefs.ShowPreview ? item.Body : "";
+        _ = _js.InvokeAsync<bool>("ipop.desktopNotify", item.Title, body, item.TargetUrl, tag)
+            .AsTask().ContinueWith(_ => { }, TaskScheduler.Default);
     }
 
     private async Task StartBannerTimer(ShellNotificationBanner banner, int durationMs)
@@ -392,6 +492,8 @@ public class NotificationState : IDisposable
             }
             catch { }
             _activeBanners.Remove(banner);
+            foreach (var room in _chatBanners.Where(kv => kv.Value.BannerId == id).Select(kv => kv.Key).ToList())
+                _chatBanners.Remove(room);
             BannersChanged?.Invoke();
         }
     }
@@ -473,33 +575,9 @@ public class NotificationState : IDisposable
         };
     }
 
-    public static string GetTypeIcon(string type)
-    {
-        return type.ToLowerInvariant() switch
-        {
-            "chat" => "message-circle",
-            "mail" => "mail",
-            "news" => "newspaper",
-            "project" => "kanban",
-            _ => "bell"
-        };
-    }
-
-    public static string GetTypeLabel(string type)
-    {
-        return type.ToLowerInvariant() switch
-        {
-            "chat" => "Chat",
-            "mail" => "Mail",
-            "news" => "News & Memos",
-            "project" => "Projects",
-            _ => "System"
-        };
-    }
-
     public static string ClassifyEventType(string eventType)
     {
-        var e = eventType.ToLowerInvariant();
+        var e = (eventType ?? "").ToLowerInvariant();
         if (e.StartsWith("chat.") || e == "chat") return "chat";
         if (e.StartsWith("mail.") || e == "mail") return "mail";
         if (e.StartsWith("news.") || e.StartsWith("memo.") || e == "news") return "news";
@@ -507,8 +585,52 @@ public class NotificationState : IDisposable
         return "system";
     }
 
+    public static (string Bg, string Color, string Icon) GetVisual(string type, string? title = null)
+    {
+        var e = (type ?? "").ToLowerInvariant();
+        var t = (title ?? "").ToLowerInvariant();
+        if (t.Contains("mention") || t.Contains("menyebut") || e.Contains("mention"))
+            return ("#FFF3E0", "#FF9800", "at-sign");
+        if (t.Contains("meeting") || t.Contains("rapat") || t.Contains("kalender") || e.Contains("meeting") || e.Contains("call"))
+            return ("#E8F1FE", "#0A84FF", "calendar");
+        if (e.StartsWith("chat.") || e == "chat" || t.Contains("message") || t.Contains("pesan") || t.Contains("chat"))
+            return ("#E4F4EA", "#1C7A44", "message-circle");
+        if (e.StartsWith("mail.") || e == "mail" || t.Contains("email") || t.Contains("surel") || t.Contains("mail"))
+            return ("#E8F8F0", "#2E9E5B", "mail");
+        if (e.StartsWith("news.") || e.StartsWith("memo.") || e == "news" || t.Contains("news") || t.Contains("memo") || t.Contains("berita"))
+            return ("#FFF4E5", "#FF9F0A", "newspaper");
+        if (e.StartsWith("project.") || e.StartsWith("task.") || e == "project" || t.Contains("project") || t.Contains("task") || t.Contains("tugas"))
+            return ("#F2E7FE", "#7657C4", "kanban");
+        return ("#F2F2F4", "#8E8E93", "bell");
+    }
+
+    public static string GetTypeIcon(string type, string? title = null) => GetVisual(type, title).Icon;
+
+    public static (string Bg, string Color) GetTypeColors(string type, string? title = null)
+    {
+        var v = GetVisual(type, title);
+        return (v.Bg, v.Color);
+    }
+
+    public static string GetTypeLabel(string type, string? title = null)
+    {
+        var icon = GetVisual(type, title).Icon;
+        return icon switch
+        {
+            "at-sign" => "Mentions",
+            "message-circle" => "Chat",
+            "mail" => "Mail",
+            "calendar" => "Meetings",
+            "newspaper" => "News & Memos",
+            "kanban" => "Projects",
+            _ => "System"
+        };
+    }
+
     private async Task DisposeHubAsync()
     {
+        _resyncCts?.Cancel();
+        _changedSub?.Dispose(); _changedSub = null;
         if (_hub is null) return;
         try { await _hub.DisposeAsync(); } catch { }
         _hub = null;

@@ -85,6 +85,7 @@ public partial class Chat
         newDmSearchQuery = "";
         newDmSearchResults = [];
         newGroupName = "";
+        ResetPickerSearch();
     }
 
     private void SetPickerMode(bool group)
@@ -96,8 +97,8 @@ public partial class Chat
             pickerPicked.RemoveRange(1, pickerPicked.Count - 1);
     }
 
-    /// The picker lists everyone, so one fetch covers both modes; further typing filters
-    /// the already-loaded rows instead of round-tripping (mockup filters client-side too).
+    /// The default (empty-query) list: one fetch covers both modes. The endpoint caps it at
+    /// 300 names, so typing 2+ characters searches the server instead (OnPickerSearchChanged).
     private async Task LoadPickerPeopleAsync()
     {
         if (pickerPeople.Count > 0) return;
@@ -108,17 +109,70 @@ public partial class Chat
         await InvokeAsync(StateHasChanged);
     }
 
+    /// Debounced (250ms) server search for the picker. The preloaded list only holds the
+    /// first 300 staff by name, so anyone past that was unfindable by typing. Each keystroke
+    /// cancels the previous request; one character still filters the preloaded list locally.
+    private async Task OnPickerSearchChanged(ChangeEventArgs e)
+    {
+        newDmSearchQuery = e.Value?.ToString() ?? "";
+        ResetPickerSearch();
+        var q = newDmSearchQuery.Trim();
+        if (q.Length < 2) return;
+
+        var cts = new CancellationTokenSource();
+        pickerSearchCts = cts;
+        pickerSearching = true;
+        try
+        {
+            await Task.Delay(250, cts.Token);
+            var rows = await Auth.GetAsync<List<PickerPerson>>($"/api/chat/users/directory?q={Uri.EscapeDataString(q)}", cts.Token);
+            if (cts.IsCancellationRequested) return;
+            pickerSearchPeople = rows ?? [];
+            pickerSearchFor = q;
+            foreach (var p in pickerSearchPeople) pickerKnown[p.Id] = p;
+        }
+        catch (OperationCanceledException) { return; }
+        catch
+        {
+            // Network hiccup: fall back to filtering the preloaded list for this query.
+            if (cts.IsCancellationRequested) return;
+            pickerSearchPeople = null;
+        }
+        pickerSearching = false;
+        StateHasChanged();
+    }
+
+    private void ResetPickerSearch()
+    {
+        pickerSearchCts?.Cancel();
+        pickerSearchCts?.Dispose();
+        pickerSearchCts = null;
+        pickerSearchPeople = null;
+        pickerSearchFor = null;
+        pickerSearching = false;
+    }
+
+    private static bool PickerMatches(string name, string nik, string q) =>
+        q.Length == 0 || name.Contains(q, StringComparison.OrdinalIgnoreCase) || nik.Contains(q, StringComparison.OrdinalIgnoreCase);
+
     private List<PickerPerson> VisiblePickerPeople
     {
         get
         {
             var q = newDmSearchQuery.Trim();
-            var src = pickerPeople.AsEnumerable();
-            if (q.Length > 0)
-                src = src.Where(p => p.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
-                    || p.Nik.Contains(q, StringComparison.OrdinalIgnoreCase));
-            // Picked people stay visible so their checkbox can be unticked.
-            return src.Take(60).ToList();
+            // Server results once they're in for this exact query; until then (and for
+            // 1-char queries) the preloaded list, filtered locally.
+            var rows = (pickerSearchPeople is not null && pickerSearchFor == q
+                    ? pickerSearchPeople
+                    : pickerPeople.Where(p => PickerMatches(p.Name, p.Nik, q)))
+                .Take(60).ToList();
+            // Picked people stay visible (and untickable) even when the current list
+            // doesn't hold them, e.g. someone found by an earlier server search.
+            var extra = pickerPicked
+                .Where(m => rows.All(r => r.Id != m.Id) && PickerMatches(m.Name, m.Nik, q))
+                .Select(m => pickerKnown.GetValueOrDefault(m.Id)
+                             ?? new PickerPerson(m.Id, m.Nik, m.Name, m.Email, null, null, "off"));
+            return extra.Concat(rows).ToList();
         }
     }
 
@@ -137,7 +191,9 @@ public partial class Chat
             pickerPicked.Clear();
             if (!picked) pickerPicked.Add(new UserSearchResult(person.Id, person.Nik, person.Name, person.Email));
         }
+        pickerKnown[person.Id] = person;
         newDmSearchQuery = "";
+        ResetPickerSearch();
     }
 
     private void RemovePickerPerson(Guid id) => pickerPicked.RemoveAll(m => m.Id == id);
@@ -194,6 +250,7 @@ public partial class Chat
             _ = OpenRoomCore(roomId);
             return;
         }
+        mRoomPushed = true; // phone "‹" can pop this entry instead of stacking another /chat
         Nav.NavigateTo(target);
     }
 
@@ -212,6 +269,7 @@ public partial class Chat
         CloseAttachment();
         showJumpToLatest = false;
         panelView = DetailPanelView.Main;
+        panelHistory.Clear();
         personFromRoom = false;
         profilePerson = null;
         // ipop-37c: thread state belongs to the room it was opened in — reset all of it
@@ -233,9 +291,13 @@ public partial class Chat
         // swallows storage failures); messageText clears synchronously here so a slow
         // LoadAsync can never leave room B showing room A's text.
         if (previousRoomId is not null)
-            _ = Drafts.SaveAsync(previousRoomId.Value, messageText);
+            _ = Drafts.SaveAsync(previousRoomId.Value, ComposerWireText());
         messageText = "";
         replyToMsg = null;
+        plusMenuOpen = false;
+        pickerOpen = false;
+        stickerOpen = false;
+        reactPickerMsgId = null;
         try
         {
             await ChatSvc.OpenRoomAsync(roomId);
@@ -243,14 +305,16 @@ public partial class Chat
             // ipop-38: superseded-request guard before assigning — a second room switch
             // during OpenRoomAsync must not paste this room's draft into that one.
             if (roomId == openedRoomId)
-                messageText = await Drafts.LoadAsync(roomId) ?? "";
+                LoadComposerFromWire(await Drafts.LoadAsync(roomId));
             scrollToBottom = true;
+            focusComposerPending = true;
             // Must run before MarkReadAsync: marking read zeroes the room's UnreadCount,
             // which is the only signal we have for where the reader left off.
             ComputeUnreadDivider(roomId);
             // Load pins up-front so the sticky pinned bar is populated without
             // waiting for the user to open the Pinned drawer tab first.
             _ = LoadPinnedMessagesAsync();
+            _ = LoadGroupCallAsync(roomId);
             _ = EnsureDmPersonLoadedAsync();
             dmUserBlocked = false;
             if (ChatSvc.ActiveRoom?.Type == "dm")
@@ -270,7 +334,22 @@ public partial class Chat
             // ?jump=<messageId> scrolls to that message, pulling older pages as needed.
             var jumpRaw = QueryValue("jump");
             if (Guid.TryParse(jumpRaw, out var jumpId))
+            {
                 _ = JumpToMessage(jumpId);
+            }
+            else if (jumpAfterOpen is { } pendingJump)
+            {
+                // Set by a global-drawer card that targeted a different room: the room
+                // switch and the scroll land together instead of two competing navigations.
+                jumpAfterOpen = null;
+                _ = JumpToMessage(pendingJump);
+            }
+            // Old /chat/group/{id}/settings links land here as ?panel=settings.
+            if (QueryValue("panel") == "settings" && ChatSvc.ActiveRoom?.Type == "group" && roomId == openedRoomId)
+            {
+                OpenDetailView(DetailPanelView.GroupSettings);
+                Nav.NavigateTo($"/chat/{roomId}", replace: true);
+            }
         }
         finally
         {
@@ -279,7 +358,29 @@ public partial class Chat
         }
     }
 
-    private async Task LoadOlder() => await ChatSvc.LoadOlderMessagesAsync();
+    /// Prepending a page would otherwise leave scrollTop where it was, jerking the view to
+    /// the new top rows. Record the distance from the bottom first; OnAfterRenderAsync puts
+    /// the reader back at that same distance once the older rows are in the DOM.
+    private async Task LoadOlder()
+    {
+        if (!ChatSvc.HasOlderMessages) return;
+        var roomId = ChatSvc.ActiveRoomId;
+        try { anchorFromBottom = (await JS.InvokeAsync<ScrollInfo>("ipop.scrollInfo", messagesRef)).FromBottom; } catch { }
+        // Armed BEFORE the load: ChatState renders the prepended rows itself, and the
+        // anchor has to apply on that very render, not one frame later.
+        anchorBaseCount = ChatSvc.ActiveMessages.Count;
+        await ChatSvc.LoadOlderMessagesAsync();
+        // Nothing was prepended (end of history, error, room switched): disarm.
+        if (ChatSvc.ActiveRoomId != roomId || ChatSvc.ActiveMessages.Count <= anchorBaseCount)
+            anchorFromBottom = null;
+    }
+
+    private record ScrollInfo(double FromBottom, double ScrollTop, double ScrollHeight);
+
+    /// Pending "keep this distance from the bottom" once older messages are prepended;
+    /// applied on the first render where the list has grown past anchorBaseCount.
+    private double? anchorFromBottom;
+    private int anchorBaseCount;
 
     private async Task OpenDmByNik(string nik)
     {

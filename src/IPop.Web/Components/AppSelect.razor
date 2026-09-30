@@ -5,7 +5,7 @@
 
 <div class="app-select @CssClass @(open ? "open" : "")" style="@Style" @ref="wrap">
     <button type="button" class="app-select-trigger" @ref="trigger"
-            aria-haspopup="listbox" aria-expanded="@open" aria-label="@(Label ?? "Select")"
+            aria-haspopup="listbox" aria-expanded="@(open ? "true" : "false")" aria-label="@(Label ?? "Select")"
             @onclick="Toggle" @onkeydown="OnKeyDown" @onblur="OnBlur">
         <span class="app-select-label">@selectedLabel</span>
         <i class="chev" data-lucide="@(open ? "chevron-up" : "chevron-down")"></i>
@@ -16,7 +16,7 @@
             var idx = i;
             var o = Options[i];
             <button type="button" class="app-select-opt @(o.Value == Value ? "sel" : "")"
-                    role="option" aria-selected="@(o.Value == Value)"
+                    role="option" aria-selected="@(o.Value == Value ? "true" : "false")"
                     id="@($"{effectiveId}-opt-{idx}")"
                     @onmousedown="() => Pick(o)" @onmousemove="() => activeIdx = idx">
                 <span>@o.Label</span>

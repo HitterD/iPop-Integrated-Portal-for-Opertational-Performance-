@@ -47,5 +47,6 @@ public record DirectoryStructureNodeDto(DirectorySiteNodeDto[] Sites, int NoDivi
     DirectoryPresenceCountsDto? PresenceCounts = null);
 public record DirectoryPresenceCountsDto(int All, int Online, int Busy, int Away, int Offline);
 public record DirectorySiteNodeDto(string Code, string Name, int MemberCount, DirectoryDepartmentNodeDto[] Departments);
-public record DirectoryDepartmentNodeDto(string Code, string Name, int MemberCount, DirectoryDivisionNodeDto[] Divisions);
+public record DirectoryDepartmentNodeDto(string Code, string Name, int MemberCount, DirectoryDivisionNodeDto[] Divisions,
+    DirectoryDepartmentNodeDto[]? Children = null);
 public record DirectoryDivisionNodeDto(string Code, string Name, int MemberCount);

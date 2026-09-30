@@ -11,7 +11,9 @@ public class PresenceSweepWorker(
     IServiceScopeFactory scopes, PresenceBroadcaster presence, ILogger<PresenceSweepWorker> log)
     : BackgroundService
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromSeconds(60);
+    /// Well under OfflineAfter so a silent user (computer asleep, network gone) turns "off"
+    /// within ~2.5 minutes; closed tabs are faster via PresenceConnections.
+    private static readonly TimeSpan Interval = TimeSpan.FromSeconds(30);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -26,12 +28,12 @@ public class PresenceSweepWorker(
 
                 var users = await db.Users.AsNoTracking()
                     .Where(u => u.IsActive)
-                    .Select(u => new { u.Nik, u.PresenceLastSeenAt, u.PresenceManualStatus })
+                    .Select(u => new { u.Nik, u.PresenceLastSeenAt, u.PresenceManualStatus, u.PresenceIsIdle })
                     .ToListAsync(stoppingToken);
 
                 foreach (var u in users)
                 {
-                    var status = PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now);
+                    var status = PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now, u.PresenceIsIdle);
                     if (presence.Track(u.Nik, status, announceFirst: false))
                         await presence.BroadcastAsync(u.Nik, status, stoppingToken);
                 }

@@ -1,0 +1,127 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject CallState CallSvc
+
+@* "Tes perangkat": check microphone and speaker before calling anyone. Nothing is sent to the server. *@
+
+@if (Open)
+{
+    <div class="callx-dialog-backdrop" @onclick="Close"></div>
+    <div class="callx-dialog" role="dialog" aria-modal="true" aria-labelledby="callx-test-title">
+        <div class="callx-dialog-head">
+            <h2 id="callx-test-title"><i data-lucide="headphones"></i> Tes perangkat</h2>
+            <button type="button" class="callx-icon" aria-label="Tutup" @onclick="Close"><i data-lucide="x"></i></button>
+        </div>
+
+        @if (support is { Secure: false })
+        {
+            <p class="callx-warn"><i data-lucide="shield-alert"></i> Halaman ini dibuka lewat http. Browser hanya mengizinkan mikrofon di https atau localhost — buka versi https (port 7103).</p>
+        }
+
+        <section class="callx-test-block">
+            <label>Mikrofon
+                <select @onchange="OnInputChanged" disabled="@(devices.Inputs.Count == 0)">
+                    @foreach (var d in devices.Inputs) { <option value="@d.Id" selected="@(d.Id == inputId)">@d.Label</option> }
+                    @if (devices.Inputs.Count == 0) { <option value="">Belum ada mikrofon terdeteksi</option> }
+                </select>
+            </label>
+            <div class="callx-test-meter">
+                <i data-lucide="mic"></i>
+                <span class="callx-meter wide" data-meter="test"><span></span></span>
+            </div>
+            <small class="@(micStatus.StartsWith("✓") ? "ok" : micError ? "bad" : "")">@micStatus</small>
+            <button type="button" class="callx-btn callx-ghost" @onclick="ToggleMic">
+                <i data-lucide="@(micOn ? "square" : "mic")"></i> @(micOn ? "Hentikan tes mikrofon" : "Tes mikrofon")
+            </button>
+        </section>
+
+        <section class="callx-test-block">
+            <label>Speaker
+                <select @onchange="e => outputId = e.Value?.ToString() ?? string.Empty" disabled="@(support?.OutputSelect != true)">
+                    @foreach (var d in devices.Outputs) { <option value="@d.Id" selected="@(d.Id == outputId)">@d.Label</option> }
+                    @if (devices.Outputs.Count == 0) { <option value="">Default sistem</option> }
+                </select>
+            </label>
+            @if (support?.OutputSelect != true) { <small>Browser ini memakai speaker default sistem.</small> }
+            <small class="@(speakerError ? "bad" : "")">@speakerStatus</small>
+            <button type="button" class="callx-btn callx-ghost" @onclick="PlayTone"><i data-lucide="volume-2"></i> Putar nada tes</button>
+        </section>
+
+        <div class="callx-dialog-foot">
+            <button type="button" class="callx-btn callx-accept" @onclick="Close">Selesai</button>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    private bool wasOpen;
+    private CallSupport? support;
+    private AudioDevices devices = new([], []);
+    private string inputId = "";
+    private string outputId = "";
+    private bool micOn;
+    private bool micError;
+    private string micStatus = "Bicara setelah menekan Tes mikrofon — bar hijau harus bergerak.";
+    private bool speakerError;
+    private string speakerStatus = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Open && !wasOpen)
+        {
+            support = await JS.InvokeAsync<CallSupport>("ipopAudio.checkSupport");
+            devices = await CallSvc.ListDevicesAsync();
+        }
+        if (!Open && wasOpen) await StopMic();
+        wasOpen = Open;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Open) await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task ToggleMic()
+    {
+        if (micOn) { await StopMic(); return; }
+        var r = await JS.InvokeAsync<MicCheck>("ipopAudio.startMicTest", inputId);
+        micOn = r.Ok;
+        micError = !r.Ok;
+        micStatus = r.Ok ? $"✓ Mikrofon aktif{(string.IsNullOrEmpty(r.Label) ? "" : $": {r.Label}")}. Bicaralah untuk melihat levelnya." : r.Message ?? "Mikrofon tidak bisa dibuka.";
+        // Labels are only visible after permission is granted — refresh the list.
+        if (r.Ok) devices = await CallSvc.ListDevicesAsync();
+    }
+
+    private async Task OnInputChanged(ChangeEventArgs e)
+    {
+        inputId = e.Value?.ToString() ?? "";
+        if (micOn) { await StopMic(); await ToggleMic(); }
+    }
+
+    private async Task StopMic()
+    {
+        await JS.InvokeVoidAsync("ipopAudio.stopMicTest");
+        micOn = false;
+    }
+
+    private async Task PlayTone()
+    {
+        var r = await JS.InvokeAsync<MicCheck>("ipopAudio.playTestTone", outputId);
+        speakerError = !r.Ok;
+        speakerStatus = r.Ok ? "Terdengar tiga nada? Speaker siap." : r.Message ?? "Nada tes gagal diputar.";
+    }
+
+    private async Task Close()
+    {
+        await StopMic();
+        await OpenChanged.InvokeAsync(false);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("ipopAudio.stopMicTest"); } catch (JSDisconnectedException) { }
+    }
+}

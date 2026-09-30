@@ -48,7 +48,7 @@
 .calls-v6 .calls-detail { min-height:0; overflow-y:auto; padding:28px; background:var(--surface); border:1px solid var(--line-soft); border-radius:16px; box-shadow:var(--sh-card); }
 .calls-v6 .calls-detail-hero { text-align:center; display:flex; align-items:center; flex-direction:column; }
 .calls-detail-avatar { width:84px; height:84px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size:28px; font-weight:600; }
-.calls-v6 .calls-detail-hero h2 { margin:14px 0 2px; font-size:20px; font-weight:700; }
+.calls-v6 .calls-detail-hero h2 { margin:14px 0 2px; font-size:20px; font-weight:700; color:var(--ink); }
 .calls-v6 .calls-detail-hero p { margin:0; color:var(--ink-3); font-size:12px; }
 .calls-v6 .call-actions { justify-content:center; gap:10px; padding:24px 0; }
 .calls-v6 .call-actions a, .calls-v6 .call-actions button { min-width:98px; height:62px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; border:0; border-radius:14px; background:var(--surface-3); color:var(--ink); text-decoration:none; font-size:12px; cursor:pointer; }
@@ -71,3 +71,319 @@
 @media(max-width:800px) { .calls-v6 { height:auto; overflow:auto; } .calls-v6 .calls-split { grid-template-columns:1fr; } .calls-v6 .calls-list { max-height:620px; } .calls-v6 .calls-detail { min-height:360px; } .calls-v6 .calls-toolbar { flex-wrap:wrap; } .calls-toolbar .calls-search { margin-left:0; } }
 .calls-note-unavailable { margin-top:8px; min-height:120px; box-sizing:border-box; padding:14px; border-radius:12px; background:var(--surface-2); color:var(--ink-3); font-size:12px; }
 .calls-v6 .calls-list > .tray:not([hidden]) { max-height:300px; overflow-y:auto; }
+
+/* ── Calls page: result colours, https banner, detail stats ── */
+.calls-history-info small.calls-result.ok .lucide { color:var(--success); }
+.calls-history-info small.calls-result.bad { color:var(--danger-ink); }
+.calls-history-info small.calls-result.bad .lucide { color:var(--danger); }
+.calls-history-info small.calls-result.muted .lucide { color:var(--ink-3); }
+.calls-result-chip { display:inline-flex; align-items:center; gap:5px; margin:4px 0 6px; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:500; background:var(--surface-3); color:var(--ink-2); }
+.calls-result-chip .lucide { width:13px; height:13px; }
+.calls-result-chip.ok { background:var(--success-soft); color:var(--success); }
+.calls-result-chip.bad { background:var(--danger-soft); color:var(--danger-ink); }
+.calls-contact-row.bad .lucide { color:var(--danger); }
+.calls-contact-row.muted .lucide { color:var(--ink-3); }
+.calls-detail-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:0 0 22px; }
+.calls-detail-stats > div { display:flex; flex-direction:column; align-items:center; gap:2px; padding:12px 6px; border-radius:12px; background:var(--surface-2); }
+.calls-detail-stats strong { font-size:17px; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; }
+.calls-detail-stats span { font-size:11px; color:var(--ink-3); }
+.calls-https-banner { flex:none; display:flex; align-items:center; gap:10px; margin:0 24px 12px; padding:10px 14px; border-radius:12px; background:var(--warn-soft); color:var(--warn-ink); font-size:12px; }
+.calls-https-banner .lucide { width:18px; height:18px; flex:none; }
+.calls-https-banner span { flex:1; }
+.calls-https-banner a { flex:none; font-weight:600; color:var(--warn-ink); text-decoration:underline; }
+@media(max-width:800px) { .calls-detail-stats { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+
+/* ── Global call overlay (GlobalCallOverlay.razor) ── */
+.callx-incoming, .callx-window, .callx-pill, .callx-toast, .callx-dialog {
+  position:fixed; z-index:1200; background:var(--surface); color:var(--ink);
+  border:1px solid var(--line-soft); box-shadow:0 18px 48px rgba(0,0,0,.22), 0 2px 6px rgba(0,0,0,.08);
+}
+.callx-incoming { top:18px; right:18px; width:360px; padding:16px; border-radius:18px; display:flex; flex-direction:column; gap:12px; animation:callx-in .22s ease-out; }
+.callx-incoming-main { display:flex; align-items:center; gap:14px; }
+.callx-incoming-text { min-width:0; display:flex; flex-direction:column; gap:3px; }
+.callx-incoming-text strong { font-size:16px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.callx-incoming-text span { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--ink-3); }
+.callx-incoming-text .lucide { width:13px; height:13px; color:var(--accent); }
+.callx-incoming-actions { display:grid; grid-template-columns:1fr auto 1fr; gap:8px; }
+
+.callx-avatar { width:52px; height:52px; flex:none; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:#fff; font-weight:600; font-size:17px; position:relative; transition:box-shadow .12s; }
+.callx-avatar.sm { width:34px; height:34px; font-size:12px; }
+.callx-avatar.lg { width:96px; height:96px; font-size:32px; }
+.callx-ring::after { content:""; position:absolute; inset:-4px; border-radius:50%; border:2px solid var(--accent); animation:callx-pulse 1.4s ease-out infinite; pointer-events:none; }
+.callx-avatar.speaking { box-shadow:0 0 0 3px var(--surface), 0 0 0 6px var(--success); }
+
+.callx-btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; height:38px; padding:0 14px; border-radius:12px; border:0; font:inherit; font-size:13px; font-weight:600; cursor:pointer; transition:filter .12s, background .12s; }
+.callx-btn .lucide { width:16px; height:16px; }
+.callx-btn:hover:not(:disabled) { filter:brightness(1.06); }
+.callx-btn:disabled { opacity:.55; cursor:not-allowed; }
+.callx-btn:focus-visible, .callx-ctrl:focus-visible, .callx-round:focus-visible, .callx-icon:focus-visible, .callx-replies button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.callx-accept { background:var(--success); color:#fff; }
+.callx-decline { background:var(--danger); color:#fff; }
+.callx-ghost { background:var(--surface-3); color:var(--ink); }
+.callx-ghost.on { background:var(--accent-soft); color:var(--accent-ink); }
+
+.callx-replies { display:flex; flex-direction:column; gap:6px; }
+.callx-replies > button { text-align:left; padding:8px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface-2); color:var(--ink); font:inherit; font-size:12px; cursor:pointer; }
+.callx-replies > button:hover:not(:disabled) { background:var(--accent-soft); border-color:transparent; }
+.callx-reply-custom { display:flex; gap:6px; }
+.callx-reply-custom input { flex:1; min-width:0; height:34px; padding:0 10px; border:1px solid var(--line); border-radius:10px; background:var(--surface); color:var(--ink); font:inherit; font-size:12px; }
+.callx-reply-custom button { width:34px; height:34px; border:0; border-radius:10px; background:var(--accent); color:#fff; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; }
+.callx-reply-custom button:disabled { opacity:.45; cursor:not-allowed; }
+.callx-reply-custom .lucide { width:15px; height:15px; }
+
+.callx-warn, .callx-error { display:flex; align-items:flex-start; gap:6px; margin:0; padding:8px 10px; border-radius:10px; font-size:12px; line-height:1.4; text-align:left; }
+.callx-warn { background:var(--warn-soft); color:var(--warn-ink); }
+.callx-error { background:var(--danger-soft); color:var(--danger-ink); }
+.callx-warn .lucide, .callx-error .lucide { width:14px; height:14px; flex:none; margin-top:1px; }
+
+.callx-window { right:20px; bottom:20px; width:340px; border-radius:22px; overflow:hidden; display:flex; flex-direction:column; animation:callx-in .22s ease-out; }
+.callx-head { display:flex; align-items:center; justify-content:space-between; padding:12px 12px 0 16px; }
+.callx-badge { display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 10px; border-radius:999px; font-size:11px; font-weight:600; background:var(--surface-3); color:var(--ink-2); }
+.callx-dot { width:7px; height:7px; border-radius:50%; background:currentColor; }
+.callx-badge.ringing { background:var(--accent-soft); color:var(--accent-ink); }
+.callx-badge.ringing .callx-dot, .callx-badge.warn .callx-dot { animation:callx-blink 1s ease-in-out infinite; }
+.callx-badge.ok { background:var(--success-soft); color:var(--success); }
+.callx-badge.warn { background:var(--warn-soft); color:var(--warn-ink); }
+.callx-badge.bad { background:var(--danger-soft); color:var(--danger-ink); }
+.callx-icon { width:30px; height:30px; display:inline-flex; align-items:center; justify-content:center; border:0; border-radius:50%; background:transparent; color:var(--ink-3); cursor:pointer; }
+.callx-icon:hover { background:var(--surface-3); color:var(--ink); }
+.callx-icon .lucide { width:16px; height:16px; }
+.callx-body { display:flex; flex-direction:column; align-items:center; gap:10px; padding:10px 20px 16px; text-align:center; }
+.callx-body h2 { margin:4px 0 0; font-size:19px; font-weight:700; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.callx-timer { font-size:14px; color:var(--ink-3); font-variant-numeric:tabular-nums; }
+.callx-meters { width:100%; display:flex; flex-direction:column; gap:6px; margin-top:4px; }
+.callx-meters > div { display:grid; grid-template-columns:16px 1fr 70px; align-items:center; gap:8px; }
+.callx-meters .lucide { width:14px; height:14px; color:var(--ink-3); }
+.callx-meters small { font-size:11px; color:var(--ink-3); text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.callx-meter { --level:0; display:block; height:6px; border-radius:3px; background:var(--surface-3); overflow:hidden; }
+.callx-meter > span { display:block; height:100%; width:100%; border-radius:3px; background:var(--success); transform-origin:left center; transform:scaleX(var(--level)); transition:transform 60ms linear; }
+.callx-meter.wide { flex:1; height:8px; }
+
+.callx-devices { display:flex; flex-direction:column; gap:8px; padding:12px 20px; border-top:1px solid var(--line-soft); background:var(--surface-2); }
+.callx-devices label, .callx-test-block label { display:flex; flex-direction:column; gap:4px; font-size:11px; font-weight:600; color:var(--ink-3); }
+.callx-devices select, .callx-test-block select { height:32px; padding:0 8px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; font-size:12px; font-weight:400; }
+.callx-devices small, .callx-test-block small { font-size:11px; color:var(--ink-3); }
+
+.callx-controls { display:flex; justify-content:center; gap:18px; padding:14px 16px 18px; border-top:1px solid var(--line-soft); }
+.callx-ctrl { display:flex; flex-direction:column; align-items:center; gap:5px; border:0; background:transparent; color:var(--ink-2); font:inherit; font-size:11px; cursor:pointer; }
+.callx-ctrl > span { width:48px; height:48px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; background:var(--surface-3); color:var(--ink); transition:background .12s; }
+.callx-ctrl:hover > span { background:var(--line); }
+.callx-ctrl.on > span { background:var(--ink); color:var(--surface); }
+.callx-ctrl.hangup > span { background:var(--danger); color:#fff; }
+.callx-ctrl.hangup:hover > span { filter:brightness(1.08); background:var(--danger); }
+.callx-ctrl .lucide { width:20px; height:20px; }
+
+.callx-pill { right:20px; bottom:20px; display:flex; align-items:center; gap:6px; padding:6px; border-radius:999px; animation:callx-in .18s ease-out; }
+.callx-pill-open { display:flex; align-items:center; gap:10px; padding:0 10px 0 0; border:0; background:transparent; color:var(--ink); cursor:pointer; font:inherit; text-align:left; }
+.callx-pill-text { display:flex; flex-direction:column; max-width:160px; }
+.callx-pill-text strong { font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.callx-state-text { font-size:11px; color:var(--ink-3); font-variant-numeric:tabular-nums; }
+.callx-state-text.ok { color:var(--success); }
+.callx-state-text.bad { color:var(--danger-ink); }
+.callx-round { width:36px; height:36px; border:0; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; background:var(--surface-3); color:var(--ink); cursor:pointer; }
+.callx-round.on { background:var(--ink); color:var(--surface); }
+.callx-round.hangup { background:var(--danger); color:#fff; }
+.callx-round .lucide { width:16px; height:16px; }
+
+.callx-toast { left:50%; bottom:24px; transform:translateX(-50%); display:flex; align-items:center; gap:10px; padding:8px 8px 8px 16px; border-radius:999px; font-size:13px; animation:callx-fade .2s ease-out; }
+.callx-toast > .lucide { width:16px; height:16px; color:var(--danger); }
+
+/* "Tes perangkat" dialog (CallDeviceTest.razor) */
+.callx-dialog-backdrop { position:fixed; inset:0; z-index:1190; background:rgba(0,0,0,.32); }
+.callx-dialog { top:50%; left:50%; transform:translate(-50%,-50%); width:min(420px, calc(100vw - 32px)); max-height:calc(100vh - 32px); overflow:auto; border-radius:18px; padding:18px; display:flex; flex-direction:column; gap:14px; }
+.callx-dialog-head { display:flex; align-items:center; justify-content:space-between; }
+.callx-dialog-head h2 { display:flex; align-items:center; gap:8px; margin:0; font-size:16px; font-weight:700; }
+.callx-dialog-head h2 .lucide { width:18px; height:18px; color:var(--accent); }
+.callx-test-block { display:flex; flex-direction:column; gap:8px; padding:12px; border-radius:12px; background:var(--surface-2); }
+.callx-test-block small.ok { color:var(--success); }
+.callx-test-block small.bad { color:var(--danger-ink); }
+.callx-test-block .callx-btn { align-self:flex-start; }
+.callx-test-meter { display:flex; align-items:center; gap:8px; }
+.callx-test-meter .lucide { width:15px; height:15px; color:var(--ink-3); }
+.callx-dialog-foot { display:flex; justify-content:flex-end; }
+
+[data-theme="dark"] .callx-incoming, [data-theme="dark"] .callx-window, [data-theme="dark"] .callx-pill,
+[data-theme="dark"] .callx-toast, [data-theme="dark"] .callx-dialog { box-shadow:0 18px 48px rgba(0,0,0,.6); border-color:var(--line); }
+[data-theme="dark"] .callx-dialog-backdrop { background:rgba(0,0,0,.55); }
+
+@keyframes callx-pulse { 0% { transform:scale(1); opacity:.9; } 100% { transform:scale(1.35); opacity:0; } }
+@keyframes callx-blink { 50% { opacity:.3; } }
+@keyframes callx-in { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
+@keyframes callx-fade { from { opacity:0; } to { opacity:1; } }
+@media (prefers-reduced-motion: reduce) {
+  .callx-ring::after, .callx-badge .callx-dot { animation:none; }
+  .callx-incoming, .callx-window, .callx-pill, .callx-toast { animation:none; }
+}
+@media (max-width:640px) {
+  .callx-incoming { top:auto; right:8px; left:8px; bottom:8px; width:auto; }
+  .callx-window { right:8px; left:8px; bottom:8px; width:auto; }
+  .callx-pill { right:8px; left:8px; bottom:8px; justify-content:space-between; }
+  .callx-toast { bottom:80px; max-width:calc(100vw - 32px); }
+}
+
+/* ── Group calls (GlobalCallOverlay group variant + chat banner) ── */
+.callx-group-av { overflow:hidden; border-radius:14px; }
+.callx-group-av.callx-ring::after { border-radius:18px; }
+.callx-group-av img { width:100%; height:100%; object-fit:cover; }
+.callx-incoming-text .callx-sub { font-size:11px; color:var(--ink-3); }
+.callx-incoming-actions.callx-two { grid-template-columns:1fr 1fr; }
+.callx-group-window { width:380px; }
+.callx-group-body { align-items:stretch; gap:12px; }
+.callx-group-title { display:flex; align-items:center; gap:10px; text-align:left; min-width:0; }
+.callx-group-title > div { min-width:0; }
+.callx-group-title h2 { margin:0; font-size:16px; }
+.callx-group-title .callx-timer { font-size:12px; }
+.callx-grid { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill, minmax(76px, 1fr)); gap:10px 6px; max-height:260px; overflow-y:auto; }
+.callx-tile { display:flex; flex-direction:column; align-items:center; gap:3px; min-width:0; padding:8px 2px 6px; border-radius:12px; }
+.callx-tile.is-speaking { background:var(--success-soft); }
+.callx-tile .callx-avatar { width:48px; height:48px; font-size:15px; }
+.callx-tile.pending .callx-avatar { opacity:.45; filter:grayscale(.4); }
+.callx-tile-name { max-width:100%; font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.callx-tile-state { font-size:10px; color:var(--ink-3); white-space:nowrap; }
+.callx-tile.is-speaking .callx-tile-state { color:var(--success); }
+.callx-muted-badge { position:absolute; right:-3px; bottom:-3px; width:20px; height:20px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; background:var(--danger); color:#fff; box-shadow:0 0 0 2px var(--surface); }
+.callx-muted-badge .lucide { width:11px; height:11px; }
+
+.group-call-banner { flex:none; display:flex; align-items:center; gap:10px; margin:8px 16px 0; padding:8px 8px 8px 12px; border-radius:12px; background:var(--success-soft); color:var(--success); font-size:13px; }
+.group-call-banner > .lucide { width:16px; height:16px; flex:none; animation:callx-blink 1.6s ease-in-out infinite; }
+.group-call-banner span { flex:1; min-width:0; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.group-call-banner strong { color:var(--success); font-weight:600; }
+.group-call-banner button { flex:none; display:inline-flex; align-items:center; gap:5px; height:30px; padding:0 14px; border:0; border-radius:999px; background:var(--success); color:#fff; font:inherit; font-size:12px; font-weight:600; cursor:pointer; }
+.group-call-banner button:disabled { opacity:.55; cursor:not-allowed; }
+.group-call-banner button .lucide { width:14px; height:14px; }
+.group-call-banner button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+[data-theme="dark"] .callx-muted-badge { box-shadow:0 0 0 2px var(--surface); }
+[data-theme="dark"] .group-call-banner { background:rgba(52,199,89,.14); }
+@media (prefers-reduced-motion: reduce) { .group-call-banner > .lucide { animation:none; } }
+@media (max-width:640px) {
+  .callx-group-window { width:auto; }
+  .callx-grid { grid-template-columns:repeat(auto-fill, minmax(64px, 1fr)); max-height:40vh; }
+  .group-call-banner { margin:6px 8px 0; }
+}
+
+/* ============ Scheduled meetings (2026-09-27): day-grouped list + modal editor ============ */
+.calls-v6 .calls-list > .mtg-list { padding:0 0 14px; }
+.mtg-list .calls-date { position:sticky; top:0; z-index:1; }
+.mtg-row { display:grid; grid-template-columns:56px minmax(0,1fr); align-items:start; gap:8px 12px; padding:12px 16px; border-bottom:1px solid var(--line-soft); cursor:pointer; transition:background .15s; }
+.mtg-row:hover { background:var(--surface-2); }
+.mtg-row.selected { background:var(--accent-soft); }
+.mtg-row:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.mtg-row.live { box-shadow:inset 3px 0 0 var(--accent); }
+.mtg-time { display:flex; flex-direction:column; gap:2px; padding-top:1px; }
+.mtg-time strong { font-size:14px; font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; }
+.mtg-time small { font-size:11px; color:var(--ink-3); }
+.mtg-main { min-width:0; display:flex; flex-direction:column; gap:5px; }
+.mtg-title { font-size:13.5px; font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mtg-meta { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:11.5px; color:var(--ink-3); }
+.mtg-meta .lucide { width:12px; height:12px; }
+.mtg-place { display:inline-flex; align-items:center; gap:4px; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mtg-badge { display:inline-flex; align-items:center; gap:4px; height:20px; padding:0 8px; border-radius:999px; font-size:11px; font-weight:600; }
+.mtg-badge.online { background:var(--info-soft); color:#0A63C9; }
+[data-theme="dark"] .mtg-badge.online { background:rgba(96,165,250,.14); color:#8ab8f5; }
+.mtg-stack { display:inline-flex; align-items:center; padding-left:6px; }
+.mtg-av { width:30px; height:30px; flex:none; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:600; }
+.mtg-av.sm { width:20px; height:20px; font-size:9px; }
+.mtg-av.xs { width:22px; height:22px; font-size:9px; margin-left:-6px; border:2px solid var(--surface); }
+.mtg-av.more { background:var(--surface-3); color:var(--ink-2); }
+.mtg-row.selected .mtg-av.xs, .mtg-row:hover .mtg-av.xs { border-color:var(--surface-2); }
+.mtg-host { white-space:nowrap; }
+.mtg-side { grid-column:2; display:flex; align-items:center; gap:8px; flex-wrap:wrap; cursor:default; }
+.mtg-side .mtg-join-wrap { margin-left:auto; }
+.mtg-rsvp { font-size:11px; font-weight:600; padding:3px 8px; border-radius:999px; background:var(--surface-3); color:var(--ink-2); white-space:nowrap; }
+.mtg-rsvp.rsvp-accept { background:var(--success-soft); color:var(--accent-ink); }
+.mtg-rsvp.rsvp-maybe { background:var(--warn-soft); color:var(--warn); }
+.mtg-rsvp.rsvp-decline { background:var(--danger-soft); color:var(--danger); }
+.mtg-rsvp.host { background:var(--accent-soft); color:var(--accent-ink); }
+.mtg-rsvp-btns { display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; }
+.mtg-rsvp-btns button { height:28px; padding:0 10px; border:0; border-right:1px solid var(--line); background:var(--surface); color:var(--ink-2); font-size:11.5px; font-weight:500; cursor:pointer; }
+.mtg-rsvp-btns button:last-child { border-right:0; }
+.mtg-rsvp-btns button:hover:not(:disabled) { background:var(--surface-3); color:var(--ink); }
+.mtg-rsvp-btns button.on.accept { background:var(--accent); color:#fff; }
+.mtg-rsvp-btns button.on.maybe { background:var(--warn); color:#fff; }
+.mtg-rsvp-btns button.on.decline { background:var(--danger); color:#fff; }
+.mtg-rsvp-btns button:disabled { cursor:wait; }
+.mtg-icon-btns { display:inline-flex; gap:4px; }
+.mtg-icon { width:28px; height:28px; display:inline-flex; align-items:center; justify-content:center; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink-2); cursor:pointer; }
+.mtg-icon:hover { background:var(--surface-3); color:var(--ink); }
+.mtg-icon.danger:hover { background:var(--danger-soft); color:var(--danger); border-color:transparent; }
+.mtg-icon .lucide { width:14px; height:14px; }
+.mtg-join-wrap { display:inline-flex; }
+.mtg-join { height:30px; display:inline-flex; align-items:center; gap:6px; padding:0 14px; border:0; border-radius:9px; background:var(--accent); color:#fff; font-size:12.5px; font-weight:600; cursor:pointer; }
+.mtg-join:hover:not(:disabled) { filter:brightness(1.06); }
+.mtg-join:disabled { background:var(--surface-3); color:var(--ink-3); cursor:not-allowed; pointer-events:none; }
+.mtg-join .lucide { width:14px; height:14px; }
+.mtg-empty { display:flex; flex-direction:column; align-items:center; gap:10px; color:var(--ink-3); }
+.mtg-empty > .lucide { width:28px; height:28px; }
+.mtg-empty p { margin:0; }
+.calls-v6 .calls-detail .mtg-join-wrap .mtg-join { height:32px; }
+.calls-rsvp { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:0 0 18px; font-size:12.5px; color:var(--ink-2); }
+.calls-v6 .calls-detail-hero .tag.mtg-tag-cancelled { background:var(--danger-soft); color:var(--danger); }
+
+/* editor (inside <Modal Wide>) */
+.mtg-form { display:flex; flex-direction:column; gap:16px; }
+.mtg-grid { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:14px; }
+.mtg-field { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.mtg-label { font-size:11.5px; font-weight:600; color:var(--ink-2); letter-spacing:.01em; }
+.mtg-label em { font-style:normal; margin-left:4px; padding:0 6px; border-radius:999px; background:var(--surface-3); color:var(--ink-3); font-size:10.5px; }
+.mtg-input { width:100%; box-sizing:border-box; min-height:38px; padding:8px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface); color:var(--ink); font:inherit; font-size:13px; }
+textarea.mtg-input { resize:vertical; min-height:72px; }
+.mtg-input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.mtg-input:disabled { background:var(--surface-2); color:var(--ink-3); }
+.mtg-field .app-select { width:100%; }
+.mtg-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.mtg-chip { height:32px; padding:0 14px; border:1px solid var(--line); border-radius:999px; background:var(--surface); color:var(--ink-2); font-size:12.5px; font-weight:500; cursor:pointer; }
+.mtg-chip:hover { background:var(--surface-3); color:var(--ink); }
+.mtg-chip.on { background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); font-weight:600; }
+.mtg-end { display:flex; flex-direction:column; gap:6px; margin-top:6px; }
+.mtg-hint { font-size:11.5px; color:var(--ink-3); }
+.mtg-loc { display:flex; gap:8px; align-items:center; }
+.mtg-loc .mtg-input { flex:1; }
+.mtg-toggle { flex:none; height:38px; display:inline-flex; align-items:center; gap:8px; padding:0 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface); color:var(--ink-2); font-size:12.5px; font-weight:500; cursor:pointer; white-space:nowrap; }
+.mtg-toggle .lucide { width:14px; height:14px; }
+.mtg-toggle.on { border-color:var(--accent); color:var(--accent-ink); background:var(--accent-soft); }
+.mtg-switch { position:relative; width:28px; height:16px; flex:none; border-radius:999px; background:var(--line); transition:background .2s; }
+.mtg-switch::after { content:""; position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.2); transition:transform .2s; }
+.mtg-toggle.on .mtg-switch { background:var(--accent); }
+.mtg-toggle.on .mtg-switch::after { transform:translateX(12px); }
+.mtg-invite-tabs { display:inline-flex; align-self:flex-start; padding:3px; gap:2px; border-radius:10px; background:var(--surface-3); }
+.mtg-invite-tabs button { height:28px; display:inline-flex; align-items:center; gap:6px; padding:0 12px; border:0; border-radius:8px; background:transparent; color:var(--ink-2); font-size:12px; font-weight:500; cursor:pointer; }
+.mtg-invite-tabs button.on { background:var(--surface); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.08); }
+.mtg-invite-tabs .lucide { width:13px; height:13px; }
+.mtg-groups { display:flex; flex-direction:column; max-height:190px; overflow-y:auto; border:1px solid var(--line); border-radius:10px; }
+.mtg-group { display:flex; align-items:center; gap:10px; padding:8px 12px; border:0; border-bottom:1px solid var(--line-soft); background:var(--surface); color:var(--ink); text-align:left; font-size:13px; cursor:pointer; }
+.mtg-group:last-child { border-bottom:0; }
+.mtg-group:hover:not(:disabled) { background:var(--surface-2); }
+.mtg-group.on { background:var(--accent-soft); }
+.mtg-group:disabled { cursor:wait; }
+.mtg-group-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mtg-group > .lucide { width:15px; height:15px; color:var(--accent); }
+.mtg-groups-empty { padding:14px; color:var(--ink-3); font-size:12.5px; text-align:center; }
+.mtg-linked { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-2); }
+.mtg-linked .lucide { width:13px; height:13px; }
+.mtg-linked button { margin-left:2px; width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; border:0; border-radius:50%; background:transparent; color:var(--ink-3); cursor:pointer; }
+.mtg-linked button:hover { background:var(--surface-3); color:var(--ink); }
+.mtg-invitees { display:flex; flex-wrap:wrap; gap:6px; max-height:132px; overflow-y:auto; }
+.mtg-invitee { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 4px; border-radius:999px; background:var(--surface-3); color:var(--ink); font-size:12px; }
+.mtg-invitee button { width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; border:0; border-radius:50%; background:transparent; color:var(--ink-3); cursor:pointer; }
+.mtg-invitee button:hover { background:var(--line); color:var(--ink); }
+.mtg-invitee .lucide, .mtg-linked button .lucide { width:12px; height:12px; }
+.mtg-error { display:flex; align-items:center; gap:6px; margin:0; padding:8px 12px; border-radius:10px; background:var(--danger-soft); color:var(--danger); font-size:12.5px; }
+.mtg-error .lucide { width:14px; height:14px; }
+/* PeoplePicker's popup is re-parented to <body> with an inline z-index:100; the modal backdrop sits at 190. */
+body:has(.modal-backdrop .mtg-form) > .member-picker-pop, body:has(.modal-backdrop .mtg-form) > .app-select-pop, .modal-backdrop .mtg-form .member-picker-empty { z-index:210 !important; }
+
+/* Stacked layout (<=800px): let the split take its content height so the scrolling .calls-v6 doesn't squash the list. */
+@media (max-width:800px) { .calls-v6 .calls-split { flex:none; } .calls-v6 .calls-list > .mtg-list { min-height:280px; } }
+
+/* Phones: the editor becomes a full-height sheet. */
+@media (max-width:640px) {
+  .modal-backdrop:has(.mtg-form) { padding:0; align-items:stretch; }
+  .modal-backdrop:has(.mtg-form) .modal-card { max-width:none; max-height:none; height:100%; border-radius:0; border:0; }
+  .modal-backdrop:has(.mtg-form) .modal-body { flex:1; padding:16px; }
+  .modal-backdrop:has(.mtg-form) .modal-foot { padding:12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .modal-backdrop:has(.mtg-form) .modal-foot > * { flex:1; justify-content:center; }
+  .mtg-grid { grid-template-columns:1fr; }
+  .mtg-loc { flex-direction:column; align-items:stretch; }
+  .mtg-row { padding:12px; gap:10px; }
+  .mtg-side { grid-column:1 / -1; }
+}

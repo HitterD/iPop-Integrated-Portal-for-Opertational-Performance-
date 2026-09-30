@@ -5,361 +5,91 @@
 @inject IJSRuntime JS
 @implements IDisposable
 
-@* ToastHost (Fase 4): tumpukan kartu elegan. Klik kartu menuju sumber (ruang/
-   surat/tugas) bila TargetUrl ada; tombol × menutup tanpa berpindah.
-   Menghormati preferensi pengguna: EnableNotifications, PlaySound, ShowPreview. *@
-<div class="toast-host" aria-live="assertive" aria-atomic="false" style="display: @(enableNotifications ? "flex" : "none")">
+@* ToastHost: macOS-style glass cards for feedback on the user's own actions (saved,
+   failed, undo). Incoming notifications use GlobalNotificationBanner instead; a toast
+   that still carries a NotificationId follows the notification preferences.
+   Hover or focus pauses the countdown. Styles live in css/components/overlays.css. *@
+<div class="toast-host" aria-live="polite" aria-relevant="additions">
     @foreach (var t in Toasts.Active)
     {
         var toast = t;
+        if (toast.IsIncoming && !Notifs.CurrentEnableNotifications) continue;
         var clickable = !string.IsNullOrEmpty(toast.TargetUrl);
-        <div class="toast @toast.Kind.ToString().ToLowerInvariant() @(clickable ? "clickable" : "") @(toast.IsExiting ? "exiting" : "")"
-             role="status"
+        var kind = toast.Kind.ToString().ToLowerInvariant();
+        var title = toast.Title;
+        <div @key="toast.Id"
+             class="toast @kind @(clickable ? "clickable" : "") @(toast.IsExiting ? "exiting" : "") @(toast.IsPaused ? "paused" : "")"
+             role="@(toast.Kind is ToastKind.Error or ToastKind.Warning ? "alert" : "status")"
+             tabindex="-1"
+             @onmouseenter="() => Toasts.Pause(toast.Id)"
+             @onmouseleave="() => Toasts.Resume(toast.Id)"
+             @onfocusin="() => Toasts.Pause(toast.Id)"
+             @onfocusout="() => Toasts.Resume(toast.Id)"
              @onclick="() => OnToastClick(toast)">
-            @if (!string.IsNullOrEmpty(toast.Icon))
-            {
-                <span class="toast-icon"><i data-lucide="@toast.Icon"></i></span>
-            }
+            <span class="toast-icon" aria-hidden="true"><i data-lucide="@(toast.Icon ?? DefaultIcon(toast.Kind))"></i></span>
             <span class="toast-body">
-                @if (!string.IsNullOrEmpty(toast.Title))
+                @if (title is null)
                 {
-                    <span class="toast-title">@toast.Title</span>
+                    @* A one-line toast reads best as its own headline. *@
+                    <span class="toast-title">@toast.Message</span>
                 }
-                @if (showPreview)
+                else
                 {
-                    <span class="toast-msg">@toast.Message</span>
+                    <span class="toast-title">@title</span>
+                    @if (!toast.IsIncoming || Notifs.CurrentShowPreview)
+                    {
+                        <span class="toast-msg">@toast.Message</span>
+                    }
                 }
             </span>
-            @if (clickable)
+            @if (toast.Undo is not null || !string.IsNullOrEmpty(toast.NotificationId) || clickable)
             {
-                <span class="toast-go"><i data-lucide="arrow-right"></i></span>
+                <span class="toast-actions">
+                    @if (toast.Undo is not null)
+                    {
+                        <button type="button" class="toast-action" @onclick="() => Toasts.RunUndoAsync(toast.Id)" @onclick:stopPropagation>@(toast.UndoLabel ?? "Undo")</button>
+                    }
+                    @if (!string.IsNullOrEmpty(toast.NotificationId))
+                    {
+                        <button type="button" class="toast-action" @onclick="() => MarkAsRead(toast)" @onclick:stopPropagation>Mark read</button>
+                    }
+                    @if (clickable)
+                    {
+                        <span class="toast-go" aria-hidden="true"><i data-lucide="chevron-right"></i></span>
+                    }
+                </span>
             }
-            @if (toast.Undo is not null)
-            {
-                <button class="toast-undo" @onclick="() => Toasts.RunUndoAsync(toast.Id)" @onclick:stopPropagation>@(toast.UndoLabel ?? "Undo")</button>
-            }
-            <button class="toast-close" aria-label="Dismiss" title="Dismiss"
-                    @onclick="() => Toasts.Dismiss(toast.Id)" @onclick:stopPropagation>×</button>
-            @if (!string.IsNullOrEmpty(toast.NotificationId))
-            {
-                <button class="toast-mark-read" aria-label="Mark as read" title="Mark as read"
-                        @onclick="() => MarkAsRead(toast)" @onclick:stopPropagation>
-                    <i data-lucide="check"></i>
-                </button>
-            }
+            <button type="button" class="toast-close" aria-label="Dismiss notification" title="Dismiss"
+                    @onclick="() => Toasts.Dismiss(toast.Id)" @onclick:stopPropagation>
+                <i data-lucide="x"></i>
+            </button>
         </div>
     }
 </div>
 
-<style>
-    .toast-host {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 10000;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        pointer-events: none;
-        max-height: calc(100vh - 40px);
-        overflow: hidden;
-    }
-
-    /* Stack effect: older toasts slightly scaled down and faded */
-    .toast:nth-child(2) {
-        transform: scale(0.98);
-        opacity: 0.9;
-    }
-
-    .toast:nth-child(3) {
-        transform: scale(0.96);
-        opacity: 0.8;
-    }
-
-    .toast:nth-child(4) {
-        transform: scale(0.94);
-        opacity: 0.7;
-    }
-
-    .toast:nth-child(n+5) {
-        display: none; /* Max 4 visible */
-    }
-
-    .toast {
-        pointer-events: auto;
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-        padding: 14px 16px;
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        box-shadow: var(--shadow-lg);
-        min-width: 320px;
-        max-width: 420px;
-        animation: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-        cursor: default;
-        transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.25s ease, margin 0.25s ease;
-    }
-
-    .toast.exiting {
-        opacity: 0;
-        transform: translateX(100%);
-        margin-top: -56px; /* collapse height */
-        pointer-events: none;
-    }
-
-    .toast:hover {
-        transform: translateX(-4px);
-        box-shadow: var(--shadow-xl);
-    }
-
-    .toast-undo {
-        align-self: center; flex-shrink: 0; padding: 4px 10px; border-radius: 8px;
-        border: 1px solid var(--line); background: var(--tray); color: var(--accent-ink);
-        font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
-    }
-    .toast-undo:hover { background: var(--accent-soft); }
-
-    .toast.clickable {
-        cursor: pointer;
-    }
-
-    .toast.clickable:hover {
-        border-color: var(--accent);
-    }
-
-    @@keyframes toast-in {
-        from {
-            opacity: 0;
-            transform: translateX(100%) scale(0.95);
-        }
-        to {
-            opacity: 1;
-            transform: translateX(0) scale(1);
-        }
-    }
-
-    @@keyframes toast-pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.7; }
-    }
-
-    .toast-icon {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 36px;
-        height: 36px;
-        border-radius: 10px;
-        flex-shrink: 0;
-    }
-
-    .toast.success .toast-icon {
-        background: var(--accent-soft);
-        color: var(--accent);
-    }
-
-    .toast.error .toast-icon {
-        background: #fef2f2;
-        color: #dc2626;
-    }
-
-    .toast.info .toast-icon {
-        background: #eff6ff;
-        color: #2563eb;
-    }
-
-    .toast-icon .lucide {
-        width: 18px;
-        height: 18px;
-    }
-
-    .toast-body {
-        flex: 1;
-        min-width: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-
-    .toast-title {
-        font-size: 13px;
-        font-weight: 700;
-        color: var(--ink);
-    }
-
-    .toast-msg {
-        font-size: 12px;
-        color: var(--ink-2);
-        line-height: 1.4;
-    }
-
-    .toast-go {
-        display: flex;
-        align-items: center;
-        color: var(--ink-3);
-        flex-shrink: 0;
-    }
-
-    .toast-go .lucide {
-        width: 16px;
-        height: 16px;
-    }
-
-    .toast-close {
-        width: 24px;
-        height: 24px;
-        border: none;
-        background: transparent;
-        color: var(--ink-3);
-        cursor: pointer;
-        font-size: 18px;
-        line-height: 1;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 4px;
-        flex-shrink: 0;
-        transition: all 0.15s ease;
-    }
-
-    .toast-close:hover {
-        background: var(--tray);
-        color: var(--ink);
-    }
-
-    .toast-mark-read {
-        width: 24px;
-        height: 24px;
-        border: none;
-        background: transparent;
-        color: var(--ink-3);
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 4px;
-        flex-shrink: 0;
-        transition: all 0.15s ease;
-    }
-
-    .toast-mark-read:hover {
-        background: var(--accent-soft);
-        color: var(--accent);
-    }
-
-    .toast-mark-read .lucide {
-        width: 14px;
-        height: 14px;
-    }
-
-    /* Kind-specific accents */
-    .toast.success {
-        border-left: 3px solid var(--accent);
-    }
-
-    .toast.error {
-        border-left: 3px solid #dc2626;
-    }
-
-    .toast.info {
-        border-left: 3px solid #2563eb;
-    }
-
-    [data-theme="dark"] .toast {
-        background: var(--surface);
-        border-color: var(--line);
-    }
-
-    [data-theme="dark"] .toast.error .toast-icon {
-        background: rgba(220, 38, 38, 0.15);
-    }
-
-    [data-theme="dark"] .toast.info .toast-icon {
-        background: rgba(37, 99, 235, 0.15);
-    }
-</style>
-
 @code {
-    private bool showPreview = true;
-    private bool enableNotifications = true;
-    private bool playSound = true;
-    private bool showBadge = true;
-    private readonly HashSet<Guid> _seenToastIds = [];
-
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
         Toasts.Changed += OnChanged;
-        Notifs.PreferencesChanged += OnPreferencesChanged;
-        await LoadPreferences();
-        // Tandai toast yang sudah ada saat mount agar tidak dianggap "baru".
-        foreach (var t in Toasts.Active) _seenToastIds.Add(t.Id);
+        Notifs.PreferencesChanged += OnChanged;
     }
 
-    /// Preferensi berubah (disimpan dari halaman settings) — muat ulang localStorage
-    /// lalu render ulang; toast yang sedang tampil langsung mengikuti EnableNotifications/
-    /// ShowPreview terbaru.
-    private void OnPreferencesChanged() => _ = InvokeAsync(async () =>
-    {
-        await LoadPreferences();
-        StateHasChanged();
-    });
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
 
-    private async Task LoadPreferences()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        try
-        {
-            var json = await JS.InvokeAsync<string>("localStorage.getItem", "notification-preferences");
-            if (!string.IsNullOrEmpty(json))
-            {
-                var prefs = System.Text.Json.JsonSerializer.Deserialize<LocalPrefs>(json);
-                if (prefs is not null)
-                {
-                    showPreview = prefs.ShowPreview;
-                    enableNotifications = prefs.EnableNotifications;
-                    playSound = prefs.PlaySound;
-                    showBadge = prefs.ShowBadge;
-                }
-            }
-        }
-        catch { }
+        if (Toasts.Active.Count == 0) return;
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
     }
 
-    private async void OnChanged()
+    // Bare glyphs: the coloured circle behind them is drawn by .toast-icon.
+    internal static string DefaultIcon(ToastKind kind) => kind switch
     {
-        try
-        {
-            // Render dulu agar toast langsung tampil — jangan tertahan oleh JS interop.
-            await InvokeAsync(StateHasChanged);
-
-            // Muat ulang preferensi (untuk suara/badge) tanpa menahan render.
-            try { await LoadPreferences(); } catch { }
-
-            // Suara hanya untuk toast yang BARU (belum pernah terlihat), hanya bila
-            // notifikasi aktif dan pengguna mengizinkan suara.
-            if (enableNotifications && playSound)
-            {
-                var hasNew = Toasts.Active.Any(t => !_seenToastIds.Contains(t.Id));
-                if (hasNew)
-                {
-                    try { await JS.InvokeVoidAsync("ipop.playNotificationSound"); } catch { }
-                }
-            }
-            foreach (var t in Toasts.Active) _seenToastIds.Add(t.Id);
-            _seenToastIds.RemoveWhere(id => Toasts.Active.All(t => t.Id != id));
-        }
-        catch
-        {
-            // Safeguard async void against unhandled exceptions
-        }
-    }
-
-    public void Dispose()
-    {
-        Toasts.Changed -= OnChanged;
-        Notifs.PreferencesChanged -= OnPreferencesChanged;
-    }
+        ToastKind.Success => "check",
+        ToastKind.Error => "x",
+        ToastKind.Warning => "alert-triangle",
+        _ => "info",
+    };
 
     private void OnToastClick(Toast toast)
     {
@@ -370,7 +100,6 @@
 
     private async Task MarkAsRead(Toast toast)
     {
-        if (string.IsNullOrEmpty(toast.NotificationId)) return;
         if (Guid.TryParse(toast.NotificationId, out var nid))
         {
             try { await Notifs.MarkReadAsync(nid); } catch { }
@@ -378,11 +107,9 @@
         Toasts.Dismiss(toast.Id);
     }
 
-    private class LocalPrefs
+    public void Dispose()
     {
-        public bool EnableNotifications { get; set; } = true;
-        public bool PlaySound { get; set; } = true;
-        public bool ShowBadge { get; set; } = true;
-        public bool ShowPreview { get; set; } = true;
+        Toasts.Changed -= OnChanged;
+        Notifs.PreferencesChanged -= OnChanged;
     }
 }

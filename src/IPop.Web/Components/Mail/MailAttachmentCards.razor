@@ -1,0 +1,257 @@
+@inject IJSRuntime JS
+@inject AuthState Auth
+@inject HttpClient Http
+@implements IAsyncDisposable
+@using IPop.Web.Services
+
+@* Attachment cards for the reading pane. The endpoints need a bearer token, so thumbnails and
+   previews are fetched through ipop.authBlob2 into blob: URLs (owned and revoked here). *@
+@if (Items.Count > 0)
+{
+    <div class="detail-att-section">
+        <div class="att-head">
+            <i data-lucide="paperclip"></i>
+            <span>@Items.Count @(Items.Count == 1 ? "attachment" : "attachments") · @HumanSize(Items.Sum(a => a.FileSize))</span>
+            @if (Items.Count > 1)
+            {
+                <button type="button" class="att-save-all" @onclick="DownloadAll">Save all</button>
+            }
+        </div>
+        <div class="att-cards">
+            @foreach (var a in Items)
+            {
+                var att = a;
+                var kind = KindOf(att);
+                var thumb = thumbs.GetValueOrDefault(att.Id);
+                <div class="att-card @(CanPreview(kind) ? "previewable" : "")">
+                    <button type="button" class="att-card-main" title="@(CanPreview(kind) ? $"Preview {att.FileName}" : $"Download {att.FileName}")"
+                            @onclick="() => Open(att)">
+                        <span class="att-thumb" style="--att-accent:@Accent(kind)">
+                            @if (thumb is not null)
+                            {
+                                <img src="@thumb" alt="" loading="lazy" />
+                            }
+                            else
+                            {
+                                <i data-lucide="@Icon(kind)"></i>
+                                <span class="att-ext">@Ext(att.FileName)</span>
+                            }
+                        </span>
+                        <span class="att-meta">
+                            <span class="name">@att.FileName</span>
+                            <span class="size">@HumanSize(att.FileSize)</span>
+                        </span>
+                    </button>
+                    <button type="button" class="att-dl" title="Download" aria-label="@($"Download {att.FileName}")" @onclick="() => Download(att)">
+                        <i data-lucide="download"></i>
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@if (preview is not null)
+{
+    <div class="mail-preview-overlay" role="dialog" aria-modal="true" aria-label="@($"Preview {preview.FileName}")" @onclick="ClosePreview">
+        <div class="mail-preview-bar" @onclick:stopPropagation>
+            <i data-lucide="@Icon(KindOf(preview))"></i>
+            <span class="name">@preview.FileName</span>
+            <span class="size">@HumanSize(preview.FileSize)</span>
+            <span style="flex:1"></span>
+            @if (Items.Count > 1)
+            {
+                <button type="button" class="icon-btn" title="Previous" aria-label="Previous attachment" @onclick="() => Step(-1)"><i data-lucide="chevron-left"></i></button>
+                <span class="mail-preview-pos">@(Items.IndexOf(preview) + 1) / @Items.Count</span>
+                <button type="button" class="icon-btn" title="Next" aria-label="Next attachment" @onclick="() => Step(1)"><i data-lucide="chevron-right"></i></button>
+            }
+            <button type="button" class="btn-sm surface" @onclick="() => Download(preview)"><i data-lucide="download"></i> Download</button>
+            <button type="button" class="icon-btn" title="Close (Esc)" aria-label="Close preview" @onclick="ClosePreview"><i data-lucide="x"></i></button>
+        </div>
+        <div class="mail-preview-stage" @onclick:stopPropagation>
+            @if (previewUrl is null)
+            {
+                <div class="mail-preview-msg">@(previewFailed ? "Preview unavailable. Use Download instead." : "Loading preview…")</div>
+            }
+            else if (KindOf(preview) == "image")
+            {
+                <img src="@previewUrl" alt="@preview.FileName" />
+            }
+            else
+            {
+                <iframe src="@previewUrl" title="@preview.FileName"></iframe>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<MailAttachment> Attachments { get; set; } = [];
+
+    private List<MailAttachment> Items = [];
+    private readonly Dictionary<Guid, string?> thumbs = [];
+    private readonly List<string> blobs = [];
+    private MailAttachment? preview;
+    private string? previewUrl;
+    private bool previewFailed;
+    private DotNetObjectReference<MailAttachmentCards>? selfRef;
+
+    public bool IsPreviewOpen => preview is not null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var ids = Attachments.Select(a => a.Id).ToList();
+        if (ids.SequenceEqual(Items.Select(a => a.Id))) return;
+        Items = Attachments.ToList();
+        ClosePreviewCore();
+        foreach (var a in Items.Where(a => KindOf(a) == "image" && !thumbs.ContainsKey(a.Id)))
+        {
+            thumbs[a.Id] = null;
+            var url = await FetchBlob($"/api/mail/attachments/{a.Id}/thumbnail")
+                      ?? (a.FileSize <= 3 * 1024 * 1024 ? await FetchBlob($"/api/mail/attachments/{a.Id}/download?inline=true") : null);
+            thumbs[a.Id] = url;
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private sealed class BlobResult
+    {
+        public string? Url { get; set; }
+        public int Status { get; set; }
+    }
+
+    private async Task<string?> FetchBlob(string path)
+    {
+        try
+        {
+            var url = new Uri(Http.BaseAddress!, path).ToString();
+            var res = await JS.InvokeAsync<BlobResult?>("ipop.authBlob2", url, Auth.AccessToken);
+            if (res?.Url is null && res?.Status is 401 && await Auth.TryRestoreAsync())
+                res = await JS.InvokeAsync<BlobResult?>("ipop.authBlob2", url, Auth.AccessToken);
+            if (res?.Url is null) return null;
+            blobs.Add(res.Url);
+            return res.Url;
+        }
+        catch { return null; }
+    }
+
+    private async Task Open(MailAttachment a)
+    {
+        if (!CanPreview(KindOf(a))) { await Download(a); return; }
+        preview = a;
+        previewUrl = null;
+        previewFailed = false;
+        StateHasChanged();
+        var url = await FetchBlob($"/api/mail/attachments/{a.Id}/download?inline=true");
+        if (preview?.Id != a.Id) return;
+        previewUrl = url;
+        previewFailed = url is null;
+        selfRef ??= DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("ipop.mailPreviewKeys", selfRef);
+    }
+
+    private async Task Step(int delta)
+    {
+        if (preview is null || Items.Count < 2) return;
+        var i = (Items.IndexOf(preview) + delta + Items.Count) % Items.Count;
+        await Open(Items[i]);
+    }
+
+    [JSInvokable]
+    public async Task OnPreviewKey(string key)
+    {
+        if (key == "Escape") ClosePreview();
+        else if (key == "ArrowLeft") await Step(-1);
+        else if (key == "ArrowRight") await Step(1);
+        StateHasChanged();
+    }
+
+    private void ClosePreviewCore()
+    {
+        preview = null;
+        previewUrl = null;
+        _ = JS.InvokeVoidAsync("ipop.mailPreviewKeys", null);
+    }
+
+    public void ClosePreview() => ClosePreviewCore();
+
+    private async Task Download(MailAttachment a)
+    {
+        var url = new Uri(Http.BaseAddress!, $"/api/mail/attachments/{a.Id}/download").ToString();
+        await JS.InvokeVoidAsync("ipop.authDownload", url, Auth.AccessToken, a.FileName);
+    }
+
+    private async Task DownloadAll()
+    {
+        foreach (var a in Items) await Download(a);
+    }
+
+    public static string KindOf(MailAttachment a)
+    {
+        var mime = ChatAttachments.Mime(a.MimeType, a.FileName ?? "");
+        if (mime.StartsWith("image/") && mime is not "image/svg+xml" and not "image/tiff" and not "image/heic" and not "image/heif") return "image";
+        if (mime == "application/pdf") return "pdf";
+        if (mime.StartsWith("video/")) return "video";
+        if (mime is "text/plain" or "text/csv") return "text";
+        var ext = ChatAttachments.Ext(a.FileName ?? "");
+        if (ext is ".xls" or ".xlsx" or ".csv" or ".ods") return "sheet";
+        if (ext is ".doc" or ".docx" or ".rtf" or ".odt") return "doc";
+        if (ext is ".ppt" or ".pptx" or ".odp") return "slides";
+        if (ext is ".zip" or ".rar" or ".7z" or ".gz" or ".tar") return "archive";
+        return "file";
+    }
+
+    private static bool CanPreview(string kind) => kind is "image" or "pdf" or "text";
+
+    private static string Icon(string kind) => kind switch
+    {
+        "image" => "image",
+        "pdf" => "file-text",
+        "video" => "video",
+        "text" => "file-code",
+        "sheet" => "file-spreadsheet",
+        "doc" => "file-text",
+        "slides" => "presentation",
+        "archive" => "file-archive",
+        _ => "file"
+    };
+
+    // Same family colours as chat file cards.
+    private static string Accent(string kind) => kind switch
+    {
+        "pdf" => "#c0392b",
+        "sheet" => "#1b7a3d",
+        "doc" => "#1a56c4",
+        "slides" => "#d35400",
+        "image" => "#7b3fa0",
+        "video" => "#0e7490",
+        "archive" => "#5b6770",
+        _ => "#5b6770"
+    };
+
+    private static string Ext(string? name)
+    {
+        var e = ChatAttachments.Ext(name ?? "").TrimStart('.');
+        return e.Length is > 0 and <= 4 ? e.ToUpperInvariant() : "FILE";
+    }
+
+    private static string HumanSize(long b) => ChatAttachments.FormatSize(b);
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("ipop.mailPreviewKeys", null);
+            foreach (var u in blobs) await JS.InvokeVoidAsync("ipop.revokeBlob", u);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        blobs.Clear();
+        selfRef?.Dispose();
+    }
+}

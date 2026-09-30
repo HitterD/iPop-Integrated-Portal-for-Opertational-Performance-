@@ -24,6 +24,36 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task GetMessagesBefore_pages_by_cursor_and_ignores_newer_arrivals()
+    {
+        using var t = new TestDb();
+        var (a, _, room) = SeedDm(t, 80);
+        var svc = new ChatService(t.Verify());
+
+        var latest = await svc.GetMessagesAsync(room, a, page: 1, pageSize: 50, default);
+        Assert.Equal("m31", latest.Items[0].Content);
+
+        // New messages land after page 1 was loaded: with offset paging page 2 would
+        // shift and re-serve m31..; the cursor keeps the window fixed.
+        var newest = t.Db.ChatMessages.Where(m => m.RoomId == room).Max(m => m.CreatedAt);
+        for (var i = 1; i <= 5; i++)
+            t.Db.ChatMessages.Add(Msg(room, a, "text", $"late{i}", newest.AddSeconds(i)));
+        t.Db.SaveChanges();
+
+        var older = await new ChatService(t.Verify()).GetMessagesBeforeAsync(room, a, latest.Items[0].CreatedAt, 50, default);
+        Assert.Equal(30, older.Items.Count);
+        Assert.Equal(30, older.TotalCount); // only what's older than the cursor
+        Assert.Equal("m1", older.Items[0].Content);
+        Assert.Equal("m30", older.Items[^1].Content);
+        Assert.Empty(older.Items.Select(m => m.Id).Intersect(latest.Items.Select(m => m.Id)));
+
+        // Smaller pages: TotalCount > Items.Count signals more history remains.
+        var small = await svc.GetMessagesBeforeAsync(room, a, latest.Items[0].CreatedAt, 10, default);
+        Assert.Equal(["m21", "m22", "m23", "m24", "m25", "m26", "m27", "m28", "m29", "m30"], small.Items.Select(m => m.Content));
+        Assert.True(small.TotalCount > small.Items.Count);
+    }
+
+    [Fact]
     public async Task Unread_skips_own_and_system()
     {
         using var t = new TestDb();
@@ -151,28 +181,74 @@ public class ChatServiceTests
     }
 
     [Fact]
-    public async Task Pin_group_requires_owner_or_admin()
+    public async Task Pin_group_open_to_any_member_but_not_outsiders()
     {
         using var t = new TestDb();
+        var (owner, member, _, stranger, roomId, msgs) = SeedGroupForPins(t, 2);
+        var svc = new ChatService(t.Verify());
+
+        var byMember = await svc.PinMessageAsync(member, msgs[0], default);
+        Assert.True(byMember.Success);
+        var list = await svc.GetPinnedMessagesAsync(roomId, default);
+        Assert.Equal(member, Assert.Single(list).PinnedByUserId);
+
+        var byOwner = await svc.PinMessageAsync(owner, msgs[1], default);
+        Assert.True(byOwner.Success);
+
+        var byStranger = await svc.PinMessageAsync(stranger, msgs[0], default);
+        Assert.False(byStranger.Success);
+        Assert.Equal("forbidden", byStranger.Error);
+    }
+
+    [Fact]
+    public async Task Unpin_group_allowed_for_pinner_or_owner_admin_only()
+    {
+        using var t = new TestDb();
+        var (owner, member, other, _, roomId, msgs) = SeedGroupForPins(t, 3);
+        var svc = new ChatService(t.Verify());
+        foreach (var m in msgs)
+            Assert.True((await svc.PinMessageAsync(member, m, default)).Success);
+
+        // Another plain member cannot unpin someone else's pin.
+        var byOther = await svc.UnpinMessageAsync(other, msgs[0], default);
+        Assert.False(byOther.Success);
+        Assert.Equal("forbidden", byOther.Error);
+
+        // The member who pinned it can.
+        Assert.True((await svc.UnpinMessageAsync(member, msgs[0], default)).Success);
+
+        // The owner can unpin a member's pin, and so can an admin.
+        Assert.True((await svc.UnpinMessageAsync(owner, msgs[1], default)).Success);
+        var verify = t.Verify();
+        verify.ChatRoomMembers.Single(x => x.RoomId == roomId && x.UserId == other).Role = "admin";
+        verify.SaveChanges();
+        Assert.True((await new ChatService(t.Verify()).UnpinMessageAsync(other, msgs[2], default)).Success);
+
+        Assert.Empty(await svc.GetPinnedMessagesAsync(roomId, default));
+    }
+
+    private static (Guid Owner, Guid Member, Guid Other, Guid Stranger, Guid RoomId, List<Guid> Msgs) SeedGroupForPins(TestDb t, int messages)
+    {
         var owner = t.AddUser("O");
         var member = t.AddUser("M");
+        var other = t.AddUser("N");
+        var stranger = t.AddUser("X");
         var roomId = Guid.NewGuid();
         var now = DateTime.UtcNow;
         t.Db.ChatRooms.Add(new ChatRoom { Id = roomId, Type = "group", Name = "G", IsActive = true, CreatedAt = now, LastMessageAt = now });
         t.Db.ChatRoomMembers.AddRange(
             new ChatRoomMember { Id = Guid.NewGuid(), RoomId = roomId, UserId = owner.Id, Role = "owner", JoinedAt = now },
-            new ChatRoomMember { Id = Guid.NewGuid(), RoomId = roomId, UserId = member.Id, Role = "member", JoinedAt = now });
-        var msg = Msg(roomId, owner.Id, "text", "hello", now);
-        t.Db.ChatMessages.Add(msg);
+            new ChatRoomMember { Id = Guid.NewGuid(), RoomId = roomId, UserId = member.Id, Role = "member", JoinedAt = now },
+            new ChatRoomMember { Id = Guid.NewGuid(), RoomId = roomId, UserId = other.Id, Role = "member", JoinedAt = now });
+        var ids = new List<Guid>();
+        for (var i = 0; i < messages; i++)
+        {
+            var msg = Msg(roomId, owner.Id, "text", $"hello {i}", now.AddSeconds(i));
+            t.Db.ChatMessages.Add(msg);
+            ids.Add(msg.Id);
+        }
         t.Db.SaveChanges();
-        var svc = new ChatService(t.Verify());
-
-        var byMember = await svc.PinMessageAsync(member.Id, msg.Id, default);
-        Assert.False(byMember.Success);
-        Assert.Equal("forbidden", byMember.Error);
-
-        var byOwner = await svc.PinMessageAsync(owner.Id, msg.Id, default);
-        Assert.True(byOwner.Success);
+        return (owner.Id, member.Id, other.Id, stranger.Id, roomId, ids);
     }
 
     [Fact]
@@ -406,16 +482,24 @@ public class ChatServiceTests
         // Initially: "sent"
         var initial = await svc.GetMessagesAsync(roomId, a.Id, 1, 10, default);
         Assert.Equal("sent", initial.Items[0].DeliveryStatus);
+        Assert.Equal(0, initial.Items[0].ReadCount);
+        Assert.Equal(2, initial.Items[0].ReadTotal);
 
         // B reads the message -> in group with 2 other members, only 1 read, so status is "delivered"
         await svc.RecordReadAsync(b.Id, msg.Id, default);
         var partialRead = await svc.GetMessagesAsync(roomId, a.Id, 1, 10, default);
         Assert.Equal("delivered", partialRead.Items[0].DeliveryStatus);
+        Assert.Equal(1, partialRead.Items[0].ReadCount);
 
         // C also reads the message -> all other active members have read, status becomes "read"
         await svc.RecordReadAsync(c.Id, msg.Id, default);
         var allRead = await svc.GetMessagesAsync(roomId, a.Id, 1, 10, default);
         Assert.Equal("read", allRead.Items[0].DeliveryStatus);
+        Assert.Equal(2, allRead.Items[0].ReadCount);
+
+        // Receivers never get counts for someone else's message.
+        var asB = await svc.GetMessagesAsync(roomId, b.Id, 1, 10, default);
+        Assert.Null(asB.Items[0].ReadCount);
     }
 }
 
@@ -428,7 +512,7 @@ public class TaskDiscussionTests
         var project = t.AddProject("P1", owner.Id);
         var task = new IPop.Core.Entities.ProjectTask
         {
-            Id = Guid.NewGuid(), ProjectId = project.Id, Title = "T1", Status = "todo",
+            Id = Guid.NewGuid(), ProjectId = project.Id, GroupId = t.Db.ProjectGroups.Single(g => g.ProjectId == project.Id).Id, Title = "T1", Status = "todo",
             CreatedById = owner.Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
         };
         t.Db.ProjectTasks.Add(task);
@@ -446,7 +530,7 @@ public class TaskDiscussionTests
         t.AddProjectMember(project.Id, b.Id);
         var task = new IPop.Core.Entities.ProjectTask
         {
-            Id = Guid.NewGuid(), ProjectId = project.Id, Title = "T1", Status = "todo",
+            Id = Guid.NewGuid(), ProjectId = project.Id, GroupId = t.Db.ProjectGroups.Single(g => g.ProjectId == project.Id).Id, Title = "T1", Status = "todo",
             CreatedById = a.Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
         };
         t.Db.ProjectTasks.Add(task);
@@ -478,7 +562,7 @@ public class TaskDiscussionTests
         var project = t.AddProject("P1", a.Id);
         var task = new IPop.Core.Entities.ProjectTask
         {
-            Id = Guid.NewGuid(), ProjectId = project.Id, Title = "T1", Status = "todo",
+            Id = Guid.NewGuid(), ProjectId = project.Id, GroupId = t.Db.ProjectGroups.Single(g => g.ProjectId == project.Id).Id, Title = "T1", Status = "todo",
             CreatedById = a.Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
         };
         t.Db.ProjectTasks.Add(task);

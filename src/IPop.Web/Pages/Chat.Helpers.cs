@@ -78,6 +78,9 @@ public partial class Chat
         return ColorForHash(ChatSvc.ActiveRoom.Id.GetHashCode());
     }
 
+    /// Group photo URLs are API-relative; the WASM host is a different origin.
+    private string PhotoUrl(string path) => new Uri(Http.BaseAddress!, path).ToString();
+
     private static string GetUserColor(string nik)
         => IPop.Web.Models.AvatarPalette.For(nik);
 
@@ -135,7 +138,8 @@ public partial class Chat
             // and user mentions get proper active/inactive treatment. Legacy loose @word still get .legacy spans.
             var dir = new ChatDir(ChatSvc?.ActiveRoom);
             var isGroup = ChatSvc?.ActiveRoom?.Type == "group";
-            var html = MentionRenderer.ToHtml(content, dir, isGroup);
+            var legacy = ChatSvc?.ActiveRoom?.MentionDirectory?.Select(d => (d.Nik, d.Name)).ToList();
+            var html = MentionRenderer.ToHtml(content, dir, isGroup, Auth?.Me?.Nik, legacy);
             return html.Replace("\n", "<br />");
         }
         catch
@@ -212,6 +216,10 @@ public partial class Chat
         mime.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
 
     private static string FormatFileSize(long bytes) => ChatAttachments.FormatSize(bytes);
+
+    // ---- @user mention in a bubble → that person's profile (called from JS) ----
+    [JSInvokable]
+    public Task OnMentionUserClick(string nik) => OpenUserProfile(nik);
 
     // ---- ipop-22: Project/Task mention chip navigation (called from JS) ----
     [JSInvokable]

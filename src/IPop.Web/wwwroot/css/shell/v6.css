@@ -224,16 +224,24 @@ body {
 
 .v6-topbar .topbar-right { margin-left: 0; display: flex; align-items: center; gap: 16px; color: var(--ink); }
 .v6-topbar .status-wrap { position: relative; }
-.v6-topbar .presence-toggle {
-  display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px;
+/* The status pill is a labelled control, not a 36×36 square. It must out-specify the
+   generic `.topbar-right button:not(...)` rule in shell/topbar.css, which is (0,3,1);
+   the extra .status-wrap class takes this to (0,4,0) so the outcome does not depend on
+   stylesheet load order. */
+.v6-topbar .topbar-right .status-wrap .presence-toggle {
+  display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px;
   border-radius: 10px; background: var(--surface); border: 1px solid var(--line-soft);
   font-size: 13px; font-weight: 500; color: var(--ink); cursor: pointer;
+  width: auto; flex: none; transform: none;
 }
 .v6-topbar .presence-toggle:hover { background: var(--surface-2); }
-.v6-topbar .presence-toggle .status-lbl { display: inline !important; }
-.v6-topbar .presence-toggle .chev { width: 13px; height: 13px; color: var(--ink-3); }
+/* The label is a flex item, so it is blockified regardless of `display`; it needs no
+   visibility override. It was previously clipped only because the generic
+   `.topbar-right button` rule squeezed this pill to 36×36. */
+.v6-topbar .presence-toggle .status-lbl { font-size: 13px; font-weight: 500; }
+.v6-topbar .presence-toggle .chev { width: 13px; height: 13px; color: var(--ink-3); flex: none; }
 .v6-topbar .status-menu {
-  position: absolute; top: 40px; right: 0; width: 230px; padding: 6px;
+  position: absolute; top: 40px; right: 0; width: 260px; padding: 6px;
   background: var(--surface); border: 1px solid var(--line-soft); border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14); z-index: 60;
 }
@@ -246,6 +254,12 @@ body {
 .v6-topbar .status-menu .l { flex: 1; display: flex; flex-direction: column; }
 .v6-topbar .status-menu small { font-size: 11px; color: var(--ink-3); }
 .v6-topbar .status-menu .lucide { width: 14px; height: 14px; color: var(--accent); }
+.v6-topbar .status-menu .status-sep { height: 1px; margin: 6px 4px; background: var(--line-soft); }
+.v6-topbar .status-menu .status-note {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; font-size: 13px; color: var(--ink-2);
+}
+.v6-topbar .status-menu .status-note .lucide { color: var(--ink-3); }
+.v6-topbar .status-menu .status-alerts .l { font-weight: 600; }
 
 .v6-topbar .theme-btn, .v6-topbar .bell-btn {
   position: relative; width: 34px; height: 34px; padding: 0;
@@ -336,11 +350,14 @@ a { color: var(--accent-ink); }
 .btn-dark:hover { background: #3A3A3C; }
 [data-theme="dark"] .btn-dark { background: #F5F5F7; color: #1D1D1F; }
 
-/* Override the legacy `.topbar-right button` 36×36 icon rule for the non-icon controls. */
-.v6-topbar .topbar-right .presence-toggle { width: auto; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-soft); background: var(--surface); transform: none; }
-.v6-topbar .topbar-right .presence-toggle .lucide { width: 13px; height: 13px; color: var(--ink-3); }
-.v6-topbar .topbar-right .status-menu button { width: 100%; height: auto; justify-content: flex-start; border: none; transform: none; }
-.v6-topbar .topbar-right .status-menu button .lucide { width: 14px; height: 14px; color: var(--accent); }
+/* The chevron inside the pill keeps the pill's own icon size; it must out-specify the
+   generic `.topbar-right button:not(...) .lucide` rule, which is (0,4,1). */
+.v6-topbar .topbar-right .status-wrap .presence-toggle .lucide { width: 13px; height: 13px; color: var(--ink-3); }
+/* Menu rows are full-width, not 36×36 squares: this must out-specify the generic
+   `.topbar-right button:not(...)` rule — hence the extra `.status-wrap` — so the
+   outcome does not depend on stylesheet load order. */
+.v6-topbar .topbar-right .status-wrap .status-menu button { width: 100%; height: auto; justify-content: flex-start; border: none; transform: none; }
+.v6-topbar .topbar-right .status-wrap .status-menu button .lucide { width: 14px; height: 14px; color: var(--accent); }
 .v6-topbar .topbar-right .theme-btn, .v6-topbar .topbar-right .bell-btn {
   width: 34px !important; height: 34px !important; border-radius: 10px !important; border: 1px solid var(--line-soft) !important; background: var(--surface) !important; color: var(--ink-2) !important;
 }

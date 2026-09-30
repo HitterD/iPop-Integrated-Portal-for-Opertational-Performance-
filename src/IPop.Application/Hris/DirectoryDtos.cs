@@ -37,7 +37,9 @@ public record DirectoryStructure(DirectorySiteNode[] Sites, int NoDivisionCount,
     DirectoryPresenceCounts? PresenceCounts = null);
 public record DirectoryPresenceCounts(int All, int Online, int Busy, int Away, int Offline);
 public record DirectorySiteNode(string Code, string Name, int MemberCount, DirectoryDepartmentNode[] Departments);
-public record DirectoryDepartmentNode(string Code, string Name, int MemberCount, DirectoryDivisionNode[] Divisions);
+/// Children are sub-departments (Department.ParentId) — the tree nests to any depth.
+public record DirectoryDepartmentNode(string Code, string Name, int MemberCount, DirectoryDivisionNode[] Divisions,
+    DirectoryDepartmentNode[]? Children = null);
 public record DirectoryDivisionNode(string Code, string Name, int MemberCount);
 
 /// A division matching a /api/directory/divisions?q= search, with its per-division match count.

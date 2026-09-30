@@ -1,0 +1,166 @@
+/* Mobile (<= 767px) overrides for directory. Loaded after every desktop stylesheet. */
+
+/* Phone-only structure toggle (Directory.razor): hidden on desktop. */
+.dir-body > .m-dir-filter { display: none; }
+
+@media (max-width: 767px) {
+  /* ---------- Toolbar: presence tabs scroll, tools in one scroll row ---------- */
+  .dir-toolbar { flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
+  .dir-toolbar > .apple-segmented {
+    flex: 1 1 100%; max-width: 100%; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+  }
+  .dir-toolbar > .apple-segmented::-webkit-scrollbar { display: none; }
+  .dir-toolbar > .apple-segmented .seg-btn { flex: none; height: 34px; font-size: 14px; }
+  .dir-toolbar .push {
+    flex: 1 1 100%; flex-wrap: nowrap; justify-content: flex-start; gap: 6px;
+    overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+  }
+  .dir-toolbar .push::-webkit-scrollbar { display: none; }
+  .dir-toolbar .v6-search { flex: 1 0 170px; min-width: 170px; max-width: none; height: 40px; }
+  .dir-toolbar .ghost-btn, .dir-toolbar .dir-sort .ghost-btn { height: 40px; flex: none; font-size: 13px; }
+  .dir-toolbar .view-seg { flex: none; }
+  .dir-toolbar .view-seg .seg-btn { width: 40px; height: 36px; }
+  /* Sort menu: the toolbar row scrolls (overflow clips absolute children), so pin it as a sheet. */
+  .dir-sort .menu-backdrop { z-index: 180; background: rgba(0, 0, 0, 0.32); }
+  .dir-sort-menu {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 181; min-width: 0;
+    padding: 8px 12px calc(12px + var(--m-safe-b)); border-radius: 14px 14px 0 0; border: 0;
+    border-top: 1px solid var(--line-soft); box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.18);
+    max-height: 92dvh; overflow-y: auto;
+    animation: m-dir-sheet-in 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .dir-sort-menu button { min-height: 48px; font-size: 15px; }
+  @keyframes m-dir-sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+
+  /* ---------- Body: single column; Structure/Favorites collapse behind a toggle ---------- */
+  .dir-body { padding: 0 12px 16px; gap: 10px; }
+  .dir-body > .m-dir-filter {
+    display: flex; align-items: center; gap: 8px; flex: none; width: 100%; min-height: 44px; padding: 0 12px;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink);
+    font: inherit; font-size: 15px; font-weight: 500; text-align: left; cursor: pointer;
+  }
+  .dir-body > .m-dir-filter .lucide { width: 17px; height: 17px; color: var(--ink-3); flex: none; }
+  .dir-body > .m-dir-filter.on .lucide:first-child { color: var(--accent); }
+  .dir-body > .m-dir-filter .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dir-body > .m-dir-filter.on .lbl { color: var(--accent-ink); font-weight: 600; }
+  .dir-cols { display: flex; flex-direction: column; gap: 10px; }
+  .dir-cols > .col { width: 100%; }
+  .dir-side { display: none; }
+  .dir-body.m-tree-open .dir-side { display: flex; }
+  .dir-structure .tree { max-height: 50dvh; }
+  .dir-structure .tree-node { height: 44px; font-size: 15px; }
+  .dir-structure .tree-twist { width: 36px; height: 44px; }
+  .dir-structure .tree-node.tree-div { font-size: 14px; }
+  .dir-favs .fav-row { height: 48px; }
+  .dir-favs .fav-row .act { width: 40px; height: 40px; }
+
+  /* ---------- People card: the page scrolls, not a fixed-height inner pane ---------- */
+  .dir-people { height: auto; min-height: 0; overflow: visible; }
+  .dir-scroll { overflow: visible; }
+  .dir-people > .card-head { padding: 12px 14px; flex-wrap: wrap; }
+  .dir-people > .card-head .card-meta { display: none; }
+  .dir-foot { flex-direction: column; gap: 2px; padding: 10px 14px; }
+
+  /* Bulk bar: actions stay reachable in a horizontal scroll strip. */
+  .dir-bulk-bar {
+    position: sticky; top: 0; z-index: 5; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    padding: 8px 12px; gap: 6px;
+  }
+  .dir-bulk-bar::-webkit-scrollbar { display: none; }
+  .dir-bulk-bar > * { flex: none; }
+  .dir-bulk-bar > div[style*="flex:1"] { display: none; }
+  .dir-bulk-bar .dbb-btn, .dir-bulk-bar .dbb-clear { height: 40px; }
+  .dir-bulk-bar .v6-cb { width: 22px; height: 22px; }
+
+  /* Checkbox: 40px hit area around the box. */
+  .dir-people .v6-cb { width: 22px; height: 22px; position: relative; }
+  .dir-people .v6-cb::before { content: ""; position: absolute; inset: -9px; }
+
+  /* ---------- List view: each table row becomes a card ---------- */
+  .dir-people .tbl, .dir-people .tbl tbody { display: block; width: 100%; table-layout: auto; }
+  .dir-people .tbl thead { display: none; }
+  .dir-people .tbl tr {
+    display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; grid-template-areas:
+      "cb person acts"
+      "cb meta   meta";
+    align-items: center; column-gap: 8px; row-gap: 4px;
+    padding: 10px 12px; border-bottom: 1px solid var(--line-soft); cursor: pointer;
+  }
+  .dir-people .tbl tr.sel td { background: transparent; }
+  .dir-people .tbl tr.sel { background: #F0F9F3; }
+  [data-theme="dark"] .dir-people .tbl tr.sel { background: rgba(48, 209, 88, 0.1); }
+  .dir-people .tbl td {
+    display: block; width: auto !important; padding: 0; border: 0; font-size: 13px; min-width: 0;
+  }
+  .dir-people .tbl td:nth-child(1) { grid-area: cb; align-self: start; padding-top: 10px; }
+  .dir-people .tbl td:nth-child(2) { grid-area: person; }
+  .dir-people .tbl td:nth-child(7) { grid-area: acts; }
+  /* NIK · Position · Department · Status wrap as one meta line under the name. */
+  .dir-people .tbl td:nth-child(3),
+  .dir-people .tbl td:nth-child(4),
+  .dir-people .tbl td:nth-child(5),
+  .dir-people .tbl td:nth-child(6) { display: none; }
+  .dir-people .tbl tr > td:nth-child(3) { display: inline; }
+  .dir-people .tbl tr {
+    grid-template-areas:
+      "cb person acts"
+      "cb nik    nik"
+      "cb pos    pos"
+      "cb chips  chips";
+  }
+  .dir-people .tbl td:nth-child(3) { grid-area: nik; display: block; font-size: 12px; color: var(--ink-3) !important; padding-left: 50px; }
+  .dir-people .tbl td:nth-child(4) { grid-area: pos; display: block; font-size: 12.5px; color: var(--ink-2) !important; padding-left: 50px; white-space: normal; }
+  .dir-people .tbl td:nth-child(5) { grid-area: chips; display: block; padding-left: 50px; }
+  .dir-people .tbl td:nth-child(6) { display: none; }
+  .dir-people .tbl td:nth-child(4):empty { display: none; }
+  .div-chip { max-width: 100%; }
+  .dir-people .cell-person { gap: 10px; }
+  .dir-people .cell-person .av { width: 40px; height: 40px; }
+  .dir-people .cell-person .n { font-size: 15px; }
+  .dir-people .cell-person .s { font-size: 12.5px; }
+  .row-acts { gap: 0; }
+  .row-acts .ra { width: 40px; height: 40px; }
+  .row-acts .ra .lucide { width: 18px; height: 18px; }
+  /* Skeleton / empty rows span everything. */
+  .dir-people .tbl td[colspan] { grid-column: 1 / -1; padding: 0; }
+  .dir-people .tbl td[colspan][style] { padding: 24px 0 !important; }
+
+  /* ---------- Grid view: two columns of compact cards ---------- */
+  .dir-people .emp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 10px; }
+  .dir-card { padding: 10px 8px; gap: 4px; }
+  .dir-card .dc-top { margin: -2px 0 -8px; }
+  .dir-card .dc-star { width: 36px; height: 36px; }
+  .dir-card .dc-av { width: 48px; height: 48px; font-size: 16px; }
+  .dir-card .dc-name { font-size: 14px; }
+  .dir-card .dc-pos { font-size: 12px; min-height: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .dir-card .dc-meta { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dir-card .dc-acts { gap: 4px; }
+  .dir-card .dc-msg { height: 40px; min-width: 0; font-size: 0; gap: 0; }
+  .dir-card .dc-msg .lucide { width: 17px; height: 17px; }
+  .dir-card .dc-ic { width: 40px; height: 40px; }
+  .dir-card .dc-ic .lucide { width: 16px; height: 16px; }
+
+  /* ---------- Person detail: ProfileDrawer is full screen via mobile/components.css.
+     Keep it above the tab bar (z 55) - it already is (z 100). ---------- */
+
+  /* ---------- EmployeeProfile (/directory/person/{nik}): single column ---------- */
+  .content.emp-profile {
+    display: flex; flex-direction: column; gap: 12px; max-width: none !important;
+    padding: 0 12px 16px; overflow-y: auto; overflow-x: hidden; align-items: stretch;
+  }
+  .content.emp-profile > * { width: auto; max-width: none; min-width: 0; align-self: stretch; }
+  .emp-profile > .emp-m-bar { margin: 0 -12px; background: var(--surface); position: sticky; top: 0; z-index: 5; }
+  .emp-profile .panel-head { flex-wrap: wrap; row-gap: 6px; }
+  .emp-profile .panel-head .btn-sm { min-height: 40px; }
+  .emp-profile .emp-id { flex-direction: column; align-items: center !important; text-align: center; gap: 12px !important; padding: 16px !important; }
+  .emp-profile .emp-id > div:last-child { width: 100%; }
+  .emp-profile .emp-id > div:last-child > div:nth-child(3) { justify-content: center; }
+  .emp-profile .p-rows { text-align: left; }
+  .emp-profile .p-row { display: grid; grid-template-columns: 16px auto minmax(0, 1fr); align-items: center; gap: 10px; min-height: 40px; }
+  .emp-profile .p-row .k { width: auto; }
+  .emp-profile .p-row .v { min-width: 0; word-break: normal; overflow-wrap: anywhere; }
+  .emp-profile .emp-acts { display: grid !important; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .emp-profile .emp-acts .btn-sm, .emp-profile .panel-head .btn-sm { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; white-space: nowrap; }
+  .emp-profile .emp-acts .btn-sm { min-height: 44px; justify-content: center; }
+  .emp-profile .notif-row { min-height: 52px; }
+}

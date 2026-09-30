@@ -170,10 +170,14 @@
     private string cleanDescription = "";
     private string newStepText = "";
 
+    // Filled once per (task, target): parent re-renders (live updates) must not reset the form.
+    private (Guid, string)? _initFor;
+
     protected override void OnParametersSet()
     {
-        if (Task is not null)
+        if (Task is not null && _initFor != (Task.Id, TargetStatus))
         {
+            _initFor = (Task.Id, TargetStatus);
             var parsed = TaskEvidenceHelper.Parse(Task.Description);
             cleanDescription = parsed.CleanDescription;
             evidence = parsed.Evidence;

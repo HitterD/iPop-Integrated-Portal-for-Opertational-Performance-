@@ -1,0 +1,495 @@
+@using IPop.Web.Services
+@implements IDisposable
+@inject IJSRuntime JS
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject ConfirmService Confirm
+@inject OverlayStack Overlays
+
+@* Mail settings — one focused modal per popover item (signature, out of office,
+   rules, labels, templates). Replaces the old /mail/advanced tab page. *@
+
+<div class="proj-modal-backdrop" @onclick="Close"></div>
+<div class="proj-modal v6-project-modal v6-mail-modal" role="dialog" aria-modal="true" aria-label="@Title">
+    <div class="proj-modal-head">
+        <span class="vpm-tile team"><i data-lucide="@Icon"></i></span>
+        <span class="vmm-title">
+            <span>@Title</span>
+            <small>@Subtitle</small>
+        </span>
+        <button type="button" class="vpm-close" @onclick="Close" aria-label="Close"><i data-lucide="x"></i></button>
+    </div>
+
+    <div class="proj-modal-body">
+        @if (loading)
+        {
+            <div class="vmm-empty">Loading…</div>
+        }
+        else if (section == "signature")
+        {
+            <div class="field">
+                <label for="vmm-sig">Signature</label>
+                <textarea id="vmm-sig" class="org-input vmm-textarea" rows="5" @bind="signatureText" @bind:event="oninput"
+                          placeholder="@SignaturePlaceholder"></textarea>
+                <span class="vmm-hint">Inserted with the signature button when you compose or reply.</span>
+            </div>
+            <div class="vmm-preview">
+                <div class="vmm-preview-label">Preview</div>
+                @if (string.IsNullOrWhiteSpace(signatureText))
+                {
+                    <div class="vmm-preview-body muted">Your signature will appear here.</div>
+                }
+                else
+                {
+                    <div class="vmm-preview-body">— <br />@((MarkupString)System.Net.WebUtility.HtmlEncode(signatureText.Trim()).Replace("\n", "<br />"))</div>
+                }
+            </div>
+        }
+        else if (section == "ooo")
+        {
+            <button type="button" class="vmm-switch-row" role="switch" aria-checked="@(oooEnabled ? "true" : "false")" @onclick="() => oooEnabled = !oooEnabled">
+                <span class="vmm-switch-text">
+                    <strong>Automatic reply</strong>
+                    <small>@(oooEnabled ? "Senders get your message once per day." : "Off — nobody receives an automatic reply.")</small>
+                </span>
+                <span class="apple-switch @(oooEnabled ? "on" : "")"><span class="apple-switch-knob"></span></span>
+            </button>
+            <div class="vmm-ooo @(oooEnabled ? "" : "disabled")">
+                <div class="vpm-grid">
+                    <div class="field"><label for="vmm-from">First day</label><AppDatePicker Id="vmm-from" @bind-Value="oooFrom" Disabled="@(!oooEnabled)" /></div>
+                    <div class="field"><label for="vmm-until">Last day</label><AppDatePicker Id="vmm-until" @bind-Value="oooUntil" Disabled="@(!oooEnabled)" /></div>
+                </div>
+                <div class="field">
+                    <label for="vmm-msg">Message</label>
+                    <textarea id="vmm-msg" class="org-input vmm-textarea" rows="4" disabled="@(!oooEnabled)" @bind="oooMessage" @bind:event="oninput"
+                              placeholder="I'm out of office until Sep 30. For urgent matters please contact…"></textarea>
+                </div>
+                @if (oooEnabled && oooUntil < oooFrom)
+                {
+                    <span class="vmm-error">The last day must be on or after the first day.</span>
+                }
+            </div>
+        }
+        else if (section == "rules")
+        {
+            @if (labels.Count == 0)
+            {
+                <div class="vmm-callout">
+                    <i data-lucide="tag"></i>
+                    <span>Rules sort mail into labels. Create a label first.</span>
+                    <button type="button" class="vmm-link" @onclick='() => Switch("labels")'>Manage labels</button>
+                </div>
+            }
+            else if (ruleFormOpen)
+            {
+                <div class="vmm-form">
+                    <div class="field"><label for="vmm-rname">Rule name</label><input id="vmm-rname" class="org-input" @bind="newRuleName" @bind:event="oninput" placeholder="e.g. HR mail" /></div>
+                    <div class="vpm-grid">
+                        <div class="field"><label for="vmm-rsender">When sender contains</label><input id="vmm-rsender" class="org-input" @bind="newRuleSender" @bind:event="oninput" placeholder="e.g. hr@@company.com" /></div>
+                        <div class="field">
+                            <label for="vmm-rlabel">Apply label</label>
+                            <select id="vmm-rlabel" class="filter-select" @bind="newRuleLabelId">
+                                @foreach (var l in labels)
+                                {
+                                    <option value="@l.Id">@l.Name</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    <div class="vmm-form-acts">
+                        <button type="button" class="btn-sm surface" @onclick="() => ruleFormOpen = false">Cancel</button>
+                        <button type="button" class="btn-sm accent" disabled="@(busy || string.IsNullOrWhiteSpace(newRuleName) || string.IsNullOrWhiteSpace(newRuleSender))" @onclick="AddRule">Add rule</button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <button type="button" class="vmm-add" @onclick="OpenRuleForm"><i data-lucide="plus"></i> New rule</button>
+            }
+
+            @if (rules.Count == 0)
+            {
+                <div class="vmm-empty">No rules yet. Rules label incoming mail automatically.</div>
+            }
+            else
+            {
+                <div class="vmm-list">
+                    @foreach (var r in rules)
+                    {
+                        var rule = r;
+                        <div class="vmm-row">
+                            <span class="vmm-row-ic"><i data-lucide="list-filter"></i></span>
+                            <span class="vmm-row-text">
+                                <strong>@rule.Name</strong>
+                                <small>Sender contains “@rule.SenderContains” → @rule.LabelName</small>
+                            </span>
+                            <button type="button" class="apple-switch @(rule.Enabled ? "on" : "")" role="switch" aria-checked="@(rule.Enabled ? "true" : "false")"
+                                    aria-label="@(rule.Enabled ? "Turn off" : "Turn on") @rule.Name" @onclick="() => ToggleRule(rule)"><span class="apple-switch-knob"></span></button>
+                            <button type="button" class="vmm-del" aria-label="Delete @rule.Name" @onclick="() => DeleteRule(rule)"><i data-lucide="trash-2"></i></button>
+                        </div>
+                    }
+                </div>
+            }
+        }
+        else if (section == "labels")
+        {
+            @if (labelFormOpen)
+            {
+                <div class="vmm-form">
+                    <div class="field"><label for="vmm-lname">Label name</label><input id="vmm-lname" class="org-input" @bind="newLabelName" @bind:event="oninput" placeholder="e.g. Finance" /></div>
+                    <div class="field">
+                        <label>Color</label>
+                        <div class="vmm-swatches">
+                            @foreach (var c in LabelColors)
+                            {
+                                var col = c;
+                                var on = newLabelColor.Equals(col, StringComparison.OrdinalIgnoreCase);
+                                <button type="button" class="vmm-swatch @(on ? "on" : "")" style="background:@col;--sw:@col" aria-label="Choose color @col" aria-pressed="@(on ? "true" : "false")" @onclick="() => newLabelColor = col"></button>
+                            }
+                        </div>
+                    </div>
+                    <div class="vmm-form-acts">
+                        <button type="button" class="btn-sm surface" @onclick="() => labelFormOpen = false">Cancel</button>
+                        <button type="button" class="btn-sm accent" disabled="@(busy || string.IsNullOrWhiteSpace(newLabelName))" @onclick="AddLabel">Add label</button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <button type="button" class="vmm-add" @onclick="() => labelFormOpen = true"><i data-lucide="plus"></i> New label</button>
+            }
+
+            @if (labels.Count == 0)
+            {
+                <div class="vmm-empty">No labels yet. Labels appear under Mailboxes and can be applied by rules.</div>
+            }
+            else
+            {
+                <div class="vmm-list">
+                    @foreach (var l in labels)
+                    {
+                        var label = l;
+                        <div class="vmm-row">
+                            <span class="vmm-dot" style="background:@label.Color"></span>
+                            <span class="vmm-row-text">
+                                <strong>@label.Name</strong>
+                                <small>@label.Count @(label.Count == 1 ? "message" : "messages")</small>
+                            </span>
+                            <button type="button" class="vmm-del" aria-label="Delete @label.Name" @onclick="() => DeleteLabel(label)"><i data-lucide="trash-2"></i></button>
+                        </div>
+                    }
+                </div>
+            }
+        }
+        else if (section == "templates")
+        {
+            @if (tplFormOpen)
+            {
+                <div class="vmm-form">
+                    <div class="field"><label for="vmm-tname">Template name</label><input id="vmm-tname" class="org-input" @bind="newTplName" @bind:event="oninput" placeholder="e.g. Meeting invitation" /></div>
+                    <div class="field"><label for="vmm-tsubj">Subject</label><input id="vmm-tsubj" class="org-input" @bind="newTplSubject" @bind:event="oninput" placeholder="Email subject" /></div>
+                    <div class="field"><label for="vmm-tbody">Body</label><textarea id="vmm-tbody" class="org-input vmm-textarea" rows="4" @bind="newTplBody" placeholder="Email body"></textarea></div>
+                    <div class="vmm-form-acts">
+                        <button type="button" class="btn-sm surface" @onclick="() => tplFormOpen = false">Cancel</button>
+                        <button type="button" class="btn-sm accent" disabled="@(busy || string.IsNullOrWhiteSpace(newTplName) || string.IsNullOrWhiteSpace(newTplSubject))" @onclick="AddTemplate">Add template</button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <button type="button" class="vmm-add" @onclick="() => tplFormOpen = true"><i data-lucide="plus"></i> New template</button>
+            }
+
+            @if (templates.Count == 0)
+            {
+                <div class="vmm-empty">No templates yet. Save emails you send often and reuse them in one click.</div>
+            }
+            else
+            {
+                <div class="vmm-list">
+                    @foreach (var t in templates)
+                    {
+                        var tpl = t;
+                        <div class="vmm-row">
+                            <span class="vmm-row-ic"><i data-lucide="layout-template"></i></span>
+                            <span class="vmm-row-text">
+                                <strong>@tpl.Name</strong>
+                                <small>@tpl.Subject</small>
+                            </span>
+                            <button type="button" class="vmm-use" @onclick="() => UseTemplate(tpl)"><i data-lucide="pen-line"></i> Use</button>
+                            <button type="button" class="vmm-del" aria-label="Delete @tpl.Name" @onclick="() => DeleteTemplate(tpl)"><i data-lucide="trash-2"></i></button>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    <div class="proj-modal-foot">
+        @if (section is "signature" or "ooo")
+        {
+            <button type="button" class="btn-sm surface" @onclick="Close">Cancel</button>
+            <button type="button" class="btn-sm accent" disabled="@(busy || (section == "ooo" && oooEnabled && oooUntil < oooFrom))" @onclick="SaveCurrent"><i data-lucide="check"></i>Save</button>
+        }
+        else
+        {
+            <button type="button" class="btn-sm surface" @onclick="Close">Done</button>
+        }
+    </div>
+</div>
+
+@code {
+    /// "signature" | "ooo" | "rules" | "labels" | "templates"
+    [Parameter] public string Section { get; set; } = "signature";
+    [Parameter] public EventCallback OnClose { get; set; }
+    /// Raised when labels change so the Mailboxes sidebar can refresh.
+    [Parameter] public EventCallback OnLabelsChanged { get; set; }
+    /// Raised with (subject, body) when the user picks a template.
+    [Parameter] public EventCallback<(string Subject, string Body)> OnUseTemplate { get; set; }
+
+    private const string SignaturePlaceholder = "Best regards,\nYour Name\nPosition · Department\nPT Santos Jaya Abadi";
+    private static readonly string[] LabelColors = ["#2E9E5B", "#0A84FF", "#7657C4", "#FF9F0A", "#C0513A", "#18808A"];
+
+    private record MailLabelDto(Guid Id, string Name, string Color, int Count);
+    private record MailRuleDto(Guid Id, string Name, string SenderContains, string LabelName, bool IsEnabled);
+    private record MailTemplateDto(Guid Id, string Name, string Subject, string Body);
+    private record MailAutoReplyDto(bool IsEnabled, DateTime? FromDate, DateTime? UntilDate, string? Message);
+    private sealed class RuleItem { public Guid Id; public string Name = ""; public string SenderContains = ""; public string LabelName = ""; public bool Enabled; }
+
+    private bool loading = true, busy;
+    private string? lastParam;
+    private string section = "signature";
+    private IDisposable? _reg;
+
+    private List<MailLabelDto> labels = [];
+    private bool labelFormOpen;
+    private string newLabelName = "";
+    private string newLabelColor = LabelColors[0];
+
+    private List<RuleItem> rules = [];
+    private bool ruleFormOpen;
+    private string newRuleName = "", newRuleSender = "";
+    private Guid newRuleLabelId;
+
+    private List<MailTemplateDto> templates = [];
+    private bool tplFormOpen;
+    private string newTplName = "", newTplSubject = "", newTplBody = "";
+
+    private bool oooEnabled;
+    private DateTime oooFrom = DateTime.Today, oooUntil = DateTime.Today.AddDays(7);
+    private string oooMessage = "";
+    private string signatureText = "";
+
+    private string Title => section switch
+    {
+        "ooo" => "Out of office",
+        "rules" => "Rules & filters",
+        "labels" => "Labels",
+        "templates" => "Templates",
+        _ => "Signature"
+    };
+
+    private string Subtitle => section switch
+    {
+        "ooo" => "Reply automatically while you're away",
+        "rules" => "Label incoming mail automatically",
+        "labels" => "Organize mail in the Mailboxes list",
+        "templates" => "Reusable emails for Compose",
+        _ => "Added to the end of your emails"
+    };
+
+    private string Icon => section switch
+    {
+        "ooo" => "plane",
+        "rules" => "list-filter",
+        "labels" => "tag",
+        "templates" => "layout-template",
+        _ => "pen-line"
+    };
+
+    protected override void OnInitialized() => _reg = Overlays.Push(Close);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (lastParam == Section) return;
+        lastParam = Section;
+        section = Section;
+        await LoadSectionAsync();
+    }
+
+    private async Task LoadSectionAsync()
+    {
+        loading = true;
+        try { await LoadAsync(); }
+        catch { Toasts.Show("Could not load mail settings.", ToastKind.Error); }
+        loading = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+
+    private async Task LoadAsync()
+    {
+        switch (section)
+        {
+            case "signature":
+                try { signatureText = await JS.InvokeAsync<string?>("localStorage.getItem", "ipop.mail.signature") ?? ""; } catch { }
+                break;
+            case "ooo":
+                var o = await Auth.GetAsync<MailAutoReplyDto>("/api/mail/auto-reply");
+                if (o != null)
+                {
+                    oooEnabled = o.IsEnabled;
+                    if (o.FromDate.HasValue) oooFrom = o.FromDate.Value.ToLocalTime().Date;
+                    if (o.UntilDate.HasValue) oooUntil = o.UntilDate.Value.ToLocalTime().Date;
+                    oooMessage = o.Message ?? "";
+                }
+                break;
+            case "rules":
+                await LoadLabels();
+                await LoadRules();
+                break;
+            case "labels":
+                await LoadLabels();
+                break;
+            case "templates":
+                templates = await Auth.GetAsync<List<MailTemplateDto>>("/api/mail/templates") ?? [];
+                break;
+        }
+    }
+
+    private async Task LoadLabels() => labels = await Auth.GetAsync<List<MailLabelDto>>("/api/mail/labels") ?? [];
+
+    private async Task LoadRules()
+    {
+        var r = await Auth.GetAsync<List<MailRuleDto>>("/api/mail/rules") ?? [];
+        rules = r.Select(x => new RuleItem { Id = x.Id, Name = x.Name, SenderContains = x.SenderContains, LabelName = x.LabelName, Enabled = x.IsEnabled }).ToList();
+    }
+
+    private void Switch(string section)
+    {
+        this.section = section;
+        labelFormOpen = ruleFormOpen = tplFormOpen = false;
+        _ = InvokeAsync(async () => { await LoadSectionAsync(); StateHasChanged(); });
+    }
+
+    private async Task Close() => await OnClose.InvokeAsync();
+
+    private async Task SaveCurrent()
+    {
+        busy = true;
+        try
+        {
+            if (section == "signature")
+            {
+                await JS.InvokeVoidAsync("localStorage.setItem", "ipop.mail.signature", signatureText.Trim());
+                Toasts.Show("Signature saved.", ToastKind.Success);
+                await Close();
+            }
+            else if (section == "ooo")
+            {
+                var res = await Auth.SendAsync(HttpMethod.Put, "/api/mail/auto-reply", new
+                {
+                    isEnabled = oooEnabled,
+                    fromDate = oooFrom.ToUniversalTime(),
+                    untilDate = oooUntil.ToUniversalTime(),
+                    message = oooMessage.Trim()
+                });
+                if (res.IsSuccessStatusCode)
+                {
+                    Toasts.Show(oooEnabled ? "Out-of-office reply turned on." : "Out-of-office reply turned off.", ToastKind.Success);
+                    await Close();
+                }
+                else Toasts.Show("Could not save out-of-office settings.", ToastKind.Error);
+            }
+        }
+        catch { Toasts.Show("Could not save settings.", ToastKind.Error); }
+        finally { busy = false; }
+    }
+
+    // ── Labels ──
+    private async Task AddLabel()
+    {
+        busy = true;
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/mail/labels", new { name = newLabelName.Trim(), color = newLabelColor });
+        busy = false;
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Could not add label. The name may already exist.", ToastKind.Error); return; }
+        newLabelName = ""; labelFormOpen = false;
+        await LoadLabels();
+        await OnLabelsChanged.InvokeAsync();
+        Toasts.Show("Label added.", ToastKind.Success);
+    }
+
+    private async Task DeleteLabel(MailLabelDto l)
+    {
+        if (!await Confirm.AskAsync($"Delete label “{l.Name}”?", "Messages keep their content; only the label and rules using it are removed.", "Delete")) return;
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/mail/labels/{l.Id}");
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Could not delete label.", ToastKind.Error); return; }
+        await LoadLabels();
+        await OnLabelsChanged.InvokeAsync();
+        Toasts.Show("Label deleted.", ToastKind.Success);
+    }
+
+    // ── Rules ──
+    private void OpenRuleForm()
+    {
+        newRuleLabelId = labels.FirstOrDefault()?.Id ?? Guid.Empty;
+        ruleFormOpen = true;
+    }
+
+    private async Task AddRule()
+    {
+        if (newRuleLabelId == Guid.Empty) return;
+        busy = true;
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/mail/rules", new { name = newRuleName.Trim(), senderContains = newRuleSender.Trim(), labelId = newRuleLabelId });
+        busy = false;
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Could not add rule.", ToastKind.Error); return; }
+        newRuleName = ""; newRuleSender = ""; ruleFormOpen = false;
+        await LoadRules();
+        Toasts.Show("Rule added.", ToastKind.Success);
+    }
+
+    private async Task ToggleRule(RuleItem r)
+    {
+        r.Enabled = !r.Enabled;
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/mail/rules/{r.Id}", new { isEnabled = r.Enabled });
+        if (!res.IsSuccessStatusCode)
+        {
+            r.Enabled = !r.Enabled;
+            Toasts.Show("Could not update rule.", ToastKind.Error);
+        }
+    }
+
+    private async Task DeleteRule(RuleItem r)
+    {
+        if (!await Confirm.AskAsync($"Delete rule “{r.Name}”?", "Incoming mail will no longer be labeled by this rule.", "Delete")) return;
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/mail/rules/{r.Id}");
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Could not delete rule.", ToastKind.Error); return; }
+        rules.Remove(r);
+        Toasts.Show("Rule deleted.", ToastKind.Success);
+    }
+
+    // ── Templates ──
+    private async Task AddTemplate()
+    {
+        busy = true;
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/mail/templates", new { name = newTplName.Trim(), subject = newTplSubject.Trim(), body = newTplBody });
+        busy = false;
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Could not add template.", ToastKind.Error); return; }
+        newTplName = ""; newTplSubject = ""; newTplBody = ""; tplFormOpen = false;
+        templates = await Auth.GetAsync<List<MailTemplateDto>>("/api/mail/templates") ?? [];
+        Toasts.Show("Template added.", ToastKind.Success);
+    }
+
+    private async Task DeleteTemplate(MailTemplateDto t)
+    {
+        if (!await Confirm.AskAsync($"Delete template “{t.Name}”?", "This template will no longer be available in Compose.", "Delete")) return;
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/mail/templates/{t.Id}");
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Could not delete template.", ToastKind.Error); return; }
+        templates.Remove(t);
+        Toasts.Show("Template deleted.", ToastKind.Success);
+    }
+
+    private async Task UseTemplate(MailTemplateDto t) => await OnUseTemplate.InvokeAsync((t.Subject, t.Body));
+
+    public void Dispose() => _reg?.Dispose();
+}

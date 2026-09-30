@@ -2,7 +2,8 @@
 
 <div class="proj-canvas-head">
     <div class="proj-title-box">
-        <span class="proj-tile lg" style="background:@ProjectUiHelpers.GetAvatarBg(Project.Name)">@ProjectUiHelpers.GetInitials(Project.Name)</span>
+        <button type="button" class="m-back" aria-label="Back" title="All projects" @onclick="OnBack"><i data-lucide="chevron-left"></i></button>
+        <span class="proj-tile lg" style="background:@(!string.IsNullOrWhiteSpace(Project.Color) ? Project.Color : ProjectUiHelpers.GetAvatarBg(Project.Name))">@ProjectUiHelpers.GetInitials(Project.Name)</span>
         <div class="proj-title-col">
         <div class="proj-title-row">
         <h2 class="proj-title-text">@Project.Name</h2>
@@ -37,23 +38,23 @@
                     +@(Members.Count - 4)
                 </div>
             }
-            <div class="team-add-circ" title="Add Member">
-                <i data-lucide="user-plus" style="width:13px;height:13px"></i>
-            </div>
         </div>
+        <button type="button" class="team-add-circ" title="Add Member" aria-label="Add member" @onclick="OnOpenTeamModal">
+            <i data-lucide="plus"></i>
+        </button>
 
         @* Chat Interconnect *@
-        <button type="button" class="icon-btn proj-hbtn" @onclick="OnOpenChatRoom" title="Open project chat" aria-label="Open project chat">
+        <button type="button" class="icon-btn proj-hbtn pm-fold" @onclick="OnOpenChatRoom" title="Open project chat" aria-label="Open project chat">
             <i data-lucide="message-circle"></i>
         </button>
 
         @* Edit Project Button *@
-        <button type="button" class="icon-btn proj-hbtn" @onclick="OnOpenEditModal" title="Edit project" aria-label="Edit project">
+        <button type="button" class="icon-btn proj-hbtn pm-fold" @onclick="OnOpenEditModal" title="Edit project" aria-label="Edit project">
             <i data-lucide="pencil"></i>
         </button>
 
         @* Export Snapshot *@
-        <button type="button" class="icon-btn proj-hbtn" @onclick="OnExport" title="Export snapshot" aria-label="Export snapshot">
+        <button type="button" class="icon-btn proj-hbtn pm-fold" @onclick="OnExport" title="Export snapshot" aria-label="Export snapshot">
             <i data-lucide="download"></i>
         </button>
 
@@ -64,7 +65,11 @@
             </button>
             @if (showMore)
             {
-                <div class="app-select-pop on" style="right:0;top:38px;width:180px;z-index:100" @onclick:stopPropagation="true">
+                <div class="app-select-pop on proj-more-pop" style="right:0;top:38px;width:180px;z-index:100" @onclick:stopPropagation="true">
+                    @* Phone only: the chat/edit/export buttons fold into this menu (css/mobile/projects.css). *@
+                    <button type="button" class="app-select-opt pm-only" @onclick="() => Run(OnOpenChatRoom)"><i data-lucide="message-circle" style="width:13px;height:13px"></i> Open project chat</button>
+                    <button type="button" class="app-select-opt pm-only" @onclick="() => Run(OnOpenEditModal)"><i data-lucide="pencil" style="width:13px;height:13px"></i> Edit project</button>
+                    <button type="button" class="app-select-opt pm-only" @onclick="() => Run(OnExport)"><i data-lucide="download" style="width:13px;height:13px"></i> Export snapshot</button>
                     <button type="button" class="app-select-opt" @onclick="CopyLink"><i data-lucide="link" style="width:13px;height:13px"></i> Copy link</button>
                     <button type="button" class="app-select-opt" @onclick="MarkDone"><i data-lucide="check-circle" style="width:13px;height:13px"></i> Mark completed</button>
                     <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="Delete"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete project</button>
@@ -86,6 +91,7 @@
     [Parameter] public EventCallback OnCopyLink { get; set; }
     [Parameter] public EventCallback OnDeleteProject { get; set; }
     [Parameter] public EventCallback OnMarkCompleted { get; set; }
+    [Parameter] public EventCallback OnBack { get; set; }
 
     private bool showMore;
 
@@ -93,6 +99,12 @@
     {
         var s = e.Value?.ToString();
         if (!string.IsNullOrEmpty(s)) await OnStatusChanged.InvokeAsync(s);
+    }
+
+    private async Task Run(EventCallback cb)
+    {
+        showMore = false;
+        await cb.InvokeAsync();
     }
 
     private async Task CopyLink()

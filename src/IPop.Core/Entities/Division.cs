@@ -11,7 +11,10 @@ public class Division
     public Guid? DepartmentId { get; set; }           // parent department (one side of the bundle)
     public Guid? SiteId { get; set; }                // parent site (the other side)
     public bool IsActive { get; set; } = true;
+    public int SortOrder { get; set; }               // sibling order in the Directory tree (0 = alphabetical)
+    public Guid? HeadUserId { get; set; }            // unit head — drives the auto org chart
 
     public Department? Department { get; set; }
     public Site? Site { get; set; }
+    public User? Head { get; set; }
 }

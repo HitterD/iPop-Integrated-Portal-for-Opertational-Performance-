@@ -231,37 +231,46 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (Attachment is null) return;
+        // Capture the attachment: the parent can null it (close) while any of the
+        // awaits below is in flight, so re-check after each one instead of
+        // dereferencing the live parameter.
+        var att = Attachment;
+        if (att is null) return;
         await JS.InvokeVoidAsync("ipop.icons");
+        if (Attachment?.Id != att.Id) return;
 
         if (!keysBound)
         {
             selfRef ??= DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("ipop.bindViewerKeys", selfRef);
+            // Flag before the await so a teardown racing the bind still unbinds
+            // (JS interop calls run in order), rather than leaking the listener.
             keysBound = true;
+            await JS.InvokeVoidAsync("ipop.bindViewerKeys", selfRef);
+            if (Attachment?.Id != att.Id) return;
         }
 
-        var kind = ChatAttachments.Kind(Attachment);
+        var kind = ChatAttachments.Kind(att);
 
         if (kind == AttachmentKind.Image && blobUrl is not null && !zoomBound)
         {
-            await JS.InvokeVoidAsync("ipop.zoomBind", imageRef);
             zoomBound = true;
+            await JS.InvokeVoidAsync("ipop.zoomBind", imageRef);
+            if (Attachment?.Id != att.Id) return;
         }
 
         // Document renderers write into a plain host div, so they run once the host
         // exists in the DOM rather than during the Blazor render pass.
-        if (blobUrl is not null && renderedHostFor != Attachment.Id &&
+        if (blobUrl is not null && renderedHostFor != att.Id &&
             kind is AttachmentKind.Doc or AttachmentKind.LegacySheet)
         {
-            renderedHostFor = Attachment.Id;
+            renderedHostFor = att.Id;
             var fn = kind == AttachmentKind.Doc ? "ipop.renderDocx" : "ipop.renderXls";
             var host = kind == AttachmentKind.Doc ? "av-docx" : "av-xls";
             string result;
             try { result = await JS.InvokeAsync<string>(fn, host, blobUrl); }
             catch { result = "error"; }
 
-            if (result != "ok" && loadedId == Attachment.Id)
+            if (result != "ok" && Attachment?.Id == att.Id && loadedId == att.Id)
             {
                 error = result == "no-lib"
                     ? "The preview engine could not be loaded. Download the file to view it."
@@ -301,11 +310,10 @@
         await OnNavigate.InvokeAsync(Siblings[next]);
     }
 
-    private async Task RequestClose()
-    {
-        await TeardownAsync();
-        await OnClose.InvokeAsync();
-    }
+    // Only ask the parent to close: it nulls Attachment and OnParametersSetAsync
+    // tears down. Tearing down here first let a render slip in between (keys
+    // rebound, OnAfterRenderAsync resumed against a null Attachment).
+    private Task RequestClose() => OnClose.InvokeAsync();
 
     [JSInvokable]
     public async Task OnViewerKey(string key)

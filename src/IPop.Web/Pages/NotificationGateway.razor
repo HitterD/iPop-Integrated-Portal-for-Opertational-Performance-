@@ -57,9 +57,9 @@ else
 
     @* ---- Tabs: Clients / Requests / DLQ ---- *@
     <div class="admin-tabs rise rise-2" role="tablist" aria-label="Gateway sections">
-        <button class="admin-tab @(Tab == 0 ? "active" : "")" role="tab" aria-selected="@(Tab == 0)" @onclick="() => tab = 0"><i data-lucide="server"></i> Clients</button>
-        <button class="admin-tab @(Tab == 1 ? "active" : "")" role="tab" aria-selected="@(Tab == 1)" @onclick="() => tab = 1"><i data-lucide="send"></i> Requests</button>
-        <button class="admin-tab @(Tab == 2 ? "active" : "")" role="tab" aria-selected="@(Tab == 2)" @onclick="() => tab = 2"><i data-lucide="archive-x"></i> Dead letters @(dlq.Total > 0 ? $"({dlq.Total})" : "")</button>
+        <button class="admin-tab @(Tab == 0 ? "active" : "")" role="tab" aria-selected="@(Tab == 0 ? "true" : "false")" @onclick="() => tab = 0"><i data-lucide="server"></i> Clients</button>
+        <button class="admin-tab @(Tab == 1 ? "active" : "")" role="tab" aria-selected="@(Tab == 1 ? "true" : "false")" @onclick="() => tab = 1"><i data-lucide="send"></i> Requests</button>
+        <button class="admin-tab @(Tab == 2 ? "active" : "")" role="tab" aria-selected="@(Tab == 2 ? "true" : "false")" @onclick="() => tab = 2"><i data-lucide="archive-x"></i> Dead letters @(dlq.Total > 0 ? $"({dlq.Total})" : "")</button>
     </div>
 
     @if (Tab == 0)
@@ -442,7 +442,7 @@ else
     {
         if (!Guid.TryParse(requestIdInput.Trim(), out var id))
         {
-            Toasts.Show("Enter a valid request GUID.", ToastKind.Error);
+            Toasts.Show("Enter a valid request GUID.", ToastKind.Warning);
             return;
         }
         await OpenTimeline(id);

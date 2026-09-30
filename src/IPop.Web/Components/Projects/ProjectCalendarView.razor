@@ -1,0 +1,269 @@
+@using IPop.Application.Projects
+@inject IPop.Web.Services.AuthState Auth
+@inject IJSRuntime JS
+
+@* Projects Calendar (Fase 2a): month/week grid of tasks by start..due span. Bars are packed into
+   lanes per week (ProjectCalendarLayout); drag a bar onto another day to move its dates. Narrow
+   screens get the agenda list instead of the grid (CSS). *@
+<div class="pcal">
+    <div class="pcal-bar">
+        <div class="pcal-nav">
+            <button type="button" class="ghost-btn icon" aria-label="Sebelumnya" @onclick="() => Navigate(-1)"><i data-lucide="chevron-left"></i></button>
+            <button type="button" class="ghost-btn" @onclick="GoToday">Hari ini</button>
+            <button type="button" class="ghost-btn icon" aria-label="Berikutnya" @onclick="() => Navigate(1)"><i data-lucide="chevron-right"></i></button>
+            <h3 class="pcal-title">@Title</h3>
+            @if (loading) { <span class="pcal-loading" aria-live="polite">Memuat…</span> }
+        </div>
+        <div class="pcal-mode" role="radiogroup" aria-label="Tampilan kalender">
+            <button type="button" role="radio" aria-checked="@(mode == "month" ? "true" : "false")" class="@(mode == "month" ? "on" : "")" @onclick='() => SetMode("month")'>Bulan</button>
+            <button type="button" role="radio" aria-checked="@(mode == "week" ? "true" : "false")" class="@(mode == "week" ? "on" : "")" @onclick='() => SetMode("week")'>Minggu</button>
+        </div>
+    </div>
+
+    @if (data?.Truncated == true)
+    {
+        <div class="pcal-note"><i data-lucide="info"></i>Terlalu banyak task di rentang ini; hanya 500 pertama yang ditampilkan.</div>
+    }
+    @if (loadError)
+    {
+        <div class="pcal-note error"><i data-lucide="triangle-alert"></i>Kalender belum dapat dimuat.</div>
+    }
+
+    <div class="pcal-grid @mode @(dragTask is not null ? "dragging" : "")" role="grid" aria-label="@Title">
+        <div class="pcal-head" role="row">
+            @foreach (var d in DatePickerMath.WeekdayShort) { <div role="columnheader">@d</div> }
+        </div>
+        @foreach (var row in rows)
+        {
+            var lanes = Math.Min(MaxLanes, row.Segments.Count == 0 ? 0 : row.Segments.Max(s => s.Lane) + 1);
+            <div class="pcal-week" role="row" style="--lanes:@lanes">
+                @for (var i = 0; i < 7; i++)
+                {
+                    var day = row.Days[i];
+                    var hidden = row.Hidden[i];
+                    var outside = mode == "month" && day.Month != anchor.Month;
+                    <div role="gridcell" class="pcal-day @(outside ? "outside" : "") @(day == Today ? "today" : "") @(dropDay == day ? "drop" : "")"
+                         style="grid-column:@(i + 1); grid-row:1 / -1"
+                         @ondragover:preventDefault="true" @ondragover="() => dropDay = day"
+                         @ondragleave="() => { if (dropDay == day) dropDay = null; }"
+                         @ondrop="() => DropOn(day)">
+                        <div class="pcal-day-head">
+                            <span class="pcal-num" aria-label="@DatePickerMath.FormatLong(day)">@day.Day</span>
+                            <button type="button" class="pcal-add" aria-label="Tambah task @DatePickerMath.FormatDateCompact(day)" title="Tambah task" @onclick="() => StartAdd(day)"><i data-lucide="plus"></i></button>
+                        </div>
+                        @if (hidden > 0)
+                        {
+                            <button type="button" class="pcal-more" style="--lanes:@lanes" @onclick="() => OpenDay(day)">+@hidden lagi</button>
+                        }
+                        @if (addDay == day)
+                        {
+                            <input class="pcal-add-input" placeholder="Judul task, Enter" aria-label="Judul task baru" maxlength="300"
+                                   @bind="addTitle" @bind:event="oninput" @onkeydown="OnAddKey" @onblur="CancelAddSoon" autofocus />
+                        }
+                    </div>
+                }
+                @foreach (var seg in row.Segments)
+                {
+                    var t = seg.Task;
+                    <button type="button" class="pcal-bar-item @t.Status @(seg.ContinuesBefore ? "cont-before" : "") @(seg.ContinuesAfter ? "cont-after" : "") @(IsOverdue(t) ? "overdue" : "")"
+                            style="grid-column:@(seg.StartCol + 1) / span @seg.Span; grid-row:@(seg.Lane + 2)"
+                            draggable="true" title="@BarTitle(t)"
+                            @ondragstart="() => dragTask = t" @ondragend="() => { dragTask = null; dropDay = null; }"
+                            @onclick="() => OnTaskClick.InvokeAsync(t.Id)">
+                        <span class="col-dot @t.Status"></span>
+                        @if (t.IsBlocked) { <i data-lucide="lock" class="pcal-ico" aria-label="Menunggu task lain"></i> }
+                        @if (t.IsRecurring) { <i data-lucide="repeat" class="pcal-ico" aria-label="Berulang"></i> }
+                        <span class="pcal-bar-title">@t.Title</span>
+                    </button>
+                }
+            </div>
+        }
+    </div>
+
+    @* Agenda: the only view below 640px, and the "+N lagi" day list. *@
+    <div class="pcal-agenda" aria-label="Agenda">
+        @{ var anyAgenda = false; }
+        @foreach (var day in rows.SelectMany(r => r.Days).Where(d => mode == "week" || d.Month == anchor.Month))
+        {
+            var items = ProjectCalendarLayout.TasksOn(day, Visible);
+            if (items.Count == 0 && day != Today) continue;
+            anyAgenda = true;
+            <section class="pcal-agenda-day @(day == Today ? "today" : "")">
+                <h4>@DatePickerMath.FormatLong(day)
+                    <button type="button" class="pcal-add" aria-label="Tambah task @DatePickerMath.FormatDateCompact(day)" @onclick="() => StartAdd(day)"><i data-lucide="plus"></i></button>
+                </h4>
+                @if (addDay == day)
+                {
+                    <input class="pcal-add-input" placeholder="Judul task, Enter" aria-label="Judul task baru" maxlength="300"
+                           @bind="addTitle" @bind:event="oninput" @onkeydown="OnAddKey" @onblur="CancelAddSoon" />
+                }
+                @if (items.Count == 0) { <p class="pcal-empty">Tidak ada task.</p> }
+                @foreach (var t in items)
+                {
+                    <button type="button" class="pcal-agenda-item" @onclick="() => OnTaskClick.InvokeAsync(t.Id)">
+                        <span class="col-dot @t.Status"></span>
+                        <span class="pcal-bar-title">@t.Title</span>
+                        @if (t.IsBlocked) { <span class="blocked-badge"><i data-lucide="lock"></i>Menunggu</span> }
+                        <small>@ProjectUiHelpers.StatusLabel(t.Status)</small>
+                    </button>
+                }
+            </section>
+        }
+        @if (!anyAgenda) { <p class="pcal-empty">Tidak ada task di rentang ini.</p> }
+    </div>
+
+    @if (openDay is { } od)
+    {
+        <div class="pcal-pop-backdrop" @onclick="() => openDay = null"></div>
+        <div class="pcal-pop" role="dialog" aria-label="Task @DatePickerMath.FormatLong(od)">
+            <div class="pcal-pop-head">
+                <strong>@DatePickerMath.FormatLong(od)</strong>
+                <button type="button" class="ghost-btn icon" aria-label="Tutup" @onclick="() => openDay = null"><i data-lucide="x"></i></button>
+            </div>
+            @foreach (var t in ProjectCalendarLayout.TasksOn(od, Visible))
+            {
+                <button type="button" class="pcal-agenda-item" @onclick="async () => { openDay = null; await OnTaskClick.InvokeAsync(t.Id); }">
+                    <span class="col-dot @t.Status"></span><span class="pcal-bar-title">@t.Title</span>
+                    <small>@ProjectUiHelpers.StatusLabel(t.Status)</small>
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private const int MaxLanes = 3;
+
+    [Parameter] public Guid ProjectId { get; set; }
+    [Parameter] public Guid? GroupId { get; set; }
+    /// The page's search/My tasks/Overdue/Priority filters.
+    [Parameter] public Func<CalendarTaskDto, bool>? Filter { get; set; }
+    [Parameter] public EventCallback<Guid> OnTaskClick { get; set; }
+    /// Drop on a day: the page saves the new dates (with undo).
+    [Parameter] public EventCallback<(CalendarTaskDto Task, DateOnly Day)> OnMoveTask { get; set; }
+    [Parameter] public EventCallback<(DateOnly Day, string Title)> OnQuickAdd { get; set; }
+
+    private string mode = "month";
+    private DateOnly anchor = DateOnly.FromDateTime(DateTime.Today);
+    private ProjectCalendarDto? data;
+    private List<ProjectCalendarLayout.WeekRow> rows = [];
+    private bool loading;
+    private bool loadError;
+    private Guid loadedProject;
+    private Guid? loadedGroup;
+    private int loadSeq;
+
+    private CalendarTaskDto? dragTask;
+    private DateOnly? dropDay;
+    private DateOnly? openDay;
+    private DateOnly? addDay;
+    private string addTitle = "";
+
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.Today);
+
+    private string Title => mode == "month"
+        ? DatePickerMath.MonthTitle(anchor.Year, anchor.Month)
+        : $"{DatePickerMath.FormatDateCompact(DatePickerMath.StartOfWeek(anchor))} – {DatePickerMath.FormatDateCompact(DatePickerMath.EndOfWeek(anchor))}";
+
+    private DateOnly[] Days
+    {
+        get
+        {
+            if (mode == "month") return DatePickerMath.MonthGrid(anchor.Year, anchor.Month);
+            var start = DatePickerMath.StartOfWeek(anchor);
+            return Enumerable.Range(0, 7).Select(i => start.AddDays(i)).ToArray();
+        }
+    }
+
+    private IEnumerable<CalendarTaskDto> Visible =>
+        (data?.Tasks ?? []).Where(t => Filter is null || Filter(t));
+
+    private static bool IsOverdue(CalendarTaskDto t) => t.Status != "done" && t.DueDate is { } d && d.Date < DateTime.Today;
+
+    private static string BarTitle(CalendarTaskDto t)
+    {
+        var span = ProjectCalendarLayout.SpanOf(t);
+        var when = span is { } s ? (s.Start == s.End ? DatePickerMath.FormatDateCompact(s.End) : $"{DatePickerMath.FormatDateCompact(s.Start)} – {DatePickerMath.FormatDateCompact(s.End)}") : "";
+        return $"{t.Title} · {ProjectUiHelpers.StatusLabel(t.Status)} · {when}{(t.IsBlocked ? " · Menunggu task lain" : "")}";
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ProjectId != loadedProject || GroupId != loadedGroup) await Reload();
+        else Relayout();
+    }
+
+    public async Task Reload()
+    {
+        if (ProjectId == Guid.Empty) return;
+        loadedProject = ProjectId;
+        loadedGroup = GroupId;
+        var seq = ++loadSeq;
+        var days = Days;
+        loading = true;
+        loadError = false;
+        try
+        {
+            var url = $"/api/projects/{ProjectId}/calendar?from={days[0]:yyyy-MM-dd}&to={days[^1]:yyyy-MM-dd}";
+            if (GroupId is { } g) url += $"&groupId={g}";
+            var result = await Auth.GetAsync<ProjectCalendarDto>(url);
+            if (seq != loadSeq) return;
+            data = result;
+            loadError = result is null;
+        }
+        catch { if (seq == loadSeq) loadError = true; }
+        finally { if (seq == loadSeq) loading = false; }
+        Relayout();
+        await InvokeAsync(StateHasChanged);
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
+
+    private void Relayout() => rows = ProjectCalendarLayout.Build(Days, Visible, MaxLanes);
+
+    private Task Navigate(int dir)
+    {
+        anchor = mode == "month" ? new DateOnly(anchor.Year, anchor.Month, 1).AddMonths(dir) : anchor.AddDays(7 * dir);
+        return Reload();
+    }
+
+    private Task GoToday() { anchor = Today; return Reload(); }
+
+    private Task SetMode(string m)
+    {
+        if (mode == m) return Task.CompletedTask;
+        mode = m;
+        return Reload();
+    }
+
+    private void OpenDay(DateOnly day) => openDay = day;
+
+    private async Task DropOn(DateOnly day)
+    {
+        var t = dragTask;
+        dragTask = null;
+        dropDay = null;
+        if (t is null) return;
+        var anchorDate = t.DueDate ?? t.StartDate;
+        if (anchorDate is null || DateOnly.FromDateTime(anchorDate.Value) == day) return;
+        await OnMoveTask.InvokeAsync((t, day));
+    }
+
+    private void StartAdd(DateOnly day) { addDay = day; addTitle = ""; }
+
+    private async Task OnAddKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { addDay = null; return; }
+        if (e.Key != "Enter" || addDay is not { } day || string.IsNullOrWhiteSpace(addTitle)) return;
+        var title = addTitle.Trim();
+        addDay = null;
+        addTitle = "";
+        await OnQuickAdd.InvokeAsync((day, title));
+    }
+
+    // Blur fires before a click elsewhere lands; give Enter's handler the first chance.
+    private async Task CancelAddSoon()
+    {
+        await Task.Delay(150);
+        if (string.IsNullOrWhiteSpace(addTitle)) { addDay = null; StateHasChanged(); }
+    }
+}

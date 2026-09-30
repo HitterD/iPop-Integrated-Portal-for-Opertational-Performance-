@@ -135,3 +135,129 @@
 .reader-workflow .icon-btn { display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
 .reader-workflow .icon-btn.danger { color: var(--danger); }
 .reader-workflow .push-right { margin-left: auto; }
+
+/* ── 2026-09-27: reader state, attachments, ack tracking, editor ───────── */
+.news-row.unread .ttl { font-weight: 700; }
+.news-row:not(.unread) .ttl { font-weight: 500; }
+.news-row .sum { font-size: 12.5px; color: var(--ink-2); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.news-row .clip { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--ink-3); }
+.news-row .clip .lucide { width: 12px; height: 12px; }
+.news-row .saved-mark { width: 12px; height: 12px; fill: currentColor; color: var(--accent); flex: none; }
+.status-pill.draft { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 600; background: var(--fill); color: var(--ink-2); }
+.status-pill.scheduled { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 600; background: var(--info-soft); color: #0A63C9; }
+.status-pill.scheduled .lucide { width: 11px; height: 11px; }
+[data-theme="dark"] .status-pill.scheduled { color: #64B5FF; }
+
+.news-v6x .reader-more { position: relative; }
+.reader-menu-scrim { position: fixed; inset: 0; z-index: 40; }
+.reader-menu {
+  position: absolute; right: 0; top: 36px; z-index: 41; min-width: 200px; padding: 6px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--line); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.16);
+  display: flex; flex-direction: column;
+}
+.reader-menu button {
+  display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; border: none; border-radius: 8px;
+  background: transparent; color: var(--ink); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.reader-menu button:hover { background: var(--tray); }
+.reader-menu button .lucide { width: 15px; height: 15px; color: var(--ink-2); }
+.reader-menu button.danger, .reader-menu button.danger .lucide { color: var(--danger); }
+.reader-menu .sep { height: 1px; margin: 4px 6px; background: var(--line-soft); }
+
+.news-v6x .reader-author .edited { text-decoration: underline dotted; cursor: help; }
+.news-v6x .reader-audience { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); }
+.news-v6x .reader-audience .lucide { width: 13px; height: 13px; }
+
+.reader-ack-callout {
+  display: flex; gap: 10px; margin-top: 16px; padding: 12px 14px; border-radius: 12px;
+  background: var(--warn-soft); border: 1px solid rgba(255, 159, 10, 0.3); color: var(--warn-ink);
+}
+.reader-ack-callout > .lucide { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+.reader-ack-callout .t { font-size: 13px; font-weight: 700; }
+.reader-ack-callout .s { font-size: 12px; margin-top: 2px; }
+.reader-ack-callout.overdue { background: var(--danger-soft, #FFEDEC); border-color: rgba(255, 59, 48, 0.3); color: var(--danger-ink, #C4281C); }
+
+.reader-files { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 8px; }
+.reader-files .lbl { width: 100%; display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.reader-files .lbl .lucide { width: 13px; height: 13px; }
+.file-chip {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 100%; height: 36px; padding: 0 10px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 12.5px; cursor: pointer;
+}
+.file-chip.static { cursor: default; }
+.file-chip:not(.static):hover { background: var(--tray); }
+.file-chip > .lucide { width: 16px; height: 16px; color: var(--accent); flex: none; }
+.file-chip .fn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; font-weight: 500; }
+.file-chip .fs { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+.file-chip > .lucide.dl { color: var(--ink-3); width: 14px; height: 14px; }
+.file-chip .x { border: none; background: none; padding: 2px; color: var(--ink-3); cursor: pointer; display: flex; }
+.file-chip .x .lucide { width: 13px; height: 13px; }
+
+.news-v6x .reader-ack-box.req { background: var(--warn-soft); border-color: rgba(255, 159, 10, 0.3); }
+.news-v6x .reader-ack-box .ack-ask { font-size: 13px; color: var(--warn-ink); font-weight: 600; }
+.news-v6x .reader-ack-box.done { background: var(--success-soft); border-color: rgba(52, 199, 89, 0.25); }
+.news-v6x .reader-ack-box .ack-done { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #1C7A44; }
+[data-theme="dark"] .news-v6x .reader-ack-box .ack-done { color: #5DD58A; }
+.news-v6x .reader-ack-box .ack-done .lucide { width: 17px; height: 17px; flex: none; }
+
+.ack-panel { margin-top: 20px; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--line-soft); background: var(--surface-2); }
+.ack-panel-head { display: flex; align-items: center; gap: 8px; }
+.ack-panel-head .t { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+.ack-panel-head .t .lucide { width: 15px; height: 15px; color: var(--accent); }
+.ack-panel-head .n { margin-left: auto; font-size: 12px; color: var(--ink-2); font-weight: 600; }
+.ack-panel .ack-progress-track { height: 6px; margin-top: 10px; border-radius: 3px; background: var(--fill); overflow: hidden; }
+.ack-panel .ack-progress-fill { height: 100%; border-radius: 3px; background: var(--accent); }
+.ack-panel-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.ack-panel-acts .ghost-btn { display: inline-flex; align-items: center; cursor: pointer; }
+.ack-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+.ack-filter .v6-search { flex: 1; min-width: 180px; }
+.news-v6x .seg, .news-editor .seg { display: inline-flex; padding: 2px; gap: 2px; border-radius: 9px; background: var(--fill); }
+.news-v6x .seg button, .news-editor .seg button { height: 28px; padding: 0 10px; border: none; border-radius: 7px; background: transparent; color: var(--ink); font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.news-v6x .seg button.on, .news-editor .seg button.on { background: var(--surface); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); font-weight: 600; }
+.ack-list { margin-top: 10px; max-height: 320px; overflow-y: auto; border-radius: 10px; border: 1px solid var(--line-soft); background: var(--surface); }
+.ack-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line-soft); }
+.ack-row:last-child { border-bottom: none; }
+.ack-row .av.sm { width: 28px; height: 28px; border-radius: 50%; flex: none; background: var(--fill); color: var(--ink-2); font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+.ack-row .who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ack-row .who .n { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ack-row .who .m { font-size: 11px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ack-row .ack { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 6px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.ack-row .ack .lucide { width: 11px; height: 11px; }
+.ack-row .ack.req { background: var(--warn-soft); color: var(--warn-ink); }
+.ack-row .ack.ok { background: var(--success-soft); color: #1C7A44; }
+
+.reader-audit { margin-top: 20px; }
+.reader-audit summary { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--ink-2); cursor: pointer; list-style: none; }
+.reader-audit summary::-webkit-details-marker { display: none; }
+.reader-audit summary .lucide { width: 14px; height: 14px; }
+
+/* Editor */
+.news-editor .ed-types { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.news-editor .ed-type {
+  display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer;
+}
+.news-editor .ed-type .lucide { width: 15px; height: 15px; color: var(--ink-3); }
+.news-editor .ed-type.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.news-editor .ed-type.on .lucide { color: var(--accent); }
+.news-editor .ed-hint { margin-top: 4px; font-size: 11px; color: var(--ink-3); }
+.news-editor .ed-body, .news-editor .ed-date, .news-editor .ed-target {
+  width: 100%; box-sizing: border-box; padding: 10px 12px; font: inherit; font-size: 13px; border: 1px solid var(--line);
+  border-radius: 12px; background: var(--surface); color: var(--ink);
+}
+.news-editor .ed-body { resize: vertical; line-height: 1.6; min-height: 180px; }
+.news-editor .ed-target { flex: 1; width: auto; min-width: 140px; padding: 8px 12px; border-radius: 10px; }
+.news-editor .ed-files { display: flex; flex-wrap: wrap; gap: 8px; }
+.news-editor .ed-upload {
+  position: relative; display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border-radius: 10px;
+  border: 1px dashed var(--line); color: var(--ink-2); font-size: 12.5px; cursor: pointer; overflow: hidden;
+}
+.news-editor .ed-upload:hover { background: var(--tray); }
+.news-editor .ed-upload .lucide { width: 14px; height: 14px; }
+.news-editor .ed-upload.busy .lucide { animation: news-spin 1s linear infinite; }
+.news-editor .ed-upload input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.news-editor .ed-foot { padding: 14px 20px; border-top: 1px solid var(--line-soft); display: flex; gap: 8px; align-items: center; background: var(--bg); }
+.news-editor .ed-foot .ghost-btn, .news-editor .ed-foot .btn-primary { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.news-editor .ed-foot .push-right { margin-left: auto; }
+.news-editor .ed-foot button:disabled { opacity: .55; cursor: default; }
+@keyframes news-spin { to { transform: rotate(360deg); } }

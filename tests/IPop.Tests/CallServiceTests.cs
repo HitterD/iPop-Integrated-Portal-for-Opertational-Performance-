@@ -61,7 +61,7 @@ public class CallServiceTests
     }
 
     [Fact]
-    public async Task Decline_EndsCall_RecordsMissedHistory()
+    public async Task Decline_EndsCall_RecordsDeclinedHistory()
     {
         using var t = new TestDb();
         var me = t.AddUser("A");
@@ -74,12 +74,108 @@ public class CallServiceTests
         Assert.True(res.Success);
         Assert.Equal(CallStatus.Declined, res.Room!.Status);
 
-        // History: outgoing "declined" for the caller, incoming "missed" for the peer.
+        // History: "declined" on both sides — the callee chose to, so it is not "missed".
         var hist = await svc.GetHistoryAsync(me.Id, 1, 50, default);
         Assert.Equal(1, hist.Total);
         Assert.Equal("outgoing", hist.Items[0].Direction);
         Assert.Equal("declined", hist.Items[0].Result);
         Assert.Equal("User B", hist.Items[0].PeerName);
+        var peerHist = await svc.GetHistoryAsync(peer.Id, 1, 50, default);
+        Assert.Equal(("incoming", "declined"), (peerHist.Items[0].Direction, peerHist.Items[0].Result));
+    }
+
+    [Fact]
+    public async Task CallerCancelsWhileRinging_IsCanceledForCaller_MissedForCallee()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("A");
+        var peer = t.AddUser("B");
+        var svc = Svc(t);
+
+        var call = (await svc.CreateCallAsync(me.Id, new CreateCallRequest(peer.Nik), default)).Room!;
+        var res = await svc.SignalAsync(me.Id, new CallSignalRequest(call.Id, "end"), default);
+
+        Assert.Equal(CallStatus.Missed, res.Room!.Status);
+        Assert.Equal("canceled", (await svc.GetHistoryAsync(me.Id, 1, 50, default)).Items.Single().Result);
+        var peerRow = (await svc.GetHistoryAsync(peer.Id, 1, 50, default)).Items.Single();
+        Assert.Equal(("incoming", "missed", 0), (peerRow.Direction, peerRow.Result, peerRow.DurationSeconds));
+    }
+
+    [Fact]
+    public async Task RingTimeout_ExpiresOnlyOldRings_AsNoAnswerAndMissed()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("A");
+        var peer = t.AddUser("B");
+        var other = t.AddUser("C");
+        var svc = Svc(t);
+
+        var old = (await svc.CreateCallAsync(me.Id, new CreateCallRequest(peer.Nik), default)).Room!;
+        var fresh = (await svc.CreateCallAsync(me.Id, new CreateCallRequest(other.Nik), default)).Room!;
+        using (var db = t.Verify())
+        {
+            var room = db.CallRooms.Single(r => r.Id == old.Id);
+            room.StartedAt = DateTime.UtcNow.AddSeconds(-60);
+            db.SaveChanges();
+        }
+
+        // The stale ring no longer shows as incoming, even before the worker runs.
+        Assert.Null(await Svc(t).GetRingingCallAsync(peer.Id, default));
+        Assert.NotNull(await Svc(t).GetRingingCallAsync(other.Id, default));
+
+        var expired = await Svc(t).ExpireRingingAsync(DateTime.UtcNow - CallService.RingTimeout, default);
+        Assert.Equal(old.Id, Assert.Single(expired).Id);
+        Assert.Equal(CallStatus.Missed, expired[0].Status);
+
+        Assert.Equal("no-answer", (await Svc(t).GetHistoryAsync(me.Id, 1, 50, default)).Items.Single().Result);
+        Assert.Equal("missed", (await Svc(t).GetHistoryAsync(peer.Id, 1, 50, default)).Items.Single().Result);
+        Assert.Equal(CallStatus.Ringing, (await Svc(t).GetRoomAsync(fresh.Id, me.Id, default))!.Status);
+    }
+
+    [Fact]
+    public async Task EndForUser_EndsActiveCall_AndCancelsOwnRings_ButNotRingsToThem()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("A");
+        var peer = t.AddUser("B");
+        var third = t.AddUser("C");
+        var svc = Svc(t);
+
+        var active = (await svc.CreateCallAsync(me.Id, new CreateCallRequest(peer.Nik), default)).Room!;
+        await svc.SignalAsync(peer.Id, new CallSignalRequest(active.Id, "accept"), default);
+        var ringingToMe = (await Svc(t).CreateCallAsync(third.Id, new CreateCallRequest(me.Nik), default)).Room!;
+
+        var ended = await Svc(t).EndForUserAsync(me.Id, default);
+
+        Assert.Equal(active.Id, Assert.Single(ended).Id);
+        Assert.Equal(CallStatus.Ended, ended[0].Status);
+        Assert.Equal("left", ended[0].Participants.Single(p => p.UserId == me.Id).Status);
+        Assert.Equal(CallStatus.Ringing, (await Svc(t).GetRoomAsync(ringingToMe.Id, me.Id, default))!.Status);
+        Assert.Equal("completed", (await Svc(t).GetHistoryAsync(peer.Id, 1, 50, default)).Items.Single().Result);
+    }
+
+    [Fact]
+    public async Task Duration_CountsFromPickup_NotFromRinging()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("A");
+        var peer = t.AddUser("B");
+        var svc = Svc(t);
+
+        var call = (await svc.CreateCallAsync(me.Id, new CreateCallRequest(peer.Nik), default)).Room!;
+        await svc.SignalAsync(peer.Id, new CallSignalRequest(call.Id, "accept"), default);
+        using (var db = t.Verify())
+        {
+            var room = db.CallRooms.Single(r => r.Id == call.Id);
+            room.StartedAt = DateTime.UtcNow.AddSeconds(-100);   // rang for a while
+            room.EstablishedAt = DateTime.UtcNow.AddSeconds(-30); // talked ~30 s
+            db.SaveChanges();
+        }
+        await Svc(t).SignalAsync(me.Id, new CallSignalRequest(call.Id, "end"), default);
+
+        var row = (await Svc(t).GetHistoryAsync(me.Id, 1, 50, default)).Items.Single();
+        Assert.Equal("completed", row.Result);
+        Assert.InRange(row.DurationSeconds, 29, 32);
     }
 
     [Fact]

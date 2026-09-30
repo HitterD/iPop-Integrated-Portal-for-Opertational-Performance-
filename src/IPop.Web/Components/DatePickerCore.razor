@@ -1,0 +1,509 @@
+@* Shared engine behind AppDatePicker / AppTimePicker / AppDateTimePicker.
+   Works in DateTime? (time-only values ride on DatePickerMath.TimeAnchor); the
+   generic wrappers convert to the bound type.
+   The popover layer is portalled to <body> by js/datepicker.js while open so
+   overflow/transform ancestors (drawers, modals) cannot clip it. The layer is
+   always rendered as the last child of the root so Blazor never inserts a
+   sibling next to a node that has moved. *@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject OverlayStack Overlays
+
+<div class="dp dp-@ModeName @(Compact ? "dp-compact" : "") @(open ? "dp-open" : "") @(invalid ? "dp-invalid" : "") @(Disabled ? "dp-disabled" : "")"
+     style="@Style" @ref="root">
+    <div class="dp-field @Class">
+        <input id="@inputId" class="dp-input" type="text" inputmode="numeric" autocomplete="off" spellcheck="false"
+               value="@text" placeholder="@EffectivePlaceholder" disabled="@Disabled"
+               aria-label="@AriaLabel" aria-invalid="@(invalid ? "true" : "false")"
+               aria-haspopup="dialog" aria-expanded="@(open ? "true" : "false")" aria-controls="@popId"
+               @ref="input" @oninput="OnInput" @onblur="OnBlur" @onclick="OnInputClick"
+               @onkeydown="OnInputKey" @onkeydown:stopPropagation="open" />
+        <button type="button" class="dp-toggle" tabindex="-1" disabled="@Disabled"
+                aria-label="@(Mode == DatePickerMode.Time ? "Pilih waktu" : "Buka kalender")"
+                @onclick="ToggleFromButton">
+            @(Mode == DatePickerMode.Time ? ClockIcon : CalendarIcon)
+        </button>
+    </div>
+    <div class="dp-layer" @ref="layer">
+        @if (open)
+        {
+            <div class="dp-backdrop" @onclick="() => CloseAsync(true)"></div>
+            <div class="dp-pop" id="@popId" role="dialog" aria-modal="true" aria-label="@PopLabel">
+                @if (Mode != DatePickerMode.Time)
+                {
+                    <div class="dp-body">
+                        <div class="dp-cal">
+                            <div class="dp-head">
+                                <div class="dp-title" id="@titleId" aria-live="polite">@DatePickerMath.MonthTitle(focusDay.Year, focusDay.Month)</div>
+                                <button type="button" class="dp-nav" aria-label="Bulan sebelumnya" @onclick="() => ShiftMonth(-1)">@ChevLeft</button>
+                                <button type="button" class="dp-nav" aria-label="Bulan berikutnya" @onclick="() => ShiftMonth(1)">@ChevRight</button>
+                            </div>
+                            <div class="dp-grid" role="grid" aria-labelledby="@titleId" @onkeydown="OnGridKey">
+                                <div class="dp-row dp-wk" role="row">
+                                    @for (var i = 0; i < 7; i++)
+                                    {
+                                        <span class="dp-wd" role="columnheader" aria-label="@DatePickerMath.WeekdayLong[i]">@DatePickerMath.WeekdayMin[i]</span>
+                                    }
+                                </div>
+                                @{ var days = DatePickerMath.MonthGrid(focusDay.Year, focusDay.Month); var today = Today; var sel = SelectedDate; }
+                                @for (var w = 0; w < 6; w++)
+                                {
+                                    <div class="dp-row" role="row">
+                                        @for (var i = 0; i < 7; i++)
+                                        {
+                                            var d = days[w * 7 + i];
+                                            var isSel = sel == d;
+                                            var dis = IsDayDisabled(d);
+                                            var cls = "dp-day"
+                                                + (d.Month != focusDay.Month ? " out" : "")
+                                                + (d == today ? " today" : "")
+                                                + (isSel ? " sel" : "")
+                                                + (dis ? " dis" : "")
+                                                + (i >= 5 ? " we" : "");
+                                            <button type="button" class="@cls" role="gridcell"
+                                                    tabindex="@(d == focusDay ? "0" : "-1")"
+                                                    aria-selected="@(isSel ? "true" : "false")"
+                                                    aria-disabled="@(dis ? "true" : "false")"
+                                                    aria-current="@(d == today ? "date" : null)"
+                                                    aria-label="@DatePickerMath.FormatLong(d)"
+                                                    data-date="@d.ToString("yyyy-MM-dd")"
+                                                    @onclick="() => SelectDay(d)">@d.Day</button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        @if (Mode == DatePickerMode.DateTime)
+                        {
+                            @TimeColumn
+                        }
+                    </div>
+                    <div class="dp-foot">
+                        <div class="dp-chips">
+                            @QuickChip("Hari ini", Today)
+                            @QuickChip("Besok", Today.AddDays(1))
+                            @QuickChip("Senin depan", DatePickerMath.NextMonday(Today))
+                        </div>
+                        @if (AllowClear && Nullable && Value is not null)
+                        {
+                            <button type="button" class="dp-chip dp-clear" @onclick="ClearAsync">Hapus</button>
+                        }
+                        @if (Mode == DatePickerMode.DateTime)
+                        {
+                            <button type="button" class="dp-done" @onclick="() => CloseAsync(true)">Selesai</button>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="dp-body">@TimeColumn</div>
+                    @if (AllowClear && Nullable && Value is not null)
+                    {
+                        <div class="dp-foot"><button type="button" class="dp-chip dp-clear" @onclick="ClearAsync">Hapus</button></div>
+                    }
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public DatePickerMode Mode { get; set; } = DatePickerMode.Date;
+    [Parameter] public DateTime? Value { get; set; }
+    [Parameter] public EventCallback<DateTime?> ValueChanged { get; set; }
+    /// Whether the bound type accepts null (empty input clears instead of reverting).
+    [Parameter] public bool Nullable { get; set; }
+    [Parameter] public DateTime? Min { get; set; }
+    [Parameter] public DateTime? Max { get; set; }
+    [Parameter] public Func<DateOnly, bool>? IsDateDisabled { get; set; }
+    [Parameter] public int Step { get; set; } = 15;
+    [Parameter] public TimeOnly DefaultTime { get; set; } = new(9, 0);
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool AllowClear { get; set; }
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Style { get; set; }
+
+    private static int _seq;
+    private readonly string uid = $"dp{Interlocked.Increment(ref _seq)}";
+    private string inputId => string.IsNullOrEmpty(Id) ? uid + "-in" : Id!;
+    private string popId => uid + "-pop";
+    private string titleId => uid + "-title";
+
+    private ElementReference root, input, layer;
+    private IJSObjectReference? module;
+    private DotNetObjectReference<DatePickerCore>? self;
+    private IDisposable? overlayReg;
+
+    private bool open, invalid, dirty, justOpened;
+    private string text = "";
+    private DateOnly focusDay;
+    private int focusTimeIdx;
+    private string? pendingFocus;
+    private IReadOnlyList<TimeOnly> slots = [];
+    private int slotStep = -1;
+
+    private string ModeName => Mode switch { DatePickerMode.Time => "time", DatePickerMode.DateTime => "datetime", _ => "date" };
+    private static DateOnly Today => DateOnly.FromDateTime(DateTime.Today);
+    private DateOnly? SelectedDate => Mode == DatePickerMode.Time || Value is null ? null : DateOnly.FromDateTime(Value.Value);
+    private DateOnly? MinDate => Min is { } m ? DateOnly.FromDateTime(m) : null;
+    private DateOnly? MaxDate => Max is { } m ? DateOnly.FromDateTime(m) : null;
+
+    private string EffectivePlaceholder => Placeholder ?? Mode switch
+    {
+        DatePickerMode.Time => "hh:mm",
+        DatePickerMode.DateTime => "dd/mm/yyyy hh:mm",
+        _ => "dd/mm/yyyy",
+    };
+
+    private string PopLabel => AriaLabel is { Length: > 0 } a ? a
+        : Mode == DatePickerMode.Time ? "Pilih waktu" : Mode == DatePickerMode.DateTime ? "Pilih tanggal dan waktu" : "Pilih tanggal";
+
+    protected override void OnParametersSet()
+    {
+        if (slotStep != Step) { slots = DatePickerMath.TimeSlots(Step); slotStep = Step; }
+        if (!dirty) text = Display(Value);
+        if (Disabled && open) _ = CloseAsync(false);
+    }
+
+    private string Display(DateTime? v)
+    {
+        if (v is not { } x) return "";
+        return Mode switch
+        {
+            DatePickerMode.Time => DatePickerMath.FormatTime(TimeOnly.FromDateTime(x)),
+            DatePickerMode.DateTime => DatePickerMath.FormatDateTime(x),
+            _ => Compact ? DatePickerMath.FormatDateCompact(DateOnly.FromDateTime(x)) : DatePickerMath.FormatDate(DateOnly.FromDateTime(x)),
+        };
+    }
+
+    // ---- range rules ------------------------------------------------------
+
+    private bool IsDayDisabled(DateOnly d)
+        => DatePickerMath.IsOutOfRange(d, MinDate, MaxDate) || (IsDateDisabled?.Invoke(d) ?? false);
+
+    private bool IsSlotDisabled(TimeOnly t)
+    {
+        if (Mode != DatePickerMode.DateTime) return false;
+        var dt = (SelectedDate ?? focusDay).ToDateTime(t);
+        return (Min is { } a && dt < DatePickerMath.TruncateToMinute(a)) || (Max is { } b && dt > b);
+    }
+
+    private bool IsAllowed(DateTime v)
+    {
+        if (Mode == DatePickerMode.Time) return true;
+        if (IsDayDisabled(DateOnly.FromDateTime(v))) return false;
+        if (Mode == DatePickerMode.DateTime)
+            return !((Min is { } a && v < DatePickerMath.TruncateToMinute(a)) || (Max is { } b && v > b));
+        return true;
+    }
+
+    /// Fits a chosen day into Min/Max for datetime mode by nudging the time.
+    private DateTime FitTime(DateOnly d, TimeOnly t)
+    {
+        var dt = d.ToDateTime(t);
+        if (Min is { } a && dt < a && DateOnly.FromDateTime(a) == d)
+            dt = d.ToDateTime(DatePickerMath.CeilToStep(TimeOnly.FromDateTime(a), Step));
+        if (Max is { } b && dt > b && DateOnly.FromDateTime(b) == d)
+            dt = DatePickerMath.TruncateToMinute(b);
+        return dt;
+    }
+
+    // ---- commit -----------------------------------------------------------
+
+    private async Task Commit(DateTime? v)
+    {
+        dirty = false; invalid = false;
+        text = Display(v);
+        if (v == Value) return;
+        Value = v;
+        await ValueChanged.InvokeAsync(v);
+    }
+
+    private async Task CommitTyped()
+    {
+        if (!dirty) return;
+        var raw = text.Trim();
+        if (raw.Length == 0)
+        {
+            if (Nullable) { await Commit(null); return; }
+            Revert(false); return;
+        }
+        DateTime? parsed = null;
+        switch (Mode)
+        {
+            case DatePickerMode.Date:
+                if (DatePickerMath.TryParseDate(raw, out var d))
+                    parsed = Value is { } cur && cur.TimeOfDay != TimeSpan.Zero ? d.ToDateTime(TimeOnly.FromDateTime(cur)) : d.ToDateTime(TimeOnly.MinValue);
+                break;
+            case DatePickerMode.Time:
+                if (DatePickerMath.TryParseTime(raw, out var t))
+                    parsed = (Value?.Date ?? DatePickerMath.TimeAnchor).Add(t.ToTimeSpan());
+                break;
+            default:
+                var fb = Value is { } cv ? TimeOnly.FromDateTime(cv) : DefaultTime;
+                if (DatePickerMath.TryParseDateTime(raw, fb, out var dt)) parsed = dt;
+                break;
+        }
+        if (parsed is { } p && IsAllowed(p))
+        {
+            await Commit(p);
+            if (open && Mode != DatePickerMode.Time) focusDay = DateOnly.FromDateTime(p);
+        }
+        else Revert(true);
+    }
+
+    private void Revert(bool error)
+    {
+        dirty = false;
+        text = Display(Value);
+        invalid = error;
+    }
+
+    // ---- field events -----------------------------------------------------
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        text = e.Value?.ToString() ?? "";
+        dirty = true;
+        invalid = false;
+    }
+
+    private Task OnBlur(FocusEventArgs _) => CommitTyped();
+
+    private async Task OnInputClick()
+    {
+        if (!open) await OpenAsync(null);
+    }
+
+    private async Task ToggleFromButton()
+    {
+        if (open) { await CloseAsync(true); return; }
+        await OpenAsync(FocusTarget);
+    }
+
+    private string FocusTarget => Mode == DatePickerMode.Time ? "time" : "grid";
+
+    private async Task OnInputKey(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Enter":
+                await CommitTyped();
+                if (open) await CloseAsync(false);
+                break;
+            case "ArrowDown":
+                await CommitTyped();
+                if (!open) await OpenAsync(FocusTarget);
+                else { pendingFocus = FocusTarget; StateHasChanged(); }
+                break;
+            case "Tab" when open:
+                await CommitTyped();
+                await CloseAsync(false);
+                break;
+        }
+    }
+
+    // ---- open / close -----------------------------------------------------
+
+    private Task OpenAsync(string? focus)
+    {
+        if (Disabled || open) return Task.CompletedTask;
+        open = true;
+        var start = SelectedDate ?? DatePickerMath.Clamp(Today, MinDate, MaxDate);
+        focusDay = start;
+        focusTimeIdx = NearestSlot(Value is { } v ? TimeOnly.FromDateTime(v) : Mode == DatePickerMode.Time ? TimeOnly.FromDateTime(DateTime.Now) : DefaultTime);
+        overlayReg = Overlays.Push(() => InvokeAsync(() => CloseAsync(true)));
+        justOpened = true;
+        pendingFocus = focus;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task CloseAsync(bool returnFocus)
+    {
+        if (!open) return;
+        open = false;
+        pendingFocus = null;
+        overlayReg?.Dispose(); overlayReg = null;
+        try
+        {
+            if (module is not null)
+                await module.InvokeVoidAsync("close", layer, root, returnFocus ? input : (object?)null);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        StateHasChanged();
+    }
+
+    [JSInvokable] public Task OutsideClose() => InvokeAsync(() => CloseAsync(false));
+    [JSInvokable] public Task EscapeClose() => InvokeAsync(() => CloseAsync(true));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!open) return;
+        try
+        {
+            if (justOpened)
+            {
+                justOpened = false;
+                module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/datepicker.js?v=20260927-dp2");
+                self ??= DotNetObjectReference.Create(this);
+                await module.InvokeVoidAsync("open", root, layer, self);
+            }
+            if (module is not null && pendingFocus is { } f)
+            {
+                pendingFocus = null;
+                await module.InvokeVoidAsync("focusIn", layer, f == "time" ? ".dp-topt[tabindex='0']" : ".dp-day[tabindex='0']");
+            }
+        }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { }
+    }
+
+    // ---- calendar interaction --------------------------------------------
+
+    private void ShiftMonth(int delta) => focusDay = focusDay.AddMonths(delta);
+
+    private async Task SelectDay(DateOnly d)
+    {
+        if (IsDayDisabled(d)) return;
+        focusDay = d;
+        if (Mode == DatePickerMode.Date)
+        {
+            var keep = Value is { } cur && cur.TimeOfDay != TimeSpan.Zero ? TimeOnly.FromDateTime(cur) : TimeOnly.MinValue;
+            await Commit(d.ToDateTime(keep));
+            await CloseAsync(true);
+            return;
+        }
+        var t = Value is { } v ? TimeOnly.FromDateTime(v) : DefaultTime;
+        var dt = FitTime(d, t);
+        focusTimeIdx = NearestSlot(TimeOnly.FromDateTime(dt));
+        await Commit(dt);
+    }
+
+    private async Task OnGridKey(KeyboardEventArgs e)
+    {
+        var d = focusDay;
+        switch (e.Key)
+        {
+            case "ArrowLeft": d = d.AddDays(-1); break;
+            case "ArrowRight": d = d.AddDays(1); break;
+            case "ArrowUp": d = d.AddDays(-7); break;
+            case "ArrowDown": d = d.AddDays(7); break;
+            case "PageUp": d = e.ShiftKey ? d.AddYears(-1) : d.AddMonths(-1); break;
+            case "PageDown": d = e.ShiftKey ? d.AddYears(1) : d.AddMonths(1); break;
+            case "Home": d = DatePickerMath.StartOfWeek(d); break;
+            case "End": d = DatePickerMath.EndOfWeek(d); break;
+            case "Enter" or " ":
+                await SelectDay(focusDay);
+                if (open) pendingFocus = "grid";
+                return;
+            default: return;
+        }
+        focusDay = d;
+        pendingFocus = "grid";
+    }
+
+    private RenderFragment QuickChip(string label, DateOnly d) => __builder =>
+    {
+        var dis = IsDayDisabled(d);
+        <button type="button" class="dp-chip" disabled="@dis" @onclick="() => SelectDay(d)">@label</button>
+    };
+
+    private async Task ClearAsync()
+    {
+        await Commit(null);
+        await CloseAsync(true);
+    }
+
+    // ---- time column ------------------------------------------------------
+
+    private int NearestSlot(TimeOnly t)
+    {
+        if (slots.Count == 0) slots = DatePickerMath.TimeSlots(Step);
+        var mins = t.Hour * 60 + t.Minute;
+        var step = Math.Max(1, Step);
+        return Math.Clamp((int)Math.Round(mins / (double)step), 0, slots.Count - 1);
+    }
+
+    private RenderFragment TimeColumn => __builder =>
+    {
+        TimeOnly? selT = Value is { } v ? TimeOnly.FromDateTime(v) : null;
+        <div class="dp-times" role="listbox" aria-label="Waktu" @onkeydown="OnTimeKey">
+            @for (var i = 0; i < slots.Count; i++)
+            {
+                var idx = i;
+                var s = slots[i];
+                var isSel = selT is { } st && st.Hour == s.Hour && st.Minute == s.Minute;
+                var dis = IsSlotDisabled(s);
+                <button type="button" class="dp-topt @(isSel ? "sel" : "") @(dis ? "dis" : "")" role="option"
+                        tabindex="@(idx == focusTimeIdx ? "0" : "-1")"
+                        aria-selected="@(isSel ? "true" : "false")" aria-disabled="@(dis ? "true" : "false")"
+                        @onclick="() => SelectTime(idx)">@DatePickerMath.FormatTime(s)</button>
+            }
+        </div>
+    };
+
+    private async Task SelectTime(int idx)
+    {
+        if (idx < 0 || idx >= slots.Count) return;
+        var t = slots[idx];
+        if (IsSlotDisabled(t)) return;
+        focusTimeIdx = idx;
+        if (Mode == DatePickerMode.Time)
+            await Commit((Value?.Date ?? DatePickerMath.TimeAnchor).Add(t.ToTimeSpan()));
+        else
+            await Commit((SelectedDate ?? focusDay).ToDateTime(t));
+        await CloseAsync(true);
+    }
+
+    private async Task OnTimeKey(KeyboardEventArgs e)
+    {
+        var i = focusTimeIdx;
+        switch (e.Key)
+        {
+            case "ArrowUp": i--; break;
+            case "ArrowDown": i++; break;
+            case "PageUp": i -= 4; break;
+            case "PageDown": i += 4; break;
+            case "Home": i = 0; break;
+            case "End": i = slots.Count - 1; break;
+            case "Enter" or " ": await SelectTime(focusTimeIdx); return;
+            default: return;
+        }
+        focusTimeIdx = Math.Clamp(i, 0, slots.Count - 1);
+        pendingFocus = "time";
+    }
+
+    // ---- icons ------------------------------------------------------------
+
+    private static readonly MarkupString CalendarIcon = new(
+        "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3.5\" y=\"5\" width=\"17\" height=\"15.5\" rx=\"3\"/><path d=\"M3.5 10h17M8 3v4M16 3v4\"/></svg>");
+    private static readonly MarkupString ClockIcon = new(
+        "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"8.5\"/><path d=\"M12 7.5V12l3 2\"/></svg>");
+    private static readonly MarkupString ChevLeft = new(
+        "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 6l-6 6 6 6\"/></svg>");
+    private static readonly MarkupString ChevRight = new(
+        "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M9 6l6 6-6 6\"/></svg>");
+
+    public async ValueTask DisposeAsync()
+    {
+        overlayReg?.Dispose(); overlayReg = null;
+        if (module is not null)
+        {
+            try
+            {
+                await module.InvokeVoidAsync("dispose", layer);
+                await module.DisposeAsync();
+            }
+            catch (JSDisconnectedException) { }
+            catch (JSException) { }
+            catch (ObjectDisposedException) { }
+        }
+        self?.Dispose();
+    }
+}

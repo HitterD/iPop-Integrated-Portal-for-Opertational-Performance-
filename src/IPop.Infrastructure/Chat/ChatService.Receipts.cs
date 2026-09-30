@@ -158,6 +158,14 @@ public sealed partial class ChatService
                 x => x.r.UserId, m => m.UserId, (x, m) => x.r)
             .Include(r => r.User).OrderByDescending(r => r.ReadAt).Take(255)
             .Select(r => new SeenByDto(r.UserId, r.User.Name, r.User.PhotoPath, r.DeliveredAt, r.ReadAt)).ToListAsync(ct);
-        return new SeenListDto(readers, readers.Count, activeCount);
+        var readerIds = readers.Select(r => r.UserId).ToList();
+        var pending = await db.ChatRoomMembers.AsNoTracking()
+            .Where(m => m.RoomId == msg.RoomId && m.LeftAt == null && m.UserId != msg.SenderId && !readerIds.Contains(m.UserId))
+            .OrderBy(m => m.User.Name).Take(255)
+            .Select(m => new SeenByDto(m.UserId, m.User.Name, m.User.PhotoPath,
+                db.ChatReadReceipts.Where(r => r.MessageId == messageId && r.UserId == m.UserId).Select(r => r.DeliveredAt).FirstOrDefault(),
+                null))
+            .ToListAsync(ct);
+        return new SeenListDto(readers, readers.Count, activeCount, pending);
     }
 }

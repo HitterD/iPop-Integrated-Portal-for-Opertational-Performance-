@@ -2,362 +2,278 @@
 @using Microsoft.AspNetCore.Components.Forms
 @inject IJSRuntime JS
 @inject IPop.Web.Services.AuthState Auth
+@inject IPop.Web.Services.ConfirmService Confirm
+@implements IAsyncDisposable
 
 @if (Task is not null)
 {
     <div class="task-drawer-backdrop" @onclick="OnClose"></div>
-    <div class="task-drawer" role="dialog" aria-modal="true" aria-label="Task Detail">
+    <div class="task-drawer v6-task-drawer" role="dialog" aria-modal="true" aria-label="Task Detail">
         <div class="task-drawer-inner">
             <div class="task-drawer-head">
-                <div class="title">
-                    <i data-lucide="check-square"></i>
-                    <span>Task Details</span>
-                </div>
-                <button type="button" class="drawer-close" @onclick="OnClose" aria-label="Close" title="Close">
-                    <i data-lucide="x"></i>
-                </button>
-            </div>
-
-        @* Tab: Detail | Diskusi | Aktivitas (Fase 2 — diskusi tugas) *@
-        <div class="task-drawer-tabs" role="tablist">
-            <button type="button" role="tab" class="task-tab @(drawerTab == "detail" ? "on" : "")" @onclick='() => drawerTab = "detail"'>
-                <i data-lucide="list-checks"></i> Details
-            </button>
-            <button type="button" role="tab" class="task-tab @(drawerTab == "diskusi" ? "on" : "")" @onclick='() => drawerTab = "diskusi"'>
-                <i data-lucide="messages-square"></i> Discussion @if (commentItems.Count > 0) { <span class="badge">@commentItems.Count</span> }
-            </button>
-            <button type="button" role="tab" class="task-tab @(drawerTab == "aktivitas" ? "on" : "")" @onclick='() => drawerTab = "aktivitas"'>
-                <i data-lucide="history"></i> Activity @if (activityItems.Count > 0) { <span class="badge">@activityItems.Count</span> }
-            </button>
-        </div>
-
-        @if (drawerTab == "diskusi")
-        {
-            <div class="task-drawer-body">
-                <TaskDiscussion Items="commentItems" OnSubmit="SubmitComment" />
-            </div>
-        }
-        else if (drawerTab == "aktivitas")
-        {
-            <div class="task-drawer-body">
-                <TaskActivityTimeline Items="activityItems" />
-            </div>
-        }
-        else
-        {
-        <div class="task-drawer-body">
-            @* Task Title *@
-            <div class="field" style="margin:0">
-                <label style="font-size:11.5px;font-weight:700;color:var(--ink-2)">Task Title</label>
-                <input class="org-input" style="font-size:14px;font-weight:600" @bind="editTitle" placeholder="Task title..." />
-            </div>
-
-            @* Status & Priority Grid *@
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                <div class="field" style="margin:0">
-                    <label style="font-size:11.5px;font-weight:700;color:var(--ink-2)">Status</label>
-                    <select class="filter-select" style="width:100%" @bind="editStatus">
-                        <option value="todo">To Do</option>
-                        <option value="doing">In Progress</option>
-                        <option value="review">Review</option>
-                        <option value="done">Done</option>
-                    </select>
-                </div>
-                <div class="field" style="margin:0">
-                    <label style="font-size:11.5px;font-weight:700;color:var(--ink-2)">Priority</label>
-                    <select class="filter-select" style="width:100%" @bind="editPriority">
-                        <option value="">(No Priority)</option>
-                        <option value="urgent">Urgent</option>
-                        <option value="high">High</option>
-                        <option value="medium">Medium</option>
-                        <option value="low">Low</option>
-                    </select>
-                </div>
-            </div>
-
-            @* Dates Grid *@
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                <div class="field" style="margin:0">
-                    <label style="font-size:11.5px;font-weight:700;color:var(--ink-2)">Start Date</label>
-                    <input type="date" class="org-input" value="@(editStartDate?.ToString("yyyy-MM-dd"))" @onchange="e => editStartDate = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null" />
-                </div>
-                <div class="field" style="margin:0">
-                    <label style="font-size:11.5px;font-weight:700;color:var(--ink-2)">Due Date</label>
-                    <input type="date" class="org-input" value="@(editDue?.ToString("yyyy-MM-dd"))" @onchange="e => editDue = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null" />
-                </div>
-            </div>
-
-            @* Hours Grid *@
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                <div class="field" style="margin:0">
-                    <label style="font-size:11.5px;font-weight:700;color:var(--ink-2)">Estimated Hours</label>
-                    <input type="number" step="0.5" class="org-input" @bind="editEstH" placeholder="0" />
-                </div>
-                <div class="field" style="margin:0">
-                    <label style="font-size:11.5px;font-weight:700;color:var(--ink-2)">Actual Hours</label>
-                    <input type="number" step="0.5" class="org-input" @bind="editActH" placeholder="0" />
-                </div>
-            </div>
-
-            @* Tags *@
-            <div class="field" style="margin:0">
-                <label style="font-size:11.5px;font-weight:700;color:var(--ink-2)">Tags / Labels (comma-separated)</label>
-                <input class="org-input" @bind="editTags" placeholder="e.g. backend, urgent, ui" />
-            </div>
-
-            @* Description *@
-            <div class="field" style="margin:0">
-                <label style="font-size:11.5px;font-weight:700;color:var(--ink-2)">Description</label>
-                <textarea class="org-input" style="min-height:80px;resize:vertical;font-size:12.5px" @bind="editDesc" placeholder="Add notes or task description..."></textarea>
-            </div>
-
-            @* Penanggung Jawab (Assignee) Section *@
-            <div style="border-top:1px solid var(--line-soft);padding-top:14px;margin-top:4px">
-                <label style="font-size:11.5px;font-weight:700;color:var(--ink-2);display:flex;align-items:center;justify-content:space-between">
-                    <span>Task Assignees (@(Task.Assignees.Count))</span>
-                </label>
-                <div class="task-drawer-assignees-list">
-                    @if (Task.Assignees.Count > 0)
-                    {
-                        @foreach (var a in Task.Assignees)
-                        {
-                            <div class="task-drawer-assignee-pill">
-                                <div class="team-avatar-circ" style="width:20px;height:20px;font-size:8.5px;background:@ProjectUiHelpers.GetAvatarBg(a.Name)">
-                                    @ProjectUiHelpers.GetInitials(a.Name)
-                                </div>
-                                <span class="name">@a.Name</span>
-                                <button type="button" class="unassign-btn" @onclick="() => OnToggleAssignee.InvokeAsync((Task.Id, a.UserId, true))" title="Remove assignee">
-                                    <i data-lucide="x" style="width:11px;height:11px"></i>
-                                </button>
-                            </div>
-                        }
-                    }
-                    else
-                    {
-                        <div style="font-size:12px;color:var(--ink-3);font-style:italic">No assignees assigned yet.</div>
-                    }
-                </div>
-
-                @* Dropdown to assign from project members *@
-                @if (Members.Any(m => !Task.Assignees.Any(a => a.UserId == m.UserId)))
+                <span class="td-project-dot" style="background:@(!string.IsNullOrWhiteSpace(ProjectColor) ? ProjectColor : ProjectUiHelpers.GetAvatarBg(ProjectName))"></span>
+                <span class="td-project-name" title="@ProjectName">@ProjectName</span>
+                <div class="td-spacer"></div>
+                @if (NavIndex >= 0)
                 {
-                    <div style="margin-top:8px">
-                        <select class="filter-select" style="width:100%;font-size:12px" value="" @onchange="OnAssignDropdownChanged">
-                            <option value="">+ Assign team member...</option>
-                            @foreach (var m in Members.Where(m => !Task.Assignees.Any(a => a.UserId == m.UserId)))
-                            {
-                                <option value="@m.UserId">@m.Name (@m.Nik) · @m.Role</option>
-                            }
-                        </select>
+                    <div class="td-pager" role="group" aria-label="Task navigation">
+                        <button type="button" class="td-round sm" aria-label="Previous task" title="Previous task (Alt+Left)" disabled="@(NavIndex <= 0)" @onclick="() => GoRelative(-1)"><i data-lucide="chevron-left"></i></button>
+                        <span class="td-pager-pos" aria-live="polite">@(NavIndex + 1) / @NavTasks.Count</span>
+                        <button type="button" class="td-round sm" aria-label="Next task" title="Next task (Alt+Right)" disabled="@(NavIndex >= NavTasks.Count - 1)" @onclick="() => GoRelative(1)"><i data-lucide="chevron-right"></i></button>
                     </div>
                 }
-            </div>
-
-            @* Subtasks Checklist Section *@
-            <div style="border-top:1px solid var(--line-soft);padding-top:14px;margin-top:4px">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-                    <span style="font-size:12.5px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:6px">
-                        <i data-lucide="check-square" style="width:14px;height:14px"></i>
-                        Subtasks (@Subtasks.Count(s => s.Status == "done")/@Subtasks.Count)
-                    </span>
-                </div>
-
-                @* Subtask List *@
-                <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px">
-                    @foreach (var st in Subtasks)
+                <div class="td-more-wrap">
+                    <button type="button" class="td-round" data-menu-trigger aria-label="More task options" aria-haspopup="menu" aria-expanded="@(moreOpen ? "true" : "false")" @onclick="ToggleMoreMenu"><i data-lucide="ellipsis"></i></button>
+                    @if (moreOpen)
                     {
-                        var isDone = st.Status == "done";
-                        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border:1px solid var(--line-soft);border-radius:8px">
-                            <input type="checkbox" checked="@isDone" @onchange="() => OnToggleSubtask.InvokeAsync(st)" style="cursor:pointer;accent-color:var(--accent)" />
-                            <span style="flex:1;font-size:12.5px;text-decoration:@(isDone ? "line-through" : "none");color:@(isDone ? "var(--ink-3)" : "var(--ink)")">@st.Title</span>
-                            <button class="btn-sm surface danger" style="padding:2px 6px;font-size:11px" @onclick="() => OnDeleteSubtask.InvokeAsync(st.Id)" title="Delete subtask">
-                                <i data-lucide="trash-2" style="width:11px;height:11px"></i>
-                            </button>
+                        <div class="td-menu-backdrop" @onclick="() => moreOpen = false"></div>
+                        <div class="td-more-menu" role="menu" aria-label="Task options" @ref="menuRef">
+                            <button type="button" role="menuitem" @onclick="ShowActivity"><i data-lucide="history"></i>Activity</button>
+                            <button type="button" role="menuitem" @onclick="ShowDiscussion"><i data-lucide="messages-square"></i>Discussion</button>
+                            <button type="button" role="menuitem" class="danger" @onclick="DeleteFromMenu"><i data-lucide="trash-2"></i>Delete task</button>
                         </div>
                     }
                 </div>
-
-                @* Add subtask input *@
-                <div style="display:flex;gap:6px">
-                    <input class="org-input" style="flex:1;height:32px;font-size:12px" placeholder="Add new subtask..." @bind="newSubtaskTitle" @onkeydown="@(async e => { if (e.Key == "Enter") await HandleAddSubtask(); })" />
-                    <button class="btn-sm surface" style="padding:4px 10px" @onclick="HandleAddSubtask">
-                        <i data-lucide="plus"></i>
-                    </button>
-                </div>
+                <button type="button" class="td-round" @onclick="OnClose" aria-label="Close" title="Close"><i data-lucide="x"></i></button>
             </div>
 
-            @* Section: Lampiran Berkas (Fase 2 — dari NAS) *@
-            <div style="border-top:1px solid var(--line-soft);padding-top:14px;margin-top:4px">
-                <TaskAttachments Items="attachmentItems"
-                                 CanEdit="true"
-                                 OnAdd="() => nasPickerOpen = true"
-                                 OnDownload="DownloadAttachment"
-                                 OnDelete="DeleteAttachment" />
-            </div>
-
-            @* Section: Pengingat Tenggat (Fase 2) *@
-            <div class="task-reminder-section">
-                <div class="task-evidence-head">
-                    <div class="task-evidence-title">
-                        <i data-lucide="bell-ring" style="width:14px;height:14px;color:var(--accent-ink)"></i>
-                        <span>Due Date Reminders</span>
-                    </div>
-                    <label class="syno-toggle">
-                        <input type="checkbox" checked="@reminderEnabled" @onchange="ToggleReminderEnabled" />
-                        <span>@(reminderEnabled ? "Enabled" : "Disabled")</span>
-                    </label>
+            @if (drawerTab == "aktivitas")
+            {
+                <div class="task-drawer-body td-body">
+                    <button type="button" class="td-back" @onclick="ShowDetails"><i data-lucide="arrow-left"></i> Back to details</button>
+                    <div class="td-section-title">ACTIVITY</div>
+                    <TaskActivityTimeline Items="activityItems" />
                 </div>
-                @if (reminderEnabled)
-                {
-                    @if (editDue is null)
-                    {
-                        <div style="font-size:11.5px;color:var(--ink-3);font-style:italic;padding:4px 0">Set a due date first so reminders can be scheduled.</div>
-                    }
-                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
-                        @foreach (var opt in ReminderOptions)
+            }
+            else if (drawerTab == "diskusi")
+            {
+                <div class="task-drawer-body td-body">
+                    <button type="button" class="td-back" @onclick="ShowDetails"><i data-lucide="arrow-left"></i> Back to details</button>
+                    <div class="td-section-title">DISCUSSION</div>
+                    <TaskDiscussion Items="commentItems" OnSubmit="SubmitComment" />
+                </div>
+            }
+            else
+            {
+                <div class="task-drawer-body td-body">
+                    <input class="td-title" aria-label="Task title" @bind="editTitle" placeholder="Task title..." />
+                    @* One click moves the task through the page's move flow (evidence modal + dependency guard). *@
+                    <div class="td-status-pills" role="radiogroup" aria-label="Status">
+                        @foreach (var (key, label) in StatusOptions)
                         {
-                            var o = opt;
-                            var on = reminderOffsets.Contains(o.Hours);
-                            <button type="button" class="btn-sm surface" style="padding:4px 10px;font-size:11.5px;@(on ? "background:var(--accent-soft);color:var(--accent-ink);border-color:var(--accent-soft)" : "")"
-                                    @onclick="() => ToggleReminderOffset(o.Hours)">
-                                @o.Label
+                            var on = Task.Status == key;
+                            <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="td-status-pill @key @(on ? "on" : "")" disabled="@statusBusy" @onclick="() => ChangeStatus(key)">
+                                <span class="col-dot @key"></span>@label
                             </button>
                         }
                     </div>
-                    <div style="font-size:10.5px;color:var(--ink-3);margin-top:6px">
-                        Reminders are delivered via the notification gateway to task assignees.
-                    </div>
-                }
-            </div>
-
-            @* Section: In-Progress Activity Breakdown & Field Photos *@
-            <div class="task-evidence-section">
-                <div class="task-evidence-head">
-                    <div class="task-evidence-title">
-                        <i data-lucide="activity" style="width:14px;height:14px;color:#d97706"></i>
-                        <span>Progress Breakdown & Field Evidence</span>
-                    </div>
-                    <span class="task-evidence-badge doing">In Progress</span>
-                </div>
-
-                @* Step Checklist *@
-                <div style="display:flex;gap:6px;margin-bottom:8px">
-                    <input class="org-input" style="flex:1;height:32px;font-size:12px"
-                           placeholder="Add active progress activity..."
-                           @bind="newStepText"
-                           @onkeydown="@(e => { if (e.Key == "Enter") AddProgressStep(); })" />
-                    <button type="button" class="btn-sm accent" style="padding:4px 10px;font-size:11.5px" @onclick="AddProgressStep">
-                        <i data-lucide="plus" style="width:12px;height:12px"></i>
-                    </button>
-                </div>
-
-                @if (evidence.ProgressSteps.Count > 0)
-                {
-                    <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">
-                        @foreach (var step in evidence.ProgressSteps)
-                        {
-                            <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border:1px solid var(--line-soft);border-radius:8px">
-                                <input type="checkbox" checked="@step.IsDone" @onchange="() => step.IsDone = !step.IsDone" style="cursor:pointer;accent-color:var(--accent)" />
-                                <span style="flex:1;font-size:12px;color:var(--ink);text-decoration:@(step.IsDone ? "line-through" : "none")">@step.Text</span>
-                                <button type="button" style="background:none;border:none;cursor:pointer;color:var(--ink-3);padding:2px" @onclick="() => evidence.ProgressSteps.Remove(step)">
-                                    <i data-lucide="x" style="width:12px;height:12px"></i>
-                                </button>
-                            </div>
-                        }
-                    </div>
-                }
-
-                @* Field Photos Upload & Grid *@
-                <div style="margin-top:6px">
-                    <label class="btn-sm surface" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:5px 12px;font-size:11.5px;border-radius:999px">
-                        <i data-lucide="camera" style="width:13px;height:13px"></i>
-                        <span>Upload Field Photos</span>
-                        <InputFile OnChange="HandleUploadFieldPhoto" accept="image/*" multiple style="display:none" />
-                    </label>
-
-                    @if (evidence.FieldPhotos.Count > 0)
+                    @if (IsOverdue)
                     {
-                        <div class="evidence-photo-grid">
-                            @foreach (var photo in evidence.FieldPhotos)
+                        <div class="td-overdue" role="alert">
+                            <i data-lucide="alert-circle" class="td-overdue-icon"></i>
+                            <div class="td-overdue-text">
+                                <strong>Overdue since @Task.DueDate!.Value.ToString("d MMM yyyy")</strong>
+                                @if (evidence.IsExtended)
+                                {
+                                    <span>Extended @(evidence.ExtensionHistory.Count)x. Reason: @evidence.LatestExtension?.Reason</span>
+                                }
+                            </div>
+                            <button type="button" class="td-overdue-btn" @onclick="RequestExtension"><i data-lucide="calendar-plus"></i>Extend deadline</button>
+                        </div>
+                    }
+                    <div class="td-properties">
+                        @if (Groups.Count > 1)
+                        {
+                            <span class="td-label"><i data-lucide="layers"></i>Group</span>
+                            <select class="td-select" aria-label="Task group" value="@Task.GroupId" @onchange="ChangeGroup">
+                                @foreach (var group in Groups) { <option value="@group.Id">@group.Name</option> }
+                            </select>
+                        }
+                        <span class="td-label"><i data-lucide="flag"></i>Priority</span>
+                        <select class="td-select td-priority @ProjectUiHelpers.GetPriorityPill(editPriority).Key" aria-label="Priority" @bind="editPriority">
+                            <option value="">No priority</option><option value="urgent">Urgent</option>
+                            <option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
+                        </select>
+                        <span class="td-label"><i data-lucide="users"></i>Assignees</span>
+                        <div class="td-assign-list">
+                            @foreach (var a in Task.Assignees)
                             {
-                                <div class="evidence-photo-thumb" title="@photo.Name">
-                                    @if (!string.IsNullOrEmpty(photo.DataUrl))
+                                <span class="td-assign-pill">
+                                    <span class="td-avatar" style="background:@ProjectUiHelpers.GetAvatarBg(a.Name)">@ProjectUiHelpers.GetInitials(a.Name)</span>@a.Name
+                                    <button type="button" title="Remove assignee" @onclick="() => OnToggleAssignee.InvokeAsync((Task.Id, a.UserId, true))"><i data-lucide="x"></i></button>
+                                </span>
+                            }
+                            @if (Members.Any(m => !Task.Assignees.Any(a => a.UserId == m.UserId)))
+                            {
+                                <div class="td-assign-picker">
+                                    <button type="button" class="td-add-assignee" data-menu-trigger aria-haspopup="menu" aria-expanded="@(assignOpen ? "true" : "false")" @onclick="ToggleAssignMenu"><i data-lucide="plus"></i>Assign</button>
+                                    @if (assignOpen)
                                     {
-                                        <img src="@photo.DataUrl" alt="@photo.Name" />
-                                    }
-                                    else
-                                    {
-                                        <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:10px;color:var(--ink-3)">
-                                            <i data-lucide="image" style="width:16px;height:16px"></i>
+                                        <div class="td-menu-backdrop" @onclick="() => assignOpen = false"></div>
+                                        <div class="td-assign-menu" role="menu" aria-label="Assign member" @ref="menuRef">
+                                            @foreach (var m in Members.Where(m => !Task.Assignees.Any(a => a.UserId == m.UserId)))
+                                            {
+                                                <button type="button" role="menuitem" @onclick="async () => { assignOpen = false; await OnToggleAssignee.InvokeAsync((Task.Id, m.UserId, false)); }">
+                                                    <span class="td-avatar" style="background:@ProjectUiHelpers.GetAvatarBg(m.Name)">@ProjectUiHelpers.GetInitials(m.Name)</span>
+                                                    <span>@m.Name<small>@m.Role · @m.Nik</small></span>
+                                                </button>
+                                            }
                                         </div>
                                     }
-                                    <button type="button" class="remove-thumb" @onclick="() => evidence.FieldPhotos.Remove(photo)" title="Hapus foto">×</button>
                                 </div>
                             }
                         </div>
-                    }
-                </div>
-            </div>
-
-            @* Section: Completion Evidence & Deliverables *@
-            <div class="task-evidence-section">
-                <div class="task-evidence-head">
-                    <div class="task-evidence-title">
-                        <i data-lucide="file-check" style="width:14px;height:14px;color:#059669"></i>
-                        <span>Bukti Penyelesaian Pekerjaan</span>
+                        <span class="td-label"><i data-lucide="calendar-arrow-up"></i>Start</span>
+                        <AppDatePicker @bind-Value="editStartDate" AllowClear="true" Compact="true" AriaLabel="Start date" />
+                        <span class="td-label"><i data-lucide="calendar"></i>Due</span>
+                        <div class="td-due-row">
+                            <AppDatePicker @bind-Value="editDue" AllowClear="true" Compact="true" Class="@ProjectUiHelpers.GetDueState(Task)" AriaLabel="Due date" />
+                            @* When overdue, the banner above carries the flag and the Extend button. *@
+                            @if (evidence.IsExtended) { <span class="td-date-flag extended" title="@evidence.LatestExtension?.Reason">Extended</span> }
+                            @if (!IsOverdue && Task.DueDate.HasValue && Task.Status != "done") { <button type="button" class="td-extend" @onclick="RequestExtension" title="Request a deadline extension"><i data-lucide="calendar-plus"></i>Extend</button> }
+                        </div>
+                        <span class="td-label"><i data-lucide="tag"></i>Tags</span>
+                        <div class="td-tags">
+                            @foreach (var tag in TagList)
+                            {
+                                <span class="td-tag">#@tag<button type="button" aria-label="Remove @tag" @onclick="() => RemoveTag(tag)"><i data-lucide="x"></i></button></span>
+                            }
+                            <input aria-label="Add tag" placeholder="+ Add tag" @bind="newTag" @onkeydown="OnTagKeyDown" />
+                        </div>
+                        <span class="td-label"><i data-lucide="link-2"></i>Menunggu</span>
+                        <div class="td-deps">
+                            @foreach (var d in Task.DependsOn ?? [])
+                            {
+                                <span class="td-dep-chip @(d.Status == "done" ? "done" : "")" title="@ProjectUiHelpers.StatusLabel(d.Status)">
+                                    <span class="col-dot @d.Status"></span><span class="td-dep-title">@d.Title</span>
+                                    <button type="button" aria-label="Hapus dependensi @d.Title" disabled="@depBusy" @onclick="() => RemoveDependency(d.Id)"><i data-lucide="x"></i></button>
+                                </span>
+                            }
+                            <div class="td-dep-picker">
+                                <button type="button" class="td-add-assignee" data-menu-trigger aria-haspopup="menu" aria-expanded="@(depOpen ? "true" : "false")" @onclick="ToggleDepMenu"><i data-lucide="plus"></i>Tambah</button>
+                                @if (depOpen)
+                                {
+                                    <div class="td-menu-backdrop" @onclick="() => depOpen = false"></div>
+                                    <div class="td-assign-menu td-dep-menu" role="menu" aria-label="Pilih task yang ditunggu" @ref="menuRef">
+                                        <input class="td-dep-search" placeholder="Cari task…" aria-label="Cari task" @bind="depQuery" @bind:event="oninput" />
+                                        @{ var candidates = DependencyCandidates.Take(30).ToList(); }
+                                        @if (candidates.Count == 0) { <div class="td-dep-empty">Tidak ada task yang cocok.</div> }
+                                        @foreach (var c in candidates)
+                                        {
+                                            <button type="button" role="menuitem" @onclick="() => AddDependency(c.Id)">
+                                                <span class="col-dot @c.Status"></span><span>@c.Title<small>@ProjectUiHelpers.StatusLabel(c.Status)</small></span>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            @if (Task.IsBlocked) { <span class="td-blocked-note"><i data-lucide="lock"></i>Belum bisa Done sampai task di atas selesai</span> }
+                            @if (depError is not null) { <span class="td-inline-error" role="alert">@depError</span> }
+                        </div>
+                        <span class="td-label"><i data-lucide="repeat"></i>Ulangi</span>
+                        <div class="td-recur">
+                            <div class="td-seg" role="radiogroup" aria-label="Ulangi">
+                                @foreach (var (freq, label) in RecurFreqs)
+                                {
+                                    <button type="button" role="radio" aria-checked="@(recurFreq == freq ? "true" : "false")" class="@(recurFreq == freq ? "on" : "")" disabled="@recurBusy" @onclick="() => SetRecurFreq(freq)">@label</button>
+                                }
+                            </div>
+                            @if (recurFreq == "WEEKLY")
+                            {
+                                <div class="td-weekdays" role="group" aria-label="Hari">
+                                    @for (var i = 0; i < 7; i++)
+                                    {
+                                        var day = (DayOfWeek)((i + 1) % 7);
+                                        var on = recurDays.Contains(day);
+                                        <button type="button" aria-pressed="@(on ? "true" : "false")" class="@(on ? "on" : "")" disabled="@recurBusy" @onclick="() => ToggleRecurDay(day)">@DatePickerMath.WeekdayMin[i]</button>
+                                    }
+                                </div>
+                            }
+                            else if (recurFreq == "MONTHLY")
+                            {
+                                <label class="td-monthday">Tanggal
+                                    <input type="number" min="1" max="31" aria-label="Tanggal tiap bulan" value="@recurMonthDay" disabled="@recurBusy" @onchange="SetRecurMonthDay" />
+                                </label>
+                            }
+                            @if (RecurNextPreview is { } next)
+                            {
+                                <span class="td-recur-next">Berikutnya: @DatePickerMath.FormatDateCompact(DateOnly.FromDateTime(next)) · dibuat saat task selesai</span>
+                            }
+                            @if (recurError is not null) { <span class="td-inline-error" role="alert">@recurError</span> }
+                        </div>
                     </div>
-                    <span class="task-evidence-badge done">Done</span>
-                </div>
 
-                <div style="margin-top:4px">
-                    <label class="btn-sm surface" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:5px 12px;font-size:11.5px;border-radius:999px">
-                        <i data-lucide="paperclip" style="width:13px;height:13px"></i>
-                        <span>Lampirkan Bukti / Dokumen Hasil (Foto / PDF)</span>
-                        <InputFile OnChange="HandleUploadDeliverable" multiple style="display:none" />
-                    </label>
-                </div>
-
-                @if (evidence.CompletionDeliverables.Count > 0)
-                {
-                    <div style="display:flex;flex-direction:column;gap:5px;margin-top:8px">
-                        @foreach (var item in evidence.CompletionDeliverables)
+                    @if (Fields.Count > 0)
+                    {
+                        <section class="td-section td-fields">
+                            <span class="td-section-title">FIELDS</span>
+                            @foreach (var field in Fields)
+                            {
+                                var value = FieldValues.GetValueOrDefault(field.Id);
+                                <div class="td-field-row"><label>@field.Name</label>
+                                    <ProjectFieldCell Field="field" Value="value" Members="Members"
+                                                      ValueChanged="v => OnSetFieldValue.InvokeAsync((Task.Id, field.Id, v))" />
+                                </div>
+                            }
+                        </section>
+                    }
+                    <section class="td-section">
+                        <span class="td-section-title">DESCRIPTION</span>
+                        <textarea rows="3" @bind="editDesc" placeholder="Add more detail…"></textarea>
+                    </section>
+                    <section class="td-section td-subtasks">
+                        <div class="td-section-head"><span class="td-section-title">SUBTASKS</span><span>@Subtasks.Count(s => s.Status == "done")/@Subtasks.Count</span></div>
+                        <div class="td-progress"><div style="width:@(Subtasks.Count == 0 ? 0 : 100 * Subtasks.Count(s => s.Status == "done") / Subtasks.Count)%"></div></div>
+                        @foreach (var st in Subtasks)
                         {
-                            <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border:1px solid var(--line-soft);border-radius:8px">
-                                <i data-lucide="@(item.Type == "photo" ? "image" : "file-text")" style="width:14px;height:14px;color:var(--accent)"></i>
-                                <span style="flex:1;font-size:12px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@item.Name</span>
-                                <span style="font-size:10px;color:var(--ink-3)">@FormatSize(item.Size)</span>
-                                <button type="button" style="background:none;border:none;cursor:pointer;color:var(--ink-3);padding:2px" @onclick="() => evidence.CompletionDeliverables.Remove(item)">
-                                    <i data-lucide="x" style="width:12px;height:12px"></i>
-                                </button>
+                            var isDone = st.Status == "done";
+                            <div class="td-subtask">
+                                <button type="button" class="td-sub-check @(isDone ? "on" : "")" aria-label="Toggle @st.Title" @onclick="() => OnToggleSubtask.InvokeAsync(st)">@if (isDone) { <i data-lucide="check"></i> }</button>
+                                <span class="@(isDone ? "done" : "")">@st.Title</span>
+                                <button type="button" class="td-sub-remove" title="Remove" @onclick="() => OnDeleteSubtask.InvokeAsync(st.Id)"><i data-lucide="x"></i></button>
                             </div>
                         }
-                    </div>
-                }
-
-                <div class="field" style="margin:8px 0 0 0">
-                    <label style="font-size:11px;font-weight:600;color:var(--ink-3)">Catatan Bukti Selesai</label>
-                    <textarea class="org-input" style="min-height:60px;font-size:12px"
-                              placeholder="Catatan penyerahan atau ringkasan hasil pekerjaan..."
-                              @bind="evidence.CompletionNotes"></textarea>
+                        <div class="td-sub-add"><i data-lucide="plus"></i><input placeholder="Add a subtask and press Enter" @bind="newSubtaskTitle" @onkeydown="@(async e => { if (e.Key == "Enter") await HandleAddSubtask(); })" /><button type="button" aria-label="Add subtask" @onclick="HandleAddSubtask"><i data-lucide="arrow-up"></i></button></div>
+                    </section>
+                    <TaskTimeSection TaskId="Task.Id" Estimated="editEstH" Version="Task" />
+                    <section class="td-section td-evidence">
+                        <span class="td-section-title">EVIDENCE</span>
+                        <div class="task-evidence-section">
+                            <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="activity"></i>Progress Breakdown & Field Evidence</div><span class="task-evidence-badge doing">In Progress</span></div>
+                            <div class="td-sub-add"><input placeholder="Add active progress activity..." @bind="newStepText" @onkeydown="@(e => { if (e.Key == "Enter") AddProgressStep(); })" /><button type="button" @onclick="AddProgressStep"><i data-lucide="plus"></i></button></div>
+                            @foreach (var step in evidence.ProgressSteps)
+                            {
+                                <div class="td-subtask"><input type="checkbox" checked="@step.IsDone" @onchange="() => step.IsDone = !step.IsDone" /><span>@step.Text</span><button type="button" @onclick="() => evidence.ProgressSteps.Remove(step)"><i data-lucide="x"></i></button></div>
+                            }
+                            <label class="td-upload"><i data-lucide="camera"></i>Upload Field Photos<InputFile OnChange="HandleUploadFieldPhoto" accept="image/*" multiple style="display:none" /></label>
+                            @if (evidence.FieldPhotos.Count > 0) { <div class="evidence-photo-grid">@foreach (var photo in evidence.FieldPhotos) { <div class="evidence-photo-thumb" title="@photo.Name">@if (!string.IsNullOrEmpty(photo.DataUrl)) { <img src="@photo.DataUrl" alt="@photo.Name" /> } else { <i data-lucide="image"></i> }<button type="button" class="remove-thumb" @onclick="() => evidence.FieldPhotos.Remove(photo)" title="Remove photo">×</button></div> }</div> }
+                        </div>
+                        <div class="task-evidence-section">
+                            <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="file-check"></i>Completion Evidence & Deliverables</div><span class="task-evidence-badge done">Done</span></div>
+                            <label class="td-upload"><i data-lucide="paperclip"></i>Attach photo or document<InputFile OnChange="HandleUploadDeliverable" multiple style="display:none" /></label>
+                            @foreach (var item in evidence.CompletionDeliverables) { <div class="td-subtask"><i data-lucide="@(item.Type == "photo" ? "image" : "file-text")"></i><span>@item.Name (@FormatSize(item.Size))</span><button type="button" @onclick="() => evidence.CompletionDeliverables.Remove(item)"><i data-lucide="x"></i></button></div> }
+                            <textarea rows="2" placeholder="Completion notes..." @bind="evidence.CompletionNotes"></textarea>
+                        </div>
+                    </section>
+                    <section class="td-section td-comments">
+                        <span class="td-section-title">COMMENTS</span>
+                        <TaskDiscussion Items="commentItems" OnSubmit="SubmitComment" />
+                    </section>
+                    <details class="td-extra"><summary>Additional details</summary>
+                        <div class="td-hours"><label>Estimated hours<input type="number" step="0.5" @bind="editEstH" placeholder="0" /></label></div>
+                        <TaskAttachments Items="attachmentItems" CanEdit="true" OnAdd="() => nasPickerOpen = true" OnDownload="DownloadAttachment" OnDelete="DeleteAttachment" />
+                        <div class="task-reminder-section">
+                            <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="bell-ring"></i>Due Date Reminders</div><label class="syno-toggle"><input type="checkbox" checked="@reminderEnabled" @onchange="ToggleReminderEnabled" /><span>@(reminderEnabled ? "Enabled" : "Disabled")</span></label></div>
+                            @if (reminderEnabled)
+                            {
+                                @if (editDue is null) { <div class="td-hint">Set a due date first so reminders can be scheduled.</div> }
+                                <div class="td-reminders">@foreach (var opt in ReminderOptions) { var o = opt; var on = reminderOffsets.Contains(o.Hours); <button type="button" class="@(on ? "on" : "")" @onclick="() => ToggleReminderOffset(o.Hours)">@o.Label</button> }</div>
+                            }
+                        </div>
+                    </details>
                 </div>
-            </div>
-        </div>
-        } @* end drawerTab == "detail" *@
-
-        @if (drawerTab == "detail")
-        {
-        <div class="task-drawer-foot">
-            <button class="btn-sm surface danger" @onclick="() => OnDelete.InvokeAsync(Task.Id)">
-                <i data-lucide="trash-2"></i> Hapus
-            </button>
-            <div style="display:flex;gap:8px">
-                <button class="btn-sm surface" @onclick="OnClose">Batal</button>
-                <button class="btn-sm accent" @onclick="HandleSave">
-                    <i data-lucide="check"></i> Simpan
-                </button>
-            </div>
-        </div>
-        }
+                <div class="task-drawer-foot td-foot">@if (IsDirty) { <span class="td-dirty">Unsaved changes</span> }<button type="button" @onclick="OnClose">Cancel</button><button type="button" class="primary" @onclick="HandleSave"><i data-lucide="check"></i>Save changes</button></div>
+            }
         </div>
     </div>
 }
@@ -369,7 +285,15 @@
 
 @code {
     [Parameter] public ProjectTaskDto? Task { get; set; }
+    [Parameter] public string ProjectName { get; set; } = "Project";
+    [Parameter] public string? ProjectColor { get; set; }
+    [Parameter] public EventCallback<ProjectTaskDto> OnRequestExtension { get; set; }
     [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
+    [Parameter] public List<ProjectGroupDto> Groups { get; set; } = [];
+    [Parameter] public List<ProjectFieldDto> Fields { get; set; } = [];
+    [Parameter] public Dictionary<Guid, string> FieldValues { get; set; } = [];
+    [Parameter] public EventCallback<(Guid TaskId, Guid FieldId, string? Value)> OnSetFieldValue { get; set; }
+    [Parameter] public EventCallback<(Guid TaskId, Guid GroupId)> OnMoveToGroup { get; set; }
     [Parameter] public List<ProjectTaskDto> Subtasks { get; set; } = [];
 
     [Parameter] public EventCallback OnClose { get; set; }
@@ -379,6 +303,15 @@
     [Parameter] public EventCallback<string> OnAddSubtask { get; set; }
     [Parameter] public EventCallback<ProjectTaskDto> OnToggleSubtask { get; set; }
     [Parameter] public EventCallback<Guid> OnDeleteSubtask { get; set; }
+    /// The current view's filtered task order; drives the "n / N" pager (Alt+Left/Right).
+    [Parameter] public List<ProjectTaskDto> NavTasks { get; set; } = [];
+    [Parameter] public EventCallback<ProjectTaskDto> OnNavigate { get; set; }
+    /// Status pill click: the page runs its move flow (evidence modal, dependency guard).
+    [Parameter] public EventCallback<(ProjectTaskDto Task, string NewStatus)> OnStatusChange { get; set; }
+    /// Every task of the project (dependency picker candidates).
+    [Parameter] public List<ProjectTaskDto> AllTasks { get; set; } = [];
+    /// Raised after the drawer saved dependencies or recurrence itself; the page reloads the task.
+    [Parameter] public EventCallback<ProjectTaskDto?> OnTaskChanged { get; set; }
 
     private string editTitle = "";
     private string? editDesc;
@@ -391,6 +324,140 @@
     private string? editTags;
     private string newSubtaskTitle = "";
     private string newStepText = "";
+    private string newTag = "";
+    private bool moreOpen;
+    private bool assignOpen;
+
+    private IEnumerable<string> TagList => (editTags ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(x => x.TrimStart('#'));
+    private static readonly (string Key, string Label)[] StatusOptions = [("todo", "To Do"), ("doing", "In Progress"), ("review", "Review"), ("done", "Done")];
+    private bool IsOverdue => Task is { DueDate: { } due } t && due.Date < DateTime.Today && t.Status != "done";
+    private int NavIndex => Task is null ? -1 : NavTasks.FindIndex(t => t.Id == Task.Id);
+    private bool statusBusy;
+    private bool navBusy;
+
+    // Status is saved immediately through the page's move flow, never through Save changes, so
+    // the evidence modal and the dependency guard (server /move) always apply. editStatus only
+    // mirrors the saved status for the save model.
+    private async Task ChangeGroup(ChangeEventArgs args)
+    {
+        if (Task is null || !Guid.TryParse(args.Value?.ToString(), out var id) || Task.GroupId == id) return;
+        await OnMoveToGroup.InvokeAsync((Task.Id, id));
+    }
+
+    private async Task ChangeStatus(string status)
+    {
+        if (Task is null || statusBusy || Task.Status == status) return;
+        statusBusy = true;
+        try { await OnStatusChange.InvokeAsync((Task, status)); }
+        finally { statusBusy = false; }
+    }
+
+    /// Unsaved edits in the detail form (title, description, evidence, fields, tags).
+    public bool IsDirty
+    {
+        get
+        {
+            if (Task is null) return false;
+            var orig = TaskEvidenceHelper.Parse(Task.Description);
+            return (editTitle ?? "").Trim() != (Task.Title ?? "").Trim()
+                || editPriority != Task.Priority
+                || editStartDate != Task.StartDate
+                || editDue != Task.DueDate
+                || editEstH != Task.EstimatedHours
+                || (editTags ?? "").Trim() != (Task.Tags ?? "").Trim()
+                || TaskEvidenceHelper.Serialize(editDesc, evidence) != TaskEvidenceHelper.Serialize(orig.CleanDescription, orig.Evidence);
+        }
+    }
+
+    private async Task GoRelative(int delta)
+    {
+        if (Task is null || navBusy) return;
+        var idx = NavIndex;
+        if (idx < 0) return;
+        var target = idx + delta;
+        if (target < 0 || target >= NavTasks.Count) return;
+        var next = NavTasks[target];
+        navBusy = true;
+        try
+        {
+            if (IsDirty && !await Confirm.AskAsync("Discard unsaved changes?",
+                    $"You have unsaved changes to \"{Task.Title}\". Switching tasks will discard them.", "Discard", danger: true))
+                return;
+            await OnNavigate.InvokeAsync(next);
+        }
+        finally { navBusy = false; }
+    }
+
+    [JSInvokable]
+    public Task OnPagerKey(int delta) => InvokeAsync(() => GoRelative(delta));
+
+    // Header "..." and Assign menus are portalled to <body> (ipop.menuSync): the drawer body
+    // scrolls with overflow:auto, which clipped the assign list near the bottom.
+    private ElementReference menuRef;
+    private bool menuPortaled;
+    private bool keysBound;
+    private DotNetObjectReference<ProjectTaskDrawer>? selfRef;
+
+    private void ToggleMoreMenu() { assignOpen = depOpen = false; moreOpen = !moreOpen; }
+    private void ToggleAssignMenu() { moreOpen = depOpen = false; assignOpen = !assignOpen; }
+    private void ToggleDepMenu() { moreOpen = assignOpen = false; depQuery = ""; depOpen = !depOpen; }
+    private Task DeleteFromMenu() { moreOpen = false; return Task is null ? System.Threading.Tasks.Task.CompletedTask : OnDelete.InvokeAsync(Task.Id); }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            selfRef ??= DotNetObjectReference.Create(this);
+            var open = Task is not null;
+            if (open != keysBound)
+            {
+                keysBound = open;
+                await JS.InvokeVoidAsync("ipop.taskDrawerKeys", open ? selfRef : null);
+            }
+            var menuOpen = Task is not null && (moreOpen || assignOpen || depOpen);
+            if (menuOpen) await JS.InvokeVoidAsync("ipop.menuSync", menuRef, selfRef, moreOpen ? "right" : "left");
+            else if (menuPortaled) await JS.InvokeVoidAsync("ipop.menuClose");
+            menuPortaled = menuOpen;
+        }
+        catch { /* disposed circuit / prerender */ }
+    }
+
+    [JSInvokable]
+    public Task CloseMenuFromJs()
+    {
+        if (!moreOpen && !assignOpen && !depOpen) return System.Threading.Tasks.Task.CompletedTask;
+        moreOpen = assignOpen = depOpen = false;
+        menuPortaled = false;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (keysBound) await JS.InvokeVoidAsync("ipop.taskDrawerKeys", (object?)null);
+            if (menuPortaled) await JS.InvokeVoidAsync("ipop.menuDrop");
+        }
+        catch { }
+        selfRef?.Dispose();
+    }
+    private async Task RequestExtension()
+    {
+        if (Task is null) return;
+        await OnRequestExtension.InvokeAsync(Task);
+    }
+    private void ShowActivity() { moreOpen = false; drawerTab = "aktivitas"; }
+    private void ShowDiscussion() { moreOpen = false; drawerTab = "diskusi"; }
+    private void ShowDetails() => drawerTab = "detail";
+    private void OnTagKeyDown(KeyboardEventArgs e) { if (e.Key == "Enter") AddTag(); }
+    private void AddTag()
+    {
+        var tag = newTag.Trim().TrimStart('#');
+        if (tag.Length > 0 && !TagList.Contains(tag, StringComparer.OrdinalIgnoreCase))
+            editTags = string.Join(", ", TagList.Append(tag));
+        newTag = "";
+    }
+    private void RemoveTag(string tag) => editTags = string.Join(", ", TagList.Where(x => !x.Equals(tag, StringComparison.OrdinalIgnoreCase)));
 
     // ---- Fase 2: Diskusi & Aktivitas tugas — endpoint nyata /api/projects/tasks/{id}/* ----
     private string drawerTab = "detail";
@@ -562,10 +629,34 @@
 
     private TaskEvidenceData evidence = new();
 
+    // The task the edit fields were last filled from. A parent re-render with the same instance
+    // changes nothing; a new instance of the same task (live refresh after someone else's edit)
+    // refreshes discussion and merges only the fields this user hasn't touched; a different task
+    // resets the drawer.
+    private ProjectTaskDto? _shownTask;
+
     protected override async Task OnParametersSetAsync()
     {
-        if (Task is not null)
+        if (Task is null) { _shownTask = null; return; }
+        if (ReferenceEquals(Task, _shownTask)) return;
+        var previous = _shownTask;
+        _shownTask = Task;
+
+        if (previous is not null && previous.Id == Task.Id)
         {
+            await LoadDiscussionAsync(); // live comments, attachments and activity
+            MergeRemoteTask(previous, Task);
+            await RestoreEvidencePhotosAsync();
+            return;
+        }
+
+        {
+            moreOpen = false;
+            assignOpen = false;
+            depOpen = false;
+            depError = recurError = null;
+            LoadRecurrence(Task);
+            newTag = "";
             editTitle = Task.Title;
             drawerTab = "detail";
             await LoadDiscussionAsync();
@@ -582,6 +673,35 @@
             editTags = Task.Tags;
             newStepText = "";
 
+            await RestoreEvidencePhotosAsync();
+        }
+    }
+
+    /// Field-level merge: a field still equal to the old server value takes the new one; a field
+    /// the user has changed keeps their input.
+    private void MergeRemoteTask(ProjectTaskDto old, ProjectTaskDto fresh)
+    {
+        if (editTitle == old.Title) editTitle = fresh.Title;
+        editStatus = fresh.Status;
+        if (editPriority == old.Priority) editPriority = fresh.Priority;
+        if (editStartDate == old.StartDate) editStartDate = fresh.StartDate;
+        if (editDue == old.DueDate) editDue = fresh.DueDate;
+        if (editEstH == old.EstimatedHours) editEstH = fresh.EstimatedHours;
+        editActH = fresh.ActualHours; // read-only: the sum of time entries
+        if (editTags == old.Tags) editTags = fresh.Tags;
+        if (!recurBusy) LoadRecurrence(fresh);
+        var oldParsed = TaskEvidenceHelper.Parse(old.Description);
+        if (TaskEvidenceHelper.Serialize(editDesc, evidence) == TaskEvidenceHelper.Serialize(oldParsed.CleanDescription, oldParsed.Evidence))
+        {
+            var parsed = TaskEvidenceHelper.Parse(fresh.Description);
+            editDesc = parsed.CleanDescription;
+            evidence = parsed.Evidence;
+        }
+    }
+
+    private async Task RestoreEvidencePhotosAsync()
+    {
+        {
             // Restore photos dataUrl from localStorage if available
             foreach (var photo in evidence.FieldPhotos)
             {
@@ -720,6 +840,140 @@
         {
             await OnToggleAssignee.InvokeAsync((Task.Id, uid, false));
         }
+    }
+
+    // ---- Fase 2b: dependensi ("Menunggu") dan pengulangan ("Ulangi"), disimpan langsung ----
+    private bool depOpen;
+    private bool depBusy;
+    private string depQuery = "";
+    private string? depError;
+
+    private IEnumerable<ProjectTaskDto> DependencyCandidates
+    {
+        get
+        {
+            if (Task is null) return [];
+            var taken = (Task.DependsOn ?? []).Select(d => d.Id).ToHashSet();
+            var q = depQuery.Trim();
+            return AllTasks.Where(t => t.Id != Task.Id && t.Id != Task.ParentTaskId && !taken.Contains(t.Id)
+                    && (q.Length == 0 || t.Title.Contains(q, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(t => t.Status == "done").ThenBy(t => t.Title, StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private Task AddDependency(Guid id)
+    {
+        depOpen = false;
+        return SaveDependencies((Task?.DependsOn ?? []).Select(d => d.Id).Append(id).ToList());
+    }
+
+    private Task RemoveDependency(Guid id) =>
+        SaveDependencies((Task?.DependsOn ?? []).Select(d => d.Id).Where(x => x != id).ToList());
+
+    private async Task SaveDependencies(List<Guid> ids)
+    {
+        if (Task is null || depBusy) return;
+        depBusy = true;
+        depError = null;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{Task.Id}/dependencies", new SetTaskDependenciesRequest(ids));
+            if (res.IsSuccessStatusCode)
+            {
+                ProjectTaskDto? fresh = null;
+                try { fresh = await res.Content.ReadFromJsonAsync<ProjectTaskDto>(); } catch { }
+                await OnTaskChanged.InvokeAsync(fresh);
+            }
+            else
+            {
+                var body = await res.Content.ReadAsStringAsync();
+                depError = body.Contains("dependency_cycle") ? "Tidak bisa: task itu sudah (tidak langsung) menunggu task ini."
+                    : body.Contains("too_many_dependencies") ? "Maksimal 20 dependensi per task."
+                    : body.Contains("forbidden") ? "Anda tidak punya akses mengubah task ini."
+                    : "Dependensi belum dapat disimpan.";
+            }
+        }
+        catch { depError = "Dependensi belum dapat disimpan."; }
+        finally { depBusy = false; }
+    }
+
+    private static readonly (string Freq, string Label)[] RecurFreqs =
+        [("", "Tidak"), ("DAILY", "Harian"), ("WEEKLY", "Mingguan"), ("MONTHLY", "Bulanan")];
+    private string recurFreq = "";
+    private HashSet<DayOfWeek> recurDays = [];
+    private int recurMonthDay = 1;
+    private bool recurBusy;
+    private string? recurError;
+
+    private void LoadRecurrence(ProjectTaskDto t)
+    {
+        var rule = t.IsRecurring ? TaskRecurrence.Parse(t.RecurrenceRule) : null;
+        recurFreq = rule?.Freq ?? "";
+        recurDays = rule?.ByDay.ToHashSet() ?? [];
+        recurMonthDay = rule?.ByMonthDay ?? (t.DueDate ?? DateTime.Today).Day;
+    }
+
+    private string? CurrentRule()
+    {
+        if (recurFreq == "") return null;
+        var rule = new TaskRecurrence(recurFreq, 1,
+            recurFreq == "WEEKLY" ? recurDays.OrderBy(d => d).ToList() : [],
+            recurFreq == "MONTHLY" ? recurMonthDay : null);
+        return rule.ToString();
+    }
+
+    private DateTime? RecurNextPreview =>
+        Task is null || CurrentRule() is not { } rule || TaskRecurrence.Parse(rule) is not { } parsed
+            ? null
+            : parsed.Next(Task.DueDate ?? DateTime.Today);
+
+    private Task SetRecurFreq(string freq)
+    {
+        if (recurFreq == freq) return System.Threading.Tasks.Task.CompletedTask;
+        recurFreq = freq;
+        if (freq == "WEEKLY" && recurDays.Count == 0) recurDays = [(Task?.DueDate ?? DateTime.Today).DayOfWeek];
+        return SaveRecurrence();
+    }
+
+    private Task ToggleRecurDay(DayOfWeek day)
+    {
+        if (!recurDays.Remove(day)) recurDays.Add(day);
+        // Weekly with no day picked means "every 7 days from the due date".
+        return SaveRecurrence();
+    }
+
+    private Task SetRecurMonthDay(ChangeEventArgs e)
+    {
+        if (!int.TryParse(e.Value?.ToString(), out var d)) return System.Threading.Tasks.Task.CompletedTask;
+        recurMonthDay = Math.Clamp(d, 1, 31);
+        return SaveRecurrence();
+    }
+
+    private async Task SaveRecurrence()
+    {
+        if (Task is null) return;
+        recurBusy = true;
+        recurError = null;
+        try
+        {
+            var rule = CurrentRule();
+            var req = new UpdateTaskRequest(null, null, null, null, null, null, null, null, null, null,
+                rule is not null, rule ?? "", null, null);
+            var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{Task.Id}", req);
+            if (res.IsSuccessStatusCode)
+            {
+                ProjectTaskDto? fresh = null;
+                try { fresh = await res.Content.ReadFromJsonAsync<ProjectTaskDto>(); } catch { }
+                await OnTaskChanged.InvokeAsync(fresh);
+            }
+            else
+            {
+                recurError = "Pengulangan belum dapat disimpan.";
+                LoadRecurrence(Task);
+            }
+        }
+        catch { recurError = "Pengulangan belum dapat disimpan."; }
+        finally { recurBusy = false; }
     }
 
     public record TaskSaveModel(

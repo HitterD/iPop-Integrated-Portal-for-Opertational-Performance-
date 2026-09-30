@@ -1,0 +1,247 @@
+/* Mobile (<= 767px) overrides for chat. Loaded after every desktop stylesheet. */
+
+/* Desktop guards: phone-only chat chrome is rendered in Chat.razor and hidden here. */
+.chat-area .m-hdr-more, .chat-area .m-hdr-menu, .chat-area .m-hdr-backdrop { display: none; }
+
+@media (max-width: 767px) {
+  /* ---------- Frame: one screen at a time ---------- */
+  .main > .chat-area { flex: 1 1 0; height: auto; min-height: 0; }
+  .chat-area, .chat-area.with-global-drawer, .chat-area.with-drawer { grid-template-columns: minmax(0, 1fr); }
+  /* The old <=768 slide-in drawer for the room list is replaced by the list/detail pattern. */
+  .chat-area .room-pane {
+    position: relative; inset: auto; width: auto; max-width: none; transform: none;
+    box-shadow: none; border-right: 0; transition: none; z-index: 1;
+    padding: 10px 12px 0; overflow-y: auto; overscroll-behavior: contain;
+  }
+  .chat-area .conv-pane { display: none; }
+  .chat-area.m-detail .room-pane { display: none; }
+  .chat-area.m-detail .conv-pane { display: flex; }
+  .chat-area .conv-back, .chat-area .room-pane-close, .empty-state.chat-empty .empty-acts .mobile-only { display: none; }
+  /* Open room: no topbar either (tab bar is hidden by ipop.mobile.hideTabbar). */
+  body.m-hide-tabbar .main:has(> .chat-area.m-detail) > .topbar { display: none; }
+
+  /* ---------- Screen 1: room list ---------- */
+  /* The pane itself scrolls, so its flex children keep their natural height. */
+  .chat-area .room-pane > * { flex-shrink: 0; }
+  .chat-area .room-list { overflow: visible; flex: none; padding-bottom: 16px; }
+  .chat-area .room-search-box input { height: 40px; font-size: 16px; }
+  .chat-area .compose-btn { width: 40px; height: 40px; }
+  .chat-area .room-search-clear { min-width: 32px; min-height: 32px; }
+  .chat-area .room-nav-btn { height: 44px; font-size: 15px; }
+  .chat-area .room-segmented .seg-item { height: 34px; font-size: 14px; }
+  .chat-area .room-item { min-height: 64px; padding: 10px 8px; }
+  .chat-area .room-name { font-size: 15px; }
+  .chat-area .room-preview { font-size: 13px; }
+  .chat-area .room-time { font-size: 12px; }
+  .chat-area .room-new-group { min-height: 32px; font-size: 13px; }
+  .chat-area .room-archived-toggle, .chat-area .room-load-more { min-height: 44px; }
+  /* Row actions: hover-revealed on desktop; always visible with a real tap target here. */
+  .chat-area .room-item .room-badges { gap: 2px; }
+  .chat-area .room-item .room-pin-hover { display: none !important; }
+  .chat-area .room-item .room-more-btn {
+    width: 36px !important; height: 36px !important; margin: -8px -6px -8px 0;
+    opacity: 1 !important; visibility: visible !important; border-radius: 10px !important;
+  }
+  .chat-area .room-item .room-more-btn .lucide { width: 18px !important; height: 18px !important; }
+  .chat-area .room-item .app-select-pop { top: 34px !important; min-width: 170px !important; }
+  .chat-area .room-item .app-select-opt { min-height: 44px; font-size: 15px; }
+  .chat-area .room-unarchive-btn { min-height: 32px; }
+
+  /* ---------- Screen 2: open room ---------- */
+  .chat-area .conv-header {
+    height: 56px; padding: 0 6px 0 8px; gap: 8px; position: relative;
+  }
+  .chat-area .conv-header .m-back { margin-left: 0; }
+  .chat-area .conv-header .header-avatar-btn { width: 36px; height: 36px; }
+  .chat-area .conv-header .header-info { flex: 1; min-width: 0; }
+  .chat-area .conv-header .header-name { font-size: 16px; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chat-area .header-actions { gap: 0; margin-left: 0; flex: none; }
+  .chat-area .header-actions .m-opt { display: none; }
+  .chat-area .header-actions .m-hdr-more { display: flex; }
+  .chat-area .header-actions .header-icon-btn { width: 40px; height: 40px; }
+  .chat-area .header-actions .header-icon-btn .lucide { width: 20px; height: 20px; }
+  .chat-area .m-hdr-backdrop { display: block; position: fixed; inset: 0; z-index: 90; }
+  .chat-area .m-hdr-menu {
+    display: flex; flex-direction: column; position: absolute; top: calc(100% - 4px); right: 8px; z-index: 91;
+    width: min(260px, calc(100vw - 16px)); padding: 5px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow-lg);
+  }
+  .chat-area .m-hdr-menu button {
+    display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px;
+    border: 0; border-radius: 9px; background: none; color: var(--ink); font: inherit; font-size: 15px; text-align: left; cursor: pointer;
+  }
+  .chat-area .m-hdr-menu button:active { background: var(--fill); }
+  .chat-area .m-hdr-menu .lucide { width: 18px; height: 18px; color: var(--ink-2); }
+
+  .chat-area .sticky-pinned-bar { padding: 8px 12px; }
+  .chat-area .sticky-pinned-bar .pin-all-btn { min-height: 36px; }
+  .chat-area .group-call-banner { margin: 6px 8px 0; font-size: 12px; }
+  .chat-area .group-call-banner button { height: 36px; padding: 0 12px; }
+
+  /* In-room search */
+  .chat-area .conv-search-bar input { font-size: 16px; }
+  .chat-area .conv-search-bar .comp-btn { min-width: 40px; min-height: 40px; }
+  .chat-area .search-results { max-height: 45dvh; }
+  .chat-area .sr-item { min-height: 48px; }
+
+  /* Messages */
+  .chat-area .messages { padding: 12px 10px; }
+  .chat-area .messages > .msg { max-width: 80%; }
+  .chat-area .messages > .msg.system, .chat-area .messages > .msg.emergency { max-width: 100%; }
+  .chat-area .messages > .msg.editing { max-width: 100%; }
+  /* Edit box font-size/button sizes live with the other touch targets below. */
+  .chat-area .msg .edit-textarea { max-height: 40dvh; }
+  .chat-area .msg .bubble { font-size: 15px; }
+  .chat-area .msg .msg-attachments img { max-width: 100%; height: auto; }
+  .chat-area .msg .att-card.box { width: 100%; }
+  .chat-area .jump-latest { right: 12px; bottom: 84px; }
+  /* Message tools: hover never fires on touch. Tapping a message toggles .m-tools, which
+     shows the toolbar docked above the bubble; long-press still opens the context menu. */
+  .chat-area .msg { -webkit-touch-callout: none; }
+  .chat-area .messages > .msg > .msg-hover-actions.v6-msg-tools,
+  .chat-area .msg:hover > .v6-msg-tools, .chat-area .msg:focus-within > .v6-msg-tools {
+    display: flex; opacity: 0; visibility: hidden; pointer-events: none;
+    top: auto; bottom: calc(100% + 2px); transform: none;
+  }
+  .chat-area .msg.recv > .v6-msg-tools { left: 0 !important; right: auto !important; }
+  .chat-area .msg.sent > .v6-msg-tools { right: 0 !important; left: auto !important; }
+  .chat-area .messages > .msg.m-tools > .v6-msg-tools,
+  .chat-area .messages > .msg > .v6-msg-tools.keep {
+    opacity: 1; visibility: visible; pointer-events: auto; transform: none; z-index: 30;
+  }
+  .chat-area .messages > .msg.m-tools { z-index: 5; }
+  .chat-area .v6-msg-tools .act-btn { width: 40px; height: 40px; border-radius: 9px; }
+  .chat-area .v6-msg-tools .act-btn .lucide { width: 19px; height: 19px; }
+  .chat-area .v6-react-pop { bottom: calc(100% + 4px); max-width: calc(100vw - 24px); flex-wrap: wrap; }
+  .chat-area .msg.sent .v6-react-pop { left: auto; right: 0; }
+  .chat-area .v6-react-pop button { width: 40px; height: 40px; font-size: 22px; }
+  .chat-area .msg .reactions .pill { min-height: 30px; padding: 2px 9px; }
+  .chat-area .msg .thread-link { min-height: 36px; }
+  .chat-area .msg-retry button { min-height: 36px; }
+  .chat-area .msg .edit-textarea { font-size: 16px; }
+  .chat-area .edit-actions .comp-btn { min-height: 40px; }
+
+  /* Context menu -> bottom action sheet (the inline top/left from ShowCtx is overridden). */
+  .ctx-menu-backdrop { background: rgba(0, 0, 0, 0.3); }
+  .ctx-menu.on {
+    top: auto !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+    width: auto; max-width: none; min-width: 0; max-height: 92dvh; overflow-y: auto;
+    padding: 8px 8px calc(8px + var(--m-safe-b)); border-radius: 14px 14px 0 0;
+    animation: m-chat-sheet-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ctx-menu.on button { min-height: 48px; padding: 0 14px; font-size: 15px; gap: 14px; }
+  .ctx-menu.on button .lucide { width: 18px; height: 18px; }
+
+  /* Seen-by / message info popover -> bottom sheet */
+  .chat-area .seen-backdrop { background: rgba(0, 0, 0, 0.3); z-index: 300; }
+  .chat-area .seen-pop {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 301;
+    width: auto; max-width: none; max-height: 92dvh; border-radius: 14px 14px 0 0;
+    padding-bottom: var(--m-safe-b); display: flex; flex-direction: column;
+  }
+  .chat-area .seen-pop-body { max-height: none; flex: 1; min-height: 0; }
+  .chat-area .seen-close { width: 36px; height: 36px; }
+  .chat-area .seen-row { min-height: 44px; }
+
+  /* Thread (inline under the parent message) */
+  .chat-area .thread-panel { max-width: calc(100vw - 24px); }
+  .chat-area .thread-input { font-size: 16px; min-height: 40px; }
+  .chat-area .thread-send { min-height: 40px; }
+
+  /* Composer: pinned to the bottom, above the home indicator */
+  .chat-area .composer.v6-composer { padding: 8px 8px calc(8px + var(--m-safe-b)); gap: 6px; }
+  .chat-area .v6-plus, .chat-area .v6-rec-trash { width: 40px; height: 40px; }
+  .chat-area .v6-input { min-height: 40px; padding: 2px 4px 2px 12px; }
+  .chat-area .composer .v6-input .input-wrap { font-size: 16px; line-height: 22px; }
+  .chat-area .v6-smile, .chat-area .v6-send { width: 34px; height: 34px; }
+  .chat-area .v6-smile .lucide, .chat-area .v6-send .lucide { width: 19px; height: 19px; }
+  .chat-area .reply-bar { margin: 0 10px; }
+  .chat-area .reply-bar .close-reply { min-width: 36px; min-height: 36px; }
+  .chat-area .pending-strip { padding: 8px 10px 2px; overflow-x: auto; }
+  .chat-area .pending-item .rm { min-width: 28px; min-height: 28px; }
+  /* Emoji / sticker / "+" popovers and mention list span the width above the composer. */
+  .chat-area .v6-pop { left: 8px !important; right: 8px !important; width: auto !important; max-height: 50dvh; overflow-y: auto; }
+  .chat-area .v6-emoji-grid { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); }
+  .chat-area .v6-emoji { font-size: 26px; }
+  .chat-area .v6-plus-menu > button { min-height: 48px; font-size: 15px; }
+  .chat-area .v6-pop-x { min-width: 36px; min-height: 36px; }
+  .chat-area .picker-stickers { max-width: 100%; }
+  .chat-area .mention-popup { margin: 0 8px; max-height: 40dvh; }
+  .chat-area .mention-popup .mi { min-height: 44px; }
+
+  /* ---------- Side panels become full-screen sheets ---------- */
+  .chat-area .chat-detail-panel {
+    width: 100%; max-width: 100vw; border-left: 0; box-shadow: none; z-index: 200;
+    padding-bottom: var(--m-safe-b);
+  }
+  .chat-area .panel-header { height: 56px; padding: 0 8px 0 12px; }
+  .chat-area .panel-header-title { font-size: 16px; }
+  .chat-area .panel-back-btn { min-height: 40px; font-size: 15px; }
+  .chat-area .panel-close-btn { width: 40px; height: 40px; }
+  .chat-area .panel-body { padding: 14px 12px; }
+  .chat-area .pane-search input, .chat-area .add-member-popup input,
+  .chat-area .drawer-cal-form input { font-size: 16px !important; height: 40px !important; }
+  .chat-area .hero-actions { grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); }
+  .chat-area .inset-row, .chat-area .inset-action-row { min-height: 48px; }
+  .chat-area .inset-copy { min-width: 36px; min-height: 36px; }
+  .chat-area .inset-see-all { min-height: 36px; }
+  .chat-area .add-member-toggle-btn, .chat-area .member-history-toggle, .chat-area .add-user-item { min-height: 44px; }
+  .chat-area .media-subtabs .subtab { min-height: 36px; }
+  .chat-area .pp-scope-item { min-height: 40px; font-size: 13px; }
+  .chat-area .pinned-panel .pin-item .pin-unpin { min-height: 36px; }
+  .chat-area .gs-panel .gs-seg-item { min-height: 40px; font-size: 13px; }
+  .chat-area .gs-panel .gs-btn { min-height: 40px; }
+  .chat-area .gs-panel .gs-icon-btn { width: 40px; height: 40px; }
+  .chat-area .chat-detail-panel .contact-card .hero-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+  /* Global drawer (pinned / saved / search / mentions): full screen over the list */
+  .chat-area .chat-global-backdrop.on { display: none; }
+  .chat-area .chat-global-drawer {
+    position: fixed; inset: 0; z-index: 199; width: 100%; max-width: 100vw;
+    border-left: 0; box-shadow: none; padding-bottom: var(--m-safe-b);
+  }
+  .chat-area .cgd-header { height: 56px; padding: 0 8px 0 16px; }
+  .chat-area .cgd-title { font-size: 16px; }
+  .chat-area .cgd-close { width: 40px; height: 40px; }
+  .chat-area .cgd-search { height: 44px; }
+  .chat-area .cgd-search input { font-size: 16px; }
+  .chat-area .cgd-card { padding: 12px; }
+  .chat-area .cgd-text { font-size: 14px; }
+  .chat-area .cgd-action { width: 36px; height: 36px; }
+
+  /* ---------- Modals: new-conversation picker, emergency, poll/forward ---------- */
+  .cm-center:has(.cm-tray-picker) { align-items: flex-end; padding: 0; }
+  .cm-tray.cm-tray-picker { max-width: 100vw; border-radius: 14px 14px 0 0; padding: 0; border: 0; }
+  .cm-picker-card { max-height: 92dvh; border-radius: 14px 14px 0 0; padding-bottom: var(--m-safe-b); }
+  .picker-head .picker-close { width: 36px; height: 36px; }
+  .picker-seg button { height: 34px; font-size: 14px; }
+  .picker-group-name, .picker-search .picker-search-input { font-size: 16px; }
+  .picker-list { max-height: none; }
+  .picker-row { min-height: 52px; }
+  .picker-foot { padding: 12px 16px; flex-wrap: wrap; }
+  .picker-foot .picker-foot-hint { flex-basis: 100%; }
+  .picker-btn { height: 44px; flex: 1; }
+  .chat-area .em-card { padding: 18px; }
+  .chat-area .em-textarea { font-size: 16px; }
+  .chat-area .em-actions button { min-height: 44px; }
+
+  /* Quick switcher (Ctrl+K) */
+  .quick-switcher .qs-input-row input { font-size: 16px; }
+  .quick-switcher .qs-row { min-height: 48px; }
+  .quick-switcher .qs-foot { display: none; }
+
+  /* ---------- Attachment viewer: full screen with reachable controls ---------- */
+  .att-viewer .av-bar { padding: 8px 8px 8px 12px; gap: 8px; }
+  .att-viewer .av-acts { gap: 2px; }
+  .att-viewer .av-acts button, .att-viewer .av-acts a { min-width: 40px; min-height: 40px; }
+  .att-viewer .av-zoomlbl { display: none; }
+  .att-viewer .av-nav { width: 44px; height: 44px; }
+
+  /* ---------- Group call window + late-join banner (fit 360px) ---------- */
+  .callx-group-window { width: auto; }
+  .callx-grid { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); max-height: 40dvh; overflow-y: auto; }
+  .callx-group-title h2 { font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .callx-controls { flex-wrap: wrap; }
+
+  @keyframes m-chat-sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+}

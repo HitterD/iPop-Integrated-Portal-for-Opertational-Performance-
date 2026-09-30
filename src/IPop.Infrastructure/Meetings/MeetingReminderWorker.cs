@@ -1,4 +1,5 @@
 using IPop.Application.Notifications;
+using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -32,6 +33,33 @@ public sealed class MeetingReminderWorker(IServiceScopeFactory scopeFactory, ILo
         if (gateway is null) return;
 
         await ProcessDueRemindersAsync(db, gateway, ct);
+        await ProcessDueEventRemindersAsync(db, gateway, ct);
+    }
+
+    /// Pengingat event kalender pribadi (tanpa rapat): satu notifikasi ke pemilik,
+    /// ReminderSentAt mencegah duplikat. Event yang sudah lewat dilewati.
+    public static async Task<int> ProcessDueEventRemindersAsync(IPopDbContext db, INotificationGatewayService gateway, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var candidates = await db.CalendarEvents
+            .Where(e => e.MeetingId == null && e.ReminderMinutes != null && e.ReminderSentAt == null && e.StartAt > now)
+            .OrderBy(e => e.StartAt).Take(500).ToListAsync(ct);
+        var sent = 0;
+        foreach (var e in candidates.Where(e => e.StartAt.AddMinutes(-e.ReminderMinutes!.Value) <= now).Take(200))
+        {
+            var result = await gateway.PublishInternalAsync(
+                clientSlug: "meetings",
+                eventType: "calendar.reminder",
+                title: $"Reminder: {e.Title}",
+                message: $"\"{e.Title}\" starts at {e.StartAt.ToLocalTime():dd MMM yyyy HH:mm}.",
+                target: new NotificationTarget(UserId: e.OwnerId),
+                priority: "normal",
+                targetUrl: $"/calendar?event={e.Id}&date={e.StartAt.ToLocalTime():yyyy-MM-dd}",
+                ct: ct);
+            if (result.Success) { e.ReminderSentAt = DateTime.UtcNow; sent++; }
+        }
+        if (sent > 0) await db.SaveChangesAsync(ct);
+        return sent;
     }
 
     /// Logika satu tick (dipisah agar bisa diuji unit): terbitkan notifikasi untuk
@@ -41,7 +69,7 @@ public sealed class MeetingReminderWorker(IServiceScopeFactory scopeFactory, ILo
         var now = DateTime.UtcNow;
         var due = await db.MeetingReminders
             .Where(r => r.SentAt == null && r.SendAt <= now)
-            .Join(db.Meetings.Where(m => m.Status != "dibatalkan"), r => r.MeetingId, m => m.Id, (r, m) => new { r.Id, r.UserId, r.SendAt, Meeting = m })
+            .Join(db.Meetings.Where(m => m.Status != MeetingStatus.Cancelled), r => r.MeetingId, m => m.Id, (r, m) => new { r.Id, r.UserId, r.SendAt, Meeting = m })
             .Take(200)
             .ToListAsync(ct);
         if (due.Count == 0) return 0;

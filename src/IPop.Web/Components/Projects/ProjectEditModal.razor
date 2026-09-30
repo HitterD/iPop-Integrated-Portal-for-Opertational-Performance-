@@ -1,62 +1,37 @@
 @using IPop.Application.Projects
 
 <div class="proj-modal-backdrop" @onclick="OnClose"></div>
-<div class="proj-modal" role="dialog" aria-modal="true" aria-label="Edit Project">
+<div class="proj-modal v6-project-modal" role="dialog" aria-modal="true" aria-label="Edit Project">
     <div class="proj-modal-head">
-        <div style="display:flex;align-items:center;gap:8px">
-            <i data-lucide="edit-3"></i>
-            <span>Edit Project Settings</span>
-        </div>
-        <button class="btn-sm surface" style="padding:4px 8px" @onclick="OnClose">
-            <i data-lucide="x"></i>
-        </button>
+        <span class="vpm-tile" style="background:@selectedColor">@ProjectUiHelpers.GetInitials(editProjName)</span>
+        <span>Edit project</span>
+        <button type="button" class="vpm-close" @onclick="OnClose" aria-label="Close"><i data-lucide="x"></i></button>
     </div>
-
     <div class="proj-modal-body">
-        <div class="field" style="margin:0">
-            <label style="font-size:11.5px;font-weight:700">Project Name *</label>
-            <input class="org-input" @bind="editProjName" />
+        <div class="field"><label>Project name <span class="vpm-required">*</span></label><input class="org-input" @bind="editProjName" placeholder="Project name" /></div>
+        <div class="field"><label>Description</label><textarea class="org-input" rows="2" @bind="editProjDesc" placeholder="What is this project about?"></textarea></div>
+        <div class="vpm-grid">
+            <div class="field"><label>Year</label><input type="number" class="org-input" @bind="editProjYear" /></div>
+            <div class="field"><label>Deadline</label><AppDatePicker @bind-Value="editProjDeadline" AllowClear="true" AriaLabel="Deadline" /></div>
         </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div class="field" style="margin:0">
-                <label style="font-size:11.5px;font-weight:700">Project Status</label>
-                <select class="filter-select" style="width:100%" @bind="editProjStatus">
-                    <option value="planning">Planning</option>
-                    <option value="doing">Active / Doing</option>
-                    <option value="completed">Completed</option>
-                    <option value="on_hold">On Hold</option>
-                </select>
-            </div>
-            <div class="field" style="margin:0">
-                <label style="font-size:11.5px;font-weight:700">Year</label>
-                <input type="number" class="org-input" @bind="editProjYear" />
-            </div>
+        <div class="vpm-grid">
+            <div class="field"><label>Status</label><select class="filter-select" @bind="editProjStatus"><option value="planning">Planning</option><option value="doing">Active / Doing</option><option value="on_hold">On hold</option><option value="completed">Done</option></select></div>
+            <div class="field"><label>Start date</label><AppDatePicker @bind-Value="editProjStartDate" AllowClear="true" AriaLabel="Start date" /></div>
         </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div class="field" style="margin:0">
-                <label style="font-size:11.5px;font-weight:700">Start Date</label>
-                <input type="date" class="org-input" value="@(editProjStartDate?.ToString("yyyy-MM-dd"))" @onchange="e => editProjStartDate = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null" />
+        <div class="field">
+            <label>Color</label>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:2px">
+                @foreach (var c in PaletteColors)
+                {
+                    var col = c;
+                    var isSelected = selectedColor.Equals(col, StringComparison.OrdinalIgnoreCase);
+                    <button type="button" style="width:28px;height:28px;border-radius:50%;border:none;background:@col;cursor:pointer;box-shadow:@(isSelected ? $"0 0 0 2px var(--surface), 0 0 0 4px {col}" : "none");transition:box-shadow .15s ease"
+                            @onclick="() => selectedColor = col" aria-label="Choose color @col"></button>
+                }
             </div>
-            <div class="field" style="margin:0">
-                <label style="font-size:11.5px;font-weight:700">Deadline</label>
-                <input type="date" class="org-input" value="@(editProjDeadline?.ToString("yyyy-MM-dd"))" @onchange="e => editProjDeadline = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : null" />
-            </div>
-        </div>
-
-        <div class="field" style="margin:0">
-            <label style="font-size:11.5px;font-weight:700">Description</label>
-            <textarea class="org-input" style="min-height:70px;resize:vertical;font-size:12.5px" @bind="editProjDesc"></textarea>
         </div>
     </div>
-
-    <div class="proj-modal-foot">
-        <button class="btn-sm surface" @onclick="OnClose">Cancel</button>
-        <button class="btn-sm accent" @onclick="HandleSubmit">
-            <i data-lucide="check"></i> Save Changes
-        </button>
-    </div>
+    <div class="proj-modal-foot"><button type="button" class="btn-sm surface" @onclick="OnClose">Cancel</button><button type="button" class="btn-sm accent" @onclick="HandleSubmit"><i data-lucide="check"></i>Save changes</button></div>
 </div>
 
 @code {
@@ -66,17 +41,26 @@
     [Parameter] public EventCallback<EditProjectModel> OnSubmit { get; set; }
 
     private string editProjName = "";
+    private string selectedColor = "#2E9E5B";
     private string editProjStatus = "doing";
     private int editProjYear = DateTime.UtcNow.Year;
     private DateTime? editProjStartDate;
     private DateTime? editProjDeadline;
     private string? editProjDesc;
 
+    private static readonly string[] PaletteColors = ["#2E9E5B", "#0A84FF", "#7657C4", "#FF9F0A", "#C0513A", "#18808A"];
+
+    // Filled once per project: live refreshes replace the Project instance and must not wipe
+    // what the user is typing.
+    private Guid? _initFor;
+
     protected override void OnParametersSet()
     {
-        if (Project is not null)
+        if (Project is not null && _initFor != Project.Id)
         {
+            _initFor = Project.Id;
             editProjName = Project.Name;
+            selectedColor = !string.IsNullOrWhiteSpace(Project.Color) ? Project.Color : "#2E9E5B";
             editProjStatus = Project.Status;
             editProjYear = Project.Year;
             editProjStartDate = Project.StartDate;
@@ -95,7 +79,8 @@
             editProjYear,
             editProjStartDate,
             editProjDeadline,
-            editProjDesc?.Trim()
+            editProjDesc?.Trim(),
+            selectedColor
         );
         await OnSubmit.InvokeAsync(model);
     }
@@ -107,6 +92,7 @@
         int Year,
         DateTime? StartDate,
         DateTime? Deadline,
-        string? Description
+        string? Description,
+        string? Color = null
     );
 }

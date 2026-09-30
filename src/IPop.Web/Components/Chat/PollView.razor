@@ -15,7 +15,9 @@
             var pct = TotalVotes > 0 ? (int)Math.Round((double)voteCount / TotalVotes * 100) : 0;
             var hasVoted = HasUserVoted(idx);
 
-            <div class="poll-opt @(hasVoted ? "voted" : "")" @onclick="() => ToggleVote(idx)">
+            <div class="poll-opt @(hasVoted ? "voted" : "") @(busy ? "busy" : "")" role="button" tabindex="0"
+                 aria-pressed="@(hasVoted ? "true" : "false")" @onclick="() => ToggleVote(idx)"
+                 @onkeydown='e => { if (e.Key is "Enter" or " ") return ToggleVote(idx); return Task.CompletedTask; }'>
                 <div class="poll-opt-progress" style="width:@(pct)%"></div>
                 <div class="poll-opt-text">
                     <span>@(hasVoted ? "☑" : "☐")</span>
@@ -32,6 +34,10 @@
         <span>@(AllowMultiple ? "Multiple choice" : "Single choice")</span>
         <span>@TotalVotes vote@(TotalVotes == 1 ? "" : "s")</span>
     </div>
+    @if (voteError is not null)
+    {
+        <div class="poll-error" role="alert">@voteError</div>
+    }
 </div>
 
 @code {
@@ -47,6 +53,8 @@
     }
 
     private PollData data = new();
+    private bool busy;
+    private string? voteError;
     private string Question => data.Question;
     private List<string> Options => data.Options ?? [];
     private bool AllowMultiple => data.AllowMultiple;
@@ -97,8 +105,10 @@
     private async Task ToggleVote(int optionIndex)
     {
         var me = Auth.Me?.Nik;
-        if (me == null || ChatSvc.ActiveRoomId == null) return;
+        if (me == null || busy) return;
 
+        // Optimistic toggle; the server applies the same rule atomically and broadcasts the
+        // result as a messageEdited, which re-renders every member's tally.
         data.Votes ??= new();
         var key = optionIndex.ToString();
         data.Votes.TryAdd(key, new List<string>());
@@ -121,8 +131,13 @@
             data.Votes[key].Add(me);
         }
 
-        var newContent = "[poll]" + JsonSerializer.Serialize(data);
-        await Auth.SendAsync(HttpMethod.Put, $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/messages/{MessageId}", new { content = newContent });
-        StateHasChanged();
+        busy = true; voteError = null;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/chat/messages/{MessageId}/poll/vote", new { optionIndex });
+            if (!res.IsSuccessStatusCode) { voteError = "Vote failed — try again."; OnParametersSet(); }
+        }
+        catch { voteError = "Vote failed — try again."; OnParametersSet(); }
+        finally { busy = false; }
     }
 }

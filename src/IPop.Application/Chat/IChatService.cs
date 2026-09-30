@@ -15,6 +15,8 @@ public interface IChatService
     Task<MessageResultDto> DeleteMessageAsync(Guid userId, Guid messageId, bool isAdmin, CancellationToken ct);
     Task<MessageResultDto> ForwardMessageAsync(Guid userId, Guid messageId, Guid targetRoomId, CancellationToken ct);
     Task<PagedResult<MessageDto>> GetMessagesAsync(Guid roomId, Guid userId, int page, int pageSize, CancellationToken ct);
+    /// Keyset paging for "load older": messages strictly older than `before` (UTC).
+    Task<PagedResult<MessageDto>> GetMessagesBeforeAsync(Guid roomId, Guid userId, DateTime before, int pageSize, CancellationToken ct);
 
     // Threads
     Task<MessageResultDto> SendThreadReplyAsync(Guid senderId, Guid parentMessageId, SendMessageRequest req, CancellationToken ct);
@@ -23,6 +25,9 @@ public interface IChatService
 
     // Reactions
     Task<ReactionResultDto> ToggleReactionAsync(Guid userId, Guid messageId, string emoji, CancellationToken ct);
+
+    // Polls ("[poll]{json}" messages): toggles the caller's vote on one option; any active member may vote.
+    Task<MessageResultDto> VotePollAsync(Guid userId, Guid messageId, int optionIndex, CancellationToken ct);
 
     // Read receipts
     Task RecordDeliveryAsync(Guid userId, Guid messageId, CancellationToken ct);
@@ -48,6 +53,8 @@ public interface IChatService
 
     // Group identity & audit
     Task<RoomSettingsResultDto> UpdateGroupIdentityAsync(Guid actorId, Guid roomId, string name, string? description, string? avatarColor, CancellationToken ct);
+    /// Set/clear the group photo (owner/admin). Error holds the previous URL on success so the caller can delete its file.
+    Task<RoomSettingsResultDto> SetGroupAvatarAsync(Guid actorId, Guid roomId, string? avatarUrl, CancellationToken ct);
     Task<PagedResult<MembershipAuditDto>> GetMembershipAuditAsync(Guid callerId, Guid roomId, int page, int pageSize, CancellationToken ct);
 
     // Search

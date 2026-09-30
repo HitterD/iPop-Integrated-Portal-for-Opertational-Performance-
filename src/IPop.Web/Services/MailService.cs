@@ -75,14 +75,50 @@ public sealed class MailService(AuthState Auth, HttpClient http)
         => (await PostAsync<object?>("/api/mail/bulk/delete", new BatchIds(ids), ct)) is not null;
     public async Task<bool> BulkRestoreAsync(IReadOnlyList<Guid> ids, CancellationToken ct = default)
         => (await PostAsync<object?>("/api/mail/bulk/restore", new BatchIds(ids), ct)) is not null;
+    public async Task<bool> BulkReadAsync(IReadOnlyList<Guid> ids, CancellationToken ct = default)
+        => (await PostAsync<object?>("/api/mail/bulk/read-ids", new BatchIds(ids), ct)) is not null;
     public async Task<bool> MarkAllReadAsync(MailFolder f, CancellationToken ct = default)
         => (await PostAsync<object?>("/api/mail/bulk/read", new FolderReq(F(f)), ct)) is not null;
 
     public async Task<MailAttachment[]?> UploadAsync(MultipartFormDataContent content, CancellationToken ct = default)
+        => (await UploadWithErrorAsync(content, ct)).Files;
+
+    /// Upload that keeps the server's reason on failure (file too large, too many files, …).
+    public async Task<(MailAttachment[]? Files, string? Error)> UploadWithErrorAsync(MultipartFormDataContent content, CancellationToken ct = default)
     {
         using var resp = await Auth.SendMultipartAsync("/api/mail/attachments/upload", content);
-        if (!resp.IsSuccessStatusCode) return null;
-        return await resp.Content.ReadFromJsonAsync<MailAttachment[]>(cancellationToken: ct);
+        if (resp.IsSuccessStatusCode)
+            return (await resp.Content.ReadFromJsonAsync<MailAttachment[]>(cancellationToken: ct), null);
+        return (null, await ReadErrorAsync(resp, ct));
+    }
+
+    internal static async Task<string> ReadErrorAsync(HttpResponseMessage resp, CancellationToken ct)
+    {
+        try
+        {
+            var text = await resp.Content.ReadAsStringAsync(ct);
+            if (!string.IsNullOrWhiteSpace(text) && text.TrimStart().StartsWith('{'))
+            {
+                using var doc = JsonDocument.Parse(text);
+                foreach (var key in new[] { "message", "detail", "title", "error" })
+                    if (doc.RootElement.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString()))
+                        return v.GetString()!;
+            }
+        }
+        catch { /* fall through to the status-based message */ }
+        return (int)resp.StatusCode switch
+        {
+            413 => "The upload is too large. Attach at most 5 files of 50 MB each.",
+            401 or 403 => "You don't have permission to attach files.",
+            _ => $"Upload failed ({(int)resp.StatusCode}).",
+        };
+    }
+
+    /// Applies or removes one of the user's labels on a mail. Returns whether the server accepted it.
+    public async Task<bool> SetLabelAsync(Guid mailId, Guid labelId, bool on, CancellationToken ct = default)
+    {
+        using var resp = await Auth.SendAsync(on ? HttpMethod.Post : HttpMethod.Delete, $"/api/mail/{mailId}/labels/{labelId}");
+        return resp.IsSuccessStatusCode;
     }
 
     public async Task<IReadOnlyList<MailDeliveryState>?> GetDeliveryAsync(Guid id, CancellationToken ct = default)

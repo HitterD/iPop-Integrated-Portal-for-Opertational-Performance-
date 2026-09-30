@@ -618,4 +618,76 @@ public class MailServiceTests
         var unmuted = await svc.ToggleMuteAsync(b.Id, mailId, default);
         Assert.False(unmuted);
     }
+
+    [Fact]
+    public async Task Send_applies_only_the_senders_own_labels_to_the_senders_copy()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var mine = new MailLabel { Id = Guid.NewGuid(), UserId = a.Id, Name = "Proyek", Color = "#0A84FF", CreatedAt = DateTime.UtcNow };
+        var theirs = new MailLabel { Id = Guid.NewGuid(), UserId = b.Id, Name = "Pribadi", Color = "#FF9F0A", CreatedAt = DateTime.UtcNow };
+        t.Db.MailLabels.AddRange(mine, theirs);
+        t.Db.SaveChanges();
+
+        var result = await new MailService(t.Verify()).SendAsync(a.Id, new ComposeMailRequest(
+            "Label", "<p>x</p>", [b.Nik], [], [], LabelIds: [mine.Id, theirs.Id, mine.Id]), default);
+
+        Assert.True(result.Success);
+        var assigned = t.Verify().MailLabelAssignments.Where(x => x.MailId == result.MailId).Select(x => x.LabelId).ToList();
+        Assert.Equal([mine.Id], assigned);
+    }
+
+    [Fact]
+    public async Task BulkMarkRead_marks_only_the_callers_selected_rows()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var svc = new MailService(t.Verify());
+        var m1 = (await svc.SendAsync(a.Id, new ComposeMailRequest("1", "<p>1</p>", [b.Nik], [], []), default)).MailId!.Value;
+        var m2 = (await svc.SendAsync(a.Id, new ComposeMailRequest("2", "<p>2</p>", [b.Nik], [], []), default)).MailId!.Value;
+        var m3 = (await svc.SendAsync(a.Id, new ComposeMailRequest("3", "<p>3</p>", [b.Nik], [], []), default)).MailId!.Value;
+
+        var r = await new MailService(t.Verify()).BulkMarkReadAsync(b.Id, [m1, m2], default);
+
+        Assert.Equal(2, r.Affected);
+        var rows = t.Verify().MailRecipients.Where(x => x.UserId == b.Id).ToDictionary(x => x.MailId, x => x.IsRead);
+        Assert.True(rows[m1]);
+        Assert.True(rows[m2]);
+        Assert.False(rows[m3]);
+        // Ids the caller isn't a participant of are ignored.
+        var c = t.AddUser("C");
+        Assert.Equal(0, (await new MailService(t.Verify()).BulkMarkReadAsync(c.Id, [m3], default)).Affected);
+        Assert.False(t.Verify().MailRecipients.Single(x => x.UserId == b.Id && x.MailId == m3).IsRead);
+    }
+
+    [Fact]
+    public async Task Forward_carries_original_attachments_or_only_the_kept_ones()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var c = t.AddUser("C");
+        var orig = (await new MailService(t.Verify()).SendAsync(a.Id, new ComposeMailRequest("Doc", "<p>x</p>", [b.Nik], [], []), default)).MailId!.Value;
+        MailAttachment Att(string name) => new()
+        {
+            Id = Guid.NewGuid(), MailId = orig, FileName = name, FileSize = 10, MimeType = "application/pdf",
+            SynologyServer = "nas", SynologyPath = "/mail/" + name, CreatedAt = DateTime.UtcNow,
+        };
+        var keep = Att("keep.pdf");
+        t.Db.MailAttachments.AddRange(keep, Att("drop.pdf"));
+        t.Db.SaveChanges();
+
+        var all = await new MailService(t.Verify()).ForwardAsync(b.Id, orig, new ComposeMailRequest("Fwd: Doc", "<p>y</p>", [c.Nik], [], []), default);
+        var some = await new MailService(t.Verify()).ForwardAsync(b.Id, orig,
+            new ComposeMailRequest("Fwd: Doc", "<p>y</p>", [c.Nik], [], [], ForwardAttachmentIds: [keep.Id]), default);
+
+        var db = t.Verify();
+        Assert.Equal(2, db.MailAttachments.Count(x => x.MailId == all.MailId));
+        Assert.Equal(["keep.pdf"], db.MailAttachments.Where(x => x.MailId == some.MailId).Select(x => x.FileName).ToList());
+        // Only participants of the original may forward it.
+        Assert.Equal("forbidden", (await new MailService(t.Verify()).ForwardAsync(c.Id, orig,
+            new ComposeMailRequest("Fwd", "<p/>", [a.Nik], [], []), default)).Error);
+    }
 }

@@ -4,10 +4,14 @@
 # - Builds Api + Web, then runs Api on 5083 and Web devserver on 5103 bound to 0.0.0.0
 # Usage:  pwsh -ExecutionPolicy Bypass -File .\run.ps1
 #         pwsh -ExecutionPolicy Bypass -File .\run.ps1 -NoBuild
+#         pwsh -ExecutionPolicy Bypass -File .\run.ps1 -Https   (adds https 7083/7103 - needed for call microphones on the LAN)
 param(
     [switch]$NoBuild,
+    [switch]$Https,
     [int]$ApiPort = 5083,
     [int]$WebPort = 5103,
+    [int]$ApiHttpsPort = 7083,
+    [int]$WebHttpsPort = 7103,
     [switch]$NoPortFallback,
     [switch]$KeepOrphans
 )
@@ -177,6 +181,39 @@ $requestedApiPort = $ApiPort
 $requestedWebPort = $WebPort
 $ApiPort = Resolve-Port $ApiPort "Api"
 $WebPort = Resolve-Port $WebPort "Web"
+if ($Https) {
+    $ApiHttpsPort = Resolve-Port $ApiHttpsPort "ApiHttps"
+    $WebHttpsPort = Resolve-Port $WebHttpsPort "WebHttps"
+}
+
+# -- 3c. Self-signed certificate (-Https) -----------------------------------
+# Browsers only expose the microphone on https (or localhost), so LAN calls need TLS.
+# One cert for localhost + 127.0.0.1 + the LAN IP, regenerated when the IP changes.
+# Lives in .scratch\certs (never committed); Kestrel picks it up via env vars.
+if ($Https) {
+    $certDir = Join-Path $PSScriptRoot ".scratch\certs"
+    New-Item -ItemType Directory -Force -Path $certDir | Out-Null
+    Set-Content (Join-Path $certDir ".gitignore") "*" -Encoding ascii
+    $pfx = Join-Path $certDir "ipop-dev.pfx"
+    $stamp = Join-Path $certDir "ipop-dev.san"
+    $certPassword = "ipop-dev-only"
+    $san = "localhost,127.0.0.1,$lanIp"
+    if (-not (Test-Path $pfx) -or -not (Test-Path $stamp) -or (Get-Content $stamp -Raw).Trim() -ne $san) {
+        Info "Creating self-signed certificate for $san ..."
+        $ext = "2.5.29.17={text}DNS=localhost&IPAddress=127.0.0.1"
+        if ($lanIp -ne "localhost") { $ext += "&IPAddress=$lanIp" }
+        $cert = New-SelfSignedCertificate -Subject "CN=iPop dev" -FriendlyName "iPop dev (self-signed)" `
+            -TextExtension @($ext, "2.5.29.37={text}1.3.6.1.5.5.7.3.1") `
+            -CertStoreLocation "Cert:\CurrentUser\My" -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears(2)
+        Export-PfxCertificate -Cert $cert -FilePath $pfx -Password (ConvertTo-SecureString $certPassword -AsPlainText -Force) | Out-Null
+        Export-Certificate -Cert $cert -FilePath (Join-Path $certDir "ipop-dev.cer") | Out-Null
+        Remove-Item "Cert:\CurrentUser\My\$($cert.Thumbprint)" -ErrorAction SilentlyContinue
+        Set-Content $stamp $san -Encoding ascii
+        Ok "Certificate written to $pfx"
+    } else { Ok "Reusing certificate $pfx ($san)" }
+    $env:ASPNETCORE_Kestrel__Certificates__Default__Path = $pfx
+    $env:ASPNETCORE_Kestrel__Certificates__Default__Password = $certPassword
+}
 
 # -- 4. Firewall reminder (non-fatal) --------------------------------------
 try {
@@ -213,6 +250,17 @@ if (Test-Path $webSettings) {
             $patched = $true
             Info "Patched ApiBase: $origApiBase -> $desired  (reverted on exit)"
         }
+        # Pages served over https must call the API over https too (mixed content).
+        $j = Get-Content $webSettings -Raw | ConvertFrom-Json
+        $desiredHttps = if ($Https) { "https://${lanIp}:$ApiHttpsPort" } else { $null }
+        $currentHttps = if ($j.PSObject.Properties.Name -contains "ApiBaseHttps") { $j.ApiBaseHttps } else { $null }
+        if ($currentHttps -ne $desiredHttps) {
+            if ($j.PSObject.Properties.Name -contains "ApiBaseHttps") { $j.PSObject.Properties.Remove("ApiBaseHttps") }
+            if ($desiredHttps) { $j | Add-Member -NotePropertyName ApiBaseHttps -NotePropertyValue $desiredHttps }
+            $j | ConvertTo-Json | Set-Content $webSettings -Encoding utf8
+            $patched = $true
+            if ($desiredHttps) { Info "Patched ApiBaseHttps -> $desiredHttps  (removed on exit)" }
+        }
     } catch { Warn "Could not patch $webSettings : $_" }
 }
 
@@ -231,7 +279,9 @@ if (Test-Path $apiSettings) {
         $aj = Get-Content $apiSettings -Raw | ConvertFrom-Json
         $origCorsOrigins = $aj.Cors.WebOrigins
         $wantedOrigins = @("http://localhost:$WebPort", "https://localhost:$WebPort", "http://${lanIp}:$WebPort", "https://${lanIp}:$WebPort", "https://ipop.santos.co.id")
-        $needPatch = -not $aj.Cors -or -not $aj.Cors.WebOrigins -or @($aj.Cors.WebOrigins | Where-Object { $_ -like "*${lanIp}*" }).Count -eq 0
+        if ($Https) { $wantedOrigins += @("https://localhost:$WebHttpsPort", "https://127.0.0.1:$WebHttpsPort", "https://${lanIp}:$WebHttpsPort") }
+        $needPatch = -not $aj.Cors -or -not $aj.Cors.WebOrigins -or @($wantedOrigins | Where-Object { $aj.Cors.WebOrigins -notcontains $_ }).Count -gt 0
+        if ($needPatch -and $aj.Cors -and $aj.Cors.WebOrigins) { $wantedOrigins = @(@($aj.Cors.WebOrigins) + $wantedOrigins | Select-Object -Unique) }
         if ($needPatch) {
             if (-not $aj.Cors) { $aj | Add-Member -NotePropertyName Cors -NotePropertyValue ([pscustomobject]@{ WebOrigins = $wantedOrigins }) }
             else { $aj.Cors.WebOrigins = $wantedOrigins }
@@ -252,6 +302,12 @@ Write-Host ""
 Write-Host "  On this machine:  http://localhost:$WebPort" -ForegroundColor DarkGray
 Write-Host "  From another device on the same LAN:  http://${lanIp}:$WebPort" -ForegroundColor DarkGray
 Write-Host "  If that fails: check Windows Firewall allows $ApiPort and $WebPort, and both devices are on the same subnet." -ForegroundColor DarkGray
+if ($Https) {
+    Write-Host ""
+    Write-Host "  HTTPS (calls/microphone):  https://${lanIp}:$WebHttpsPort   API https://${lanIp}:$ApiHttpsPort" -ForegroundColor White
+    Write-Host "  Self-signed: on each device open https://${lanIp}:$ApiHttpsPort/ once and accept the warning," -ForegroundColor DarkGray
+    Write-Host "  then open the Web URL. Or trust .scratch\certs\ipop-dev.cer (Trusted Root) to skip warnings." -ForegroundColor DarkGray
+}
 Write-Host ""
 Write-Host "  Press Ctrl+C to stop both." -ForegroundColor Yellow
 Write-Host ""
@@ -259,8 +315,9 @@ Write-Host ""
 $apiJob = $null
 $webJob = $null
 try {
-    function Start-VisibleProcess([string]$title, [string]$projectPath, [int]$port) {
-        $runCmd = "dotnet run --project $projectPath --no-build --urls http://0.0.0.0:$port"
+    function Start-VisibleProcess([string]$title, [string]$projectPath, [int]$port, [int]$httpsPort) {
+        $urls = if ($Https) { "http://0.0.0.0:$port;https://0.0.0.0:$httpsPort" } else { "http://0.0.0.0:$port" }
+        $runCmd = "dotnet run --project $projectPath --no-build --urls `"$urls`""
         $hasWt = [bool](Get-Command wt.exe -ErrorAction SilentlyContinue)
         $started = $false
         if ($hasWt) {
@@ -277,10 +334,10 @@ try {
     }
 
     Info "Opening visible console tabs for Backend and Frontend..."
-    Start-VisibleProcess "IPop API" "src/IPop.Api/IPop.Api.csproj" $ApiPort
+    Start-VisibleProcess "IPop API" "src/IPop.Api/IPop.Api.csproj" $ApiPort $ApiHttpsPort
     Start-Sleep -Milliseconds 800
 
-    Start-VisibleProcess "IPop Web" "src/IPop.Web/IPop.Web.csproj" $WebPort
+    Start-VisibleProcess "IPop Web" "src/IPop.Web/IPop.Web.csproj" $WebPort $WebHttpsPort
     Start-Sleep -Milliseconds 800
 
     # Wait until either exits (Ctrl+C kills this script, finally block cleans up)
@@ -318,6 +375,7 @@ try {
         try {
             $j = Get-Content $webSettings -Raw | ConvertFrom-Json
             $j.ApiBase = $origApiBase
+            if ($j.PSObject.Properties.Name -contains "ApiBaseHttps") { $j.PSObject.Properties.Remove("ApiBaseHttps") }
             $j | ConvertTo-Json | Set-Content $webSettings -Encoding utf8
             Info "Restored ApiBase to $origApiBase"
         } catch {}

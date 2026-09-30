@@ -1,0 +1,384 @@
+@using IPop.Application.Chat
+@using IPop.Web.Services
+@inject IJSRuntime JS
+@inject AuthState Auth
+@inject ChatState ChatSvc
+@inject HttpClient Http
+@inject ConfirmService Confirm
+@inject ToastService Toasts
+
+@* Group settings, hosted inside the chat room drawer (DetailPanelView.GroupSettings).
+   Used to be its own page (/chat/group/{id}/settings); that route now redirects here.
+   Members and permissions stay in the drawer's Members view. *@
+<div class="gs-panel">
+    @if (loading)
+    {
+        <div class="gs-card gs-state"><i data-lucide="loader-circle"></i><div>Loading group settings…</div></div>
+    }
+    else if (room is null)
+    {
+        <div class="gs-card gs-state">
+            <i data-lucide="users"></i>
+            <div class="gs-state-title">Group not found</div>
+            <div class="gs-muted">This group does not exist, is not a group, or you are not a member.</div>
+        </div>
+    }
+    else
+    {
+        @* ---- Hero: photo + name + description ---- *@
+        <section class="gs-card gs-hero">
+            <div class="gs-hero-avatar">
+                @if (room.AvatarUrl is not null)
+                {
+                    <img src="@ImageUrl(room.AvatarUrl)" alt="Group photo" />
+                }
+                else
+                {
+                    <div class="gs-initials" style="background:@CurrentColor">@Initials(room.Name ?? "G")</div>
+                }
+                @if (canEdit)
+                {
+                    <InputFile OnChange="OnAvatarSelected" accept="image/png,image/jpeg,image/webp,image/gif" id="@inputId" class="gs-file" />
+                    <label for="@inputId" class="gs-camera @(uploading ? "busy" : "")" title="Change group photo" aria-label="Change group photo">
+                        <i data-lucide="@(uploading ? "loader-circle" : "camera")"></i>
+                    </label>
+                }
+            </div>
+
+            <div class="gs-hero-body">
+                @if (editingName)
+                {
+                    <input class="gs-name-input" @bind="editName" @bind:event="oninput" maxlength="100" @onkeydown="NameKeyAsync" aria-label="Group name" autofocus />
+                }
+                else
+                {
+                    <h2 class="gs-name">
+                        @room.Name
+                        @if (canEdit)
+                        {
+                            <button type="button" class="gs-icon-btn" title="Rename group" aria-label="Rename group" @onclick="StartEditName"><i data-lucide="pencil"></i></button>
+                        }
+                    </h2>
+                }
+                <div class="gs-meta">
+                    <span><i data-lucide="users"></i> @room.MemberCount members</span>
+                    <span class="gs-role">@RoleLabel</span>
+                </div>
+
+                @if (editingDesc)
+                {
+                    <textarea class="gs-desc-input" @bind="editDesc" @bind:event="oninput" maxlength="500" rows="3" placeholder="What is this group about?" aria-label="Description"></textarea>
+                    <div class="gs-edit-row">
+                        <span class="gs-muted">@(editDesc?.Length ?? 0) / 500</span>
+                        <button type="button" class="gs-btn" @onclick="() => editingDesc = false">Cancel</button>
+                        <button type="button" class="gs-btn primary" disabled="@saving" @onclick="SaveIdentityAsync">Save</button>
+                    </div>
+                }
+                else
+                {
+                    <p class="gs-desc @(string.IsNullOrWhiteSpace(room.Description) ? "empty" : "")">
+                        @(string.IsNullOrWhiteSpace(room.Description) ? (canEdit ? "Add a description so members know what this group is for." : "No description.") : room.Description)
+                        @if (canEdit)
+                        {
+                            <button type="button" class="gs-link" @onclick="StartEditDesc">@(string.IsNullOrWhiteSpace(room.Description) ? "Add" : "Edit")</button>
+                        }
+                    </p>
+                }
+                @if (editingName)
+                {
+                    <div class="gs-edit-row">
+                        <span class="gs-muted">@editName.Length / 100</span>
+                        <button type="button" class="gs-btn" @onclick="() => editingName = false">Cancel</button>
+                        <button type="button" class="gs-btn primary" disabled="@(saving || string.IsNullOrWhiteSpace(editName))" @onclick="SaveIdentityAsync">Save</button>
+                    </div>
+                }
+                @if (error is not null) { <div class="gs-error" role="alert">@error</div> }
+
+                @if (canEdit && room.AvatarUrl is not null)
+                {
+                    <div class="gs-hero-actions">
+                        <button type="button" class="gs-btn" disabled="@uploading" @onclick="RemovePhotoAsync"><i data-lucide="image-off"></i> Remove photo</button>
+                    </div>
+                }
+            </div>
+        </section>
+
+        @if (canEdit)
+        {
+            <section class="gs-card">
+                <header class="gs-card-head">
+                    <div><h2>Avatar colour</h2><p>Shown behind the initials when the group has no photo.</p></div>
+                </header>
+                <div class="gs-swatches" role="radiogroup" aria-label="Avatar colour">
+                    @foreach (var c in AvatarChoices)
+                    {
+                        var color = c;
+                        var on = string.Equals(CurrentColor, color, StringComparison.OrdinalIgnoreCase);
+                        <button type="button" class="gs-swatch @(on ? "on" : "")" style="background:@color" role="radio" aria-checked="@(on ? "true" : "false")"
+                                title="@color" aria-label="Colour @color" @onclick="() => PickColorAsync(color)">
+                            @if (on) { <i data-lucide="check"></i> }
+                        </button>
+                    }
+                </div>
+            </section>
+        }
+
+        @* ---- Notifications ---- *@
+        <section class="gs-card">
+            <header class="gs-card-head">
+                <div><h2>Notifications</h2><p>@MuteSummary</p></div>
+            </header>
+            <div class="gs-seg" role="radiogroup" aria-label="Mute notifications">
+                @foreach (var (key, label) in MuteOptions)
+                {
+                    var k = key;
+                    var on = MuteKey == k;
+                    <button type="button" class="gs-seg-item @(on ? "on" : "")" role="radio" aria-checked="@(on ? "true" : "false")" disabled="@muteBusy" @onclick="() => SetMuteAsync(k)">@label</button>
+                }
+            </div>
+        </section>
+
+        @* ---- Danger zone ---- *@
+        <section class="gs-card gs-danger">
+            <header class="gs-card-head"><div><h2>Danger zone</h2></div></header>
+            <div class="gs-danger-row">
+                <div><strong>Archive group</strong><p>Hides it from your list. History stays available under Archived.</p></div>
+                <button type="button" class="gs-btn" @onclick="ArchiveAsync"><i data-lucide="archive"></i> Archive</button>
+            </div>
+            <div class="gs-danger-row">
+                <div><strong>Leave group</strong><p>@LeaveHint</p></div>
+                <button type="button" class="gs-btn danger" @onclick="LeaveAsync"><i data-lucide="log-out"></i> Leave</button>
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid RoomId { get; set; }
+    /// Raised after name/description/photo/colour change so the host can refresh the
+    /// open room (header, drawer hero).
+    [Parameter] public EventCallback OnChanged { get; set; }
+    /// Raised after the user archived or left the group — the host closes the drawer
+    /// and the conversation, since the room is no longer in the list.
+    [Parameter] public EventCallback OnRoomRemoved { get; set; }
+
+    private ChatRoomDto? room;
+    private bool loading = true, muteBusy, saving, uploading, editingName, editingDesc;
+    private string editName = "";
+    private string? editDesc, error;
+    private readonly string inputId = "gs-avatar-" + Guid.NewGuid().ToString("N")[..8];
+
+    internal static readonly string[] AvatarChoices = ["#2e7d5b", "#7d5ba6", "#8a6d3b", "#b3543f", "#4f6d8f", "#5b7d2e", "#0a84ff", "#c2410c"];
+    private static readonly (string Key, string Label)[] MuteOptions = [("off", "On"), ("1h", "1 hour"), ("8h", "8 hours"), ("1w", "1 week"), ("forever", "Muted")];
+
+    private bool canEdit => room?.CurrentUserRole is "owner" or "admin";
+    private string CurrentColor => room?.AvatarColor ?? IPop.Web.Models.AvatarPalette.For(room?.Name ?? "G");
+    private string RoleLabel => room?.CurrentUserRole switch { "owner" => "Owner", "admin" => "Admin", _ => "Member" };
+    private string? pendingMute;
+
+    private RoomListDto? RoomListEntry => ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms).FirstOrDefault(r => r.Id == RoomId);
+
+    /// Selected segment: the last choice this session, else "forever"/"off" from the server state.
+    private string MuteKey => RoomListEntry is not { IsMuted: true } dto ? "off"
+        : pendingMute is not null and not "off" ? pendingMute
+        : dto.MuteExpiresAt is null ? "forever" : "timed";
+
+    private string MuteSummary => RoomListEntry is not { IsMuted: true } dto
+        ? "You get notified about new messages."
+        : dto.MuteExpiresAt is null ? "Muted until you turn notifications back on." : $"Muted until {dto.MuteExpiresAt.Value.ToLocalTime():ddd d MMM, HH:mm}.";
+
+    private string LeaveHint
+    {
+        get
+        {
+            var others = room?.Members.Count(m => m.Nik != Auth.Me?.Nik) ?? 0;
+            return room?.CurrentUserRole == "owner"
+                ? others > 0 ? "Ownership moves to the next admin (or longest member)." : "You are the last member — the group will be archived."
+                : "The conversation is removed from your list.";
+        }
+    }
+
+    private Guid loadedRoomId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (RoomId == loadedRoomId) return;
+        loadedRoomId = RoomId;
+        loading = true;
+        pendingMute = null;
+        editingName = editingDesc = false;
+        error = null;
+        try
+        {
+            var r = await Auth.GetAsync<ChatRoomDto>($"/api/chat/rooms/{RoomId}");
+            room = r is not null && r.Type == "group" ? r : null;
+        }
+        catch { room = null; }
+        finally { loading = false; }
+    }
+
+    private string ImageUrl(string path) => Http.BaseAddress is null ? path : new Uri(Http.BaseAddress, path).ToString();
+
+    private async Task ReloadAsync()
+    {
+        room = await Auth.GetAsync<ChatRoomDto>($"/api/chat/rooms/{RoomId}");
+        await ChatSvc.LoadRoomsAsync();
+        await OnChanged.InvokeAsync();
+        StateHasChanged();
+    }
+
+    private void StartEditName() { editName = room?.Name ?? ""; editingName = true; error = null; }
+    private void StartEditDesc() { editDesc = room?.Description; editingDesc = true; error = null; }
+
+    private async Task NameKeyAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SaveIdentityAsync();
+        else if (e.Key == "Escape") editingName = false;
+    }
+
+    private async Task SaveIdentityAsync()
+    {
+        if (room is null) return;
+        var name = editingName ? editName.Trim() : room.Name;
+        var desc = editingDesc ? editDesc?.Trim() : room.Description;
+        if (string.IsNullOrWhiteSpace(name)) { error = "Group name is required."; return; }
+        saving = true; error = null;
+        try
+        {
+            if (await PutIdentityAsync(name, desc, room.AvatarColor))
+            {
+                editingName = editingDesc = false;
+                await ReloadAsync();
+                Toasts.Show("Group info saved.", ToastKind.Success);
+            }
+        }
+        finally { saving = false; }
+    }
+
+    private async Task PickColorAsync(string color)
+    {
+        if (room is null || string.Equals(room.AvatarColor, color, StringComparison.OrdinalIgnoreCase)) return;
+        if (await PutIdentityAsync(room.Name, room.Description, color))
+        {
+            await ReloadAsync();
+            Toasts.Show("Avatar colour saved.", ToastKind.Success);
+        }
+    }
+
+    private async Task<bool> PutIdentityAsync(string? name, string? description, string? avatarColor)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/chat/rooms/{RoomId}", new { name, description, avatarColor });
+        if (res.IsSuccessStatusCode) return true;
+        error = await ErrorMessageAsync(res);
+        return false;
+    }
+
+    private async Task OnAvatarSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        if (!file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) { Toasts.Show("Choose an image file.", ToastKind.Warning); return; }
+        if (file.Size > 2 * 1024 * 1024) { Toasts.Show("Photo must be 2 MB or less.", ToastKind.Warning); return; }
+        uploading = true; error = null;
+        StateHasChanged();
+        try
+        {
+            using var ms = new MemoryStream();
+            await using (var s = file.OpenReadStream(2 * 1024 * 1024)) await s.CopyToAsync(ms);
+            var content = new MultipartFormDataContent();
+            var part = new ByteArrayContent(ms.ToArray());
+            part.Headers.ContentType = new(file.ContentType);
+            content.Add(part, "file", file.Name);
+            var res = await Auth.SendMultipartAsync($"/api/chat/rooms/{RoomId}/avatar", content);
+            if (!res.IsSuccessStatusCode) { Toasts.Show(await ErrorMessageAsync(res), ToastKind.Error); return; }
+            await ReloadAsync();
+            Toasts.Show("Group photo updated.", ToastKind.Success);
+        }
+        catch (Exception ex) { Toasts.Show("Upload failed: " + ex.Message, ToastKind.Error); }
+        finally { uploading = false; }
+    }
+
+    private async Task RemovePhotoAsync()
+    {
+        if (!await Confirm.AskAsync("Remove group photo?", "Members will see the initials avatar again.", "Remove")) return;
+        uploading = true;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/rooms/{RoomId}/avatar");
+            if (!res.IsSuccessStatusCode) { Toasts.Show(await ErrorMessageAsync(res), ToastKind.Error); return; }
+            await ReloadAsync();
+            Toasts.Show("Group photo removed.", ToastKind.Success);
+        }
+        finally { uploading = false; }
+    }
+
+    private async Task SetMuteAsync(string key)
+    {
+        if (key == MuteKey) return;
+        muteBusy = true;
+        try
+        {
+            var res = key == "off"
+                ? await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/rooms/{RoomId}/mute")
+                : await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{RoomId}/mute", new { duration = key });
+            if (!res.IsSuccessStatusCode) { Toasts.Show(await ErrorMessageAsync(res), ToastKind.Error); return; }
+            pendingMute = key;
+            await ChatSvc.LoadRoomsAsync();
+        }
+        finally { muteBusy = false; }
+    }
+
+    private async Task ArchiveAsync()
+    {
+        if (!await Confirm.AskAsync("Archive this group?", "It disappears from your list. Reopen it any time from Archived.", "Archive", danger: false)) return;
+        await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{RoomId}/archive");
+        await ChatSvc.LoadRoomsAsync();
+        await ChatSvc.LoadArchivedRoomsAsync();
+        Toasts.Show("Group archived. Reopen from the Archived list.", ToastKind.Success);
+        await OnRoomRemoved.InvokeAsync();
+    }
+
+    private async Task LeaveAsync()
+    {
+        var others = room?.Members.Where(m => m.Nik != Auth.Me?.Nik).ToList() ?? [];
+        var body = room?.CurrentUserRole == "owner" && others.Count > 0
+            ? $"You are the owner. Ownership will transfer to {others.OrderBy(m => m.Role == "admin" ? 0 : 1).First().Name}."
+            : room?.CurrentUserRole == "owner" ? "You are the last member. The group will be archived."
+            : "You will stop receiving messages from this group.";
+        if (!await Confirm.AskAsync($"Leave {room?.Name}?", body, "Leave")) return;
+        await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/rooms/{RoomId}/leave");
+        await ChatSvc.LoadRoomsAsync();
+        await OnRoomRemoved.InvokeAsync();
+    }
+
+    private static async Task<string> ErrorMessageAsync(HttpResponseMessage res)
+    {
+        try
+        {
+            var b = await res.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+            var code = b?.GetValueOrDefault("code")?.ToString() ?? b?.GetValueOrDefault("message")?.ToString();
+            return code switch
+            {
+                "too_large" => "Photo must be 2 MB or less.",
+                "not_an_image" or "invalid_image" => "That file is not a supported image.",
+                "forbidden" => "Only the group owner or admins can change this.",
+                "invalid_group_name" => "Group name must be 1–100 characters.",
+                "invalid_group_description" => "Description must be 500 characters or fewer.",
+                null or "" => $"Request failed ({(int)res.StatusCode}).",
+                _ => b?.GetValueOrDefault("message")?.ToString() ?? code,
+            };
+        }
+        catch { return $"Request failed ({(int)res.StatusCode})."; }
+    }
+
+    private static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
+}

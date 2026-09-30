@@ -1,57 +1,92 @@
 @using IPop.Application.Projects
 @inject IJSRuntime JS
+@inject IPop.Web.Services.TimerState Timer
+@inject IPop.Web.Services.ToastService Toasts
+@implements IAsyncDisposable
 
-<div class="proj-table-card">
-    @* Table Top Bar *@
-    <div class="proj-table-head-bar">
-        <div class="table-filter-chips">
-            <button type="button" class="tbl-filter-chip @(StatusFilter == "" ? "active" : "")" @onclick='() => OnFilterChanged.InvokeAsync("")'>All Groups (@Tasks.Count)</button>
-            <button type="button" class="tbl-filter-chip @(StatusFilter == "todo" ? "active" : "")" @onclick='() => OnFilterChanged.InvokeAsync("todo")'>To Do (@Tasks.Count(t => t.Status == "todo"))</button>
-            <button type="button" class="tbl-filter-chip @(StatusFilter == "doing" ? "active" : "")" @onclick='() => OnFilterChanged.InvokeAsync("doing")'>In Progress (@Tasks.Count(t => t.Status == "doing"))</button>
-            <button type="button" class="tbl-filter-chip @(StatusFilter == "review" ? "active" : "")" @onclick='() => OnFilterChanged.InvokeAsync("review")'>Review (@Tasks.Count(t => t.Status == "review"))</button>
-            <button type="button" class="tbl-filter-chip @(StatusFilter == "done" ? "active" : "")" @onclick='() => OnFilterChanged.InvokeAsync("done")'>Done (@Tasks.Count(t => t.Status == "done"))</button>
-        </div>
-        <div style="font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:6px">
-            <i data-lucide="layout-list" style="width:13px;height:13px"></i>
-            <span>@(FilteredTasks.Count) tasks shown</span>
-        </div>
+@* v6 List: one card, one header row, collapsible status groups (mockup L353–380). *@
+<div class="plist-card @(resizingFieldId.HasValue ? "is-resizing" : "")"
+     @onpointermove="OnResizeMove" @onpointerup="EndResize" @onpointerleave="EndResize">
+    <div class="plist-row plist-head" style="@ColumnsStyle">
+        <span class="plist-lead">
+            @{ var visibleIds = VisibleOrder; var allOn = visibleIds.Count > 0 && visibleIds.All(SelectedIds.Contains); }
+            <input type="checkbox" class="plist-sel" aria-label="Pilih semua task yang tampil" checked="@allOn"
+                   @onchange="() => SetSelection(allOn ? SelectedIds.Except(visibleIds) : SelectedIds.Union(visibleIds))" />
+        </span><span>Task</span><span>Status</span><span>Priority</span><span>Assignee</span><span>Due</span><span>Subtasks</span>
+        @foreach (var field in VisibleFields)
+        {
+            <span class="plist-field-heading">
+                <span class="nm" title="@field.Name">@field.Name</span>
+                @if (CanManageGroups) { <button type="button" aria-label="Delete @field.Name field" @onclick="() => OnDeleteField.InvokeAsync(field.Id)">×</button> }
+                <span class="plist-col-resize" role="separator" aria-orientation="vertical" aria-label="Resize @field.Name column"
+                      tabindex="0" title="Drag to resize · double-click to reset"
+                      @onpointerdown="e => StartResize(field.Id, e)" @ondblclick="() => ResetWidth(field.Id)"
+                      @onkeydown="e => ResizeByKey(field.Id, e)"></span>
+            </span>
+        }
+        <span class="plist-cols-wrap">
+            @if (Fields.Count > 0)
+            {
+                <button type="button" class="plist-cols-btn" aria-haspopup="true" aria-expanded="@(showColumnsMenu ? "true" : "false")"
+                        title="Show or hide columns" aria-label="Show or hide field columns" @onclick="() => showColumnsMenu = !showColumnsMenu">
+                    <i data-lucide="columns-3"></i>@if (hiddenFieldIds.Count > 0) { <span class="plist-cols-count">@hiddenFieldIds.Count</span> }
+                </button>
+                @if (showColumnsMenu)
+                {
+                    <div class="plist-backdrop" @onclick="() => showColumnsMenu = false"></div>
+                    <div class="plist-cols-menu" role="menu" aria-label="Field columns">
+                        <div class="plist-menu-head">Columns</div>
+                        @foreach (var field in Fields)
+                        {
+                            var shown = !hiddenFieldIds.Contains(field.Id);
+                            <label class="plist-cols-opt"><input type="checkbox" checked="@shown" @onchange="() => ToggleFieldColumn(field.Id)" /><span>@field.Name</span></label>
+                        }
+                        <p class="plist-cols-note">Hidden columns still appear in task details.</p>
+                    </div>
+                }
+            }
+        </span>
     </div>
 
-    @* Monday.com Style Collapsible Status Groups *@
-    <div class="monday-table-groups">
-        @if (ShouldShowGroup("todo"))
+    @if (FilteredTasks.Count == 0 && Tasks.Count > 0)
+    {
+        <div class="plist-empty"><i data-lucide="search-x"></i>No tasks match the current filters.</div>
+    }
+    @foreach (var group in Groups.OrderBy(g => g.SortOrder))
+    {
+        @RenderGroup(group, FilteredTasks.Where(t => t.GroupId == group.Id && t.ParentTaskId is null).ToList())
+    }
+    @if (Groups.Count == 0)
+    {
+        <div class="plist-empty">Group tasks by phase to make progress easier to follow.</div>
+    }
+    @if (CanManageGroups)
+    {
+        @if (addingGroup)
         {
-            @RenderStatusGroup("todo", "To Do", "col-dot todo", "tbl-strip todo", isCollapsedTodo, () => isCollapsedTodo = !isCollapsedTodo, TodoTasks)
+            <div class="plist-group-create"><input aria-label="Group name" placeholder="Group name" maxlength="100" @bind="newGroupName" @bind:event="oninput" @onkeydown="OnGroupNameKey" /><button type="button" @onclick="SaveNewGroup">Add</button><button type="button" @onclick="() => addingGroup = false">Cancel</button></div>
         }
-
-        @if (ShouldShowGroup("doing"))
+        else
         {
-            @RenderStatusGroup("doing", "In Progress", "col-dot doing", "tbl-strip doing", isCollapsedDoing, () => isCollapsedDoing = !isCollapsedDoing, DoingTasks)
+            <button type="button" class="plist-add-group" @onclick="() => addingGroup = true"><i data-lucide="plus"></i>Add group</button>
         }
-
-        @if (ShouldShowGroup("review"))
-        {
-            @RenderStatusGroup("review", "Review", "col-dot review", "tbl-strip review", isCollapsedReview, () => isCollapsedReview = !isCollapsedReview, ReviewTasks)
-        }
-
-        @if (ShouldShowGroup("done"))
-        {
-            @RenderStatusGroup("done", "Done", "col-dot done", "tbl-strip done", isCollapsedDone, () => isCollapsedDone = !isCollapsedDone, DoneTasks)
-        }
-
-        @if (FilteredTasks.Count == 0)
-        {
-            <div class="tree-empty" style="padding:48px 16px;text-align:center">
-                <i data-lucide="inbox" style="width:32px;height:32px;margin-bottom:8px"></i>
-                <div>No tasks match the current filter.</div>
-            </div>
-        }
-    </div>
+    }
 </div>
 
 @code {
     [Parameter] public List<ProjectTaskDto> Tasks { get; set; } = [];
     [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
+    [Parameter] public List<ProjectGroupDto> Groups { get; set; } = [];
+    [Parameter] public List<ProjectFieldDto> Fields { get; set; } = [];
+    [Parameter] public Dictionary<Guid, Dictionary<Guid, string>> FieldValues { get; set; } = [];
+    [Parameter] public EventCallback<(Guid TaskId, Guid FieldId, string? Value)> OnSetFieldValue { get; set; }
+    [Parameter] public EventCallback<Guid> OnDeleteField { get; set; }
+    [Parameter] public bool CanManageGroups { get; set; }
+    [Parameter] public EventCallback<string> OnCreateGroup { get; set; }
+    [Parameter] public EventCallback<(Guid Id, string Name, string Color)> OnUpdateGroup { get; set; }
+    [Parameter] public EventCallback<Guid> OnDeleteGroup { get; set; }
+    [Parameter] public EventCallback<(Guid Id, int Offset)> OnReorderGroup { get; set; }
+    [Parameter] public EventCallback<(Guid TaskId, Guid GroupId)> OnMoveToGroup { get; set; }
     [Parameter] public string SearchQuery { get; set; } = "";
     [Parameter] public bool MyTasksOnly { get; set; }
     [Parameter] public bool OverdueOnly { get; set; }
@@ -67,16 +102,168 @@
     [Parameter] public EventCallback<(ProjectTaskDto Task, decimal? EstimatedHours)> OnEstimateChangeDirect { get; set; }
     [Parameter] public EventCallback<(Guid TaskId, string Title)> OnQuickAddSubtask { get; set; }
     [Parameter] public EventCallback<(string Status, string Title)> OnQuickAdd { get; set; }
+    [Parameter] public EventCallback<(Guid GroupId, string Title)> OnQuickAddInGroup { get; set; }
     [Parameter] public EventCallback<(Guid TaskId, Guid UserId, bool IsAssigned)> OnToggleAssignee { get; set; }
     [Parameter] public EventCallback<ProjectTaskDto> OnRequestExtension { get; set; }
-    [Parameter] public EventCallback<ProjectTaskDto> OnQuickViewTask { get; set; }
 
-    private bool isCollapsedTodo;
-    private bool isCollapsedDoing;
-    private bool isCollapsedReview;
-    private bool isCollapsedDone;
+    [Parameter] public string? PrefKey { get; set; }
 
-    private string? addingInStatus;
+    // ---- Fase 2c: selection for bulk actions (owned by the page, which renders the bulk bar) ----
+    [Parameter] public IReadOnlySet<Guid> SelectedIds { get; set; } = new HashSet<Guid>();
+    [Parameter] public EventCallback<IReadOnlySet<Guid>> OnSelectionChanged { get; set; }
+
+    private Guid? selectionAnchor;
+    private CancellationTokenSource? longPressCts;
+    private bool suppressNextClick;
+
+    /// Top-level tasks in on-screen order (groups by SortOrder), for shift-range and select-all.
+    private List<Guid> VisibleOrder
+    {
+        get
+        {
+            var filtered = FilteredTasks;
+            return Groups.OrderBy(g => g.SortOrder)
+                .SelectMany(g => collapsedGroups.Contains(g.Id) ? Enumerable.Empty<ProjectTaskDto>() : filtered.Where(t => t.GroupId == g.Id && t.ParentTaskId is null))
+                .Select(t => t.Id).ToList();
+        }
+    }
+
+    private Task SetSelection(IEnumerable<Guid> ids) => OnSelectionChanged.InvokeAsync(ids.ToHashSet());
+
+    private Task ToggleSelect(Guid id, bool shift)
+    {
+        var next = SelectedIds.ToHashSet();
+        var order = VisibleOrder;
+        if (shift && selectionAnchor is { } anchor && order.IndexOf(anchor) is var a and >= 0 && order.IndexOf(id) is var b and >= 0)
+        {
+            var on = !next.Contains(id);
+            foreach (var x in order.Skip(Math.Min(a, b)).Take(Math.Abs(a - b) + 1))
+                if (on) next.Add(x); else next.Remove(x);
+        }
+        else if (!next.Remove(id)) next.Add(id);
+        selectionAnchor = id;
+        return OnSelectionChanged.InvokeAsync(next);
+    }
+
+    private async Task RowClick(ProjectTaskDto t)
+    {
+        if (suppressNextClick) { suppressNextClick = false; return; }
+        await OnTaskClick.InvokeAsync(t);
+    }
+
+    // Touch: hold 450ms to select (a tap still opens the task).
+    private async Task StartLongPress(Guid id, PointerEventArgs e)
+    {
+        if (e.PointerType != "touch") return;
+        CancelLongPress();
+        var cts = longPressCts = new CancellationTokenSource();
+        try { await Task.Delay(450, cts.Token); }
+        catch (TaskCanceledException) { return; }
+        if (cts.IsCancellationRequested) return;
+        suppressNextClick = true;
+        await ToggleSelect(id, false);
+    }
+
+    private void CancelLongPress()
+    {
+        longPressCts?.Cancel();
+        longPressCts = null;
+    }
+
+    private static string BlockedTitle(ProjectTaskDto t) =>
+        "Menunggu: " + string.Join(", ", (t.DependsOn ?? []).Where(d => d.Status != "done").Select(d => d.Title));
+
+    // Field columns: hide/resize is a local, per-user-per-project preference; values stay editable in the drawer.
+    private const int MinFieldWidth = 80, MaxFieldWidth = 480;
+    private readonly HashSet<Guid> hiddenFieldIds = [];
+    private readonly Dictionary<Guid, int> fieldWidths = [];
+    private string? loadedPrefKey;
+    private bool showColumnsMenu;
+    private Guid? resizingFieldId;
+    private double resizeStartX;
+    private int resizeStartWidth;
+
+    private List<ProjectFieldDto> VisibleFields => Fields.Where(f => !hiddenFieldIds.Contains(f.Id)).ToList();
+
+    private string ColumnsStyle => Fields.Count == 0 ? "" :
+        $"grid-template-columns: 44px minmax(180px, 2.4fr) 116px 92px minmax(120px, 1.3fr) 92px 56px {string.Concat(VisibleFields.Select(f => fieldWidths.TryGetValue(f.Id, out var w) ? $"{w}px " : "minmax(120px, 1fr) "))}28px";
+
+    private sealed record ColumnPrefs(List<Guid>? Hidden, Dictionary<Guid, int>? Widths);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (PrefKey == loadedPrefKey) return;
+        loadedPrefKey = PrefKey;
+        hiddenFieldIds.Clear();
+        fieldWidths.Clear();
+        if (string.IsNullOrEmpty(PrefKey)) return;
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("ipop.prefGet", PrefKey);
+            if (string.IsNullOrEmpty(json)) return;
+            var prefs = System.Text.Json.JsonSerializer.Deserialize<ColumnPrefs>(json);
+            foreach (var id in prefs?.Hidden ?? []) hiddenFieldIds.Add(id);
+            foreach (var (id, w) in prefs?.Widths ?? []) fieldWidths[id] = Math.Clamp(w, MinFieldWidth, MaxFieldWidth);
+        }
+        catch { /* corrupt or unavailable storage: fall back to defaults */ }
+    }
+
+    private async Task SaveColumnPrefs()
+    {
+        if (string.IsNullOrEmpty(PrefKey)) return;
+        var json = System.Text.Json.JsonSerializer.Serialize(new ColumnPrefs(hiddenFieldIds.ToList(), fieldWidths));
+        try { await JS.InvokeVoidAsync("ipop.prefSet", PrefKey, json); } catch { }
+    }
+
+    private async Task ToggleFieldColumn(Guid fieldId)
+    {
+        if (!hiddenFieldIds.Remove(fieldId)) hiddenFieldIds.Add(fieldId);
+        await SaveColumnPrefs();
+    }
+
+    private void StartResize(Guid fieldId, PointerEventArgs e)
+    {
+        resizingFieldId = fieldId;
+        resizeStartX = e.ClientX;
+        resizeStartWidth = fieldWidths.TryGetValue(fieldId, out var w) ? w : 140;
+    }
+
+    private void OnResizeMove(PointerEventArgs e)
+    {
+        if (resizingFieldId is not { } id) return;
+        fieldWidths[id] = Math.Clamp(resizeStartWidth + (int)(e.ClientX - resizeStartX), MinFieldWidth, MaxFieldWidth);
+    }
+
+    private async Task EndResize()
+    {
+        if (resizingFieldId is null) return;
+        resizingFieldId = null;
+        await SaveColumnPrefs();
+    }
+
+    private async Task ResetWidth(Guid fieldId)
+    {
+        if (fieldWidths.Remove(fieldId)) await SaveColumnPrefs();
+    }
+
+    private async Task ResizeByKey(Guid fieldId, KeyboardEventArgs e)
+    {
+        var step = e.Key switch { "ArrowLeft" => -16, "ArrowRight" => 16, _ => 0 };
+        if (step == 0) return;
+        var current = fieldWidths.TryGetValue(fieldId, out var w) ? w : 140;
+        fieldWidths[fieldId] = Math.Clamp(current + step, MinFieldWidth, MaxFieldWidth);
+        await SaveColumnPrefs();
+    }
+    private static readonly string[] GroupColors = ["#8E8E93", "#0A84FF", "#FF9F0A", "#34C759", "#7657C4", "#C0513A"];
+    private static string ColorName(string hex) => hex switch { "#8E8E93" => "Abu-abu", "#0A84FF" => "Biru", "#FF9F0A" => "Oranye", "#34C759" => "Hijau", "#7657C4" => "Ungu", "#C0513A" => "Merah bata", _ => hex };
+    private readonly HashSet<Guid> collapsedGroups = [];
+    private bool addingGroup;
+    private string newGroupName = "";
+    private Guid? editingGroupId;
+    private string editingGroupName = "";
+    private Guid? dragTaskId;
+    private Guid? addingInGroup;
+
     private string newInlineTitle = "";
     private string quickSubtaskTitle = "";
 
@@ -95,6 +282,7 @@
         openDateTaskId = null;
         openSubtaskTaskId = null;
         openEstimateTaskId = null;
+        openMoreTaskId = null;
     }
 
     private void ToggleStatusDropdown(Guid taskId)
@@ -193,14 +381,48 @@
         }
     }
 
-    private List<ProjectTaskDto> TodoTasks => FilteredTasks.Where(t => t.Status == "todo").ToList();
-    private List<ProjectTaskDto> DoingTasks => FilteredTasks.Where(t => t.Status == "doing").ToList();
-    private List<ProjectTaskDto> ReviewTasks => FilteredTasks.Where(t => t.Status == "review").ToList();
-    private List<ProjectTaskDto> DoneTasks => FilteredTasks.Where(t => t.Status == "done").ToList();
-
-    private bool ShouldShowGroup(string statusKey)
+    private async Task SaveNewGroup()
     {
-        return string.IsNullOrEmpty(StatusFilter) || StatusFilter == statusKey;
+        var name = newGroupName.Trim();
+        if (name.Length == 0) return;
+        addingGroup = false;
+        newGroupName = "";
+        await OnCreateGroup.InvokeAsync(name);
+    }
+
+    private async Task OnGroupNameKey(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter") await SaveNewGroup();
+        if (args.Key == "Escape") addingGroup = false;
+    }
+
+    private void StartRename(ProjectGroupDto group)
+    {
+        editingGroupId = group.Id;
+        editingGroupName = group.Name;
+    }
+
+    private async Task SaveRename(ProjectGroupDto group)
+    {
+        var name = editingGroupName.Trim();
+        editingGroupId = null;
+        if (name.Length > 0 && name != group.Name)
+            await OnUpdateGroup.InvokeAsync((group.Id, name, group.Color));
+    }
+
+    private async Task OnRenameKey(KeyboardEventArgs args, ProjectGroupDto group)
+    {
+        if (args.Key == "Enter") await SaveRename(group);
+        if (args.Key == "Escape") editingGroupId = null;
+    }
+
+    private async Task DropInGroup(ProjectGroupDto group)
+    {
+        if (dragTaskId is not { } taskId) return;
+        dragTaskId = null;
+        var task = Tasks.FirstOrDefault(t => t.Id == taskId);
+        if (task is not null && task.GroupId != group.Id)
+            await OnMoveToGroup.InvokeAsync((taskId, group.Id));
     }
 
     private static string StatusLabel(string s) => s.ToLowerInvariant() switch
@@ -211,437 +433,448 @@
         _ => "To Do",
     };
 
-    private void StartInlineAdd(string status)
+    private void StartInlineAdd(ProjectGroupDto group)
     {
-        addingInStatus = status;
+        addingInGroup = group.Id;
         newInlineTitle = "";
     }
 
-    private async Task SubmitInlineAdd(string status)
+    private async Task SubmitInlineAdd(ProjectGroupDto group)
     {
         if (string.IsNullOrWhiteSpace(newInlineTitle))
         {
-            addingInStatus = null;
+            addingInGroup = null;
             return;
         }
 
         var title = newInlineTitle.Trim();
-        addingInStatus = null;
+        addingInGroup = null;
         newInlineTitle = "";
-        await OnQuickAdd.InvokeAsync((status, title));
+        await OnQuickAddInGroup.InvokeAsync((group.Id, title));
     }
 
-    private RenderFragment RenderStatusGroup(
-        string statusKey,
-        string groupTitle,
-        string dotClass,
-        string stripClass,
-        bool isCollapsed,
-        Action onToggleCollapse,
-        List<ProjectTaskDto> groupItems)
-    {
-        var totalHours = groupItems.Sum(t => t.EstimatedHours ?? 0);
-        var subtaskTotal = groupItems.Sum(t => t.SubtaskCount);
-        var subtaskDone = groupItems.Sum(t => t.SubtaskDoneCount);
+    private Guid? openMoreTaskId;
 
-        return @<div class="monday-group-section">
-            @* Group Header *@
-            <div class="monday-group-header" @onclick="onToggleCollapse">
-                <div class="monday-group-title">
-                    <i data-lucide="chevron-down" class="monday-group-chevron @(isCollapsed ? "collapsed" : "")"></i>
-                    <span class="@dotClass"></span>
-                    <span>@groupTitle</span>
-                    <span class="col-count @statusKey" style="font-size:11px">@groupItems.Count</span>
-                </div>
-                <div class="monday-group-meta">
-                    @if (totalHours > 0)
+    // Row popovers are portalled to <body> (ipop.menuSync) so the scrolling canvas can't clip
+    // them near the bottom of the list; only one is open at a time and menuRef points at it.
+    private ElementReference menuRef;
+    private string? portalKey;
+    private DotNetObjectReference<ProjectTableView>? selfRef;
+
+    private string? OpenMenuKey =>
+        openStatusDropdownTaskId is { } a ? $"status:{a}"
+        : openPriorityTaskId is { } b ? $"priority:{b}"
+        : quickAssignTaskId is { } c ? $"assign:{c}"
+        : openDateTaskId is { } d ? $"due:{d}"
+        : openSubtaskTaskId is { } e ? $"sub:{e}"
+        : openMoreTaskId is { } f ? $"more:{f}"
+        : openEstimateTaskId is { } g ? $"est:{g}"
+        : null;
+
+    private bool OpenMenuAlignsRight => openMoreTaskId.HasValue || openEstimateTaskId.HasValue;
+
+    // Popovers render inside this component, so the parent's icon pass never sees them.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+        var key = OpenMenuKey;
+        try
+        {
+            if (key is null)
+            {
+                if (portalKey is not null) await JS.InvokeVoidAsync("ipop.menuClose");
+            }
+            else
+            {
+                selfRef ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("ipop.menuSync", menuRef, selfRef, OpenMenuAlignsRight ? "right" : "left");
+            }
+        }
+        catch { /* disposed circuit */ }
+        portalKey = key;
+    }
+
+    [JSInvokable]
+    public Task CloseMenuFromJs()
+    {
+        if (OpenMenuKey is null) return Task.CompletedTask;
+        CloseAllPopovers();
+        portalKey = null;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    // Phase 3: ▶/⏸ per row. Viewers and outsiders cannot log time (the server enforces it too).
+    private bool CanTrackTime => Members.Any(m => m.Nik == CurrentUserNik && m.Role != "viewer");
+    private Guid? timerBusy;
+    private bool timerHooked;
+
+    protected override void OnInitialized()
+    {
+        Timer.Changed += OnTimerChanged;
+        timerHooked = true;
+    }
+
+    private void OnTimerChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task ToggleTimer(Guid taskId)
+    {
+        timerBusy = taskId;
+        try
+        {
+            var err = Timer.IsRunning(taskId) ? await Timer.StopTimerAsync() : await Timer.StartTimerAsync(taskId);
+            if (err is not null) Toasts.Show(err == "forbidden" ? "Anda tidak bisa mencatat waktu di project ini." : "Timer gagal diubah.", IPop.Web.Services.ToastKind.Error);
+        }
+        finally { timerBusy = null; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (timerHooked) Timer.Changed -= OnTimerChanged;
+        if (portalKey is not null)
+        {
+            try { await JS.InvokeVoidAsync("ipop.menuDrop"); } catch { }
+        }
+        selfRef?.Dispose();
+    }
+
+    private void ToggleMoreMenu(Guid taskId)
+    {
+        var prev = openMoreTaskId;
+        CloseAllPopovers();
+        if (prev != taskId) openMoreTaskId = taskId;
+    }
+
+    private async Task RunMore(Func<Task> action)
+    {
+        CloseAllPopovers();
+        await action();
+    }
+
+    private RenderFragment RenderGroup(ProjectGroupDto group, List<ProjectTaskDto> groupItems)
+    {
+        var isCollapsed = collapsedGroups.Contains(group.Id);
+        return @<div class="plist-group" @ondragover:preventDefault="true" @ondrop="() => DropInGroup(group)">
+            <div class="plist-group-heading">
+                <button type="button" class="plist-group-head" aria-expanded="@(isCollapsed ? "false" : "true")" @onclick="() => { if (!collapsedGroups.Add(group.Id)) collapsedGroups.Remove(group.Id); }">
+                    <i data-lucide="@(isCollapsed ? "chevron-right" : "chevron-down")"></i>
+                    <span class="plist-dot" style="background:@group.Color"></span>
+                    <span class="nm">@group.Name</span>
+                    <span class="ct">@group.TaskCount task · @group.Progress% done · @group.OverdueCount overdue</span>
+                </button>
+                @if (CanManageGroups)
+                {
+                    @if (editingGroupId == group.Id)
                     {
-                        <span>@totalHours h estimated</span>
-                        <span>•</span>
+                        <input aria-label="Rename group" maxlength="100" @bind="editingGroupName" @onkeydown="e => OnRenameKey(e, group)" />
+                        <button type="button" @onclick="() => SaveRename(group)">Save</button>
                     }
-                    @if (subtaskTotal > 0)
+                    else
                     {
-                        <span>@subtaskDone/@subtaskTotal subtasks</span>
-                        <span>•</span>
+                        <button type="button" aria-label="Rename @group.Name" @onclick="() => StartRename(group)"><i data-lucide="pencil"></i></button>
                     }
-                    <span style="font-size:11px;opacity:0.8">@(isCollapsed ? "Click to open" : "Click to close")</span>
-                </div>
+                    <select aria-label="Color for @group.Name" value="@group.Color" @onchange="e => OnUpdateGroup.InvokeAsync((group.Id, group.Name, e.Value?.ToString() ?? group.Color))">
+                        @foreach (var color in GroupColors) { <option value="@color">@ColorName(color)</option> }
+                    </select>
+                    <button type="button" aria-label="Move @group.Name up" @onclick="() => OnReorderGroup.InvokeAsync((group.Id, -1))"><i data-lucide="arrow-up"></i></button>
+                    <button type="button" aria-label="Move @group.Name down" @onclick="() => OnReorderGroup.InvokeAsync((group.Id, 1))"><i data-lucide="arrow-down"></i></button>
+                    <button type="button" aria-label="Delete @group.Name" disabled="@(Groups.Count <= 1)" @onclick="() => OnDeleteGroup.InvokeAsync(group.Id)"><i data-lucide="trash-2"></i></button>
+                }
             </div>
 
             @if (!isCollapsed)
             {
-                <div style="overflow-x:auto">
-                    <table class="grid" style="width:100%;margin:0;border-collapse:collapse">
-                        <thead>
-                            <tr style="border-bottom:1px solid var(--line-soft);background:var(--bg)">
-                                <th style="width:4px;padding:0"></th>
-                                <th style="padding:8px 14px;text-align:left;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.03em">Task</th>
-                                <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.03em;width:125px">Status</th>
-                                <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.03em;width:115px">Priority</th>
-                                <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.03em;width:130px">Due Date</th>
-                                <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.03em;width:150px">Assignee</th>
-                                <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.03em;width:95px">Subtasks</th>
-                                <th style="padding:8px 12px;text-align:center;font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.03em;width:85px">Estimate</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (groupItems.Count == 0)
+                @foreach (var t in groupItems)
+                {
+                    var isOverdue = t.DueDate.HasValue && t.DueDate.Value < DateTime.UtcNow && t.Status != "done";
+                    var evidence = TaskEvidenceHelper.Parse(t.Description).Evidence;
+                    var pp = ProjectUiHelpers.GetPriorityPill(t.Priority);
+                    var dueState = ProjectUiHelpers.GetDueState(t);
+                    var selected = SelectedIds.Contains(t.Id);
+                    <div class="plist-row plist-task @(t.Status == "done" ? "is-done" : "") @(selected ? "is-selected" : "") @(SelectedIds.Count > 0 ? "selecting" : "")" style="@ColumnsStyle" draggable="true" @ondragstart="() => dragTaskId = t.Id" @ondragend="() => dragTaskId = null"
+                         @onclick="() => RowClick(t)" @onpointerdown="e => StartLongPress(t.Id, e)" @onpointerup="CancelLongPress" @onpointerleave="CancelLongPress" @onpointercancel="CancelLongPress">
+                        <span class="plist-lead" @onclick:stopPropagation="true">
+                            <input type="checkbox" class="plist-sel" aria-label="Pilih @t.Title" checked="@selected" @onclick="e => ToggleSelect(t.Id, e.ShiftKey)" />
+                            <button type="button" class="plist-check @(t.Status == "done" ? "done" : "")"
+                                    aria-label="@(t.Status == "done" ? "Mark incomplete" : "Mark complete")"
+                                    @onclick='() => ChangeStatus(t, t.Status == "done" ? "todo" : "done")'>
+                                @if (t.Status == "done") { <i data-lucide="check"></i> }
+                            </button>
+                        </span>
+
+                        <div class="plist-title">
+                            <span class="tt" title="@t.Title">@t.Title</span>
+                            @if (CanTrackTime)
                             {
-                                <tr>
-                                    <td class="@stripClass"></td>
-                                    <td colspan="7" style="padding:16px 14px;color:var(--ink-3);font-size:12px">
-                                        No tasks in this status.
-                                    </td>
-                                </tr>
+                                var timing = Timer.IsRunning(t.Id);
+                                <button type="button" class="plist-timer @(timing ? "running" : "")" @onclick:stopPropagation="true"
+                                        aria-pressed="@(timing ? "true" : "false")" title="@(timing ? "Jeda timer" : "Mulai timer")"
+                                        aria-label="@(timing ? "Jeda timer" : "Mulai timer") @t.Title" disabled="@(timerBusy == t.Id)"
+                                        @onclick="() => ToggleTimer(t.Id)">
+                                    <i data-lucide="@(timing ? "pause" : "play")"></i>
+                                </button>
                             }
-                            else
+                            @if (t.IsBlocked)
                             {
-                                @foreach (var t in groupItems)
+                                <span class="blocked-badge" title="@BlockedTitle(t)"><i data-lucide="lock"></i>Menunggu</span>
+                            }
+                            @if (t.IsRecurring)
+                            {
+                                <span class="cm" title="Task berulang"><i data-lucide="repeat"></i></span>
+                            }
+                            @if (t.CommentCount > 0)
+                            {
+                                <span class="cm"><i data-lucide="message-square"></i>@t.CommentCount</span>
+                            }
+                            @if (evidence.IsExtended)
+                            {
+                                <span class="kc-pill info sm" title="@evidence.LatestExtension?.Reason">Extended ×@evidence.ExtensionHistory.Count</span>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(t.Tags))
+                            {
+                                @foreach (var tag in t.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                                 {
-                                    var isOverdue = t.DueDate.HasValue && t.DueDate.Value < DateTime.UtcNow && t.Status != "done";
-                                    var evidence = TaskEvidenceHelper.Parse(t.Description).Evidence;
-                                    <tr class="table-row-hover" style="cursor:pointer;border-bottom:1px solid var(--line-soft)" @onclick="() => OnTaskClick.InvokeAsync(t)">
-                                        <td class="@stripClass"></td>
-                                        <td style="padding:10px 14px">
-                                            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-                                                <div style="font-weight:600;font-size:13px;color:var(--ink)">@t.Title</div>
-                                                <button type="button" class="btn-sm surface" style="padding:3px 7px;font-size:10px;border-radius:999px;opacity:0.85"
-                                                        @onclick="() => OnQuickViewTask.InvokeAsync(t)" @onclick:stopPropagation="true" title="Open Quick Inspector">
-                                                    <i data-lucide="panel-right-open" style="width:11px;height:11px"></i>
-                                                </button>
-                                            </div>
-                                            <div style="display:flex;align-items:center;gap:6px;margin-top:3px;flex-wrap:wrap">
-                                                @if (evidence.IsExtended)
-                                                {
-                                                    <span class="badge-extended" title="@evidence.LatestExtension?.Reason">
-                                                        <i data-lucide="calendar-sync" style="width:10px;height:10px"></i> Extended (@evidence.ExtensionHistory.Count)x
-                                                    </span>
-                                                }
-                                                @if (!string.IsNullOrWhiteSpace(t.Tags))
-                                                {
-                                                    <div style="font-size:10.5px;color:var(--ink-3)">@t.Tags</div>
-                                                }
-                                            </div>
-                                        </td>
-
-                                        @* 1. Status Dropdown *@
-                                        <td style="padding:10px 12px;position:relative" @onclick:stopPropagation="true">
-                                            <button type="button" class="modern-status-trigger @t.Status.ToLower()" @onclick="() => ToggleStatusDropdown(t.Id)">
-                                                <span class="col-dot @t.Status.ToLower()"></span>
-                                                <span>@StatusLabel(t.Status)</span>
-                                                <i data-lucide="chevron-down" style="width:11px;height:11px"></i>
-                                            </button>
-                                            @if (openStatusDropdownTaskId == t.Id)
-                                            {
-                                                <div class="modern-status-menu">
-                                                    <div class="modern-status-item @(t.Status == "todo" ? "active" : "")" @onclick='() => ChangeStatus(t, "todo")'>
-                                                        <span class="col-dot todo"></span>
-                                                        <span>To Do</span>
-                                                        @if (t.Status == "todo") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
-                                                    </div>
-                                                    <div class="modern-status-item @(t.Status == "doing" ? "active" : "")" @onclick='() => ChangeStatus(t, "doing")'>
-                                                        <span class="col-dot doing"></span>
-                                                        <span>In Progress</span>
-                                                        @if (t.Status == "doing") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
-                                                    </div>
-                                                    <div class="modern-status-item @(t.Status == "review" ? "active" : "")" @onclick='() => ChangeStatus(t, "review")'>
-                                                        <span class="col-dot review"></span>
-                                                        <span>Review</span>
-                                                        @if (t.Status == "review") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
-                                                    </div>
-                                                    <div class="modern-status-item @(t.Status == "done" ? "active" : "")" @onclick='() => ChangeStatus(t, "done")'>
-                                                        <span class="col-dot done"></span>
-                                                        <span>Done</span>
-                                                        @if (t.Status == "done") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
-                                                    </div>
-                                                </div>
-                                            }
-                                        </td>
-
-                                        @* 2. Priority Dropdown Popover *@
-                                        <td style="padding:10px 12px;position:relative" @onclick:stopPropagation="true">
-                                            <button type="button" class="modern-priority-trigger" @onclick="() => TogglePriorityDropdown(t.Id)">
-                                                @if (!string.IsNullOrWhiteSpace(t.Priority))
-                                                {
-                                                    <span class="priority-badge @t.Priority.ToLower()">@t.Priority</span>
-                                                }
-                                                else
-                                                {
-                                                    <span style="color:var(--ink-3);font-size:11px;font-weight:500">— Priority</span>
-                                                }
-                                                <i data-lucide="chevron-down" style="width:10px;height:10px;color:var(--ink-3)"></i>
-                                            </button>
-                                            @if (openPriorityTaskId == t.Id)
-                                            {
-                                                <div class="modern-priority-menu">
-                                                    <div class="modern-priority-item @(t.Priority?.ToLower() == "urgent" ? "active" : "")" @onclick='() => SetPriority(t, "urgent")'>
-                                                        <span class="priority-badge urgent">URGENT</span>
-                                                        <span>Urgent</span>
-                                                        @if (t.Priority?.ToLower() == "urgent") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
-                                                    </div>
-                                                    <div class="modern-priority-item @(t.Priority?.ToLower() == "high" ? "active" : "")" @onclick='() => SetPriority(t, "high")'>
-                                                        <span class="priority-badge high">HIGH</span>
-                                                        <span>High</span>
-                                                        @if (t.Priority?.ToLower() == "high") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
-                                                    </div>
-                                                    <div class="modern-priority-item @(t.Priority?.ToLower() == "medium" ? "active" : "")" @onclick='() => SetPriority(t, "medium")'>
-                                                        <span class="priority-badge medium">MEDIUM</span>
-                                                        <span>Medium</span>
-                                                        @if (t.Priority?.ToLower() == "medium") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
-                                                    </div>
-                                                    <div class="modern-priority-item @(t.Priority?.ToLower() == "low" ? "active" : "")" @onclick='() => SetPriority(t, "low")'>
-                                                        <span class="priority-badge low">LOW</span>
-                                                        <span>Low</span>
-                                                        @if (t.Priority?.ToLower() == "low") { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
-                                                    </div>
-                                                    <div class="modern-priority-item" @onclick='() => SetPriority(t, null)'>
-                                                        <span style="color:var(--ink-3);font-size:11px">No Priority</span>
-                                                        @if (string.IsNullOrEmpty(t.Priority)) { <i data-lucide="check" style="width:12px;height:12px;margin-left:auto"></i> }
-                                                    </div>
-                                                </div>
-                                            }
-                                        </td>
-
-                                        @* 3. Due Date Dropdown Popover *@
-                                        <td style="padding:10px 12px;position:relative" @onclick:stopPropagation="true">
-                                            <div style="display:flex;align-items:center;gap:6px">
-                                                <button type="button" class="modern-date-trigger" @onclick="() => ToggleDateDropdown(t.Id)">
-                                                    @if (t.DueDate.HasValue)
-                                                    {
-                                                        <span class="due-pill @(isOverdue ? "overdue" : "")">
-                                                            <i data-lucide="calendar" style="width:11px;height:11px"></i>
-                                                            @t.DueDate.Value.ToString("dd MMM yyyy")
-                                                        </span>
-                                                    }
-                                                    else
-                                                    {
-                                                        <span style="color:var(--ink-3);font-size:11px;display:flex;align-items:center;gap:4px">
-                                                            <i data-lucide="calendar-plus" style="width:11px;height:11px"></i>
-                                                            <span>+ Due date</span>
-                                                        </span>
-                                                    }
-                                                </button>
-                                                @if (isOverdue)
-                                                {
-                                                    <button type="button" class="btn-sm surface" style="padding:2px 8px;font-size:10.5px;border-radius:999px;color:#c2410c;border-color:#fed7aa;background:#fff7ed;display:inline-flex;align-items:center;gap:4px"
-                                                            @onclick="() => OnRequestExtension.InvokeAsync(t)" @onclick:stopPropagation="true" title="Request deadline extension">
-                                                        <i data-lucide="clock-alert" style="width:10px;height:10px"></i> Extend
-                                                    </button>
-                                                }
-                                            </div>
-                                            @if (openDateTaskId == t.Id)
-                                            {
-                                                <div class="modern-date-menu">
-                                                    <div style="font-size:11px;font-weight:700;color:var(--ink-3);padding:2px 4px;text-transform:uppercase">Select Due Date</div>
-                                                    <div class="modern-date-preset" @onclick='() => SetDueDate(t, DateTime.UtcNow.Date)'>
-                                                        <span>Today</span>
-                                                        <span style="color:var(--ink-3);font-size:10px">@DateTime.Now.ToString("dd MMM")</span>
-                                                    </div>
-                                                    <div class="modern-date-preset" @onclick='() => SetDueDate(t, DateTime.UtcNow.Date.AddDays(1))'>
-                                                        <span>Tomorrow</span>
-                                                        <span style="color:var(--ink-3);font-size:10px">@DateTime.Now.AddDays(1).ToString("dd MMM")</span>
-                                                    </div>
-                                                    <div class="modern-date-preset" @onclick='() => SetDueDate(t, DateTime.UtcNow.Date.AddDays(7))'>
-                                                        <span>Next Week</span>
-                                                        <span style="color:var(--ink-3);font-size:10px">@DateTime.Now.AddDays(7).ToString("dd MMM")</span>
-                                                    </div>
-                                                    <div style="border-top:1px solid var(--line-soft);padding-top:6px;margin-top:2px">
-                                                        <input type="date" class="org-input" style="width:100%;height:30px;font-size:11.5px"
-                                                               value="@(t.DueDate?.ToString("yyyy-MM-dd"))"
-                                                               @onchange="async e => { if (DateTime.TryParse(e.Value?.ToString(), out var d)) await SetDueDate(t, d); }" />
-                                                    </div>
-                                                    @if (isOverdue)
-                                                    {
-                                                        <div class="modern-date-preset" style="color:#ea580c;border-top:1px solid var(--line-soft);margin-top:4px;padding-top:6px" @onclick="() => { CloseAllPopovers(); OnRequestExtension.InvokeAsync(t); }">
-                                                            <div style="display:flex;align-items:center;gap:6px">
-                                                                <i data-lucide="clock-alert" style="width:11px;height:11px"></i>
-                                                                <span>Extension Form...</span>
-                                                            </div>
-                                                        </div>
-                                                    }
-                                                    @if (t.DueDate.HasValue)
-                                                    {
-                                                        <div class="modern-date-preset" style="color:#e11d48;margin-top:2px" @onclick='() => SetDueDate(t, null)'>
-                                                            <span>Clear Deadline</span>
-                                                            <i data-lucide="x" style="width:11px;height:11px"></i>
-                                                        </div>
-                                                    }
-                                                </div>
-                                            }
-                                        </td>
-
-                                        @* 4. Assignee Inline Dropdown *@
-                                        <td style="padding:10px 12px;position:relative" @onclick:stopPropagation="true">
-                                            <div style="display:flex;align-items:center;gap:6px">
-                                                @if (t.Assignees.Count > 0)
-                                                {
-                                                    <div class="table-assignee-btn" @onclick="() => ToggleQuickAssign(t.Id)" title="Click to change assigned members">
-                                                        <div class="team-avatar-circ" style="width:22px;height:22px;font-size:9px;background:@ProjectUiHelpers.GetAvatarBg(t.Assignees[0].Name)" title="@t.Assignees[0].Name">
-                                                            @ProjectUiHelpers.GetInitials(t.Assignees[0].Name)
-                                                        </div>
-                                                        <span style="font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px">@t.Assignees[0].Name</span>
-                                                        @if (t.Assignees.Count > 1)
-                                                        {
-                                                            <span style="font-size:10px;color:var(--ink-3);font-weight:600">+@(t.Assignees.Count - 1)</span>
-                                                        }
-                                                    </div>
-                                                }
-                                                else
-                                                {
-                                                    <button type="button" class="task-assign-btn-add empty" @onclick="() => ToggleQuickAssign(t.Id)" title="Click to assign members">
-                                                        <i data-lucide="user-plus" style="width:11px;height:11px"></i>
-                                                        <span>+ Assign</span>
-                                                    </button>
-                                                }
-                                            </div>
-
-                                            @if (quickAssignTaskId == t.Id)
-                                            {
-                                                <div class="quick-assign-popover table-popover" @onclick:stopPropagation="true">
-                                                    <div class="quick-assign-popover-head">
-                                                        <span>Assign Member</span>
-                                                        <button type="button" style="background:none;border:none;cursor:pointer;padding:2px;color:var(--ink-3);display:flex;align-items:center" @onclick="() => quickAssignTaskId = null">
-                                                            <i data-lucide="x" style="width:12px;height:12px"></i>
-                                                        </button>
-                                                    </div>
-                                                    <div class="quick-assign-popover-list">
-                                                        @if (Members.Count == 0)
-                                                        {
-                                                            <div class="quick-assign-empty">No team members in this project.</div>
-                                                        }
-                                                        else
-                                                        {
-                                                            @foreach (var m in Members)
-                                                            {
-                                                                var isAssigned = t.Assignees.Any(a => a.UserId == m.UserId);
-                                                                <div class="quick-assign-item @(isAssigned ? "assigned" : "")"
-                                                                     @onclick="() => OnToggleAssignee.InvokeAsync((t.Id, m.UserId, isAssigned))">
-                                                                    <div class="team-avatar-circ" style="width:22px;height:22px;font-size:9.5px;background:@ProjectUiHelpers.GetAvatarBg(m.Name)">
-                                                                        @ProjectUiHelpers.GetInitials(m.Name)
-                                                                    </div>
-                                                                    <div class="quick-assign-item-info">
-                                                                        <div class="name">@m.Name</div>
-                                                                        <div class="role">@m.Role · @m.Nik</div>
-                                                                    </div>
-                                                                    @if (isAssigned)
-                                                                    {
-                                                                        <i data-lucide="check" style="width:13px;height:13px;color:var(--accent);flex-shrink:0"></i>
-                                                                    }
-                                                                </div>
-                                                            }
-                                                        }
-                                                    </div>
-                                                </div>
-                                            }
-                                        </td>
-
-                                        @* 5. Subtask Popover *@
-                                        <td style="padding:10px 12px;text-align:center;position:relative" @onclick:stopPropagation="true">
-                                            <button type="button" class="modern-subtask-trigger" @onclick="() => ToggleSubtaskDropdown(t.Id)">
-                                                @if (t.SubtaskCount > 0)
-                                                {
-                                                    <span class="subtask-badge">
-                                                        <i data-lucide="check-square" style="width:11px;height:11px"></i>
-                                                        @t.SubtaskDoneCount/@t.SubtaskCount
-                                                    </span>
-                                                }
-                                                else
-                                                {
-                                                    <span style="color:var(--ink-3);font-size:11px">+ Subtask</span>
-                                                }
-                                            </button>
-                                            @if (openSubtaskTaskId == t.Id)
-                                            {
-                                                <div class="modern-subtask-menu">
-                                                    <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:4px;border-bottom:1px solid var(--line-soft)">
-                                                        <span style="font-size:11px;font-weight:700;color:var(--ink)">Subtask (@t.SubtaskDoneCount/@t.SubtaskCount)</span>
-                                                        <button type="button" class="btn-sm surface" style="padding:2px 6px;font-size:10.5px" @onclick="() => { openSubtaskTaskId = null; OnTaskClick.InvokeAsync(t); }">
-                                                            Detail
-                                                        </button>
-                                                    </div>
-                                                    <div style="display:flex;gap:4px;margin-top:4px">
-                                                        <input class="org-input" style="flex:1;height:28px;font-size:11.5px"
-                                                               placeholder="Add subtask..."
-                                                               @bind="quickSubtaskTitle"
-                                                               @onkeydown="@(async e => { if (e.Key == "Enter") await SubmitQuickSubtask(t.Id); })" />
-                                                        <button type="button" class="btn-sm accent" style="padding:2px 8px;font-size:11px" @onclick="() => SubmitQuickSubtask(t.Id)">
-                                                            +
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            }
-                                        </td>
-
-                                        @* 6. Estimate Popover *@
-                                        <td style="padding:10px 12px;text-align:center;position:relative" @onclick:stopPropagation="true">
-                                            <button type="button" class="modern-estimate-trigger" @onclick="() => ToggleEstimateDropdown(t.Id)">
-                                                <span>@(t.EstimatedHours.HasValue ? $"{t.EstimatedHours}h" : "— h")</span>
-                                                <i data-lucide="clock" style="width:10px;height:10px;color:var(--ink-3)"></i>
-                                            </button>
-                                            @if (openEstimateTaskId == t.Id)
-                                            {
-                                                <div class="modern-estimate-menu">
-                                                    <div style="font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase">Estimated Hours</div>
-                                                    <div class="modern-estimate-chips">
-                                                        <button type="button" class="modern-estimate-chip" @onclick="() => SetEstimate(t, 1)">1h</button>
-                                                        <button type="button" class="modern-estimate-chip" @onclick="() => SetEstimate(t, 2)">2h</button>
-                                                        <button type="button" class="modern-estimate-chip" @onclick="() => SetEstimate(t, 4)">4h</button>
-                                                        <button type="button" class="modern-estimate-chip" @onclick="() => SetEstimate(t, 8)">8h</button>
-                                                        <button type="button" class="modern-estimate-chip" @onclick="() => SetEstimate(t, 16)">16h</button>
-                                                        <button type="button" class="modern-estimate-chip" @onclick="() => SetEstimate(t, 40)">40h</button>
-                                                    </div>
-                                                    <div style="display:flex;align-items:center;gap:6px;border-top:1px solid var(--line-soft);padding-top:6px">
-                                                        <input type="number" step="0.5" class="org-input" style="flex:1;height:28px;font-size:11.5px"
-                                                               value="@(t.EstimatedHours ?? 0)"
-                                                               @onchange="async e => { if (decimal.TryParse(e.Value?.ToString(), out var h)) await SetEstimate(t, h > 0 ? h : null); }" />
-                                                        <span style="font-size:11px;color:var(--ink-3)">hours</span>
-                                                    </div>
-                                                    @if (t.EstimatedHours.HasValue)
-                                                    {
-                                                        <div style="text-align:center;margin-top:2px">
-                                                            <button type="button" style="background:none;border:none;cursor:pointer;color:#e11d48;font-size:10.5px" @onclick="() => SetEstimate(t, null)">
-                                                                Clear Estimate
-                                                            </button>
-                                                        </div>
-                                                    }
-                                                </div>
-                                            }
-                                        </td>
-                                    </tr>
+                                    <span class="tg">#@tag.TrimStart('#')</span>
                                 }
                             }
-                        </tbody>
-                    </table>
+                        </div>
 
-                    @* Inline Adder Row *@
-                    <div class="table-inline-adder">
-                        @if (addingInStatus == statusKey)
-                        {
-                            <div class="table-inline-input-wrap">
-                                <input class="table-inline-input"
-                                       placeholder="Type task name and press Enter..."
-                                       @bind="newInlineTitle"
-                                       @onkeydown="@(async e => { if (e.Key == "Enter") await SubmitInlineAdd(statusKey); if (e.Key == "Escape") addingInStatus = null; })"
-                                       autofocus />
-                                <button type="button" class="btn-sm accent" style="padding:3px 10px;font-size:11px" @onclick="() => SubmitInlineAdd(statusKey)">Add</button>
-                                <button type="button" class="btn-sm surface" style="padding:3px 10px;font-size:11px" @onclick="() => addingInStatus = null">Cancel</button>
-                            </div>
-                        }
-                        else
-                        {
-                            <button type="button" class="table-inline-add-btn" @onclick="() => StartInlineAdd(statusKey)">
-                                <i data-lucide="plus" style="width:13px;height:13px"></i>
-                                <span>+ Add task to @groupTitle</span>
+                        @* Status *@
+                        <div class="plist-cell" @onclick:stopPropagation="true">
+                            <button type="button" class="plist-status @t.Status.ToLower()" data-menu-trigger aria-haspopup="true" aria-expanded="@(openStatusDropdownTaskId == t.Id ? "true" : "false")" @onclick="() => ToggleStatusDropdown(t.Id)">
+                                @StatusLabel(t.Status)<i data-lucide="chevron-down"></i>
                             </button>
+                            @if (openStatusDropdownTaskId == t.Id)
+                            {
+                                <div class="plist-backdrop" @onclick="CloseAllPopovers"></div>
+                                <div class="plist-menu" role="menu" @ref="menuRef">
+                                    @foreach (var (key, label) in new[] { ("todo", "To Do"), ("doing", "In Progress"), ("review", "Review"), ("done", "Done") })
+                                    {
+                                        <button type="button" class="@(t.Status == key ? "active" : "")" @onclick="() => ChangeStatus(t, key)">
+                                            <span class="plist-dot @key"></span>@label
+                                            @if (t.Status == key) { <i data-lucide="check" class="ck"></i> }
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        @* Priority *@
+                        <div class="plist-cell" @onclick:stopPropagation="true">
+                            <button type="button" class="v6-pri @pp.Key" data-menu-trigger aria-haspopup="true" aria-expanded="@(openPriorityTaskId == t.Id ? "true" : "false")" @onclick="() => TogglePriorityDropdown(t.Id)">
+                                <i data-lucide="@pp.Icon"></i>@pp.Label
+                            </button>
+                            @if (openPriorityTaskId == t.Id)
+                            {
+                                <div class="plist-backdrop" @onclick="CloseAllPopovers"></div>
+                                <div class="plist-menu" role="menu" @ref="menuRef">
+                                    @foreach (var key in new[] { "urgent", "high", "medium", "low" })
+                                    {
+                                        var opt = ProjectUiHelpers.GetPriorityPill(key);
+                                        var on = string.Equals(t.Priority, key, StringComparison.OrdinalIgnoreCase);
+                                        <button type="button" class="@(on ? "active" : "")" @onclick="() => SetPriority(t, key)">
+                                            <span class="v6-pri @opt.Key"><i data-lucide="@opt.Icon"></i>@opt.Label</span>
+                                            @if (on) { <i data-lucide="check" class="ck"></i> }
+                                        </button>
+                                    }
+                                    <button type="button" @onclick="() => SetPriority(t, null)">
+                                        <span class="muted">No priority</span>
+                                        @if (string.IsNullOrEmpty(t.Priority)) { <i data-lucide="check" class="ck"></i> }
+                                    </button>
+                                </div>
+                            }
+                        </div>
+
+                        @* Assignee *@
+                        <div class="plist-cell" @onclick:stopPropagation="true">
+                            <button type="button" class="plist-assignee @(t.Assignees.Count == 0 ? "none" : "")" data-menu-trigger aria-haspopup="true" aria-expanded="@(quickAssignTaskId == t.Id ? "true" : "false")" @onclick="() => ToggleQuickAssign(t.Id)">
+                                @if (t.Assignees.Count > 0)
+                                {
+                                    <span class="avs">
+                                        @foreach (var a in t.Assignees.Take(3))
+                                        {
+                                            <span class="kc-av sm" style="background:@ProjectUiHelpers.GetAvatarBg(a.Name)" title="@a.Name">@ProjectUiHelpers.GetInitials(a.Name)</span>
+                                        }
+                                    </span>
+                                    <span class="lbl">@string.Join(", ", t.Assignees.Select(a => a.Name))</span>
+                                }
+                                else
+                                {
+                                    <i data-lucide="user-plus"></i>
+                                    <span class="lbl">Unassigned</span>
+                                }
+                            </button>
+                            @if (quickAssignTaskId == t.Id)
+                            {
+                                <div class="plist-backdrop" @onclick="CloseAllPopovers"></div>
+                                <div class="quick-assign-popover table-popover" role="dialog" aria-label="Assign member" @ref="menuRef" @onclick:stopPropagation="true">
+                                    <div class="quick-assign-popover-head">
+                                        <span>Assign Member</span>
+                                        <button type="button" aria-label="Close" style="background:none;border:none;cursor:pointer;padding:2px;color:var(--ink-3);display:flex;align-items:center" @onclick="() => quickAssignTaskId = null">
+                                            <i data-lucide="x" style="width:12px;height:12px"></i>
+                                        </button>
+                                    </div>
+                                    <div class="quick-assign-popover-list">
+                                        @if (Members.Count == 0)
+                                        {
+                                            <div class="quick-assign-empty">No team members in this project.</div>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var m in Members)
+                                            {
+                                                var isAssigned = t.Assignees.Any(a => a.UserId == m.UserId);
+                                                <div class="quick-assign-item @(isAssigned ? "assigned" : "")" role="menuitemcheckbox" tabindex="-1" aria-checked="@(isAssigned ? "true" : "false")"
+                                                     @onclick="() => OnToggleAssignee.InvokeAsync((t.Id, m.UserId, isAssigned))">
+                                                    <div class="team-avatar-circ" style="width:22px;height:22px;font-size:9.5px;background:@ProjectUiHelpers.GetAvatarBg(m.Name)">
+                                                        @ProjectUiHelpers.GetInitials(m.Name)
+                                                    </div>
+                                                    <div class="quick-assign-item-info">
+                                                        <div class="name">@m.Name</div>
+                                                        <div class="role">@m.Role · @m.Nik</div>
+                                                    </div>
+                                                    @if (isAssigned)
+                                                    {
+                                                        <i data-lucide="check" style="width:13px;height:13px;color:var(--accent);flex-shrink:0"></i>
+                                                    }
+                                                </div>
+                                            }
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        @* Due *@
+                        <div class="plist-cell" @onclick:stopPropagation="true">
+                            <button type="button" class="plist-due @dueState @(t.DueDate.HasValue ? "" : "empty")" data-menu-trigger aria-haspopup="true" aria-expanded="@(openDateTaskId == t.Id ? "true" : "false")" @onclick="() => ToggleDateDropdown(t.Id)">
+                                <i data-lucide="calendar"></i>@(t.DueDate.HasValue ? t.DueDate.Value.ToString("MMM d") : "Add date")
+                            </button>
+                            @if (openDateTaskId == t.Id)
+                            {
+                                <div class="plist-backdrop" @onclick="CloseAllPopovers"></div>
+                                <div class="plist-menu" role="dialog" aria-label="Due date" @ref="menuRef">
+                                    <button type="button" @onclick="() => SetDueDate(t, DateTime.UtcNow.Date)">Today<span class="hint">@DateTime.Now.ToString("MMM d")</span></button>
+                                    <button type="button" @onclick="() => SetDueDate(t, DateTime.UtcNow.Date.AddDays(1))">Tomorrow<span class="hint">@DateTime.Now.AddDays(1).ToString("MMM d")</span></button>
+                                    <button type="button" @onclick="() => SetDueDate(t, DateTime.UtcNow.Date.AddDays(7))">Next week<span class="hint">@DateTime.Now.AddDays(7).ToString("MMM d")</span></button>
+                                    <div class="sep"></div>
+                                    <AppDatePicker TValue="DateTime?" Value="t.DueDate" Compact="true" Class="dp-block" AriaLabel="Due date"
+                                                   ValueChanged="async d => { if (d is { } picked) await SetDueDate(t, picked); }" />
+                                    @if (t.DueDate.HasValue)
+                                    {
+                                        <div class="sep"></div>
+                                        <button type="button" class="danger" @onclick="() => SetDueDate(t, null)"><i data-lucide="x"></i>Clear date</button>
+                                    }
+                                </div>
+                            }
+                        </div>
+
+                        @* Subtasks *@
+                        <div class="plist-cell" @onclick:stopPropagation="true">
+                            <button type="button" class="plist-sub" data-menu-trigger aria-haspopup="true" aria-expanded="@(openSubtaskTaskId == t.Id ? "true" : "false")" @onclick="() => ToggleSubtaskDropdown(t.Id)">
+                                @(t.SubtaskCount > 0 ? $"{t.SubtaskDoneCount}/{t.SubtaskCount}" : "—")
+                            </button>
+                            @if (openSubtaskTaskId == t.Id)
+                            {
+                                <div class="plist-backdrop" @onclick="CloseAllPopovers"></div>
+                                <div class="plist-menu wide" role="dialog" aria-label="Subtasks" @ref="menuRef">
+                                    <div class="plist-menu-head">Subtasks (@t.SubtaskDoneCount/@t.SubtaskCount)
+                                        <button type="button" class="lnk" @onclick="() => RunMore(() => OnTaskClick.InvokeAsync(t))">Details</button>
+                                    </div>
+                                    <div class="plist-inline">
+                                        <input class="plist-input" data-autofocus placeholder="Add subtask…" @bind="quickSubtaskTitle"
+                                               @onkeydown="@(async e => { if (e.Key == "Enter") await SubmitQuickSubtask(t.Id); })" />
+                                        <button type="button" class="plist-add-btn" aria-label="Add subtask" @onclick="() => SubmitQuickSubtask(t.Id)"><i data-lucide="plus"></i></button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        @foreach (var field in VisibleFields)
+                        {
+                            var value = FieldValues.GetValueOrDefault(t.Id)?.GetValueOrDefault(field.Id);
+                            <ProjectFieldCell Field="field" Value="value" Members="Members"
+                                              ValueChanged="v => OnSetFieldValue.InvokeAsync((t.Id, field.Id, v))" />
+                        }
+
+                        @* More *@
+                        <div class="plist-cell end" @onclick:stopPropagation="true">
+                            <button type="button" class="kc-more lg" data-menu-trigger aria-haspopup="true" aria-expanded="@(openMoreTaskId == t.Id ? "true" : "false")" title="More" aria-label="More actions" @onclick="() => ToggleMoreMenu(t.Id)"><i data-lucide="ellipsis"></i></button>
+                            @if (openMoreTaskId == t.Id)
+                            {
+                                <div class="plist-backdrop" @onclick="CloseAllPopovers"></div>
+                                <div class="plist-menu right" role="menu" @ref="menuRef">
+                                    <button type="button" @onclick="() => RunMore(() => OnTaskClick.InvokeAsync(t))"><i data-lucide="square-pen"></i>Open details</button>
+                                    @if (Groups.Count > 1)
+                                    {
+                                        <div class="plist-menu-head">Move to group</div>
+                                        @foreach (var destination in Groups.Where(g => g.Id != t.GroupId))
+                                        {
+                                            <button type="button" @onclick="() => RunMore(() => OnMoveToGroup.InvokeAsync((t.Id, destination.Id)))"><span class="plist-dot" style="background:@destination.Color"></span>@destination.Name</button>
+                                        }
+                                    }
+                                    <button type="button" @onclick="() => { CloseAllPopovers(); openEstimateTaskId = t.Id; }"><i data-lucide="clock"></i>Estimate<span class="hint">@(t.EstimatedHours.HasValue ? $"{t.EstimatedHours}h" : "—")</span></button>
+                                    @if (t.DueDate.HasValue && t.Status != "done")
+                                    {
+                                        <button type="button" class="@(isOverdue ? "danger" : "")" @onclick="() => RunMore(() => OnRequestExtension.InvokeAsync(t))"><i data-lucide="clock-alert"></i>Request extension</button>
+                                    }
+                                </div>
+                            }
+                            @if (openEstimateTaskId == t.Id)
+                            {
+                                <div class="plist-backdrop" @onclick="CloseAllPopovers"></div>
+                                <div class="plist-menu right wide" role="dialog" aria-label="Estimated hours" @ref="menuRef">
+                                    <div class="plist-menu-head">Estimated hours</div>
+                                    <div class="plist-chips">
+                                        @foreach (var h in new decimal[] { 1, 2, 4, 8, 16, 40 })
+                                        {
+                                            <button type="button" class="@(t.EstimatedHours == h ? "on" : "")" @onclick="() => SetEstimate(t, h)">@(h)h</button>
+                                        }
+                                    </div>
+                                    <div class="plist-inline">
+                                        <input type="number" step="0.5" class="plist-input" value="@(t.EstimatedHours ?? 0)"
+                                               @onchange="async e => { if (decimal.TryParse(e.Value?.ToString(), out var h)) await SetEstimate(t, h > 0 ? h : null); }" />
+                                        <span class="hint">hours</span>
+                                    </div>
+                                    @if (t.EstimatedHours.HasValue)
+                                    {
+                                        <button type="button" class="danger" @onclick="() => SetEstimate(t, null)"><i data-lucide="x"></i>Clear estimate</button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (VisibleFields.Any(f => f.Type == "Number") && groupItems.Count > 0)
+                {
+                    <div class="plist-field-totals">
+                        @foreach (var field in VisibleFields.Where(f => f.Type == "Number"))
+                        {
+                            var sum = groupItems.Sum(t => decimal.TryParse(FieldValues.GetValueOrDefault(t.Id)?.GetValueOrDefault(field.Id), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : 0m);
+                            <span>@field.Name: @sum</span>
                         }
                     </div>
-
-                    @* Group Aggregate Summary Bar *@
-                    <div class="table-group-summary">
-                        <span>Total @groupTitle: @groupItems.Count tasks</span>
-                        <span>@totalHours h total estimate</span>
+                }
+                @if (addingInGroup == group.Id)
+                {
+                    <div class="plist-adder">
+                        <div class="kanban-quick-add-box">
+                            <input class="kanban-quick-input" placeholder="Task name, then press Enter" @bind="newInlineTitle" @bind:event="oninput"
+                                   @onkeydown="@(async e => { if (e.Key == "Enter") await SubmitInlineAdd(group); if (e.Key == "Escape") addingInGroup = null; })" autofocus />
+                            <div class="kanban-quick-actions">
+                                <button type="button" class="kanban-quick-save" @onclick="() => SubmitInlineAdd(group)">Add</button>
+                                <button type="button" class="kanban-quick-cancel" @onclick="() => addingInGroup = null">Cancel</button>
+                                <span class="kanban-quick-hint">Esc to close</span>
+                            </div>
+                        </div>
                     </div>
-                </div>
+                }
+                else
+                {
+                    <button type="button" class="plist-add-row" @onclick="() => StartInlineAdd(group)">
+                        <i data-lucide="plus"></i>Add task to @group.Name
+                    </button>
+                }
             }
         </div>;
     }

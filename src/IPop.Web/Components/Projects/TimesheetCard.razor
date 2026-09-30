@@ -1,0 +1,141 @@
+@using IPop.Application.Projects
+@implements IDisposable
+@inject IPop.Web.Services.AuthState Auth
+@inject IPop.Web.Services.TimerState Timer
+
+@* Phase 3: weekly timesheet per person — one project (ProjectId) or the portfolio (null). *@
+<section class="timesheet @Class" aria-labelledby="@headingId">
+    <div class="timesheet-head">
+        <div>
+            <h3 id="@headingId">Timesheet mingguan</h3>
+            <p>@(ProjectId is null ? "Waktu tercatat di semua project yang bisa Anda lihat." : "Waktu tercatat per anggota di project ini.")</p>
+        </div>
+        <div class="timesheet-nav" role="group" aria-label="Pilih minggu">
+            <button type="button" aria-label="Minggu sebelumnya" @onclick="() => Shift(-1)"><i data-lucide="chevron-left"></i></button>
+            <button type="button" class="timesheet-today" disabled="@IsThisWeek" @onclick="ThisWeek">Minggu ini</button>
+            <button type="button" aria-label="Minggu berikutnya" disabled="@IsThisWeek" @onclick="() => Shift(1)"><i data-lucide="chevron-right"></i></button>
+            <span class="timesheet-range" aria-live="polite">@ProjectTimeFormat.WeekLabel(weekStart)</span>
+        </div>
+    </div>
+
+    @if (sheet is null)
+    {
+        <p class="timesheet-muted" role="status">@(error ?? "Memuat timesheet…")</p>
+    }
+    else if (sheet.Rows.Count == 0)
+    {
+        <p class="timesheet-muted" role="status">Belum ada waktu tercatat minggu ini.</p>
+    }
+    else
+    {
+        <div class="timesheet-scroll">
+            <table class="timesheet-table">
+                <caption class="sr-only">Menit tercatat per orang per hari, @ProjectTimeFormat.WeekLabel(weekStart)</caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Anggota</th>
+                        @for (var d = 0; d < 7; d++)
+                        {
+                            var day = weekStart.AddDays(d);
+                            <th scope="col" class="@(day.Date == DateTime.Today ? "today" : "")">
+                                <span>@IPop.Web.Components.DatePickerMath.WeekdayLong[d][..3]</span><small>@day.Day</small>
+                            </th>
+                        }
+                        <th scope="col" class="total">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in sheet.Rows)
+                    {
+                        <tr>
+                            <th scope="row">
+                                <span class="timesheet-who">
+                                    <span class="timesheet-avatar" style="background:@ProjectUiHelpers.GetAvatarBg(row.Name)" aria-hidden="true">@ProjectUiHelpers.GetInitials(row.Name)</span>
+                                    <span class="timesheet-name">@row.Name</span>
+                                </span>
+                            </th>
+                            @for (var d = 0; d < 7; d++)
+                            {
+                                var m = row.DayMinutes[d];
+                                <td class="@(m == 0 ? "zero" : m > 8 * 60 ? "over" : "")" title="@(m > 8 * 60 ? "Lebih dari 8 jam" : null)">@(m == 0 ? "—" : ProjectTimeFormat.Minutes(m))</td>
+                            }
+                            <td class="total">@ProjectTimeFormat.Minutes(row.TotalMinutes)</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <th scope="row">Total</th>
+                        @for (var d = 0; d < 7; d++)
+                        {
+                            <td>@(sheet.DayTotals[d] == 0 ? "—" : ProjectTimeFormat.Minutes(sheet.DayTotals[d]))</td>
+                        }
+                        <td class="total">@ProjectTimeFormat.Minutes(sheet.TotalMinutes)</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter] public Guid? ProjectId { get; set; }
+    [Parameter] public string? Class { get; set; }
+    /// Bumped by the parent on a live project refresh so the numbers follow.
+    [Parameter] public object? Version { get; set; }
+
+    private readonly string headingId = $"ts-{Guid.NewGuid():N}";
+    private DateTime weekStart = ProjectTimeFormat.WeekStartLocal(DateTime.Today);
+    private TimesheetDto? sheet;
+    private string? error;
+    private Guid? loadedProject = Guid.Empty;
+    private object? loadedVersion;
+    private int loadSeq;
+
+    private bool IsThisWeek => weekStart >= ProjectTimeFormat.WeekStartLocal(DateTime.Today);
+
+    protected override void OnInitialized() => Timer.Changed += OnTimerChanged;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ProjectId == loadedProject && ReferenceEquals(Version, loadedVersion)) return;
+        loadedProject = ProjectId;
+        loadedVersion = Version;
+        await LoadAsync();
+    }
+
+    private async Task Shift(int weeks)
+    {
+        weekStart = weekStart.AddDays(7 * weeks);
+        await LoadAsync();
+    }
+
+    private async Task ThisWeek()
+    {
+        weekStart = ProjectTimeFormat.WeekStartLocal(DateTime.Today);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var seq = ++loadSeq;
+        var q = ProjectTimeFormat.WeekStartQuery(weekStart);
+        var url = ProjectId is { } pid ? $"/api/projects/{pid}/timesheet?weekStart={q}" : $"/api/projects/portfolio/timesheet?weekStart={q}";
+        try
+        {
+            var fresh = await Auth.GetAsync<TimesheetDto>(url);
+            if (seq != loadSeq) return;
+            sheet = fresh;
+            error = fresh is null ? "Timesheet tidak bisa dimuat." : null;
+        }
+        catch
+        {
+            if (seq == loadSeq) { sheet = null; error = "Timesheet tidak bisa dimuat."; }
+        }
+    }
+
+    // A stopped timer adds a row value this week.
+    private void OnTimerChanged() => _ = InvokeAsync(async () => { if (IsThisWeek) { await LoadAsync(); StateHasChanged(); } });
+
+    public void Dispose() => Timer.Changed -= OnTimerChanged;
+}

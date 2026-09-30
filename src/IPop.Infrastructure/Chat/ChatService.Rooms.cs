@@ -157,7 +157,7 @@ public sealed partial class ChatService
                 m.User.Nik,
                 m.User.Name,
                 m.Role,
-                PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now)
+                PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now, m.User.PresenceIsIdle)
             ))
             .ToListAsync(ct);
 
@@ -168,7 +168,7 @@ public sealed partial class ChatService
         var mentionDir = allMembers.Select(m => new MentionUserDto(m.UserId, m.User.Nik, m.User.Name, m.LeftAt == null)).ToList();
         var s = await db.ChatRoomUserSettings.AsNoTracking().FirstOrDefaultAsync(x => x.UserId == userId && x.RoomId == roomId, ct);
         var readReceiptsEnabled = s?.ReadReceiptsEnabled ?? true;
-        return new ChatRoomDto(room.Id, room.Type, room.Name, room.Description, members.Count, onlineCount, members, currentRole, mentionDir, readReceiptsEnabled, room.AvatarColor);
+        return new ChatRoomDto(room.Id, room.Type, room.Name, room.Description, members.Count, onlineCount, members, currentRole, mentionDir, readReceiptsEnabled, room.AvatarColor, room.AvatarUrl);
     }
 
     public async Task<PagedResult<RoomListDto>> GetRoomsAsync(Guid userId, RoomTab tab, int page, int pageSize, CancellationToken ct)
@@ -223,6 +223,9 @@ public sealed partial class ChatService
             .ToListAsync(ct);
 
         var lastByRoom = lastMessages.ToDictionary(m => m.RoomId);
+        var lastSenderIds = lastMessages.Select(m => m.SenderId).Distinct().ToList();
+        var lastSenderNames = await db.Users.AsNoTracking().Where(u => lastSenderIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.Name }).ToDictionaryAsync(u => u.Id, u => u.Name, ct);
 
         // Batch: unread count per room
         var withReadIds = rooms.Where(x => x.Settings?.LastReadMessageAt != null).Select(x => x.Room.Id).ToList();
@@ -251,15 +254,32 @@ public sealed partial class ChatService
             foreach (var id in withReadIds) unreadByRoom[id] = counts.TryGetValue(id, out var c) ? c : 0;
         }
 
-        // Batch: other member for DM rooms
-        Dictionary<Guid, ChatRoomMember> otherByRoom = new();
+        // Batch: other member for DM rooms.
+        // Projected rather than Include(m => m.User): the room list only needs the partner's
+        // name, NIK and presence, but Include pulled every User column (PasswordHash, PhotoPath
+        // and the rest) for each room. On a slow link that bloated the result enough to blow
+        // the Npgsql read timeout and fail the whole list.
+        Dictionary<Guid, (string? Name, string? Nik, DateTime? LastSeen, string? ManualStatus, bool Idle)> otherByRoom = new();
         if (roomType == "dm")
         {
             var allOthers = await db.ChatRoomMembers.AsNoTracking()
-                .Include(m => m.User)
                 .Where(m => roomIds.Contains(m.RoomId) && m.UserId != userId && m.LeftAt == null)
+                .Select(m => new
+                {
+                    m.RoomId,
+                    Name = m.User!.Name,
+                    Nik = m.User.Nik,
+                    m.User.PresenceLastSeenAt,
+                    m.User.PresenceManualStatus,
+                    m.User.PresenceIsIdle
+                })
                 .ToListAsync(ct);
-            otherByRoom = allOthers.GroupBy(m => m.RoomId).ToDictionary(g => g.Key, g => g.First());
+            otherByRoom = allOthers
+                .GroupBy(x => x.RoomId)
+                .ToDictionary(
+                    g => g.Key,
+                    g => (g.First().Name, (string?)g.First().Nik,
+                          (DateTime?)g.First().PresenceLastSeenAt, g.First().PresenceManualStatus, g.First().PresenceIsIdle));
         }
 
         // Batch HasUnreadMention
@@ -288,7 +308,9 @@ public sealed partial class ChatService
             var s = item.Settings;
 
             lastByRoom.TryGetValue(r.Id, out var lm);
-            var lastMessagePreview = lm is null ? null : lm.IsDeleted ? "This message was deleted" : MentionPlainText.Project(lm.Content, 100);
+            var lastMessagePreview = lm is null ? null
+                : RoomPreview.Build(r.Type, lm.Type, lm.Content, lm.IsDeleted,
+                    lastSenderNames.GetValueOrDefault(lm.SenderId), lm.SenderId == userId);
             var unreadCount = unreadByRoom[r.Id];
 
             string? dmName = null;
@@ -298,12 +320,13 @@ public sealed partial class ChatService
             {
                 if (otherByRoom.TryGetValue(r.Id, out var other))
                 {
-                    dmName = other.User?.Name;
-                    dmNik = other.User?.Nik;
+                    dmName = other.Name;
+                    dmNik = other.Nik;
                     presenceStatus = PresenceStatus.ComputeStatus(
-                        other.User?.PresenceLastSeenAt,
-                        other.User?.PresenceManualStatus,
-                        now
+                        other.LastSeen,
+                        other.ManualStatus,
+                        now,
+                        other.Idle
                     );
                 }
             }
@@ -332,7 +355,8 @@ public sealed partial class ChatService
                 hasUnreadMention,
                 muteExpires,
                 readReceiptsEnabled,
-                r.AvatarColor));
+                r.AvatarColor,
+                r.AvatarUrl));
         }
 
         return new PagedResult<RoomListDto>(roomDtos, totalCount, page, pageSize);

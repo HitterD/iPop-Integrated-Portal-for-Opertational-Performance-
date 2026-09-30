@@ -5,6 +5,7 @@
 @inject NavigationManager Nav
 @inject ToastService Toasts
 @inject IPop.Web.Services.CallState CallSvc
+@implements IDisposable
 
 <PageTitle>Dashboard — IPop</PageTitle>
 
@@ -320,14 +321,51 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Auth.PresenceChanged += OnPresenceChanged;
         await Auth.LoadMeAsync();
         await LoadAsync();
+    }
+
+    // ── Team online, live ──
+    // A listed person changing between on/away/busy is patched in place. Anyone arriving
+    // (the push carries no name) or leaving changes the list and the count, so that
+    // re-reads /api/dashboard, debounced so a login burst is one request.
+    private CancellationTokenSource? _presenceReload;
+
+    private void OnPresenceChanged(string nik, string status)
+    {
+        if (data is null || string.Equals(nik, Auth.Me?.Nik, StringComparison.OrdinalIgnoreCase)) return;
+        var i = data.Online.FindIndex(p => string.Equals(p.Nik, nik, StringComparison.OrdinalIgnoreCase));
+        if (i >= 0 && status != "off")
+        {
+            if (data.Online[i].Status == status) return;
+            data.Online[i] = data.Online[i] with { Status = status };
+            _ = InvokeAsync(StateHasChanged);
+            return;
+        }
+        if (i < 0 && status == "off") return; // someone we weren't showing went away
+        _presenceReload?.Cancel();
+        var cts = _presenceReload = new CancellationTokenSource();
+        _ = InvokeAsync(async () =>
+        {
+            try { await Task.Delay(1000, cts.Token); } catch (OperationCanceledException) { return; }
+            var fresh = await Auth.GetAsync<DashboardDto>("/api/dashboard");
+            if (cts.IsCancellationRequested || fresh is null) return;
+            data = Normalize(fresh);
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose()
+    {
+        Auth.PresenceChanged -= OnPresenceChanged;
+        _presenceReload?.Cancel();
     }
 
     private async Task LoadAsync()
     {
         data = Normalize(await Auth.GetAsync<DashboardDto>("/api/dashboard"));
-        if (data is null) Toasts.Show("Couldn't load the dashboard.");
+        if (data is null) Toasts.Show("Couldn't load the dashboard.", ToastKind.Error);
     }
 
     // An older API build omits the newer lists; treat them as empty rather than crash the page.
@@ -340,7 +378,7 @@
     private async Task CompleteTask(TaskDto t)
     {
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{t.Id}/move", new { status = "done" });
-        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't complete the task."); return; }
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't complete the task.", ToastKind.Error); return; }
         Toasts.Show($"“{t.Title}” completed", ToastKind.Success);
         await LoadAsync();
     }

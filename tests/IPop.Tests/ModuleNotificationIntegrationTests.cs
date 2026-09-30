@@ -84,6 +84,27 @@ public class ModuleNotificationIntegrationTests
     }
 
     [Fact]
+    public async Task MailService_ScheduledDelivery_notifies_recipients_only_when_it_lands()
+    {
+        using var t = new TestDb();
+        var sender = t.AddUser("20080115");
+        var recipient = t.AddUser("20140312");
+
+        var mockGateway = new MockNotificationGatewayService();
+        var mailSvc = new MailService(t.Verify(), mockGateway);
+
+        await mailSvc.SendAsync(sender.Id, new ComposeMailRequest(
+            "Later", "<p>Hi</p>", [recipient.Nik], [], [], ScheduledAt: DateTime.UtcNow.AddMinutes(-1)), default);
+        Assert.Empty(mockGateway.Calls); // nothing while it is still scheduled
+
+        Assert.Equal(1, await mailSvc.DeliverDueScheduledMailsAsync(default));
+
+        var call = Assert.Single(mockGateway.Calls);
+        Assert.Equal("mail.new", call.EventType);
+        Assert.Equal([recipient.Id], call.Target.UserIds!);
+    }
+
+    [Fact]
     public async Task ProjectService_AssignUserAsync_PublishesInternalNotification_WithProjectTargetUrl()
     {
         using var t = new TestDb();
@@ -177,7 +198,7 @@ public class ModuleNotificationIntegrationTests
     {
         using var t = new TestDb();
         var admin = t.AddAdmin("20080115");
-        var author = t.AddUser("20140312");
+        var author = t.AddHr("20140312");
 
         var mockGateway = new MockNotificationGatewayService();
         var newsSvc = new NewsService(t.Verify(), mockGateway);
@@ -188,8 +209,6 @@ public class ModuleNotificationIntegrationTests
             Body: "Diumumkan bahwa besok adalah hari libur bersama."), default);
         Assert.True(createRes.Success);
         var newsId = createRes.News!.Id;
-
-        await newsSvc.SubmitAsync(author.Id, newsId, default);
         mockGateway.Calls.Clear();
 
         var pubRes = await newsSvc.PublishAsync(admin.Id, newsId, default);
@@ -222,7 +241,6 @@ public class ModuleNotificationIntegrationTests
         Assert.True(createRes.Success);
         var newsId = createRes.News!.Id;
 
-        await newsSvc.SubmitAsync(admin.Id, newsId, default);
         mockGateway.Calls.Clear();
 
         var pubRes = await newsSvc.PublishAsync(admin.Id, newsId, default);

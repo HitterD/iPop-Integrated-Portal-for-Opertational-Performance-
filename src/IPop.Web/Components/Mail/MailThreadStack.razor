@@ -66,20 +66,7 @@
                     {
                         @((MarkupString)body.Body)
 
-                        @if (body.Attachments.Count > 0)
-                        {
-                            <div class="attachments thr-attachments">
-                                @foreach (var a in body.Attachments)
-                                {
-                                    var att = a;
-                                    <button type="button" class="att" @onclick="() => Download(att)">
-                                        <i data-lucide="paperclip"></i>
-                                        <span class="name">@att.FileName</span>
-                                        <span class="size">@HumanSize(att.FileSize)</span>
-                                    </button>
-                                }
-                            </div>
-                        }
+                        <MailAttachmentCards Attachments="body.Attachments" />
 
                         <div class="thr-acts">
                             <button type="button" class="comp-btn" @onclick="() => OnReply.InvokeAsync(body)">
@@ -211,6 +198,4 @@
     private static string HumanSize(long b)
         => b switch { < 1024 => $"{b} B", < 1024 * 1024 => $"{b / 1024.0:0.#} KB", _ => $"{b / 1024.0 / 1024.0:0.#} MB" };
 
-    private async Task Download(MailAttachment a)
-        => await JS.InvokeVoidAsync("window.open", $"/api/mail/attachments/{a.Id}/download?inline=true");
 }

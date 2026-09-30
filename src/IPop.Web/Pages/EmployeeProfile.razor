@@ -15,7 +15,11 @@
 
 <PageTitle>@(person?.Name ?? "Profile") — IPop</PageTitle>
 
-<div class="content" style="grid-template-columns:1fr;max-width:860px">
+<div class="content emp-profile" style="grid-template-columns:1fr;max-width:860px">
+    <div class="m-detail-bar emp-m-bar">
+        <button type="button" class="m-back" aria-label="Back" @onclick='() => Nav.NavigateTo("/directory")'><i data-lucide="chevron-left"></i></button>
+        <span class="m-detail-title">Directory</span>
+    </div>
 
     @if (loading)
     {
@@ -52,7 +56,7 @@
                         </button>
                     </span>
                 </div>
-                <div style="display:flex;align-items:flex-start;gap:18px;padding:20px">
+                <div class="emp-id" style="display:flex;align-items:flex-start;gap:18px;padding:20px">
                     <div class="avatar" style="background:@IPop.Web.Models.AvatarPalette.For(person.Nik);width:84px;height:84px;font-size:28px;border-radius:22px;flex-shrink:0">
                         @Initials(person.Name)
                     </div>
@@ -75,7 +79,7 @@
                                 <div class="p-row"><i data-lucide="map-pin"></i><span class="k">Location</span><span class="v">@person.Location</span></div>
                             }
                         </div>
-                        <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+                        <div class="emp-acts" style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
                             <button class="btn-sm accent" @onclick="OpenChat"><i data-lucide="message-circle" style="width:13px;height:13px"></i> Chat</button>
                             <button class="btn-sm surface" @onclick="OpenMail"><i data-lucide="mail" style="width:13px;height:13px"></i> Mail</button>
                             <button class="btn-sm surface" @onclick="OpenCall"><i data-lucide="phone" style="width:13px;height:13px"></i> Call</button>

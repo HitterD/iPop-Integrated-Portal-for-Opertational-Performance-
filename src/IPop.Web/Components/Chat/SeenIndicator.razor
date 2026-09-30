@@ -6,51 +6,56 @@
 
 @if (shouldShow)
 {
-    <div class="seen-by seen-clickable" @onclick="ToggleList">
-        @if (allRead)
-        {
-            <span class="seen-label">Read by everyone</span>
-        }
-        else
-        {
-            @foreach (var r in visibleAvatars)
+    <div class="seen-wrap" @onkeydown="OnKey">
+        <button type="button" class="seen-by seen-clickable @(allRead ? "seen-all" : "")" aria-haspopup="dialog" aria-expanded="@(listOpen ? "true" : "false")"
+                title="Message info" @onclick="ToggleList" @onclick:stopPropagation>
+            @if (allRead)
             {
-                var reader = r;
-                <span class="seen-avatar avatar" style="background:@Color(reader.UserName)">@Initials(reader.UserName)</span>
+                @* Inline SVG (lucide check-check): data-lucide placeholders aren't re-hydrated on re-render. *@
+                <svg class="seen-all-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 7 17l-5-5" /><path d="m22 10-7.5 7.5L13 16" /></svg>
             }
-            @if (extraCount > 0)
-            {
-                <span class="seen-label">+@extraCount</span>
-            }
-        }
-    </div>
-    @if (listOpen)
-    {
-        <div class="seen-pop">
-            <button class="seen-close" aria-label="Close readers" @onclick="() => listOpen = false">×</button>
-            @if (loading) { <div class="seen-state">Loading…</div> }
-            else if (!string.IsNullOrEmpty(listError)) { <div class="seen-state seen-error">@listError</div> }
             else
             {
-                @foreach (var r in readers)
+                @foreach (var r in (Message.ReadPreview ?? visibleAvatars))
                 {
                     var reader = r;
-                    <div class="seen-row">
-                        <span class="avatar avatar-24" style="background:@Color(reader.UserName)">@Initials(reader.UserName)</span>
-                        <span>@reader.UserName</span>
-                        @if (reader.ReadAt is { } readAt)
+                    <span class="seen-avatar avatar" style="background:@Color(reader.UserName)">@Initials(reader.UserName)</span>
+                }
+            }
+            <span class="seen-label">@SummaryLabel</span>
+        </button>
+        @if (listOpen)
+        {
+            <div class="seen-backdrop" @onclick="Close" @onclick:stopPropagation></div>
+            <div class="seen-pop" role="dialog" aria-label="Message info" @onclick:stopPropagation>
+                <div class="seen-pop-head">
+                    <span class="seen-pop-title">Message info</span>
+                    <span class="seen-pop-count">@readers.Count / @activeMemberCount</span>
+                    <button type="button" class="seen-close" aria-label="Close" @onclick="Close"><i data-lucide="x"></i></button>
+                </div>
+                @if (loading && readers.Count == 0) { <div class="seen-state">Loading…</div> }
+                else if (!string.IsNullOrEmpty(listError)) { <div class="seen-state seen-error">@listError</div> }
+                else
+                {
+                    <div class="seen-pop-body">
+                        <div class="seen-section"><i data-lucide="check-check"></i> Read by <b>@readers.Count</b></div>
+                        @foreach (var r in readers)
                         {
-                            <span class="seen-time">Read @readAt.ToLocalTime().ToString("g")</span>
+                            @Row(r, r.ReadAt is { } at ? at.ToLocalTime().ToString("d MMM, HH:mm") : null)
                         }
-                        else if (reader.DeliveredAt is { } deliveredAt)
+                        @if (pending.Count > 0)
                         {
-                            <span class="seen-time">Delivered @deliveredAt.ToLocalTime().ToString("g")</span>
+                            <div class="seen-section"><i data-lucide="check"></i> Not read yet <b>@pending.Count</b></div>
+                            @foreach (var r in pending)
+                            {
+                                @Row(r, r.DeliveredAt is not null ? "Delivered" : "Not delivered")
+                            }
                         }
                     </div>
                 }
-            }
-        </div>
-    }
+            </div>
+        }
+    </div>
 }
 
 @implements IDisposable
@@ -63,25 +68,42 @@
     private bool loading;
     private string? listError;
     private List<SeenByDto> readers = [];
-    private bool allRead;
+    private List<SeenByDto> pending = [];
     private List<SeenByDto> visibleAvatars = [];
-    private int extraCount;
     private int activeMemberCount;
+    private Guid? loadedFor;
+
+    // Summary comes from the message itself (ChatState patches ReadCount/ReadPreview on seenUpdate),
+    // so every own bubble can show it without one request per message; the full list loads on click.
+    private int readCount => Message.ReadCount ?? readers.Count;
+    private int readTotal => Message.ReadTotal ?? activeMemberCount;
+    private bool allRead => readTotal > 0 && readCount >= readTotal;
+
+    private string SummaryLabel => allRead ? "Read all" : $"Seen by {readCount} of {readTotal}";
 
     private bool shouldShow =>
         RoomType == "group"
         && Message.SenderNik == CurrentUserNik
         && Message.Type != "system"
-        && (readers.Count > 0 || visibleAvatars.Count > 0 || allRead);
+        && readCount > 0;
+
+    private RenderFragment Row(SeenByDto r, string? meta) => __builder =>
+    {
+        <div class="seen-row">
+            <span class="avatar avatar-24" style="background:@Color(r.UserName)">@Initials(r.UserName)</span>
+            <span class="seen-name" title="@r.UserName">@r.UserName</span>
+            @if (meta is not null) { <span class="seen-time">@meta</span> }
+        </div>
+    };
 
     protected override async Task OnParametersSetAsync()
     {
         ChatSvc.SeenUpdated -= OnSeenUpdate;
-        // Only fetch for own messages in group rooms
         if (RoomType != "group" || Message.SenderNik != CurrentUserNik || Message.Type == "system") return;
-        // Lazy: fetch seen detail once
-        await RefreshReaders();
         ChatSvc.SeenUpdated += OnSeenUpdate;
+        if (Message.ReadCount is not null || loadedFor == Message.Id) return;
+        loadedFor = Message.Id;
+        await RefreshReaders();
     }
 
     private async Task RefreshReaders()
@@ -92,10 +114,10 @@
             if (detail != null)
             {
                 readers = detail.Readers.ToList();
+                pending = detail.Pending?.ToList() ?? [];
                 activeMemberCount = detail.ActiveMemberCount;
-                allRead = activeMemberCount > 0 && readers.Count >= activeMemberCount;
-                visibleAvatars = readers.Take(4).ToList();
-                extraCount = Math.Max(0, readers.Count - 4);
+                visibleAvatars = readers.Take(3).ToList();
+                listError = null;
             }
         }
         catch (Exception ex)
@@ -104,16 +126,24 @@
         }
     }
 
-    private void OnSeenUpdate(SeenUpdateDto u)
+    private async void OnSeenUpdate(SeenUpdateDto u)
     {
-        if (u.MessageId == Message.Id) _ = RefreshReaders();
+        if (u.MessageId != Message.Id || (!listOpen && Message.ReadCount is not null)) return;
+        await RefreshReaders();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ToggleList()
     {
-        if (readers.Count == 0) return;
         listOpen = !listOpen;
         if (listOpen) { loading = true; await RefreshReaders(); loading = false; }
+    }
+
+    private void Close() => listOpen = false;
+
+    private void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") listOpen = false;
     }
 
     private static string Initials(string name)

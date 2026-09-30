@@ -143,6 +143,22 @@ public sealed class TestDb : IDisposable
     {
         var u = AddUser(nik); AssignRole(u.Id, "Admin"); return u;
     }
+    /// HR as seeded in production: the HR role carries news.publish (the news manager gate).
+    public User AddHr(string nik)
+    {
+        var u = AddUser(nik); AssignRole(u.Id, "HR");
+        var role = EnsureRole("HR");
+        var perm = Db.Permissions.FirstOrDefault(p => p.Code == "news.publish");
+        if (perm is null)
+        {
+            perm = new Permission { Id = Guid.NewGuid(), Code = "news.publish", Description = "Publish news" };
+            Db.Permissions.Add(perm);
+        }
+        if (!Db.RolePermissions.Any(rp => rp.RoleId == role.Id && rp.PermissionId == perm.Id))
+            Db.RolePermissions.Add(new RolePermission { RoleId = role.Id, PermissionId = perm.Id });
+        Db.SaveChanges();
+        return u;
+    }
 
     // ── Project helpers (ipop-23 P2-1: News project targeting) ──
     public Project AddProject(string name, Guid ownerId, Guid? creatorId = null)
@@ -154,6 +170,10 @@ public sealed class TestDb : IDisposable
             CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
         };
         Db.Projects.Add(p);
+        Db.ProjectGroups.Add(new ProjectGroup
+        {
+            Id = Guid.NewGuid(), ProjectId = p.Id, Name = "Tasks", SortOrder = 0
+        });
         var actor = creatorId ?? ownerId;
         Db.ProjectMembers.Add(new ProjectMember { ProjectId = p.Id, UserId = actor, Role = "manager", JoinedAt = DateTime.UtcNow });
         if (ownerId != actor)

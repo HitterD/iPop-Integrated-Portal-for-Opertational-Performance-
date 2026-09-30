@@ -1,5 +1,6 @@
 using IPop.Application.Auth;
 using IPop.Application.Notifications;
+using IPop.Application.Realtime;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -104,18 +105,19 @@ public static class NotificationGatewayEndpoints
         // lifecycle are client-driven on the recipient side (app in-app notifications).
         // ────────────────────────────────────────────────────────────────────────
         v1.MapPost("/notifications/{requestId:guid}/read", async (Guid requestId,
-            HttpContext http, INotificationGatewayService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, INotificationGatewayService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
             var state = await svc.MarkReadAsync(requestId, userId.Value, ct);
+            if (state is not null) await NotifyChangedAsync(http, realtime, ct);
             return state is null
                 ? Results.Json(new { code = NotificationErrors.DeliveryNotFound, message = "No delivery found for this user/request." }, statusCode: 404)
                 : Results.Ok(state);
         }).RequireAuthorization();
 
         v1.MapPost("/notifications/{requestId:guid}/unread", async (Guid requestId,
-            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
@@ -125,6 +127,7 @@ public static class NotificationGatewayEndpoints
             delivery.ReadAt = null;
             delivery.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
+            await NotifyChangedAsync(http, realtime, ct);
             return Results.Ok(new { requestId, status = "unread" });
         }).RequireAuthorization();
 
@@ -144,7 +147,7 @@ public static class NotificationGatewayEndpoints
         }).RequireAuthorization();
 
         v1.MapPost("/notifications/{requestId:guid}/snooze", async (Guid requestId, SnoozeNotificationRequest req,
-            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
@@ -155,11 +158,12 @@ public static class NotificationGatewayEndpoints
             delivery.SnoozedUntil = until;
             delivery.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
+            await NotifyChangedAsync(http, realtime, ct);
             return Results.Ok(new { requestId, snoozedUntil = until });
         }).RequireAuthorization();
 
         v1.MapPost("/notifications/{requestId:guid}/unsnooze", async (Guid requestId,
-            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
@@ -169,6 +173,7 @@ public static class NotificationGatewayEndpoints
             delivery.SnoozedUntil = null;
             delivery.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
+            await NotifyChangedAsync(http, realtime, ct);
             return Results.Ok(new { requestId });
         }).RequireAuthorization();
 
@@ -274,16 +279,17 @@ public static class NotificationGatewayEndpoints
         // Recipient inbox "mark all read" — one call, per-user, JWT-gated.
         // ────────────────────────────────────────────────────────────────────────
         v1.MapPost("/inbox/read-all", async (HttpContext http,
-            INotificationGatewayService svc, IPopDbContext db, CancellationToken ct) =>
+            INotificationGatewayService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
             var updated = await svc.MarkAllReadAsync(userId.Value, ct);
+            await NotifyChangedAsync(http, realtime, ct);
             return Results.Ok(new { updated });
         }).RequireAuthorization();
 
         v1.MapDelete("/notifications/{requestId:guid}", async (Guid requestId,
-            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
@@ -291,11 +297,12 @@ public static class NotificationGatewayEndpoints
             if (delivery is null) return Results.NotFound();
             db.NotificationDeliveries.Remove(delivery);
             await db.SaveChangesAsync(ct);
+            await NotifyChangedAsync(http, realtime, ct);
             return Results.Ok(new { success = true });
         }).RequireAuthorization();
 
         v1.MapPost("/notifications/bulk-delete", async (BulkNotificationActionRequest req,
-            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
@@ -306,12 +313,13 @@ public static class NotificationGatewayEndpoints
                     .ToListAsync(ct);
                 db.NotificationDeliveries.RemoveRange(deliveries);
                 await db.SaveChangesAsync(ct);
+                await NotifyChangedAsync(http, realtime, ct);
             }
             return Results.Ok(new { success = true });
         }).RequireAuthorization();
 
         v1.MapPost("/notifications/bulk-read", async (BulkNotificationActionRequest req,
-            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
@@ -328,16 +336,18 @@ public static class NotificationGatewayEndpoints
                     d.UpdatedAt = now;
                 }
                 await db.SaveChangesAsync(ct);
+                await NotifyChangedAsync(http, realtime, ct);
             }
             return Results.Ok(new { success = true });
         }).RequireAuthorization();
 
         v1.MapPost("/notifications/{requestId:guid}/acknowledge", async (Guid requestId,
-            HttpContext http, INotificationGatewayService svc, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, INotificationGatewayService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
             var state = await svc.MarkAcknowledgedAsync(requestId, userId.Value, ct);
+            if (state is not null) await NotifyChangedAsync(http, realtime, ct);
             return state is null
                 ? Results.Json(new { code = NotificationErrors.DeliveryNotFound, message = "No delivery found for this user/request." }, statusCode: 404)
                 : Results.Ok(state);
@@ -704,6 +714,15 @@ public static class NotificationGatewayEndpoints
         var secret = http.Request.Headers["X-Client-Secret"].FirstOrDefault();
         if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(secret)) return null;
         return await svc.AuthenticateClientAsync(clientId, secret, http.Connection.RemoteIpAddress?.ToString(), ct);
+    }
+
+    /// Read/unread/snooze/delete in one tab: the user's other tabs re-fetch the bell
+    /// (unread count + recent list) instead of showing stale state until a refresh.
+    private static Task NotifyChangedAsync(HttpContext http, IRealtime realtime, CancellationToken ct)
+    {
+        var nik = http.User.FindFirst("nik")?.Value;
+        return string.IsNullOrEmpty(nik) ? Task.CompletedTask
+            : realtime.ToUserAsync(nik, RealtimeEvents.NotificationsChanged, ct: ct);
     }
 
     private static async Task<Guid?> GetUserIdAsync(HttpContext http, IPopDbContext db, CancellationToken ct)

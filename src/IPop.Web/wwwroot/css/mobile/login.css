@@ -1,0 +1,23 @@
+/* Mobile (<= 767px) overrides for login. Loaded after every desktop stylesheet. */
+
+@media (max-width: 767px) {
+  /* Login / ForceChangePassword / ResetPassword (EmptyLayout, .auth-wrap): fit 360px. */
+  .auth-wrap { min-height: 100dvh; padding: 16px 12px calc(16px + env(safe-area-inset-bottom, 0px)); }
+  .auth-wrap .auth-card { max-width: 100%; border-radius: 18px; }
+  .auth-wrap .auth-card .core { padding: 22px 18px; border-radius: 17px; }
+  .auth-wrap .auth-card .brand-row { margin-bottom: 20px; }
+  .auth-wrap .auth-card h2 { font-size: 20px; }
+  .auth-wrap .auth-card .sub { margin-bottom: 18px; }
+  .auth-wrap .auth-card .field input { height: 48px; }
+  .auth-wrap .auth-card .auth-options { flex-wrap: wrap; gap: 4px 8px; }
+  .auth-wrap .auth-card .auth-options .auth-link,
+  .auth-wrap .auth-card .auth-remember { min-height: 40px; display: inline-flex; align-items: center; gap: 6px; }
+  .auth-wrap .auth-card form > .btn { height: 48px; }
+  .auth-wrap .auth-card .note { margin-top: 16px; }
+  .auth-theme-btn { top: 10px; right: 10px; width: 40px; height: 40px; }
+
+  /* DeviceLink / NotFound (MainLayout, .content > .tray > .core). */
+  .content > .tray { min-width: 0; }
+  .content .core .field[style*="max-width"] { max-width: 100% !important; }
+  .content .tree-empty[style*="padding"] { padding: 32px 16px !important; }
+}

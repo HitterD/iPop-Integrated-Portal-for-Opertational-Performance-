@@ -1,0 +1,118 @@
+@using IPop.Application.Projects
+
+<section class="portfolio" aria-label="Overview semua project">
+    <div class="portfolio-heading">
+        <div>
+            <h2>Overview semua project</h2>
+            <p>Prioritas dan tenggat dari project yang dapat Anda lihat.</p>
+        </div>
+        <span class="portfolio-scope">@(Data?.Scope == "all" ? "Semua project" : "Project saya")</span>
+    </div>
+    @if (Loading)
+    {
+        <div class="portfolio-empty">Memuat ringkasan project…</div>
+    }
+    else if (Data is null)
+    {
+        <div class="portfolio-empty">Ringkasan belum tersedia. <button type="button" @onclick="OnRetry">Coba lagi</button></div>
+    }
+    else
+    {
+        <div class="portfolio-metrics">
+            <div class="portfolio-metric"><span>Project aktif</span><strong>@Data.ActiveProjects</strong></div>
+            <div class="portfolio-metric"><span>Perlu perhatian</span><strong>@Data.AtRiskProjects</strong></div>
+            <button type="button" class="portfolio-metric" @onclick="OpenDueWeek"><span>Task saya minggu ini</span><strong>@Data.MyDueWeek</strong></button>
+            <button type="button" class="portfolio-metric" @onclick="OpenOverdue"><span>Task terlambat</span><strong>@Data.OverdueTasks</strong></button>
+        </div>
+        <div class="portfolio-grid">
+            <section class="portfolio-card portfolio-projects">
+                <h3>Project <small>@Data.AverageProgress% rata-rata selesai</small></h3>
+                @if (Data.Projects.TotalCount == 0)
+                {
+                    <p class="portfolio-muted">Belum ada project aktif. Pilih New untuk membuat project.</p>
+                }
+                @foreach (var project in Data.Projects.Items)
+                {
+                    <button type="button" class="portfolio-row" @onclick="() => OnOpenProject.InvokeAsync(project.ProjectId)">
+                        <span class="portfolio-row-main"><b>@project.Name</b><small>@project.TaskCount task · @project.Progress% selesai</small></span>
+                        <span class="portfolio-health @project.Health">@HealthLabel(project.Health)</span>
+                    </button>
+                }
+                @if (Data.Projects.TotalCount > Data.Projects.PageSize)
+                {
+                    <div class="portfolio-pages"><button type="button" disabled="@(Data.Projects.Page <= 1)" @onclick="() => OnProjectPage.InvokeAsync(Data.Projects.Page - 1)">Sebelumnya</button><span>@Data.Projects.Page / @((Data.Projects.TotalCount + Data.Projects.PageSize - 1) / Data.Projects.PageSize)</span><button type="button" disabled="@(Data.Projects.Page * Data.Projects.PageSize >= Data.Projects.TotalCount)" @onclick="() => OnProjectPage.InvokeAsync(Data.Projects.Page + 1)">Berikutnya</button></div>
+                }
+            </section>
+            <section class="portfolio-card">
+                <h3>Terlambat per orang</h3>
+                @if (Data.OverdueByPerson.Count == 0) { <p class="portfolio-muted">Tidak ada task yang terlambat.</p> }
+                @foreach (var person in Data.OverdueByPerson)
+                {
+                    <button type="button" class="portfolio-row" @onclick="() => OpenPersonTasks(person, false)"><span>@person.Name</span><b>@person.OverdueCount task</b></button>
+                }
+            </section>
+            <section class="portfolio-card">
+                <h3>Beban minggu ini</h3>
+                @if (Data.WorkloadByPerson.Count == 0) { <p class="portfolio-muted">Belum ada task terjadwal minggu ini.</p> }
+                @foreach (var person in Data.WorkloadByPerson)
+                {
+                    <button type="button" class="portfolio-row" @onclick="() => OpenPersonTasks(person, true)">
+                        <span>@person.Name</span><b>@person.OpenTaskCount task</b>
+                    </button>
+                }
+            </section>
+            <section class="portfolio-card">
+                <h3>Tenggat project terdekat</h3>
+                @if (Data.Deadlines.Count == 0) { <p class="portfolio-muted">Belum ada tenggat mendatang.</p> }
+                @foreach (var deadline in Data.Deadlines)
+                {
+                    <button type="button" class="portfolio-row" @onclick="() => OnOpenProject.InvokeAsync(deadline.ProjectId)"><span>@deadline.Name</span><time datetime="@(deadline.Deadline.ToString("yyyy-MM-dd"))">@deadline.Deadline.ToString("dd MMM")</time></button>
+                }
+            </section>
+        </div>
+        @if (Tasks is not null)
+        {
+            <section class="portfolio-card portfolio-drilldown" aria-label="Task terkait">
+                <div class="portfolio-drilldown-head"><h3>Task terkait</h3><button type="button" @onclick="OnCloseTasks">Tutup</button></div>
+                @if (Tasks.Items.Count == 0) { <p class="portfolio-muted">Tidak ada task untuk pilihan ini.</p> }
+                @foreach (var task in Tasks.Items)
+                {
+                    <button type="button" class="portfolio-row" @onclick="() => OnOpenTask.InvokeAsync((task.ProjectId, task.TaskId))">
+                        <span class="portfolio-row-main"><b>@task.Title</b><small>@task.ProjectName · @string.Join(", ", task.Assignees.Select(a => a.Name))</small></span>
+                        <time>@(task.DueDate?.ToString("dd MMM") ?? "—")</time>
+                    </button>
+                }
+                @if (Tasks.TotalCount > Tasks.PageSize)
+                {
+                    <div class="portfolio-pages"><button type="button" disabled="@(Tasks.Page <= 1)" @onclick="() => OnTaskPage.InvokeAsync(Tasks.Page - 1)">Sebelumnya</button><span>@Tasks.Page / @((Tasks.TotalCount + Tasks.PageSize - 1) / Tasks.PageSize)</span><button type="button" disabled="@(Tasks.Page * Tasks.PageSize >= Tasks.TotalCount)" @onclick="() => OnTaskPage.InvokeAsync(Tasks.Page + 1)">Berikutnya</button></div>
+                }
+            </section>
+        }
+        <TimesheetCard ProjectId="null" Version="Data" Class="portfolio-card portfolio-timesheet" />
+    }
+</section>
+
+@code {
+    [Parameter] public PortfolioDto? Data { get; set; }
+    [Parameter] public PagedResult<PortfolioTaskDto>? Tasks { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public EventCallback OnRetry { get; set; }
+    [Parameter] public EventCallback<Guid> OnOpenProject { get; set; }
+    [Parameter] public EventCallback<(string Filter, Guid? ProjectId, Guid? AssigneeId)> OnOpenTasks { get; set; }
+    [Parameter] public EventCallback<(Guid ProjectId, Guid TaskId)> OnOpenTask { get; set; }
+    [Parameter] public EventCallback<int> OnTaskPage { get; set; }
+    [Parameter] public EventCallback<int> OnProjectPage { get; set; }
+    [Parameter] public EventCallback OnCloseTasks { get; set; }
+
+    private Task OpenDueWeek() => OnOpenTasks.InvokeAsync(("due_week", null, null));
+    private Task OpenOverdue() => OnOpenTasks.InvokeAsync(("overdue", null, null));
+    private Task OpenPersonTasks(PortfolioPersonDto person, bool workload) =>
+        OnOpenTasks.InvokeAsync((workload ? "workload" : "overdue", null, person.UserId));
+
+    private static string HealthLabel(string health) => health switch
+    {
+        "at_risk" => "Perlu perhatian",
+        "due_soon" => "Segera jatuh tempo",
+        _ => "Sesuai rencana"
+    };
+}

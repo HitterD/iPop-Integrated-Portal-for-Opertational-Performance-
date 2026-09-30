@@ -8,6 +8,7 @@
 @inject IPop.Web.Services.CallState CallSvc
 @inject CommandPaletteState Palette
 @inject BadgeState Badges
+@inject TimerState Timer
 @inject OverlayStack Overlays
 
 <div class="shell @(collapsed ? "collapsed" : "")" id="shell">
@@ -64,12 +65,13 @@
             }
             <div class="tb-spacer"></div>
             <SectionOutlet SectionName="topbar-actions" />
-            <button class="search-trigger" @onclick="Palette.Open" title="Search iPop (Ctrl+K)">
-                <i data-lucide="search"></i><span>Search iPop</span><kbd>⌘K</kbd>
+            <button class="search-trigger" @onclick="Palette.Open" title="Search iPop (Ctrl+K)" aria-label="Search iPop">
+                <i data-lucide="search"></i><span>Search iPop</span><kbd>@SearchShortcut</kbd>
             </button>
             <div class="topbar-right">
                 @if (Auth.Me is not null)
                 {
+                    <TopbarTimer />
                     <div class="status-wrap">
                         <button class="presence-toggle" title="Set your status" @onclick="ToggleStatusMenu" @onclick:stopPropagation>
                             <span class="sdot @Auth.MyStatus"></span>
@@ -81,6 +83,26 @@
                             <div class="status-menu" @onclick:stopPropagation>
                                 <button @onclick="() => SetStatus(false)"><span class="sdot on"></span><span class="l">Online<small>Automatic</small></span>@if (Auth.MyStatus != "busy") {<i data-lucide="check"></i>}</button>
                                 <button @onclick="() => SetStatus(true)"><span class="sdot busy"></span><span class="l">Busy<small>Mute calls &amp; banners</small></span>@if (Auth.MyStatus == "busy") {<i data-lucide="check"></i>}</button>
+                                @if (desktopAlerts is { } da)
+                                {
+                                    <div class="status-sep"></div>
+                                    @if (!da.Secure)
+                                    {
+                                        <div class="status-note"><i data-lucide="bell-off"></i><span class="l">Notifikasi desktop tidak tersedia<small>Browser hanya mengizinkannya di alamat https</small></span></div>
+                                    }
+                                    else if (da.Notify == "default" || da.Idle == "prompt")
+                                    {
+                                        <button class="status-alerts" @onclick="EnableDesktopAlerts"><i data-lucide="bell-ring"></i><span class="l">Aktifkan notifikasi desktop<small>Notif Windows + deteksi idle (Away)</small></span></button>
+                                    }
+                                    else if (da.Notify == "denied")
+                                    {
+                                        <div class="status-note"><i data-lucide="bell-off"></i><span class="l">Notifikasi desktop diblokir<small>Izinkan lewat ikon gembok di address bar</small></span></div>
+                                    }
+                                    else
+                                    {
+                                        <div class="status-note"><i data-lucide="bell-ring"></i><span class="l">Notifikasi desktop aktif<small>Muncul saat tab iPop tidak dilihat</small></span></div>
+                                    }
+                                }
                             </div>
                         }
                     </div>
@@ -109,9 +131,8 @@
                                 </div>
                                 @if (NotifUnread > 0)
                                 {
-                                    <button class="apple-notif-readall-btn" @onclick="MarkAllNotifsRead" title="Mark all read">
-                                        <i data-lucide="check-check"></i>
-                                        <span>Mark all read</span>
+                                    <button type="button" class="apple-notif-readall-btn" @onclick="MarkAllNotifsRead" title="Mark all read">
+                                        Mark all read
                                     </button>
                                 }
                             </div>
@@ -130,8 +151,7 @@
                                         <div class="apple-notif-empty-icon">
                                             <i data-lucide="bell-off"></i>
                                         </div>
-                                        <div class="apple-notif-empty-title">No notifications</div>
-                                        <div class="apple-notif-empty-sub">All new notifications will appear here</div>
+                                        <div class="apple-notif-empty-title">You are all caught up.</div>
                                     </div>
                                 }
                                 else
@@ -166,10 +186,10 @@
                                 }
                             </div>
 
-                            <div class="apple-notif-footer" @onclick="OpenInbox">
-                                <span>View all in Inbox</span>
+                            <button type="button" class="apple-notif-footer" @onclick="OpenInbox">
+                                <span>Open Notification Center</span>
                                 <i data-lucide="arrow-right"></i>
-                            </div>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -198,12 +218,66 @@
                 </ErrorContent>
             </ErrorBoundary>
         </CascadingValue>
-        <IPop.Web.Components.Chat.ToastHost />
         <CommandPalette />
         <ConfirmHost />
         <IPop.Web.Components.Calls.GlobalCallOverlay />
-        <IPop.Web.Components.Notifications.GlobalNotificationBanner />
+        @* One floating column: incoming-notification banners above action toasts, so they never overlap. *@
+        <div class="float-stack">
+            <IPop.Web.Components.Notifications.GlobalNotificationBanner />
+            <IPop.Web.Components.Chat.ToastHost />
+        </div>
     </div>
+
+    @* Phone tab bar + "Lainnya" sheet. Rendered once; css/mobile/shell.css hides both above 767px. *@
+    <nav class="m-tabbar" aria-label="Main">
+        @foreach (var item in TabItems)
+        {
+            <NavLink class="m-tab" href="@item.Href" Match="@(item.Href == "/dashboard" ? NavLinkMatch.All : NavLinkMatch.Prefix)" @onclick="CloseMore">
+                <span class="m-tab-ic"><i data-lucide="@item.Icon"></i>
+                    @if (item.BadgeKey is { } key && Badges.Any(key))
+                    {
+                        <span class="m-tab-badge">@(Badges[key] > 99 ? "99+" : Badges[key].ToString())</span>
+                    }
+                </span>
+                <span class="m-tab-lbl">@item.Label</span>
+            </NavLink>
+        }
+        <button type="button" class="m-tab @(moreOpen || IsMoreRoute ? "active" : "")" aria-haspopup="dialog" aria-expanded="@(moreOpen ? "true" : "false")" @onclick="ToggleMore">
+            <span class="m-tab-ic"><i data-lucide="ellipsis"></i>
+                @if (MoreBadgeTotal > 0)
+                {
+                    <span class="m-tab-badge dot"></span>
+                }
+            </span>
+            <span class="m-tab-lbl">Lainnya</span>
+        </button>
+    </nav>
+    @if (moreOpen)
+    {
+        <div class="m-sheet-backdrop" @onclick="CloseMore"></div>
+        <div class="m-sheet m-more" role="dialog" aria-modal="true" aria-label="Lainnya">
+            <div class="m-sheet-grip"></div>
+            <div class="m-more-user">
+                <div class="avatar">@Initials<span class="sdot @Auth.MyStatus"></span></div>
+                <div class="who"><div class="n">@UserName</div><div class="r">@UserRole@(string.IsNullOrEmpty(UserRole) ? "" : " · ")@StatusLabel</div></div>
+            </div>
+            <div class="m-more-list">
+                @foreach (var item in MoreItems.Where(i => !i.AdminOnly || Auth.IsAdmin))
+                {
+                    <NavLink class="m-more-item" href="@item.Href" Match="NavLinkMatch.Prefix" @onclick="CloseMore">
+                        <span class="m-more-ic"><i data-lucide="@item.Icon"></i></span>
+                        <span class="m-more-lbl">@item.Label</span>
+                        @if (item.BadgeKey is { } key && Badges.Any(key))
+                        {
+                            <span class="nav-count">@(Badges[key] > 99 ? "99+" : Badges[key].ToString())</span>
+                        }
+                        <i data-lucide="chevron-right" class="m-more-chev"></i>
+                    </NavLink>
+                }
+            </div>
+            <button type="button" class="m-more-signout" @onclick="SignOut"><i data-lucide="log-out"></i><span>Sign out</span></button>
+        </div>
+    }
 </div>
 
 @code {
@@ -243,6 +317,7 @@
         ]),
         new("Resources", [
             new("Files", "folder", "/files"),
+            new("Calendar", "calendar", "/calendar"),
         ]),
         new("Administration", [
             new("Administration", "sliders-horizontal", "/admin", AdminOnly: true),
@@ -250,6 +325,44 @@
         ]),
     ];
 
+    /// Phone tab bar (<= 767px): four primary modules plus "Lainnya", which lists the rest.
+    /// Both lists are drawn from NavGroups so labels, icons and badge keys stay in sync.
+    private static readonly string[] TabHrefs = ["/dashboard", "/chat", "/mail", "/projects"];
+    private static readonly NavItem[] TabItems =
+        TabHrefs.Select(h => NavGroups.SelectMany(g => g.Items).First(i => i.Href == h)).ToArray();
+    private static readonly NavItem[] MoreItems =
+        NavGroups.SelectMany(g => g.Items).Where(i => !TabHrefs.Contains(i.Href)).ToArray();
+
+    private bool moreOpen;
+    private IDisposable? moreReg;
+
+    private bool IsMoreRoute
+    {
+        get
+        {
+            var path = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0];
+            return MoreItems.Any(i => path == i.Href || path.StartsWith(i.Href + "/"));
+        }
+    }
+
+    private int MoreBadgeTotal => MoreItems.Where(i => i.BadgeKey is not null && (!i.AdminOnly || Auth.IsAdmin))
+                                           .Sum(i => Badges[i.BadgeKey!]);
+
+    private void ToggleMore()
+    {
+        if (moreOpen) { CloseMore(); return; }
+        moreOpen = true; notifOpen = false; statusMenuOpen = false;
+        moreReg = Overlays.Push(() => { CloseMore(); StateHasChanged(); return Task.CompletedTask; });
+    }
+
+    private void CloseMore()
+    {
+        if (!moreOpen) return;
+        moreOpen = false;
+        moreReg?.Dispose(); moreReg = null;
+    }
+
+    private string SearchShortcut { get; set; } = "Ctrl K";
     private string UserName => Auth.Me?.Name ?? "…";
     private string UserRole => Auth.Me is null ? "" : Auth.IsAdmin ? "Super admin" : (Auth.Me.Position ?? Auth.Me.Department ?? "");
     /// Unread count behind the bell badge (NotificationState; mock count until backend).
@@ -327,6 +440,9 @@
     private void OnSessionEnded() => _ = InvokeAsync(() => Nav.NavigateTo("/login", forceLoad: true));
 
     private void OnChatUnreadChanged() { Badges.Set("chat", Chat.TotalUnread); _ = InvokeAsync(StateHasChanged); }
+    private void OnChatIncoming(IncomingChatMessage m)
+        => _ = InvokeAsync(() => Notifs.ShowChatMessage(m, "/" + Nav.ToBaseRelativePath(Nav.Uri)));
+    private void OnChatRoomOpened(Guid roomId) => _ = InvokeAsync(() => Notifs.ClearChatBanner(roomId));
 
     private void OnNotifUnreadChanged() { Badges.Set("notif", Notifs.UnreadCount); _ = InvokeAsync(StateHasChanged); }
 
@@ -416,7 +532,38 @@
         _ => "Offline"
     };
 
-    private void ToggleStatusMenu() { statusMenuOpen = !statusMenuOpen; notifOpen = false; }
+    private async Task ToggleStatusMenu()
+    {
+        statusMenuOpen = !statusMenuOpen;
+        notifOpen = false;
+        if (statusMenuOpen)
+        {
+            try { desktopAlerts = await JS.InvokeAsync<DesktopAlertsState>("ipop.desktopAlertsState"); }
+            catch { desktopAlerts = null; }
+        }
+    }
+
+    private sealed record DesktopAlertsState(bool Secure, string Notify, string Idle);
+    private DesktopAlertsState? desktopAlerts;
+
+    /// Browsers only grant notification/idle permission from a click, hence the menu item.
+    private async Task EnableDesktopAlerts()
+    {
+        try { desktopAlerts = await JS.InvokeAsync<DesktopAlertsState>("ipop.enableDesktopAlerts"); }
+        catch { }
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    /// "(3) Messages — IPop": unread chat + mail in the tab title so a background tab still says so.
+    private int _titleCount = -1;
+    private void SyncTitleBadge()
+    {
+        var n = Badges["chat"] + Badges["mail"];
+        if (n == _titleCount) return;
+        _titleCount = n;
+        _ = JS.InvokeVoidAsync("ipop.setTitleBadge", n).AsTask().ContinueWith(_ => { }, TaskScheduler.Default);
+    }
 
     private async Task SetStatus(bool busy)
     {
@@ -428,6 +575,7 @@
     private async Task SignOut()
     {
         Badges.Stop(); Badges.Clear();
+        Timer.Stop();
         await Auth.SignOutAsync();
         Nav.NavigateTo("/login", replace: true);
     }
@@ -462,6 +610,8 @@
         Auth.ConnectionStateChanged += OnConnectionStateChanged;
         Auth.SessionEnded += OnSessionEnded;
         Chat.RoomListChanged += OnChatUnreadChanged;
+        Chat.IncomingMessage += OnChatIncoming;
+        Chat.RoomOpened += OnChatRoomOpened;
         Notifs.UnreadChanged += OnNotifUnreadChanged;
         Notifs.NotificationsChanged += OnNotificationsChanged;
         Notifs.PreferencesChanged += OnNotifPreferencesChanged;
@@ -470,6 +620,7 @@
         await Auth.LoadMeAsync();
         await Auth.StartPresenceAsync();
         await Badges.StartAsync();
+        await Timer.StartAsync();
         await Chat.ConnectAsync();
         // Connect notification SignalR AFTER auth so the token provider has a token.
         await Notifs.ConnectAsync();
@@ -480,11 +631,12 @@
     }
 
     // Re-render so the toolbar/standard header switch follows the route.
-    private void OnBadgesChanged() => _ = InvokeAsync(StateHasChanged);
+    private void OnBadgesChanged() => _ = InvokeAsync(() => { SyncTitleBadge(); StateHasChanged(); });
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
         errorBoundary?.Recover();
+        CloseMore();
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -517,6 +669,13 @@
             selfRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("ipop.shortcuts", selfRef);
             IsDark = await JS.InvokeAsync<string>("ipop.theme") == "dark";
+            // Label follows the OS (both Ctrl+K and ⌘K always open the palette).
+            try
+            {
+                var mac = await JS.InvokeAsync<bool>("eval", "/mac|iphone|ipad/i.test(navigator.userAgentData?.platform || navigator.platform || '')");
+                SearchShortcut = mac ? "⌘K" : "Ctrl K";
+            }
+            catch { }
             StateHasChanged();
         }
         await JS.InvokeVoidAsync("ipop.icons");
@@ -525,16 +684,20 @@
     public void Dispose()
     {
         selfRef?.Dispose();
+        moreReg?.Dispose();
         Auth.PresenceChanged -= OnPresenceChanged;
         Auth.ConnectionStateChanged -= OnConnectionStateChanged;
         Auth.SessionEnded -= OnSessionEnded;
         Chat.RoomListChanged -= OnChatUnreadChanged;
+        Chat.IncomingMessage -= OnChatIncoming;
+        Chat.RoomOpened -= OnChatRoomOpened;
         Notifs.UnreadChanged -= OnNotifUnreadChanged;
         Notifs.NotificationsChanged -= OnNotificationsChanged;
         Notifs.PreferencesChanged -= OnNotifPreferencesChanged;
         Nav.LocationChanged -= OnLocationChanged;
         Badges.Changed -= OnBadgesChanged;
         Badges.Stop();
+        Timer.Stop();
         _ = JS.InvokeVoidAsync("ipop.shortcutsOff");
     }
 }

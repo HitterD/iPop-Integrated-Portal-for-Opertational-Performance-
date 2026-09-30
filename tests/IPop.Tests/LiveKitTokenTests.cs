@@ -48,43 +48,25 @@ public class LiveKitTokenTests
     }
 
     [Fact]
-    public async Task CallService_IncludesLiveKitToken_WhenCallIsActive()
+    public async Task CallService_NeverMintsLiveKitTokens_For1to1Calls()
     {
+        // 1:1 calls are peer-to-peer WebRTC; LiveKit is reserved for meetings.
         using var t = new TestDb();
         var caller = t.AddUser("CALLER_1");
         var callee = t.AddUser("CALLEE_1");
 
-        var lk = CreateService();
-        var svc = new CallService(t.Verify(), lk);
-
-        var created = await svc.CreateCallAsync(caller.Id, new CreateCallRequest(callee.Nik), default);
-        Assert.True(created.Success);
-        Assert.NotNull(created.Room);
-        Assert.NotNull(created.Room.LiveKitToken);
-        Assert.Equal("wss://livekit.test.local", created.Room.LiveKitUrl);
-
-        // Check token contents
-        var parts = created.Room.LiveKitToken.Split('.');
-        Assert.Equal(3, parts.Length);
-        var payloadJson = Encoding.UTF8.GetString(Base64UrlDecode(parts[1]));
-        Assert.Contains(created.Room.Id.ToString(), payloadJson);
-    }
-
-    [Fact]
-    public async Task CallService_OmitsLiveKit_WhenNotConfigured()
-    {
-        using var t = new TestDb();
-        var caller = t.AddUser("CALLER_2");
-        var callee = t.AddUser("CALLEE_2");
-
-        var lk = CreateService(apiKey: "", apiSecret: "");
-        Assert.False(lk.IsConfigured);
-        Assert.Throws<InvalidOperationException>(() => lk.GenerateToken("r", "u", "n"));
-
-        var created = await new CallService(t.Verify(), lk).CreateCallAsync(caller.Id, new CreateCallRequest(callee.Nik), default);
+        var created = await new CallService(t.Verify()).CreateCallAsync(caller.Id, new CreateCallRequest(callee.Nik), default);
         Assert.True(created.Success);
         Assert.Null(created.Room!.LiveKitToken);
         Assert.Null(created.Room.LiveKitUrl);
+    }
+
+    [Fact]
+    public void Unconfigured_LiveKit_RefusesToMint()
+    {
+        var lk = CreateService(apiKey: "", apiSecret: "");
+        Assert.False(lk.IsConfigured);
+        Assert.Throws<InvalidOperationException>(() => lk.GenerateToken("r", "u", "n"));
     }
 
     private static byte[] Base64UrlDecode(string input)

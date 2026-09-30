@@ -13,8 +13,8 @@ public class Meeting
     public string? Link { get; set; }
     public string? Agenda { get; set; }
     public Guid OrganizerId { get; set; }
-    /// aktif | diubah | dibatalkan
-    public string Status { get; set; } = "aktif";
+    /// <see cref="MeetingStatus"/>: aktif | cancelled
+    public string Status { get; set; } = MeetingStatus.Active;
     /// Surat undangan yang membawa rapat ini.
     public Guid? SourceMailId { get; set; }
     /// Ruang obrolan asal (bila dibuat dari ruang).
@@ -25,6 +25,14 @@ public class Meeting
 
     public User Organizer { get; set; } = default!;
     public ICollection<MeetingAttendee> Attendees { get; set; } = [];
+}
+
+/// The one set of Meeting.Status values. "dibatalkan" was an older spelling of Cancelled;
+/// migration UnifyMeetingCancelledStatus rewrote those rows, nothing writes it any more.
+public static class MeetingStatus
+{
+    public const string Active = "aktif";
+    public const string Cancelled = "cancelled";
 }
 
 /// Peserta rapat beserta jawaban RSVP-nya.
@@ -56,6 +64,15 @@ public class CalendarEvent
     public Guid OwnerId { get; set; }
     public Guid? RoomId { get; set; }
     public Guid? MeetingId { get; set; }
+    /// Sepanjang hari: StartAt/EndAt menandai tanggal, jam diabaikan di tampilan.
+    public bool AllDay { get; set; }
+    public string? Location { get; set; }
+    public string? Link { get; set; }
+    public string? Notes { get; set; }
+    /// Menit sebelum mulai untuk pengingat; null = tanpa pengingat.
+    public int? ReminderMinutes { get; set; }
+    /// Kapan pengingat event pribadi terkirim (event rapat memakai MeetingReminder).
+    public DateTime? ReminderSentAt { get; set; }
     public DateTime CreatedAt { get; set; }
 
     public User Owner { get; set; } = default!;

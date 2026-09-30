@@ -1,15 +1,43 @@
 /* v6 directory screen — mockup parity layer (loaded after shell/v6.css). */
 
-.dir-toolbar-2 { padding-top: 0; }
-.view-seg .seg-btn { width: 32px; padding: 0; justify-content: center; }
-.view-seg .seg-btn .lucide { width: 14px; height: 14px; }
-.view-seg .seg-btn.active .lucide { color: var(--accent); }
+/* Keep the two action groups legible instead of shrinking search to a sliver. */
+.dir-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 24px; flex-wrap: nowrap; }
+/* Control sizes mirror the v6 mockup's directory toolbar: 28px segmented tabs,
+   32px search and action buttons, 30×28 view toggles. The segmented group's own
+   2px padding is scoped here so the shared .apple-segmented (mail, calls) is
+   unaffected. */
+.dir-toolbar > .apple-segmented { flex: none; padding: 2px; }
+.dir-toolbar .push { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; flex: 1 1 auto; }
+.dir-toolbar .v6-search { flex: 1 1 260px; max-width: 360px; min-width: 160px; height: 32px; font-size: 13px; border-radius: 9px; }
+.dir-toolbar .apple-segmented .seg-btn { height: 28px; padding: 0 10px; gap: 6px; font-size: 13px; white-space: nowrap; border-radius: 8px; }
+.dir-toolbar .apple-segmented .seg-count { font-size: 11px; }
+.dir-toolbar .ghost-btn { height: 32px; padding: 0 12px; gap: 6px; font-size: 13px; white-space: nowrap; border-radius: 9px; }
+.dir-toolbar .ghost-btn .lucide, .dir-toolbar .v6-search .lucide { width: 14px; height: 14px; }
+.dir-toolbar .view-seg .seg-btn { width: 30px; height: 28px; padding: 0; justify-content: center; border-radius: 8px; }
+.dir-toolbar .view-seg .seg-btn .lucide { width: 15px; height: 15px; }
+.dir-toolbar .view-seg .seg-btn.active .lucide { color: var(--accent); }
+@media (max-width: 1240px) {
+  .dir-toolbar { flex-wrap: wrap; padding: 12px 20px; gap: 10px; }
+  .dir-toolbar .push { justify-content: flex-start; flex-wrap: wrap; flex-basis: 100%; }
+  .dir-toolbar .v6-search { flex: 1 1 240px; }
+}
+@media (max-width: 768px) {
+  .dir-toolbar { padding: 10px 14px; }
+  .dir-toolbar > .apple-segmented { max-width: 100%; overflow-x: auto; }
+  .dir-toolbar .push { gap: 6px; }
+  .dir-toolbar .v6-search { flex: 1 1 100%; min-width: 0; }
+}
+@media (max-width: 480px) {
+  .dir-toolbar .ghost-btn { height: 30px; font-size: 12px; padding: 0 10px; }
+  .dir-toolbar .view-seg .seg-btn { height: 26px; width: 28px; }
+}
 
-.dir-sort { position: relative; }
+.dir-sort { position: relative; flex: none; }
+.dir-sort .ghost-btn { white-space: nowrap; }
 .dir-sort .ghost-btn .chev { width: 12px; height: 12px; color: var(--ink-3); }
 .dir-sort .menu-backdrop { position: fixed; inset: 0; z-index: 49; }
 .dir-sort-menu {
-  position: absolute; top: 38px; right: 0; z-index: 50; min-width: 180px; padding: 6px;
+  position: absolute; top: 34px; right: 0; z-index: 50; min-width: 180px; padding: 6px;
   background: var(--surface); border: 1px solid var(--line-soft); border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14);
 }
@@ -42,6 +70,19 @@
 .dir-structure .tree-n { font-size: 11px; color: var(--ink-3); font-weight: 400; }
 .dir-structure .tree-site { padding: 10px 10px 4px; font-size: 11px; color: var(--ink-3); font-weight: 500; }
 .dir-structure .tree-node.lv3 { padding-left: 26px; }
+/* Nested tree: Plant row ▸ Division (any depth via --lv) ▸ Department */
+.dir-structure .tree-site-node { margin-top: 6px; font-weight: 600; }
+.dir-structure .tree-row { display: flex; align-items: center; padding-left: calc(var(--lv, 0) * 14px); }
+.dir-structure .tree-row .tree-node { flex: 1; min-width: 0; padding-left: 2px; }
+.dir-structure .tree-twist {
+  flex: none; width: 22px; height: 32px; display: grid; place-items: center;
+  border: none; background: transparent; color: var(--ink-3); cursor: pointer; border-radius: 6px; padding: 0;
+}
+.dir-structure .tree-twist:hover:not(:disabled) { background: var(--tray); }
+.dir-structure .tree-twist:disabled { cursor: default; }
+.dir-structure .tree-twist .lucide { width: 14px; height: 14px; }
+.dir-structure .tree-node.tree-div { padding-left: calc(24px + var(--lv, 1) * 14px); font-size: 12.5px; color: var(--ink-2); }
+.dir-structure .tree-node.tree-div.on { color: var(--v6-active-fg); }
 .dir-structure .tree-foot { display: flex; align-items: center; gap: 10px; height: 32px; padding: 0 10px; color: var(--ink-3); font-size: 13px; }
 .dir-structure .tree-foot .lucide { width: 15px; height: 15px; }
 .dir-structure .tree-foot .lbl { flex: 1; }
@@ -78,10 +119,48 @@
 .row-acts .ra { width: 28px; height: 28px; border: none; border-radius: 7px; background: transparent; color: var(--accent); display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .row-acts .ra:hover { background: var(--accent-soft); }
 .row-acts .ra .lucide { width: 15px; height: 15px; }
-.row-acts .ra.fav { color: var(--ink-4); opacity: 0; }
-.row-acts .ra.fav.on { color: var(--warn); opacity: 1; }
+.row-acts .ra.fav { color: var(--ink-4); }
+.row-acts .ra.fav:hover { background: var(--tray); }
+.row-acts .ra.fav.on { color: var(--warn); background: var(--warn-soft); }
 .row-acts .ra.fav.on .lucide { fill: currentColor; }
-.dir-people tr:hover .row-acts .ra.fav { opacity: 1; }
+.dir-people .tbl th.th-acts { text-align: right; }
+
+/* Name + email truncate inside their column instead of spilling over NIK. */
+.dir-people .cell-person { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.dir-people .cell-person .av-wrap { flex: none; }
+.dir-people .cell-person .cp-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.dir-people .cell-person .n, .dir-people .cell-person .s { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dir-people .tbl td:nth-child(2) { overflow: hidden; }
+
+/* ---- Grid view cards (mockup: centered, 56px avatar, Message + call/mail squares) ---- */
+.dir-people .emp-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; padding: 16px; align-content: start; }
+.dir-card {
+  border-radius: 14px; border: 1px solid var(--line-soft); background: var(--surface); padding: 14px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; cursor: pointer; min-width: 0;
+}
+.dir-card:hover { box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07); }
+.dir-card.checked { background: #F0F9F3; border-color: rgba(46, 158, 91, 0.35); }
+[data-theme="dark"] .dir-card.checked { background: rgba(48, 209, 88, 0.1); }
+.dir-card .dc-top { align-self: stretch; display: flex; justify-content: space-between; align-items: center; }
+.dir-card .dc-star { width: 24px; height: 24px; padding: 0; border: none; border-radius: 6px; background: transparent; color: var(--ink-4); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.dir-card .dc-star .lucide { width: 14px; height: 14px; }
+.dir-card .dc-star.on { background: var(--warn-soft); color: var(--warn); }
+.dir-card .dc-star.on .lucide { fill: currentColor; }
+.dir-card .dc-av {
+  position: relative; width: 56px; height: 56px; border-radius: 50%; color: #fff; font-size: 18px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; flex: none;
+}
+.dir-card .dc-av .presence { position: absolute; right: 1px; bottom: 1px; width: 13px; height: 13px; border: 2.5px solid var(--surface); }
+.dir-card .dc-name { font-weight: 600; font-size: 13px; margin-top: 4px; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dir-card .dc-pos { font-size: 12px; color: var(--ink-2); line-height: 1.35; min-height: 32px; }
+.dir-card .dc-meta { font-size: 11px; color: var(--ink-3); }
+.dir-card .dc-acts { display: flex; gap: 6px; margin-top: 6px; align-self: stretch; }
+.dir-card .dc-msg {
+  flex: 1; height: 30px; border: none; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink);
+  font-weight: 600; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer;
+}
+.dir-card .dc-ic { width: 30px; height: 30px; flex: none; border: none; border-radius: 8px; background: var(--tray); color: var(--ink-2); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.dir-card .dc-msg .lucide, .dir-card .dc-ic .lucide { width: 13px; height: 13px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 [data-theme="dark"] .dir-people .tbl tr.sel td { background: rgba(48, 209, 88, 0.1); }
 
@@ -107,7 +186,9 @@
 }
 .dir-bulk-bar .dbb-btn:hover { background: var(--tray); }
 .dir-bulk-bar .dbb-btn .lucide { width: 14px; height: 14px; color: var(--accent); }
-.dir-bulk-bar .dbb-btn:nth-of-type(4) .lucide { color: var(--warn); }
+.dir-bulk-bar .dbb-btn.fav .lucide { color: var(--warn); }
+.dir-bulk-bar .dbb-btn.plain .lucide { color: var(--ink-2); }
+.dir-people > .dir-bulk-bar { min-height: 53px; box-sizing: border-box; }
 .dir-bulk-bar .dbb-clear { height: 32px; padding: 0 10px; border: none; background: transparent; color: var(--accent-ink); font-weight: 600; font-size: 13px; cursor: pointer; }
 [data-theme="dark"] .dir-bulk-bar .dbb-count { color: #7EE2A0; }
 

@@ -1,39 +1,131 @@
 @page "/calls"
 @implements IDisposable
 @using IPop.Application.Calls
+@using IPop.Web.Components.Calls
 @inject IJSRuntime JS
 @inject AuthState Auth
 @inject CallState CallSvc
 @inject NavigationManager Nav
 @inject ToastService Toasts
+@inject ConfirmService Confirm
 
 <PageTitle>Calls — IPop</PageTitle>
 
-<div class="calls-v6">
+<div class="calls-v6 @(mDetail ? "m-detail" : "")">
     <div class="toolbar calls-toolbar">
         <div class="calls-tabs">
             <button class="@(tab == "recents" ? "active" : "")" @onclick='() => SetTab("recents")'><i data-lucide="history"></i> Recents <span>@history.Total</span></button>
             <button class="@(tab == "scheduled" ? "active" : "")" @onclick='() => SetTab("scheduled")'><i data-lucide="calendar-clock"></i> Scheduled <span>@meetings.Count</span></button>
         </div>
         <div class="v6-search calls-search"><i data-lucide="search"></i><input type="search" aria-label="Search calls or meetings" placeholder="Search calls" @bind="search" @bind:event="oninput" /></div>
+        <button type="button" class="ghost-btn" @onclick="() => showDeviceTest = true"><i data-lucide="headphones"></i>Tes perangkat</button>
         <button type="button" class="ghost-btn" @onclick="OpenSchedule"><i data-lucide="calendar-plus"></i>Schedule</button>
         <button type="button" class="btn-primary" @onclick="FocusCallPicker"><i data-lucide="phone"></i>New call</button>
     </div>
 
-    @if (showSchedule)
+    <Modal IsOpen="showSchedule" IsOpenChanged="v => showSchedule = v" Wide="true" CloseOnBackdrop="false"
+           Title="@(editingMeetingId is null ? "Jadwalkan rapat" : "Ubah rapat")"
+           Subtitle="@(editingMeetingId is null ? "Undang orang atau satu grup, peserta langsung dapat notifikasi." : "Peserta yang baru ditambahkan akan diberi tahu.")">
+        <ChildContent>
+            <div class="mtg-form">
+                <label class="mtg-field"><span class="mtg-label">Judul</span>
+                    <input class="mtg-input" @bind="formTitle" @bind:event="oninput" maxlength="300" placeholder="mis. Sprint review" aria-label="Judul rapat" /></label>
+                <div class="mtg-grid">
+                    <div class="mtg-field"><span class="mtg-label">Mulai</span>
+                        <AppDateTimePicker TValue="DateTime" Value="formStart" ValueChanged="OnStartChanged" Min="@(editingMeetingId is null ? DateTime.Now : null)" Class="dp-block" AriaLabel="Waktu mulai" /></div>
+                    <div class="mtg-field"><span class="mtg-label">Pengingat</span>
+                        <AppSelect Value="@formReminder" ValueChanged="OnReminderChanged" Options="ReminderOptions" Label="Pengingat" CssClass="mtg-select" /></div>
+                </div>
+                <div class="mtg-field"><span class="mtg-label">Durasi</span>
+                    <div class="mtg-chips" role="group" aria-label="Durasi">
+                        @foreach (var minutes in CallsSchedule.DurationChoices)
+                        {
+                            var d = minutes;
+                            <button type="button" class="mtg-chip @(durationChip == d ? "on" : "")" aria-pressed="@(durationChip == d ? "true" : "false")" @onclick="() => PickDuration(d)">@CallsSchedule.DurationLabel(TimeSpan.FromMinutes(d))</button>
+                        }
+                        <button type="button" class="mtg-chip @(durationChip is null ? "on" : "")" aria-pressed="@(durationChip is null ? "true" : "false")" @onclick="PickCustomDuration">Custom</button>
+                    </div>
+                    @if (durationChip is null)
+                    {
+                        <div class="mtg-end"><span class="mtg-label">Selesai</span>
+                            <AppDateTimePicker TValue="DateTime" Value="formEnd" ValueChanged="OnEndChanged" Min="formStart" Class="dp-block" AriaLabel="Waktu selesai" /></div>
+                    }
+                    else
+                    {
+                        <small class="mtg-hint">Selesai pukul @formEnd.ToString("HH:mm")</small>
+                    }
+                </div>
+                <div class="mtg-field"><span class="mtg-label">Lokasi</span>
+                    <div class="mtg-loc">
+                        <input class="mtg-input" @bind="formLocation" @bind:event="oninput" disabled="@formOnline" placeholder="@(formOnline ? CallsSchedule.OnlineLocation : "Ruang rapat, gedung…")" aria-label="Lokasi" />
+                        <button type="button" class="mtg-toggle @(formOnline ? "on" : "")" role="switch" aria-checked="@(formOnline ? "true" : "false")" @onclick="() => formOnline = !formOnline">
+                            <span class="mtg-switch"></span><i data-lucide="video"></i>Online · iPop Meeting
+                        </button>
+                    </div>
+                </div>
+                <label class="mtg-field"><span class="mtg-label">Agenda</span>
+                    <textarea class="mtg-input" rows="3" @bind="formAgenda" maxlength="4000" placeholder="Poin yang akan dibahas" aria-label="Agenda"></textarea></label>
+                <div class="mtg-field"><span class="mtg-label">Peserta <em>@formInvitees.Count</em></span>
+                    <div class="mtg-invite-tabs" role="tablist">
+                        <button type="button" role="tab" class="@(inviteMode == "people" ? "on" : "")" aria-selected="@(inviteMode == "people" ? "true" : "false")" @onclick='() => inviteMode = "people"'><i data-lucide="user-plus"></i>Orang</button>
+                        <button type="button" role="tab" class="@(inviteMode == "group" ? "on" : "")" aria-selected="@(inviteMode == "group" ? "true" : "false")" @onclick="OpenGroupInvite"><i data-lucide="users"></i>Undang grup</button>
+                    </div>
+                    @if (inviteMode == "people")
+                    {
+                        <PeoplePicker Placeholder="Cari nama atau NIK…" ValueChanged="AddInvitee" />
+                    }
+                    else
+                    {
+                        <div class="mtg-groups" role="listbox" aria-label="Grup saya">
+                            @if (groupsLoading) { <div class="mtg-groups-empty">Memuat grup…</div> }
+                            else if (myGroups.Count == 0) { <div class="mtg-groups-empty">Anda belum tergabung di grup mana pun.</div> }
+                            @foreach (var grp in myGroups)
+                            {
+                                var g = grp;
+                                <button type="button" role="option" class="mtg-group @(formRoomId == g.Id ? "on" : "")" aria-selected="@(formRoomId == g.Id ? "true" : "false")" disabled="@(expandingGroup is not null)" @onclick="() => InviteGroup(g)">
+                                    <span class="mtg-av" style="background:@(g.AvatarColor ?? AvatarPalette.For(g.Name ?? ""))">@Initials(g.Name ?? "?")</span>
+                                    <span class="mtg-group-name">@g.Name</span>
+                                    @if (expandingGroup == g.Id) { <i data-lucide="loader-2" class="spin"></i> }
+                                    else if (formRoomId == g.Id) { <i data-lucide="check"></i> }
+                                </button>
+                            }
+                        </div>
+                    }
+                    @if (formRoomName is not null)
+                    {
+                        <div class="mtg-linked"><i data-lucide="users"></i>Terhubung ke grup <strong>@formRoomName</strong>
+                            <button type="button" title="Lepas grup" aria-label="Lepas grup" @onclick="() => { formRoomId = null; formRoomName = null; }"><i data-lucide="x"></i></button></div>
+                    }
+                    @if (formInvitees.Count > 0)
+                    {
+                        <div class="mtg-invitees">
+                            @foreach (var person in formInvitees)
+                            {
+                                var who = person;
+                                <span class="mtg-invitee"><span class="mtg-av sm" style="background:@AvatarPalette.For(who.Nik)">@Initials(who.Name)</span>@who.Name
+                                    <button type="button" title="Hapus @who.Name" aria-label="Hapus @who.Name" @onclick="() => formInvitees.Remove(who)"><i data-lucide="x"></i></button></span>
+                            }
+                        </div>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(formError)) { <p class="mtg-error" role="alert"><i data-lucide="alert-circle"></i>@formError</p> }
+            </div>
+        </ChildContent>
+        <Footer>
+            <button type="button" class="btn-sm surface" @onclick="() => showSchedule = false">Batal</button>
+            <button type="button" class="btn-primary" disabled="@savingMeeting" @onclick="SaveMeeting">@(savingMeeting ? "Menyimpan…" : editingMeetingId is null ? "Jadwalkan" : "Simpan perubahan")</button>
+        </Footer>
+    </Modal>
+
+    @if (CallSvc.NeedsHttps)
     {
-        <section class="calls-form" aria-label="@(editingMeetingId is null ? "Schedule meeting" : "Edit meeting")">
-            <h2>@(editingMeetingId is null ? "Schedule meeting" : "Edit meeting")</h2>
-            <label>Title <input @bind="formTitle" maxlength="300" /></label>
-            <label>Starts <input type="datetime-local" @bind="formStart" @bind:format="yyyy-MM-ddTHH:mm" /></label>
-            <label>Ends <input type="datetime-local" @bind="formEnd" @bind:format="yyyy-MM-ddTHH:mm" /></label>
-            <label>Location <input @bind="formLocation" /></label>
-            <label>Agenda <textarea @bind="formAgenda" maxlength="4000"></textarea></label>
-            <label>Invite by NIK (comma-separated) <input @bind="formAttendees" /></label>
-            @if (!string.IsNullOrEmpty(formError)) { <p role="alert">@formError</p> }
-            <div class="calls-form-actions"><button class="btn-sm surface" @onclick="() => showSchedule = false">Cancel</button><button class="btn-sm surface" disabled="@savingMeeting" @onclick="SaveMeeting">@(savingMeeting ? "Saving…" : "Save meeting")</button></div>
-        </section>
+        <div class="calls-https-banner" role="note">
+            <i data-lucide="shield-alert"></i>
+            <span><strong>Panggilan butuh HTTPS.</strong> Di alamat http ini browser memblokir mikrofon, jadi lawan bicara tidak akan mendengar Anda.</span>
+            <a href="@SecureUrl">Buka versi aman</a>
+        </div>
     }
+    <CallDeviceTest Open="showDeviceTest" OpenChanged="v => showDeviceTest = v" />
 
     <div class="calls-split"><div class="calls-list">
     <div class="calls-favorites">
@@ -65,7 +157,7 @@
             </div>
             <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;flex-wrap:wrap">
                 <div style="flex:1 1 260px;min-width:220px">
-                    <div style="font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:6px">Start a call with…</div>
+                    <div style="font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:6px">Mulai panggilan dengan…</div>
                     <AppMemberPicker Placeholder="Type a name or NIK…" Value="@selectedPeer" ValueChanged="OnPickPeer" />
                 </div>
                 <button class="btn" style="width:auto;margin:0;padding:10px 18px;align-self:end" disabled="@(selectedPeer is null)" @onclick="CallPeer">
@@ -79,96 +171,66 @@
         </div>
     </div>
 
-    @* ---- Incoming call card ---- *@
-    @if (incoming is not null)
-    {
-        <div class="tray rise rise-2">
-            <div class="core" style="padding:14px 18px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                <div class="avatar" style="background:var(--accent)"><i data-lucide="phone-incoming"></i></div>
-                <div style="flex:1">
-                    <div style="font-weight:700">@IncomingPeerName</div>
-                    <div style="font-size:12.5px;color:var(--ink-2)">is calling you…</div>
-                </div>
-                <button class="btn" style="width:auto;margin:0;background:var(--accent);padding:10px 16px" @onclick="AcceptIncoming"><i data-lucide="phone" style="width:14px;height:14px"></i> Accept</button>
-                <button class="btn-sm surface" @onclick="DeclineIncoming"><i data-lucide="phone-off" style="width:13px;height:13px"></i> Decline</button>
-            </div>
-        </div>
-    }
-
-    @* ---- Active call bar + participant grid ---- *@
-    @if (active is not null)
-    {
-        <div class="tray rise rise-2">
-            <div class="core" style="padding:0;overflow:hidden">
-                <div class="panel-head">
-                    <i data-lucide="phone-call"></i> <span>Active call</span>
-                    <span class="meta" aria-live="polite">@Math.Max(0, (int)((DateTime.UtcNow - active.StartedAt).TotalSeconds))s elapsed · @active.Status</span>
-                </div>
-                <div style="padding:14px;display:grid;gap:12px">
-                    @* Controls *@
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                        <button class="btn-sm surface" aria-label="@(ActiveMe?.IsMuted == true ? "Unmute microphone" : "Mute microphone")" @onclick="() => ToggleMute()">
-                            <i data-lucide="@(ActiveMe?.IsMuted == true ? "mic-off" : "mic")" style="width:13px;height:13px"></i>
-                            @(ActiveMe?.IsMuted == true ? "Unmute" : "Mute")
-                        </button>
-                        <button class="btn-sm surface" aria-label="@(ActiveMe?.IsScreenSharing == true ? "Stop screen sharing" : "Share screen")" @onclick="() => ToggleScreen()">
-                            <i data-lucide="@(ActiveMe?.IsScreenSharing == true ? "monitor-stop" : "monitor-up")" style="width:13px;height:13px"></i>
-                            @(ActiveMe?.IsScreenSharing == true ? "Stop share" : "Share screen")
-                        </button>
-                        <button class="btn" style="width:auto;margin:0;background:var(--danger);padding:8px 14px;display:inline-flex;align-items:center;gap:6px" @onclick="EndCall"><i data-lucide="phone-off" style="width:13px;height:13px"></i> End</button>
-                    </div>
-
-                    @* Participant grid; max 6 visible (more = show others as chips). *@
-                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px">
-                        @foreach (var p in active.Participants.Take(6))
-                        {
-                            var isMe = p.Nik == Auth.Me?.Nik;
-                            var speakerClass = isMe ? "avatar-local-speaker" : "avatar-remote-speaker";
-                            <div style="border:1px solid var(--line-soft);border-radius:12px;padding:12px;display:flex;flex-direction:column;align-items:center;gap:8px;background:var(--bg)">
-                                <div class="avatar @speakerClass" style="background:var(--accent-soft);color:var(--accent-ink);width:44px;height:44px">@Initials(p.Name)</div>
-                                <div style="font-size:12px;font-weight:600;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">@p.Name</div>
-                                <div style="display:flex;gap:4px">
-                                    @if (p.IsMuted) { <span class="tag tag-warn" title="Muted"><i data-lucide="mic-off" style="width:10px;height:10px"></i></span> }
-                                    else { <span class="tag" title="Unmuted"><i data-lucide="mic" style="width:10px;height:10px"></i></span> }
-                                    @if (p.IsScreenSharing) { <span class="tag tag-warn" title="Screen sharing"><i data-lucide="monitor-up" style="width:10px;height:10px"></i></span> }
-                                    <span class="tag">@p.Status</span>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                    @if (active.Participants.Count > 6)
-                    {
-                        <div style="font-size:11.5px;color:var(--ink-3)">+@(active.Participants.Count - 6) more participants</div>
-                    }
-                </div>
-                @if (!string.IsNullOrEmpty(CallSvc.LastError))
-                {
-                    <div class="note" style="margin:0 14px 14px;border-radius:10px;background:var(--tray);color:var(--danger, #b3543f)">
-                        <i data-lucide="alert-circle"></i><span>@CallSvc.LastError</span>
-                    </div>
-                }
-                else if (!string.IsNullOrEmpty(CallSvc.WebRtcState))
-                {
-                    <div class="note" style="margin:0 14px 14px;border-radius:10px;background:var(--tray)">
-                        <i data-lucide="activity"></i><span>WebRTC Audio: @CallSvc.WebRtcState</span>
-                    </div>
-                }
-            </div>
-        </div>
-    }
-
     @if (tab == "scheduled")
     {
-        <section class="calls-meetings">
-            @foreach (var meeting in meetings.Where(m => string.IsNullOrWhiteSpace(search) || m.Title.Contains(search, StringComparison.OrdinalIgnoreCase)))
+        var nowUtc = DateTime.UtcNow;
+        var visibleMeetings = meetings.Where(m => string.IsNullOrWhiteSpace(search) || m.Title.Contains(search, StringComparison.OrdinalIgnoreCase)).ToList();
+        <section class="calls-meetings mtg-list">
+            @foreach (var day in visibleMeetings.GroupBy(m => m.StartAt.ToLocalTime().Date).OrderBy(g => g.Key))
             {
-                <button class="calls-meeting-row @(detailMeeting?.Id == meeting.Id ? "selected" : "")" @onclick="() => SelectMeeting(meeting.Id)">
-                    <span class="calls-meeting-date">@meeting.StartAt.ToLocalTime().ToString("dd MMM")</span>
-                    <span><strong>@meeting.Title</strong><small>@meeting.StartAt.ToLocalTime().ToString("HH:mm") · @meeting.OrganizerName</small></span>
-                    <span class="tag">@meeting.MyResponse</span>
-                </button>
+                <div class="calls-date">@CallsSchedule.DayLabel(day.Key, DateTime.Today)</div>
+                @foreach (var meeting in day)
+                {
+                    var mt = meeting;
+                    var mine = mt.OrganizerNik == Auth.Me?.Nik;
+                    var canJoin = CallsSchedule.CanJoin(mt.StartAt, mt.EndAt, nowUtc);
+                    var others = mt.Attendees.Where(a => a.Nik != Auth.Me?.Nik).ToList();
+                    <div class="mtg-row @(detailMeeting?.Id == mt.Id ? "selected" : "") @(canJoin ? "live" : "")" role="button" tabindex="0" @onclick="() => OpenMeeting(mt.Id)" @onkeydown="e => SelectMeetingOnKey(e, mt.Id)">
+                        <div class="mtg-time"><strong>@mt.StartAt.ToLocalTime().ToString("HH:mm")</strong><small>@CallsSchedule.DurationLabel(mt.EndAt - mt.StartAt)</small></div>
+                        <div class="mtg-main">
+                            <strong class="mtg-title">@mt.Title</strong>
+                            <div class="mtg-meta">
+                                @if (CallsSchedule.IsOnline(mt.Location)) { <span class="mtg-badge online"><i data-lucide="video"></i>Online</span> }
+                                else { <span class="mtg-place"><i data-lucide="map-pin"></i>@mt.Location</span> }
+                                <span class="mtg-stack" title="@string.Join(", ", mt.Attendees.Select(a => a.Name))">
+                                    @foreach (var a in mt.Attendees.Take(4)) { <span class="mtg-av xs" style="background:@AvatarPalette.For(a.Nik)">@Initials(a.Name)</span> }
+                                    @if (mt.Attendees.Count > 4) { <span class="mtg-av xs more">+@(mt.Attendees.Count - 4)</span> }
+                                </span>
+                                @if (!mine) { <span class="mtg-host">oleh @mt.OrganizerName</span> }
+                            </div>
+                        </div>
+                        <div class="mtg-side" @onclick:stopPropagation="true">
+                            @if (mine)
+                            {
+                                <span class="mtg-rsvp host">Penyelenggara</span>
+                                <span class="mtg-icon-btns">
+                                    <button type="button" class="mtg-icon" title="Edit" aria-label="Edit @mt.Title" @onclick="() => EditMeeting(mt)"><i data-lucide="pencil"></i></button>
+                                    <button type="button" class="mtg-icon danger" title="Batalkan" aria-label="Batalkan @mt.Title" @onclick="() => CancelMeeting(mt)"><i data-lucide="calendar-x"></i></button>
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="mtg-rsvp rsvp-@mt.MyResponse">@CallsSchedule.RsvpLabel(mt.MyResponse)</span>
+                                <span class="mtg-rsvp-btns" role="group" aria-label="Jawab undangan">
+                                    @foreach (var r in RsvpChoices)
+                                    {
+                                        var choice = r;
+                                        <button type="button" class="@(mt.MyResponse == choice.Value ? "on " + choice.Value : "")" aria-pressed="@(mt.MyResponse == choice.Value ? "true" : "false")" disabled="@rsvpBusy" title="@choice.Label" @onclick="() => Respond(mt.Id, choice.Value)">@choice.Label</button>
+                                    }
+                                </span>
+                            }
+                            <span class="mtg-join-wrap" title="@(canJoin ? "Gabung ke rapat" : CallsSchedule.JoinTooltip)">
+                                <button type="button" class="mtg-join" disabled="@(!canJoin || mt.RoomName is null)" @onclick="() => JoinMeeting(mt)"><i data-lucide="video"></i>Gabung</button>
+                            </span>
+                        </div>
+                    </div>
+                }
             }
-            @if (meetings.Count == 0) { <p class="calls-empty">No upcoming meetings.</p> }
+            @if (visibleMeetings.Count == 0)
+            {
+                <div class="calls-empty mtg-empty"><i data-lucide="calendar-clock"></i><p>@(meetings.Count == 0 ? "Belum ada rapat terjadwal." : "Tidak ada rapat yang cocok.")</p>
+                    <button type="button" class="btn-sm accent" @onclick="OpenSchedule"><i data-lucide="calendar-plus"></i>Jadwalkan rapat</button></div>
+            }
         </section>
     }
     @* ---- Call history (grouped by date) ---- *@
@@ -189,11 +251,11 @@
                         <div class="calls-date">@DateGroupLabel(g.Key)</div>
                         @foreach (var h in g)
                         {
-                            <div class="calls-history-row @(detailCall?.CallId == h.CallId ? "selected" : "")" role="button" tabindex="0" @onclick="() => SelectCall(h)" @onkeydown="e => SelectCallOnKey(e, h)">
+                            <div class="calls-history-row @(detailCall?.CallId == h.CallId ? "selected" : "")" role="button" tabindex="0" @onclick="() => OpenCall(h)" @onkeydown="e => SelectCallOnKey(e, h)">
                                 <span class="calls-history-av" style="background:@AvatarColor(h.PeerName)">@Initials(h.PeerName)</span>
                                 <span class="calls-history-info">
                                     <strong class="@(h.Result == "missed" ? "missed" : "")">@h.PeerName</strong>
-                                    <small><i data-lucide="@CallIcon(h)"></i> @HistoryDirection(h) · @(h.Direction == "missed" || h.Result == "missed" ? "Missed" : DurationLabel(h))</small>
+                                    <small class="calls-result @ResultClass(h)"><i data-lucide="@CallIcon(h)"></i> @HistoryDirection(h) · @ResultLabel(h)</small>
                                 </span>
                                 <time>@h.StartedAt.ToLocalTime().ToString("HH:mm")</time>
                                 <span class="calls-row-actions">
@@ -223,34 +285,42 @@
     }
     </div>
     <aside class="calls-detail">
+        <button type="button" class="m-back" aria-label="Back" @onclick="MobileBack"><i data-lucide="chevron-left"></i></button>
         @if (detailMeeting is { } m)
         {
-            <div class="calls-detail-hero"><span class="tag">@m.Status</span><h2>@m.Title</h2><p>@m.StartAt.ToLocalTime().ToString("dddd, dd MMM yyyy · HH:mm") – @m.EndAt.ToLocalTime().ToString("HH:mm")</p></div>
+            var cancelled = m.Status == MeetingCancelled;
+            var detailCanJoin = !cancelled && CallsSchedule.CanJoin(m.StartAt, m.EndAt, DateTime.UtcNow);
+            <div class="calls-detail-hero"><span class="tag @(cancelled ? "mtg-tag-cancelled" : "")">@(cancelled ? "Dibatalkan" : CallsSchedule.DayLabel(m.StartAt.ToLocalTime(), DateTime.Today))</span><h2>@m.Title</h2><p>@m.StartAt.ToLocalTime().ToString("dddd, dd MMM yyyy · HH:mm") – @m.EndAt.ToLocalTime().ToString("HH:mm")</p></div>
             <div class="calls-detail-actions">
-                @if (m.EndAt > DateTime.UtcNow && m.Status != "cancelled")
+                @if (m.EndAt > DateTime.UtcNow && !cancelled)
                 {
-                    <a class="btn-sm surface" href="/meet/@m.RoomName"><i data-lucide="video"></i> Join meeting</a>
+                    <span class="mtg-join-wrap" title="@(detailCanJoin ? "Gabung ke rapat" : CallsSchedule.JoinTooltip)">
+                        <button type="button" class="mtg-join" disabled="@(!detailCanJoin || m.RoomName is null)" @onclick="() => JoinMeeting(m)"><i data-lucide="video"></i>Gabung</button>
+                    </span>
                 }
                 <button type="button" class="btn-sm surface" @onclick="() => CopyMeetingLink(m)"><i data-lucide="link"></i> Copy link</button>
                 <a class="btn-sm surface" href="/chat?nik=@Uri.EscapeDataString(m.OrganizerNik)"><i data-lucide="message-circle"></i> Message host</a>
-                @if (m.OrganizerNik == Auth.Me?.Nik && m.Status != "cancelled")
+                @if (m.OrganizerNik == Auth.Me?.Nik && !cancelled)
                 {
                     <button class="btn-sm surface" @onclick="() => EditMeeting(m)"><i data-lucide="pencil"></i> Edit</button>
-                    <button class="btn-sm surface" style="color:var(--danger)" @onclick="() => CancelMeeting(m.Id)"><i data-lucide="calendar-x"></i> Cancel</button>
+                    <button class="btn-sm surface" style="color:var(--danger)" @onclick="() => CancelMeeting(m)"><i data-lucide="calendar-x"></i> Batalkan</button>
                 }
             </div>
-            @if (m.OrganizerNik != Auth.Me?.Nik)
+            @if (m.OrganizerNik != Auth.Me?.Nik && !cancelled)
             {
-                <div class="calls-rsvp">RSVP: <strong>@m.MyResponse</strong>
-                    @foreach (var response in new[] { "accept", "maybe", "decline" })
-                    {
-                        <button class="btn-sm surface" disabled="@rsvpBusy" @onclick="() => Respond(m.Id, response)">@response</button>
-                    }
+                <div class="calls-rsvp">Jawaban Anda: <strong class="mtg-rsvp rsvp-@m.MyResponse">@CallsSchedule.RsvpLabel(m.MyResponse)</strong>
+                    <span class="mtg-rsvp-btns" role="group" aria-label="Jawab undangan">
+                        @foreach (var r in RsvpChoices)
+                        {
+                            var choice = r;
+                            <button type="button" class="@(m.MyResponse == choice.Value ? "on " + choice.Value : "")" aria-pressed="@(m.MyResponse == choice.Value ? "true" : "false")" disabled="@rsvpBusy" @onclick="() => Respond(m.Id, choice.Value)">@choice.Label</button>
+                        }
+                    </span>
                 </div>
             }
-            <div class="calls-detail-block"><strong>MEETING DETAILS</strong><p>Host: @m.OrganizerName</p><p>Location: @(m.Location ?? "Online")</p><p>Agenda: @(m.Agenda ?? "No agenda provided")</p><p>Join link: <a href="/meet/@m.RoomName">Open meeting</a></p></div>
-            <div class="calls-detail-block"><strong>PARTICIPANTS · @m.Attendees.Count</strong>
-                @foreach (var person in m.Attendees) { <p>@person.Name · @person.RsvpStatus</p> }
+            <div class="calls-detail-block"><strong>DETAIL RAPAT</strong><p>Penyelenggara: @m.OrganizerName</p><p>Lokasi: @(CallsSchedule.IsOnline(m.Location) ? CallsSchedule.OnlineLocation : m.Location)</p><p>Agenda: @(m.Agenda ?? "Tidak ada agenda")</p><p>Pengingat: @(m.ReminderMinutes is { } rm ? ReminderLabel(rm) : "Tanpa pengingat")</p><p>Tautan: <a href="/meet/@m.RoomName">Buka rapat</a></p></div>
+            <div class="calls-detail-block"><strong>PESERTA · @m.Attendees.Count</strong>
+                @foreach (var person in m.Attendees) { <p>@person.Name · @CallsSchedule.RsvpLabel(person.RsvpStatus)</p> }
             </div>
         }
         else if (detailCall is { } h)
@@ -258,20 +328,29 @@
             <div class="calls-detail-hero">
                 <span class="calls-detail-avatar" style="background:@AvatarColor(h.PeerName)">@Initials(h.PeerName)</span>
                 <h2>@h.PeerName</h2>
-                <p>@HistoryDirection(h) · @h.Result</p>
+                <p><span class="calls-result-chip @ResultClass(h)"><i data-lucide="@CallIcon(h)"></i> @HistoryDirection(h) · @ResultLabel(h)</span></p>
+                <p>@h.StartedAt.ToLocalTime().ToString("dddd, dd MMM yyyy · HH:mm")</p>
             </div>
             <div class="calls-detail-actions call-actions">
-                <button type="button" disabled="@(string.IsNullOrWhiteSpace(h.PeerNik))" @onclick="() => CallAgain(h.PeerNik!)"><i data-lucide="phone"></i>Voice</button>
-                <a href="@ChatHref(h.PeerNik ?? "")"><i data-lucide="message-circle"></i>Message</a>
+                <button type="button" disabled="@(string.IsNullOrWhiteSpace(h.PeerNik) || CallSvc.HasLiveCall)" @onclick="() => CallAgain(h.PeerNik!)"><i data-lucide="phone"></i>Panggil</button>
                 @if (!string.IsNullOrWhiteSpace(h.PeerNik))
                 {
-                    <a href="/directory/person/@Uri.EscapeDataString(h.PeerNik)"><i data-lucide="contact-round"></i>Profile</a>
+                    <a href="@ChatHref(h.PeerNik)"><i data-lucide="message-circle"></i>Chat</a>
+                    <a href="/directory/person/@Uri.EscapeDataString(h.PeerNik)"><i data-lucide="contact-round"></i>Profil</a>
                 }
+            </div>
+            var withPeer = historyRows.Where(x => !string.IsNullOrWhiteSpace(h.PeerNik) && x.PeerNik == h.PeerNik).ToList();
+            var talked = withPeer.Where(x => x.Result == "completed").Sum(x => x.DurationSeconds);
+            <div class="calls-detail-stats">
+                <div><strong>@withPeer.Count</strong><span>Panggilan</span></div>
+                <div><strong>@withPeer.Count(x => x.Result == "completed")</strong><span>Tersambung</span></div>
+                <div><strong>@withPeer.Count(x => x.Result == "missed")</strong><span>Tak terjawab</span></div>
+                <div><strong>@FormatSeconds(talked)</strong><span>Total bicara</span></div>
             </div>
             <div class="calls-detail-block calls-contact-history"><strong>CALL HISTORY</strong><span>@historyRows.Count(x => x.PeerNik == h.PeerNik && !string.IsNullOrWhiteSpace(h.PeerNik)) calls</span>
                 @foreach (var entry in historyRows.Where(x => x.PeerNik == h.PeerNik && !string.IsNullOrWhiteSpace(h.PeerNik)).Take(5))
                 {
-                    <div class="calls-contact-row"><i data-lucide="@CallIcon(entry)"></i><span>@HistoryDirection(entry) · @entry.Result<small>@entry.StartedAt.ToLocalTime().ToString("MMM d, HH:mm")</small></span><time>@DurationLabel(entry)</time></div>
+                    <div class="calls-contact-row @ResultClass(entry)"><i data-lucide="@CallIcon(entry)"></i><span>@HistoryDirection(entry) · @ResultLabel(entry)<small>@entry.StartedAt.ToLocalTime().ToString("MMM d, HH:mm")</small></span><time>@(entry.Result == "completed" ? DurationLabel(entry) : "—")</time></div>
                 }
             </div>
             <div class="calls-detail-block calls-note">
@@ -285,8 +364,7 @@
 
 @code {
     [CascadingParameter] public MainLayout Layout { get; set; } = default!;
-    private CallRoomDto? active;
-    private CallRoomDto? incoming;
+    private bool showDeviceTest;
     private CallHistoryPage history = new([], 0, 1, 50);
     // ipop-49: the loader fetched one page of 50 and dropped the rest, while the panel head at
     // :109 renders the server's true Total. CallHistories gets a row PER PARTICIPANT per call and
@@ -313,7 +391,19 @@
     private DateTime formEnd = DateTime.Now.AddHours(2);
     private string? formLocation;
     private string? formAgenda;
-    private string formAttendees = "";
+    private bool formOnline = true;
+    private int? durationChip = 60;
+    private string formReminder = "15";
+    private Guid? formRoomId;
+    private string? formRoomName;
+    private List<MemberSearchRow> formInvitees = [];
+    private string inviteMode = "people";
+    private List<IPop.Application.Chat.RoomListDto> myGroups = [];
+    private bool groupsLoading, groupsLoaded;
+    private Guid? expandingGroup;
+    private System.Threading.Timer? clock;
+    private const string MeetingCancelled = "cancelled"; // MeetingStatus.Cancelled on the server
+    private static readonly (string Value, string Label)[] RsvpChoices = [("accept", "Hadir"), ("maybe", "Mungkin"), ("decline", "Tidak")];
     private Guid? editingMeetingId;
     private MeetingDto? detailMeeting;
     private CallHistoryDto? detailCall;
@@ -324,21 +414,76 @@
     private record MeetingDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string? TimeZone,
         string? Location, string? Link, Guid OrganizerId, string OrganizerName, string OrganizerNik,
         string Status, List<MeetingAttendeeDto> Attendees, int AcceptCount, int MaybeCount,
-        int DeclineCount, int PendingCount, string MyResponse, string? Agenda, string? RoomName);
+        int DeclineCount, int PendingCount, string MyResponse, string? Agenda, string? RoomName,
+        Guid? RoomId = null, int? ReminderMinutes = null);
 
-    private CallParticipantDto? ActiveMe => active?.Participants.FirstOrDefault(p => p.Nik == Auth.Me?.Nik);
-
-    private string IncomingPeerName =>
-        incoming?.Participants.FirstOrDefault(p => p.Nik != Auth.Me?.Nik)?.Name ?? "Someone";
+    /// Same page on the https port run.ps1 -Https opens (7103).
+    private string SecureUrl
+    {
+        get
+        {
+            var uri = new Uri(Nav.Uri);
+            return $"https://{uri.Host}:7103{uri.PathAndQuery}";
+        }
+    }
 
     protected override void OnInitialized()
     {
         Layout.SetHeader("Calls", "Direct calls · meetings · history");
         CallSvc.StateChanged += OnStateChanged;
+        CallSvc.CallEnded += OnCallEnded;
         // ipop-32d: ProfileDrawer's Call button deep-links /calls?callee=…; the drawer is
         // rendered on pages other than this one, but a same-page re-navigation would not
         // remount us, so parse per URL change too. PRESELECT only — never auto-ring.
         Nav.LocationChanged += OnLocationChanged;
+        // "Gabung" opens 10 minutes before the start: re-evaluate the window while the page is open.
+        clock = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+        meetingSub = Auth.On<Guid>(IPop.Application.Realtime.RealtimeEvents.MeetingChanged, OnMeetingChanged);
+    }
+
+    // ── Live refresh (meetingChanged) ──
+    // A meeting I organise/attend was created, edited, cancelled or answered. Reload the
+    // scheduled list quietly (debounced; bursts collapse) and re-read the open detail when it
+    // is one of the changed meetings. The schedule form (showSchedule) is left untouched.
+    private IDisposable? meetingSub;
+    private CancellationTokenSource? meetingLiveCts;
+    private readonly HashSet<Guid> changedMeetings = [];
+
+    private void OnMeetingChanged(Guid meetingId)
+    {
+        _ = InvokeAsync(() =>
+        {
+            changedMeetings.Add(meetingId);
+            meetingLiveCts?.Cancel(); meetingLiveCts?.Dispose();
+            var t = new CancellationTokenSource(); meetingLiveCts = t;
+            _ = InvokeAsync(async () =>
+            {
+                try { await Task.Delay(400, t.Token); } catch (OperationCanceledException) { return; }
+                await LiveRefreshMeetingsAsync();
+            });
+        });
+    }
+
+    private async Task LiveRefreshMeetingsAsync()
+    {
+        var changed = changedMeetings.ToHashSet();
+        changedMeetings.Clear();
+        try
+        {
+            await LoadMeetings();
+            // LoadMeetings keeps the detail in sync for meetings still upcoming; one that left the
+            // list (cancelled/ended) or changed is re-read so the detail shows its new state.
+            if (detailMeeting is { } open && changed.Contains(open.Id))
+            {
+                var fresh = meetings.FirstOrDefault(m => m.Id == open.Id)
+                    ?? await Auth.GetAsync<MeetingDto>($"/api/meetings/{open.Id}");
+                if (detailMeeting?.Id == open.Id && fresh is not null) detailMeeting = fresh;
+            }
+            Layout.SetSubtitle($"{history.Total} calls · {meetings.Count} upcoming meetings");
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+        catch { /* background refresh — the next event or navigation will catch up */ }
     }
 
     protected override async Task OnInitializedAsync()
@@ -361,7 +506,7 @@
         if (Guid.TryParse(query["meeting"], out var id))
         {
             tab = "scheduled";
-            await SelectMeeting(id);
+            await OpenMeeting(id);
         }
         if (query["new"] == "1") OpenSchedule();
         await HandleCalleeDeeplinkAsync();
@@ -415,14 +560,23 @@
         }
     }
 
+    // The ringing / in-call UI lives in GlobalCallOverlay; this page only reflects it.
     private void OnStateChanged() => _ = InvokeAsync(() =>
     {
-        var c = CallSvc.Current;
-        active = c is { Status: "active" } ? c : null;
-        // ringing inbound card shows when the current user is INVITED (not the caller)
-        incoming = c is { Status: "ringing" } && c.Participants.Any(p => p.Nik == Auth.Me?.Nik && p.Status == "invited") ? c : null;
+        // "Memanggil…" only while our outgoing call rings; the overlay shows the rest.
+        if (!CallSvc.IsOutgoingRing) notice = "";
         StateHasChanged();
         _ = JS.InvokeVoidAsync("ipop.icons");
+    });
+
+    /// A call just closed: its history row exists now, so reload page 1 and show it.
+    private void OnCallEnded() => _ = InvokeAsync(async () =>
+    {
+        detailCall = null;
+        detailMeeting = null;
+        if (mDetail) await MobileBack();
+        await LoadHistory();
+        await JS.InvokeVoidAsync("ipop.icons");
     });
 
     private void OnPickPeer(MemberSearchRow? r)
@@ -436,57 +590,8 @@
     {
         if (selectedPeer is null) return;
         var room = await CallSvc.CreateAsync(selectedPeer.Nik);
-        if (room is null) { Toasts.Show("Could not start the call. Please try again.", ToastKind.Error); return; }
-        notice = $"Calling {selectedPeer.Name}… waiting for answer.";
-        await LoadHistory();
-        StateHasChanged();
-        await JS.InvokeVoidAsync("ipop.icons");
-    }
-
-    private async Task AcceptIncoming()
-    {
-        if (incoming is null) return;
-        var room = await CallSvc.AcceptCurrentAsync();
-        if (room is null) { Toasts.Show("Failed to accept the call.", ToastKind.Error); return; }
-        incoming = null;
-        active = room;
-        notice = "";
-        StateHasChanged();
-        await JS.InvokeVoidAsync("ipop.icons");
-    }
-
-    private async Task DeclineIncoming()
-    {
-        if (incoming is null) return;
-        await CallSvc.DeclineCurrentAsync();
-        incoming = null;
-        active = null;
-        StateHasChanged();
-        await JS.InvokeVoidAsync("ipop.icons");
-    }
-
-    private async Task ToggleMute()
-    {
-        if (active is null) return;
-        await CallSvc.ToggleMuteAudioAsync();
-        StateHasChanged();
-    }
-
-    private async Task ToggleScreen()
-    {
-        if (active is null) return;
-        var me = ActiveMe;
-        await CallSvc.SignalAsync(active.Id, "update", screen: !(me?.IsScreenSharing ?? false));
-        StateHasChanged();
-    }
-
-    private async Task EndCall()
-    {
-        if (active is null) return;
-        await CallSvc.EndCurrentAsync();
-        active = null;
-        incoming = null;
-        await LoadHistory();
+        if (room is null) { Toasts.Show(CallSvc.LastError ?? "Panggilan gagal dimulai. Coba lagi.", ToastKind.Error); return; }
+        notice = $"Memanggil {selectedPeer.Name}…";
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
     }
@@ -538,6 +643,7 @@
         tab = selected;
         detailMeeting = null;
         detailCall = null;
+        if (mDetail) _ = MobileBack();
     }
 
     private void FocusCallPicker()
@@ -548,14 +654,43 @@
 
     private static bool HistoryMatches(CallHistoryDto h, string filter) => filter switch
     {
-        "missed" => h.Result.Equals("missed", StringComparison.OrdinalIgnoreCase),
+        // Calls I did not pick up — the ones worth calling back.
+        "missed" => h.Direction.Equals("incoming", StringComparison.OrdinalIgnoreCase)
+                    && h.Result.Equals("missed", StringComparison.OrdinalIgnoreCase),
         "incoming" => h.Direction.Equals("incoming", StringComparison.OrdinalIgnoreCase),
         "outgoing" => h.Direction.Equals("outgoing", StringComparison.OrdinalIgnoreCase),
         _ => true,
     };
 
     private static string HistoryDirection(CallHistoryDto h) => h.Direction.Equals("outgoing", StringComparison.OrdinalIgnoreCase) ? "Outgoing" : "Incoming";
-    private static string CallIcon(CallHistoryDto h) => h.Result.Equals("missed", StringComparison.OrdinalIgnoreCase) ? "phone-missed" : h.Direction.Equals("outgoing", StringComparison.OrdinalIgnoreCase) ? "phone-outgoing" : "phone-incoming";
+    private static string CallIcon(CallHistoryDto h) => h.Result switch
+    {
+        "missed" => "phone-missed",
+        "declined" or "canceled" or "no-answer" => "phone-off",
+        _ => h.Direction.Equals("outgoing", StringComparison.OrdinalIgnoreCase) ? "phone-outgoing" : "phone-incoming",
+    };
+
+    /// History result as the user reads it; the raw values come from CallService.RecordHistory.
+    private static string ResultLabel(CallHistoryDto h) => h.Result switch
+    {
+        "completed" => DurationLabel(h),
+        "missed" => "Tak terjawab",
+        "declined" => "Ditolak",
+        "canceled" => "Dibatalkan",
+        "no-answer" => "Tidak dijawab",
+        _ => h.Result,
+    };
+
+    private static string ResultClass(CallHistoryDto h) => h.Result switch
+    {
+        "completed" => "ok",
+        "missed" => "bad",
+        "declined" => "bad",
+        _ => "muted",
+    };
+
+    private static string FormatSeconds(int s) =>
+        s < 60 ? $"{s}d" : s < 3600 ? $"{s / 60}m {s % 60}d" : $"{s / 3600}j {(s % 3600) / 60}m";
     private static string DateGroupLabel(DateTime date) => date.Date == DateTime.Today ? "Today" : date.Date == DateTime.Today.AddDays(-1) ? "Yesterday" : date.ToString("dddd, MMM d");
     private static string AvatarColor(string name)
     {
@@ -567,7 +702,7 @@
 
     private void SelectCallOnKey(KeyboardEventArgs e, CallHistoryDto h)
     {
-        if (e.Key is "Enter" or " ") SelectCall(h);
+        if (e.Key is "Enter" or " ") _ = OpenCall(h);
     }
 
     private void SelectCall(CallHistoryDto h)
@@ -581,6 +716,42 @@
         detailCall = null;
         detailMeeting = meetings.FirstOrDefault(m => m.Id == id)
             ?? await Auth.GetAsync<MeetingDto>($"/api/meetings/{id}");
+    }
+
+    // Phone layout: list and detail swap; the detail owns a history entry so phone Back closes it.
+    private bool mDetail;
+    private DotNetObjectReference<Calls>? mRef;
+
+    private async Task OpenCall(CallHistoryDto h)
+    {
+        SelectCall(h);
+        await OpenMobileDetail();
+    }
+
+    private async Task OpenMeeting(Guid id)
+    {
+        await SelectMeeting(id);
+        await OpenMobileDetail();
+    }
+
+    private async Task OpenMobileDetail()
+    {
+        mRef ??= DotNetObjectReference.Create(this);
+        try { mDetail = await JS.InvokeAsync<bool>("ipop.mobile.pushDetail", mRef, nameof(CloseMobileDetail)); }
+        catch (JSException) { mDetail = false; }
+    }
+
+    [JSInvokable]
+    public void CloseMobileDetail()
+    {
+        mDetail = false;
+        StateHasChanged();
+    }
+
+    private async Task MobileBack()
+    {
+        mDetail = false;
+        try { await JS.InvokeVoidAsync("ipop.mobile.popDetail"); } catch (JSException) { }
     }
 
     private async Task LoadMeetings()
@@ -608,11 +779,19 @@
         tab = "scheduled";
         editingMeetingId = null;
         formTitle = "";
-        formStart = DateTime.Now.AddHours(1);
-        formEnd = formStart.AddHours(1);
+        // Next quarter hour, at least 15 minutes out.
+        var now = DateTime.Now.AddMinutes(15);
+        formStart = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0).AddMinutes((now.Minute / 15 + 1) * 15);
+        durationChip = 60;
+        formEnd = formStart.AddMinutes(60);
         formLocation = null;
+        formOnline = true;
         formAgenda = null;
-        formAttendees = "";
+        formReminder = "15";
+        formInvitees = [];
+        formRoomId = null;
+        formRoomName = null;
+        inviteMode = "people";
         formError = null;
         showSchedule = true;
     }
@@ -623,44 +802,154 @@
         formTitle = m.Title;
         formStart = m.StartAt.ToLocalTime();
         formEnd = m.EndAt.ToLocalTime();
-        formLocation = m.Location;
+        durationChip = CallsSchedule.ChipFor(m.EndAt - m.StartAt);
+        formOnline = CallsSchedule.IsOnline(m.Location);
+        formLocation = formOnline ? null : m.Location;
         formAgenda = m.Agenda;
-        formAttendees = string.Join(", ", m.Attendees.Where(a => a.Nik != Auth.Me?.Nik).Select(a => a.Nik));
+        formReminder = m.ReminderMinutes?.ToString() ?? "";
+        formInvitees = m.Attendees.Where(a => a.Nik != Auth.Me?.Nik).Select(a => new MemberSearchRow(a.Nik, a.Name, null, null)).ToList();
+        formRoomId = null;
+        formRoomName = null;
+        inviteMode = "people";
         formError = null;
         showSchedule = true;
+    }
+
+    private List<AppOption> ReminderOptions
+    {
+        get
+        {
+            var list = CallsSchedule.ReminderChoices.Select(c => new AppOption(c.Value, c.Label)).ToList();
+            if (!list.Any(o => o.Value == formReminder) && int.TryParse(formReminder, out var custom))
+                list.Add(new AppOption(formReminder, ReminderLabel(custom)));
+            return list;
+        }
+    }
+
+    private static string ReminderLabel(int minutes) =>
+        CallsSchedule.ReminderChoices.FirstOrDefault(c => c.Value == minutes.ToString()).Label ?? $"{minutes} menit sebelumnya";
+
+    private void OnReminderChanged(string? value) => formReminder = value ?? "";
+
+    private void OnStartChanged(DateTime value)
+    {
+        formStart = value;
+        if (durationChip is { } minutes) formEnd = value.AddMinutes(minutes);
+        else if (formEnd <= value) formEnd = value.AddMinutes(30);
+        formError = null;
+    }
+
+    private void OnEndChanged(DateTime value)
+    {
+        formEnd = value;
+        formError = formEnd <= formStart ? "Waktu selesai harus setelah waktu mulai." : null;
+    }
+
+    private void PickDuration(int minutes)
+    {
+        durationChip = minutes;
+        formEnd = formStart.AddMinutes(minutes);
+        formError = null;
+    }
+
+    private void PickCustomDuration()
+    {
+        durationChip = null;
+        if (formEnd <= formStart) formEnd = formStart.AddMinutes(60);
+    }
+
+    private void AddInvitee(MemberSearchRow person)
+    {
+        if (person.Nik == Auth.Me?.Nik || formInvitees.Any(p => p.Nik == person.Nik)) return;
+        formInvitees.Add(person);
+    }
+
+    private async Task OpenGroupInvite()
+    {
+        inviteMode = "group";
+        if (groupsLoaded || groupsLoading) return;
+        groupsLoading = true;
+        StateHasChanged();
+        try
+        {
+            var page = await Auth.GetAsync<IPop.Application.Chat.PagedResult<IPop.Application.Chat.RoomListDto>>("/api/chat/rooms?tab=groups&pageSize=50");
+            myGroups = page?.Items.Where(r => !r.IsArchived).OrderBy(r => r.Name).ToList() ?? [];
+            groupsLoaded = true;
+        }
+        catch { myGroups = []; }
+        finally { groupsLoading = false; }
+    }
+
+    /// "Undang grup": expand the group to its members and link the meeting to it (RoomId).
+    private async Task InviteGroup(IPop.Application.Chat.RoomListDto group)
+    {
+        expandingGroup = group.Id;
+        try
+        {
+            var room = await Auth.GetAsync<IPop.Application.Chat.ChatRoomDto>($"/api/chat/rooms/{group.Id}");
+            if (room is null) { Toasts.Show("Anggota grup tidak bisa dimuat.", ToastKind.Error); return; }
+            var added = 0;
+            foreach (var member in room.Members)
+            {
+                if (member.Nik == Auth.Me?.Nik || formInvitees.Any(p => p.Nik == member.Nik)) continue;
+                formInvitees.Add(new MemberSearchRow(member.Nik, member.Name, null, null));
+                added++;
+            }
+            if (editingMeetingId is null) { formRoomId = group.Id; formRoomName = group.Name; }
+            if (string.IsNullOrWhiteSpace(formTitle)) formTitle = $"Rapat {group.Name}";
+            Toasts.Show(added == 0 ? "Semua anggota grup sudah diundang." : $"{added} anggota {group.Name} ditambahkan.", ToastKind.Success);
+        }
+        catch { Toasts.Show("Anggota grup tidak bisa dimuat.", ToastKind.Error); }
+        finally { expandingGroup = null; }
     }
 
     private async Task SaveMeeting()
     {
         if (savingMeeting) return;
-        if (string.IsNullOrWhiteSpace(formTitle) || formEnd <= formStart)
-        {
-            formError = "Enter a title and an end time after the start time.";
-            return;
-        }
+        var isNew = editingMeetingId is null;
+        formError = CallsSchedule.Validate(formTitle, formStart, formEnd, DateTime.Now, isNew);
+        if (formError is not null) return;
         savingMeeting = true;
-        formError = null;
         try
         {
-            var niks = formAttendees.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct().ToArray();
             var body = new
             {
-                title = formTitle, startAt = formStart.ToUniversalTime(), endAt = formEnd.ToUniversalTime(),
-                location = formLocation, agenda = formAgenda, attendeeNiks = niks,
-                reminderMinutes = 30, link = (string?)null,
+                title = formTitle.Trim(), startAt = formStart.ToUniversalTime(), endAt = formEnd.ToUniversalTime(),
+                location = formOnline ? CallsSchedule.OnlineLocation : string.IsNullOrWhiteSpace(formLocation) ? null : formLocation.Trim(),
+                agenda = formAgenda, attendeeNiks = formInvitees.Select(p => p.Nik).Distinct().ToArray(),
+                reminderMinutes = CallsSchedule.ReminderPayload(formReminder, isNew),
+                roomId = isNew ? formRoomId : null, link = (string?)null,
+                timeZone = TimeZoneInfo.Local.Id,
             };
-            var response = await Auth.SendAsync(editingMeetingId is null ? HttpMethod.Post : HttpMethod.Put,
+            var response = await Auth.SendAsync(isNew ? HttpMethod.Post : HttpMethod.Put,
                 editingMeetingId is { } id ? $"/api/meetings/{id}" : "/api/meetings", body);
             if (!response.IsSuccessStatusCode)
             {
-                formError = "Could not save the meeting. Check its details and your permissions.";
+                formError = (int)response.StatusCode == 403
+                    ? "Anda tidak punya izin menjadwalkan rapat ini."
+                    : "Rapat tidak bisa disimpan. Periksa isian lalu coba lagi.";
                 return;
             }
+            var saved = await response.Content.ReadFromJsonAsync<MeetingDto>();
             showSchedule = false;
             await LoadMeetings();
-            Toasts.Show("Meeting saved.", ToastKind.Success);
+            if (saved is not null) await SelectMeeting(saved.Id);
+            Toasts.Show(isNew ? (formInvitees.Count > 0 ? $"Rapat dijadwalkan · {formInvitees.Count} undangan terkirim." : "Rapat dijadwalkan.") : "Rapat diperbarui.", ToastKind.Success);
         }
+        catch { formError = "Rapat tidak bisa disimpan. Coba lagi."; }
         finally { savingMeeting = false; }
+    }
+
+    private void SelectMeetingOnKey(KeyboardEventArgs e, Guid id)
+    {
+        if (e.Key is "Enter" or " ") _ = OpenMeeting(id);
+    }
+
+    private async Task JoinMeeting(MeetingDto m)
+    {
+        if (m.RoomName is null) return;
+        if (!await CallSvc.JoinMeetingAsync(m.RoomName))
+            Toasts.Show(CallSvc.LastError ?? "Gagal bergabung ke rapat.", ToastKind.Error);
     }
 
     private async Task CopyMeetingLink(MeetingDto m)
@@ -677,18 +966,21 @@
         }
     }
 
-    private async Task CancelMeeting(Guid meetingId)
+    private async Task CancelMeeting(MeetingDto m)
     {
-        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/meetings/{meetingId}/cancel", new { });
+        if (!await Confirm.AskAsync("Batalkan rapat?", $"\"{m.Title}\" akan dibatalkan dan semua peserta diberi tahu.", "Batalkan rapat", true)) return;
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/meetings/{m.Id}/cancel", new { });
         if (res.IsSuccessStatusCode)
         {
-            Toasts.Show("Meeting cancelled.", ToastKind.Success);
+            Toasts.Show("Rapat dibatalkan.", ToastKind.Success);
             await LoadMeetings();
-            detailMeeting = meetings.FirstOrDefault(x => x.Id == meetingId);
+            // The cancelled meeting leaves /upcoming; re-read it so the detail shows its new state.
+            detailCall = null;
+            detailMeeting = await Auth.GetAsync<MeetingDto>($"/api/meetings/{m.Id}");
         }
         else
         {
-            Toasts.Show("Could not cancel meeting.", ToastKind.Error);
+            Toasts.Show("Rapat tidak bisa dibatalkan.", ToastKind.Error);
         }
     }
 
@@ -699,43 +991,49 @@
         try
         {
             var result = await Auth.SendAsync(HttpMethod.Post, $"/api/meetings/{id}/rsvp", new { response });
-            if (!result.IsSuccessStatusCode) Toasts.Show("Could not update your RSVP.");
+            if (!result.IsSuccessStatusCode) Toasts.Show("Jawaban tidak bisa disimpan.", ToastKind.Error);
             else await LoadMeetings();
         }
         finally { rsvpBusy = false; }
     }
 
     private static string Initials(string name) =>
-        string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w[0]).Take(2)).ToUpperInvariant();
+        string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => w.FirstOrDefault(char.IsLetterOrDigit)).Where(c => c != default).Take(2)).ToUpperInvariant();
 
     private static string DurationLabel(CallHistoryDto h) =>
         h.DurationSeconds < 60 ? $"{h.DurationSeconds}s"
         : h.DurationSeconds < 3600 ? $"{h.DurationSeconds / 60}m {h.DurationSeconds % 60}s"
         : $"{h.DurationSeconds / 3600}h {(h.DurationSeconds % 3600) / 60}m";
 
-    private static string ResultStyle(string r) => r switch
-    {
-        "completed" => "background:var(--accent-soft);color:var(--accent-ink)",
-        "missed" => "background:var(--danger-soft);color:var(--danger)",
-        "declined" => "background:var(--danger-soft);color:var(--danger)",
-        _ => "background:var(--tray);color:var(--ink-2)",
-    };
-
     private static string ChatHref(string nik) => $"/chat?nik={Uri.EscapeDataString(nik)}";
 
     private async Task CallAgain(string peerNik)
     {
         var room = await CallSvc.CreateAsync(peerNik);
-        if (room is null) { Toasts.Show("Could not start the call.", ToastKind.Error); return; }
-        active = room;
+        if (room is null)
+        {
+            var msg = !string.IsNullOrWhiteSpace(CallSvc.LastError) ? CallSvc.LastError : "Panggilan gagal dimulai.";
+            Toasts.Show(msg, ToastKind.Error);
+            return;
+        }
         StateHasChanged();
-        await LoadHistory();
         await JS.InvokeVoidAsync("ipop.icons");
     }
 
     public void Dispose()
     {
         Nav.LocationChanged -= OnLocationChanged;
+        clock?.Dispose();
         CallSvc.StateChanged -= OnStateChanged;
+        CallSvc.CallEnded -= OnCallEnded;
+        meetingSub?.Dispose();
+        meetingLiveCts?.Cancel();
+        meetingLiveCts?.Dispose();
+        if (mRef is not null)
+        {
+            _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail").AsTask().ContinueWith(_ => { });
+            mRef.Dispose();
+        }
     }
 }

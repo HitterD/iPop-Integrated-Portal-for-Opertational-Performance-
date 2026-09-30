@@ -1,8 +1,10 @@
 using IPop.Api.Rbac;
 using IPop.Application.Files;
 using IPop.Application.Mail;
+using IPop.Application.Realtime;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
 
 namespace IPop.Api.Endpoints;
@@ -332,6 +334,16 @@ public static class MailEndpoints
             return Results.Ok(result);
         });
 
+        // POST /api/mail/bulk/read-ids — { mailIds } marks the selected messages read in one call.
+        g.MapPost("/bulk/read-ids", async (BulkIdsRequest req,
+            HttpContext http, IMailService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await svc.BulkMarkReadAsync(userId.Value, req.MailIds ?? [], ct);
+            return Results.Ok(result);
+        });
+
         // ──────────────────────────────────────────────────────────────────────
         // PDF export (Fase 2 — render sungguhan via DevExpress Document Processing)
         // ──────────────────────────────────────────────────────────────────────
@@ -426,14 +438,30 @@ public static class MailEndpoints
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
-            var form = await http.Request.ReadFormAsync(ct);
+            if (http.Request.ContentLength is > MaxUploadRequestBytes)
+                return Results.Json(new { code = "upload_too_large", message = "The upload is too large. Attach at most 5 files of 50 MB each." }, statusCode: 413);
+            if (!http.Request.HasFormContentType)
+                return Results.Json(new { code = "file_required", message = "At least one file is required." }, statusCode: 422);
+
+            // The default form limits (and Kestrel's ~28.6 MB body cap) are below the advertised
+            // 5 × 50 MB; the RequestSizeLimit metadata lifts the body cap, this lifts the form's.
+            http.Features.Set<IFormFeature>(new FormFeature(http.Request, new FormOptions
+            {
+                MultipartBodyLengthLimit = MaxUploadRequestBytes,
+            }));
+            IFormCollection form;
+            try { form = await http.Request.ReadFormAsync(ct); }
+            catch (Exception ex) when (ex is InvalidDataException or BadHttpRequestException)
+            {
+                return Results.Json(new { code = "upload_too_large", message = "The upload is too large. Attach at most 5 files of 50 MB each." }, statusCode: 413);
+            }
             var files = form.Files;
             if (files.Count == 0)
                 return Results.Json(new { code = "file_required", message = "At least one file is required." }, statusCode: 422);
             if (files.Count > 5)
                 return Results.Json(new { code = "too_many_attachments", message = "Maximum 5 files per upload." }, statusCode: 422);
 
-            const long maxFileSize = 50L * 1024 * 1024; // 50MB
+            const long maxFileSize = MaxUploadFileBytes;
             foreach (var file in files)
                 if (file.Length > maxFileSize)
                     return Results.Json(new { code = "file_too_large", message = $"File '{file.FileName}' exceeds the 50MB limit." }, statusCode: 422);
@@ -495,7 +523,8 @@ public static class MailEndpoints
                 var attachment = new MailAttachment
                 {
                     Id = Guid.NewGuid(),
-                    MailId = Guid.Empty, // orphan until linked on send/draft
+                    MailId = null, // pending until a send/draft links it
+                    UploaderId = userId.Value,
                     FileName = safeName,
                     FileSize = file.Length,
                     MimeType = mime,
@@ -510,7 +539,8 @@ public static class MailEndpoints
             await db.SaveChangesAsync(ct);
 
             return Results.Ok(attachments);
-        }).RequirePermission("mail.send").DisableAntiforgery();
+        }).RequirePermission("mail.send").DisableAntiforgery()
+          .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxUploadRequestBytes));
 
         // DELETE /api/mail/attachments/{id} — hapus lampiran (hanya orphan/pending milik
         // uploader; lampiran yang sudah terkirim di surat tidak bisa dihapus lewat sini).
@@ -522,11 +552,9 @@ public static class MailEndpoints
             var attachment = await db.MailAttachments.FirstOrDefaultAsync(a => a.Id == id, ct);
             if (attachment is null) return Results.NotFound();
 
-            // Orphan = belum ditautkan ke surat (MailId kosong). Hanya uploader yang boleh
-            // menghapus orphan miliknya (path mengandung user id uploader).
-            var isOrphan = attachment.MailId == Guid.Empty;
-            var isUploader = IsOwnMailDraftPath(attachment.SynologyPath, userId.Value);
-            if (!isOrphan || !isUploader)
+            // Orphan = belum ditautkan ke surat (MailId null). Hanya uploader yang boleh
+            // menghapus orphan miliknya.
+            if (!IsPendingUploadOf(attachment, userId.Value))
                 return Results.Json(new { code = "forbidden", message = "Only draft attachments belonging to you can be deleted." }, statusCode: 403);
 
             db.MailAttachments.Remove(attachment);
@@ -545,11 +573,10 @@ public static class MailEndpoints
                 .FirstOrDefaultAsync(a => a.Id == id, ct);
             if (attachment is null) return Results.NotFound();
 
-            // Access rule: only participants of the linked mail — or the uploader for pending orphans
-            // (path encodes the uploader's user id).
-            var canAccess = attachment.MailId != Guid.Empty
-                ? await db.MailRecipients.AnyAsync(r => r.MailId == attachment.MailId && r.UserId == userId.Value, ct)
-                : IsOwnMailDraftPath(attachment.SynologyPath, userId.Value);
+            // Access rule: only participants of the linked mail — or the uploader for pending orphans.
+            var canAccess = attachment.MailId is { } linkedMailId
+                ? await db.MailRecipients.AnyAsync(r => r.MailId == linkedMailId && r.UserId == userId.Value, ct)
+                : IsPendingUploadOf(attachment, userId.Value);
             if (!canAccess) return Results.Forbid();
 
             if (attachment.SynologyServer == "local")
@@ -591,9 +618,9 @@ public static class MailEndpoints
             var attachment = await db.MailAttachments.AsNoTracking()
                 .FirstOrDefaultAsync(a => a.Id == id && a.ThumbnailPath != null, ct);
             if (attachment is null) return Results.NotFound();
-            var canAccess = attachment.MailId != Guid.Empty
-                ? await db.MailRecipients.AnyAsync(r => r.MailId == attachment.MailId && r.UserId == userId.Value, ct)
-                : IsOwnMailDraftPath(attachment.SynologyPath, userId.Value);
+            var canAccess = attachment.MailId is { } linkedMailId
+                ? await db.MailRecipients.AnyAsync(r => r.MailId == linkedMailId && r.UserId == userId.Value, ct)
+                : IsPendingUploadOf(attachment, userId.Value);
             if (!canAccess) return Results.Forbid();
             if (attachment.SynologyServer != "local")
             {
@@ -837,7 +864,7 @@ public static class MailEndpoints
 
         // POST /api/mail/{id}/recall — tarik kembali surat terkirim selama belum dibaca penerima.
         g.MapPost("/{id:guid}/recall", async (Guid id,
-            HttpContext http, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -859,6 +886,23 @@ public static class MailEndpoints
             mail.Status = "recalled";
             mail.UpdatedAt = now;
             await db.SaveChangesAsync(ct);
+
+            // Recalled mail leaves the recipients' inboxes: resync their lists + badges, and the
+            // sender's other tabs. Best-effort — a hub failure never fails the recall.
+            try
+            {
+                var affected = mail.Recipients.Select(r => r.UserId).Distinct().ToList();
+                var users = await db.Users.AsNoTracking().Where(u => affected.Contains(u.Id))
+                    .Select(u => new { u.Id, u.Nik }).ToListAsync(ct);
+                foreach (var u in users)
+                {
+                    var unread = await db.MailRecipients.AsNoTracking()
+                        .CountAsync(r => r.UserId == u.Id && r.Folder == "inbox" && !r.IsRead && !r.IsMuted, ct);
+                    await realtime.ToUserAsync(u.Nik, RealtimeEvents.BadgeChanged, new RealtimeArgs("mail", unread), ct);
+                }
+                await realtime.ToUsersAsync(users.Select(u => u.Nik), RealtimeEvents.MailChanged, ct: ct);
+            }
+            catch { /* realtime is a hint */ }
             return Results.Ok(new { success = true });
         });
 
@@ -937,6 +981,14 @@ public static class MailEndpoints
 
         return app;
     }
+
+    /// 5 files × 50 MB plus multipart framing.
+    internal const long MaxUploadFileBytes = 50L * 1024 * 1024;
+    internal const long MaxUploadRequestBytes = 5 * MaxUploadFileBytes + 1024 * 1024;
+
+    /// A pending (unlinked) upload belongs to its uploader and nobody else.
+    internal static bool IsPendingUploadOf(MailAttachment a, Guid userId) =>
+        a.MailId is null && a.UploaderId == userId;
 
     internal static bool IsOwnMailDraftPath(string path, Guid userId) =>
         path.StartsWith($"mail-files/{userId:N}/", StringComparison.OrdinalIgnoreCase)

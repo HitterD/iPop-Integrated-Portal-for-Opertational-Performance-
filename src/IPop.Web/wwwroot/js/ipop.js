@@ -105,6 +105,136 @@ window.ipop = {
   visibility() {
     return document.visibilityState;
   },
+
+  // ── Presence idle detection ──
+  // Away = the computer has been idle 10 minutes or its screen is locked. The Idle Detection
+  // API (Chrome/Edge, secure context, one-time permission) sees system-wide input; without it
+  // we fall back to input inside iPop tabs. Changes are pushed to AuthState.OnIdleChanged.
+  _idle: { ref: null, idle: false, last: Date.now(), timer: null, detector: null, abort: null },
+  idleThresholdMs: 10 * 60 * 1000,
+  presenceStart(dotnet) {
+    const s = ipop._idle;
+    ipop.presenceStop();
+    s.ref = dotnet;
+    s.last = Date.now();
+    s.idle = false;
+    const touch = () => {
+      s.last = Date.now();
+      if (!s.detector && s.idle) ipop._setIdle(false);
+    };
+    s.onActivity = touch;
+    ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"].forEach(t =>
+      window.addEventListener(t, touch, { passive: true, capture: true }));
+    s.onVis = () => { if (document.visibilityState === "visible") touch(); };
+    document.addEventListener("visibilitychange", s.onVis);
+    // Share activity across tabs so a busy second tab keeps the first one "on" too.
+    try {
+      s.channel = new BroadcastChannel("ipop-activity");
+      s.channel.onmessage = () => { s.last = Date.now(); if (!s.detector && s.idle) ipop._setIdle(false); };
+      let lastPost = 0;
+      s.onActivityShare = () => { const n = Date.now(); if (n - lastPost > 30000) { lastPost = n; s.channel.postMessage(1); } };
+      ["pointerdown", "keydown", "pointermove"].forEach(t => window.addEventListener(t, s.onActivityShare, { passive: true, capture: true }));
+    } catch { /* BroadcastChannel unsupported: per-tab only */ }
+    s.timer = setInterval(() => {
+      if (!s.detector && !s.idle && Date.now() - s.last >= ipop.idleThresholdMs) ipop._setIdle(true);
+    }, 15000);
+    ipop._startIdleDetector();
+  },
+  presenceStop() {
+    const s = ipop._idle;
+    if (s.onActivity) ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"].forEach(t =>
+      window.removeEventListener(t, s.onActivity, { capture: true }));
+    if (s.onActivityShare) ["pointerdown", "keydown", "pointermove"].forEach(t =>
+      window.removeEventListener(t, s.onActivityShare, { capture: true }));
+    if (s.onVis) document.removeEventListener("visibilitychange", s.onVis);
+    if (s.channel) { try { s.channel.close(); } catch { } s.channel = null; }
+    if (s.timer) clearInterval(s.timer);
+    if (s.abort) s.abort.abort();
+    s.timer = s.abort = s.detector = s.onActivity = s.onActivityShare = s.onVis = null;
+    s.ref = null;
+  },
+  presenceIdle() { return ipop._idle.idle; },
+  _setIdle(idle) {
+    const s = ipop._idle;
+    if (s.idle === idle) return;
+    s.idle = idle;
+    if (s.ref) s.ref.invokeMethodAsync("OnIdleChanged", idle).catch(() => { });
+  },
+  async _startIdleDetector() {
+    const s = ipop._idle;
+    if (s.detector || !("IdleDetector" in window) || !window.isSecureContext) return false;
+    try {
+      const perm = await navigator.permissions.query({ name: "idle-detection" });
+      if (perm.state !== "granted") return false;
+      const detector = new IdleDetector();
+      const abort = new AbortController();
+      detector.addEventListener("change", () =>
+        ipop._setIdle(detector.userState === "idle" || detector.screenState === "locked"));
+      await detector.start({ threshold: ipop.idleThresholdMs, signal: abort.signal });
+      s.detector = detector;
+      s.abort = abort;
+      ipop._setIdle(detector.userState === "idle" || detector.screenState === "locked");
+      return true;
+    } catch { return false; }
+  },
+
+  // ── Desktop alerts (Windows notifications + computer-wide idle) ──
+  // Both permissions must be requested from a click, so the shell offers one "Turn on" button.
+  desktopAlertsState() {
+    const secure = window.isSecureContext;
+    return {
+      secure,
+      notify: !("Notification" in window) || !secure ? "unsupported" : Notification.permission,
+      idle: !("IdleDetector" in window) || !secure ? "unsupported" : (ipop._idle.detector ? "granted" : "prompt"),
+    };
+  },
+  async enableDesktopAlerts() {
+    if ("Notification" in window && window.isSecureContext && Notification.permission === "default") {
+      try { await Notification.requestPermission(); } catch { }
+    }
+    if ("IdleDetector" in window && window.isSecureContext && !ipop._idle.detector) {
+      try {
+        if (await IdleDetector.requestPermission() === "granted") await ipop._startIdleDetector();
+      } catch { }
+    }
+    return ipop.desktopAlertsState();
+  },
+  // Only while no iPop tab is being looked at — in-app banners cover the visible case.
+  desktopNotify(title, body, url, tag) {
+    if (!("Notification" in window) || Notification.permission !== "granted") return false;
+    if (document.visibilityState === "visible") return false;
+    try {
+      const n = new Notification(title, { body: body || "", tag: tag || undefined, renotify: !!tag, icon: "/img/logo.png" });
+      n.onclick = () => {
+        window.focus();
+        if (url) {
+          try { Blazor.navigateTo(url); } catch { location.href = url; }
+        }
+        n.close();
+      };
+      return true;
+    } catch { return false; }
+  },
+
+  // ── Unread count in the tab title: "(3) Messages — IPop" ──
+  // <PageTitle> rewrites document.title on every navigation, so an observer re-applies the prefix.
+  _titleCount: 0,
+  _titleObserver: null,
+  setTitleBadge(n) {
+    ipop._titleCount = Math.max(0, n | 0);
+    ipop._applyTitleBadge();
+    if (!ipop._titleObserver) {
+      const head = document.querySelector("head");
+      ipop._titleObserver = new MutationObserver(() => ipop._applyTitleBadge());
+      ipop._titleObserver.observe(head, { subtree: true, childList: true, characterData: true });
+    }
+  },
+  _applyTitleBadge() {
+    const base = document.title.replace(/^\(\d+\+?\)\s+/, "");
+    const n = ipop._titleCount;
+    const want = n > 0 ? `(${n > 99 ? "99+" : n}) ${base}` : base;
+    if (document.title !== want) document.title = want;
+  },
   // Global shortcuts live in JS because they fire on document, not on a component.
   // MainLayout registers once; the returned handles let Blazor detach on dispose.
   shortcuts(dotnet) {
@@ -143,6 +273,22 @@ window.ipop = {
     a.href = "data:application/octet-stream;base64," + b64;
     a.download = name;
     a.click();
+  },
+  // Rows are arrays of cells; the first row is the header. Falls back to CSV if SheetJS didn't load.
+  exportXlsx(rows, sheetName, fileName) {
+    if (window.XLSX) {
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), sheetName || "Sheet1");
+      XLSX.writeFile(wb, fileName);
+      return;
+    }
+    const esc = v => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+    const csv = rows.map(r => r.map(esc).join(",")).join("\r\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));
+    a.download = fileName.replace(/\.xlsx$/i, ".csv");
+    a.click();
+    URL.revokeObjectURL(a.href);
   },
   previewUrl: null,
   preview(b64, mime, name) {
@@ -271,6 +417,15 @@ window.ipop = {
   // single-global-pop assumption — each call portals its own pop.
   positionPopup(trigger, pop) {
     pop._ppHost = pop.parentElement;
+    // Once portalled to <body> the pop leaves its host's stacking context, so a flat
+    // z-index lands it behind whatever overlay holds the input (calendar drawer z 901,
+    // meetings modal 190, ...). Sit just above the highest z-indexed ancestor instead:
+    // above the drawer/modal it belongs to, still under toasts and later dialogs.
+    let z = 100;
+    for (let el = trigger.parentElement; el && el !== document.body; el = el.parentElement) {
+      const v = parseInt(getComputedStyle(el).zIndex, 10);
+      if (!isNaN(v)) z = Math.max(z, v + 10);
+    }
     document.body.appendChild(pop);
     const place = () => {
       const tr = trigger.getBoundingClientRect();
@@ -279,7 +434,7 @@ window.ipop = {
       pop.style.top = (tr.bottom + 6) + "px";
       pop.style.minWidth = tr.width + "px";
       pop.style.maxWidth = Math.min(320, window.innerWidth - 16) + "px";
-      pop.style.zIndex = "100";
+      pop.style.zIndex = String(z);
       const pw = pop.offsetWidth;
       if (tr.left + pw > window.innerWidth - 8) {
         pop.style.left = Math.max(8, window.innerWidth - pw - 8) + "px";
@@ -287,6 +442,11 @@ window.ipop = {
     };
     place();
     requestAnimationFrame(() => place());
+    // Called on every render while open: drop the previous listeners before adding new ones.
+    if (window.ipop._ppPlace) {
+      window.removeEventListener("scroll", window.ipop._ppPlace, true);
+      window.removeEventListener("resize", window.ipop._ppPlace);
+    }
     window.ipop._ppPlace = () => place();
     window.addEventListener("scroll", window.ipop._ppPlace, true);
     window.addEventListener("resize", window.ipop._ppPlace);
@@ -303,6 +463,191 @@ window.ipop = {
       if (p._ppHost && p._ppHost !== p.parentElement) p._ppHost.appendChild(p);
     });
     return true;
+  },
+  // Row/card action menus (Projects board, list, task drawer). The menu is portalled to
+  // <body> and pinned to its trigger with position:fixed, so no overflow:auto lane, card or
+  // drawer body can clip it; it flips above the trigger when there is no room below. One menu
+  // is open at a time. Esc (returns focus to the trigger), scrolling anything outside the menu,
+  // and a new menuOpen all close it via dotnet.CloseMenuFromJs; outside clicks are caught by the
+  // component's own backdrop. The menu element must be the last child of its host (Blazor
+  // inserts siblings relative to it). Blazor removes it from <body> when it stops rendering it.
+  // Phones (<= 767px) keep the CSS bottom sheet for .kc-menu/.plist-menu/.quick-assign-popover.
+  menuOpen(pop, dotnet, align) {
+    ipop.menuClose();
+    if (!pop || !pop.parentElement || pop.parentElement === document.body) return false;
+    const host = pop.parentElement;
+    const trigger = host.querySelector("[data-menu-trigger]") || host.querySelector("button");
+    let z = 100;
+    for (let el = host; el && el !== document.body; el = el.parentElement) {
+      const v = parseInt(getComputedStyle(el).zIndex, 10);
+      if (!isNaN(v)) z = Math.max(z, v + 10);
+    }
+    document.body.appendChild(pop);
+    pop.classList.add("ipop-menu-portal");
+    const st = { pop, trigger, dotnet, align: align || "left", z, openedAt: Date.now() };
+    st.place = () => ipop._menuPlace(st);
+    st.onScroll = e => {
+      if (Date.now() - st.openedAt < 200) return;
+      if (e.target && e.target.nodeType === 1 && (pop.contains(e.target) || e.target.closest(".dp-portal"))) return;
+      ipop._menuDismiss(false);
+    };
+    st.onKey = e => {
+      if (!pop.isConnected) { ipop.menuClose(); return; }
+      // A date picker opened from inside the menu handles its own keys (Esc closes it first).
+      if (e.target && e.target.closest && e.target.closest(".dp-portal")) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        ipop._menuDismiss(true);
+        return;
+      }
+      if (!pop.contains(document.activeElement)) return;
+      const items = ipop._menuItems(pop);
+      const i = items.indexOf(document.activeElement);
+      let next = null;
+      if (e.key === "ArrowDown") next = items[(i + 1) % items.length];
+      else if (e.key === "ArrowUp") next = items[(i - 1 + items.length) % items.length];
+      else if (e.key === "Home") next = items[0];
+      else if (e.key === "End") next = items[items.length - 1];
+      else if ((e.key === "Enter" || e.key === " ") && i >= 0 && !/BUTTON|INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
+        e.preventDefault();
+        document.activeElement.click();
+        return;
+      }
+      if (next && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName || "")) {
+        e.preventDefault();
+        next.focus({ preventScroll: true });
+      }
+    };
+    // Outside press closes. Backdrops handle their own click (and swallow it), the trigger
+    // toggles itself, and a date picker opened from the menu lives in its own portal.
+    st.onDown = e => {
+      const t = e.target;
+      if (!t || t.nodeType !== 1 || pop.contains(t)) return;
+      if ((st.trigger && st.trigger.contains(t)) || t.closest(".kc-menu-backdrop, .plist-backdrop, .td-menu-backdrop, .dp-portal")) return;
+      ipop._menuDismiss(false);
+    };
+    window.addEventListener("scroll", st.onScroll, true);
+    window.addEventListener("resize", st.place);
+    document.addEventListener("keydown", st.onKey, true);
+    document.addEventListener("pointerdown", st.onDown, true);
+    ipop._menu = st;
+    st.place();
+    requestAnimationFrame(() => { if (ipop._menu === st) st.place(); });
+    const first = pop.querySelector("[data-autofocus]") || ipop._menuItems(pop)[0];
+    if (first) { try { first.focus({ preventScroll: true }); } catch { } }
+    return true;
+  },
+  // Called after every render while a menu is open: portal it if this is a new element
+  // (first open, or Blazor re-created it after a data refresh), otherwise just re-measure.
+  menuSync(pop, dotnet, align) {
+    const st = ipop._menu;
+    if (st && st.pop === pop && pop && pop.isConnected) { ipop.menuPlace(); return true; }
+    if (st && st.pop !== pop && st.pop.parentElement === document.body && !st.trigger?.isConnected) st.pop.remove();
+    return ipop.menuOpen(pop, dotnet, align);
+  },
+  // Re-measure the open menu after a re-render changed its content.
+  menuPlace() {
+    const st = ipop._menu;
+    if (!st) return;
+    if (!st.pop.isConnected) { ipop.menuClose(); return; }
+    // The row/card that owned the menu was re-rendered away (live refresh, filter): Blazor
+    // removed the host subtree but not the portalled node, so drop it and tell the component.
+    if (st.trigger && !st.trigger.isConnected) { st.pop.remove(); ipop._menuDismiss(false); return; }
+    st.place();
+  },
+  // Projects task drawer pager: Alt+Left / Alt+Right step through the current view's tasks.
+  // Capture phase + preventDefault so the browser's Alt+Arrow history navigation never fires
+  // while the drawer is open; ignored while a modal/confirm sits over the drawer.
+  taskDrawerKeys(dotnet) {
+    if (ipop._tdKeys) document.removeEventListener("keydown", ipop._tdKeys, true);
+    ipop._tdKeys = null;
+    if (!dotnet) return;
+    ipop._tdKeys = e => {
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      if (!document.querySelector(".v6-task-drawer")) return;
+      // Option/Alt+Arrow moves by word in text fields (macOS): leave typing alone.
+      if (ipop.isEditableTarget(e.target)) return;
+      if (document.querySelector(".evidence-modal-backdrop, .confirm-center")) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      dotnet.invokeMethodAsync("OnPagerKey", e.key === "ArrowLeft" ? -1 : 1).catch(() => { });
+    };
+    document.addEventListener("keydown", ipop._tdKeys, true);
+  },
+  // Component disposed while its menu was open: remove the portalled node Blazor can no longer reach.
+  menuDrop() {
+    const st = ipop._menu;
+    if (!st) return;
+    ipop.menuClose();
+    if (st.pop.parentElement === document.body) st.pop.remove();
+  },
+  // Drop the open menu's listeners (Blazor already removed or is removing the element).
+  menuClose() {
+    const st = ipop._menu;
+    if (!st) return true;
+    ipop._menu = null;
+    window.removeEventListener("scroll", st.onScroll, true);
+    window.removeEventListener("resize", st.place);
+    document.removeEventListener("keydown", st.onKey, true);
+    document.removeEventListener("pointerdown", st.onDown, true);
+    return true;
+  },
+  _menuDismiss(refocus) {
+    const st = ipop._menu;
+    if (!st) return;
+    ipop.menuClose();
+    if (refocus && st.trigger && st.trigger.isConnected) {
+      try { st.trigger.focus({ preventScroll: true }); } catch { }
+    }
+    if (st.dotnet) st.dotnet.invokeMethodAsync("CloseMenuFromJs").catch(() => { });
+  },
+  _menuItems(pop) {
+    return [...pop.querySelectorAll("button:not([disabled]), [role=menuitem], [role=menuitemcheckbox], .quick-assign-item, input:not([type=hidden]):not([disabled])")]
+      .filter((el, i, a) => a.indexOf(el) === i && el.offsetParent !== null);
+  },
+  _menuPlace(st) {
+    const { pop, trigger } = st;
+    if (!pop.isConnected) return;
+    const s = pop.style;
+    s.position = "fixed";
+    s.zIndex = String(st.z);
+    s.margin = "0";
+    s.maxHeight = "";
+    s.overflowY = "";
+    const sheet = window.matchMedia("(max-width: 767px)").matches
+      && pop.matches(".kc-menu, .plist-menu, .quick-assign-popover");
+    if (sheet || !trigger || !trigger.isConnected) {
+      // Mobile bottom sheet: the stylesheet owns left/right/bottom.
+      s.left = s.top = s.right = s.bottom = "";
+      pop.classList.remove("above");
+      return;
+    }
+    s.right = "auto";
+    s.bottom = "auto";
+    const r = trigger.getBoundingClientRect();
+    const vw = window.innerWidth, vh = window.innerHeight, m = 8, gap = 4;
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    let left = st.align === "right" ? r.right - pw : r.left;
+    left = Math.max(m, Math.min(left, vw - pw - m));
+    const below = vh - r.bottom - gap - m, above = r.top - gap - m;
+    let top, up = false;
+    if (ph <= below) top = r.bottom + gap;
+    else if (ph <= above) { top = r.top - gap - ph; up = true; }
+    else if (above > below) {
+      up = true;
+      s.maxHeight = Math.max(120, above) + "px";
+      s.overflowY = "auto";
+      top = Math.max(m, r.top - gap - Math.min(ph, above));
+    } else {
+      s.maxHeight = Math.max(120, below) + "px";
+      s.overflowY = "auto";
+      top = r.bottom + gap;
+    }
+    s.left = Math.round(left) + "px";
+    s.top = Math.round(top) + "px";
+    pop.classList.toggle("above", up);
   },
   // Chat: scroll a container to its bottom (used after new message arrives)
   // Jump to the newest message and STAY there while the list is still settling: images,
@@ -347,9 +692,13 @@ window.ipop = {
   },
   revokeBlob(url) { if (url) URL.revokeObjectURL(url); },
   // Chat: trigger the hidden file input for attachment upload
-  triggerFileInput() {
-    var wrap = document.querySelector(".composer-wrap");
-    var input = wrap && wrap.querySelector('input[type="file"]');
+  triggerFileInput(selector) {
+    // Mail passes its own selector: its InputFile sits in the composer footer, not in .composer-wrap.
+    var input = selector ? document.querySelector(selector) : null;
+    if (!input) {
+      var wrap = document.querySelector(".composer-wrap");
+      input = wrap && wrap.querySelector('input[type="file"]');
+    }
     if (input) input.click();
   },
   // Chat: clipboard paste + drag-drop for attachments (bound to composer wrap)
@@ -615,6 +964,15 @@ window.ipop = {
     el._ipopComposerBound = true;
 
     const onKey = (e) => {
+      // @-mention list open: arrows/Enter/Tab/Esc drive the list and never send.
+      if (el.getAttribute('data-mention-open') === '1' && !e.isComposing &&
+          (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Tab' || e.key === 'Escape' ||
+           (e.key === 'Enter' && !e.shiftKey))) {
+        e.preventDefault();
+        e.stopPropagation();
+        dotNet.invokeMethodAsync('OnJsMentionKey', e.key);
+        return;
+      }
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
         e.preventDefault();
         el.style.height = 'auto';
@@ -626,17 +984,28 @@ window.ipop = {
     const onInput = () => {
       window.ipop.autoGrow(el);
     };
+    // Caret moved without typing (click / arrows / Home / End): let .NET re-check the
+    // @token under the caret so the list follows it (or closes).
+    const onCaret = (e) => {
+      if (e.type === 'keyup' && !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+      dotNet.invokeMethodAsync('OnJsComposerCaret', el.selectionStart ?? 0);
+    };
 
     el.addEventListener('keydown', onKey);
     el.addEventListener('input', onInput);
+    el.addEventListener('keyup', onCaret);
+    el.addEventListener('click', onCaret);
     el._ipopKey = onKey;
     el._ipopInput = onInput;
+    el._ipopCaret = onCaret;
   },
 
   chatUnbindComposer(el) {
     if (!el || !el._ipopComposerBound) return;
     if (el._ipopKey) el.removeEventListener('keydown', el._ipopKey);
     if (el._ipopInput) el.removeEventListener('input', el._ipopInput);
+    if (el._ipopCaret) { el.removeEventListener('keyup', el._ipopCaret); el.removeEventListener('click', el._ipopCaret); }
+    delete el._ipopCaret;
     delete el._ipopKey;
     delete el._ipopInput;
     delete el._ipopComposerBound;
@@ -987,7 +1356,9 @@ window.ipop = {
   unbindMentionChips(container) {
     if (!container || !container._ipopMentionChip) return;
     container.removeEventListener('click', container._ipopMentionChip);
+    if (container._ipopMentionKey) container.removeEventListener('keydown', container._ipopMentionKey);
     delete container._ipopMentionChip;
+    delete container._ipopMentionKey;
   },
 
   // Auto-grow the composer textarea up to its CSS max-height.
@@ -1007,6 +1378,10 @@ window.ipop = {
   draftRemove(roomId) { try { localStorage.removeItem("ipop.chat.draft." + roomId); const idx = JSON.parse(localStorage.getItem("ipop.chat.drafts") || "{}"); delete idx[roomId]; localStorage.setItem("ipop.chat.drafts", JSON.stringify(idx)); } catch {} },
   draftList() { try { return JSON.parse(localStorage.getItem("ipop.chat.drafts") || "{}"); } catch { return {}; } },
 
+  // Projects List: per-user, per-project field column prefs ({ hidden: [fieldId], widths: { fieldId: px } }).
+  prefGet(key) { try { return localStorage.getItem("ipop.pref." + key); } catch { return null; } },
+  prefSet(key, json) { try { localStorage.setItem("ipop.pref." + key, json); } catch {} },
+
   // ── Composer caret helpers (Req 2/3) ──
   caretOf(el) { if (!el) return { start: 0, end: 0 }; return { start: el.selectionStart ?? 0, end: el.selectionEnd ?? 0 }; },
   setCaret(el, start, end) { if (!el) return; el.focus(); try { el.setSelectionRange(start, end ?? start); } catch {} },
@@ -1017,6 +1392,7 @@ window.ipop = {
   bindMentionChips(container, dotNet) {
     if (!container || !dotNet) return;
     if (container._ipopMentionChip) container.removeEventListener('click', container._ipopMentionChip);
+    if (container._ipopMentionKey) container.removeEventListener('keydown', container._ipopMentionKey);
     const h = (e) => {
       const p = e.target.closest('.project-chip[data-project-id]');
       if (p) {
@@ -1030,9 +1406,23 @@ window.ipop = {
         if (id) { e.preventDefault(); dotNet.invokeMethodAsync('OnTaskChipClick', id); }
         return;
       }
+      // @person mention → open their profile.
+      const u = e.target.closest('.mention[data-nik]');
+      if (u) {
+        const nik = u.getAttribute('data-nik');
+        if (nik) { e.preventDefault(); e.stopPropagation(); dotNet.invokeMethodAsync('OnMentionUserClick', nik); }
+      }
+    };
+    // Keyboard: Enter/Space on a focused @person mention behaves like a click.
+    const k = (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const u = e.target.closest && e.target.closest('.mention[data-nik]');
+      if (u) { e.preventDefault(); u.click(); }
     };
     container.addEventListener('click', h);
+    container.addEventListener('keydown', k);
     container._ipopMentionChip = h;
+    container._ipopMentionKey = k;
   },
 
   // Ctrl+K / Cmd+K quick switcher — global document listener so it fires from anywhere.
@@ -1061,62 +1451,39 @@ window.ipop = {
     delete document._ipopQs;
   },
 
-  // Kanban: physical pointer drag tracking follower with iPop green accent
+  // Kanban drag (mockup parity): keep the browser's native drag image and just dim the
+  // source card a tick after dragstart, so the snapshot is taken at full opacity.
   initKanbanDragFollower() {
     if (window._ipopKanbanDragInited) return;
     window._ipopKanbanDragInited = true;
 
-    const blankImg = new Image();
-    blankImg.src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>';
-
-    let currentGhost = null;
-    let grabOffsetX = 0;
-    let grabOffsetY = 0;
-
     document.addEventListener('dragstart', (e) => {
       const card = e.target.closest && e.target.closest('.kanban-task-card');
       if (!card) return;
-
-      const rect = card.getBoundingClientRect();
-      grabOffsetX = e.clientX - rect.left;
-      grabOffsetY = e.clientY - rect.top;
-
-      if (e.dataTransfer) {
-        try {
-          e.dataTransfer.setDragImage(blankImg, 0, 0);
-          e.dataTransfer.effectAllowed = 'move';
-        } catch {}
-      }
-
-      if (currentGhost) currentGhost.remove();
-      currentGhost = card.cloneNode(true);
-      currentGhost.classList.add('kanban-floating-ghost');
-      currentGhost.style.width = `${rect.width}px`;
-      currentGhost.style.left = `${e.clientX - grabOffsetX}px`;
-      currentGhost.style.top = `${e.clientY - grabOffsetY}px`;
-      document.body.appendChild(currentGhost);
-
-      card.classList.add('is-source-dragged');
+      if (e.dataTransfer) { try { e.dataTransfer.effectAllowed = 'move'; } catch {} }
+      setTimeout(() => card.classList.add('is-source-dragged'), 0);
     });
 
+    let lane = null;
+    const setLane = (el) => {
+      if (lane === el) return;
+      if (lane) lane.classList.remove('drag-over');
+      lane = el;
+      if (lane) lane.classList.add('drag-over');
+    };
     document.addEventListener('dragover', (e) => {
-      if (currentGhost) {
-        currentGhost.style.left = `${e.clientX - grabOffsetX}px`;
-        currentGhost.style.top = `${e.clientY - grabOffsetY}px`;
-      }
+      if (!document.querySelector('.kanban-task-card.is-source-dragged')) return;
+      setLane(e.target.closest ? e.target.closest('.kanban-column[data-lane]') : null);
     });
-
-    document.addEventListener('dragend', () => {
-      if (currentGhost) {
-        currentGhost.remove();
-        currentGhost = null;
-      }
+    const clear = () => {
+      setLane(null);
       document.querySelectorAll('.kanban-task-card.is-source-dragged').forEach(c => {
         c.classList.remove('is-source-dragged');
       });
-    });
+    };
+    document.addEventListener('drop', clear);
+    document.addEventListener('dragend', clear);
   },
-
   // ---- ONLYOFFICE Document Editor ------------------------------------------
   _onlyOfficeInstances: {},
 
@@ -1340,6 +1707,383 @@ window.ipop = {
       osc.start(now);
       osc.stop(now + 0.4);
     } catch { /* audio blocked — ignore */ }
-  }
-};
+  },
 
+  // ---- Mail rich-text editor (Jodit, vendored in lib/jodit) ------------------
+  // Jodit's own toolbar is hidden; MailRteEditor.razor draws an Apple-style toolbar and
+  // drives the editor through these calls. Selection state flows back via OnState.
+  rte: {
+    _eds: {},
+    _maxDataImage: 2 * 1024 * 1024 / 3 * 4 + 64, // mirrors MailHtml.MaxDataImageChars
+    _loading: null,
+    load() {
+      if (window.Jodit) return Promise.resolve();
+      if (!this._loading) {
+        if (!document.querySelector("link[data-jodit]")) {
+          const l = document.createElement("link");
+          l.rel = "stylesheet"; l.href = "lib/jodit/jodit.fat.min.css"; l.dataset.jodit = "1";
+          document.head.appendChild(l);
+        }
+        this._loading = ipop.loadScript("lib/jodit/jodit.fat.min.js");
+      }
+      return this._loading;
+    },
+    async create(host, id, html, placeholder, dotNet) {
+      if (!host) return false;
+      await this.load();
+      this.destroy(id);
+      host.innerHTML = "";
+      const area = document.createElement("textarea");
+      host.appendChild(area);
+      const ed = Jodit.make(area, {
+        toolbar: false, statusbar: false, showCharsCounter: false, showWordsCounter: false,
+        showXPathInStatusbar: false, showPlaceholder: true, placeholder: placeholder || "",
+        language: "en", height: "auto", minHeight: 220, iframe: false, beautifyHTML: false,
+        defaultFontSizePoints: "pt", spellcheck: true, toolbarInlineForSelection: false,
+        askBeforePasteFromWord: false, askBeforePasteHTML: false,
+        defaultActionOnPasteFromWord: "insert_as_html", defaultActionOnPaste: "insert_as_html",
+        processPasteFromWord: true, nl2brInPlainText: true,
+        uploader: { insertImageAsBase64URI: true, imagesExtensions: ["jpg", "jpeg", "png", "gif", "webp"] },
+        enableDragAndDropFileToEditor: true, tableAllowCellResize: true, tableAllowCellSelection: true,
+        disablePlugins: ["about", "print", "preview", "powered-by-jodit", "speech-recognize", "ai-assistant", "xpath", "stat", "source", "fullsize"],
+      });
+      const st = { ed, dotNet, range: null, lastState: "", lastValue: "", changeT: 0, stateT: 0 };
+      this._eds[id] = st;
+      ed.value = html || "";
+      try { ed.history.clear(); } catch { }
+      st.lastValue = ed.value;
+
+      // Same limits as the server sanitizer, so the author sees the drop instead of the recipient.
+      const dropBadImages = () => {
+        let dropped = 0;
+        ed.editor.querySelectorAll('img[src^="data:"]').forEach(img => {
+          const src = img.getAttribute("src") || "";
+          if (src.length > this._maxDataImage || !/^data:image\/(png|jpeg|gif|webp);/i.test(src)) { img.remove(); dropped++; }
+        });
+        if (dropped) dotNet.invokeMethodAsync("OnNotice", "Gambar lebih dari 2 MB atau formatnya tidak didukung, jadi tidak disisipkan.").catch(() => { });
+      };
+      ed.e.on("change", () => {
+        clearTimeout(st.changeT);
+        st.changeT = setTimeout(() => {
+          dropBadImages();
+          const v = ed.value;
+          if (v === st.lastValue) return;
+          st.lastValue = v;
+          dotNet.invokeMethodAsync("OnChange", v).catch(() => { });
+        }, 200);
+        this._queueState(id);
+      });
+      ed.e.on("changeSelection keyup mouseup focus", () => this._queueState(id));
+      ed.e.on("blur", () => this._saveRange(st));
+      ed.e.on("keydown", e => {
+        if (!(e.ctrlKey || e.metaKey)) return;
+        if (e.key === "Enter") {
+          e.preventDefault();
+          dotNet.invokeMethodAsync("OnSubmitShortcut").catch(() => { });
+          return false;
+        }
+        if (e.key === "k" || e.key === "K") {
+          e.preventDefault();
+          this._saveRange(st);
+          dotNet.invokeMethodAsync("OnLinkShortcut").catch(() => { });
+          return false;
+        }
+      });
+      return true;
+    },
+    destroy(id) {
+      const st = this._eds[id];
+      if (!st) return;
+      clearTimeout(st.changeT); clearTimeout(st.stateT);
+      try { st.ed.destruct(); } catch { }
+      delete this._eds[id];
+    },
+    _saveRange(st) {
+      try {
+        const sel = st.ed.ew.getSelection();
+        if (sel && sel.rangeCount && st.ed.editor.contains(sel.getRangeAt(0).commonAncestorContainer))
+          st.range = sel.getRangeAt(0).cloneRange();
+      } catch { }
+    },
+    // Toolbar controls (selects, popovers) take focus; put the caret back where it was first.
+    _focus(st) {
+      const ed = st.ed;
+      if (ed.s.isFocused()) return;
+      ed.s.focus();
+      if (st.range) { try { ed.s.selectRange(st.range); } catch { } }
+    },
+    _flush(id) {
+      const st = this._eds[id];
+      if (!st) return;
+      st.ed.synchronizeValues();
+      st.ed.e.fire("change");
+      this._queueState(id);
+    },
+    _cell(ed) {
+      const cur = ed.s.current();
+      return cur ? Jodit.modules.Dom.closest(cur, ["td", "th"], ed.editor) : null;
+    },
+    exec(id, cmd, arg) {
+      const st = this._eds[id];
+      if (!st) return;
+      const ed = st.ed;
+      this._focus(st);
+      if (cmd === "fontsize" && arg && !/pt$/.test(arg)) arg = arg + "pt";
+      if (/^table/.test(cmd)) {
+        // Jodit's table commands act on selected cells; with none, use the cell under the caret.
+        const tm = ed.getInstance("Table", ed.o);
+        if (!tm.getAllSelectedCells().length) {
+          const cell = this._cell(ed);
+          if (!cell) return;
+          tm.addSelection(cell);
+        }
+        ed.execCommand(cmd);
+        try { tm.getAllSelectedCells().forEach(c => tm.removeSelection(c)); } catch { }
+      } else if (cmd === "copyformat") {
+        Jodit.defaultOptions.controls.copyformat.exec(ed, ed.s.current() || ed.editor.firstChild, { button: { update() { } } });
+      } else if (cmd === "unlink") {
+        const cur = ed.s.current();
+        const a = cur && Jodit.modules.Dom.closest(cur, "a", ed.editor);
+        if (a) Jodit.modules.Dom.unwrap(a);
+      } else {
+        ed.execCommand(cmd, false, arg ?? null);
+      }
+      this._flush(id);
+    },
+    link(id, url, text) {
+      const st = this._eds[id];
+      if (!st || !url) return;
+      const ed = st.ed;
+      this._focus(st);
+      const cur = ed.s.current();
+      const a = cur && Jodit.modules.Dom.closest(cur, "a", ed.editor);
+      if (a) {
+        a.setAttribute("href", url);
+        if (text && text !== a.textContent) a.textContent = text;
+      } else if (ed.s.isCollapsed()) {
+        const el = ed.createInside.element("a");
+        el.setAttribute("href", url);
+        el.textContent = text || url;
+        ed.s.insertNode(el, false, true);
+        ed.s.setCursorAfter(el);
+      } else {
+        ed.execCommand("createLink", false, url);
+      }
+      this._flush(id);
+    },
+    linkInfo(id) {
+      const st = this._eds[id];
+      if (!st) return null;
+      const ed = st.ed;
+      let range = null;
+      try { const sel = ed.ew.getSelection(); if (sel && sel.rangeCount) range = sel.getRangeAt(0); } catch { }
+      if (!range || !ed.editor.contains(range.commonAncestorContainer)) range = st.range;
+      else st.range = range.cloneRange();
+      const node = range ? range.commonAncestorContainer : null;
+      const a = node ? Jodit.modules.Dom.closest(node, "a", ed.editor) : null;
+      return { href: a ? a.getAttribute("href") || "" : "", text: a ? a.textContent : (range ? range.toString() : "") };
+    },
+    insertTable(id, rows, cols) {
+      const r = Math.min(Math.max(1, rows | 0), 20), c = Math.min(Math.max(1, cols | 0), 12);
+      let h = '<table style="border-collapse: collapse; width: 100%"><tbody>';
+      for (let i = 0; i < r; i++) {
+        h += "<tr>";
+        for (let j = 0; j < c; j++) h += '<td style="border: 1px solid #c7c7cc; padding: 6px 8px; vertical-align: top"><br></td>';
+        h += "</tr>";
+      }
+      this.insertHtml(id, h + "</tbody></table><p><br></p>");
+    },
+    insertImage(id, src) {
+      if (!src) return;
+      const safe = String(src).replace(/"/g, "&quot;");
+      this.insertHtml(id, `<img src="${safe}" style="max-width: 100%; height: auto" alt="">`);
+    },
+    // Templates/signatures go through insertHTML so Ctrl+Z can take them back out.
+    insertHtml(id, html) {
+      const st = this._eds[id];
+      if (!st) return;
+      this._focus(st);
+      st.ed.s.insertHTML(html || "");
+      this._flush(id);
+    },
+    // Replaces the whole document. Opening a draft/new message restarts history; applying a
+    // template keeps it so Ctrl+Z brings the previous text back.
+    setHtml(id, html, keepHistory) {
+      const st = this._eds[id];
+      if (!st || st.ed.value === (html || "")) return;
+      st.ed.value = html || "";
+      st.lastValue = st.ed.value;
+      if (!keepHistory) { try { st.ed.history.clear(); } catch { } }
+      this._queueState(id);
+    },
+    getHtml(id) {
+      const st = this._eds[id];
+      return st ? st.ed.value : "";
+    },
+    focus(id) {
+      const st = this._eds[id];
+      if (st) this._focus(st);
+    },
+    _queueState(id) {
+      const st = this._eds[id];
+      if (!st) return;
+      clearTimeout(st.stateT);
+      st.stateT = setTimeout(() => this._reportState(id), 120);
+    },
+    _reportState(id) {
+      const st = this._eds[id];
+      if (!st) return;
+      const ed = st.ed;
+      const q = c => { try { return document.queryCommandState(c); } catch { return false; } };
+      const cur = ed.s.current();
+      const el = cur ? (cur.nodeType === 1 ? cur : cur.parentElement) : null;
+      const inside = !!(el && ed.editor.contains(el));
+      let font = "", size = "", block = "p", lineHeight = "";
+      if (inside) {
+        const cs = getComputedStyle(el);
+        font = (cs.fontFamily || "").split(",")[0].replace(/["']/g, "").trim();
+        const px = parseFloat(cs.fontSize);
+        if (px) size = String(Math.round(px * 0.75));
+        const b = Jodit.modules.Dom.closest(el, Jodit.modules.Dom.isBlock, ed.editor);
+        if (b) {
+          block = b.nodeName.toLowerCase();
+          lineHeight = b.style.lineHeight || "";
+        }
+      }
+      const hist = ed.history;
+      const state = {
+        bold: q("bold"), italic: q("italic"), underline: q("underline"), strike: q("strikeThrough"),
+        sub: q("subscript"), sup: q("superscript"),
+        ul: q("insertUnorderedList"), ol: q("insertOrderedList"),
+        align: q("justifyCenter") ? "center" : q("justifyRight") ? "right" : q("justifyFull") ? "full" : "left",
+        font, size, block, lineHeight,
+        inTable: !!(inside && Jodit.modules.Dom.closest(el, ["td", "th"], ed.editor)),
+        inLink: !!(inside && Jodit.modules.Dom.closest(el, "a", ed.editor)),
+        painter: ed.buffer.exists("copy-format"),
+        canUndo: !!(hist && hist.canUndo && hist.canUndo()),
+        canRedo: !!(hist && hist.canRedo && hist.canRedo()),
+      };
+      const json = JSON.stringify(state);
+      if (json === st.lastState) return;
+      st.lastState = json;
+      st.dotNet.invokeMethodAsync("OnState", state).catch(() => { });
+    },
+  },
+
+  // ---- Mail page keyboard shortcuts ------------------------------------------
+  // Plain keys only, and only while nothing editable has focus and no composer or dialog is in
+  // front. Escape is also passed through when an overlay (preview, shortcut sheet) is open.
+  isEditableTarget(el) {
+    if (!el || el === document.body) return false;
+    const tag = el.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    return !!(el.isContentEditable || (el.closest && el.closest("[contenteditable='true'], .jodit-wysiwyg")));
+  },
+  mailBindShortcuts(dotNet) {
+    this.mailUnbindShortcuts();
+    this.mailBindLightbox();
+    const handler = e => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing || e.defaultPrevented) return;
+      const overlay = document.querySelector(".mail-preview-overlay, .mail-kbd-sheet");
+      const blocker = document.querySelector(".syno-modal-overlay, .outlook-composer:not(.minimized), [aria-modal='true']:not(.mail-preview-overlay):not(.mail-kbd-sheet)");
+      const editing = ipop.isEditableTarget(e.target) || ipop.isEditableTarget(document.activeElement);
+      const key = e.key;
+      if (key === "Escape") {
+        if (overlay || (!blocker && !editing)) dotNet.invokeMethodAsync("OnShortcut", "Escape").catch(() => { });
+        return;
+      }
+      if (overlay || blocker || editing) return;
+      let k = null;
+      if (key === "Delete" || key === "#") k = "Delete";
+      else if (key === "?") k = "?";
+      else if (key.length === 1 && "craefjk".includes(key)) k = key;
+      if (!k) return;
+      e.preventDefault();
+      dotNet.invokeMethodAsync("OnShortcut", k).catch(() => { });
+    };
+    this._mailKeys = handler;
+    document.addEventListener("keydown", handler);
+  },
+  // Click an image inside a message body to view it full size (Esc / click outside to close).
+  mailBindLightbox() {
+    if (this._mailLbClick) return;
+    const sel = ".mail-page .detail-scroll-area .body img, .mail-page .detail-scroll-area .thr-body img, .mail-page .mail-html-body img";
+    this._mailLbClick = e => {
+      const img = e.target instanceof Element ? e.target.closest("img") : null;
+      if (!img || !img.matches(sel) || img.closest("a")) return;
+      e.preventDefault();
+      this.mailOpenLightbox(img.currentSrc || img.src, img.alt || "");
+    };
+    document.addEventListener("click", this._mailLbClick);
+  },
+  mailOpenLightbox(src, alt) {
+    this.mailCloseLightbox();
+    const ov = document.createElement("div");
+    ov.className = "mail-lightbox";
+    ov.setAttribute("role", "dialog");
+    ov.setAttribute("aria-modal", "true");
+    ov.setAttribute("aria-label", "Image preview");
+    const img = document.createElement("img");
+    img.src = src; img.alt = alt;
+    let zoomed = false;
+    img.addEventListener("click", e => { e.stopPropagation(); zoomed = !zoomed; ov.classList.toggle("zoomed", zoomed); });
+    const bar = document.createElement("div");
+    bar.className = "mail-lightbox-bar";
+    const dl = document.createElement("a");
+    dl.href = src; dl.download = alt || "image"; dl.textContent = "Download"; dl.className = "mail-lightbox-btn";
+    dl.addEventListener("click", e => e.stopPropagation());
+    const close = document.createElement("button");
+    close.type = "button"; close.className = "mail-lightbox-btn"; close.setAttribute("aria-label", "Close"); close.textContent = "Close";
+    close.addEventListener("click", () => this.mailCloseLightbox());
+    bar.append(dl, close);
+    ov.append(img, bar);
+    ov.addEventListener("click", () => this.mailCloseLightbox());
+    this._mailLbKey = e => { if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); this.mailCloseLightbox(); } };
+    document.addEventListener("keydown", this._mailLbKey, true);
+    document.body.appendChild(ov);
+    this._mailLbFocus = document.activeElement;
+    close.focus();
+  },
+  mailCloseLightbox() {
+    document.querySelector(".mail-lightbox")?.remove();
+    if (this._mailLbKey) document.removeEventListener("keydown", this._mailLbKey, true);
+    this._mailLbKey = null;
+    if (this._mailLbFocus && this._mailLbFocus.focus) { try { this._mailLbFocus.focus(); } catch { } }
+    this._mailLbFocus = null;
+  },
+  mailFocusReply() {
+    requestAnimationFrame(() => {
+      const box = document.getElementById("mail-quick-reply");
+      if (!box) return;
+      box.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      document.getElementById("mail-quick-reply-text")?.focus({ preventScroll: true });
+    });
+  },
+  mailUnbindShortcuts() {
+    if (this._mailLbClick) document.removeEventListener("click", this._mailLbClick);
+    this._mailLbClick = null;
+    this.mailCloseLightbox();
+    if (this._mailKeys) document.removeEventListener("keydown", this._mailKeys);
+    this._mailKeys = null;
+  },
+  // J/K moves the selection; keep the highlighted row visible in the list.
+  mailRevealSelected() {
+    const el = document.querySelector(".mail-row.sel");
+    if (el) el.scrollIntoView({ block: "nearest" });
+  },
+  // Attachment preview: Esc / arrow keys. Capture phase so the page shortcuts never see them.
+  mailPreviewKeys(dotNet) {
+    if (this._mailPrevKeys) document.removeEventListener("keydown", this._mailPrevKeys, true);
+    this._mailPrevKeys = null;
+    if (!dotNet) return;
+    const handler = e => {
+      if (!document.querySelector(".mail-preview-overlay")) return;
+      if (e.key !== "Escape" && e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      dotNet.invokeMethodAsync("OnPreviewKey", e.key).catch(() => { });
+    };
+    this._mailPrevKeys = handler;
+    document.addEventListener("keydown", handler, true);
+  },
+};

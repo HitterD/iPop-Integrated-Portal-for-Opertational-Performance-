@@ -124,12 +124,12 @@
                             <div class="time-inputs">
                                 <div class="time-input">
                                     <label>Start</label>
-                                    <input type="time" @bind="settings.QuietStart" />
+                                    <AppTimePicker @bind-Value="settings.QuietStart" AriaLabel="Quiet hours start" />
                                 </div>
                                 <span class="time-sep">—</span>
                                 <div class="time-input">
                                     <label>End</label>
-                                    <input type="time" @bind="settings.QuietEnd" />
+                                    <AppTimePicker @bind-Value="settings.QuietEnd" AriaLabel="Quiet hours end" />
                                 </div>
                             </div>
                         </div>

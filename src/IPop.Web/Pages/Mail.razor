@@ -15,47 +15,77 @@
 <PageTitle>Mail — IPop</PageTitle>
 
 
-<div class="mail-page" @onkeydown="OnKeyDown" tabindex="0">
+<div class="mail-page @(detail is not null ? "m-detail" : "") @(mFolderSheet ? "m-folders-open" : "")">
     @* ============ TOOLBAR (Segmented Filter + Ghost Actions) ============ *@
     <div class="toolbar">
-        <div class="tabs">
-            <button type="button" class="tab @(tabFilter == "all" ? "active" : "")" @onclick='() => SetTabFilter("all")'>
-                <i data-lucide="inbox"></i>
-                <span>All</span>
-                <span class="n">@AllCount</span>
-            </button>
-            <button type="button" class="tab @(tabFilter == "unread" ? "active" : "")" @onclick='() => SetTabFilter("unread")'>
-                <i data-lucide="mail"></i>
-                <span>Unread</span>
-                <span class="n">@UnreadCount</span>
-            </button>
-            <button type="button" class="tab @(tabFilter == "starred" ? "active" : "")" @onclick='() => SetTabFilter("starred")'>
-                <i data-lucide="star"></i>
-                <span>Starred</span>
-                <span class="n">@StarredCount</span>
-            </button>
-        </div>
-
         <div class="actions" style="margin-left:auto;display:flex;align-items:center;gap:8px">
-            @* Bulk actions only while messages are checked — the reader carries per-message actions. *@
-            @if (selected.Count > 0)
-            {
-            <button type="button" class="ghost-btn" disabled="@(!CanArchive)" @onclick="ToolbarArchive" title="Archive">
-                <i data-lucide="archive"></i>
-                <span>Archive</span>
-            </button>
-            <button type="button" class="ghost-btn" disabled="@(!CanDelete)" @onclick="ToolbarDelete" title="Delete">
-                <i data-lucide="trash-2"></i>
-                <span>Delete</span>
-            </button>
-            <button type="button" class="ghost-btn" disabled="@(!CanMarkRead)" @onclick="ToolbarMarkRead" title="Mark read">
-                <i data-lucide="check-check"></i>
-                <span>Mark read</span>
-            </button>
-            }
-            <div class="v6-search">
+            <div class="mail-search-wrap">
+            <div class="v6-search" @onkeydown="OnSearchKey">
                 <i data-lucide="search"></i>
                 <input type="search" placeholder="Search mail or sender" aria-label="Search mail or sender" value="@search" @oninput="OnSearch" />
+                <button type="button" class="v6-search-filter @(advSearchOpen || AdvancedActive ? "on" : "")" title="Advanced filter" aria-label="Advanced filter" aria-expanded="@(advSearchOpen ? "true" : "false")" @onclick="() => advSearchOpen = !advSearchOpen">
+                    <i data-lucide="list-filter"></i>
+                    @if (AdvancedCount > 0) { <span class="v6-search-filter-n">@AdvancedCount</span> }
+                </button>
+            </div>
+            @if (advSearchOpen)
+            {
+                <div class="menu-backdrop" @onclick="() => advSearchOpen = false"></div>
+                <div class="mail-filter-pop" role="dialog" aria-label="Filter mail" @onkeydown="OnFilterKey">
+                    <div class="mfp-head">
+                        <span>Filter</span>
+                        <button type="button" class="mfp-x" aria-label="Close" @onclick="() => advSearchOpen = false"><i data-lucide="x"></i></button>
+                    </div>
+                    <label class="mfp-field">
+                        <span>From</span>
+                        <input type="text" placeholder="Name or employee ID" @bind="advFrom" @bind:event="oninput" />
+                    </label>
+                    <label class="mfp-field">
+                        <span>Contains</span>
+                        <input type="text" placeholder="Subject or words in the message" @bind="advQuery" @bind:event="oninput" />
+                    </label>
+                    <div class="mfp-field">
+                        <span>Date</span>
+                        <div class="mfp-chips">
+                            <button type="button" class="mfp-chip @(DatePreset == "7" ? "on" : "")" @onclick='() => SetDatePreset("7")'>Last 7 days</button>
+                            <button type="button" class="mfp-chip @(DatePreset == "30" ? "on" : "")" @onclick='() => SetDatePreset("30")'>Last 30 days</button>
+                            <button type="button" class="mfp-chip @(DatePreset == "year" ? "on" : "")" @onclick='() => SetDatePreset("year")'>This year</button>
+                        </div>
+                        <div class="mfp-dates">
+                            <AppDatePicker @bind-Value="advDateFrom" AllowClear="true" AriaLabel="From date" />
+                            <span class="mfp-to">to</span>
+                            <AppDatePicker @bind-Value="advDateTo" AllowClear="true" AriaLabel="To date" />
+                        </div>
+                    </div>
+                    <div class="mfp-field">
+                        <span>Show only</span>
+                        <div class="mfp-chips">
+                            <button type="button" class="mfp-chip @(advHasAttachment ? "on" : "")" aria-pressed="@(advHasAttachment ? "true" : "false")" @onclick="() => advHasAttachment = !advHasAttachment">
+                                <i data-lucide="paperclip"></i> Has attachment
+                            </button>
+                        </div>
+                    </div>
+                    @if (DisplayLabels.Count > 0)
+                    {
+                        <div class="mfp-field">
+                            <span>Label</span>
+                            <div class="mfp-chips">
+                                @foreach (var l in DisplayLabels)
+                                {
+                                    var name = l.Name;
+                                    <button type="button" class="mfp-chip @(advLabel == name ? "on" : "")" aria-pressed="@(advLabel == name ? "true" : "false")" @onclick='() => advLabel = advLabel == name ? "" : name'>
+                                        <span class="label-dot" style="background:@l.Color"></span>@name
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                    <div class="mfp-foot">
+                        <button type="button" class="mfp-link" disabled="@(!AdvancedActive && string.IsNullOrWhiteSpace(search))" @onclick="ClearFilters">Clear all</button>
+                        <button type="button" class="mfp-apply" @onclick="ApplyFilters">Show results</button>
+                    </div>
+                </div>
+            }
             </div>
             <button type="button" class="icon-btn" title="Sync mailbox" aria-label="Sync mailbox" @onclick="ReloadAll">
                 <i data-lucide="refresh-cw"></i>
@@ -68,7 +98,11 @@
     </div>
 
     @* ============ 3-PANE CARDS LAYOUT ============ *@
-    <div class="mail-area">
+    <div class="mail-area @(selected.Count > 0 ? "has-selection" : "")">
+        @if (mFolderSheet)
+        {
+            <div class="m-folder-backdrop" @onclick="() => mFolderSheet = false"></div>
+        }
         @* ============ PANE 1: FOLDERS CARD ============ *@
         <div class="card mail-card mail-folders">
             <div class="card-head">
@@ -126,7 +160,20 @@
             </div>
 
             <div class="folders-foot">
-                <button type="button" class="ghost-btn" style="width:100%;justify-content:center;font-size:12px" @onclick='() => Nav.NavigateTo("/mail/advanced")' title="Mail settings">
+                @if (settingsMenuOpen)
+                {
+                    <div class="menu-backdrop" @onclick="() => settingsMenuOpen = false"></div>
+                    <div class="mail-settings-menu" role="menu" aria-label="Mail settings">
+                        <button type="button" class="more-item" role="menuitem" @onclick='() => OpenSettings("signature")'><i data-lucide="pen-line"></i><span>Signature</span></button>
+                        <button type="button" class="more-item" role="menuitem" @onclick='() => OpenSettings("ooo")'><i data-lucide="plane"></i><span>Out of office</span></button>
+                        <button type="button" class="more-item" role="menuitem" @onclick='() => OpenSettings("rules")'><i data-lucide="list-filter"></i><span>Rules &amp; filters</span></button>
+                        <button type="button" class="more-item" role="menuitem" @onclick='() => OpenSettings("labels")'><i data-lucide="tag"></i><span>Labels</span></button>
+                        <button type="button" class="more-item" role="menuitem" @onclick='() => OpenSettings("templates")'><i data-lucide="layout-template"></i><span>Templates</span></button>
+                        <div class="msm-divider" role="separator"></div>
+                        <button type="button" class="more-item danger" role="menuitem" @onclick="EmptyTrashFromMenu"><i data-lucide="trash-2"></i><span>Empty Trash</span></button>
+                    </div>
+                }
+                <button type="button" class="ghost-btn mail-settings-btn @(settingsMenuOpen ? "on" : "")" aria-haspopup="menu" aria-expanded="@(settingsMenuOpen ? "true" : "false")" @onclick="() => settingsMenuOpen = !settingsMenuOpen">
                     <i data-lucide="settings"></i>
                     <span class="lbl">Mail settings</span>
                 </button>
@@ -140,13 +187,23 @@
                     <span class="cbx @(allSelected ? "on" : "")"
                           @onclick="ToggleSelectAll"
                           role="checkbox"
-                          aria-checked="@allSelected"
+                          aria-checked="@(allSelected ? "true" : "false")"
                           tabindex="0"
                           title="Select all"
                           aria-label="Select all">
                         <i data-lucide="check"></i>
                     </span>
                     <span class="card-title">@FolderLabel(activeFolder)</span>
+                    @* Phone only: the folder column is hidden, this opens it as a bottom sheet. *@
+                    <button type="button" class="m-folder-btn" aria-haspopup="dialog" aria-expanded="@(mFolderSheet ? "true" : "false")" @onclick="() => mFolderSheet = true">
+                        <i data-lucide="@(FolderIcon(activeFolder))"></i>
+                        <span>@FolderLabel(activeFolder)</span>
+                        @if (FolderBadge(activeFolder) > 0)
+                        {
+                            <span class="tree-n">@FolderBadge(activeFolder)</span>
+                        }
+                        <i data-lucide="chevron-down"></i>
+                    </button>
                     @if (NewCount > 0)
                     {
                         <span class="v6-new-pill">@NewCount new</span>
@@ -159,11 +216,33 @@
                             <i data-lucide="trash-2" style="width:12px;height:12px"></i> Empty Trash
                         </button>
                     }
-                    <button type="button" class="icon-btn @(advSearchOpen ? "on" : "")" title="Advanced filter" aria-label="Advanced filter" @onclick="() => advSearchOpen = !advSearchOpen">
-                        <i data-lucide="list-filter"></i>
-                    </button>
                 </div>
             </div>
+            <div class="tabs mail-list-tabs" role="group" aria-label="Filter messages">
+            <button type="button" class="tab @(tabFilter == "all" ? "active" : "")" @onclick='() => SetTabFilter("all")'>
+                <i data-lucide="inbox"></i>
+                <span>All</span>
+                <span class="n">@AllCount</span>
+            </button>
+            <button type="button" class="tab @(tabFilter == "unread" ? "active" : "")" @onclick='() => SetTabFilter("unread")'>
+                <i data-lucide="mail"></i>
+                <span>Unread</span>
+                <span class="n">@UnreadCount</span>
+            </button>
+            <button type="button" class="tab @(tabFilter == "starred" ? "active" : "")" @onclick='() => SetTabFilter("starred")'>
+                <i data-lucide="star"></i>
+                <span>Starred</span>
+                <span class="n">@StarredCount</span>
+            </button>
+        </div>
+
+            @if (activeFolder == MailFolder.Trash)
+            {
+                <div class="mail-trash-hint" role="note">
+                    <i data-lucide="info"></i>
+                    <span>Deleting a message from Trash removes it forever. Use Restore to move it back to Inbox.</span>
+                </div>
+            }
 
             @* Filter banner (Active query or label filter) *@
             @if (AdvancedActive || !string.IsNullOrWhiteSpace(search) || labelFilter is not null)
@@ -171,7 +250,7 @@
                 <div class="mail-search-banner">
                     <i data-lucide="search" style="width:13px;height:13px;color:var(--accent-ink)"></i>
                     <span>
-                        Showing @Items.Count results
+                        Showing @Items.Count of @pageTotal @(pageTotal == 1 ? "result" : "results")
                         @if (!string.IsNullOrWhiteSpace(search)) { <text> for "@search"</text> }
                         @if (labelFilter is not null) { <span class="label-chip" style="margin-left:4px"><span class="label-dot" style="background:@LabelInk(labelFilter)"></span>@labelFilter</span> }
                     </span>
@@ -181,36 +260,6 @@
                 </div>
             }
 
-            @* Advanced Filter Panel *@
-            @if (advSearchOpen)
-            {
-                <div class="mail-adv-panel">
-                    <div class="mail-adv-grid">
-                        <input class="org-input" placeholder="From (name/NIK)…" @bind="advFrom" />
-                        <input class="org-input" placeholder="Subject or content keywords…" @bind="advQuery" />
-                        <div class="mail-adv-row">
-                            <label>From date</label>
-                            <input type="date" class="org-input" @bind="advDateFrom" />
-                        </div>
-                        <div class="mail-adv-row">
-                            <label>To date</label>
-                            <input type="date" class="org-input" @bind="advDateTo" />
-                        </div>
-                        <label class="mail-adv-check"><input type="checkbox" @bind="advHasAttachment" /> Has attachment</label>
-                        <select class="filter-select" @bind="advLabel">
-                            <option value="">(All labels)</option>
-                            @foreach (var lbl in AvailableLabels)
-                            {
-                                <option value="@lbl">@lbl</option>
-                            }
-                        </select>
-                    </div>
-                    <div class="mail-adv-actions">
-                        <button type="button" class="btn-sm accent" @onclick="ApplyAdvancedSearch"><i data-lucide="search" style="width:12px;height:12px"></i> Apply</button>
-                        <button type="button" class="btn-sm surface" @onclick="ResetAdvancedSearch"><i data-lucide="rotate-ccw" style="width:12px;height:12px"></i> Reset</button>
-                    </div>
-                </div>
-            }
 
             @* Bulk Selection Bar *@
             @if (Items.Count > 0 && selected.Count > 0)
@@ -220,14 +269,52 @@
                     <button type="button" class="comp-btn" title="Export selected as PDF" disabled="@bulkExporting" @onclick="BulkExportPdf"><i data-lucide="file-down"></i></button>
                     @if (activeFolder == MailFolder.Trash)
                     {
-                        <button type="button" class="comp-btn" title="Restore to inbox" @onclick="BulkRestore"><i data-lucide="inbox"></i> Restore</button>
-                        <button type="button" class="comp-btn danger" title="Delete permanently" @onclick="BulkPermanent"><i data-lucide="trash"></i> Delete permanently</button>
+                        <button type="button" class="comp-btn" title="Restore to Inbox" @onclick="BulkRestore"><i data-lucide="inbox"></i> Restore</button>
+                        <button type="button" class="comp-btn danger" title="Delete forever (cannot be undone)" @onclick="BulkPermanent"><i data-lucide="trash"></i> Delete forever</button>
                     }
                     else
                     {
-                        <button type="button" class="comp-btn" title="Archive" @onclick="() => BulkMove(MailFolder.Archive)"><i data-lucide="archive"></i></button>
-                        <button type="button" class="comp-btn" title="Trash" @onclick="() => BulkMove(MailFolder.Trash)"><i data-lucide="trash-2"></i></button>
-                        <button type="button" class="comp-btn" title="Star" @onclick="BulkStar" @onclick:stopPropagation><i data-lucide="star"></i></button>
+                        @if (activeFolder == MailFolder.Archive)
+                        {
+                            <button type="button" class="comp-btn" title="Move to Inbox" @onclick="() => BulkMove(MailFolder.Inbox)"><i data-lucide="inbox"></i> Move to Inbox</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="comp-btn" title="Archive" aria-label="Archive" @onclick="() => BulkMove(MailFolder.Archive)"><i data-lucide="archive"></i></button>
+                        }
+                        <button type="button" class="comp-btn" title="Move to Trash" aria-label="Move to Trash" @onclick="() => BulkMove(MailFolder.Trash)"><i data-lucide="trash-2"></i></button>
+                        <button type="button" class="comp-btn" title="Star" aria-label="Star" @onclick="BulkStar" @onclick:stopPropagation><i data-lucide="star"></i></button>
+                        <div class="more-menu-wrap mail-label-wrap">
+                            <button type="button" class="comp-btn @(bulkLabelOpen ? "on" : "")" title="Label" aria-label="Label" aria-haspopup="menu"
+                                    aria-expanded="@(bulkLabelOpen ? "true" : "false")" @onclick="() => { bulkLabelOpen = !bulkLabelOpen; labelMenuOpen = false; }">
+                                <i data-lucide="tag"></i> Label
+                            </button>
+                            @if (bulkLabelOpen)
+                            {
+                                <div class="menu-backdrop" @onclick="() => bulkLabelOpen = false"></div>
+                                <div class="more-dropdown mail-label-menu" role="menu" aria-label="Label selected messages" @onclick:stopPropagation>
+                                    <div class="mail-label-menu-title">Label @selected.Count selected</div>
+                                    @if (serverLabels.Count == 0)
+                                    {
+                                        <div class="mail-label-menu-empty">No labels yet.</div>
+                                        <button type="button" class="more-item" role="menuitem" @onclick='() => { bulkLabelOpen = false; OpenSettings("labels"); }'>
+                                            <i data-lucide="plus"></i><span>Create a label…</span>
+                                        </button>
+                                    }
+                                    @foreach (var l in serverLabels)
+                                    {
+                                        var lbl = l;
+                                        var state = BulkLabelState(lbl);
+                                        <button type="button" class="more-item" role="menuitemcheckbox" aria-checked="@(state == true ? "true" : state is null ? "mixed" : "false")"
+                                                disabled="@labelBusy" @onclick="() => BulkToggleLabel(lbl)">
+                                            <i data-lucide="@(state == true ? "square-check" : state is null ? "square-minus" : "square")"></i>
+                                            <span class="label-dot" style="background:@lbl.Color"></span>
+                                            <span>@lbl.Name</span>
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        </div>
                     }
                 </div>
             }
@@ -254,7 +341,7 @@
                         var isSel = selected.Contains(item.Id);
                         <div class="mail-row @(item.IsRead ? "" : "unread") @(item.IsPinned ? "pinned" : "") @(selectedMail == item.Id ? "sel" : "")"
                              role="listitem"
-                             aria-selected="@isSel"
+                             aria-selected="@(isSel ? "true" : "false")"
                              @onclick="() => OpenDetail(item.Id)">
 
                             @* Line 1: Checkbox, Importance, Pin, Sender, Time, Quick Actions *@
@@ -263,7 +350,7 @@
                                       @onclick="() => ToggleSelect(item.Id)"
                                       @onclick:stopPropagation
                                       role="checkbox"
-                                      aria-checked="@isSel"
+                                      aria-checked="@(isSel ? "true" : "false")"
                                       tabindex="0"
                                       title="Select message"
                                       aria-label="Select message">
@@ -299,7 +386,21 @@
                                             <i data-lucide="undo-2"></i>
                                         </button>
                                     }
-                                    <button type="button" title="Delete" aria-label="Delete" @onclick="() => QuickDelete(item.Id)">
+                                    @if (activeFolder == MailFolder.Trash)
+                                    {
+                                        <button type="button" title="Restore to Inbox" aria-label="Restore to Inbox" @onclick="() => QuickRestore(item.Id)">
+                                            <i data-lucide="inbox"></i>
+                                        </button>
+                                    }
+                                    else if (activeFolder == MailFolder.Archive)
+                                    {
+                                        <button type="button" title="Move to Inbox" aria-label="Move to Inbox" @onclick="() => QuickMove(item.Id, MailFolder.Inbox)">
+                                            <i data-lucide="inbox"></i>
+                                        </button>
+                                    }
+                                    <button type="button" class="@(activeFolder == MailFolder.Trash ? "danger" : "")"
+                                            title="@(activeFolder == MailFolder.Trash ? "Delete forever" : "Move to Trash")"
+                                            aria-label="@(activeFolder == MailFolder.Trash ? "Delete forever" : "Move to Trash")" @onclick="() => QuickDelete(item.Id)">
                                         <i data-lucide="trash-2"></i>
                                     </button>
                                     <button type="button" class="@(item.IsPinned ? "active" : "")" title="@(item.IsPinned ? "Unpin" : "Pin")" aria-label="@(item.IsPinned ? "Unpin" : "Pin")" @onclick="() => TogglePin(item.Id)">
@@ -365,38 +466,51 @@
             else
             {
                 @* Reading pane action bar *@
+                <div class="m-reader-head">
+                    <button type="button" class="m-back" aria-label="Back" @onclick="MobileBackClick"><i data-lucide="chevron-left"></i></button>
+                    <span class="m-reader-folder">@FolderLabel(activeFolder)</span>
+                </div>
                 <div class="card-head detail-actions-bar">
                     <button type="button" class="icon-btn mobile-back-btn" title="Back to messages" aria-label="Back to messages" @onclick="BackToList">
                         <i data-lucide="arrow-left"></i>
                     </button>
-                    <button type="button" class="btn-primary-reply" @onclick="() => ReplyMessage(detail)">
+                    <button type="button" class="btn-primary-reply" @onclick="OpenQuickReply">
                         <i data-lucide="reply"></i>
                         <span>Reply</span>
                     </button>
-                    <button type="button" class="ghost-btn" @onclick="() => ReplyAllMessage(detail)">
-                        <i data-lucide="reply-all"></i>
-                        <span>Reply all</span>
-                    </button>
-                    <button type="button" class="ghost-btn" @onclick="() => ForwardMessage(detail)">
-                        <i data-lucide="forward"></i>
-                        <span>Forward</span>
-                    </button>
-                    <button type="button" class="icon-btn" title="Archive" aria-label="Archive" @onclick="() => MoveDetail(MailFolder.Archive)">
-                        <i data-lucide="archive"></i>
-                    </button>
-                    <button type="button" class="icon-btn" title="Delete" aria-label="Delete" @onclick="() => MoveDetail(MailFolder.Trash)">
-                        <i data-lucide="trash-2"></i>
-                    </button>
+                    @if (DetailFolder == "trash")
+                    {
+                        <button type="button" class="ghost-btn" title="Restore to Inbox" @onclick="RestoreDetail">
+                            <i data-lucide="inbox"></i>
+                            <span>Restore</span>
+                        </button>
+                        <button type="button" class="ghost-btn danger" title="Delete forever (cannot be undone)" @onclick="DeleteDetailForever">
+                            <i data-lucide="trash-2"></i>
+                            <span>Delete forever</span>
+                        </button>
+                    }
+                    else
+                    {
+                        @if (DetailFolder == "archive")
+                        {
+                            <button type="button" class="ghost-btn" title="Move to Inbox" @onclick="() => MoveDetail(MailFolder.Inbox)">
+                                <i data-lucide="inbox"></i>
+                                <span>Move to Inbox</span>
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button" class="icon-btn" title="Archive" aria-label="Archive" @onclick="() => MoveDetail(MailFolder.Archive)">
+                                <i data-lucide="archive"></i>
+                            </button>
+                        }
+                        <button type="button" class="icon-btn" title="Move to Trash" aria-label="Move to Trash" @onclick="() => MoveDetail(MailFolder.Trash)">
+                            <i data-lucide="trash-2"></i>
+                        </button>
+                    }
                     <button type="button" class="icon-btn @(detail.IsStarred ? "star-active" : "")" title="@(detail.IsStarred ? "Starred" : "Star")" aria-label="@(detail.IsStarred ? "Starred" : "Star")" @onclick="() => ToggleStar(detail.Id)">
                         <i data-lucide="star"></i>
                     </button>
-                    <button type="button" class="icon-btn" title="Export PDF" aria-label="Export PDF" @onclick="ExportPdf">
-                        <i data-lucide="file-down"></i>
-                    </button>
-                    <button type="button" class="icon-btn" title="Print" aria-label="Print" disabled="@printing" @onclick="PrintDirect">
-                        <i data-lucide="printer"></i>
-                    </button>
-
                     @* More options menu (Pin, Mark unread, Move to Junk, Previews) *@
                     <div class="more-menu-wrap" style="position:relative;margin-left:auto">
                         <button type="button" class="icon-btn @(moreMenuOpen ? "on" : "")" title="More options" aria-label="More options" @onclick="ToggleMoreMenu">
@@ -406,30 +520,43 @@
                         {
                             <div class="menu-backdrop" @onclick="() => moreMenuOpen = false"></div>
                             <div class="more-dropdown" role="menu" @onclick:stopPropagation>
-                                <button type="button" class="more-item" @onclick="async () => { moreMenuOpen = false; await TogglePin(detail.Id); }">
-                                    <i data-lucide="pin"></i>
-                                    <span>@(detail.IsPinned ? "Unpin" : "Pin")</span>
-                                </button>
-                                <button type="button" class="more-item" @onclick="async () => { moreMenuOpen = false; await ToggleMuteThread(detail.Id); }">
-                                    <i data-lucide="@(detail.IsMuted ? "bell" : "bell-off")"></i>
-                                    <span>@(detail.IsMuted ? "Unmute thread" : "Mute thread")</span>
-                                </button>
-                                <button type="button" class="more-item" @onclick="async () => { moreMenuOpen = false; await MarkUnread(detail.Id); }">
-                                    <i data-lucide="mail-x"></i>
-                                    <span>Mark as unread</span>
-                                </button>
-                                <button type="button" class="more-item" @onclick="async () => { moreMenuOpen = false; await MoveToJunk(); }">
-                                    <i data-lucide="trash"></i>
-                                    <span>Move to Junk</span>
-                                </button>
-                                <button type="button" class="more-item" @onclick="async () => { moreMenuOpen = false; await PreviewPdf(); }">
-                                    <i data-lucide="file-search"></i>
-                                    <span>Preview PDF</span>
-                                </button>
-                                <button type="button" class="more-item" @onclick="() => { moreMenuOpen = false; ToggleHtmlPreview(); }">
-                                    <i data-lucide="eye"></i>
-                                    <span>Preview as recipient</span>
-                                </button>
+                                <button type="button" class="more-item" role="menuitem" @onclick="() => { moreMenuOpen = false; ReplyAllMessage(detail); }"><i data-lucide="reply-all"></i><span>Reply all</span></button>
+                                <button type="button" class="more-item" role="menuitem" @onclick="() => { moreMenuOpen = false; ForwardMessage(detail); }"><i data-lucide="forward"></i><span>Forward</span></button>
+                                <div class="msm-divider" role="separator"></div>
+                                <button type="button" class="more-item" role="menuitem" @onclick="() => { moreMenuOpen = false; labelMenuOpen = true; }"><i data-lucide="tag"></i><span>Label…</span></button>
+                                <button type="button" class="more-item" role="menuitem" @onclick="async () => { moreMenuOpen = false; await TogglePin(detail.Id); }"><i data-lucide="pin"></i><span>@(detail.IsPinned ? "Unpin" : "Pin")</span></button>
+                                <button type="button" class="more-item" role="menuitem" @onclick="async () => { moreMenuOpen = false; await ToggleMuteThread(detail.Id); }"><i data-lucide="@(detail.IsMuted ? "bell" : "bell-off")"></i><span>@(detail.IsMuted ? "Unmute thread" : "Mute thread")</span></button>
+                                <button type="button" class="more-item" role="menuitem" @onclick="async () => { moreMenuOpen = false; await MarkUnread(detail.Id); }"><i data-lucide="mail-x"></i><span>Mark as unread</span></button>
+                                <div class="msm-divider" role="separator"></div>
+                                <button type="button" class="more-item" role="menuitem" @onclick="async () => { moreMenuOpen = false; await ExportPdf(); }"><i data-lucide="file-down"></i><span>Export PDF</span></button>
+                                <button type="button" class="more-item" role="menuitem" disabled="@printing" @onclick="async () => { moreMenuOpen = false; await PrintDirect(); }"><i data-lucide="printer"></i><span>Print</span></button>
+                                <button type="button" class="more-item" role="menuitem" @onclick="async () => { moreMenuOpen = false; await PreviewPdf(); }"><i data-lucide="file-search"></i><span>Preview PDF</span></button>
+                                <button type="button" class="more-item" role="menuitem" @onclick="() => { moreMenuOpen = false; ToggleHtmlPreview(); }"><i data-lucide="eye"></i><span>Preview as recipient</span></button>
+                            </div>
+                        }
+                        @if (labelMenuOpen)
+                        {
+                            <div class="menu-backdrop" @onclick="() => labelMenuOpen = false"></div>
+                            <div class="more-dropdown mail-label-menu" role="menu" aria-label="Labels" @onclick:stopPropagation>
+                                <div class="mail-label-menu-title">Label this message</div>
+                                @if (serverLabels.Count == 0)
+                                {
+                                    <div class="mail-label-menu-empty">No labels yet.</div>
+                                    <button type="button" class="more-item" role="menuitem" @onclick='() => { labelMenuOpen = false; OpenSettings("labels"); }'>
+                                        <i data-lucide="plus"></i><span>Create a label…</span>
+                                    </button>
+                                }
+                                @foreach (var l in serverLabels)
+                                {
+                                    var lbl = l;
+                                    var on = detail.LabelIds.Contains(lbl.Id);
+                                    <button type="button" class="more-item" role="menuitemcheckbox" aria-checked="@(on ? "true" : "false")"
+                                            disabled="@labelBusy" @onclick="() => ToggleDetailLabel(lbl)">
+                                        <i data-lucide="@(on ? "square-check" : "square")"></i>
+                                        <span class="label-dot" style="background:@lbl.Color"></span>
+                                        <span>@lbl.Name</span>
+                                    </button>
+                                }
                             </div>
                         }
                     </div>
@@ -488,9 +615,31 @@
                         </div>
                         <div class="sched-actions">
                             <button type="button" class="sched-btn primary" @onclick="() => SendScheduledNow(detail.Id)">Send now</button>
-                            <button type="button" class="sched-btn" @onclick="() => PromptReschedule(detail.Id)">Reschedule</button>
+                            <span class="resched-wrap">
+                                <button type="button" class="sched-btn" aria-expanded="@(rescheduleOpen ? "true" : "false")" @onclick="OpenReschedule">Reschedule</button>
+                                @if (rescheduleOpen)
+                                {
+                                    <div class="menu-backdrop" @onclick="() => rescheduleOpen = false"></div>
+                                    <div class="resched-pop" role="dialog" aria-label="Reschedule delivery">
+                                        <label class="resched-label" for="resched-at">Deliver on</label>
+                                        <AppDateTimePicker Id="resched-at" @bind-Value="rescheduleAt" AriaLabel="Deliver on" />
+                                        <div class="resched-quick">
+                                            <button type="button" @onclick="() => rescheduleAt = DateTime.Today.AddDays(1).AddHours(8)">Tomorrow 08:00</button>
+                                            <button type="button" @onclick="() => rescheduleAt = NextMonday().AddHours(8)">Monday 08:00</button>
+                                        </div>
+                                        @if (rescheduleAt <= DateTime.Now)
+                                        {
+                                            <div class="resched-err">Choose a time in the future.</div>
+                                        }
+                                        <div class="resched-actions">
+                                            <button type="button" class="sched-btn" @onclick="() => rescheduleOpen = false">Cancel</button>
+                                            <button type="button" class="sched-btn primary" disabled="@(rescheduleAt <= DateTime.Now)" @onclick="() => SaveReschedule(detail.Id)">Save</button>
+                                        </div>
+                                    </div>
+                                }
+                            </span>
                             <button type="button" class="sched-btn" @onclick="() => CancelScheduleAndEdit(detail)">Cancel &amp; Edit</button>
-                            <button type="button" class="sched-btn" @onclick="() => MoveDetail(MailFolder.Trash)">Delete</button>
+                            <button type="button" class="sched-btn" title="Move to Trash" @onclick="() => MoveDetail(MailFolder.Trash)">Delete</button>
                         </div>
                     </div>
                 }
@@ -531,60 +680,74 @@
                     {
                         <div class="body">@((MarkupString)detail.Body)</div>
 
-                        @if (detail.Attachments.Count > 0)
-                        {
-                            <div class="detail-att-section">
-                                <div class="att-head">Attachments (@detail.Attachments.Count @(detail.Attachments.Count == 1 ? "file" : "files"))</div>
-                                <div class="att-chips">
-                                    @foreach (var a in detail.Attachments)
-                                    {
-                                        var att = a;
-                                        <button type="button" class="att" @onclick="() => Download(att)">
-                                            <i data-lucide="paperclip"></i>
-                                            <span class="name">@att.FileName</span>
-                                            <span class="size">@HumanSize(att.FileSize)</span>
-                                        </button>
-                                    }
-                                </div>
-                            </div>
-                        }
+                        <MailAttachmentCards Attachments="detail.Attachments" />
                     }
                 </div>
 
-                @* Inline Quick Reply Box *@
-                <div class="inline-reply-box">
-                    <div class="rh">
-                        <i data-lucide="reply"></i>
-                        <span class="title">Reply to @detail.SenderName</span>
-                        <button type="button" class="icon-btn" style="margin-left:auto;width:24px;height:24px" title="Open in composer" aria-label="Open in composer" @onclick="() => ReplyMessage(detail)">
-                            <i data-lucide="maximize-2" style="width:13px;height:13px"></i>
-                        </button>
+                @* Quick reply: hidden until the user picks Reply *@
+                @if (replyOpen)
+                {
+                    <div class="inline-reply-box" id="mail-quick-reply">
+                        <div class="rh">
+                            <i data-lucide="reply"></i>
+                            <span class="title">Reply to @detail.SenderName</span>
+                            <button type="button" class="icon-btn" style="margin-left:auto;width:24px;height:24px" title="Open in composer" aria-label="Open in composer" @onclick="() => ReplyMessage(detail)">
+                                <i data-lucide="maximize-2" style="width:13px;height:13px"></i>
+                            </button>
+                            <button type="button" class="icon-btn" style="width:24px;height:24px" title="Close" aria-label="Close reply" @onclick="CloseQuickReply">
+                                <i data-lucide="x" style="width:13px;height:13px"></i>
+                            </button>
+                        </div>
+                        <textarea id="mail-quick-reply-text" rows="3" placeholder="Write a reply…" aria-label="Reply text" @bind="quickReplyText" @bind:event="oninput"></textarea>
+                        <div class="ra">
+                            <button type="button" class="btn-primary" @onclick="SendQuickReply" disabled="@(quickReplySending || string.IsNullOrWhiteSpace(quickReplyText))">
+                                <i data-lucide="send"></i>
+                                @(quickReplySending ? "Sending…" : "Send")
+                            </button>
+                        </div>
                     </div>
-                    <textarea rows="2"
-                              placeholder="Write a reply…"
-                              @bind="quickReplyText"></textarea>
-                    <div class="ra">
-                        <button type="button" class="btn-primary" @onclick="SendQuickReply" disabled="@(quickReplySending || string.IsNullOrWhiteSpace(quickReplyText))">
-                            <i data-lucide="send"></i>
-                            @(quickReplySending ? "Sending…" : "Send")
-                        </button>
-                        <button type="button" class="ghost-btn" title="Attach files in the full composer" @onclick="() => ReplyMessage(detail)">
-                            <i data-lucide="paperclip"></i>
-                            <span>Attach</span>
-                        </button>
-                    </div>
-                </div>
+                }
             }
         </div>
     </div>
 </div>
 
 @* ============ FLOATING DOCKED COMPOSER ============ *@
+@if (settingsSection is not null)
+{
+    <MailSettingsModal Section="@settingsSection"
+                       OnClose="CloseSettings"
+                       OnLabelsChanged="LoadLabelsAsync"
+                       OnUseTemplate="UseTemplateFromSettings" />
+}
+
+@if (kbdSheetOpen)
+{
+    <div class="mail-kbd-backdrop" @onclick="() => kbdSheetOpen = false"></div>
+    <div class="mail-kbd-sheet" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+        <div class="mail-kbd-head">
+            <i data-lucide="keyboard"></i>
+            <span>Keyboard shortcuts</span>
+            <button type="button" class="icon-btn" title="Close (Esc)" aria-label="Close" @onclick="() => kbdSheetOpen = false"><i data-lucide="x"></i></button>
+        </div>
+        <dl class="mail-kbd-list">
+            @foreach (var (keys, what) in KbdShortcuts)
+            {
+                <div class="mail-kbd-row">
+                    <dt>@foreach (var k in keys) { <kbd>@k</kbd> }</dt>
+                    <dd>@what</dd>
+                </div>
+            }
+        </dl>
+    </div>
+}
+
 <MailComposer @ref="composerRef"
               IsOpen="@composerOpen"
-              IsOpenChanged="v => composerOpen = v"
+              IsOpenChanged="OnComposerOpenChanged"
               OnSent="OnComposerSent"
-              OnDiscard="ReloadAll" />
+              OnDiscard="ReloadAll"
+              OnOpenTemplates='() => OpenSettings("templates")' />
 
 @* ---- Recall Confirmation Dialog ---- *@
 @if (recallConfirmId is not null)
@@ -705,10 +868,28 @@
     private string lastSyncedTime = DateTime.Now.ToString("HH:mm");
 
     private MailComposer? composerRef;
+
+    private static readonly (string[] Keys, string What)[] KbdShortcuts =
+    [
+        (["C"], "New message"),
+        (["R"], "Reply"),
+        (["A"], "Reply all"),
+        (["F"], "Forward"),
+        (["E"], "Archive"),
+        (["Del"], "Move to Trash (in Trash: delete forever, asks first)"),
+        (["J"], "Next message"),
+        (["K"], "Previous message"),
+        (["Ctrl", "Enter"], "Send (in composer)"),
+        (["Ctrl", "K"], "Insert link (in composer)"),
+        (["Esc"], "Close menu / minimise composer"),
+        (["?"], "Show this list"),
+    ];
     private MailThreadStack? threadStackRef;
     private bool composerOpen;
     private string quickReplyText = "";
     private bool quickReplySending;
+    private bool replyOpen;
+    private Guid? replyOpenFor;
     private bool moreMenuOpen;
     private bool _navSubscribed;
     private string? _lastHandledQuery;
@@ -724,6 +905,64 @@
             await LoadLabelsAsync();
             await JS.InvokeVoidAsync("ipop.icons");
         }
+        _mailSub = Auth.On(IPop.Application.Realtime.RealtimeEvents.MailChanged, OnMailChanged);
+    }
+
+    // ── Live refresh (mailChanged) ──
+    // Another user/tab changed this mailbox. Re-fetch counts + the pages already loaded, in
+    // place: no spinner, selection/open detail/composer untouched, list length kept so the
+    // scroll position holds. Debounced so a burst (bulk move, send) triggers one reload.
+    private IDisposable? _mailSub;
+    private CancellationTokenSource? _liveCts;
+
+    private void OnMailChanged()
+    {
+        _liveCts?.Cancel(); _liveCts?.Dispose();
+        var t = new CancellationTokenSource(); _liveCts = t;
+        _ = InvokeAsync(async () =>
+        {
+            try { await Task.Delay(400, t.Token); } catch (OperationCanceledException) { return; }
+            await LiveRefreshAsync();
+        });
+    }
+
+    private async Task LiveRefreshAsync()
+    {
+        if (loading || loadingMore) return;
+        try
+        {
+            var folderAtStart = activeFolder;
+            var searchAtStart = search;
+            var q = string.IsNullOrWhiteSpace(search) ? null : search;
+            bool? unreadOnly = tabFilter == "unread" ? true : null;
+            bool? starredOnly = tabFilter == "starred" ? true : null;
+
+            var c = await MailSvc.GetCountsAsync();
+            var fresh = new List<MailSummary>();
+            var total = 0;
+            var pages = Math.Max(1, page);
+            for (var p = 1; p <= pages; p++)
+            {
+                var res = await MailSvc.GetFolderAsync(activeFolder, p, pageSize, q, starredOnly, unreadOnly, labelFilter, advDateFrom, advDateTo, advHasAttachment ? true : null);
+                if (res is null) return;
+                total = res.TotalCount;
+                var seen = fresh.Select(x => x.Id).ToHashSet();
+                fresh.AddRange((res.Items ?? []).Where(i => seen.Add(i.Id)));
+                if (fresh.Count >= total) break;
+            }
+            // The user switched folder/search (or started a load) while we were fetching.
+            if (folderAtStart != activeFolder || searchAtStart != search || loading || loadingMore) return;
+
+            if (c is not null) counts = c;
+            Items = fresh;
+            pageTotal = total;
+            selected.IntersectWith(Items.Select(i => i.Id));
+            lastSyncedTime = DateTime.Now.ToString("HH:mm");
+            UpdateHeader();
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+        catch { /* background refresh — the next event or a manual sync will catch up */ }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -731,6 +970,8 @@
         if (firstRender)
         {
             await JS.InvokeVoidAsync("ipop.icons");
+            _selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("ipop.mailBindShortcuts", _selfRef);
             if (!_navSubscribed)
             {
                 _navSubscribed = true;
@@ -775,6 +1016,14 @@
             var eq = part.IndexOf('=');
             if (eq < 0) parsed[Uri.UnescapeDataString(part)] = "";
             else parsed[Uri.UnescapeDataString(part[..eq])] = Uri.UnescapeDataString(part[(eq + 1)..]);
+        }
+
+        if (parsed.TryGetValue("settings", out var settingsVal) && settingsVal is "signature" or "ooo" or "rules" or "labels" or "templates")
+        {
+            _lastHandledQuery = query;
+            settingsSection = settingsVal;
+            StateHasChanged();
+            return;
         }
 
         if (parsed.TryGetValue("mailId", out var mailIdStr) && Guid.TryParse(mailIdStr, out var mailId))
@@ -878,6 +1127,57 @@
         await LoadPage(1);
     }
 
+    private int AdvancedCount =>
+        (string.IsNullOrWhiteSpace(advFrom) ? 0 : 1) + (string.IsNullOrWhiteSpace(advQuery) ? 0 : 1) +
+        (advDateFrom is not null || advDateTo is not null ? 1 : 0) + (advHasAttachment ? 1 : 0) +
+        (string.IsNullOrWhiteSpace(advLabel) ? 0 : 1);
+
+    /// Which quick date chip the current range matches, so it shows as selected.
+    private string DatePreset
+    {
+        get
+        {
+            if (advDateTo is not null || advDateFrom is null) return "";
+            var f = advDateFrom.Value.Date;
+            var today = DateTime.Today;
+            if (f == today.AddDays(-7)) return "7";
+            if (f == today.AddDays(-30)) return "30";
+            if (f == new DateTime(today.Year, 1, 1)) return "year";
+            return "";
+        }
+    }
+
+    private void SetDatePreset(string key)
+    {
+        if (DatePreset == key) { advDateFrom = null; advDateTo = null; return; }
+        var today = DateTime.Today;
+        advDateFrom = key switch { "7" => today.AddDays(-7), "30" => today.AddDays(-30), _ => new DateTime(today.Year, 1, 1) };
+        advDateTo = null;
+    }
+
+    private async Task ApplyFilters()
+    {
+        advSearchOpen = false;
+        await ApplyAdvancedSearch();
+    }
+
+    private async Task ClearFilters()
+    {
+        advSearchOpen = false;
+        await ResetAdvancedSearch();
+    }
+
+    private async Task OnFilterKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await ApplyFilters();
+        else if (e.Key == "Escape") advSearchOpen = false;
+    }
+
+    private void OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") advSearchOpen = false;
+    }
+
     private async Task ResetAdvancedSearch()
     {
         advFrom = ""; advQuery = ""; advDateFrom = null; advDateTo = null; advHasAttachment = false; advLabel = "";
@@ -913,6 +1213,7 @@
 
     private async Task ToggleLabelFilter(string name)
     {
+        mFolderSheet = false;
         if (labelFilter == name)
         {
             labelFilter = null;
@@ -962,7 +1263,7 @@
             lastSyncedTime = DateTime.Now.ToString("HH:mm");
             UpdateHeader();
         }
-        catch (Exception ex) { Toasts.Show(ex.Message); }
+        catch (Exception ex) { Toasts.Show(ex.Message, ToastKind.Error); }
         finally
         {
             loading = false;
@@ -987,12 +1288,13 @@
 
     private async Task SelectFolder(MailFolder f)
     {
+        mFolderSheet = false;
         if (activeFolder == f) { await LoadPage(1); return; }
         activeFolder = f;
         selected.Clear();
         selectedMail = null;
         detail = null;
-        moreMenuOpen = false;
+        moreMenuOpen = false; labelMenuOpen = false; bulkLabelOpen = false;
         UpdateHeader();
         await LoadPage(1);
         await JS.InvokeVoidAsync("ipop.icons");
@@ -1001,7 +1303,8 @@
     private async Task OpenDetail(Guid id)
     {
         selectedMail = id;
-        moreMenuOpen = false;
+        moreMenuOpen = false; labelMenuOpen = false;
+        if (replyOpenFor != id) { replyOpen = false; replyOpenFor = null; quickReplyText = ""; }
         detail = await MailSvc.GetAsync(id);
         if (id != selectedMail) return;
 
@@ -1022,8 +1325,42 @@
         }
 
         await LoadMeetingForDetail(id);
+        if (_selfRef is not null && detail is not null)
+            await JS.InvokeAsync<bool>("ipop.mobile.pushDetail", _selfRef, nameof(MobileBack));
         await JS.InvokeVoidAsync("ipop.icons");
         StateHasChanged();
+    }
+
+    // ── Phone layout (<= 767px): folder sheet, reader/composer as full-screen details ──
+    private bool mFolderSheet;
+
+    /// <summary>Phone Back (popstate): close the composer first, else the reader.</summary>
+    [JSInvokable]
+    public Task MobileBack() => InvokeAsync(() =>
+    {
+        if (composerOpen) composerRef?.Close();
+        else BackToList();
+        StateHasChanged();
+    });
+
+    private void MobileBackClick() => BackToList();
+
+    private async Task OnComposerOpenChanged(bool open)
+    {
+        var was = composerOpen;
+        composerOpen = open;
+        if (was == open) return;
+        try
+        {
+            await JS.InvokeVoidAsync("ipop.mobile.hideTabbar", open);
+            // Open: push (or retarget) the Back entry. Closed over an open reader: keep/restore
+            // the reader's entry. Closed with nothing under it: drop the entry.
+            if ((open || detail is not null) && _selfRef is not null)
+                await JS.InvokeAsync<bool>("ipop.mobile.pushDetail", _selfRef, nameof(MobileBack));
+            else if (!open)
+                await JS.InvokeVoidAsync("ipop.mobile.popDetail");
+        }
+        catch (JSException) { }
     }
 
     // ── Meeting RSVP in Reading Pane ──
@@ -1061,7 +1398,13 @@
 
     private bool hasConversation => detail is not null && (detail.ThreadCount > 0 || detail.ThreadRootId is not null || detail.InReplyToId is not null);
 
-    private void BackToList() { selectedMail = null; detail = null; moreMenuOpen = false; }
+    private void BackToList()
+    {
+        selectedMail = null; detail = null; moreMenuOpen = false; labelMenuOpen = false;
+        replyOpen = false; replyOpenFor = null;
+        // Phone: drop the reader's history entry (no-op on desktop / when Back already popped it).
+        if (!composerOpen) _ = JS.InvokeVoidAsync("ipop.mobile.popDetail").AsTask().ContinueWith(_ => { });
+    }
 
     private async Task ReloadDetail()
     {
@@ -1089,7 +1432,7 @@
         }
         else if (detail is not null)
         {
-            await MoveDetail(MailFolder.Trash);
+            await MoveDetail(MailFolder.Trash); // confirms and deletes forever when already in Trash
         }
     }
 
@@ -1099,14 +1442,15 @@
         {
             var list = selected.ToList();
             selected.Clear();
-            foreach (var id in list)
+            if (!await MailSvc.BulkReadAsync(list))
             {
-                await MailSvc.MarkReadAsync(id);
+                Toasts.Show("Could not mark the selected messages as read.", ToastKind.Error);
+                return;
             }
             counts = await MailSvc.GetCountsAsync();
             UpdateHeader();
             await LoadPage(page);
-            Toasts.Show("Marked as read.");
+            Toasts.Show("Marked as read.", ToastKind.Success);
         }
         else
         {
@@ -1115,12 +1459,6 @@
     }
 
     private void ToggleMoreMenu() => moreMenuOpen = !moreMenuOpen;
-
-    private async Task MoveToJunk()
-    {
-        // Backend lacks a dedicated Junk folder; routes to Trash per parity notes.
-        await MoveDetail(MailFolder.Trash);
-    }
 
     // ── Single Actions ──
     private Task TogglePin(Guid id) => RunAction(async () =>
@@ -1159,11 +1497,25 @@
 
     private Task QuickDelete(Guid id) => RunAction(async () =>
     {
-        await MailSvc.DeleteAsync(id);
+        Action? undoAfter = null;
+        if (activeFolder == MailFolder.Trash)
+        {
+            if (!await Confirm.AskAsync("Delete forever?", "This message will be permanently deleted from your mailbox. This cannot be undone.", "Delete forever", danger: true)) return;
+            var res = await MailSvc.DeleteAsync(id);
+            if (res?.Success != true) { Toasts.Show("Could not delete the message.", ToastKind.Error); return; }
+        }
+        else
+        {
+            // /move never hard-deletes, even for a trashed message listed under Starred.
+            var res = await MailSvc.MoveAsync(id, MailFolder.Trash);
+            if (res?.Success != true) { Toasts.Show("Could not move the message to Trash.", ToastKind.Error); return; }
+            undoAfter = () => ShowMoveUndo(new[] { id }, activeFolder == MailFolder.Starred ? MailFolder.Inbox : activeFolder, MailFolder.Trash);
+        }
         if (selectedMail == id) BackToList();
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
         await LoadPage(page);
+        undoAfter?.Invoke();
     });
 
     // ── Recall ──
@@ -1192,13 +1544,140 @@
     private Task MoveDetail(MailFolder f) => RunAction(async () =>
     {
         if (detail is null) return;
-        await MailSvc.MoveAsync(detail.Id, f);
+        // Delete on a message that is already in Trash means "delete forever" — confirm first.
+        if (f == MailFolder.Trash && DetailFolder == "trash") { await DeleteDetailForever(); return; }
+        var id = detail.Id;
+        var origin = Enum.TryParse<MailFolder>(DetailFolder, true, out var o) ? o : MailFolder.Inbox;
+        var res = await MailSvc.MoveAsync(id, f);
+        if (res?.Success != true) { Toasts.Show($"Could not move the message to {FolderLabel(f)}.", ToastKind.Error); return; }
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
         BackToList();
         await LoadPage(page);
-        Toasts.Show($"Moved to {FolderLabel(f)}");
+        ShowMoveUndo(new[] { id }, origin, f);
     });
+
+    /// One Undo toast for archive / delete, instead of a confirm dialog before every move.
+    private void ShowMoveUndo(IReadOnlyList<Guid> ids, MailFolder origin, MailFolder target)
+    {
+        var text = ids.Count == 1 ? $"Moved to {FolderLabel(target)}" : $"Moved {ids.Count} items to {FolderLabel(target)}";
+        Toasts.ShowUndo(text, async () =>
+        {
+            if (!await MailSvc.BulkMoveAsync(ids, origin)) { Toasts.Show("Could not undo.", ToastKind.Error); return; }
+            counts = await MailSvc.GetCountsAsync();
+            UpdateHeader();
+            await LoadPage(page);
+            await InvokeAsync(StateHasChanged);
+        }, "Undo", 8000);
+    }
+
+    /// The open message's own folder. Starred shows mail from every folder (Trash included),
+    /// so actions go by this rather than by the folder being browsed.
+    private string DetailFolder => detail?.Folder?.ToLowerInvariant() ?? "";
+
+    private Task RestoreDetail() => RunAction(async () =>
+    {
+        if (detail is null) return;
+        if (!await MailSvc.BulkRestoreAsync([detail.Id])) { Toasts.Show("Could not restore the message.", ToastKind.Error); return; }
+        counts = await MailSvc.GetCountsAsync();
+        UpdateHeader();
+        BackToList();
+        await LoadPage(page);
+        Toasts.Show("Restored to Inbox.", ToastKind.Success);
+    });
+
+    private async Task DeleteDetailForever()
+    {
+        if (detail is null) return;
+        var id = detail.Id;
+        if (!await Confirm.AskAsync("Delete forever?", "This message will be permanently deleted from your mailbox. This cannot be undone.", "Delete forever", danger: true)) return;
+        var res = await MailSvc.DeleteAsync(id);
+        if (res?.Success != true) { Toasts.Show("Could not delete the message.", ToastKind.Error); return; }
+        counts = await MailSvc.GetCountsAsync();
+        UpdateHeader();
+        if (selectedMail == id) BackToList();
+        await LoadPage(page);
+        Toasts.Show("Deleted forever.", ToastKind.Success);
+    }
+
+    private Task QuickRestore(Guid id) => RunAction(async () =>
+    {
+        if (!await MailSvc.BulkRestoreAsync([id])) { Toasts.Show("Could not restore the message.", ToastKind.Error); return; }
+        if (selectedMail == id) BackToList();
+        counts = await MailSvc.GetCountsAsync();
+        UpdateHeader();
+        await LoadPage(page);
+        Toasts.Show("Restored to Inbox.", ToastKind.Success);
+    });
+
+    private Task QuickMove(Guid id, MailFolder f) => RunAction(async () =>
+    {
+        var res = await MailSvc.MoveAsync(id, f);
+        if (res?.Success != true) { Toasts.Show($"Could not move the message to {FolderLabel(f)}.", ToastKind.Error); return; }
+        if (selectedMail == id) BackToList();
+        counts = await MailSvc.GetCountsAsync();
+        UpdateHeader();
+        await LoadPage(page);
+        ShowMoveUndo(new[] { id }, activeFolder == MailFolder.Trash || activeFolder == MailFolder.Archive ? activeFolder : MailFolder.Inbox, f);
+    });
+
+    // ── Labels (manual) ──
+    private bool labelMenuOpen;
+    private bool bulkLabelOpen;
+    private bool labelBusy;
+
+    private async Task ToggleDetailLabel(MailLabel lbl)
+    {
+        if (detail is null || labelBusy) return;
+        var on = !detail.LabelIds.Contains(lbl.Id);
+        labelBusy = true;
+        try
+        {
+            if (!await MailSvc.SetLabelAsync(detail.Id, lbl.Id, on))
+            {
+                Toasts.Show($"Could not {(on ? "apply" : "remove")} the label \"{lbl.Name}\".", ToastKind.Error);
+                return;
+            }
+            detail = detail with { LabelIds = on ? [.. detail.LabelIds, lbl.Id] : detail.LabelIds.Where(x => x != lbl.Id).ToList() };
+            await AfterLabelsChanged();
+        }
+        finally { labelBusy = false; StateHasChanged(); }
+    }
+
+    /// true = every selected message has it, false = none, null = some.
+    private bool? BulkLabelState(MailLabel lbl)
+    {
+        var rows = Items.Where(m => selected.Contains(m.Id)).ToList();
+        if (rows.Count == 0) return false;
+        var n = rows.Count(m => m.Labels?.Contains(lbl.Name, StringComparer.OrdinalIgnoreCase) == true);
+        return n == 0 ? false : n == rows.Count ? true : null;
+    }
+
+    private async Task BulkToggleLabel(MailLabel lbl)
+    {
+        if (selected.Count == 0 || labelBusy) return;
+        // Mixed or none → apply to all; all → remove from all.
+        var on = BulkLabelState(lbl) != true;
+        labelBusy = true;
+        try
+        {
+            var failed = 0;
+            foreach (var id in selected.ToList())
+                if (!await MailSvc.SetLabelAsync(id, lbl.Id, on)) failed++;
+            if (failed > 0) Toasts.Show($"The label could not be changed on {failed} message(s).", ToastKind.Error);
+            else Toasts.Show(on ? $"Labelled \"{lbl.Name}\"." : $"Removed label \"{lbl.Name}\".", ToastKind.Success);
+            if (detail is not null && selected.Contains(detail.Id)) await ReloadDetail();
+            await AfterLabelsChanged();
+        }
+        finally { labelBusy = false; StateHasChanged(); }
+    }
+
+    /// Row chips and the sidebar label counts both come from the server.
+    private async Task AfterLabelsChanged()
+    {
+        await LoadLabelsAsync();
+        await LoadPage(page);
+    }
 
     private async Task ExportPdf()
     {
@@ -1330,24 +1809,41 @@
         var res = await MailSvc.SendScheduledNowAsync(id);
         if (res?.Success == true)
         {
-            Toasts.Show("Scheduled email sent immediately.");
+            Toasts.Show("Scheduled email sent immediately.", ToastKind.Success);
             await ReloadAll();
             BackToList();
         }
     }
 
-    private async Task PromptReschedule(Guid id)
+    private bool rescheduleOpen;
+    private DateTime rescheduleAt;
+
+    private void OpenReschedule()
     {
-        var dateStr = await JS.InvokeAsync<string>("prompt", "Reschedule delivery time (YYYY-MM-DD HH:mm local):", DateTime.Now.AddDays(1).ToString("yyyy-MM-dd 08:00"));
-        if (!string.IsNullOrWhiteSpace(dateStr) && DateTime.TryParse(dateStr, out var newDt))
+        var current = detail?.ScheduledAt?.ToLocalTime();
+        rescheduleAt = current is { } c && c > DateTime.Now ? c : DateTime.Today.AddDays(1).AddHours(8);
+        rescheduleOpen = !rescheduleOpen;
+    }
+
+    private static DateTime NextMonday()
+    {
+        var d = DateTime.Today.AddDays(1);
+        while (d.DayOfWeek != DayOfWeek.Monday) d = d.AddDays(1);
+        return d;
+    }
+
+    private async Task SaveReschedule(Guid id)
+    {
+        if (rescheduleAt <= DateTime.Now) return;
+        var at = DateTime.SpecifyKind(rescheduleAt, DateTimeKind.Local);
+        var res = await MailSvc.RescheduleAsync(id, at.ToUniversalTime());
+        if (res?.Success == true)
         {
-            var res = await MailSvc.RescheduleAsync(id, newDt.ToUniversalTime());
-            if (res?.Success == true)
-            {
-                Toasts.Show($"Rescheduled to {newDt:dd MMM yyyy HH:mm}.");
-                await ReloadDetail();
-            }
+            rescheduleOpen = false;
+            Toasts.Show($"Rescheduled to {at:dd MMM yyyy HH:mm}.", ToastKind.Success);
+            await ReloadDetail();
         }
+        else Toasts.Show("Could not reschedule this message.", ToastKind.Error);
     }
 
     private async Task CancelScheduleAndEdit(MailDetail d)
@@ -1387,13 +1883,14 @@
     private Task BulkMove(MailFolder f) => RunAction(async () =>
     {
         if (selected.Count == 0) return;
-        var n = selected.Count;
-        await MailSvc.BulkMoveAsync(selected.ToList(), f);
+        var ids = selected.ToList();
+        var origin = activeFolder is MailFolder.Trash or MailFolder.Archive ? activeFolder : MailFolder.Inbox;
+        await MailSvc.BulkMoveAsync(ids, f);
         selected.Clear();
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
         await LoadPage(page);
-        Toasts.Show($"Moved {n} items to {FolderLabel(f)}");
+        ShowMoveUndo(ids, origin, f);
     });
 
     private Task BulkRestore() => RunAction(async () =>
@@ -1420,12 +1917,18 @@
     private Task BulkPermanent() => RunAction(async () =>
     {
         if (selected.Count == 0) return;
-        await MailSvc.BulkDeleteAsync(selected.ToList());
+        var n = selected.Count;
+        if (!await Confirm.AskAsync("Delete forever?",
+                $"{n} {(n == 1 ? "message" : "messages")} will be permanently deleted from your mailbox. This cannot be undone.",
+                "Delete forever", danger: true)) return;
+        var ids = selected.ToList();
+        if (!await MailSvc.BulkDeleteAsync(ids)) { Toasts.Show("Could not delete the selected messages.", ToastKind.Error); return; }
         selected.Clear();
+        if (selectedMail is { } open && ids.Contains(open)) BackToList();
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
         await LoadPage(page);
-        Toasts.Show("Deleted.");
+        Toasts.Show("Deleted forever.", ToastKind.Success);
     });
 
     private async Task MarkAllRead()
@@ -1447,19 +1950,48 @@
         await LoadPage(1);
     }
 
-    private void OnKeyDown(KeyboardEventArgs e)
+    // ── Keyboard shortcuts (bound on document by ipop.mailBindShortcuts; the JS side already
+    //    skips typing targets, the open composer and dialogs) ──
+    private DotNetObjectReference<Mail>? _selfRef;
+    private bool kbdSheetOpen;
+
+    [JSInvokable]
+    public Task OnShortcut(string key) => InvokeAsync(async () =>
     {
-        if (moreMenuOpen && e.Key is "Escape")
+        switch (key)
         {
-            moreMenuOpen = false;
-            StateHasChanged();
-            return;
+            case "Escape":
+                if (kbdSheetOpen) kbdSheetOpen = false;
+                else if (rescheduleOpen) rescheduleOpen = false;
+                else if (moreMenuOpen) moreMenuOpen = false;
+                else if (labelMenuOpen) labelMenuOpen = false;
+                else if (bulkLabelOpen) bulkLabelOpen = false;
+                else if (settingsMenuOpen) settingsMenuOpen = false;
+                else return;
+                break;
+            case "?": kbdSheetOpen = !kbdSheetOpen; break;
+            case "c": OpenComposer(); break;
+            case "r": if (detail is not null) await OpenQuickReply(); else return; break;
+            case "a": if (detail is not null) ReplyAllMessage(detail); else return; break;
+            case "f": if (detail is not null) ForwardMessage(detail); else return; break;
+            case "e": if (detail is not null) await MoveDetail(MailFolder.Archive); else return; break;
+            case "Delete": if (detail is not null) await MoveDetail(MailFolder.Trash); else return; break;
+            case "j": await StepDetail(1); break;
+            case "k": await StepDetail(-1); break;
+            default: return;
         }
-        if (composerOpen) return;
-        if (e.Key is "c" or "C")
-        {
-            OpenComposer();
-        }
+        StateHasChanged();
+    });
+
+    private async Task StepDetail(int delta)
+    {
+        if (Items.Count == 0) return;
+        var i = selectedMail is { } id ? Items.FindIndex(m => m.Id == id) : -1;
+        var next = i < 0 ? 0 : Math.Clamp(i + delta, 0, Items.Count - 1);
+        if (i == next) return;
+        await OpenDetail(Items[next].Id);
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.mailRevealSelected");
     }
 
     // ── Composer & Quick Reply ──
@@ -1472,6 +2004,21 @@
     {
         composerRef?.OpenNew(inReplyTo, threadRoot, initialSubject, initialBody, initialTo);
         composerOpen = true;
+    }
+
+    private async Task OpenQuickReply()
+    {
+        if (detail is null) return;
+        replyOpen = true;
+        replyOpenFor = detail.Id;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.mailFocusReply");
+    }
+
+    private void CloseQuickReply()
+    {
+        replyOpen = false;
+        replyOpenFor = null;
     }
 
     private void ReplyMessage(MailDetail d)
@@ -1524,17 +2071,47 @@
 
     private async Task ConfirmEmptyTrash()
     {
-        var ok = await Confirm.AskAsync("Empty Trash?", "All messages in the trash folder will be permanently deleted.", "Empty Trash", danger: true);
+        var ok = await Confirm.AskAsync("Empty Trash?", "Messages in Trash will be deleted forever.", "Empty Trash", danger: true);
         if (!ok) return;
 
         var res = await Auth.SendAsync(HttpMethod.Post, "/api/mail/empty-trash");
         if (res.IsSuccessStatusCode)
         {
-            Toasts.Show("Trash emptied successfully.", ToastKind.Success);
+            Toasts.Show("Trash emptied.", ToastKind.Success);
             detail = null;
             selectedMail = null;
             await ReloadAll();
         }
+        else Toasts.Show("Could not empty Trash.", ToastKind.Error);
+    }
+
+    // ── Mail settings popover (mockup v6) ──
+    private bool settingsMenuOpen;
+    private string? settingsSection;
+
+    private void OpenSettings(string section)
+    {
+        settingsMenuOpen = false;
+        settingsSection = section;
+    }
+
+    private Task CloseSettings()
+    {
+        settingsSection = null;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private async Task EmptyTrashFromMenu()
+    {
+        settingsMenuOpen = false;
+        await ConfirmEmptyTrash();
+    }
+
+    private void UseTemplateFromSettings((string Subject, string Body) tpl)
+    {
+        settingsSection = null;
+        OpenComposer(initialSubject: tpl.Subject, initialBody: tpl.Body);
     }
 
     private record MuteResponseDto(bool Muted);
@@ -1543,7 +2120,8 @@
     {
         var subj = d.Subject.StartsWith("Fwd:", StringComparison.OrdinalIgnoreCase) ? d.Subject : $"Fwd: {d.Subject}";
         var bodyQuote = $"<br/><br/>——— Forwarded from {d.SenderName} ———<br/>{d.Body}";
-        OpenComposer(initialSubject: subj, initialBody: bodyQuote);
+        composerRef?.OpenForward(d, subj, bodyQuote);
+        composerOpen = true;
     }
 
     private async Task SendQuickReply()
@@ -1566,7 +2144,8 @@
             if (res?.Success == true)
             {
                 quickReplyText = "";
-                Toasts.Show("Reply sent.");
+                CloseQuickReply();
+                Toasts.Show("Reply sent.", ToastKind.Success);
                 await ReloadDetail();
                 await ReloadAll();
                 if (threadStackRef is not null) await threadStackRef.ReloadAsync(expandLatest: true);
@@ -1613,7 +2192,7 @@
     private Task RunAction(Func<Task> f)
     {
         try { return f(); }
-        catch (Exception ex) { Toasts.Show(ex.Message); return Task.CompletedTask; }
+        catch (Exception ex) { Toasts.Show(ex.Message, ToastKind.Error); return Task.CompletedTask; }
     }
 
     private string FolderLabel(MailFolder f) => f switch
@@ -1693,12 +2272,36 @@
     private static readonly string[] LabelPalette = ["#2e7d5b", "#7d5ba6", "#8a6d3b", "#b3543f", "#4f6d8f", "#5b7d2e"];
     private static string LabelInk(string name) => LabelPalette[Math.Abs(name.GetHashCode()) % LabelPalette.Length];
     private static string HumanSize(long b) => b switch { < 1024 => $"{b} B", < 1024 * 1024 => $"{b / 1024.0:0.#} KB", _ => $"{b / 1024.0 / 1024.0:0.#} MB" };
-    private async Task Download(MailAttachment a) => await JS.InvokeVoidAsync("window.open", $"/api/mail/attachments/{a.Id}/download?inline=true");
 
     public void Dispose()
     {
         cts?.Cancel();
         cts?.Dispose();
+        _mailSub?.Dispose();
+        _liveCts?.Cancel();
+        _liveCts?.Dispose();
         if (_navSubscribed) Nav.LocationChanged -= OnLocationChanged;
+        _ = ResetMobileAsync();
+        _ = UnbindShortcutsAsync();
+    }
+
+    private async Task ResetMobileAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("ipop.mobile.hideTabbar", false);
+            await JS.InvokeVoidAsync("ipop.mobile.clearDetail");
+        }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    private async Task UnbindShortcutsAsync()
+    {
+        try { await JS.InvokeVoidAsync("ipop.mailUnbindShortcuts"); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        _selfRef?.Dispose();
     }
 }

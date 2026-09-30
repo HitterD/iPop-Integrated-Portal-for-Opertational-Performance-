@@ -7,18 +7,20 @@ using Microsoft.EntityFrameworkCore;
 namespace IPop.Api.Calls;
 
 /// <summary>
-/// Calls signaling hub. Drives call state machine, WebRTC signaling relay, and LiveKit SFU access tokens.
+/// Calls signaling hub. Drives the call state machine and relays WebRTC offer/answer/ICE.
 /// The client invokes the same state machine the REST API exposes
 /// (create/signal/get) and receives lifecycle broadcasts on its user group
 /// ("user:{id}") — ringing, state-changed, participant-joined/left, ended.
 /// </summary>
-public class CallHub(ICallService callService, IPopDbContext db, IPermissionEvaluator perms) : Hub
+public class CallHub(ICallService callService, IPopDbContext db, IPermissionEvaluator perms, CallConnections connections, IHubContext<CallHub> hub) : Hub
 {
     public override async Task OnConnectedAsync()
     {
         var userId = GetUserId();
         if (userId is null) { Context.Abort(); return; }
         await Groups.AddToGroupAsync(Context.ConnectionId, $"user:{userId}", Context.ConnectionAborted);
+        Context.Items["userId"] = userId.Value;
+        connections.Connected(userId.Value);
         await base.OnConnectedAsync();
     }
 
@@ -32,18 +34,8 @@ public class CallHub(ICallService callService, IPopDbContext db, IPermissionEval
         var result = await callService.SignalAsync(userId.Value, req, Context.ConnectionAborted);
         if (!result.Success || result.Room is null) return; // 422 handled over REST; hub is best-effort signaling
 
-        var room = result.Room;
-        foreach (var p in room.Participants)
-        {
-            if (room.Status is CallStatus.Ended or CallStatus.Declined or CallStatus.Missed)
-            {
-                await Clients.Group($"user:{p.UserId}").SendAsync("callEnded", Context.ConnectionAborted);
-            }
-            else
-            {
-                await Clients.Group($"user:{p.UserId}").SendAsync("callStateChanged", room, Context.ConnectionAborted);
-            }
-        }
+        // Group calls reach every group member (chat banners), 1:1 only the two participants.
+        await IPop.Api.Endpoints.CallEndpoints.BroadcastGroupAsync(hub, db, result.Room, Context.ConnectionAborted);
     }
 
     /// WebRTC signaling relay: forwards offer, answer, ice-candidates to the other participant.
@@ -59,7 +51,9 @@ public class CallHub(ICallService callService, IPopDbContext db, IPermissionEval
         // Verify sender is participant in this room
         if (!room.Participants.Any(p => p.UserId == userId.Value)) return;
 
-        // Broadcast to other participants
+        // Broadcast to other participants, stamped with the sending connection: the other
+        // user may have several tabs/devices, and the receiver must stick to one peer.
+        signal = signal with { From = Context.ConnectionId };
         var others = room.Participants.Where(p => p.UserId != userId.Value);
         foreach (var p in others)
         {
@@ -69,6 +63,8 @@ public class CallHub(ICallService callService, IPopDbContext db, IPermissionEval
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
+        if (Context.Items.TryGetValue("userId", out var id) && id is Guid userId)
+            connections.Disconnected(userId);
         await base.OnDisconnectedAsync(exception);
     }
 

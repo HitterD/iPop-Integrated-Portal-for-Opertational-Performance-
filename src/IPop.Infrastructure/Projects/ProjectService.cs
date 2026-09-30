@@ -1,12 +1,13 @@
 using IPop.Application.Notifications;
 using IPop.Application.Projects;
 using IPop.Core.Entities;
+using static IPop.Application.UtcDates;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace IPop.Infrastructure.Projects;
 
-public sealed class ProjectService(IPopDbContext db, INotificationGatewayService? notificationGateway = null) : IProjectService
+public sealed partial class ProjectService(IPopDbContext db, INotificationGatewayService? notificationGateway = null) : IProjectService
 {
     // ──────────────────────────────────────────────────────────────────────────
     // Projects
@@ -31,15 +32,18 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
             return new ProjectResultDto(false, null, "invalid_owner");
 
         var now = DateTime.UtcNow;
+        var validColors = new[] { "#2E9E5B", "#0A84FF", "#7657C4", "#FF9F0A", "#C0513A", "#18808A" };
+        var color = validColors.FirstOrDefault(c => string.Equals(c, req.Color?.Trim(), StringComparison.OrdinalIgnoreCase)) ?? "#2E9E5B";
         var project = new Project
         {
             Id = Guid.NewGuid(),
             Name = req.Name.Trim(),
             Description = req.Description?.Trim(),
+            Color = color,
             Year = req.Year,
             OwnerId = ownerId,
-            StartDate = req.StartDate,
-            Deadline = req.Deadline,
+            StartDate = AsUtcDate(req.StartDate),
+            Deadline = AsUtcDate(req.Deadline),
             Status = "planning",
             Progress = 0,
             Risk = req.Risk?.Trim(),
@@ -50,6 +54,10 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         };
 
         db.Projects.Add(project);
+        db.ProjectGroups.Add(new ProjectGroup
+        {
+            Id = Guid.NewGuid(), ProjectId = project.Id, Name = "Tasks", Color = "#8E8E93", SortOrder = 0
+        });
 
         var creatorRole = (ownerId == actorId) ? "owner" : "manager";
         db.ProjectMembers.Add(new ProjectMember
@@ -139,7 +147,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         {
             return new ProjectListDto(
                 p.Id, p.Name, p.Year, p.Owner.Name, p.Status, p.Progress, p.Deadline,
-                p.Members.Count, p.Tasks.Count, p.IsActive);
+                p.Members.Count, p.Tasks.Count, p.IsActive, p.Color);
         }).ToList();
 
         return new PagedResult<ProjectListDto>(dtos, totalCount, page, pageSize);
@@ -181,8 +189,8 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
                 return new ProjectResultDto(false, null, "invalid_owner");
             project.OwnerId = req.OwnerId.Value;
         }
-        if (req.StartDate.HasValue) project.StartDate = req.StartDate;
-        if (req.Deadline.HasValue) project.Deadline = req.Deadline;
+        if (req.StartDate.HasValue) project.StartDate = AsUtcDate(req.StartDate);
+        if (req.Deadline.HasValue) project.Deadline = AsUtcDate(req.Deadline);
         if (req.Status is not null)
         {
             var valid = new[] { "planning", "active", "on_hold", "completed", "cancelled" };
@@ -191,6 +199,12 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         }
         if (req.Risk is not null) project.Risk = req.Risk.Trim();
         if (req.Obstacle is not null) project.Obstacle = req.Obstacle.Trim();
+        if (!string.IsNullOrWhiteSpace(req.Color))
+        {
+            var validColors = new[] { "#2E9E5B", "#0A84FF", "#7657C4", "#FF9F0A", "#C0513A", "#18808A" };
+            var match = validColors.FirstOrDefault(c => string.Equals(c, req.Color.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (match is not null) project.Color = match;
+        }
 
         project.UpdatedAt = DateTime.UtcNow;
 
@@ -233,6 +247,141 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
 
         await db.SaveChangesAsync(ct);
         return new MemberResultDto(true, null);
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Groups
+    // ──────────────────────────────────────────────────────────────────────────
+
+    public async Task<IReadOnlyList<ProjectGroupDto>?> GetGroupsAsync(Guid projectId, Guid userId, CancellationToken ct, DateTime? localToday = null)
+    {
+        if (!await CanViewAsync(projectId, userId, ct)) return null;
+        // Npgsql only accepts Kind=Utc for timestamptz; the client's local date arrives Unspecified.
+        var day = AsUtcDate((localToday ?? DateTime.UtcNow).Date);
+        return await db.ProjectGroups.AsNoTracking().Where(g => g.ProjectId == projectId)
+            .OrderBy(g => g.SortOrder).ThenBy(g => g.Id)
+            .Select(g => new ProjectGroupDto(g.Id, g.ProjectId, g.Name, g.Color, g.SortOrder,
+                g.Tasks.Count(t => t.ParentTaskId == null),
+                g.Tasks.Count(t => t.ParentTaskId == null) == 0 ? 0 :
+                    g.Tasks.Count(t => t.ParentTaskId == null && t.Status == "done") * 100 /
+                    g.Tasks.Count(t => t.ParentTaskId == null),
+                g.Tasks.Count(t => t.ParentTaskId == null && t.Status != "done" && t.DueDate < day)))
+            .ToListAsync(ct);
+    }
+
+    private Task<bool> CanManageGroupsAsync(Guid actorId, Guid projectId, CancellationToken ct) =>
+        db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == actorId &&
+            (m.Role == "owner" || m.Role == "manager"), ct);
+
+    private static string? GroupColor(string? value) => value is null ? "#8E8E93" :
+        new[] { "#8E8E93", "#0A84FF", "#FF9F0A", "#34C759", "#7657C4", "#C0513A" }
+            .FirstOrDefault(c => string.Equals(c, value.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    public async Task<GroupResultDto> CreateGroupAsync(Guid actorId, Guid projectId, CreateProjectGroupRequest req, CancellationToken ct)
+    {
+        if (!await CanManageGroupsAsync(actorId, projectId, ct)) return new(false, null, "forbidden");
+        var name = req.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 100) return new(false, null, "invalid_name");
+        var color = GroupColor(req.Color);
+        if (color is null) return new(false, null, "invalid_color");
+        var sort = await db.ProjectGroups.Where(g => g.ProjectId == projectId).Select(g => (int?)g.SortOrder).MaxAsync(ct) ?? 0;
+        var group = new ProjectGroup { Id = Guid.NewGuid(), ProjectId = projectId, Name = name, Color = color, SortOrder = sort + 100 };
+        db.ProjectGroups.Add(group);
+        await db.SaveChangesAsync(ct);
+        return new(true, new(group.Id, projectId, name, color, group.SortOrder, 0, 0, 0), null);
+    }
+
+    public async Task<GroupResultDto> UpdateGroupAsync(Guid actorId, Guid groupId, UpdateProjectGroupRequest req, CancellationToken ct)
+    {
+        var group = await db.ProjectGroups.FirstOrDefaultAsync(g => g.Id == groupId, ct);
+        if (group is null) return new(false, null, "group_not_found");
+        if (!await CanManageGroupsAsync(actorId, group.ProjectId, ct)) return new(false, null, "forbidden");
+        var name = req.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 100) return new(false, null, "invalid_name");
+        var color = req.Color is null ? group.Color : GroupColor(req.Color);
+        if (color is null) return new(false, null, "invalid_color");
+        group.Name = name;
+        group.Color = color;
+        await db.SaveChangesAsync(ct);
+        var summary = (await GetGroupsAsync(group.ProjectId, actorId, ct))!.First(g => g.Id == groupId);
+        return new(true, summary, null);
+    }
+
+    public async Task<MemberResultDto> ReorderGroupsAsync(Guid actorId, Guid projectId, ReorderProjectGroupsRequest req, CancellationToken ct)
+    {
+        if (!await CanManageGroupsAsync(actorId, projectId, ct)) return new(false, "forbidden");
+        var groups = await db.ProjectGroups.Where(g => g.ProjectId == projectId).ToListAsync(ct);
+        if (req.GroupIds is null || req.GroupIds.Count != groups.Count || req.GroupIds.Distinct().Count() != groups.Count ||
+            req.GroupIds.Except(groups.Select(g => g.Id)).Any()) return new(false, "invalid_groups");
+        for (var i = 0; i < req.GroupIds.Count; i++) groups.First(g => g.Id == req.GroupIds[i]).SortOrder = i * 100;
+        await db.SaveChangesAsync(ct);
+        return new(true, null);
+    }
+
+    public async Task<DeleteGroupResultDto> DeleteGroupAsync(Guid actorId, Guid groupId, CancellationToken ct)
+    {
+        var group = await db.ProjectGroups.FirstOrDefaultAsync(g => g.Id == groupId, ct);
+        if (group is null) return new(false, null, "group_not_found");
+        if (!await CanManageGroupsAsync(actorId, group.ProjectId, ct)) return new(false, null, "forbidden");
+        var others = await db.ProjectGroups.Where(g => g.ProjectId == group.ProjectId && g.Id != groupId)
+            .OrderBy(g => g.SortOrder).ThenBy(g => g.Id).ToListAsync(ct);
+        if (others.Count == 0) return new(false, null, "last_group");
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var movedIds = await db.ProjectTasks.Where(t => t.ProjectId == group.ProjectId && t.GroupId == groupId)
+            .Select(t => t.Id).ToListAsync(ct);
+        await db.ProjectTasks.Where(t => t.ProjectId == group.ProjectId && t.GroupId == groupId)
+            .ExecuteUpdateAsync(set => set.SetProperty(t => t.GroupId, others[0].Id), ct);
+        var snapshot = new DeletedProjectGroupDto(group.Id, group.ProjectId, group.Name, group.Color, group.SortOrder, others[0].Id, movedIds);
+        // ExecuteUpdate bypasses tracked entities; clear stale navigations before deleting the group.
+        db.ChangeTracker.Clear();
+        var deleted = await db.ProjectGroups.FirstAsync(g => g.Id == groupId, ct);
+        db.ProjectGroups.Remove(deleted);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return new(true, snapshot, null);
+    }
+
+    public async Task<GroupResultDto> RestoreGroupAsync(Guid actorId, Guid projectId, DeletedProjectGroupDto snapshot, CancellationToken ct)
+    {
+        if (snapshot is null || snapshot.ProjectId != projectId) return new(false, null, "invalid_snapshot");
+        if (!await CanManageGroupsAsync(actorId, projectId, ct)) return new(false, null, "forbidden");
+        var name = snapshot.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 100) return new(false, null, "invalid_name");
+        var color = GroupColor(snapshot.Color);
+        if (color is null) return new(false, null, "invalid_color");
+        var taskIds = (snapshot.TaskIds ?? []).Distinct().ToList();
+        if (taskIds.Count > 5000) return new(false, null, "invalid_snapshot");
+        if (await db.ProjectGroups.AnyAsync(g => g.Id == snapshot.GroupId, ct)) return new(false, null, "group_exists");
+        if (!await db.ProjectGroups.AnyAsync(g => g.Id == snapshot.MovedToGroupId && g.ProjectId == projectId, ct))
+            return new(false, null, "invalid_group");
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        db.ProjectGroups.Add(new ProjectGroup { Id = snapshot.GroupId, ProjectId = projectId, Name = name, Color = color, SortOrder = snapshot.SortOrder });
+        await db.SaveChangesAsync(ct);
+        // Only tasks still sitting in the fallback group go back; anything moved since stays put.
+        await db.ProjectTasks.Where(t => t.ProjectId == projectId && t.GroupId == snapshot.MovedToGroupId && taskIds.Contains(t.Id))
+            .ExecuteUpdateAsync(set => set.SetProperty(t => t.GroupId, snapshot.GroupId), ct);
+        await transaction.CommitAsync(ct);
+        var summary = (await GetGroupsAsync(projectId, actorId, ct))!.First(g => g.Id == snapshot.GroupId);
+        return new(true, summary, null);
+    }
+
+    public async Task<TaskResultDto> MoveTaskToGroupAsync(Guid actorId, Guid taskId, MoveTaskToGroupRequest req, CancellationToken ct)
+    {
+        var task = await db.ProjectTasks.FirstOrDefaultAsync(t => t.Id == taskId, ct);
+        if (task is null) return new(false, null, "task_not_found");
+        if (!await db.ProjectMembers.AnyAsync(m => m.ProjectId == task.ProjectId && m.UserId == actorId, ct))
+            return new(false, null, "forbidden");
+        if (!await db.ProjectGroups.AnyAsync(g => g.Id == req.GroupId && g.ProjectId == task.ProjectId, ct))
+            return new(false, null, "invalid_group");
+        if (task.ParentTaskId is not null) return new(false, null, "move_parent_instead");
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        task.GroupId = req.GroupId;
+        task.UpdatedAt = DateTime.UtcNow;
+        await db.ProjectTasks.Where(t => t.ParentTaskId == taskId)
+            .ExecuteUpdateAsync(set => set.SetProperty(t => t.GroupId, req.GroupId), ct);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return new(true, await MapToTaskDtoAsync(taskId, ct), null);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -318,11 +467,15 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
             if (ownerCount <= 1) return new MemberResultDto(false, "cannot_remove_last_owner");
         }
 
+        // Stage all three changes together; one SaveChanges transaction prevents a
+        // removed member retaining task assignments or access to the linked room.
+        var assignments = await db.ProjectTaskAssignees
+            .Where(a => a.UserId == userId && a.Task.ProjectId == projectId)
+            .ToListAsync(ct);
+        db.ProjectTaskAssignees.RemoveRange(assignments);
         db.ProjectMembers.Remove(member);
-        await db.SaveChangesAsync(ct);
-
-        // ipop-21 PERFECTION: sync chat room membership (remove user from room)
         await RemoveMemberFromProjectRoomAsync(projectId, userId, ct);
+        await db.SaveChangesAsync(ct);
 
         return new MemberResultDto(true, null);
     }
@@ -354,11 +507,19 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         var status = string.IsNullOrWhiteSpace(req.Status) ? "todo" : req.Status.Trim();
         if (!validStatus.Contains(status)) return new TaskResultDto(false, null, "invalid_status");
 
+        Guid? parentGroupId = null;
         if (req.ParentTaskId.HasValue)
         {
-            var parentOk = await db.ProjectTasks.AnyAsync(t => t.Id == req.ParentTaskId.Value && t.ProjectId == req.ProjectId, ct);
-            if (!parentOk) return new TaskResultDto(false, null, "parent_not_found");
+            parentGroupId = await db.ProjectTasks.Where(t => t.Id == req.ParentTaskId.Value && t.ProjectId == req.ProjectId)
+                .Select(t => (Guid?)t.GroupId).FirstOrDefaultAsync(ct);
+            if (parentGroupId is null) return new TaskResultDto(false, null, "parent_not_found");
         }
+        var groupId = req.GroupId ?? parentGroupId ?? await db.ProjectGroups
+            .Where(g => g.ProjectId == req.ProjectId).OrderBy(g => g.SortOrder).Select(g => g.Id).FirstOrDefaultAsync(ct);
+        if (groupId == Guid.Empty || !await db.ProjectGroups.AnyAsync(g => g.Id == groupId && g.ProjectId == req.ProjectId, ct))
+            return new TaskResultDto(false, null, "invalid_group");
+        if (parentGroupId.HasValue && parentGroupId.Value != groupId)
+            return new TaskResultDto(false, null, "invalid_group");
 
         var now = DateTime.UtcNow;
         var maxSort = await db.ProjectTasks
@@ -370,16 +531,16 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         {
             Id = Guid.NewGuid(),
             ProjectId = req.ProjectId,
+            GroupId = groupId,
             ParentTaskId = req.ParentTaskId,
             Title = req.Title.Trim(),
             Description = req.Description?.Trim(),
             Status = status,
             Priority = req.Priority?.Trim(),
-            StartDate = req.StartDate,
-            DueDate = req.DueDate,
+            StartDate = AsUtcDate(req.StartDate),
+            DueDate = AsUtcDate(req.DueDate),
             EstimatedHours = req.EstimatedHours,
             SortOrder = maxSort + 100,
-            Dependencies = req.Dependencies?.Trim(),
             Tags = req.Tags?.Trim(),
             CreatedById = actorId,
             CreatedAt = now,
@@ -387,6 +548,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         };
 
         db.ProjectTasks.Add(task);
+        await AddCreateTimeDependenciesAsync(task, req.Dependencies, ct);
         await db.SaveChangesAsync(ct);
 
         await RecalculateProgressAsync(req.ProjectId, ct);
@@ -437,9 +599,9 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
                 t.Tags,
                 t.CreatedById, t.CreatedBy?.Name ?? "Unknown",
                 assignees, subCount, subDone, t.CreatedAt, t.UpdatedAt,
-                commentCounts.GetValueOrDefault(t.Id), attachmentCounts.GetValueOrDefault(t.Id), reminderTaskIds.Contains(t.Id)));
+                commentCounts.GetValueOrDefault(t.Id), attachmentCounts.GetValueOrDefault(t.Id), reminderTaskIds.Contains(t.Id), t.GroupId));
         }
-        return result;
+        return await WithDependenciesAsync(result, ct);
     }
 
     public async Task<TaskResultDto> UpdateTaskAsync(Guid actorId, Guid taskId, UpdateTaskRequest req, CancellationToken ct)
@@ -452,6 +614,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
 
         // Diskusi Tugas (Fase 2): catat perubahan penting ke riwayat aktivitas.
         var activityRows = new List<ProjectTaskActivity>();
+        Guid? nextRecurringId = null;
         void Track(string action, string? oldVal, string? newVal)
             => activityRows.Add(new ProjectTaskActivity
             {
@@ -472,18 +635,26 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
             if (task.Priority != req.Priority.Trim()) Track("priority_changed", task.Priority, req.Priority.Trim());
             task.Priority = req.Priority.Trim();
         }
-        if (req.StartDate.HasValue) task.StartDate = req.StartDate;
+        if (req.StartDate.HasValue) task.StartDate = AsUtcDate(req.StartDate);
         if (req.DueDate.HasValue)
         {
-            if (task.DueDate != req.DueDate) Track("due_changed", task.DueDate?.ToString("yyyy-MM-dd"), req.DueDate.Value.ToString("yyyy-MM-dd"));
-            task.DueDate = req.DueDate;
+            var due = AsUtcDate(req.DueDate.Value);
+            if (task.DueDate != due) Track("due_changed", task.DueDate?.ToString("yyyy-MM-dd"), due.ToString("yyyy-MM-dd"));
+            task.DueDate = due;
         }
         if (req.EstimatedHours.HasValue) task.EstimatedHours = req.EstimatedHours;
-        if (req.ActualHours.HasValue) task.ActualHours = req.ActualHours;
+        // ActualHours is the sum of time entries (Phase 3); a typed value is ignored.
         if (req.SortOrder.HasValue) task.SortOrder = req.SortOrder.Value;
-        if (req.Dependencies is not null) task.Dependencies = req.Dependencies.Trim();
-        if (req.IsRecurring.HasValue) task.IsRecurring = req.IsRecurring.Value;
-        if (req.RecurrenceRule is not null) task.RecurrenceRule = req.RecurrenceRule.Trim();
+        // Dependencies are rows now (PUT /tasks/{id}/dependencies); the legacy string is ignored.
+        if (req.IsRecurring.HasValue || req.RecurrenceRule is not null)
+        {
+            var wasRecurring = task.IsRecurring;
+            var oldRule = task.RecurrenceRule;
+            if (ApplyRecurrence(task, req.IsRecurring, req.RecurrenceRule) is { } recurrenceError)
+                return new TaskResultDto(false, null, recurrenceError);
+            if (wasRecurring != task.IsRecurring || oldRule != task.RecurrenceRule)
+                Track("recurrence_changed", wasRecurring ? oldRule : null, task.IsRecurring ? task.RecurrenceRule : null);
+        }
         if (req.IsTemplate.HasValue) task.IsTemplate = req.IsTemplate.Value;
         if (req.Tags is not null) task.Tags = req.Tags.Trim();
 
@@ -492,8 +663,13 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
             var valid = new[] { "todo", "doing", "review", "done" };
             if (!valid.Contains(req.Status)) return new TaskResultDto(false, null, "invalid_status");
 
+            if (req.Status == "done" && task.Status != "done"
+                && (await UnmetDependenciesAsync([taskId], ct)).Count > 0)
+                return new TaskResultDto(false, null, "unmet_dependencies");
+
             if (req.Status != task.Status)
             {
+                if (req.Status == "done") nextRecurringId = await QueueNextRecurrenceAsync(task, actorId, ct);
                 Track("status_changed", task.Status, req.Status);
                 var maxSort = await db.ProjectTasks
                     .Where(t => t.ProjectId == task.ProjectId && t.Status == req.Status && t.ParentTaskId == task.ParentTaskId)
@@ -510,22 +686,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         await db.SaveChangesAsync(ct);
         await RecalculateProgressAsync(task.ProjectId, ct);
 
-        return new TaskResultDto(true, await MapToTaskDtoAsync(taskId, ct), null);
-    }
-
-    public async Task<MemberResultDto> DeleteTaskAsync(Guid actorId, Guid taskId, CancellationToken ct)
-    {
-        var task = await db.ProjectTasks.FirstOrDefaultAsync(t => t.Id == taskId, ct);
-        if (task is null) return new MemberResultDto(false, "task_not_found");
-
-        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == task.ProjectId && m.UserId == actorId, ct);
-        if (!isMember) return new MemberResultDto(false, "forbidden");
-
-        db.ProjectTasks.Remove(task);
-        await db.SaveChangesAsync(ct);
-        await RecalculateProgressAsync(task.ProjectId, ct);
-
-        return new MemberResultDto(true, null);
+        return new TaskResultDto(true, (await MapToTaskDtoAsync(taskId, ct))! with { NextRecurringTaskId = nextRecurringId }, null);
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -611,13 +772,13 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
     // Kanban + List + Timeline
     // ──────────────────────────────────────────────────────────────────────────
 
-    public async Task<KanbanBoardDto?> GetKanbanAsync(Guid projectId, Guid userId, CancellationToken ct)
+    public async Task<KanbanBoardDto?> GetKanbanAsync(Guid projectId, Guid userId, CancellationToken ct, Guid? groupId = null)
     {
         if (!await CanViewAsync(projectId, userId, ct)) return null;
 
         var all = await db.ProjectTasks
             .AsNoTracking()
-            .Where(t => t.ProjectId == projectId && t.ParentTaskId == null)
+            .Where(t => t.ProjectId == projectId && t.ParentTaskId == null && (!groupId.HasValue || t.GroupId == groupId.Value))
             .Include(t => t.CreatedBy)
             .Include(t => t.Assignees).ThenInclude(a => a.User)
             .Include(t => t.Subtasks)
@@ -643,15 +804,16 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
                 t.Dependencies, t.IsRecurring, t.RecurrenceRule, t.IsTemplate,
                 t.Tags,
                 t.CreatedById, t.CreatedBy?.Name ?? "Unknown", ass, subCount, subDone, t.CreatedAt, t.UpdatedAt,
-                boardCommentCounts.GetValueOrDefault(t.Id), boardAttachmentCounts.GetValueOrDefault(t.Id), boardReminderTaskIds.Contains(t.Id));
+                boardCommentCounts.GetValueOrDefault(t.Id), boardAttachmentCounts.GetValueOrDefault(t.Id), boardReminderTaskIds.Contains(t.Id), t.GroupId);
         }
 
+        var mapped = await WithDependenciesAsync(all.Select(Map).ToList(), ct);
         return new KanbanBoardDto(
             projectId,
-            all.Where(t => t.Status == "todo").Select(Map).ToList(),
-            all.Where(t => t.Status == "doing").Select(Map).ToList(),
-            all.Where(t => t.Status == "done").Select(Map).ToList(),
-            all.Where(t => t.Status == "review").Select(Map).ToList()
+            mapped.Where(t => t.Status == "todo").ToList(),
+            mapped.Where(t => t.Status == "doing").ToList(),
+            mapped.Where(t => t.Status == "done").ToList(),
+            mapped.Where(t => t.Status == "review").ToList()
         );
     }
 
@@ -676,6 +838,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
             }
         }
 
+        Guid? nextRecurringId = null;
         if (req.Status != task.Status)
         {
             var maxSort = await db.ProjectTasks
@@ -683,6 +846,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
                 .Select(t => (int?)t.SortOrder)
                 .MaxAsync(ct) ?? 0;
             task.SortOrder = req.SortOrder ?? (maxSort + 100);
+            if (req.Status == "done") nextRecurringId = await QueueNextRecurrenceAsync(task, actorId, ct);
             task.Status = req.Status;
         }
         else if (req.SortOrder.HasValue)
@@ -694,16 +858,21 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         await db.SaveChangesAsync(ct);
         await RecalculateProgressAsync(task.ProjectId, ct);
 
-        return new TaskResultDto(true, await MapToTaskDtoAsync(taskId, ct), null);
+        return new TaskResultDto(true, (await MapToTaskDtoAsync(taskId, ct))! with { NextRecurringTaskId = nextRecurringId }, null);
     }
 
-    public async Task<PagedResult<ProjectTaskDto>> GetTaskListAsync(Guid projectId, Guid userId, string? status, int page, int pageSize, CancellationToken ct)
+    public async Task<PagedResult<ProjectTaskDto>> GetTaskListAsync(Guid projectId, Guid userId, string? status, int page, int pageSize, CancellationToken ct, Guid? assigneeId = null, bool unassigned = false, Guid? groupId = null)
     {
         if (!await CanViewAsync(projectId, userId, ct)) return new PagedResult<ProjectTaskDto>([], 0, page, pageSize);
 
         var q = db.ProjectTasks.AsNoTracking().Where(t => t.ProjectId == projectId);
+        if (groupId.HasValue) q = q.Where(t => t.GroupId == groupId.Value);
         if (!string.IsNullOrWhiteSpace(status))
             q = q.Where(t => t.Status == status);
+        if (unassigned)
+            q = q.Where(t => !t.Assignees.Any());
+        else if (assigneeId.HasValue)
+            q = q.Where(t => t.Assignees.Any(a => a.UserId == assigneeId.Value));
 
         var total = await q.CountAsync(ct);
 
@@ -725,13 +894,14 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
                 t.StartDate, t.DueDate, t.EstimatedHours, t.ActualHours, t.SortOrder,
                 t.Dependencies, t.IsRecurring, t.RecurrenceRule, t.IsTemplate,
                 t.Tags,
-                t.CreatedById, t.CreatedBy?.Name ?? "Unknown", ass, subCount, subDone, t.CreatedAt, t.UpdatedAt);
+                t.CreatedById, t.CreatedBy?.Name ?? "Unknown", ass, subCount, subDone, t.CreatedAt, t.UpdatedAt,
+                GroupId: t.GroupId);
         }).ToList();
 
-        return new PagedResult<ProjectTaskDto>(dtos, total, page, pageSize);
+        return new PagedResult<ProjectTaskDto>(await WithDependenciesAsync(dtos, ct), total, page, pageSize);
     }
 
-    public async Task<ProjectTimelineDto?> GetTimelineAsync(Guid projectId, Guid userId, CancellationToken ct)
+    public async Task<ProjectTimelineDto?> GetTimelineAsync(Guid projectId, Guid userId, CancellationToken ct, Guid? groupId = null)
     {
         if (!await CanViewAsync(projectId, userId, ct)) return null;
 
@@ -740,19 +910,24 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
 
         var tasks = await db.ProjectTasks
             .AsNoTracking()
-            .Where(t => t.ProjectId == projectId)
+            .Where(t => t.ProjectId == projectId && (!groupId.HasValue || t.GroupId == groupId.Value))
             .Include(t => t.Assignees)
             .Include(t => t.Subtasks)
             .OrderBy(t => t.StartDate).ThenBy(t => t.DueDate).ThenBy(t => t.SortOrder)
             .ToListAsync(ct);
 
-        var dtos = tasks.Select(t => new TimelineTaskDto(
-            t.Id, t.Title, t.ParentTaskId, t.Status, t.Priority,
-            t.StartDate, t.DueDate, t.EstimatedHours, t.ActualHours,
-            t.Assignees.Select(a => a.UserId).ToList(),
-            t.Subtasks.Count, t.Subtasks.Count(s => s.Status == "done"),
-            t.Tags
-        )).ToList();
+        var timelineRefs = await DependencyRefsAsync(tasks.Select(t => t.Id).ToList(), ct);
+        var dtos = tasks.Select(t =>
+        {
+            var deps = timelineRefs.GetValueOrDefault(t.Id) ?? [];
+            return new TimelineTaskDto(
+                t.Id, t.Title, t.ParentTaskId, t.Status, t.Priority,
+                t.StartDate, t.DueDate, t.EstimatedHours, t.ActualHours,
+                t.Assignees.Select(a => a.UserId).ToList(),
+                t.Subtasks.Count, t.Subtasks.Count(s => s.Status == "done"),
+                t.Tags, t.GroupId,
+                deps.Select(d => d.Id).ToList(), t.Status != "done" && deps.Any(d => d.Status != "done"));
+        }).ToList();
 
         return new ProjectTimelineDto(project.Id, project.Name, project.StartDate, project.Deadline, dtos);
     }
@@ -761,20 +936,20 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
     // DETAIL MAX: Workload, Export, Recurring Preview, Dependency Validation
     // ──────────────────────────────────────────────────────────────────────────
 
-    public async Task<ProjectWorkloadDto?> GetProjectWorkloadAsync(Guid projectId, Guid userId, CancellationToken ct)
+    public async Task<ProjectWorkloadDto?> GetProjectWorkloadAsync(Guid projectId, Guid userId, CancellationToken ct, DateTime? localToday = null, Guid? groupId = null)
     {
         if (!await CanViewAsync(projectId, userId, ct)) return null;
 
+        var cutoff = (localToday ?? DateTime.Today).Date;
+        var members = await db.ProjectMembers.AsNoTracking()
+            .Where(m => m.ProjectId == projectId)
+            .Select(m => new { m.UserId, m.User.Name, m.User.Position })
+            .ToListAsync(ct);
         var tasks = await db.ProjectTasks
             .AsNoTracking()
-            .Where(t => t.ProjectId == projectId)
-            .Include(t => t.Assignees).ThenInclude(a => a.User)
+            .Where(t => t.ProjectId == projectId && (!groupId.HasValue || t.GroupId == groupId.Value))
+            .Include(t => t.Assignees)
             .ToListAsync(ct);
-
-        if (tasks.Count == 0)
-        {
-            return new ProjectWorkloadDto(0, 0, 0, 0, 0, 0, 0, 0, []);
-        }
 
         int todo = tasks.Count(t => t.Status == "todo");
         int doing = tasks.Count(t => t.Status == "doing");
@@ -787,12 +962,21 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         decimal reviewEst = tasks.Where(t => t.Status == "review").Sum(t => t.EstimatedHours ?? 0);
         decimal doneEst = tasks.Where(t => t.Status == "done").Sum(t => t.EstimatedHours ?? 0);
 
-        var byAssignee = tasks
-            .SelectMany(t => t.Assignees.Select(a => new { a.UserId, a.User.Name, t.EstimatedHours }))
-            .GroupBy(x => new { x.UserId, x.Name })
-            .Select(g => new AssigneeWorkloadDto(g.Key.UserId, g.Key.Name, g.Count(), g.Sum(x => x.EstimatedHours ?? 0)))
-            .OrderByDescending(x => x.EstimatedHours)
-            .ToList();
+        AssigneeWorkloadDto Summarize(Guid id, string name, string? position, IEnumerable<ProjectTask> assigned, bool isUnassigned = false)
+        {
+            var rows = assigned.ToList();
+            return new AssigneeWorkloadDto(id, name, rows.Count, rows.Sum(t => t.EstimatedHours ?? 0),
+                position, rows.Count(t => t.Status == "todo"), rows.Count(t => t.Status == "doing"),
+                rows.Count(t => t.Status == "review"), rows.Count(t => t.Status == "done"),
+                rows.Count(t => t.Status != "done" && t.DueDate.HasValue && t.DueDate.Value.Date < cutoff), isUnassigned);
+        }
+
+        var byAssignee = members.Select(m => Summarize(m.UserId, m.Name, m.Position,
+                tasks.Where(t => t.Assignees.Any(a => a.UserId == m.UserId))))
+            .OrderByDescending(x => x.EstimatedHours).ThenBy(x => x.Name).ToList();
+        var unassigned = tasks.Where(t => !t.Assignees.Any()).ToList();
+        if (unassigned.Count > 0)
+            byAssignee.Add(Summarize(Guid.Empty, "Unassigned", null, unassigned, true));
 
         return new ProjectWorkloadDto(
             tasks.Count, todo, doing, done,
@@ -827,8 +1011,9 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
                 t.Dependencies, t.IsRecurring, t.RecurrenceRule, t.IsTemplate,
                 t.Tags,
                 t.CreatedById, t.CreatedBy?.Name ?? "Unknown",
-                ass, subCount, subDone, t.CreatedAt, t.UpdatedAt);
+                ass, subCount, subDone, t.CreatedAt, t.UpdatedAt, GroupId: t.GroupId);
         }).ToList();
+        taskDtos = await WithDependenciesAsync(taskDtos, ct);
 
         var members = await GetMembersAsync(projectId, ct);
 
@@ -858,9 +1043,10 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
             return new RecurringPreviewDto(task.Id, task.Title, baseDue, upcoming);
         }
 
-        // Very small stub parser for common patterns like "FREQ=WEEKLY;INTERVAL=1" or "FREQ=MONTHLY"
-        var rule = task.RecurrenceRule!.Trim().ToUpperInvariant();
         var baseDate = task.DueDate?.Date ?? task.StartDate?.Date ?? DateTime.UtcNow.Date;
+        if (TaskRecurrence.Parse(task.RecurrenceRule) is { } parsedRule)
+            return new RecurringPreviewDto(task.Id, task.Title, task.DueDate, parsedRule.Upcoming(baseDate, Math.Max(1, Math.Min(count, 104))));
+        var rule = task.RecurrenceRule!.Trim().ToUpperInvariant();
 
         var upcomingDates = new List<DateTime>();
         int n = Math.Max(1, Math.Min(count, 104));
@@ -991,35 +1177,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == task.ProjectId && m.UserId == userId, ct);
         if (!isMember) return (false, []);
 
-        if (string.IsNullOrWhiteSpace(task.Dependencies))
-            return (true, []);
-
-        // Parse comma-separated GUIDs (tolerant of spaces)
-        var ids = task.Dependencies!
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(s => Guid.TryParse(s, out var g) ? g : (Guid?)null)
-            .Where(g => g.HasValue)
-            .Select(g => g!.Value)
-            .Distinct()
-            .ToList();
-
-        if (ids.Count == 0) return (true, []);
-
-        var depTasks = await db.ProjectTasks
-            .AsNoTracking()
-            .Where(t => ids.Contains(t.Id))
-            .ToListAsync(ct);
-
-        var unmet = depTasks
-            .Where(t => t.Status != "done")
-            .Select(t => t.Id)
-            .ToList();
-
-        // Also surface any dependency IDs that don't exist (treated as unmet)
-        var found = depTasks.Select(t => t.Id).ToHashSet();
-        var missing = ids.Where(id => !found.Contains(id)).ToList();
-        unmet.AddRange(missing);
-
+        var unmet = (await UnmetDependenciesAsync([taskId], ct)).GetValueOrDefault(taskId) ?? [];
         return (unmet.Count == 0, unmet);
     }
 
@@ -1077,7 +1235,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
             p.Owner?.Name ?? "Unknown", p.Owner?.Nik ?? "Unknown",
             p.StartDate, p.Deadline, p.Status, p.Progress, p.Risk, p.Obstacle, p.IsActive,
             p.Members.Count, p.Tasks.Count, todo, doing, review, done,
-            p.CreatedAt, p.UpdatedAt);
+            p.CreatedAt, p.UpdatedAt, p.Color);
     }
 
     private async Task<ProjectTaskDto?> MapToTaskDtoAsync(Guid taskId, CancellationToken ct)
@@ -1099,6 +1257,8 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         var attachmentCount = await db.ProjectTaskAttachments.CountAsync(a => a.TaskId == taskId && !a.IsDeleted, ct);
         var hasReminder = await db.ProjectTaskReminders.AnyAsync(r => r.TaskId == taskId && r.SentAt == null, ct);
 
+        var deps = (await DependencyRefsAsync([taskId], ct)).GetValueOrDefault(taskId) ?? [];
+
         return new ProjectTaskDto(
             t.Id, t.ProjectId, t.ParentTaskId, t.Title, t.Description, t.Status, t.Priority,
             t.StartDate, t.DueDate, t.EstimatedHours, t.ActualHours, t.SortOrder,
@@ -1106,7 +1266,8 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
             t.Tags,
             t.CreatedById, t.CreatedBy?.Name ?? "Unknown",
             ass, subCount, subDone, t.CreatedAt, t.UpdatedAt,
-            commentCount, attachmentCount, hasReminder);
+            commentCount, attachmentCount, hasReminder, t.GroupId,
+            deps, t.Status != "done" && deps.Any(d => d.Status != "done"));
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -1183,7 +1344,6 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         if (link is null) return;
 
         link.LeftAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
     }
 
     public async Task<ProjectChatRoomDto?> GetProjectChatRoomAsync(Guid projectId, Guid userId, CancellationToken ct)
@@ -1255,7 +1415,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
     // ipop-21 PERFECTION: Gantt date-mapping + critical path
     // ──────────────────────────────────────────────────────────────────────────
 
-    public async Task<ProjectGanttDto?> GetGanttAsync(Guid projectId, Guid userId, CancellationToken ct)
+    public async Task<ProjectGanttDto?> GetGanttAsync(Guid projectId, Guid userId, CancellationToken ct, Guid? groupId = null)
     {
         if (!await CanViewAsync(projectId, userId, ct)) return null;
 
@@ -1264,7 +1424,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
 
         var tasks = await db.ProjectTasks
             .AsNoTracking()
-            .Where(t => t.ProjectId == projectId)
+            .Where(t => t.ProjectId == projectId && (!groupId.HasValue || t.GroupId == groupId.Value))
             .Include(t => t.Assignees)
             .Include(t => t.Subtasks)
             .ToListAsync(ct);
@@ -1289,7 +1449,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
                 t.StartDate, t.DueDate, t.EstimatedHours, t.ActualHours,
                 t.Assignees.Select(a => a.UserId).ToList(),
                 t.Subtasks.Count, t.Subtasks.Count(s => s.Status == "done"), t.Tags,
-                null, null, false)).ToList();
+                null, null, false, [])).ToList();
             return new ProjectGanttDto(project.Id, project.Name, null, null, 0, undated, []);
         }
 
@@ -1307,7 +1467,8 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         }
 
         // Critical path via dependency graph (forward + backward pass)
-        var critical = ComputeCriticalPath(tasks, dayIndexes);
+        var ganttEdges = await ProjectDependencyEdgesAsync(projectId, ct);
+        var critical = ComputeCriticalPath(tasks, dayIndexes, ganttEdges);
 
         var ganttTasks = tasks.Select(t =>
         {
@@ -1319,7 +1480,8 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
                 t.Subtasks.Count, t.Subtasks.Count(s => s.Status == "done"), t.Tags,
                 hasPos ? pos.Start : (int?)null,
                 hasPos ? pos.Duration : (int?)null,
-                critical.Contains(t.Id));
+                critical.Contains(t.Id),
+                ganttEdges.GetValueOrDefault(t.Id) ?? []);
         }).ToList();
 
         return new ProjectGanttDto(project.Id, project.Name, windowStart, windowEnd, totalDays, ganttTasks, critical);
@@ -1329,15 +1491,17 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
     /// Returns the set of task IDs on the critical path (zero slack), ordered by earliest start.
     private static IReadOnlyList<Guid> ComputeCriticalPath(
         IReadOnlyList<ProjectTask> tasks,
-        IReadOnlyDictionary<Guid, (int Start, int Duration)> dayIndexes)
+        IReadOnlyDictionary<Guid, (int Start, int Duration)> dayIndexes,
+        IReadOnlyDictionary<Guid, List<Guid>> dependsOn)
     {
         var ids = tasks.Select(t => t.Id).ToHashSet();
+        IEnumerable<Guid> Deps(Guid id) => dependsOn.TryGetValue(id, out var d) ? d : [];
 
-        // predecessor -> successor edges from Dependencies ("GUID,GUID")
+        // predecessor -> successor edges from the dependency rows
         var successors = new Dictionary<Guid, List<Guid>>();
         foreach (var t in tasks)
         {
-            foreach (var dep in ParseDependencyIds(t.Dependencies))
+            foreach (var dep in Deps(t.Id))
             {
                 if (!ids.Contains(dep)) continue; // dangling dependency: ignore for CP
                 if (!successors.TryGetValue(dep, out var list)) successors[dep] = list = [];
@@ -1354,7 +1518,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         // Kahn topological order
         var indegree = tasks.ToDictionary(t => t.Id, _ => 0);
         foreach (var t in tasks)
-            foreach (var dep in ParseDependencyIds(t.Dependencies))
+            foreach (var dep in Deps(t.Id))
                 if (ids.Contains(dep)) indegree[t.Id]++;
 
         var queue = new Queue<Guid>(indegree.Where(kv => kv.Value == 0).Select(kv => kv.Key));
@@ -1417,8 +1581,8 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
     {
         if (!await CanViewAsync(projectId, userId, ct)) return null;
 
-        from = from.Date;
-        to = to.Date;
+        from = AsUtcDate(from.Date);
+        to = AsUtcDate(to.Date);
         if (to < from) (from, to) = (to, from);
         if ((to - from).TotalDays > 366) to = from.AddDays(366);
 
@@ -1472,7 +1636,7 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
         var validKinds = new[] { "workday", "holiday", "offday" };
         if (!validKinds.Contains(req.Kind)) return new MemberResultDto(false, "invalid_kind");
 
-        var date = req.Date.Date;
+        var date = AsUtcDate(req.Date.Date);
         var now = DateTime.UtcNow;
         var existing = await db.WorkCalendarEntries.FirstOrDefaultAsync(e => e.ProjectId == projectId && e.Date == date, ct);
 
@@ -1509,7 +1673,8 @@ public sealed class ProjectService(IPopDbContext db, INotificationGatewayService
             .AnyAsync(m => m.ProjectId == projectId && m.UserId == actorId && (m.Role == "owner" || m.Role == "manager"), ct);
         if (!isOwnerOrManager) return new MemberResultDto(false, "forbidden");
 
-        var entry = await db.WorkCalendarEntries.FirstOrDefaultAsync(e => e.ProjectId == projectId && e.Date == date.Date, ct);
+        var day = AsUtcDate(date.Date);
+        var entry = await db.WorkCalendarEntries.FirstOrDefaultAsync(e => e.ProjectId == projectId && e.Date == day, ct);
         if (entry is null) return new MemberResultDto(true, null); // idempotent
 
         db.WorkCalendarEntries.Remove(entry);

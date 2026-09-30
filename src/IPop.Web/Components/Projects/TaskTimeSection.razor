@@ -1,0 +1,290 @@
+@using System.Net.Http.Json
+@using IPop.Application.Projects
+@implements IDisposable
+@inject IPop.Web.Services.AuthState Auth
+@inject IPop.Web.Services.TimerState Timer
+@inject IPop.Web.Services.ToastService Toasts
+@inject IPop.Web.Services.ConfirmService Confirm
+
+@* Phase 3: the task's timer, logged time and entries. Actual hours = the sum of these entries. *@
+<section class="td-section td-time" aria-label="Waktu">
+    <div class="td-section-head">
+        <span class="td-section-title">WAKTU</span>
+        <span class="td-time-total" title="Total waktu tercatat">@ProjectTimeFormat.Minutes(data?.TotalMinutes ?? 0)@(Estimated is > 0 ? $" / {Estimated:0.#}j estimasi" : "")</span>
+    </div>
+
+    @if (data is null)
+    {
+        <div class="td-hint">@(loadError ?? "Memuat…")</div>
+    }
+    else
+    {
+        <div class="td-time-actions">
+            @if (data.CanTrack)
+            {
+                var running = Timer.IsRunning(TaskId);
+                <button type="button" class="td-timer-btn @(running ? "running" : "")" disabled="@busy"
+                        aria-pressed="@(running ? "true" : "false")" @onclick="ToggleTimer">
+                    <i data-lucide="@(running ? "pause" : "play")"></i>
+                    @if (running && Timer.Running is { } run)
+                    {
+                        <span>Jeda · <span class="td-timer-clock">@ProjectTimeFormat.Elapsed(DateTime.UtcNow - run.StartedAt)</span></span>
+                    }
+                    else
+                    {
+                        <span>Mulai timer</span>
+                    }
+                </button>
+                <button type="button" class="td-time-add-toggle" aria-expanded="@(addOpen ? "true" : "false")" @onclick="ToggleAdd">
+                    <i data-lucide="plus"></i>Tambah waktu manual
+                </button>
+            }
+            else
+            {
+                <span class="td-hint">Hanya anggota project (bukan viewer) yang bisa mencatat waktu.</span>
+            }
+        </div>
+
+        @if (addOpen)
+        {
+            <form class="td-time-form" @onsubmit="SubmitManual" @onsubmit:preventDefault>
+                <label class="td-time-dur">Durasi
+                    <span><input type="number" min="0" max="24" inputmode="numeric" aria-label="Jam" @bind="formHours" />j</span>
+                    <span><input type="number" min="0" max="59" inputmode="numeric" aria-label="Menit" @bind="formMinutes" />m</span>
+                </label>
+                <label>Tanggal<input type="date" @bind="formDate" max="@DateTime.Now.ToString("yyyy-MM-dd")" /></label>
+                <label class="td-time-note">Catatan<input type="text" maxlength="200" placeholder="Opsional" @bind="formNote" /></label>
+                @if (formError is not null) { <div class="td-time-error" role="alert">@formError</div> }
+                <div class="td-time-form-foot">
+                    <button type="button" @onclick="CloseForm">Batal</button>
+                    <button type="submit" class="primary" disabled="@busy">@(editingId is null ? "Tambah" : "Simpan")</button>
+                </div>
+            </form>
+        }
+
+        @if (data.Entries.Count > 0)
+        {
+            <ul class="td-time-list">
+                @foreach (var e in data.Entries)
+                {
+                    var entry = e;
+                    <li class="td-time-entry @(entry.EndedAt is null ? "running" : "") @(entry.AutoStopped ? "auto" : "")">
+                        <span class="td-time-avatar" style="background:@ProjectUiHelpers.GetAvatarBg(entry.UserName)" title="@entry.UserName">@ProjectUiHelpers.GetInitials(entry.UserName)</span>
+                        <div class="td-time-main">
+                            <div class="td-time-line">
+                                <strong>@(entry.EndedAt is null ? "Berjalan" : ProjectTimeFormat.Minutes(entry.Minutes))</strong>
+                                <span class="td-time-meta">@entry.UserName · @entry.StartedAt.ToLocalTime().ToString("d MMM, HH:mm")@SourceLabel(entry.Source)</span>
+                            </div>
+                            @if (!string.IsNullOrEmpty(entry.Note)) { <div class="td-time-notetext">@entry.Note</div> }
+                            @if (entry.AutoStopped)
+                            {
+                                <div class="td-time-warn"><i data-lucide="alert-triangle"></i>Dihentikan otomatis di 10 jam — koreksi durasinya.</div>
+                            }
+                        </div>
+                        @if (entry.CanEdit)
+                        {
+                            <div class="td-time-tools">
+                                @if (entry.EndedAt is not null)
+                                {
+                                    <button type="button" title="Ubah" aria-label="Ubah entri" @onclick="() => StartEdit(entry)"><i data-lucide="pencil"></i></button>
+                                }
+                                <button type="button" title="Hapus" aria-label="Hapus entri" @onclick="() => DeleteEntry(entry)"><i data-lucide="trash-2"></i></button>
+                            </div>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+        else if (!addOpen)
+        {
+            <div class="td-hint">Belum ada waktu tercatat.</div>
+        }
+    }
+</section>
+
+@code {
+    [Parameter] public Guid TaskId { get; set; }
+    [Parameter] public decimal? Estimated { get; set; }
+    /// Changes whenever the parent receives a fresh task (live refresh) so the entries reload.
+    [Parameter] public object? Version { get; set; }
+
+    private TaskTimeDto? data;
+    private string? loadError;
+    private Guid loadedFor;
+    private object? loadedVersion;
+    private bool busy;
+    private bool addOpen;
+    private Guid? editingId;
+    private int? formHours;
+    private int? formMinutes;
+    private DateTime? formDate;
+    private string? formNote;
+    private string? formError;
+    private System.Threading.Timer? tick;
+    private Guid? lastRunning;
+
+    protected override void OnInitialized()
+    {
+        Timer.Changed += OnTimerChanged;
+        lastRunning = Timer.Running?.EntryId;
+        tick = new System.Threading.Timer(_ => { if (Timer.IsRunning(TaskId)) _ = InvokeAsync(StateHasChanged); },
+            null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (TaskId == loadedFor && ReferenceEquals(Version, loadedVersion)) return;
+        if (TaskId != loadedFor) { data = null; CloseForm(); }
+        loadedFor = TaskId;
+        loadedVersion = Version;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var id = TaskId;
+        try
+        {
+            var fresh = await Auth.GetAsync<TaskTimeDto>($"/api/projects/tasks/{id}/time");
+            if (id != TaskId) return;
+            data = fresh;
+            loadError = fresh is null ? "Waktu tidak bisa dimuat." : null;
+        }
+        catch { loadError = "Waktu tidak bisa dimuat."; }
+    }
+
+    // Timer started/stopped elsewhere (topbar, List row, another tab): the entry list changed.
+    private void OnTimerChanged()
+    {
+        var now = Timer.Running?.EntryId;
+        if (now == lastRunning) { _ = InvokeAsync(StateHasChanged); return; }
+        lastRunning = now;
+        _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+    }
+
+    private async Task ToggleTimer()
+    {
+        busy = true;
+        try
+        {
+            var err = Timer.IsRunning(TaskId) ? await Timer.StopTimerAsync() : await Timer.StartTimerAsync(TaskId);
+            if (err is not null) Toasts.Show(ErrorText(err), IPop.Web.Services.ToastKind.Error);
+            lastRunning = Timer.Running?.EntryId;
+            await LoadAsync();
+        }
+        finally { busy = false; }
+    }
+
+    private void ToggleAdd()
+    {
+        if (addOpen && editingId is null) { CloseForm(); return; }
+        editingId = null;
+        formHours = null; formMinutes = null; formNote = null; formError = null;
+        formDate = DateTime.Today;
+        addOpen = true;
+    }
+
+    private void StartEdit(TimeEntryDto e)
+    {
+        editingId = e.Id;
+        formHours = e.Minutes / 60;
+        formMinutes = e.Minutes % 60;
+        formDate = e.StartedAt.ToLocalTime().Date;
+        formNote = e.Note;
+        formError = null;
+        addOpen = true;
+    }
+
+    private void CloseForm()
+    {
+        addOpen = false;
+        editingId = null;
+        formError = null;
+    }
+
+    private async Task SubmitManual()
+    {
+        var minutes = ProjectTimeFormat.ToMinutes(formHours, formMinutes);
+        if (minutes is null) { formError = "Durasi 1 menit sampai 24 jam (menit 0–59)."; return; }
+        if (formDate is null) { formError = "Pilih tanggal."; return; }
+        if (formDate.Value.Date > DateTime.Today) { formError = "Tanggal tidak boleh di masa depan."; return; }
+
+        busy = true;
+        formError = null;
+        try
+        {
+            HttpResponseMessage res;
+            if (editingId is { } id)
+            {
+                var original = data?.Entries.FirstOrDefault(x => x.Id == id);
+                // Keep the time of day when only the date changes; a new date starts at 09:00 local.
+                var startLocal = original is not null && original.StartedAt.ToLocalTime().Date == formDate.Value.Date
+                    ? original.StartedAt
+                    : DateTime.SpecifyKind(formDate.Value.Date.AddHours(9), DateTimeKind.Local).ToUniversalTime();
+                res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/time/{id}",
+                    new UpdateTimeEntryRequest(minutes, startLocal, formNote ?? ""));
+            }
+            else
+            {
+                var day = formDate.Value.Date;
+                // Today: end the block now; a past day: 09:00 local.
+                var start = day == DateTime.Today
+                    ? DateTime.Now.AddMinutes(-minutes.Value)
+                    : day.AddHours(9);
+                if (start.Date != day) start = day;
+                res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{TaskId}/time",
+                    new AddTimeEntryRequest(minutes.Value, DateTime.SpecifyKind(start, DateTimeKind.Local).ToUniversalTime(), formNote));
+            }
+            if (!res.IsSuccessStatusCode) { formError = ErrorText(await CodeAsync(res)); return; }
+            Toasts.Show(editingId is null ? "Waktu ditambahkan." : "Entri diperbarui.", IPop.Web.Services.ToastKind.Success);
+            CloseForm();
+            await LoadAsync();
+        }
+        finally { busy = false; }
+    }
+
+    private async Task DeleteEntry(TimeEntryDto e)
+    {
+        var ok = await Confirm.AskAsync("Hapus entri waktu?", $"{ProjectTimeFormat.Minutes(e.Minutes)} oleh {e.UserName} akan dihapus dari total.", "Hapus", danger: true);
+        if (!ok) return;
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/time/{e.Id}");
+        if (!res.IsSuccessStatusCode) { Toasts.Show(ErrorText(await CodeAsync(res)), IPop.Web.Services.ToastKind.Error); return; }
+        if (e.EndedAt is null) await Timer.RefreshAsync();
+        await LoadAsync();
+    }
+
+    private static string SourceLabel(string source) => source switch
+    {
+        "manual" => " · manual",
+        "legacy" => " · data lama",
+        _ => "",
+    };
+
+    private static async Task<string> CodeAsync(HttpResponseMessage res)
+    {
+        try
+        {
+            var body = await res.Content.ReadFromJsonAsync<Dictionary<string, object?>>();
+            return body?.GetValueOrDefault("code")?.ToString() ?? $"http_{(int)res.StatusCode}";
+        }
+        catch { return $"http_{(int)res.StatusCode}"; }
+    }
+
+    private static string ErrorText(string code) => code switch
+    {
+        "forbidden" => "Anda tidak punya akses untuk ini.",
+        "invalid_minutes" => "Durasi 1 menit sampai 24 jam.",
+        "invalid_date" => "Tanggal tidak boleh di masa depan.",
+        "invalid_note" => "Catatan maksimal 200 karakter.",
+        "timer_running" => "Hentikan timer dulu sebelum mengubah durasinya.",
+        "timer_conflict" => "Timer baru saja dimulai di tab lain. Coba lagi.",
+        "task_not_found" or "entry_not_found" => "Data sudah tidak ada.",
+        _ => "Gagal menyimpan waktu.",
+    };
+
+    public void Dispose()
+    {
+        Timer.Changed -= OnTimerChanged;
+        tick?.Dispose();
+    }
+}

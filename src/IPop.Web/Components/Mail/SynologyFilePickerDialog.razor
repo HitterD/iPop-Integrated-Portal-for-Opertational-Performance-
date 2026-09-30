@@ -274,7 +274,7 @@
                 }
             }
 
-            var uploaded = await MailSvc.UploadAsync(content);
+            var (uploaded, error) = await MailSvc.UploadWithErrorAsync(content);
             if (uploaded != null && uploaded.Length > 0)
             {
                 await OnFilesSelected.InvokeAsync(uploaded.ToList());
@@ -283,12 +283,12 @@
             }
             else
             {
-                Toasts.Show("Could not attach selected files.");
+                Toasts.Show(error is null ? "Could not attach selected files." : $"Could not attach selected files: {error}", ToastKind.Error);
             }
         }
         catch (Exception ex)
         {
-            Toasts.Show(ex.Message);
+            Toasts.Show(ex.Message, ToastKind.Error);
         }
         finally
         {

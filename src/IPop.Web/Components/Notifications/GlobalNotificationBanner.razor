@@ -67,7 +67,9 @@
     private async Task HandleClick(ShellNotificationBanner banner)
     {
         var targetUrl = NotificationState.GetRedirectUrl(banner.Item);
-        await Notifs.MarkReadAsync(banner.Id);
+        // Chat cards are client-only (no inbox row to mark read); opening the room clears them.
+        if (NotificationState.IsLocalOnly(banner.Item)) Notifs.DismissBanner(banner.Id);
+        else await Notifs.MarkReadAsync(banner.Id);
         Nav.NavigateTo(targetUrl);
     }
 

@@ -38,11 +38,11 @@ public static class DirectoryEndpoints
                 : Results.Ok(new DirectoryEmployee(me.Nik, me.Name, me.Position, me.Department?.Name,
                     me.Department?.Code, me.Site?.Name, me.Site?.Code, null, me.Email, me.Extension,
                     me.Location, PresenceStatus.ComputeStatus(me.PresenceLastSeenAt,
-                        me.PresenceManualStatus, DateTime.UtcNow),
+                        me.PresenceManualStatus, DateTime.UtcNow, me.PresenceIsIdle),
                     me.UserRoles.Select(ur => ur.Role.Name).ToArray(), me.PhotoPath));
         }).RequireAuthorization();
 
-        // ── Kontak favorit (Kontak Prioritas) — privat per pengguna ──
+        // ── Kontak favorit — privat per pengguna ──
 
         // GET /api/directory/favorites → daftar NIK favorit milik pengguna
         app.MapGet("/api/directory/favorites", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
@@ -97,70 +97,6 @@ public static class DirectoryEndpoints
             return Results.Ok(new { nik = contactNik, favorite = false });
         }).RequireAuthorization().RequirePermission("directory.read");
 
-        // GET /api/directory/frequent — sering dihubungi: gabungan lawan bicara DM
-        // terbaru dan koresponden surat, diskor per keterbaruan lalu diambil top-N.
-        app.MapGet("/api/directory/frequent", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
-        {
-            var nik = http.User.FindFirst("nik")?.Value;
-            if (string.IsNullOrEmpty(nik)) return Results.Unauthorized();
-            var me = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Nik == nik, ct);
-            if (me is null) return Results.Unauthorized();
-
-            // Chat: pihak lain di ruang DM, berbobot waktu pesan terakhir ruang.
-            var chatRows = await db.ChatRoomMembers.AsNoTracking()
-                .Where(m => m.UserId == me.Id && m.LeftAt == null && m.Room.Type == "dm")
-                .Select(m => new { m.RoomId, m.Room.LastMessageAt })
-                .ToListAsync(ct);
-            var chatRoomIds = chatRows.Select(r => r.RoomId).ToList();
-            var others = await db.ChatRoomMembers.AsNoTracking()
-                .Where(m => chatRoomIds.Contains(m.RoomId) && m.UserId != me.Id && m.LeftAt == null)
-                .Select(m => new { m.RoomId, Nik = m.User.Nik })
-                .ToListAsync(ct);
-            var otherByRoom = others.GroupBy(o => o.RoomId).ToDictionary(g => g.Key, g => g.First().Nik);
-
-            // Surat: lawan korespondensi (pengirim saat saya penerima; penerima saat saya pengirim).
-            var mailNiks = await db.MailRecipients.AsNoTracking()
-                .Where(r => r.UserId == me.Id || r.Mail.SenderId == me.Id)
-                .Select(r => r.UserId == me.Id ? r.Mail.Sender.Nik : r.User.Nik)
-                .Where(n => n != nik)
-                .ToListAsync(ct);
-
-            var score = new Dictionary<string, (double Score, DateTime Last)>(StringComparer.OrdinalIgnoreCase);
-            foreach (var r in chatRows.OrderByDescending(r => r.LastMessageAt))
-            {
-                if (!otherByRoom.TryGetValue(r.RoomId, out var otherNik)) continue;
-                var s = score.TryGetValue(otherNik, out var cur) ? cur : (0, DateTime.MinValue);
-                var ageHours = Math.Max(0, (DateTime.UtcNow - r.LastMessageAt).TotalHours);
-                s.Score += 3.0 / (1 + ageHours / 24); // chat berbobot 3, meluruh per hari
-                if (r.LastMessageAt > s.Last) s.Last = r.LastMessageAt;
-                score[otherNik] = s;
-            }
-            foreach (var mn in mailNiks)
-            {
-                var s = score.TryGetValue(mn, out var cur) ? cur : (0, DateTime.MinValue);
-                s.Score += 1.0; // surat berbobot 1 per korespondensi
-                score[mn] = s;
-            }
-
-            var top = score.OrderByDescending(kv => kv.Value.Score)
-                           .ThenByDescending(kv => kv.Value.Last)
-                           .Take(10).Select(kv => kv.Key).ToList();
-            if (top.Count == 0) return Results.Ok(Array.Empty<object>());
-
-            var now = DateTime.UtcNow;
-            var people = await db.Users.AsNoTracking()
-                .Where(u => top.Contains(u.Nik) && u.IsActive)
-                .Select(u => new DirectoryEmployee(
-                    u.Nik, u.Name, u.Position, u.Department!.Name, u.Department!.Code,
-                    u.Site!.Name, u.Site!.Code, null, u.Email, u.Extension, u.Location,
-                    PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now),
-                    null, u.PhotoPath))
-                .ToListAsync(ct);
-            // Pertahankan urutan skor, bukan urutan hasil query.
-            var ordered = top.Select(n => people.FirstOrDefault(p => p.Nik == n)).Where(p => p is not null).ToArray();
-            return Results.Ok(ordered);
-        }).RequireAuthorization().RequirePermission("directory.read");
-
         // GET /api/directory/employees/{nik}/relations — relasi organisasi satu pegawai:
         // atasan langsung + bawahan langsung (ManagerNik tersinkron dari HRIS).
         app.MapGet("/api/directory/employees/{nik}/relations", async (string nik, HttpContext http, IPopDbContext db, CancellationToken ct) =>
@@ -179,7 +115,7 @@ public static class DirectoryEndpoints
                 if (m is not null)
                     manager = new DirectoryEmployee(m.Nik, m.Name, m.Position, m.Department?.Name, m.Department?.Code,
                         m.Site?.Name, m.Site?.Code, null, m.Email, m.Extension, m.Location,
-                        PresenceStatus.ComputeStatus(m.PresenceLastSeenAt, m.PresenceManualStatus, DateTime.UtcNow), null, m.PhotoPath);
+                        PresenceStatus.ComputeStatus(m.PresenceLastSeenAt, m.PresenceManualStatus, DateTime.UtcNow, m.PresenceIsIdle), null, m.PhotoPath);
             }
 
             var reports = await db.Users.Include(x => x.Department).Include(x => x.Site)
@@ -187,7 +123,7 @@ public static class DirectoryEndpoints
                 .OrderBy(x => x.Name)
                 .Select(x => new DirectoryEmployee(x.Nik, x.Name, x.Position, x.Department!.Name, x.Department.Code,
                     x.Site!.Name, x.Site.Code, u.Name, x.Email, x.Extension, x.Location,
-                    PresenceStatus.ComputeStatus(x.PresenceLastSeenAt, x.PresenceManualStatus, DateTime.UtcNow), null, x.PhotoPath))
+                    PresenceStatus.ComputeStatus(x.PresenceLastSeenAt, x.PresenceManualStatus, DateTime.UtcNow, x.PresenceIsIdle), null, x.PhotoPath))
                 .ToListAsync(ct);
 
             return Results.Ok(new { manager, reports });
@@ -274,7 +210,7 @@ public static class DirectoryEndpoints
                 g.Members.Select(m => new DirGroupMemberDto(
                     m.User.Nik, m.User.Name, m.User.Position,
                     m.User.Department?.Name, m.User.Site?.Name,
-                    PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now)
+                    PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now, m.User.PresenceIsIdle)
                 )).ToArray()
             )).ToArray();
         }).RequireAuthorization().RequirePermission("directory.read");
@@ -292,7 +228,7 @@ public static class DirectoryEndpoints
                 n.Members.Select(m => new OrgNodeMemberDto(
                     m.User.Nik, m.User.Name, m.User.Position,
                     m.User.Department?.Name, m.User.Site?.Name,
-                    PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now)
+                    PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now, m.User.PresenceIsIdle)
                 )).ToArray()
             )).ToArray();
         }).RequireAuthorization().RequirePermission("directory.read");
@@ -319,7 +255,12 @@ public static class DirectoryEndpoints
             query = query.Where(u => EF.Functions.ILike(u.Name, pat, @"\") || EF.Functions.ILike(u.Nik, pat, @"\"));
         }
         if (!string.IsNullOrWhiteSpace(departmentCode))
-            query = query.Where(u => u.Department != null && u.Department.Code == departmentCode.Trim());
+        {
+            // Parent units include their sub-departments; a Division counts toward its Department.
+            var deptIds = await DepartmentSubtreeIdsAsync(db, departmentCode.Trim(), ct);
+            query = query.Where(u => (u.DepartmentId != null && deptIds.Contains(u.DepartmentId.Value))
+                || (u.Division != null && u.Division.DepartmentId != null && deptIds.Contains(u.Division.DepartmentId.Value)));
+        }
         if (!string.IsNullOrWhiteSpace(siteCode))
             query = query.Where(u => u.Site != null && u.Site.Code == siteCode.Trim());
         if (!string.IsNullOrWhiteSpace(divisionCode))
@@ -332,7 +273,7 @@ public static class DirectoryEndpoints
         var rows = await query.Select(u => new
         {
             User = u,
-            Status = PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now),
+            Status = PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now, u.PresenceIsIdle),
         }).ToListAsync(ct);
         if (!string.IsNullOrWhiteSpace(presence)) rows = rows.Where(x => x.Status == presence.Trim()).ToList();
         var names = rows.ToDictionary(x => x.User.Nik, x => x.User.Name);
@@ -359,28 +300,24 @@ public static class DirectoryEndpoints
         return new DirectoryPage(total, p, size, items);
     }
 
-    // Full /api/directory/structure query: pulls active Divisions whose Department+Site are both
-    // active, aggregates active-user counts per Division, counts active users with no Division,
-    // then nests. Member counts filter to DivisionId != null but do NOT filter by division active
-    // state — a Division's user count is its live headcount regardless of whether the Division row
-    // itself is currently active. However, since the tree only renders active Divisions, users on
-    // an inactive Division are silently absent from the tree AND not counted in NoDivisionCount
-    // (they have a non-null DivisionId). ponytail: if this matters, restrict the user-count query
-    // to active Divisions so the counts and the visible tree stay consistent.
+    // Full /api/directory/structure query: Site ▸ Department (nested via ParentId, any depth) ▸
+    // Division. Every active Site is listed, even with nothing under it yet, so a freshly created
+    // org skeleton is visible. A top-level Department sits under its own SiteId plus every Site
+    // that hosts one of its subtree's active Divisions. Member counts come from active users per
+    // active Division and roll up; users on an inactive Division are neither in the tree nor in
+    // NoDivisionCount (they have a non-null DivisionId).
     internal static async Task<DirectoryStructure> GetStructureCore(IPopDbContext db, CancellationToken ct)
     {
-        var divisions = await db.Divisions.Include(d => d.Department).Include(d => d.Site)
-            .AsNoTracking().Where(d => d.IsActive
-                && d.Department != null && d.Department.IsActive
-                && d.Site != null && d.Site.IsActive)
-            .ToListAsync(ct);
+        var sites = await db.Sites.AsNoTracking().Where(s => s.IsActive).ToListAsync(ct);
+        var departments = await db.Departments.AsNoTracking().Where(d => d.IsActive).ToListAsync(ct);
+        var divisions = await db.Divisions.AsNoTracking().Where(d => d.IsActive).ToListAsync(ct);
         var counts = await db.Users.Where(u => u.IsActive && u.DivisionId != null)
             .GroupBy(u => u.DivisionId!.Value)
             .Select(g => new { Id = g.Key, N = g.Count() }).ToListAsync(ct);
         var byDivision = counts.ToDictionary(c => c.Id, c => c.N);
         var noDivisionCount = await db.Users.CountAsync(u => u.IsActive && u.DivisionId == null, ct);
         var presence = await GetPresenceCountsCore(db, ct);
-        return BuildStructure(divisions, byDivision, noDivisionCount, presence);
+        return BuildStructure(sites, departments, divisions, byDivision, noDivisionCount, presence);
     }
 
     /// Directory-wide presence totals. ComputeStatus is not SQL-translatable, so the two
@@ -390,13 +327,13 @@ public static class DirectoryEndpoints
     {
         var now = DateTime.UtcNow;
         var facts = await db.Users.AsNoTracking().Where(u => u.IsActive)
-            .Select(u => new { u.PresenceLastSeenAt, u.PresenceManualStatus })
+            .Select(u => new { u.PresenceLastSeenAt, u.PresenceManualStatus, u.PresenceIsIdle })
             .ToListAsync(ct);
 
         int online = 0, busy = 0, away = 0, offline = 0;
         foreach (var f in facts)
         {
-            switch (PresenceStatus.ComputeStatus(f.PresenceLastSeenAt, f.PresenceManualStatus, now))
+            switch (PresenceStatus.ComputeStatus(f.PresenceLastSeenAt, f.PresenceManualStatus, now, f.PresenceIsIdle))
             {
                 case "on": online++; break;
                 case "busy": busy++; break;
@@ -407,27 +344,82 @@ public static class DirectoryEndpoints
         return new DirectoryPresenceCounts(facts.Count, online, busy, away, offline);
     }
 
-    // Pure nesting step — Site ▸ Department ▸ Division with count roll-up. Internal so tests can
-    // exercise tree shape directly without the DB query. A Department appears once per Site that
-    // hosts one of its Divisions (grouping is by Site.Code then Department.Code derived from the
-    // Division rows themselves, not a Site×Department cross join).
-    internal static DirectoryStructure BuildStructure(IEnumerable<Core.Entities.Division> activeDivisions,
+    // Pure nesting step, internal so tests can exercise tree shape without the DB. Inputs are the
+    // active rows only; a Department whose parent is inactive (or missing) is dropped with its
+    // subtree rather than promoted to the top. Siblings sort by SortOrder (0 = after the ordered
+    // ones), then Name. A Department placed under several Sites shows only that Site's Divisions
+    // in each copy; empty branches show under the root's home Site (its SiteId).
+    internal static DirectoryStructure BuildStructure(IEnumerable<Core.Entities.Site> activeSites,
+        IEnumerable<Core.Entities.Department> activeDepartments, IEnumerable<Core.Entities.Division> activeDivisions,
         IReadOnlyDictionary<Guid, int> memberCountByDivisionId, int noDivisionCount,
         DirectoryPresenceCounts? presenceCounts = null)
     {
-        var sites = activeDivisions.GroupBy(d => d.Site!.Code).Select(siteGroup =>
+        var siteList = activeSites.ToList();
+        var siteIds = siteList.Select(s => s.Id).ToHashSet();
+        var depts = activeDepartments.ToList();
+        var deptIds = depts.Select(d => d.Id).ToHashSet();
+        var divs = activeDivisions.Where(d => d.DepartmentId is Guid dep && deptIds.Contains(dep)
+            && d.SiteId is Guid site && siteIds.Contains(site)).ToList();
+        var childrenOf = depts.Where(d => d.ParentId is not null).ToLookup(d => d.ParentId!.Value);
+        var divsOf = divs.ToLookup(d => d.DepartmentId!.Value);
+        static int Rank(int sortOrder) => sortOrder == 0 ? int.MaxValue : sortOrder;
+
+        // Sites hosting at least one Division anywhere in the subtree (`seen` guards ParentId cycles).
+        HashSet<Guid> SubtreeSites(Guid deptId, HashSet<Guid> seen)
         {
-            var depts = siteGroup.GroupBy(d => d.Department!.Code).Select(deptGroup =>
-            {
-                var divs = deptGroup.Select(d => new DirectoryDivisionNode(
-                    d.Code, d.Name, memberCountByDivisionId.GetValueOrDefault(d.Id))).OrderBy(x => x.Name).ToArray();
-                return new DirectoryDepartmentNode(deptGroup.Key, deptGroup.First().Department!.Name,
-                    divs.Sum(x => x.MemberCount), divs);
-            }).OrderBy(x => x.Name).ToArray();
-            return new DirectorySiteNode(siteGroup.Key, siteGroup.First().Site!.Name,
-                depts.Sum(x => x.MemberCount), depts);
+            var result = divsOf[deptId].Select(d => d.SiteId!.Value).ToHashSet();
+            if (!seen.Add(deptId)) return result;
+            foreach (var c in childrenOf[deptId]) result.UnionWith(SubtreeSites(c.Id, seen));
+            return result;
+        }
+
+        DirectoryDepartmentNode? Node(Core.Entities.Department d, Guid siteId, Guid homeSiteId, HashSet<Guid> path)
+        {
+            if (!path.Add(d.Id)) return null;
+            // The home Site shows the whole branch; other Sites only branches with Divisions there.
+            if (siteId != homeSiteId && !SubtreeSites(d.Id, []).Contains(siteId))
+            { path.Remove(d.Id); return null; }
+            var divNodes = divsOf[d.Id].Where(x => x.SiteId == siteId)
+                .OrderBy(x => Rank(x.SortOrder)).ThenBy(x => x.Name)
+                .Select(x => new DirectoryDivisionNode(x.Code, x.Name, memberCountByDivisionId.GetValueOrDefault(x.Id)))
+                .ToArray();
+            var children = childrenOf[d.Id].OrderBy(c => Rank(c.SortOrder)).ThenBy(c => c.Name)
+                .Select(c => Node(c, siteId, homeSiteId, path)).OfType<DirectoryDepartmentNode>().ToArray();
+            path.Remove(d.Id);
+            return new DirectoryDepartmentNode(d.Code, d.Name,
+                divNodes.Sum(x => x.MemberCount) + children.Sum(x => x.MemberCount), divNodes, children);
+        }
+
+        var roots = depts.Where(d => d.ParentId is null).OrderBy(d => Rank(d.SortOrder)).ThenBy(d => d.Name).ToList();
+        var sites = siteList.Select(site =>
+        {
+            var deptNodes = roots
+                .Where(r => r.SiteId == site.Id || SubtreeSites(r.Id, []).Contains(site.Id))
+                .Select(r => Node(r, site.Id, r.SiteId ?? Guid.Empty, []))
+                .OfType<DirectoryDepartmentNode>().ToArray();
+            return new DirectorySiteNode(site.Code, site.Name, deptNodes.Sum(x => x.MemberCount), deptNodes);
         }).OrderBy(x => x.Name).ToArray();
         return new DirectoryStructure(sites, noDivisionCount, presenceCounts);
+    }
+
+    // Ids of the Department with this code plus all its descendants, so filtering on a parent
+    // unit also returns people placed in its sub-departments.
+    internal static async Task<List<Guid>> DepartmentSubtreeIdsAsync(IPopDbContext db, string code, CancellationToken ct)
+    {
+        var all = await db.Departments.AsNoTracking().Select(d => new { d.Id, d.ParentId, d.Code }).ToListAsync(ct);
+        var root = all.FirstOrDefault(d => d.Code == code);
+        if (root is null) return [];
+        var childrenOf = all.Where(d => d.ParentId is not null).ToLookup(d => d.ParentId!.Value, d => d.Id);
+        var ids = new List<Guid>();
+        var stack = new Stack<Guid>([root.Id]);
+        while (stack.Count > 0)
+        {
+            var id = stack.Pop();
+            if (ids.Contains(id)) continue;
+            ids.Add(id);
+            foreach (var c in childrenOf[id]) stack.Push(c);
+        }
+        return ids;
     }
 
     // Full /api/directory/divisions?q= query. Empty/whitespace q → [] immediately (200, not 404).

@@ -63,12 +63,14 @@
                     <div class="inset-row">
                         <span class="inset-k">Employee ID</span>
                         <span class="inset-v num">@Person.Nik</span>
+                        <button type="button" class="inset-copy" title="Copy employee ID" aria-label="Copy employee ID" @onclick='() => CopyAsync(Person.Nik, "Employee ID")'><i data-lucide="copy"></i></button>
                     </div>
                     @if (!string.IsNullOrWhiteSpace(Person.Email) && Person.Email != "—")
                     {
                         <div class="inset-row">
                             <span class="inset-k">Email</span>
                             <a href="mailto:@Person.Email" class="inset-v inset-link">@Person.Email</a>
+                            <button type="button" class="inset-copy" title="Copy email" aria-label="Copy email" @onclick='() => CopyAsync(Person.Email, "Email")'><i data-lucide="copy"></i></button>
                         </div>
                     }
                     @if (!string.IsNullOrWhiteSpace(Person.Extension) && Person.Extension != "—")
@@ -76,6 +78,7 @@
                         <div class="inset-row">
                             <span class="inset-k">Extension</span>
                             <span class="inset-v num">@Person.Extension</span>
+                            <button type="button" class="inset-copy" title="Copy extension" aria-label="Copy extension" @onclick='() => CopyAsync(Person.Extension, "Extension")'><i data-lucide="copy"></i></button>
                         </div>
                     }
                     @if (!string.IsNullOrWhiteSpace(Person.Location) && Person.Location != "—")
@@ -181,7 +184,7 @@
         if (OnClose.HasDelegate) await OnClose.InvokeAsync();
         if (Person is not null && !string.IsNullOrWhiteSpace(Person.Nik))
         {
-            Nav.NavigateTo($"/mail?to={Uri.EscapeDataString(Person.Nik)}");
+            Nav.NavigateTo($"/mail?compose={Uri.EscapeDataString(Person.Nik)}");
         }
     }
 
@@ -198,9 +201,22 @@
             var room = await CallSvc.CreateAsync(Person.Nik);
             if (room is null)
             {
-                Toasts.Show("Could not start call with this user.", ToastKind.Error);
+                Toasts.Show(!string.IsNullOrWhiteSpace(CallSvc.LastError)
+                    ? CallSvc.LastError
+                    : "Could not start call. Make sure the contact is registered and active.", ToastKind.Error);
             }
         }
+    }
+
+    private async Task CopyAsync(string? text, string label)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            Toasts.Show($"{label} copied to clipboard", ToastKind.Success);
+        }
+        catch { Toasts.Show("Could not copy to the clipboard.", ToastKind.Error); }
     }
 
     private async Task ToggleFavorite()
@@ -213,5 +229,7 @@
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
-        => await JS.InvokeVoidAsync("ipop.icons");
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+    }
 }

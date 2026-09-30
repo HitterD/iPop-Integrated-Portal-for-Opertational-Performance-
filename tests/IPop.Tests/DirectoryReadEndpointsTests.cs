@@ -125,7 +125,9 @@ public class DirectoryReadEndpointsTests
 
         var result = await DirectoryEndpoints.GetStructureCore(t.Db, default);
 
-        Assert.Empty(result.Sites);             // all three divisions dropped
+        // All three divisions dropped; the active Sites still list (empty) so the skeleton shows.
+        Assert.Equal(["S1", "S2"], result.Sites.Select(s => s.Code).ToArray());
+        Assert.All(result.Sites, s => Assert.Empty(s.Departments));
         Assert.Equal(0, result.NoDivisionCount); // u1 has DivisionId != null, so not in NoDivision
     }
 
@@ -139,8 +141,70 @@ public class DirectoryReadEndpointsTests
 
         var result = await DirectoryEndpoints.GetStructureCore(t.Db, default);
 
-        Assert.Empty(result.Sites);
+        Assert.Empty(Assert.Single(result.Sites).Departments);
         Assert.Equal(0, result.NoDivisionCount); // u has non-null DivisionId, so excluded from the flat count
+    }
+
+    [Fact]
+    public async Task GetStructure_NestsSubDepartments_WithRollUp_AndEmptyUnitsAtHomeSite()
+    {
+        using var t = new TestDb();
+        var site = new Site { Id = Guid.NewGuid(), Code = "SP", Name = "Sepanjang", IsActive = true };
+        var other = new Site { Id = Guid.NewGuid(), Code = "JK", Name = "Jakarta", IsActive = true };
+        var daft = new Department { Id = Guid.NewGuid(), Code = "DAFT", Name = "DAFT", SiteId = site.Id, IsActive = true };
+        var fta = new Department { Id = Guid.NewGuid(), Code = "FTA", Name = "Finance, Tax & Accounting", ParentId = daft.Id, IsActive = true, SortOrder = 1 };
+        var fm = new Department { Id = Guid.NewGuid(), Code = "FM", Name = "Financial Management", ParentId = daft.Id, IsActive = true, SortOrder = 2 };
+        var ict = new Department { Id = Guid.NewGuid(), Code = "ICT", Name = "ICT", SiteId = site.Id, IsActive = true };
+        var gone = new Department { Id = Guid.NewGuid(), Code = "OLD", Name = "Old", ParentId = daft.Id, IsActive = false };
+        var tax = new Division { Id = Guid.NewGuid(), Code = "TAX", Name = "Tax", DepartmentId = fta.Id, SiteId = site.Id, IsActive = true };
+        var gm = new Division { Id = Guid.NewGuid(), Code = "GM", Name = "DAFT GM", DepartmentId = daft.Id, SiteId = site.Id, IsActive = true };
+        t.Db.Sites.AddRange(site, other);
+        t.Db.Departments.AddRange(daft, fta, fm, ict, gone);
+        t.Db.Divisions.AddRange(tax, gm);
+        t.Db.SaveChanges();
+        t.AddUser("20080115").DivisionId = tax.Id;
+        t.AddUser("20080116").DivisionId = tax.Id;
+        t.AddUser("20080117").DivisionId = gm.Id;
+        t.Db.SaveChanges();
+
+        var result = await DirectoryEndpoints.GetStructureCore(t.Db, default);
+
+        Assert.Empty(result.Sites.Single(s => s.Code == "JK").Departments); // empty site still listed
+        var sp = result.Sites.Single(s => s.Code == "SP");
+        Assert.Equal(3, sp.MemberCount);
+        Assert.Equal(["DAFT", "ICT"], sp.Departments.Select(d => d.Code).ToArray());
+        var daftNode = sp.Departments[0];
+        Assert.Equal(3, daftNode.MemberCount);
+        Assert.Equal("GM", Assert.Single(daftNode.Divisions).Code);
+        Assert.Equal(["FTA", "FM"], daftNode.Children!.Select(c => c.Code).ToArray()); // SortOrder, inactive dropped
+        Assert.Equal(2, daftNode.Children![0].MemberCount);
+        Assert.Empty(daftNode.Children![1].Divisions);                                  // empty sub-dept shown
+        Assert.Equal(0, sp.Departments[1].MemberCount);
+    }
+
+    [Fact]
+    public async Task Employees_DepartmentFilter_IncludesSubDepartments()
+    {
+        using var t = new TestDb();
+        var site = new Site { Id = Guid.NewGuid(), Code = "SP", Name = "Sepanjang", IsActive = true };
+        var daft = new Department { Id = Guid.NewGuid(), Code = "DAFT", Name = "DAFT", IsActive = true };
+        var fta = new Department { Id = Guid.NewGuid(), Code = "FTA", Name = "FTA", ParentId = daft.Id, IsActive = true };
+        var ict = new Department { Id = Guid.NewGuid(), Code = "ICT", Name = "ICT", IsActive = true };
+        var tax = new Division { Id = Guid.NewGuid(), Code = "TAX", Name = "Tax", DepartmentId = fta.Id, SiteId = site.Id, IsActive = true };
+        t.Db.Sites.Add(site);
+        t.Db.Departments.AddRange(daft, fta, ict);
+        t.Db.Divisions.Add(tax);
+        t.Db.SaveChanges();
+        t.AddUser("20080115").DepartmentId = daft.Id;   // placed on the parent directly
+        t.AddUser("20080116").DivisionId = tax.Id;      // via a sub-department's Division
+        t.AddUser("20080117").DepartmentId = ict.Id;    // elsewhere
+        t.Db.SaveChanges();
+
+        var all = await DirectoryEndpoints.EmployeesCore(null, "DAFT", null, null, null, null, null, null, 1, 50, null, t.Db, default);
+        var sub = await DirectoryEndpoints.EmployeesCore(null, "FTA", null, null, null, null, null, null, 1, 50, null, t.Db, default);
+
+        Assert.Equal(["20080115", "20080116"], all.Items.Select(i => i.Nik).OrderBy(n => n).ToArray());
+        Assert.Equal("20080116", Assert.Single(sub.Items).Nik);
     }
 
     /// The header tabs read directory-wide totals from this payload. Counting the loaded
@@ -152,8 +216,8 @@ public class DirectoryReadEndpointsTests
         var now = DateTime.UtcNow;
         // One per bucket, plus an inactive user that must not be counted.
         t.AddUser("20080101").PresenceLastSeenAt = now;
-        t.AddUser("20080102").PresenceLastSeenAt = now.AddMinutes(-8);   // away (>5m)
-        t.AddUser("20080103").PresenceLastSeenAt = now.AddHours(-3);     // off (>15m)
+        { var idle = t.AddUser("20080102"); idle.PresenceLastSeenAt = now; idle.PresenceIsIdle = true; } // away (beating, computer idle)
+        t.AddUser("20080103").PresenceLastSeenAt = now.AddHours(-3);     // off (no beat for >2m)
         t.AddUser("20080104").PresenceManualStatus = "busy";
         t.AddUser("20080105", active: false).PresenceLastSeenAt = now;   // inactive -> excluded
         t.Db.SaveChanges();

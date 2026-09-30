@@ -4,6 +4,7 @@ using IPop.Application.Attachments;
 using IPop.Application.Files;
 using IPop.Infrastructure.Attachments;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace IPop.Tests;
@@ -175,6 +176,91 @@ public class AttachmentStoreTests
         Assert.Single(gw.Deletes);
         Assert.NotNull((await t.Verify().Attachments.SingleAsync()).DeletedAt);
         Assert.Null(await store.OpenAsync(a.Id, default));
+    }
+
+    private static Microsoft.Extensions.Configuration.IConfiguration Cfg(Dictionary<string, string?> values) =>
+        new Microsoft.Extensions.Configuration.ConfigurationBuilder().AddInMemoryCollection(values).Build();
+
+    [Fact]
+    public void Bind_WithoutAttachmentsSection_UsesSynologyServiceAccount_AndSharedSiblingFolder()
+    {
+        var opt = AttachmentOptions.Bind(Cfg(new()
+        {
+            ["Synology:ServiceAccount:Server"] = "ICT",
+            ["Synology:ServiceAccount:Username"] = "svc",
+            ["Synology:ServiceAccount:Password"] = "pw",
+            ["Synology:ChatFolder"] = "/sja/SJA SPJ/ICT/chat",
+        }));
+
+        Assert.Equal("ict", opt.Server);
+        Assert.Equal("svc", opt.Username);
+        Assert.True(opt.HasServiceAccount);
+        Assert.Equal("/sja/SJA SPJ/ICT/news", opt.FolderFor("news"));
+        Assert.Equal(AttachmentOptions.DefaultMaxBytes, opt.MaxBytes);
+    }
+
+    [Fact]
+    public void Bind_NewsFolderOverride_Wins_ButHomeIsRejected()
+    {
+        var opt = AttachmentOptions.Bind(Cfg(new()
+        {
+            ["Synology:ChatFolder"] = "/home/chat",
+            ["Synology:MailFolder"] = "/shared/ICT/mail",
+            ["Synology:NewsFolder"] = "/shared/ICT/memos/",
+            ["Synology:ProjectsFolder"] = "/home/projects",
+        }));
+
+        Assert.Equal("/shared/ICT/memos", opt.FolderFor("news"));
+        Assert.Equal("/shared/ICT/projects", opt.FolderFor("projects")); // /home override ignored
+        Assert.False(opt.HasServiceAccount);
+    }
+
+    [Fact]
+    public async Task NoServiceAccount_WithLocalRoot_StoresOnDisk_AndRoundTrips()
+    {
+        using var t = new TestDb();
+        var user = t.AddUser("90001");
+        var root = Path.Combine(Path.GetTempPath(), "ipop-att-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var opt = new AttachmentOptions { LocalRoot = root, MaxBytes = 1024 };
+            var gw = new FakeGateway();
+            var store = new SynologyAttachmentStore(t.Db, gw, opt, new AttachmentSession());
+
+            var a = await store.PutAsync("news", "memo.txt", "text/plain", Text("local body"), user.Id, default);
+
+            Assert.Empty(gw.Auths);
+            var row = await t.Verify().Attachments.SingleAsync();
+            Assert.StartsWith("local:news/", row.StoragePath);
+            var opened = await store.OpenAsync(a.Id, default);
+            using (var r = new StreamReader(opened!.Value.Content)) Assert.Equal("local body", await r.ReadToEndAsync());
+
+            await store.DeleteAsync(a.Id, default);
+            Assert.Empty(Directory.GetFiles(root, "*", SearchOption.AllDirectories));
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task NoServiceAccount_NoLocalRoot_ThrowsSynoException()
+    {
+        using var t = new TestDb();
+        var user = t.AddUser("90001");
+        var store = new SynologyAttachmentStore(t.Db, new FakeGateway(), new AttachmentOptions(), new AttachmentSession());
+        await Assert.ThrowsAsync<SynoException>(() => store.PutAsync("news", "a.txt", "text/plain", Text("a"), user.Id, default));
+    }
+
+    [Fact]
+    public async Task Put_UsesConfiguredAreaFolder()
+    {
+        using var t = new TestDb();
+        var user = t.AddUser("90001");
+        var opt = new AttachmentOptions { Username = "svc", Password = "pw", MaxBytes = 1024 };
+        opt.Folders["news"] = "/sja/SJA SPJ/ICT/news";
+        var gw = new FakeGateway();
+        await new SynologyAttachmentStore(t.Db, gw, opt, new AttachmentSession())
+            .PutAsync("news", "a.txt", "text/plain", Text("a"), user.Id, default);
+        Assert.StartsWith("/sja/SJA SPJ/ICT/news/", gw.Uploads.Single().Dir);
     }
 
     [Fact]

@@ -99,6 +99,28 @@ public sealed partial class ChatService
         return new RoomSettingsResultDto(true, null);
     }
 
+    public async Task<RoomSettingsResultDto> SetGroupAvatarAsyncImpl(Guid actorId, Guid roomId, string? avatarUrl, CancellationToken ct)
+    {
+        var room = await db.ChatRooms.FindAsync([roomId], ct);
+        if (room is null) return new RoomSettingsResultDto(false, "room_not_found");
+        if (room.Type == "dm") return new RoomSettingsResultDto(false, "not_a_group");
+        var role = await GetMemberRoleAsync(actorId, roomId, ct);
+        if (role is not ("owner" or "admin")) return new RoomSettingsResultDto(false, "forbidden");
+        var previous = room.AvatarUrl;
+        if (previous == avatarUrl) return new RoomSettingsResultDto(true, null);
+        room.AvatarUrl = avatarUrl;
+        var actor = await db.Users.FindAsync([actorId], ct);
+        db.ChatMessages.Add(new ChatMessage
+        {
+            Id = Guid.NewGuid(), RoomId = roomId, SenderId = actorId, Type = "system",
+            Content = avatarUrl is null ? $"{actor?.Name ?? "Admin"} removed the group photo" : $"{actor?.Name ?? "Admin"} changed the group photo",
+            IdempotencyKey = Guid.NewGuid(), CreatedAt = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync(ct);
+        // Success carries the replaced URL (if any) so the endpoint can delete the old file.
+        return new RoomSettingsResultDto(true, previous);
+    }
+
     public async Task<PagedResult<MembershipAuditDto>> GetMembershipAuditAsyncImpl(Guid callerId, Guid roomId, int page, int pageSize, CancellationToken ct)
     {
         var role = await GetMemberRoleAsync(callerId, roomId, ct);
@@ -134,7 +156,7 @@ public sealed partial class ChatService
         var q = db.ChatRooms.AsNoTracking().Where(r => archivedIds.Contains(r.Id) && r.IsActive);
         var total = await q.CountAsync(ct);
         var rooms = await q.OrderByDescending(r => r.LastMessageAt).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
-        var dtos = rooms.Select(r => new RoomListDto(r.Id, r.Type, r.Name, null, null, null, r.LastMessageAt == default ? null : r.LastMessageAt, 0, false, true, true, null, false, false, null, true, r.AvatarColor)).ToList();
+        var dtos = rooms.Select(r => new RoomListDto(r.Id, r.Type, r.Name, null, null, null, r.LastMessageAt == default ? null : r.LastMessageAt, 0, false, true, true, null, false, false, null, true, r.AvatarColor, r.AvatarUrl)).ToList();
         return new PagedResult<RoomListDto>(dtos, total, page, pageSize);
     }
 

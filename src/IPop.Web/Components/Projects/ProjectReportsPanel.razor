@@ -53,7 +53,7 @@
                     <input class="org-input" style="height:32px;font-size:12px" placeholder="Milestone name…" @bind="msName" />
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                         <label style="font-size:11.5px;color:var(--ink-3)">Target date</label>
-                        <input type="date" class="org-input" style="height:32px;font-size:12px" @bind="msDate" />
+                        <AppDatePicker @bind-Value="msDate" Compact="true" AriaLabel="Target date" />
                         <label style="font-size:11.5px;color:var(--ink-3)">Linked task</label>
                         <select class="filter-select" style="height:32px;font-size:12px" @bind="msTaskId">
                             <option value="">(no link)</option>
@@ -85,7 +85,7 @@
                             @if (editingMilestone?.Id == m.Id)
                             {
                                 <input class="org-input" style="height:26px;font-size:12px;flex:1" @bind="editingMilestoneTitle" />
-                                <input type="date" class="org-input" style="height:26px;font-size:11px" @bind="editingMilestoneDate" />
+                                <AppDatePicker @bind-Value="editingMilestoneDate" Compact="true" AriaLabel="Milestone date" />
                                 <select class="filter-select" style="height:26px;font-size:11px;padding:0 6px" @bind="editingMilestoneTaskId">
                                     <option value="">(no link)</option>
                                     @foreach (var t in AllTasks.Where(t => t.ParentTaskId is null).OrderBy(t => t.Title))

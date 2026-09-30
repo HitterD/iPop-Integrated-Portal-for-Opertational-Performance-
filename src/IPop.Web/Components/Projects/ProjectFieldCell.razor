@@ -1,0 +1,57 @@
+@using IPop.Application.Projects
+
+<div class="project-field-cell" @onclick:stopPropagation="true">
+    @if (editing)
+    {
+        @if (Field.Type == "Dropdown")
+        {
+            <select aria-label="@Field.Name" value="@current" @onchange="e => Save(e.Value?.ToString())">
+                <option value="">—</option>
+                @foreach (var option in Field.Options) { <option value="@option">@option</option> }
+            </select>
+        }
+        else if (Field.Type == "Person")
+        {
+            <select aria-label="@Field.Name" value="@current" @onchange="e => Save(e.Value?.ToString())">
+                <option value="">—</option>
+                @foreach (var member in Members) { <option value="@member.UserId">@member.Name</option> }
+            </select>
+        }
+        else
+        {
+            <input aria-label="@Field.Name" type="@(Field.Type switch { "Number" => "number", "Date" => "date", "Link" => "url", _ => "text" })"
+                   step="@(Field.Type == "Number" ? "any" : null)" value="@current" @onchange="e => Save(e.Value?.ToString())"
+                   @onkeydown="OnKeyDown" />
+        }
+        <button type="button" aria-label="Cancel editing @Field.Name" @onclick="Cancel">Cancel</button>
+    }
+    else
+    {
+        <button type="button" class="project-field-value" title="Edit @Field.Name" @onclick="BeginEdit">@DisplayValue</button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ProjectFieldDto Field { get; set; } = default!;
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    private bool editing;
+    private string? current;
+    private string DisplayValue => Field.Type == "Person" && Guid.TryParse(Value, out var id)
+        ? Members.FirstOrDefault(m => m.UserId == id)?.Name ?? "—"
+        : string.IsNullOrEmpty(Value) ? "—" : Value;
+
+    private void BeginEdit() { current = Value; editing = true; }
+    private void Cancel() { editing = false; current = Value; }
+    private async Task Save(string? value)
+    {
+        editing = false;
+        await ValueChanged.InvokeAsync(string.IsNullOrWhiteSpace(value) ? null : value.Trim());
+    }
+    private Task OnKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape") Cancel();
+        return Task.CompletedTask;
+    }
+}

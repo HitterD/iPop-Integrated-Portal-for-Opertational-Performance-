@@ -15,7 +15,10 @@ builder.Services.AddScoped(sp =>
     if (hostBase.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
         baseUri.Scheme.Equals("http", StringComparison.OrdinalIgnoreCase))
     {
-        baseUri = new Uri(hostBase);
+        // An https page cannot call an http API (mixed content). run.ps1 serves the API on its
+        // own https port and sets ApiBaseHttps; behind a reverse proxy the API shares the host.
+        var secure = builder.Configuration["ApiBaseHttps"];
+        baseUri = !string.IsNullOrWhiteSpace(secure) ? new Uri(secure) : new Uri(hostBase);
     }
     return new HttpClient { BaseAddress = baseUri };
 });
@@ -29,6 +32,7 @@ builder.Services.AddScoped<IPop.Web.Services.OverlayStack>();
 builder.Services.AddScoped<IPop.Web.Services.ConfirmService>();
 builder.Services.AddScoped<IPop.Web.Services.CommandPaletteState>();
 builder.Services.AddScoped<IPop.Web.Services.BadgeState>();
+builder.Services.AddScoped<IPop.Web.Services.TimerState>();
 builder.Services.AddScoped<IPop.Web.Services.MailService>();
 builder.Services.AddScoped<IPop.Web.Services.NotificationState>(sp =>
     new IPop.Web.Services.NotificationState(

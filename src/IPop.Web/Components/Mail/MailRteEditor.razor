@@ -1,175 +1,465 @@
 @inject IJSRuntime JS
-@implements IDisposable
+@implements IAsyncDisposable
 
-<div class="rte-container">
-    <div class="rte-toolbar">
-        <button type="button" class="rte-btn" title="Undo (Ctrl+Z)" aria-label="Undo" @onclick='() => Exec("undo")'>
-            <i data-lucide="undo-2"></i>
-        </button>
-        <button type="button" class="rte-btn" title="Redo (Ctrl+Y)" aria-label="Redo" @onclick='() => Exec("redo")'>
-            <i data-lucide="redo-2"></i>
-        </button>
-        <div class="rte-sep"></div>
+@* Office-grade editor (Jodit) behind an Apple-style toolbar. Jodit's own toolbar is off; every
+   control here calls ipop.rte.* and the editor reports selection state back through OnState. *@
+<div class="mrte @(focusWithin ? "focus" : "")">
+    <div class="mrte-bar" role="toolbar" aria-label="Formatting">
+        <div class="mrte-group">
+            <button type="button" class="mrte-btn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled="@(!st.CanUndo)"
+                    @onmousedown:preventDefault @onclick='() => Exec("undo")'><i data-lucide="undo-2"></i></button>
+            <button type="button" class="mrte-btn" title="Redo (Ctrl+Y)" aria-label="Redo" disabled="@(!st.CanRedo)"
+                    @onmousedown:preventDefault @onclick='() => Exec("redo")'><i data-lucide="redo-2"></i></button>
+        </div>
 
-        <select class="rte-select" @onchange="OnFormatBlockChange" title="Heading" aria-label="Heading">
-            <option value="p">Normal text</option>
-            <option value="h1">Heading 1</option>
-            <option value="h2">Heading 2</option>
-            <option value="h3">Heading 3</option>
-        </select>
+        <div class="mrte-group">
+            <select class="mrte-select mrte-font" title="Font" aria-label="Font" value="@FontValue" @onchange="OnFont">
+                <option value="">Default</option>
+                @foreach (var f in Fonts)
+                {
+                    <option value="@f" style="font-family:'@f'">@f</option>
+                }
+                @if (FontValue != "" && !Fonts.Contains(FontValue, StringComparer.OrdinalIgnoreCase))
+                {
+                    <option value="@FontValue">@FontValue</option>
+                }
+            </select>
+            <select class="mrte-select mrte-size" title="Font size (pt)" aria-label="Font size" value="@st.Size" @onchange="OnSize">
+                @if (st.Size != "" && !Sizes.Contains(st.Size))
+                {
+                    <option value="@st.Size">@st.Size</option>
+                }
+                @foreach (var s in Sizes)
+                {
+                    <option value="@s">@s</option>
+                }
+            </select>
+        </div>
 
-        <select class="rte-select" @onchange="OnFontSizeChange" title="Font Size" aria-label="Font Size">
-            <option value="3">Normal (12pt)</option>
-            <option value="2">Small (10pt)</option>
-            <option value="4">Medium (14pt)</option>
-            <option value="5">Large (18pt)</option>
-            <option value="6">Huge (24pt)</option>
-        </select>
-        <div class="rte-sep"></div>
+        <div class="mrte-group">
+            <button type="button" class="mrte-btn @On(st.Bold)" title="Bold (Ctrl+B)" aria-label="Bold" aria-pressed="@P(st.Bold)"
+                    @onmousedown:preventDefault @onclick='() => Exec("bold")'><i data-lucide="bold"></i></button>
+            <button type="button" class="mrte-btn @On(st.Italic)" title="Italic (Ctrl+I)" aria-label="Italic" aria-pressed="@P(st.Italic)"
+                    @onmousedown:preventDefault @onclick='() => Exec("italic")'><i data-lucide="italic"></i></button>
+            <button type="button" class="mrte-btn @On(st.Underline)" title="Underline (Ctrl+U)" aria-label="Underline" aria-pressed="@P(st.Underline)"
+                    @onmousedown:preventDefault @onclick='() => Exec("underline")'><i data-lucide="underline"></i></button>
+            <button type="button" class="mrte-btn @On(st.Strike)" title="Strikethrough" aria-label="Strikethrough" aria-pressed="@P(st.Strike)"
+                    @onmousedown:preventDefault @onclick='() => Exec("strikethrough")'><i data-lucide="strikethrough"></i></button>
+        </div>
 
-        <button type="button" class="rte-btn" title="Bold (Ctrl+B)" aria-label="Bold" @onclick='() => Exec("bold")'>
-            <i data-lucide="bold"></i>
-        </button>
-        <button type="button" class="rte-btn" title="Italic (Ctrl+I)" aria-label="Italic" @onclick='() => Exec("italic")'>
-            <i data-lucide="italic"></i>
-        </button>
-        <button type="button" class="rte-btn" title="Underline (Ctrl+U)" aria-label="Underline" @onclick='() => Exec("underline")'>
-            <i data-lucide="underline"></i>
-        </button>
-        <button type="button" class="rte-btn" title="Strikethrough" aria-label="Strikethrough" @onclick='() => Exec("strikeThrough")'>
-            <i data-lucide="strikethrough"></i>
-        </button>
-        <div class="rte-sep"></div>
+        <div class="mrte-group">
+            <div class="mrte-pop-wrap">
+                <button type="button" class="mrte-btn mrte-color" title="Text colour" aria-label="Text colour" aria-haspopup="true" aria-expanded="@P(pop == "color")"
+                        @onmousedown:preventDefault @onclick='() => Toggle("color")'>
+                    <i data-lucide="baseline"></i><span class="mrte-swatch-bar" style="background:@lastColor"></span>
+                </button>
+                @if (pop == "color")
+                {
+                    <div class="mrte-pop mrte-colors" @onmousedown:preventDefault>
+                        <div class="mrte-pop-title">Text colour</div>
+                        <div class="mrte-swatches">
+                            @foreach (var c in TextColors)
+                            {
+                                <button type="button" class="mrte-swatch" style="background:@c" title="@c" aria-label="@c" @onclick='() => Color("forecolor", c)'></button>
+                            }
+                        </div>
+                        <label class="mrte-custom">Custom… <input type="color" value="@lastColor" @onchange='e => Color("forecolor", e.Value?.ToString())' /></label>
+                    </div>
+                }
+            </div>
+            <div class="mrte-pop-wrap">
+                <button type="button" class="mrte-btn mrte-color" title="Highlight" aria-label="Highlight" aria-haspopup="true" aria-expanded="@P(pop == "hl")"
+                        @onmousedown:preventDefault @onclick='() => Toggle("hl")'>
+                    <i data-lucide="highlighter"></i><span class="mrte-swatch-bar" style="background:@lastHighlight"></span>
+                </button>
+                @if (pop == "hl")
+                {
+                    <div class="mrte-pop mrte-colors" @onmousedown:preventDefault>
+                        <div class="mrte-pop-title">Highlight</div>
+                        <div class="mrte-swatches">
+                            @foreach (var c in HighlightColors)
+                            {
+                                <button type="button" class="mrte-swatch" style="background:@c" title="@c" aria-label="@c" @onclick='() => Color("background", c)'></button>
+                            }
+                        </div>
+                        <button type="button" class="mrte-menu-item" @onclick='() => Color("background", "transparent")'><i data-lucide="eraser"></i> No highlight</button>
+                    </div>
+                }
+            </div>
+        </div>
 
-        <input type="color" title="Text Color" aria-label="Text Color" style="width:24px;height:24px;padding:0;border:none;background:transparent;cursor:pointer;"
-               @onchange="OnColorChange" value="#1f2937" />
-        <div class="rte-sep"></div>
+        <div class="mrte-group mrte-seg" role="group" aria-label="Alignment">
+            @foreach (var (key, icon, label) in Aligns)
+            {
+                <button type="button" class="mrte-btn @On(st.Align == key)" title="@label" aria-label="@label" aria-pressed="@P(st.Align == key)"
+                        @onmousedown:preventDefault @onclick='() => Exec("justify" + key)'><i data-lucide="@icon"></i></button>
+            }
+        </div>
 
-        <button type="button" class="rte-btn" title="Align Left" aria-label="Align Left" @onclick='() => Exec("justifyLeft")'>
-            <i data-lucide="align-left"></i>
-        </button>
-        <button type="button" class="rte-btn" title="Align Center" aria-label="Align Center" @onclick='() => Exec("justifyCenter")'>
-            <i data-lucide="align-center"></i>
-        </button>
-        <button type="button" class="rte-btn" title="Align Right" aria-label="Align Right" @onclick='() => Exec("justifyRight")'>
-            <i data-lucide="align-right"></i>
-        </button>
-        <div class="rte-sep"></div>
+        <div class="mrte-group">
+            <button type="button" class="mrte-btn @On(st.Ul)" title="Bulleted list" aria-label="Bulleted list" aria-pressed="@P(st.Ul)"
+                    @onmousedown:preventDefault @onclick='() => Exec("insertUnorderedList")'><i data-lucide="list"></i></button>
+            <button type="button" class="mrte-btn @On(st.Ol)" title="Numbered list" aria-label="Numbered list" aria-pressed="@P(st.Ol)"
+                    @onmousedown:preventDefault @onclick='() => Exec("insertOrderedList")'><i data-lucide="list-ordered"></i></button>
+            <button type="button" class="mrte-btn" title="Decrease indent" aria-label="Decrease indent"
+                    @onmousedown:preventDefault @onclick='() => Exec("outdent")'><i data-lucide="indent-decrease"></i></button>
+            <button type="button" class="mrte-btn" title="Increase indent" aria-label="Increase indent"
+                    @onmousedown:preventDefault @onclick='() => Exec("indent")'><i data-lucide="indent-increase"></i></button>
+        </div>
 
-        <button type="button" class="rte-btn" title="Bullet List" aria-label="Bullet List" @onclick='() => Exec("insertUnorderedList")'>
-            <i data-lucide="list"></i>
-        </button>
-        <button type="button" class="rte-btn" title="Numbered List" aria-label="Numbered List" @onclick='() => Exec("insertOrderedList")'>
-            <i data-lucide="list-ordered"></i>
-        </button>
-        <button type="button" class="rte-btn" title="Quote" aria-label="Quote" @onclick='() => Exec("formatBlock", "blockquote")'>
-            <i data-lucide="quote"></i>
-        </button>
-        <div class="rte-sep"></div>
+        <div class="mrte-group">
+            <div class="mrte-pop-wrap">
+                <button type="button" class="mrte-btn @On(st.InLink)" title="Link (Ctrl+K)" aria-label="Link" aria-haspopup="true" aria-expanded="@P(pop == "link")"
+                        @onmousedown:preventDefault @onclick="OpenLink"><i data-lucide="link"></i></button>
+                @if (pop == "link")
+                {
+                    <div class="mrte-pop mrte-link">
+                        <div class="mrte-pop-title">@(st.InLink ? "Edit link" : "Insert link")</div>
+                        <label>Address<input @ref="linkUrlRef" class="mrte-input" placeholder="https://" @bind="linkUrl" @bind:event="oninput" @onkeydown="OnLinkKey" /></label>
+                        <label>Text to display<input class="mrte-input" placeholder="(optional)" @bind="linkText" @bind:event="oninput" @onkeydown="OnLinkKey" /></label>
+                        <div class="mrte-pop-actions">
+                            @if (st.InLink)
+                            {
+                                <button type="button" class="mrte-text-btn danger" @onclick='async () => { pop = null; await Exec("unlink"); }'>Remove link</button>
+                            }
+                            <span style="flex:1"></span>
+                            <button type="button" class="mrte-text-btn" @onclick="() => pop = null">Cancel</button>
+                            <button type="button" class="mrte-text-btn primary" disabled="@string.IsNullOrWhiteSpace(linkUrl)" @onclick="ApplyLink">Apply</button>
+                        </div>
+                    </div>
+                }
+            </div>
 
-        <button type="button" class="rte-btn" title="Insert Link" aria-label="Insert Link" @onclick="InsertLink">
-            <i data-lucide="link"></i>
-        </button>
-        <button type="button" class="rte-btn" title="Insert Table (3x3)" aria-label="Insert Table" @onclick="InsertTable">
-            <i data-lucide="table"></i>
-        </button>
-        <button type="button" class="rte-btn" title="Clear Formatting" aria-label="Clear Formatting" @onclick='() => Exec("removeFormat")'>
-            <i data-lucide="remove-formatting"></i>
-        </button>
+            <div class="mrte-pop-wrap">
+                <button type="button" class="mrte-btn @On(st.InTable)" title="Table" aria-label="Table" aria-haspopup="true" aria-expanded="@P(pop == "table")"
+                        @onmousedown:preventDefault @onclick='() => Toggle("table")'><i data-lucide="table"></i></button>
+                @if (pop == "table")
+                {
+                    <div class="mrte-pop mrte-table" @onmousedown:preventDefault>
+                        <div class="mrte-pop-title">@(gridR > 0 ? $"Insert {gridR} × {gridC} table" : "Insert table")</div>
+                        <div class="mrte-grid" @onmouseleave="() => { gridR = 0; gridC = 0; }">
+                            @for (var r = 1; r <= 8; r++)
+                            {
+                                @for (var c = 1; c <= 10; c++)
+                                {
+                                    var rr = r; var cc = c;
+                                    <button type="button" class="mrte-cell @(rr <= gridR && cc <= gridC ? "on" : "")" aria-label="@($"{rr} by {cc}")"
+                                            @onmouseenter="() => { gridR = rr; gridC = cc; }" @onclick="() => InsertTable(rr, cc)"></button>
+                                }
+                            }
+                        </div>
+                        @if (st.InTable)
+                        {
+                            <div class="mrte-menu-sep"></div>
+                            <button type="button" class="mrte-menu-item" @onclick='() => TableCmd("tableaddrowbefore")'><i data-lucide="arrow-up-to-line"></i> Insert row above</button>
+                            <button type="button" class="mrte-menu-item" @onclick='() => TableCmd("tableaddrowafter")'><i data-lucide="arrow-down-to-line"></i> Insert row below</button>
+                            <button type="button" class="mrte-menu-item" @onclick='() => TableCmd("tableaddcolumnbefore")'><i data-lucide="arrow-left-to-line"></i> Insert column left</button>
+                            <button type="button" class="mrte-menu-item" @onclick='() => TableCmd("tableaddcolumnafter")'><i data-lucide="arrow-right-to-line"></i> Insert column right</button>
+                            <div class="mrte-menu-sep"></div>
+                            <button type="button" class="mrte-menu-item" @onclick='() => TableCmd("tablemerge")'><i data-lucide="combine"></i> Merge selected cells</button>
+                            <button type="button" class="mrte-menu-item" @onclick='() => TableCmd("tablesplitv")'><i data-lucide="columns-2"></i> Split cell vertically</button>
+                            <button type="button" class="mrte-menu-item" @onclick='() => TableCmd("tablesplitg")'><i data-lucide="rows-2"></i> Split cell horizontally</button>
+                            <div class="mrte-menu-sep"></div>
+                            <button type="button" class="mrte-menu-item danger" @onclick='() => TableCmd("tablebinrow")'><i data-lucide="trash"></i> Delete row</button>
+                            <button type="button" class="mrte-menu-item danger" @onclick='() => TableCmd("tablebincolumn")'><i data-lucide="trash"></i> Delete column</button>
+                            <button type="button" class="mrte-menu-item danger" @onclick='() => TableCmd("tablebin")'><i data-lucide="trash-2"></i> Delete table</button>
+                        }
+                    </div>
+                }
+            </div>
+
+            <label class="mrte-btn" title="Insert picture (max 2 MB)" aria-label="Insert picture" @onmousedown="SaveCaret">
+                <i data-lucide="image"></i>
+                <InputFile OnChange="OnImagePicked" accept="image/png,image/jpeg,image/gif,image/webp" class="mrte-hidden-file" />
+            </label>
+        </div>
+
+        <div class="mrte-group">
+            <div class="mrte-pop-wrap">
+                <button type="button" class="mrte-btn mrte-aa @On(pop == "aa" || st.Painter)" title="More formatting" aria-label="More formatting" aria-haspopup="true" aria-expanded="@P(pop == "aa")"
+                        @onmousedown:preventDefault @onclick='() => Toggle("aa")'><span>Aa</span></button>
+                @if (pop == "aa")
+                {
+                    <div class="mrte-pop mrte-aa-pop" @onmousedown:preventDefault>
+                        <div class="mrte-pop-title">Paragraph style</div>
+                        <div class="mrte-styles">
+                            @foreach (var (tag, label) in Blocks)
+                            {
+                                <button type="button" class="mrte-style @On(st.Block == tag) mrte-style-@tag" @onclick='() => Block(tag)'>@label</button>
+                            }
+                        </div>
+                        <div class="mrte-pop-title">Line spacing</div>
+                        <div class="mrte-chips">
+                            @foreach (var lh in LineHeights)
+                            {
+                                <button type="button" class="mrte-chip @On(st.LineHeight == lh)" @onclick='() => Exec("applyLineHeight", lh)'>@lh</button>
+                            }
+                        </div>
+                        <div class="mrte-menu-sep"></div>
+                        <div class="mrte-chips">
+                            <button type="button" class="mrte-chip @On(st.Sub)" title="Subscript" @onclick='() => Exec("subscript")'>X<sub>2</sub></button>
+                            <button type="button" class="mrte-chip @On(st.Sup)" title="Superscript" @onclick='() => Exec("superscript")'>X<sup>2</sup></button>
+                            <button type="button" class="mrte-chip" title="Horizontal line" @onclick='() => Exec("insertHorizontalRule")'>― Line</button>
+                        </div>
+                        <div class="mrte-menu-sep"></div>
+                        <button type="button" class="mrte-menu-item @On(st.Painter)" @onclick="Painter"><i data-lucide="paintbrush"></i> @(st.Painter ? "Format painter on, select text to apply" : "Format painter")</button>
+                        <button type="button" class="mrte-menu-item" @onclick='async () => { pop = null; await Exec("removeFormat"); }'><i data-lucide="remove-formatting"></i> Clear formatting</button>
+                        <button type="button" class="mrte-menu-item" @onclick='async () => { pop = null; await Exec("openSearchDialog"); }'><i data-lucide="search"></i> Find <kbd>Ctrl F</kbd></button>
+                        <button type="button" class="mrte-menu-item" @onclick='async () => { pop = null; await Exec("openReplaceDialog"); }'><i data-lucide="replace"></i> Replace <kbd>Ctrl H</kbd></button>
+                    </div>
+                }
+            </div>
+        </div>
     </div>
 
-    <div @ref="editorRef"
-         class="rte-editor"
-         contenteditable="true"
-         role="textbox"
-         aria-multiline="true"
-         @oninput="OnEditorInput">
-    </div>
+    @if (pop is not null)
+    {
+        <div class="mrte-pop-scrim" @onclick="() => pop = null"></div>
+    }
+
+    <div class="mrte-host" @ref="hostRef" @onfocusin="() => focusWithin = true" @onfocusout="() => focusWithin = false"></div>
 </div>
 
 @code {
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
     [Parameter] public string Placeholder { get; set; } = "Write your message here…";
+    /// Ctrl/⌘+Enter inside the editor.
+    [Parameter] public EventCallback OnSubmit { get; set; }
+    /// Non-fatal messages (e.g. an oversized pasted image was dropped).
+    [Parameter] public EventCallback<string> OnNotice { get; set; }
 
-    private ElementReference editorRef;
+    public sealed record RteState(
+        bool Bold = false, bool Italic = false, bool Underline = false, bool Strike = false,
+        bool Sub = false, bool Sup = false, bool Ul = false, bool Ol = false,
+        string Align = "left", string Font = "", string Size = "", string Block = "p", string LineHeight = "",
+        bool InTable = false, bool InLink = false, bool Painter = false, bool CanUndo = false, bool CanRedo = false);
+
+    internal static readonly string[] Fonts =
+        ["Arial", "Calibri", "Cambria", "Georgia", "Helvetica", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana", "Courier New"];
+    internal static readonly string[] Sizes = ["8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "32", "36", "48", "72"];
+    private static readonly string[] LineHeights = ["1", "1.15", "1.5", "2"];
+    private static readonly (string Tag, string Label)[] Blocks =
+        [("p", "Normal"), ("h1", "Heading 1"), ("h2", "Heading 2"), ("h3", "Heading 3"), ("blockquote", "Quote"), ("pre", "Code")];
+    private static readonly (string Key, string Icon, string Label)[] Aligns =
+        [("left", "align-left", "Align left"), ("center", "align-center", "Centre"), ("right", "align-right", "Align right"), ("full", "align-justify", "Justify")];
+    // Apple system colours plus neutrals, so mail reads the same in light and dark readers.
+    private static readonly string[] TextColors =
+        ["#1D1D1F", "#6E6E73", "#AEAEB2", "#FF3B30", "#FF9500", "#FFCC00", "#34C759", "#00C7BE", "#007AFF", "#5856D6", "#AF52DE", "#FF2D55"];
+    private static readonly string[] HighlightColors =
+        ["#FFF3A3", "#FFE0B2", "#FFD6D6", "#D6F5DD", "#CCEBFF", "#E5DBFF", "#F2F2F7", "#FFE6F0"];
+
+    private readonly string id = "rte-" + Guid.NewGuid().ToString("N")[..10];
+    private ElementReference hostRef;
+    private ElementReference linkUrlRef;
+    private DotNetObjectReference<MailRteEditor>? selfRef;
+    private RteState st = new();
     private string lastSyncedValue = "";
-    private bool initialized;
+    private bool created;
+    private bool pendingSet;
+    private bool focusWithin;
+    private string? pop;
+    private bool popJustOpened;
+    private string linkUrl = "";
+    private string linkText = "";
+    private int gridR, gridC;
+    private string lastColor = "#FF3B30";
+    private string lastHighlight = "#FFF3A3";
+
+    private string FontValue => Fonts.FirstOrDefault(f => f.Equals(st.Font, StringComparison.OrdinalIgnoreCase)) ?? (IsDefaultFont(st.Font) ? "" : st.Font);
+    private static bool IsDefaultFont(string f) => f == "" || f.StartsWith("-apple-system", StringComparison.OrdinalIgnoreCase)
+        || f.Equals("system-ui", StringComparison.OrdinalIgnoreCase) || f.Equals("Inter", StringComparison.OrdinalIgnoreCase);
+    private static string On(bool on) => on ? "on" : "";
+    private static string P(bool on) => on ? "true" : "false";
+
+    protected override void OnParametersSet()
+    {
+        if (created && (Value ?? "") != lastSyncedValue) pendingSet = true;
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            await JS.InvokeVoidAsync("ipop.rteSetHtml", editorRef, Value);
+            selfRef = DotNetObjectReference.Create(this);
             lastSyncedValue = Value ?? "";
-            initialized = true;
-            await JS.InvokeVoidAsync("ipop.icons");
-            // Fase 2: paste gambar dari clipboard (Ctrl+V) disisipkan inline,
-            // lalu gambar bisa digeser & diubah ukurannya bebas.
-            await JS.InvokeVoidAsync("ipop.rteBindImagePaste", editorRef);
-            await JS.InvokeVoidAsync("ipop.rteBindImageManipulation", editorRef);
+            created = await JS.InvokeAsync<bool>("ipop.rte.create", hostRef, id, lastSyncedValue, Placeholder, selfRef);
         }
-        else if (initialized && Value != lastSyncedValue)
+        else if (pendingSet)
         {
-            await JS.InvokeVoidAsync("ipop.rteSetHtml", editorRef, Value);
+            pendingSet = false;
             lastSyncedValue = Value ?? "";
+            await JS.InvokeVoidAsync("ipop.rte.setHtml", id, lastSyncedValue, false);
         }
-    }
-
-    private async Task OnEditorInput()
-    {
-        var html = await JS.InvokeAsync<string>("ipop.rteGetHtml", editorRef);
-        lastSyncedValue = html;
-        await ValueChanged.InvokeAsync(html);
-    }
-
-    private async Task Exec(string command, string? value = null)
-    {
-        await JS.InvokeVoidAsync("ipop.rteFormat", editorRef, command, value);
-        await OnEditorInput();
+        if (popJustOpened)
+        {
+            popJustOpened = false;
+            if (pop == "link") { try { await linkUrlRef.FocusAsync(); } catch { } }
+        }
         await JS.InvokeVoidAsync("ipop.icons");
     }
 
-    private async Task OnFormatBlockChange(ChangeEventArgs e)
+    [JSInvokable]
+    public async Task OnChange(string html)
     {
-        var tag = e.Value?.ToString() ?? "p";
-        await Exec("formatBlock", tag);
+        lastSyncedValue = html ?? "";
+        await ValueChanged.InvokeAsync(lastSyncedValue);
     }
 
-    private async Task OnFontSizeChange(ChangeEventArgs e)
+    [JSInvokable]
+    public void OnState(RteState state)
     {
-        var size = e.Value?.ToString() ?? "3";
-        await Exec("fontSize", size);
+        st = state;
+        StateHasChanged();
     }
 
-    private async Task OnColorChange(ChangeEventArgs e)
+    [JSInvokable]
+    public Task OnSubmitShortcut() => OnSubmit.InvokeAsync();
+
+    [JSInvokable]
+    public Task OnLinkShortcut() => InvokeAsync(OpenLink);
+
+    // JS calls "OnNotice"; the C# name differs because the parameter already owns it.
+    [JSInvokable("OnNotice")]
+    public Task OnNoticeJs(string message) => OnNotice.InvokeAsync(message);
+
+    private Task Exec(string cmd, string? arg = null) => JS.InvokeVoidAsync("ipop.rte.exec", id, cmd, arg).AsTask();
+
+    private void Toggle(string name)
     {
-        var color = e.Value?.ToString() ?? "#000000";
-        await Exec("foreColor", color);
+        pop = pop == name ? null : name;
+        popJustOpened = pop is not null;
+        gridR = gridC = 0;
     }
 
-    private async Task InsertLink()
+    private async Task OnFont(ChangeEventArgs e)
     {
-        var url = await JS.InvokeAsync<string>("prompt", "Enter URL:", "https://");
-        if (!string.IsNullOrWhiteSpace(url))
+        var f = e.Value?.ToString() ?? "";
+        await Exec("fontname", f == "" ? "inherit" : f);
+    }
+
+    private Task OnSize(ChangeEventArgs e) => Exec("fontsize", e.Value?.ToString());
+
+    private async Task Color(string cmd, string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return;
+        pop = null;
+        if (cmd == "forecolor") lastColor = value;
+        else if (value != "transparent") lastHighlight = value;
+        await Exec(cmd, value);
+    }
+
+    private async Task Block(string tag)
+    {
+        pop = null;
+        await Exec("formatblock", tag);
+    }
+
+    private async Task Painter()
+    {
+        pop = null;
+        await Exec("copyformat");
+    }
+
+    private async Task OpenLink()
+    {
+        if (pop == "link") { pop = null; return; }
+        var info = await JS.InvokeAsync<LinkInfo?>("ipop.rte.linkInfo", id);
+        linkUrl = info?.Href ?? "";
+        linkText = info?.Text ?? "";
+        pop = "link";
+        popJustOpened = true;
+        StateHasChanged();
+    }
+
+    internal sealed record LinkInfo(string Href, string Text);
+
+    private async Task OnLinkKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await ApplyLink();
+        else if (e.Key == "Escape") { pop = null; escConsumed = true; }
+    }
+
+    private bool escConsumed;
+
+    /// The composer sheet minimises on Esc; it asks here first so an Esc that closed one of the
+    /// editor's popovers (link, colour, table…) doesn't also tuck the whole sheet away.
+    public bool ConsumeEscape()
+    {
+        var had = escConsumed || pop is not null;
+        escConsumed = false;
+        if (pop is not null) { pop = null; StateHasChanged(); }
+        return had;
+    }
+
+    private async Task ApplyLink()
+    {
+        var url = NormalizeUrl(linkUrl);
+        if (url is null) return;
+        pop = null;
+        await JS.InvokeVoidAsync("ipop.rte.link", id, url, string.IsNullOrWhiteSpace(linkText) ? null : linkText.Trim());
+    }
+
+    /// Bare hosts get https://, bare addresses get mailto:; script schemes are refused.
+    public static string? NormalizeUrl(string? raw)
+    {
+        var u = (raw ?? "").Trim();
+        if (u.Length == 0) return null;
+        if (u.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase) || u.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
+            || u.StartsWith("vbscript:", StringComparison.OrdinalIgnoreCase)) return null;
+        if (u.Contains('@') && !u.Contains(':') && !u.Contains('/')) return "mailto:" + u;
+        if (!System.Text.RegularExpressions.Regex.IsMatch(u, "^[a-zA-Z][a-zA-Z0-9+.-]*:")) return "https://" + u;
+        return u;
+    }
+
+    private async Task InsertTable(int rows, int cols)
+    {
+        pop = null;
+        await JS.InvokeVoidAsync("ipop.rte.insertTable", id, rows, cols);
+    }
+
+    private async Task TableCmd(string cmd)
+    {
+        pop = null;
+        await Exec(cmd);
+    }
+
+    private async Task SaveCaret() => await JS.InvokeVoidAsync("ipop.rte.linkInfo", id);
+
+    private const long MaxImageBytes = 2 * 1024 * 1024;
+
+    private async Task OnImagePicked(InputFileChangeEventArgs e)
+    {
+        var f = e.File;
+        if (f.Size > MaxImageBytes)
         {
-            await Exec("createLink", url);
+            await OnNotice.InvokeAsync("Gambar maksimal 2 MB. Untuk file yang lebih besar, lampirkan sebagai attachment.");
+            return;
         }
+        using var ms = new MemoryStream();
+        await f.OpenReadStream(MaxImageBytes).CopyToAsync(ms);
+        var mime = string.IsNullOrEmpty(f.ContentType) ? "image/png" : f.ContentType;
+        await InsertImage($"data:{mime};base64,{Convert.ToBase64String(ms.ToArray())}");
     }
 
-    private async Task InsertTable()
+    public async Task InsertImage(string src) => await JS.InvokeVoidAsync("ipop.rte.insertImage", id, src);
+
+    /// Inserts at the caret; undoable.
+    public async Task InsertHtml(string html) => await JS.InvokeVoidAsync("ipop.rte.insertHtml", id, html);
+
+    /// Replaces the document but keeps undo history (templates).
+    public async Task ReplaceHtml(string html)
     {
-        await JS.InvokeVoidAsync("ipop.rteInsertTable", editorRef, 3, 3);
-        await OnEditorInput();
+        lastSyncedValue = html ?? "";
+        await JS.InvokeVoidAsync("ipop.rte.setHtml", id, lastSyncedValue, true);
+        await ValueChanged.InvokeAsync(lastSyncedValue);
     }
 
-    public async Task InsertImage(string src)
-    {
-        await JS.InvokeVoidAsync("ipop.rteInsertImage", editorRef, src);
-        await OnEditorInput();
-    }
+    public async Task FocusAsync() => await JS.InvokeVoidAsync("ipop.rte.focus", id);
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
+        try { await JS.InvokeVoidAsync("ipop.rte.destroy", id); } catch (JSDisconnectedException) { } catch (ObjectDisposedException) { }
+        selfRef?.Dispose();
     }
 }

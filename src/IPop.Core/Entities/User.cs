@@ -36,6 +36,8 @@ public class User
     public DateTime? PresenceLastSeenAt { get; set; }
     /// Null = automatic; "busy" = user-set override. Other values are rejected at the API boundary.
     public string? PresenceManualStatus { get; set; }
+    /// Reported by the client with each heartbeat: computer idle ≥ 10 min or screen locked.
+    public bool PresenceIsIdle { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

@@ -18,7 +18,11 @@ public record ComposeMailRequest(
     Guid? ThreadRootId = null,
     string? Signature = null,
     DateTime? ScheduledAt = null,
-    string? Importance = "normal");
+    string? Importance = "normal",
+    // Labels picked in the composer; applied to the sender's own copy (labels are per user).
+    IReadOnlyList<Guid>? LabelIds = null,
+    // Forward only: which of the original's attachments to carry over (null = all of them).
+    IReadOnlyList<Guid>? ForwardAttachmentIds = null);
 
 public record SendMailResult(bool Success, Guid? MailId, string? Error);
 
@@ -104,6 +108,8 @@ public record MailDetailDto(
     string? BodyText = null)
 {
     public IReadOnlyList<ProjectLink> LinkedProjects { get; init; } = [];
+    /// The caller's own labels on this mail (labels are per user).
+    public IReadOnlyList<Guid> LabelIds { get; init; } = [];
 }
 
 // Delivery/read state of one recipient, for the sender's "terkirim/dibaca" view.

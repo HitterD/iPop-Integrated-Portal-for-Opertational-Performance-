@@ -1,13 +1,16 @@
 @namespace IPop.Web.Components.News
 @using IPop.Web.Models
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject ToastService Toasts
 
 <div class="backdrop on" @onclick="OnClose"></div>
-<div class="drawer on" role="dialog" aria-label="@(IsEdit ? "Edit Post" : "Create New Post")" aria-modal="true">
+<div class="drawer on news-editor" role="dialog" aria-label="@(IsEdit ? "Edit post" : "New post")" aria-modal="true">
     <div class="tray"><div class="core" style="display:flex;flex-direction:column;height:100%;padding:0;overflow:hidden">
         <div class="drawer-head">
             <span style="display:flex;align-items:center;gap:8px;font-weight:700">
-                <i data-lucide="@(IsEdit ? "pencil" : "plus")"></i>
-                <span>@(IsEdit ? "Edit Post" : "Create New Post")</span>
+                <i data-lucide="@(IsEdit ? "pencil" : "square-pen")"></i>
+                <span>@(IsEdit ? "Edit post" : "New post")</span>
             </span>
             <button class="drawer-close" @onclick="OnClose" aria-label="Close"><i data-lucide="x"></i></button>
         </div>
@@ -16,91 +19,112 @@
             {
                 <div class="note err" style="margin-bottom:14px"><i data-lucide="alert-circle"></i><span>@FormError</span></div>
             }
-
-            <div class="field">
-                <label>Post Category / Type</label>
-                <AppSelect Value="@formType" ValueChanged="OnTypeChanged" Options="@NewsUiHelper.FormTypeOptions" Label="Select Category" />
-            </div>
-
-            @if (formType == "condolence")
+            @if (IsEdit && Detail?.Status == "published")
             {
-                <div class="note" style="margin-bottom:14px;background:var(--tray);color:var(--ink-2)">
-                    <i data-lucide="heart" style="color:var(--ink-2)"></i>
-                    <span><strong>Condolence</strong> posts are presented with a respectful sympathy layout for the company community.</span>
-                </div>
-            }
-            else if (formType == "memo")
-            {
-                <div class="note" style="margin-bottom:14px;background:var(--accent-soft);color:var(--accent-ink)">
-                    <i data-lucide="file-text" style="color:var(--accent)"></i>
-                    <span><strong>Internal Memo</strong> serves as official internal correspondence. Enable acknowledgement if employees are required to confirm reading.</span>
-                </div>
+                <div class="note" style="margin-bottom:14px"><i data-lucide="info"></i><span>This post is live. Saving marks it as <strong>Edited</strong> and records the change in the audit trail. Existing acknowledgements stay valid.</span></div>
             }
 
             <div class="field">
-                <label>Post Title</label>
-                <input placeholder="@(formType == "condolence" ? "Condolence — Mr./Ms. [Name]..." : formType == "memo" ? "Policy Update — Working Hours Policy..." : "Q3 Town Hall — Schedule & Agenda...")"
-                       @bind="formTitle"
-                       maxlength="300" />
+                <label>Category</label>
+                <div class="ed-types" role="radiogroup" aria-label="Category">
+                    @foreach (var o in NewsUiHelper.FormTypeOptions)
+                    {
+                        var opt = o;
+                        <button type="button" role="radio" aria-checked="@(formType == opt.Value ? "true" : "false")" class="ed-type @(formType == opt.Value ? "on" : "")" @onclick="() => SetType(opt.Value)">
+                            <i data-lucide="@NewsUiHelper.GetCategoryIcon(opt.Value)"></i>@NewsUiHelper.GetCategoryLabel(opt.Value)
+                        </button>
+                    }
+                </div>
             </div>
 
             <div class="field">
-                <label>Content</label>
-                <textarea placeholder="@(formType == "condolence" ? "With deep sorrow..." : "Enter announcement, notification, or memo text...")"
-                          @bind="formBody"
-                          rows="9"
-                          style="width:100%;padding:12px;font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);resize:vertical;line-height:1.6"></textarea>
+                <label for="news-title">Title</label>
+                <input id="news-title" placeholder="@(formType == "condolence" ? "Condolence — Mr./Ms. [Name]" : formType == "memo" ? "Policy update — Working hours" : "Q3 Town Hall — Schedule & agenda")"
+                       @bind="formTitle" @bind:event="oninput" maxlength="300" />
+                <div class="ed-hint">@formTitle.Length / 300</div>
             </div>
 
             <div class="field">
-                <label>Automatic Publish Schedule (Optional — leave blank to publish immediately upon approval)</label>
-                <input type="datetime-local"
-                       @bind="formPublishAt"
-                       style="width:100%;padding:10px 12px;font-family:inherit;font-size:13px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink)" />
+                <label for="news-body">Content</label>
+                <textarea id="news-body" class="ed-body" placeholder="@(formType == "condolence" ? "With deep sorrow…" : "Write the announcement, notice or memo…")"
+                          @bind="formBody" @bind:event="oninput" rows="10"></textarea>
+            </div>
+
+            <div class="field">
+                <label>Attachments</label>
+                <div class="ed-files">
+                    @foreach (var f in attachments)
+                    {
+                        var file = f;
+                        <span class="file-chip static">
+                            <i data-lucide="@NewsUiHelper.FileIcon(file.FileName)"></i>
+                            <span class="fn">@file.FileName</span>
+                            <span class="fs">@NewsUiHelper.FileSize(file.Size)</span>
+                            <button type="button" class="x" aria-label="Remove @file.FileName" @onclick="() => attachments.Remove(file)"><i data-lucide="x"></i></button>
+                        </span>
+                    }
+                    <label class="ed-upload @(uploading ? "busy" : "")">
+                        <i data-lucide="@(uploading ? "loader-circle" : "paperclip")"></i>@(uploading ? "Uploading…" : "Attach files")
+                        <InputFile OnChange="Upload" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.png,.jpg,.jpeg" disabled="@uploading" />
+                    </label>
+                </div>
+                <div class="ed-hint">PDF, Word, Excel, PowerPoint, CSV or images · up to 25 MB each</div>
             </div>
 
             <div class="form-checkbox-group">
                 <label class="form-check-card">
                     <input type="checkbox" @bind="formRequiresAck" />
                     <div>
-                        <div style="font-weight:600;font-size:12.5px;color:var(--ink)">Requires Acknowledgement</div>
-                        <div style="font-size:11.5px;color:var(--ink-2)">Recipients must confirm having read this post.</div>
+                        <div style="font-weight:600;font-size:12.5px;color:var(--ink)">Requires acknowledgement</div>
+                        <div style="font-size:11.5px;color:var(--ink-2)">Recipients must confirm "I have read and understood".</div>
                     </div>
                 </label>
-                <label class="form-check-card">
-                    <input type="checkbox" @bind="formIsPinned" />
-                    <div>
-                        <div style="font-weight:600;font-size:12.5px;color:var(--ink)">Pinned Post</div>
-                        <div style="font-size:11.5px;color:var(--ink-2)">This post will appear pinned at the top of the feed.</div>
-                    </div>
-                </label>
+                @if (!IsEdit || Detail?.CanPublish == true)
+                {
+                    <label class="form-check-card">
+                        <input type="checkbox" @bind="formIsPinned" />
+                        <div>
+                            <div style="font-weight:600;font-size:12.5px;color:var(--ink)">Pin to top</div>
+                            <div style="font-size:11.5px;color:var(--ink-2)">Shown above other posts until unpinned.</div>
+                        </div>
+                    </label>
+                }
             </div>
+            @if (formRequiresAck)
+            {
+                <div class="field" style="margin-top:12px">
+                    <label for="news-ackdue">Acknowledge by (optional)</label>
+                    <AppDateTimePicker Id="news-ackdue" @bind-Value="formAckDueAt" AllowClear="true" Class="dp-block" />
+                </div>
+            }
 
             <div class="field" style="margin-top:16px">
-                <label>Audience Targeting</label>
+                <label>Audience</label>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
                     @foreach (var t in formTargets)
                     {
                         var target = t;
                         <span class="tag-target-chip" style="display:inline-flex;align-items:center;gap:6px">
                             @target.Kind:@(target.Value ?? "all")
-                            <button type="button" @onclick="() => formTargets.Remove(target)" style="background:none;border:none;cursor:pointer;padding:0;color:inherit"><i data-lucide="x" style="width:11px;height:11px"></i></button>
+                            <button type="button" aria-label="Remove target" @onclick="() => formTargets.Remove(target)" style="background:none;border:none;cursor:pointer;padding:0;color:inherit"><i data-lucide="x" style="width:11px;height:11px"></i></button>
                         </span>
                     }
                     @if (formTargets.Count == 0)
                     {
-                        <span style="font-size:12px;color:var(--ink-3)">Empty targeting = All Employees (All Users)</span>
+                        <span style="font-size:12px;color:var(--ink-3)">No targets = all employees</span>
                     }
                 </div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-                    <AppSelect Value="@targetKind" ValueChanged="v => targetKind = v ?? targetKind" Options="@NewsUiHelper.TargetKindOptions" Label="Target Type" />
-                    @if (targetKind != "all")
+                    <AppSelect Value="@targetKind" ValueChanged="v => targetKind = v ?? targetKind" Options="@NewsUiHelper.TargetKindOptions" Label="Target type" />
+                    @if (targetKind is "department" or "role")
                     {
-                        <input placeholder="@(targetKind == "department" ? "Dept Code (e.g. ENG, HRD)" : targetKind == "role" ? "Role (e.g. Manager)" : "Employee ID (NIK)")"
-                               @bind="targetValue"
-                               style="flex:1;min-width:140px;padding:8px 12px;font-family:inherit;font-size:12.5px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)" />
+                        <input placeholder="@(targetKind == "department" ? "Dept code (e.g. ENG, HRD)" : "Role (e.g. Manager)")"
+                               @bind="targetValue" class="ed-target" />
                     }
-                    <button type="button" class="org-act" style="width:auto;padding:8px 14px;font-size:12.5px" @onclick="AddTarget"><i data-lucide="plus" style="width:12px;height:12px"></i> Add Target</button>
+                    @if (targetKind != "user")
+                    {
+                        <button type="button" class="org-act" style="width:auto;padding:8px 14px;font-size:12.5px" @onclick="AddTarget"><i data-lucide="plus" style="width:12px;height:12px"></i> Add</button>
+                    }
                 </div>
                 @if (targetKind == "user")
                 {
@@ -108,17 +132,41 @@
                 }
             </div>
 
-            @if (IsEdit && Detail is not null)
+            @if (!IsEdit)
             {
-                <div class="note" style="margin-top:16px"><i data-lucide="info"></i><span>Editing a rejected post resets its status back to draft for resubmission.</span></div>
+                <div class="field" style="margin-top:16px">
+                    <label>When</label>
+                    <div class="seg ed-when" role="radiogroup" aria-label="Publish timing">
+                        <button type="button" role="radio" aria-checked="@(when == "now" ? "true" : "false")" class="@(when == "now" ? "on" : "")" @onclick='() => when = "now"'>Publish now</button>
+                        <button type="button" role="radio" aria-checked="@(when == "schedule" ? "true" : "false")" class="@(when == "schedule" ? "on" : "")" @onclick='() => when = "schedule"'>Schedule</button>
+                    </div>
+                    @if (when == "schedule")
+                    {
+                        <AppDateTimePicker @bind-Value="formPublishAt" AllowClear="true" Style="margin-top:8px" AriaLabel="Publish at" />
+                    }
+                </div>
+            }
+            else if (Detail?.Status != "published" || (Detail.CanPublish && Detail.PublishAt > DateTime.UtcNow))
+            {
+                <div class="field" style="margin-top:16px">
+                    <label for="news-publishat">Scheduled publish (optional)</label>
+                    <AppDateTimePicker Id="news-publishat" @bind-Value="formPublishAt" AllowClear="true" Class="dp-block" />
+                </div>
             }
         </div>
-        <div style="padding:14px 20px;border-top:1px solid var(--line-soft);display:flex;gap:8px;background:var(--bg)">
-            <button type="button" class="btn" style="flex:1;margin:0" @onclick="SubmitForm" disabled="@FormBusy">
-                @(FormBusy ? "Saving…" : (IsEdit ? "Save Changes" : "Save as Draft"))
-                <span class="orb"><i data-lucide="@(IsEdit ? "check" : "plus")"></i></span>
-            </button>
-            <button type="button" class="btn" style="width:auto;margin:0;background:var(--surface);color:var(--ink);border:1px solid var(--line)" @onclick="OnClose">Cancel</button>
+        <div class="ed-foot">
+            <button type="button" class="ghost-btn" @onclick="OnClose">Cancel</button>
+            @if (IsEdit)
+            {
+                <button type="button" class="btn-primary push-right" @onclick='() => Submit("edit")' disabled="@(FormBusy || uploading)"><i data-lucide="check"></i>@(FormBusy ? "Saving…" : "Save changes")</button>
+            }
+            else
+            {
+                <button type="button" class="ghost-btn push-right" @onclick='() => Submit("draft")' disabled="@(FormBusy || uploading)"><i data-lucide="file-pen-line"></i>Save draft</button>
+                <button type="button" class="btn-primary" @onclick='() => Submit(when == "schedule" ? "schedule" : "publish")' disabled="@(FormBusy || uploading)">
+                    <i data-lucide="@(when == "schedule" ? "clock-3" : "send")"></i>@(FormBusy ? "Saving…" : when == "schedule" ? "Schedule" : "Publish now")
+                </button>
+            }
         </div>
     </div></div>
 </div>
@@ -135,46 +183,51 @@
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback<NewsSaveRequest> OnSave { get; set; }
 
+    private const long MaxBytes = 25L * 1024 * 1024;
+
     private string formType = "news";
     private string formTitle = "";
     private string formBody = "";
     private DateTime? formPublishAt;
+    private DateTime? formAckDueAt;
     private bool formRequiresAck;
     private bool formIsPinned;
     private List<NewsTargetInput> formTargets = [];
+    private List<NewsAttachmentDto> attachments = [];
     private string targetKind = "all";
     private string targetValue = "";
+    private string when = "now";
+    private bool uploading;
+    private (bool, Guid?)? initFor;
 
     protected override void OnParametersSet()
     {
+        // Seed the form once per open; later parent re-renders (busy/error) must not wipe typed input.
+        var key = (IsEdit, IsEdit ? Detail?.Id : null);
+        if (initFor == key) return;
+        initFor = key;
         if (IsEdit && Detail is not null)
         {
             formType = Detail.Type;
             formTitle = Detail.Title;
             formBody = Detail.Body;
-            formPublishAt = Detail.PublishAt;
+            formPublishAt = Detail.PublishAt?.ToLocalTime();
+            formAckDueAt = Detail.AckDueAt?.ToLocalTime();
             formRequiresAck = Detail.RequiresAcknowledgement;
             formIsPinned = Detail.IsPinned;
             formTargets = Detail.Targets.Select(t => new NewsTargetInput(t.Kind, t.Value)).ToList();
+            attachments = (Detail.Attachments ?? []).ToList();
         }
-        else if (!IsEdit)
+        else
         {
             formType = string.IsNullOrEmpty(DefaultCategory) ? "news" : DefaultCategory;
-            formTitle = "";
-            formBody = "";
-            formPublishAt = null;
-            formRequiresAck = false;
-            formIsPinned = false;
-            formTargets = [];
         }
-        targetKind = "all";
-        targetValue = "";
     }
 
-    private void OnTypeChanged(string? v)
+    private void SetType(string v)
     {
-        formType = v ?? "news";
-        StateHasChanged();
+        formType = v;
+        if (v == "memo" && !IsEdit) formRequiresAck = true;
         _ = JS.InvokeVoidAsync("ipop.icons");
     }
 
@@ -184,38 +237,79 @@
         var val = targetValue.Trim();
         if (kind == "all")
         {
-            formTargets.Add(new NewsTargetInput("all", null));
+            if (formTargets.All(t => t.Kind != "all")) formTargets.Add(new NewsTargetInput("all", null));
         }
         else
         {
             if (string.IsNullOrWhiteSpace(val)) return;
-            formTargets.Add(new NewsTargetInput(kind, val));
+            if (formTargets.All(t => t.Kind != kind || t.Value != val)) formTargets.Add(new NewsTargetInput(kind, val));
         }
         targetValue = "";
-        StateHasChanged();
         _ = JS.InvokeVoidAsync("ipop.icons");
     }
 
     private void OnPickMember(MemberSearchRow r)
     {
-        formTargets.Add(new NewsTargetInput("user", r.Nik));
-        targetKind = "user";
-        targetValue = r.Nik;
-        StateHasChanged();
+        if (formTargets.All(t => t.Kind != "user" || t.Value != r.Nik)) formTargets.Add(new NewsTargetInput("user", r.Nik));
         _ = JS.InvokeVoidAsync("ipop.icons");
     }
 
-    private async Task SubmitForm()
+    private async Task Upload(InputFileChangeEventArgs e)
     {
+        uploading = true;
+        StateHasChanged();
+        try
+        {
+            foreach (var file in e.GetMultipleFiles(10))
+            {
+                if (file.Size > MaxBytes)
+                {
+                    Toasts.Show($"{file.Name} is larger than 25 MB.", ToastKind.Error);
+                    continue;
+                }
+                using var content = new MultipartFormDataContent();
+                var stream = new StreamContent(file.OpenReadStream(MaxBytes));
+                stream.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(file.ContentType) ? "application/octet-stream" : file.ContentType);
+                content.Add(stream, "file", file.Name);
+                var res = await Auth.SendMultipartAsync(IsEdit && Detail is not null ? $"/api/news/attachments?postId={Detail.Id}" : "/api/news/attachments", content);
+                if (!res.IsSuccessStatusCode)
+                {
+                    string? reason = null;
+                    try { if ((await res.Content.ReadFromJsonAsync<Dictionary<string, string>>())?.TryGetValue("message", out var m) == true) reason = m; } catch { }
+                    Toasts.Show(res.StatusCode switch
+                    {
+                        System.Net.HttpStatusCode.UnprocessableEntity => $"{file.Name}: {reason ?? "this file type isn't allowed."}",
+                        System.Net.HttpStatusCode.Forbidden => "Only the post's author, HR or Admin can attach files.",
+                        System.Net.HttpStatusCode.BadGateway => "File storage is unavailable right now. Try again later or contact IT.",
+                        _ => $"Could not upload {file.Name}."
+                    }, ToastKind.Error);
+                    continue;
+                }
+                if (await res.Content.ReadFromJsonAsync<NewsAttachmentDto>() is { } dto) attachments.Add(dto);
+            }
+        }
+        finally
+        {
+            uploading = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    private async Task Submit(string mode)
+    {
+        var publishAt = mode == "schedule" || (mode == "edit" && formPublishAt is not null) ? formPublishAt?.ToUniversalTime() : null;
         var req = new NewsSaveRequest(
             formType,
             formTitle.Trim(),
             formBody,
-            formPublishAt,
+            publishAt,
             formRequiresAck,
             formIsPinned,
-            formTargets
-        );
+            formTargets,
+            formRequiresAck ? formAckDueAt?.ToUniversalTime() : null,
+            attachments.Select(a => a.Id).ToList(),
+            mode == "edit" ? "draft" : mode);
         await OnSave.InvokeAsync(req);
     }
 }

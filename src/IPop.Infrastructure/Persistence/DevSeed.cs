@@ -58,7 +58,24 @@ public static class DevSeed
             db.RolePermissions.Add(new RolePermission { RoleId = admin.Id, PermissionId = permission.Id });
         }
         await db.SaveChangesAsync(ct);
-        var cto = await db.Users.FirstOrDefaultAsync(u => u.Nik == "20080115", ct);
+
+        // HR manages News & Memos alongside Admin: post, edit, publish, pin and delete.
+        // Seeded idempotently so existing databases gain the role without a reset.
+        var hr = await db.Roles.FirstOrDefaultAsync(r => r.Name == "HR", ct);
+        if (hr is null)
+        {
+            hr = new Role { Id = Guid.NewGuid(), Name = "HR" };
+            db.Roles.Add(hr);
+            await db.SaveChangesAsync(ct);
+        }
+        var hrCodes = new[] { "news.read", "news.write", "news.publish" };
+        var hrPermIds = await db.Permissions.Where(p => hrCodes.Contains(p.Code)).Select(p => p.Id).ToListAsync(ct);
+        var hrHas = await db.RolePermissions.Where(rp => rp.RoleId == hr.Id).Select(rp => rp.PermissionId).ToListAsync(ct);
+        foreach (var pid in hrPermIds.Except(hrHas))
+            db.RolePermissions.Add(new RolePermission { RoleId = hr.Id, PermissionId = pid });
+        await db.SaveChangesAsync(ct);
+
+        var cto =await db.Users.FirstOrDefaultAsync(u => u.Nik == "20080115", ct);
         if (cto is not null && !await db.UserRoles.AnyAsync(ur => ur.UserId == cto.Id && ur.RoleId == admin.Id, ct))
         {
             db.UserRoles.Add(new UserRole { UserId = cto.Id, RoleId = admin.Id });

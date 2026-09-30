@@ -36,6 +36,7 @@ public interface IMailService
     Task<BulkResultDto> BulkDeleteAsync(Guid userId, IReadOnlyList<Guid> mailIds, CancellationToken ct);
     Task<BulkResultDto> BulkRestoreAsync(Guid userId, IReadOnlyList<Guid> mailIds, CancellationToken ct);
     Task<BulkResultDto> MarkAllReadAsync(Guid userId, MailFolder folder, CancellationToken ct);
+    Task<BulkResultDto> BulkMarkReadAsync(Guid userId, IReadOnlyList<Guid> mailIds, CancellationToken ct);
 
     // Delivery/read tracking — sender's view of who received/read.
     Task<IReadOnlyList<DeliveryReadStateDto>> GetDeliveryStateAsync(Guid userId, Guid mailId, CancellationToken ct);

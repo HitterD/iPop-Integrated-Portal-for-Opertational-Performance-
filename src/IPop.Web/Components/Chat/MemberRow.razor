@@ -6,26 +6,44 @@
     <div class="avatar member-row-avatar" style="background:@GetColor(Member.Nik)">@Initials(Member.Name)</div>
     <div class="member-row-copy">
         <div class="name">@Member.Name</div>
-        <div class="role">@DisplayRole(Member.Role)</div>
+        <div class="role">@(IsSelf ? "You" : PresenceLabel(Member.PresenceStatus))</div>
     </div>
-    <span class="tag @(Member.Role == "owner" ? "owner" : "")">@DisplayRole(Member.Role)</span>
-    @if (ShowActions)
+    @if (Member.Role is "owner" or "admin")
     {
-        @if (CanRemove)
-        {
-            <button class="member-action" title="Remove" @onclick="() => OnRemove.InvokeAsync(Member)" @onclick:stopPropagation><i data-lucide="user-minus"></i></button>
-        }
-        @if (CanChangeRole)
-        {
-            @if (Member.Role == "member")
+        <span class="tag @Member.Role">@DisplayRole(Member.Role)</span>
+    }
+    @if (ShowActions && (CanRemove || CanChangeRole))
+    {
+        <div class="member-menu-wrap" @onclick:stopPropagation>
+            <button type="button" class="member-action member-more" aria-label="Manage @Member.Name" aria-haspopup="menu"
+                    aria-expanded="@(menuOpen ? "true" : "false")" @onclick="() => menuOpen = !menuOpen">
+                <i data-lucide="ellipsis"></i>
+            </button>
+            @if (menuOpen)
             {
-                <button class="member-action role-action" title="Make admin" @onclick="() => OnChangeRole.InvokeAsync((Member, ChatMemberRole.Admin))" @onclick:stopPropagation>↑ admin</button>
+                <div class="member-menu-backdrop" @onclick="() => menuOpen = false"></div>
+                <div class="member-menu" role="menu">
+                    @if (CanChangeRole && Member.Role == "member")
+                    {
+                        <button type="button" role="menuitem" @onclick="() => Act(OnChangeRole.InvokeAsync((Member, ChatMemberRole.Admin)))">
+                            <i data-lucide="shield-plus"></i> Make admin
+                        </button>
+                    }
+                    else if (CanChangeRole && Member.Role == "admin")
+                    {
+                        <button type="button" role="menuitem" @onclick="() => Act(OnChangeRole.InvokeAsync((Member, ChatMemberRole.Member)))">
+                            <i data-lucide="shield-minus"></i> Remove admin
+                        </button>
+                    }
+                    @if (CanRemove)
+                    {
+                        <button type="button" role="menuitem" class="danger" @onclick="() => Act(OnRemove.InvokeAsync(Member))">
+                            <i data-lucide="user-minus"></i> Remove from group
+                        </button>
+                    }
+                </div>
             }
-            else if (Member.Role == "admin")
-            {
-                <button class="member-action role-action" title="Make member" @onclick="() => OnChangeRole.InvokeAsync((Member, ChatMemberRole.Member))" @onclick:stopPropagation>↓ member</button>
-            }
-        }
+        </div>
     }
 </div>
 
@@ -36,6 +54,14 @@
     [Parameter] public EventCallback<MemberDto> OnRemove { get; set; }
     [Parameter] public EventCallback<(MemberDto, ChatMemberRole)> OnChangeRole { get; set; }
     [Parameter] public bool ShowActions { get; set; } = true;
+
+    private bool menuOpen;
+
+    private async Task Act(Task action)
+    {
+        menuOpen = false;
+        await action;
+    }
 
     private bool IsSelf => Member.Nik == CurrentUserNik;
     private bool IsOwner => Member.Role == "owner";
@@ -49,6 +75,14 @@
         if (OnProfile.HasDelegate)
             await OnProfile.InvokeAsync(Member.Nik);
     }
+
+    private static string PresenceLabel(string? status) => status switch
+    {
+        "on" or "online" => "Online",
+        "away" => "Away",
+        "busy" => "Busy",
+        _ => "Offline"
+    };
 
     private static string DisplayRole(string? role) => role switch
     {

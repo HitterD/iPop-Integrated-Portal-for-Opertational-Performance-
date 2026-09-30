@@ -3,6 +3,7 @@
 @inject AuthState Auth
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject CallState CallSvc
 
 <PageTitle>Meeting — IPop</PageTitle>
 
@@ -28,20 +29,9 @@
         }
         else
         {
+            @* Same LiveKit client + call window as group calls (CallState.JoinMeetingAsync). *@
             <p role="status">@connectionStatus</p>
-            @if (joined)
-            {
-                <div class="meeting-room-controls">
-                    <button type="button" @onclick="ToggleMicrophone">@(muted ? "Unmute microphone" : "Mute microphone")</button>
-                    <button type="button" @onclick="ToggleCamera">@(cameraEnabled ? "Turn camera off" : "Turn camera on")</button>
-                    <button type="button" @onclick="Leave">Leave meeting</button>
-                </div>
-            }
-            else
-            {
-                <button type="button" @onclick="Join" disabled="@connecting">@(connecting ? "Connecting…" : "Join meeting")</button>
-            }
-            <div id="meeting-video" class="meeting-room-video" hidden="@(!joined)" aria-label="Meeting video streams"></div>
+            <button type="button" class="btn-primary" @onclick="Join" disabled="@connecting">@(connecting ? "Menghubungkan…" : "Gabung rapat")</button>
         }
     </div>
 </div>
@@ -89,14 +79,10 @@
         error = null;
         try
         {
-            await JS.InvokeVoidAsync("ipopMeeting.join", meeting.LiveKitUrl, meeting.LiveKitToken, "meeting-video");
-            joined = true;
-            connectionStatus = "Connected to meeting";
-        }
-        catch
-        {
-            error = "Could not connect to the meeting. Check your connection and try again.";
-            connectionStatus = "Disconnected";
+            if (await CallSvc.JoinMeetingAsync(meeting.RoomName))
+                Nav.NavigateTo($"/calls?tab=scheduled&meeting={meeting.MeetingId}");
+            else
+                error = CallSvc.LastError ?? "Could not connect to the meeting. Check your connection and try again.";
         }
         finally
         {

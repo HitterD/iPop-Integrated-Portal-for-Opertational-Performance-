@@ -1,24 +1,26 @@
 @using IPop.Application.Chat
 @using IPop.Web.Services
+@using IPop.Web.Models
+@inject IJSRuntime JS
 
 @if (isOpen)
 {
-    <div class="mention-popup" role="listbox" aria-label="Mention suggestions">
+    <div class="mention-popup" role="listbox" aria-label="Mention suggestions" @ref="listRef">
         @for (int i = 0; i < displayItems.Count; i++)
         {
             var idx = i;
             var item = displayItems[idx];
             var sel = idx == selectedIndex;
-            <div id="mention-opt-@idx" role="option" aria-selected="@sel.ToString().ToLowerInvariant()" class="mi @(sel ? "sel" : "")" @onclick="() => Pick(idx)">
+            <div id="mention-opt-@idx" role="option" aria-selected="@sel.ToString().ToLowerInvariant()" class="mi @(sel ? "sel" : "")" @onmousedown:preventDefault @onclick="() => Pick(idx)">
                 @if (item.IsAll)
                 {
                     <div class="avatar mention-avatar mention-all">@@</div>
-                    <div><div class="name">@@all (@item.AllCount)</div><div class="role">Mention all</div></div>
+                    <div class="mi-text"><div class="name">@@all</div><div class="role">Notify everyone in this group (@item.AllCount)</div></div>
                 }
                 else
                 {
                     <div class="avatar mention-avatar" style="background:@Color(item.Member!.Nik)">@Initials(item.Member.Name)</div>
-                    <div><div class="name">@item.Member.Name</div><div class="role">@item.Member.Role</div></div>
+                    <div class="mi-text"><div class="name">@item.Member.Name</div><div class="role">@RoleLabel(item.Member)</div></div>
                 }
             </div>
         }
@@ -44,10 +46,25 @@
 
     private bool IsAllQuery => string.IsNullOrEmpty(Query) || "all".StartsWith(Query, StringComparison.OrdinalIgnoreCase);
 
+    private ElementReference listRef;
+    private string? lastKey;
+    private bool scrollPending;
+
     protected override void OnParametersSet()
     {
         BuildItems();
-        selectedIndex = 0;
+        // Only a new query resets the highlight; unrelated parent re-renders (typing
+        // indicators, incoming messages) must not yank the keyboard selection back.
+        var key = $"{Query}|{ShowAll}|{string.Join(",", displayItems.Select(d => d.Label))}";
+        if (key != lastKey) { selectedIndex = 0; lastKey = key; }
+        if (selectedIndex >= displayItems.Count) selectedIndex = 0;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!scrollPending || !isOpen) return;
+        scrollPending = false;
+        try { await JS.InvokeVoidAsync("ipop.scrollItemIntoView", listRef, $"mention-opt-{selectedIndex}"); } catch { }
     }
 
     private void BuildItems()
@@ -58,11 +75,12 @@
         foreach (var m in filtered) displayItems.Add(new PopupItem { Member = m, Label = m.Name });
     }
 
-    public void MoveDown() { if (displayItems.Count == 0) return; selectedIndex = (selectedIndex + 1) % displayItems.Count; StateHasChanged(); }
-    public void MoveUp() { if (displayItems.Count == 0) return; selectedIndex = (selectedIndex - 1 + displayItems.Count) % displayItems.Count; StateHasChanged(); }
+    public void MoveDown() { if (displayItems.Count == 0) return; selectedIndex = (selectedIndex + 1) % displayItems.Count; scrollPending = true; StateHasChanged(); }
+    public void MoveUp() { if (displayItems.Count == 0) return; selectedIndex = (selectedIndex - 1 + displayItems.Count) % displayItems.Count; scrollPending = true; StateHasChanged(); }
 
     private async Task Pick(int idx)
     {
+        if (idx < 0 || idx >= displayItems.Count) return;
         var item = displayItems[idx];
         await OnPick.InvokeAsync(new PopupPick(item.Member, item.IsAll));
     }
@@ -74,12 +92,16 @@
 
     private static string Initials(string name)
     {
-        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var parts = name.Split([' ', ',', '.'], StringSplitOptions.RemoveEmptyEntries);
         return parts.Length >= 2 ? $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant() : name.Length >= 2 ? name[..2].ToUpperInvariant() : name.ToUpperInvariant();
     }
-    private static string Color(string nik)
+    // Same palette as chat bubbles/avatars elsewhere (stable per NIK, unlike string.GetHashCode).
+    private static string Color(string nik) => AvatarPalette.For(nik);
+
+    private static string RoleLabel(MemberDto m) => m.Role switch
     {
-        var colors = new[] { "#2e7d5b", "#7d5ba6", "#8a6d3b", "#b3543f", "#4f6d8f", "#5b7d2e" };
-        return colors[Math.Abs(nik.GetHashCode()) % colors.Length];
-    }
+        "owner" => "Group owner",
+        "admin" => "Group admin",
+        _ => m.Nik,
+    };
 }

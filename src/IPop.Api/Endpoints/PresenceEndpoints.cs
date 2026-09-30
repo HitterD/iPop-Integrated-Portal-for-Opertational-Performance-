@@ -9,23 +9,27 @@ public static class PresenceEndpoints
 {
     public static IEndpointRouteBuilder MapPresence(this IEndpointRouteBuilder app)
     {
-        // Heartbeat: stamps LastSeenAt server-side (never trust the client's clock),
-        // then broadcasts only if the effective status actually changed.
+        // Heartbeat: sent by every open iPop tab (visible or not) every 30s and whenever the
+        // computer's idle state flips. Stamps LastSeenAt server-side (never trust the client's
+        // clock), records idle, then broadcasts only if the effective status actually changed.
         app.MapPost("/api/presence/beat", async (
-            IPopDbContext db, PresenceBroadcaster presence, HttpContext http, CancellationToken ct) =>
+            BeatRequest? req, IPopDbContext db, PresenceBroadcaster presence, HttpContext http, CancellationToken ct) =>
         {
             var nik = http.User.FindFirst("nik")?.Value;
             if (nik is null) return Results.Unauthorized();
 
             var now = DateTime.UtcNow;
-            var before = await db.Users.AsNoTracking()
+            var idle = req?.Idle == true;
+            var manual = await db.Users.AsNoTracking()
                 .Where(u => u.Nik == nik)
-                .Select(u => new { u.PresenceLastSeenAt, u.PresenceManualStatus })
-                .FirstAsync(ct);
+                .Select(u => u.PresenceManualStatus)
+                .FirstOrDefaultAsync(ct);
             await db.Users.Where(u => u.Nik == nik)
-                .ExecuteUpdateAsync(s => s.SetProperty(u => u.PresenceLastSeenAt, now), ct);
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(u => u.PresenceLastSeenAt, now)
+                    .SetProperty(u => u.PresenceIsIdle, idle), ct);
 
-            var status = PresenceStatus.ComputeStatus(now, before.PresenceManualStatus, now);
+            var status = PresenceStatus.ComputeStatus(now, manual, now, idle);
             if (presence.Track(nik, status)) await presence.BroadcastAsync(nik, status, ct);
             return Results.Ok(new { status });
         }).RequireAuthorization();
@@ -45,12 +49,12 @@ public static class PresenceEndpoints
             var now = DateTime.UtcNow;
             var before = await db.Users.AsNoTracking()
                 .Where(u => u.Nik == nik)
-                .Select(u => new { u.PresenceLastSeenAt, u.PresenceManualStatus })
+                .Select(u => new { u.PresenceLastSeenAt, u.PresenceIsIdle })
                 .FirstAsync(ct);
             await db.Users.Where(u => u.Nik == nik)
                 .ExecuteUpdateAsync(s => s.SetProperty(u => u.PresenceManualStatus, req.Status), ct);
 
-            var status = PresenceStatus.ComputeStatus(before.PresenceLastSeenAt, req.Status, now);
+            var status = PresenceStatus.ComputeStatus(before.PresenceLastSeenAt, req.Status, now, before.PresenceIsIdle);
             if (presence.Track(nik, status)) await presence.BroadcastAsync(nik, status, ct);
             return Results.Ok(new { status });
         }).RequireAuthorization();
@@ -59,4 +63,5 @@ public static class PresenceEndpoints
     }
 
     public record SetStatusRequest(string? Status);
+    public record BeatRequest(bool Idle);
 }

@@ -1,0 +1,300 @@
+/* Shared date / time / datetime picker (Components/DatePickerCore.razor).
+   macOS-style popover; bottom sheet under 640px. Colours come from tokens.css,
+   so [data-theme="dark"] follows automatically. */
+
+/* Variables live on the layer too: the popover is portalled to <body> while open. */
+.dp, .dp-layer {
+  --dp-h: 36px;
+  --dp-radius: 10px;
+  --dp-cell: 34px;
+  --dp-font: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+}
+.dp {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+  font-family: var(--dp-font);
+}
+.dp-date { width: 190px; }
+.dp-datetime { width: 220px; }
+.dp-time { width: 104px; }
+/* Most sites put the picker in a form column; fill it like the input it replaced. */
+.field > .dp, label > .dp:only-of-type, .dp.dp-block { width: 100%; }
+
+.dp-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  height: var(--dp-h);
+  box-sizing: border-box;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: var(--dp-radius);
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease, background var(--dur-fast) ease;
+}
+.dp-field:hover { border-color: var(--line-strong); }
+.dp-field:focus-within, .dp-open .dp-field {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.dp-invalid .dp-field {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 16%, transparent);
+  animation: dp-nudge .28s var(--ease-out);
+}
+.dp-disabled .dp-field { opacity: .55; background: var(--surface-sunken); }
+.dp-disabled .dp-field:hover { border-color: var(--line-2); }
+
+/* Selectors are doubled with .dp so page rules like `.cal-form input` cannot restyle the inner input. */
+.dp .dp-field input.dp-input, .dp .dp-field input.dp-input:focus {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0 4px 0 11px;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.005em;
+  text-overflow: ellipsis;
+}
+.dp .dp-field input.dp-input::placeholder { color: var(--ink-4); }
+.dp .dp-field input.dp-input:disabled { cursor: not-allowed; }
+
+.dp-toggle {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 100%;
+  margin: 0;
+  padding: 0 8px 0 0;
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.dp-toggle svg { width: 16px; height: 16px; }
+.dp-toggle:hover:not(:disabled), .dp-open .dp-toggle { color: var(--accent-ink); }
+.dp-toggle:disabled { cursor: not-allowed; }
+
+/* Compact: dense table cells / inline toolbars */
+.dp-compact { --dp-h: 28px; --dp-radius: 7px; }
+.dp-compact.dp-date { width: 142px; }
+.dp-compact.dp-datetime { width: 184px; }
+.dp-compact.dp-time { width: 86px; }
+.dp.dp-compact .dp-field input.dp-input { font-size: 12px; padding-left: 8px; }
+.dp-compact .dp-toggle { width: 24px; padding-right: 6px; }
+.dp-compact .dp-toggle svg { width: 14px; height: 14px; }
+
+/* ---- popover ----------------------------------------------------------- */
+
+.dp-layer { display: contents; }
+.dp-layer.dp-portal { display: block; position: fixed; inset: 0 auto auto 0; width: 0; height: 0; z-index: 1300; }
+.dp-backdrop { display: none; }
+/* Hidden until js/datepicker.js has portalled and placed it (avoids a one-frame flash). */
+.dp-layer:not(.dp-portal) .dp-pop { visibility: hidden; }
+
+.dp-pop {
+  position: fixed;
+  z-index: 1301;
+  box-sizing: border-box;
+  padding: 12px;
+  color: var(--ink);
+  font-family: var(--dp-font, -apple-system, BlinkMacSystemFont, system-ui, sans-serif);
+  font-size: 13px;
+  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(22px);
+  backdrop-filter: saturate(180%) blur(22px);
+  border: 1px solid color-mix(in srgb, var(--line-strong) 55%, transparent);
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 .5px rgba(0, 0, 0, .04),
+    0 2px 6px rgba(0, 0, 0, .06),
+    0 22px 48px -14px rgba(0, 0, 0, .28);
+  transform-origin: top left;
+  animation: dp-pop-in .16s var(--ease-out);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.dp-pop.above { transform-origin: bottom left; }
+[data-theme="dark"] .dp-pop {
+  background: color-mix(in srgb, var(--surface-raised) 90%, transparent);
+  border-color: rgba(255, 255, 255, .09);
+  box-shadow: 0 0 0 .5px rgba(0, 0, 0, .5), 0 22px 48px -12px rgba(0, 0, 0, .7);
+}
+.dp-pop :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.dp-body { display: flex; gap: 12px; align-items: stretch; }
+.dp-cal { width: calc(var(--dp-cell) * 7); }
+
+.dp-head { display: flex; align-items: center; gap: 2px; height: 30px; margin: 0 0 6px; padding-left: 6px; }
+.dp-title { flex: 1; font-size: 14px; font-weight: 650; letter-spacing: -0.01em; color: var(--ink); }
+.dp-nav {
+  display: grid; place-items: center;
+  width: 28px; height: 28px; padding: 0;
+  border: 0; border-radius: 8px;
+  background: none; color: var(--ink-2); cursor: pointer;
+}
+.dp-nav svg { width: 16px; height: 16px; }
+.dp-nav:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+
+.dp-row { display: grid; grid-template-columns: repeat(7, var(--dp-cell)); }
+.dp-wk { margin-bottom: 2px; }
+.dp-wd {
+  height: 24px; line-height: 24px; text-align: center;
+  font-size: 11px; font-weight: 600; color: var(--ink-3);
+  text-transform: none; letter-spacing: .01em;
+}
+
+.dp-day {
+  position: relative;
+  width: 30px; height: 30px; margin: 2px;
+  padding: 0; border: 0; border-radius: 50%;
+  background: none; color: var(--ink);
+  font: inherit; font-size: 13px; font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+.dp-day:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.dp-day.out { color: var(--ink-4); }
+.dp-day.we:not(.sel):not(.out):not(.dis) { color: var(--ink-2); }
+.dp-day.today { color: var(--accent-ink); font-weight: 650; box-shadow: inset 0 0 0 1.5px var(--accent); }
+.dp-day.sel, .dp-day.sel:hover {
+  background: var(--accent); color: #fff; font-weight: 650; box-shadow: none;
+}
+[data-theme="dark"] .dp-day.sel, [data-theme="dark"] .dp-day.sel:hover { color: #06240f; }
+.dp-day.dis, .dp-day.dis:hover {
+  background: none; color: var(--ink-4); opacity: .55; cursor: default;
+  text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-4) 80%, transparent);
+}
+.dp-day:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+
+/* time column (datetime) and time-only list */
+.dp-times {
+  width: 76px;
+  max-height: calc(24px + 6px + 30px + 34px * 6 - 4px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 2px;
+  scroll-padding: 8px;
+}
+.dp-pop .dp-cal + .dp-times {
+  border-left: 1px solid color-mix(in srgb, var(--line-strong) 45%, transparent);
+  padding-left: 10px;
+}
+.dp-layer .dp-body > .dp-times:only-child { width: 96px; max-height: 232px; }
+.dp-topt {
+  flex: none;
+  height: 30px; padding: 0 10px;
+  border: 0; border-radius: 8px;
+  background: none; color: var(--ink);
+  font: inherit; font-size: 13px; font-variant-numeric: tabular-nums;
+  text-align: center; cursor: pointer;
+}
+.dp-topt:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.dp-topt.sel, .dp-topt.sel:hover { background: var(--accent); color: #fff; font-weight: 600; }
+[data-theme="dark"] .dp-topt.sel { color: #06240f; }
+.dp-topt.dis, .dp-topt.dis:hover { background: none; color: var(--ink-4); opacity: .5; cursor: default; }
+
+.dp-foot {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--line-strong) 45%, transparent);
+}
+.dp-chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.dp-chip {
+  height: 26px; padding: 0 10px;
+  border: 0; border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--ink-2);
+  font: inherit; font-size: 12px; font-weight: 550;
+  white-space: nowrap; cursor: pointer;
+}
+.dp-chip:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-ink); }
+.dp-chip:disabled { opacity: .4; cursor: default; }
+.dp-clear { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.dp-clear:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+.dp-done {
+  height: 26px; padding: 0 12px;
+  border: 0; border-radius: 999px;
+  background: var(--accent); color: #fff;
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+[data-theme="dark"] .dp-done { color: #06240f; }
+.dp-done:hover { filter: brightness(1.06); }
+
+/* ---- mobile bottom sheet ---------------------------------------------- */
+
+.dp-layer.dp-sheet .dp-backdrop {
+  display: block; position: fixed; inset: 0; z-index: 1300;
+  background: rgba(10, 10, 12, .32);
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  animation: dp-fade .2s ease;
+}
+.dp-layer.dp-sheet .dp-pop {
+  left: 0; right: 0; bottom: 0; top: auto !important;
+  width: 100%;
+  max-height: 88vh; overflow-y: auto;
+  padding: 10px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  border-radius: 18px 18px 0 0;
+  border-bottom: 0;
+  background: var(--surface-raised);
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+  animation: dp-sheet-in .26s var(--ease-smooth);
+}
+.dp-layer.dp-sheet .dp-pop::before {
+  content: ""; display: block;
+  width: 36px; height: 5px; margin: 0 auto 10px;
+  border-radius: 999px; background: var(--line-strong);
+}
+.dp-layer.dp-sheet .dp-body { flex-direction: column; align-items: center; }
+.dp-layer.dp-sheet .dp-cal { --dp-cell: 44px; }
+.dp-layer.dp-sheet .dp-day { width: 38px; height: 38px; margin: 3px; font-size: 15px; }
+.dp-layer.dp-sheet .dp-wd { font-size: 12px; }
+.dp-layer.dp-sheet .dp-title { font-size: 16px; }
+.dp-layer.dp-sheet .dp-nav { width: 36px; height: 36px; }
+.dp-layer.dp-sheet .dp-times {
+  width: 100%; max-height: none;
+  flex-direction: row; overflow-x: auto; overflow-y: hidden;
+  border-left: 0; padding: 6px 2px;
+  border-top: 1px solid color-mix(in srgb, var(--line-strong) 45%, transparent);
+}
+.dp-layer.dp-sheet .dp-body > .dp-times:only-child {
+  flex-direction: column; overflow-y: auto; overflow-x: hidden;
+  max-height: 50vh; border-top: 0; width: 100%;
+}
+.dp-layer.dp-sheet .dp-topt { height: 36px; font-size: 15px; }
+.dp-layer.dp-sheet .dp-chip, .dp-layer.dp-sheet .dp-done { height: 32px; font-size: 13px; padding: 0 14px; }
+
+/* ---- motion ------------------------------------------------------------ */
+
+@keyframes dp-pop-in { from { opacity: 0; transform: scale(.97) translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes dp-sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes dp-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dp-nudge { 0%, 100% { transform: none; } 30% { transform: translateX(-3px); } 60% { transform: translateX(3px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .dp-pop, .dp-layer.dp-sheet .dp-pop, .dp-layer.dp-sheet .dp-backdrop, .dp-invalid .dp-field { animation: none; }
+  .dp-field, .dp-day { transition: none; }
+}
+
+/* ---- adoption tweaks for the sites that used native inputs ------------- */
+.cal-when .dp-date { width: 100%; }
+.cal-when .dp-time { width: 110px; }
+.mc-meet-grid .dp, .resched-pop .dp { width: 100%; }
+.mail-adv-row .dp { flex: 1; width: auto; }
+.dp .dp-field.overdue input.dp-input { color: var(--danger); }
+.dp .dp-field.soon input.dp-input { color: var(--warn); }

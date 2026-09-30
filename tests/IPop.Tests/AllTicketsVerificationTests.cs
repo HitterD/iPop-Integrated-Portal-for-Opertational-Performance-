@@ -242,27 +242,21 @@ public class AllTicketsVerificationTests
     public async Task Ticket04_News_And_Memos_Workflow_Approval_Ack_Discussion()
     {
         using var t = new TestDb();
-        var author = t.AddUser("NEWS_AUTHOR");
-        var approver = t.AddAdmin("NEWS_APPROVER");
+        var author = t.AddHr("NEWS_AUTHOR");
         var reader = t.AddUser("NEWS_READER");
 
         var svcAuthor = new NewsService(t.Verify());
-        var svcApprover = new NewsService(t.Verify());
         var svcReader = new NewsService(t.Verify());
 
-        // 1. Create draft with mandatory ack
+        // 1. Create draft with mandatory ack (HR/Admin only)
         var created = await svcAuthor.CreateAsync(author.Id, new CreateNewsRequest(
             Type: "memo", Title: "Corporate IT Security Policy", Body: "All staff must read and comply.",
             RequiresAcknowledgement: true, IsPinned: true), default);
         Assert.True(created.Success);
         var id = created.News!.Id;
 
-        // 2. Submit for approval
-        var sub = await svcAuthor.SubmitAsync(author.Id, id, default);
-        Assert.True(sub.Success);
-
-        // 3. Approve and publish
-        var app = await svcApprover.ApproveAsync(approver.Id, id, default);
+        // 2-3. Direct publish — there is no approval step
+        var app = await new NewsService(t.Verify()).PublishAsync(author.Id, id, default);
         Assert.True(app.Success);
         Assert.Equal("published", app.News!.Status);
 
@@ -526,7 +520,7 @@ public class AllTicketsVerificationTests
 
         // Create tasks, meetings, news, chat
         var proj = t.AddProject("Project Alpha", me.Id);
-        t.Db.ProjectTasks.Add(new ProjectTask { Id = Guid.NewGuid(), ProjectId = proj.Id, Title = "Alpha Core Task", Status = "todo", DueDate = DateTime.UtcNow.AddDays(1), CreatedById = me.Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        t.Db.ProjectTasks.Add(new ProjectTask { Id = Guid.NewGuid(), ProjectId = proj.Id, GroupId = t.Db.ProjectGroups.Single(g => g.ProjectId == proj.Id).Id, Title = "Alpha Core Task", Status = "todo", DueDate = DateTime.UtcNow.AddDays(1), CreatedById = me.Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         t.Db.NewsPosts.Add(new NewsPost { Id = Guid.NewGuid(), Type = "news", Title = "Alpha Launch Event", Body = "Details", Status = "published", AuthorId = me.Id, PublishedAt = DateTime.UtcNow, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
         await t.Db.SaveChangesAsync();
 

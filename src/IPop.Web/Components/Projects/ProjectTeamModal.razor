@@ -2,58 +2,34 @@
 @using IPop.Web.Services
 
 <div class="proj-modal-backdrop" @onclick="OnClose"></div>
-<div class="proj-modal" role="dialog" aria-modal="true" aria-label="Manage Team Members">
-    <div class="proj-modal-head">
-        <div style="display:flex;align-items:center;gap:8px">
-            <i data-lucide="users"></i>
-            <span>Project Team Members (@Members.Count)</span>
-        </div>
-        <button class="btn-sm surface" style="padding:4px 8px" @onclick="OnClose">
-            <i data-lucide="x"></i>
-        </button>
-    </div>
-
+<div class="proj-modal v6-project-modal v6-team-modal" role="dialog" aria-modal="true" aria-label="Manage Team Members">
+    <div class="proj-modal-head"><span class="vpm-tile team"><i data-lucide="users"></i></span><span>Project team members <small>@Members.Count</small></span><button type="button" class="vpm-close" @onclick="OnClose" aria-label="Close"><i data-lucide="x"></i></button></div>
     <div class="proj-modal-body">
-        @* Add member box *@
-        <div style="background:var(--bg);border:1px solid var(--line-soft);border-radius:10px;padding:12px">
-            <label style="font-size:11.5px;font-weight:700;display:block;margin-bottom:6px">Add New Member</label>
-            <IPop.Web.Components.AppMemberPicker Placeholder="Search by name or NIK..." ValueChanged="r => OnAddMember.InvokeAsync(r)" />
-        </div>
-
-        @* Member list *@
-        <div style="display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;padding-right:4px">
+        <label class="vpm-team-label">Add project members</label>
+        <div class="vpm-team-search"><IPop.Web.Components.AppMemberPicker Placeholder="Search people by name or NIK..." ValueChanged="AddMember" /></div>
+        <div class="vpm-team-list">
+            @if (Members.Count == 0) { <div class="vpm-team-empty">No team members yet. Search people to add someone.</div> }
             @foreach (var m in Members)
             {
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:var(--surface);border:1px solid var(--line-soft);border-radius:8px">
-                    <div style="display:flex;align-items:center;gap:10px;min-width:0">
-                        <div class="team-avatar-circ" style="width:30px;height:30px;font-size:11px;background:@ProjectUiHelpers.GetAvatarBg(m.Name)">
-                            @ProjectUiHelpers.GetInitials(m.Name)
-                        </div>
-                        <div style="min-width:0">
-                            <div style="font-weight:600;font-size:13px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">@m.Name</div>
-                            <div style="font-size:11px;color:var(--ink-3)">@m.Nik · <span class="tag" style="padding:1px 5px;font-size:9.5px">@m.Role</span></div>
-                        </div>
-                    </div>
-                    @if (m.Role != "owner")
-                    {
-                        <button class="btn-sm surface danger" style="padding:4px 8px" @onclick="() => OnRemoveMember.InvokeAsync(m.UserId)" title="Remove from team">
-                            <i data-lucide="user-minus" style="width:13px;height:13px"></i>
-                        </button>
-                    }
+                <div class="vpm-member">
+                    <span class="vpm-member-avatar" style="background:@ProjectUiHelpers.GetAvatarBg(m.Name)">@ProjectUiHelpers.GetInitials(m.Name)<span class="presence"></span></span>
+                    <span class="vpm-member-text"><strong>@m.Name</strong><small>@m.Nik · @m.Role</small></span>
+                    @if (m.Role != "owner") { <button type="button" class="vpm-member-remove" @onclick="() => OnRemoveMember.InvokeAsync(m.UserId)" title="Remove from team" aria-label="Remove @m.Name"><i data-lucide="x"></i></button> }
+                    else { <span class="vpm-member-owner">Owner</span> }
                 </div>
             }
         </div>
     </div>
-
-    <div class="proj-modal-foot">
-        <button class="btn-sm surface" @onclick="OnClose">Close</button>
-    </div>
+    <div class="proj-modal-foot"><span class="vpm-team-hint">Search and select people to add them</span><button type="button" class="btn-sm accent" @onclick="OnClose">Done</button></div>
 </div>
 
 @code {
     [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
-
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback<MemberSearchRow> OnAddMember { get; set; }
     [Parameter] public EventCallback<Guid> OnRemoveMember { get; set; }
+    private async Task AddMember(MemberSearchRow? member)
+    {
+        if (member is not null) await OnAddMember.InvokeAsync(member);
+    }
 }

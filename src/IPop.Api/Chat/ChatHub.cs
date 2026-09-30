@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using IPop.Application.Chat;
 using IPop.Application.Rbac;
+using IPop.Application.Realtime;
 using IPop.Infrastructure.Persistence;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,7 @@ namespace IPop.Api.Chat;
 /// Chat real-time hub. Group name pattern: "chat:{roomId}".
 /// Handles messaging, typing indicators, delivery/read receipts.
 /// </summary>
-public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbContext db, IPermissionEvaluator perms) : Hub
+public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbContext db, IPermissionEvaluator perms, IRealtime realtime) : Hub
 {
     // In-memory sliding-window rate limiter: userId → (count, windowStart)
     private static readonly ConcurrentDictionary<string, (int Count, DateTime WindowStart)> RateLimits = new();
@@ -214,6 +215,10 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
         if (userId is null) return;
 
         await chatService.RecordReadAsync(userId.Value, messageId, Context.ConnectionAborted);
+
+        // The reader's other tabs clear this room's unread badge (debounced reload client-side).
+        if (GetNik() is { } nik)
+            await realtime.ToUserAsync(nik, RealtimeEvents.ChatRoomsChanged, ct: Context.ConnectionAborted);
 
         // Build reader info for seen update notification
         var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, Context.ConnectionAborted);

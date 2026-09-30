@@ -1,0 +1,101 @@
+@using IPop.Application.Projects
+
+@* Fase 2c: saved views chip row. Hidden until the first view exists, except for the save button,
+   which shows while the current filters differ from the defaults. *@
+@if (Views.Count > 0 || CanSave || naming)
+{
+    <div class="pviews" role="toolbar" aria-label="Tampilan tersimpan">
+        @foreach (var v in Views)
+        {
+            <div class="pview-chip @(v.Id == ActiveViewId ? "on" : "")">
+                @if (renamingId == v.Id)
+                {
+                    <input class="pview-input" aria-label="Nama tampilan" maxlength="40" @bind="draftName" @bind:event="oninput"
+                           @onkeydown="e => OnRenameKey(e, v)" @onblur="() => renamingId = null" autofocus />
+                }
+                else
+                {
+                    <button type="button" class="pview-apply" aria-pressed="@(v.Id == ActiveViewId ? "true" : "false")"
+                            title="@(v.IsMine ? v.Name : $"{v.Name} · dibagikan oleh {v.OwnerName}")" @onclick="() => OnApply.InvokeAsync(v)">
+                        @if (v.IsShared) { <i data-lucide="users" aria-label="Dibagikan"></i> }
+                        <span>@v.Name</span>
+                    </button>
+                    @if (v.IsMine || CanManage)
+                    {
+                        <button type="button" class="pview-more" aria-label="Opsi @v.Name" aria-haspopup="menu" aria-expanded="@(menuId == v.Id ? "true" : "false")"
+                                @onclick="() => menuId = menuId == v.Id ? null : v.Id"><i data-lucide="ellipsis"></i></button>
+                    }
+                    @if (menuId == v.Id)
+                    {
+                        <div class="pview-backdrop" @onclick="() => menuId = null"></div>
+                        <div class="pview-menu" role="menu">
+                            @if (v.IsMine)
+                            {
+                                <button type="button" role="menuitem" @onclick="() => StartRename(v)"><i data-lucide="pencil"></i>Ganti nama</button>
+                                @if (CanManage)
+                                {
+                                    <button type="button" role="menuitem" @onclick="() => Act(OnShare, v)"><i data-lucide="@(v.IsShared ? "user" : "users")"></i>@(v.IsShared ? "Jadikan pribadi" : "Bagikan ke proyek")</button>
+                                }
+                            }
+                            <button type="button" role="menuitem" class="danger" @onclick="() => Act(OnDelete, v)"><i data-lucide="trash-2"></i>Hapus</button>
+                        </div>
+                    }
+                }
+            </div>
+        }
+        @if (naming)
+        {
+            <input class="pview-input" aria-label="Nama tampilan baru" placeholder="Nama tampilan, Enter" maxlength="40"
+                   @bind="draftName" @bind:event="oninput" @onkeydown="OnNameKey" @onblur="() => naming = false" autofocus />
+        }
+        else if (CanSave)
+        {
+            <button type="button" class="pview-save" @onclick="StartSave"><i data-lucide="bookmark-plus"></i>Simpan tampilan</button>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public List<ProjectSavedViewDto> Views { get; set; } = [];
+    [Parameter] public Guid? ActiveViewId { get; set; }
+    [Parameter] public bool CanSave { get; set; }
+    [Parameter] public bool CanManage { get; set; }
+    [Parameter] public EventCallback<ProjectSavedViewDto> OnApply { get; set; }
+    [Parameter] public EventCallback<string> OnSave { get; set; }
+    [Parameter] public EventCallback<(ProjectSavedViewDto View, string Name)> OnRename { get; set; }
+    [Parameter] public EventCallback<ProjectSavedViewDto> OnShare { get; set; }
+    [Parameter] public EventCallback<ProjectSavedViewDto> OnDelete { get; set; }
+
+    private bool naming;
+    private Guid? renamingId;
+    private Guid? menuId;
+    private string draftName = "";
+
+    private void StartSave() { naming = true; draftName = ""; }
+
+    private void StartRename(ProjectSavedViewDto v) { menuId = null; renamingId = v.Id; draftName = v.Name; }
+
+    private async Task Act(EventCallback<ProjectSavedViewDto> cb, ProjectSavedViewDto v)
+    {
+        menuId = null;
+        await cb.InvokeAsync(v);
+    }
+
+    private async Task OnNameKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { naming = false; return; }
+        if (e.Key != "Enter" || string.IsNullOrWhiteSpace(draftName)) return;
+        var name = draftName.Trim();
+        naming = false;
+        await OnSave.InvokeAsync(name);
+    }
+
+    private async Task OnRenameKey(KeyboardEventArgs e, ProjectSavedViewDto v)
+    {
+        if (e.Key == "Escape") { renamingId = null; return; }
+        if (e.Key != "Enter" || string.IsNullOrWhiteSpace(draftName)) return;
+        var name = draftName.Trim();
+        renamingId = null;
+        if (name != v.Name) await OnRename.InvokeAsync((v, name));
+    }
+}

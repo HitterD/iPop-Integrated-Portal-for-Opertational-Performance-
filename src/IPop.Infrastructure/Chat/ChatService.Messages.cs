@@ -69,7 +69,7 @@ public sealed partial class ChatService
             if (existing.Content == req.Content)
             {
                 // Same content → return existing message as success
-                return new MessageResultDto(true, MapToMessageDto(existing, senderId), null);
+                return new MessageResultDto(true, await MapWithMentionsAsync(existing, senderId, ct), null);
             }
             else
             {
@@ -145,7 +145,7 @@ public sealed partial class ChatService
                 .FirstOrDefaultAsync(m => m.RoomId == req.RoomId && m.IdempotencyKey == req.IdempotencyKey, ct);
 
             if (raceExisting is not null && raceExisting.Content == req.Content)
-                return new MessageResultDto(true, MapToMessageDto(raceExisting, senderId), null);
+                return new MessageResultDto(true, await MapWithMentionsAsync(raceExisting, senderId, ct), null);
 
             return new MessageResultDto(false, null, "idempotency_conflict");
         }
@@ -162,10 +162,20 @@ public sealed partial class ChatService
                 .ThenInclude(r => r!.Sender)
             .FirstAsync(m => m.Id == message.Id, ct);
 
-        return new MessageResultDto(true, MapToMessageDto(saved, senderId), null);
+        return new MessageResultDto(true, await MapWithMentionsAsync(saved, senderId, ct), null);
     }
 
-    public async Task<PagedResult<MessageDto>> GetMessagesAsync(Guid roomId, Guid userId, int page, int pageSize, CancellationToken ct)
+    public Task<PagedResult<MessageDto>> GetMessagesAsync(Guid roomId, Guid userId, int page, int pageSize, CancellationToken ct)
+        => GetMessagesCoreAsync(roomId, userId, page, pageSize, before: null, ct);
+
+    /// Keyset page: the newest pageSize messages strictly older than `before`. Offset pages
+    /// shift when new messages arrive (page 2 re-serves rows already on screen), which is
+    /// what fed duplicate ids into the client list. TotalCount here counts only the
+    /// messages older than the cursor, so more remain while TotalCount exceeds Items.Count.
+    public Task<PagedResult<MessageDto>> GetMessagesBeforeAsync(Guid roomId, Guid userId, DateTime before, int pageSize, CancellationToken ct)
+        => GetMessagesCoreAsync(roomId, userId, 1, pageSize, before, ct);
+
+    private async Task<PagedResult<MessageDto>> GetMessagesCoreAsync(Guid roomId, Guid userId, int page, int pageSize, DateTime? before, CancellationToken ct)
     {
         var isMember = await db.ChatRoomMembers
             .AsNoTracking()
@@ -182,6 +192,12 @@ public sealed partial class ChatService
 
         if (settings?.ClearedAt is not null)
             query = query.Where(m => m.CreatedAt > settings.ClearedAt.Value);
+
+        if (before is not null)
+        {
+            var cursor = before.Value;
+            query = query.Where(m => m.CreatedAt < cursor);
+        }
 
         var totalCount = await query.CountAsync(ct);
 
@@ -200,7 +216,7 @@ public sealed partial class ChatService
             .ToListAsync(ct);
 
         messages.Reverse();
-        var dtos = messages.Select(m => MapToMessageDto(m, userId)).ToList();
+        var dtos = await MapWithMentionsAsync(messages, userId, ct);
 
         return new PagedResult<MessageDto>(dtos, totalCount, page, pageSize);
     }
@@ -257,7 +273,7 @@ public sealed partial class ChatService
 
         await db.SaveChangesAsync(ct);
 
-        return new MessageResultDto(true, MapToMessageDto(message, userId), null);
+        return new MessageResultDto(true, await MapWithMentionsAsync(message, userId, ct), null);
     }
 
     public async Task<MessageResultDto> DeleteMessageAsync(Guid userId, Guid messageId, bool isAdmin, CancellationToken ct)
@@ -438,14 +454,14 @@ public sealed partial class ChatService
                 recipientName = otherMember.User.Name;
                 presenceStatus = PresenceStatus.ComputeStatus(
                     otherMember.User.PresenceLastSeenAt,
-                    otherMember.User.PresenceManualStatus, now);
+                    otherMember.User.PresenceManualStatus, now, otherMember.User.PresenceIsIdle);
             }
 
             roomDtos.Add(new RoomListDto(
                 r.Id, r.Type, r.Name, recipientNik, recipientName,
                 null, r.LastMessageAt == default ? null : r.LastMessageAt,
                 0, false, false, false, presenceStatus, false, searchMentionIds.Contains(r.Id), null,
-                true, r.AvatarColor
+                true, r.AvatarColor, r.AvatarUrl
             ));
         }
 
@@ -484,7 +500,7 @@ public sealed partial class ChatService
                 .ThenInclude(r => r!.Sender)
             .ToListAsync(ct);
 
-        var dtos = messages.Select(m => MapToMessageDto(m, userId)).ToList();
+        var dtos = await MapWithMentionsAsync(messages, userId, ct);
         return new PagedResult<MessageDto>(dtos, totalCount, page, pageSize);
     }
 
@@ -517,7 +533,7 @@ public sealed partial class ChatService
                 .ThenInclude(r => r!.Sender)
             .ToListAsync(ct);
 
-        var dtos = messages.Select(m => MapToMessageDto(m, userId)).ToList();
+        var dtos = await MapWithMentionsAsync(messages, userId, ct);
         return new PagedResult<MessageDto>(dtos, totalCount, page, pageSize);
     }
 
@@ -553,7 +569,7 @@ public sealed partial class ChatService
                 .ThenInclude(r => r!.Sender)
             .ToListAsync(ct);
 
-        var dtos = messages.Select(m => MapToMessageDto(m, userId)).ToList();
+        var dtos = await MapWithMentionsAsync(messages, userId, ct);
         return new PagedResult<MessageDto>(dtos, totalCount, page, pageSize);
     }
 

@@ -20,6 +20,7 @@ public class DashboardAndSearchTests
         {
             Id = Guid.NewGuid(),
             ProjectId = project.Id,
+            GroupId = t.Db.ProjectGroups.Single(g => g.ProjectId == project.Id).Id,
             Title = "Titan Task Alpha",
             Status = "todo",
             CreatedById = me.Id,
@@ -85,12 +86,12 @@ public class DashboardAndSearchTests
         var project = t.AddProject("Kopi Line 3", me.Id);
         var overdue = new ProjectTask
         {
-            Id = Guid.NewGuid(), ProjectId = project.Id, Title = "Calibrate roaster", Status = "todo",
+            Id = Guid.NewGuid(), ProjectId = project.Id, GroupId = t.Db.ProjectGroups.Single(g => g.ProjectId == project.Id).Id, Title = "Calibrate roaster", Status = "todo",
             DueDate = DateTime.UtcNow.Date.AddDays(-2), CreatedById = me.Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
         };
         var done = new ProjectTask
         {
-            Id = Guid.NewGuid(), ProjectId = project.Id, Title = "Order beans", Status = "done",
+            Id = Guid.NewGuid(), ProjectId = project.Id, GroupId = t.Db.ProjectGroups.Single(g => g.ProjectId == project.Id).Id, Title = "Order beans", Status = "done",
             CreatedById = me.Id, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
         };
         t.Db.ProjectTasks.AddRange(overdue, done);

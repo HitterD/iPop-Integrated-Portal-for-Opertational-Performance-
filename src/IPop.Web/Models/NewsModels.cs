@@ -16,7 +16,14 @@ public record NewsSummaryDto(
     IReadOnlyList<NewsTargetDto> Targets,
     bool IsAcknowledged,
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+    string Summary = "",
+    bool IsRead = false,
+    bool IsSaved = false,
+    int ViewCount = 0,
+    int AttachmentCount = 0,
+    DateTime? AckDueAt = null,
+    DateTime? EditedAt = null
 );
 
 public record NewsTargetDto(string Kind, string? Value);
@@ -46,8 +53,23 @@ public record NewsDetailDto(
     int AckCount,
     int AckTotal,
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+    DateTime? AckDueAt = null,
+    DateTime? AcknowledgedAt = null,
+    DateTime? EditedAt = null,
+    bool IsSaved = false,
+    int ViewCount = 0,
+    IReadOnlyList<NewsAttachmentDto>? Attachments = null,
+    bool CanManage = false,
+    bool CanEdit = false,
+    bool CanDelete = false,
+    bool CanPublish = false
 );
+
+public record NewsAttachmentDto(Guid Id, string FileName, string ContentType, long Size);
+public record NewsAckEntryDto(Guid UserId, string Nik, string Name, string? Department, string? Position, DateTime? AcknowledgedAt);
+public record NewsAckReportDto(int Total, int Acknowledged, IReadOnlyList<NewsAckEntryDto> Entries);
+public record NewsCountsDto(int All, int Unread, int NeedsAck, int Saved, int Pinned, int Scheduled, int Drafts, bool CanManage);
 
 public record NewsAuditDto(
     Guid Id,
@@ -67,7 +89,11 @@ public record NewsSaveRequest(
     DateTime? PublishAt,
     bool RequiresAcknowledgement,
     bool IsPinned,
-    IReadOnlyList<NewsTargetInput> Targets
+    IReadOnlyList<NewsTargetInput> Targets,
+    DateTime? AckDueAt = null,
+    IReadOnlyList<Guid>? AttachmentIds = null,
+    /// "draft" | "publish" | "schedule" (create only; edits keep the post's current state)
+    string Mode = "draft"
 );
 
 public record PagedNewsResult<T>(
@@ -82,9 +108,7 @@ public static class NewsUiHelper
     public static readonly List<AppOption> StatusOptions = [
         new("", "All Statuses"),
         new("published", "Published"),
-        new("pending", "Pending Approval"),
-        new("draft", "Draft"),
-        new("rejected", "Rejected")
+        new("draft", "Draft")
     ];
 
     public static readonly List<AppOption> FormTypeOptions = [
@@ -121,9 +145,8 @@ public static class NewsUiHelper
     public static string StatusLabel(string s) => s switch
     {
         "published" => "Published",
-        "pending" => "Pending Review",
-        "draft" => "Draft",
-        "rejected" => "Rejected",
+        // Legacy approval states read as drafts: HR/Admin publish directly.
+        "draft" or "pending" or "rejected" => "Draft",
         _ => s
     };
 
@@ -138,6 +161,8 @@ public static class NewsUiHelper
         "pinned" => "Pinned",
         "unpinned" => "Unpinned",
         "acknowledged" => "Acknowledged",
+        "edited" => "Edited",
+        "reminded_ack" => "Sent acknowledgement reminder",
         _ => action
     };
 
@@ -146,6 +171,21 @@ public static class NewsUiHelper
     public static string PreviewText(string t, string type) => t.Length > 120 ? t[..120] + "…" : t;
 
     public static int ReadTime(string? body) => Math.Max(1, (int)Math.Ceiling((body?.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length ?? 0) / 200.0));
+
+    public static string FileSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
+        _ => $"{bytes / (1024.0 * 1024):0.#} MB"
+    };
+
+    public static string FileIcon(string name) => System.IO.Path.GetExtension(name).ToLowerInvariant() switch
+    {
+        ".pdf" => "file-text",
+        ".xls" or ".xlsx" or ".csv" => "file-spreadsheet",
+        ".png" or ".jpg" or ".jpeg" => "file-image",
+        _ => "file"
+    };
 
     public static int AckPercent(NewsDetailDto d) => d.AckTotal == 0 ? 0 : Math.Clamp((int)Math.Round(100.0 * d.AckCount / d.AckTotal), 0, 100);
 }

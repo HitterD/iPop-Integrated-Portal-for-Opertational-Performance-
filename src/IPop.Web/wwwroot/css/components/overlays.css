@@ -133,9 +133,116 @@
 .ctx-menu button.danger:hover { background: var(--danger-soft); }
 .ctx-menu .ctx-sep { height: 1px; margin: 3px 5px; background: var(--line-soft); }
 
-.toast-host { position: fixed; top: 14px; right: 14px; z-index: 120; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-.toast { pointer-events: auto; min-width: 260px; max-width: 380px; padding: 10px 12px; border-radius: 10px; display: flex; align-items: center; gap: 8px; font-size: 12px; box-shadow: var(--shadow-md); }
-.toast.error { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger); }
-.toast.success { background: var(--accent-soft); color: var(--accent-ink); border: 1px solid var(--accent); }
-.toast.info { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
-.toast-close { margin-left: auto; background: none; border: none; font-size: 16px; cursor: pointer; color: inherit; }
+/* ToastHost — macOS-style glass cards, top-right under the topbar. Newest on top,
+   max 3 (ToastService.MaxVisible). Kind is carried by a filled system-colour glyph,
+   never by a coloured border. */
+.float-stack {
+  position: fixed; top: calc(var(--topbar-height, 60px) + 10px); right: 16px; z-index: 10000;
+  display: flex; flex-direction: column; gap: 10px;
+  width: 360px; max-width: calc(100vw - 32px); pointer-events: none;
+}
+.float-stack > .apple-banner-host { position: static; width: 100%; max-width: none; }
+.toast-host {
+  --toast-green: #34c759; --toast-red: #ff3b30; --toast-blue: #007aff; --toast-orange: #ff9500;
+  display: flex; flex-direction: column; gap: 10px; width: 100%; pointer-events: none;
+}
+.toast-host:empty { display: none; }
+[data-theme="dark"] .toast-host { --toast-green: #30d158; --toast-red: #ff453a; --toast-blue: #0a84ff; --toast-orange: #ff9f0a; }
+.toast {
+  position: relative; pointer-events: auto; box-sizing: border-box; width: 100%;
+  display: flex; align-items: flex-start; gap: 11px;
+  padding: 12px 14px 12px 12px; border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+  -webkit-backdrop-filter: blur(28px) saturate(180%); backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.04), 0 10px 30px -8px rgba(0, 0, 0, 0.2), 0 2px 8px -2px rgba(0, 0, 0, 0.08);
+  color: var(--ink); font-size: 13px; line-height: 1.35; outline: none;
+  animation: toast-in 0.42s var(--ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)) both;
+  transition: transform 0.22s var(--ease-out), box-shadow 0.22s var(--ease-out), opacity 0.22s var(--ease-out);
+}
+[data-theme="dark"] .toast {
+  background: rgba(40, 38, 36, 0.78); border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.5), 0 14px 36px -8px rgba(0, 0, 0, 0.6);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .toast { background: var(--surface); }
+}
+.toast.clickable { cursor: pointer; }
+.toast.clickable:hover { transform: translateY(-1px); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.05), 0 14px 34px -8px rgba(0, 0, 0, 0.24), 0 3px 10px -2px rgba(0, 0, 0, 0.1); }
+.toast:focus-visible { box-shadow: 0 0 0 3px color-mix(in srgb, var(--toast-blue) 45%, transparent), 0 10px 30px -8px rgba(0, 0, 0, 0.2); }
+.toast.exiting { animation: toast-out 0.26s var(--ease-out) forwards; pointer-events: none; }
+
+.toast-icon {
+  width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; margin-top: 1px;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; background: var(--toast-blue);
+}
+.toast.success .toast-icon { background: var(--toast-green); }
+.toast.error .toast-icon { background: var(--toast-red); }
+.toast.warning .toast-icon { background: var(--toast-orange); }
+.toast-icon .lucide { width: 15px; height: 15px; stroke-width: 2.6; }
+
+.toast-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-top: 3px; }
+.toast-title { font-size: 13px; font-weight: 600; color: var(--ink); letter-spacing: -0.005em; overflow-wrap: anywhere; }
+.toast-msg {
+  font-size: 12.5px; color: var(--ink-2); overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+
+.toast-actions { display: flex; align-items: center; gap: 4px; align-self: center; flex-shrink: 0; }
+.toast-action {
+  padding: 5px 11px; border-radius: 999px; border: none; cursor: pointer;
+  background: rgba(0, 0, 0, 0.06); color: var(--toast-blue);
+  font: inherit; font-size: 12.5px; font-weight: 600; white-space: nowrap;
+  transition: background 0.15s var(--ease-out);
+}
+.toast-action:hover { background: rgba(0, 0, 0, 0.1); }
+[data-theme="dark"] .toast-action { background: rgba(255, 255, 255, 0.1); }
+[data-theme="dark"] .toast-action:hover { background: rgba(255, 255, 255, 0.16); }
+.toast-action:focus-visible { outline: 2px solid var(--toast-blue); outline-offset: 2px; }
+.toast-go { display: flex; color: var(--ink-3); }
+.toast-go .lucide { width: 16px; height: 16px; }
+
+/* macOS close: small round button on the card's top-left corner, shown on hover/focus. */
+.toast-close {
+  position: absolute; top: -7px; left: -7px; width: 20px; height: 20px; padding: 0;
+  display: flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer;
+  background: rgba(250, 250, 250, 0.95); color: var(--ink-2);
+  border: 0.5px solid rgba(0, 0, 0, 0.14); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+  opacity: 0; transform: scale(0.85);
+  transition: opacity 0.16s var(--ease-out), transform 0.16s var(--ease-out), color 0.15s;
+}
+[data-theme="dark"] .toast-close { background: rgba(60, 58, 56, 0.96); border-color: rgba(255, 255, 255, 0.16); }
+.toast-close .lucide { width: 11px; height: 11px; stroke-width: 2.6; }
+.toast-close:hover { color: var(--ink); }
+.toast:hover .toast-close, .toast:focus-within .toast-close { opacity: 1; transform: scale(1); }
+.toast-close:focus-visible { opacity: 1; transform: scale(1); outline: 2px solid var(--toast-blue); outline-offset: 1px; }
+@media (hover: none) { .toast-close { opacity: 1; transform: scale(1); } }
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(24px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes toast-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: scale(0.94); }
+}
+@media (max-width: 640px) {
+  .float-stack { top: calc(var(--topbar-height, 60px) + 8px); right: 12px; left: 12px; width: auto; max-width: none; }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(-14px) scale(0.97); } to { opacity: 1; transform: none; } }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast, .toast.exiting { animation: none; transition: none; }
+  .toast.exiting { opacity: 0; }
+}
+
+/* Service-driven confirm (ConfirmHost). Sits above modals (z 65) so a confirm
+   raised from inside a modal is clickable. */
+.confirm-backdrop { z-index: 90; }
+.confirm-center { position: fixed; inset: 0; z-index: 91; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.confirm-card { width: 100%; max-width: 400px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px; box-shadow: var(--shadow-lg); }
+.confirm-title { font-size: 15px; font-weight: 700; margin: 0 0 8px; }
+.confirm-message { font-size: 13px; color: var(--ink-2); margin: 0 0 16px; }
+.confirm-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+.confirm-cancel { width: auto; padding: 8px 14px; font-size: 12px; }
+.confirm-submit { padding: 8px 16px; border-radius: 999px; font-size: 12px; }

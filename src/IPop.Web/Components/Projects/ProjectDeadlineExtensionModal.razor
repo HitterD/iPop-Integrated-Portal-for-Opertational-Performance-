@@ -41,9 +41,7 @@
                         <span style="font-size:11px;color:var(--accent);font-weight:600">Select date</span>
                     </label>
                     <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
-                        <input type="date" class="org-input" style="flex:1;height:34px;font-size:12.5px"
-                               value="@(newDueDate.ToString("yyyy-MM-dd"))"
-                               @onchange="e => { if (DateTime.TryParse(e.Value?.ToString(), out var d)) newDueDate = d; }" />
+                        <AppDatePicker @bind-Value="newDueDate" Style="flex:1" AriaLabel="New due date" />
                     </div>
                     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
                         <button type="button" class="modern-estimate-chip" @onclick="() => SetPresetDays(3)">+3 Days</button>
@@ -120,10 +118,14 @@
     private string? attachmentDataUrl;
     private bool showValidation;
 
+    // Filled once per task: parent re-renders (live updates) must not reset the form.
+    private Guid? _initFor;
+
     protected override void OnParametersSet()
     {
-        if (Task is not null)
+        if (Task is not null && _initFor != Task.Id)
         {
+            _initFor = Task.Id;
             var baseDate = Task.DueDate ?? DateTime.UtcNow.Date;
             newDueDate = baseDate > DateTime.UtcNow.Date ? baseDate.AddDays(7) : DateTime.UtcNow.Date.AddDays(7);
             reasonText = "";

@@ -1,0 +1,164 @@
+/* Project workload: isolated from the legacy workload card styles. */
+.v6-workload {
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  overflow: hidden;
+}
+
+.v6-workload__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.v6-workload__header h2 { margin: 0; font-size: 16px; font-weight: 700; }
+.v6-workload__header p { margin: 4px 0 0; color: var(--ink-2); font-size: 12px; }
+.v6-workload__add,
+.v6-workload__view,
+.v6-workload__remove { font: inherit; cursor: pointer; }
+.v6-workload__add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex-shrink: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 650;
+}
+.v6-workload__add .lucide { width: 15px; height: 15px; }
+.v6-workload__add:hover { filter: brightness(.93); }
+.v6-workload__scroll { max-width: 100%; overflow-x: auto; }
+.v6-workload__table { min-width: 750px; }
+.v6-workload__columns,
+.v6-workload__row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.4fr) minmax(95px, .7fr) minmax(220px, 2fr) minmax(105px, .8fr) 130px;
+  align-items: center;
+  gap: 16px;
+  padding: 13px 24px;
+}
+@media (max-width: 1440px) {
+  .v6-workload__table { min-width: 680px; }
+  .v6-workload__columns,
+  .v6-workload__row {
+    grid-template-columns: minmax(140px, 1.3fr) minmax(80px, .6fr) minmax(150px, 1.6fr) minmax(90px, .7fr) 124px;
+    gap: 12px;
+    padding: 13px 18px;
+  }
+}
+.v6-workload__columns {
+  background: var(--bg);
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .045em;
+  text-transform: uppercase;
+}
+.v6-workload__row { border-top: 1px solid var(--line-soft); min-height: 77px; }
+.v6-workload__row:hover { background: var(--bg); }
+.v6-workload__person { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.v6-workload__avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+.v6-workload__avatar .lucide { width: 17px; height: 17px; }
+.v6-workload__identity,
+.v6-workload__task-count { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.v6-workload__identity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.v6-workload__identity > span,
+.v6-workload__task-count > span { color: var(--ink-2); font-size: 11px; }
+.v6-workload__task-count strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+.v6-workload__bar {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  height: 9px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--tray);
+}
+.v6-workload__segment { display: block; height: 100%; min-width: 0; border-right: 2px solid var(--surface); }
+.v6-workload__segment--todo,
+.v6-workload__dot--todo { background: #8E8E93; }
+.v6-workload__segment--doing,
+.v6-workload__dot--doing { background: #0A84FF; }
+.v6-workload__segment--review,
+.v6-workload__dot--review { background: #FF9F0A; }
+.v6-workload__segment--done,
+.v6-workload__dot--done { background: #34C759; }
+.v6-workload__status-counts { display: flex; flex-wrap: wrap; gap: 3px 9px; margin-top: 7px; }
+.v6-workload__status-counts > span { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-2); font-size: 10px; white-space: nowrap; }
+.v6-workload__dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
+.v6-workload__capacity { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.v6-workload__capacity-badge { padding: 4px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+.v6-workload__capacity-badge--available { color: var(--accent-ink); background: var(--accent-soft); }
+.v6-workload__capacity-badge--busy { color: var(--warn); background: var(--warn-soft); }
+.v6-workload__capacity-badge--overloaded { color: var(--danger); background: var(--danger-soft); }
+.v6-workload__capacity-badge--needs-owner { color: var(--ink-2); background: var(--tray); }
+.v6-workload__overdue { color: var(--danger); font-size: 10px; font-weight: 600; }
+.v6-workload__actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
+.v6-workload__view {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.v6-workload__view:hover { border-color: var(--accent); color: var(--accent-ink); }
+.v6-workload__remove {
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-2);
+}
+.v6-workload__remove .lucide { width: 14px; height: 14px; }
+.v6-workload__remove:hover { background: var(--danger-soft); color: var(--danger); }
+.v6-workload__add:focus-visible,
+.v6-workload__view:focus-visible,
+.v6-workload__remove:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.v6-workload__empty { margin: 0; padding: 28px 24px; color: var(--ink-2); font-size: 13px; }
+.v6-workload__note { margin: 0; padding: 12px 24px; border-top: 1px solid var(--line-soft); color: var(--ink-2); font-size: 11px; }
+[data-theme="dark"] .v6-workload__segment--todo,
+[data-theme="dark"] .v6-workload__dot--todo { background: #98989D; }
+[data-theme="dark"] .v6-workload__segment--doing,
+[data-theme="dark"] .v6-workload__dot--doing { background: #64A8FF; }
+[data-theme="dark"] .v6-workload__segment--review,
+[data-theme="dark"] .v6-workload__dot--review { background: #FFB340; }
+[data-theme="dark"] .v6-workload__segment--done,
+[data-theme="dark"] .v6-workload__dot--done { background: #4CD964; }
+@media (max-width: 700px) {
+  .v6-workload__header { padding: 16px; }
+  .v6-workload__columns,
+  .v6-workload__row { padding-left: 16px; padding-right: 16px; }
+  .v6-workload__note { padding: 12px 16px; }
+}
+@media (forced-colors: active) {
+  .v6-workload__bar { border: 1px solid CanvasText; }
+  .v6-workload__segment { background: Highlight !important; border-right-color: Canvas; }
+  .v6-workload__dot { background: CanvasText !important; }
+  .v6-workload__capacity-badge { border: 1px solid CanvasText; }
+}

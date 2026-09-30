@@ -87,11 +87,8 @@ public sealed partial class ChatService
 
         var roomId = message.RoomId;
 
-        var role = await GetMemberRoleAsync(userId, roomId, ct);
-        // DM members all carry "member" (no owner/admin) — any DM member may pin;
-        // in groups pinning stays an owner/admin action.
-        var isDm = await db.ChatRooms.AsNoTracking().Where(r => r.Id == roomId).Select(r => r.Type == "dm").FirstOrDefaultAsync(ct);
-        if (role is null || (!isDm && role is not ("owner" or "admin")))
+        // Any active member may pin, in DMs and groups alike.
+        if (await GetMemberRoleAsync(userId, roomId, ct) is null)
             return new PinnedResultDto(false, "forbidden");
 
         var alreadyPinned = await db.ChatPinnedMessages
@@ -135,9 +132,10 @@ public sealed partial class ChatService
         if (pinned is null)
             return new PinnedResultDto(false, "message_not_found");
 
+        // DMs: any member may unpin. Groups: whoever pinned it, or an owner/admin.
         var role = await GetMemberRoleAsync(userId, pinned.RoomId, ct);
         var isDm = await db.ChatRooms.AsNoTracking().Where(r => r.Id == pinned.RoomId).Select(r => r.Type == "dm").FirstOrDefaultAsync(ct);
-        if (role is null || (!isDm && role is not ("owner" or "admin")))
+        if (role is null || (!isDm && pinned.PinnedByUserId != userId && role is not ("owner" or "admin")))
             return new PinnedResultDto(false, "forbidden");
 
         var unpinRoomId = pinned.RoomId;
@@ -159,7 +157,8 @@ public sealed partial class ChatService
                 p.MessageId,
                 p.Message.Sender.Name,
                 MentionPlainText.Project(p.Message.Content, 120),
-                p.PinnedAt
+                p.PinnedAt,
+                p.PinnedByUserId
             ))
             .ToListAsync(ct);
     }

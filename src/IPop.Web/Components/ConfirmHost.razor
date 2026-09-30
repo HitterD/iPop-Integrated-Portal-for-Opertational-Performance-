@@ -4,7 +4,7 @@
 @* Markup mirrors Components/Chat/ConfirmDialog so the service-driven confirm looks the same. *@
 @if (Confirm.Current is { } c)
 {
-    <div class="backdrop on" @onclick="() => Confirm.Resolve(false)"></div>
+    <div class="backdrop on confirm-backdrop" @onclick="() => Confirm.Resolve(false)"></div>
     <div class="confirm-center" @onclick="() => Confirm.Resolve(false)">
         <div class="confirm-card" role="alertdialog" aria-modal="true" aria-label="@c.Title" @onclick:stopPropagation>
             <h3 class="confirm-title">@c.Title</h3>

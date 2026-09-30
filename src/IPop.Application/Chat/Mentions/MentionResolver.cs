@@ -4,7 +4,10 @@ public sealed record MentionResolutionInput(
     Guid SenderId,
     string RoomType,
     IReadOnlyList<MentionSegment> Segments,
-    IReadOnlyDictionary<Guid, bool> RoomMembers);
+    IReadOnlyDictionary<Guid, bool> RoomMembers,
+    /// Only group owners/admins may fan a message out to everyone. When false an
+    /// @[all](all) token is ignored (the text still renders, nobody is recorded).
+    bool SenderMayMentionAll = true);
 
 public sealed record MentionRecipient(Guid UserId, bool ViaAllOnly, bool SuppressNotification);
 
@@ -28,7 +31,7 @@ public static class MentionResolver
             if (seen.Add(uid))
                 result.Add(new MentionRecipient(uid, false, !active));
         }
-        if (hasAll && input.RoomType == "group")
+        if (hasAll && input.RoomType == "group" && input.SenderMayMentionAll)
         {
             foreach (var (uid, active) in input.RoomMembers)
             {

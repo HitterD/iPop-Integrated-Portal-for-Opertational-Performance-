@@ -1,62 +1,63 @@
 @page "/news"
+@page "/news/{Id:guid}"
 @implements IDisposable
 @inject AuthState Auth
 @inject ToastService Toasts
+@inject ConfirmService Confirm
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject BadgeState Badges
 
 <PageTitle>News & Memos — IPop</PageTitle>
 
-<div class="news-v6x">
+<div class="news-v6x @(showDetail ? "m-detail" : "")">
     <div class="toolbar">
         <div class="v6-search news-search">
             <i data-lucide="search"></i>
             <input type="search" placeholder="Search news, memos or authors" aria-label="Search news" value="@q" @oninput="e => OnSearchInput(e.Value?.ToString() ?? string.Empty)" />
         </div>
         <div class="push flex center gap-8">
-            @if (isApprover)
-            {
-                <label class="v6-select" title="Filter by workflow status">
-                    <i data-lucide="filter"></i>
-                    <select aria-label="Status" @bind="statusFilter" @bind:after="() => Reload(1, true)">
-                        @foreach (var o in NewsUiHelper.StatusOptions) { <option value="@o.Value">@o.Label</option> }
-                    </select>
-                    <i data-lucide="chevron-down" class="chev"></i>
-                </label>
-            }
             <label class="v6-select">
                 <i data-lucide="arrow-up-down"></i>
-                <select aria-label="Sort" @bind="sortOrder" @bind:after="OnSortChanged">
+                <select aria-label="Sort" @bind="sortOrder" @bind:after="() => Reload(1, true)">
                     <option value="newest">Newest</option>
                     <option value="oldest">Oldest</option>
+                    <option value="mostRead">Most read</option>
                 </select>
                 <i data-lucide="chevron-down" class="chev"></i>
             </label>
-            <button type="button" class="btn-primary" @onclick="OpenCreate"><i data-lucide="square-pen"></i>New post</button>
+            @if (canManage)
+            {
+                <button type="button" class="btn-primary" @onclick="OpenCreate"><i data-lucide="square-pen"></i>New post</button>
+            }
         </div>
     </div>
 
     <div class="news-cols">
         <div class="news-side">
             <nav class="card news-nav" aria-label="News filters">
-                <button type="button" class="nn @(!requiresAckOnly && !pinnedOnly && !includeScheduled && typeFilter == "" ? "on" : "")" @onclick="ShowAll"><i data-lucide="newspaper"></i><span class="lbl">All posts</span><span class="n">@total</span></button>
-                <button type="button" class="nn @(requiresAckOnly ? "on" : "")" @onclick="ToggleAckFilter"><i data-lucide="clipboard-check"></i><span class="lbl">Needs acknowledgement</span>@if (PendingAck > 0) { <span class="dot"></span> }<span class="n">@PendingAck</span></button>
-                <button type="button" class="nn @(pinnedOnly ? "on" : "")" @onclick="TogglePinnedFilter"><i data-lucide="pin"></i><span class="lbl">Pinned</span><span class="n">@pinnedItems.Count</span></button>
-                @if (isApprover)
+                @foreach (var v in Views)
                 {
-                    <button type="button" class="nn @(includeScheduled ? "on" : "")" @onclick="ToggleScheduledFilter"><i data-lucide="clock-3"></i><span class="lbl">Scheduled</span><span class="n">@scheduledItems.Count</span></button>
+                    var view = v;
+                    if (view.ManagerOnly && !canManage) continue;
+                    var n = CountFor(view.Key);
+                    <button type="button" class="nn @(activeView == view.Key && typeFilter == "" ? "on" : "")" aria-current="@(activeView == view.Key && typeFilter == "" ? "page" : null)" @onclick="() => SetView(view.Key)">
+                        <i data-lucide="@view.Icon"></i><span class="lbl">@view.Label</span>
+                        @if (view.Key == "ack" && n > 0) { <span class="dot"></span> }
+                        <span class="n">@n</span>
+                    </button>
                 }
                 <div class="nn-label">Categories</div>
                 @foreach (var cat in Categories)
                 {
                     var c = cat;
-                    <button type="button" class="nn @(typeFilter == c.Key ? "on" : "")" @onclick="() => SetCategoryTab(typeFilter == c.Key ? string.Empty : c.Key)"><i data-lucide="@c.Icon"></i><span class="lbl">@c.Label</span></button>
+                    <button type="button" class="nn @(typeFilter == c.Key ? "on" : "")" @onclick="() => SetCategory(typeFilter == c.Key ? string.Empty : c.Key)"><i data-lucide="@c.Icon"></i><span class="lbl">@c.Label</span></button>
                 }
             </nav>
-            @if (PendingAck > 0)
+            @if ((counts?.NeedsAck ?? 0) > 0)
             {
                 <div class="news-review">
-                    <div class="t"><i data-lucide="clipboard-check"></i><span>@PendingAck @(PendingAck == 1 ? "memo needs" : "memos need") your acknowledgement</span></div>
+                    <div class="t"><i data-lucide="clipboard-check"></i><span>@counts!.NeedsAck @(counts.NeedsAck == 1 ? "memo needs" : "memos need") your acknowledgement</span></div>
                     <button type="button" @onclick="ReviewNow">Review now</button>
                 </div>
             }
@@ -83,30 +84,39 @@
                 else if (items is not null && items.Count == 0)
                 {
                     <div class="news-empty">
-                        <i data-lucide="@NewsUiHelper.GetCategoryIcon(typeFilter)"></i>
-                        <div class="t">No posts here yet</div>
-                        <div class="s">@(HasActiveFilters ? "Try clearing the filters." : "Publish the first announcement for your team.")</div>
-                        <button type="button" class="btn-primary" @onclick="OpenCreate"><i data-lucide="square-pen"></i>New post</button>
+                        <i data-lucide="@EmptyIcon"></i>
+                        <div class="t">@EmptyTitle</div>
+                        <div class="s">@(HasActiveFilters ? "Try clearing the filters." : canManage ? "Publish the first announcement for your team." : "New announcements will show up here.")</div>
+                        @if (canManage && !HasActiveFilters)
+                        {
+                            <button type="button" class="btn-primary" @onclick="OpenCreate"><i data-lucide="square-pen"></i>New post</button>
+                        }
                     </div>
                 }
                 else if (items is not null)
                 {
-                    @foreach (var p in OrderedItems)
+                    @foreach (var p in items)
                     {
                         var post = p;
-                        var needsAck = post.RequiresAcknowledgement && !post.IsAcknowledged;
-                        <button type="button" class="news-row @(openDetailId == post.Id ? "sel" : "")" @onclick="() => OpenDetail(post.Id)">
+                        var needsAck = post.Status == "published" && post.RequiresAcknowledgement && !post.IsAcknowledged;
+                        var unread = post.Status == "published" && !post.IsRead;
+                        var scheduled = post.Status == "published" && post.PublishAt > DateTime.UtcNow;
+                        <button type="button" class="news-row @(openDetailId == post.Id ? "sel" : "") @(unread ? "unread" : "")" @onclick="() => OpenDetail(post.Id)">
                             <div class="r1">
                                 <span class="cat-chip @post.Type">@NewsUiHelper.GetCategoryLabel(post.Type)</span>
                                 @if (post.IsPinned) { <span class="pin"><i data-lucide="pin"></i>Pinned</span> }
-                                @if (post.Status != "published") { <span class="status-pill @post.Status">@NewsUiHelper.StatusLabel(post.Status)</span> }
+                                @if (post.Status != "published") { <span class="status-pill draft">Draft</span> }
+                                else if (scheduled) { <span class="status-pill scheduled"><i data-lucide="clock-3"></i>@post.PublishAt!.Value.ToLocalTime().ToString("MMM d, HH:mm")</span> }
                                 <span class="date">@((post.PublishedAt ?? post.CreatedAt).ToLocalTime().ToString("MMM d, yyyy"))</span>
                             </div>
-                            <div class="ttl">@if (needsAck) { <span class="udot"></span> }@post.Title</div>
+                            <div class="ttl">@if (unread) { <span class="udot" title="Unread"></span> }@post.Title</div>
+                            @if (!string.IsNullOrEmpty(post.Summary)) { <div class="sum">@post.Summary</div> }
                             <div class="r3">
-                                <span class="by">@post.AuthorName · @NewsUiHelper.ReadTime(post.Title) min read</span>
-                                @if (needsAck) { <span class="ack req">Action required</span> }
-                                else if (post.RequiresAcknowledgement) { <span class="ack ok"><i data-lucide="check"></i>Acknowledged</span> }
+                                <span class="by">@post.AuthorName@(post.ViewCount > 0 ? $" · {post.ViewCount} views" : "")</span>
+                                @if (post.AttachmentCount > 0) { <span class="clip" title="@post.AttachmentCount attachment(s)"><i data-lucide="paperclip"></i>@post.AttachmentCount</span> }
+                                @if (post.IsSaved) { <i data-lucide="bookmark" class="saved-mark" aria-label="Saved"></i> }
+                                @if (needsAck) { <span class="ack req">@(post.AckDueAt is { } due ? $"Due {due.ToLocalTime():MMM d}" : "Action required")</span> }
+                                else if (post.RequiresAcknowledgement && post.IsAcknowledged) { <span class="ack ok"><i data-lucide="check"></i>Acknowledged</span> }
                             </div>
                         </button>
                     }
@@ -121,13 +131,20 @@
         </div>
 
         <aside class="card news-v6-reader">
+            @if (showDetail)
+            {
+                <div class="m-detail-bar news-m-bar">
+                    <button type="button" class="m-back" aria-label="Back" @onclick="CloseDetail"><i data-lucide="chevron-left"></i></button>
+                    <span class="m-detail-title">@ListTitle</span>
+                </div>
+            }
             @if (showDetail && detail is not null)
             {
-                <NewsDetailDrawer Inline="true" Detail="@detail" Audits="@audits" IsApprover="@isApprover"
-                                  CanEdit="@canEdit" AckBusy="@ackBusy" DetailError="@detailError"
+                <NewsDetailDrawer Inline="true" Detail="@detail" Audits="@audits"
+                                  AckBusy="@ackBusy" DetailError="@detailError"
                                   OnClose="CloseDetail" OnCopyLink="CopyLink" OnEdit="OpenEdit"
-                                  OnSubmit="Submit" OnApprove="Approve" OnOpenReject="() => showReject = true"
-                                  OnUnpublish="Unpublish" OnTogglePin="TogglePin"
+                                  OnPublish="Publish" OnUnpublish="Unpublish" OnTogglePin="TogglePin"
+                                  OnToggleSave="ToggleSave" OnMarkUnread="MarkUnread"
                                   OnAcknowledge="Acknowledge" OnRemindAck="RemindAck"
                                   OnDelete="DeleteCurrentPost"
                                   Discussion="@discussion" CommentText="@commentText"
@@ -147,14 +164,6 @@
     </div>
 </div>
 
-<!-- Reject Modal -->
-@if (showReject)
-{
-    <NewsRejectModal OnClose="() => showReject = false"
-                     OnConfirmReject="RejectWithReason" />
-}
-
-<!-- Create / Edit Drawer Form -->
 @if (showCreate || showEdit)
 {
     <NewsEditorDrawer IsEdit="@showEdit"
@@ -168,32 +177,25 @@
 
 @code {
     [CascadingParameter] public MainLayout Layout { get; set; } = default!;
+    [Parameter] public Guid? Id { get; set; }
 
     private bool loading = true;
     private string? listError;
     private string q = "";
     private string typeFilter = "";
-    private string statusFilter = "";
-    private bool pinnedOnly;
-    private bool requiresAckOnly;
-    private bool includeScheduled;
+    private string activeView = "all";
+    private string sortOrder = "newest";
     private int page = 1;
     private int total;
     private int totalPages => Math.Max(1, (int)Math.Ceiling(total / 20.0));
     private List<NewsSummaryDto>? items;
-    private List<NewsSummaryDto> pinnedItems => items?.Where(x => x.IsPinned).ToList() ?? [];
-    private List<NewsSummaryDto> feedItems =>
-        sortOrder == "oldest"
-            ? (items?.Where(x => !x.IsPinned).OrderBy(x => x.PublishedAt ?? x.CreatedAt).ToList() ?? [])
-            : (items?.Where(x => !x.IsPinned).OrderByDescending(x => x.PublishedAt ?? x.CreatedAt).ToList() ?? []);
-    private List<NewsSummaryDto> scheduledItems => items?.Where(x => x.PublishAt != null && x.PublishAt > DateTime.UtcNow).ToList() ?? [];
+    private NewsCountsDto? counts;
 
     private bool showDetail;
     private NewsDetailDto? detail;
     private List<NewsAuditDto>? audits;
     private string? detailError;
     private bool ackBusy;
-    private bool showReject;
     private bool showCreate;
     private bool showEdit;
     private bool formBusy;
@@ -201,30 +203,144 @@
     private Guid? openDetailId;
     private NewsDiscussionDto? discussion;
     private string commentText = "";
-    private string sortOrder = "newest";
 
-    private async Task OnSortChanged()
+    // The server decides who manages news (Admin or HR); the role list is only a first-paint hint.
+    private bool canManage => counts?.CanManage ?? (Auth.Me?.Roles.Any(r => r is "Admin" or "HR") == true);
+    private bool HasActiveFilters => !string.IsNullOrEmpty(q) || !string.IsNullOrEmpty(typeFilter) || activeView != "all";
+
+    private static readonly (string Key, string Label, string Icon, bool ManagerOnly)[] Views =
+    [
+        ("all", "All posts", "newspaper", false),
+        ("unread", "Unread", "mail", false),
+        ("ack", "Needs acknowledgement", "clipboard-check", false),
+        ("saved", "Saved", "bookmark", false),
+        ("pinned", "Pinned", "pin", false),
+        ("scheduled", "Scheduled", "clock-3", true),
+        ("drafts", "Drafts", "file-pen-line", true),
+    ];
+
+    private static readonly (string Key, string Label, string Icon)[] Categories =
+    [
+        ("news", "Company news", "building-2"),
+        ("memo", "Internal memos", "file-text"),
+        ("announcement", "Announcements", "megaphone"),
+        ("condolence", "Condolences", "heart"),
+    ];
+
+    private int CountFor(string view) => counts is null ? 0 : view switch
     {
-        await Reload(1, true);
-    }
+        "unread" => counts.Unread,
+        "ack" => counts.NeedsAck,
+        "saved" => counts.Saved,
+        "pinned" => counts.Pinned,
+        "scheduled" => counts.Scheduled,
+        "drafts" => counts.Drafts,
+        _ => counts.All,
+    };
 
-    private bool isApprover => Auth.Me?.Roles.Contains("Admin") == true;
-    private bool canEdit => detail is not null && (detail.Status == "draft" || detail.Status == "rejected");
-    private bool HasActiveFilters => !string.IsNullOrEmpty(q) || !string.IsNullOrEmpty(statusFilter) || pinnedOnly || requiresAckOnly || includeScheduled;
+    private string ListTitle =>
+        !string.IsNullOrEmpty(typeFilter) ? Categories.FirstOrDefault(c => c.Key == typeFilter).Label ?? NewsUiHelper.GetCategoryLabel(typeFilter)
+        : Views.FirstOrDefault(v => v.Key == activeView).Label ?? "All posts";
+
+    private string EmptyIcon => activeView switch
+    {
+        "unread" => "mail-check",
+        "ack" => "clipboard-check",
+        "saved" => "bookmark",
+        "pinned" => "pin",
+        "scheduled" => "clock-3",
+        "drafts" => "file-pen-line",
+        _ => NewsUiHelper.GetCategoryIcon(typeFilter)
+    };
+
+    private string EmptyTitle => activeView switch
+    {
+        "unread" => "You're all caught up",
+        "ack" => "Nothing waiting for your acknowledgement",
+        "saved" => "No saved posts yet",
+        "drafts" => "No drafts",
+        "scheduled" => "Nothing scheduled",
+        _ => "No posts here yet"
+    };
 
     protected override void OnInitialized()
     {
         Layout.SetHeader("News & Memos", "Corporate announcements & internal news");
         Layout.SearchChanged += OnLayoutSearch;
+        _newsSub = Auth.On(IPop.Application.Realtime.RealtimeEvents.NewsChanged, OnNewsChanged);
+    }
+
+    // ── Live refresh (newsChanged) ──
+    // A post was created/edited/published/pinned/deleted elsewhere. Re-fetch counts and the
+    // pages already loaded in place (no spinner, same length so scroll holds); the open reader
+    // and any create/edit form are left alone. Debounced so a burst triggers one reload.
+    private IDisposable? _newsSub;
+    private CancellationTokenSource? _liveCts;
+
+    private void OnNewsChanged()
+    {
+        _liveCts?.Cancel(); _liveCts?.Dispose();
+        var t = new CancellationTokenSource(); _liveCts = t;
+        _ = InvokeAsync(async () =>
+        {
+            try { await Task.Delay(400, t.Token); } catch (OperationCanceledException) { return; }
+            await LiveRefreshAsync();
+        });
+    }
+
+    private async Task LiveRefreshAsync()
+    {
+        try
+        {
+            // The "news" badge (unacknowledged memos) is per user, so re-seed it over REST.
+            _ = Badges.RefreshAsync();
+            await LoadCounts();
+            if (items is null || loading) return;
+
+            var pages = Math.Max(1, page);
+            var fresh = new List<NewsSummaryDto>();
+            var seen = new HashSet<Guid>();
+            var newTotal = total;
+            var startQuery = BuildQuery(pages);
+            for (var p = 1; p <= pages; p++)
+            {
+                var res = await Auth.GetAsync<PagedNewsResult<NewsSummaryDto>>($"/api/news{BuildQuery(p)}");
+                if (res is null) return;
+                newTotal = res.TotalCount;
+                fresh.AddRange(res.Items.Where(i => seen.Add(i.Id)));
+                if (fresh.Count >= newTotal) break;
+            }
+            // Filters/search changed while we were fetching: that load wins.
+            if (startQuery != BuildQuery(pages) || loading) return;
+            items = fresh;
+            total = newTotal;
+
+            // Refresh the open reader in place unless the editor is up (keep the form untouched).
+            if (openDetailId is { } id && showDetail && !showEdit && detail is not null)
+            {
+                var d = await Auth.GetAsync<NewsDetailDto>($"/api/news/{id}");
+                if (d is not null && openDetailId == id && !showEdit) detail = d;
+            }
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+        catch { /* background refresh — the next event or a manual refresh will catch up */ }
     }
 
     protected override async Task OnInitializedAsync()
     {
-        await Reload(1, true);
-        // Dashboard deep links: ?post={id} opens the reader, ?new=1 opens the editor.
+        await Task.WhenAll(LoadCounts(), Reload(1, true));
+        // Deep links: /news/{id} or legacy ?post={id} open the reader; ?new=1 opens the editor.
         var query = System.Web.HttpUtility.ParseQueryString(Nav.ToAbsoluteUri(Nav.Uri).Query);
-        if (Guid.TryParse(query["post"], out var postId)) await OpenDetail(postId);
-        else if (query["new"] == "1") OpenCreate();
+        if (Id is { } routeId) await OpenDetail(routeId);
+        else if (Guid.TryParse(query["post"], out var postId)) await OpenDetail(postId);
+        else if (query["new"] == "1" && canManage) OpenCreate();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Navigating between /news/{id} links while the page is mounted.
+        if (Id is { } id && id != openDetailId && items is not null) await OpenDetail(id);
     }
 
     private void OnLayoutSearch() => _ = InvokeAsync(async () =>
@@ -248,59 +364,32 @@
         await Reload(1, true);
     }
 
-    private async Task OnStatusFilterChanged(string val)
+    private async Task SetView(string view)
     {
-        statusFilter = val;
+        activeView = view;
+        typeFilter = "";
         await Reload(1, true);
     }
 
-    private async Task SetCategoryTab(string cat)
+    private async Task SetCategory(string cat)
     {
         typeFilter = cat;
+        activeView = "all";
         await Reload(1, true);
     }
 
-    private static readonly (string Key, string Label, string Icon)[] Categories =
-    [
-        ("news", "Company news", "building-2"),
-        ("memo", "Internal memos", "file-text"),
-        ("announcement", "Announcements", "megaphone"),
-        ("condolence", "Condolences", "heart"),
-    ];
-    private int PendingAck => items?.Count(x => x.RequiresAcknowledgement && !x.IsAcknowledged && x.Status == "published") ?? 0;
-    private IEnumerable<NewsSummaryDto> OrderedItems => pinnedItems.Concat(feedItems);
-    private string ListTitle =>
-        requiresAckOnly ? "Needs acknowledgement"
-        : pinnedOnly ? "Pinned"
-        : includeScheduled ? "Scheduled"
-        : string.IsNullOrEmpty(typeFilter) ? "All posts"
-        : Categories.FirstOrDefault(c => c.Key == typeFilter).Label ?? NewsUiHelper.GetCategoryLabel(typeFilter);
-    private async Task ShowAll()
-    {
-        typeFilter = "";
-        requiresAckOnly = pinnedOnly = includeScheduled = false;
-        await Reload(1, true);
-    }
-    private async Task TogglePinnedFilter()
-    {
-        pinnedOnly = !pinnedOnly;
-        await Reload(1, true);
-    }
-    private async Task ToggleScheduledFilter()
-    {
-        includeScheduled = !includeScheduled;
-        await Reload(1, true);
-    }
     private async Task ReviewNow()
     {
-        var first = items?.FirstOrDefault(x => x.RequiresAcknowledgement && !x.IsAcknowledged && x.Status == "published");
-        if (!requiresAckOnly) { requiresAckOnly = true; await Reload(1, true); }
-        if (first is not null) await OpenDetail(first.Id);
+        await SetView("ack");
+        if (items?.FirstOrDefault() is { } first) await OpenDetail(first.Id);
     }
-    private async Task ToggleAckFilter()
+
+    private async Task LoadCounts()
     {
-        requiresAckOnly = !requiresAckOnly;
-        await Reload(1, true);
+        counts = await Auth.GetAsync<NewsCountsDto>("/api/news/counts") ?? counts;
+        if (counts is not null)
+            Layout.SetSubtitle($"{counts.All} {(counts.All == 1 ? "post" : "posts")}{(counts.Unread > 0 ? $" · {counts.Unread} unread" : "")}{(counts.NeedsAck > 0 ? $" · {counts.NeedsAck} need acknowledgement" : "")}");
+        StateHasChanged();
     }
 
     private async Task Reload(int p, bool replace)
@@ -323,7 +412,6 @@
         page = res.Page;
         if (replace || items is null) items = res.Items.ToList();
         else items.AddRange(res.Items);
-        if (!HasActiveFilters) Layout.SetSubtitle($"{total} {(total == 1 ? "post" : "posts")}{(PendingAck > 0 ? $" · {PendingAck} need acknowledgement" : "")}");
         loading = false;
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
@@ -331,27 +419,42 @@
 
     private string BuildQuery(int p)
     {
-        var parts = new List<string> { $"page={p}", "pageSize=20" };
+        var parts = new List<string> { $"page={p}", "pageSize=20", $"sort={sortOrder}" };
         if (!string.IsNullOrWhiteSpace(typeFilter)) parts.Add($"type={Uri.EscapeDataString(typeFilter)}");
-        if (!string.IsNullOrWhiteSpace(statusFilter)) parts.Add($"status={Uri.EscapeDataString(statusFilter)}");
         if (!string.IsNullOrWhiteSpace(q)) parts.Add($"q={Uri.EscapeDataString(q.Trim())}");
-        if (pinnedOnly) parts.Add("pinned=true");
-        if (requiresAckOnly) parts.Add("requiresAck=true");
-        if (includeScheduled) parts.Add("includeScheduled=true");
+        switch (activeView)
+        {
+            case "unread": parts.Add("view=unread"); break;
+            case "saved": parts.Add("view=saved"); break;
+            case "drafts": parts.Add("view=drafts"); break;
+            case "scheduled": parts.Add("view=scheduled"); break;
+            case "pinned": parts.Add("pinned=true"); break;
+            case "ack": parts.Add("requiresAck=true"); break;
+        }
         return "?" + string.Join("&", parts);
     }
 
-    private void ClearFilters()
+    private async Task ClearFilters()
     {
         q = "";
-        statusFilter = "";
-        pinnedOnly = false;
-        requiresAckOnly = false;
-        includeScheduled = false;
-        _ = Reload(1, true);
+        typeFilter = "";
+        activeView = "all";
+        await Reload(1, true);
     }
 
     private Task LoadMore() => Reload(page + 1, false);
+
+    private async Task Refresh()
+    {
+        await Task.WhenAll(LoadCounts(), Reload(1, true));
+    }
+
+    private void PatchRow(Guid id, Func<NewsSummaryDto, NewsSummaryDto> change)
+    {
+        if (items is null) return;
+        var i = items.FindIndex(x => x.Id == id);
+        if (i >= 0) items[i] = change(items[i]);
+    }
 
     private async Task OpenDetail(Guid id)
     {
@@ -363,38 +466,57 @@
         showDetail = true;
         detail = null;
         StateHasChanged();
+        _selfRef ??= DotNetObjectReference.Create(this);
+        try { await JS.InvokeAsync<bool>("ipop.mobile.pushDetail", _selfRef, nameof(MobileBack)); } catch (JSException) { }
 
         var d = await Auth.GetAsync<NewsDetailDto>($"/api/news/{id}");
+        if (openDetailId != id) return;
         if (d is null)
         {
-            if (openDetailId != id) return;
-            detailError = "Unable to load post details.";
+            detailError = "This post is unavailable or you don't have access to it.";
             StateHasChanged();
             await JS.InvokeVoidAsync("ipop.icons");
             return;
         }
-        if (openDetailId != id) return;
         detail = d;
+        // Opening a published post marks it read on the server; mirror that in the list.
+        if (d.Status == "published")
+        {
+            var wasUnread = items?.FirstOrDefault(x => x.Id == id) is { IsRead: false };
+            PatchRow(id, x => x with { IsRead = true });
+            if (wasUnread) _ = LoadCounts();
+        }
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
 
-        var a = await Auth.GetAsync<NewsAuditDto[]>($"/api/news/{id}/audits");
-        if (openDetailId != id) return;
-        audits = a?.ToList() ?? [];
-        discussion = await Auth.GetAsync<NewsDiscussionDto>($"/api/news/{id}/discussion");
+        if (d.CanManage)
+        {
+            var a = await Auth.GetAsync<NewsAuditDto[]>($"/api/news/{id}/audits");
+            if (openDetailId != id) return;
+            audits = a?.ToList() ?? [];
+        }
+        if (d.Status == "published")
+            discussion = await Auth.GetAsync<NewsDiscussionDto>($"/api/news/{id}/discussion");
         if (openDetailId != id) return;
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
     }
 
+    // ── Phone layout (<= 767px): the reader is a full-screen detail; phone Back closes it. ──
+    private DotNetObjectReference<News>? _selfRef;
+
+    [JSInvokable]
+    public Task MobileBack() => InvokeAsync(CloseDetail);
+
     private void CloseDetail()
     {
+        // Drop the reader's history entry (no-op on desktop or when Back already popped it).
+        if (showDetail) _ = JS.InvokeVoidAsync("ipop.mobile.popDetail").AsTask().ContinueWith(_ => { });
         showDetail = false;
         detail = null;
         audits = null;
         discussion = null;
         detailError = null;
-        showReject = false;
         openDetailId = null;
         StateHasChanged();
     }
@@ -405,7 +527,7 @@
         var method = discussion?.IsLiked == true ? HttpMethod.Delete : HttpMethod.Post;
         var res = await Auth.SendAsync(method, $"/api/news/{detail.Id}/like", null);
         if (res.IsSuccessStatusCode) discussion = await res.Content.ReadFromJsonAsync<NewsDiscussionDto>();
-        else Toasts.Show("Could not update your reaction.");
+        else Toasts.Show("Could not update your reaction.", ToastKind.Error);
     }
 
     private async Task AddComment()
@@ -417,7 +539,32 @@
             discussion = await res.Content.ReadFromJsonAsync<NewsDiscussionDto>();
             commentText = "";
         }
-        else Toasts.Show("Could not post your comment.");
+        else Toasts.Show("Could not post your comment.", ToastKind.Error);
+    }
+
+    private async Task ToggleSave()
+    {
+        if (detail is null) return;
+        var save = !detail.IsSaved;
+        var res = await Auth.SendAsync(save ? HttpMethod.Post : HttpMethod.Delete, $"/api/news/{detail.Id}/bookmark", null);
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Could not update saved posts.", ToastKind.Error); return; }
+        detail = detail with { IsSaved = save };
+        PatchRow(detail.Id, x => x with { IsSaved = save });
+        Toasts.Show(save ? "Saved for later." : "Removed from saved.", ToastKind.Success);
+        if (activeView == "saved") await Reload(1, true);
+        await LoadCounts();
+    }
+
+    private async Task MarkUnread()
+    {
+        if (detail is null) return;
+        var id = detail.Id;
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/news/{id}/read", null);
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Could not mark as unread.", ToastKind.Error); return; }
+        PatchRow(id, x => x with { IsRead = false });
+        CloseDetail();
+        await LoadCounts();
+        Toasts.Show("Marked as unread.", ToastKind.Success);
     }
 
     private async Task Acknowledge()
@@ -437,10 +584,12 @@
             }
             var updated = await res.Content.ReadFromJsonAsync<NewsDetailDto>();
             if (updated is not null) detail = updated;
-            await Reload(1, true);
+            PatchRow(detail.Id, x => x with { IsAcknowledged = true });
+            await LoadCounts();
+            if (activeView == "ack") await Reload(1, true);
             StateHasChanged();
             await JS.InvokeVoidAsync("ipop.icons");
-            Toasts.Show("Read confirmation recorded successfully.", ToastKind.Success);
+            Toasts.Show("Acknowledgement recorded.", ToastKind.Success);
         }
         finally
         {
@@ -451,32 +600,26 @@
     private async Task RemindAck()
     {
         if (detail is null) return;
-        try
+        var pending = detail.AckTotal - detail.AckCount;
+        if (!await Confirm.AskAsync("Send reminder?", $"{pending} {(pending == 1 ? "employee has" : "employees have")} not acknowledged \"{detail.Title}\" yet. They will get a high-priority notification.", "Send reminder", danger: false))
+            return;
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/news/{detail.Id}/remind-ack", null);
+        if (res.IsSuccessStatusCode)
         {
-            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/news/{detail.Id}/remind-ack", null);
-            if (res.IsSuccessStatusCode)
-            {
-                Toasts.Show("Reminder sent to targeted employees.", ToastKind.Success);
-            }
-            else
-            {
-                Toasts.Show("Unable to send acknowledgement reminder.", ToastKind.Error);
-            }
+            await ReloadAudits();
+            Toasts.Show($"Reminder sent to {pending} {(pending == 1 ? "employee" : "employees")}.", ToastKind.Success);
         }
-        catch (Exception ex)
-        {
-            Toasts.Show($"Reminder failed: {ex.Message}", ToastKind.Error);
-        }
+        else Toasts.Show("Unable to send the reminder.", ToastKind.Error);
     }
 
     private async Task CopyLink()
     {
         if (detail is null) return;
-        var url = Nav.Uri.Split('?')[0] + $"?post={detail.Id}";
+        var url = Nav.ToAbsoluteUri($"news/{detail.Id}").ToString();
         try
         {
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
-            Toasts.Show("Post link copied to clipboard.", ToastKind.Success);
+            Toasts.Show("Link copied to clipboard.", ToastKind.Success);
         }
         catch
         {
@@ -484,34 +627,13 @@
         }
     }
 
-    private async Task Submit() => await Workflow("submit");
-    private async Task Approve() => await Workflow("approve");
-
-    private async Task RejectWithReason(string reason)
+    private Task Publish() => Workflow("publish", "Post published.");
+    private async Task Unpublish()
     {
-        if (string.IsNullOrWhiteSpace(reason))
-        {
-            detailError = "Rejection reason is required.";
-            StateHasChanged();
-            return;
-        }
-        showReject = false;
-        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/news/{detail!.Id}/reject", new { reason });
-        if (!res.IsSuccessStatusCode)
-        {
-            detailError = await ReadErr(res);
-            StateHasChanged();
-            return;
-        }
-        detail = await res.Content.ReadFromJsonAsync<NewsDetailDto>();
-        await Reload(1, true);
-        StateHasChanged();
-        await JS.InvokeVoidAsync("ipop.icons");
-        Toasts.Show("Post has been rejected.", ToastKind.Info);
+        if (detail is null) return;
+        if (!await Confirm.AskAsync("Unpublish post?", $"\"{detail.Title}\" will be hidden from readers and moved back to drafts.", "Unpublish", danger: false)) return;
+        await Workflow("unpublish", "Post moved back to drafts.");
     }
-
-    private async Task Publish() => await Workflow("publish");
-    private async Task Unpublish() => await Workflow("unpublish");
 
     private async Task TogglePin()
     {
@@ -525,13 +647,12 @@
             return;
         }
         detail = await res.Content.ReadFromJsonAsync<NewsDetailDto>();
-        await Reload(1, true);
-        StateHasChanged();
-        await JS.InvokeVoidAsync("ipop.icons");
-        Toasts.Show(detail.IsPinned ? "Post pinned successfully." : "Post unpinned.", ToastKind.Success);
+        await ReloadAudits();
+        await Refresh();
+        Toasts.Show(detail!.IsPinned ? "Post pinned to the top." : "Post unpinned.", ToastKind.Success);
     }
 
-    private async Task Workflow(string action)
+    private async Task Workflow(string action, string done)
     {
         if (detail is null) return;
         detailError = null;
@@ -544,23 +665,29 @@
             return;
         }
         detail = await res.Content.ReadFromJsonAsync<NewsDetailDto>();
-        audits = await Auth.GetAsync<NewsAuditDto[]>($"/api/news/{detail!.Id}/audits") is { } a ? a.ToList() : audits;
-        await Reload(1, true);
+        await ReloadAudits();
+        await Refresh();
+        Toasts.Show(done, ToastKind.Success);
+    }
+
+    private async Task ReloadAudits()
+    {
+        if (detail is { CanManage: true })
+            audits = await Auth.GetAsync<NewsAuditDto[]>($"/api/news/{detail.Id}/audits") is { } a ? a.ToList() : audits;
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
-        Toasts.Show("Action " + action + " completed successfully.", ToastKind.Success);
     }
 
     private async Task DeleteCurrentPost()
     {
         if (detail is null) return;
-        var confirmed = await JS.InvokeAsync<bool>("confirm", $"Delete \"{detail.Title}\"?");
-        if (!confirmed) return;
+        if (!await Confirm.AskAsync("Delete post?", $"\"{detail.Title}\" and its comments, acknowledgements and attachments will be permanently removed. This is recorded in the audit trail.", "Delete", danger: true))
+            return;
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/news/{detail.Id}");
         if (res.IsSuccessStatusCode)
         {
             CloseDetail();
-            await Reload(1, true);
+            await Refresh();
             Toasts.Show("Post deleted.", ToastKind.Success);
         }
         else
@@ -571,6 +698,7 @@
 
     private void OpenCreate()
     {
+        if (!canManage) return;
         formError = null;
         showCreate = true;
         showEdit = false;
@@ -600,33 +728,34 @@
     private async Task SaveForm(NewsSaveRequest req)
     {
         formError = null;
-        if (string.IsNullOrWhiteSpace(req.Title))
+        if (string.IsNullOrWhiteSpace(req.Title)) { formError = "Post title is required."; StateHasChanged(); return; }
+        if (string.IsNullOrWhiteSpace(req.Body)) { formError = "Content is required."; StateHasChanged(); return; }
+        if (req.Mode == "schedule" && (req.PublishAt is null || req.PublishAt <= DateTime.UtcNow))
         {
-            formError = "Post title is required.";
-            StateHasChanged();
-            return;
-        }
-        if (string.IsNullOrWhiteSpace(req.Body))
-        {
-            formError = "Content is required.";
+            formError = "Pick a future date and time to schedule this post.";
             StateHasChanged();
             return;
         }
         formBusy = true;
         StateHasChanged();
 
+        var editing = showEdit && detail is not null;
         HttpResponseMessage res;
-        if (showEdit && detail is not null)
+        if (editing)
         {
-            res = await Auth.SendAsync(new HttpMethod("PATCH"), $"/api/news/{detail.Id}", new
+            res = await Auth.SendAsync(new HttpMethod("PATCH"), $"/api/news/{detail!.Id}", new
             {
                 title = req.Title,
                 body = req.Body,
                 type = req.Type,
                 publishAt = req.PublishAt,
+                clearPublishAt = req.PublishAt is null,
                 requiresAcknowledgement = req.RequiresAcknowledgement,
+                ackDueAt = req.AckDueAt,
+                clearAckDueAt = req.AckDueAt is null,
                 isPinned = req.IsPinned,
-                targets = req.Targets
+                targets = req.Targets,
+                attachmentIds = req.AttachmentIds ?? []
             });
         }
         else
@@ -636,36 +765,51 @@
                 type = req.Type,
                 title = req.Title,
                 body = req.Body,
-                publishAt = req.PublishAt,
+                publishAt = req.Mode == "schedule" ? req.PublishAt : null,
                 requiresAcknowledgement = req.RequiresAcknowledgement,
+                ackDueAt = req.AckDueAt,
                 isPinned = req.IsPinned,
-                targets = req.Targets.Count == 0 ? null : req.Targets
+                targets = req.Targets.Count == 0 ? null : req.Targets,
+                mode = req.Mode,
+                attachmentIds = req.AttachmentIds
             });
         }
 
         if (!res.IsSuccessStatusCode)
         {
-            formError = await ReadErr(res);
+            formError = FriendlyError(await ReadErr(res));
             formBusy = false;
             StateHasChanged();
             return;
         }
 
-        var created = await res.Content.ReadFromJsonAsync<NewsDetailDto>();
+        var saved = await res.Content.ReadFromJsonAsync<NewsDetailDto>();
         formBusy = false;
         showCreate = false;
         showEdit = false;
-        if (created is not null)
+        if (saved is not null)
         {
-            detail = created;
+            detail = saved;
+            openDetailId = saved.Id;
             showDetail = true;
-            audits = await Auth.GetAsync<NewsAuditDto[]>($"/api/news/{created.Id}/audits") is { } a ? a.ToList() : audits;
+            await ReloadAudits();
         }
-        await Reload(1, true);
-        StateHasChanged();
-        await JS.InvokeVoidAsync("ipop.icons");
-        Toasts.Show(showEdit ? "Post updated successfully." : "Draft post created successfully.", ToastKind.Success);
+        await Refresh();
+        Toasts.Show(editing ? "Post updated."
+            : req.Mode == "publish" ? "Post published."
+            : req.Mode == "schedule" ? $"Post scheduled for {req.PublishAt!.Value.ToLocalTime():dd MMM, HH:mm}."
+            : "Draft saved.", ToastKind.Success);
     }
+
+    private static string FriendlyError(string code) => code switch
+    {
+        "forbidden" => "Only the post's author, HR or Admin can edit this post.",
+        "schedule_requires_future_time" => "Pick a future date and time to schedule this post.",
+        "title_required" => "Post title is required.",
+        "body_required" => "Content is required.",
+        "title_too_long" => "Title must be 300 characters or fewer.",
+        _ => code
+    };
 
     private static async Task<string> ReadErr(HttpResponseMessage r)
     {
@@ -680,5 +824,13 @@
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
-    public void Dispose() { Layout.SearchChanged -= OnLayoutSearch; }
+    public void Dispose()
+    {
+        Layout.SearchChanged -= OnLayoutSearch;
+        _newsSub?.Dispose();
+        _liveCts?.Cancel();
+        _liveCts?.Dispose();
+        _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail").AsTask().ContinueWith(_ => { });
+        _selfRef?.Dispose();
+    }
 }

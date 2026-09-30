@@ -1,3 +1,4 @@
+using IPop.Api.Presence;
 using IPop.Application.Realtime;
 using Microsoft.AspNetCore.SignalR;
 
@@ -5,14 +6,25 @@ namespace IPop.Api.Realtime;
 
 /// The single hub (/hubs/app). Every connection joins its user group so IRealtime.ToUserAsync
 /// reaches all of that user's tabs; conversation groups are joined by module hub methods.
-public class AppHub : Hub
+public class AppHub(PresenceConnections connections) : Hub
 {
     public override async Task OnConnectedAsync()
     {
         var nik = Context.User?.FindFirst("nik")?.Value;
         if (!string.IsNullOrEmpty(nik))
+        {
             await Groups.AddToGroupAsync(Context.ConnectionId, RealtimeEvents.UserGroup(nik));
+            connections.Connected(nik);
+        }
         await base.OnConnectedAsync();
+    }
+
+    /// The last tab closing starts the offline grace period (see PresenceConnections).
+    public override async Task OnDisconnectedAsync(Exception? exception)
+    {
+        var nik = Context.User?.FindFirst("nik")?.Value;
+        if (!string.IsNullOrEmpty(nik)) connections.Disconnected(nik);
+        await base.OnDisconnectedAsync(exception);
     }
 }
 

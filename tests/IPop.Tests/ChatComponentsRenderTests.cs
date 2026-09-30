@@ -25,7 +25,139 @@ public class ChatComponentsRenderTests
         {
             BaseAddress = new Uri("http://localhost/")
         }, ctx.JSInterop.JSRuntime));
+        ctx.Services.AddSingleton(new ToastService());
         return ctx;
+    }
+
+    /// Every request answers 404: components under test see "nothing there" without a
+    /// real socket to localhost.
+    private sealed class NotFoundHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+            => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound) { RequestMessage = request });
+    }
+
+    /// Context for the drawer components (contact card, group settings, pinned panel),
+    /// with every service they inject and an offline HTTP stack.
+    private static BunitContext CreateDrawerContext()
+    {
+        var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        HttpClient Http() => new(new NotFoundHandler()) { BaseAddress = new Uri("http://localhost/") };
+        var auth = new AuthState(Http(), ctx.JSInterop.JSRuntime);
+        ctx.Services.AddSingleton(auth);
+        ctx.Services.AddSingleton(new ChatState(auth, Http()));
+        ctx.Services.AddSingleton(new ChatAttachments(auth, Http(), ctx.JSInterop.JSRuntime));
+        ctx.Services.AddSingleton(new ToastService());
+        ctx.Services.AddSingleton(new ConfirmService());
+        ctx.Services.AddSingleton(new FavoriteContacts(ctx.JSInterop.JSRuntime, auth));
+        ctx.Services.AddSingleton(new CallState(auth, Http(), ctx.JSInterop.JSRuntime));
+        ctx.Services.AddSingleton(Http());
+        return ctx;
+    }
+
+    private static IPop.Web.Models.Employee SamplePerson() => new(
+        "Alice Tan", "Engineer", "E123", "4412", "HQ", "IT", "IT", "Jakarta", "JKT",
+        "Bob Lee", "alice@example.com", "on", "#0a84ff");
+
+    [Fact]
+    public void PinnedPanel_RoomScope_ListsPinsWithSegmentedControlAndNoInnerHeader()
+    {
+        using var ctx = CreateDrawerContext();
+        var pins = new List<PinnedMessageDto>
+        {
+            new(Guid.NewGuid(), Guid.NewGuid(), "Alice", "Deploy at 5pm", DateTime.UtcNow)
+        };
+        var cut = ctx.Render<PinnedPanel>(p => p
+            .Add(m => m.RoomId, Guid.NewGuid())
+            .Add(m => m.IsOpen, true)
+            .Add(m => m.Items, pins));
+
+        Assert.Empty(cut.FindAll(".pp-head"));
+        var segs = cut.FindAll(".pp-scope-item");
+        Assert.Equal(2, segs.Count);
+        Assert.Equal("This conversation", segs[0].TextContent.Trim());
+        Assert.Equal("true", segs[0].GetAttribute("aria-checked"));
+        Assert.Contains("1 pinned in this conversation", cut.Markup);
+        Assert.Contains("Deploy at 5pm", cut.Markup);
+        Assert.Single(cut.FindAll(".pin-unpin"));
+    }
+
+    [Fact]
+    public void PinnedPanel_JumpsToMessage_WhenItemClicked()
+    {
+        using var ctx = CreateDrawerContext();
+        var msgId = Guid.NewGuid();
+        Guid? jumped = null;
+        var cut = ctx.Render<PinnedPanel>(p => p
+            .Add(m => m.RoomId, Guid.NewGuid())
+            .Add(m => m.IsOpen, true)
+            .Add(m => m.Items, new List<PinnedMessageDto> { new(Guid.NewGuid(), msgId, "Alice", "Hi", DateTime.UtcNow) })
+            .Add(m => m.OnJumpTo, id => jumped = id));
+
+        cut.Find(".pin-item").Click();
+        Assert.Equal(msgId, jumped);
+    }
+
+    [Fact]
+    public void PinnedPanel_WithoutRoom_DefaultsToAllConversations()
+    {
+        using var ctx = CreateDrawerContext();
+        var cut = ctx.Render<PinnedPanel>(p => p
+            .Add(m => m.RoomId, Guid.Empty)
+            .Add(m => m.IsOpen, true)
+            .Add(m => m.Scope, PinnedPanel.PinnedScope.Room));
+
+        var segs = cut.FindAll(".pp-scope-item");
+        Assert.True(segs[0].HasAttribute("disabled"));
+        Assert.Equal("true", segs[1].GetAttribute("aria-checked"));
+        cut.WaitForAssertion(() => Assert.Contains("No pinned messages yet", cut.Markup));
+    }
+
+    [Fact]
+    public void ContactCard_RendersCopyButtonsAndSingleActionRow()
+    {
+        using var ctx = CreateDrawerContext();
+        var cut = ctx.Render<IPop.Web.Components.ContactCard>(p => p.Add(m => m.Person, SamplePerson()));
+
+        Assert.Equal(3, cut.FindAll(".inset-copy").Count);
+        Assert.Equal(3, cut.FindAll(".hero-btn").Count);
+        Assert.DoesNotContain("View full profile", cut.Markup);
+    }
+
+    [Fact]
+    public void ContactCard_Message_InvokesHostCallback()
+    {
+        using var ctx = CreateDrawerContext();
+        var messaged = false;
+        var cut = ctx.Render<IPop.Web.Components.ContactCard>(p => p
+            .Add(m => m.Person, SamplePerson())
+            .Add(m => m.OnMessage, () => messaged = true));
+
+        cut.Find(".hero-btn[aria-label='Message']").Click();
+        Assert.True(messaged);
+    }
+
+    [Fact]
+    public void ContactCard_Mail_DefaultsToMailCompose()
+    {
+        using var ctx = CreateDrawerContext();
+        var cut = ctx.Render<IPop.Web.Components.ContactCard>(p => p.Add(m => m.Person, SamplePerson()));
+
+        cut.Find(".hero-btn[aria-label='Mail']").Click();
+        var nav = ctx.Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
+        Assert.Contains("/mail?compose=", nav.Uri);
+    }
+
+    [Fact]
+    public void GroupSettingsPanel_ShowsNotFound_WhenRoomUnavailable()
+    {
+        using var ctx = CreateDrawerContext();
+        var cut = ctx.Render<GroupSettingsPanel>(p => p.Add(m => m.RoomId, Guid.NewGuid()));
+
+        cut.WaitForAssertion(() => Assert.Contains("Group not found", cut.Markup));
+        Assert.Single(cut.FindAll(".gs-panel"));
+        Assert.DoesNotContain("Open chat", cut.Markup);
     }
 
     [Fact]

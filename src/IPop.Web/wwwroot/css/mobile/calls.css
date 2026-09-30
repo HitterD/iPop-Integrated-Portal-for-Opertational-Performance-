@@ -1,0 +1,87 @@
+/* Calls — phone layout (<= 767px). See .scratch/backup-mobile/CONTRACT.md. */
+@media (max-width: 767px) {
+  /* Page: one scrolling column; list and detail swap (root gets .m-detail when a row is opened). */
+  .calls-v6 { height:100%; overflow:hidden; padding:0; gap:0; }
+  .calls-v6 .calls-toolbar { flex-wrap:wrap; gap:8px; padding:10px 12px; }
+  .calls-toolbar .calls-tabs { flex:1 1 100%; display:flex; overflow-x:auto; scrollbar-width:none; }
+  .calls-toolbar .calls-tabs::-webkit-scrollbar { display:none; }
+  .calls-toolbar .calls-tabs button { flex:1 0 auto; justify-content:center; height:36px; white-space:nowrap; }
+  .calls-toolbar .calls-search { flex:1 1 100%; width:auto; margin-left:0; }
+  .calls-toolbar .calls-search input { font-size:16px; }
+  .calls-toolbar .ghost-btn, .calls-toolbar .btn-primary { flex:1 1 0; min-width:0; justify-content:center; height:40px; padding:0 8px; gap:6px; white-space:nowrap; font-size:13px; }
+  .calls-toolbar .ghost-btn .lucide, .calls-toolbar .btn-primary .lucide { flex:none; width:15px; height:15px; }
+  .calls-https-banner { margin:0 12px 10px; flex-wrap:wrap; }
+
+  .calls-v6 .calls-split { flex:1; min-height:0; display:flex; flex-direction:column; gap:0; padding:0 12px 12px; }
+  .calls-v6 .calls-list { flex:1; min-height:0; max-height:none; border-radius:14px; }
+  .calls-v6 .calls-detail { display:none; min-height:0; }
+
+  /* Detail open: toolbar + list leave, the detail fills the page. */
+  .calls-v6.m-detail .calls-toolbar, .calls-v6.m-detail .calls-https-banner, .calls-v6.m-detail .calls-list { display:none; }
+  .calls-v6.m-detail .calls-split { padding:0; }
+  .calls-v6.m-detail .calls-detail { display:block; flex:1; overflow-y:auto; padding:8px 16px 24px; border:0; border-radius:0; box-shadow:none; }
+  .calls-v6 .calls-detail > .m-back { margin:0 0 4px -6px; }
+
+  /* Tap-friendly rows. */
+  .calls-v6 .calls-favorites { min-height:0; padding:12px; gap:10px; overflow-x:auto; flex-wrap:nowrap; scrollbar-width:none; }
+  .calls-v6 .calls-favorites-head { flex:0 0 auto; display:none; }
+  .calls-v6 .calls-favorites > button { flex:none; min-height:64px; }
+  .calls-history-filters { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; padding:8px 12px; }
+  .calls-history-filters::-webkit-scrollbar { display:none; }
+  .calls-history-filters button { flex:none; height:34px; padding:0 12px; font-size:12px; }
+  .calls-v6 .calls-history-row { min-height:64px; padding:10px 12px; }
+  .calls-history-info strong { font-size:14px; }
+  .calls-row-actions a, .calls-row-actions button { width:40px; height:40px; }
+  .calls-row-actions .lucide { width:16px; height:16px; }
+  .calls-date { padding:0 12px; }
+
+  /* Detail content. */
+  .calls-v6 .call-actions { flex-wrap:wrap; gap:8px; padding:18px 0; }
+  .calls-v6 .call-actions a, .calls-v6 .call-actions button { flex:1 1 0; min-width:0; }
+  .calls-detail-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .calls-v6 .calls-detail-actions { flex-wrap:wrap; }
+  .calls-note textarea { font-size:16px !important; }
+
+  /* Scheduled meetings: single column, full-width actions. */
+  .calls-v6 .calls-list > .calls-meetings { padding:0 0 12px; }
+  .mtg-row { grid-template-columns:48px minmax(0,1fr); padding:12px; gap:8px 10px; min-height:64px; }
+  .mtg-side { grid-column:1 / -1; }
+  .mtg-place { max-width:100%; }
+  .mtg-rsvp-btns button { height:36px; padding:0 12px; }
+  .mtg-icon { width:40px; height:40px; }
+  .mtg-join { height:40px; }
+
+  /* Schedule editor: full-screen sheet with stacked fields. */
+  .modal-backdrop:has(.mtg-form) { padding:0; align-items:stretch; }
+  .modal-backdrop:has(.mtg-form) .modal-card { max-width:none; width:100%; max-height:none; height:100%; border-radius:0; border:0; }
+  .modal-backdrop:has(.mtg-form) .modal-body { flex:1; padding:16px; }
+  .modal-backdrop:has(.mtg-form) .modal-foot { padding:12px 16px calc(12px + var(--m-safe-b, env(safe-area-inset-bottom, 0px))); }
+  .modal-backdrop:has(.mtg-form) .modal-foot > * { flex:1; justify-content:center; min-height:44px; }
+  .mtg-grid { grid-template-columns:1fr; }
+  .mtg-loc { flex-direction:column; align-items:stretch; }
+  .mtg-toggle { height:44px; }
+  .mtg-field .dp-block, .mtg-field .app-select, .mtg-field .app-select-trigger, .mtg-end .dp-block { width:100%; max-width:none; }
+  .mtg-field .dp-block > *, .mtg-end .dp-block > * { width:100%; }
+  .mtg-input, textarea.mtg-input { font-size:16px; min-height:44px; }
+  .mtg-chips { flex-wrap:wrap; }
+  .mtg-chip { height:40px; padding:0 16px; }
+  .mtg-invite-tabs { align-self:stretch; display:flex; overflow-x:auto; }
+  .mtg-invite-tabs button { flex:1 0 auto; height:36px; justify-content:center; }
+  .mtg-group { min-height:44px; }
+  .mtg-invitees { flex-wrap:wrap; max-height:none; }
+  .mtg-invitee { height:32px; }
+  .mtg-invitee button { width:28px; height:28px; }
+  .mtg-linked { flex-wrap:wrap; }
+
+  /* Device test dialog: bottom sheet. */
+  .callx-dialog { top:auto; bottom:0; left:0; right:0; transform:none; width:100%; max-height:92dvh; border-radius:14px 14px 0 0; padding:16px 16px calc(16px + var(--m-safe-b, env(safe-area-inset-bottom, 0px))); box-sizing:border-box; }
+  .callx-dialog select, .callx-dialog input { font-size:16px; }
+  .callx-dialog-foot > * { flex:1; min-height:44px; }
+
+  /* Meeting room lobby (/meet/{room}); the call itself runs in GlobalCallOverlay. */
+  .meeting-room { padding:16px 12px; }
+  .meeting-room-card { padding:18px 16px; border-radius:14px; }
+  .meeting-room-card h1 { font-size:20px; word-break:break-word; }
+  .meeting-room-card .dash-link { display:inline-flex; align-items:center; min-height:40px; }
+  .meeting-room-card .btn-primary { width:100%; min-height:44px; justify-content:center; }
+}

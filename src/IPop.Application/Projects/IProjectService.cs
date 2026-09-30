@@ -9,6 +9,15 @@ public interface IProjectService
     Task<ProjectResultDto> UpdateProjectAsync(Guid actorId, Guid projectId, UpdateProjectRequest req, CancellationToken ct);
     Task<MemberResultDto> DeleteProjectAsync(Guid actorId, Guid projectId, CancellationToken ct);
 
+    // Groups
+    Task<IReadOnlyList<ProjectGroupDto>?> GetGroupsAsync(Guid projectId, Guid userId, CancellationToken ct, DateTime? localToday = null);
+    Task<GroupResultDto> CreateGroupAsync(Guid actorId, Guid projectId, CreateProjectGroupRequest req, CancellationToken ct);
+    Task<GroupResultDto> UpdateGroupAsync(Guid actorId, Guid groupId, UpdateProjectGroupRequest req, CancellationToken ct);
+    Task<MemberResultDto> ReorderGroupsAsync(Guid actorId, Guid projectId, ReorderProjectGroupsRequest req, CancellationToken ct);
+    Task<DeleteGroupResultDto> DeleteGroupAsync(Guid actorId, Guid groupId, CancellationToken ct);
+    Task<GroupResultDto> RestoreGroupAsync(Guid actorId, Guid projectId, DeletedProjectGroupDto snapshot, CancellationToken ct);
+    Task<TaskResultDto> MoveTaskToGroupAsync(Guid actorId, Guid taskId, MoveTaskToGroupRequest req, CancellationToken ct);
+
     // Members
     Task<MemberResultDto> AddMemberAsync(Guid actorId, Guid projectId, AddProjectMemberRequest req, CancellationToken ct);
     Task<MemberResultDto> RemoveMemberAsync(Guid actorId, Guid projectId, Guid userId, CancellationToken ct);
@@ -19,22 +28,35 @@ public interface IProjectService
     Task<ProjectTaskDto?> GetTaskAsync(Guid taskId, Guid userId, CancellationToken ct);
     Task<IReadOnlyList<ProjectTaskDto>> GetTasksAsync(Guid projectId, Guid? parentTaskId, CancellationToken ct);
     Task<TaskResultDto> UpdateTaskAsync(Guid actorId, Guid taskId, UpdateTaskRequest req, CancellationToken ct);
-    Task<MemberResultDto> DeleteTaskAsync(Guid actorId, Guid taskId, CancellationToken ct);
+    /// Soft delete (task + subtasks share one batch id); undo via RestoreTasksAsync.
+    Task<DeleteTaskResultDto> DeleteTaskAsync(Guid actorId, Guid taskId, CancellationToken ct);
+    Task<MemberResultDto> RestoreTasksAsync(Guid actorId, Guid projectId, Guid batchId, CancellationToken ct);
+    Task<int> PurgeDeletedTasksAsync(DateTime olderThanUtc, CancellationToken ct);
+
+    // Phase 2: dependencies, bulk actions, saved views, calendar
+    Task<TaskResultDto> SetTaskDependenciesAsync(Guid actorId, Guid taskId, SetTaskDependenciesRequest req, CancellationToken ct);
+    Task<BulkTaskResultDto> BulkUpdateTasksAsync(Guid actorId, Guid projectId, BulkTaskRequest req, CancellationToken ct);
+    Task<IReadOnlyList<ProjectSavedViewDto>?> GetSavedViewsAsync(Guid projectId, Guid userId, CancellationToken ct);
+    Task<SavedViewResultDto> CreateSavedViewAsync(Guid actorId, Guid projectId, SaveProjectViewRequest req, CancellationToken ct);
+    Task<SavedViewResultDto> UpdateSavedViewAsync(Guid actorId, Guid viewId, SaveProjectViewRequest req, CancellationToken ct);
+    Task<MemberResultDto> DeleteSavedViewAsync(Guid actorId, Guid viewId, CancellationToken ct);
+    Task<Guid?> SavedViewProjectIdAsync(Guid viewId, CancellationToken ct);
+    Task<ProjectCalendarDto?> GetProjectCalendarAsync(Guid projectId, Guid userId, DateTime from, DateTime to, Guid? groupId, CancellationToken ct);
 
     // Assignees
     Task<MemberResultDto> AssignUserAsync(Guid actorId, Guid taskId, Guid userId, string? role, CancellationToken ct);
     Task<MemberResultDto> UnassignUserAsync(Guid actorId, Guid taskId, Guid userId, CancellationToken ct);
 
     // Kanban
-    Task<KanbanBoardDto?> GetKanbanAsync(Guid projectId, Guid userId, CancellationToken ct);
+    Task<KanbanBoardDto?> GetKanbanAsync(Guid projectId, Guid userId, CancellationToken ct, Guid? groupId = null);
     Task<TaskResultDto> MoveTaskAsync(Guid actorId, Guid taskId, TaskMoveRequest req, CancellationToken ct);
 
     // List + Timeline (Gantt stub: returns data, no critical path calc)
-    Task<PagedResult<ProjectTaskDto>> GetTaskListAsync(Guid projectId, Guid userId, string? status, int page, int pageSize, CancellationToken ct);
-    Task<ProjectTimelineDto?> GetTimelineAsync(Guid projectId, Guid userId, CancellationToken ct);
+    Task<PagedResult<ProjectTaskDto>> GetTaskListAsync(Guid projectId, Guid userId, string? status, int page, int pageSize, CancellationToken ct, Guid? assigneeId = null, bool unassigned = false, Guid? groupId = null);
+    Task<ProjectTimelineDto?> GetTimelineAsync(Guid projectId, Guid userId, CancellationToken ct, Guid? groupId = null);
 
     // DETAIL MAX additions
-    Task<ProjectWorkloadDto?> GetProjectWorkloadAsync(Guid projectId, Guid userId, CancellationToken ct);
+    Task<ProjectWorkloadDto?> GetProjectWorkloadAsync(Guid projectId, Guid userId, CancellationToken ct, DateTime? localToday = null, Guid? groupId = null);
     Task<ProjectExportDto?> GetProjectExportDataAsync(Guid projectId, Guid userId, CancellationToken ct);
     Task<RecurringPreviewDto?> GetRecurringPreviewAsync(Guid taskId, Guid userId, int count, CancellationToken ct);
 
@@ -52,7 +74,7 @@ public interface IProjectService
     // ──────────────────────────────────────────────────────────────────────
 
     /// Returns date-mapped Gantt chart data with day-index positions and critical path computation.
-    Task<ProjectGanttDto?> GetGanttAsync(Guid projectId, Guid userId, CancellationToken ct);
+    Task<ProjectGanttDto?> GetGanttAsync(Guid projectId, Guid userId, CancellationToken ct, Guid? groupId = null);
 
     // ──────────────────────────────────────────────────────────────────────
     // ipop-21 PERFECTION: WorkCalendar

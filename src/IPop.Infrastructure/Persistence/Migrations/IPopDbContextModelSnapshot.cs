@@ -173,17 +173,38 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("AllDay")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("EndAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Link")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("Location")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
                     b.Property<Guid?>("MeetingId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Notes")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid");
+
+                    b.Property<int?>("ReminderMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ReminderSentAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("RoomId")
                         .HasColumnType("uuid");
@@ -298,6 +319,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ChatRoomId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -336,6 +360,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("ChatRoomId", "Status");
 
                     b.HasIndex("CreatorId", "Status");
 
@@ -647,6 +673,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(9)
                         .HasColumnType("character varying(9)");
 
+                    b.Property<string>("AvatarUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -790,6 +820,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("HeadUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -800,12 +833,22 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("ParentId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("SiteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
                         .IsUnique();
 
+                    b.HasIndex("HeadUserId");
+
                     b.HasIndex("ParentId");
+
+                    b.HasIndex("SiteId");
 
                     b.ToTable("Departments");
                 });
@@ -849,6 +892,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("DepartmentId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("HeadUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -859,12 +905,17 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("SiteId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
                         .IsUnique();
 
                     b.HasIndex("DepartmentId");
+
+                    b.HasIndex("HeadUserId");
 
                     b.HasIndex("SiteId");
 
@@ -1157,7 +1208,7 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<long>("FileSize")
                         .HasColumnType("bigint");
 
-                    b.Property<Guid>("MailId")
+                    b.Property<Guid?>("MailId")
                         .HasColumnType("uuid");
 
                     b.Property<string>("MimeType")
@@ -1177,6 +1228,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("ThumbnailPath")
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("UploaderId")
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -1549,6 +1603,24 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("NewsAcknowledgements");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NewsAttachment", b =>
+                {
+                    b.Property<Guid>("NewsPostId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AttachmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("NewsPostId", "AttachmentId");
+
+                    b.HasIndex("AttachmentId");
+
+                    b.ToTable("NewsAttachments");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NewsAudit", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1580,6 +1652,24 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("NewsPostId", "CreatedAt", "Id");
 
                     b.ToTable("NewsAudits");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsBookmark", b =>
+                {
+                    b.Property<Guid>("NewsPostId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("NewsPostId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("NewsBookmarks");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NewsComment", b =>
@@ -1635,6 +1725,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("AckDueAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid?>("ApproverId")
                         .HasColumnType("uuid");
 
@@ -1647,6 +1740,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(20000)");
 
                     b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("EditedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("IsPinned")
@@ -1703,6 +1799,27 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("Type", "Status", "CreatedAt");
 
                     b.ToTable("NewsPosts");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsRead", b =>
+                {
+                    b.Property<Guid>("NewsPostId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("FirstReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ReadAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("NewsPostId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("NewsReads");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NewsTarget", b =>
@@ -2384,6 +2501,13 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("#2E9E5B");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2443,6 +2567,74 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("Year", "Status");
 
                     b.ToTable("Projects");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectField", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("OptionsJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId", "SortOrder");
+
+                    b.ToTable("ProjectFields");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Id", "ProjectId")
+                        .IsUnique();
+
+                    b.HasIndex("ProjectId", "SortOrder");
+
+                    b.ToTable("ProjectGroups");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.ProjectMember", b =>
@@ -2525,6 +2717,46 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("ProjectRooms");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectSavedView", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsShared")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("StateJson")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("ProjectId", "OwnerId");
+
+                    b.ToTable("ProjectSavedViews");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectTask", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2540,6 +2772,12 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("CreatedById")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("DeleteBatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Dependencies")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
@@ -2553,6 +2791,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.Property<decimal?>("EstimatedHours")
                         .HasColumnType("numeric");
+
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid");
 
                     b.Property<bool>("IsRecurring")
                         .HasColumnType("boolean");
@@ -2600,6 +2841,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CreatedById");
 
+                    b.HasIndex("DeleteBatchId");
+
                     b.HasIndex("DueDate");
 
                     b.HasIndex("ParentTaskId");
@@ -2607,6 +2850,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("ProjectId");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("GroupId", "ProjectId");
+
+                    b.HasIndex("ProjectId", "GroupId");
 
                     b.HasIndex("ProjectId", "Status", "SortOrder");
 
@@ -2757,6 +3004,51 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("ProjectTaskComments");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTaskDependency", b =>
+                {
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DependsOnTaskId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("TaskId", "DependsOnTaskId");
+
+                    b.HasIndex("DependsOnTaskId");
+
+                    b.ToTable("ProjectTaskDependencies");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTaskFieldValue", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectFieldId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectTaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectFieldId");
+
+                    b.HasIndex("ProjectTaskId", "ProjectFieldId")
+                        .IsUnique();
+
+                    b.ToTable("ProjectTaskFieldValues");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectTaskReminder", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2891,6 +3183,30 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("RolePermissions");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.SearchHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Query")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("SearchedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "SearchedAt");
+
+                    b.ToTable("SearchHistories");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.Site", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2941,6 +3257,56 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasKey("UserId", "Server");
 
                     b.ToTable("SynologyCredentials");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.TaskTimeEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AutoStopped")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Minutes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TaskId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_TaskTimeEntries_UserId_Running")
+                        .HasFilter("\"EndedAt\" IS NULL");
+
+                    b.HasIndex("UserId", "StartedAt");
+
+                    b.ToTable("TaskTimeEntries");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.User", b =>
@@ -3003,6 +3369,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Position")
                         .HasColumnType("text");
+
+                    b.Property<bool>("PresenceIsIdle")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime?>("PresenceLastSeenAt")
                         .HasColumnType("timestamp with time zone");
@@ -3315,11 +3684,18 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("IPop.Core.Entities.CallRoom", b =>
                 {
+                    b.HasOne("IPop.Core.Entities.ChatRoom", "ChatRoom")
+                        .WithMany()
+                        .HasForeignKey("ChatRoomId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("IPop.Core.Entities.User", "Creator")
                         .WithMany()
                         .HasForeignKey("CreatorId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("ChatRoom");
 
                     b.Navigation("Creator");
                 });
@@ -3547,12 +3923,26 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("IPop.Core.Entities.Department", b =>
                 {
+                    b.HasOne("IPop.Core.Entities.User", "Head")
+                        .WithMany()
+                        .HasForeignKey("HeadUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("IPop.Core.Entities.Department", "Parent")
                         .WithMany()
                         .HasForeignKey("ParentId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("IPop.Core.Entities.Site", "Site")
+                        .WithMany()
+                        .HasForeignKey("SiteId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Head");
+
                     b.Navigation("Parent");
+
+                    b.Navigation("Site");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.DirGroup", b =>
@@ -3572,12 +3962,19 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasForeignKey("DepartmentId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("IPop.Core.Entities.User", "Head")
+                        .WithMany()
+                        .HasForeignKey("HeadUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("IPop.Core.Entities.Site", "Site")
                         .WithMany()
                         .HasForeignKey("SiteId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Department");
+
+                    b.Navigation("Head");
 
                     b.Navigation("Site");
                 });
@@ -3623,8 +4020,7 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasOne("IPop.Core.Entities.Mail", "Mail")
                         .WithMany("Attachments")
                         .HasForeignKey("MailId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
 
                     b.Navigation("Mail");
                 });
@@ -3787,6 +4183,25 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NewsAttachment", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Attachment", "Attachment")
+                        .WithMany()
+                        .HasForeignKey("AttachmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.NewsPost", "NewsPost")
+                        .WithMany("Attachments")
+                        .HasForeignKey("NewsPostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Attachment");
+
+                    b.Navigation("NewsPost");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NewsAudit", b =>
                 {
                     b.HasOne("IPop.Core.Entities.User", "Actor")
@@ -3804,6 +4219,25 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Actor");
 
                     b.Navigation("NewsPost");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsBookmark", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.NewsPost", "NewsPost")
+                        .WithMany()
+                        .HasForeignKey("NewsPostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("NewsPost");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NewsComment", b =>
@@ -3860,6 +4294,25 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Approver");
 
                     b.Navigation("Author");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsRead", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.NewsPost", "NewsPost")
+                        .WithMany()
+                        .HasForeignKey("NewsPostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("NewsPost");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NewsTarget", b =>
@@ -4080,6 +4533,28 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Owner");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectField", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectGroup", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Project", "Project")
+                        .WithMany("Groups")
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Project");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectMember", b =>
                 {
                     b.HasOne("IPop.Core.Entities.Project", "Project")
@@ -4136,6 +4611,25 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Room");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectSavedView", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "Owner")
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.Project", "Project")
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Owner");
+
+                    b.Navigation("Project");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectTask", b =>
                 {
                     b.HasOne("IPop.Core.Entities.User", "CreatedBy")
@@ -4155,7 +4649,16 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("IPop.Core.Entities.ProjectGroup", "Group")
+                        .WithMany("Tasks")
+                        .HasForeignKey("GroupId", "ProjectId")
+                        .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.Navigation("CreatedBy");
+
+                    b.Navigation("Group");
 
                     b.Navigation("ParentTask");
 
@@ -4245,6 +4748,44 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Task");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTaskDependency", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.ProjectTask", "DependsOn")
+                        .WithMany()
+                        .HasForeignKey("DependsOnTaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.ProjectTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DependsOn");
+
+                    b.Navigation("Task");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTaskFieldValue", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.ProjectField", "Field")
+                        .WithMany("Values")
+                        .HasForeignKey("ProjectFieldId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.ProjectTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("ProjectTaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Field");
+
+                    b.Navigation("Task");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectTaskReminder", b =>
                 {
                     b.HasOne("IPop.Core.Entities.ProjectTask", "Task")
@@ -4306,6 +4847,17 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.SearchHistory", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.SynologyCredential", b =>
                 {
                     b.HasOne("IPop.Core.Entities.User", "User")
@@ -4313,6 +4865,25 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.TaskTimeEntry", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.ProjectTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Task");
 
                     b.Navigation("User");
                 });
@@ -4535,6 +5106,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                 {
                     b.Navigation("Acknowledgements");
 
+                    b.Navigation("Attachments");
+
                     b.Navigation("Audits");
 
                     b.Navigation("Targets");
@@ -4569,8 +5142,20 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("IPop.Core.Entities.Project", b =>
                 {
+                    b.Navigation("Groups");
+
                     b.Navigation("Members");
 
+                    b.Navigation("Tasks");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectField", b =>
+                {
+                    b.Navigation("Values");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectGroup", b =>
+                {
                     b.Navigation("Tasks");
                 });
 

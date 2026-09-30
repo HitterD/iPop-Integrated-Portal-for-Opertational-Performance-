@@ -11,8 +11,13 @@ public class CallRoom
     public Guid CreatorId { get; set; }
     public User Creator { get; set; } = default!;
 
-    /// Identifies what is being called: "user"/"group"/"room". Stub: only "user" is exercised.
+    /// Identifies what is being called: "user" (1:1 P2P) or "group" (chat-group call over LiveKit).
     public required string Kind { get; set; }
+
+    /// Group calls: the chat group being called (Kind == "group"); null for 1:1 calls.
+    /// A group has at most one ringing/active call at a time.
+    public Guid? ChatRoomId { get; set; }
+    public ChatRoom? ChatRoom { get; set; }
 
     /// Signaling phase: "ringing" | "active" | "ended" | "declined" | "missed".
     public required string Status { get; set; }
@@ -63,7 +68,7 @@ public class CallHistory
     /// Direction from Performer's view: "outgoing" | "incoming".
     public required string Direction { get; set; }
 
-    /// "completed" | "missed" | "declined" | "canceled" — how the call ended for the performer.
+    /// "completed" | "missed" | "declined" | "canceled" | "no-answer" — how the call ended for the performer.
     public required string Result { get; set; }
 
     /// Seconds the call was live (from EstablishedAt to EndedAt) — stub computed at end.

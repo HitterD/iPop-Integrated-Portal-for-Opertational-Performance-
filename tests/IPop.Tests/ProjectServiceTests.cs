@@ -284,6 +284,7 @@ public class ProjectServiceTests
 
         var t1 = (await svc.CreateTaskAsync(creator.Id, new CreateTaskRequest(p.Id, null, "T1", null, "todo", null, start, end, 4, null, null), default)).Task!;
         var t2 = (await svc.CreateTaskAsync(creator.Id, new CreateTaskRequest(p.Id, null, "T2", null, "doing", null, start, end.AddDays(1), 2, null, null), default)).Task!;
+        await svc.AddMemberAsync(creator.Id, p.Id, new AddProjectMemberRequest(pic.Id, "member"), default);
         await svc.AssignUserAsync(creator.Id, t1.Id, pic.Id, "owner", default);
 
         // Workload
@@ -293,9 +294,15 @@ public class ProjectServiceTests
         Assert.Equal(1, wl.TodoTasks);
         Assert.Equal(1, wl.DoingTasks);
         Assert.Equal(6, wl.TotalEstimatedHours);
-        Assert.Single(wl.ByAssignee);
-        Assert.Equal(pic.Id, wl.ByAssignee[0].UserId);
-        Assert.Equal(4, wl.ByAssignee[0].EstimatedHours);
+        Assert.Equal(4, wl.ByAssignee.Count); // owner, creator, PIC, and explicit unassigned row
+        var assigned = Assert.Single(wl.ByAssignee, a => a.UserId == pic.Id);
+        Assert.Equal(4, assigned.EstimatedHours);
+        Assert.Equal(1, assigned.TodoCount);
+        var unassigned = Assert.Single(wl.ByAssignee, a => a.IsUnassigned);
+        Assert.Equal(1, unassigned.TaskCount);
+        Assert.Equal(2, unassigned.EstimatedHours);
+        Assert.Contains(wl.ByAssignee, a => a.UserId == owner.Id && a.TaskCount == 0);
+        Assert.Contains(wl.ByAssignee, a => a.UserId == creator.Id && a.TaskCount == 0);
 
         // Export
         var exp = await svc.GetProjectExportDataAsync(p.Id, creator.Id, default);
@@ -316,6 +323,108 @@ public class ProjectServiceTests
         Assert.NotNull(inst);
         Assert.Equal(2, inst!.Count);
         Assert.All(inst, i => { Assert.Equal("Recur", i.Title); Assert.Equal("todo", i.Status); Assert.NotNull(i.DueDate); });
+    }
+
+    [Fact]
+    public async Task Workload_includes_idle_members_without_empty_unassigned_row_and_denies_nonmembers()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("OWN");
+        var idle = t.AddUser("IDLE");
+        var outsider = t.AddUser("OUT");
+        var svc = new ProjectService(t.Verify());
+        var project = (await svc.CreateProjectAsync(owner.Id,
+            new CreateProjectRequest("Idle", null, 2026, owner.Id, null, null, null, null), default)).Project!;
+        await svc.AddMemberAsync(owner.Id, project.Id, new AddProjectMemberRequest(idle.Id, "member"), default);
+        var user = await t.Db.Users.FindAsync(idle.Id);
+        user!.Position = "Analyst";
+        await t.Db.SaveChangesAsync();
+
+        var workload = await svc.GetProjectWorkloadAsync(project.Id, owner.Id, default);
+        Assert.NotNull(workload);
+        Assert.Equal(0, workload!.TotalTasks);
+        Assert.Equal(2, workload.ByAssignee.Count);
+        Assert.Contains(workload.ByAssignee, a => a.UserId == owner.Id && a.TaskCount == 0);
+        Assert.Contains(workload.ByAssignee, a => a.UserId == idle.Id && a.Position == "Analyst" && a.TaskCount == 0);
+        Assert.DoesNotContain(workload.ByAssignee, a => a.IsUnassigned);
+        Assert.Null(await svc.GetProjectWorkloadAsync(project.Id, outsider.Id, default));
+    }
+
+    [Fact]
+    public async Task Workload_counts_status_and_overdue_per_assignee_using_supplied_local_day()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("OWN");
+        var teammate = t.AddUser("TEAM");
+        var svc = new ProjectService(t.Verify());
+        var project = (await svc.CreateProjectAsync(owner.Id,
+            new CreateProjectRequest("Cutoff", null, 2026, owner.Id, null, null, null, null), default)).Project!;
+        await svc.AddMemberAsync(owner.Id, project.Id, new AddProjectMemberRequest(teammate.Id, "member"), default);
+        var today = new DateTime(2026, 9, 27);
+        foreach (var (status, due) in new[]
+        {
+            ("todo", (DateTime?)today.AddDays(-1)), ("doing", (DateTime?)today.AddHours(12)),
+            ("review", (DateTime?)today.AddDays(-2)), ("done", (DateTime?)today.AddDays(-3)),
+            ("todo", (DateTime?)null)
+        })
+        {
+            var task = (await svc.CreateTaskAsync(owner.Id,
+                new CreateTaskRequest(project.Id, null, status, null, status, null, null, due, 2, null, null), default)).Task!;
+            await svc.AssignUserAsync(owner.Id, task.Id, teammate.Id, null, default);
+        }
+        var unassigned = (await svc.CreateTaskAsync(owner.Id,
+            new CreateTaskRequest(project.Id, null, "Unassigned", null, "review", null, null, today.AddDays(-1), 3, null, null), default)).Task!;
+
+        var workload = (await svc.GetProjectWorkloadAsync(project.Id, owner.Id, default, today))!;
+        var row = Assert.Single(workload.ByAssignee, a => a.UserId == teammate.Id);
+        Assert.Equal(5, row.TaskCount);
+        Assert.Equal(10, row.EstimatedHours);
+        Assert.Equal(2, row.TodoCount);
+        Assert.Equal(1, row.DoingCount);
+        Assert.Equal(1, row.ReviewCount);
+        Assert.Equal(1, row.DoneCount);
+        Assert.Equal(2, row.OverdueCount); // today and done are not overdue
+        var bucket = Assert.Single(workload.ByAssignee, a => a.IsUnassigned);
+        Assert.Equal(1, bucket.ReviewCount);
+        Assert.Equal(1, bucket.OverdueCount);
+        Assert.Equal(3, bucket.EstimatedHours);
+        Assert.Equal(6, workload.TotalTasks);
+        Assert.Equal(2, workload.ReviewTasks);
+        Assert.NotNull(unassigned);
+    }
+
+    [Fact]
+    public async Task Task_list_filters_assignee_or_unassigned_before_paging_and_preserves_unfiltered_calls()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("OWN");
+        var teammate = t.AddUser("TEAM");
+        var outsider = t.AddUser("OUT");
+        var svc = new ProjectService(t.Verify());
+        var project = (await svc.CreateProjectAsync(owner.Id,
+            new CreateProjectRequest("Filter", null, 2026, owner.Id, null, null, null, null), default)).Project!;
+        var assigned = (await svc.CreateTaskAsync(owner.Id,
+            new CreateTaskRequest(project.Id, null, "Assigned", null, "todo", null, null, null, 4, null, null), default)).Task!;
+        await svc.AssignUserAsync(owner.Id, assigned.Id, teammate.Id, null, default);
+        await svc.CreateTaskAsync(owner.Id,
+            new CreateTaskRequest(project.Id, null, "Unassigned", null, "todo", null, null, null, 1, null, null), default);
+        await svc.CreateTaskAsync(owner.Id,
+            new CreateTaskRequest(project.Id, null, "Done", null, "done", null, null, null, 1, null, null), default);
+
+        var all = await svc.GetTaskListAsync(project.Id, owner.Id, null, 1, 10, default);
+        Assert.Equal(3, all.TotalCount);
+        var assignedPage = await svc.GetTaskListAsync(project.Id, owner.Id, "todo", 1, 1, default, teammate.Id);
+        Assert.Equal(1, assignedPage.TotalCount);
+        Assert.Equal(assigned.Id, Assert.Single(assignedPage.Items).Id);
+        var emptyPage = await svc.GetTaskListAsync(project.Id, owner.Id, null, 2, 1, default, teammate.Id);
+        Assert.Equal(1, emptyPage.TotalCount);
+        Assert.Empty(emptyPage.Items);
+        var unassignedPage = await svc.GetTaskListAsync(project.Id, owner.Id, "todo", 1, 1, default, teammate.Id, true);
+        Assert.Equal(1, unassignedPage.TotalCount); // unassigned takes precedence over assigneeId
+        Assert.Equal("Unassigned", Assert.Single(unassignedPage.Items).Title);
+        var denied = await svc.GetTaskListAsync(project.Id, outsider.Id, null, 1, 10, default, teammate.Id);
+        Assert.Empty(denied.Items);
+        Assert.Equal(0, denied.TotalCount);
     }
 
     [Fact]
@@ -467,6 +576,67 @@ public class ProjectServiceTests
         await svc.RemoveMemberAsync(creator.Id, p.Id, pic.Id, default);
         var afterRemove = await svc.GetProjectChatRoomAsync(p.Id, creator.Id, default);
         Assert.Equal(2, afterRemove!.MemberCount);
+    }
+
+    [Fact]
+    public async Task RemoveMember_cleans_only_project_assignments_and_soft_leaves_only_linked_room()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("OWN");
+        var teammate = t.AddUser("TEAM");
+        var svc = new ProjectService(t.Verify());
+        var first = (await svc.CreateProjectAsync(owner.Id,
+            new CreateProjectRequest("First", null, 2026, owner.Id, null, null, null, null), default)).Project!;
+        var second = (await svc.CreateProjectAsync(owner.Id,
+            new CreateProjectRequest("Second", null, 2026, owner.Id, null, null, null, null), default)).Project!;
+        await svc.AddMemberAsync(owner.Id, first.Id, new AddProjectMemberRequest(teammate.Id, "member"), default);
+        await svc.AddMemberAsync(owner.Id, second.Id, new AddProjectMemberRequest(teammate.Id, "member"), default);
+        var firstTask = (await svc.CreateTaskAsync(owner.Id,
+            new CreateTaskRequest(first.Id, null, "First task", null, "todo", null, null, null, 2, null, null), default)).Task!;
+        var secondTask = (await svc.CreateTaskAsync(owner.Id,
+            new CreateTaskRequest(second.Id, null, "Second task", null, "todo", null, null, null, 3, null, null), default)).Task!;
+        await svc.AssignUserAsync(owner.Id, firstTask.Id, teammate.Id, null, default);
+        await svc.AssignUserAsync(owner.Id, secondTask.Id, teammate.Id, null, default);
+        var firstRoomId = await t.Db.ProjectRooms.Where(r => r.ProjectId == first.Id).Select(r => r.RoomId).SingleAsync();
+        var secondRoomId = await t.Db.ProjectRooms.Where(r => r.ProjectId == second.Id).Select(r => r.RoomId).SingleAsync();
+
+        var result = await svc.RemoveMemberAsync(owner.Id, first.Id, teammate.Id, default);
+        Assert.True(result.Success);
+        using var verify = t.Verify();
+        Assert.False(await verify.ProjectMembers.AnyAsync(m => m.ProjectId == first.Id && m.UserId == teammate.Id));
+        Assert.True(await verify.ProjectMembers.AnyAsync(m => m.ProjectId == second.Id && m.UserId == teammate.Id));
+        Assert.False(await verify.ProjectTaskAssignees.AnyAsync(a => a.TaskId == firstTask.Id && a.UserId == teammate.Id));
+        Assert.True(await verify.ProjectTaskAssignees.AnyAsync(a => a.TaskId == secondTask.Id && a.UserId == teammate.Id));
+        Assert.NotNull((await verify.ChatRoomMembers.SingleAsync(m => m.RoomId == firstRoomId && m.UserId == teammate.Id)).LeftAt);
+        Assert.Null((await verify.ChatRoomMembers.SingleAsync(m => m.RoomId == secondRoomId && m.UserId == teammate.Id)).LeftAt);
+        var workload = (await svc.GetProjectWorkloadAsync(first.Id, owner.Id, default))!;
+        Assert.DoesNotContain(workload.ByAssignee, a => a.UserId == teammate.Id);
+        Assert.Equal(1, Assert.Single(workload.ByAssignee, a => a.IsUnassigned).TaskCount);
+    }
+
+    [Fact]
+    public async Task RemoveMember_preserves_forbidden_missing_member_and_last_owner_guards()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("OWN");
+        var teammate = t.AddUser("TEAM");
+        var outsider = t.AddUser("OUT");
+        var svc = new ProjectService(t.Verify());
+        var project = (await svc.CreateProjectAsync(owner.Id,
+            new CreateProjectRequest("Guards", null, 2026, owner.Id, null, null, null, null), default)).Project!;
+        await svc.AddMemberAsync(owner.Id, project.Id, new AddProjectMemberRequest(teammate.Id, "member"), default);
+        var task = (await svc.CreateTaskAsync(owner.Id,
+            new CreateTaskRequest(project.Id, null, "Guarded", null, "todo", null, null, null, null, null, null), default)).Task!;
+        await svc.AssignUserAsync(owner.Id, task.Id, teammate.Id, null, default);
+
+        Assert.Equal("forbidden", (await svc.RemoveMemberAsync(outsider.Id, project.Id, teammate.Id, default)).Error);
+        Assert.Equal("member_not_found", (await svc.RemoveMemberAsync(owner.Id, project.Id, outsider.Id, default)).Error);
+        Assert.Equal("cannot_remove_last_owner", (await svc.RemoveMemberAsync(owner.Id, project.Id, owner.Id, default)).Error);
+        using var verify = t.Verify();
+        Assert.True(await verify.ProjectMembers.AnyAsync(m => m.ProjectId == project.Id && m.UserId == teammate.Id));
+        Assert.True(await verify.ProjectTaskAssignees.AnyAsync(a => a.TaskId == task.Id && a.UserId == teammate.Id));
+        var roomId = await verify.ProjectRooms.Where(r => r.ProjectId == project.Id).Select(r => r.RoomId).SingleAsync();
+        Assert.Null((await verify.ChatRoomMembers.SingleAsync(m => m.RoomId == roomId && m.UserId == teammate.Id)).LeftAt);
     }
 
     [Fact]
@@ -908,5 +1078,162 @@ public class MeetingFlowTests
         // SourceMailId menghubungkan rapat ke surat undangan.
         var m = await verify.Meetings.FirstAsync(x => x.Id == meeting.Id);
         Assert.NotNull(m.SourceMailId);
+    }
+
+    // ── Date-only values from a date picker (Kind=Unspecified/Local) ────────────
+    // Production: Npgsql refuses a non-UTC DateTime for a timestamptz column, so a picked
+    // Deadline 500'd project create ("Failed to create project (check permissions)").
+    // SQLite doesn't care about Kind, so StrictUtcInterceptor re-imposes Npgsql's rule.
+
+    private sealed class StrictUtcInterceptor : Microsoft.EntityFrameworkCore.Diagnostics.SaveChangesInterceptor
+    {
+        private static readonly Type[] Checked = [typeof(Project), typeof(ProjectTask), typeof(WorkCalendarEntry), typeof(ProjectMilestone)];
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int>> SavingChangesAsync(
+            Microsoft.EntityFrameworkCore.Diagnostics.DbContextEventData e,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<int> result, CancellationToken ct = default)
+        {
+            foreach (var entry in e.Context!.ChangeTracker.Entries())
+            {
+                if (entry.State is not (EntityState.Added or EntityState.Modified) || !Checked.Contains(entry.Entity.GetType())) continue;
+                // Only columns actually written: an UPDATE sends modified columns only, and SQLite
+                // reads untouched timestamps back as Unspecified where Npgsql would give Utc.
+                foreach (var p in entry.Properties)
+                    if ((entry.State == EntityState.Added || p.IsModified) && p.CurrentValue is DateTime { Kind: not DateTimeKind.Utc } dt)
+                        throw new ArgumentException($"Cannot write DateTime with Kind={dt.Kind} to PostgreSQL type 'timestamp with time zone' ({entry.Entity.GetType().Name}.{p.Metadata.Name}).");
+            }
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    private static IPopDbContext StrictContext(TestDb t) => new(new DbContextOptionsBuilder<IPopDbContext>()
+        .UseSqlite(t.Db.Database.GetDbConnection())
+        .AddInterceptors(new StrictUtcInterceptor())
+        .Options);
+
+    private static readonly DateTime PickedUnspecified = new(2026, 10, 1, 0, 0, 0, DateTimeKind.Unspecified);
+    private static readonly DateTime PickedLocal = new(2026, 11, 15, 0, 0, 0, DateTimeKind.Local);
+
+    private static void AssertUtcDay(DateTime? actual, DateTime picked)
+    {
+        Assert.NotNull(actual);
+        Assert.Equal(DateTimeKind.Utc, actual!.Value.Kind);
+        Assert.Equal(picked.Date, actual.Value.Date);      // same calendar day — no zone shift
+        Assert.Equal(TimeSpan.Zero, actual.Value.TimeOfDay);
+    }
+
+    [Fact]
+    public async Task StrictUtcInterceptor_rejects_unspecified_dates_like_npgsql()
+    {
+        // Guards the guard: without it, the tests below would pass against SQLite even unfixed.
+        using var t = new TestDb();
+        var owner = t.AddUser("SU_O");
+        await using var db = StrictContext(t);
+        db.Projects.Add(new Project { Id = Guid.NewGuid(), Name = "X", Year = 2026, OwnerId = owner.Id, Status = "planning",
+            Deadline = PickedUnspecified, IsActive = true, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+        await Assert.ThrowsAsync<ArgumentException>(() => db.SaveChangesAsync());
+    }
+
+    [Theory]
+    [InlineData(DateTimeKind.Unspecified)]
+    [InlineData(DateTimeKind.Local)]
+    public async Task CreateProject_with_picked_deadline_stores_utc_calendar_date(DateTimeKind kind)
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("PD_O");
+        var employee = t.AddUser("PD_E");
+        await using var db = StrictContext(t);
+        var svc = new ProjectService(db);
+        var picked = kind == DateTimeKind.Local ? PickedLocal : PickedUnspecified;
+
+        var r = await svc.CreateProjectAsync(employee.Id,
+            new CreateProjectRequest("Dated", null, 2026, Guid.Empty, picked, picked, null, null, OwnerNik: "PD_O"), default);
+
+        Assert.True(r.Success, r.Error);
+        var stored = db.Projects.Local.Single(p => p.Id == r.Project!.Id);
+        AssertUtcDay(stored.Deadline, picked);
+        AssertUtcDay(stored.StartDate, picked);
+        await using var v = t.Verify();
+        Assert.Equal(picked.Date, (await v.Projects.SingleAsync(p => p.Id == r.Project!.Id)).Deadline!.Value.Date);
+    }
+
+    [Theory]
+    [InlineData(DateTimeKind.Unspecified)]
+    [InlineData(DateTimeKind.Local)]
+    public async Task UpdateProject_with_picked_dates_stores_utc_calendar_date(DateTimeKind kind)
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("PU_O");
+        var p = t.AddProject("Upd", owner.Id);
+        await using var db = StrictContext(t);
+        var svc = new ProjectService(db);
+        var picked = kind == DateTimeKind.Local ? PickedLocal : PickedUnspecified;
+
+        var r = await svc.UpdateProjectAsync(owner.Id, p.Id,
+            new UpdateProjectRequest(null, null, null, null, picked, picked, null, null, null), default);
+
+        Assert.True(r.Success, r.Error);
+        var stored = db.Projects.Local.Single(x => x.Id == p.Id);
+        AssertUtcDay(stored.Deadline, picked);
+        AssertUtcDay(stored.StartDate, picked);
+    }
+
+    [Theory]
+    [InlineData(DateTimeKind.Unspecified)]
+    [InlineData(DateTimeKind.Local)]
+    public async Task Create_and_update_task_with_picked_dates_store_utc_calendar_date(DateTimeKind kind)
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("TD_O");
+        var p = t.AddProject("Tasks", owner.Id);
+        await using var db = StrictContext(t);
+        var svc = new ProjectService(db);
+        var picked = kind == DateTimeKind.Local ? PickedLocal : PickedUnspecified;
+
+        var created = await svc.CreateTaskAsync(owner.Id,
+            new CreateTaskRequest(p.Id, null, "Due", null, "todo", null, picked, picked, null, null, null), default);
+        Assert.True(created.Success, created.Error);
+        var task = db.ProjectTasks.Local.Single(x => x.Id == created.Task!.Id);
+        AssertUtcDay(task.DueDate, picked);
+        AssertUtcDay(task.StartDate, picked);
+
+        var moved = picked.AddDays(3);
+        var updated = await svc.UpdateTaskAsync(owner.Id, task.Id,
+            new UpdateTaskRequest(null, null, null, null, moved, moved, null, null, null, null, null, null, null, null), default);
+        Assert.True(updated.Success, updated.Error);
+        AssertUtcDay(task.DueDate, moved);
+        AssertUtcDay(task.StartDate, moved);
+        await using var v = t.Verify();
+        var activity = await v.ProjectTaskActivities.Where(a => a.TaskId == task.Id && a.Action == "due_changed").SingleAsync();
+        Assert.Equal(moved.ToString("yyyy-MM-dd"), activity.NewValue);
+    }
+
+    [Fact]
+    public async Task Work_calendar_entry_with_picked_date_stores_utc_and_deletes_by_same_day()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("WC_O");
+        var p = t.AddProject("Cal", owner.Id);
+        await using var db = StrictContext(t);
+        var svc = new ProjectService(db);
+
+        var r = await svc.UpsertCalendarEntryAsync(owner.Id, p.Id, new UpsertCalendarEntryRequest(PickedUnspecified, "holiday", "Libur", null), default);
+        Assert.True(r.Success, r.Error);
+        AssertUtcDay(db.WorkCalendarEntries.Local.Single(e => e.ProjectId == p.Id).Date, PickedUnspecified);
+
+        Assert.True((await svc.DeleteCalendarEntryAsync(owner.Id, p.Id, PickedUnspecified, default)).Success);
+        await using var v = t.Verify();
+        Assert.False(await v.WorkCalendarEntries.AnyAsync(e => e.ProjectId == p.Id));
+    }
+
+    [Fact]
+    public void AsUtcDate_keeps_utc_values_and_relabels_others_without_shifting()
+    {
+        var utc = new DateTime(2026, 10, 1, 17, 30, 0, DateTimeKind.Utc);
+        Assert.Equal(utc, IPop.Application.UtcDates.AsUtcDate(utc));
+        var r = IPop.Application.UtcDates.AsUtcDate(PickedUnspecified);
+        Assert.Equal(DateTimeKind.Utc, r.Kind);
+        Assert.Equal(PickedUnspecified.Ticks, r.Ticks);
+        Assert.Null(IPop.Application.UtcDates.AsUtcDate((DateTime?)null));
     }
 }

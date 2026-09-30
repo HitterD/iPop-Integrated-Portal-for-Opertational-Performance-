@@ -1,0 +1,53 @@
+@using IPop.Web.Components.Projects
+@implements IDisposable
+@inject TimerState Timer
+@inject NavigationManager Nav
+@inject ToastService Toasts
+
+@* Phase 3: the running task timer, visible on every page. *@
+@if (Timer.Running is { } run)
+{
+    <div class="tb-timer" role="status" aria-live="off">
+        <button type="button" class="tb-timer-open" title="@($"{run.TaskTitle} · {run.ProjectName}")"
+                @onclick='() => Nav.NavigateTo($"/projects/{run.ProjectId}")'>
+            <span class="tb-timer-dot" aria-hidden="true"></span>
+            <span class="tb-timer-time">@ProjectTimeFormat.Elapsed(DateTime.UtcNow - run.StartedAt)</span>
+            <span class="tb-timer-task">@run.TaskTitle</span>
+        </button>
+        <button type="button" class="tb-timer-stop" title="Hentikan timer" aria-label="Hentikan timer @run.TaskTitle"
+                disabled="@busy" @onclick="StopAsync">
+            <i data-lucide="square"></i>
+        </button>
+    </div>
+}
+
+@code {
+    private System.Threading.Timer? tick;
+    private bool busy;
+
+    protected override void OnInitialized()
+    {
+        Timer.Changed += OnChanged;
+        tick = new System.Threading.Timer(_ => { if (Timer.Running is not null) _ = InvokeAsync(StateHasChanged); },
+            null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private async Task StopAsync()
+    {
+        busy = true;
+        try
+        {
+            var err = await Timer.StopTimerAsync();
+            if (err is not null) Toasts.Show("Timer gagal dihentikan.", ToastKind.Error);
+        }
+        finally { busy = false; }
+    }
+
+    public void Dispose()
+    {
+        Timer.Changed -= OnChanged;
+        tick?.Dispose();
+    }
+}

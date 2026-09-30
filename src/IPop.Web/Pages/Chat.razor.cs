@@ -109,9 +109,14 @@ public partial class Chat
     private bool HasMoreThreadReplies => threadReplies.Count < threadTotal;
 
     // ---- Apple Detail Panel State ----
-    public enum DetailPanelView { Main, Members, Pinned, Media, Events, Person }
+    public enum DetailPanelView { Main, Members, Pinned, Media, Events, Person, GroupSettings }
     private DetailPanelView panelView = DetailPanelView.Main;
     private bool personFromRoom;
+    /// Views the user drilled through to reach panelView; Back pops one. Header shortcuts
+    /// open a view fresh (empty stack, no Back button), drawer rows push onto it.
+    private readonly Stack<DetailPanelView> panelHistory = new();
+    /// Scope the drawer's Pinned view opens with; the header 📌 always means "this conversation".
+    private IPop.Web.Components.Chat.PinnedPanel.PinnedScope pinnedScope = IPop.Web.Components.Chat.PinnedPanel.PinnedScope.Room;
     private enum ChatDrawerTab { Overview, Members, Media, Pinned, Calendar }
     private ChatDrawerTab activeDrawerTab = ChatDrawerTab.Overview;
     private Guid? menuRoomId;
@@ -147,8 +152,31 @@ public partial class Chat
         StateHasChanged();
     }
 
+    /// Opens a view fresh (header buttons, phone menu, deep links): history is cleared, so
+    /// the view is the drawer's root and shows no Back button unless it is a sub-view.
     private void OpenDetailView(DetailPanelView view)
     {
+        panelHistory.Clear();
+        // Sub-views opened straight from the header still get a way "up" to the info page.
+        if (view != DetailPanelView.Main && view != DetailPanelView.Person) panelHistory.Push(DetailPanelView.Main);
+        ShowDetailView(view);
+    }
+
+    /// Drills into a view from inside the drawer: the current view goes on the history
+    /// stack so Back returns to exactly where the user was.
+    private void NavigateDetail(DetailPanelView view)
+    {
+        if (!drawerOpen) { OpenDetailView(view); return; }
+        if (panelView != view) panelHistory.Push(panelView);
+        ShowDetailView(view);
+    }
+
+    private void ShowDetailView(DetailPanelView view)
+    {
+        // One drawer at a time: the room/detail panel replaces the global list.
+        if (globalDrawerView is not null) CloseGlobalDrawer();
+        // profilePerson survives leaving the Person view so Back can return to that card;
+        // CloseDetail / OpenRoomCore clear it.
         panelView = view;
         drawerOpen = true;
         groupInfoOpen = (view == DetailPanelView.Main);
@@ -159,16 +187,36 @@ public partial class Chat
         StateHasChanged();
     }
 
-    private void GoBackToMain()
+    private bool CanGoBackDetail => panelHistory.Count > 0;
+
+    /// Back: pop to the previous view. Returning to a Person view re-shows the contact that
+    /// is still loaded; everything else re-runs its loaders via ShowDetailView.
+    private void GoBackDetail()
     {
-        panelView = DetailPanelView.Main;
-        StateHasChanged();
+        if (panelHistory.Count == 0) { CloseDetail(); return; }
+        ShowDetailView(panelHistory.Pop());
     }
+
+    /// The Back button names where it goes ("Group info", "Members", …).
+    private string BackLabel => panelHistory.Count == 0 ? "Back" : DetailViewTitle(panelHistory.Peek());
+
+    private string DetailViewTitle(DetailPanelView view) => view switch
+    {
+        DetailPanelView.Main => ChatSvc.ActiveRoom?.Type == "dm" ? "Contact info" : "Group info",
+        DetailPanelView.Members => "Members",
+        DetailPanelView.Pinned => "Pinned messages",
+        DetailPanelView.Media => "Files & Media",
+        DetailPanelView.Events => "Events",
+        DetailPanelView.Person => "Contact info",
+        DetailPanelView.GroupSettings => "Group settings",
+        _ => "Details"
+    };
 
     private void CloseDetail()
     {
         drawerOpen = false;
         panelView = DetailPanelView.Main;
+        panelHistory.Clear();
         groupInfoOpen = false;
         pinnedPanelOpen = false;
         personFromRoom = false;
@@ -176,16 +224,67 @@ public partial class Chat
         StateHasChanged();
     }
 
-    private async Task HandlePersonMessage()
+    /// "Message" on a contact card: already in that DM → just get back to typing;
+    /// anyone else → open (or create) the DM with them.
+    private async Task MessagePerson(string? nik)
     {
+        var inThatDm = ChatSvc.ActiveRoom?.Type == "dm"
+            && (string.IsNullOrWhiteSpace(nik)
+                || ChatSvc.ActiveRoom.Members.Any(m => m.Nik != GetCurrentUserNik() && string.Equals(m.Nik, nik, StringComparison.OrdinalIgnoreCase)));
         CloseDetail();
-        try { await composerRef.FocusAsync(); } catch { }
+        if (inThatDm || string.IsNullOrWhiteSpace(nik))
+        {
+            try { await composerRef.FocusAsync(); } catch { }
+            return;
+        }
+        if (string.Equals(nik, GetCurrentUserNik(), StringComparison.OrdinalIgnoreCase)) return;
+        await OpenDmByNik(nik);
+    }
+
+    /// The DM partner as a contact card: the directory record once loaded (live presence
+    /// from the room member), or a minimal card from the member row while it loads.
+    private IPop.Web.Models.Employee? DmCardPerson(IPop.Application.Chat.MemberDto? other)
+    {
+        if (other is null) return dmPerson;
+        var status = string.IsNullOrWhiteSpace(other.PresenceStatus) ? "off" : other.PresenceStatus;
+        if (dmPerson is not null && string.Equals(dmPerson.Nik, other.Nik, StringComparison.OrdinalIgnoreCase))
+            return dmPerson.Status == status ? dmPerson : dmPerson with { Status = status };
+        return new IPop.Web.Models.Employee(other.Name, "—", other.Nik, "—", "—", "—", null, "—", null, "—", "",
+            status, IPop.Web.Models.AvatarPalette.For(other.Nik));
+    }
+
+    /// A pin from another conversation in the unified Pinned panel: switch room, then jump.
+    private async Task OpenPinFromPanel(IPop.Web.Components.Chat.PinnedPanel.PinnedCard card)
+    {
+        if (globalDrawerView is not null) CloseGlobalDrawer();
+        if (drawerOpen) CloseDetail();
+        if (card.RoomId == ChatSvc.ActiveRoomId || card.RoomId == openedRoomId)
+        {
+            await JumpToMessage(card.MessageId);
+            return;
+        }
+        jumpAfterOpen = card.MessageId;
+        OpenRoom(card.RoomId);
+    }
+
+    private async Task JumpToMessageFromGlobalPinned(Guid messageId)
+    {
+        CloseGlobalDrawer();
+        await JumpToMessage(messageId);
+    }
+
+    /// Same compose URL everywhere a contact's Mail button appears.
+    private void MailPerson(string? nik)
+    {
+        if (string.IsNullOrWhiteSpace(nik)) return;
+        Nav.NavigateTo($"/mail?compose={Uri.EscapeDataString(nik)}");
     }
 
     private void OpenPinnedSection()
     {
-        if (drawerOpen && panelView == DetailPanelView.Pinned) CloseDetail();
-        else OpenDetailView(DetailPanelView.Pinned);
+        if (drawerOpen && panelView == DetailPanelView.Pinned) { CloseDetail(); return; }
+        pinnedScope = IPop.Web.Components.Chat.PinnedPanel.PinnedScope.Room;
+        OpenDetailView(DetailPanelView.Pinned);
     }
 
     private void OpenMediaSection()
@@ -198,6 +297,31 @@ public partial class Chat
     {
         if (drawerOpen && panelView == DetailPanelView.Members) CloseDetail();
         else OpenDetailView(DetailPanelView.Members);
+    }
+
+    private void OpenGroupSettings()
+    {
+        if (ChatSvc.ActiveRoom?.Type != "group") return;
+        if (drawerOpen && panelView == DetailPanelView.GroupSettings) { CloseDetail(); return; }
+        // From inside the drawer the settings row drills in; from the header it opens fresh.
+        if (drawerOpen) NavigateDetail(DetailPanelView.GroupSettings);
+        else OpenDetailView(DetailPanelView.GroupSettings);
+    }
+
+    /// Settings changed name/photo/colour: refresh the open room so header + hero follow.
+    private async Task OnGroupSettingsChanged()
+    {
+        await ChatSvc.LoadActiveRoomAsync();
+        StateHasChanged();
+    }
+
+    /// Archived or left from the settings view: the room is gone from the list.
+    private Task OnGroupSettingsRoomRemoved()
+    {
+        CloseDetail();
+        CloseActiveConversation();
+        StateHasChanged();
+        return Task.CompletedTask;
     }
 
     private void OpenDrawerTab(ChatDrawerTab tab)
@@ -355,9 +479,12 @@ public partial class Chat
 
     // ---- Emoji/Sticker Picker State (Task 16.1) ----
     private bool pickerOpen;
-    private string pickerTab = "emoji";
-    private static readonly string[] QuickEmoji = ["👍", "❤️", "😂", "🎉", "🔥", "✅"];
-    private static readonly string[] EmojiGrid = ["👍", "❤️", "😂", "🎉", "🔥", "👀", "✅", "💯", "🚀", "⭐", "💡", "🙏", "👏", "😊", "😎", "🤔", "😅", "☕", "🏆", "💪", "📌", "📎", "🎯", "⚡"];
+    // v6 composer: "+" menu, sticker sheet, and the mockup's 24-emoji popover / 6-emoji react row.
+    private bool plusMenuOpen;
+    private bool stickerOpen;
+    private Guid? reactPickerMsgId;
+    private static readonly string[] ComposerEmoji = ["😀", "😁", "😂", "🙂", "😉", "😍", "🤔", "😅", "😎", "😢", "😮", "🙏", "👍", "👏", "🙌", "💪", "🔥", "✅", "❤️", "🎉", "☕", "📌", "📎", "⏰"];
+    private static readonly string[] ReactEmoji = ["👍", "❤️", "😂", "😮", "🙏", "✅"];
     private static readonly string[] StickerIcons = ["thumbs-up", "heart", "party-popper", "rocket", "flame", "coffee", "zap", "star", "check-circle", "alert-triangle", "lightbulb", "trophy", "hand-metal", "smile", "laugh", "frown", "badge-check", "brain", "target", "shield-check", "clock", "sparkles", "medal", "gift"];
 
     // ---- Mention Autocomplete State (Task 16.2) ----
@@ -370,8 +497,26 @@ public partial class Chat
     private string emergencyContent = "";
     private bool IsGroupAdmin => ChatSvc.ActiveRoom?.Type == "group" && ChatSvc.ActiveRoom.Members.Any(m => m.Nik == GetCurrentUserNik() && m.Role is "owner" or "admin");
 
-    /// Backend pin rule: owner/admin only in groups; any member in DMs.
-    private bool CanPinInActiveRoom => ChatSvc.ActiveRoom?.Type == "dm" || IsGroupAdmin;
+    /// Backend pin rule: any member may pin, in DMs and groups.
+    private bool CanPinInActiveRoom => ChatSvc.ActiveRoom is not null;
+
+    /// Backend unpin rule: any member in a DM; in a group, whoever pinned it or an owner/admin.
+    private bool CanUnpin(IPop.Application.Chat.PinnedMessageDto pin)
+    {
+        var room = ChatSvc.ActiveRoom;
+        if (room is null) return false;
+        if (room.Type != "group" || IsGroupAdmin) return true;
+        var me = room.Members.FirstOrDefault(m => m.Nik == GetCurrentUserNik());
+        return me is not null && pin.PinnedByUserId == me.UserId;
+    }
+
+    /// Pin/unpin toggle for one message: pinning is open to any member, unpinning follows CanUnpin.
+    private bool CanTogglePin(Guid msgId)
+    {
+        if (!CanPinInActiveRoom) return false;
+        var pin = pinnedMessages.FirstOrDefault(p => p.MessageId == msgId);
+        return pin is null || CanUnpin(pin);
+    }
 
     // ---- New DM Modal State ----
     private bool newDmModalOpen;
@@ -385,6 +530,13 @@ public partial class Chat
     private readonly List<UserSearchResult> pickerPicked = [];
     private List<PickerPerson> pickerPeople = [];
     private bool pickerLoading;
+    // Server search (2+ chars): results, the query they answer, and the in-flight request.
+    private List<PickerPerson>? pickerSearchPeople;
+    private string? pickerSearchFor;
+    private CancellationTokenSource? pickerSearchCts;
+    private bool pickerSearching;
+    // Rows seen for picked people, so they keep position/department once off-list.
+    private readonly Dictionary<Guid, PickerPerson> pickerKnown = [];
 
     // ---- File Upload State ----
     private InputFile? fileInput;
@@ -440,12 +592,113 @@ public partial class Chat
         }
     }
 
+    /// One Escape press can reach both the composer's own key handler and the document-level
+    /// shortcut in MainLayout. Both funnel here, so this marks the key consumed and lets the
+    /// duplicate within the same tick fall through — otherwise a single press would peel two
+    /// layers (e.g. close the drawer *and* the conversation).
+    private long lastEscapeTicks;
+
+    private bool TryBeginChatEscape()
+    {
+        var now = Environment.TickCount64;
+        if (now - lastEscapeTicks < 200) return false;
+        lastEscapeTicks = now;
+        return true;
+    }
+
     private void OnEscapePressed()
     {
-        if (drawerOpen)
+        if (!TryBeginChatEscape()) return;
+        if (HandleChatEscape()) StateHasChanged();
+    }
+
+    /// Escape peels one layer at a time, top-most first, and finally dismisses the open
+    /// conversation so the page lands back on the conversation list. Returns true when it
+    /// consumed the key, so callers can skip their own work.
+    ///
+    /// Order mirrors what is visually on top: viewer → modals/popovers → attachment/reply
+    /// context → text search → open panel → the conversation itself.
+    private bool HandleChatEscape()
+    {
+        // 1. Full-screen attachment viewer (its own overlay also listens, but the page may
+        //    run first; clearing here keeps the two in sync).
+        if (viewerAttachment is not null) { CloseAttachment(); return true; }
+
+        // 2. Modal dialogs and popovers layered over the page.
+        if (emergencyConfirmOpen) { emergencyConfirmOpen = false; return true; }
+        if (leaveConfirmOpen) { leaveConfirmOpen = false; return true; }
+        if (pollModalOpen) { pollModalOpen = false; return true; }
+        if (forwardOpen) { forwardOpen = false; return true; }
+        if (roomEventModalOpen) { roomEventModalOpen = false; return true; }
+        if (roomEventFormOpen) { roomEventFormOpen = false; return true; }
+        if (newDmModalOpen) { ClosePicker(); return true; }
+        if (addMemberOpen) { addMemberOpen = false; return true; }
+
+        // 3. Composer-adjacent state: menus, mention autocomplete, reply quote, inline edit.
+        if (ctxMsgId is not null || plusMenuOpen || pickerOpen || stickerOpen || reactPickerMsgId is not null)
         {
-            CloseDetail();
+            CloseCtx();
+            return true;
         }
+        if (mentionPopupOpen) { mentionPopupOpen = false; return true; }
+        if (replyToMsg is not null) { CancelReply(); return true; }
+        if (editingMsgId is not null) { CancelEdit(); return true; }
+
+        // 4. Thread panel, in-conversation search, then the open side panel.
+        if (expandedThreadId is not null)
+        {
+            expandedThreadId = null;
+            threadReplies = [];
+            threadTotal = 0;
+            threadPage = 1;
+            threadReplySeenKeys.Clear();
+            return true;
+        }
+        if (searchOpen)
+        {
+            searchOpen = false;
+            searchResults = [];
+            searchQuery = string.Empty;
+            return true;
+        }
+        if (globalDrawerView is not null) { CloseGlobalDrawer(); return true; }
+        if (drawerOpen) { CloseDetail(); return true; }
+
+        // 5. Nothing else is open: dismiss the conversation itself.
+        return CloseActiveConversation();
+    }
+
+    /// Returns to the conversation list, restoring the room's draft the way any other
+    /// exit does. Mobile already collapses the list, so it re-opens to show the picker.
+    private bool CloseActiveConversation()
+    {
+        if (ChatSvc.ActiveRoomId is null && ChatSvc.ActiveRoom is null) return false;
+
+        var roomId = ChatSvc.ActiveRoomId;
+        if (roomId is not null)
+        {
+            // Persist before clearing, exactly like a room switch: Half-typed text must
+            // survive Escape and come back when the conversation is reopened.
+            _ = Drafts.SaveAsync(roomId.Value, ComposerWireText());
+        }
+        messageText = "";
+        replyToMsg = null;
+        editingMsgId = null;
+        expandedThreadId = null;
+        threadReplies = [];
+        threadReplySeenKeys.Clear();
+        unreadDividerMsgId = null;
+        CloseAttachment();
+        ClearPendingPreviews();
+        pendingAttachments = [];
+        uploadError = null;
+        openedRoomId = null;
+        // Keep RoomId out of the reopen path until the URL actually reaches /chat.
+        closedRoomId = roomId;
+        ChatSvc.CloseActiveRoom();
+        if (RoomId is not null) Nav.NavigateTo("/chat", replace: true);
+        mobileRoomsOpen = true;
+        return true;
     }
 
     protected override async Task OnInitializedAsync()
@@ -465,6 +718,9 @@ public partial class Chat
         // pinned panel only fetched on open, so a colleague's pin/unpin never appeared
         // until it was closed and reopened. Reload live while the panel is open.
         ChatSvc.PinnedChanged += OnPinnedChanged;
+        // Room-list/member presence is patched by ChatState; the new-conversation picker
+        // holds its own directory rows, so patch those here.
+        Auth.PresenceChanged += OnPickerPresenceChanged;
         // ipop-32c: ProfileDrawer lives INSIDE this page. Its Chat button navigates
         // /chat?nik=…, which changes the URL without remounting us — OnInitializedAsync
         // never re-runs, so the ?nik= path would silently no-op from exactly the page
@@ -513,9 +769,25 @@ public partial class Chat
     private bool openingRoom;
     private bool _navSubscribed;
 
+    /// Room Escape dismissed. Cleared as soon as the URL reaches /chat, and used to stop the
+    /// still-stale RoomId parameter from reopening the room during that same transition.
+    private Guid? closedRoomId;
+
     protected override async Task OnParametersSetAsync()
     {
-        if (RoomId is null || RoomId == openedRoomId) return;
+        // Navigation to /chat has not landed yet, so RoomId still points at the room we just
+        // dismissed. Without this the guard below would see a "new" room and reopen it.
+        if (RoomId is null)
+        {
+            closedRoomId = null;
+            // Phone: /chat/{id} -> /chat (phone Back or the in-app "‹") means "back to the list".
+            // Desktop keeps the room open exactly as before.
+            if (openedRoomId is not null && !openingRoom && await IsMobileAsync())
+                CloseActiveConversation();
+            return;
+        }
+        if (RoomId == closedRoomId) return;
+        if (RoomId == openedRoomId) return;
         await OpenRoomCore(RoomId.Value);
     }
 
@@ -571,9 +843,125 @@ public partial class Chat
             scrollToBottom = false;
             await ScrollToBottom();
         }
+        else if (anchorFromBottom is { } keep && ChatSvc.ActiveMessages.Count > anchorBaseCount)
+        {
+            // Older rows were prepended: hold the reader's distance from the bottom so the
+            // message they were looking at stays put (LoadOlder).
+            anchorFromBottom = null;
+            try
+            {
+                var info = await JS.InvokeAsync<ScrollInfo>("ipop.scrollInfo", messagesRef);
+                var clientHeight = info.ScrollHeight - info.ScrollTop - info.FromBottom;
+                await JS.InvokeVoidAsync("ipop.setScrollTop", messagesRef, Math.Max(0, info.ScrollHeight - clientHeight - keep));
+            }
+            catch { }
+        }
+        if (focusEditPending && editingMsgId is not null)
+        {
+            // Caret at the end so a long message can be amended without hunting for it.
+            focusEditPending = false;
+            try { await JS.InvokeVoidAsync("ipop.setCaret", editRef, editText.Length, editText.Length); } catch { }
+        }
+        else if (focusComposerPending && ChatSvc.ActiveRoomId is not null && !openingRoom && editingMsgId is null)
+        {
+            focusComposerPending = false;
+            if (!await IsTouchLayoutAsync())
+                try { await composerRef.FocusAsync(); } catch { }
+        }
+        await SyncMobileChromeAsync();
     }
 
     private bool scrollToBottom;
+
+    // Set when a room finishes opening and after a send; desktop focuses the composer on
+    // the next render. Phones/tablets skip it so the on-screen keyboard doesn't pop up.
+    private bool focusComposerPending;
+    private bool focusEditPending;
+    private ElementReference editRef;
+
+    private async Task<bool> IsTouchLayoutAsync()
+    {
+        if (await IsMobileAsync()) return true;
+        try
+        {
+            // Tablets are wider than the phone breakpoint but still raise a keyboard.
+            return await JS.GetValueAsync<int>("navigator.maxTouchPoints") > 0
+                && await JS.InvokeAsync<double>("ipop.viewportWidth") <= 1024;
+        }
+        catch { return false; }
+    }
+
+    // ── Phone layout (<= 767px): list / open room are one screen each (CONTRACT.md) ──
+    // The open room is encoded in the URL (/chat/{id}), so phone Back pops to /chat and
+    // OnParametersSetAsync closes the room. Side panels/drawers get their own history entry
+    // via ipop.mobile.pushDetail so Back peels them first.
+    private bool mTabbarHidden;
+    private bool mPanelPushed;
+    private bool mRoomPushed;
+    private bool mHeaderMenuOpen;
+    private Guid? mToolsMsgId;
+
+    private async Task<bool> IsMobileAsync()
+    {
+        try { return await JS.InvokeAsync<bool>("ipop.mobile.isMobile"); }
+        catch { return false; }
+    }
+
+    private async Task SyncMobileChromeAsync()
+    {
+        try
+        {
+            var roomOpen = ChatSvc.ActiveRoomId is not null;
+            if (roomOpen != mTabbarHidden)
+            {
+                mTabbarHidden = roomOpen;
+                await JS.InvokeVoidAsync("ipop.mobile.hideTabbar", roomOpen);
+            }
+            var panelOpen = drawerOpen || globalDrawerView is not null;
+            if (panelOpen && !mPanelPushed)
+            {
+                selfRef ??= DotNetObjectReference.Create(this);
+                mPanelPushed = await JS.InvokeAsync<bool>("ipop.mobile.pushDetail", selfRef, nameof(MobilePanelBack));
+            }
+            else if (!panelOpen && mPanelPushed)
+            {
+                mPanelPushed = false;
+                await JS.InvokeVoidAsync("ipop.mobile.popDetail");
+            }
+        }
+        catch { /* older cached mobile.js or prerender — phone chrome just stays as-is */ }
+    }
+
+    /// Phone Back while a side panel / global drawer is open: close it, keep the room.
+    [JSInvokable]
+    public Task MobilePanelBack() => InvokeAsync(() =>
+    {
+        mPanelPushed = false;
+        if (globalDrawerView is not null) CloseGlobalDrawer();
+        // Phone Back walks the drawer's own history first (re-pushed on the next render);
+        // at the drawer's root it closes the drawer and keeps the room.
+        if (drawerOpen && CanGoBackDetail) GoBackDetail();
+        else if (drawerOpen) CloseDetail();
+        StateHasChanged();
+    });
+
+    /// In-app "‹" in the conversation header. When we pushed /chat/{id} ourselves, go back
+    /// through history so the stack stays balanced; a deep link just closes in place.
+    private async Task MobileBackToList()
+    {
+        mHeaderMenuOpen = false;
+        mToolsMsgId = null;
+        if (mRoomPushed)
+        {
+            mRoomPushed = false;
+            try { await JS.InvokeVoidAsync("history.back"); return; } catch { }
+        }
+        CloseActiveConversation();
+    }
+
+    /// Tap on a message (phone) shows its react/reply/pin/… toolbar; tap again hides it.
+    /// Desktop has no CSS for .m-tools, so this is inert there.
+    private void ToggleMobileTools(Guid msgId) => mToolsMsgId = mToolsMsgId == msgId ? null : msgId;
 
     public void Dispose()
     {
@@ -584,13 +972,17 @@ public partial class Chat
         // ipop-22: unbind chip delegation
         try { _ = JS.InvokeVoidAsync("ipop.unbindMentionChips", messagesRef); } catch { }
         try { _ = JS.InvokeVoidAsync("ipop.chatUnbindQuickSwitcher"); } catch { }
+        try { _ = JS.InvokeVoidAsync("ipop.mobile.hideTabbar", false); } catch { }
+        if (mPanelPushed) try { _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail"); } catch { }
         Att.ReleaseAll();
         foreach (var p in pendingAttachments)
             if (!string.IsNullOrEmpty(p.PreviewUrl)) _ = JS.InvokeVoidAsync("ipop.revokeBlob", p.PreviewUrl);
         selfRef?.Dispose();
         if (_navSubscribed) Nav.LocationChanged -= OnLocationChanged;
         ChatSvc.PinnedChanged -= OnPinnedChanged;
+        Auth.PresenceChanged -= OnPickerPresenceChanged;
         ChatSvc.ThreadReplyReceived -= OnThreadReplyReceived;
+        UnsubscribeGroupCall();
         ChatSvc.StateChanged -= OnStateChanged;
         ChatSvc.RoomListChanged -= OnStateChanged;
         ChatSvc.TypingChanged -= OnStateChanged;
@@ -600,6 +992,14 @@ public partial class Chat
 
     // ---- Event handlers ----
 
+    private void OnPickerPresenceChanged(string nik, string status)
+    {
+        var i = pickerPeople.FindIndex(p => string.Equals(p.Nik, nik, StringComparison.OrdinalIgnoreCase));
+        if (i < 0 || pickerPeople[i].PresenceStatus == status) return;
+        pickerPeople[i] = pickerPeople[i] with { PresenceStatus = status };
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     private void OnStateChanged()
     {
         // Being removed from (or leaving) the open room clears ActiveRoomId. Drop the page's
@@ -607,6 +1007,9 @@ public partial class Chat
         // re-open a room we are no longer a member of.
         if (!openingRoom && openedRoomId is not null && ChatSvc.ActiveRoomId is null)
         {
+            // Removed from (or left) the open room. Same transition as Escape-dismiss: keep
+            // RoomId out of the reopen path until the URL lands on /chat.
+            closedRoomId = openedRoomId;
             openedRoomId = null;
             if (RoomId is not null) Nav.NavigateTo("/chat", replace: true);
         }

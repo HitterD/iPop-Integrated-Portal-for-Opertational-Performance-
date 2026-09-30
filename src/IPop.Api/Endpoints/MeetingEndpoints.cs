@@ -1,5 +1,6 @@
 using IPop.Api.Rbac;
 using IPop.Application.Notifications;
+using IPop.Application.Realtime;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -14,67 +15,25 @@ public static class MeetingEndpoints
     {
         var g = app.MapGroup("/api/meetings").RequireAuthorization();
 
-        // POST /api/meetings — buat rapat + peserta + pengingat.
-        g.MapPost("/", async (CreateMeetingRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        // POST /api/meetings — buat rapat + peserta + pengingat, lalu kabari undangan (meeting.invited).
+        g.MapPost("/", async (CreateMeetingRequest req, HttpContext http, IPopDbContext db,
+            INotificationGatewayService? notifs, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
-            var title = req.Title?.Trim() ?? "";
-            if (title.Length == 0) return Results.Json(new { code = "invalid_title", message = "Meeting title is required." }, statusCode: 422);
-            if (req.EndAt <= req.StartAt) return Results.Json(new { code = "invalid_range", message = "End time must be after start time." }, statusCode: 422);
-
-            var meeting = new Meeting
+            var (result, meetingId, invited) = await ApplyCreateAsync(db, userId.Value, req, ct);
+            switch (result)
             {
-                Id = Guid.NewGuid(), Title = title,
-                StartAt = AsUtc(req.StartAt), EndAt = AsUtc(req.EndAt),
-                TimeZone = req.TimeZone, Location = req.Location, Link = req.Link, Agenda = req.Agenda?.Trim(),
-                OrganizerId = userId.Value, Status = "aktif", RoomId = req.RoomId,
-                SourceMailId = req.SourceMailId,
-                ReminderMinutes = req.ReminderMinutes, CreatedAt = DateTime.UtcNow,
-            };
-            db.Meetings.Add(meeting);
-
-            // Peserta (organizer selalu ikut sebagai wajib). Terima UserId atau NIK.
-            var attendeeIds = (req.AttendeeIds ?? []).Append(userId.Value).ToList();
-            if (req.AttendeeNiks is { Count: > 0 })
-            {
-                var nikIds = await db.Users.Where(u => req.AttendeeNiks.Contains(u.Nik)).Select(u => u.Id).ToListAsync(ct);
-                attendeeIds.AddRange(nikIds);
+                case CreateResult.InvalidTitle: return Results.Json(new { code = "invalid_title", message = "Meeting title is required." }, statusCode: 422);
+                case CreateResult.InvalidRange: return Results.Json(new { code = "invalid_range", message = "End time must be after start time." }, statusCode: 422);
+                case CreateResult.NotRoomMember: return Results.Json(new { code = "forbidden", message = "Not a member of that group." }, statusCode: 403);
             }
-            attendeeIds = attendeeIds.Distinct().ToList();
-            foreach (var uid in attendeeIds)
-            {
-                db.MeetingAttendees.Add(new MeetingAttendee
-                {
-                    Id = Guid.NewGuid(), MeetingId = meeting.Id, UserId = uid,
-                    Required = uid == userId.Value || (req.RequiredIds?.Contains(uid) ?? true),
-                    RsvpStatus = uid == userId.Value ? "accept" : "pending",
-                    RespondedAt = uid == userId.Value ? DateTime.UtcNow : null,
-                });
-            }
-
-            // Event kalender untuk rapat ini (milik organizer).
-            db.CalendarEvents.Add(new CalendarEvent
-            {
-                Id = Guid.NewGuid(), Title = title, StartAt = meeting.StartAt, EndAt = meeting.EndAt,
-                Type = "rapat", OwnerId = userId.Value, RoomId = req.RoomId, MeetingId = meeting.Id, CreatedAt = DateTime.UtcNow,
-            });
-
-            // Pengingat terjadwal per peserta.
-            if (req.ReminderMinutes is > 0)
-            {
-                var sendAt = req.StartAt.AddMinutes(-req.ReminderMinutes.Value);
-                foreach (var uid in attendeeIds)
-                {
-                    db.MeetingReminders.Add(new MeetingReminder
-                    {
-                        Id = Guid.NewGuid(), MeetingId = meeting.Id, UserId = uid, SendAt = sendAt,
-                    });
-                }
-            }
-
-            await db.SaveChangesAsync(ct);
-            return Results.Ok(await LoadMeetingDto(meeting.Id, userId.Value, db, ct));
+            await NotifyMeetingChangedAsync(db, realtime, meetingId!.Value, [], ct);
+            var dto = await LoadMeetingDto(meetingId!.Value, userId.Value, db, ct);
+            // A mail invitation (SourceMailId) already notified its recipients through mail.new.
+            if (notifs is not null && dto is not null && req.SourceMailId is null)
+                await PublishInvitedAsync(notifs, dto, invited, ct, NotifyLog(http));
+            return Results.Ok(dto);
         }).RequirePermission("mail.send");
 
         // GET /api/meetings/{id} — detail rapat + rekap RSVP.
@@ -99,11 +58,12 @@ public static class MeetingEndpoints
         });
 
         // POST /api/meetings/{id}/rsvp — jawab undangan (accept/maybe/decline) + catatan.
-        g.MapPost("/{id:guid}/rsvp", async (Guid id, RsvpRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        g.MapPost("/{id:guid}/rsvp", async (Guid id, RsvpRequest req, HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
             var result = await ApplyRsvpAsync(db, id, userId.Value, req.Response, req.Note, ct);
+            if (result == RsvpResult.Applied) await NotifyMeetingChangedAsync(db, realtime, id, [], ct);
             return result switch
             {
                 RsvpResult.InvalidResponse => Results.Json(new { code = "invalid_response", message = "Response must be accept/maybe/decline." }, statusCode: 422),
@@ -136,7 +96,7 @@ public static class MeetingEndpoints
         // POST /api/meetings/calendar — tambah event kalender. Bila RoomId ada, ini adalah
         // event ruang obrolan: buat Meeting dengan peserta = anggota ruang (otomatis),
         // sehingga RSVP & rekap berfungsi; kalau bukan, event berdiri sendiri.
-        g.MapPost("/calendar", async (CreateCalendarEventRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        g.MapPost("/calendar", async (CreateCalendarEventRequest req, HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
@@ -190,6 +150,8 @@ public static class MeetingEndpoints
             };
             db.CalendarEvents.Add(ev);
             await db.SaveChangesAsync(ct);
+            if (meetingId is { } mid) await NotifyMeetingChangedAsync(db, realtime, mid, [], ct);
+            else await NotifyCalendarChangedAsync(db, realtime, [userId.Value], ct);
             return Results.Ok(new CalendarEventDto(ev.Id, ev.Title, ev.StartAt, ev.EndAt, ev.Type, ev.MeetingId, ev.RoomId));
         });
 
@@ -214,53 +176,29 @@ public static class MeetingEndpoints
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
-            var now = DateTime.UtcNow;
-
-            var meetingIds = await db.MeetingAttendees.AsNoTracking()
-                .Where(a => a.UserId == userId.Value)
-                .Select(a => a.MeetingId)
-                .Union(db.Meetings.AsNoTracking().Where(m => m.OrganizerId == userId.Value).Select(m => m.Id))
-                .Distinct()
-                .ToListAsync(ct);
-
-            var meetings = await db.Meetings.AsNoTracking()
-                .Where(m => meetingIds.Contains(m.Id) && m.EndAt >= now && m.Status != "cancelled")
-                .OrderBy(m => m.StartAt)
-                .Take(50)
-                .Select(m => m.Id)
-                .ToListAsync(ct);
-
-            var dtos = new List<MeetingDto>();
-            foreach (var id in meetings)
-            {
-                var dto = await LoadMeetingDto(id, userId.Value, db, ct);
-                if (dto is not null) dtos.Add(dto);
-            }
-            return Results.Ok(dtos);
+            return Results.Ok(await LoadUpcomingAsync(db, userId.Value, DateTime.UtcNow, ct));
         });
 
         // POST /api/meetings/{id}/cancel — cancel a meeting and notify attendees
         g.MapPost("/{id:guid}/cancel", async (Guid id, HttpContext http, IPopDbContext db,
-            INotificationGatewayService? notifs, CancellationToken ct) =>
+            INotificationGatewayService? notifs, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
 
-            var meeting = await db.Meetings.Include(m => m.Attendees).FirstOrDefaultAsync(m => m.Id == id, ct);
-            if (meeting is null) return Results.NotFound();
-            if (meeting.OrganizerId != userId.Value)
+            var (result, meeting, attendeeUserIds) = await ApplyCancelAsync(db, id, userId.Value, ct);
+            if (result == CancelResult.NotFound) return Results.NotFound();
+            if (result == CancelResult.Forbidden)
                 return Results.Json(new { code = "forbidden", message = "Only the organizer can cancel this meeting." }, statusCode: 403);
 
-            meeting.Status = "cancelled";
-            await db.SaveChangesAsync(ct);
+            if (result == CancelResult.Applied) await NotifyMeetingChangedAsync(db, realtime, id, [], ct);
 
-            var attendeeUserIds = meeting.Attendees.Where(a => a.UserId != userId.Value).Select(a => a.UserId).ToList();
-            if (notifs != null && attendeeUserIds.Count > 0)
+            if (result == CancelResult.Applied && notifs != null && attendeeUserIds.Count > 0)
             {
-                _ = notifs.PublishInternalAsync("meetings", "meeting.cancelled",
-                    $"Meeting cancelled: {meeting.Title}",
-                    $"The meeting \"{meeting.Title}\" scheduled for {meeting.StartAt:dd MMM, HH:mm} has been cancelled.",
-                    new NotificationTarget(UserIds: attendeeUserIds), "high", "/calls", ct);
+                await PublishBestEffortAsync(notifs, NotifyLog(http), "meeting.cancelled",
+                    $"Meeting cancelled: {meeting!.Title}",
+                    $"The meeting \"{meeting.Title}\" scheduled for {meeting.StartAt.ToLocalTime():dd MMM, HH:mm} has been cancelled.",
+                    attendeeUserIds.ToList(), "high", $"/calls?tab=scheduled&meeting={id}");
             }
 
             return Results.Ok(new { ok = true });
@@ -268,10 +206,12 @@ public static class MeetingEndpoints
 
         // PUT /api/meetings/{id} — organizer edits the meeting; attendees are notified.
         g.MapPut("/{id:guid}", async (Guid id, UpdateMeetingRequest req, HttpContext http, IPopDbContext db,
-            INotificationGatewayService? notifs, CancellationToken ct) =>
+            INotificationGatewayService? notifs, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
+            // Attendees removed by this edit must also drop the meeting from their lists.
+            var before = await db.MeetingAttendees.AsNoTracking().Where(a => a.MeetingId == id).Select(a => a.UserId).ToListAsync(ct);
             var (result, added, others) = await ApplyUpdateAsync(db, id, userId.Value, req, ct);
             switch (result)
             {
@@ -281,18 +221,19 @@ public static class MeetingEndpoints
                 case UpdateResult.InvalidTitle: return Results.Json(new { code = "invalid_title", message = "Meeting title is required." }, statusCode: 422);
                 case UpdateResult.InvalidRange: return Results.Json(new { code = "invalid_range", message = "End time must be after start time." }, statusCode: 422);
             }
+            await NotifyMeetingChangedAsync(db, realtime, id, before, ct);
             var dto = await LoadMeetingDto(id, userId.Value, db, ct);
             if (notifs is not null && dto is not null)
             {
                 var link = $"/calls?tab=scheduled&meeting={id}";
-                if (added.Count > 0)
-                    _ = notifs.PublishInternalAsync("meetings", "meeting.invited", $"Meeting invite: {dto.Title}",
-                        $"{dto.OrganizerName} invited you to \"{dto.Title}\" on {dto.StartAt:dd MMM, HH:mm}.",
-                        new NotificationTarget(UserIds: added.ToList()), "normal", link, ct);
-                if (others.Count > 0)
-                    _ = notifs.PublishInternalAsync("meetings", "meeting.updated", $"Meeting updated: {dto.Title}",
-                        $"{dto.OrganizerName} updated \"{dto.Title}\".",
-                        new NotificationTarget(UserIds: others.ToList()), "normal", link, ct);
+                // Awaited, in sequence: both run on the request's DbContext (see PublishBestEffortAsync).
+                var log = NotifyLog(http);
+                await PublishBestEffortAsync(notifs, log, "meeting.invited", $"Meeting invite: {dto.Title}",
+                    $"{dto.OrganizerName} invited you to \"{dto.Title}\" on {dto.StartAt.ToLocalTime():dd MMM, HH:mm}.",
+                    added.ToList(), "normal", link);
+                await PublishBestEffortAsync(notifs, log, "meeting.updated", $"Meeting updated: {dto.Title}",
+                    $"{dto.OrganizerName} updated \"{dto.Title}\".",
+                    others.ToList(), "normal", link);
             }
             return Results.Ok(dto);
         });
@@ -325,7 +266,7 @@ public static class MeetingEndpoints
         if (m is null) return (null, "not_found");
         var allowed = m.OrganizerId == userId || await db.MeetingAttendees.AnyAsync(a => a.MeetingId == meetingId && a.UserId == userId, ct);
         if (!allowed) return (null, "not_invited");
-        if (m.Status == "cancelled") return (null, "cancelled");
+        if (m.Status == MeetingStatus.Cancelled) return (null, "cancelled");
 
         var me = await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => new { u.Nik, u.Name }).FirstAsync(ct);
         var room = RoomNameFor(m.Id);
@@ -338,26 +279,196 @@ public static class MeetingEndpoints
         return (new MeetingJoinDto(m.Id, m.Title, room, m.Link, url, token), null);
     }
 
-    private static async Task<MeetingDto?> LoadMeetingDto(Guid id, Guid viewerId, IPopDbContext db, CancellationToken ct)
-    {
-        var m = await db.Meetings.AsNoTracking()
-            .Include(x => x.Organizer)
-            .Include(x => x.Attendees).ThenInclude(a => a.User)
-            .FirstOrDefaultAsync(x => x.Id == id, ct);
-        if (m is null) return null;
-        var isParticipant = m.OrganizerId == viewerId || m.Attendees.Any(a => a.UserId == viewerId);
-        if (!isParticipant) return null;
+    private static async Task<MeetingDto?> LoadMeetingDto(Guid id, Guid viewerId, IPopDbContext db, CancellationToken ct) =>
+        (await ProjectAsync(db.Meetings.Where(m => m.Id == id
+            && (m.OrganizerId == viewerId || m.Attendees.Any(a => a.UserId == viewerId))), viewerId, ct)).FirstOrDefault();
 
-        return new MeetingDto(
+    /// Upcoming (not ended, not cancelled) meetings I organise or attend, soonest first — one
+    /// SQL query with attendees projected in (was one query per meeting).
+    public static Task<List<MeetingDto>> LoadUpcomingAsync(IPopDbContext db, Guid userId, DateTime nowUtc, CancellationToken ct) =>
+        ProjectAsync(db.Meetings
+            .Where(m => m.EndAt >= nowUtc && m.Status != MeetingStatus.Cancelled
+                && (m.OrganizerId == userId || m.Attendees.Any(a => a.UserId == userId)))
+            .OrderBy(m => m.StartAt)
+            .Take(50), userId, ct);
+
+    private static async Task<List<MeetingDto>> ProjectAsync(IQueryable<Meeting> query, Guid viewerId, CancellationToken ct)
+    {
+        var rows = await query.AsNoTracking()
+            .Select(m => new
+            {
+                m.Id, m.Title, m.StartAt, m.EndAt, m.TimeZone, m.Location, m.Link, m.OrganizerId,
+                OrganizerName = m.Organizer.Name, OrganizerNik = m.Organizer.Nik, m.Status, m.Agenda, m.RoomId, m.ReminderMinutes,
+                Attendees = m.Attendees.OrderBy(a => a.User.Name)
+                    .Select(a => new MeetingAttendeeDto(a.UserId, a.User.Name, a.User.Nik, a.Required, a.RsvpStatus, a.Note)).ToList(),
+            })
+            .ToListAsync(ct);
+        return rows.OrderBy(m => m.StartAt).Select(m => new MeetingDto(
             m.Id, m.Title, m.StartAt, m.EndAt, m.TimeZone, m.Location, m.Link,
-            m.OrganizerId, m.Organizer.Name, m.Organizer.Nik, m.Status,
-            m.Attendees.Select(a => new MeetingAttendeeDto(a.UserId, a.User.Name, a.User.Nik, a.Required, a.RsvpStatus, a.Note)).ToList(),
+            m.OrganizerId, m.OrganizerName, m.OrganizerNik, m.Status, m.Attendees,
             m.Attendees.Count(a => a.RsvpStatus == "accept"),
             m.Attendees.Count(a => a.RsvpStatus == "maybe"),
             m.Attendees.Count(a => a.RsvpStatus == "decline"),
             m.Attendees.Count(a => a.RsvpStatus == "pending"),
             m.Attendees.FirstOrDefault(a => a.UserId == viewerId)?.RsvpStatus ?? "pending",
-            m.Agenda, RoomNameFor(m.Id));
+            m.Agenda, RoomNameFor(m.Id), m.RoomId, m.ReminderMinutes)).ToList();
+    }
+
+    public enum CreateResult { Created, InvalidTitle, InvalidRange, NotRoomMember }
+
+    /// Create a meeting: attendees (ids and/or NIKs, organizer always in and accepted), the
+    /// organizer's calendar row and one reminder per attendee when ReminderMinutes > 0
+    /// (null/0 = no reminder). Returns the invitees to notify (everyone but the organizer).
+    public static async Task<(CreateResult Result, Guid? MeetingId, IReadOnlyList<Guid> Invited)> ApplyCreateAsync(
+        IPopDbContext db, Guid userId, CreateMeetingRequest req, CancellationToken ct)
+    {
+        var title = req.Title?.Trim() ?? "";
+        if (title.Length == 0) return (CreateResult.InvalidTitle, null, []);
+        if (req.EndAt <= req.StartAt) return (CreateResult.InvalidRange, null, []);
+        if (req.RoomId is { } roomId
+            && !await db.ChatRoomMembers.AnyAsync(m => m.RoomId == roomId && m.UserId == userId && m.LeftAt == null, ct))
+            return (CreateResult.NotRoomMember, null, []);
+
+        var reminder = req.ReminderMinutes is > 0 and <= 10080 ? req.ReminderMinutes : null;
+        var meeting = new Meeting
+        {
+            Id = Guid.NewGuid(), Title = title,
+            StartAt = AsUtc(req.StartAt), EndAt = AsUtc(req.EndAt),
+            TimeZone = req.TimeZone,
+            Location = string.IsNullOrWhiteSpace(req.Location) ? null : req.Location.Trim(),
+            Link = string.IsNullOrWhiteSpace(req.Link) ? null : req.Link.Trim(),
+            Agenda = string.IsNullOrWhiteSpace(req.Agenda) ? null : req.Agenda.Trim(),
+            OrganizerId = userId, Status = MeetingStatus.Active, RoomId = req.RoomId,
+            SourceMailId = req.SourceMailId,
+            ReminderMinutes = reminder, CreatedAt = DateTime.UtcNow,
+        };
+        db.Meetings.Add(meeting);
+
+        // Peserta (organizer selalu ikut sebagai wajib). Terima UserId atau NIK; hanya akun aktif.
+        var attendeeIds = new List<Guid>();
+        if (req.AttendeeIds is { Count: > 0 })
+            attendeeIds.AddRange(await db.Users.Where(u => req.AttendeeIds.Contains(u.Id) && u.IsActive).Select(u => u.Id).ToListAsync(ct));
+        if (req.AttendeeNiks is { Count: > 0 })
+            attendeeIds.AddRange(await db.Users.Where(u => req.AttendeeNiks.Contains(u.Nik) && u.IsActive).Select(u => u.Id).ToListAsync(ct));
+        attendeeIds.Add(userId);
+        attendeeIds = attendeeIds.Distinct().ToList();
+        foreach (var uid in attendeeIds)
+        {
+            db.MeetingAttendees.Add(new MeetingAttendee
+            {
+                Id = Guid.NewGuid(), MeetingId = meeting.Id, UserId = uid,
+                Required = uid == userId || (req.RequiredIds?.Contains(uid) ?? true),
+                RsvpStatus = uid == userId ? "accept" : "pending",
+                RespondedAt = uid == userId ? DateTime.UtcNow : null,
+            });
+        }
+
+        // Event kalender untuk rapat ini (milik organizer).
+        db.CalendarEvents.Add(new CalendarEvent
+        {
+            Id = Guid.NewGuid(), Title = title, StartAt = meeting.StartAt, EndAt = meeting.EndAt,
+            Type = "rapat", OwnerId = userId, RoomId = req.RoomId, MeetingId = meeting.Id, CreatedAt = DateTime.UtcNow,
+        });
+
+        // Pengingat terjadwal per peserta, sesuai pilihan pembuat.
+        if (reminder is { } minutes)
+        {
+            var sendAt = meeting.StartAt.AddMinutes(-minutes);
+            foreach (var uid in attendeeIds)
+                db.MeetingReminders.Add(new MeetingReminder { Id = Guid.NewGuid(), MeetingId = meeting.Id, UserId = uid, SendAt = sendAt });
+        }
+
+        await db.SaveChangesAsync(ct);
+        return (CreateResult.Created, meeting.Id, attendeeIds.Where(id => id != userId).ToList());
+    }
+
+    /// meeting.invited to every invitee (not the organizer), deep-linked to the meeting.
+    /// Best-effort (see <see cref="PublishBestEffortAsync"/>): the meeting is already saved.
+    public static Task PublishInvitedAsync(INotificationGatewayService notifs, MeetingDto dto, IReadOnlyList<Guid> invited, CancellationToken ct, ILogger? log = null)
+    {
+        var when = dto.StartAt.ToLocalTime();
+        return PublishBestEffortAsync(notifs, log, "meeting.invited", $"Undangan rapat: {dto.Title}",
+            $"{dto.OrganizerName} mengundang Anda ke \"{dto.Title}\" pada {when:dd MMM, HH:mm}.",
+            invited, "normal", $"/calls?tab=scheduled&meeting={dto.Id}");
+    }
+
+    /// A meetings notification after a write that has already been saved. It runs on the
+    /// request's scoped DbContext, so it must be awaited — a `_ =` fire-and-forget publish
+    /// races the next query on the same context ("A second operation was started on this
+    /// context") and turns a successful save into a 500. CancellationToken.None so a client
+    /// disconnect can't abort it halfway; any failure is logged and never fails the request.
+    public static async Task PublishBestEffortAsync(INotificationGatewayService? notifs, ILogger? log,
+        string eventType, string title, string message, IReadOnlyCollection<Guid> userIds, string priority, string? targetUrl)
+    {
+        if (notifs is null || userIds.Count == 0) return;
+        try
+        {
+            await notifs.PublishInternalAsync("meetings", eventType, title, message,
+                new NotificationTarget(UserIds: userIds.ToList()), priority, targetUrl, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            log?.LogWarning(ex, "Publishing {EventType} notification to {Count} user(s) failed; the change itself was saved.", eventType, userIds.Count);
+        }
+    }
+
+    internal static ILogger? NotifyLog(HttpContext http) =>
+        http.RequestServices.GetService<ILoggerFactory>()?.CreateLogger("IPop.Api.Endpoints.MeetingNotifications");
+
+    public enum CancelResult { Applied, AlreadyCancelled, NotFound, Forbidden }
+
+    /// Live refresh for a meeting: meetingChanged(meetingId) + calendarChanged to the organizer,
+    /// every current attendee and alsoNotify (e.g. attendees an edit just removed). Meetings
+    /// write calendar rows, so both views resync. Best-effort: a hub failure never fails the request.
+    public static async Task NotifyMeetingChangedAsync(IPopDbContext db, IRealtime realtime, Guid meetingId,
+        IEnumerable<Guid> alsoNotify, CancellationToken ct)
+    {
+        try
+        {
+            var ids = await db.MeetingAttendees.AsNoTracking().Where(a => a.MeetingId == meetingId).Select(a => a.UserId).ToListAsync(ct);
+            ids.AddRange(await db.Meetings.AsNoTracking().Where(m => m.Id == meetingId).Select(m => m.OrganizerId).ToListAsync(ct));
+            ids.AddRange(alsoNotify);
+            var niks = await NiksAsync(db, ids, ct);
+            if (niks.Count == 0) return;
+            await realtime.ToUsersAsync(niks, RealtimeEvents.MeetingChanged, meetingId, ct);
+            await realtime.ToUsersAsync(niks, RealtimeEvents.CalendarChanged, ct: ct);
+        }
+        catch { /* realtime is a hint; clients re-fetch on next load */ }
+    }
+
+    /// calendarChanged to the given users (personal calendar events have no attendees).
+    public static async Task NotifyCalendarChangedAsync(IPopDbContext db, IRealtime realtime, IEnumerable<Guid> userIds, CancellationToken ct)
+    {
+        try
+        {
+            var niks = await NiksAsync(db, userIds, ct);
+            if (niks.Count > 0) await realtime.ToUsersAsync(niks, RealtimeEvents.CalendarChanged, ct: ct);
+        }
+        catch { /* realtime is a hint */ }
+    }
+
+    private static async Task<List<string>> NiksAsync(IPopDbContext db, IEnumerable<Guid> userIds, CancellationToken ct)
+    {
+        var ids = userIds.Distinct().ToList();
+        if (ids.Count == 0) return [];
+        return await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).Select(u => u.Nik).ToListAsync(ct);
+    }
+
+    /// Organizer-only cancel: status becomes Cancelled, unsent reminders and the meeting's
+    /// calendar rows are deleted. Returns the attendees to notify (everyone but the organizer).
+    public static async Task<(CancelResult Result, Meeting? Meeting, IReadOnlyList<Guid> Attendees)> ApplyCancelAsync(
+        IPopDbContext db, Guid meetingId, Guid userId, CancellationToken ct)
+    {
+        var meeting = await db.Meetings.Include(m => m.Attendees).FirstOrDefaultAsync(m => m.Id == meetingId, ct);
+        if (meeting is null) return (CancelResult.NotFound, null, []);
+        if (meeting.OrganizerId != userId) return (CancelResult.Forbidden, meeting, []);
+        if (meeting.Status == MeetingStatus.Cancelled) return (CancelResult.AlreadyCancelled, meeting, []);
+
+        meeting.Status = MeetingStatus.Cancelled;
+        db.MeetingReminders.RemoveRange(await db.MeetingReminders.Where(r => r.MeetingId == meetingId && r.SentAt == null).ToListAsync(ct));
+        db.CalendarEvents.RemoveRange(await db.CalendarEvents.Where(e => e.MeetingId == meetingId).ToListAsync(ct));
+        await db.SaveChangesAsync(ct);
+        return (CancelResult.Applied, meeting, meeting.Attendees.Where(a => a.UserId != userId).Select(a => a.UserId).ToList());
     }
 
     /// Video room name for a meeting — stable, so the Dashboard/Calls "Join" link and the
@@ -378,7 +489,7 @@ public static class MeetingEndpoints
         var m = await db.Meetings.Include(x => x.Attendees).FirstOrDefaultAsync(x => x.Id == meetingId, ct);
         if (m is null) return (UpdateResult.NotFound, [], []);
         if (m.OrganizerId != userId) return (UpdateResult.Forbidden, [], []);
-        if (m.Status == "cancelled") return (UpdateResult.Cancelled, [], []);
+        if (m.Status == MeetingStatus.Cancelled) return (UpdateResult.Cancelled, [], []);
         var title = req.Title?.Trim() ?? "";
         if (title.Length == 0) return (UpdateResult.InvalidTitle, [], []);
         if (req.EndAt <= req.StartAt) return (UpdateResult.InvalidRange, [], []);
@@ -478,6 +589,6 @@ public static class MeetingEndpoints
     public record MeetingDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string? TimeZone, string? Location, string? Link,
         Guid OrganizerId, string OrganizerName, string OrganizerNik, string Status, IReadOnlyList<MeetingAttendeeDto> Attendees,
         int AcceptCount, int MaybeCount, int DeclineCount, int PendingCount, string MyResponse,
-        string? Agenda = null, string? RoomName = null);
+        string? Agenda = null, string? RoomName = null, Guid? RoomId = null, int? ReminderMinutes = null);
     public record CalendarEventDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string Type, Guid? MeetingId, Guid? RoomId);
 }

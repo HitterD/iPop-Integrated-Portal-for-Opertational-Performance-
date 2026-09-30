@@ -49,6 +49,40 @@
                     }
                 </div>
             }
+            else if (string.IsNullOrWhiteSpace(query))
+            {
+                if (historyList.Count > 0)
+                {
+                    <div class="cp-results">
+                        <div class="cp-group" style="display:flex;align-items:center;justify-content:space-between">
+                            <span>Recent searches</span>
+                            <button type="button" style="border:none;background:transparent;color:var(--accent-ink);font-size:11px;font-weight:600;cursor:pointer;padding:0" @onclick="ClearAllHistory">Clear all</button>
+                        </div>
+                        @foreach (var h in historyList)
+                        {
+                            var item = h;
+                            <div class="cp-row" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" @onclick="() => SelectHistory(item.Query)">
+                                <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
+                                    <span class="avatar" style="background:var(--tray);color:var(--ink-3);width:28px;height:28px">
+                                        <i data-lucide="history" style="width:14px;height:14px"></i>
+                                    </span>
+                                    <span class="txt">
+                                        <span class="n">@item.Query</span>
+                                        <span class="s">@item.SearchedAt.ToLocalTime().ToString("MMM d, HH:mm")</span>
+                                    </span>
+                                </div>
+                                <button type="button" style="border:none;background:transparent;color:var(--ink-4);cursor:pointer;padding:4px;border-radius:6px;display:flex;align-items:center" @onclick="() => DeleteHistoryItem(item.Id)" @onclick:stopPropagation="true" title="Remove from history">
+                                    <i data-lucide="x" style="width:13px;height:13px"></i>
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="cp-empty">Type at least two characters to search everywhere in iPop.</div>
+                }
+            }
             else if (query.Trim().Length >= 2 && !loading)
             {
                 <div class="cp-empty">No results for "@query".</div>
@@ -69,6 +103,7 @@
     private ElementReference inputRef;
     private CancellationTokenSource? cts;
     private IDisposable? _reg;
+    private List<SearchHistoryItemDto> historyList = [];
 
     protected override void OnInitialized()
     {
@@ -76,17 +111,89 @@
         _reg = Overlays.Push(CloseAsync);
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
     private void OnPaletteChanged() => _ = InvokeAsync(async () =>
     {
-        if (Palette.IsOpen) { query = ""; results = []; activeIdx = 0; }
+        if (Palette.IsOpen)
+        {
+            query = "";
+            results = [];
+            activeIdx = 0;
+            await LoadHistoryAsync();
+        }
         StateHasChanged();
-        if (Palette.IsOpen) { await Task.Yield(); await JS.InvokeVoidAsync("ipop.focus", inputRef); }
+        if (Palette.IsOpen) { await Task.Yield(); await JS.InvokeVoidAsync("ipop.focus", inputRef); await JS.InvokeVoidAsync("ipop.icons"); }
     });
+
+    private async Task LoadHistoryAsync()
+    {
+        try
+        {
+            var h = await Auth.GetAsync<List<SearchHistoryItemDto>>("/api/search/history");
+            historyList = h ?? [];
+        }
+        catch { }
+    }
+
+    private async Task RecordHistoryAsync(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || text.Trim().Length < 2) return;
+        try
+        {
+            await Auth.SendAsync(HttpMethod.Post, "/api/search/history", new { query = text.Trim() });
+        }
+        catch { }
+    }
+
+    private async Task SelectHistory(string q)
+    {
+        query = q;
+        await RecordHistoryAsync(q);
+        await RunSearchAsync(q);
+    }
+
+    private async Task DeleteHistoryItem(Guid id)
+    {
+        historyList.RemoveAll(x => x.Id == id);
+        try
+        {
+            await Auth.SendAsync(HttpMethod.Delete, $"/api/search/history/{id}");
+        }
+        catch { }
+        StateHasChanged();
+    }
+
+    private async Task ClearAllHistory()
+    {
+        historyList.Clear();
+        try
+        {
+            await Auth.SendAsync(HttpMethod.Delete, "/api/search/history");
+        }
+        catch { }
+        StateHasChanged();
+    }
 
     private async Task CloseAsync()
     {
         Palette.Close();
         await Task.CompletedTask;
+    }
+
+    private async Task RunSearchAsync(string q)
+    {
+        loading = true;
+        StateHasChanged();
+        var res = await Auth.GetAsync<List<SearchResultItemDto>>($"/api/search?q={Uri.EscapeDataString(q)}");
+        results = res ?? [];
+        activeIdx = 0;
+        loading = false;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
     }
 
     private async Task OnInput(ChangeEventArgs e)
@@ -110,8 +217,12 @@
         await JS.InvokeVoidAsync("ipop.icons");
     }
 
-    private void Go(SearchResultItemDto r)
+    private async Task Go(SearchResultItemDto r)
     {
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            _ = RecordHistoryAsync(query);
+        }
         Palette.Close();
         Nav.NavigateTo(r.Url);
     }
@@ -122,7 +233,13 @@
         {
             case "ArrowDown": if (results.Count > 0) { activeIdx = (activeIdx + 1) % results.Count; StateHasChanged(); } break;
             case "ArrowUp": if (results.Count > 0) { activeIdx = (activeIdx - 1 + results.Count) % results.Count; StateHasChanged(); } break;
-            case "Enter": if (results.Count > 0) Go(results[Math.Clamp(activeIdx, 0, results.Count - 1)]); break;
+            case "Enter":
+                if (!string.IsNullOrWhiteSpace(query))
+                {
+                    _ = RecordHistoryAsync(query);
+                }
+                if (results.Count > 0) await Go(results[Math.Clamp(activeIdx, 0, results.Count - 1)]);
+                break;
             case "Escape": Palette.Close(); break;
         }
     }
@@ -135,4 +252,5 @@
     }
 
     public record SearchResultItemDto(string Group, string Title, string? Subtitle, string Url, string Icon, string? AvatarColor = null, string? Initials = null);
+    public record SearchHistoryItemDto(Guid Id, string Query, DateTime SearchedAt);
 }

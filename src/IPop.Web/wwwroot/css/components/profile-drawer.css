@@ -408,3 +408,26 @@
     transition: none !important;
   }
 }
+
+/* Copy buttons on contact rows (ContactCard). The value takes the free space so the
+   button sits at the row's end; chat's v6 sheet restates the colours under .chat-area. */
+.contact-card .inset-row .inset-v { flex: 1; min-width: 0; }
+.contact-card .inset-copy {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.contact-card .inset-copy:hover { background: var(--tray); color: var(--accent); }
+.contact-card .inset-copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.contact-card .inset-copy .lucide { width: 13px; height: 13px; }
+@media (max-width: 767px) {
+  .contact-card .inset-copy { width: 36px; height: 36px; }
+}

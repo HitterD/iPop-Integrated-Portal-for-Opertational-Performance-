@@ -2,25 +2,76 @@
 @using IPop.Web.Services
 @inject AuthState Auth
 @inject ChatState ChatSvc
+@inject ToastService Toasts
 
-@if (isOpen)
+@* The one pinned-messages UI. Hosted by the room drawer (header 📌, sticky bar "View all",
+   drawer "See all") and by the global drawer (sidebar "Pinned messages" with no room open).
+   The host owns the title bar, so there is no inner header here. *@
+@if (IsOpen)
 {
     <div class="pinned-panel">
-        <div class="pp-head"><i data-lucide="pin"></i> Pinned <span class="count">@Items.Count</span> <button class="close-pin" @onclick="Close" title="Close" aria-label="Close"><i data-lucide="x"></i></button></div>
+        <div class="pp-scope" role="radiogroup" aria-label="Show pinned messages from">
+            <button type="button" class="pp-scope-item @(scope == PinnedScope.Room ? "on" : "")" role="radio"
+                    aria-checked="@(scope == PinnedScope.Room ? "true" : "false")"
+                    disabled="@(RoomId == Guid.Empty)" @onclick="() => SetScopeAsync(PinnedScope.Room)">This conversation</button>
+            <button type="button" class="pp-scope-item @(scope == PinnedScope.All ? "on" : "")" role="radio"
+                    aria-checked="@(scope == PinnedScope.All ? "true" : "false")"
+                    @onclick="() => SetScopeAsync(PinnedScope.All)">All conversations</button>
+        </div>
+        <div class="pp-hint">@Hint</div>
         <div class="pp-list">
-            @if (!Items.Any()) { <div class="pinned-state">No pinned messages yet.</div> }
+            @if (scope == PinnedScope.Room)
+            {
+                @if (!Items.Any()) { <div class="pinned-state">No pinned messages in this conversation yet. Hover a message and tap the pin.</div> }
+                else
+                {
+                    @foreach (var p in Items)
+                    {
+                        var pin = p;
+                        <div class="pin-item" role="button" tabindex="0" @onclick="() => JumpTo(pin.MessageId)">
+                            <div class="pin-top"><span class="pin-sender">@pin.SenderName</span></div>
+                            <div class="pin-text">@Snippet(pin.Content)</div>
+                            <div class="pin-meta">
+                                <i data-lucide="clock"></i> @pin.PinnedAt.ToLocalTime().ToString("MMM d")
+                                @if (CanUnpin?.Invoke(pin) ?? true)
+                                {
+                                    <button type="button" class="pin-unpin" title="Unpin message" aria-label="Unpin message"
+                                            @onclick="() => UnpinAsync(RoomId, pin.MessageId)" @onclick:stopPropagation>
+                                        <i data-lucide="pin-off"></i> Unpin
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            }
+            else if (allLoading)
+            {
+                <div class="pinned-state"><i data-lucide="loader-circle"></i> Loading…</div>
+            }
+            else if (allError)
+            {
+                <div class="pinned-state">Could not load pinned messages. <button type="button" class="pp-retry" @onclick="LoadAllAsync">Try again</button></div>
+            }
+            else if (allItems.Count == 0)
+            {
+                <div class="pinned-state">No pinned messages yet. Hover a message and tap the pin.</div>
+            }
             else
             {
-                @foreach (var p in Items)
+                @foreach (var c in allItems)
                 {
-                    var pin = p;
-                    <div class="pin-item" @onclick="() => JumpTo(pin.MessageId)">
-                        <div class="pin-sender">@pin.SenderName</div>
-                        <div class="pin-text">@pin.Content</div>
+                    var card = c;
+                    <div class="pin-item" role="button" tabindex="0" @onclick="() => OpenCard(card)">
+                        <div class="pin-top">
+                            <span class="pin-sender">@card.SenderName</span>
+                            <span class="pin-room">@card.RoomLabel</span>
+                        </div>
+                        <div class="pin-text">@Snippet(card.Content)</div>
                         <div class="pin-meta">
-                            <i data-lucide="clock"></i> @pin.PinnedAt.ToLocalTime().ToString("MMM d")
-                            <button type="button" class="pin-unpin" title="Unpin message"
-                                    @onclick="() => Unpin(pin.MessageId)" @onclick:stopPropagation>
+                            <i data-lucide="clock"></i> @card.PinnedAt.ToLocalTime().ToString("MMM d")
+                            <button type="button" class="pin-unpin" title="Unpin message" aria-label="Unpin message"
+                                    @onclick="() => UnpinAsync(card.RoomId, card.MessageId)" @onclick:stopPropagation>
                                 <i data-lucide="pin-off"></i> Unpin
                             </button>
                         </div>
@@ -32,23 +83,131 @@
 }
 
 @code {
+    public enum PinnedScope { Room, All }
+
+    /// A pinned message from any of the user's conversations ("All conversations").
+    public sealed record PinnedCard(Guid RoomId, Guid MessageId, string SenderName, string? Content, DateTime PinnedAt, string RoomLabel);
+
+    /// The open conversation; Guid.Empty disables "This conversation".
     [Parameter] public Guid RoomId { get; set; }
     [Parameter] public bool IsOpen { get; set; }
-    /// Pinned messages owned by the page (single source of truth shared with the
-    /// sticky bar). The panel renders them and mutates via the endpoints below.
+    /// Pinned messages of the open room, owned by the page (single source of truth shared
+    /// with the sticky bar).
     [Parameter] public IReadOnlyList<PinnedMessageDto> Items { get; set; } = [];
+    /// Whether the current user may unpin a given pin of the open room (pinner or group
+    /// owner/admin; anyone in a DM). Null shows Unpin on every item. Other rooms always
+    /// show Unpin and rely on the server's 403.
+    [Parameter] public Func<PinnedMessageDto, bool>? CanUnpin { get; set; }
+    /// Kept for older hosts; the panel has no close button of its own any more.
     [Parameter] public EventCallback OnClose { get; set; }
+    /// Jump to a message in the open room.
     [Parameter] public EventCallback<Guid> OnJumpTo { get; set; }
-    /// Raised after an unpin succeeds so the page can refresh its pinned list.
+    /// Open a pin from another conversation (host switches room, then jumps).
+    [Parameter] public EventCallback<PinnedCard> OnOpenPin { get; set; }
+    /// Raised after an unpin in the open room so the page can refresh its pinned list.
     [Parameter] public EventCallback OnChanged { get; set; }
-    private bool isOpen => IsOpen;
+    /// Initial filter; re-applied whenever the host passes a different value.
+    [Parameter] public PinnedScope Scope { get; set; } = PinnedScope.Room;
+
+    private PinnedScope scope;
+    private PinnedScope? lastScopeParam;
+    private List<PinnedCard> allItems = [];
+    private bool allLoading, allError, allLoaded;
+    private int allGeneration;
+
+    private string Hint => scope == PinnedScope.Room
+        ? $"{Items.Count} pinned in this conversation"
+        : allLoading ? "Loading…" : $"{allItems.Count} pinned across all conversations";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (lastScopeParam != Scope)
+        {
+            lastScopeParam = Scope;
+            scope = Scope == PinnedScope.Room && RoomId == Guid.Empty ? PinnedScope.All : Scope;
+            allLoaded = false;
+        }
+        if (scope == PinnedScope.Room && RoomId == Guid.Empty) scope = PinnedScope.All;
+        if (IsOpen && scope == PinnedScope.All && !allLoaded && !allLoading) await LoadAllAsync();
+    }
+
+    private async Task SetScopeAsync(PinnedScope s)
+    {
+        if (s == PinnedScope.Room && RoomId == Guid.Empty) return;
+        scope = s;
+        // Always refresh "All" when chosen: pins may have changed in other rooms since.
+        if (s == PinnedScope.All) await LoadAllAsync();
+    }
+
+    /// Pins are per-room on the server, so the cross-conversation list fans out over the rooms.
+    private async Task LoadAllAsync()
+    {
+        var gen = ++allGeneration;
+        allLoading = true; allError = false;
+        StateHasChanged();
+        try
+        {
+            try { await ChatSvc.LoadRoomsAsync(); } catch { }
+            var rooms = ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms).ToList();
+            var results = await Task.WhenAll(rooms.Select(async r =>
+            {
+                try
+                {
+                    var pins = await Auth.GetAsync<List<PinnedMessageDto>>($"/api/chat/rooms/{r.Id}/pins");
+                    var label = r.Type == "dm" ? (r.RecipientName ?? r.RecipientNik ?? "Direct message") : (r.Name ?? "Group");
+                    return (pins ?? []).Select(p => new PinnedCard(r.Id, p.MessageId, p.SenderName, p.Content, p.PinnedAt, label));
+                }
+                catch { return Enumerable.Empty<PinnedCard>(); }
+            }));
+            if (gen != allGeneration) return;
+            allItems = results.SelectMany(x => x).OrderByDescending(c => c.PinnedAt).ToList();
+            allLoaded = true;
+        }
+        catch
+        {
+            if (gen != allGeneration) return;
+            allItems = [];
+            allError = true;
+        }
+        finally
+        {
+            if (gen == allGeneration) { allLoading = false; StateHasChanged(); }
+        }
+    }
 
     private Task JumpTo(Guid id) => OnJumpTo.InvokeAsync(id);
-    private Task Close() => OnClose.InvokeAsync();
 
-    private async Task Unpin(Guid messageId)
+    private Task OpenCard(PinnedCard card)
+        => card.RoomId == RoomId && RoomId != Guid.Empty ? OnJumpTo.InvokeAsync(card.MessageId) : OnOpenPin.InvokeAsync(card);
+
+    private async Task UnpinAsync(Guid roomId, Guid messageId)
     {
-        await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/rooms/{RoomId}/pins/{messageId}");
-        await OnChanged.InvokeAsync();
+        if (roomId == Guid.Empty) return;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/rooms/{roomId}/pins/{messageId}");
+            if (!res.IsSuccessStatusCode)
+            {
+                // Groups: only whoever pinned it or an owner/admin may unpin (403).
+                Toasts.Show(res.StatusCode == System.Net.HttpStatusCode.Forbidden
+                    ? "Only whoever pinned it or a group admin can unpin this message."
+                    : "Could not unpin that message.", ToastKind.Error);
+                return;
+            }
+            allItems = allItems.Where(c => !(c.RoomId == roomId && c.MessageId == messageId)).ToList();
+            if (roomId == RoomId) await OnChanged.InvokeAsync();
+            StateHasChanged();
+        }
+        catch
+        {
+            Toasts.Show("Could not unpin that message.", ToastKind.Error);
+        }
+    }
+
+    private static string Snippet(string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return "(attachment)";
+        var text = content.StartsWith("[forwarded]") ? content["[forwarded]".Length..].TrimStart() : content;
+        return text.Length <= 160 ? text : text[..160] + "…";
     }
 }

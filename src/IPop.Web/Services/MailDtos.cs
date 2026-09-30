@@ -40,6 +40,8 @@ public record MailDetail(
     bool IsMuted = false, string? BodyText = null)
 {
     public IReadOnlyList<ProjectLink> LinkedProjects { get; init; } = [];
+    /// The reader's own labels on this mail.
+    public IReadOnlyList<Guid> LabelIds { get; init; } = [];
 }
 
 public record SendMailResult(bool Success, Guid? MailId, string? Error);
@@ -51,7 +53,9 @@ public record MailSendRequest(
     Guid? InReplyToId = null, Guid? ThreadRootId = null,
     string? Signature = null,
     DateTime? ScheduledAt = null,
-    string? Importance = "normal");
+    string? Importance = "normal",
+    IReadOnlyList<Guid>? LabelIds = null,
+    IReadOnlyList<Guid>? ForwardAttachmentIds = null);
 
 public record BatchIds(IReadOnlyList<Guid> MailIds);
 public record BatchMove(IReadOnlyList<Guid> MailIds, string Folder);

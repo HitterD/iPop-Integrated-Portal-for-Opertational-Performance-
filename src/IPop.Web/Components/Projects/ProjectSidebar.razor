@@ -16,11 +16,12 @@
                     <i data-lucide="plus"></i>New
                 </button>
             }
-            <button class="proj-sidebar-toggle" @onclick="OnToggleSidebar" title="@(IsCollapsed ? "Expand navigator" : "Collapse navigator")">
-                <i data-lucide="@(IsCollapsed ? "panel-left-open" : "panel-left-close")" style="width:14px;height:14px"></i>
-            </button>
         </div>
     </div>
+
+    <button type="button" class="proj-portfolio-link @(PortfolioSelected ? "active" : "")" aria-current="@(PortfolioSelected ? "page" : null)" @onclick="OnSelectPortfolio" title="Overview semua project">
+        <i data-lucide="layout-dashboard"></i><span>Overview semua project</span>
+    </button>
 
     @* Quick search projects *@
     <div class="proj-search-wrap">
@@ -65,7 +66,7 @@
                     </div>
                     <div class="proj-nav-body">
                         <div class="proj-nav-head">
-                            <span class="proj-tile" style="background:@ProjectUiHelpers.GetAvatarBg(p.Name)">@ProjectUiHelpers.GetInitials(p.Name)</span>
+                            <span class="proj-tile" style="background:@(!string.IsNullOrWhiteSpace(p.Color) ? p.Color : ProjectUiHelpers.GetAvatarBg(p.Name))">@ProjectUiHelpers.GetInitials(p.Name)</span>
                             <span class="proj-nav-id">
                                 <span class="proj-nav-name" title="@p.Name">@p.Name</span>
                                 <span class="proj-nav-sub">@p.TaskCount @(p.TaskCount == 1 ? "task" : "tasks") · @p.MemberCount @(p.MemberCount == 1 ? "member" : "members")</span>
@@ -96,6 +97,8 @@
     [Parameter] public string SearchQuery { get; set; } = "";
     [Parameter] public bool IsCollapsed { get; set; }
     [Parameter] public bool Loading { get; set; }
+    [Parameter] public bool PortfolioSelected { get; set; }
+    [Parameter] public EventCallback OnSelectPortfolio { get; set; }
 
     [Parameter] public EventCallback<ProjectListDto> OnSelectProject { get; set; }
     [Parameter] public EventCallback OnToggleSidebar { get; set; }

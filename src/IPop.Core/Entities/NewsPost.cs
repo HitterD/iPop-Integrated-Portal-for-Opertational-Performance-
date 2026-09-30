@@ -33,6 +33,12 @@ public class NewsPost
     /// Mandatory read acknowledgement required from targeted readers.
     public bool RequiresAcknowledgement { get; set; }
 
+    /// Optional deadline shown to readers ("Please read and confirm by ...").
+    public DateTime? AckDueAt { get; set; }
+
+    /// Last content edit made after the post was published (drives the "Edited" label).
+    public DateTime? EditedAt { get; set; }
+
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
@@ -42,4 +48,5 @@ public class NewsPost
     public ICollection<NewsTarget> Targets { get; set; } = [];
     public ICollection<NewsAcknowledgement> Acknowledgements { get; set; } = [];
     public ICollection<NewsAudit> Audits { get; set; } = [];
+    public ICollection<NewsAttachment> Attachments { get; set; } = [];
 }

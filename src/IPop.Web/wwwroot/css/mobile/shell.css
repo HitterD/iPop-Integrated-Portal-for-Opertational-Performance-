@@ -1,0 +1,203 @@
+/* Mobile (<= 767px) overrides for shell. Loaded after every desktop stylesheet. */
+
+/* ---------- Desktop guards (outside the query) ----------
+   Phone-only chrome is rendered once in MainLayout and hidden here, so >= 768px is untouched. */
+.m-tabbar, .m-sheet, .m-sheet-backdrop, .m-detail-bar { display: none; }
+.m-back { display: none; }
+
+@media (max-width: 767px) {
+  :root {
+    --m-tabbar-h: 56px;
+    --m-safe-b: env(safe-area-inset-bottom, 0px);
+    --m-topbar-h: 52px;
+  }
+
+  /* ---------- Frame: no sidebar, single column, never wider than the viewport ---------- */
+  html, body { max-width: 100%; overflow-x: hidden; }
+  /* shell/v6.css sets the two-column grid with no phone rule; that left .main ~154px wide. */
+  .shell, .shell.collapsed { grid-template-columns: minmax(0, 1fr); width: 100%; max-width: 100vw; }
+  .shell > .sidebar { display: none; }
+  .main {
+    min-width: 0; max-width: 100vw;
+    padding-bottom: calc(var(--m-tabbar-h) + var(--m-safe-b));
+  }
+  body.m-hide-tabbar .main { padding-bottom: 0; }
+  body.m-hide-tabbar .m-tabbar { display: none; }
+
+  /* ---------- Compact topbar ---------- */
+  .topbar.v6-topbar {
+    height: var(--m-topbar-h); gap: 2px;
+    padding: 0 6px 0 14px;
+  }
+  .v6-topbar .tb-title { flex: 1 1 auto; min-width: 0; }
+  .v6-topbar .tb-title h1 { font-size: 17px; letter-spacing: -0.3px; }
+  .v6-topbar .tb-sub, .v6-topbar .tb-live, .v6-topbar .tb-spacer { display: none; }
+
+  /* Search pill -> icon button that opens the command palette. */
+  .v6-topbar .search-trigger {
+    width: 40px; max-width: none; height: 40px; padding: 0; gap: 0;
+    justify-content: center; background: transparent; color: var(--ink-2); border-radius: 10px;
+  }
+  .v6-topbar .search-trigger span, .v6-topbar .search-trigger kbd { display: none; }
+  .v6-topbar .search-trigger .lucide { width: 19px; height: 19px; }
+
+  .v6-topbar .topbar-right { gap: 0; }
+  /* Presence pill -> just the dot. Same (0,4,0) specificity as the v6 rule; wins by load order. */
+  .v6-topbar .topbar-right .status-wrap .presence-toggle {
+    width: 40px; height: 40px; padding: 0; gap: 0; justify-content: center;
+    border: none; background: transparent;
+  }
+  .v6-topbar .presence-toggle .status-lbl, .v6-topbar .presence-toggle .chev { display: none; }
+  .v6-topbar .presence-toggle .sdot { width: 10px; height: 10px; }
+  .v6-topbar .status-menu {
+    position: fixed; top: calc(var(--m-topbar-h) + 4px); right: 8px; left: auto;
+    width: min(300px, calc(100vw - 16px));
+  }
+  /* topbar.css sizes these with !important at (0,1,0); (0,2,0) + !important wins. */
+  .v6-topbar .theme-btn, .v6-topbar .bell-btn { width: 40px !important; height: 40px !important; }
+  .v6-topbar .theme-btn .lucide, .v6-topbar .bell-btn .lucide { width: 19px; height: 19px; }
+  .v6-topbar .bell-btn .badge { top: 1px; right: 0; }
+
+  /* Bell tray -> full-width sheet under the header, bounded above the tab bar. */
+  .v6-topbar .topbar-right .notif-pop {
+    position: fixed !important;
+    top: var(--m-topbar-h) !important; left: 0 !important; right: 0 !important;
+    width: auto !important; max-width: none !important;
+  }
+  .v6-topbar .topbar-right .apple-notif-pop-card {
+    border-radius: 0 0 16px 16px !important; border-left: 0 !important; border-right: 0 !important;
+  }
+  .v6-topbar .topbar-right .apple-notif-body {
+    max-height: calc(100dvh - var(--m-topbar-h) - var(--m-tabbar-h) - var(--m-safe-b) - 120px) !important;
+  }
+  .v6-topbar .topbar-right .apple-notif-row { min-height: 56px; }
+  .v6-topbar .topbar-right .apple-notif-readall-btn,
+  .v6-topbar .topbar-right .apple-notif-footer { min-height: 40px; }
+
+  /* ---------- Bottom tab bar ---------- */
+  .m-tabbar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 55;
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+    height: calc(var(--m-tabbar-h) + var(--m-safe-b));
+    padding: 0 4px var(--m-safe-b);
+    background: color-mix(in srgb, var(--surface) 90%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+    border-top: 1px solid var(--line-soft);
+  }
+  .m-tab {
+    min-width: 0; height: var(--m-tabbar-h);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    padding: 0; border: 0; background: transparent; color: var(--ink-3);
+    font: inherit; text-decoration: none; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .m-tab:hover { text-decoration: none; color: var(--ink-3); }
+  .m-tab.active, .m-tab.active:hover { color: var(--accent); }
+  .m-tab-ic { position: relative; display: flex; }
+  .m-tab-ic .lucide { width: 23px; height: 23px; stroke-width: 1.9; }
+  .m-tab-lbl {
+    max-width: 100%; font-size: 10.5px; font-weight: 500; line-height: 1.1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .m-tab.active .m-tab-lbl { font-weight: 600; }
+  .m-tab-badge {
+    position: absolute; top: -4px; left: calc(100% - 8px);
+    min-width: 17px; height: 17px; padding: 0 4px; box-sizing: border-box;
+    border-radius: 9px; background: #FF3B30; color: #fff; border: 2px solid var(--surface);
+    font-size: 10px; font-weight: 700; line-height: 13px; text-align: center;
+  }
+  .m-tab-badge.dot { min-width: 0; width: 10px; height: 10px; padding: 0; top: -1px; left: calc(100% - 5px); }
+
+  /* ---------- "Lainnya" bottom sheet ---------- */
+  .m-sheet-backdrop {
+    display: block; position: fixed; inset: 0; z-index: 180;
+    background: rgba(0, 0, 0, 0.32); animation: m-fade 0.18s ease-out;
+  }
+  [data-theme="dark"] .m-sheet-backdrop { background: rgba(0, 0, 0, 0.55); }
+  .m-sheet {
+    display: flex; flex-direction: column;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 181;
+    max-height: 92dvh; overflow-y: auto; overscroll-behavior: contain;
+    padding: 8px 12px calc(12px + var(--m-safe-b));
+    background: var(--surface); color: var(--ink);
+    border-radius: 14px 14px 0 0; border-top: 1px solid var(--line-soft);
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.18);
+    animation: m-sheet-in 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .m-sheet-grip { flex: none; width: 36px; height: 5px; margin: 0 auto 10px; border-radius: 999px; background: var(--line); }
+  .m-more-user {
+    display: flex; align-items: center; gap: 12px; padding: 6px 6px 14px;
+    border-bottom: 1px solid var(--line-soft); margin-bottom: 6px;
+  }
+  .m-more-user .avatar {
+    position: relative; flex: none; width: 42px; height: 42px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .m-more-user .avatar .sdot {
+    position: absolute; right: -1px; bottom: -1px; width: 11px; height: 11px;
+    border: 2px solid var(--surface); box-sizing: content-box;
+  }
+  .m-more-user .who { flex: 1; min-width: 0; }
+  .m-more-user .n { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-more-user .r { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-more-list { display: flex; flex-direction: column; }
+  .m-more-item {
+    display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 6px;
+    border-radius: 10px; color: var(--ink); font-size: 15px; text-decoration: none;
+  }
+  .m-more-item:hover, .m-more-item:active { background: var(--fill); text-decoration: none; color: var(--ink); }
+  .m-more-item.active { color: var(--v6-active-fg, var(--accent-ink)); font-weight: 600; }
+  .m-more-ic {
+    flex: none; width: 32px; height: 32px; border-radius: 8px; background: var(--fill);
+    display: flex; align-items: center; justify-content: center; color: var(--ink-2);
+  }
+  .m-more-item.active .m-more-ic { background: var(--accent-soft); color: var(--accent); }
+  .m-more-ic .lucide { width: 17px; height: 17px; }
+  .m-more-lbl { flex: 1; min-width: 0; }
+  .m-more-item .nav-count { margin-left: 0; }
+  .m-more-chev { width: 16px; height: 16px; color: var(--ink-3); flex: none; }
+  .m-more-signout {
+    flex: none; display: flex; align-items: center; justify-content: center; gap: 8px;
+    min-height: 46px; margin-top: 10px; border: 1px solid var(--line-soft); border-radius: 12px;
+    background: var(--surface); color: var(--danger, #FF3B30);
+    font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .m-more-signout .lucide { width: 17px; height: 17px; }
+  @keyframes m-sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+  @keyframes m-fade { from { opacity: 0; } to { opacity: 1; } }
+
+  /* ---------- Back button + detail header (list/detail pattern, see CONTRACT.md) ---------- */
+  .m-back {
+    display: inline-flex; align-items: center; justify-content: center; flex: none;
+    width: 40px; height: 40px; margin-left: -8px; padding: 0;
+    border: 0; border-radius: 10px; background: transparent; color: var(--accent); cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .m-back:active { background: var(--fill); }
+  .m-back .lucide { width: 26px; height: 26px; stroke-width: 2.2; }
+  .m-detail-bar {
+    display: flex; align-items: center; gap: 4px; flex: none;
+    min-height: 48px; padding: 4px 12px; border-bottom: 1px solid var(--line-soft);
+  }
+  .m-detail-title { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ---------- Global call overlay: fit the phone, stay clear of the tab bar ---------- */
+  .callx-incoming { top: 8px; left: 8px; right: 8px; width: auto; }
+  .callx-window {
+    left: 8px; right: 8px; width: auto;
+    bottom: calc(var(--m-tabbar-h) + var(--m-safe-b) + 8px);
+    max-height: calc(100dvh - var(--m-tabbar-h) - var(--m-safe-b) - 16px); overflow-y: auto;
+  }
+  .callx-pill, .callx-toast { bottom: calc(var(--m-tabbar-h) + var(--m-safe-b) + 10px); }
+  .callx-pill { right: 10px; max-width: calc(100vw - 20px); }
+  .callx-toast { max-width: calc(100vw - 20px); }
+  .callx-dialog { max-height: calc(100dvh - 32px); }
+  .callx-btn, .callx-ctrl { min-height: 40px; }
+  .callx-round { min-width: 40px; min-height: 40px; }
+  body.m-hide-tabbar .callx-window { bottom: calc(var(--m-safe-b) + 8px); max-height: calc(100dvh - var(--m-safe-b) - 16px); }
+  body.m-hide-tabbar .callx-pill, body.m-hide-tabbar .callx-toast { bottom: calc(var(--m-safe-b) + 10px); }
+
+  /* ---------- Toasts / banners: full width under the compact header ---------- */
+  .float-stack { top: calc(var(--m-topbar-h) + 6px); left: 8px; right: 8px; width: auto; max-width: none; }
+}

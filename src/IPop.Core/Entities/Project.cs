@@ -6,6 +6,7 @@ public class Project
     public Guid Id { get; set; }
     public required string Name { get; set; }
     public string? Description { get; set; }
+    public string Color { get; set; } = "#2E9E5B";
 
     /// Year for grouping (e.g., fiscal or calendar year). Can be derived from StartDate but stored explicitly for stable bucketing.
     public int Year { get; set; }
@@ -33,4 +34,5 @@ public class Project
     public User Owner { get; set; } = default!;
     public ICollection<ProjectMember> Members { get; set; } = [];
     public ICollection<ProjectTask> Tasks { get; set; } = [];
+    public ICollection<ProjectGroup> Groups { get; set; } = [];
 }

@@ -98,7 +98,7 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
 
         // ── Meetings ──
         var myMeetings = db.Meetings.AsNoTracking()
-            .Where(m => m.Status != "cancelled" && (m.OrganizerId == userId || m.Attendees.Any(a => a.UserId == userId && a.RsvpStatus != "decline")));
+            .Where(m => m.Status != IPop.Core.Entities.MeetingStatus.Cancelled && (m.OrganizerId == userId || m.Attendees.Any(a => a.UserId == userId && a.RsvpStatus != "decline")));
         var next = await myMeetings.Where(m => m.EndAt >= now).OrderBy(m => m.StartAt)
             .Select(m => new { m.Id, m.Title, m.StartAt }).FirstOrDefaultAsync(ct);
         var todays = await myMeetings.Where(m => m.StartAt < dayEndUtc && m.EndAt >= dayStartUtc)
@@ -239,10 +239,10 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
         var awayCutoff = now - PresenceStatus.OfflineAfter;
         var present = await db.Users.AsNoTracking()
             .Where(u => u.IsActive && u.Id != userId && (u.PresenceLastSeenAt >= awayCutoff || u.PresenceManualStatus == "busy"))
-            .Select(u => new { u.Nik, u.Name, u.PresenceLastSeenAt, u.PresenceManualStatus })
+            .Select(u => new { u.Nik, u.Name, u.PresenceLastSeenAt, u.PresenceManualStatus, u.PresenceIsIdle })
             .ToListAsync(ct);
         var online = present
-            .Select(u => new DashboardPersonItem(u.Nik, u.Name, PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now)))
+            .Select(u => new DashboardPersonItem(u.Nik, u.Name, PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now, u.PresenceIsIdle)))
             .Where(p => p.Status != "off")
             .OrderBy(p => p.Status == "on" ? 0 : p.Status == "busy" ? 1 : 2).ThenBy(p => p.Name)
             .ToList();

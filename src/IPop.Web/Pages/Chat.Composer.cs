@@ -20,9 +20,90 @@ public partial class Chat
     private async Task OnComposerInput()
     {
         await ChatSvc.SendTypingAsync();
-        CheckMention();
+        await CheckMentionAsync();
         await GrowComposer();
     }
+
+    /// Picks from the @-popup, kept beside the plain-text composer ("@Full Name" in the
+    /// textarea). Converted into @[Name](u:GUID) tokens only when the message is sent.
+    private List<MentionSegment> pickedMentions = [];
+    /// The "@query" (or "#query") under the caret while the popup is serving it.
+    private ActiveMentionToken? activeMention;
+    private IPop.Web.Components.Chat.MentionPopup? mentionPopupRef;
+    private bool mentionShowAll;
+    /// Keyboard selection inside the project/task fallback list.
+    private int mentionAltIndex;
+
+    private int MentionAllCount => Math.Max(0, (ChatSvc.ActiveRoom?.Members.Count ?? 1) - 1);
+
+    /// Wire content for drafts: keeps picked mentions as real tokens across room switches.
+    private string ComposerWireText() => ComposerMentionModel.ToWire(messageText, ComposerMentionModel.Prune(messageText, pickedMentions));
+
+    private void LoadComposerFromWire(string? wire)
+    {
+        (messageText, pickedMentions) = ComposerMentionModel.FromWire(wire);
+        activeMention = null;
+        CloseMentionPopup(true);
+    }
+
+    /// Keys the JS composer handler routes here while a suggestion list is on screen, so
+    /// Enter/Tab pick instead of sending and Esc closes only the list.
+    [Microsoft.JSInterop.JSInvokable]
+    public async Task OnJsMentionKey(string key)
+    {
+        if (mentionPopupOpen && mentionPopupRef is not null)
+        {
+            switch (key)
+            {
+                case "ArrowDown": mentionPopupRef.MoveDown(); return;
+                case "ArrowUp": mentionPopupRef.MoveUp(); return;
+                case "Enter" or "Tab": await mentionPopupRef.PickSelected(); return;
+                case "Escape": CloseMentionPopup(true); StateHasChanged(); return;
+            }
+            return;
+        }
+
+        // Project (@) / task (#) fallback list.
+        var projects = mentionTrigger == '@' ? CurrentProjectMatches() : [];
+        var tasks = mentionTrigger == '#' && mentionTaskProject is not null ? CurrentTaskMatches() : [];
+        var count = mentionTrigger == '#' ? tasks.Count : projects.Count;
+        switch (key)
+        {
+            case "ArrowDown" when count > 0: mentionAltIndex = (mentionAltIndex + 1) % count; break;
+            case "ArrowUp" when count > 0: mentionAltIndex = (mentionAltIndex - 1 + count) % count; break;
+            case "Enter" or "Tab" when count > 0:
+                var i = Math.Clamp(mentionAltIndex, 0, count - 1);
+                if (mentionTrigger == '#') await SelectTaskMention(tasks[i]); else await SelectProjectMention(projects[i]);
+                break;
+            case "Escape":
+                activeMention = null; // hides the list until the next keystroke re-detects
+                break;
+        }
+        StateHasChanged();
+    }
+
+    /// Caret moved without typing (click, arrows, Home/End): re-evaluate the token under it.
+    [Microsoft.JSInterop.JSInvokable]
+    public void OnJsComposerCaret(int caret)
+    {
+        var wasOpen = MentionListVisible;
+        EvaluateMention(Math.Clamp(caret, 0, messageText.Length));
+        if (wasOpen || MentionListVisible) StateHasChanged();
+    }
+
+    /// Any suggestion list (people, projects or tasks) is on screen. The JS key handler
+    /// reads this through data-mention-open so Enter picks instead of sending.
+    private bool MentionListVisible =>
+        activeMention is not null &&
+        (mentionPopupOpen || CurrentProjectMatches().Count > 0 || (mentionTrigger == '#' && mentionTaskProject is not null && CurrentTaskMatches().Count > 0));
+
+    private List<IPop.Application.Projects.ProjectListDto> CurrentProjectMatches()
+        => activeMention is null || mentionPopupOpen ? [] :
+           projectMentionCandidates.Where(p => p.Name.ToLowerInvariant().Contains(mentionFilter)).Take(5).ToList();
+
+    private List<IPop.Application.Projects.ProjectTaskDto> CurrentTaskMatches()
+        => activeMention is null ? [] :
+           taskMentionCandidates.Where(t => t.Title.ToLowerInvariant().Contains(mentionFilter)).Take(8).ToList();
 
     /// Guarded: a browser holding a cached older ipop.js would otherwise throw on
     /// every keystroke and surface Blazor's unhandled-error bar.
@@ -42,16 +123,19 @@ public partial class Chat
     [Microsoft.JSInterop.JSInvokable]
     public async Task OnJsEnter()
     {
+        // Belt and braces: if the list opened after the DOM attribute was last rendered,
+        // Enter still picks instead of sending.
+        if (MentionListVisible) { await OnJsMentionKey("Enter"); return; }
         await SendMessage();
     }
 
     [Microsoft.JSInterop.JSInvokable]
     public void OnJsEscape()
     {
-        if (replyToMsg is not null) CancelReply();
-        if (editingMsgId is not null) CancelEdit();
-        if (ctxMsgId is not null) CloseCtx();
-        if (drawerOpen) CloseDetail();
+        // The document-level shortcut in MainLayout also fires for this same press; the
+        // shared guard keeps one keystroke from peeling two layers.
+        if (!TryBeginChatEscape()) return;
+        HandleChatEscape();
         StateHasChanged();
     }
 
@@ -60,7 +144,12 @@ public partial class Chat
         var hasText = !string.IsNullOrWhiteSpace(messageText);
         var hasAttachments = pendingAttachments.Count > 0;
         if (!hasText && !hasAttachments) return;
-        var text = hasText ? messageText.Trim() : ""; // no sentinel; the bubble renders attachments directly
+        // no sentinel; the bubble renders attachments directly. Picked "@Name" text becomes
+        // @[Name](u:GUID) tokens here so the server records mentions and notifies.
+        var text = hasText ? ComposerMentionModel.ToWire(messageText.Trim(), ComposerMentionModel.Prune(messageText, pickedMentions)) : "";
+        pickedMentions = [];
+        activeMention = null;
+        CloseMentionPopup(true);
         // ipop-38b: snapshot the room up front with everything else — reading
         // ActiveRoomId after the awaits below can pick up a room the user
         // switched to mid-send and delete THEIR draft (silent data loss).
@@ -74,6 +163,8 @@ public partial class Chat
         var toRevoke = pendingAttachments.Where(p => !string.IsNullOrEmpty(p.PreviewUrl)).Select(p => p.PreviewUrl!).ToList();
         pendingAttachments = [];
         scrollToBottom = true;
+        // Clicking Send moves focus to the button; hand it back so typing can continue.
+        focusComposerPending = true;
 
         // Tell the room we stopped typing before the message lands, otherwise remote
         // clients keep the indicator up until their 8s local timeout expires.
@@ -126,45 +217,72 @@ public partial class Chat
         catch { /* bounded: picker simply stays user-only if load fails */ }
     }
 
-    private void CheckMention()
+    private sealed record ComposerCaret(int Start, int End);
+
+    private async Task<int> ComposerCaretAsync()
     {
-        if (string.IsNullOrEmpty(messageText)) { CloseMentionPopup(false); return; }
-
-        // Find whichever trigger is active nearer the caret.
-        var atIdx = messageText.LastIndexOf('@');
-        var hashIdx = messageText.LastIndexOf('#');
-        var useTaskTrigger = hashIdx > atIdx && hashIdx >= 0;
-
-        var idx = useTaskTrigger ? hashIdx : atIdx;
-        if (idx < 0 || idx == messageText.Length - 1)
+        try
         {
-            mentionFilter = "";   // reset stale filter on bare/absent trigger
+            var c = await JS.InvokeAsync<ComposerCaret>("ipop.caretOf", composerRef);
+            if (c is not null && c.Start >= 0 && c.Start <= messageText.Length) return c.Start;
+        }
+        catch { /* fall back to end of text */ }
+        return messageText.Length;
+    }
+
+    /// Caret-aware: the '@' (people/projects) or '#' (tasks) token under the caret drives
+    /// the popup, only when the trigger starts a word so e-mail addresses never match.
+    private async Task CheckMentionAsync()
+    {
+        pickedMentions = ComposerMentionModel.Prune(messageText, pickedMentions);
+        if (string.IsNullOrEmpty(messageText)) { activeMention = null; CloseMentionPopup(false); return; }
+        var caret = await ComposerCaretAsync();
+        EvaluateMention(caret);
+    }
+
+    private void EvaluateMention(int caret)
+    {
+        var at = ComposerMentionModel.DetectActiveAt(messageText, caret, '@');
+        var hash = ComposerMentionModel.DetectActiveAt(messageText, caret, '#');
+        // A finished pick ("@Ann Lee" or "@Ann Lee more words") is not an open query.
+        if (at is { } a && pickedMentions.Any(p => p is MentionSegment.User u
+                ? a.Query == u.Name || a.Query.StartsWith(u.Name + " ", StringComparison.Ordinal)
+                : a.Query == MentionSyntax.AllLabel || a.Query.StartsWith(MentionSyntax.AllLabel + " ", StringComparison.Ordinal)))
+            at = null;
+        var useTaskTrigger = hash is not null && (at is null || hash.Value.AtIndex > at.Value.AtIndex);
+        var active = useTaskTrigger ? hash : at;
+        if (active is null)
+        {
+            activeMention = null;
+            mentionFilter = "";
             CloseMentionPopup(true);
             return;
         }
-        mentionFilter = messageText[(idx + 1)..].ToLowerInvariant();
-        if (mentionFilter.Contains(' ') && mentionFilter.Length > 20) { CloseMentionPopup(true); return; }
+
+        var query = active.Value.Query;
+        if (activeMention?.AtIndex != active.Value.AtIndex || activeMention?.Query != query) mentionAltIndex = 0;
+        activeMention = active;
+        mentionFilter = query.ToLowerInvariant();
         mentionTrigger = useTaskTrigger ? '#' : '@';
 
-        // '@' — user candidates first (group rooms only), then projects when no member matches
         if (!useTaskTrigger)
         {
-            mentionSuggestions = ChatSvc.ActiveRoom?.Type == "group"
-                ? ChatSvc.ActiveRoom.Members
-                    .Where(m => m.Name.ToLowerInvariant().Contains(mentionFilter))
-                    .Take(10).ToList()
-                : [];
-            mentionPopupOpen = mentionSuggestions.Any();
+            // Group rooms: the members; DMs: the other person. Never yourself.
+            var me = GetCurrentUserNik();
+            var members = (ChatSvc.ActiveRoom?.Members ?? []).Where(m => m.Nik != me).ToList();
+            mentionSuggestions = ComposerMentionModel.Filter(members, query, 10).ToList();
+            mentionShowAll = IsGroupAdmin;
+            var allMatches = mentionShowAll && "all".StartsWith(mentionFilter, StringComparison.Ordinal);
+            mentionPopupOpen = mentionSuggestions.Count > 0 || allMatches;
             mentionTaskProject = null;
 
-            if (!mentionPopupOpen && !projectsLoadedOnce && Auth is not null && Auth.IsAuthenticated)
+            if (!mentionPopupOpen && query.Length > 0 && !projectsLoadedOnce && Auth is not null && Auth.IsAuthenticated)
                 _ = LoadProjectCandidatesIfNeeded().ContinueWith(_ => InvokeAsync(StateHasChanged));
         }
         else
         {
-            // '#' — task candidates from a selected project; pick the project by which
-            // one's name is nearest before '#', else fall back to the last project mention in text.
-            ResolveTaskSourceProject(hashIdx);
+            // '#' — task candidates from the project already mentioned in this message.
+            ResolveTaskSourceProject(active.Value.AtIndex);
             mentionSuggestions = [];
             mentionPopupOpen = false;
         }
@@ -216,63 +334,94 @@ public partial class Chat
         catch { /* bounded: picker stays empty if load fails */ }
     }
 
-    private void SelectMention(IPop.Application.Chat.MemberDto member)
+    /// Replace the "@query" under the caret with display text, remember the pick, and put
+    /// the caret right after the inserted name.
+    private async Task ReplaceActiveMention(string display, MentionSegment? picked, char trigger = '@')
     {
-        var atIdx = messageText.LastIndexOf('@');
-        if (atIdx >= 0) messageText = messageText[..atIdx] + $"@{member.Name} ";
-        mentionPopupOpen = false;
+        var active = activeMention
+            ?? ComposerMentionModel.DetectActiveAt(messageText, messageText.Length, trigger)
+            ?? new ActiveMentionToken(messageText.Length, "");
+        if (active.AtIndex >= messageText.Length || messageText[active.AtIndex] != trigger)
+        {
+            // Opened from the "+" menu with no '@' typed yet: append one.
+            var sep = messageText.Length == 0 || char.IsWhiteSpace(messageText[^1]) ? "" : " ";
+            messageText += sep + trigger;
+            active = new ActiveMentionToken(messageText.Length - 1, "");
+        }
+        var (text, caret) = ComposerMentionModel.InsertDisplay(messageText, active, display);
+        if (text.Length > MentionSyntax.MaxContentLength) { CloseMentionPopup(true); return; }
+        messageText = text;
+        if (picked is not null && !pickedMentions.Contains(picked)) pickedMentions.Add(picked);
+        activeMention = null;
+        CloseMentionPopup(true);
+        StateHasChanged();
+        await Task.Yield(); // let the textarea receive the new value before placing the caret
+        try { await JS.InvokeVoidAsync("ipop.setCaret", composerRef, caret, caret); } catch { }
+        await GrowComposer();
     }
 
-    private void HandleMentionPick(IPop.Web.Components.Chat.MentionPopup.PopupPick pick)
+    private Task SelectMention(IPop.Application.Chat.MemberDto member)
+    {
+        var name = ComposerMentionModel.SafeName(member.Name);
+        if (name.Length == 0 || name.Length > MentionSyntax.MaxNameLength) return Task.CompletedTask;
+        return ReplaceActiveMention(name, new MentionSegment.User(member.UserId, name));
+    }
+
+    private async Task HandleMentionPick(IPop.Web.Components.Chat.MentionPopup.PopupPick pick)
     {
         if (pick.IsAll)
         {
-            // Insert @all directly; server will expand it.
-            var atIdx = messageText.LastIndexOf('@');
-            if (atIdx >= 0) messageText = messageText[..atIdx] + "@all ";
-            mentionPopupOpen = false;
+            // Owner/admin only (the server enforces the same rule).
+            if (IsGroupAdmin) await ReplaceActiveMention(MentionSyntax.AllLabel, new MentionSegment.All());
+            else CloseMentionPopup(true);
             return;
         }
-        if (pick.Member is not null) SelectMention(pick.Member);
+        if (pick.Member is not null) await SelectMention(pick.Member);
     }
 
-    private void OpenMention()
+    /// "+" menu → Mention: insert an '@' at the caret and open the list.
+    private async Task OpenMention()
     {
-        if (ChatSvc.ActiveRoom?.Type != "group") return;
-        // Seed with empty filter to show all candidates (or @all if ShowAll wiring is added later).
-        mentionFilter = "";
-        mentionTrigger = '@';
-        mentionSuggestions = ChatSvc.ActiveRoom.Members
-            .Where(m => m.Nik != GetCurrentUserNik())
-            .Take(10).ToList();
-        mentionPopupOpen = mentionSuggestions.Any();
-        mentionTaskProject = null;
+        if (ChatSvc.ActiveRoom is null) return;
+        var caret = await ComposerCaretAsync();
+        var needsSpace = caret > 0 && !char.IsWhiteSpace(messageText[caret - 1]);
+        var insert = (needsSpace ? " " : "") + "@";
+        messageText = messageText[..caret] + insert + messageText[caret..];
+        caret += insert.Length;
+        EvaluateMention(caret);
+        StateHasChanged();
+        await Task.Yield();
+        try { await JS.InvokeVoidAsync("ipop.setCaret", composerRef, caret, caret); } catch { }
     }
 
     // ipop-30: insert a bounded p:GUID project mention token so it renders as a clickable chip
-    private void SelectProjectMention(IPop.Application.Projects.ProjectListDto proj)
+    private async Task SelectProjectMention(IPop.Application.Projects.ProjectListDto proj)
     {
-        if (!string.IsNullOrEmpty(proj.Name))
-        {
-            var token = $"@[{proj.Name.Replace("[", "").Replace("]", "")}](p:{proj.Id:D})";
-            var atIdx = messageText.LastIndexOf('@');
-            if (atIdx >= 0 && messageText.Length - mentionFilter.Length - 1 + token.Length <= MentionSyntax.MaxContentLength)
-                messageText = messageText[..atIdx] + token + " ";
-        }
-        mentionPopupOpen = false;
+        var name = ComposerMentionModel.SafeName(proj.Name ?? "");
+        if (name.Length == 0) { CloseMentionPopup(true); return; }
+        // Token text is kept verbatim in the textarea ("@" is stripped by InsertDisplay's prefix).
+        await ReplaceActiveMention($"[{name}](p:{proj.Id:D})", null);
     }
 
     // ipop-30: insert a bounded t:GUID task mention token (#trigger path) so it becomes a clickable chip
-    private void SelectTaskMention(IPop.Application.Projects.ProjectTaskDto task)
+    private async Task SelectTaskMention(IPop.Application.Projects.ProjectTaskDto task)
     {
-        if (!string.IsNullOrEmpty(task.Title))
-        {
-            var token = $"@[{task.Title.Replace("[", "").Replace("]", "")}](t:{task.Id:D})";
-            var hashIdx = messageText.LastIndexOf('#');
-            if (hashIdx >= 0 && messageText.Length - mentionFilter.Length - 1 + token.Length <= MentionSyntax.MaxContentLength)
-                messageText = messageText[..hashIdx] + token + " ";
-        }
-        mentionPopupOpen = false;
+        var title = ComposerMentionModel.SafeName(task.Title ?? "");
+        if (title.Length == 0) { CloseMentionPopup(true); return; }
+        var active = activeMention ?? ComposerMentionModel.DetectActiveAt(messageText, messageText.Length, '#');
+        if (active is null) { CloseMentionPopup(true); return; }
+        // '#query' → '@[Title](t:GUID) '
+        var token = $"@[{title}](t:{task.Id:D}) ";
+        var end = Math.Min(messageText.Length, active.Value.AtIndex + 1 + active.Value.Query.Length);
+        var text = messageText[..active.Value.AtIndex] + token + messageText[end..];
+        if (text.Length > MentionSyntax.MaxContentLength) { CloseMentionPopup(true); return; }
+        var caret = active.Value.AtIndex + token.Length;
+        messageText = text;
+        activeMention = null;
+        CloseMentionPopup(true);
+        StateHasChanged();
+        await Task.Yield();
+        try { await JS.InvokeVoidAsync("ipop.setCaret", composerRef, caret, caret); } catch { }
     }
 
     // ---- File Upload (Fix 3) ----
@@ -282,15 +431,27 @@ public partial class Chat
     private async Task OpenUserProfile(string? nik)
     {
         if (string.IsNullOrWhiteSpace(nik)) return;
+        // The DM partner's card IS the DM's info page — show that instead of a second copy.
+        var dmOther = ChatSvc.ActiveRoom?.Type == "dm"
+            ? ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik())
+            : null;
+        if (dmOther is not null && string.Equals(dmOther.Nik, nik, StringComparison.OrdinalIgnoreCase))
+        {
+            if (drawerOpen) NavigateDetail(DetailPanelView.Main);
+            else OpenDetailView(DetailPanelView.Main);
+            return;
+        }
+        // From inside the drawer (member rows) push so Back returns there; otherwise fresh.
+        if (drawerOpen) NavigateDetail(DetailPanelView.Person);
+        else OpenDetailView(DetailPanelView.Person);
         profilePerson = null;
         personFromRoom = ChatSvc.ActiveRoom != null;
-        panelView = DetailPanelView.Person;
-        drawerOpen = true;
         StateHasChanged();
         try
         {
             var d = await Auth.GetAsync<IPop.Web.Services.DirectoryEmployeeDto>($"/api/chat/users/{Uri.EscapeDataString(nik)}");
-            if (d is not null) profilePerson = MapEmployee(d);
+            // Ignore a late answer if the user already moved on.
+            if (d is not null && panelView == DetailPanelView.Person) profilePerson = MapEmployee(d);
         }
         catch { profilePerson = null; }
         StateHasChanged();
@@ -298,17 +459,7 @@ public partial class Chat
 
     private Task CloseUserProfile()
     {
-        profilePerson = null;
-        if (personFromRoom)
-        {
-            panelView = DetailPanelView.Main;
-            personFromRoom = false;
-        }
-        else
-        {
-            drawerOpen = false;
-        }
-        StateHasChanged();
+        GoBackDetail();
         return Task.CompletedTask;
     }
 

@@ -1,167 +1,132 @@
 @using IPop.Application.Projects
-@using IPop.Web.Services
-@inject ToastService Toasts
 
-<div>
-    @if (Workload is not null)
+<section class="v6-workload" aria-labelledby="workload-heading">
+    <div class="v6-workload__header">
+        <div>
+            <h2 id="workload-heading">Team workload</h2>
+            <p>Capacity: 8 tasks per person</p>
+        </div>
+        @if (CanManageMembers)
+        {
+            <button type="button" class="v6-workload__add" @onclick="() => OnAddMember.InvokeAsync()">
+                <i data-lucide="plus" aria-hidden="true"></i> Add member
+            </button>
+        }
+    </div>
+
+    @if (Workload is null)
     {
-        <div class="workload-kpis">
-            <div class="workload-kpi-card">
-                <div class="k-num">@Workload.TotalTasks</div>
-                <div class="k-lbl">Total Tasks</div>
-            </div>
-            <div class="workload-kpi-card">
-                <div class="k-num" style="color:#d97706">@Workload.DoingTasks</div>
-                <div class="k-lbl">In Progress</div>
-            </div>
-            <div class="workload-kpi-card">
-                <div class="k-num" style="color:#0A84FF">@Workload.ReviewTasks</div>
-                <div class="k-lbl">In Review</div>
-            </div>
-            <div class="workload-kpi-card">
-                <div class="k-num" style="color:#16a34a">@Workload.DoneTasks</div>
-                <div class="k-lbl">Completed</div>
-            </div>
-            <div class="workload-kpi-card">
-                <div class="k-num">@Workload.TotalEstimatedHours h</div>
-                <div class="k-lbl">Total Estimated Hours</div>
-            </div>
-            <div class="workload-kpi-card">
-                <div class="k-num" style="color:var(--accent-ink)">@Workload.DoneEstimatedHours h</div>
-                <div class="k-lbl">Completed Hours</div>
-            </div>
-        </div>
-
-        <div style="display:flex;align-items:center;justify-content:space-between;margin:24px 0 14px">
-            <h3 style="font-size:15px;font-weight:700;margin:0;display:flex;align-items:center;gap:8px">
-                <i data-lucide="users"></i> Workload Capacity by Team Member
-            </h3>
-            <span style="font-size:12px;color:var(--ink-3)">@(Workload.ByAssignee.Count) Registered Members</span>
-        </div>
-
-        @if (Workload.ByAssignee.Count == 0)
-        {
-            <div class="tree-empty" style="padding:32px 16px;text-align:center">
-                <i data-lucide="user-x" style="width:28px;height:28px;margin-bottom:8px"></i>
-                <div>No tasks assigned to team members yet.</div>
-            </div>
-        }
-        else
-        {
-            <div class="workload-members-grid">
-                @foreach (var a in Workload.ByAssignee)
-                {
-                    var pct = Workload.TotalTasks > 0 ? (a.TaskCount * 100 / Workload.TotalTasks) : 0;
-                    var (capLabel, capClass, capIcon) = GetCapacityInfo(a.TaskCount, a.EstimatedHours);
-                    var isExpanded = expandedAssignees.Contains(a.UserId);
-                    var memberTasks = AllTasks.Where(t => t.Assignees.Any(x => x.UserId == a.UserId)).ToList();
-
-                    <div class="workload-member-card">
-                        <div class="wm-head">
-                            <div class="team-avatar-circ" style="width:38px;height:38px;font-size:13px;background:@ProjectUiHelpers.GetAvatarBg(a.Name)">
-                                @ProjectUiHelpers.GetInitials(a.Name)
-                            </div>
-                            <div style="min-width:0;flex:1">
-                                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                                    <div style="font-weight:700;font-size:13.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">@a.Name</div>
-                                    <span class="wm-capacity-badge @capClass">
-                                        <i data-lucide="@capIcon" style="width:10px;height:10px"></i>
-                                        <span>@capLabel</span>
-                                    </span>
-                                </div>
-                                <div style="font-size:11.5px;color:var(--ink-3);margin-top:2px">@a.TaskCount tasks · @a.EstimatedHours h estimate</div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-3);margin-bottom:4px">
-                                <span>Workload Distribution</span>
-                                <span>@pct% (@a.TaskCount/@Workload.TotalTasks tasks)</span>
-                            </div>
-                            <div class="wm-bar">
-                                <div class="wm-bar-fill" style="width:@pct%"></div>
-                            </div>
-                        </div>
-
-                        @if (memberTasks.Count > 0)
-                        {
-                            <div>
-                                <button type="button" class="wm-accordion-btn" @onclick="() => ToggleMemberExpand(a.UserId)">
-                                    <i data-lucide="@(isExpanded ? "chevron-up" : "chevron-down")" style="width:12px;height:12px"></i>
-                                    <span>@(isExpanded ? "Hide Tasks" : $"View {memberTasks.Count} Tasks")</span>
-                                </button>
-
-                                @if (isExpanded)
-                                {
-                                    <div class="wm-tasks-dropdown">
-                                        @foreach (var mt in memberTasks)
-                                        {
-                                            <div class="wm-task-row" style="display:flex;align-items:center;justify-content:space-between" @onclick="() => OnTaskClick.InvokeAsync(mt)" title="@mt.Title (Click to edit)">
-                                                <div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1">
-                                                    <span class="col-dot @mt.Status.ToLower()" style="flex-shrink:0"></span>
-                                                    <span class="wm-task-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@mt.Title</span>
-                                                    @if (!string.IsNullOrEmpty(mt.Priority))
-                                                    {
-                                                        <span class="priority-badge @mt.Priority.ToLower()" style="font-size:9px;padding:1px 5px;flex-shrink:0">@mt.Priority</span>
-                                                    }
-                                                    <span class="status-pill @mt.Status.ToLower()" style="font-size:9px;padding:1px 6px;flex-shrink:0">@mt.Status</span>
-                                                </div>
-                                                <button type="button" class="btn btn-sm" style="padding:2px 6px;font-size:11px;border:none;background:transparent;color:var(--ink-3);cursor:pointer;flex-shrink:0" title="Remove assignment" @onclick="() => RemoveTaskFromMember(mt, a.UserId, a.Name)" @onclick:stopPropagation>
-                                                    <i data-lucide="x" style="width:13px;height:13px"></i>
-                                                </button>
-                                            </div>
-                                        }
-                                    </div>
-                                }
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
-        }
+        <p class="v6-workload__empty" role="status">Loading team workload…</p>
     }
     else
     {
-        <div style="padding:40px;text-align:center">
-            <i data-lucide="loader" class="spin" style="width:28px;height:28px;color:var(--accent)"></i>
-            <div style="margin-top:8px;font-size:13px;color:var(--ink-2)">Loading workload metrics...</div>
+        <div class="v6-workload__scroll">
+            <div class="v6-workload__table" role="table" aria-label="Team workload by member">
+                <div class="v6-workload__columns" role="row">
+                    <span role="columnheader">Member</span>
+                    <span role="columnheader">Tasks</span>
+                    <span role="columnheader">Status distribution</span>
+                    <span role="columnheader">Capacity</span>
+                    <span role="columnheader">Actions</span>
+                </div>
+                @foreach (var member in Workload.ByAssignee)
+                {
+                    var capacity = member.IsUnassigned ? "Needs owner" : GetCapacity(member.TaskCount - member.DoneCount);
+                    var memberId = member.IsUnassigned ? (Guid?)null : member.UserId;
+                    var todoWidth = GetSegmentWidth(member.TodoCount, 0);
+                    var doingWidth = GetSegmentWidth(member.DoingCount, member.TodoCount);
+                    var reviewWidth = GetSegmentWidth(member.ReviewCount, member.TodoCount + member.DoingCount);
+                    var doneWidth = GetSegmentWidth(member.DoneCount, member.TodoCount + member.DoingCount + member.ReviewCount);
+                    <div class="v6-workload__row" role="row" @key="(member.UserId, member.IsUnassigned)">
+                        <div class="v6-workload__person" role="cell">
+                            <span class="v6-workload__avatar" style="background:@(member.IsUnassigned ? "var(--tray)" : ProjectUiHelpers.GetAvatarBg(member.Name))" aria-hidden="true">
+                                @if (member.IsUnassigned)
+                                {
+                                    <i data-lucide="user-round-question"></i>
+                                }
+                                else
+                                {
+                                    @ProjectUiHelpers.GetInitials(member.Name)
+                                }
+                            </span>
+                            <span class="v6-workload__identity">
+                                <strong>@member.Name</strong>
+                                <span>@(member.IsUnassigned ? "No assignee" : string.IsNullOrWhiteSpace(member.Position) ? "Team member" : member.Position)</span>
+                            </span>
+                        </div>
+                        <div class="v6-workload__task-count" role="cell">
+                            <strong>@(member.TaskCount - member.DoneCount) open · @member.TaskCount total</strong>
+                            @if (member.OverdueCount > 0)
+                            {
+                                <span class="v6-workload__overdue">@member.OverdueCount overdue</span>
+                            }
+                        </div>
+                        <div class="v6-workload__distribution" role="cell">
+                            <div class="v6-workload__bar" role="img" aria-label="@GetDistributionLabel(member)">
+                                @if (member.TaskCount > 0)
+                                {
+                                    <span class="v6-workload__segment v6-workload__segment--todo" style="width:@todoWidth%" title="To do: @member.TodoCount"></span>
+                                    <span class="v6-workload__segment v6-workload__segment--doing" style="width:@doingWidth%" title="Doing: @member.DoingCount"></span>
+                                    <span class="v6-workload__segment v6-workload__segment--review" style="width:@reviewWidth%" title="Review: @member.ReviewCount"></span>
+                                    <span class="v6-workload__segment v6-workload__segment--done" style="width:@doneWidth%" title="Done: @member.DoneCount"></span>
+                                }
+                            </div>
+                            <div class="v6-workload__status-counts" aria-hidden="true">
+                                <span><i class="v6-workload__dot v6-workload__dot--todo"></i>@member.TodoCount To Do</span>
+                                <span><i class="v6-workload__dot v6-workload__dot--doing"></i>@member.DoingCount In Progress</span>
+                                <span><i class="v6-workload__dot v6-workload__dot--review"></i>@member.ReviewCount Review</span>
+                                <span><i class="v6-workload__dot v6-workload__dot--done"></i>@member.DoneCount Done</span>
+                            </div>
+                        </div>
+                        <div class="v6-workload__capacity" role="cell">
+                            <span class="v6-workload__capacity-badge v6-workload__capacity-badge--@capacity.ToLowerInvariant()">@capacity</span>
+                        </div>
+                        <div class="v6-workload__actions" role="cell">
+                            <button type="button" class="v6-workload__view" @onclick="() => OnViewTasks.InvokeAsync(memberId)" aria-label="View tasks for @member.Name">View tasks</button>
+                            @if (CanManageMembers && !member.IsUnassigned && !OwnerIds.Contains(member.UserId))
+                            {
+                                <button type="button" class="v6-workload__remove" @onclick="() => OnRemoveMember.InvokeAsync(member.UserId)" aria-label="Remove @member.Name from project" title="Remove member">
+                                    <i data-lucide="trash-2" aria-hidden="true"></i>
+                                </button>
+                            }
+                        </div>
+                    </div>
+                }
+                @if (Workload.ByAssignee.Count == 0)
+                {
+                    <p class="v6-workload__empty" role="status">No team members yet. Add a member to start tracking workload.</p>
+                }
+            </div>
         </div>
+        <p class="v6-workload__note">Each bar represents up to 8 tasks; extra tasks are reflected in the total and capacity label.</p>
     }
-</div>
+    @if (ProjectId != Guid.Empty)
+    {
+        <TimesheetCard ProjectId="ProjectId" Version="Workload" Class="v6-workload__timesheet" />
+    }
+</section>
 
 @code {
+    private const int CapacityTasks = 8;
+
     [Parameter] public ProjectWorkloadDto? Workload { get; set; }
-    [Parameter] public List<ProjectTaskDto> AllTasks { get; set; } = [];
-    [Parameter] public EventCallback<ProjectTaskDto> OnTaskClick { get; set; }
-    [Parameter] public EventCallback<(Guid TaskId, Guid UserId)> OnUnassign { get; set; }
-    [Parameter] public EventCallback<(Guid TaskId, Guid UserId)> OnReassign { get; set; }
+    [Parameter] public Guid ProjectId { get; set; }
+    [Parameter] public bool CanManageMembers { get; set; }
+    [Parameter] public IReadOnlySet<Guid> OwnerIds { get; set; } = new HashSet<Guid>();
+    [Parameter] public EventCallback OnAddMember { get; set; }
+    [Parameter] public EventCallback<Guid?> OnViewTasks { get; set; }
+    [Parameter] public EventCallback<Guid> OnRemoveMember { get; set; }
 
-    private HashSet<Guid> expandedAssignees = [];
-
-    private void ToggleMemberExpand(Guid userId)
+    private static string GetCapacity(int taskCount) => taskCount switch
     {
-        if (!expandedAssignees.Add(userId))
-        {
-            expandedAssignees.Remove(userId);
-        }
-    }
+        >= 5 => "Overloaded",
+        >= 3 => "Busy",
+        _ => "Available"
+    };
 
-    private async Task RemoveTaskFromMember(ProjectTaskDto task, Guid userId, string memberName)
-    {
-        await OnUnassign.InvokeAsync((task.Id, userId));
-        Toasts.ShowUndo(
-            $"Unassigned \"{task.Title}\" from {memberName}",
-            async () => await OnReassign.InvokeAsync((task.Id, userId)),
-            "Undo",
-            ms: 5000);
-    }
+    private static decimal GetSegmentWidth(int statusCount, int precedingTasks) =>
+        Math.Min(Math.Max(statusCount, 0), Math.Max(CapacityTasks - precedingTasks, 0)) * 100m / CapacityTasks;
 
-    private static (string Label, string CssClass, string Icon) GetCapacityInfo(int count, decimal hours)
-    {
-        if (count >= 5 || hours >= 40)
-            return ("Overloaded", "overloaded", "alert-triangle");
-        if (count >= 2 || hours >= 15)
-            return ("Optimal", "optimal", "check-circle-2");
-        return ("Available", "available", "check");
-    }
+    private static string GetDistributionLabel(AssigneeWorkloadDto member) =>
+        $"{member.Name}: {member.TaskCount} tasks, {member.TodoCount} to do, {member.DoingCount} doing, {member.ReviewCount} in review, {member.DoneCount} done; {member.OverdueCount} overdue. Capacity: 8 tasks.";
 }

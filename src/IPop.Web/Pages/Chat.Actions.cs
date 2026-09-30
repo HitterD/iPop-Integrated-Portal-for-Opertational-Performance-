@@ -22,7 +22,26 @@ public partial class Chat
         ctxNeedsPlacement = true;
     }
 
-    private void CloseCtx() => ctxMsgId = null;
+    private void CloseCtx()
+    {
+        ctxMsgId = null;
+        plusMenuOpen = false;
+        pickerOpen = false;
+        stickerOpen = false;
+        reactPickerMsgId = null;
+    }
+
+    /// v6 placeholder: "Message {first name}" in a DM, "Message {group name}" in a group.
+    private string ComposerPlaceholder
+    {
+        get
+        {
+            var name = GetActiveRoomName();
+            if (ChatSvc.ActiveRoom?.Type == "dm")
+                name = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+            return string.IsNullOrWhiteSpace(name) ? "Message" : $"Message {name}";
+        }
+    }
 
     // ---- Reply (Task 13.2) ----
 
@@ -42,7 +61,9 @@ public partial class Chat
         if (m is not null)
         {
             editingMsgId = msgId;
-            editText = m.Content;
+            // Mentions show as readable "@Name"; SaveEdit turns them back into tokens.
+            (editText, editPickedMentions) = ComposerMentionModel.FromWire(m.Content);
+            focusEditPending = true;
         }
         ctxMsgId = null;
     }
@@ -50,9 +71,22 @@ public partial class Chat
     private async Task SaveEdit()
     {
         if (editingMsgId is null) return;
-        await Auth.SendAsync(HttpMethod.Put, $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/messages/{editingMsgId}", new { content = editText });
+        var wire = ComposerMentionModel.ToWire(editText, ComposerMentionModel.Prune(editText, editPickedMentions));
+        await Auth.SendAsync(HttpMethod.Put, $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/messages/{editingMsgId}", new { content = wire });
         editingMsgId = null;
         editText = "";
+        editPickedMentions = [];
+    }
+
+    /// Mentions carried by the message being edited (see StartEdit / SaveEdit).
+    private List<IPop.Application.Chat.Mentions.MentionSegment> editPickedMentions = [];
+
+    /// Ctrl/Cmd+Enter saves; plain Enter keeps adding lines. Esc is handled by the chat
+    /// escape chain (HandleChatEscape → CancelEdit).
+    private async Task OnEditKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && (e.CtrlKey || e.MetaKey))
+            await SaveEdit();
     }
 
     private void CancelEdit()
@@ -117,7 +151,7 @@ public partial class Chat
         }
         else
         {
-            Toasts.Show("Microphone permission is required to record audio.", ToastKind.Error);
+            Toasts.Show("Microphone permission is required to record audio.", ToastKind.Warning);
         }
     }
 
@@ -542,10 +576,12 @@ public partial class Chat
     {
         ctxMsgId = null;
         if (ChatSvc.ActiveRoomId is null) return;
-        if (IsMsgPinned(msgId))
-            await Auth.SendAsync(HttpMethod.Delete, $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/pins/{msgId}");
-        else
-            await Auth.SendAsync(HttpMethod.Post, $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/pins/{msgId}");
+        var unpin = IsMsgPinned(msgId);
+        var res = await Auth.SendAsync(unpin ? HttpMethod.Delete : HttpMethod.Post, $"/api/chat/rooms/{ChatSvc.ActiveRoomId}/pins/{msgId}");
+        if (res.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            Toasts.Show(unpin ? "Only whoever pinned it or a group admin can unpin this message." : "You can't pin messages in this conversation.", ToastKind.Error);
+        else if (!res.IsSuccessStatusCode)
+            Toasts.Show(unpin ? "Could not unpin that message." : "Could not pin that message.", ToastKind.Error);
         await LoadPinnedMessagesAsync();
     }
 
@@ -573,11 +609,18 @@ public partial class Chat
 
     private async Task StartCallWith(string? nik)
     {
-        if (string.IsNullOrWhiteSpace(nik)) return;
+        if (string.IsNullOrWhiteSpace(nik))
+        {
+            Toasts.Show("Could not start call: Contact NIK is missing.", ToastKind.Error);
+            return;
+        }
         var room = await CallStateSvc.CreateAsync(nik);
         if (room is null)
         {
-            Toasts.Show("Could not start call. Make sure the contact is registered and active.", ToastKind.Error);
+            var msg = !string.IsNullOrWhiteSpace(CallStateSvc.LastError)
+                ? CallStateSvc.LastError
+                : "Could not start call. Make sure the contact is registered and active.";
+            Toasts.Show(msg, ToastKind.Error);
         }
     }
 }

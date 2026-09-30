@@ -20,7 +20,7 @@
         {
             var senderMember = ChatSvc.ActiveRoom?.Members.FirstOrDefault(m => m.Nik == Message.SenderNik);
             <div class="sender">
-                <span class="sender-name">@Message.SenderName</span>
+                <span class="sender-name" style="color:@Color(Message.SenderNik)">@Message.SenderName</span>
                 @if (senderMember?.Role is "owner")
                 {
                     <span class="role-badge owner">Owner</span>
@@ -31,8 +31,9 @@
                 }
             </div>
         }
-        <div class="bubble @BubbleModifierClass">
+        <div class="bubble @BubbleModifierClass @(MentionsMe ? "mention-me" : "") @(Message.IsDeleted ? "deleted" : "")">
             @if (Message.Type == "emergency") { <i data-lucide="alert-triangle"></i> }
+            @if (Message.Type == "system") { <i data-lucide="@SystemIcon" class="sys-icon"></i> }
             @if (IsForwarded)
             {
                 <div class="forwarded-tag" title="@(string.IsNullOrEmpty(Message.ForwardedFromSenderName) ? "This message was forwarded from another conversation" : $"Forwarded from {Message.ForwardedFromSenderName}")">
@@ -43,7 +44,7 @@
             {
                 <div class="reply-quote"><div class="rq-name">@Message.ReplyPreview.SenderName</div>@Message.ReplyPreview.Content</div>
             }
-            @if (Message.IsDeleted) { <em class="deleted-text">@Message.Content</em> }
+            @if (Message.IsDeleted) { <em class="deleted-text"><i data-lucide="ban"></i> @Message.Content</em> }
             else if (Message.Type == "sticker") { <div class="sticker-msg"><div class="sticker-big"><i data-lucide="@Message.Content"></i></div></div> }
             else if (Message.Type == "event")
             {
@@ -93,23 +94,20 @@
                     </div>
                 }
             }
-            <span class="time">
-                @Message.CreatedAt.ToLocalTime().ToString("HH:mm")
-                @if (Message.EditedAt is not null) { <span class="edited">(edited)</span> }
-                @if (isSent && (ShowDeliveryStatus || isPending || isFailed))
-                {
-                    var ds = Message.DeliveryStatus;
-                    var statusLabel = isPending ? "Sending" : isFailed ? "Not sent" : ds == "read" ? "Read" : ds == "delivered" ? "Delivered" : "Sent";
-                    <span class="msg-status @(isPending ? "pending" : isFailed ? "failed" : ds == "read" ? "read" : ds == "delivered" ? "delivered" : "sent")" title="@statusLabel" aria-label="@statusLabel">
-                        @if (isPending) { <i data-lucide="clock"></i> }
-                        else if (isFailed) { <i data-lucide="alert-circle"></i> }
-                        else if (ds == "read") { <i data-lucide="check-check"></i> }
-                        else if (ds == "delivered") { <i data-lucide="check-check"></i> }
-                        else { <i data-lucide="check"></i> }
-                    </span>
-                }
-            </span>
         </div>
+        @* v6 meta line under the bubble: pin/bookmark marks · HH:mm · delivery status. *@
+        <span class="time v6-meta">
+            @if (IsPinned) { <i data-lucide="pin" class="meta-pin"></i> }
+            @Message.CreatedAt.ToLocalTime().ToString("HH:mm")
+            @if (Message.EditedAt is not null) { <span class="edited">· edited</span> }
+            @* Group bubbles with readers show the clickable avatar stack (SeenIndicator) instead. *@
+            @if (isSent && (ShowDeliveryStatus || IsGroup || isPending || isFailed) && !HasGroupReaders)
+            {
+                var ds = Message.DeliveryStatus;
+                var statusLabel = isPending ? "Sending" : isFailed ? "Not sent" : (ds == "read" ? "Read" : ds == "delivered" ? "Delivered" : "Sent");
+                <span class="msg-status @(isPending ? "pending" : isFailed ? "failed" : ds == "read" ? "read" : ds == "delivered" ? "delivered" : "sent")" title="@statusLabel" aria-label="@statusLabel">· @statusLabel</span>
+            }
+        </span>
         @if (Reactions.Count > 0)
         {
             <div class="reactions">
@@ -143,6 +141,16 @@
     [Parameter] public EventCallback<AttachmentDto> OnAttachmentOpen { get; set; }
     [Parameter] public EventCallback<Guid> OnEventOpen { get; set; }
     [Parameter] public bool ShowDeliveryStatus { get; set; } = false;
+    /// Group rooms show a receipt on every own message: "Read by 2 of 5" / "Read by all".
+    [Parameter] public bool IsGroup { get; set; }
+
+    private bool HasGroupReaders => IsGroup && !isPending && !isFailed && Message.ReadCount is > 0;
+    [Parameter] public bool IsPinned { get; set; }
+
+    /// Orange v6 ring on received messages that mention the viewer (directly or via @all).
+    private bool MentionsMe =>
+        !isSent && !Message.IsDeleted && Auth.Me?.Nik is { Length: > 0 } me
+        && (Message.MentionsAll || (Message.MentionedNiks?.Contains(me) ?? false));
 
     private IReadOnlyList<AttachmentDto> Attachments => Message.Attachments ?? Array.Empty<AttachmentDto>();
     private IReadOnlyList<ReactionGroupDto> Reactions => Message.Reactions ?? Array.Empty<ReactionGroupDto>();
@@ -198,10 +206,22 @@
                 return "";
             var text = Message.Content.StartsWith("[forwarded]") ? Message.Content.Substring("[forwarded]".Length).TrimStart() : Message.Content;
             var dir = new SimpleDir(ChatSvc.ActiveRoom);
-            var html = MentionRenderer.ToHtml(text, dir, ChatSvc.ActiveRoom?.Type == "group");
+            var html = MentionRenderer.ToHtml(text, dir, ChatSvc.ActiveRoom?.Type == "group", Auth.Me?.Nik, LegacyMentionNames(ChatSvc.ActiveRoom));
             return ChatFormatters.FormatMarkdown(html);
         }
     }
+
+    // Icon for the centred system pill, keyed off the server's fixed templates (ChatService).
+    private string SystemIcon => Message.Content switch
+    {
+        var c when c.EndsWith(" left the group") => "log-out",
+        var c when c.Contains(" added ") => "user-plus",
+        var c when c.Contains(" removed ") => "user-minus",
+        var c when c.Contains("'s role to ") => "shield",
+        var c when c.EndsWith(" pinned a message") => "pin",
+        var c when c.Contains("created") => "sparkles",
+        _ => "info",
+    };
 
     private static IPop.Application.Notes.NoteCardDto? NoteCard(MessageDto m)
     {
@@ -216,6 +236,13 @@
     };
     private static bool IsPollMessage(MessageDto m) => !string.IsNullOrEmpty(m.Content) && m.Content.StartsWith("[poll]");
     private static string ExtractPollJson(string? content) => string.IsNullOrEmpty(content) ? "" : content.StartsWith("[poll]") ? content.Substring(6) : "";
+
+    /// Room members' full names, so legacy plain-text "@Full Name" highlights as one unit.
+    /// Only needed when the message actually has a loose '@' that is not a token.
+    private IReadOnlyList<(string Nik, string Name)>? LegacyMentionNames(ChatRoomDto? room)
+        => room?.MentionDirectory is { Count: > 0 } dir && Message.Content.Replace("@[", "").Contains('@')
+            ? dir.Select(d => (d.Nik, d.Name)).ToList()
+            : null;
 
     private sealed class SimpleDir : IMentionDirectory
     {

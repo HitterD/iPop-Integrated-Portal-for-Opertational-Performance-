@@ -8,7 +8,8 @@ public record CreateCallRequest(string PeerNik, string? Quality = null);
 public record CallSignalRequest(Guid CallId, string Action, bool? IsMuted = null, bool? IsScreenSharing = null);
 
 /// WebRTC peer-to-peer signaling packet (offer, answer, candidate) passed over SignalR.
-public record WebRtcSignalDto(Guid CallId, string Type, string Payload);
+/// From is the sender's hub connection, stamped by the server so a callee can stick to one peer.
+public record WebRtcSignalDto(Guid CallId, string Type, string Payload, string? From = null);
 
 /// A participant in a call (with name resolved for the UI).
 public record CallParticipantDto(
@@ -28,7 +29,14 @@ public record CallRoomDto(
     string? Quality,
     IReadOnlyList<CallParticipantDto> Participants,
     string? LiveKitUrl = null,
-    string? LiveKitToken = null);
+    string? LiveKitToken = null,
+    // Group calls (Kind == "group"): the chat group, its name and avatar for the ring card/banner.
+    Guid? ChatRoomId = null,
+    string? Title = null,
+    string? AvatarColor = null,
+    string? AvatarUrl = null,
+    // LiveKit room name ("call-{id:N}") when a token was minted.
+    string? LiveKitRoom = null);
 
 /// One history row (grouped by date on the UI).
 public record CallHistoryDto(
@@ -39,7 +47,9 @@ public record CallHistoryDto(
     DateTime StartedAt,
     DateTime EndedAt,
     string PeerName,
-    string? PeerNik = null);
+    string? PeerNik = null,
+    // Group calls: the chat group (PeerName is then the group name and PeerNik is null).
+    Guid? ChatRoomId = null);
 
 public record CallHistoryPage(IReadOnlyList<CallHistoryDto> Items, int Total, int Page, int PageSize);
 
@@ -53,6 +63,15 @@ public static class CallErrors
     public const string NotParticipant = "not_participant";
     public const string InvalidSignal = "invalid_signal";
     public const string CallAlreadyEnded = "call_already_ended";
+    public const string GroupNotFound = "group_not_found";
+    public const string NotGroupMember = "not_group_member";
+    public const string MediaUnavailable = "media_unavailable";
+}
+
+public static class CallKind
+{
+    public const string User = "user";
+    public const string Group = "group";
 }
 
 public static class CallStatus

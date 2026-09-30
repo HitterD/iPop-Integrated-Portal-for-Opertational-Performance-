@@ -1,4 +1,5 @@
 @page "/projects"
+@page "/projects/overview"
 @page "/projects/{ProjectId:guid}"
 @using Microsoft.AspNetCore.Authorization
 @using IPop.Web.Services
@@ -14,7 +15,7 @@
 
 <PageTitle>Project Management - iPop</PageTitle>
 
-<div class="proj-workspace">
+<div class="proj-workspace @(mDetail ? "m-detail" : "")">
     @* Left Project Navigator Sidebar *@
     <ProjectSidebar
         Projects="filteredProjects"
@@ -24,7 +25,9 @@
         SearchQuery="@searchProjectQuery"
         IsCollapsed="sidebarCollapsed"
         Loading="loading"
-        OnSelectProject="SelectProject"
+        PortfolioSelected="portfolioSelected"
+        OnSelectPortfolio="SelectPortfolio"
+        OnSelectProject="SelectProjectFromList"
         OnToggleSidebar="() => sidebarCollapsed = !sidebarCollapsed"
         OnYearChanged="SetYearFilter"
         OnSearchChanged="HandleProjectSearch"
@@ -32,7 +35,15 @@
 
     @* Main Project Workspace Canvas *@
     <main class="proj-canvas" id="project-detail" role="region" aria-label="Project Workspace">
-        @if (selectedProjectId == Guid.Empty || selectedProject is null)
+        @if (portfolioSelected)
+        {
+            <ProjectPortfolioView Data="portfolioData" Loading="portfolioLoading" Tasks="portfolioTasks"
+                                  OnRetry="LoadPortfolio" OnOpenProject="OpenPortfolioProject"
+                                  OnOpenTasks="OpenPortfolioTasks" OnOpenTask="OpenPortfolioTask"
+                                  OnTaskPage="LoadPortfolioTaskPage" OnProjectPage="LoadPortfolioProjectPage"
+                                  OnCloseTasks="ClosePortfolioTasks" />
+        }
+        else if (selectedProjectId == Guid.Empty || selectedProject is null)
         {
             <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;text-align:center">
                 <div style="width:64px;height:64px;border-radius:18px;background:var(--accent-soft);color:var(--accent-ink);display:flex;align-items:center;justify-content:center;margin-bottom:16px">
@@ -60,7 +71,8 @@
                 OnStatusChanged="HandleProjectStatusChange"
                 OnCopyLink="CopyProjectLink"
                 OnDeleteProject="HandleDeleteProject"
-                OnMarkCompleted="HandleMarkProjectCompleted" />
+                OnMarkCompleted="HandleMarkProjectCompleted"
+                OnBack="CloseMobileDetail" />
 
             @* Canvas View Switcher Bar (Overview / Board / List / Timeline / Workload) *@
             <div class="proj-canvas-bar">
@@ -77,6 +89,9 @@
                     <button class="proj-tab-btn @(tab == 2 ? "active" : "")" @onclick="() => SwitchTab(2)">
                         <i data-lucide="calendar-range"></i> Timeline
                     </button>
+                    <button class="proj-tab-btn @(tab == 6 ? "active" : "")" @onclick="() => SwitchTab(6)">
+                        <i data-lucide="calendar-days"></i> Calendar
+                    </button>
                     <button class="proj-tab-btn @(tab == 3 ? "active" : "")" @onclick="() => SwitchTab(3)">
                         <i data-lucide="users"></i> Workload
                     </button>
@@ -91,7 +106,7 @@
                         <input type="search" placeholder="Search tasks or tags" aria-label="Search tasks" @bind="taskSearchQuery" @bind:event="oninput" />
                     </div>
                     <div class="proj-filter-wrap">
-                        <button type="button" class="ghost-btn @(ActiveTaskFilterCount > 0 ? "on" : "")" aria-expanded="@filterOpen" @onclick="() => filterOpen = !filterOpen">
+                        <button type="button" class="ghost-btn @(ActiveTaskFilterCount > 0 ? "on" : "")" aria-expanded="@(filterOpen ? "true" : "false")" @onclick="() => filterOpen = !filterOpen">
                             <i data-lucide="list-filter"></i>Filter
                             @if (ActiveTaskFilterCount > 0) { <span class="n">@ActiveTaskFilterCount</span> }
                         </button>
@@ -100,6 +115,14 @@
                             <div class="proj-filter-pop" @onclick:stopPropagation="true">
                                 <label class="pf-row"><input type="checkbox" @bind="myTasksOnly" /><i data-lucide="user"></i>My tasks</label>
                                 <label class="pf-row"><input type="checkbox" @bind="overdueOnly" /><i data-lucide="clock-alert"></i>Overdue only</label>
+                                @if (projectGroups.Count > 1)
+                                {
+                                    <div class="pf-label">Group</div>
+                                    <select class="pf-select" aria-label="Group" value="@(selectedGroupId?.ToString() ?? "")" @onchange="ChangeGroupFilter">
+                                        <option value="">All groups</option>
+                                        @foreach (var group in projectGroups) { <option value="@group.Id">@group.Name</option> }
+                                    </select>
+                                }
                                 <div class="pf-label">Priority</div>
                                 <select class="pf-select" aria-label="Priority" @bind="priorityFilter">
                                     <option value="">All priorities</option>
@@ -108,8 +131,6 @@
                                     <option value="normal">Normal</option>
                                     <option value="low">Low</option>
                                 </select>
-                                <div class="pf-sep"></div>
-                                <button type="button" class="pf-row btn" @onclick="() => { filterOpen = false; ToggleQuickViewerToolbar(); }"><i data-lucide="panel-right-open"></i>@(quickViewerTaskId.HasValue ? "Close quick viewer" : "Open quick viewer")</button>
                             </div>
                         }
                     </div>
@@ -121,10 +142,22 @@
 
             @* Canvas Body Content *@
             <div class="proj-canvas-body">
-                @if (myTasksOnly || overdueOnly || !string.IsNullOrWhiteSpace(priorityFilter) || !string.IsNullOrWhiteSpace(taskSearchQuery))
+                @if (tab != 4 && tab != 5)
+                {
+                    <ProjectSavedViewsBar Views="savedViews" ActiveViewId="ActiveSavedViewId" CanSave="FiltersDifferFromDefault"
+                                          CanManage="CanManageMembers" OnApply="ApplySavedView" OnSave="SaveCurrentView"
+                                          OnRename="RenameSavedView" OnShare="ToggleShareSavedView" OnDelete="DeleteSavedView" />
+                }
+                @if (selectedGroupId.HasValue || myTasksOnly || overdueOnly || !string.IsNullOrWhiteSpace(priorityFilter) || !string.IsNullOrWhiteSpace(taskSearchQuery) || (tab == 1 && HasListAssigneeFilter))
                 {
                     <div class="proj-filter-chips">
                         <span class="pfc-count">@VisibleTaskCount tasks</span>
+                        @if (selectedGroupId is { } filteredGroup)
+                        {
+                            <span class="pfc">Group: @projectGroups.FirstOrDefault(g => g.Id == filteredGroup)?.Name
+                                <button type="button" @onclick="() => SetGroupFilter(null)" aria-label="Remove group filter"><i data-lucide="x"></i></button>
+                            </span>
+                        }
                         @if (myTasksOnly)
                         {
                             <span class="pfc">
@@ -149,6 +182,13 @@
                                 "@taskSearchQuery" <button type="button" @onclick='() => taskSearchQuery = ""' aria-label="Remove filter"><i data-lucide="x"></i></button>
                             </span>
                         }
+                        @if (tab == 1 && HasListAssigneeFilter)
+                        {
+                            <span class="pfc">
+                                @ListAssigneeFilterLabel
+                                <button type="button" @onclick="ClearListAssigneeFilter" aria-label="Remove assignee filter"><i data-lucide="x"></i></button>
+                            </span>
+                        }
                         <button type="button" class="pfc-clear" @onclick="ClearTaskFilters">Clear all</button>
                     </div>
                 }
@@ -159,7 +199,7 @@
                         Project="selectedProject"
                         AllTasks="AllCurrentTasks"
                         Members="projectMembers"
-                        OnInspectTask="OpenQuickViewer"
+                        OnInspectTask="OpenTaskEditor"
                         OnRequestExtension="OpenExtensionModal"
                         OnOpenBoard="() => SwitchTab(0)"
                         OnOpenTeamModal="() => showTeamModal = true" />
@@ -173,6 +213,8 @@
                                 <ProjectKanbanBoard
                                     Kanban="kanban"
                                     Members="projectMembers"
+                                    Groups="projectGroups"
+                                    OnMoveToGroup="HandleMoveTaskToGroup"
                                     SearchQuery="@taskSearchQuery"
                                     MyTasksOnly="myTasksOnly"
                                     OverdueOnly="overdueOnly"
@@ -184,14 +226,46 @@
                                     OnToggleComplete="ToggleTaskComplete"
                                     OnQuickAdd="HandleQuickAdd"
                                     OnToggleAssignee="HandleToggleAssignee"
-                                    OnRequestExtension="OpenExtensionModal"
-                                    OnQuickViewTask="OpenQuickViewer" />
+                                    OnRequestExtension="OpenExtensionModal" />
                             }
                             else if (tab == 1)
                             {
+                                <div class="project-fields-toolbar">
+                                    @if (CanManageMembers) { <button type="button" class="project-fields-add" @onclick="() => addingField = !addingField" aria-expanded="@addingField"><i data-lucide="plus"></i>Fields</button> }
+                                    @if (addingField && CanManageMembers)
+                                    {
+                                        <div class="project-fields-create">
+                                            <strong>Add field</strong>
+                                            <div class="project-field-presets">
+                                                <button type="button" @onclick="PresetBiaya">Biaya · Rp</button>
+                                                <button type="button" @onclick="PresetLokasi">Lokasi · Text</button>
+                                                <button type="button" @onclick="PresetVendor">Vendor · Dropdown</button>
+                                            </div>
+                                            <input aria-label="Field name" maxlength="100" placeholder="Field name" @bind="newFieldName" />
+                                            <select aria-label="Field type" @bind="newFieldType">
+                                                @foreach (var type in new[] { "Text", "Number", "Date", "Dropdown", "Person", "Link" }) { <option value="@type">@type</option> }
+                                            </select>
+                                            @if (newFieldType == "Dropdown") { <input aria-label="Dropdown options" placeholder="Options separated by commas" @bind="newFieldOptions" /> }
+                                            <button type="button" @onclick="CreateField">Add field</button>
+                                            <button type="button" @onclick="() => addingField = false">Cancel</button>
+                                        </div>
+                                    }
+                                </div>
                                 <ProjectTableView
                                     Tasks="taskList.Items.ToList()"
                                     Members="projectMembers"
+                                    Groups="projectGroups"
+                                    Fields="projectFields"
+                                    FieldValues="taskFieldValues"
+                                    OnSetFieldValue="SetFieldValue"
+                                    OnDeleteField="DeleteField"
+                                    PrefKey="@($"projects.cols.{currentUserNik}.{selectedProjectId}")"
+                                    CanManageGroups="CanManageMembers"
+                                    OnCreateGroup="CreateGroup"
+                                    OnUpdateGroup="UpdateGroup"
+                                    OnDeleteGroup="DeleteGroup"
+                                    OnReorderGroup="ReorderGroup"
+                                    OnMoveToGroup="HandleMoveTaskToGroup"
                                     SearchQuery="@taskSearchQuery"
                                     MyTasksOnly="myTasksOnly"
                                     OverdueOnly="overdueOnly"
@@ -206,9 +280,16 @@
                                     OnEstimateChangeDirect="HandleEstimateChangeDirect"
                                     OnQuickAddSubtask="HandleQuickAddSubtask"
                                     OnQuickAdd="HandleQuickAdd"
+                                    OnQuickAddInGroup="HandleQuickAddInGroup"
                                     OnToggleAssignee="HandleToggleAssignee"
                                     OnRequestExtension="OpenExtensionModal"
-                                    OnQuickViewTask="OpenQuickViewer" />
+                                    SelectedIds="selectedTaskIds"
+                                    OnSelectionChanged="ids => selectedTaskIds = ids" />
+                                @if (selectedTaskIds.Count > 0)
+                                {
+                                    <ProjectBulkBar Count="selectedTaskIds.Count" Members="projectMembers" Groups="projectGroups" Busy="bulkBusy"
+                                                    OnAction="HandleBulkAction" OnClear="ClearSelection" />
+                                }
                             }
                             else if (tab == 2)
                             {
@@ -216,36 +297,40 @@
                                     Timeline="timeline"
                                     AllTasks="AllCurrentTasks"
                                     CriticalPathTaskIds="criticalPathIds"
+                                    SearchQuery="@taskSearchQuery"
+                                    MyTasksOnly="myTasksOnly"
+                                    OverdueOnly="overdueOnly"
+                                    PriorityFilter="@priorityFilter"
+                                    CurrentUserNik="@currentUserNik"
                                     OnTaskClick="OpenTimelineTaskEditor"
                                     OnAddTask='() => HandleQuickAdd(("todo", "New Task"))' />
+                            }
+                            else if (tab == 6)
+                            {
+                                <ProjectCalendarView @ref="calendarView"
+                                    ProjectId="selectedProjectId"
+                                    GroupId="selectedGroupId"
+                                    Filter="CalendarFilter"
+                                    OnTaskClick="OpenTaskById"
+                                    OnMoveTask="HandleCalendarMove"
+                                    OnQuickAdd="HandleCalendarQuickAdd" />
                             }
                             else if (tab == 3)
                             {
                                 <ProjectWorkloadView
                                     Workload="workloadData"
-                                    AllTasks="AllCurrentTasks"
-                                    OnTaskClick="OpenTaskEditor"
-                                    OnUnassign="HandleWorkloadUnassign"
-                                    OnReassign="HandleWorkloadReassign" />
+                                    ProjectId="selectedProjectId"
+                                    CanManageMembers="CanManageMembers"
+                                    OwnerIds="@OwnerMemberIds"
+                                    OnAddMember="() => showTeamModal = true"
+                                    OnViewTasks="ViewWorkloadTasks"
+                                    OnRemoveMember="HandleRemoveTeamMember" />
                             }
                             else if (tab == 5)
                             {
                                 <ProjectReportsPanel Project="selectedProject" AllTasks="AllCurrentTasks" />
                             }
                         </div>
-
-                        @if (quickViewerTaskId.HasValue && quickViewerTask is not null)
-                        {
-                            <ProjectTaskQuickViewer
-                                Task="quickViewerTask"
-                                AllTasks="AllCurrentTasks"
-                                Members="projectMembers"
-                                OnSelectTask="SelectQuickViewerTask"
-                                OnSave="HandleSaveTask"
-                                OnOpenFullDrawer="OpenTaskEditor"
-                                OnRequestExtension="OpenExtensionModal"
-                                OnClose="() => quickViewerTaskId = null" />
-                        }
                     </div>
                 }
             </div>
@@ -261,7 +346,7 @@
         Task="evidenceTask"
         TargetStatus="@evidenceTargetStatus"
         OnConfirm="HandleEvidenceConfirm"
-        OnCancel="() => { showEvidenceModal = false; evidenceTask = null; }" />
+        OnCancel="() => { showEvidenceModal = false; evidenceTask = null; bulkEvidenceStatus = null; }" />
 }
 
 @if (showExtensionModal && extensionTask is not null)
@@ -277,7 +362,15 @@
 {
     <ProjectTaskDrawer
         Task="editingTask"
+        ProjectName="@(selectedProject?.Name ?? "Project")"
+        ProjectColor="@selectedProject?.Color"
+        OnRequestExtension="OpenExtensionModal"
         Members="projectMembers"
+        Groups="projectGroups"
+        Fields="projectFields"
+        FieldValues="taskFieldValues.GetValueOrDefault(editingTask.Id) ?? new()"
+        OnSetFieldValue="SetFieldValue"
+        OnMoveToGroup="HandleMoveTaskToGroup"
         Subtasks="subtasks"
         OnClose="CloseTaskEditor"
         OnSave="HandleSaveTask"
@@ -285,7 +378,12 @@
         OnToggleAssignee="HandleToggleAssignee"
         OnAddSubtask="HandleAddSubtask"
         OnToggleSubtask="HandleToggleSubtask"
-        OnDeleteSubtask="HandleDeleteSubtask" />
+        OnDeleteSubtask="HandleDeleteSubtask"
+        NavTasks="DrawerNavTasks"
+        OnNavigate="OpenTaskEditor"
+        OnStatusChange="HandleStatusChangeDirect"
+        AllTasks="AllCurrentTasks"
+        OnTaskChanged="HandleDrawerTaskChanged" />
 }
 
 @if (showCreateModal)
@@ -317,6 +415,11 @@
     [Parameter] public Guid? ProjectId { get; set; }
 
     private bool loading = true;
+    private bool portfolioSelected;
+    private bool portfolioLoading;
+    private PortfolioDto? portfolioData;
+    private PagedResult<PortfolioTaskDto>? portfolioTasks;
+    private (string Filter, Guid? ProjectId, Guid? AssigneeId)? portfolioTaskFilter;
     private bool sidebarCollapsed = false;
     private bool myTasksOnly = false;
     private bool overdueOnly = false;
@@ -329,6 +432,7 @@
         get
         {
             var tasks = AllCurrentTasks.AsEnumerable();
+            if (selectedGroupId.HasValue) tasks = tasks.Where(t => t.GroupId == selectedGroupId.Value);
             if (myTasksOnly)
                 tasks = tasks.Where(t => ProjectUiHelpers.IsAssignedToUser(t, currentUserNik));
             if (overdueOnly)
@@ -340,16 +444,35 @@
                 var q = taskSearchQuery.Trim().ToLowerInvariant();
                 tasks = tasks.Where(t => t.Title.ToLowerInvariant().Contains(q) || (t.Tags != null && t.Tags.ToLowerInvariant().Contains(q)));
             }
+            if (tab == 1 && listUnassignedOnly)
+                tasks = tasks.Where(t => t.Assignees.Count == 0);
+            else if (tab == 1 && listAssigneeId is Guid assigneeId)
+                tasks = tasks.Where(t => t.Assignees.Any(a => a.UserId == assigneeId));
             return tasks.Count();
         }
     }
 
-    private void ClearTaskFilters()
+    private async Task ClearTaskFilters()
     {
         myTasksOnly = false;
         overdueOnly = false;
         priorityFilter = "";
         taskSearchQuery = "";
+        selectedGroupId = null;
+        await ClearListAssigneeFilter();
+        await ReloadCurrentView();
+    }
+
+    private bool HasListAssigneeFilter => listAssigneeId.HasValue || listUnassignedOnly;
+    private string ListAssigneeFilterLabel => listUnassignedOnly ? "Unassigned"
+        : $"Assignee: {projectMembers.FirstOrDefault(m => m.UserId == listAssigneeId)?.Name ?? "Member"}";
+
+    private async Task ClearListAssigneeFilter()
+    {
+        listAssigneeId = null;
+        listUnassignedOnly = false;
+        if (tab == 1 && selectedProjectId != Guid.Empty)
+            await LoadTaskList();
     }
 
     private List<ProjectListDto> projects = [];
@@ -365,10 +488,20 @@
     private ProjectTimelineDto? timeline;
     private ProjectWorkloadDto? workloadData;
     private List<ProjectMemberDto> projectMembers = [];
+    private List<ProjectGroupDto> projectGroups = [];
+    private Guid? selectedGroupId;
+    private List<ProjectFieldDto> projectFields = [];
+    private Dictionary<Guid, Dictionary<Guid, string>> taskFieldValues = [];
+    private bool addingField;
+    private string newFieldName = "";
+    private string newFieldType = "Text";
+    private string newFieldOptions = "";
 
     private int tab = 0; // 0=Board, 1=Table, 2=Timeline, 3=Workload
     private string taskSearchQuery = "";
     private string listStatusFilter = "";
+    private Guid? listAssigneeId;
+    private bool listUnassignedOnly;
     private Guid? highlightTaskId;
 
     // Task Inspector Drawer state
@@ -382,11 +515,7 @@
     private string evidenceTargetStatus = "doing";
 
     private bool filterOpen;
-    private int ActiveTaskFilterCount => (myTasksOnly ? 1 : 0) + (overdueOnly ? 1 : 0) + (string.IsNullOrWhiteSpace(priorityFilter) ? 0 : 1);
-
-    // Quick Viewer state
-    private Guid? quickViewerTaskId;
-    private ProjectTaskDto? quickViewerTask => quickViewerTaskId.HasValue ? AllCurrentTasks.FirstOrDefault(t => t.Id == quickViewerTaskId.Value) : null;
+    private int ActiveTaskFilterCount => (myTasksOnly ? 1 : 0) + (overdueOnly ? 1 : 0) + (selectedGroupId.HasValue ? 1 : 0) + (string.IsNullOrWhiteSpace(priorityFilter) ? 0 : 1);
 
     // Deadline Extension Modal state
     private bool showExtensionModal;
@@ -398,7 +527,64 @@
     private bool showTeamModal;
 
     private List<ProjectTaskDto> AllCurrentTasks =>
-        taskList.Items.Concat(kanban?.Todo ?? []).Concat(kanban?.Doing ?? []).Concat(kanban?.Done ?? []).DistinctBy(x => x.Id).ToList();
+        taskList.Items.Concat(kanban?.Todo ?? []).Concat(kanban?.Doing ?? [])
+            .Concat(kanban?.Review ?? []).Concat(kanban?.Done ?? []).DistinctBy(x => x.Id).ToList();
+
+    private static readonly string[] StatusOrder = ["todo", "doing", "review", "done"];
+
+    private bool MatchesTaskFilters(ProjectTaskDto t)
+    {
+        if (selectedGroupId.HasValue && t.GroupId != selectedGroupId.Value) return false;
+        if (myTasksOnly && !ProjectUiHelpers.IsAssignedToUser(t, currentUserNik)) return false;
+        if (overdueOnly && !(t.DueDate.HasValue && t.DueDate.Value.Date < DateTime.Today && t.Status != "done")) return false;
+        if (!string.IsNullOrWhiteSpace(priorityFilter) && !string.Equals(t.Priority, priorityFilter, StringComparison.OrdinalIgnoreCase)) return false;
+        if (!string.IsNullOrWhiteSpace(taskSearchQuery)
+            && !t.Title.Contains(taskSearchQuery, StringComparison.OrdinalIgnoreCase)
+            && !(t.Tags?.Contains(taskSearchQuery, StringComparison.OrdinalIgnoreCase) ?? false)) return false;
+        return true;
+    }
+
+    /// The drawer pager's task order: what the current view shows, filtered and in display order
+    /// (Board columns top to bottom, List groups, Timeline start dates). If the open task is not in
+    /// that list (e.g. opened from Overview or a subtask), the pager hides itself.
+    private List<ProjectTaskDto> DrawerNavTasks
+    {
+        get
+        {
+            switch (tab)
+            {
+                case 0:
+                    return new[] { kanban?.Todo, kanban?.Doing, kanban?.Review, kanban?.Done }
+                        .SelectMany(col => col ?? []).Where(MatchesTaskFilters).ToList();
+                case 1:
+                    return taskList.Items.Where(MatchesTaskFilters)
+                        .Where(t => string.IsNullOrEmpty(listStatusFilter) || t.Status == listStatusFilter)
+                        .OrderBy(t => Array.IndexOf(StatusOrder, t.Status) is var i && i < 0 ? StatusOrder.Length : i)
+                        .ToList();
+                case 2:
+                    var lookup = AllCurrentTasks.ToDictionary(t => t.Id);
+                    return (timeline?.Tasks ?? [])
+                        .OrderBy(t => t.StartDate ?? t.DueDate ?? DateTime.MaxValue)
+                        .Select(t => lookup.GetValueOrDefault(t.Id))
+                        .OfType<ProjectTaskDto>()
+                        .Where(MatchesTaskFilters).ToList();
+                default:
+                    return AllCurrentTasks.Where(MatchesTaskFilters).ToList();
+            }
+        }
+    }
+
+    // After a move / extension / assignment the board reloads; point the open drawer at the fresh
+    // task so its status pills, banner and flags reflect what was saved.
+    private void RefreshEditingTask()
+    {
+        if (editingTask is null) return;
+        var fresh = AllCurrentTasks.FirstOrDefault(t => t.Id == editingTask.Id);
+        if (fresh is not null) editingTask = fresh;
+    }
+
+    private bool CanManageMembers => projectMembers.Any(m => m.Nik == currentUserNik && (m.Role == "owner" || m.Role == "manager"));
+    private IReadOnlySet<Guid> OwnerMemberIds => projectMembers.Where(m => m.Role == "owner").Select(m => m.UserId).ToHashSet();
 
     protected override async Task OnInitializedAsync()
     {
@@ -410,21 +596,144 @@
         catch { }
 
         await ReloadProjects();
-        _projectSub = Auth.On<Guid>(IPop.Application.Realtime.RealtimeEvents.ProjectChanged, async pid =>
+        _projectSub = Auth.On<Guid>(IPop.Application.Realtime.RealtimeEvents.ProjectChanged, QueueLiveRefresh);
+        Auth.HubReconnected += OnHubReconnected;
+    }
+
+    // ---- Live updates: projectChanged(projectId) from any user's mutation ----
+    // Bursts (a drag across columns, a bulk edit) are coalesced into one refresh ~400ms after the
+    // last event. The refresh is silent: no loading flag, no reset of tab, filters, scroll, the
+    // open drawer or any modal; child editors merge server values into fields the user hasn't
+    // touched (see ProjectTaskDrawer.OnParametersSetAsync).
+    private readonly HashSet<Guid> _liveProjectIds = [];
+    private CancellationTokenSource? _liveCts;
+    private bool _disposed;
+
+    private void QueueLiveRefresh(Guid projectId) => _ = InvokeAsync(() =>
+    {
+        if (_disposed) return Task.CompletedTask;
+        _liveProjectIds.Add(projectId);
+        _liveCts?.Cancel();
+        _liveCts?.Dispose();
+        _liveCts = new CancellationTokenSource();
+        return ApplyLiveRefreshAsync(_liveCts.Token);
+    });
+
+    // Events pushed while the hub was down are gone: resync the list and the open project.
+    private void OnHubReconnected() => QueueLiveRefresh(selectedProjectId);
+
+    private async Task ApplyLiveRefreshAsync(CancellationToken ct)
+    {
+        try { await Task.Delay(400, ct); }
+        catch (OperationCanceledException) { return; }
+        if (_disposed || ct.IsCancellationRequested) return;
+        var touched = _liveProjectIds.ToHashSet();
+        _liveProjectIds.Clear();
+        try
         {
-            if (pid == selectedProjectId)
+            await RefreshProjectListSilently();
+            if (portfolioSelected) await LoadPortfolio();
+            if (selectedProjectId != Guid.Empty && touched.Contains(selectedProjectId))
+                await RefreshSelectedProjectSilently();
+            if (_disposed) return;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+        catch { /* advisory: the next event, navigation or reconnect resyncs */ }
+    }
+
+    /// ReloadProjects without the loading state (which would blank the sidebar) and without
+    /// auto-selecting a project.
+    private async Task RefreshProjectListSilently()
+    {
+        var all = await GetAllProjects();
+        if (_disposed) return;
+        projects = all;
+        Layout?.SetSubtitle($"{projects.Count} {(projects.Count == 1 ? "project" : "projects")} · {projects.Sum(p => p.TaskCount)} tasks");
+        ApplyProjectFilter();
+        availableYears = projects.Select(p => p.Year).Distinct().OrderByDescending(y => y).ToList();
+    }
+
+    private async Task RefreshSelectedProjectSilently()
+    {
+        var id = selectedProjectId;
+        var res = await Auth.SendAsync(HttpMethod.Get, $"/api/projects/{id}");
+        if (id != selectedProjectId || _disposed) return;
+        // 404 covers both "deleted" and "you were removed" (the endpoint is membership-checked).
+        if (res.StatusCode is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Forbidden)
+        {
+            await HandleSelectedProjectGone();
+            return;
+        }
+        if (!res.IsSuccessStatusCode) return;
+        var proj = await res.Content.ReadFromJsonAsync<ProjectDto>();
+        if (proj is null || id != selectedProjectId) return;
+        selectedProject = proj;
+
+        await ReloadCurrentView();
+        if (id != selectedProjectId) return;
+
+        if (showTaskEditor && editingTask is not null)
+        {
+            var taskId = editingTask.Id;
+            var fresh = AllCurrentTasks.FirstOrDefault(t => t.Id == taskId);
+            if (fresh is null)
             {
-                await InvokeAsync(async () =>
+                // Subtasks are not on the board; ask for the task itself before calling it gone.
+                var tr = await Auth.SendAsync(HttpMethod.Get, $"/api/projects/tasks/{taskId}");
+                if (tr.StatusCode == System.Net.HttpStatusCode.NotFound)
                 {
-                    await ReloadCurrentView();
-                    StateHasChanged();
-                });
+                    if (editingTask?.Id == taskId)
+                    {
+                        CloseTaskEditor();
+                        Toasts.Show("This task was deleted by someone else.", ToastKind.Info);
+                    }
+                    return;
+                }
+                if (tr.IsSuccessStatusCode) fresh = await tr.Content.ReadFromJsonAsync<ProjectTaskDto>();
             }
-        });
+            if (fresh is not null && editingTask?.Id == taskId)
+            {
+                editingTask = fresh;
+                await LoadSubtasks(taskId);
+            }
+        }
+
+    }
+
+    private async Task HandleSelectedProjectGone()
+    {
+        Toasts.Show("This project was deleted or you are no longer a member.", ToastKind.Info);
+        showTaskEditor = false; editingTask = null; subtasks.Clear();
+        showEditModal = false; showTeamModal = false;
+        showEvidenceModal = false; evidenceTask = null;
+        showExtensionModal = false; extensionTask = null;
+        selectedProjectId = Guid.Empty; selectedProject = null;
+        mDetail = false;
+        kanban = null; taskList = new([], 0, 1, 50); timeline = null; workloadData = null; projectMembers = [];
+        if (ProjectId is not null)
+            Nav.NavigateTo("/projects", replace: true); // OnParametersSetAsync then selects the first project
+        else if (filteredProjects.Count > 0)
+            await SelectProject(filteredProjects[0]);
     }
 
     protected override async Task OnParametersSetAsync()
     {
+        if (Nav.ToAbsoluteUri(Nav.Uri).AbsolutePath.TrimEnd('/').Equals("/projects/overview", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!portfolioSelected)
+            {
+                portfolioSelected = true;
+                mDetail = true;
+                await LoadPortfolio();
+            }
+            return;
+        }
+        if (portfolioSelected) portfolioSelected = false;
+        if (ProjectId is null && selectedProjectId != Guid.Empty && selectedProject is null)
+        {
+            selectedProjectId = Guid.Empty;
+        }
         if (ProjectId is not null && ProjectId != selectedProjectId)
         {
             var found = projects.FirstOrDefault(p => p.Id == ProjectId.Value);
@@ -437,9 +746,14 @@
                 var proj = await Auth.GetAsync<ProjectDto>($"/api/projects/{ProjectId.Value}");
                 if (proj is not null)
                 {
+                    listAssigneeId = null;
+                    listUnassignedOnly = false;
                     selectedProjectId = ProjectId.Value;
+                    selectedGroupId = null;
                     selectedProject = proj;
                     await LoadMembers();
+                    await LoadGroups();
+                    await LoadFields();
                     await LoadKanban();
                     await LoadTaskList();
                     await LoadTimeline();
@@ -447,12 +761,13 @@
                 }
                 else
                 {
-                    Toasts.Show("Project not found or you are not a member.");
+                    Toasts.Show("Project not found or you are not a member.", ToastKind.Error);
                     Nav.NavigateTo("/projects", replace: true);
                     return;
                 }
             }
 
+            mDetail = true; // a deep link to one project opens its workspace on phones
             await Task.Delay(50);
             await JS.InvokeVoidAsync("ipop.scrollIntoView", "project-detail");
 
@@ -484,6 +799,7 @@
             if (selectedProjectId != Guid.Empty)
             {
                 tab = 0;
+                mDetail = true;
                 await HandleQuickAdd(("todo", "New Task"));
             }
             else
@@ -498,6 +814,7 @@
     {
         var inKanban = (kanban?.Todo ?? []).Any(t => t.Id == taskId)
             || (kanban?.Doing ?? []).Any(t => t.Id == taskId)
+            || (kanban?.Review ?? []).Any(t => t.Id == taskId)
             || (kanban?.Done ?? []).Any(t => t.Id == taskId);
         if (!inKanban) return;
 
@@ -546,22 +863,31 @@
         await JS.InvokeVoidAsync("ipop.icons");
     }
 
+    private async Task<List<ProjectListDto>> GetAllProjects()
+    {
+        var list = new List<ProjectListDto>();
+        for (var page = 1; page <= 100; page++)
+        {
+            var result = await Auth.GetAsync<PagedResult<ProjectListDto>>($"/api/projects?page={page}&pageSize=100");
+            if (result is null) break;
+            list.AddRange(result.Items);
+            if (list.Count >= result.TotalCount || result.Items.Count == 0) break;
+        }
+        return list;
+    }
+
     private async Task ReloadProjects()
     {
         loading = true;
         StateHasChanged();
 
-        var url = "/api/projects?page=1&pageSize=200";
-        if (selectedYear.HasValue) url += $"&year={selectedYear.Value}";
-
-        var res = await Auth.GetAsync<PagedResult<ProjectListDto>>(url);
-        projects = res?.Items?.ToList() ?? [];
+        projects = await GetAllProjects();
         Layout?.SetSubtitle($"{projects.Count} {(projects.Count == 1 ? "project" : "projects")} · {projects.Sum(p => p.TaskCount)} tasks");
         ApplyProjectFilter();
 
         availableYears = projects.Select(p => p.Year).Distinct().OrderByDescending(y => y).ToList();
 
-        if (selectedProjectId == Guid.Empty && filteredProjects.Count > 0)
+        if (!portfolioSelected && selectedProjectId == Guid.Empty && filteredProjects.Count > 0)
         {
             await SelectProject(filteredProjects[0]);
         }
@@ -594,23 +920,35 @@
 
     private async Task SelectProject(ProjectListDto p)
     {
+        selectedTaskIds = new HashSet<Guid>();
+        savedViews = [];
+        portfolioSelected = false;
+        portfolioTasks = null;
+        listAssigneeId = null;
+        listUnassignedOnly = false;
+        selectedGroupId = null;
         selectedProjectId = p.Id;
         var proj = await Auth.GetAsync<ProjectDto>($"/api/projects/{p.Id}");
         if (p.Id != selectedProjectId) return;
         selectedProject = proj;
 
         await LoadMembers();
+        await LoadGroups();
+        await LoadFields();
         await LoadKanban();
         await LoadTaskList();
         await LoadTimeline();
         if (tab == 3) await LoadWorkloadData();
+        await LoadSavedViews();
 
         StateHasChanged();
     }
 
     private async Task SwitchTab(int newTab)
     {
+        if (newTab != tab) selectedTaskIds = new HashSet<Guid>();
         tab = newTab;
+        if (tab == 1) await LoadTaskList();
         if (tab == 3) await LoadWorkloadData();
         StateHasChanged();
     }
@@ -619,6 +957,8 @@
     {
         if (selectedProjectId == Guid.Empty) return;
         await LoadMembers();
+        await LoadGroups();
+        await LoadFields();
         await LoadKanban();
         await LoadTaskList();
         await LoadTimeline();
@@ -628,7 +968,7 @@
     private async Task LoadWorkloadData()
     {
         if (selectedProjectId == Guid.Empty) return;
-        workloadData = await Auth.GetAsync<ProjectWorkloadDto>($"/api/projects/{selectedProjectId}/workload");
+        workloadData = await Auth.GetAsync<ProjectWorkloadDto>($"/api/projects/{selectedProjectId}/workload?localToday={DateTime.Today:yyyy-MM-dd}{GroupQuery}");
         StateHasChanged();
     }
 
@@ -638,40 +978,66 @@
         var room = await Auth.GetAsync<ProjectChatRoomDto>($"/api/projects/{selectedProjectId}/chat-room");
         if (room is null || room.RoomId == Guid.Empty)
         {
-            Toasts.Show("Project chat room is unavailable.");
+            Toasts.Show("Project chat room is unavailable.", ToastKind.Error);
             return;
         }
         if (!room.IsActive)
         {
-            Toasts.Show("Project chat room is inactive.");
+            Toasts.Show("Project chat room is inactive.", ToastKind.Error);
             return;
         }
         Nav.NavigateTo($"/chat/{room.RoomId}");
     }
 
+    private string GroupQuery => selectedGroupId is { } groupId ? $"&groupId={groupId}" : "";
+
     private async Task LoadKanban()
     {
         if (selectedProjectId == Guid.Empty) return;
-        kanban = await Auth.GetAsync<KanbanBoardDto>($"/api/projects/{selectedProjectId}/kanban");
+        kanban = await Auth.GetAsync<KanbanBoardDto>($"/api/projects/{selectedProjectId}/kanban?view=board{GroupQuery}");
     }
 
     private async Task LoadTaskList()
     {
         if (selectedProjectId == Guid.Empty) return;
-        taskList = await Auth.GetAsync<PagedResult<ProjectTaskDto>>($"/api/projects/{selectedProjectId}/tasks/list?page=1&pageSize=100") ?? new([], 0, 1, 50);
-        if (!string.IsNullOrEmpty(listStatusFilter) && !taskList.Items.Any(t => t.Status == listStatusFilter))
+        var url = $"/api/projects/{selectedProjectId}/tasks/list?page=1&pageSize=200{GroupQuery}";
+        if (tab == 1 && listAssigneeId is { } memberId)
+            url += $"&assigneeId={memberId}";
+        else if (tab == 1 && listUnassignedOnly)
+            url += "&unassigned=true";
+        var first = await Auth.GetAsync<PagedResult<ProjectTaskDto>>(url);
+        if (first is null) { taskList = new([], 0, 1, 50); return; }
+        var all = first.Items.ToList();
+        var pages = (int)Math.Ceiling(first.TotalCount / 200d);
+        for (var page = 2; page <= pages; page++)
         {
-            listStatusFilter = "";
+            var nextUrl = url.Replace("page=1&", $"page={page}&");
+            var next = await Auth.GetAsync<PagedResult<ProjectTaskDto>>(nextUrl);
+            if (next is null) break;
+            all.AddRange(next.Items);
         }
+        taskList = new(all, first.TotalCount, 1, 200);
+        if (projectFields.Count > 0)
+        {
+            var ids = all.Select(t => t.Id).ToList();
+            for (var i = 0; i < ids.Count; i += 100)
+            {
+                var query = string.Join("&", ids.Skip(i).Take(100).Select(id => $"taskIds={id}"));
+                var values = await Auth.GetAsync<List<ProjectTaskFieldValuesDto>>($"/api/projects/{selectedProjectId}/fields/values?{query}") ?? [];
+                foreach (var row in values) taskFieldValues[row.TaskId] = row.Values.ToDictionary(v => v.FieldId, v => v.Value);
+            }
+        }
+        if (!string.IsNullOrEmpty(listStatusFilter) && !taskList.Items.Any(t => t.Status == listStatusFilter))
+            listStatusFilter = "";
     }
 
     private async Task LoadTimeline()
     {
         if (selectedProjectId == Guid.Empty) return;
-        timeline = await Auth.GetAsync<ProjectTimelineDto>($"/api/projects/{selectedProjectId}/timeline");
+        timeline = await Auth.GetAsync<ProjectTimelineDto>($"/api/projects/{selectedProjectId}/timeline?view=timeline{GroupQuery}");
         try
         {
-            var gantt = await Auth.GetAsync<ProjectGanttDto>($"/api/projects/{selectedProjectId}/gantt");
+            var gantt = await Auth.GetAsync<ProjectGanttDto>($"/api/projects/{selectedProjectId}/gantt?view=gantt{GroupQuery}");
             criticalPathIds = gantt?.CriticalPathTaskIds?.ToHashSet() ?? [];
         }
         catch { }
@@ -712,6 +1078,7 @@
             Toasts.Show("Project deleted.", ToastKind.Success);
             selectedProjectId = Guid.Empty;
             selectedProject = null;
+            if (mDetail) await CloseMobileDetail();
             await ReloadProjects();
         }
         else
@@ -733,6 +1100,87 @@
         {
             Toasts.Show(url, ToastKind.Info);
         }
+    }
+
+    private async Task LoadGroups()
+    {
+        if (selectedProjectId == Guid.Empty) { projectGroups = []; return; }
+        projectGroups = await Auth.GetAsync<List<ProjectGroupDto>>($"/api/projects/{selectedProjectId}/groups?localToday={DateTime.Today:yyyy-MM-dd}") ?? [];
+        if (selectedGroupId.HasValue && projectGroups.All(g => g.Id != selectedGroupId.Value)) selectedGroupId = null;
+    }
+
+    private async Task LoadFields()
+    {
+        if (selectedProjectId == Guid.Empty) { projectFields = []; taskFieldValues.Clear(); return; }
+        projectFields = await Auth.GetAsync<List<ProjectFieldDto>>($"/api/projects/{selectedProjectId}/fields") ?? [];
+        taskFieldValues.Clear();
+    }
+
+    private void PresetBiaya() => SelectFieldPreset("Biaya", "Number");
+    private void PresetLokasi() => SelectFieldPreset("Lokasi", "Text");
+    private void PresetVendor() => SelectFieldPreset("Vendor", "Dropdown");
+
+    private void SelectFieldPreset(string name, string type)
+    {
+        newFieldName = name;
+        newFieldType = type;
+    }
+
+    private async Task CreateField()
+    {
+        if (selectedProjectId == Guid.Empty || !CanManageMembers) return;
+        var options = newFieldType == "Dropdown"
+            ? newFieldOptions.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
+            : null;
+        var result = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/fields", new CreateProjectFieldRequest(newFieldName, newFieldType, options));
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Field belum dapat dibuat. Periksa nama dan opsi.", ToastKind.Error); return; }
+        addingField = false;
+        newFieldName = newFieldOptions = "";
+        newFieldType = "Text";
+        await LoadFields();
+        StateHasChanged();
+    }
+
+    private async Task DeleteField(Guid fieldId)
+    {
+        if (selectedProjectId == Guid.Empty || !CanManageMembers) return;
+        var field = projectFields.FirstOrDefault(f => f.Id == fieldId);
+        if (field is null || !await Confirm.AskAsync("Delete field", $"Delete {field.Name} and all its task values? This cannot be undone.", "Delete", danger: true)) return;
+        var result = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/{selectedProjectId}/fields/{fieldId}");
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Field belum dapat dihapus.", ToastKind.Error); return; }
+        await LoadFields();
+        StateHasChanged();
+    }
+
+    private async Task LoadFieldValues(Guid taskId)
+    {
+        if (selectedProjectId == Guid.Empty || projectFields.Count == 0) return;
+        var values = await Auth.GetAsync<List<ProjectFieldValueDto>>($"/api/projects/{selectedProjectId}/tasks/{taskId}/fields") ?? [];
+        taskFieldValues[taskId] = values.ToDictionary(v => v.FieldId, v => v.Value);
+    }
+
+    private async Task SetFieldValue((Guid TaskId, Guid FieldId, string? Value) update)
+    {
+        if (selectedProjectId == Guid.Empty) return;
+        var result = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{selectedProjectId}/tasks/{update.TaskId}/fields/{update.FieldId}", new SetProjectFieldValueRequest(update.Value));
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Nilai field belum dapat disimpan.", ToastKind.Error); return; }
+        await LoadFieldValues(update.TaskId);
+        StateHasChanged();
+    }
+
+    private async Task ChangeGroupFilter(ChangeEventArgs args)
+    {
+        await SetGroupFilter(Guid.TryParse(args.Value?.ToString(), out var groupId) ? groupId : null);
+    }
+
+    private async Task SetGroupFilter(Guid? groupId)
+    {
+        selectedGroupId = groupId;
+        await LoadKanban();
+        await LoadTaskList();
+        await LoadTimeline();
+        if (tab == 3) await LoadWorkloadData();
+        StateHasChanged();
     }
 
     private async Task LoadMembers()
@@ -765,18 +1213,66 @@
         }
     }
 
-    private async Task HandleWorkloadUnassign((Guid TaskId, Guid UserId) arg)
+    private async Task HandleMoveTaskToGroup((Guid TaskId, Guid GroupId) move)
     {
-        await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/tasks/{arg.TaskId}/assignees/{arg.UserId}");
-        await LoadWorkloadData();
+        var result = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{move.TaskId}/group", new MoveTaskToGroupRequest(move.GroupId));
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Task belum dapat dipindah.", ToastKind.Error); return; }
         await ReloadCurrentView();
+        RefreshEditingTask();
+        StateHasChanged();
     }
 
-    private async Task HandleWorkloadReassign((Guid TaskId, Guid UserId) arg)
+    private async Task CreateGroup(string name)
     {
-        await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{arg.TaskId}/assignees", new { userId = arg.UserId, role = "member" });
-        await LoadWorkloadData();
+        if (selectedProjectId == Guid.Empty) return;
+        var result = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/groups", new CreateProjectGroupRequest(name));
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Group belum dapat dibuat.", ToastKind.Error); return; }
+        await LoadGroups();
+        StateHasChanged();
+    }
+
+    private async Task UpdateGroup((Guid Id, string Name, string Color) update)
+    {
+        var result = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/groups/{update.Id}", new UpdateProjectGroupRequest(update.Name, update.Color));
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Group belum dapat diubah.", ToastKind.Error); return; }
+        await LoadGroups();
+        StateHasChanged();
+    }
+
+    private async Task ReorderGroup((Guid Id, int Offset) change)
+    {
+        var groups = projectGroups.OrderBy(g => g.SortOrder).ToList();
+        var index = groups.FindIndex(g => g.Id == change.Id);
+        var target = index + change.Offset;
+        if (index < 0 || target < 0 || target >= groups.Count) return;
+        (groups[index], groups[target]) = (groups[target], groups[index]);
+        var result = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{selectedProjectId}/groups/order", new ReorderProjectGroupsRequest(groups.Select(g => g.Id).ToList()));
+        if (!result.IsSuccessStatusCode) Toasts.Show("Urutan group belum dapat disimpan.", ToastKind.Error);
+        await LoadGroups();
+        StateHasChanged();
+    }
+
+    private async Task DeleteGroup(Guid id)
+    {
+        var group = projectGroups.FirstOrDefault(g => g.Id == id);
+        if (group is null || projectGroups.Count <= 1) return;
+        var result = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/groups/{id}");
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Group belum dapat dihapus.", ToastKind.Error); return; }
+        var deleted = (await result.Content.ReadFromJsonAsync<DeleteGroupResultDto>())?.Deleted;
         await ReloadCurrentView();
+        StateHasChanged();
+        if (deleted is null) return;
+        var moved = deleted.TaskIds.Count;
+        Toasts.ShowUndo(moved == 0 ? $"Group \"{deleted.Name}\" dihapus." : $"Group \"{deleted.Name}\" dihapus, {moved} task dipindah.",
+            () => RestoreGroup(deleted), "Batalkan", 8000);
+    }
+
+    private async Task RestoreGroup(DeletedProjectGroupDto deleted)
+    {
+        var result = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{deleted.ProjectId}/groups/restore", deleted);
+        if (!result.IsSuccessStatusCode) { Toasts.Show("Group belum dapat dikembalikan.", ToastKind.Error); return; }
+        if (deleted.ProjectId == selectedProjectId) await ReloadCurrentView();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task HandleTaskMove((Guid TaskId, string TargetStatus) arg)
@@ -800,32 +1296,46 @@
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{taskId}/move", new TaskMoveRequest(targetStatus, null));
         if (res.IsSuccessStatusCode)
         {
+            ProjectTaskDto? moved = null;
+            try { moved = await res.Content.ReadFromJsonAsync<ProjectTaskDto>(); } catch { }
             await LoadKanban();
             await LoadTaskList();
+            if (tab == 6) await ReloadCalendar();
             if (selectedProjectId != Guid.Empty)
                 selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");
+            RefreshEditingTask();
             StateHasChanged();
             await JS.InvokeVoidAsync("ipop.icons");
+            NotifyRecurringSpawn(moved);
         }
         else
         {
             var body = await res.Content.ReadAsStringAsync();
             if (body.Contains("unmet_dependencies"))
-                Toasts.Show("Cannot move to Done — task dependencies are incomplete.");
+                Toasts.Show("Cannot move to Done — task dependencies are incomplete.", ToastKind.Error);
             else
-                Toasts.Show("Failed to move task.");
+                Toasts.Show("Failed to move task.", ToastKind.Error);
         }
     }
 
     private async Task HandleEvidenceConfirm((ProjectTaskDto Task, string TargetStatus, TaskEvidenceData Evidence) arg)
     {
         showEvidenceModal = false;
+        if (bulkEvidenceStatus is { } bulkStatus)
+        {
+            bulkEvidenceStatus = null;
+            evidenceTask = null;
+            await RunBulk("status", bulkStatus, TaskEvidenceHelper.Serialize("", arg.Evidence));
+            return;
+        }
         var parsed = TaskEvidenceHelper.Parse(arg.Task.Description);
         var newDesc = TaskEvidenceHelper.Serialize(parsed.CleanDescription, arg.Evidence);
 
+        // Evidence only; the status changes through /move below so its dependency guard applies
+        // (a PUT with the target status would already set "done" and skip the guard).
         var updateReq = new UpdateTaskRequest(
-            arg.Task.Title, newDesc, arg.TargetStatus, arg.Task.Priority, arg.Task.StartDate, arg.Task.DueDate,
-            arg.Task.EstimatedHours, arg.Task.ActualHours, null, arg.Task.Dependencies, null, null, null, arg.Task.Tags
+            arg.Task.Title, newDesc, arg.Task.Status, arg.Task.Priority, arg.Task.StartDate, arg.Task.DueDate,
+            arg.Task.EstimatedHours, arg.Task.ActualHours, null, null, null, null, null, arg.Task.Tags
         );
         await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{arg.Task.Id}", updateReq);
         await ExecuteTaskMove(arg.Task.Id, arg.TargetStatus);
@@ -835,7 +1345,7 @@
             "doing" => "Task moved to In Progress with progress notes.",
             "review" => "Task moved to Review with progress notes.",
             _ => "Task completed with deliverables evidence.",
-        });
+        }, ToastKind.Success);
     }
 
     private async Task ToggleTaskComplete(ProjectTaskDto t)
@@ -863,14 +1373,14 @@
     {
         var req = new UpdateTaskRequest(
             arg.Task.Title, arg.Task.Description, arg.Task.Status, arg.Priority, arg.Task.StartDate, arg.Task.DueDate,
-            arg.Task.EstimatedHours, arg.Task.ActualHours, null, arg.Task.Dependencies, null, null, null, arg.Task.Tags
+            arg.Task.EstimatedHours, arg.Task.ActualHours, null, null, null, null, null, arg.Task.Tags
         );
         var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{arg.Task.Id}", req);
         if (res.IsSuccessStatusCode)
         {
             await LoadKanban();
             await LoadTaskList();
-            Toasts.Show("Task priority updated.");
+            Toasts.Show("Task priority updated.", ToastKind.Success);
             StateHasChanged();
             await JS.InvokeVoidAsync("ipop.icons");
         }
@@ -880,14 +1390,14 @@
     {
         var req = new UpdateTaskRequest(
             arg.Task.Title, arg.Task.Description, arg.Task.Status, arg.Task.Priority, arg.Task.StartDate, arg.DueDate,
-            arg.Task.EstimatedHours, arg.Task.ActualHours, null, arg.Task.Dependencies, null, null, null, arg.Task.Tags
+            arg.Task.EstimatedHours, arg.Task.ActualHours, null, null, null, null, null, arg.Task.Tags
         );
         var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{arg.Task.Id}", req);
         if (res.IsSuccessStatusCode)
         {
             await LoadKanban();
             await LoadTaskList();
-            Toasts.Show("Task due date updated.");
+            Toasts.Show("Task due date updated.", ToastKind.Success);
             StateHasChanged();
             await JS.InvokeVoidAsync("ipop.icons");
         }
@@ -897,14 +1407,14 @@
     {
         var req = new UpdateTaskRequest(
             arg.Task.Title, arg.Task.Description, arg.Task.Status, arg.Task.Priority, arg.Task.StartDate, arg.Task.DueDate,
-            arg.EstimatedHours, arg.Task.ActualHours, null, arg.Task.Dependencies, null, null, null, arg.Task.Tags
+            arg.EstimatedHours, arg.Task.ActualHours, null, null, null, null, null, arg.Task.Tags
         );
         var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{arg.Task.Id}", req);
         if (res.IsSuccessStatusCode)
         {
             await LoadKanban();
             await LoadTaskList();
-            Toasts.Show("Task estimated time updated.");
+            Toasts.Show("Task estimated time updated.", ToastKind.Success);
             StateHasChanged();
             await JS.InvokeVoidAsync("ipop.icons");
         }
@@ -919,10 +1429,20 @@
         {
             await LoadKanban();
             await LoadTaskList();
-            Toasts.Show("Subtask added successfully.");
+            Toasts.Show("Subtask added successfully.", ToastKind.Success);
             StateHasChanged();
             await JS.InvokeVoidAsync("ipop.icons");
         }
+    }
+
+    private async Task HandleQuickAddInGroup((Guid GroupId, string Title) arg)
+    {
+        if (selectedProjectId == Guid.Empty || string.IsNullOrWhiteSpace(arg.Title)) return;
+        var req = new CreateTaskRequest(selectedProjectId, null, arg.Title.Trim(), null, "todo", null, null, null, null, null, null, arg.GroupId);
+        var response = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/tasks", req);
+        if (!response.IsSuccessStatusCode) { Toasts.Show("Task belum dapat dibuat.", ToastKind.Error); return; }
+        await ReloadCurrentView();
+        StateHasChanged();
     }
 
     private async Task HandleQuickAdd((string Status, string Title) arg)
@@ -940,7 +1460,7 @@
         }
         else
         {
-            Toasts.Show("Failed to add new task.");
+            Toasts.Show("Failed to add new task.", ToastKind.Error);
         }
     }
 
@@ -957,19 +1477,15 @@
             await LoadTaskList();
             await LoadTimeline();
 
-            if (editingTask != null && editingTask.Id == arg.TaskId)
-            {
-                var refreshed = AllCurrentTasks.FirstOrDefault(x => x.Id == arg.TaskId);
-                if (refreshed != null) editingTask = refreshed;
-            }
+            if (editingTask != null && editingTask.Id == arg.TaskId) RefreshEditingTask();
 
-            Toasts.Show(arg.IsAssigned ? "Member unassigned from task." : "Member assigned to task.");
+            Toasts.Show(arg.IsAssigned ? "Member unassigned from task." : "Member assigned to task.", ToastKind.Success);
             StateHasChanged();
             await JS.InvokeVoidAsync("ipop.icons");
         }
         else
         {
-            Toasts.Show("Failed to update task assignment.");
+            Toasts.Show("Failed to update task assignment.", ToastKind.Error);
         }
     }
 
@@ -978,6 +1494,7 @@
         editingTask = t;
         showTaskEditor = true;
         await LoadSubtasks(t.Id);
+        await LoadFieldValues(t.Id);
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
     }
@@ -992,20 +1509,12 @@
 
     private async Task OpenTimelineTaskEditor(TimelineTaskDto t)
     {
-        var full = AllCurrentTasks.FirstOrDefault(x => x.Id == t.Id);
+        var full = AllCurrentTasks.FirstOrDefault(x => x.Id == t.Id)
+            ?? await Auth.GetAsync<ProjectTaskDto>($"/api/projects/tasks/{t.Id}");
         if (full is not null)
-        {
             await OpenTaskEditor(full);
-        }
         else
-        {
-            var fallback = new ProjectTaskDto(
-                t.Id, selectedProjectId, t.ParentTaskId, t.Title, null, t.Status, t.Priority,
-                t.StartDate, t.DueDate, t.EstimatedHours, t.ActualHours, 0, null, false, null, false, t.Tags,
-                Guid.Empty, "", [], t.SubtaskCount, t.SubtaskDoneCount, DateTime.UtcNow, DateTime.UtcNow
-            );
-            await OpenTaskEditor(fallback);
-        }
+            Toasts.Show("Task could not be opened.", ToastKind.Error);
     }
 
     private async Task LoadSubtasks(Guid parentTaskId)
@@ -1029,7 +1538,7 @@
         }
         else
         {
-            Toasts.Show("Failed to add subtask.");
+            Toasts.Show("Failed to add subtask.", ToastKind.Error);
         }
     }
 
@@ -1046,7 +1555,7 @@
         }
         else
         {
-            Toasts.Show("Failed to update subtask status.");
+            Toasts.Show("Failed to update subtask status.", ToastKind.Error);
         }
     }
 
@@ -1055,15 +1564,332 @@
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/tasks/{subtaskId}");
         if (res.IsSuccessStatusCode)
         {
-            await LoadSubtasks(editingTask!.Id);
+            if (editingTask is not null) await LoadSubtasks(editingTask.Id);
             await LoadKanban();
             await LoadTaskList();
             StateHasChanged();
+            ShowDeleteUndo(await ReadDeleteResult(res), "Subtask dihapus.");
         }
         else
         {
-            Toasts.Show("Failed to delete subtask.");
+            Toasts.Show("Failed to delete subtask.", ToastKind.Error);
         }
+    }
+
+    private static async Task<DeleteTaskResultDto?> ReadDeleteResult(HttpResponseMessage res)
+    {
+        try { return await res.Content.ReadFromJsonAsync<DeleteTaskResultDto>(); }
+        catch { return null; }
+    }
+
+    // Soft delete: the server keeps the batch restorable; the UI offers undo for 8 seconds.
+    private void ShowDeleteUndo(DeleteTaskResultDto? result, string message)
+    {
+        if (result?.BatchId is not { } batchId) { Toasts.Show(message, ToastKind.Success); return; }
+        var projectId = selectedProjectId;
+        Toasts.ShowUndo(message, () => RestoreTasks(projectId, batchId), "Batalkan", 8000);
+    }
+
+    private async Task RestoreTasks(Guid projectId, Guid batchId)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{projectId}/tasks/restore", new RestoreTasksRequest(batchId));
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Task belum dapat dikembalikan.", ToastKind.Error); return; }
+        if (projectId == selectedProjectId)
+        {
+            await ReloadCurrentView();
+            if (editingTask is not null) await LoadSubtasks(editingTask.Id);
+            selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{projectId}");
+        }
+        await InvokeAsync(StateHasChanged);
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    // ---- Fase 2c: bulk actions on the List selection ----
+    private IReadOnlySet<Guid> selectedTaskIds = new HashSet<Guid>();
+    private bool bulkBusy;
+    private string? bulkEvidenceStatus;
+
+    private void ClearSelection() => selectedTaskIds = new HashSet<Guid>();
+
+    private async Task HandleBulkAction((string Action, string? Value) arg)
+    {
+        if (selectedTaskIds.Count == 0) return;
+        if (arg.Action == "status" && arg.Value is "doing" or "review" or "done")
+        {
+            // One shared evidence for every selected task; the modal only needs a task to title itself.
+            var first = AllCurrentTasks.FirstOrDefault(t => selectedTaskIds.Contains(t.Id));
+            if (first is null) return;
+            bulkEvidenceStatus = arg.Value;
+            evidenceTargetStatus = arg.Value;
+            evidenceTask = first with { Id = Guid.Empty, Title = $"{selectedTaskIds.Count} task terpilih", Description = null };
+            showEvidenceModal = true;
+            return;
+        }
+        if (arg.Action == "delete"
+            && !await Confirm.AskAsync("Hapus task terpilih?", $"{selectedTaskIds.Count} task beserta subtask-nya akan dihapus. Anda bisa membatalkannya selama 8 detik.", "Hapus"))
+            return;
+        await RunBulk(arg.Action, arg.Value, null);
+    }
+
+    private async Task RunBulk(string action, string? value, string? evidence)
+    {
+        if (bulkBusy || selectedProjectId == Guid.Empty || selectedTaskIds.Count == 0) return;
+        bulkBusy = true;
+        var projectId = selectedProjectId;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{projectId}/tasks/bulk",
+                new BulkTaskRequest(selectedTaskIds.ToList(), action, value, evidence));
+            BulkTaskResultDto? result = null;
+            try { result = await res.Content.ReadFromJsonAsync<BulkTaskResultDto>(); } catch { }
+            if (!res.IsSuccessStatusCode || result is null || !result.Success)
+            {
+                Toasts.Show(result?.Error switch
+                {
+                    "forbidden" => "Anda tidak punya akses untuk aksi ini.",
+                    "invalid_tasks" => "Sebagian task sudah tidak ada. Muat ulang lalu coba lagi.",
+                    _ => "Aksi massal belum dapat dijalankan.",
+                }, ToastKind.Error);
+                return;
+            }
+            selectedTaskIds = new HashSet<Guid>();
+            await ReloadCurrentView();
+            RefreshEditingTask();
+            if (action == "delete" && result.BatchId is { } batchId)
+                Toasts.ShowUndo($"{result.Updated} task dihapus.", () => RestoreTasks(projectId, batchId), "Batalkan", 8000);
+            else
+                Toasts.Show($"{result.Updated} task diperbarui.", ToastKind.Success);
+            var blocked = result.Skipped.Count(x => x.Reason == "unmet_dependencies");
+            var tooLong = result.Skipped.Count(x => x.Reason == "description_too_long");
+            var parentFirst = result.Skipped.Count(x => x.Reason == "move_parent_instead");
+            if (blocked > 0) Toasts.Show($"{blocked} task dilewati: menunggu task lain.", ToastKind.Warning);
+            if (tooLong > 0) Toasts.Show($"{tooLong} task dilewati: deskripsi terlalu panjang untuk bukti.", ToastKind.Warning);
+            if (parentFirst > 0) Toasts.Show($"{parentFirst} subtask dilewati: pindahkan task induknya.", ToastKind.Warning);
+        }
+        finally
+        {
+            bulkBusy = false;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    // ---- Fase 2c: saved views ----
+    private List<ProjectSavedViewDto> savedViews = [];
+
+    private async Task LoadSavedViews()
+    {
+        if (selectedProjectId == Guid.Empty) { savedViews = []; return; }
+        var projectId = selectedProjectId;
+        var list = await Auth.GetAsync<List<ProjectSavedViewDto>>($"/api/projects/{projectId}/views");
+        if (projectId == selectedProjectId) savedViews = list ?? [];
+    }
+
+    private Dictionary<string, object> CurrentViewState()
+    {
+        var state = new Dictionary<string, object> { ["tab"] = tab.ToString() };
+        if (!string.IsNullOrWhiteSpace(priorityFilter)) state["priority"] = priorityFilter;
+        if (!string.IsNullOrWhiteSpace(taskSearchQuery)) state["search"] = taskSearchQuery.Trim();
+        if (myTasksOnly) state["myTasks"] = true;
+        if (overdueOnly) state["overdue"] = true;
+        if (selectedGroupId is { } g) state["groupId"] = g.ToString();
+        if (tab == 1 && listAssigneeId is { } a) state["assigneeId"] = a.ToString();
+        return state;
+    }
+
+    private static string StateKey(IDictionary<string, object> state) =>
+        string.Join("|", state.Where(kv => kv.Key != "tab").OrderBy(kv => kv.Key).Select(kv => $"{kv.Key}={kv.Value}".ToLowerInvariant()));
+
+    private bool FiltersDifferFromDefault => CurrentViewState().Count > 1;
+
+    private Guid? ActiveSavedViewId
+    {
+        get
+        {
+            var key = StateKey(CurrentViewState());
+            if (key.Length == 0) return null;
+            return savedViews.FirstOrDefault(v => ParseViewState(v.StateJson) is { } st && StateKey(st) == key
+                && (!st.TryGetValue("tab", out var t) || t.ToString() == tab.ToString()))?.Id;
+        }
+    }
+
+    private static Dictionary<string, object>? ParseViewState(string json)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            return doc.RootElement.EnumerateObject().ToDictionary(p => p.Name, p => (object)(p.Value.ValueKind switch
+            {
+                System.Text.Json.JsonValueKind.True => true,
+                System.Text.Json.JsonValueKind.False => false,
+                _ => p.Value.ToString(),
+            }));
+        }
+        catch { return null; }
+    }
+
+    private async Task ApplySavedView(ProjectSavedViewDto view)
+    {
+        if (ParseViewState(view.StateJson) is not { } st) return;
+        string Str(string k) => st.TryGetValue(k, out var v) ? v.ToString() ?? "" : "";
+        bool Flag(string k) => st.TryGetValue(k, out var v) && v is true;
+        Guid? Id(string k) => Guid.TryParse(Str(k), out var g) ? g : null;
+
+        priorityFilter = Str("priority");
+        taskSearchQuery = Str("search");
+        myTasksOnly = Flag("myTasks");
+        overdueOnly = Flag("overdue");
+        selectedGroupId = Id("groupId") is { } gid && projectGroups.Any(g => g.Id == gid) ? gid : null;
+        listUnassignedOnly = false;
+        listAssigneeId = Id("assigneeId") is { } aid && projectMembers.Any(m => m.UserId == aid) ? aid : null;
+        selectedTaskIds = new HashSet<Guid>();
+        if (int.TryParse(Str("tab"), out var t) && t is >= 0 and <= 6) tab = t;
+        await LoadKanban();
+        await LoadTaskList();
+        await LoadTimeline();
+        if (tab == 3) await LoadWorkloadData();
+        await ReloadCalendar();
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private static string SavedViewError(string? code) => code switch
+    {
+        "invalid_name" => "Nama tampilan wajib diisi (maks. 40 karakter).",
+        "too_many_views" => "Maksimal 20 tampilan per proyek.",
+        "forbidden" => "Anda tidak punya akses untuk mengubah tampilan ini.",
+        "view_not_found" => "Tampilan sudah tidak ada.",
+        _ => "Tampilan belum dapat disimpan.",
+    };
+
+    private async Task<SavedViewResultDto?> SendSavedView(HttpMethod method, string url, SaveProjectViewRequest req)
+    {
+        var res = await Auth.SendAsync(method, url, req);
+        SavedViewResultDto? result = null;
+        try { result = await res.Content.ReadFromJsonAsync<SavedViewResultDto>(); } catch { }
+        if (!res.IsSuccessStatusCode || result?.Success != true) { Toasts.Show(SavedViewError(result?.Error), ToastKind.Error); return null; }
+        await LoadSavedViews();
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+        return result;
+    }
+
+    private async Task SaveCurrentView(string name)
+    {
+        if (selectedProjectId == Guid.Empty) return;
+        var json = System.Text.Json.JsonSerializer.Serialize(CurrentViewState());
+        if (await SendSavedView(HttpMethod.Post, $"/api/projects/{selectedProjectId}/views", new SaveProjectViewRequest(name, json)) is not null)
+            Toasts.Show($"Tampilan \"{name}\" disimpan.", ToastKind.Success);
+    }
+
+    private Task RenameSavedView((ProjectSavedViewDto View, string Name) arg) =>
+        SendSavedView(HttpMethod.Put, $"/api/projects/views/{arg.View.Id}", new SaveProjectViewRequest(arg.Name, arg.View.StateJson, arg.View.IsShared));
+
+    private async Task ToggleShareSavedView(ProjectSavedViewDto view)
+    {
+        if (await SendSavedView(HttpMethod.Put, $"/api/projects/views/{view.Id}", new SaveProjectViewRequest(view.Name, view.StateJson, !view.IsShared)) is not null)
+            Toasts.Show(view.IsShared ? "Tampilan kini pribadi." : "Tampilan dibagikan ke anggota proyek.", ToastKind.Success);
+    }
+
+    private async Task DeleteSavedView(ProjectSavedViewDto view)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/views/{view.Id}", null);
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Tampilan belum dapat dihapus.", ToastKind.Error); return; }
+        await LoadSavedViews();
+        StateHasChanged();
+        var projectId = view.ProjectId;
+        // Undo re-creates it (new id); only the owner's views can be restored this way.
+        if (view.IsMine)
+            Toasts.ShowUndo($"Tampilan \"{view.Name}\" dihapus.", async () =>
+            {
+                await SendSavedView(HttpMethod.Post, $"/api/projects/{projectId}/views", new SaveProjectViewRequest(view.Name, view.StateJson, view.IsShared));
+            }, "Batalkan", 8000);
+        else
+            Toasts.Show($"Tampilan \"{view.Name}\" dihapus.", ToastKind.Success);
+    }
+
+    // Drawer saved dependencies/recurrence itself: show the fresh task and refresh the views
+    // (blocked badges and timeline arrows depend on it).
+    private async Task HandleDrawerTaskChanged(ProjectTaskDto? fresh)
+    {
+        if (fresh is not null && editingTask?.Id == fresh.Id) editingTask = fresh;
+        await LoadKanban();
+        await LoadTaskList();
+        await LoadTimeline();
+        if (tab == 6) await ReloadCalendar();
+        if (fresh is null) RefreshEditingTask();
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    // ---- Fase 2a: Calendar tab ----
+    private ProjectCalendarView? calendarView;
+
+    private Task ReloadCalendar() => calendarView?.Reload() ?? Task.CompletedTask;
+
+    private bool CalendarFilter(CalendarTaskDto t)
+    {
+        if (myTasksOnly)
+        {
+            var me = projectMembers.FirstOrDefault(m => m.Nik.Equals(currentUserNik ?? "", StringComparison.OrdinalIgnoreCase));
+            if (me is null || !t.AssigneeUserIds.Contains(me.UserId)) return false;
+        }
+        if (overdueOnly && !(t.DueDate.HasValue && t.DueDate.Value.Date < DateTime.Today && t.Status != "done")) return false;
+        if (!string.IsNullOrWhiteSpace(priorityFilter) && !string.Equals(t.Priority, priorityFilter, StringComparison.OrdinalIgnoreCase)) return false;
+        if (!string.IsNullOrWhiteSpace(taskSearchQuery) && !t.Title.Contains(taskSearchQuery.Trim(), StringComparison.OrdinalIgnoreCase)) return false;
+        return true;
+    }
+
+    private async Task OpenTaskById(Guid id)
+    {
+        var task = AllCurrentTasks.FirstOrDefault(t => t.Id == id) ?? await Auth.GetAsync<ProjectTaskDto>($"/api/projects/tasks/{id}");
+        if (task is not null) await OpenTaskEditor(task);
+    }
+
+    private async Task HandleCalendarMove((CalendarTaskDto Task, DateOnly Day) arg)
+    {
+        var (start, due) = ProjectCalendarLayout.MoveTo(arg.Task, arg.Day);
+        var oldStart = arg.Task.StartDate;
+        var oldDue = arg.Task.DueDate;
+        if (!await SaveTaskDates(arg.Task.Id, start, due)) { Toasts.Show("Tanggal task belum dapat diubah.", ToastKind.Error); return; }
+        Toasts.ShowUndo($"\"{arg.Task.Title}\" dipindah ke {DatePickerMath.FormatDateCompact(arg.Day)}.", async () =>
+        {
+            if (!await SaveTaskDates(arg.Task.Id, oldStart, oldDue)) Toasts.Show("Tanggal belum dapat dikembalikan.", ToastKind.Error);
+            await InvokeAsync(StateHasChanged);
+        }, "Batalkan", 8000);
+    }
+
+    private async Task<bool> SaveTaskDates(Guid taskId, DateTime? start, DateTime? due)
+    {
+        var req = new UpdateTaskRequest(null, null, null, null, start, due, null, null, null, null, null, null, null, null);
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{taskId}", req);
+        if (!res.IsSuccessStatusCode) return false;
+        await ReloadCalendar();
+        await LoadKanban();
+        await LoadTaskList();
+        await LoadTimeline();
+        RefreshEditingTask();
+        StateHasChanged();
+        return true;
+    }
+
+    private async Task HandleCalendarQuickAdd((DateOnly Day, string Title) arg)
+    {
+        if (selectedProjectId == Guid.Empty) return;
+        var due = arg.Day.ToDateTime(TimeOnly.MinValue);
+        var req = new CreateTaskRequest(selectedProjectId, null, arg.Title, null, "todo", null, null, due, null, null, null, selectedGroupId);
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/tasks", req);
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Task belum dapat dibuat.", ToastKind.Error); return; }
+        await ReloadCalendar();
+        await LoadKanban();
+        await LoadTaskList();
+        StateHasChanged();
+    }
+
+    private void NotifyRecurringSpawn(ProjectTaskDto? task)
+    {
+        if (task?.NextRecurringTaskId is not null)
+            Toasts.Show("Task berulang: task berikutnya sudah dibuat.", ToastKind.Info);
     }
 
     private async Task HandleSaveTask(ProjectTaskDrawer.TaskSaveModel m)
@@ -1072,50 +1898,30 @@
         if (targetTask is null) return;
         var req = new UpdateTaskRequest(
             m.Title, m.Description, m.Status, m.Priority, m.StartDate, m.DueDate,
-            m.EstimatedHours, m.ActualHours, null, targetTask.Dependencies, null, null, null, m.Tags
+            m.EstimatedHours, m.ActualHours, null, null, null, null, null, m.Tags
         );
         var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{m.Id}", req);
         if (res.IsSuccessStatusCode)
         {
+            ProjectTaskDto? saved = null;
+            try { saved = await res.Content.ReadFromJsonAsync<ProjectTaskDto>(); } catch { }
+            NotifyRecurringSpawn(saved);
+            if (tab == 6) await ReloadCalendar();
             await LoadKanban();
             await LoadTaskList();
+            await LoadTimeline();
+            if (tab == 3) await LoadWorkloadData();
             if (selectedProjectId != Guid.Empty)
                 selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");
             if (showTaskEditor) CloseTaskEditor();
-            Toasts.Show("Task saved successfully.");
+            Toasts.Show("Task saved successfully.", ToastKind.Success);
             StateHasChanged();
             await JS.InvokeVoidAsync("ipop.icons");
         }
         else
         {
-            Toasts.Show("Failed to save task.");
+            Toasts.Show("Failed to save task.", ToastKind.Error);
         }
-    }
-
-    private void OpenQuickViewer(ProjectTaskDto t)
-    {
-        quickViewerTaskId = t.Id;
-        StateHasChanged();
-    }
-
-    private void ToggleQuickViewerToolbar()
-    {
-        if (quickViewerTaskId.HasValue)
-        {
-            quickViewerTaskId = null;
-        }
-        else
-        {
-            var first = AllCurrentTasks.FirstOrDefault();
-            if (first is not null) quickViewerTaskId = first.Id;
-        }
-        StateHasChanged();
-    }
-
-    private void SelectQuickViewerTask(ProjectTaskDto t)
-    {
-        quickViewerTaskId = t.Id;
-        StateHasChanged();
     }
 
     private void OpenExtensionModal(ProjectTaskDto t)
@@ -1153,7 +1959,7 @@
         var newDesc = TaskEvidenceHelper.Serialize(parsed.CleanDescription, parsed.Evidence);
         var req = new UpdateTaskRequest(
             task.Title, newDesc, task.Status, task.Priority, task.StartDate, newDue,
-            task.EstimatedHours, task.ActualHours, null, task.Dependencies, null, null, null, task.Tags
+            task.EstimatedHours, task.ActualHours, null, null, null, null, null, task.Tags
         );
 
         var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{task.Id}", req);
@@ -1163,13 +1969,14 @@
             await LoadTaskList();
             if (selectedProjectId != Guid.Empty)
                 selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");
-            Toasts.Show($"Deadline extended to {newDue:dd MMM yyyy}.");
+            RefreshEditingTask();
+            Toasts.Show($"Deadline extended to {newDue:dd MMM yyyy}.", ToastKind.Success);
             StateHasChanged();
             await JS.InvokeVoidAsync("ipop.icons");
         }
         else
         {
-            Toasts.Show("Failed to save deadline extension.");
+            Toasts.Show("Failed to save deadline extension.", ToastKind.Error);
         }
         extensionTask = null;
     }
@@ -1180,15 +1987,15 @@
         if (res.IsSuccessStatusCode)
         {
             CloseTaskEditor();
-            await LoadKanban();
-            await LoadTaskList();
+            await ReloadCurrentView();
             if (selectedProjectId != Guid.Empty)
                 selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");
-            Toasts.Show("Task deleted.");
+            StateHasChanged();
+            ShowDeleteUndo(await ReadDeleteResult(res), "Task dihapus.");
         }
         else
         {
-            Toasts.Show("Failed to delete task.");
+            Toasts.Show("Failed to delete task.", ToastKind.Error);
         }
     }
 
@@ -1196,26 +2003,53 @@
     {
         var create = new CreateProjectRequest(
             m.Name, m.Description, m.Year, Guid.Empty,
-            null, m.Deadline, null, null, m.OwnerNik
+            null, m.Deadline, null, null, m.OwnerNik, m.Color
         );
         var r = await Auth.SendAsync(HttpMethod.Post, "/api/projects", create);
         if (r.IsSuccessStatusCode)
         {
             showCreateModal = false;
             await ReloadProjects();
-            Toasts.Show("Project created successfully.");
+            Toasts.Show("Project created successfully.", ToastKind.Success);
         }
         else
         {
-            Toasts.Show("Failed to create project (check permissions).");
+            Toasts.Show($"Failed to create project: {await ProjectErrorAsync(r)}", ToastKind.Error);
         }
+    }
+
+    /// The server's own reason for a failed project write. "check permissions" is only
+    /// claimed on a real 403 — a 500 used to be reported as a permission problem too.
+    private static async Task<string> ProjectErrorAsync(HttpResponseMessage res)
+    {
+        var status = (int)res.StatusCode;
+        if (res.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            return "you don't have permission (check permissions).";
+        string? code = null, message = null;
+        try
+        {
+            var b = await res.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+            code = b?.GetValueOrDefault("code")?.ToString();
+            message = b?.GetValueOrDefault("message")?.ToString();
+        }
+        catch { }
+        return (code ?? message) switch
+        {
+            "invalid_name" => "a name is required (max 200 characters).",
+            "invalid_year" => "the year must be between 2000 and 2100.",
+            "invalid_owner" => "the selected owner was not found or is inactive.",
+            "invalid_status" => "that status is not valid.",
+            "project_not_found" => "the project no longer exists.",
+            _ when !string.IsNullOrWhiteSpace(message) => message!,
+            _ => status >= 500 ? $"server error ({status}). Please try again." : $"request failed ({status}).",
+        };
     }
 
     private async Task HandleSubmitEditProject(ProjectEditModal.EditProjectModel m)
     {
         var upd = new UpdateProjectRequest(
             m.Name, m.Description, m.Year, selectedProject?.OwnerId,
-            m.StartDate, m.Deadline, m.Status, selectedProject?.Risk, selectedProject?.Obstacle
+            m.StartDate, m.Deadline, m.Status, selectedProject?.Risk, selectedProject?.Obstacle, null, m.Color
         );
         var r = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{m.Id}", upd);
         if (r.IsSuccessStatusCode)
@@ -1223,12 +2057,12 @@
             showEditModal = false;
             await ReloadProjects();
             selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{m.Id}");
-            Toasts.Show("Project settings updated.");
+            Toasts.Show("Project settings updated.", ToastKind.Success);
             StateHasChanged();
         }
         else
         {
-            Toasts.Show("Failed to update project.");
+            Toasts.Show($"Failed to update project: {await ProjectErrorAsync(r)}", ToastKind.Error);
         }
     }
 
@@ -1239,34 +2073,176 @@
         if (res.IsSuccessStatusCode)
         {
             await LoadMembers();
-            Toasts.Show($"Added {r.Name} to the project team.");
+            Toasts.Show($"Added {r.Name} to the project team.", ToastKind.Success);
         }
         else
         {
-            Toasts.Show("Failed to add member.");
+            Toasts.Show("Failed to add member.", ToastKind.Error);
         }
         StateHasChanged();
     }
 
     private async Task HandleRemoveTeamMember(Guid userId)
     {
-        if (selectedProjectId == Guid.Empty) return;
+        if (selectedProjectId == Guid.Empty || !CanManageMembers) return;
+        var member = projectMembers.FirstOrDefault(m => m.UserId == userId);
+        if (member is null || member.Role == "owner") return;
+        var assigned = workloadData?.ByAssignee.FirstOrDefault(a => a.UserId == userId)?.TaskCount ??
+            AllCurrentTasks.Count(t => t.Assignees.Any(a => a.UserId == userId));
+        var confirmed = await Confirm.AskAsync("Remove project member",
+            $"Remove {member.Name} from this project? They will be unassigned from {assigned} task(s).",
+            "Remove", danger: true);
+        if (!confirmed) return;
+
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/{selectedProjectId}/members/{userId}");
         if (res.IsSuccessStatusCode)
         {
-            await LoadMembers();
-            Toasts.Show("Member removed from team.");
+            await ReloadCurrentView();
+            Toasts.Show($"{member.Name} removed from the project.", ToastKind.Success);
             StateHasChanged();
         }
         else
         {
-            Toasts.Show("Failed to remove member.");
+            Toasts.Show("Failed to remove member.", ToastKind.Error);
         }
+    }
+
+    private async Task ViewWorkloadTasks(Guid? userId)
+    {
+        listAssigneeId = userId;
+        listUnassignedOnly = userId is null;
+        taskSearchQuery = "";
+        myTasksOnly = false;
+        overdueOnly = false;
+        priorityFilter = "";
+        listStatusFilter = "";
+        tab = 1;
+        await LoadTaskList();
+        StateHasChanged();
+    }
+
+    private async Task SelectPortfolio()
+    {
+        portfolioSelected = true;
+        portfolioTasks = null;
+        portfolioTaskFilter = null;
+        mDetail = true;
+        Nav.NavigateTo("/projects/overview");
+        await LoadPortfolio();
+    }
+
+    private async Task LoadPortfolio()
+    {
+        portfolioLoading = true;
+        try
+        {
+            portfolioData = await Auth.GetAsync<PortfolioDto>($"/api/projects/portfolio?localToday={DateTime.Today:yyyy-MM-dd}&page={portfolioData?.Projects.Page ?? 1}&pageSize=20");
+            if (portfolioData is null) Toasts.Show("Ringkasan project belum dapat dimuat.", ToastKind.Error);
+            if (portfolioTaskFilter is not null) await LoadPortfolioTaskPage(portfolioTasks?.Page ?? 1);
+        }
+        catch { portfolioData = null; Toasts.Show("Ringkasan project belum dapat dimuat.", ToastKind.Error); }
+        finally { portfolioLoading = false; StateHasChanged(); }
+    }
+
+    private async Task LoadPortfolioProjectPage(int page)
+    {
+        var next = await Auth.GetAsync<PortfolioDto>($"/api/projects/portfolio?localToday={DateTime.Today:yyyy-MM-dd}&page={page}&pageSize=20");
+        if (next is not null) portfolioData = next;
+        StateHasChanged();
+    }
+
+    private async Task OpenPortfolioProject(Guid id)
+    {
+        Nav.NavigateTo($"/projects/{id}");
+        var project = projects.FirstOrDefault(p => p.Id == id);
+        if (project is not null) await SelectProjectFromList(project);
+        else
+        {
+            selectedProjectId = id;
+            selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{id}");
+            portfolioSelected = false;
+            await ReloadCurrentView();
+            mDetail = true;
+        }
+    }
+
+    private async Task OpenPortfolioTasks((string Filter, Guid? ProjectId, Guid? AssigneeId) filter)
+    {
+        portfolioTaskFilter = filter;
+        await LoadPortfolioTaskPage(1);
+    }
+
+    private async Task LoadPortfolioTaskPage(int page)
+    {
+        if (portfolioTaskFilter is not { } filter) return;
+        var url = $"/api/projects/portfolio/tasks?filter={filter.Filter}&page={page}&pageSize=25&localToday={DateTime.Today:yyyy-MM-dd}";
+        if (filter.ProjectId is { } projectId) url += $"&projectId={projectId}";
+        if (filter.AssigneeId is { } assigneeId) url += $"&assigneeId={assigneeId}";
+        portfolioTasks = await Auth.GetAsync<PagedResult<PortfolioTaskDto>>(url);
+        StateHasChanged();
+    }
+
+    private Task ClosePortfolioTasks()
+    {
+        portfolioTasks = null;
+        portfolioTaskFilter = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task OpenPortfolioTask((Guid ProjectId, Guid TaskId) target)
+    {
+        await OpenPortfolioProject(target.ProjectId);
+        Nav.NavigateTo($"/projects/{target.ProjectId}?task={target.TaskId}");
+        var task = await Auth.GetAsync<ProjectTaskDto>($"/api/projects/tasks/{target.TaskId}");
+        if (task is not null) await OpenTaskEditor(task);
+    }
+
+    // ---- Phone layout (<= 767px): the project list is screen 1, the workspace is the detail ----
+    // `m-detail` only changes layout inside the mobile media query; on desktop it is inert and
+    // ipop.mobile.pushDetail is a no-op, so no history entries are added there.
+    private bool mDetail;
+    private DotNetObjectReference<Projects>? _mRef;
+
+    private async Task SelectProjectFromList(ProjectListDto p)
+    {
+        await SelectProject(p);
+        await OpenMobileDetail();
+    }
+
+    private async Task OpenMobileDetail()
+    {
+        mDetail = true;
+        try
+        {
+            _mRef ??= DotNetObjectReference.Create(this);
+            await JS.InvokeAsync<bool>("ipop.mobile.pushDetail", _mRef, nameof(CloseMobileDetailFromHistory));
+        }
+        catch { /* mobile.js missing: the in-app back button still works */ }
+    }
+
+    private async Task CloseMobileDetail()
+    {
+        mDetail = false;
+        try { await JS.InvokeVoidAsync("ipop.mobile.popDetail"); } catch { }
+    }
+
+    [JSInvokable]
+    public void CloseMobileDetailFromHistory()
+    {
+        if (_disposed) return;
+        mDetail = false;
+        StateHasChanged();
     }
 
     private IDisposable? _projectSub;
     public void Dispose()
     {
+        _disposed = true;
+        try { _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail"); } catch { }
+        _mRef?.Dispose();
         _projectSub?.Dispose();
+        Auth.HubReconnected -= OnHubReconnected;
+        _liveCts?.Cancel();
+        _liveCts?.Dispose();
     }
 }

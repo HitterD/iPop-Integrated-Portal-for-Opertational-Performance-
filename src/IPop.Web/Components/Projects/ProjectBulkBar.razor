@@ -1,0 +1,116 @@
+@using IPop.Application.Projects
+@inject IJSRuntime JS
+
+@* Fase 2c: floating bar over the List while tasks are selected. The page performs the bulk call;
+   this only collects the action and its value. *@
+<div class="pbulk" role="toolbar" aria-label="Aksi untuk @Count task terpilih" @onkeydown="OnKey">
+    <span class="pbulk-count">@Count dipilih</span>
+    <div class="pbulk-actions">
+        <div class="pbulk-wrap">
+            <button type="button" class="pbulk-btn" aria-haspopup="menu" aria-expanded="@(open == "status" ? "true" : "false")" @onclick='() => Toggle("status")'><i data-lucide="circle-dot"></i>Status</button>
+            @if (open == "status")
+            {
+                <div class="pbulk-menu" role="menu">
+                    @foreach (var s in new[] { "todo", "doing", "review", "done" })
+                    {
+                        <button type="button" role="menuitem" @onclick='() => Pick("status", s)'><span class="col-dot @s"></span>@ProjectUiHelpers.StatusLabel(s)</button>
+                    }
+                </div>
+            }
+        </div>
+        <div class="pbulk-wrap">
+            <button type="button" class="pbulk-btn" aria-haspopup="menu" aria-expanded="@(open == "assign" ? "true" : "false")" @onclick='() => Toggle("assign")'><i data-lucide="user-plus"></i>Assign</button>
+            @if (open == "assign")
+            {
+                <div class="pbulk-menu" role="menu">
+                    @if (Members.Count == 0) { <p class="pbulk-empty">Belum ada anggota.</p> }
+                    @foreach (var m in Members)
+                    {
+                        <div class="pbulk-member">
+                            <span class="nm">@m.Name</span>
+                            <button type="button" role="menuitem" title="Tambahkan @m.Name" aria-label="Tambahkan @m.Name" @onclick='() => Pick("assign", m.UserId.ToString())'><i data-lucide="plus"></i></button>
+                            <button type="button" role="menuitem" title="Lepaskan @m.Name" aria-label="Lepaskan @m.Name" @onclick='() => Pick("unassign", m.UserId.ToString())'><i data-lucide="minus"></i></button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+        <div class="pbulk-wrap">
+            <button type="button" class="pbulk-btn" aria-haspopup="dialog" aria-expanded="@(open == "due" ? "true" : "false")" @onclick='() => Toggle("due")'><i data-lucide="calendar"></i>Due</button>
+            @if (open == "due")
+            {
+                <div class="pbulk-menu" role="dialog" aria-label="Ubah due date">
+                    <input type="date" aria-label="Due date" @bind="dueValue" />
+                    <div class="pbulk-row">
+                        <button type="button" class="btn-sm" @onclick='() => Pick("due", "")'>Hapus due</button>
+                        <button type="button" class="btn-sm accent" disabled="@(dueValue is null)" @onclick='() => Pick("due", dueValue!.Value.ToString("yyyy-MM-dd"))'>Terapkan</button>
+                    </div>
+                </div>
+            }
+        </div>
+        @if (Groups.Count > 1)
+        {
+            <div class="pbulk-wrap">
+                <button type="button" class="pbulk-btn" aria-haspopup="menu" aria-expanded="@(open == "group" ? "true" : "false")" @onclick='() => Toggle("group")'><i data-lucide="folder-input"></i>Group</button>
+                @if (open == "group")
+                {
+                    <div class="pbulk-menu" role="menu">
+                        @foreach (var g in Groups.OrderBy(g => g.SortOrder))
+                        {
+                            <button type="button" role="menuitem" @onclick='() => Pick("group", g.Id.ToString())'><span class="pbulk-swatch" style="background:@g.Color"></span>@g.Name</button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        <div class="pbulk-wrap">
+            <button type="button" class="pbulk-btn" aria-haspopup="menu" aria-expanded="@(open == "priority" ? "true" : "false")" @onclick='() => Toggle("priority")'><i data-lucide="flag"></i>Priority</button>
+            @if (open == "priority")
+            {
+                <div class="pbulk-menu" role="menu">
+                    @foreach (var (key, label) in new[] { ("urgent", "Urgent"), ("high", "High"), ("normal", "Normal"), ("low", "Low"), ("", "Tanpa prioritas") })
+                    {
+                        <button type="button" role="menuitem" @onclick='() => Pick("priority", key)'>@label</button>
+                    }
+                </div>
+            }
+        </div>
+        <button type="button" class="pbulk-btn danger" @onclick='() => Pick("delete", null)'><i data-lucide="trash-2"></i>Hapus</button>
+    </div>
+    <button type="button" class="pbulk-close" aria-label="Batalkan pilihan (Esc)" title="Batalkan pilihan (Esc)" @onclick="() => OnClear.InvokeAsync()"><i data-lucide="x"></i></button>
+    @if (open is not null) { <div class="pbulk-backdrop" @onclick="() => open = null"></div> }
+</div>
+
+@code {
+    [Parameter] public int Count { get; set; }
+    [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
+    [Parameter] public List<ProjectGroupDto> Groups { get; set; } = [];
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<(string Action, string? Value)> OnAction { get; set; }
+    [Parameter] public EventCallback OnClear { get; set; }
+
+    private string? open;
+    private DateTime? dueValue;
+
+    // The bar and its menus render after the page's icon pass, so draw them here.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch (JSDisconnectedException) { }
+    }
+
+    private void Toggle(string menu) => open = open == menu ? null : menu;
+
+    private async Task Pick(string action, string? value)
+    {
+        if (Busy) return;
+        open = null;
+        await OnAction.InvokeAsync((action, value));
+    }
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key != "Escape") return;
+        if (open is not null) { open = null; return; }
+        await OnClear.InvokeAsync();
+    }
+}

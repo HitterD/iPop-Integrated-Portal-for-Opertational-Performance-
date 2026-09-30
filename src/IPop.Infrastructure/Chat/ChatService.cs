@@ -25,6 +25,9 @@ public sealed partial class ChatService : IChatService
     Task<RoomSettingsResultDto> IChatService.UpdateGroupIdentityAsync(Guid actorId, Guid roomId, string name, string? description, string? avatarColor, CancellationToken ct)
         => UpdateGroupIdentityAsyncImpl(actorId, roomId, name, description, avatarColor, ct);
 
+    Task<RoomSettingsResultDto> IChatService.SetGroupAvatarAsync(Guid actorId, Guid roomId, string? avatarUrl, CancellationToken ct)
+        => SetGroupAvatarAsyncImpl(actorId, roomId, avatarUrl, ct);
+
     Task<PagedResult<MembershipAuditDto>> IChatService.GetMembershipAuditAsync(Guid callerId, Guid roomId, int page, int pageSize, CancellationToken ct)
         => GetMembershipAuditAsyncImpl(callerId, roomId, page, pageSize, ct);
 
@@ -53,7 +56,8 @@ public sealed partial class ChatService : IChatService
     // Private Helpers
     // ──────────────────────────────────────────────────────────────────────────
 
-    private MessageDto MapToMessageDto(ChatMessage m, Guid currentUserId)
+    private MessageDto MapToMessageDto(ChatMessage m, Guid currentUserId,
+        IReadOnlyDictionary<Guid, (IReadOnlyList<string> Niks, bool All)>? mentionInfo = null)
     {
         var content = m.IsDeleted
             ? m.DeletedByType == "admin"
@@ -90,6 +94,7 @@ public sealed partial class ChatService : IChatService
             .ToList() as IReadOnlyList<AttachmentDto> ?? [];
 
         string? deliveryStatus = null;
+        int? groupReadCount = null, groupReadTotal = null;
         if (m.SenderId == currentUserId)
         {
             var receipts = m.ReadReceipts ?? Enumerable.Empty<ChatReadReceipt>();
@@ -107,7 +112,11 @@ public sealed partial class ChatService : IChatService
             else
             {
                 var activeOtherMembers = m.Room?.Members?.Count(mem => mem.LeftAt == null && mem.UserId != currentUserId) ?? 0;
-                var readCount = others.Count(r => r.ReadAt != null);
+                var activeIds = m.Room?.Members?.Where(mem => mem.LeftAt == null && mem.UserId != currentUserId)
+                    .Select(mem => mem.UserId).ToHashSet() ?? [];
+                var readCount = others.Count(r => r.ReadAt != null && activeIds.Contains(r.UserId));
+                groupReadCount = readCount;
+                groupReadTotal = activeOtherMembers;
                 if (activeOtherMembers > 0 && readCount >= activeOtherMembers)
                     deliveryStatus = "read";
                 else if (others.Any(r => r.DeliveredAt != null || r.ReadAt != null))
@@ -117,6 +126,10 @@ public sealed partial class ChatService : IChatService
             }
         }
 
+        (IReadOnlyList<string> Niks, bool All) mentions = ([], false);
+        if (!m.IsDeleted && mentionInfo is not null && mentionInfo.TryGetValue(m.Id, out var mi))
+            mentions = mi;
+
         return new MessageDto(
             m.Id, m.RoomId, m.SenderId,
             m.Sender?.Name ?? "Unknown", m.Sender?.Nik ?? "Unknown",
@@ -124,10 +137,12 @@ public sealed partial class ChatService : IChatService
             m.DeletedByType, m.ReplyToId, replyPreview,
             m.ThreadParentId, m.ThreadReplyCount, m.LastThreadReplyAt,
             attachments, reactions,
-            [], false, m.IdempotencyKey,
+            mentions.Niks, mentions.All, m.IdempotencyKey,
             deliveryStatus,
             ForwardedFromSenderName: m.ForwardedFromSenderName
-                ?? (m.Content.StartsWith("[forwarded]", StringComparison.Ordinal) ? "" : null));
+                ?? (m.Content.StartsWith("[forwarded]", StringComparison.Ordinal) ? "" : null),
+            ReadCount: groupReadCount,
+            ReadTotal: groupReadTotal);
     }
 
     private static string Truncate(string value, int maxLength)
@@ -180,8 +195,38 @@ public sealed partial class ChatService : IChatService
         var roomType = await db.ChatRooms.AsNoTracking().Where(r => r.Id == roomId).Select(r => r.Type).FirstOrDefaultAsync(ct) ?? "group";
         var members = await db.ChatRoomMembers.AsNoTracking().Where(m => m.RoomId == roomId).ToListAsync(ct);
         var dict = members.ToDictionary(m => m.UserId, m => m.LeftAt == null);
-        return MentionResolver.Resolve(new MentionResolutionInput(senderId, roomType, segs, dict));
+        // @all is an owner/admin privilege; anyone else's @[all](all) stays plain text.
+        var mayAll = members.Any(m => m.UserId == senderId && m.LeftAt == null && m.Role is "owner" or "admin");
+        return MentionResolver.Resolve(new MentionResolutionInput(senderId, roomType, segs, dict, mayAll));
     }
+
+    /// Mention facts for a batch of messages in ONE query (no N+1): the NIKs mentioned
+    /// directly, and whether the message fanned out via @all. Feeds MessageDto so the
+    /// client can ring "mentions me" bubbles.
+    private async Task<Dictionary<Guid, (IReadOnlyList<string> Niks, bool All)>> LoadMentionInfoAsync(
+        IReadOnlyCollection<Guid> messageIds, CancellationToken ct)
+    {
+        var result = new Dictionary<Guid, (IReadOnlyList<string>, bool)>();
+        if (messageIds.Count == 0) return result;
+        var rows = await db.ChatMentions.AsNoTracking()
+            .Where(cm => messageIds.Contains(cm.MessageId))
+            .Select(cm => new { cm.MessageId, cm.User.Nik, cm.IsAllMention })
+            .ToListAsync(ct);
+        foreach (var g in rows.GroupBy(r => r.MessageId))
+            result[g.Key] = (
+                g.Where(r => !r.IsAllMention).Select(r => r.Nik).Distinct().ToList(),
+                g.Any(r => r.IsAllMention));
+        return result;
+    }
+
+    private async Task<List<MessageDto>> MapWithMentionsAsync(IReadOnlyList<ChatMessage> messages, Guid currentUserId, CancellationToken ct)
+    {
+        var info = await LoadMentionInfoAsync(messages.Select(m => m.Id).ToList(), ct);
+        return messages.Select(m => MapToMessageDto(m, currentUserId, info)).ToList();
+    }
+
+    private async Task<MessageDto> MapWithMentionsAsync(ChatMessage message, Guid currentUserId, CancellationToken ct)
+        => MapToMessageDto(message, currentUserId, await LoadMentionInfoAsync([message.Id], ct));
 
     private async Task<string?> ValidateProjectTaskMentionsAsync(Guid senderId, string content, CancellationToken ct)
     {
