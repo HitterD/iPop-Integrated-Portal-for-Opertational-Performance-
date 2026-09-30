@@ -35,7 +35,7 @@ public class NotificationLinkBackfillTests
         var at = DateTime.UtcNow.AddDays(-1);
         var mail = NewMail(sender.Id, me.Id, "Subject Meeting", at.AddSeconds(-2));
         t.Db.Mails.Add(mail);
-        var n = Req(c, "mail.new", $"Email baru dari {sender.Name}", "Subject Meeting — Body Meeting", "/mail", at);
+        var n = Req(c, "mail.new", $"New email from {sender.Name}", "Subject Meeting — Body Meeting", "/mail", at);
         t.Db.NotificationRequests.Add(n); Deliver(t, n, me.Id);
         t.Db.SaveChanges();
 

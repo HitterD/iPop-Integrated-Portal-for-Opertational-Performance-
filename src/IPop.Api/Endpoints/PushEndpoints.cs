@@ -77,7 +77,7 @@ public static class PushEndpoints
             return n == 0 ? Results.NotFound() : Results.NoContent();
         }).RequireAuthorization();
 
-        // Test toast to every browser of the caller — the "Kirim tes" button in Settings.
+        // Test toast to every browser of the caller — the "Send test" button in Settings.
         g.MapPost("/test", async (HttpContext http, IPopDbContext db, PushQueue push, PushOptions o, CancellationToken ct) =>
         {
             if (!o.IsConfigured) return Results.Json(new { code = "push_disabled" }, statusCode: 503);
@@ -85,7 +85,7 @@ public static class PushEndpoints
             if (userId is null) return Results.Unauthorized();
             var uid = userId.Value;
             push.Enqueue((p, token) => p.SendAsync([uid],
-                new PushPayload("test", "iPop", "Notifikasi desktop aktif ✔", "/notifications/settings", $"test:{Guid.NewGuid():N}"),
+                new PushPayload("test", "iPop", "Desktop notifications are on ✔", "/notifications/settings", $"test:{Guid.NewGuid():N}"),
                 urgent: true, token));
             return Results.Accepted();
         }).RequireAuthorization();

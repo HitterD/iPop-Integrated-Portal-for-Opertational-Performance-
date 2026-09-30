@@ -595,10 +595,10 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
                 await notificationGateway.PublishInternalAsync(
                     clientSlug: "news",
                     eventType: "memo.reminder",
-                    title: $"[Pengingat Wajib Baca] {post.Title}",
+                    title: $"[Required Reading Reminder] {post.Title}",
                     message: post.AckDueAt is { } due
-                        ? $"Mohon baca dan konfirmasi memo ini sebelum {due:dd MMM yyyy}."
-                        : "Mohon segera membaca dan mengonfirmasi pemahaman atas memo ini.",
+                        ? $"Please read and acknowledge this memo by {due:dd MMM yyyy}."
+                        : "Please read this memo and acknowledge it as soon as possible.",
                     target: new NotificationTarget(UserIds: pending),
                     priority: "high",
                     targetUrl: $"/news?post={post.Id}",
@@ -909,7 +909,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
             var isMemo = post.Type == "memo";
             var isMandatory = post.RequiresAcknowledgement;
             var eventType = isCondolence ? "news.condolence" : (isMandatory ? "memo.mandatory" : (isMemo ? "memo.published" : "news.published"));
-            var titlePrefix = isCondolence ? "[Berita Duka] " : (isMandatory ? "[Wajib Baca] " : (isMemo ? "[Memo] " : "[Berita] "));
+            var titlePrefix = isCondolence ? "[Condolence] " : (isMandatory ? "[Required Reading] " : (isMemo ? "[Memo] " : "[News] "));
             var priority = (isMandatory || isCondolence) ? "high" : "normal";
             var preview = post.Title.Trim();
             var snippet = post.Body?.Length > 120 ? post.Body[..120] + "..." : post.Body;

@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 namespace IPop.Infrastructure.Notifications.Push;
 
 /// What the service worker (wwwroot/sw.js) receives. Kind drives its behaviour:
-/// "notif" | "chat" (grouped per room tag) | "call" (sticky, Jawab/Tolak) | "close" (dismiss Tag).
+/// "notif" | "chat" (grouped per room tag) | "call" (sticky, Answer/Decline) | "close" (dismiss Tag).
 public sealed record PushPayload(
     string Kind, string Title, string Body, string? Url, string Tag,
     bool RequireInteraction = false,
@@ -109,14 +109,14 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
         if (recipients.Count == 0) return;
 
         var previewOff = emergency ? [] : await PreviewOffAsync(recipients, ct);
-        var title = emergency ? $"🚨 DARURAT · {msg.RoomName ?? msg.SenderName}"
-            : msg.RoomType == "group" ? $"{msg.SenderName} · {msg.RoomName ?? "Grup"}" : msg.SenderName;
+        var title = emergency ? $"🚨 EMERGENCY · {msg.RoomName ?? msg.SenderName}"
+            : msg.RoomType == "group" ? $"{msg.SenderName} · {msg.RoomName ?? "Group"}" : msg.SenderName;
         var preview = msg.Type == "sticker" ? "🎨 Sticker" : ChatPreview(msg.Content, msg.Files);
         var url = $"/chat/{msg.RoomId}";
         var tag = $"chat:{msg.RoomId}";
 
         await SendAsync(recipients,
-            uid => new PushPayload("chat", title, previewOff.Contains(uid) ? "Pesan baru" : preview, url,
+            uid => new PushPayload("chat", title, previewOff.Contains(uid) ? "New message" : preview, url,
                 emergency ? $"emergency:{msg.Id:N}" : tag, RequireInteraction: emergency),
             urgent: emergency, TimeSpan.FromHours(emergency ? 1 : 12), ct);
     }
@@ -124,11 +124,11 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
     /// One line for the toast body: mention markup flattened, cards/attachments named.
     internal static string ChatPreview(string content, int attachments)
     {
-        if (content.StartsWith("[poll]")) return "📊 Polling";
-        if (content.StartsWith("[note]")) return "📝 Membagikan catatan";
+        if (content.StartsWith("[poll]")) return "📊 Poll";
+        if (content.StartsWith("[note]")) return "📝 Shared a note";
         var text = IPop.Application.Chat.Mentions.MentionPlainText.Project(content, 120).Trim();
         if (text.Length > 0) return text;
-        return attachments switch { 0 => "Pesan baru", 1 => "📎 Lampiran", _ => $"📎 {attachments} lampiran" };
+        return attachments switch { 0 => "New message", 1 => "📎 Attachment", _ => $"📎 {attachments} attachments" };
     }
 
     // ── Gateway notifications (mentions, emergencies, module events) ──────────
@@ -145,7 +145,7 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
         var tag = roomId is { } r ? $"chat:{r}" : $"notif:{requestId:N}";
         await SendAsync(userIds,
             uid => new PushPayload(isChat ? "chat" : "notif", title,
-                previewOff.Contains(uid) ? "Pesan baru" : body, url ?? "/notifications", tag,
+                previewOff.Contains(uid) ? "New message" : body, url ?? "/notifications", tag,
                 RequireInteraction: emergency),
             urgent: priority == "high", TimeSpan.FromHours(emergency ? 1 : 24), ct);
     }
@@ -178,10 +178,10 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
         var tag = $"call:{room.Id}";
         if (ringNow.Count > 0)
         {
-            var caller = room.Participants.FirstOrDefault(p => p.UserId == room.CreatorId)?.Name ?? "Seseorang";
+            var caller = room.Participants.FirstOrDefault(p => p.UserId == room.CreatorId)?.Name ?? "Someone";
             var isGroup = room.Kind == CallKind.Group;
-            var title = isGroup ? $"Panggilan grup · {room.Title ?? "Grup"}" : $"Panggilan masuk · {caller}";
-            var body = isGroup ? $"{caller} memulai panggilan grup" : "Panggilan suara iPop";
+            var title = isGroup ? $"Group call · {room.Title ?? "Group"}" : $"Incoming call · {caller}";
+            var body = isGroup ? $"{caller} started a group call" : "iPop voice call";
             var protector = dataProtection.CreateProtector(CallActionPurpose).ToTimeLimitedDataProtector();
             await SendAsync(ringNow,
                 uid => InviteText(room, uid) is { } invite

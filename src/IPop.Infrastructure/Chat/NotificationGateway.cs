@@ -118,7 +118,7 @@ public sealed class NotificationGateway(
         if (push is not null)
         {
             var (priority, body, requestId) = (request.Priority, request.Body, request.Id);
-            var title = $"{senderName} menyebut Anda · {roomName}";
+            var title = $"{senderName} mentioned you · {roomName}";
             var silenced = await IPop.Infrastructure.Notifications.Push.PushDispatcher.SilencedAsync(
                 db, [recipientId], "chat.mention", priority, now, ct);
             if (silenced.Count == 0)

@@ -98,29 +98,29 @@
                 </div>
 
                 <div class="setting-group push-group">
-                    <h3 class="setting-title">Notifikasi Windows</h3>
-                    <p class="setting-desc">Toast di pojok kanan bawah Windows — tetap muncul walau tab iPop ditutup, selama Chrome berjalan</p>
+                    <h3 class="setting-title">Windows Notifications</h3>
+                    <p class="setting-desc">Toasts in the bottom-right corner of Windows — they still appear when the iPop tab is closed, as long as Chrome is running</p>
 
                     @if (!Push.ServerEnabled)
                     {
-                        <div class="push-note"><i data-lucide="info"></i><span>Notifikasi Windows belum diaktifkan di server iPop.</span></div>
+                        <div class="push-note"><i data-lucide="info"></i><span>Windows notifications aren't enabled on the iPop server yet.</span></div>
                     }
                     else if (!Push.Secure || Push.Permission == "unsupported")
                     {
-                        <div class="push-note"><i data-lucide="lock"></i><span>Browser hanya mengizinkan notifikasi di alamat aman. Buka iPop lewat <b>https://ipop.santos.co.id</b>.</span></div>
+                        <div class="push-note"><i data-lucide="lock"></i><span>Browsers only allow notifications on secure addresses. Open iPop via <b>https://ipop.santos.co.id</b>.</span></div>
                     }
                     else if (Push.Permission == "denied")
                     {
                         <div class="push-note warn">
                             <i data-lucide="bell-off"></i>
                             <div>
-                                <b>Notifikasi diblokir di browser ini.</b> Cara mengizinkan:
+                                <b>Notifications are blocked in this browser.</b> To allow them:
                                 <ol>
-                                    <li>Klik ikon di kiri address bar (gembok / pengaturan situs).</li>
-                                    <li>Pada <b>Notifications</b> pilih <b>Allow</b>.</li>
-                                    <li>Muat ulang halaman ini.</li>
+                                    <li>Click the icon at the left of the address bar (padlock / site settings).</li>
+                                    <li>Under <b>Notifications</b>, choose <b>Allow</b>.</li>
+                                    <li>Reload this page.</li>
                                 </ol>
-                                Jika tetap tidak muncul: Windows <b>Settings → System → Notifications</b>, pastikan Notifications dan <b>Google Chrome</b> menyala, dan <b>Do not disturb</b> mati.
+                                Still nothing? In Windows <b>Settings → System → Notifications</b>, make sure Notifications and <b>Google Chrome</b> are on, and <b>Do not disturb</b> is off.
                             </div>
                         </div>
                     }
@@ -128,8 +128,8 @@
                     {
                         <div class="setting-item">
                             <div class="setting-info">
-                                <div class="setting-name">Toast di browser ini</div>
-                                <div class="setting-hint">@(Push.Subscribed ? "Aktif — pesan, panggilan, dan notifikasi iPop dikirim ke perangkat ini" : "Mati — aktifkan untuk menerima toast Windows")</div>
+                                <div class="setting-name">Toasts in This Browser</div>
+                                <div class="setting-hint">@(Push.Subscribed ? "On — messages, calls, and iPop notifications are sent to this device" : "Off — turn on to receive Windows toasts")</div>
                             </div>
                             <label class="toggle">
                                 <input type="checkbox" checked="@Push.Subscribed" disabled="@pushBusy" @onchange="TogglePush" />
@@ -139,8 +139,8 @@
 
                         <div class="setting-item">
                             <div class="setting-info">
-                                <div class="setting-name">Isi pesan chat di toast</div>
-                                <div class="setting-hint">Matikan agar toast hanya menulis "Pesan baru" — untuk layar yang bisa dilihat orang lain</div>
+                                <div class="setting-name">Chat Message Content in Toasts</div>
+                                <div class="setting-hint">Turn off so toasts only say "New message" — useful on screens others can see</div>
                             </div>
                             <label class="toggle">
                                 <input type="checkbox" checked="@pushPreview" @onchange="TogglePushPreview" />
@@ -152,10 +152,10 @@
                         {
                             <div class="setting-item">
                                 <div class="setting-info">
-                                    <div class="setting-name">Kirim toast percobaan</div>
-                                    <div class="setting-hint">@(pushTestNote ?? "Toast muncul di semua perangkat Anda yang aktif")</div>
+                                    <div class="setting-name">Send Test Toast</div>
+                                    <div class="setting-hint">@(pushTestNote ?? "The toast appears on all your active devices")</div>
                                 </div>
-                                <button type="button" class="btn-secondary" disabled="@pushBusy" @onclick="SendPushTest">Kirim tes</button>
+                                <button type="button" class="btn-secondary" disabled="@pushBusy" @onclick="SendPushTest">Send test</button>
                             </div>
                         }
                     }
@@ -163,16 +163,16 @@
                     @if (pushDevices.Count > 0)
                     {
                         <div class="push-devices">
-                            <div class="setting-name">Perangkat yang menerima toast</div>
+                            <div class="setting-name">Devices Receiving Toasts</div>
                             @foreach (var d in pushDevices)
                             {
                                 <div class="push-device">
                                     <i data-lucide="monitor"></i>
                                     <div class="setting-info">
-                                        <div class="setting-name">@d.Label @if (d.Endpoint == Push.Endpoint) {<span class="push-this">perangkat ini</span>}</div>
-                                        <div class="setting-hint">Terakhir aktif @FormatTime(d.LastSeenAt.ToLocalTime())</div>
+                                        <div class="setting-name">@d.Label @if (d.Endpoint == Push.Endpoint) {<span class="push-this">this device</span>}</div>
+                                        <div class="setting-hint">Last active @FormatTime(d.LastSeenAt.ToLocalTime())</div>
                                     </div>
-                                    <button type="button" class="btn-secondary" @onclick="() => RemovePushDevice(d)">Hapus</button>
+                                    <button type="button" class="btn-secondary" @onclick="() => RemovePushDevice(d)">Remove</button>
                                 </div>
                             }
                         </div>
@@ -957,8 +957,8 @@
         pushBusy = true;
         using var res = await Auth.SendAsync(HttpMethod.Post, "/api/push/test");
         pushTestNote = res.IsSuccessStatusCode
-            ? "Terkirim — toast muncul dalam beberapa detik. Tidak muncul? Cek Focus Assist / Do not disturb di Windows."
-            : "Gagal mengirim tes. Coba lagi.";
+            ? "Sent — the toast should appear within a few seconds. Not showing? Check Focus Assist / Do not disturb in Windows."
+            : "Couldn't send the test. Try again.";
         pushBusy = false;
     }
 

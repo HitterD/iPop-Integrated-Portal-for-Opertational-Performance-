@@ -69,7 +69,7 @@ public class ChatBannerTests
     public void Attachment_only_message_gets_a_readable_preview()
     {
         var m = Msg("") with { Attachments = [new AttachmentDto(Guid.NewGuid(), "a.pdf", 10, "application/pdf", null)] };
-        Assert.Equal("Budi: Mengirim lampiran", NotificationState.BuildChatItem(In(m), 1).Body);
+        Assert.Equal("Budi: Sent an attachment", NotificationState.BuildChatItem(In(m), 1).Body);
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public class ChatBannerTests
         s.ShowChatMessage(In(Msg("tiga")), "/home");
 
         var card = Assert.Single(s.ActiveBanners);
-        Assert.Equal("Tim Ops · 3 pesan baru", card.Item.Title);
+        Assert.Equal("Tim Ops · 3 new messages", card.Item.Title);
         Assert.Equal("Budi: tiga", card.Item.Body);
         Assert.Empty(s.RecentNotifications); // banner only, never the bell
     }

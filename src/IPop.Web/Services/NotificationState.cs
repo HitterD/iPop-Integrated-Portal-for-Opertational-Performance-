@@ -342,7 +342,7 @@ public class NotificationState : IDisposable
 
     // ── Incoming chat banners ──
     // Chat messages are banner-only (never the bell/inbox) and fold into one card per room:
-    // a second message updates that card to "N pesan baru" instead of stacking another.
+    // a second message updates that card to "N new messages" instead of stacking another.
     // Mentions and emergencies are skipped here because the server already sends them as
     // chat.mention / chat.emergency notifications (and those break through room mute).
     public const string ChatMessageType = "chat.message";
@@ -395,9 +395,9 @@ public class NotificationState : IDisposable
             : (m.Room?.RecipientName ?? msg.SenderName);
         var preview = IPop.Application.Chat.Mentions.MentionPlainText.Project(msg.Content ?? "", 120);
         if (string.IsNullOrWhiteSpace(preview))
-            preview = msg.Attachments.Count > 0 ? "Mengirim lampiran" : "Pesan baru";
+            preview = msg.Attachments.Count > 0 ? "Sent an attachment" : "New message";
         var body = isGroup || m.Room is null ? $"{msg.SenderName}: {preview}" : preview;
-        var title = count > 1 ? $"{name} · {count} pesan baru" : name;
+        var title = count > 1 ? $"{name} · {count} new messages" : name;
         return new ShellNotificationItem(Guid.NewGuid(), ChatMessageType, title, body, "chat",
             DateTime.Now, true, "normal", $"/chat/{msg.RoomId:D}");
     }

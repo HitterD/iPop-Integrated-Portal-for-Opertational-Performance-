@@ -253,7 +253,7 @@ public class ModuleNotificationIntegrationTests
         Assert.Equal($"/news/{newsId}", call.TargetUrl);
         Assert.Equal("high", call.Priority);
         Assert.True(call.Target.All);
-        Assert.Contains("[Wajib Baca]", call.Title);
+        Assert.Contains("[Required Reading]", call.Title);
     }
 
     private sealed class StubHrisGateway(IReadOnlyList<HrisEmployee> employees) : IHrisGateway
@@ -282,6 +282,6 @@ public class ModuleNotificationIntegrationTests
         Assert.Equal("system.hris_sync", call.EventType);
         Assert.Equal("/notifications/inbox", call.TargetUrl);
         Assert.True(call.Target.All);
-        Assert.Contains("Sinkronisasi HRIS Selesai", call.Title);
+        Assert.Contains("HRIS Sync Complete", call.Title);
     }
 }

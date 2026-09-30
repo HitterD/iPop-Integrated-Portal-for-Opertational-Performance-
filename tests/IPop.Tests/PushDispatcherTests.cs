@@ -149,7 +149,7 @@ public class PushDispatcherTests
 
         var only = Assert.Single(tr.Sent);
         Assert.Equal(privateUser.Id, only.Sub.UserId);
-        Assert.Equal("Pesan baru", only.Payload.Body);
+        Assert.Equal("New message", only.Payload.Body);
         Assert.Equal("User A", only.Payload.Title); // DM: sender name only
     }
 
@@ -173,10 +173,10 @@ public class PushDispatcherTests
     }
 
     [Theory]
-    [InlineData("[poll]{}", 0, "📊 Polling")]
-    [InlineData("", 1, "📎 Lampiran")]
-    [InlineData("", 3, "📎 3 lampiran")]
-    [InlineData("", 0, "Pesan baru")]
+    [InlineData("[poll]{}", 0, "📊 Poll")]
+    [InlineData("", 1, "📎 Attachment")]
+    [InlineData("", 3, "📎 3 attachments")]
+    [InlineData("", 0, "New message")]
     public void ChatPreview_NamesNonTextContent(string content, int files, string expected) =>
         Assert.Equal(expected, PushDispatcher.ChatPreview(content, files));
 

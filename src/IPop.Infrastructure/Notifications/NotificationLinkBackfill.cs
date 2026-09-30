@@ -35,7 +35,8 @@ public class NotificationLinkBackfill(IServiceScopeFactory scopes, ILogger<Notif
     }
 
     private static readonly string[] BareLinks = ["/mail", "/news", "/calendar"];
-    private const string MailPrefix = "Email baru dari ";
+    // Current English title plus the older Indonesian one still stored on existing rows.
+    private static readonly string[] MailPrefixes = ["New email from ", "Email baru dari "];
 
     /// Returns how many requests were rewritten.
     public static async Task<int> RunAsync(IPopDbContext db, CancellationToken ct)
@@ -65,12 +66,13 @@ public class NotificationLinkBackfill(IServiceScopeFactory scopes, ILogger<Notif
         return changed;
     }
 
-    /// "Email baru dari {sender}" + body "{subject} — {preview}", delivered to one person:
+    /// "New email from {sender}" (older rows: "Email baru dari {sender}") + body "{subject} — {preview}", delivered to one person:
     /// the mail that sender sent that person with that subject, close to the notification time.
     private static async Task<string?> MailLinkAsync(IPopDbContext db, NotificationRequest r, CancellationToken ct)
     {
-        if (!r.Title.StartsWith(MailPrefix, StringComparison.Ordinal)) return null;
-        var senderName = r.Title[MailPrefix.Length..].Trim();
+        var prefix = MailPrefixes.FirstOrDefault(x => r.Title.StartsWith(x, StringComparison.Ordinal));
+        if (prefix is null) return null;
+        var senderName = r.Title[prefix.Length..].Trim();
         var subject = r.Body.Split(" — ", 2)[0].Trim();
         var recipients = await db.NotificationDeliveries.AsNoTracking()
             .Where(d => d.RequestId == r.Id).Select(d => d.UserId).ToListAsync(ct);

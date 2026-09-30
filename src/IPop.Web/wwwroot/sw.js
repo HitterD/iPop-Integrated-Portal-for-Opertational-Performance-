@@ -1,7 +1,7 @@
 // iPop service worker — Web Push only (Windows toasts). No fetch handler, no offline cache:
 // the app always loads from the network exactly as before.
 // Payload (PushDispatcher.PushPayload): { kind, title, body, url, tag, requireInteraction, callId, actionToken, apiBase }
-//   kind: "notif" | "chat" (grouped per room tag) | "call" (sticky, Jawab/Tolak) | "close" (dismiss tag) | "test"
+//   kind: "notif" | "chat" (grouped per room tag) | "call" (sticky, Answer/Decline) | "close" (dismiss tag) | "test"
 
 const ICON = "img/brand/icon-192.png";
 
@@ -32,7 +32,7 @@ async function onPush(e) {
     const more = prev.reduce((n, p) => n + 1 + ((p.data && p.data.more) || 0), 0);
     if (more > 0) {
       data.more = more;
-      body = `${body}\n(+${more} pesan lain)`;
+      body = `${body}\n(+${more} more)`;
     }
   }
 
@@ -47,7 +47,7 @@ async function onPush(e) {
     data,
   };
   if (d.kind === "call") {
-    options.actions = [{ action: "jawab", title: "Jawab" }, { action: "tolak", title: "Tolak" }];
+    options.actions = [{ action: "jawab", title: "Answer" }, { action: "tolak", title: "Decline" }];
     options.renotify = true;
   }
   await self.registration.showNotification(d.title || "iPop", options);

@@ -14,7 +14,7 @@ public static class NotificationModules
     public static readonly NotificationModule Meeting = new("meeting", "Meetings", "video");
     public static readonly NotificationModule Calendar = new("calendar", "Calendar", "calendar-days");
     public static readonly NotificationModule News = new("news", "News & Memos", "newspaper");
-    public static readonly NotificationModule Memo = new("memo", "Memo wajib baca", "megaphone");
+    public static readonly NotificationModule Memo = new("memo", "Required-reading memos", "megaphone");
     public static readonly NotificationModule Project = new("project", "Projects", "kanban");
     public static readonly NotificationModule Notes = new("notes", "Notes", "notebook-pen");
     public static readonly NotificationModule Files = new("files", "Files", "folder");
@@ -42,7 +42,7 @@ public static class NotificationModules
         {
             "mail" => Mail,
             "project" => Project,
-            "news" when t.Contains("wajib baca") || t.Contains("memo") => Memo,
+            "news" when t.Contains("required reading") || t.Contains("wajib baca") || t.Contains("memo") => Memo,
             "news" => News,
             _ when path.StartsWith("/chat") => Chat,
             _ when path.StartsWith("/mail") => Mail,
