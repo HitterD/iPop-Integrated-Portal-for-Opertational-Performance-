@@ -66,7 +66,7 @@ public partial class Chat
         {
             var call = await CallStateSvc.StartGroupAsync(room.Id);
             if (call is null)
-                Toasts.Show(CallStateSvc.LastError ?? "Panggilan grup gagal dimulai.", ToastKind.Error);
+                Toasts.Show(CallStateSvc.LastError ?? "Couldn't start the group call.", ToastKind.Error);
         }
         finally { groupCallBusy = false; }
     }
@@ -79,7 +79,7 @@ public partial class Chat
         {
             var call = await CallStateSvc.JoinGroupAsync(callId);
             if (call is null)
-                Toasts.Show(CallStateSvc.LastError ?? "Gagal bergabung ke panggilan grup.", ToastKind.Error);
+                Toasts.Show(CallStateSvc.LastError ?? "Couldn't join the group call.", ToastKind.Error);
         }
         finally { groupCallBusy = false; }
     }

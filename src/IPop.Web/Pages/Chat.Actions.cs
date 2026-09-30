@@ -596,9 +596,9 @@ public partial class Chat
             {
                 deleteRoomError = res.StatusCode switch
                 {
-                    System.Net.HttpStatusCode.Forbidden => "Anda tidak punya izin menghapus chat ini.",
-                    System.Net.HttpStatusCode.UnprocessableEntity when deleteRoomForAll => "Nama grup tidak cocok, atau grup ini milik proyek.",
-                    _ => "Chat tidak bisa dihapus. Coba lagi.",
+                    System.Net.HttpStatusCode.Forbidden => "You don't have permission to delete this chat.",
+                    System.Net.HttpStatusCode.UnprocessableEntity when deleteRoomForAll => "The group name doesn't match, or this group belongs to a project.",
+                    _ => "Couldn't delete the chat. Try again.",
                 };
                 return;
             }
@@ -606,7 +606,7 @@ public partial class Chat
             deleteRoom = null;
             if (room.Id == ChatSvc.ActiveRoomId) { CloseDetail(); CloseActiveConversation(); }
             await ChatSvc.LoadRoomsAsync();
-            Toasts.Show(forAll ? "Grup dihapus untuk semua anggota." : "Chat dihapus.", ToastKind.Success);
+            Toasts.Show(forAll ? "Group deleted for all members." : "Chat deleted.", ToastKind.Success);
         }
         finally
         {

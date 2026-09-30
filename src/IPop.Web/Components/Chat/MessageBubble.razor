@@ -79,10 +79,10 @@
                     <div class="nc-cover" style='@(note.Cover is null ? "" : "--cover:var(--cv-" + note.Cover + ")")'><span class="nc-emo">@(note.Emoji ?? "📄")</span></div>
                     <div class="nc-body">
                         <div class="nc-kind"><i data-lucide="notebook-pen"></i>Note</div>
-                        <div class="nc-title">@(string.IsNullOrWhiteSpace(note.Title) ? "Tanpa judul" : note.Title)</div>
+                        <div class="nc-title">@(string.IsNullOrWhiteSpace(note.Title) ? "Untitled" : note.Title)</div>
                         @if (!string.IsNullOrWhiteSpace(note.Excerpt)) { <div class="nc-ex">@note.Excerpt</div> }
                     </div>
-                    <div class="nc-foot"><span>Buka note</span><span class="perm"><i data-lucide="@(note.Level == "edit" ? "pencil" : note.Level == "comment" ? "message-square" : "eye")"></i>@(note.Level == "edit" ? "Bisa edit" : note.Level == "comment" ? "Bisa komentar" : "Bisa lihat")</span></div>
+                    <div class="nc-foot"><span>Open note</span><span class="perm"><i data-lucide="@(note.Level == "edit" ? "pencil" : note.Level == "comment" ? "message-square" : "eye")"></i>@(note.Level == "edit" ? "Can edit" : note.Level == "comment" ? "Can comment" : "Can view")</span></div>
                 </button>
             }
             else if (IsPollMessage(Message))

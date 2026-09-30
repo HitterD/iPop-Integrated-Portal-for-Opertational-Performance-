@@ -201,7 +201,7 @@
                                                 <i data-lucide="archive" style="width:12px;height:12px"></i> Archive
                                             </button>
                                             <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="async () => { menuRoomId = null; await OpenDeleteRoom(room); }">
-                                                <i data-lucide="trash-2" style="width:12px;height:12px"></i> Hapus chat
+                                                <i data-lucide="trash-2" style="width:12px;height:12px"></i> Delete chat
                                             </button>
                                         </div>
                                     }
@@ -275,7 +275,7 @@
                                                 <i data-lucide="archive" style="width:12px;height:12px"></i> Archive
                                             </button>
                                             <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="async () => { menuRoomId = null; await OpenDeleteRoom(room); }">
-                                                <i data-lucide="trash-2" style="width:12px;height:12px"></i> Hapus chat
+                                                <i data-lucide="trash-2" style="width:12px;height:12px"></i> Delete chat
                                             </button>
                                         </div>
                                     }
@@ -324,7 +324,7 @@
                 {
                     var dmMember = ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
                     var hasPhoto = IPop.Web.Models.AvatarPhotos.Url(dmMember?.Nik) is not null;
-                    <button type="button" class="header-avatar-btn person-av @(hasPhoto ? "avatar-viewable" : "")" style="background:@GetActiveRoomColor()" title="@(hasPhoto ? "Lihat foto" : "View profile")" aria-label="@(hasPhoto ? "Lihat foto" : "View profile")" @onclick="() => OpenHeaderAvatar(dmMember?.Nik, dmMember?.Name)">
+                    <button type="button" class="header-avatar-btn person-av @(hasPhoto ? "avatar-viewable" : "")" style="background:@GetActiveRoomColor()" title="@(hasPhoto ? "View photo" : "View profile")" aria-label="@(hasPhoto ? "View photo" : "View profile")" @onclick="() => OpenHeaderAvatar(dmMember?.Nik, dmMember?.Name)">
                         @GetActiveRoomInitials()
                     </button>
                 }
@@ -387,7 +387,7 @@
                     </button>
                     @if (ChatSvc.ActiveRoom.Type == "group")
                     {
-                        <button type="button" class="header-icon-btn" title="Panggilan grup" aria-label="Mulai panggilan grup" disabled="@(groupCallBusy || CallStateSvc.IsInGroupCall)" @onclick="StartGroupCall">
+                        <button type="button" class="header-icon-btn" title="Group call" aria-label="Start group call" disabled="@(groupCallBusy || CallStateSvc.IsInGroupCall)" @onclick="StartGroupCall">
                             <i data-lucide="phone"></i>
                         </button>
                         <button type="button" class="header-icon-btn @(drawerOpen && panelView == DetailPanelView.Members ? "on" : "")" title="Members" aria-label="Members" @onclick="OpenMembersSection">
@@ -445,8 +445,8 @@
                 var inCall = liveGroupCall.Participants.Count(p => p.Status == IPop.Application.Calls.CallParticipantStatus.Accepted);
                 <div class="group-call-banner" role="status">
                     <i data-lucide="phone-call"></i>
-                    <span><strong>Panggilan grup sedang berlangsung</strong> · @inCall orang</span>
-                    <button type="button" disabled="@(groupCallBusy || CallStateSvc.HasLiveCall && CallStateSvc.Current?.Id != liveGroupCall.Id)" @onclick="() => JoinGroupCall(liveGroupCall.Id)"><i data-lucide="phone"></i> Gabung</button>
+                    <span><strong>Group call in progress</strong> · @inCall @(inCall == 1 ? "person" : "people")</span>
+                    <button type="button" disabled="@(groupCallBusy || CallStateSvc.HasLiveCall && CallStateSvc.Current?.Id != liveGroupCall.Id)" @onclick="() => JoinGroupCall(liveGroupCall.Id)"><i data-lucide="phone"></i> Join</button>
                 </div>
             }
 
@@ -1171,7 +1171,7 @@
                                             <div class="hero-actions">
                                                 @if (ChatSvc.ActiveRoom.Type == "group")
                                                 {
-                                                    <button type="button" class="hero-btn" @onclick="StartGroupCall" title="Panggilan grup" aria-label="Mulai panggilan grup" disabled="@(groupCallBusy || CallStateSvc.IsInGroupCall)">
+                                                    <button type="button" class="hero-btn" @onclick="StartGroupCall" title="Group call" aria-label="Start group call" disabled="@(groupCallBusy || CallStateSvc.IsInGroupCall)">
                                                         <div class="hero-btn-ic"><i data-lucide="phone"></i></div>
                                                         <span>Call</span>
                                                     </button>
@@ -1400,7 +1400,7 @@
 
             @* ---- Hapus chat (for me / whole group) ---- *@
             <Modal IsOpen="deleteRoom is not null" IsOpenChanged="v => { if (!v) deleteRoom = null; }"
-                   Title="Hapus chat" Subtitle="@(deleteRoom is null ? null : GetRoomName(deleteRoom))">
+                   Title="Delete chat" Subtitle="@(deleteRoom is null ? null : GetRoomName(deleteRoom))">
                 <ChildContent>
                     @if (deleteRoom is not null)
                     {
@@ -1409,17 +1409,17 @@
                             {
                                 <label class="delete-room-opt @(deleteRoomForAll ? "" : "on")">
                                     <input type="radio" name="delete-room-scope" checked="@(!deleteRoomForAll)" @onchange="() => deleteRoomForAll = false" />
-                                    <span><strong>Hapus untuk saya</strong><small>Riwayat dikosongkan dan grup hilang dari daftar Anda sampai ada pesan baru.</small></span>
+                                    <span><strong>Delete for me</strong><small>The history is cleared and the group leaves your list until a new message arrives.</small></span>
                                 </label>
                                 <label class="delete-room-opt danger @(deleteRoomForAll ? "on" : "")">
                                     <input type="radio" name="delete-room-scope" checked="@deleteRoomForAll" @onchange="() => deleteRoomForAll = true" />
-                                    <span><strong>Hapus grup untuk semua anggota</strong><small>Grup, semua pesan, dan file lampirannya dihapus permanen. Tidak bisa dibatalkan.</small></span>
+                                    <span><strong>Delete group for all members</strong><small>The group, all its messages and attachments are permanently deleted. This can't be undone.</small></span>
                                 </label>
                                 @if (deleteRoomForAll)
                                 {
                                     <label class="delete-room-confirm">
-                                        Ketik <strong>@deleteRoom.Name</strong> untuk konfirmasi
-                                        <input class="fx-input" aria-label="Nama grup" @bind="deleteRoomConfirm" @bind:event="oninput" autocomplete="off" />
+                                        Type <strong>@deleteRoom.Name</strong> to confirm
+                                        <input class="fx-input" aria-label="Group name" @bind="deleteRoomConfirm" @bind:event="oninput" autocomplete="off" />
                                     </label>
                                 }
                             }
@@ -1427,8 +1427,8 @@
                             {
                                 <p class="delete-room-note">
                                     @(deleteRoom.Type == "dm"
-                                        ? "Riwayat chat ini dihapus dan percakapan hilang dari daftar Anda. Lawan bicara tetap menyimpan riwayatnya. Percakapan muncul lagi bila ada pesan baru."
-                                        : "Riwayat chat ini dihapus dan grup hilang dari daftar Anda sampai ada pesan baru. Anggota lain tidak terpengaruh.")
+                                        ? "This chat's history is cleared and the conversation leaves your list. The other person keeps their history. It comes back when a new message arrives."
+                                        : "This chat's history is cleared and the group leaves your list until a new message arrives. Other members aren't affected.")
                                 </p>
                             }
                             @if (!string.IsNullOrEmpty(deleteRoomError)) { <p class="delete-room-error" role="alert">@deleteRoomError</p> }
@@ -1436,9 +1436,9 @@
                     }
                 </ChildContent>
                 <Footer>
-                    <button type="button" class="comp-btn" @onclick="() => deleteRoom = null">Batal</button>
+                    <button type="button" class="comp-btn" @onclick="() => deleteRoom = null">Cancel</button>
                     <button type="button" class="cm-btn primary danger" disabled="@(deleteRoomBusy || !DeleteRoomReady)" @onclick="ConfirmDeleteRoom">
-                        @(deleteRoomBusy ? "Menghapus…" : deleteRoomForAll ? "Hapus untuk semua" : "Hapus chat")
+                        @(deleteRoomBusy ? "Deleting…" : deleteRoomForAll ? "Delete for everyone" : "Delete chat")
                     </button>
                 </Footer>
             </Modal>
