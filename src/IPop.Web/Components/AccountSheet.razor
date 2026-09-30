@@ -205,7 +205,7 @@
     private async Task PickPhoto()
     {
         photoError = null;
-        var crop = await JS.InvokeAsync<CropResult?>("ipopProfilePhoto.crop", fileInput, 256);
+        var crop = await JS.InvokeAsync<CropResult?>("ipopProfilePhoto.crop", fileInput, 256, 1024);
         if (crop is null) return;
         if (crop.Error is not null) { photoError = crop.Error; return; }
 
@@ -217,6 +217,12 @@
             var file = new ByteArrayContent(Convert.FromBase64String(crop.Base64!));
             file.Headers.ContentType = new(crop.Type!);
             var form = new MultipartFormDataContent { { file, "file", $"avatar.{ext}" } };
+            if (crop.LargeBase64 is not null && crop.LargeType is not null)
+            {
+                var large = new ByteArrayContent(Convert.FromBase64String(crop.LargeBase64));
+                large.Headers.ContentType = new(crop.LargeType);
+                form.Add(large, "large", $"avatar-large.{(crop.LargeType == "image/webp" ? "webp" : "jpg")}");
+            }
             var res = await Auth.SendMultipartAsync("/api/me/photo", form);
             if (!res.IsSuccessStatusCode) { photoError = await ErrorMessage(res, "Could not upload the photo."); return; }
             await Auth.LoadPhotosAsync();
@@ -289,6 +295,6 @@
 
     public void Dispose() => reg?.Dispose();
 
-    private record CropResult(string? Base64, string? Type, string? Preview, string? Error);
+    private record CropResult(string? Base64, string? Type, string? Preview, string? Error, string? LargeBase64 = null, string? LargeType = null);
     private record ApiError(string? Code, string? Message);
 }

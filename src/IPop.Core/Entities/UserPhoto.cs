@@ -8,5 +8,8 @@ public class UserPhoto
     public Guid UserId { get; set; }
     public required byte[] Content { get; set; }
     public required string ContentType { get; set; }
+    /// Optional up-to-1024px copy for the full-size viewer; the avatar keeps using Content.
+    public byte[]? LargeContent { get; set; }
+    public string? LargeContentType { get; set; }
     public DateTime CreatedAt { get; set; }
 }

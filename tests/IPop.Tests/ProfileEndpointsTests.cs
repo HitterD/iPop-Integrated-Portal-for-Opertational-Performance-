@@ -122,8 +122,8 @@ public class ProfileEndpointsTests
         using var t = new TestDb();
         t.AddUser("100");
 
-        var (s1, _, first) = await ProfileEndpoints.SetPhotoAsync(t.Verify(), "100", Png(256, 256), default);
-        var (s2, _, second) = await ProfileEndpoints.SetPhotoAsync(t.Verify(), "100", WebPx(256, 256), default);
+        var (s1, _, first) = await ProfileEndpoints.SetPhotoAsync(t.Verify(), "100", Png(256, 256), null, default);
+        var (s2, _, second) = await ProfileEndpoints.SetPhotoAsync(t.Verify(), "100", WebPx(256, 256), null, default);
 
         Assert.Equal(200, s1); Assert.Equal(200, s2);
         Assert.NotEqual(first, second);
@@ -139,7 +139,7 @@ public class ProfileEndpointsTests
     {
         using var t = new TestDb();
         t.AddUser("100");
-        var (status, error, _) = await ProfileEndpoints.SetPhotoAsync(t.Db, "100", "<svg onload=alert(1)>........................"u8.ToArray(), default);
+        var (status, error, _) = await ProfileEndpoints.SetPhotoAsync(t.Db, "100", "<svg onload=alert(1)>........................"u8.ToArray(), null, default);
         Assert.Equal(400, status);
         Assert.Equal("photo_type", error!.Code);
     }
@@ -149,7 +149,7 @@ public class ProfileEndpointsTests
     {
         using var t = new TestDb();
         t.AddUser("100");
-        var (status, error, _) = await ProfileEndpoints.SetPhotoAsync(t.Db, "100", Png(256, 256, ProfileEndpoints.MaxPhotoBytes + 1), default);
+        var (status, error, _) = await ProfileEndpoints.SetPhotoAsync(t.Db, "100", Png(256, 256, ProfileEndpoints.MaxPhotoBytes + 1), null, default);
         Assert.Equal(400, status);
         Assert.Equal("photo_size", error!.Code);
     }
@@ -161,7 +161,7 @@ public class ProfileEndpointsTests
     {
         using var t = new TestDb();
         t.AddUser("100");
-        var (status, error, _) = await ProfileEndpoints.SetPhotoAsync(t.Db, "100", Png(w, h), default);
+        var (status, error, _) = await ProfileEndpoints.SetPhotoAsync(t.Db, "100", Png(w, h), null, default);
         Assert.Equal(400, status);
         Assert.Equal("photo_dimensions", error!.Code);
     }
@@ -171,7 +171,7 @@ public class ProfileEndpointsTests
     {
         using var t = new TestDb();
         t.AddUser("100");
-        await ProfileEndpoints.SetPhotoAsync(t.Verify(), "100", Png(256, 256), default);
+        await ProfileEndpoints.SetPhotoAsync(t.Verify(), "100", Png(256, 256), null, default);
 
         Assert.True(await ProfileEndpoints.RemovePhotoAsync(t.Verify(), "100", default));
 
@@ -179,5 +179,37 @@ public class ProfileEndpointsTests
         Assert.Equal(0, await v.UserPhotos.CountAsync());
         Assert.Null((await v.Users.SingleAsync()).PhotoPath);
         Assert.Contains(await v.AuditLogs.ToListAsync(), a => a.Action == "profile.photo.remove");
+    }
+
+    [Fact]
+    public async Task SetPhoto_StoresTheLargeCopyForTheViewer()
+    {
+        using var t = new TestDb();
+        t.AddUser("100");
+
+        var (status, _, id) = await ProfileEndpoints.SetPhotoAsync(t.Verify(), "100", Png(256, 256), Jpeg(1024, 1024), default);
+
+        Assert.Equal(200, status);
+        await using var v = t.Verify();
+        var photo = await v.UserPhotos.SingleAsync(p => p.Id == id);
+        Assert.Equal("image/png", photo.ContentType);
+        Assert.Equal("image/jpeg", photo.LargeContentType);
+        Assert.NotNull(photo.LargeContent);
+    }
+
+    [Theory]
+    [InlineData(2048, 2048, "photo_dimensions")]
+    [InlineData(0, 0, "photo_type")]
+    public async Task SetPhoto_RejectsABadLargeCopy(int w, int h, string code)
+    {
+        using var t = new TestDb();
+        t.AddUser("100");
+        var large = w == 0 ? "not an image at all, just some text......"u8.ToArray() : Png(w, h);
+
+        var (status, error, _) = await ProfileEndpoints.SetPhotoAsync(t.Db, "100", Png(256, 256), large, default);
+
+        Assert.Equal(400, status);
+        Assert.Equal(code, error!.Code);
+        Assert.Equal(0, await t.Verify().UserPhotos.CountAsync());
     }
 }

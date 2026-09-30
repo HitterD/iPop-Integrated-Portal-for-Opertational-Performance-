@@ -1,9 +1,10 @@
-// Profile photo: centre-crop the picked file to a square, scale to 256px and re-encode as WebP
+// Profile photo: centre-crop the picked file to a square, scale to 256px (plus an optional larger
+// copy for the viewer) and re-encode as WebP
 // (JPEG where the browser cannot encode WebP). The server only checks headers, so all pixel
 // work happens here. Returns { base64, type, preview } or { error }.
 window.ipopProfilePhoto = {
   open(input) { input?.click(); },
-  async crop(input, size) {
+  async crop(input, size, largeSize) {
     const file = input?.files?.[0];
     if (!file) return null;
     input.value = "";
@@ -16,17 +17,23 @@ window.ipopProfilePhoto = {
     if (bmp.width < 64 || bmp.height < 64) return { error: "The photo must be at least 64 × 64 pixels." };
 
     const side = Math.min(bmp.width, bmp.height);
-    const out = Math.min(size, side);
+    const small = this._encode(bmp, side, Math.min(size, side));
+    // A bigger copy for the "view photo" viewer (the avatar itself stays small).
+    const large = largeSize ? this._encode(bmp, side, Math.min(largeSize, side)) : null;
+    bmp.close?.();
+    return {
+      base64: small.base64, type: small.type, preview: small.url,
+      largeBase64: large?.base64 ?? null, largeType: large?.type ?? null,
+    };
+  },
+  _encode(bmp, side, out) {
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = out;
     const ctx = canvas.getContext("2d");
     ctx.imageSmoothingQuality = "high";
     ctx.drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, out, out);
-    bmp.close?.();
-
     let url = canvas.toDataURL("image/webp", 0.86);
     if (!url.startsWith("data:image/webp")) url = canvas.toDataURL("image/jpeg", 0.88);
-    const type = url.slice(5, url.indexOf(";"));
-    return { base64: url.slice(url.indexOf(",") + 1), type, preview: url };
+    return { url, type: url.slice(5, url.indexOf(";")), base64: url.slice(url.indexOf(",") + 1) };
   },
 };

@@ -12,6 +12,8 @@ public static class ProfileEndpoints
 {
     internal const int MaxPhotoBytes = 512 * 1024;
     internal const int MaxPhotoSide = 512;
+    internal const int MaxLargeBytes = 2 * 1024 * 1024;
+    internal const int MaxLargeSide = 1024;
 
     public static IEndpointRouteBuilder MapProfile(this IEndpointRouteBuilder app)
     {
@@ -25,19 +27,23 @@ public static class ProfileEndpoints
             return Results.Ok(new { email = req.Email.Trim() });
         }).RequireAuthorization();
 
-        app.MapPost("/api/me/photo", async Task<IResult> (IFormFile file, HttpContext http, IPopDbContext db,
+        // "file" is the 256px avatar; the optional "large" part is the <=1024px copy for the viewer.
+        app.MapPost("/api/me/photo", async Task<IResult> (HttpContext http, IPopDbContext db,
             IDirectoryChangeNotifier notifier, CancellationToken ct) =>
         {
             var nik = http.User.FindFirst("nik")?.Value;
-            await using var s = file.OpenReadStream();
-            using var ms = new MemoryStream();
-            await s.CopyToAsync(ms, ct);
-            var (status, error, id) = await SetPhotoAsync(db, nik, ms.ToArray(), ct);
+            if (!http.Request.HasFormContentType) return Results.Json(new ProfileError("photo_size", "No photo was sent."), statusCode: 400);
+            var form = await http.Request.ReadFormAsync(ct);
+            var file = form.Files.GetFile("file");
+            if (file is null) return Results.Json(new ProfileError("photo_size", "No photo was sent."), statusCode: 400);
+            var large = form.Files.GetFile("large");
+            var (status, error, id) = await SetPhotoAsync(db, nik, await ReadAllAsync(file, ct),
+                large is null ? null : await ReadAllAsync(large, ct), ct);
             if (status != 200) return Results.Json(error, statusCode: status);
             await notifier.NotifyAsync(ct);
             return Results.Ok(new { photoId = id });
         }).RequireAuthorization().DisableAntiforgery()
-          .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxPhotoBytes + 64 * 1024));
+          .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxPhotoBytes + MaxLargeBytes + 64 * 1024));
 
         app.MapDelete("/api/me/photo", async Task<IResult> (HttpContext http, IPopDbContext db,
             IDirectoryChangeNotifier notifier, CancellationToken ct) =>
@@ -61,6 +67,18 @@ public static class ProfileEndpoints
         {
             var p = await db.UserPhotos.AsNoTracking().Where(x => x.Id == id)
                 .Select(x => new { x.Content, x.ContentType }).FirstOrDefaultAsync(ct);
+            if (p is null) return Results.NotFound();
+            http.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+            http.Response.Headers.XContentTypeOptions = "nosniff";
+            return Results.Bytes(p.Content, p.ContentType);
+        }).AllowAnonymous();
+
+        // Full size for the photo viewer; photos uploaded before the large copy existed fall back to 256px.
+        app.MapGet("/api/photos/{id:guid}/large", async Task<IResult> (Guid id, IPopDbContext db, HttpContext http, CancellationToken ct) =>
+        {
+            var p = await db.UserPhotos.AsNoTracking().Where(x => x.Id == id)
+                .Select(x => new { Content = x.LargeContent ?? x.Content, ContentType = x.LargeContentType ?? x.ContentType })
+                .FirstOrDefaultAsync(ct);
             if (p is null) return Results.NotFound();
             http.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
             http.Response.Headers.XContentTypeOptions = "nosniff";
@@ -101,8 +119,16 @@ public static class ProfileEndpoints
         return (200, null);
     }
 
+    private static async Task<byte[]> ReadAllAsync(IFormFile file, CancellationToken ct)
+    {
+        await using var s = file.OpenReadStream();
+        using var ms = new MemoryStream();
+        await s.CopyToAsync(ms, ct);
+        return ms.ToArray();
+    }
+
     internal static async Task<(int Status, ProfileError? Error, Guid? Id)> SetPhotoAsync(
-        IPopDbContext db, string? nik, byte[] bytes, CancellationToken ct)
+        IPopDbContext db, string? nik, byte[] bytes, byte[]? large, CancellationToken ct)
     {
         var user = await db.Users.FirstOrDefaultAsync(u => u.Nik == nik, ct);
         if (user is null) return (401, null, null);
@@ -115,9 +141,25 @@ public static class ProfileEndpoints
         if (size is not { } d || d.W < 32 || d.H < 32 || d.W > MaxPhotoSide || d.H > MaxPhotoSide)
             return (400, new("photo_dimensions", $"The photo must be between 32 and {MaxPhotoSide} pixels on each side."), null);
 
+        string? largeType = null;
+        if (large is { Length: > 0 })
+        {
+            if (large.Length > MaxLargeBytes)
+                return (400, new("photo_size", "The full-size photo must be under 2 MB."), null);
+            largeType = ImageSniff.Detect(large);
+            if (largeType is null) return (400, new("photo_type", "Use a JPG, PNG or WebP image."), null);
+            if (ImageSniff.Dimensions(large, largeType) is not { } ld || ld.W < 32 || ld.H < 32 || ld.W > MaxLargeSide || ld.H > MaxLargeSide)
+                return (400, new("photo_dimensions", $"The full-size photo must be at most {MaxLargeSide} pixels on each side."), null);
+        }
+        else large = null;
+
         var now = DateTime.UtcNow;
         await db.UserPhotos.Where(p => p.UserId == user.Id).ExecuteDeleteAsync(ct);
-        var photo = new UserPhoto { Id = Guid.NewGuid(), UserId = user.Id, Content = bytes, ContentType = type, CreatedAt = now };
+        var photo = new UserPhoto
+        {
+            Id = Guid.NewGuid(), UserId = user.Id, Content = bytes, ContentType = type,
+            LargeContent = large, LargeContentType = largeType, CreatedAt = now,
+        };
         db.UserPhotos.Add(photo);
         user.PhotoPath = photo.Id.ToString();
         user.UpdatedAt = now;

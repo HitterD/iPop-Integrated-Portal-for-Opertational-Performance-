@@ -3717,6 +3717,13 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<byte[]>("LargeContent")
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("LargeContentType")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
 

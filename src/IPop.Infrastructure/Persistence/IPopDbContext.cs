@@ -159,6 +159,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
         {
             e.HasIndex(x => x.UserId);
             e.Property(x => x.ContentType).HasMaxLength(32);
+            e.Property(x => x.LargeContentType).HasMaxLength(32);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<AuthSession>(e =>
