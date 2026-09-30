@@ -789,6 +789,43 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("ChatRoomUserSettings");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ChatSticker", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsOfficial")
+                        .HasColumnType("boolean");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StoragePath")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("StorageServer")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("IsOfficial");
+
+                    b.ToTable("ChatStickers");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ChatSavedMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3548,6 +3585,26 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("Users");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.UserSticker", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StickerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId", "StickerId");
+
+                    b.HasIndex("StickerId");
+
+                    b.HasIndex("UserId", "AddedAt");
+
+                    b.ToTable("UserStickers");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.UserBlock", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -4074,6 +4131,17 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Room");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ChatSticker", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedBy");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.ChatSavedMessage", b =>
@@ -5125,6 +5193,25 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Division");
 
                     b.Navigation("Site");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.UserSticker", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.ChatSticker", "Sticker")
+                        .WithMany()
+                        .HasForeignKey("StickerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Sticker");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.UserBlock", b =>

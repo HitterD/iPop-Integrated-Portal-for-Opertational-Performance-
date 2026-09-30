@@ -482,6 +482,10 @@ public partial class Chat
     // v6 composer: "+" menu, sticker sheet, and the mockup's 24-emoji popover / 6-emoji react row.
     private bool plusMenuOpen;
     private bool stickerOpen;
+    private string stickerTab = "mine";
+    private bool stickerUploading;
+    private string? stickerError;
+    private InputFile? stickerInput;
     private Guid? reactPickerMsgId;
     private static readonly string[] ComposerEmoji = ["😀", "😁", "😂", "🙂", "😉", "😍", "🤔", "😅", "😎", "😢", "😮", "🙏", "👍", "👏", "🙌", "💪", "🔥", "✅", "❤️", "🎉", "☕", "📌", "📎", "⏰"];
     private static readonly string[] ReactEmoji = ["👍", "❤️", "😂", "😮", "🙏", "✅"];

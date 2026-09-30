@@ -45,7 +45,17 @@
                 <div class="reply-quote"><div class="rq-name">@Message.ReplyPreview.SenderName</div>@Message.ReplyPreview.Content</div>
             }
             @if (Message.IsDeleted) { <em class="deleted-text"><i data-lucide="ban"></i> @Message.Content</em> }
-            else if (Message.Type == "sticker") { <div class="sticker-msg"><div class="sticker-big"><i data-lucide="@Message.Content"></i></div></div> }
+            else if (Message.Type == "sticker")
+            {
+                @if (StickerLimits.CustomId(Message.Type, Message.Content) is { } stickerId)
+                {
+                    <div class="sticker-msg custom"><img class="sticker-img" src="@ChatSvc.StickerImageUrl(stickerId)" alt="Stiker" loading="lazy" draggable="false" /></div>
+                }
+                else
+                {
+                    <div class="sticker-msg"><div class="sticker-big"><i data-lucide="@Message.Content"></i></div></div>
+                }
+            }
             else if (Message.Type == "event")
             {
                 <div class="msg-event-card hover-lift" @onclick="() => OnEventOpen.InvokeAsync(Message.Id)" @onclick:stopPropagation>

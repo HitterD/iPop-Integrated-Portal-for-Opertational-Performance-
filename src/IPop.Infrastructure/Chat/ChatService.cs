@@ -70,6 +70,7 @@ public sealed partial class ChatService : IChatService
         {
             var previewContent = m.ReplyTo.IsDeleted
                 ? "Original message was deleted"
+                : m.ReplyTo.Type == "sticker" ? "🎨 Sticker"
                 : Truncate(m.ReplyTo.Content, 150);
             replyPreview = new ReplyPreviewDto(m.ReplyTo.Sender?.Name ?? "Unknown", previewContent);
         }

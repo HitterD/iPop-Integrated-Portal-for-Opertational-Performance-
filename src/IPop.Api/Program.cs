@@ -154,6 +154,7 @@ builder.Services.Configure<HostOptions>(options =>
 // Chat module
 builder.Services.AddScoped<IChatService, ChatService>();
 builder.Services.AddScoped<IChatNotifier, ChatNotifier>();
+builder.Services.AddScoped<IStickerService, IPop.Infrastructure.Chat.StickerService>();
 builder.Services.AddScoped<INotificationGateway, NotificationGateway>();
 builder.Services.AddHostedService<ChatAttachmentGcWorker>();
 builder.Services.AddHostedService<ChatMentionNotifyWorker>();
@@ -260,6 +261,7 @@ app.MapGet("/api/chat-avatars/{name}", (string name, IWebHostEnvironment env) =>
     if (path is null || !File.Exists(path)) return Results.NotFound();
     return Results.File(path, "image/jpeg", enableRangeProcessing: false);
 }).AllowAnonymous();
+app.MapStickers();
 app.MapCalls();
 app.MapMail();
 app.MapProjects();

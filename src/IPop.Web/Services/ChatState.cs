@@ -24,6 +24,51 @@ public class ChatState : IAsyncDisposable
         _drafts = drafts;
     }
 
+    // ---- Custom stickers ----
+
+    public StickerListDto Stickers { get; private set; } = new([], []);
+    private bool _stickersLoaded;
+    public event Action? StickersChanged;
+
+    /// Anonymous, immutable image URL (an <img> cannot carry the bearer token).
+    public string StickerImageUrl(Guid id) => new Uri(_http.BaseAddress!, $"api/chat/stickers/{id}/image").ToString();
+
+    public bool IsStickerMine(Guid id) => Stickers.Mine.Any(s => s.Id == id);
+
+    public async Task LoadStickersAsync(bool force = false)
+    {
+        if (_stickersLoaded && !force) return;
+        try
+        {
+            if (await _auth.GetAsync<StickerListDto>("/api/chat/stickers") is { } list)
+            {
+                Stickers = list;
+                _stickersLoaded = true;
+                StickersChanged?.Invoke();
+            }
+        }
+        catch { /* the picker shows the built-in pack only */ }
+    }
+
+    /// Returns an error code, or null on success.
+    public async Task<string?> StickerActionAsync(Func<Task<HttpResponseMessage>> call)
+    {
+        try
+        {
+            using var res = await call();
+            if (!res.IsSuccessStatusCode)
+            {
+                try { return (await res.Content.ReadFromJsonAsync<ErrorCode>())?.Code ?? "failed"; }
+                catch { return "failed"; }
+            }
+            await LoadStickersAsync(force: true);
+            return null;
+        }
+        catch { return "failed"; }
+    }
+
+    private sealed record ErrorCode(string? Code);
+
     // ---- Connection State ----
 
     public HubConnection? Hub => _hub;

@@ -48,6 +48,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<UserBlock> UserBlocks => Set<UserBlock>();
     public DbSet<ChatMention> ChatMentions => Set<ChatMention>();
     public DbSet<ChatMembershipAudit> ChatMembershipAudits => Set<ChatMembershipAudit>();
+    public DbSet<ChatSticker> ChatStickers => Set<ChatSticker>();
+    public DbSet<UserSticker> UserStickers => Set<UserSticker>();
 
     // Notification Gateway entities
     public DbSet<NotificationGatewayClient> NotificationGatewayClients => Set<NotificationGatewayClient>();
@@ -326,6 +328,23 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasIndex(x => new { x.UserId, x.SavedAt });
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Message).WithMany().HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ChatSticker>(e =>
+        {
+            e.Property(x => x.StorageServer).HasMaxLength(100);
+            e.Property(x => x.StoragePath).HasMaxLength(500);
+            e.HasIndex(x => x.IsOfficial);
+            e.HasOne(x => x.CreatedBy).WithMany().HasForeignKey(x => x.CreatedById).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<UserSticker>(e =>
+        {
+            e.HasKey(x => new { x.UserId, x.StickerId });
+            e.HasIndex(x => new { x.UserId, x.AddedAt });
+            e.HasIndex(x => x.StickerId);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Sticker).WithMany().HasForeignKey(x => x.StickerId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<UserBlock>(e =>

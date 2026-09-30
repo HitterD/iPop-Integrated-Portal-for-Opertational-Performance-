@@ -11,7 +11,8 @@ public static class RoomPreview
         string? senderName, bool isOwn, int max = 100)
     {
         if (isDeleted) return "This message was deleted";
-        var body = content.StartsWith("[poll]", StringComparison.Ordinal) ? "📊 Poll"
+        var body = type == "sticker" ? "🎨 Sticker"
+            : content.StartsWith("[poll]", StringComparison.Ordinal) ? "📊 Poll"
             : content.StartsWith("[note]", StringComparison.Ordinal) ? "📄 Note"
             : MentionPlainText.Project(content, max);
         if (roomType != "group" || type is "system" or "emergency") return body;

@@ -193,6 +193,100 @@ public partial class Chat
     private void InsertEmoji(string emoji) { messageText += emoji; pickerOpen = false; }
     private async Task SendSticker(string iconName) { pickerOpen = false; await ChatSvc.SendMessageAsync(iconName, null, "sticker"); scrollToBottom = true; }
 
+    // ---- Custom stickers ----
+
+    private async Task OpenStickers()
+    {
+        stickerOpen = true;
+        stickerError = null;
+        await ChatSvc.LoadStickersAsync();
+        // Nothing of my own yet but an official pack exists: open on that instead of an empty tab.
+        if (stickerTab == "mine" && ChatSvc.Stickers.Mine.Count == 0 && ChatSvc.Stickers.Official.Count > 0) stickerTab = "official";
+    }
+
+    private async Task SendCustomSticker(Guid id)
+    {
+        pickerOpen = false;
+        await ChatSvc.SendMessageAsync(IPop.Application.Chat.StickerLimits.Content(id), null, "sticker");
+        scrollToBottom = true;
+    }
+
+    private async Task PickStickerFile()
+    {
+        stickerError = null;
+        if (stickerInput?.Element is { } input) await JS.InvokeVoidAsync("ipop.clickFileInput", input);
+    }
+
+    private async Task OnStickerFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file.Size > IPop.Application.Chat.StickerLimits.MaxUploadBytes) { stickerError = "Gambar terlalu besar (maks 512 KB)."; return; }
+        stickerUploading = true;
+        stickerError = null;
+        StateHasChanged();
+        try
+        {
+            var err = await ChatSvc.StickerActionAsync(async () =>
+            {
+                using var form = new MultipartFormDataContent();
+                var part = new StreamContent(file.OpenReadStream(IPop.Application.Chat.StickerLimits.MaxUploadBytes));
+                part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(ChatAttachments.Mime(file.ContentType, file.Name));
+                form.Add(part, "file", file.Name);
+                return await Auth.SendMultipartAsync("/api/chat/stickers", form);
+            });
+            if (err is null) stickerTab = "mine";
+            else stickerError = StickerErrorText(err);
+        }
+        finally
+        {
+            stickerUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RemoveSticker(Guid id)
+    {
+        var err = await ChatSvc.StickerActionAsync(() => Auth.SendAsync(HttpMethod.Delete, $"/api/chat/stickers/{id}"));
+        if (err is not null) stickerError = StickerErrorText(err);
+    }
+
+    private async Task SaveStickerFromMessage(Guid id)
+    {
+        ctxMsgId = null;
+        var err = await ChatSvc.StickerActionAsync(() => Auth.SendAsync(HttpMethod.Post, $"/api/chat/stickers/{id}/save"));
+        if (err is null) Toasts.Show("Stiker disimpan ke Stiker saya.", ToastKind.Success);
+        else Toasts.Show(StickerErrorText(err), ToastKind.Error);
+    }
+
+    private async Task MakeStickerFromAttachment(Guid attachmentId)
+    {
+        ctxMsgId = null;
+        Toasts.Show("Membuat stiker…", ToastKind.Info);
+        var err = await ChatSvc.StickerActionAsync(() => Auth.SendAsync(HttpMethod.Post, $"/api/chat/stickers/from-attachment/{attachmentId}"));
+        if (err is null) { stickerTab = "mine"; Toasts.Show("Stiker dibuat. Cari di Stiker saya.", ToastKind.Success); }
+        else Toasts.Show(StickerErrorText(err), ToastKind.Error);
+    }
+
+    private async Task SetStickerOfficial(Guid id, bool official)
+    {
+        ctxMsgId = null;
+        var err = await ChatSvc.StickerActionAsync(() => Auth.SendAsync(HttpMethod.Put, $"/api/chat/stickers/{id}/official", new { official }));
+        if (err is null) Toasts.Show(official ? "Stiker masuk paket resmi." : "Stiker dikeluarkan dari paket resmi.", ToastKind.Success);
+        else Toasts.Show(StickerErrorText(err), ToastKind.Error);
+    }
+
+    private static bool IsStickerableImage(IPop.Application.Chat.AttachmentDto a) =>
+        a.MimeType is "image/png" or "image/jpeg" or "image/gif" or "image/webp";
+
+    private static string StickerErrorText(string code) => code switch
+    {
+        "too_large" => "Gambar terlalu besar (maks 512 KB).",
+        "not_an_image" or "invalid_image" => "File harus gambar PNG, JPG, GIF, atau WebP.",
+        "limit_reached" => "Stiker saya sudah penuh (maks 200). Hapus beberapa dulu.",
+        "not_found" => "Stiker atau gambar tidak ditemukan.",
+        _ => "Stiker gagal diproses. Coba lagi.",
+    };
+
     // ---- Mention Autocomplete (Task 16.2 + ipop-30 @project + ipop-31 #task) ----
 
     private List<IPop.Application.Projects.ProjectListDto> projectMentionCandidates = [];

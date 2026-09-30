@@ -537,3 +537,23 @@
 .delete-room-opt small, .delete-room-note { font-size: 12px; color: var(--ink-3); line-height: 1.45; margin: 0; }
 .delete-room-confirm { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--ink-2); }
 .delete-room-error { margin: 0; font-size: 12px; color: var(--danger-ink); }
+
+/* ---- Custom stickers ---- */
+.chat-area .v6-sticker-pop { width: min(320px, calc(100vw - 48px)); }
+.sticker-tabs { display: flex; gap: 4px; padding: 8px 10px 0; }
+.sticker-tabs button { border: 0; background: none; padding: 5px 10px; border-radius: 999px; font: inherit; font-size: 12px; color: var(--ink-3); cursor: pointer; }
+.sticker-tabs button.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.picker-stickers.custom { grid-template-columns: repeat(4, 1fr); }
+.picker-sticker-wrap { position: relative; }
+.picker-sticker-wrap .picker-sticker { width: 100%; }
+.picker-sticker.img { background: transparent; padding: 2px; }
+.picker-sticker.img img { width: 100%; height: 100%; object-fit: contain; border-radius: 8px; }
+.picker-sticker.sticker-add { border: 1.5px dashed var(--line); background: none; }
+.picker-sticker.sticker-add .lucide { width: 22px; height: 22px; color: var(--ink-3); }
+.sticker-remove { position: absolute; top: -4px; right: -4px; width: 18px; height: 18px; padding: 0; border: 0; border-radius: 50%; background: var(--ink-2); color: var(--surface); display: none; align-items: center; justify-content: center; cursor: pointer; }
+.sticker-remove .lucide, .sticker-remove svg { width: 11px; height: 11px; }
+.picker-sticker-wrap:hover .sticker-remove, .picker-sticker-wrap:focus-within .sticker-remove { display: flex; }
+.sticker-empty, .sticker-error { margin: 0; padding: 0 14px 12px; font-size: 12px; color: var(--ink-3); line-height: 1.45; }
+.sticker-error { color: var(--danger-ink); }
+.msg .sticker-msg.custom { padding: 0; background: none; }
+.msg .sticker-msg .sticker-img { display: block; width: 128px; height: 128px; object-fit: contain; }
