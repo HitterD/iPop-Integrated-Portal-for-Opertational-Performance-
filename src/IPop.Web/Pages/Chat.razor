@@ -690,64 +690,9 @@
                         }
                         @if (stickerOpen)
                         {
-                            <div class="v6-pop v6-sticker-pop" @onclick:stopPropagation>
-                                <div class="v6-pop-head">
-                                    <span>Stickers</span>
-                                    <button type="button" class="v6-pop-x" title="Close" aria-label="Close stickers" @onclick="() => stickerOpen = false"><i data-lucide="x"></i></button>
-                                </div>
-                                <div class="sticker-tabs" role="tablist">
-                                    <button type="button" role="tab" class="@(stickerTab == "mine" ? "on" : "")" @onclick='() => stickerTab = "mine"'>Stiker saya</button>
-                                    @if (ChatSvc.Stickers.Official.Count > 0)
-                                    {
-                                        <button type="button" role="tab" class="@(stickerTab == "official" ? "on" : "")" @onclick='() => stickerTab = "official"'>Resmi</button>
-                                    }
-                                    <button type="button" role="tab" class="@(stickerTab == "builtin" ? "on" : "")" @onclick='() => stickerTab = "builtin"'>Bawaan</button>
-                                </div>
-                                @if (stickerTab == "builtin")
-                                {
-                                    <div class="picker-stickers">
-                                        @foreach (var icon in StickerIcons)
-                                        {
-                                            var ic = icon;
-                                            <button type="button" class="picker-sticker" @onclick="() => { stickerOpen = false; return SendSticker(ic); }">
-                                                <i data-lucide="@ic"></i>
-                                            </button>
-                                        }
-                                    </div>
-                                }
-                                else
-                                {
-                                    var list = stickerTab == "official" ? ChatSvc.Stickers.Official : ChatSvc.Stickers.Mine;
-                                    <div class="picker-stickers custom">
-                                        @if (stickerTab == "mine")
-                                        {
-                                            <button type="button" class="picker-sticker sticker-add" title="Buat stiker dari gambar (PNG, JPG, GIF, WebP · max 10 MB)" disabled="@stickerUploading" @onclick="PickStickerFile">
-                                                <i data-lucide="@(stickerUploading ? "loader" : "plus")"></i>
-                                            </button>
-                                        }
-                                        @foreach (var st in list)
-                                        {
-                                            var id = st.Id;
-                                            <div class="picker-sticker-wrap">
-                                                <button type="button" class="picker-sticker img" @onclick="() => { stickerOpen = false; return SendCustomSticker(id); }">
-                                                    <img src="@ChatSvc.StickerImageUrl(id)" alt="Stiker" loading="lazy" draggable="false" />
-                                                </button>
-                                                @if (stickerTab == "mine")
-                                                {
-                                                    <button type="button" class="sticker-remove" title="Hapus dari Stiker saya" aria-label="Hapus dari Stiker saya" @onclick="() => RemoveSticker(id)"><i data-lucide="x"></i></button>
-                                                }
-                                            </div>
-                                        }
-                                    </div>
-                                    @if (list.Count == 0 && stickerTab == "mine")
-                                    {
-                                        <p class="sticker-empty">Belum ada stiker. Tekan <strong>+</strong> untuk mengunggah gambar, atau klik kanan gambar di chat lalu pilih <strong>Jadikan stiker</strong>.</p>
-                                    }
-                                }
-                                @if (!string.IsNullOrEmpty(stickerError)) { <p class="sticker-error" role="alert">@stickerError</p> }
-                                <InputFile @ref="stickerInput" OnChange="OnStickerFileSelected" class="hidden-input" accept=".png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp" />
-                            </div>
+                            <StickerPicker OnSend="SendStickerKey" OnClose="() => stickerOpen = false" OnCreate="PickStickerFile" OnRemove="RemoveSticker" OnSave="SaveStickerFromMessage" Error="@stickerError" />
                         }
+                        <InputFile @ref="stickerInput" OnChange="OnStickerFileSelected" class="hidden-input" accept=".png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp" />
                         @if (plusMenuOpen)
                         {
                             <div class="v6-pop v6-plus-menu" role="menu" @onclick:stopPropagation>
@@ -1718,21 +1663,27 @@
         {
             <button @onclick="async () => { var t = ctxMsg.Content; ctxMsgId = null; await CopyMessageText(t); }"><i data-lucide="copy"></i> Copy text</button>
         }
+        @if (ctxMsg is not null && ctxMsg.Type == "sticker" && !ctxMsg.IsDeleted && StickerLimits.IsValidKey(ctxMsg.Content))
+        {
+            var ctxKey = ctxMsg.Content;
+            var ctxFav = ChatSvc.IsStickerFavorite(ctxKey);
+            <button @onclick="() => ToggleStickerFavorite(ctxKey, !ctxFav)"><i data-lucide="@(ctxFav ? "star-off" : "star")"></i> @(ctxFav ? "Remove from favorites" : "Add to favorites")</button>
+        }
         @if (ctxMsg is not null && StickerLimits.CustomId(ctxMsg.Type, ctxMsg.Content) is { } ctxSticker)
         {
             @if (!ChatSvc.IsStickerMine(ctxSticker))
             {
-                <button @onclick="() => SaveStickerFromMessage(ctxSticker)"><i data-lucide="sticker"></i> Simpan stiker</button>
+                <button @onclick="() => SaveStickerFromMessage(ctxSticker)"><i data-lucide="sticker"></i> Add to my stickers</button>
             }
             @if (Auth.IsAdmin)
             {
                 var official = ChatSvc.Stickers.Official.Any(s => s.Id == ctxSticker);
-                <button @onclick="() => SetStickerOfficial(ctxSticker, !official)"><i data-lucide="@(official ? "badge-minus" : "badge-check")"></i> @(official ? "Keluarkan dari stiker resmi" : "Jadikan stiker resmi")</button>
+                <button @onclick="() => SetStickerOfficial(ctxSticker, !official)"><i data-lucide="@(official ? "badge-minus" : "badge-check")"></i> @(official ? "Remove from official" : "Make official")</button>
             }
         }
         @if (ctxMsg is not null && ctxMsg.Attachments.FirstOrDefault(IsStickerableImage) is { } ctxImage)
         {
-            <button @onclick="() => MakeStickerFromAttachment(ctxImage.Id)"><i data-lucide="sticker"></i> Jadikan stiker</button>
+            <button @onclick="() => MakeStickerFromAttachment(ctxImage)"><i data-lucide="sticker"></i> Make sticker</button>
         }
         <button @onclick="() => StartForward(ctxMsgId.Value)"><i data-lucide="forward"></i> Forward</button>
         <button @onclick="() => SaveMessage(ctxMsgId.Value)"><i data-lucide="bookmark"></i> Save</button>

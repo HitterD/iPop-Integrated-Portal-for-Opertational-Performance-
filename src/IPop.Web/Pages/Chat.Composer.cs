@@ -191,23 +191,22 @@ public partial class Chat
     // ---- Emoji/Sticker Picker (Task 16.1) ----
 
     private void InsertEmoji(string emoji) { messageText += emoji; pickerOpen = false; }
-    private async Task SendSticker(string iconName) { pickerOpen = false; await ChatSvc.SendMessageAsync(iconName, null, "sticker"); scrollToBottom = true; }
-
-    // ---- Custom stickers ----
+    // ---- Stickers ----
 
     private async Task OpenStickers()
     {
         stickerOpen = true;
         stickerError = null;
         await ChatSvc.LoadStickersAsync();
-        // Nothing of my own yet but an official pack exists: open on that instead of an empty tab.
-        if (stickerTab == "mine" && ChatSvc.Stickers.Mine.Count == 0 && ChatSvc.Stickers.Official.Count > 0) stickerTab = "official";
     }
 
-    private async Task SendCustomSticker(Guid id)
+    /// Any sticker key: "custom:{id}", "fluent:{slug}" or a legacy Lucide name.
+    private async Task SendStickerKey(string key)
     {
+        stickerOpen = false;
         pickerOpen = false;
-        await ChatSvc.SendMessageAsync(IPop.Application.Chat.StickerLimits.Content(id), null, "sticker");
+        await ChatSvc.SendMessageAsync(key, null, "sticker");
+        ChatSvc.NoteStickerUsed(key);
         scrollToBottom = true;
     }
 
@@ -234,7 +233,7 @@ public partial class Chat
                 form.Add(part, "file", file.Name);
                 return await Auth.SendMultipartAsync("/api/chat/stickers", form);
             });
-            if (err is null) stickerTab = "mine";
+            if (err is null) ChatSvc.StickerTab = "mine";
             else stickerError = StickerErrorText(err);
         }
         finally
@@ -254,16 +253,25 @@ public partial class Chat
     {
         ctxMsgId = null;
         var err = await ChatSvc.StickerActionAsync(() => Auth.SendAsync(HttpMethod.Post, $"/api/chat/stickers/{id}/save"));
-        if (err is null) Toasts.Show("Stiker disimpan ke Stiker saya.", ToastKind.Success);
+        if (err is null) Toasts.Show("Added to My stickers.", ToastKind.Success);
         else Toasts.Show(StickerErrorText(err), ToastKind.Error);
     }
 
-    private async Task MakeStickerFromAttachment(Guid attachmentId)
+    private async Task ToggleStickerFavorite(string key, bool favorite)
     {
         ctxMsgId = null;
-        Toasts.Show("Membuat stiker…", ToastKind.Info);
-        var err = await ChatSvc.StickerActionAsync(() => Auth.SendAsync(HttpMethod.Post, $"/api/chat/stickers/from-attachment/{attachmentId}"));
-        if (err is null) { stickerTab = "mine"; Toasts.Show("Stiker dibuat. Cari di Stiker saya.", ToastKind.Success); }
+        await ChatSvc.LoadStickersAsync();
+        if (await ChatSvc.SetStickerFavoriteAsync(key, favorite))
+            Toasts.Show(favorite ? "Added to favorites." : "Removed from favorites.", ToastKind.Success);
+        else Toasts.Show("Couldn't update favorites. Try again.", ToastKind.Error);
+    }
+
+    private async Task MakeStickerFromAttachment(IPop.Application.Chat.AttachmentDto a)
+    {
+        ctxMsgId = null;
+        Toasts.Show("Creating sticker…", ToastKind.Info);
+        var err = await ChatSvc.StickerActionAsync(() => Auth.SendAsync(HttpMethod.Post, $"/api/chat/stickers/from-attachment/{a.Id}"));
+        if (err is null) { ChatSvc.StickerTab = "mine"; Toasts.Show("Sticker created. Find it in My stickers.", ToastKind.Success); }
         else Toasts.Show(StickerErrorText(err), ToastKind.Error);
     }
 
@@ -271,7 +279,7 @@ public partial class Chat
     {
         ctxMsgId = null;
         var err = await ChatSvc.StickerActionAsync(() => Auth.SendAsync(HttpMethod.Put, $"/api/chat/stickers/{id}/official", new { official }));
-        if (err is null) Toasts.Show(official ? "Stiker masuk paket resmi." : "Stiker dikeluarkan dari paket resmi.", ToastKind.Success);
+        if (err is null) Toasts.Show(official ? "Added to the official pack." : "Removed from the official pack.", ToastKind.Success);
         else Toasts.Show(StickerErrorText(err), ToastKind.Error);
     }
 
@@ -281,10 +289,10 @@ public partial class Chat
     private static string StickerErrorText(string code) => code switch
     {
         "too_large" => "Image is too large (max 10 MB).",
-        "not_an_image" or "invalid_image" => "File harus gambar PNG, JPG, GIF, atau WebP.",
-        "limit_reached" => "Stiker saya sudah penuh (maks 200). Hapus beberapa dulu.",
-        "not_found" => "Stiker atau gambar tidak ditemukan.",
-        _ => "Stiker gagal diproses. Coba lagi.",
+        "not_an_image" or "invalid_image" => "The file must be a PNG, JPG, GIF or WebP image.",
+        "limit_reached" => "My stickers is full (max 200). Remove a few first.",
+        "not_found" => "Sticker or image not found.",
+        _ => "Couldn't process the sticker. Try again.",
     };
 
     // ---- Mention Autocomplete (Task 16.2 + ipop-30 @project + ipop-31 #task) ----

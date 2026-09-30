@@ -35,6 +35,38 @@ public class ChatState : IAsyncDisposable
 
     public bool IsStickerMine(Guid id) => Stickers.Mine.Any(s => s.Id == id);
 
+    /// Last picker tab, kept for the session so the sheet reopens where the user left it.
+    public string? StickerTab { get; set; }
+
+    public bool IsStickerFavorite(string key) => Stickers.Favorites.Contains(key);
+
+    /// Optimistic star / un-star; rolls back when the server refuses.
+    public async Task<bool> SetStickerFavoriteAsync(string key, bool favorite)
+    {
+        var before = Stickers;
+        var favs = Stickers.Favorites.Where(k => k != key).ToList();
+        if (favorite) favs.Insert(0, key);
+        Stickers = Stickers with { Favorites = favs };
+        StickersChanged?.Invoke();
+        try
+        {
+            using var res = await _auth.SendAsync(HttpMethod.Put, "/api/chat/stickers/favorites", new { key, favorite });
+            if (res.IsSuccessStatusCode) return true;
+        }
+        catch { /* fall through to the rollback */ }
+        Stickers = before;
+        StickersChanged?.Invoke();
+        return false;
+    }
+
+    /// The server records use on send; mirror it locally so Recent is right without a reload.
+    public void NoteStickerUsed(string key)
+    {
+        var recent = Stickers.Recent.Where(k => k != key).Prepend(key).Take(StickerLimits.MaxRecent).ToList();
+        Stickers = Stickers with { Recent = recent };
+        StickersChanged?.Invoke();
+    }
+
     public async Task LoadStickersAsync(bool force = false)
     {
         if (_stickersLoaded && !force) return;

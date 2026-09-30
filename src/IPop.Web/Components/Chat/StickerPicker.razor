@@ -1,0 +1,188 @@
+@using IPop.Application.Chat
+@using IPop.Web.Services
+@implements IDisposable
+@inject ChatState ChatSvc
+@inject IJSRuntime JS
+
+@* Sticker sheet above the composer: Recent · Favorites · My stickers · Official · Default.
+   Every tile is keyed by its message content ("custom:{id}", "fluent:{slug}", legacy Lucide name)
+   so Recent/Favorites can hold any kind. Right-click / long-press opens a small menu. *@
+<div class="v6-pop v6-sticker-pop" @onclick:stopPropagation @onclick="CloseMenu">
+    <div class="v6-pop-head">
+        <span>Stickers</span>
+        <button type="button" class="v6-pop-x" title="Close" aria-label="Close stickers" @onclick="OnClose"><i data-lucide="x"></i></button>
+    </div>
+    <div class="sticker-tabs" role="tablist">
+        @foreach (var (key, label, icon) in Tabs)
+        {
+            var k = key;
+            <button type="button" role="tab" aria-selected="@(Tab == k ? "true" : "false")" class="@(Tab == k ? "on" : "")" title="@label" data-tab="@k" @onclick="() => SetTab(k)">
+                <i data-lucide="@icon"></i><span>@label</span>
+            </button>
+        }
+    </div>
+
+    <div class="picker-stickers custom" role="tabpanel" data-panel="@Tab">
+        @if (Tab == "mine")
+        {
+            <button type="button" class="picker-sticker sticker-add" title="Create sticker" aria-label="Create sticker" @onclick="OnCreate">
+                <i data-lucide="plus"></i><span>Create</span>
+            </button>
+        }
+        @foreach (var key in Keys)
+        {
+            var k = key;
+            <div class="picker-sticker-wrap" @key="k">
+                <button type="button" class="picker-sticker img @(menuKey == k ? "menu-on" : "")" title="@Label(k)"
+                        @onclick="() => Send(k)"
+                        @oncontextmenu="() => OpenMenu(k)" @oncontextmenu:preventDefault
+                        @onpointerdown="e => PressStart(k, e)" @onpointerup="PressEnd" @onpointerleave="PressEnd" @onpointercancel="PressEnd">
+                    @if (StickerLimits.CustomId("sticker", k) is { } id)
+                    {
+                        <img src="@ChatSvc.StickerImageUrl(id)" alt="Sticker" loading="lazy" draggable="false" />
+                    }
+                    else if (FluentStickers.Find(StickerLimits.FluentSlug("sticker", k)) is { } f)
+                    {
+                        <img src="@f.ImagePath" alt="@f.Label" loading="lazy" draggable="false" />
+                    }
+                    else
+                    {
+                        <i data-lucide="@k"></i>
+                    }
+                </button>
+                @if (ChatSvc.IsStickerFavorite(k) && Tab != "favorites")
+                {
+                    <span class="sticker-fav-dot" aria-hidden="true"><i data-lucide="star"></i></span>
+                }
+            </div>
+        }
+    </div>
+    @if (Keys.Count == 0)
+    {
+        <p class="sticker-empty">@EmptyText</p>
+    }
+    @if (menuKey is not null)
+    {
+        var fav = ChatSvc.IsStickerFavorite(menuKey);
+        var customId = StickerLimits.CustomId("sticker", menuKey);
+        <div class="sticker-menu" role="menu" aria-label="Sticker actions" @onclick:stopPropagation>
+            <button type="button" role="menuitem" @onclick="() => ToggleFavorite(menuKey, !fav)"><i data-lucide="@(fav ? "star-off" : "star")"></i> @(fav ? "Remove from favorites" : "Add to favorites")</button>
+            @if (customId is { } cid && ChatSvc.IsStickerMine(cid))
+            {
+                <button type="button" role="menuitem" class="danger" @onclick="() => Remove(cid)"><i data-lucide="trash-2"></i> Remove from my stickers</button>
+            }
+            else if (customId is { } sid)
+            {
+                <button type="button" role="menuitem" @onclick="() => Save(sid)"><i data-lucide="plus"></i> Add to my stickers</button>
+            }
+            <button type="button" class="sticker-menu-x" title="Close" aria-label="Close sticker actions" @onclick="() => menuKey = null"><i data-lucide="x"></i></button>
+        </div>
+    }
+    @if (!string.IsNullOrEmpty(Error)) { <p class="sticker-error" role="alert">@Error</p> }
+</div>
+
+@code {
+    /// Sends the sticker message content.
+    [Parameter] public EventCallback<string> OnSend { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    /// "+ Create" tile: opens the sticker editor.
+    [Parameter] public EventCallback OnCreate { get; set; }
+    [Parameter] public EventCallback<Guid> OnRemove { get; set; }
+    [Parameter] public EventCallback<Guid> OnSave { get; set; }
+    [Parameter] public string? Error { get; set; }
+
+    private static readonly (string Key, string Label, string Icon)[] AllTabs =
+    [
+        ("recent", "Recent", "clock"),
+        ("favorites", "Favorites", "star"),
+        ("mine", "My stickers", "smile-plus"),
+        ("official", "Official", "badge-check"),
+        ("default", "Default", "sparkles"),
+    ];
+
+    private IEnumerable<(string Key, string Label, string Icon)> Tabs =>
+        AllTabs.Where(t => t.Key != "official" || ChatSvc.Stickers.Official.Count > 0 || Tab == "official");
+
+    private string Tab = "recent";
+    /// Sticker whose action bar (favorite / add / remove) is showing at the bottom of the sheet.
+    private string? menuKey;
+    private CancellationTokenSource? pressCts;
+    private bool suppressClick;
+
+    protected override void OnInitialized()
+    {
+        ChatSvc.StickersChanged += OnStickersChanged;
+        // Reopen where the user left off; first time, Recent if there is history, else Default.
+        Tab = ChatSvc.StickerTab ?? (ChatSvc.Stickers.Recent.Count > 0 ? "recent" : "default");
+    }
+
+    private void OnStickersChanged() => InvokeAsync(StateHasChanged);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); } catch { /* prerender / tests */ }
+    }
+
+    private IReadOnlyList<string> Keys => Tab switch
+    {
+        "recent" => ChatSvc.Stickers.Recent,
+        "favorites" => ChatSvc.Stickers.Favorites,
+        "mine" => ChatSvc.Stickers.Mine.Select(s => StickerLimits.Content(s.Id)).ToList(),
+        "official" => ChatSvc.Stickers.Official.Select(s => StickerLimits.Content(s.Id)).ToList(),
+        _ => FluentStickers.All.Select(s => s.Key).ToList(),
+    };
+
+    private string EmptyText => Tab switch
+    {
+        "recent" => "Stickers you send show up here.",
+        "favorites" => "Right-click or long-press a sticker and choose Add to favorites.",
+        "mine" => "No stickers yet. Tap Create to make one from a photo, or right-click an image in the chat and choose Make sticker.",
+        "official" => "No official stickers yet.",
+        _ => "",
+    };
+
+    private static string Label(string key) =>
+        FluentStickers.Find(StickerLimits.FluentSlug("sticker", key))?.Label ?? "Sticker";
+
+    private void SetTab(string tab) { Tab = tab; ChatSvc.StickerTab = tab; menuKey = null; }
+
+    private async Task Send(string key)
+    {
+        if (suppressClick) { suppressClick = false; return; }
+        menuKey = null;
+        await OnSend.InvokeAsync(key);
+    }
+
+    private void OpenMenu(string key) => menuKey = key;
+
+    private void CloseMenu() { if (menuKey is not null) menuKey = null; }
+
+    private async Task PressStart(string key, PointerEventArgs e)
+    {
+        if (e.PointerType != "touch") return;
+        pressCts?.Cancel();
+        var cts = pressCts = new CancellationTokenSource();
+        try { await Task.Delay(500, cts.Token); }
+        catch (TaskCanceledException) { return; }
+        suppressClick = true;
+        menuKey = key;
+        StateHasChanged();
+    }
+
+    private void PressEnd() { pressCts?.Cancel(); pressCts = null; }
+
+    private async Task ToggleFavorite(string key, bool favorite)
+    {
+        menuKey = null;
+        await ChatSvc.SetStickerFavoriteAsync(key, favorite);
+    }
+
+    private async Task Remove(Guid id) { menuKey = null; await OnRemove.InvokeAsync(id); }
+    private async Task Save(Guid id) { menuKey = null; await OnSave.InvokeAsync(id); }
+
+    public void Dispose()
+    {
+        ChatSvc.StickersChanged -= OnStickersChanged;
+        pressCts?.Cancel();
+    }
+}

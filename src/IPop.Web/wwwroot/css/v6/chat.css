@@ -606,8 +606,25 @@
 
 /* ---- Custom stickers ---- */
 .chat-area .v6-sticker-pop { width: min(320px, calc(100vw - 48px)); }
-.sticker-tabs { display: flex; gap: 4px; padding: 8px 10px 0; }
-.sticker-tabs button { border: 0; background: none; padding: 5px 10px; border-radius: 999px; font: inherit; font-size: 12px; color: var(--ink-3); cursor: pointer; }
+.chat-area .v6-sticker-pop { position: absolute; }
+.sticker-tabs { display: flex; gap: 2px; padding: 8px 8px 0; overflow-x: auto; scrollbar-width: none; }
+.sticker-tabs::-webkit-scrollbar { display: none; }
+.sticker-tabs button { border: 0; background: none; padding: 5px 9px; border-radius: 999px; font: inherit; font-size: 12px; color: var(--ink-3); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; flex: none; }
+.sticker-tabs button .lucide, .sticker-tabs button svg { width: 14px; height: 14px; }
+/* Narrow sheet: icons only except the active tab. */
+@media (max-width: 420px) { .sticker-tabs button:not(.on) span { display: none; } }
+.picker-stickers.custom { max-height: 248px; }
+.picker-sticker.sticker-add { flex-direction: column; gap: 2px; font-size: 11px; color: var(--ink-3); }
+.picker-sticker.menu-on { border-color: var(--accent); }
+.sticker-fav-dot { position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--surface); display: flex; align-items: center; justify-content: center; pointer-events: none; box-shadow: var(--shadow-sm, 0 1px 2px rgba(0,0,0,.15)); }
+.sticker-fav-dot .lucide, .sticker-fav-dot svg { width: 10px; height: 10px; color: #f5a623; fill: #f5a623; }
+.sticker-menu { display: flex; align-items: center; gap: 4px; margin: 0 8px 8px; padding: 4px; border-radius: 10px; background: var(--tray); flex-wrap: wrap; }
+.sticker-menu button { border: 0; background: none; font: inherit; font-size: 12px; color: var(--ink-1, inherit); padding: 6px 8px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+.sticker-menu button:hover { background: var(--surface); }
+.sticker-menu button.danger { color: var(--danger-ink); }
+.sticker-menu button .lucide, .sticker-menu button svg { width: 14px; height: 14px; }
+.sticker-menu .sticker-menu-x { margin-left: auto; padding: 6px; }
+.picker-sticker { -webkit-touch-callout: none; user-select: none; }
 .sticker-tabs button.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
 .picker-stickers.custom { grid-template-columns: repeat(4, 1fr); }
 .picker-sticker-wrap { position: relative; }
