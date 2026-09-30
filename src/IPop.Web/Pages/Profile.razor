@@ -1,145 +1,15 @@
 @page "/profile"
-@inject IJSRuntime JS
-@inject AuthState Auth
-@inject ToastService Toasts
+@inject NavigationManager Nav
 
-<PageTitle>Edit profile — IPop</PageTitle>
-
-@* Self-service profile. Name, NIK and placement come from HRIS/admin and are read-only here;
-   the user owns only their photo and email. *@
-<div class="pf-page">
-    @if (me is null)
-    {
-        <div class="pf-card"><div class="skel" style="height:120px;border-radius:12px"></div></div>
-    }
-    else
-    {
-        <section class="pf-card">
-            <header><h2>Photo</h2><p>Shown on your avatar everywhere in iPop.</p></header>
-            <div class="pf-photo">
-                <div class="pf-av" style="@(preview is not null ? $"background:url('{preview}') center/cover" : AvatarPhotos.Style(me.Nik))">
-                    @if (preview is null) { @Initials }
-                </div>
-                <div class="pf-photo-actions">
-                    <label class="btn-primary pf-pick @(busyPhoto ? "busy" : "")">
-                        <i data-lucide="upload"></i>@(busyPhoto ? "Uploading…" : "Upload photo")
-                        <input type="file" accept="image/jpeg,image/png,image/webp" @ref="fileInput" @onchange="PickPhoto" disabled="@busyPhoto" hidden />
-                    </label>
-                    @if (HasPhoto)
-                    {
-                        <button type="button" class="ghost-btn" @onclick="RemovePhoto" disabled="@busyPhoto"><i data-lucide="trash-2"></i>Remove photo</button>
-                    }
-                    <p class="pf-hint">JPG, PNG or WebP, up to 5 MB. Cropped to a square from the centre.</p>
-                    @if (photoError is not null) { <p class="pf-err"><i data-lucide="alert-circle"></i>@photoError</p> }
-                </div>
-            </div>
-        </section>
-
-        <section class="pf-card">
-            <header><h2>Details</h2><p>Managed by HR. Ask your administrator if something is wrong.</p></header>
-            <dl class="pf-facts">
-                <div><dt>Name</dt><dd>@me.Name</dd></div>
-                <div><dt>NIK</dt><dd>@me.Nik</dd></div>
-                <div><dt>Position</dt><dd>@(me.Position ?? "—")</dd></div>
-                <div><dt>Department</dt><dd>@(me.Department ?? "—")</dd></div>
-            </dl>
-        </section>
-
-        <section class="pf-card">
-            <header><h2>Email</h2><p>Used for notifications and password reset links.</p></header>
-            <form class="pf-email" @onsubmit="SaveEmail" @onsubmit:preventDefault>
-                <input type="email" autocomplete="email" @bind="email" @bind:event="oninput" disabled="@busyEmail" aria-label="Email" />
-                <button type="submit" class="btn-primary" disabled="@(busyEmail || !EmailDirty)">@(busyEmail ? "Saving…" : "Save")</button>
-            </form>
-            @if (emailError is not null) { <p class="pf-err"><i data-lucide="alert-circle"></i>@emailError</p> }
-        </section>
-    }
-</div>
+@* Old bookmark target. Profile editing is the account sheet (AccountSheet.razor) now, a popup
+   from the sidebar account menu; this route just opens it over the dashboard. *@
 
 @code {
     [CascadingParameter] public MainLayout? Layout { get; set; }
 
-    private DirectoryEmployeeDto? me;
-    private ElementReference fileInput;
-    private string email = "";
-    private string? preview, photoError, emailError;
-    private bool busyPhoto, busyEmail;
-
-    private bool HasPhoto => AvatarPhotos.Url(me?.Nik) is not null;
-    private bool EmailDirty => !string.Equals(email.Trim(), me?.Email, StringComparison.Ordinal);
-    private string Initials => me is null ? "" : string.Concat(me.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-        .Select(w => w[0]).Take(2)).ToUpperInvariant();
-
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        Layout?.SetHeader("Edit profile", "Your photo and email");
-        me = await Auth.LoadMeAsync();
-        email = me?.Email ?? "";
+        Layout?.OpenAccount(AccountSheet.Pane.Profile);
+        Nav.NavigateTo("/dashboard", replace: true);
     }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
-
-    private async Task PickPhoto()
-    {
-        photoError = null;
-        var crop = await JS.InvokeAsync<CropResult?>("ipopProfilePhoto.crop", fileInput, 256);
-        if (crop is null) return;
-        if (crop.Error is not null) { photoError = crop.Error; return; }
-
-        busyPhoto = true; preview = crop.Preview;
-        StateHasChanged();
-        try
-        {
-            var ext = crop.Type == "image/webp" ? "webp" : "jpg";
-            var file = new ByteArrayContent(Convert.FromBase64String(crop.Base64!));
-            file.Headers.ContentType = new(crop.Type!);
-            var form = new MultipartFormDataContent { { file, "file", $"avatar.{ext}" } };
-            var res = await Auth.SendMultipartAsync("/api/me/photo", form);
-            if (!res.IsSuccessStatusCode) { photoError = await ErrorMessage(res, "Could not upload the photo."); return; }
-            await Auth.LoadPhotosAsync();
-            Toasts.Show("Profile photo updated", ToastKind.Success);
-        }
-        catch { photoError = "Could not reach the server. Try again."; }
-        finally { busyPhoto = false; preview = null; }
-    }
-
-    private async Task RemovePhoto()
-    {
-        busyPhoto = true; photoError = null;
-        try
-        {
-            var res = await Auth.SendAsync(HttpMethod.Delete, "/api/me/photo");
-            if (!res.IsSuccessStatusCode) { photoError = "Could not remove the photo."; return; }
-            await Auth.LoadPhotosAsync();
-            Toasts.Show("Profile photo removed", ToastKind.Success);
-        }
-        catch { photoError = "Could not reach the server. Try again."; }
-        finally { busyPhoto = false; }
-    }
-
-    private async Task SaveEmail()
-    {
-        if (busyEmail || !EmailDirty) return;
-        busyEmail = true; emailError = null;
-        try
-        {
-            var res = await Auth.SendAsync(HttpMethod.Put, "/api/me/email", new { email = email.Trim() });
-            if (!res.IsSuccessStatusCode) { emailError = await ErrorMessage(res, "Could not save the email."); return; }
-            await Auth.ReloadMeAsync();
-            me = Auth.Me;
-            email = me?.Email ?? email.Trim();
-            Toasts.Show("Email updated", ToastKind.Success);
-        }
-        catch { emailError = "Could not reach the server. Try again."; }
-        finally { busyEmail = false; }
-    }
-
-    private static async Task<string> ErrorMessage(HttpResponseMessage res, string fallback)
-    {
-        try { return (await res.Content.ReadFromJsonAsync<ApiError>())?.Message ?? fallback; }
-        catch { return fallback; }
-    }
-
-    private record CropResult(string? Base64, string? Type, string? Preview, string? Error);
-    private record ApiError(string? Code, string? Message);
 }

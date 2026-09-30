@@ -80,6 +80,19 @@ public class AuthWorkflow(IPopDbContext db, IPasswordHasher hasher, ITokenServic
         if (user is null || !user.IsActive)
             return (new AuthError("invalid", "Account not found or deactivated."), 401);
 
+        // Voluntary change: a stolen, still-open session must not be enough to take the account over.
+        if (!user.MustChangePassword)
+        {
+            var current = req.CurrentPassword ?? "";
+            // Argon2 throws on an empty password, so a blank field is rejected before hashing.
+            var ok = current.Length > 0 && (user.PasswordHash is null
+                ? current == DefaultPassword
+                : hasher.Verify(current, user.PasswordHash));
+            if (!ok)
+                return (new AuthError("policy", "Current password is incorrect.",
+                    new() { ["currentPassword"] = ["Current password is incorrect."] }), 400);
+        }
+
         user.PasswordHash = hasher.Hash(req.NewPassword);
         user.MustChangePassword = false;
 

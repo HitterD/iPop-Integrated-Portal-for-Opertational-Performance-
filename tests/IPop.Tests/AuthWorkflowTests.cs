@@ -117,6 +117,32 @@ public class AuthWorkflowTests
         Assert.True(err!.Fields!.ContainsKey(field));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("WrongPass9")]
+    public async Task ChangePassword_Voluntary_RequiresCurrentPassword(string? current)
+    {
+        using var t = new TestDb();
+        t.AddUser("20140312", passwordHash: Hasher.Hash("OldPass9"), mustChange: false);
+        var (err, status) = await NewWorkflow(t).ChangePasswordAsync("20140312",
+            new ChangePasswordRequest("MySecure9", "MySecure9", current), null, default);
+        Assert.Equal(400, status);
+        Assert.True(err!.Fields!.ContainsKey("currentPassword"));
+        Assert.Equal(200, (await NewWorkflow(t).LoginAsync(LoginReq("OldPass9"), null, default)).Item3);
+    }
+
+    [Fact]
+    public async Task ChangePassword_Voluntary_WithCurrentPassword_Succeeds()
+    {
+        using var t = new TestDb();
+        t.AddUser("20140312", passwordHash: Hasher.Hash("OldPass9"), mustChange: false);
+        var (_, status) = await NewWorkflow(t).ChangePasswordAsync("20140312",
+            new ChangePasswordRequest("MySecure9", "MySecure9", "OldPass9"), null, default);
+        Assert.Equal(200, status);
+        Assert.Equal(200, (await NewWorkflow(t).LoginAsync(LoginReq("MySecure9"), null, default)).Item3);
+    }
+
     [Fact]
     public async Task Refresh_Rotates_OldTokenDiesImmediately()
     {

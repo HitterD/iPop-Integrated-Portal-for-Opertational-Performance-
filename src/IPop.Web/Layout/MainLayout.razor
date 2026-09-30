@@ -50,8 +50,8 @@
             @if (meMenuOpen)
             {
                 <div class="me-menu" role="menu" @onclick:stopPropagation>
-                    <button role="menuitem" @onclick='() => GoTo("/profile")'><i data-lucide="user-round-pen"></i>Edit profile</button>
-                    <button role="menuitem" @onclick='() => GoTo("/set-password")'><i data-lucide="key-round"></i>Change password</button>
+                    <button role="menuitem" @onclick="() => OpenAccount(AccountSheet.Pane.Profile)"><i data-lucide="user-round-pen"></i>Edit profile</button>
+                    <button role="menuitem" @onclick="() => OpenAccount(AccountSheet.Pane.Password)"><i data-lucide="key-round"></i>Change password</button>
                     <div class="sep"></div>
                     <button role="menuitem" class="danger" @onclick="SignOut"><i data-lucide="log-out"></i>Sign out</button>
                 </div>
@@ -213,6 +213,7 @@
         <IPop.Web.Components.Chat.ToastHost />
         <CommandPalette />
         <ConfirmHost />
+        <AccountSheet @bind-IsOpen="accountOpen" Start="accountPane" />
         <IPop.Web.Components.Calls.GlobalCallOverlay />
         <IPop.Web.Components.Notifications.GlobalNotificationBanner />
     </div>
@@ -432,7 +433,17 @@
 
     private void ToggleMeMenu() { meMenuOpen = !meMenuOpen; notifOpen = false; statusMenuOpen = false; }
 
-    private void GoTo(string href) { meMenuOpen = false; Nav.NavigateTo(href); }
+    private bool accountOpen;
+    private AccountSheet.Pane accountPane;
+
+    /// The account sheet is a popup over whatever page is open; /profile opens it too.
+    public void OpenAccount(AccountSheet.Pane pane)
+    {
+        meMenuOpen = false;
+        accountPane = pane;
+        accountOpen = true;
+        StateHasChanged();
+    }
 
     private void OnMeChanged() => _ = InvokeAsync(StateHasChanged);
 
