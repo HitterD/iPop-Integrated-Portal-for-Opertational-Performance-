@@ -22,7 +22,9 @@ public record ComposeMailRequest(
     // Labels picked in the composer; applied to the sender's own copy (labels are per user).
     IReadOnlyList<Guid>? LabelIds = null,
     // Forward only: which of the original's attachments to carry over (null = all of them).
-    IReadOnlyList<Guid>? ForwardAttachmentIds = null);
+    IReadOnlyList<Guid>? ForwardAttachmentIds = null,
+    // Drafts only: composer-only state the server stores verbatim (meeting fields, forward source).
+    string? DraftExtra = null);
 
 public record SendMailResult(bool Success, Guid? MailId, string? Error);
 
@@ -110,6 +112,8 @@ public record MailDetailDto(
     public IReadOnlyList<ProjectLink> LinkedProjects { get; init; } = [];
     /// The caller's own labels on this mail (labels are per user).
     public IReadOnlyList<Guid> LabelIds { get; init; } = [];
+    /// Drafts only (to their author): the composer's opaque extras, see ComposeMailRequest.DraftExtra.
+    public string? DraftExtra { get; init; }
 }
 
 // Delivery/read state of one recipient, for the sender's "terkirim/dibaca" view.

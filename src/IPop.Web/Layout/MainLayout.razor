@@ -14,6 +14,7 @@
 @inject IPop.Web.Services.PushState Push
 @inject IPop.Web.Services.SessionLockState SessionLock
 @inject NotificationSettingsState NotifSettings
+@inject IPop.Web.Services.MailComposerHost ComposerHost
 
 <div class="shell @(collapsed ? "collapsed" : "")" id="shell">
     <aside class="sidebar">
@@ -251,6 +252,12 @@
         <PhotoViewer />
         <SessionLockHost />
         <AccountSheet @bind-IsOpen="accountOpen" Start="accountPane" />
+        @* Session-wide so a draft survives leaving /mail; Mail.razor drives it via MailComposerHost. *@
+        <IPop.Web.Components.Mail.MailComposer @ref="ComposerHost.Instance"
+                                               IsOpenChanged="ComposerHost.RaiseOpenChanged"
+                                               OnSent="ComposerHost.RaiseSent"
+                                               OnDiscard="ComposerHost.RaiseDiscarded"
+                                               OnOpenTemplates="ComposerHost.RaiseOpenTemplates" />
         <IPop.Web.Components.Calls.GlobalCallOverlay />
         @* One floating column: incoming-notification banners above action toasts, so they never overlap. *@
         <div class="float-stack">

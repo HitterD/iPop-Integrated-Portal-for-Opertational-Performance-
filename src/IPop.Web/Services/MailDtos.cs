@@ -42,6 +42,8 @@ public record MailDetail(
     public IReadOnlyList<ProjectLink> LinkedProjects { get; init; } = [];
     /// The reader's own labels on this mail.
     public IReadOnlyList<Guid> LabelIds { get; init; } = [];
+    /// Drafts only: the composer's own extras (meeting fields, forward source), stored verbatim.
+    public string? DraftExtra { get; init; }
 }
 
 public record SendMailResult(bool Success, Guid? MailId, string? Error);
@@ -55,7 +57,8 @@ public record MailSendRequest(
     DateTime? ScheduledAt = null,
     string? Importance = "normal",
     IReadOnlyList<Guid>? LabelIds = null,
-    IReadOnlyList<Guid>? ForwardAttachmentIds = null);
+    IReadOnlyList<Guid>? ForwardAttachmentIds = null,
+    string? DraftExtra = null);
 
 public record BatchIds(IReadOnlyList<Guid> MailIds);
 public record BatchMove(IReadOnlyList<Guid> MailIds, string Folder);

@@ -875,6 +875,23 @@ window.ipop = {
     el.addEventListener("drop", onDrop);
     el._ipopMailDrop = { onDragOver, onDragLeave, onDrop };
   },
+  // Mail composer: the latest unsaved draft request, sent with keepalive if the tab closes
+  // or reloads before the 2 s autosave fires. Called with nulls once it is saved.
+  mailDraftStash(url, method, json, token) {
+    ipop._mailDraft = url ? { url, method, json, token } : null;
+    if (ipop._mailDraftBound) return;
+    ipop._mailDraftBound = true;
+    window.addEventListener("pagehide", () => {
+      const d = ipop._mailDraft;
+      if (!d) return;
+      ipop._mailDraft = null;
+      try {
+        fetch(d.url, { method: d.method, body: d.json, keepalive: true,
+          headers: { "Content-Type": "application/json", ...(d.token ? { Authorization: "Bearer " + d.token } : {}) } });
+      } catch { /* best effort */ }
+    });
+  },
+
   mailUnbindDropZone(el) {
     if (!el || !el._ipopMailDrop) return;
     const h = el._ipopMailDrop;

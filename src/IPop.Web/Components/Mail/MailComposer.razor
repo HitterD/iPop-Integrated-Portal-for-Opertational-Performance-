@@ -2,6 +2,8 @@
 @inject IPop.Web.Services.MailService MailSvc
 @inject IPop.Web.Services.ToastService Toasts
 @inject IPop.Web.Services.AuthState Auth
+@inject NavigationManager Nav
+@inject HttpClient Http
 @using IPop.Web.Components
 @using IPop.Web.Services
 @implements IDisposable
@@ -18,7 +20,7 @@
         <div class="composer-head" @onclick="OnHeadClick">
             <span class="title">
                 <i data-lucide="@(IsForward ? "forward" : "mail")"></i>
-                <span class="title-text">@HeaderTitle</span>
+                <span class="title-text">@(dockState == ComposerDockState.Minimized ? $"Draft: {HeaderTitle}" : HeaderTitle)</span>
             </span>
             @if (dockState != ComposerDockState.Minimized)
             {
@@ -210,7 +212,7 @@
                         <label>Start<AppDateTimePicker @bind-Value="meetingStart" @bind-Value:after="OnContentChanged" AriaLabel="Meeting start" /></label>
                         <label>End<AppDateTimePicker @bind-Value="meetingEnd" @bind-Value:after="OnContentChanged" AriaLabel="Meeting end" /></label>
                         <label>Reminder
-                            <select class="mc-field" @bind="meetingReminderMin">
+                            <select class="mc-field" @bind="meetingReminderMin" @bind:after="OnContentChanged">
                                 <option value="10">10 minutes</option>
                                 <option value="30">30 minutes</option>
                                 <option value="60">1 hour</option>
@@ -218,7 +220,7 @@
                             </select>
                         </label>
                     </div>
-                    <input class="mc-field" placeholder="Location or meeting link" aria-label="Meeting location" @bind="meetingLocation" />
+                    <input class="mc-field" placeholder="Location or meeting link" aria-label="Meeting location" @bind="meetingLocation" @bind:after="OnContentChanged" />
                     <div class="mc-hint">Attendees are the To and Cc recipients. The meeting is created when the email is sent.</div>
                 </div>
             }
@@ -408,9 +410,12 @@
         {
             await JS.InvokeVoidAsync("ipop.icons");
             await JS.InvokeVoidAsync("ipop.mailBindDropZone", dropZoneRef, ".mc-file-input");
+            dropBound = true;
         }
-        else
+        else if (dropBound)
         {
+            // Rendered by MainLayout, so this runs on every shell render: unbind only once.
+            dropBound = false;
             await JS.InvokeVoidAsync("ipop.mailUnbindDropZone", dropZoneRef);
         }
     }
@@ -425,7 +430,12 @@
     /// Every open path starts from here, so nothing from the previous message leaks in.
     private void ResetState()
     {
+        // One composer at a time: whatever was unsaved goes to Drafts before it is replaced.
+        if (IsOpen && dirtySince is not null) _ = SaveDraftCoreAsync();
         CancelAutosave();
+        session++;
+        dirtySince = null;
+        _ = ClearUnloadStashAsync();
         editingDraftId = null;
         inReplyToId = null;
         threadRootId = null;
@@ -457,6 +467,7 @@
 
     private void Show()
     {
+        if (labels.Count == 0) _ = ReloadLabelsAsync();
         IsOpen = true;
         IsOpenChanged.InvokeAsync(true);
         StateHasChanged();
@@ -497,6 +508,13 @@
 
     public void OpenDraft(MailDetail draft)
     {
+        // Already open (e.g. the pill's draft clicked in the list): keep the local, newer copy.
+        if (IsOpen && editingDraftId == draft.Id)
+        {
+            dockState = ComposerDockState.Docked;
+            Show();
+            return;
+        }
         ResetState();
         editingDraftId = draft.Id;
         inReplyToId = draft.InReplyToId;
@@ -510,7 +528,33 @@
         showCc = ccRows.Count > 0;
         showBcc = bccRows.Count > 0;
         composerAtts = draft.Attachments.ToList();
+        selectedLabelIds = draft.LabelIds.ToHashSet();
+        if (ReadExtras(draft.DraftExtra) is { } x)
+        {
+            isMeeting = x.Meeting;
+            if (x.Start is { } s) meetingStart = s;
+            if (x.End is { } e) meetingEnd = e;
+            meetingReminderMin = x.Reminder;
+            meetingLocation = x.Location ?? "";
+            forwardOfId = x.ForwardOf;
+            forwardAtts = x.ForwardAtts ?? [];
+        }
         Show();
+    }
+
+    /// Composer-only state a draft carries (the server stores it as-is).
+    private sealed record DraftExtras(bool Meeting, DateTime? Start, DateTime? End, int Reminder, string? Location,
+        Guid? ForwardOf, List<MailAttachment>? ForwardAtts);
+
+    private string? WriteExtras() => !isMeeting && forwardOfId is null ? null
+        : System.Text.Json.JsonSerializer.Serialize(new DraftExtras(isMeeting, isMeeting ? meetingStart : null, isMeeting ? meetingEnd : null,
+            meetingReminderMin, isMeeting ? meetingLocation : null, forwardOfId, forwardOfId is null ? null : forwardAtts));
+
+    private static DraftExtras? ReadExtras(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        try { return System.Text.Json.JsonSerializer.Deserialize<DraftExtras>(json); }
+        catch (System.Text.Json.JsonException) { return null; }
     }
 
     private void Minimize() { headPop = null; dockState = ComposerDockState.Minimized; }
@@ -535,8 +579,10 @@
         Minimize();
     }
 
+    /// Closing keeps the message: anything unsaved goes to Drafts (Discard is the bin button).
     public void Close()
     {
+        if (dirtySince is not null) _ = SaveDraftCoreAsync();
         CancelAutosave();
         IsOpen = false;
         IsOpenChanged.InvokeAsync(false);
@@ -555,12 +601,14 @@
     private void ToggleLabel(Guid id)
     {
         if (!selectedLabelIds.Remove(id)) selectedLabelIds.Add(id);
+        OnContentChanged();
     }
 
     private void ToggleMeeting()
     {
         headPop = null;
         isMeeting = !isMeeting;
+        OnContentChanged();
     }
 
     private void OnToPick(MemberSearchRow r) { if (!toRows.Any(x => x.Nik == r.Nik)) { toRows.Add(r); OnContentChanged(); } }
@@ -604,9 +652,31 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Nav.LocationChanged += OnLocationChanged;
+        if (!Auth.IsAuthenticated) return;
         await LoadTemplatesAsync();
         await LoadLabelsAsync();
     }
+
+    private async Task ReloadLabelsAsync()
+    {
+        await LoadLabelsAsync();
+        StateHasChanged();
+    }
+
+    /// Leaving /mail with the composer open: tuck it into the "Draft: …" pill and save now.
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => _ = InvokeAsync(async () =>
+    {
+        if (!IsOpen) return;
+        var onMail = Nav.ToBaseRelativePath(e.Location).StartsWith("mail", StringComparison.OrdinalIgnoreCase);
+        if (!onMail && dockState != ComposerDockState.Minimized)
+        {
+            headPop = null;
+            dockState = ComposerDockState.Minimized;
+            StateHasChanged();
+        }
+        await SaveNowAsync();
+    });
 
     private async Task LoadTemplatesAsync()
     {
@@ -682,12 +752,26 @@
         autosaveCts = null;
     }
 
+    /// When the first change not yet in Drafts was made; null = everything is saved.
+    private DateTime? dirtySince;
+    /// Bumped on every open, so a save still in flight never writes its id into the next message.
+    private int session;
+    /// One save at a time: two concurrent first saves would create two drafts.
+    private readonly SemaphoreSlim saveGate = new(1, 1);
+    private bool dropBound;
+
     private void OnContentChanged()
     {
         if (!IsOpen || sending) return;
+        dirtySince ??= DateTime.UtcNow;
         CancelAutosave();
         autosaveCts = new CancellationTokenSource();
-        _ = AutosaveDebouncedAsync(autosaveCts.Token);
+        // 2 s after the last change, but never more than 20 s after the first unsaved one.
+        var wait = TimeSpan.FromSeconds(2);
+        var cap = dirtySince.Value.AddSeconds(20) - DateTime.UtcNow;
+        if (cap < wait) wait = cap > TimeSpan.Zero ? cap : TimeSpan.Zero;
+        _ = AutosaveDebouncedAsync(wait, autosaveCts.Token);
+        _ = StashForUnloadAsync();
     }
 
     private MailSendRequest BuildRequest(DateTime? scheduledAt = null) => new(
@@ -702,35 +786,90 @@
         ScheduledAt: scheduledAt,
         Importance: importance,
         LabelIds: selectedLabelIds.Count > 0 ? selectedLabelIds.ToList() : null,
-        ForwardAttachmentIds: IsForward ? forwardAtts.Select(a => a.Id).ToList() : null);
+        ForwardAttachmentIds: IsForward ? forwardAtts.Select(a => a.Id).ToList() : null,
+        DraftExtra: WriteExtras());
 
-    private async Task AutosaveDebouncedAsync(CancellationToken ct)
+    private async Task AutosaveDebouncedAsync(TimeSpan wait, CancellationToken ct)
+    {
+        try { await Task.Delay(wait, ct); }
+        catch (OperationCanceledException) { return; }
+        await SaveDraftCoreAsync();
+    }
+
+    private async Task SaveNowAsync()
+    {
+        CancelAutosave();
+        if (dirtySince is not null) await SaveDraftCoreAsync();
+    }
+
+    /// Saves the current message to Drafts. Everything is captured before the first await, so a
+    /// save started just before the composer switches messages still saves the old one.
+    private async Task SaveDraftCoreAsync()
+    {
+        var since = dirtySince;
+        if (since is null) return;
+        if (string.IsNullOrWhiteSpace(subject) && IsBodyEmpty(body) && toRows.Count + ccRows.Count + bccRows.Count == 0 && composerAtts.Count == 0)
+        {
+            dirtySince = null;
+            return;
+        }
+        var req = BuildRequest();
+        var sess = session;
+        var id = editingDraftId;
+        draftSaving = true;
+        StateHasChanged();
+        await saveGate.WaitAsync();
+        try
+        {
+            // The HTTP calls are never cancelled: a POST dropped mid-flight may still have
+            // created the draft, and the next save would then create a second one.
+            if (sess == session && editingDraftId is { } current) id = current;
+            var ok = false;
+            if (id is { } draftId)
+                ok = (await MailSvc.UpdateDraftAsync(draftId, req))?.Success == true;
+            else if (await MailSvc.SaveDraftAsync(req) is { Success: true } res)
+            {
+                ok = true;
+                if (sess == session) editingDraftId = res.MailId;
+            }
+            if (ok && sess == session)
+            {
+                if (dirtySince == since) { dirtySince = null; await ClearUnloadStashAsync(); }
+                draftSavedAt = DateTime.Now;
+            }
+        }
+        catch { /* stays dirty; the next change or leave retries */ }
+        finally
+        {
+            saveGate.Release();
+            if (sess == session) draftSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    /// Waits for a save in flight (so a first save has its draft id before send/discard).
+    private async Task WaitForSaveAsync()
+    {
+        await saveGate.WaitAsync();
+        saveGate.Release();
+    }
+
+    /// Closing or reloading the tab gives no time for an await: JS keeps the latest unsaved
+    /// request and sends it with fetch keepalive from beforeunload.
+    private async Task StashForUnloadAsync()
     {
         try
         {
-            await Task.Delay(15000, ct);
-            if (string.IsNullOrWhiteSpace(subject) && string.IsNullOrWhiteSpace(body) && toRows.Count == 0) return;
-
-            draftSaving = true;
-            StateHasChanged();
-
-            var req = BuildRequest();
-            if (editingDraftId.HasValue)
-            {
-                await MailSvc.UpdateDraftAsync(editingDraftId.Value, req, ct);
-            }
-            else
-            {
-                var res = await MailSvc.SaveDraftAsync(req, ct);
-                if (res?.Success == true) editingDraftId = res.MailId;
-            }
-            if (ct.IsCancellationRequested) return;
-            draftSaving = false;
-            draftSavedAt = DateTime.Now;
-            StateHasChanged();
+            var url = new Uri(Http.BaseAddress!, editingDraftId is { } id ? $"/api/mail/drafts/{id}" : "/api/mail/drafts").ToString();
+            var json = System.Text.Json.JsonSerializer.Serialize(BuildRequest(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            await JS.InvokeVoidAsync("ipop.mailDraftStash", url, editingDraftId is null ? "POST" : "PUT", json, Auth.AccessToken);
         }
-        catch (OperationCanceledException) { }
-        catch { draftSaving = false; }
+        catch { }
+    }
+
+    private async Task ClearUnloadStashAsync()
+    {
+        try { await JS.InvokeVoidAsync("ipop.mailDraftStash", null, null, null, null); } catch { }
     }
 
     private async Task SendNow()
@@ -777,6 +916,7 @@
         CancelAutosave();
         sending = true;
         StateHasChanged();
+        await WaitForSaveAsync();
         try
         {
             var req = BuildRequest(scheduledAt);
@@ -797,6 +937,8 @@
                     : isMeeting ? "Meeting invitation sent." : "Email sent.", ToastKind.Success);
 
                 sending = false;
+                dirtySince = null;
+                _ = ClearUnloadStashAsync();
                 Close();
                 await OnSent.InvokeAsync();
             }
@@ -843,6 +985,9 @@
     private async Task DiscardDraft()
     {
         CancelAutosave();
+        dirtySince = null;
+        _ = ClearUnloadStashAsync();
+        await WaitForSaveAsync();
         if (editingDraftId.HasValue)
             await MailSvc.DiscardDraftAsync(editingDraftId.Value);
         Close();
@@ -941,6 +1086,7 @@
 
     public void Dispose()
     {
+        Nav.LocationChanged -= OnLocationChanged;
         CancelAutosave();
         if (dropZoneRef.Id is not null)
             _ = JS.InvokeVoidAsync("ipop.mailUnbindDropZone", dropZoneRef);

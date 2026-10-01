@@ -26,6 +26,8 @@
 
 /* First-visit invite card */
 .tut-invite { position: fixed; right: 22px; bottom: 22px; width: 340px; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--sh-pop); padding: 16px; z-index: 900; animation: tutRise .45s var(--tut-ease); }
+/* A minimised mail draft pill sits bottom-right too: stack the invite above it. */
+body:has(.outlook-composer.minimized) .tut-invite { bottom: 76px; }
 .tut-invite .tut-x { position: absolute; top: 10px; right: 10px; }
 .tut-invite .ic { width: 40px; height: 40px; border-radius: 13px; display: grid; place-items: center; color: #fff; background: linear-gradient(145deg, color-mix(in srgb, var(--tut-m) 70%, #fff), var(--tut-m)); }
 .tut-invite .ic svg { width: 20px; height: 20px; }
@@ -88,6 +90,7 @@
 @media (max-width: 767px) {
   .tut-pbar { padding: 7px 14px; font-size: 12px; flex-wrap: wrap; gap: 6px 10px; } .tut-pbar .long { display: none; }
   .tut-invite { left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); width: auto; }
+  body:has(.outlook-composer.minimized) .tut-invite { bottom: calc(var(--m-tabbar-h, 56px) + env(safe-area-inset-bottom) + 64px); }
   /* Tour card becomes a bottom sheet so it never covers what it points at. */
   .driver-popover.tut-pop { position: fixed !important; left: 0 !important; right: 0 !important; top: auto !important; bottom: 0 !important; width: auto; max-width: none; border-radius: 22px 22px 0 0; padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
   .driver-popover.tut-pop .driver-popover-arrow { display: none; }

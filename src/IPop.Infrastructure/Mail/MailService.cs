@@ -104,13 +104,15 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             ThreadRootId = req.ThreadRootId ?? req.InReplyToId,
             Status = "draft",
             Importance = string.IsNullOrWhiteSpace(req.Importance) ? "normal" : req.Importance,
+            DraftState = SerializeDraftState(req),
             CreatedAt = now,
             UpdatedAt = now,
         };
         db.Mails.Add(mail);
-        // Drafts only have the author's row — no recipients are touched.
+        // Drafts only have the author's row — recipients stay NIKs in DraftState until sent.
         db.MailRecipients.Add(MakeRecipient(mail.Id, userId, "from", "draft", now));
         mail.HasAttachment = await LinkAttachmentsAsync(mail.Id, userId, req.AttachmentIds, ct);
+        await ApplySenderLabelsAsync(mail.Id, userId, req.LabelIds, now, ct);
         await db.SaveChangesAsync(ct);
         await SyncUserAsync(userId, ct);
         return new SendMailResult(true, mail.Id, null);
@@ -135,8 +137,13 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         mail.Importance = string.IsNullOrWhiteSpace(req.Importance) ? "normal" : req.Importance;
         mail.InReplyToId = req.InReplyToId;
         mail.ThreadRootId = req.ThreadRootId ?? req.InReplyToId;
+        mail.DraftState = SerializeDraftState(req);
         mail.UpdatedAt = DateTime.UtcNow;
         mail.HasAttachment = await LinkAttachmentsAsync(mail.Id, userId, req.AttachmentIds, ct, syncDraft: true);
+        // The composer sends its full label set every save: replace the author's labels.
+        db.MailLabelAssignments.RemoveRange(await db.MailLabelAssignments
+            .Where(a => a.MailId == mailId && a.Label.UserId == userId).ToListAsync(ct));
+        await ApplySenderLabelsAsync(mail.Id, userId, req.LabelIds, mail.UpdatedAt.Value, ct);
         await db.SaveChangesAsync(ct);
         return new SendMailResult(true, mailId, null);
     }
@@ -344,6 +351,10 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         var visibleRecipients = mail.Recipients
             .Where(r => r.RecipientType != "bcc" || callerIsSender || r.UserId == userId)
             .ToList();
+        // A draft's recipients live as NIKs in DraftState; show them to the author like real rows.
+        var draftState = mail.Status == "draft" && callerIsSender ? DeserializeDraftState(mail.DraftState) : null;
+        if (draftState is not null)
+            visibleRecipients.AddRange(await DraftRecipientsAsync(mail.Id, draftState, ct));
         var visibleDelivery = mail.Recipients
             .Where(r => r.RecipientType != "from" && r.RecipientType != "bcc" && (callerIsSender || r.RecipientType is "to" or "cc" || r.UserId == userId))
             .ToList();
@@ -374,7 +385,37 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
                 .Where(a => a.MailId == mailId && a.Label.UserId == userId)
                 .Select(a => a.LabelId)
                 .ToListAsync(ct),
+            DraftExtra = draftState?.Extra,
         };
+    }
+
+    private sealed record DraftStateJson(IReadOnlyList<string>? To, IReadOnlyList<string>? Cc, IReadOnlyList<string>? Bcc, string? Extra);
+
+    private static string? SerializeDraftState(ComposeMailRequest req)
+        => req.To.Count + req.Cc.Count + req.Bcc.Count == 0 && string.IsNullOrEmpty(req.DraftExtra)
+            ? null
+            : System.Text.Json.JsonSerializer.Serialize(new DraftStateJson(req.To, req.Cc, req.Bcc, req.DraftExtra));
+
+    private static DraftStateJson? DeserializeDraftState(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        try { return System.Text.Json.JsonSerializer.Deserialize<DraftStateJson>(json); }
+        catch (System.Text.Json.JsonException) { return null; }
+    }
+
+    /// Unsaved recipient rows (never added to the context) so GetAsync can map them like real ones.
+    private async Task<List<MailRecipient>> DraftRecipientsAsync(Guid mailId, DraftStateJson s, CancellationToken ct)
+    {
+        var typed = (s.To ?? []).Select(n => (n, "to"))
+            .Concat((s.Cc ?? []).Select(n => (n, "cc")))
+            .Concat((s.Bcc ?? []).Select(n => (n, "bcc")))
+            .ToList();
+        if (typed.Count == 0) return [];
+        var niks = typed.Select(t => t.n).Distinct().ToList();
+        var users = await db.Users.AsNoTracking().Where(u => niks.Contains(u.Nik)).ToDictionaryAsync(u => u.Nik, ct);
+        return typed.Where(t => users.ContainsKey(t.n))
+            .Select(t => new MailRecipient { MailId = mailId, UserId = users[t.n].Id, User = users[t.n], RecipientType = t.Item2, Folder = "draft" })
+            .ToList();
     }
 
     public async Task<IReadOnlyList<DeliveryReadStateDto>> GetDeliveryStateAsync(Guid userId, Guid mailId, CancellationToken ct)

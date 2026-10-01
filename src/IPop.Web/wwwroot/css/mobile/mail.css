@@ -188,12 +188,15 @@
 
   /* ---------- Composer: full screen, tab bar hidden (Mail.razor calls hideTabbar) ---------- */
   .outlook-composer.mc-sheet.docked,
-  .outlook-composer.mc-sheet.maximized,
-  .outlook-composer.mc-sheet.minimized {
+  .outlook-composer.mc-sheet.maximized {
     inset: 0; width: 100vw; height: 100dvh; transform: none; border-radius: 0; border: 0; z-index: 190;
   }
-  .outlook-composer.mc-sheet.minimized .composer-body-wrap,
-  .outlook-composer.mc-sheet.minimized .composer-foot { display: flex !important; }
+  /* Minimised only happens by leaving Mail: a "Draft: …" pill above the tab bar; tap restores. */
+  .outlook-composer.mc-sheet.minimized {
+    inset: auto 12px calc(var(--m-tabbar-h) + var(--m-safe-b) + 10px) 12px; width: auto; height: 44px;
+    transform: none; border-radius: 12px; z-index: 150;
+  }
+  .outlook-composer.mc-sheet.minimized .composer-head { padding-top: 0; flex-wrap: nowrap; }
   .outlook-composer.mc-sheet + .composer-backdrop { display: none; }
   /* Minimise / full screen make no sense on a phone: keep Close only. */
   .mc-sheet .head-actions .icon-btn:not(:last-child) { display: none; }

@@ -11,6 +11,7 @@
 @inject IPop.Web.Services.ConfirmService Confirm
 @inject HttpClient Http
 @inject IPop.Web.Services.MailService MailSvc
+@inject IPop.Web.Services.MailComposerHost ComposerHost
 @inject IPop.Web.Services.PeopleLinks PLinks
 
 <PageTitle>Mail — IPop</PageTitle>
@@ -740,12 +741,7 @@
     </div>
 }
 
-<MailComposer @ref="composerRef"
-              IsOpen="@composerOpen"
-              IsOpenChanged="OnComposerOpenChanged"
-              OnSent="OnComposerSent"
-              OnDiscard="ReloadAll"
-              OnOpenTemplates='() => OpenSettings("templates")' />
+@* The composer itself lives in MainLayout (MailComposerHost) so drafts survive leaving /mail. *@
 
 @* ---- Recall Confirmation Dialog ---- *@
 @if (recallConfirmId is not null)
@@ -865,7 +861,7 @@
     private CancellationTokenSource? cts;
     private string lastSyncedTime = DateTime.Now.ToString("HH:mm");
 
-    private MailComposer? composerRef;
+    private MailComposer? composerRef => ComposerHost.Instance;
 
     private static readonly (string[] Keys, string What)[] KbdShortcuts =
     [
@@ -896,6 +892,11 @@
 
     protected override async Task OnInitializedAsync()
     {
+        composerOpen = composerRef?.IsOpen == true;
+        ComposerHost.OpenChanged += OnHostComposerOpenChanged;
+        ComposerHost.Sent += OnHostComposerSent;
+        ComposerHost.Discarded += OnHostComposerDiscarded;
+        ComposerHost.OpenTemplatesRequested += OnHostOpenTemplates;
         UpdateHeader();
         if (Auth.IsAuthenticated)
         {
@@ -1343,6 +1344,11 @@
     });
 
     private void MobileBackClick() => BackToList();
+
+    private void OnHostComposerOpenChanged(bool open) => _ = InvokeAsync(async () => { await OnComposerOpenChanged(open); StateHasChanged(); });
+    private Task OnHostComposerSent() => InvokeAsync(OnComposerSent);
+    private Task OnHostComposerDiscarded() => InvokeAsync(ReloadAll);
+    private void OnHostOpenTemplates() => _ = InvokeAsync(() => { OpenSettings("templates"); StateHasChanged(); });
 
     private async Task OnComposerOpenChanged(bool open)
     {
@@ -2263,6 +2269,10 @@
 
     public void Dispose()
     {
+        ComposerHost.OpenChanged -= OnHostComposerOpenChanged;
+        ComposerHost.Sent -= OnHostComposerSent;
+        ComposerHost.Discarded -= OnHostComposerDiscarded;
+        ComposerHost.OpenTemplatesRequested -= OnHostOpenTemplates;
         cts?.Cancel();
         cts?.Dispose();
         _mailSub?.Dispose();

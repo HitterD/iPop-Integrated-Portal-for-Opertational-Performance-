@@ -23,6 +23,9 @@ public class Mail
     public DateTime? ScheduledAt { get; set; }
     public DateTime? CancelledAt { get; set; }
     public bool HasAttachment { get; set; }
+    /// Drafts only: JSON of the composer state that has no row yet — To/Cc/Bcc NIKs (recipient
+    /// rows are created on send) plus the client's opaque extras (meeting fields, forward source).
+    public string? DraftState { get; set; }
 
     public string? PdfExportRequestedBy { get; set; }  // PDF export stub: records who asked; real export is Wave-2
     public DateTime? PdfExportRequestedAt { get; set; }

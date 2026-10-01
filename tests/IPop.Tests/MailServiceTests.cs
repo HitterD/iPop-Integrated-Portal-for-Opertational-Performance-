@@ -639,6 +639,37 @@ public class MailServiceTests
     }
 
     [Fact]
+    public async Task Draft_keeps_recipients_labels_and_extras_for_its_author_only()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var c = t.AddUser("C");
+        var l1 = new MailLabel { Id = Guid.NewGuid(), UserId = a.Id, Name = "One", Color = "#0A84FF", CreatedAt = DateTime.UtcNow };
+        var l2 = new MailLabel { Id = Guid.NewGuid(), UserId = a.Id, Name = "Two", Color = "#FF9F0A", CreatedAt = DateTime.UtcNow };
+        t.Db.MailLabels.AddRange(l1, l2);
+        t.Db.SaveChanges();
+
+        var saved = await new MailService(t.Verify()).SaveDraftAsync(a.Id, new ComposeMailRequest(
+            "WIP", "<p>x</p>", [b.Nik], [c.Nik], [], LabelIds: [l1.Id], DraftExtra: "{\"meeting\":true}"), default);
+        var id = saved.MailId!.Value;
+
+        var d = (await new MailService(t.Verify()).GetAsync(a.Id, id, default))!;
+        Assert.Equal([(b.Nik, "to"), (c.Nik, "cc")], d.Recipients.Where(r => r.RecipientType != "from").Select(r => (r.Nik, r.RecipientType)));
+        Assert.Equal([l1.Id], d.LabelIds);
+        Assert.Equal("{\"meeting\":true}", d.DraftExtra);
+        // Nobody else gets a row (or a notification) while it is a draft.
+        Assert.Null(await new MailService(t.Verify()).GetAsync(b.Id, id, default));
+
+        await new MailService(t.Verify()).UpdateDraftAsync(a.Id, id, new ComposeMailRequest(
+            "WIP", "<p>x</p>", [], [], [c.Nik], LabelIds: [l2.Id]), default);
+        d = (await new MailService(t.Verify()).GetAsync(a.Id, id, default))!;
+        Assert.Equal([(c.Nik, "bcc")], d.Recipients.Where(r => r.RecipientType != "from").Select(r => (r.Nik, r.RecipientType)));
+        Assert.Equal([l2.Id], d.LabelIds);
+        Assert.Null(d.DraftExtra);
+    }
+
+    [Fact]
     public async Task BulkMarkRead_marks_only_the_callers_selected_rows()
     {
         using var t = new TestDb();
