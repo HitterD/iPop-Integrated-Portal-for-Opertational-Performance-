@@ -47,7 +47,7 @@
                 }
             </div>
             @* Opens the New chat panel; "New group" is its first row. *@
-            <button type="button" class="compose-btn" title="New message" aria-label="New message" @onclick="StartNewDm" @onclick:stopPropagation>
+            <button type="button" class="compose-btn" title="New chat" aria-label="New chat" @onclick="StartNewDm" @onclick:stopPropagation>
                 <i data-lucide="square-pen"></i>
             </button>
         </div>
@@ -1541,7 +1541,7 @@
                     <button type="button" class="ghost mobile-only" @onclick="() => mobileRoomsOpen = true">
                         <i data-lucide="list"></i> Browse conversations
                     </button>
-                    <button type="button" class="ce-primary" @onclick="StartNewDm"><i data-lucide="square-pen"></i> New message</button>
+                    <button type="button" class="ce-primary" @onclick="StartNewDm"><i data-lucide="square-pen"></i> New chat</button>
                     <button type="button" @onclick="StartNewGroup"><i data-lucide="users"></i> New group</button>
                 </div>
             </div>
