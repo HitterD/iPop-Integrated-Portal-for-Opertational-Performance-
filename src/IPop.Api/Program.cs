@@ -35,6 +35,8 @@ using Microsoft.IdentityModel.Tokens;
 using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
+// No "Server: Kestrel" fingerprint (pentest).
+builder.WebHost.ConfigureKestrel(k => k.AddServerHeader = false);
 
 // Local-only secrets (NAS service account). Git-ignored, optional, and loaded last so it wins over
 // the committed appsettings files. In production these come from environment variables instead.
@@ -226,6 +228,22 @@ builder.Services.AddScoped<IPop.Application.Search.ISearchService, IPop.Infrastr
 builder.Services.AddScoped<IPop.Application.Dashboard.IDashboardService, IPop.Infrastructure.Dashboard.DashboardService>();
 
 var app = builder.Build();
+
+// Unhandled errors answer a bare 500 — never a stack trace, even though the deployed API runs
+// in Development for DevSeed (pentest: sanitize framework errors). Sits inside the developer
+// exception page, so it catches first.
+app.UseExceptionHandler(e => e.Run(async ctx =>
+{
+    // Malformed bodies/parameters keep their 4xx, just without the binder's details.
+    var bad = ctx.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error as BadHttpRequestException;
+    ctx.Response.StatusCode = bad?.StatusCode ?? StatusCodes.Status500InternalServerError;
+    await ctx.Response.WriteAsJsonAsync(new { code = bad is null ? "server_error" : "bad_request" });
+}));
+app.Use(async (ctx, next) =>
+{
+    ctx.Response.Headers.XContentTypeOptions = "nosniff";
+    await next();
+});
 
 if (app.Environment.IsDevelopment())
 {
