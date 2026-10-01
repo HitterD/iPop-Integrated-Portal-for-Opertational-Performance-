@@ -44,7 +44,7 @@
             {
                 <div class="reply-quote"><div class="rq-name">@Message.ReplyPreview.SenderName</div>@Message.ReplyPreview.Content</div>
             }
-            @if (Message.IsDeleted) { <em class="deleted-text"><i data-lucide="ban"></i> @Message.Content</em> }
+            @if (Message.IsDeleted) { <em class="deleted-text"><i data-lucide="ban"></i> @Message.Content</em>@Meta(true) }
             else if (Message.Type == "sticker")
             {
                 @if (StickerLimits.CustomId(Message.Type, Message.Content) is { } stickerId)
@@ -104,24 +104,12 @@
                 @if (!string.IsNullOrWhiteSpace(Message.Content) && !IsAttachmentPlaceholder(Message))
                 {
                     <div class="message-text">
-                        @((MarkupString)RenderedContent)
+                        @((MarkupString)RenderedContent)@if (MetaMode == "text") { @Meta(true) }
                     </div>
                 }
             }
+            @if (Message.Type != "system") { @Meta(false) }
         </div>
-        @* v6 meta line under the bubble: pin/bookmark marks · HH:mm · delivery status. *@
-        <span class="time v6-meta">
-            @if (IsPinned) { <i data-lucide="pin" class="meta-pin"></i> }
-            @Message.CreatedAt.ToLocalTime().ToString("HH:mm")
-            @if (Message.EditedAt is not null) { <span class="edited">· edited</span> }
-            @* Group bubbles with readers show the clickable avatar stack (SeenIndicator) instead. *@
-            @if (isSent && (ShowDeliveryStatus || IsGroup || isPending || isFailed) && !HasGroupReaders)
-            {
-                var ds = Message.DeliveryStatus;
-                var statusLabel = isPending ? "Sending" : isFailed ? "Not sent" : (ds == "read" ? "Read" : ds == "delivered" ? "Delivered" : "Sent");
-                <span class="msg-status @(isPending ? "pending" : isFailed ? "failed" : ds == "read" ? "read" : ds == "delivered" ? "delivered" : "sent")" title="@statusLabel" aria-label="@statusLabel">· @statusLabel</span>
-            }
-        </span>
         @if (Reactions.Count > 0)
         {
             <div class="reactions">
@@ -154,11 +142,59 @@
     [Parameter] public EventCallback<Guid> OnThread { get; set; }
     [Parameter] public EventCallback<AttachmentDto> OnAttachmentOpen { get; set; }
     [Parameter] public EventCallback<Guid> OnEventOpen { get; set; }
-    [Parameter] public bool ShowDeliveryStatus { get; set; } = false;
     /// Group rooms show a receipt on every own message: "Read by 2 of 5" / "Read by all".
     [Parameter] public bool IsGroup { get; set; }
 
-    private bool HasGroupReaders => IsGroup && !isPending && !isFailed && Message.ReadCount is > 0;
+    /// Where the time + ticks sit inside the bubble (WhatsApp-style):
+    /// "text" — bottom-right on the last line (a hidden copy in the text reserves its room);
+    /// "media" — dark overlay on an image; "float" — small pill beside a sticker / big emoji;
+    /// "block" — own right-aligned row under cards (event, note, poll, files).
+    private string MetaMode
+    {
+        get
+        {
+            if (isMediaOnly) return hasOnlyImages ? "media" : "block";
+            if (JumboCount > 0 || IsImageSticker) return "float";
+            if (Message.IsDeleted) return "text";
+            if (Message.Type is "sticker" or "event" || NoteCard(Message) is not null || IsPollMessage(Message)) return "block";
+            return !string.IsNullOrWhiteSpace(Message.Content) && !IsAttachmentPlaceholder(Message) ? "text" : "block";
+        }
+    }
+
+    /// pin · HH:mm · edited · delivery ticks. <paramref name="ghost"/> renders an invisible copy
+    /// inline at the end of the text so the real (absolute) one never covers the last words.
+    private RenderFragment Meta(bool ghost) => __builder =>
+    {
+        var ds = Message.DeliveryStatus;
+        var (statusCls, statusLabel) = isPending ? ("pending", "Sending") : isFailed ? ("failed", "Not sent")
+            : ds == "read" ? ("read", "Read") : ds == "delivered" ? ("delivered", "Delivered") : ("sent", "Sent");
+        <span class="bmeta @(ghost ? "ghost" : MetaMode)" aria-hidden="@(ghost ? "true" : null)">
+            @if (IsPinned) { <svg class="meta-pin" viewBox="0 0 24 24" aria-label="Pinned"><path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" /></svg> }
+            @if (Message.EditedAt is not null) { <span class="edited">edited</span> }
+            <span class="t">@Message.CreatedAt.ToLocalTime().ToString("HH:mm")</span>
+            @if (isSent)
+            {
+                @* Inline SVG ticks: data-lucide placeholders aren't re-hydrated when the status changes. *@
+                <span class="msg-status @statusCls" title="@statusLabel" aria-label="@statusLabel">
+                    @switch (statusCls)
+                    {
+                        case "pending":
+                            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+                            break;
+                        case "failed":
+                            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 8v4" /><path d="M12 16h.01" /></svg>
+                            break;
+                        case "sent":
+                            <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></svg>
+                            break;
+                        default:
+                            <svg class="dbl" viewBox="0 0 24 24"><path d="M18 6 7 17l-5-5" /><path d="m22 10-7.5 7.5L13 16" /></svg>
+                            break;
+                    }
+                </span>
+            }
+        </span>
+    };
     [Parameter] public bool IsPinned { get; set; }
 
     /// Orange v6 ring on received messages that mention the viewer (directly or via @all).
