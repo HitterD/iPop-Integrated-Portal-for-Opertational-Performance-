@@ -46,7 +46,7 @@ public record NoteResult<T>(T? Data, string? Error)
 /// (a sub-page shared on its own shows as a root).
 public record NoteListItemDto(Guid Id, Guid? ParentId, string Title, string? Emoji, string Access,
     bool IsMine, bool IsShared, bool IsFavorite, bool IsGuide, int TodoDone, int TodoTotal,
-    DateTime UpdatedAt, string OwnerName);
+    DateTime UpdatedAt, string OwnerName, int SortOrder = 0);
 
 public record NoteSidebarDto(IReadOnlyList<NoteListItemDto> Pages, IReadOnlyList<Guid> Recent);
 
@@ -64,6 +64,10 @@ public record CreateNoteRequest(Guid? ParentId, string? Title, string? Emoji, st
 
 public record UpdateNoteMetaRequest(string? Title, string? Emoji, string? Cover, string? Accent, string? Font,
     bool? FullWidth, bool? SmallText);
+
+/// Put a page under ParentId (null = top level) just before BeforeId (null = at the end). Confirm is required
+/// when re-parenting changes who inherits access to the page (the first try fails with "confirm_audience").
+public record MoveNoteRequest(Guid? ParentId, Guid? BeforeId, bool Confirm = false);
 
 public record NoteUpdateDto(long Id, string Data);
 
@@ -120,6 +124,9 @@ public interface INoteService
     Task<NoteResult<NotePageDto>> CreateAsync(Guid userId, CreateNoteRequest req, CancellationToken ct);
     Task<NoteResult<NotePageDto>> UpdateMetaAsync(Guid userId, Guid pageId, UpdateNoteMetaRequest req, CancellationToken ct);
     Task<NoteResult<bool>> SetFavoriteAsync(Guid userId, Guid pageId, bool favorite, CancellationToken ct);
+    /// Re-parent (owner only, target must be editable) and/or reorder among siblings (edit on the parent).
+    Task<NoteResult<bool>> MoveAsync(Guid userId, Guid pageId, MoveNoteRequest req, CancellationToken ct);
+    Task<NoteResult<NotePageDto>> DuplicateAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<bool>> TrashAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<bool>> RestoreAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<bool>> PurgeAsync(Guid userId, Guid pageId, CancellationToken ct);

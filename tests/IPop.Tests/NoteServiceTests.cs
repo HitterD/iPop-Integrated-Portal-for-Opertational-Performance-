@@ -226,4 +226,87 @@ public class NoteServiceTests
         Assert.Contains("penjualan", (await Svc(t).SearchAsync(a.Id, "PENJUALAN", Ct)).Single().Snippet);
         Assert.Empty(await Svc(t).SearchAsync(b.Id, "kuartal", Ct));
     }
+    [Fact]
+    public async Task Move_reparents_for_owner_and_refuses_cycles_and_non_editable_targets()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("a"); var b = t.AddUser("b");
+        var root = await PageAsync(t, a.Id, null, "Root");
+        var child = await PageAsync(t, a.Id, root, "Child");
+        var other = await PageAsync(t, a.Id, null, "Other");
+
+        Assert.Equal("invalid_move", (await Svc(t).MoveAsync(a.Id, root, new MoveNoteRequest(child, null), Ct)).Error);
+        Assert.True((await Svc(t).MoveAsync(a.Id, child, new MoveNoteRequest(other, null), Ct)).Success);
+        Assert.Equal(other, (await Svc(t).GetPageAsync(a.Id, child, Ct)).Data!.ParentId);
+
+        // An editor (not owner) may reorder but not re-parent.
+        await Svc(t).AddShareAsync(a.Id, other, new AddNoteShareRequest(b.Id, null, NoteLevels.Edit), Ct);
+        Assert.Equal("confirm_audience", (await Svc(t).MoveAsync(a.Id, root, new MoveNoteRequest(other, null), Ct)).Error);
+        Assert.Equal("forbidden", (await Svc(t).MoveAsync(b.Id, child, new MoveNoteRequest(null, null), Ct)).Error);
+        var bPage = await PageAsync(t, b.Id, null, "B's");
+        Assert.Equal("forbidden", (await Svc(t).MoveAsync(b.Id, bPage, new MoveNoteRequest(root, null), Ct)).Error);
+    }
+
+    [Fact]
+    public async Task Move_that_changes_audience_needs_confirm()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("a"); var b = t.AddUser("b");
+        var shared = await PageAsync(t, a.Id, null, "Shared");
+        var priv = await PageAsync(t, a.Id, null, "Private");
+        var page = await PageAsync(t, a.Id, shared, "Page");
+        await Svc(t).AddShareAsync(a.Id, shared, new AddNoteShareRequest(b.Id, null, NoteLevels.View), Ct);
+
+        Assert.Equal("confirm_audience", (await Svc(t).MoveAsync(a.Id, page, new MoveNoteRequest(priv, null), Ct)).Error);
+        Assert.Equal(NoteAccess.View, await Svc(t).GetAccessAsync(b.Id, page, Ct));
+        Assert.True((await Svc(t).MoveAsync(a.Id, page, new MoveNoteRequest(priv, null, true), Ct)).Success);
+        Assert.Equal(NoteAccess.None, await Svc(t).GetAccessAsync(b.Id, page, Ct));
+    }
+
+    [Fact]
+    public async Task Reorder_places_before_sibling_and_editor_can_reorder()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("a"); var b = t.AddUser("b");
+        var root = await PageAsync(t, a.Id, null, "Root");
+        var x = await PageAsync(t, a.Id, root, "A");
+        var y = await PageAsync(t, a.Id, root, "B");
+        var z = await PageAsync(t, a.Id, root, "C");
+        await Svc(t).AddShareAsync(a.Id, root, new AddNoteShareRequest(b.Id, null, NoteLevels.Edit), Ct);
+
+        Assert.True((await Svc(t).MoveAsync(b.Id, z, new MoveNoteRequest(root, x), Ct)).Success);
+        var kids = (await Svc(t).GetPageAsync(a.Id, root, Ct)).Data!.Children.Select(c => c.Id).ToList();
+        Assert.Equal([z, x, y], kids);
+
+        Assert.True((await Svc(t).MoveAsync(a.Id, z, new MoveNoteRequest(root, null), Ct)).Success);
+        kids = (await Svc(t).GetPageAsync(a.Id, root, Ct)).Data!.Children.Select(c => c.Id).ToList();
+        Assert.Equal([x, y, z], kids);
+        var side = (await Svc(t).GetSidebarAsync(a.Id, Ct)).Pages;
+        Assert.Equal(3, side.Single(p => p.Id == z).SortOrder);
+    }
+
+    [Fact]
+    public async Task Duplicate_copies_page_only_privately()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("a"); var b = t.AddUser("b");
+        var root = await PageAsync(t, a.Id, null, "Plan");
+        await PageAsync(t, a.Id, root, "Sub");
+        await Svc(t).AddShareAsync(a.Id, root, new AddNoteShareRequest(b.Id, null, NoteLevels.Edit), Ct);
+        await Svc(t).AppendUpdateAsync(a.Id, root, [1, 2, 3], Ct);
+
+        // An editor duplicates a shared top-level page: the copy is theirs, at their top level, unshared.
+        var r = await Svc(t).DuplicateAsync(b.Id, root, Ct);
+        Assert.True(r.Success, r.Error);
+        Assert.Equal("Copy of Plan", r.Data!.Title);
+        Assert.Null(r.Data.ParentId);
+        Assert.Empty(r.Data.Children);
+        Assert.False(r.Data.IsShared);
+        Assert.Equal(NoteAccess.None, await Svc(t).GetAccessAsync(a.Id, r.Data.Id, Ct));
+        Assert.Single((await Svc(t).GetDocAsync(b.Id, r.Data.Id, Ct)).Data!.Updates);
+
+        var view = t.AddUser("v");
+        await Svc(t).AddShareAsync(a.Id, root, new AddNoteShareRequest(view.Id, null, NoteLevels.View), Ct);
+        Assert.Equal("forbidden", (await Svc(t).DuplicateAsync(view.Id, root, Ct)).Error);
+    }
 }

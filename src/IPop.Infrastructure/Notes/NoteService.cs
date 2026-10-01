@@ -158,7 +158,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var visible = await VisibleAsync(userId, ct);
         var ids = visible.Keys.ToList();
         var rows = await db.NotePages.AsNoTracking().Where(p => ids.Contains(p.Id))
-            .Select(p => new { p.Id, p.Title, p.Emoji, p.IsGuide, p.TodoDone, p.TodoTotal, p.UpdatedAt, OwnerName = p.Owner.Name })
+            .Select(p => new { p.Id, p.Title, p.Emoji, p.IsGuide, p.TodoDone, p.TodoTotal, p.UpdatedAt, p.SortOrder, OwnerName = p.Owner.Name })
             .ToListAsync(ct);
         var favs = (await db.NoteFavorites.AsNoTracking().Where(f => f.UserId == userId).Select(f => f.PageId).ToListAsync(ct)).ToHashSet();
         var sharedIds = (await db.NoteShares.AsNoTracking().Where(s => ids.Contains(s.PageId)).Select(s => s.PageId).Distinct().ToListAsync(ct)).ToHashSet();
@@ -175,7 +175,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
             var v = visible[r.Id];
             return new NoteListItemDto(r.Id, v.ParentId, r.Title, r.Emoji, NoteLevels.Name(v.Access),
                 v.OwnerId == userId, IsShared(r.Id), favs.Contains(r.Id), r.IsGuide && v.OwnerId == userId,
-                r.TodoDone, r.TodoTotal, r.UpdatedAt, r.OwnerName);
+                r.TodoDone, r.TodoTotal, r.UpdatedAt, r.OwnerName, r.SortOrder);
         }).OrderBy(p => p.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
 
         var recent = await db.NoteVisits.AsNoTracking().Where(v => v.UserId == userId && ids.Contains(v.PageId))
@@ -260,7 +260,8 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
             crumbs.Insert(0, a);
         }
         var children = await db.NotePages.AsNoTracking().Where(x => x.ParentId == pageId && x.DeletedAt == null)
-            .OrderBy(x => x.CreatedAt).Select(x => new NoteCrumbDto(x.Id, x.Title, x.Emoji)).ToListAsync(ct);
+            .OrderBy(x => x.SortOrder == 0).ThenBy(x => x.SortOrder).ThenBy(x => x.Title)
+            .Select(x => new NoteCrumbDto(x.Id, x.Title, x.Emoji)).ToListAsync(ct);
 
         var chainIds = chain.Select(n => n.Id).ToList();
         var roomShares = await db.NoteShares.AsNoTracking().Where(s => chainIds.Contains(s.PageId) && s.RoomId != null)

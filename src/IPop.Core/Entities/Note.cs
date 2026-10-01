@@ -19,6 +19,9 @@ public class NotePage
     public required string Font { get; set; }
     public bool FullWidth { get; set; }
     public bool SmallText { get; set; }
+    /// Manual position among its siblings (1..n once someone reorders them); 0 = never placed, which falls
+    /// back to the default order (sub-pages by title, top-level pages newest first).
+    public int SortOrder { get; set; }
     /// The per-user tutorial page ("Mulai di sini").
     public bool IsGuide { get; set; }
     /// Template the first editor fills an empty page with ("guide", "meeting", ...); cleared once claimed.

@@ -2107,6 +2107,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<bool>("SmallText")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
                     b.Property<long>("StateVersion")
                         .HasColumnType("bigint");
 

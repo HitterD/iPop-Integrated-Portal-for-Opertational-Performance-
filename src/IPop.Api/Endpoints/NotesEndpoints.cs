@@ -74,6 +74,21 @@ public static class NotesEndpoints
             if (r.Success) await PushAsync(rt, http, audience, ct);
             return From(r);
         })).RequirePermission("notes.write");
+        g.MapPost("/{id:guid}/move", (Guid id, MoveNoteRequest req, HttpContext http, INoteService svc, IRealtime rt,
+            CancellationToken ct) => Run(http, async me =>
+        {
+            // Old and new audiences both need the refresh: some lose the page, others gain it.
+            var before = await svc.GetAudienceAsync(id, ct);
+            var r = await svc.MoveAsync(me.Id, id, req, ct);
+            if (r.Success) await PushAsync(rt, http, before.Union(await svc.GetAudienceAsync(id, ct)).ToList(), ct);
+            return From(r);
+        })).RequirePermission("notes.write");
+        g.MapPost("/{id:guid}/duplicate", (Guid id, HttpContext http, INoteService svc, IRealtime rt, CancellationToken ct) => Run(http, async me =>
+        {
+            var r = await svc.DuplicateAsync(me.Id, id, ct);
+            if (r.Success) await ChangedAsync(svc, rt, http, r.Data!.Id, ct);
+            return From(r);
+        })).RequirePermission("notes.write");
         g.MapPost("/{id:guid}/restore", (Guid id, HttpContext http, INoteService svc, IRealtime rt, CancellationToken ct) => Run(http, async me =>
         {
             var r = await svc.RestoreAsync(me.Id, id, ct);
@@ -246,7 +261,7 @@ public static class NotesEndpoints
     {
         "not_found" => 404,
         "forbidden" or "not_room_member" => 403,
-        "version_conflict" => 409,
+        "version_conflict" or "confirm_audience" => 409,
         _ => 422,
     });
 
