@@ -32,6 +32,33 @@ public class PermissionEvaluatorTests
         Assert.True(await sut.IsAllowedAsync(u.Id, "thing.read", null));
     }
 
+    /// Pentest V-01: Employee had ParentRoleId = Admin, so every user inherited news.publish,
+    /// chat.admin, projects.admin… Admin's grants must only reach direct members.
+    [Fact]
+    public async Task Admin_grants_are_not_inherited_by_child_roles()
+    {
+        using var t = new TestDb();
+        var u = t.AddUser("V01");
+        var (admin, perm) = Seed(t, "Admin", "news.publish");
+        var employee = new Role { Id = Guid.NewGuid(), Name = "Employee", ParentRoleId = admin.Id };
+        t.Db.Roles.Add(employee);
+        t.Db.RolePermissions.Add(new RolePermission { RoleId = admin.Id, PermissionId = perm.Id, DepartmentCode = "" });
+        t.Db.SaveChanges();
+
+        // Role-less user → default Employee role, and an explicit Employee member: both denied.
+        var sut = new PermissionEvaluator(t.Verify());
+        Assert.False(await sut.IsAllowedAsync(u.Id, "news.publish", null));
+        t.Db.UserRoles.Add(new UserRole { UserId = u.Id, RoleId = employee.Id });
+        t.Db.SaveChanges();
+        Assert.False(await new PermissionEvaluator(t.Verify()).IsAllowedAsync(u.Id, "news.publish", null));
+
+        // A direct Admin member still gets it.
+        var a = t.AddUser("V01A");
+        t.Db.UserRoles.Add(new UserRole { UserId = a.Id, RoleId = admin.Id });
+        t.Db.SaveChanges();
+        Assert.True(await new PermissionEvaluator(t.Verify()).IsAllowedAsync(a.Id, "news.publish", null));
+    }
+
     [Fact]
     public async Task Permission_inherited_from_parent_role_is_allowed()
     {

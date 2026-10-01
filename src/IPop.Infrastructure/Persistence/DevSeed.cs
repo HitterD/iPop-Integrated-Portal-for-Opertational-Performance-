@@ -23,6 +23,23 @@ public static class DevSeed
             await db.SaveChangesAsync(ct);
         }
 
+        // Pentest V-01 repair: no role may sit under Admin (Employee → Admin made every user an
+        // admin). The evaluator already ignores such a link; clear it so the data says the same.
+        var underAdmin = await db.Roles.Where(r => r.ParentRoleId == admin.Id).ToListAsync(ct);
+        foreach (var r in underAdmin) r.ParentRoleId = null;
+        // One-off: every employee creates and runs projects (deleting stays owner-only in
+        // ProjectService), which until now only arrived through that link. Granted once, so an
+        // admin can still take it away in /admin later.
+        if (underAdmin.FirstOrDefault(r => r.Name == "Employee") is { } employeeRole)
+        {
+            var grant = await db.Permissions.Where(p => p.Code == "projects.write" || p.Code == "projects.admin")
+                .Select(p => p.Id).ToListAsync(ct);
+            var has = await db.RolePermissions.Where(rp => rp.RoleId == employeeRole.Id).Select(rp => rp.PermissionId).ToListAsync(ct);
+            foreach (var pid in grant.Except(has))
+                db.RolePermissions.Add(new RolePermission { RoleId = employeeRole.Id, PermissionId = pid });
+        }
+        if (underAdmin.Count > 0) await db.SaveChangesAsync(ct);
+
         var permissionCodes = new (string Code, string Description)[]
         {
             ("directory.read", "View the employee directory"),
@@ -53,7 +70,7 @@ public static class DevSeed
         {
             var permission = new Permission { Id = Guid.NewGuid(), Code = code, Description = description };
             db.Permissions.Add(permission);
-            if (code is "directory.read" or "files.read" or "chat.read" or "chat.send" or "calls.use" or "mail.read" or "mail.send" or "news.read" or "news.write" or "projects.read" or "notes.read" or "notes.write")
+            if (code is "directory.read" or "files.read" or "chat.read" or "chat.send" or "calls.use" or "mail.read" or "mail.send" or "news.read" or "news.write" or "projects.read" or "projects.write" or "projects.admin" or "notes.read" or "notes.write")
                 db.RolePermissions.Add(new RolePermission { RoleId = (await db.Roles.SingleAsync(r => r.Name == "Employee", ct)).Id, PermissionId = permission.Id });
             db.RolePermissions.Add(new RolePermission { RoleId = admin.Id, PermissionId = permission.Id });
         }

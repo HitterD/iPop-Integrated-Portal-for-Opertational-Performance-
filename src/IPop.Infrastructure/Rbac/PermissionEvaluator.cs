@@ -6,6 +6,11 @@ namespace IPop.Infrastructure.Rbac;
 
 public sealed class PermissionEvaluator(IPopDbContext db) : IPermissionEvaluator
 {
+    /// Only direct members get Admin's grants. A role that names Admin as its parent (the
+    /// pentest V-01 escalation: Employee → Admin handed every user news.publish, chat.admin…)
+    /// stops the walk there instead of inheriting everything.
+    public const string AdminRoleName = "Admin";
+
     public async Task<bool> IsAllowedAsync(Guid userId, string permissionCode,
         string? departmentCode, CancellationToken ct = default)
     {
@@ -32,13 +37,15 @@ public sealed class PermissionEvaluator(IPopDbContext db) : IPermissionEvaluator
                 roleIds.Add(defaultRoleId.Value);
         }
         var visited = new HashSet<Guid>();
+        var direct = roleIds.ToHashSet();
         while (roleIds.Count > 0)
         {
             var roles = await db.Roles.AsNoTracking().Where(r => roleIds.Contains(r.Id))
-                .Select(r => new { r.Id, r.ParentRoleId }).ToListAsync(ct);
+                .Select(r => new { r.Id, r.Name, r.ParentRoleId }).ToListAsync(ct);
             foreach (var role in roles)
             {
                 if (!visited.Add(role.Id)) continue;
+                if (role.Name == AdminRoleName && !direct.Contains(role.Id)) continue;
                 var allowed = await db.RolePermissions.AsNoTracking().AnyAsync(x =>
                     x.RoleId == role.Id && x.PermissionId == permission.Id &&
                     (x.DepartmentCode == "" || x.DepartmentCode == departmentCode), ct);

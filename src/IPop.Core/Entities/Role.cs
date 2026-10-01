@@ -1,7 +1,7 @@
 namespace IPop.Core.Entities;
 
-/// A portal role. ParentRoleId lets the hierarchy from PRD §2 (dept → sub-dept
-/// inheritance) be represented now; no endpoint resolves inherited permissions yet.
+/// A portal role. ParentRoleId models the PRD §2 dept → sub-dept hierarchy: PermissionEvaluator
+/// walks parents, except that Admin's grants are never inherited (only direct members get them).
 public class Role
 {
     public Guid Id { get; set; }

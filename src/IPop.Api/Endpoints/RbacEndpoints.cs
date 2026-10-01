@@ -22,6 +22,7 @@ public static class RbacEndpoints
                 return Results.BadRequest(new { code = "invalid_role" });
             var role = new Role { Id = Guid.NewGuid(), Name = req.Name.Trim(), ParentRoleId = req.ParentRoleId };
             if (await CreatesCycle(role, db, ct)) return Results.BadRequest(new { code = "role_cycle" });
+            if (await InheritsAdmin(role, db, ct)) return Results.BadRequest(new { code = "admin_not_inheritable" });
             db.Roles.Add(role); await db.SaveChangesAsync(ct); return Results.Created($"/api/admin/rbac/roles/{role.Id}", role);
         });
 
@@ -32,6 +33,7 @@ public static class RbacEndpoints
             if (!string.IsNullOrWhiteSpace(req.Name)) role.Name = req.Name.Trim();
             role.ParentRoleId = req.ParentRoleId;
             if (await CreatesCycle(role, db, ct)) return Results.BadRequest(new { code = "role_cycle" });
+            if (await InheritsAdmin(role, db, ct)) return Results.BadRequest(new { code = "admin_not_inheritable" });
             await db.SaveChangesAsync(ct); return Results.Ok(role);
         });
 
@@ -73,6 +75,22 @@ public static class RbacEndpoints
         {
             if (!seen.Add(id)) return true;
             next = await db.Roles.Where(r => r.Id == id).Select(r => r.ParentRoleId).SingleOrDefaultAsync(ct);
+        }
+        return false;
+    }
+
+    /// Admin grants every permission; a role under it would silently make its members admins
+    /// (pentest V-01). The evaluator ignores such a link anyway; this keeps it out of the data.
+    internal static async Task<bool> InheritsAdmin(Role role, IPopDbContext db, CancellationToken ct)
+    {
+        var seen = new HashSet<Guid> { role.Id };
+        var next = role.ParentRoleId;
+        while (next is Guid id && seen.Add(id))
+        {
+            var parent = await db.Roles.Where(r => r.Id == id).Select(r => new { r.Name, r.ParentRoleId }).SingleOrDefaultAsync(ct);
+            if (parent is null) return false;
+            if (parent.Name == IPop.Infrastructure.Rbac.PermissionEvaluator.AdminRoleName) return true;
+            next = parent.ParentRoleId;
         }
         return false;
     }
