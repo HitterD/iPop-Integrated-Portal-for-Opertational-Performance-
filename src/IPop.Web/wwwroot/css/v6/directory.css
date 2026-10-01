@@ -194,12 +194,16 @@
 
 /* Column widths mirror the mockup grid so Position and Division stop fighting for room. */
 .dir-people .tbl { table-layout: fixed; width: 100%; }
+/* Checkbox | Name | Department › Section | Ext. | Status | Actions — one line per person (~48px). */
 .dir-people .tbl th:nth-child(1), .dir-people .tbl td:nth-child(1) { width: 44px; }
 .dir-people .tbl th:nth-child(2), .dir-people .tbl td:nth-child(2) { width: auto; }
-.dir-people .tbl th:nth-child(3), .dir-people .tbl td:nth-child(3) { width: 100px; }
-.dir-people .tbl th:nth-child(4), .dir-people .tbl td:nth-child(4) { width: 26%; }
-.dir-people .tbl th:nth-child(5), .dir-people .tbl td:nth-child(5) { width: 130px; }
-.dir-people .tbl th:nth-child(6), .dir-people .tbl td:nth-child(6) { width: 110px; }
-.dir-people .tbl th:nth-child(7), .dir-people .tbl td:nth-child(7) { width: 108px; }
-.dir-people .tbl td:nth-child(4) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dir-people .tbl td:nth-child(3) { font-variant-numeric: tabular-nums; }
+.dir-people .tbl th:nth-child(3), .dir-people .tbl td:nth-child(3) { width: 34%; }
+.dir-people .tbl th:nth-child(4), .dir-people .tbl td:nth-child(4) { width: 84px; }
+.dir-people .tbl th:nth-child(5), .dir-people .tbl td:nth-child(5) { width: 110px; }
+.dir-people .tbl th:nth-child(6), .dir-people .tbl td:nth-child(6) { width: 120px; }
+.dir-people .tbl td { padding-top: 8px; padding-bottom: 8px; }
+.dir-people .tbl td.td-dept { overflow: hidden; }
+.dir-people .tbl td.td-dept .div-chip { max-width: 100%; }
+.dir-people .ext-num { display: inline-flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; color: var(--ink); }
+.dir-people .ext-num .lucide { width: 13px; height: 13px; color: var(--ink-3); }
+.dir-card .dc-pos { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

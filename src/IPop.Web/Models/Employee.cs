@@ -15,8 +15,13 @@ public record Employee(
     string Status, // "on" | "away" | "busy" | "off"
     string Color,
     string? PhotoPath = null,
-    string? ManagerNik = null)
+    string? ManagerNik = null,
+    string? Section = null)
 {
+    /// "Department › Section" for the Directory list; "—" when neither is known.
+    public string Placement => string.IsNullOrEmpty(Section) ? Department : $"{Department} › {Section}";
+    public bool HasExtension => !string.IsNullOrWhiteSpace(Extension) && Extension != "—";
+
     public string Initials =>
         string.Concat(Name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
                           .Select(w => w[0]).Take(2)).ToUpperInvariant();

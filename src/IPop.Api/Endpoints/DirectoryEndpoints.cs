@@ -142,10 +142,10 @@ public static class DirectoryEndpoints
                 1, 2000, callerNik, db, ct);
 
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("Name;Department;Site;Email;Extension;Location;Status");
+            sb.AppendLine("Name;Department;Section;Site;Email;Extension;Location;Status");
             foreach (var e in page.Items)
                 sb.AppendLine(string.Join(';', CsvField(e.Name),
-                    CsvField(e.Department), CsvField(e.Site), CsvField(e.Email), CsvField(e.Extension),
+                    CsvField(e.Department), CsvField(e.Section), CsvField(e.Site), CsvField(e.Email), CsvField(e.Extension),
                     CsvField(e.Location), CsvField(e.Status)));
 
             db.AuditLogs.Add(new IPop.Core.Entities.AuditLog
@@ -251,11 +251,14 @@ public static class DirectoryEndpoints
         var p = Math.Max(1, page ?? 1);
         var size = Math.Clamp(pageSize ?? 120, 1, 5000);
         var query = db.Users.Include(u => u.Department).Include(u => u.Site)
+            .Include(u => u.Division).ThenInclude(d => d!.Department)
             .AsNoTracking().Where(u => u.IsActive);
         if (!string.IsNullOrWhiteSpace(q))
         {
+            // Name or IP-phone extension; email is deliberately not searchable (it's hidden in the list).
             var pat = LikePattern(q);
-            query = query.Where(u => EF.Functions.ILike(u.Name, pat, @"\") || EF.Functions.ILike(u.Email, pat, @"\"));
+            query = query.Where(u => EF.Functions.ILike(u.Name, pat, @"\")
+                || (u.Extension != null && EF.Functions.ILike(u.Extension, pat, @"\")));
         }
         if (!string.IsNullOrWhiteSpace(departmentCode))
         {
@@ -293,12 +296,17 @@ public static class DirectoryEndpoints
             : (await db.UserFavoriteContacts.AsNoTracking()
                 .Where(f => f.User.Nik == callerNik && pageNiks.Contains(f.ContactNik))
                 .Select(f => f.ContactNik).ToListAsync(ct)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // HRIS leaves DepartmentId empty for many users; fall back to their Division's Department,
+        // then to the Division itself so the column is never a bare dash when we know something.
         var items = ordered.Skip((p - 1) * size).Take(size).Select(x => new DirectoryEmployee(
-            x.User.Nik, x.User.Name, null, x.User.Department?.Name, x.User.Department?.Code,
+            x.User.Nik, x.User.Name, null,
+            x.User.Department?.Name ?? x.User.Division?.Department?.Name ?? x.User.Division?.Name,
+            x.User.Department?.Code ?? x.User.Division?.Department?.Code,
             x.User.Site?.Name, x.User.Site?.Code,
             x.User.ManagerNik is not null && names.TryGetValue(x.User.ManagerNik, out var managerName) ? managerName : null,
             x.User.Email, x.User.Extension, x.User.Location, x.Status, null, x.User.PhotoPath,
-            favNiks.Contains(x.User.Nik), x.User.ManagerNik, x.User.Id)).ToArray();
+            favNiks.Contains(x.User.Nik), x.User.ManagerNik, x.User.Id,
+            x.User.Division is { } dv && (x.User.Department is not null || dv.Department is not null) ? dv.Name : null)).ToArray();
         return new DirectoryPage(total, p, size, items);
     }
 

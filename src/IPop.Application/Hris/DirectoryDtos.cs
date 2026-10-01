@@ -10,7 +10,9 @@ public record DirectoryEmployee(
     /// NIK atasan (untuk relasi bawahan di kartu profil).
     string? ManagerNik = null,
     /// Opaque key for deep links (/chat?user=…, /directory/person/…) so URLs never carry the NIK.
-    Guid? UserId = null);
+    Guid? UserId = null,
+    /// Division name ("Section"), shown as "Department › Section" in the Directory list.
+    string? Section = null);
 
 public record DirectoryDepartment(string Code, string Name, string? ParentCode, int DirectMembers);
 public record DirectorySite(string Code, string Name);
