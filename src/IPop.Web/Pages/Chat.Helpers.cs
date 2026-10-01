@@ -211,19 +211,30 @@ public partial class Chat
 
     private bool showJumpToLatest;
     private bool scrollWatchBound;
+    /// Messages from others that arrived while the reader was scrolled up; shown on the pill.
+    private int newBelowCount;
+    private bool loadingOlder;
 
-    /// Called from JS only when the list crosses the "far from bottom" threshold.
+    /// Called from JS only when the list crosses the "far from bottom" (400px) or
+    /// "at the bottom" (150px) lines.
     [JSInvokable]
-    public void OnScrollStateChanged(bool awayFromBottom)
+    public void OnScrollStateChanged(bool awayFromBottom, bool nearBottom)
     {
-        if (awayFromBottom == showJumpToLatest) return;
+        var count = nearBottom ? 0 : newBelowCount;
+        if (awayFromBottom == showJumpToLatest && count == newBelowCount) return;
         showJumpToLatest = awayFromBottom;
+        newBelowCount = count;
         _ = InvokeAsync(StateHasChanged);
     }
+
+    /// Scrolled near the top of the loaded history: fetch the previous page.
+    [JSInvokable]
+    public Task OnNearTop() => InvokeAsync(LoadOlder);
 
     private async Task JumpToLatest()
     {
         showJumpToLatest = false;
+        newBelowCount = 0;
         await ScrollToBottom();
     }
 

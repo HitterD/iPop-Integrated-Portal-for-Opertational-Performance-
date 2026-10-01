@@ -499,7 +499,14 @@
                         @if (ChatSvc.HasOlderMessages)
                         {
                             <div class="load-older">
-                                <button type="button" @onclick="LoadOlder"><i data-lucide="chevron-up"></i> Load older messages</button>
+                                @if (loadingOlder)
+                                {
+                                    <span class="load-older-spin" role="status" aria-label="Loading older messages"></span>
+                                }
+                                else
+                                {
+                                    <button type="button" @onclick="LoadOlder"><i data-lucide="chevron-up"></i> Load older messages</button>
+                                }
                             </div>
                         }
                         else if (ChatSvc.ActiveRoom is not null)
@@ -624,7 +631,6 @@
                                 {
                                     <MessageBubble Message="currentMsg"
                                                    IsPinned="@IsMsgPinned(currentMsg.Id)"
-                                                   ShowDeliveryStatus="@(isSent && msg.Id == LastOwnMessageId)"
                                                    IsGroup="@(ChatSvc.ActiveRoom?.Type == "group" && currentMsg.Type != "system" && !currentMsg.IsDeleted)"
                                                    OnCtx="t => ShowCtx(t.Item1, t.Item2)"
                                                    OnProfile="OpenUserProfile"
@@ -667,7 +673,13 @@
                         }
                     </div>
 
-                    @if (showJumpToLatest)
+                    @if (newBelowCount > 0)
+                    {
+                        <button type="button" class="jump-latest has-new" title="Jump to latest" @onclick="JumpToLatest">
+                            <i data-lucide="arrow-down"></i>@(newBelowCount == 1 ? "1 new message" : $"{newBelowCount} new messages")
+                        </button>
+                    }
+                    else if (showJumpToLatest)
                     {
                         <button type="button" class="jump-latest" title="Jump to latest" aria-label="Jump to latest" @onclick="JumpToLatest">
                             <i data-lucide="arrow-down"></i>

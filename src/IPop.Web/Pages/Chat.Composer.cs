@@ -183,14 +183,30 @@ public partial class Chat
     {
         try
         {
-            await JS.InvokeVoidAsync("ipop.scrollBottom", messagesRef);
+            await JS.InvokeAsync<bool>("ipop.scrollBottom", messagesRef, false);
         }
         catch { /* Element might not exist yet */ }
     }
 
+    /// Follow new messages only if the reader is at the bottom; otherwise count them on the
+    /// "new messages" pill and leave the scroll position alone.
+    private async Task FollowNewMessages()
+    {
+        var count = pendingIncoming;
+        pendingIncoming = 0;
+        bool scrolled;
+        try { scrolled = await JS.InvokeAsync<bool>("ipop.scrollBottom", messagesRef, true); }
+        catch { return; }
+        if (!scrolled && count > 0)
+        {
+            newBelowCount += count;
+            StateHasChanged();
+        }
+    }
+
     // ---- Emoji/Sticker Picker (Task 16.1) ----
 
-    private void InsertEmoji(string emoji) { messageText += emoji; pickerOpen = false; }
+    private void InsertEmoji(string emoji) { messageText += emoji; pickerOpen = false; focusComposerPending = true; }
     // ---- Stickers ----
 
     private async Task OpenStickers()
@@ -208,6 +224,7 @@ public partial class Chat
         await ChatSvc.SendMessageAsync(key, null, "sticker");
         ChatSvc.NoteStickerUsed(key);
         scrollToBottom = true;
+        focusComposerPending = true;
     }
 
     /// "+ Create" tile: the picker closes and the editor opens empty (file or paste).
@@ -655,6 +672,8 @@ public partial class Chat
             }
             pendingAttachments.Add(new PendingAttachmentItem(a.Id, a.FileName, a.FileSize, a.MimeType, preview));
         }
+        // Files picked/dropped/pasted: ready for a caption.
+        focusComposerPending = true;
     }
 
     private void RemovePending(Guid id)

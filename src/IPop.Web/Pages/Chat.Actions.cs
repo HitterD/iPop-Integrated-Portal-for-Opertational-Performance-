@@ -49,9 +49,17 @@ public partial class Chat
     {
         replyToMsg = ChatSvc.ActiveMessages.FirstOrDefault(m => m.Id == msgId);
         ctxMsgId = null;
+        // The click left focus on the Reply button (or on <body> once the menu closed);
+        // put the caret back in the composer, on phones too — replying means typing.
+        focusComposerPending = true;
+        focusComposerOnTouch = true;
     }
 
-    private void CancelReply() => replyToMsg = null;
+    private void CancelReply()
+    {
+        replyToMsg = null;
+        focusComposerPending = true;
+    }
 
     // ---- Edit & Delete (Task 13.3) ----
 
@@ -76,6 +84,7 @@ public partial class Chat
         editingMsgId = null;
         editText = "";
         editPickedMentions = [];
+        focusComposerPending = true;
     }
 
     /// Mentions carried by the message being edited (see StartEdit / SaveEdit).
@@ -93,6 +102,7 @@ public partial class Chat
     {
         editingMsgId = null;
         editText = "";
+        focusComposerPending = true;
     }
 
     private async Task ConfirmDelete(Guid msgId)

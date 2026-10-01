@@ -40,6 +40,17 @@
 [data-theme="dark"] .jump-latest:hover { color:#0e0d0b; }
 .jump-latest:active { transform:scale(0.92); }
 .jump-latest .lucide { width:17px;height:17px; }
+/* With unseen messages below: a centred pill that says how many. */
+.jump-latest.has-new { width:auto;height:34px;padding:0 14px 0 11px;gap:6px;border-radius:17px;
+  left:50%;right:auto;transform:translateX(-50%);background:var(--accent);border-color:var(--accent);color:#fff;
+  font:600 12.5px/1 inherit; }
+.jump-latest.has-new:hover { transform:translateX(-50%) translateY(-2px); }
+.jump-latest.has-new:active { transform:translateX(-50%) scale(0.96); }
+[data-theme="dark"] .jump-latest.has-new { color:#0e0d0b; }
+.jump-latest.has-new .lucide { width:15px;height:15px; }
+.load-older-spin { display:block;width:18px;height:18px;margin:6px auto;border-radius:50%;
+  border:2px solid var(--line);border-top-color:var(--accent);animation:ipop-older-spin .8s linear infinite; }
+@keyframes ipop-older-spin { to { transform:rotate(360deg); } }
 
 /* Empty-state actions */
 .empty-state .empty-acts { display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:6px; }
@@ -93,3 +104,4 @@
 @media (hover: none) {
   .msg-hover-actions { display:none; }
 }
+.chat-area .jump-latest.has-new { right:auto; }

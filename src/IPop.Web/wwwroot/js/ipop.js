@@ -691,8 +691,13 @@ window.ipop = {
   // link previews and reply quotes finish loading after the jump and grow the rows, which
   // used to leave the view stranded partway up the conversation. The pin ends as soon as
   // the reader scrolls/touches/keys, or after a short settle window.
-  scrollBottom(el) {
-    if (!el) return;
+  // soft: only when the reader is already at (or near) the bottom — an incoming message must
+  // never yank someone who scrolled up to read history. Returns whether it scrolled.
+  scrollBottom(el, soft) {
+    if (!el) return false;
+    // _ipopNear is refreshed on scroll only, so it still describes where the reader was
+    // before the new message grew the list.
+    if (soft && !el._ipopPin && el._ipopNear === false) return false;
     el.scrollTop = el.scrollHeight;
     if (el._ipopPin) el._ipopPin();
     const pin = () => { el.scrollTop = el.scrollHeight; };
@@ -705,12 +710,18 @@ window.ipop = {
     imgs.forEach((i) => i.addEventListener("load", pin, { once: true }));
     const stop = () => {
       ro.disconnect(); mo.disconnect(); clearTimeout(timer);
-      ["wheel", "touchstart", "keydown", "pointerdown"].forEach((ev) => el.removeEventListener(ev, stop));
+      el.removeEventListener("scroll", onScroll);
+      ["wheel", "touchstart", "keydown", "pointerdown", "mousedown"].forEach((ev) => el.removeEventListener(ev, stop));
       if (el._ipopPin === stop) delete el._ipopPin;
     };
+    // Our own pins land exactly at the bottom; any scroll that leaves the bottom is the reader
+    // (including scrollbar drags, which don't reliably fire pointerdown on the scroller).
+    const onScroll = () => { if (el.scrollHeight - el.scrollTop - el.clientHeight > 4) stop(); };
     const timer = setTimeout(stop, 2500);
-    ["wheel", "touchstart", "keydown", "pointerdown"].forEach((ev) => el.addEventListener(ev, stop, { passive: true }));
+    ["wheel", "touchstart", "keydown", "pointerdown", "mousedown"].forEach((ev) => el.addEventListener(ev, stop, { passive: true }));
+    el.addEventListener("scroll", onScroll, { passive: true });
     el._ipopPin = stop;
+    return true;
   },
   async authBlob(url, token) {
     const res = await fetch(url, { headers: token ? { Authorization: "Bearer " + token } : {} });
@@ -1367,12 +1378,21 @@ window.ipop = {
     if (el._ipopScroll) this.unbindScrollWatch(el);
     let queued = false;
     let last = null;
+    let nearTop = true; // not before the first real scroll: binding happens before the jump to the bottom
     const evaluate = () => {
       queued = false;
-      const away = (el.scrollHeight - el.scrollTop - el.clientHeight) > (threshold || 400);
-      if (away === last) return;
-      last = away;
-      dotNet.invokeMethodAsync("OnScrollStateChanged", away);
+      const gap = el.scrollHeight - el.scrollTop - el.clientHeight;
+      const away = gap > (threshold || 400);
+      const near = gap < 150;
+      el._ipopNear = near;
+      // Near the top: ask for older history (once per approach, re-armed on leaving).
+      const top = el.scrollTop < 300 && el.scrollHeight > el.clientHeight + 10;
+      if (top && !nearTop) dotNet.invokeMethodAsync("OnNearTop");
+      nearTop = top;
+      const state = (away ? 2 : 0) + (near ? 1 : 0);
+      if (state === last) return;
+      last = state;
+      dotNet.invokeMethodAsync("OnScrollStateChanged", away, near);
     };
     const onScroll = () => {
       if (queued) return;
@@ -1387,6 +1407,7 @@ window.ipop = {
     if (!el || !el._ipopScroll) return;
     el.removeEventListener("scroll", el._ipopScroll);
     delete el._ipopScroll;
+    delete el._ipopNear;
   },
 
   // ipop-22: unbind project/task chip click delegation

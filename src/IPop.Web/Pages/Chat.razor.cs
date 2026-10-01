@@ -47,12 +47,6 @@ public partial class Chat
 
     /// Newest own message in the active room — the only one that renders a receipt.
     /// Pending/failed sends are excluded because they have no server-side seen record yet.
-    private Guid? LastOwnMessageId => ChatSvc.ActiveMessages
-        .LastOrDefault(m => m.SenderNik == GetCurrentUserNik()
-                            && m.Type != "system"
-                            && !ChatSvc.IsPending(m.Id)
-                            && !ChatSvc.IsFailed(m.Id))?.Id;
-
     /// Place the divider above the first of the last `unread` messages that someone
     /// else sent. The server exposes an unread *count* rather than a read pointer, so
     /// the position is derived from it — own messages are skipped because they can
@@ -821,12 +815,7 @@ public partial class Chat
         try { await JS.InvokeVoidAsync("ipop.bindMentionChips", messagesRef, selfRef); } catch { }
         // C4: global Ctrl+K / Cmd+K quick switcher
         try { await JS.InvokeVoidAsync("ipop.chatBindQuickSwitcher", selfRef); } catch { }
-        if (scrollToBottom)
-        {
-            scrollToBottom = false;
-            await ScrollToBottom();
-        }
-        else if (anchorFromBottom is { } keep && ChatSvc.ActiveMessages.Count > anchorBaseCount)
+        if (anchorFromBottom is { } keep && ChatSvc.ActiveMessages.Count > anchorBaseCount)
         {
             // Older rows were prepended: hold the reader's distance from the bottom so the
             // message they were looking at stays put (LoadOlder).
@@ -839,6 +828,14 @@ public partial class Chat
             }
             catch { }
         }
+        else if (scrollToBottom)
+        {
+            scrollToBottom = false;
+            pendingIncoming = 0;
+            await ScrollToBottom();
+        }
+        else if (pendingIncoming > 0)
+            await FollowNewMessages();
         if (focusEditPending && editingMsgId is not null)
         {
             // Caret at the end so a long message can be amended without hunting for it.
@@ -848,7 +845,9 @@ public partial class Chat
         else if (focusComposerPending && ChatSvc.ActiveRoomId is not null && !openingRoom && editingMsgId is null)
         {
             focusComposerPending = false;
-            if (!await IsTouchLayoutAsync())
+            var force = focusComposerOnTouch;
+            focusComposerOnTouch = false;
+            if (force || !await IsTouchLayoutAsync())
                 try { await composerRef.FocusAsync(); } catch { }
         }
         await SyncMobileChromeAsync();
@@ -859,6 +858,8 @@ public partial class Chat
     // Set when a room finishes opening and after a send; desktop focuses the composer on
     // the next render. Phones/tablets skip it so the on-screen keyboard doesn't pop up.
     private bool focusComposerPending;
+    /// Reply/edit focus even on touch layouts, where the keyboard is exactly what's wanted.
+    private bool focusComposerOnTouch;
     private bool focusEditPending;
     private ElementReference editRef;
 
@@ -993,9 +994,13 @@ public partial class Chat
 
     private void OnMessageReceived(IPop.Application.Chat.MessageDto msg)
     {
-        scrollToBottom = true;
+        // Soft: never drag a reader who scrolled up back to the bottom (OnAfterRenderAsync).
+        pendingIncoming++;
         _ = InvokeAsync(StateHasChanged);
     }
+
+    /// Incoming messages since the last render, followed softly after it.
+    private int pendingIncoming;
 
     // ---- Quick Switcher (Ctrl+K) ----
 

@@ -145,6 +145,8 @@ public partial class Chat
         // The messages element is replaced on room switch, so re-bind the scroll watcher.
         try { await JS.InvokeVoidAsync("ipop.unbindScrollWatch", messagesRef); } catch { }
         scrollWatchBound = false;
+        newBelowCount = 0;
+        showJumpToLatest = false;
         // Blob URLs for the previous room's attachments are dead weight once we leave it.
         Att.ReleaseAll();
         // ipop-38: persist the outgoing room's half-typed composer text BEFORE clearing,
@@ -224,7 +226,15 @@ public partial class Chat
     /// the reader back at that same distance once the older rows are in the DOM.
     private async Task LoadOlder()
     {
-        if (!ChatSvc.HasOlderMessages) return;
+        if (!ChatSvc.HasOlderMessages || loadingOlder) return;
+        loadingOlder = true;
+        StateHasChanged();
+        try { await LoadOlderCore(); }
+        finally { loadingOlder = false; }
+    }
+
+    private async Task LoadOlderCore()
+    {
         var roomId = ChatSvc.ActiveRoomId;
         try { anchorFromBottom = (await JS.InvokeAsync<ScrollInfo>("ipop.scrollInfo", messagesRef)).FromBottom; } catch { }
         // Armed BEFORE the load: ChatState renders the prepended rows itself, and the
