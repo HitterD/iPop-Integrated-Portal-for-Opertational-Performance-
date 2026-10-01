@@ -139,4 +139,65 @@ public class ChatBannerTests
 
         Assert.Equal("Tim Ops", Assert.Single(s.ActiveBanners).Item.Title);
     }
+    [Fact]
+    public void Chat_burst_plays_the_room_sound_once()
+    {
+        using var ctx = new BunitContext();
+        var s = State(ctx);
+        s.ShowChatMessage(In(Msg("satu"), Dm()), "/home");
+        s.ShowChatMessage(In(Msg("dua"), Dm()), "/home");
+
+        var play = Assert.Single(ctx.JSInterop.Invocations["ipopSound.playFor"]);
+        Assert.Equal("dm", play.Arguments[0]);
+    }
+
+    [Fact]
+    public void Group_message_plays_the_group_sound()
+    {
+        using var ctx = new BunitContext();
+        var s = State(ctx);
+        s.ShowChatMessage(In(), "/home");
+
+        Assert.Equal("group", Assert.Single(ctx.JSInterop.Invocations["ipopSound.playFor"]).Arguments[0]);
+    }
+
+    [Fact]
+    public void Open_room_gets_only_a_soft_tick()
+    {
+        using var ctx = new BunitContext();
+        var s = State(ctx);
+        s.ShowChatMessage(In(active: true), $"/chat/{RoomId}");
+
+        Assert.Empty(s.ActiveBanners);
+        Assert.Empty(ctx.JSInterop.Invocations["ipopSound.playFor"]);
+        Assert.Equal("tick", Assert.Single(ctx.JSInterop.Invocations["ipopSound.play"]).Arguments[0]);
+    }
+
+    [Fact]
+    public void Muted_open_room_is_silent()
+    {
+        using var ctx = new BunitContext();
+        var s = State(ctx);
+        s.ShowChatMessage(In(active: true, muted: true), $"/chat/{RoomId}");
+
+        Assert.Empty(ctx.JSInterop.Invocations["ipopSound.play"]);
+    }
+
+    [Theory]
+    [InlineData("chat.mention", null, "mention", false)]
+    [InlineData("chat.emergency", null, "mention", false)]
+    [InlineData("mail.new", null, "mail", false)]
+    [InlineData("meeting.invited", null, "meeting", false)]
+    [InlineData("meeting.reminder", null, "meeting", true)]
+    [InlineData("project.task_assigned", null, "project", false)]
+    [InlineData("news.published", null, "announce", false)]
+    [InlineData("news.condolence", null, "announce", true)]
+    [InlineData("memo.published", "high", "announce", true)]
+    [InlineData("memo.mandatory", null, "announce", true)]
+    [InlineData("note.shared", null, "notes", false)]
+    [InlineData("note.mention", null, "mention", false)]
+    [InlineData("system.hris_sync", null, "system", false)]
+    [InlineData(null, null, "system", false)]
+    public void Each_module_has_its_own_sound(string? type, string? priority, string module, bool urgent)
+        => Assert.Equal((module, urgent), NotificationState.SoundFor(type, priority));
 }

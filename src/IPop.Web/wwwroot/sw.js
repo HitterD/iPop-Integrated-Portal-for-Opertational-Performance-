@@ -21,7 +21,8 @@ async function onPush(e) {
 
   // Someone is looking at iPop right now: the in-app banner / call modal covers it.
   // The test toast is always shown — it is sent from a click in Settings.
-  if (d.kind !== "test" && await isLooking()) return;
+  const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  if (d.kind !== "test" && wins.some(c => c.focused && c.visibilityState === "visible")) return;
 
   const data = { url: d.url || "/", kind: d.kind, callId: d.callId, token: d.actionToken, apiBase: d.apiBase, more: 0 };
   let body = d.body || "";
@@ -45,17 +46,14 @@ async function onPush(e) {
     badge: ICON,
     timestamp: Date.now(),
     data,
+    // iPop open in a background tab plays its own module sound (js/sounds.js); keep Windows quiet then.
+    silent: d.kind !== "test" && wins.length > 0,
   };
   if (d.kind === "call") {
     options.actions = [{ action: "jawab", title: "Answer" }, { action: "tolak", title: "Decline" }];
     options.renotify = true;
   }
   await self.registration.showNotification(d.title || "iPop", options);
-}
-
-async function isLooking() {
-  const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-  return wins.some(c => c.focused && c.visibilityState === "visible");
 }
 
 self.addEventListener("notificationclick", e => {

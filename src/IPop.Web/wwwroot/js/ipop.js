@@ -1771,30 +1771,6 @@ window.ipop = {
     this._audioChunks = [];
   },
 
-  // Notification sound — short chime synthesized via WebAudio (no asset needed).
-  // Called by ToastHost when a toast arrives and the user's PlaySound pref is on.
-  playNotificationSound() {
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      this._notifCtx = this._notifCtx || new Ctx();
-      const ctx = this._notifCtx;
-      if (ctx.state === "suspended") ctx.resume();
-      const now = ctx.currentTime;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(880, now);          // A5
-      osc.frequency.setValueAtTime(1174.66, now + 0.08); // D6
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.15, now + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(now);
-      osc.stop(now + 0.4);
-    } catch { /* audio blocked — ignore */ }
-  },
-
   // ---- Mail rich-text editor (Jodit, vendored in lib/jodit) ------------------
   // Jodit's own toolbar is hidden; MailRteEditor.razor draws an Apple-style toolbar and
   // drives the editor through these calls. Selection state flows back via OnState.

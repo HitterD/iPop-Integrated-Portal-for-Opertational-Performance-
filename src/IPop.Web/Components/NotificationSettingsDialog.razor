@@ -202,6 +202,65 @@
         color: var(--ink-3);
     }
 
+    /* Per-module sounds */
+    .sound-prefs {
+        margin: -4px 0 4px;
+        padding: 4px 14px;
+        background: var(--surface-2);
+        border-radius: 14px;
+    }
+
+    .sound-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 9px 0;
+        border-top: 1px solid var(--line-soft);
+    }
+
+    .sound-row:first-child { border-top: none; }
+    .sound-row .setting-name { margin-bottom: 0; font-weight: 500; }
+
+    .sound-ic {
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        display: grid;
+        place-items: center;
+        color: #fff;
+        flex: none;
+    }
+
+    .sound-ic .lucide { width: 15px; height: 15px; }
+
+    .sound-vol {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--ink-3);
+    }
+
+    .sound-vol .lucide { width: 16px; height: 16px; }
+    .sound-vol input { width: 160px; accent-color: var(--accent); }
+    .sound-pick { width: 180px; flex: none; }
+    .sound-pick .app-select-trigger { width: 100%; }
+
+    .sound-play {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: 0;
+        background: var(--accent-soft);
+        color: var(--accent-ink);
+        display: grid;
+        place-items: center;
+        cursor: pointer;
+        flex: none;
+    }
+
+    .sound-play:disabled { opacity: .4; cursor: default; }
+    .sound-play .lucide { width: 15px; height: 15px; }
+
     /* Toggle Switch */
     .toggle {
         position: relative;
@@ -678,6 +737,40 @@
                         </label>
                     </div>
 
+                    @if (settings.PlaySound)
+                    {
+                        <div class="sound-prefs">
+                            <div class="sound-row">
+                                <div class="setting-info">
+                                    <div class="setting-name">Volume</div>
+                                    <div class="setting-hint">Applies to all notification and call sounds</div>
+                                </div>
+                                <div class="sound-vol">
+                                    <i data-lucide="volume-1"></i>
+                                    <input type="range" min="0" max="100" step="5" aria-label="Notification volume"
+                                           @bind="soundVolume" @bind:event="oninput" />
+                                    <i data-lucide="volume-2"></i>
+                                </div>
+                            </div>
+                            @foreach (var m in SoundModules)
+                            {
+                                var mod = m;
+                                <div class="sound-row">
+                                    <div class="sound-ic" style="background:@mod.Color"><i data-lucide="@mod.Icon"></i></div>
+                                    <div class="setting-info"><div class="setting-name">@mod.Name</div></div>
+                                    <AppSelect Value="@soundMap.GetValueOrDefault(mod.Key, mod.Key)" Label="@($"{mod.Name} sound")"
+                                               Options="@SoundOptions(mod.Key)" CssClass="sound-pick"
+                                               ValueChanged="@(v => PickSound(mod.Key, v))" />
+                                    <button type="button" class="sound-play" title="Preview" aria-label="@($"Preview {mod.Name} sound")"
+                                            disabled="@(soundMap.GetValueOrDefault(mod.Key, mod.Key) == "")"
+                                            @onclick="() => PreviewSound(soundMap.GetValueOrDefault(mod.Key, mod.Key))">
+                                        <i data-lucide="play"></i>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+
                     <div class="setting-item">
                         <div class="setting-info">
                             <div class="setting-name">Taskbar Badge</div>
@@ -939,6 +1032,7 @@
         await LoadPush();
         await LoadPreferences();
         await LoadLocalPreferences();
+        await LoadSoundPrefs();
         StateHasChanged();
         await SyncBrowserTimezone();
     }
@@ -1100,6 +1194,8 @@
     private void ResetToDefault()
     {
         settings = new NotificationPreferences();
+        soundVolume = 80;
+        soundMap = SoundModules.ToDictionary(m => m.Key, m => m.Key);
     }
 
     // History tab state
@@ -1252,6 +1348,7 @@
                 // lalu muat ulang preferensi di NotificationState agar banner/toast/badge
                 // langsung mengikuti perubahan tanpa menunggu reload halaman.
                 await SaveLocalPreferences();
+                await SaveSoundPrefs();
                 await Notifs.LoadPreferencesAsync();
                 State.Close();
                 Toasts.Show("Notification settings saved", ToastKind.Success);
@@ -1302,6 +1399,62 @@
         }
         catch { }
     }
+
+    // Per-module sounds (wwwroot/js/sounds.js keeps them in localStorage "notification-sounds").
+    private record SoundModule(string Key, string Name, string Icon, string Color);
+    private static readonly SoundModule[] SoundModules =
+    [
+        new("dm", "Direct message", "message-circle", "#2e9d6b"),
+        new("group", "Group chat", "messages-square", "#14a3a3"),
+        new("mention", "Mention / emergency", "at-sign", "#e0662f"),
+        new("mail", "New mail", "mail", "#2563eb"),
+        new("meeting", "Meeting", "calendar-clock", "#7c4dd8"),
+        new("project", "Project & task", "kanban-square", "#d4a10f"),
+        new("announce", "News & memo", "megaphone", "#c2442e"),
+        new("notes", "Notes", "notebook-pen", "#8a6d4b"),
+        new("system", "System", "settings", "#6b6963"),
+    ];
+    private static readonly (string File, string Name)[] SoundChoices =
+    [
+        ("dm", "Bubble"), ("group", "Pebble"), ("mention", "Spark"), ("mail", "Envelope"), ("meeting", "Doorbell"),
+        ("meeting-urgent", "Doorbell (loud)"), ("project", "Tasker"), ("announce", "Herald"), ("announce-firm", "Herald (firm)"),
+        ("notes", "Paper"), ("system", "Ping"), ("x-glass", "Crystal"), ("x-drop", "Drop"), ("x-harp", "Harp"),
+    ];
+    private int soundVolume = 80;
+    private Dictionary<string, string> soundMap = [];
+
+    private static List<AppOption> SoundOptions(string module) =>
+        [.. SoundChoices.Select(c => new AppOption(c.File, c.File == module ? $"{c.Name} (default)" : c.Name)), new("", "No sound")];
+
+    private async Task PickSound(string module, string? file)
+    {
+        soundMap[module] = file ?? "";
+        await PreviewSound(soundMap[module]);
+    }
+
+    private async Task PreviewSound(string file)
+    {
+        if (file == "") return;
+        try { await JS.InvokeVoidAsync("ipopSound.preview", file, soundVolume); } catch { }
+    }
+
+    private async Task LoadSoundPrefs()
+    {
+        try
+        {
+            var p = await JS.InvokeAsync<SoundPrefs>("ipopSound.getPrefs");
+            soundVolume = p.Volume;
+            soundMap = p.Map ?? [];
+        }
+        catch { }
+    }
+
+    private async Task SaveSoundPrefs()
+    {
+        try { await JS.InvokeVoidAsync("ipopSound.setPrefs", soundVolume, soundMap); } catch { }
+    }
+
+    private record SoundPrefs(int Volume, Dictionary<string, string>? Map);
 
     private class LocalPreferences
     {

@@ -207,8 +207,30 @@ public class NotificationState : IDisposable
         // The banner is the single on-screen surface for incoming notifications; toasts are
         // reserved for feedback on the user's own actions, so the two never duplicate.
         AddBanner(item);
-        if (_prefs.PlaySound && _js is not null)
-            _ = _js.InvokeVoidAsync("ipop.playNotificationSound").AsTask().ContinueWith(_ => { }, TaskScheduler.Default);
+        var (module, urgent) = SoundFor(delivery.EventType, item.Priority);
+        PlaySound("ipopSound.playFor", module, urgent);
+    }
+
+    /// Which module sound an event plays (js/sounds.js), and whether it is the louder variant.
+    internal static (string Module, bool Urgent) SoundFor(string? eventType, string? priority)
+    {
+        var e = (eventType ?? "").ToLowerInvariant();
+        var high = string.Equals(priority, "high", StringComparison.OrdinalIgnoreCase);
+        if (e is "chat.mention" or "chat.emergency" || e.StartsWith("note.mention")) return ("mention", false);
+        if (e.StartsWith("chat.")) return (e.Contains("group") ? "group" : "dm", false);
+        if (e.StartsWith("mail.")) return ("mail", false);
+        if (e.StartsWith("meeting.")) return ("meeting", e == "meeting.reminder");
+        if (e.StartsWith("project.") || e.StartsWith("task.")) return ("project", false);
+        if (e.StartsWith("news.") || e.StartsWith("memo."))
+            return ("announce", e is "memo.mandatory" or "news.condolence" || (high && e.StartsWith("memo.")));
+        if (e.StartsWith("note.")) return ("notes", false);
+        return ("system", false);
+    }
+
+    private void PlaySound(string fn, params object?[] args)
+    {
+        if (!_prefs.PlaySound || _js is null) return;
+        _ = _js.InvokeVoidAsync(fn, args).AsTask().ContinueWith(_ => { }, TaskScheduler.Default);
     }
 
     // ── Preferensi notifikasi (Fase 4) — jam senyap + jenis dibisukan. ──
@@ -365,7 +387,13 @@ public class NotificationState : IDisposable
     public void ShowChatMessage(IncomingChatMessage m, string currentPath)
     {
         if (PracticeHold is not null) return;
-        if (!ShouldBannerChat(m, currentPath) || ShouldSuppress("chat")) return;
+        if (!ShouldBannerChat(m, currentPath))
+        {
+            // A message landing in the conversation on screen gets only a soft tick.
+            if (IsTickChat(m, currentPath) && !ShouldSuppress("chat")) PlaySound("ipopSound.play", "tick");
+            return;
+        }
+        if (ShouldSuppress("chat")) return;
 
         var roomId = m.Message.RoomId;
         var count = 1;
@@ -380,12 +408,19 @@ public class NotificationState : IDisposable
         AddBanner(item);
 
         // One chime per burst, not per message.
-        if (_prefs.PlaySound && _js is not null && DateTime.UtcNow - _lastChatSound > TimeSpan.FromSeconds(3))
+        if (DateTime.UtcNow - _lastChatSound > TimeSpan.FromSeconds(3))
         {
             _lastChatSound = DateTime.UtcNow;
-            _ = _js.InvokeVoidAsync("ipop.playNotificationSound").AsTask().ContinueWith(_ => { }, TaskScheduler.Default);
+            PlaySound("ipopSound.playFor", m.Room is { Type: "group" } ? "group" : "dm", false);
         }
     }
+
+    /// The message is for the open conversation the user is looking at (not muted, not a mention or
+    /// emergency — those come as their own notification with the mention sound).
+    internal static bool IsTickChat(IncomingChatMessage m, string currentPath)
+        => !m.RoomMuted && !m.MentionsMe
+           && m.Message.Type is not ("system" or "emergency")
+           && m.IsActiveRoom && IsChatRoomPath(currentPath, m.Message.RoomId);
 
     internal static ShellNotificationItem BuildChatItem(IncomingChatMessage m, int count)
     {

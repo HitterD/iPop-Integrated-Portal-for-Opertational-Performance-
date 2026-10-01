@@ -8,10 +8,6 @@
 // .avatar-local-speaker / .avatar-remote-speaker get .speaking while that side talks.
 (function () {
     let audioCtx = null;
-    let ringOsc1 = null;
-    let ringOsc2 = null;
-    let ringGain = null;
-    let ringInterval = null;
 
     let peerConnection = null;
     let localStream = null;
@@ -126,80 +122,25 @@
     // ── Tones ────────────────────────────────────────────────────────────────
 
     function stopAudioTones() {
-        if (ringInterval) {
-            clearInterval(ringInterval);
-            ringInterval = null;
-        }
-        try {
-            if (ringOsc1) { ringOsc1.stop(); ringOsc1.disconnect(); ringOsc1 = null; }
-            if (ringOsc2) { ringOsc2.stop(); ringOsc2.disconnect(); ringOsc2 = null; }
-            if (ringGain) { ringGain.disconnect(); ringGain = null; }
-        } catch (e) { }
+        if (window.ipopSound) window.ipopSound.stopLoop();
     }
 
-    function startDualTone(ctx, f1, f2, volume) {
-        ringGain = ctx.createGain();
-        ringGain.gain.setValueAtTime(0, ctx.currentTime);
-        ringOsc1 = ctx.createOscillator();
-        ringOsc1.type = 'sine';
-        ringOsc1.frequency.setValueAtTime(f1, ctx.currentTime);
-        ringOsc2 = ctx.createOscillator();
-        ringOsc2.type = 'sine';
-        ringOsc2.frequency.setValueAtTime(f2, ctx.currentTime);
-        ringOsc1.connect(ringGain);
-        ringOsc2.connect(ringGain);
-        ringGain.connect(ctx.destination);
-        ringOsc1.start();
-        ringOsc2.start();
-        return (on) => {
-            try { if (ringGain) ringGain.gain.setTargetAtTime(on ? volume : 0, ctx.currentTime, 0.015); } catch (e) { }
-        };
-    }
-
-    /// Incoming ring: two short bursts every 3 s.
+    // Call tones are the files in wwwroot/sounds (js/sounds.js), so they match the notification set
+    // and follow the user's volume.
     function playRingtone() {
         stopAudioTones();
-        try {
-            const set = startDualTone(getAudioContext(), 440, 480, 0.16);
-            const burst = () => {
-                set(true);
-                setTimeout(() => set(false), 400);
-                setTimeout(() => set(true), 600);
-                setTimeout(() => set(false), 1000);
-            };
-            burst();
-            ringInterval = setInterval(burst, 3000);
-        } catch (e) { console.warn('Ringtone error:', e); }
+        if (window.ipopSound) window.ipopSound.loop('ringtone');
     }
 
-    /// Outgoing ringback: 1 s tone, 3 s silence.
+    /// Outgoing ringback: 425 Hz, 1 s on / 2 s off (Indonesian ringback cadence).
     function playDialTone() {
         stopAudioTones();
-        try {
-            const set = startDualTone(getAudioContext(), 440, 480, 0.08);
-            const beep = () => { set(true); setTimeout(() => set(false), 1000); };
-            beep();
-            ringInterval = setInterval(beep, 4000);
-        } catch (e) { console.warn('Dial tone error:', e); }
+        if (window.ipopSound) window.ipopSound.loop('ringback');
     }
 
-    /// Short descending beep when a call ends.
     function playEndTone() {
         stopAudioTones();
-        try {
-            const ctx = getAudioContext();
-            const gain = ctx.createGain();
-            gain.connect(ctx.destination);
-            [[620, 0], [480, 0.18]].forEach(([f, at]) => {
-                const osc = ctx.createOscillator();
-                osc.frequency.setValueAtTime(f, ctx.currentTime + at);
-                osc.connect(gain);
-                osc.start(ctx.currentTime + at);
-                osc.stop(ctx.currentTime + at + 0.15);
-            });
-            gain.gain.setValueAtTime(0.08, ctx.currentTime);
-            gain.gain.setValueAtTime(0, ctx.currentTime + 0.36);
-        } catch (e) { }
+        if (window.ipopSound) window.ipopSound.play('hangup');
     }
 
     // ── Level meters ─────────────────────────────────────────────────────────
