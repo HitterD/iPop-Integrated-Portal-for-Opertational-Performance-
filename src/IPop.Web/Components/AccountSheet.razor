@@ -108,9 +108,28 @@
                                     <i data-lucide="pencil" class="acct-chev"></i>
                                 </button>
                             }
+                            @if (editingExt)
+                            {
+                                <form class="acct-row acct-field" @onsubmit="SaveExt" @onsubmit:preventDefault>
+                                    <span class="acct-k">Ext.</span>
+                                    <input type="text" inputmode="numeric" maxlength="8" placeholder="e.g. 1133" @ref="extInput" @bind="ext" @bind:event="oninput" disabled="@busyExt" aria-label="Phone extension" />
+                                    <button type="button" class="acct-link" @onclick="CancelExt" disabled="@busyExt">Cancel</button>
+                                    <button type="submit" class="acct-link strong" disabled="@(busyExt || !ExtDirty)">@(busyExt ? "Saving…" : "Save")</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <button type="button" class="acct-row acct-nav" @onclick="EditExt">
+                                    <span class="acct-ic phone"><i data-lucide="phone"></i></span>
+                                    <span class="acct-k">Ext.</span>
+                                    <span class="acct-v">@(string.IsNullOrWhiteSpace(me.Extension) ? "Not set" : me.Extension)</span>
+                                    <i data-lucide="pencil" class="acct-chev"></i>
+                                </button>
+                            }
                         </div>
                         @if (emailError is not null) { <p class="acct-err"><i data-lucide="alert-circle"></i>@emailError</p> }
-                        <p class="acct-note">Used for notifications and password reset links.</p>
+                        @if (extError is not null) { <p class="acct-err"><i data-lucide="alert-circle"></i>@extError</p> }
+                        <p class="acct-note">Email is used for notifications and password reset links. Ext. is your IP-phone number, shown in the Directory.</p>
 
                         <h3 class="acct-h">Security</h3>
                         <div class="acct-group">
@@ -181,7 +200,11 @@
     private Pane pane;
     private IDisposable? reg;
     private DirectoryEmployeeDto? me;
-    private ElementReference fileInput, emailInput;
+    private ElementReference fileInput, emailInput, extInput;
+    private string ext = "";
+    private string? extError;
+    private bool busyExt, editingExt, focusExt;
+    private bool ExtDirty => !string.Equals(ext.Trim(), me?.Extension ?? "", StringComparison.Ordinal);
     private string email = "";
     private string? preview, photoError, emailError, pwError;
     private bool busyPhoto, busyEmail, busyPw, editingEmail, focusEmail, showPw;
@@ -219,6 +242,7 @@
         if (!IsOpen) return;
         await JS.InvokeVoidAsync("ipop.icons");
         if (focusEmail) { focusEmail = false; try { await emailInput.FocusAsync(); } catch { } }
+        if (focusExt) { focusExt = false; try { await extInput.FocusAsync(); } catch { } }
     }
 
     private async Task Close()
@@ -245,7 +269,7 @@
 
     private void ResetForms()
     {
-        editingEmail = false; showPw = false;
+        editingEmail = false; showPw = false; editingExt = false; extError = null;
         preview = photoError = emailError = pwError = null;
         currentPw = newPw = confirmPw = "";
     }
@@ -315,6 +339,27 @@
         }
         catch { emailError = "Could not reach the server. Try again."; }
         finally { busyEmail = false; }
+    }
+
+    private void EditExt() { ext = me?.Extension ?? ""; extError = null; editingExt = true; focusExt = true; }
+    private void CancelExt() { editingExt = false; extError = null; ext = me?.Extension ?? ""; }
+
+    private async Task SaveExt()
+    {
+        if (busyExt || !ExtDirty) return;
+        busyExt = true; extError = null;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Put, "/api/me/extension", new { extension = ext.Trim() });
+            if (!res.IsSuccessStatusCode) { extError = await ErrorMessage(res, "Could not save the extension."); return; }
+            await Auth.ReloadMeAsync();
+            me = Auth.Me;
+            ext = me?.Extension ?? "";
+            editingExt = false;
+            Toasts.Show("Extension updated", ToastKind.Success);
+        }
+        catch { extError = "Could not reach the server. Try again."; }
+        finally { busyExt = false; }
     }
 
     private async Task SavePassword()

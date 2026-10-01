@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IPop.Api.Endpoints;
 
-/// Self-service profile: the caller's email and photo. Name, position and placement stay
+/// Self-service profile: the caller's email, IP-phone extension and photo. Name, position and placement stay
 /// admin-owned, so there is deliberately no endpoint for them here.
 public static class ProfileEndpoints
 {
@@ -25,6 +25,17 @@ public static class ProfileEndpoints
             if (status != 200) return Results.Json(error, statusCode: status);
             await notifier.NotifyAsync(ct);
             return Results.Ok(new { email = req.Email.Trim() });
+        }).RequireAuthorization();
+
+        // IP-phone extension (Directory "Ext."). Empty clears it.
+        app.MapPut("/api/me/extension", async Task<IResult> (ExtensionRequest req, HttpContext http, IPopDbContext db,
+            IDirectoryChangeNotifier notifier, CancellationToken ct) =>
+        {
+            var nik = http.User.FindFirst("nik")?.Value;
+            var (status, error, value) = await ChangeExtensionAsync(db, nik, nik, req.Extension, "profile.extension.change", ct);
+            if (status != 200) return Results.Json(error, statusCode: status);
+            await notifier.NotifyAsync(ct);
+            return Results.Ok(new { extension = value });
         }).RequireAuthorization();
 
         // "file" is the 256px avatar; the optional "large" part is the <=1024px copy for the viewer.
@@ -89,6 +100,7 @@ public static class ProfileEndpoints
     }
 
     public record EmailRequest(string Email);
+    public record ExtensionRequest(string? Extension);
     public record ProfileError(string Code, string Message);
 
     internal static async Task<(int Status, ProfileError? Error)> ChangeEmailAsync(
@@ -117,6 +129,35 @@ public static class ProfileEndpoints
         user.UpdatedAt = now;
         await db.SaveChangesAsync(ct);
         return (200, null);
+    }
+
+    /// Extensions are 2–8 digits; several people may share one (a desk phone). Null/blank clears it.
+    internal static bool TryNormalizeExtension(string? raw, out string? value)
+    {
+        value = string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
+        return value is null || (value.Length is >= 2 and <= 8 && value.All(char.IsAsciiDigit));
+    }
+
+    internal static async Task<(int Status, ProfileError? Error, string? Value)> ChangeExtensionAsync(
+        IPopDbContext db, string? actorNik, string? targetNik, string? extension, string action, CancellationToken ct)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Nik == targetNik, ct);
+        if (user is null) return (actorNik == targetNik ? 401 : 404, null, null);
+        if (!TryNormalizeExtension(extension, out var value))
+            return (400, new("invalid_extension", "Use 2–8 digits, e.g. 1133."), null);
+        if (string.Equals(user.Extension, value, StringComparison.Ordinal)) return (200, null, value);
+
+        var now = DateTime.UtcNow;
+        db.AuditLogs.Add(new AuditLog
+        {
+            ActorNik = actorNik, Action = action, Entity = "User", EntityId = user.Nik,
+            DetailJson = System.Text.Json.JsonSerializer.Serialize(new { from = user.Extension, to = value }),
+            CreatedAt = now,
+        });
+        user.Extension = value;
+        user.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+        return (200, null, value);
     }
 
     private static async Task<byte[]> ReadAllAsync(IFormFile file, CancellationToken ct)

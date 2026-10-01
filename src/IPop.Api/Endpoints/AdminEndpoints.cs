@@ -90,7 +90,7 @@ public static class AdminEndpoints
                 rolesByUser.GetValueOrDefault(u.Id, []),
                 PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, now, u.PresenceIsIdle), u.UpdatedAt,
                 u.Division?.Name, u.Division?.Code, u.LockedUntil > now,
-                lastSignIn.TryGetValue(u.Id, out var at) ? at : null));
+                lastSignIn.TryGetValue(u.Id, out var at) ? at : null, u.Extension));
             return Results.Ok(new { total, page = p, pageSize = size, items });
         });
 
@@ -236,6 +236,13 @@ public static class AdminEndpoints
             if (req.Email is not null) user.Email = req.Email.Trim();
             if (req.Position is not null) user.Position = req.Position.Trim();
             if (req.Location is not null) user.Location = req.Location.Trim();
+            // "" clears the extension; null leaves it alone.
+            if (req.Extension is not null)
+            {
+                if (!ProfileEndpoints.TryNormalizeExtension(req.Extension, out var ext))
+                    return Results.BadRequest(new { code = "invalid_extension", message = "Use 2–8 digits, e.g. 1133." });
+                user.Extension = ext;
+            }
             var placementError = await ApplyPlacement(user, req.DepartmentCode, req.SiteCode, db, ct);
             if (placementError is not null) return placementError;
             user.IsManuallyEdited = true;
@@ -1091,7 +1098,7 @@ public static class AdminEndpoints
         string? Location, string? Department, string? DepartmentCode, string? Site,
         string? SiteCode, bool IsActive, bool IsManuallyEdited, string[] Roles,
         string Status, DateTime UpdatedAt, string? Division = null, string? DivisionCode = null,
-        bool IsLocked = false, DateTime? LastSignInAt = null);
+        bool IsLocked = false, DateTime? LastSignInAt = null, string? Extension = null);
     public record AdminUserStats(int Total, int Active, int Admins, int Online, int Locked = 0, int Inactive = 0, int Hr = 0);
     public record AdminSessionRow(Guid Id, string Nik, string Name, string? DeviceFingerprint,
         string? IpAddress, DateTime CreatedAt, DateTime ExpiresAt, bool IsCurrent = false);
@@ -1099,7 +1106,7 @@ public static class AdminEndpoints
     public record CreateUserRequest(string Nik, string Name, string Email, string? Position,
         string? Location, string? DepartmentCode = null, string? SiteCode = null);
     public record EditUserRequest(string? Name, string? Email, string? Position, string? Location,
-        string? DepartmentCode = null, string? SiteCode = null);
+        string? DepartmentCode = null, string? SiteCode = null, string? Extension = null);
     public record SetRolesRequest(string[] Roles);
     public record OrgDepartmentRow(Guid Id, string Code, string Name, string? ParentCode,
         bool IsActive, int MemberCount, int ActiveMemberCount, string? HeadNik = null,

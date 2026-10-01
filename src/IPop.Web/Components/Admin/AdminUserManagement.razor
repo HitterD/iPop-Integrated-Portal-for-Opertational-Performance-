@@ -123,6 +123,10 @@
                     <div class="field"><label>Name</label><input @bind="form.Name" /></div>
                     <div class="field"><label>Email</label><input @bind="form.Email" type="email" /></div>
                     <div class="field"><label>Position</label><input @bind="form.Position" /></div>
+                    @if (!form.IsCreate)
+                    {
+                        <div class="field"><label>Ext. (IP phone)</label><input @bind="form.Extension" inputmode="numeric" maxlength="8" placeholder="e.g. 1133" /></div>
+                    }
                     <div class="field">
                         <label>Department</label>
                         <AppSelect Label="Department" Value="@form.UnitCode" ValueChanged='v => form.UnitCode = v ?? ""' Options="@UnitOptions" />
@@ -158,6 +162,7 @@
                     <div class="adm-group-label">Profile</div>
                     <div class="adm-list">
                         <div class="adm-list-row"><span>Email</span><b>@(string.IsNullOrWhiteSpace(sel.Email) ? "—" : sel.Email)</b></div>
+                        <div class="adm-list-row"><span>Ext.</span><b>@(string.IsNullOrWhiteSpace(sel.Extension) ? "—" : sel.Extension)</b></div>
                         <div class="adm-list-row"><span>Plant</span><b>@(sel.Site ?? "—")</b></div>
                         <div class="adm-list-row"><span>Division</span><b>@(sel.Department ?? "—")</b></div>
                         <div class="adm-list-row"><span>Department</span><b>@(sel.Division ?? "Not assigned")</b></div>
@@ -551,7 +556,7 @@
 
     private void OpenEdit(AdminUserRowDto u) => form = new FormState
     {
-        Nik = u.Nik, Name = u.Name, Email = u.Email, Position = u.Position ?? "",
+        Nik = u.Nik, Name = u.Name, Email = u.Email, Position = u.Position ?? "", Extension = u.Extension ?? "",
         DepartmentCode = u.DepartmentCode, SiteCode = u.SiteCode,
         UnitCode = u.DivisionCode ?? "", OriginalUnitCode = u.DivisionCode ?? "",
     };
@@ -584,7 +589,7 @@
                 new { nik = form.Nik, name = form.Name, email = form.Email, position = form.Position,
                     location = (string?)null, departmentCode = deptCode, siteCode })
             : await Auth.SendAsync(HttpMethod.Patch, $"/api/admin/users/{Uri.EscapeDataString(form.Nik)}",
-                new { name = form.Name, email = form.Email, position = form.Position,
+                new { name = form.Name, email = form.Email, position = form.Position, extension = form.Extension.Trim(),
                     location = (string?)null, departmentCode = deptCode, siteCode });
         if (!res.IsSuccessStatusCode)
         {
@@ -628,7 +633,7 @@
     private sealed class FormState
     {
         public bool IsCreate, Saving;
-        public string Nik = "", Name = "", Email = "", Position = "";
+        public string Nik = "", Name = "", Email = "", Position = "", Extension = "";
         public string? DepartmentCode, SiteCode, Error;
         public string UnitCode = "", OriginalUnitCode = "";
     }

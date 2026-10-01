@@ -117,6 +117,51 @@ public class ProfileEndpointsTests
     }
 
     [Fact]
+    public async Task ChangeExtension_Valid_SavesAndAudits()
+    {
+        using var t = new TestDb();
+        t.AddUser("100");
+        var (status, _, value) = await ProfileEndpoints.ChangeExtensionAsync(t.Db, "100", "100", " 1133 ", "profile.extension.change", default);
+
+        Assert.Equal(200, status);
+        Assert.Equal("1133", value);
+        await using var v = t.Verify();
+        Assert.Equal("1133", (await v.Users.SingleAsync()).Extension);
+        Assert.Equal("profile.extension.change", (await v.AuditLogs.SingleAsync()).Action);
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("123456789")]
+    [InlineData("12a4")]
+    [InlineData("+62 21")]
+    public async Task ChangeExtension_Invalid_Returns400(string ext)
+    {
+        using var t = new TestDb();
+        t.AddUser("100");
+        var (status, error, _) = await ProfileEndpoints.ChangeExtensionAsync(t.Db, "100", "100", ext, "profile.extension.change", default);
+        Assert.Equal(400, status);
+        Assert.Equal("invalid_extension", error!.Code);
+    }
+
+    [Fact]
+    public async Task ChangeExtension_BlankClears_DuplicatesAllowed()
+    {
+        using var t = new TestDb();
+        t.AddUser("100");
+        t.AddUser("200");
+        await ProfileEndpoints.ChangeExtensionAsync(t.Db, "100", "100", "1133", "x", default);
+        var (dup, _, _) = await ProfileEndpoints.ChangeExtensionAsync(t.Db, "200", "200", "1133", "x", default);
+        Assert.Equal(200, dup);
+        var (clr, _, value) = await ProfileEndpoints.ChangeExtensionAsync(t.Db, "100", "100", "  ", "x", default);
+        Assert.Equal(200, clr);
+        Assert.Null(value);
+        await using var v = t.Verify();
+        Assert.Null((await v.Users.SingleAsync(u => u.Nik == "100")).Extension);
+        Assert.Equal("1133", (await v.Users.SingleAsync(u => u.Nik == "200")).Extension);
+    }
+
+    [Fact]
     public async Task SetPhoto_ReplacesPreviousPhoto()
     {
         using var t = new TestDb();

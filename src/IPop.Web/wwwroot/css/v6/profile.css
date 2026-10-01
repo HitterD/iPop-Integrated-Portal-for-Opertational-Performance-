@@ -61,6 +61,7 @@
 .acct-ic { flex:none; width:26px; height:26px; border-radius:7px; display:flex; align-items:center; justify-content:center; color:#fff; }
 .acct-ic .lucide { width:15px; height:15px; }
 .acct-ic.mail { background:#0a84ff; }
+.acct-ic.phone { background:#30b158; }
 .acct-ic.key { background:#8e8e93; }
 .acct-ic.spell { background:#ff9f0a; }
 .acct-ic.install { background:#30b158; }

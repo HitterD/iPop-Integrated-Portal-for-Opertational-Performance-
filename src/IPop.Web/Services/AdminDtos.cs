@@ -5,7 +5,7 @@ namespace IPop.Web.Services;
 public record AdminUserRowDto(string Nik, string Name, string Email, string? Position, string? Location,
     string? Department, string? DepartmentCode, string? Site, string? SiteCode,
     bool IsActive, bool IsManuallyEdited, string[] Roles, string Status, DateTime UpdatedAt,
-    string? Division = null, string? DivisionCode = null, bool IsLocked = false, DateTime? LastSignInAt = null);
+    string? Division = null, string? DivisionCode = null, bool IsLocked = false, DateTime? LastSignInAt = null, string? Extension = null);
 
 public record AdminUserPageDto(int Total, int Page, int PageSize, AdminUserRowDto[] Items);
 public record AdminUserStatsDto(int Total, int Active, int Admins, int Online, int Locked = 0, int Inactive = 0, int Hr = 0);
