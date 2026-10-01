@@ -252,7 +252,7 @@ public class ChatStickerTests
     {
         var content = StickerLimits.Content(Guid.NewGuid());
         Assert.Equal("🎨 Sticker", RoomPreview.Build("dm", "sticker", content, false, "Beny", false));
-        Assert.Equal("Beny: 🎨 Sticker", RoomPreview.Build("group", "sticker", "rocket", false, "Beny Santoso", false));
+        Assert.Equal("Beny Santoso: 🎨 Sticker", RoomPreview.Build("group", "sticker", "rocket", false, "Beny Santoso", false));
     }
 
     [Fact]

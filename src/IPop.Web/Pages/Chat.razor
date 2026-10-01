@@ -365,7 +365,7 @@
                         }
                         else
                         {
-                            <span class="status-txt">@ChatSvc.ActiveRoom.MemberCount members · @ChatSvc.ActiveRoom.OnlineCount online · @string.Join(", ", ChatSvc.ActiveRoom.Members.Take(3).Select(m => m.Nik == GetCurrentUserNik() ? "You" : m.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? m.Name))</span>
+                            <span class="status-txt">@ChatSvc.ActiveRoom.MemberCount members · @ChatSvc.ActiveRoom.OnlineCount online · @string.Join(", ", ChatSvc.ActiveRoom.Members.Take(3).Select(m => m.Nik == GetCurrentUserNik() ? "You" : IPop.Application.PersonName.Short(m.Name)))</span>
                         }
                     </div>
                 </div>

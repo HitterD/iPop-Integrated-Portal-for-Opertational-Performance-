@@ -394,7 +394,7 @@
     }
 
     private string SearchShortcut { get; set; } = "Ctrl K";
-    private string UserName => Auth.Me?.Name ?? "…";
+    private string UserName => Auth.Me is null ? "…" : IPop.Application.PersonName.Display(Auth.Me.Name);
     private string UserRole => Auth.Me is null ? "" : Auth.IsAdmin ? "Super admin" : (Auth.Me.Department ?? "");
     /// Unread count behind the bell badge (NotificationState; mock count until backend).
     private int NotifUnread => Notifs.UnreadCount;

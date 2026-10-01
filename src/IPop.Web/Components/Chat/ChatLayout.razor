@@ -1048,7 +1048,7 @@
         if (ActiveRoom.Type == "dm")
         {
             var other = ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
-            return other?.Name ?? "Direct Message";
+            return other is null ? "Direct Message" : IPop.Application.PersonName.Display(other.Name);
         }
         return ActiveRoom.Name ?? "Group";
     }

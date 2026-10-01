@@ -527,7 +527,7 @@ public partial class Notes
         presence.FirstOrDefault(u => u.Name == name)?.Nik
         ?? (shares is { } sh ? (sh.OwnerName == name ? sh.OwnerNik : sh.Shares.FirstOrDefault(s => s.UserName == name)?.UserNik) : null)
         ?? (Auth.Me?.Name == name ? Auth.Me?.Nik : null);
-    private static string FirstName(string? name) => (name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+    private static string FirstName(string? name) => IPop.Application.PersonName.Short(name);
     private static string LevelLabel(string level) => level switch { "edit" => "Can edit", "comment" => "Can comment", _ => "Can view" };
 
     private static string Ago(DateTime utc)

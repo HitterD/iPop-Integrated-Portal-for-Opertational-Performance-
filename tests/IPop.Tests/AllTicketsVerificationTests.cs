@@ -528,7 +528,7 @@ public class AllTicketsVerificationTests
         var dashSvc = new DashboardService(t.Verify(), null);
         var dashDto = await dashSvc.GetAsync(me.Id, default);
         Assert.NotNull(dashDto);
-        Assert.Equal("Bagas", dashDto.FirstName);
+        Assert.Equal("Bagas Arif", dashDto.FirstName);
         Assert.NotNull(dashDto.Kpis);
 
         // 2. Global ⌘K Search

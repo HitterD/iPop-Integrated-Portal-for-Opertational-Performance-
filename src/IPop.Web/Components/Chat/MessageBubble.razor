@@ -20,7 +20,7 @@
         {
             var senderMember = ChatSvc.ActiveRoom?.Members.FirstOrDefault(m => m.Nik == Message.SenderNik);
             <div class="sender">
-                <span class="sender-name" style="color:@Color(Message.SenderNik)">@Message.SenderName</span>
+                <span class="sender-name" style="color:@Color(Message.SenderNik)">@IPop.Application.PersonName.Display(Message.SenderName)</span>
                 @if (senderMember?.Role is "owner")
                 {
                     <span class="role-badge owner">Owner</span>
@@ -42,7 +42,7 @@
             }
             @if (Message.ReplyPreview is not null)
             {
-                <div class="reply-quote"><div class="rq-name">@Message.ReplyPreview.SenderName</div>@Message.ReplyPreview.Content</div>
+                <div class="reply-quote"><div class="rq-name">@IPop.Application.PersonName.Display(Message.ReplyPreview.SenderName)</div>@Message.ReplyPreview.Content</div>
             }
             @if (Message.IsDeleted) { <em class="deleted-text"><i data-lucide="ban"></i> @Message.Content</em>@Meta(true) }
             else if (Message.Type == "sticker")

@@ -569,7 +569,7 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
 
     private static string People(int n) => n == 1 ? "1 person" : $"{n} people";
 
-    private static string FirstName(string name) => name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+    private static string FirstName(string name) => IPop.Application.PersonName.Short(name) is { Length: > 0 } s ? s : name;
 
     /// Same palette as the Calls history rows, so a person keeps one colour everywhere.
     public static string AvatarColor(string name)

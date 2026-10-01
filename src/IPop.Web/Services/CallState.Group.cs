@@ -71,7 +71,7 @@ public partial class CallState
         Current is { } room && p.Status == CallParticipantStatus.Invited
         && DateTime.UtcNow - RingStart(room, p) < TimeSpan.FromSeconds(RingTimeoutSeconds);
 
-    private static string FirstNameOf(string name) => name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+    private static string FirstNameOf(string name) => IPop.Application.PersonName.Short(name) is { Length: > 0 } s ? s : name;
 
     /// "Add person": ring a directory user into the current call. Null on success, else the error
     /// to show. Adding to a 1:1 call switches it to LiveKit (the response carries my token).

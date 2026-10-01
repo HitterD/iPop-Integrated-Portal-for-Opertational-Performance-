@@ -307,7 +307,7 @@ public partial class NewChatPanel
     private static string FirstName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name)) return "?";
-        return name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+        return IPop.Application.PersonName.Short(name);
     }
 
     private void OnPresenceChanged(string nik, string status)

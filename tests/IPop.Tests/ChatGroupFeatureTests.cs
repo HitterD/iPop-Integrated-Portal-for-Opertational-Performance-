@@ -113,7 +113,7 @@ public class ChatGroupFeatureTests
     }
 
     [Theory]
-    [InlineData("group", "text", "hi there", false, "Beny Setiawan", false, "Beny: hi there")]
+    [InlineData("group", "text", "hi there", false, "Beny Setiawan", false, "Beny Setiawan: hi there")]
     [InlineData("group", "text", "hi there", false, "Beny Setiawan", true, "You: hi there")]
     [InlineData("group", "system", "A added B", false, "Beny", false, "A added B")]
     [InlineData("dm", "text", "hi there", false, "Beny", false, "hi there")]

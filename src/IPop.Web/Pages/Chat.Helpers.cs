@@ -20,7 +20,7 @@ public partial class Chat
 
     private string GetRoomName(IPop.Application.Chat.RoomListDto room)
         => room.Type == "dm"
-            ? (!string.IsNullOrWhiteSpace(room.RecipientName) ? room.RecipientName : (!string.IsNullOrWhiteSpace(room.RecipientNik) ? room.RecipientNik : "Direct Message"))
+            ? (!string.IsNullOrWhiteSpace(room.RecipientName) ? IPop.Application.PersonName.Display(room.RecipientName) : (!string.IsNullOrWhiteSpace(room.RecipientNik) ? room.RecipientNik : "Direct Message"))
             : (room.Name ?? "Group");
 
     private string GetActiveRoomName()
@@ -29,7 +29,7 @@ public partial class Chat
         if (ChatSvc.ActiveRoom.Type == "dm")
         {
             var other = ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
-            return other?.Name ?? "Direct Message";
+            return other is null ? "Direct Message" : IPop.Application.PersonName.Display(other.Name);
         }
         return ChatSvc.ActiveRoom.Name ?? "Group";
     }

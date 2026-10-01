@@ -16,7 +16,7 @@
     <div class="dw-hero">
         <div>
             <div class="dw-date">@DateTime.Now.ToString("dddd, d MMMM")</div>
-            <h2>@Greeting, @(Auth.Me?.Roles.Contains("Admin") == true ? "Administrator" : data?.FirstName ?? Auth.Me?.Name?.Split(' ')[0] ?? "there")</h2>
+            <h2>@Greeting, @(Auth.Me?.Roles.Contains("Admin") == true ? "Administrator" : data?.FirstName ?? (IPop.Application.PersonName.Display(Auth.Me?.Name) is { Length: > 0 } me ? me : "there"))</h2>
             @if (data is not null) { <p>@((MarkupString)Summary())</p> }
         </div>
         <nav class="dw-qa" aria-label="Quick actions">
@@ -245,7 +245,7 @@
                     {
                         <a class="dw-tm" href="@PLinks.Profile(p.Nik)" title="@p.Name · @PresenceLabel(p.Status)">
                             <PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="46" Class="@($"av st-{p.Status}")" Decorative="true" />
-                            <span>@p.Name.Split(' ')[0]</span>
+                            <span>@IPop.Application.PersonName.Short(p.Name)</span>
                         </a>
                     }
                 </div>

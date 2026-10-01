@@ -38,7 +38,7 @@ public partial class Chat
         {
             var name = GetActiveRoomName();
             if (ChatSvc.ActiveRoom?.Type == "dm")
-                name = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+                name = IPop.Application.PersonName.Short(name);
             return string.IsNullOrWhiteSpace(name) ? "Message" : $"Message {name}";
         }
     }

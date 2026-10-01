@@ -16,10 +16,7 @@ public static class RoomPreview
             : content.StartsWith("[note]", StringComparison.Ordinal) ? "📄 Note"
             : MentionPlainText.Project(content, max);
         if (roomType != "group" || type is "system" or "emergency") return body;
-        var who = isOwn ? "You" : FirstName(senderName);
+        var who = isOwn ? "You" : PersonName.Short(senderName);
         return string.IsNullOrEmpty(who) ? body : $"{who}: {body}";
     }
-
-    private static string FirstName(string? name) =>
-        string.IsNullOrWhiteSpace(name) ? "" : name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
 }

@@ -121,7 +121,7 @@ public class DashboardAndSearchTests
         var dto = await new IPop.Infrastructure.Dashboard.DashboardService(t.Verify()).GetAsync(me.Id);
 
         Assert.NotNull(dto);
-        Assert.Equal("Rina", dto.FirstName);
+        Assert.Equal("Rina Wijaya", dto.FirstName);
         Assert.Equal(1, dto.Kpis.MailUnread);
         Assert.Equal(1, dto.Kpis.OpenTasks);
         Assert.Equal(1, dto.Kpis.OverdueTasks);

@@ -272,7 +272,7 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
                 $"{nas.Count(n => !n.IsInvalid)} of {nas.Count} connected"));
 
         return new DashboardDto(
-            FirstName(me.Name),
+            IPop.Application.PersonName.Display(me.Name) is { Length: > 0 } full ? full : "there",
             new DashboardKpis(mailUnread, mailInbox, chatUnread, rooms.Count, openTasks.Count, overdue,
                 next?.StartAt, next?.Title, next?.Id, ackPending.Count, missedCount),
             agenda,
@@ -290,7 +290,7 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
     }
 
     private static string FirstName(string? name) =>
-        string.IsNullOrWhiteSpace(name) ? "there" : name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries)[0];
+        IPop.Application.PersonName.Short(name) is { Length: > 0 } s ? s : "there";
 
     private static string? Snip(string? s, int max) =>
         s is null ? null : s.Length <= max ? s : s[..max].TrimEnd() + "…";
