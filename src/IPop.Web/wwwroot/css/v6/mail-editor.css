@@ -303,7 +303,7 @@
   font-family: Calibri, Carlito, "Segoe UI", -apple-system, system-ui, sans-serif; font-size: 11pt; line-height: 1.5;
   color: var(--ink); background: transparent;
 }
-.mrte-host .jodit-wysiwyg p { margin: 0 0 .5em; }
+.mrte-host .jodit-wysiwyg p { margin: 0; }
 .mrte-host .jodit-wysiwyg blockquote { margin: .5em 0; padding: 2px 0 2px 12px; border-left: 3px solid var(--line-strong); color: var(--ink-2); }
 .mrte-host .jodit-wysiwyg pre { padding: 10px 12px; border-radius: 8px; background: var(--surface-3); font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 10pt; white-space: pre-wrap; }
 .mrte-host .jodit-wysiwyg a { color: #0a66d6; }

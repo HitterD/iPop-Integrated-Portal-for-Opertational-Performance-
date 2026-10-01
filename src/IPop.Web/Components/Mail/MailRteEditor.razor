@@ -195,6 +195,13 @@
                                 <button type="button" class="mrte-chip @On(st.LineHeight == lh)" @onclick='() => Exec("applyLineHeight", lh)'>@lh</button>
                             }
                         </div>
+                        <div class="mrte-pop-title">Space after paragraph</div>
+                        <div class="mrte-chips">
+                            @foreach (var sa in SpacesAfter)
+                            {
+                                <button type="button" class="mrte-chip @On(st.SpaceAfter == sa)" @onclick='() => Exec("spaceAfter", sa)'>@(sa == "0" ? "None" : sa + " pt")</button>
+                            }
+                        </div>
                         <div class="mrte-menu-sep"></div>
                         <div class="mrte-chips">
                             <button type="button" class="mrte-chip @On(st.Sub)" title="Subscript" @onclick='() => Exec("subscript")'>X<sub>2</sub></button>
@@ -232,13 +239,14 @@
     public sealed record RteState(
         bool Bold = false, bool Italic = false, bool Underline = false, bool Strike = false,
         bool Sub = false, bool Sup = false, bool Ul = false, bool Ol = false,
-        string Align = "left", string Font = "", string Size = "", string Block = "p", string LineHeight = "",
+        string Align = "left", string Font = "", string Size = "", string Block = "p", string LineHeight = "", string SpaceAfter = "0",
         bool InTable = false, bool InLink = false, bool Painter = false, bool CanUndo = false, bool CanRedo = false);
 
     internal static readonly string[] Fonts =
         ["Arial", "Calibri", "Cambria", "Georgia", "Helvetica", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana", "Courier New"];
     internal static readonly string[] Sizes = ["8", "9", "10", "11", "12", "14", "16", "18", "20", "24", "28", "32", "36", "48", "72"];
     private static readonly string[] LineHeights = ["1", "1.15", "1.5", "2"];
+    private static readonly string[] SpacesAfter = ["0", "6", "12"];
     private static readonly (string Tag, string Label)[] Blocks =
         [("p", "Normal"), ("h1", "Heading 1"), ("h2", "Heading 2"), ("h3", "Heading 3"), ("blockquote", "Quote"), ("pre", "Code")];
     private static readonly (string Key, string Icon, string Label)[] Aligns =

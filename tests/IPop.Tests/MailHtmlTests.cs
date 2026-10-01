@@ -13,6 +13,14 @@ public class MailHtmlTests
         Assert.Equal(expected, MailHtml.Sanitize(input));
 
     [Fact]
+    public void KeepsParagraphSpacing()
+    {
+        // The editor pins paragraph margins inline so other mail clients show the same spacing.
+        var html = "<p style=\"margin-top: 0; margin-bottom: 6pt\">a</p>";
+        Assert.Equal(html, MailHtml.Sanitize(html));
+    }
+
+    [Fact]
     public void KeepsComposerFormatting()
     {
         var html = "<p><b>Bold</b> <i>it</i> <a href=\"mailto:a@b.c\">m</a> <span class=\"mention\" data-nik=\"123\">@A</span></p>";

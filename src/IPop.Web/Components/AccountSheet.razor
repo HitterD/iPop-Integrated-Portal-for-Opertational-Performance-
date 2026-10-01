@@ -122,6 +122,18 @@
                             </button>
                         </div>
 
+                        <h3 class="acct-h">Preferences</h3>
+                        <div class="acct-group">
+                            <div class="acct-row">
+                                <span class="acct-ic spell"><i data-lucide="spell-check"></i></span>
+                                <span class="acct-k">Spell check</span>
+                                <span class="acct-v"></span>
+                                <button type="button" class="apple-switch @(spellcheck ? "on" : "")" role="switch" aria-checked="@(spellcheck ? "true" : "false")"
+                                        aria-label="Spell check" @onclick="ToggleSpellcheck"><span class="apple-switch-knob"></span></button>
+                            </div>
+                        </div>
+                        <p class="acct-note">Underlines misspelled words while you type. Saved on this device only.</p>
+
                         <h3 class="acct-h">Employee details</h3>
                         <div class="acct-group">
                             <div class="acct-row"><span class="acct-k">Department</span><span class="acct-v">@(me.Department ?? "—")</span></div>
@@ -172,6 +184,7 @@
             ResetForms();
             me = await Auth.LoadMeAsync();
             email = me?.Email ?? "";
+            try { spellcheck = await JS.InvokeAsync<bool>("ipop.spellcheck"); } catch { }
         }
         else if (!IsOpen && reg is not null) { reg.Dispose(); reg = null; }
     }
@@ -187,6 +200,14 @@
     {
         if (busyPw || busyPhoto) return;
         await IsOpenChanged.InvokeAsync(false);
+    }
+
+    private bool spellcheck;
+
+    private async Task ToggleSpellcheck()
+    {
+        spellcheck = !spellcheck;
+        try { await JS.InvokeAsync<bool>("ipop.spellcheck", spellcheck); } catch { }
     }
 
     private void Show(Pane p) { pane = p; pwError = null; currentPw = newPw = confirmPw = ""; }

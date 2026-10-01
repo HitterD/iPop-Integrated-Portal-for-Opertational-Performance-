@@ -9,6 +9,17 @@
 // inner markup of the ORIGINAL <i> — node identity survives re-renders and Blazor's
 // tree stays in sync.
 window.ipop = {
+  // Spell-check: off by default everywhere (the red squiggles distracted people writing in
+  // Indonesian). The spellcheck attribute is inherited, so one on <html> covers every
+  // input, textarea and contenteditable. Per device, in localStorage.
+  spellcheck(on) {
+    if (on !== undefined) {
+      try { localStorage.setItem("ipop.spellcheck", on ? "1" : "0"); } catch { }
+      document.documentElement.setAttribute("spellcheck", on ? "true" : "false");
+      document.querySelectorAll(".jodit-wysiwyg").forEach(el => el.setAttribute("spellcheck", on ? "true" : "false"));
+    }
+    try { return localStorage.getItem("ipop.spellcheck") === "1"; } catch { return false; }
+  },
   // Theme: "light" | "dark". Applied as data-theme on <html>, persisted in
   // localStorage so the choice survives reloads. Default: light.
   theme() {
@@ -1797,7 +1808,7 @@ window.ipop = {
         toolbar: false, statusbar: false, showCharsCounter: false, showWordsCounter: false,
         showXPathInStatusbar: false, showPlaceholder: true, placeholder: placeholder || "",
         language: "en", height: "auto", minHeight: 220, iframe: false, beautifyHTML: false,
-        defaultFontSizePoints: "pt", spellcheck: true, toolbarInlineForSelection: false,
+        defaultFontSizePoints: "pt", spellcheck: ipop.spellcheck(), toolbarInlineForSelection: false,
         askBeforePasteFromWord: false, askBeforePasteHTML: false,
         defaultActionOnPasteFromWord: "insert_as_html", defaultActionOnPaste: "insert_as_html",
         processPasteFromWord: true, nl2brInPlainText: true,
@@ -1820,10 +1831,28 @@ window.ipop = {
         });
         if (dropped) dotNet.invokeMethodAsync("OnNotice", "The image is larger than 2 MB or its format isn't supported, so it wasn't inserted.").catch(() => { });
       };
+      // Plain text (Notepad): one paragraph per line, blank lines kept, nothing added in between.
+      ed.e.on("beforePaste", ev => {
+        const dt = ev && ev.clipboardData;
+        if (!dt) return;
+        const types = Array.from(dt.types || []);
+        if (types.includes("text/html") || types.includes("Files")) return;
+        const text = dt.getData("text/plain");
+        if (!text) return;
+        const esc = l => l.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          .replace(/\t/g, "\u00a0\u00a0\u00a0\u00a0").replace(/ {2}/g, " \u00a0");
+        const lines = text.replace(/\r\n?/g, "\n").split("\n");
+        if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+        ev.preventDefault();
+        ed.s.insertHTML(lines.length === 1 ? esc(lines[0])
+          : lines.map(l => l ? `<p>${esc(l)}</p>` : "<p><br></p>").join(""));
+        return false;
+      });
       ed.e.on("change", () => {
         clearTimeout(st.changeT);
         st.changeT = setTimeout(() => {
           dropBadImages();
+          this._pinMargins(ed);
           const v = ed.value;
           if (v === st.lastValue) return;
           st.lastValue = v;
@@ -1848,6 +1877,27 @@ window.ipop = {
         }
       });
       return true;
+    },
+    // Outlook-style: Enter starts a new paragraph with no gap. The margins are written inline
+    // so the recipient's mail client (whose default <p> margin is 1em) shows the same spacing.
+    _pinMargins(ed) {
+      ed.editor.querySelectorAll("p").forEach(p => {
+        if (!p.style.marginTop) p.style.marginTop = "0";
+        if (!p.style.marginBottom) p.style.marginBottom = "0";
+      });
+    },
+    _blocksInSelection(ed) {
+      const Dom = Jodit.modules.Dom;
+      let range = null;
+      try { const sel = ed.ew.getSelection(); if (sel && sel.rangeCount) range = sel.getRangeAt(0); } catch { }
+      if (!range || !ed.editor.contains(range.commonAncestorContainer)) return [];
+      const sel = "p, h1, h2, h3, h4, blockquote, pre, li";
+      if (range.collapsed) {
+        const n = range.startContainer;
+        const b = Dom.closest(n.nodeType === 1 ? n : n.parentElement, sel.split(", "), ed.editor);
+        return b ? [b] : [];
+      }
+      return Array.from(ed.editor.querySelectorAll(sel)).filter(b => range.intersectsNode(b));
     },
     destroy(id) {
       const st = this._eds[id];
@@ -1899,6 +1949,10 @@ window.ipop = {
         try { tm.getAllSelectedCells().forEach(c => tm.removeSelection(c)); } catch { }
       } else if (cmd === "copyformat") {
         Jodit.defaultOptions.controls.copyformat.exec(ed, ed.s.current() || ed.editor.firstChild, { button: { update() { } } });
+      } else if (cmd === "spaceAfter") {
+        this._pinMargins(ed);
+        this._blocksInSelection(ed).forEach(b => { b.style.marginBottom = arg === "0" ? "0" : arg + "pt"; });
+        ed.synchronizeValues();
       } else if (cmd === "unlink") {
         const cur = ed.s.current();
         const a = cur && Jodit.modules.Dom.closest(cur, "a", ed.editor);
@@ -1996,7 +2050,7 @@ window.ipop = {
       const cur = ed.s.current();
       const el = cur ? (cur.nodeType === 1 ? cur : cur.parentElement) : null;
       const inside = !!(el && ed.editor.contains(el));
-      let font = "", size = "", block = "p", lineHeight = "";
+      let font = "", size = "", block = "p", lineHeight = "", spaceAfter = "0";
       if (inside) {
         const cs = getComputedStyle(el);
         font = (cs.fontFamily || "").split(",")[0].replace(/["']/g, "").trim();
@@ -2006,6 +2060,8 @@ window.ipop = {
         if (b) {
           block = b.nodeName.toLowerCase();
           lineHeight = b.style.lineHeight || "";
+          const mb = parseFloat(b.style.marginBottom || "0");
+          spaceAfter = mb ? String(Math.round(mb)) : "0";
         }
       }
       const hist = ed.history;
@@ -2014,7 +2070,7 @@ window.ipop = {
         sub: q("subscript"), sup: q("superscript"),
         ul: q("insertUnorderedList"), ol: q("insertOrderedList"),
         align: q("justifyCenter") ? "center" : q("justifyRight") ? "right" : q("justifyFull") ? "full" : "left",
-        font, size, block, lineHeight,
+        font, size, block, lineHeight, spaceAfter,
         inTable: !!(inside && Jodit.modules.Dom.closest(el, ["td", "th"], ed.editor)),
         inLink: !!(inside && Jodit.modules.Dom.closest(el, "a", ed.editor)),
         painter: ed.buffer.exists("copy-format"),
@@ -2154,3 +2210,5 @@ if ("serviceWorker" in navigator) {
     try { Blazor.navigateTo(e.data.url); } catch { location.href = e.data.url; }
   });
 }
+
+document.documentElement.setAttribute("spellcheck", ipop.spellcheck() ? "true" : "false");

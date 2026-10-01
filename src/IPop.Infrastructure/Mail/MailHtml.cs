@@ -30,7 +30,7 @@ public static class MailHtml
         };
 
         // Office-grade formatting from the editor and from Word paste.
-        foreach (var p in new[] { "line-height", "margin-left", "padding-left", "vertical-align", "text-decoration",
+        foreach (var p in new[] { "line-height", "margin-left", "margin-top", "margin-bottom", "padding-left", "vertical-align", "text-decoration",
                                   "border-collapse", "width", "height", "font-family", "font-size", "color",
                                   "background-color", "text-align" })
             s.AllowedCssProperties.Add(p);
