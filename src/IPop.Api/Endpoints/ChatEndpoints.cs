@@ -1158,12 +1158,12 @@ public static class ChatEndpoints
             var name = asInline ? null : attachment.FileName;
 
             if (TryLocalFile(env.ContentRootPath, attachment.SynologyServer, attachment.SynologyPath, out var localFile))
-                return Results.File(localFile, mime, name, enableRangeProcessing: true);
+                return CachedFile(http, Results.File(localFile, mime, name, enableRangeProcessing: true));
 
             try
             {
                 var stream = await DownloadAttachmentAsync(fileSvc, attachment.SynologyPath, ct);
-                return Results.File(stream, mime, name);
+                return CachedFile(http, Results.File(stream, mime, name));
             }
             catch (SynoException ex) when (ex.IsAuthFailure)
             {
@@ -1212,12 +1212,12 @@ public static class ChatEndpoints
 
             var thumbMime = attachment.ThumbnailPath!.EndsWith(".thumb.jpg", StringComparison.OrdinalIgnoreCase) ? "image/jpeg" : mime;
             if (TryLocalFile(env.ContentRootPath, attachment.SynologyServer, attachment.ThumbnailPath, out var localThumb))
-                return Results.File(localThumb, thumbMime, fileDownloadName: null, enableRangeProcessing: true);
+                return CachedFile(http, Results.File(localThumb, thumbMime, fileDownloadName: null, enableRangeProcessing: true));
 
             try
             {
                 var stream = await DownloadAttachmentAsync(fileSvc, attachment.ThumbnailPath, ct);
-                return Results.File(stream, thumbMime);
+                return CachedFile(http, Results.File(stream, thumbMime));
             }
             catch (SynoException ex) when (ex.IsAuthFailure)
             {
@@ -1598,6 +1598,15 @@ public static class ChatEndpoints
     }
 
     // ponytail: local disk only when Synology creds are missing; swap to object storage when NAS is required.
+    /// An attachment's bytes never change for its id, so let the browser keep them: reopening a
+    /// room (or a fresh tab) then serves images from the HTTP cache instead of the NAS.
+    /// Set only on success so a transient NAS error is never cached.
+    private static IResult CachedFile(HttpContext http, IResult file)
+    {
+        http.Response.Headers.CacheControl = "private, max-age=604800, immutable";
+        return file;
+    }
+
     internal static bool TryLocalFile(string contentRoot, string server, string? relative, out string full)
     {
         full = "";

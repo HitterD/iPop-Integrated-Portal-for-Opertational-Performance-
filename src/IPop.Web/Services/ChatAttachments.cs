@@ -25,8 +25,9 @@ public enum AttachmentKind
 /// The attachment endpoints sit behind `RequirePermission("chat.read")`, so a plain
 /// `&lt;img src="/api/chat/attachments/..."&gt;` can never authenticate. Everything therefore
 /// goes through `ipop.authBlob`, which fetches with an Authorization header and hands
-/// back a `blob:` URL. This service owns those URLs so they can be revoked when the
-/// user leaves a room instead of leaking until the page is disposed.
+/// back a `blob:` URL. This service owns those URLs and keeps them across room switches
+/// (going back to a room shows its images at once), evicting the least recently used
+/// ones once they add up to more than <see cref="BudgetBytes"/>.
 public class ChatAttachments(AuthState auth, HttpClient http, IJSRuntime js)
 {
     private readonly Dictionary<string, BlobRef> _cache = [];
@@ -37,13 +38,45 @@ public class ChatAttachments(AuthState auth, HttpClient http, IJSRuntime js)
 
     private sealed record BlobRef(string Url, string ContentType, long Size);
 
+    /// Upper bound for the bytes held in object URLs before the oldest are revoked.
+    public const long BudgetBytes = 150L * 1024 * 1024;
+    private readonly LinkedList<string> _lru = new();   // most recently used first
+    private long _bytes;
+
+    private void Touch(string key)
+    {
+        _lru.Remove(key);
+        _lru.AddFirst(key);
+    }
+
+    private void Drop(string key)
+    {
+        if (!_cache.Remove(key, out var r)) return;
+        _lru.Remove(key);
+        _bytes -= r.Size;
+        _ = js.InvokeVoidAsync("ipop.revokeBlob", r.Url);
+    }
+
+    /// Revokes least-recently-used blobs until the cache fits the budget. An <img> that already
+    /// decoded a revoked URL keeps showing it; only a fresh mount refetches.
+    private void Trim()
+    {
+        while (_bytes > BudgetBytes && _lru.Count > 1)
+            Drop(_lru.Last!.Value);
+    }
+
     // ── Cache ────────────────────────────────────────────────────────────────
 
     private static string Key(Guid id, bool thumb) => (thumb ? "t:" : "f:") + id;
 
     /// Cached object URL, or null when it has not been fetched yet.
-    public string? UrlFor(Guid id, bool thumb) =>
-        _cache.TryGetValue(Key(id, thumb), out var r) ? r.Url : null;
+    public string? UrlFor(Guid id, bool thumb)
+    {
+        var key = Key(id, thumb);
+        if (!_cache.TryGetValue(key, out var r)) return null;
+        Touch(key);
+        return r.Url;
+    }
 
     /// True while a fetch for this attachment is running — lets the UI show a skeleton.
     public bool IsLoading(Guid id, bool thumb) => _inFlight.ContainsKey(Key(id, thumb));
@@ -58,7 +91,7 @@ public class ChatAttachments(AuthState auth, HttpClient http, IJSRuntime js)
     public Task<string?> GetAsync(Guid id, bool thumb)
     {
         var key = Key(id, thumb);
-        if (_cache.TryGetValue(key, out var hit)) return Task.FromResult<string?>(hit.Url);
+        if (_cache.TryGetValue(key, out var hit)) { Touch(key); return Task.FromResult<string?>(hit.Url); }
         if (_inFlight.TryGetValue(key, out var pending)) return pending;
 
         var task = FetchAsync(key, id, thumb);
@@ -73,7 +106,7 @@ public class ChatAttachments(AuthState auth, HttpClient http, IJSRuntime js)
         foreach (var thumb in (ReadOnlySpan<bool>)[true, false])
         {
             var key = Key(id, thumb);
-            if (_cache.Remove(key, out var r)) _ = js.InvokeVoidAsync("ipop.revokeBlob", r.Url);
+            Drop(key);
             _inFlight.Remove(key);
         }
     }
@@ -96,7 +129,11 @@ public class ChatAttachments(AuthState auth, HttpClient http, IJSRuntime js)
                 res = await js.InvokeAsync<BlobResult?>("ipop.authBlob2", url, auth.AccessToken);
 
             if (res?.Url is null) return null;
-            _cache[key] = new BlobRef(res.Url, res.Type ?? "", res.Size);
+            Drop(key); // a retry racing an earlier fetch must not leak the first URL
+            _cache[key] = new BlobRef(res.Url, res.Type ?? "", Math.Max(res.Size, 0));
+            _bytes += Math.Max(res.Size, 0);
+            Touch(key);
+            Trim();
             return res.Url;
         }
         catch
@@ -137,13 +174,14 @@ public class ChatAttachments(AuthState auth, HttpClient http, IJSRuntime js)
         await js.InvokeVoidAsync("ipop.authDownload", url, auth.AccessToken, att.FileName);
     }
 
-    /// Revokes every cached object URL. Called on room switch and page dispose so
-    /// blobs do not accumulate for the lifetime of the SPA.
+    /// Revokes every cached object URL (sign-out); room switches rely on the LRU budget instead.
     public void ReleaseAll()
     {
         foreach (var r in _cache.Values)
             _ = js.InvokeVoidAsync("ipop.revokeBlob", r.Url);
         _cache.Clear();
+        _lru.Clear();
+        _bytes = 0;
         _inFlight.Clear();
     }
 

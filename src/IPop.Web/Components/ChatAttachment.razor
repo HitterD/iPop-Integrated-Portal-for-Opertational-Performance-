@@ -151,8 +151,14 @@ else
     {
         if (loadedFor == Attachment.Id) return;
         loadedFor = Attachment.Id;
-        blobUrl = null;
         imageFailed = false;
+        // Already fetched (earlier visit to this room, or the drawer): paint it in this
+        // render instead of flashing the skeleton for a round-trip.
+        var kind = ChatAttachments.Kind(Attachment);
+        blobUrl = kind == AttachmentKind.Image
+            ? Att.UrlFor(Attachment.Id, thumb: true) ?? Att.UrlFor(Attachment.Id, thumb: false)
+            : kind is AttachmentKind.Video or AttachmentKind.Audio ? Att.UrlFor(Attachment.Id, thumb: false) : null;
+        if (blobUrl is not null) return;
         await LoadAsync();
     }
 
@@ -180,6 +186,7 @@ else
         if (loadedFor != id) return;   // component was reused for a different attachment
         blobUrl = url;
         if (url is null && kind == AttachmentKind.Image) imageFailed = true;
+        iconsDirty = true;
         StateHasChanged();
     }
 
@@ -190,6 +197,7 @@ else
     {
         if (retrying) return;
         retrying = true;
+        iconsDirty = true;
         StateHasChanged();
 
         Att.Forget(Attachment.Id);     // drop the cached failure so the fetch actually re-runs
@@ -198,6 +206,7 @@ else
         await LoadAsync();             // loadedFor already equals Attachment.Id, so the result applies
 
         retrying = false;
+        iconsDirty = true;
         StateHasChanged();
     }
 
@@ -211,8 +220,14 @@ else
     /// Low-opacity wash of the accent colour for the icon tile background.
     private static string Tint(string hex) => $"color-mix(in srgb, {hex} 12%, transparent)";
 
+    /// ipop.icons scans the whole document, so only run it when this tile's icons changed
+    /// (first paint, or the failed/retry state swapped them) — not on every parent render.
+    private bool iconsDirty;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (!firstRender && !iconsDirty) return;
+        iconsDirty = false;
         try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
     }
 

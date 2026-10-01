@@ -126,7 +126,7 @@
 }
 
 /* Smooth message entrance */
-.msg {
+.msg.fresh {
   animation: message-enter var(--dur-normal) var(--ease-smooth);
 }
 

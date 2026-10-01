@@ -275,6 +275,9 @@
 .chat-area .msg .bmeta { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; line-height: 1; font-style: normal; font-weight: 400;
   letter-spacing: 0; font-variant-numeric: tabular-nums; white-space: nowrap; user-select: none; color: var(--ink-3); }
 .chat-area .msg.sent .bmeta { color: rgba(255,255,255,.78); }
+/* Deleted own bubbles drop the accent fill, so white meta would vanish. */
+.chat-area .msg.sent .bubble.deleted .bmeta { color: var(--ink-3); }
+.chat-area .msg.sent .bubble.deleted .bmeta .msg-status.read { color: #0A84FF !important; }
 .chat-area .msg .bmeta svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .chat-area .msg .bmeta .meta-pin { width: 11px; height: 11px; }
 .chat-area .msg .bmeta .edited { font-style: italic; }

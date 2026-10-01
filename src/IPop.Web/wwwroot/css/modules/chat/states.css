@@ -48,6 +48,22 @@
 .jump-latest.has-new:active { transform:translateX(-50%) scale(0.96); }
 [data-theme="dark"] .jump-latest.has-new { color:#0e0d0b; }
 .jump-latest.has-new .lucide { width:15px;height:15px; }
+/* Loading skeletons: invisible for the first 300ms so fast loads never flash them. */
+.msg-skel, .room-skel { animation:ipop-skel-in .2s ease .3s both; }
+@keyframes ipop-skel-in { from { opacity:0; } to { opacity:1; } }
+.msg-skel { display:flex;flex-direction:column;gap:10px;padding:18px 4px;margin-top:auto; }
+.msg-skel .sk { height:34px;border-radius:16px; }
+.msg-skel .sk.out { align-self:flex-end; }
+.room-skel { display:flex;flex-direction:column;gap:4px;padding:6px 10px; }
+.room-skel-row { display:flex;align-items:center;gap:12px;padding:8px 6px; }
+.room-skel .sk.av { width:44px;height:44px;border-radius:12px;flex:none; }
+.room-skel .sk-lines { flex:1;display:flex;flex-direction:column;gap:7px; }
+.room-skel .sk-lines .sk { height:11px;border-radius:6px; }
+.msg-skel .sk, .room-skel .sk { display:block;
+  background:linear-gradient(90deg, var(--tray) 25%, var(--line-soft) 37%, var(--tray) 63%);
+  background-size:200% 100%; animation:ipop-skel-shimmer 1.3s linear infinite; }
+@keyframes ipop-skel-shimmer { from { background-position:100% 0; } to { background-position:-100% 0; } }
+.messages.pending-room { flex:1;display:flex;flex-direction:column; }
 .load-older-spin { display:block;width:18px;height:18px;margin:6px auto;border-radius:50%;
   border:2px solid var(--line);border-top-color:var(--accent);animation:ipop-older-spin .8s linear infinite; }
 @keyframes ipop-older-spin { to { transform:rotate(360deg); } }

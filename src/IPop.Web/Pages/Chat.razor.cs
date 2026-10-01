@@ -771,8 +771,17 @@ public partial class Chat
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+        // The conversation pane (composer, messages list) only exists once the room's
+        // details are in; until then the refs point at nothing and binding would no-op.
+        var paneReady = ChatSvc.ActiveRoom is not null && ChatSvc.ActiveRoomId is not null;
+        if (firstRender)
+        {
+            selfRef ??= DotNetObjectReference.Create(this);
+            // C4: global Ctrl+K / Cmd+K quick switcher (document-level, bound once)
+            try { await JS.InvokeVoidAsync("ipop.chatBindQuickSwitcher", selfRef); } catch { }
+        }
         // Bind paste + drag-drop when the composer is in the DOM (retry after room switch).
-        if (!composerPasteBound)
+        if (!composerPasteBound && paneReady)
         {
             try
             {
@@ -782,7 +791,7 @@ public partial class Chat
             }
             catch { /* composer not yet rendered (empty state) — retry next frame */ }
         }
-        if (!composerKeyBound && ChatSvc.ActiveRoomId is not null)
+        if (!composerKeyBound && paneReady)
         {
             try
             {
@@ -801,20 +810,19 @@ public partial class Chat
             }
             catch { }
         }
-        if (!scrollWatchBound && ChatSvc.ActiveRoomId is not null)
+        if (!scrollWatchBound && paneReady)
         {
+            selfRef ??= DotNetObjectReference.Create(this);
             try
             {
-                selfRef ??= DotNetObjectReference.Create(this);
                 await JS.InvokeVoidAsync("ipop.bindScrollWatch", messagesRef, selfRef, 400);
                 scrollWatchBound = true;
             }
             catch { /* older cached ipop.js — the jump button just stays hidden */ }
+            // ipop-22: project/task chip click delegation lives on the same messages element,
+            // so it re-binds with the scroll watch on room switch instead of every render.
+            try { await JS.InvokeVoidAsync("ipop.bindMentionChips", messagesRef, selfRef); } catch { }
         }
-        // ipop-22: bind project/task chip click delegation
-        try { await JS.InvokeVoidAsync("ipop.bindMentionChips", messagesRef, selfRef); } catch { }
-        // C4: global Ctrl+K / Cmd+K quick switcher
-        try { await JS.InvokeVoidAsync("ipop.chatBindQuickSwitcher", selfRef); } catch { }
         if (anchorFromBottom is { } keep && ChatSvc.ActiveMessages.Count > anchorBaseCount)
         {
             // Older rows were prepended: hold the reader's distance from the bottom so the
@@ -958,7 +966,6 @@ public partial class Chat
         try { _ = JS.InvokeVoidAsync("ipop.chatUnbindQuickSwitcher"); } catch { }
         try { _ = JS.InvokeVoidAsync("ipop.mobile.hideTabbar", false); } catch { }
         if (mPanelPushed) try { _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail"); } catch { }
-        Att.ReleaseAll();
         foreach (var p in pendingAttachments)
             if (!string.IsNullOrEmpty(p.PreviewUrl)) _ = JS.InvokeVoidAsync("ipop.revokeBlob", p.PreviewUrl);
         selfRef?.Dispose();
@@ -989,8 +996,19 @@ public partial class Chat
             if (RoomId is not null) Nav.NavigateTo("/chat", replace: true);
         }
         UpdateSubtitle();
-        InvokeAsync(StateHasChanged);
+        // One hub event raises StateChanged + RoomListChanged (and often TypingChanged) back to
+        // back; each used to re-render the whole page. Yield once and paint them together.
+        if (renderQueued) return;
+        renderQueued = true;
+        _ = InvokeAsync(async () =>
+        {
+            await Task.Yield();
+            renderQueued = false;
+            StateHasChanged();
+        });
     }
+
+    private bool renderQueued;
 
     private void OnMessageReceived(IPop.Application.Chat.MessageDto msg)
     {

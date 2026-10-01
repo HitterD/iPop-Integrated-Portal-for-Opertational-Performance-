@@ -147,8 +147,7 @@ public partial class Chat
         scrollWatchBound = false;
         newBelowCount = 0;
         showJumpToLatest = false;
-        // Blob URLs for the previous room's attachments are dead weight once we leave it.
-        Att.ReleaseAll();
+        // Attachment blobs stay cached (LRU-bounded in ChatAttachments) so coming back is instant.
         // ipop-38: persist the outgoing room's half-typed composer text BEFORE clearing,
         // and restore the incoming room's draft. Both draft ops are fire-safe (store
         // swallows storage failures); messageText clears synchronously here so a slow
@@ -161,6 +160,8 @@ public partial class Chat
         pickerOpen = false;
         stickerOpen = false;
         reactPickerMsgId = null;
+        // A cached room paints during OpenRoomAsync; land it at the bottom straight away.
+        scrollToBottom = true;
         try
         {
             await ChatSvc.OpenRoomAsync(roomId);

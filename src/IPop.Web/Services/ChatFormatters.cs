@@ -42,6 +42,15 @@ public static class ChatFormatters
         return pictographic;
     }
 
+    // Shared instances: Regex.Replace(string pattern) re-parses through a small static cache
+    // that every chat render was churning. (Compiled is moot on WASM — no JIT.)
+    private static readonly Regex RxCodeBlock = new(@"```(?:\w+)?\r?\n?(.*?)```", RegexOptions.Singleline);
+    private static readonly Regex RxInlineCode = new(@"`([^`\r\n]+)`");
+    private static readonly Regex RxBold2 = new(@"(?<=^|[^\w])\*\*([^\*\r\n]+?)\*\*(?=[^\w]|$)");
+    private static readonly Regex RxBold1 = new(@"(?<=^|[^\w])\*([^\* \r\n][^\*\r\n]*?)\*(?=[^\w]|$)");
+    private static readonly Regex RxItalic = new(@"(?<=^|[^\w])_([^_ \r\n][^_\r\n]*?)_(?=[^\w]|$)");
+    private static readonly Regex RxStrike = new(@"(?<=^|[^\w])~([^~ \r\n][^~\r\n]*?)~(?=[^\w]|$)");
+
     /// Renders lightweight markdown formatting (bold, italic, code, strikethrough) and preserves linebreaks.
     public static string FormatMarkdown(string html)
     {
@@ -50,25 +59,25 @@ public static class ChatFormatters
         // 1. Extract code blocks ```...``` first to preserve raw content and linebreaks
         var codeBlocks = new List<string>();
         const string blockPlaceholder = "\x1ACODEBLOCK_";
-        html = Regex.Replace(html, @"```(?:\w+)?\r?\n?(.*?)```", m =>
+        html = RxCodeBlock.Replace(html, m =>
         {
             var code = m.Groups[1].Value;
             codeBlocks.Add($"<pre class=\"chat-code\"><code>{code}</code></pre>");
             return $"{blockPlaceholder}{codeBlocks.Count - 1}\x1A";
-        }, RegexOptions.Singleline);
+        });
 
         // 2. Inline code `...`
-        html = Regex.Replace(html, @"`([^`\r\n]+)`", "<code class=\"chat-inline-code\">$1</code>");
+        html = RxInlineCode.Replace(html, "<code class=\"chat-inline-code\">$1</code>");
 
         // 3. Bold **...** or *...*
-        html = Regex.Replace(html, @"(?<=^|[^\w])\*\*([^\*\r\n]+?)\*\*(?=[^\w]|$)", "<strong>$1</strong>");
-        html = Regex.Replace(html, @"(?<=^|[^\w])\*([^\* \r\n][^\*\r\n]*?)\*(?=[^\w]|$)", "<strong>$1</strong>");
+        html = RxBold2.Replace(html, "<strong>$1</strong>");
+        html = RxBold1.Replace(html, "<strong>$1</strong>");
 
         // 4. Italic _..._
-        html = Regex.Replace(html, @"(?<=^|[^\w])_([^_ \r\n][^_\r\n]*?)_(?=[^\w]|$)", "<em>$1</em>");
+        html = RxItalic.Replace(html, "<em>$1</em>");
 
         // 5. Strikethrough ~...~
-        html = Regex.Replace(html, @"(?<=^|[^\w])~([^~ \r\n][^~\r\n]*?)~(?=[^\w]|$)", "<del>$1</del>");
+        html = RxStrike.Replace(html, "<del>$1</del>");
 
         // 6. Convert newlines to <br /> (outside code blocks)
         html = html.Replace("\r\n", "\n").Replace("\n", "<br />");

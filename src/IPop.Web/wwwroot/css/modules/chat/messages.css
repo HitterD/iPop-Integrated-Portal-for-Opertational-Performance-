@@ -261,6 +261,9 @@
   position: relative;
   padding: 0;
   margin-top: 8px;
+}
+/* Only live arrivals animate (ChatState.IsFresh); history paints in place. */
+.msg.fresh {
   animation: message-in var(--dur-normal) var(--ease-smooth);
 }
 

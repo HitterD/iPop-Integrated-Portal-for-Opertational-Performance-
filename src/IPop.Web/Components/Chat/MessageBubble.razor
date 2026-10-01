@@ -261,17 +261,39 @@
         }
     }
 
+    // Mention + markdown rendering is the costliest part of a bubble; reuse it until the
+    // text or the room's member directory actually changes.
+    private string? _htmlFor;
+    private ChatRoomDto? _htmlRoom;
+    private string _html = "";
+
     private string RenderedContent
     {
         get
         {
             if (string.IsNullOrWhiteSpace(Message.Content) || IsAttachmentPlaceholder(Message))
                 return "";
+            var room = ChatSvc.ActiveRoom;
+            if (ReferenceEquals(_htmlFor, Message.Content) && ReferenceEquals(_htmlRoom, room)) return _html;
             var text = Message.Content.StartsWith("[forwarded]") ? Message.Content.Substring("[forwarded]".Length).TrimStart() : Message.Content;
-            var dir = new SimpleDir(ChatSvc.ActiveRoom);
-            var html = MentionRenderer.ToHtml(text, dir, ChatSvc.ActiveRoom?.Type == "group", Auth.Me?.Nik, LegacyMentionNames(ChatSvc.ActiveRoom));
-            return ChatFormatters.FormatMarkdown(html);
+            var dir = new SimpleDir(room);
+            var html = MentionRenderer.ToHtml(text, dir, room?.Type == "group", Auth.Me?.Nik, LegacyMentionNames(room));
+            (_htmlFor, _htmlRoom, _html) = (Message.Content, room, ChatFormatters.FormatMarkdown(html));
+            return _html;
         }
+    }
+
+    /// The chat page re-renders on every hub event (typing, presence, other rooms); a bubble
+    /// only needs to when something it draws changed. MessageDto is an immutable record that
+    /// ChatState swaps on edit/delete/reaction/receipt, so a reference check covers the message.
+    private (MessageDto, bool, bool, bool, bool, ChatRoomDto?, string)? _drawn;
+
+    protected override bool ShouldRender()
+    {
+        var now = (Message, IsPinned, IsGroup, isPending, isFailed, ChatSvc.ActiveRoom, AvatarPhotos.Style(Message.SenderNik));
+        if (_drawn is { } d && d.Equals(now)) return false;
+        _drawn = now;
+        return true;
     }
 
     // Icon for the centred system pill, keyed off the server's fixed templates (ChatService).

@@ -287,7 +287,17 @@
                 }
             }
 
-            @if (!rooms.Any())
+            @if (!rooms.Any() && !ChatSvc.RoomsLoaded && !searchActive)
+            {
+                @* Shimmer fades in only if the first fetch takes longer than ~300ms. *@
+                <div class="room-skel" role="status" aria-label="Loading conversations">
+                    @for (var i = 0; i < 7; i++)
+                    {
+                        <div class="room-skel-row"><span class="sk av"></span><span class="sk-lines"><span class="sk" style="width:@(48 + i * 7 % 30)%"></span><span class="sk" style="width:@(70 - i * 5 % 25)%"></span></span></div>
+                    }
+                </div>
+            }
+            else if (!rooms.Any())
             {
                 <div class="empty-state">
                     <i data-lucide="message-circle"></i>
@@ -496,7 +506,15 @@
 
                     @* ---- Messages ---- *@
                     <div class="messages" @ref="messagesRef">
-                        @if (ChatSvc.HasOlderMessages)
+                        @if (ChatSvc.IsLoadingMessages && ChatSvc.ActiveMessages.Count == 0)
+                        {
+                            <div class="msg-skel" role="status" aria-label="Loading messages">
+                                <span class="sk in" style="width:46%"></span><span class="sk in" style="width:62%"></span>
+                                <span class="sk out" style="width:38%"></span><span class="sk in" style="width:54%"></span>
+                                <span class="sk out" style="width:58%"></span><span class="sk out" style="width:30%"></span>
+                            </div>
+                        }
+                        else if (ChatSvc.HasOlderMessages)
                         {
                             <div class="load-older">
                                 @if (loadingOlder)
@@ -581,7 +599,7 @@
                             prevType = msg.Type;
                             var currentMsg = msg;
 
-                            <div @key="msg.Id" data-msg-id="@msg.Id" class="@msgClass @(mToolsMsgId == msg.Id ? "m-tools" : "") @(editingMsgId == msg.Id ? "editing" : "")" @onclick="() => ToggleMobileTools(currentMsg.Id)" @oncontextmenu="(e) => ShowCtx(currentMsg.Id, e)" @oncontextmenu:preventDefault>
+                            <div @key="msg.Id" data-msg-id="@msg.Id" class="@msgClass @(ChatSvc.IsFresh(msg.Id) ? "fresh" : "") @(mToolsMsgId == msg.Id ? "m-tools" : "") @(editingMsgId == msg.Id ? "editing" : "")" @onclick="() => ToggleMobileTools(currentMsg.Id)" @oncontextmenu="(e) => ShowCtx(currentMsg.Id, e)" @oncontextmenu:preventDefault>
                                 @if (msg.Type != "system" && msg.Type != "emergency" && editingMsgId != msg.Id)
                                 {
                                     var pinnedMsg = IsMsgPinned(currentMsg.Id);
@@ -1482,6 +1500,34 @@
                     </div>
                 </div>
             }
+        }
+        else if (ChatSvc.ActiveRoomId is { } pendingRoomId)
+        {
+            @* Opening a room not seen yet this session: header from the list row at once,
+               messages skeleton until the room details and page 1 land. *@
+            var listRow = ChatSvc.DirectRooms.Concat(ChatSvc.GroupRooms).FirstOrDefault(r => r.Id == pendingRoomId);
+            <div class="conv-header">
+                <button type="button" class="m-back" aria-label="Back" @onclick="MobileBackToList" @onclick:stopPropagation>
+                    <i data-lucide="chevron-left"></i>
+                </button>
+                @if (listRow is not null)
+                {
+                    <div class="header-avatar-btn @(listRow.Type == "dm" ? "person-av" : "group-av")" style="background:@GetRoomColor(listRow)">
+                        @if (listRow.AvatarUrl is not null) { <img class="room-photo" src="@PhotoUrl(listRow.AvatarUrl)" alt="" style="width:100%;height:100%;border-radius:inherit" /> }
+                        else { @GetRoomInitials(listRow) }
+                    </div>
+                    <div class="header-info">
+                        <div class="header-name-row"><span class="header-name">@GetRoomName(listRow)</span></div>
+                    </div>
+                }
+            </div>
+            <div class="messages pending-room">
+                <div class="msg-skel" role="status" aria-label="Loading messages">
+                                <span class="sk in" style="width:46%"></span><span class="sk in" style="width:62%"></span>
+                                <span class="sk out" style="width:38%"></span><span class="sk in" style="width:54%"></span>
+                                <span class="sk out" style="width:58%"></span><span class="sk out" style="width:30%"></span>
+                            </div>
+            </div>
         }
         else
         {

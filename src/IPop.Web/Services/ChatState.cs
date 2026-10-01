@@ -121,6 +121,44 @@ public class ChatState : IAsyncDisposable
     public event Action? PracticeHeld;
     public int MessagePage { get; private set; } = 1;
     public bool HasOlderMessages { get; private set; }
+    /// True while a room is opening with nothing cached to show yet (drives the skeleton).
+    public bool IsLoadingMessages { get; private set; }
+    /// False until the first room-list fetch has answered (drives the room-list skeleton).
+    public bool RoomsLoaded { get; private set; }
+
+    /// Last-seen state of recently opened rooms, so switching back paints at once and
+    /// page 1 refreshes silently behind it. Only the newest page is kept per room.
+    private sealed record RoomSnapshot(ChatRoomDto? Room, List<MessageDto> Messages, bool HasOlder);
+    private readonly Dictionary<Guid, RoomSnapshot> _roomCache = [];
+    private readonly LinkedList<Guid> _roomCacheOrder = new();
+    private const int RoomCacheLimit = 30;
+
+    private void SnapshotActiveRoom()
+    {
+        if (ActiveRoomId is not { } id || ActiveMessages.Count == 0 || PracticeSend is not null) return;
+        // Optimistic bubbles belong to the outbox, not the server's history.
+        var msgs = ActiveMessages.Where(m => !_outbox.ContainsKey(m.Id)).TakeLast(50).ToList();
+        if (msgs.Count == 0) return;
+        _roomCache[id] = new RoomSnapshot(ActiveRoom, msgs, HasOlderMessages || ActiveMessages.Count > msgs.Count);
+        _roomCacheOrder.Remove(id);
+        _roomCacheOrder.AddFirst(id);
+        while (_roomCacheOrder.Count > RoomCacheLimit)
+        {
+            _roomCache.Remove(_roomCacheOrder.Last!.Value);
+            _roomCacheOrder.RemoveLast();
+        }
+    }
+
+    /// Messages that arrived (or were sent) while the room was open. Only these play the
+    /// entrance animation; history painted on open must not cascade in row by row.
+    private readonly HashSet<Guid> _fresh = [];
+    public bool IsFresh(Guid messageId) => _fresh.Contains(messageId);
+
+    private void ForgetRoom(Guid roomId)
+    {
+        _roomCache.Remove(roomId);
+        _roomCacheOrder.Remove(roomId);
+    }
     public int TotalUnread => DirectRooms.Sum(r => r.UnreadCount) + GroupRooms.Sum(r => r.UnreadCount);
     public HashSet<string> TypingUsers { get; } = [];
 
@@ -270,6 +308,7 @@ public class ChatState : IAsyncDisposable
         _directPage = 1;
         _groupPage = 1;
         foreach (var r in DirectRooms.Concat(GroupRooms).Where(r => r.HasUnreadMention)) _mentionFlags[r.Id] = true;
+        RoomsLoaded = true;
         RoomListChanged?.Invoke();
         StateChanged?.Invoke();
     }
@@ -346,12 +385,27 @@ public class ChatState : IAsyncDisposable
         _openCts = cts;
         var ct = cts.Token;
 
+        SnapshotActiveRoom();
+        _fresh.Clear();
         ActiveRoomId = roomId;
         RoomOpened?.Invoke(roomId);
-        ActiveMessages = [];
         MessagePage = 1;
-        HasOlderMessages = false;
         TypingUsers.Clear();
+        if (_roomCache.TryGetValue(roomId, out var snap))
+        {
+            // Paint what we saw last time; the fetches below replace it silently.
+            ActiveRoom = snap.Room;
+            ActiveMessages = snap.Messages.ToList();
+            HasOlderMessages = snap.HasOlder;
+            IsLoadingMessages = false;
+        }
+        else
+        {
+            ActiveRoom = null;
+            ActiveMessages = [];
+            HasOlderMessages = false;
+            IsLoadingMessages = true;
+        }
         StateChanged?.Invoke();
 
         try
@@ -359,10 +413,10 @@ public class ChatState : IAsyncDisposable
             // Deliberately do NOT LeaveRoom(prevRoom): the hub only auto-joins every room
             // once, on connect. Leaving a room on switch permanently stopped its newMessage
             // events, so unread badges and previews for background rooms went stale.
-            await LoadActiveRoomAsync(ct);
+            // Room details and page 1 are independent: fetch them side by side.
+            await Task.WhenAll(LoadActiveRoomAsync(ct), LoadMessagesAsync(1, ct));
             if (ct.IsCancellationRequested) return;
-            await LoadMessagesAsync(1, ct);
-            if (ct.IsCancellationRequested) return;
+            if (ActiveRoom is { Type: "group" }) _ = RefreshGroupReadCountsAsync(roomId, immediate: true);
             if (_hub?.State == HubConnectionState.Connected)
             {
                 await _hub.InvokeAsync("JoinRoom", roomId);
@@ -381,6 +435,7 @@ public class ChatState : IAsyncDisposable
             if (_openCts == cts) { _openCts.Dispose(); _openCts = null; }
             else cts.Dispose();
             if (_openingRoomId == roomId) _openingRoomId = null;
+            if (ActiveRoomId == roomId) IsLoadingMessages = false;
             StateChanged?.Invoke();
         }
     }
@@ -427,9 +482,11 @@ public class ChatState : IAsyncDisposable
         }
         MessagePage = page;
         HasOlderMessages = page * result.PageSize < result.TotalCount;
+        IsLoadingMessages = false;
         StateChanged?.Invoke();
         // Group bubbles show reader avatars; the page payload only carries counts.
-        if (ActiveRoom is { Type: "group" }) _ = RefreshGroupReadCountsAsync(roomId.Value, immediate: true);
+        // (OpenRoomAsync fetches the room alongside page 1 and refreshes once both land.)
+        if (ActiveRoom is { Type: "group" } && _openingRoomId != roomId) _ = RefreshGroupReadCountsAsync(roomId.Value, immediate: true);
     }
 
     /// Single-flight: a double click (or JumpToMessage looping while a click is in flight)
@@ -497,7 +554,9 @@ public class ChatState : IAsyncDisposable
     public void CloseActiveRoom()
     {
         if (ActiveRoomId is null && ActiveRoom is null) return;
+        SnapshotActiveRoom();
         ActiveRoomId = null;
+        IsLoadingMessages = false;
         ActiveRoom = null;
         ActiveMessages = [];
         MessagePage = 1;
@@ -554,9 +613,10 @@ public class ChatState : IAsyncDisposable
         if (PracticeSend?.Invoke(roomId.Value, content) is var (mine, reply))
         {
             ActiveMessages.Add(mine);
+            _fresh.Add(mine.Id);
             StateChanged?.Invoke();
             await Task.Delay(1400);
-            if (ActiveRoomId == roomId) { ActiveMessages.Add(reply()); StateChanged?.Invoke(); }
+            if (ActiveRoomId == roomId) { var r = reply(); _fresh.Add(r.Id); ActiveMessages.Add(r); StateChanged?.Invoke(); }
             return;
         }
 
@@ -599,6 +659,7 @@ public class ChatState : IAsyncDisposable
                     ? new ReplyPreviewDto(src.SenderName, src.Content)
                     : null;
 
+            _fresh.Add(tempId);
             ActiveMessages.Add(new MessageDto(
                 tempId, roomId, Guid.Empty,
                 _auth.Me?.Name ?? "You", _auth.Me?.Nik ?? "",
@@ -738,6 +799,7 @@ public class ChatState : IAsyncDisposable
             else if (ActiveMessages.All(m => m.Id != message.Id))
             {
                 ActiveMessages.Add(message);
+                _fresh.Add(message.Id);
                 MessageReceived?.Invoke(message);
                 _ = MarkReadAsync(message.Id);
             }
@@ -1143,6 +1205,7 @@ public class ChatState : IAsyncDisposable
     private async Task OnRemovedFromRoomAsync(Guid roomId)
     {
         if (_drafts != null) try { await _drafts.RemoveAsync(roomId); } catch { }
+        ForgetRoom(roomId);
         if (roomId != ActiveRoomId) { await LoadRoomsAsync(); return; }
         try { await _hub!.InvokeAsync("LeaveRoom", roomId); } catch { }
         ActiveRoomId = null;
@@ -1172,6 +1235,8 @@ public class ChatState : IAsyncDisposable
         _openCts?.Cancel(); _openCts?.Dispose(); _openCts = null;
         _openingRoomId = null;
         _markedRead.Clear();
+        _roomCache.Clear();
+        _roomCacheOrder.Clear();
         foreach (var cts in _typingCts.Values) { cts.Cancel(); cts.Dispose(); }
         _typingCts.Clear();
         TypingUsers.Clear();
