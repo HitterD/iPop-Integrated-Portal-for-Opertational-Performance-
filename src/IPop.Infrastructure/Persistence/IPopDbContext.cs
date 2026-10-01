@@ -15,6 +15,9 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<Division> Divisions => Set<Division>();
     public DbSet<OrgNode> OrgNodes => Set<OrgNode>();
     public DbSet<UserOrgNode> UserOrgNodes => Set<UserOrgNode>();
+    public DbSet<OrgPosition> OrgPositions => Set<OrgPosition>();
+    public DbSet<OrgPositionHolder> OrgPositionHolders => Set<OrgPositionHolder>();
+    public DbSet<OrgChartPublication> OrgChartPublications => Set<OrgChartPublication>();
     public DbSet<DirGroup> DirGroups => Set<DirGroup>();
     public DbSet<UserDirGroup> UserDirGroups => Set<UserDirGroup>();
     public DbSet<User> Users => Set<User>();
@@ -243,6 +246,23 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.OrgNode).WithMany(n => n.Members).HasForeignKey(x => x.OrgNodeId).OnDelete(DeleteBehavior.Cascade);
         });
+        b.Entity<OrgPosition>(e =>
+        {
+            e.Property(x => x.Title).HasMaxLength(200);
+            // NoAction (checked at statement end) so Publish can replace the whole chart in one delete.
+            e.HasOne(x => x.Parent).WithMany().HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.NoAction);
+            e.HasOne(x => x.Department).WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.Site).WithMany().HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.SetNull);
+            e.HasIndex(x => x.ParentId);
+        });
+        b.Entity<OrgPositionHolder>(e =>
+        {
+            e.HasKey(x => new { x.PositionId, x.UserId });
+            e.HasOne(x => x.Position).WithMany(p => p.Holders).HasForeignKey(x => x.PositionId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.UserId);
+        });
+        b.Entity<OrgChartPublication>(e => e.Property(x => x.PublishedByNik).HasMaxLength(50));
         b.Entity<DirGroup>(e =>
         {
             e.HasOne(x => x.Parent).WithMany().HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Restrict);

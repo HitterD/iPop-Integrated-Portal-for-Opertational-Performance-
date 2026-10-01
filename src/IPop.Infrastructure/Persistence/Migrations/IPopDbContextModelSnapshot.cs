@@ -792,6 +792,33 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("ChatRoomUserSettings");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ChatSavedMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MessageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("SavedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MessageId");
+
+                    b.HasIndex("UserId", "MessageId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "SavedAt");
+
+                    b.ToTable("ChatSavedMessages");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ChatSticker", b =>
                 {
                     b.Property<Guid>("Id")
@@ -827,33 +854,6 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("IsOfficial");
 
                     b.ToTable("ChatStickers");
-                });
-
-            modelBuilder.Entity("IPop.Core.Entities.ChatSavedMessage", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("MessageId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("SavedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("MessageId");
-
-                    b.HasIndex("UserId", "MessageId")
-                        .IsUnique();
-
-                    b.HasIndex("UserId", "SavedAt");
-
-                    b.ToTable("ChatSavedMessages");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.Department", b =>
@@ -2547,6 +2547,29 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("NotificationRequests");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.OrgChartPublication", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("PositionCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("PublishedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PublishedByNik")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("OrgChartPublications");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.OrgNode", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2579,6 +2602,58 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("ParentId");
 
                     b.ToTable("OrgNodes");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.OrgPosition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("ParentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SiteId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("ParentId");
+
+                    b.HasIndex("SiteId");
+
+                    b.ToTable("OrgPositions");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.OrgPositionHolder", b =>
+                {
+                    b.Property<Guid>("PositionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("PositionId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("OrgPositionHolders");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.PasswordResetToken", b =>
@@ -3555,6 +3630,12 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<int>("FailedLoginCount")
                         .HasColumnType("integer");
 
+                    b.Property<string>("HrisManagerNik")
+                        .HasColumnType("text");
+
+                    b.Property<string>("HrisPosition")
+                        .HasColumnType("text");
+
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
@@ -3620,26 +3701,6 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("SiteId");
 
                     b.ToTable("Users");
-                });
-
-            modelBuilder.Entity("IPop.Core.Entities.UserSticker", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("StickerId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("AddedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("UserId", "StickerId");
-
-                    b.HasIndex("StickerId");
-
-                    b.HasIndex("UserId", "AddedAt");
-
-                    b.ToTable("UserStickers");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.UserBlock", b =>
@@ -3784,6 +3845,26 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("RoleId");
 
                     b.ToTable("UserRoles");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.UserSticker", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StickerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("AddedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId", "StickerId");
+
+                    b.HasIndex("StickerId");
+
+                    b.HasIndex("UserId", "AddedAt");
+
+                    b.ToTable("UserStickers");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.UserTutorialState", b =>
@@ -4177,17 +4258,6 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("IPop.Core.Entities.ChatSticker", b =>
-                {
-                    b.HasOne("IPop.Core.Entities.User", "CreatedBy")
-                        .WithMany()
-                        .HasForeignKey("CreatedById")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("CreatedBy");
-                });
-
             modelBuilder.Entity("IPop.Core.Entities.ChatSavedMessage", b =>
                 {
                     b.HasOne("IPop.Core.Entities.ChatMessage", "Message")
@@ -4205,6 +4275,17 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Message");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ChatSticker", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedBy");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.Department", b =>
@@ -4827,6 +4908,49 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Parent");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.OrgPosition", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("IPop.Core.Entities.OrgPosition", "Parent")
+                        .WithMany()
+                        .HasForeignKey("ParentId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("IPop.Core.Entities.Site", "Site")
+                        .WithMany()
+                        .HasForeignKey("SiteId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Department");
+
+                    b.Navigation("Parent");
+
+                    b.Navigation("Site");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.OrgPositionHolder", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.OrgPosition", "Position")
+                        .WithMany("Holders")
+                        .HasForeignKey("PositionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Position");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.PasswordResetToken", b =>
                 {
                     b.HasOne("IPop.Core.Entities.User", "User")
@@ -5250,25 +5374,6 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Site");
                 });
 
-            modelBuilder.Entity("IPop.Core.Entities.UserSticker", b =>
-                {
-                    b.HasOne("IPop.Core.Entities.ChatSticker", "Sticker")
-                        .WithMany()
-                        .HasForeignKey("StickerId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("IPop.Core.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Sticker");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("IPop.Core.Entities.UserBlock", b =>
                 {
                     b.HasOne("IPop.Core.Entities.User", "BlockedUser")
@@ -5380,6 +5485,25 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("Role");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.UserSticker", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.ChatSticker", "Sticker")
+                        .WithMany()
+                        .HasForeignKey("StickerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Sticker");
 
                     b.Navigation("User");
                 });
@@ -5502,6 +5626,11 @@ namespace IPop.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("IPop.Core.Entities.OrgNode", b =>
                 {
                     b.Navigation("Members");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.OrgPosition", b =>
+                {
+                    b.Navigation("Holders");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.Permission", b =>

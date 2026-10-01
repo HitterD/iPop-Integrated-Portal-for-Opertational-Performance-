@@ -12,10 +12,15 @@ public class User
     public string? PasswordHash { get; set; }
     public bool MustChangePassword { get; set; } = true;
 
+    /// Chart position title, written on org chart Publish (null = not in the chart).
     public string? Position { get; set; }
+    /// What HRIS said at insert time. Kept because Publish overwrites Position/ManagerNik.
+    public string? HrisPosition { get; set; }
+    public string? HrisManagerNik { get; set; }
     public Guid? DepartmentId { get; set; }
     public Guid? SiteId { get; set; }            // admin-assigned; HRIS never touches it
     public Guid? DivisionId { get; set; }        // admin-assigned; syncs Site/Department from the Division's parents
+    /// First holder of the nearest filled parent position in the org chart, written on Publish.
     public string? ManagerNik { get; set; }
     public string? Extension { get; set; }
     public string? Location { get; set; }

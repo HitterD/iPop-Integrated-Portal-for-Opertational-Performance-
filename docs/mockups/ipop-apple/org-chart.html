@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iPop — Organization chart editor (mockup)</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<!--
+  Mockup for the editable org chart (decisions: memory org-chart-editor-decisions, 2026-10-01).
+  Real SJA Sepanjang units, fictional people. Everything is in-memory; nothing is saved.
+-->
+<style>
+:root {
+  --app: #f6f5f3; --surface: #fff; --surface-2: #faf9f7; --surface-3: #f2f1ee;
+  --line: #ebe9e5; --line-2: #dedbd5; --stem: #cfcbc4;
+  --ink: #191816; --ink-2: #5d5a54; --ink-3: #8f8c85; --ink-4: #b5b2ab;
+  --accent: #2e9d6b; --accent-ink: #1d6646; --accent-soft: #e7f4ed;
+  --danger: #c2442e; --danger-soft: #fbeeea; --warn: #a8760c; --warn-soft: #fdf6e7; --info: #2563eb; --info-soft: #eef4ff;
+  --sh-card: 0 1px 2px rgba(25,24,22,.05); --sh-pop: 0 16px 40px -12px rgba(25,24,22,.25);
+  --r: 14px;
+}
+[data-theme=dark] {
+  --app: #131211; --surface: #1c1b19; --surface-2: #232220; --surface-3: #201f1d;
+  --line: #302e2b; --line-2: #3b3834; --stem: #4a4742;
+  --ink: #f2f0ec; --ink-2: #b0ada6; --ink-3: #85817a; --ink-4: #615d57;
+  --accent: #4cd787; --accent-ink: #86e5b0; --accent-soft: rgba(76,215,135,.13);
+  --danger: #f08a74; --danger-soft: rgba(240,138,116,.13); --warn: #e0b44a; --warn-soft: rgba(224,180,74,.13); --info: #7aa7ff; --info-soft: rgba(122,167,255,.13);
+  --sh-card: 0 1px 2px rgba(0,0,0,.3); --sh-pop: 0 16px 40px -12px rgba(0,0,0,.6);
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; font: 13px/1.4 Inter, -apple-system, "Segoe UI", system-ui, sans-serif; background: var(--app); color: var(--ink); overflow: hidden; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+svg.lucide { width: 16px; height: 16px; stroke-width: 1.9; flex: none; }
+
+/* ── shell (matches the current Admin screen) ── */
+.top { height: 62px; display: flex; align-items: center; padding: 0 24px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.top h1 { margin: 0; font-size: 20px; letter-spacing: -.01em; }
+.top small { display: block; color: var(--ink-3); font-size: 12px; }
+.top .sp { flex: 1; }
+.icon-btn { width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); display: grid; place-items: center; }
+.icon-btn:hover { background: var(--surface-2); }
+.shell { display: flex; height: calc(100% - 62px); }
+.side { width: 232px; flex: none; margin: 14px 0 14px 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 10px 8px; align-self: flex-start; }
+.side .lab { font-size: 11px; font-weight: 600; color: var(--ink-3); letter-spacing: .04em; padding: 10px 10px 4px; }
+.side a { display: flex; gap: 10px; padding: 7px 10px; border-radius: 12px; color: var(--ink); text-decoration: none; align-items: center; }
+.side a b { display: block; font-weight: 600; font-size: 13px; }
+.side a span { font-size: 11px; color: var(--ink-3); }
+.side a.on { background: var(--accent-soft); }
+.side a.on b { color: var(--accent-ink); }
+.side .ic { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; flex: none; }
+.side .ic svg { width: 15px; height: 15px; }
+main { flex: 1; min-width: 0; padding: 16px 24px 16px 22px; display: flex; flex-direction: column; }
+main > h2 { margin: 0; font-size: 22px; letter-spacing: -.01em; }
+main > .sub { color: var(--ink-3); margin: 2px 0 12px; }
+.seg { display: inline-flex; background: var(--surface-3); border-radius: 10px; padding: 3px; align-self: flex-start; }
+.seg button { border: 0; background: none; padding: 5px 30px; border-radius: 8px; font-weight: 500; }
+.seg button.on { background: var(--surface); box-shadow: var(--sh-card); }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; margin-top: 12px; flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+.toolbar { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.toolbar .ttl b { font-size: 15px; }
+.toolbar .ttl span { color: var(--ink-3); margin-left: 8px; font-size: 12px; }
+.toolbar .sp { flex: 1; }
+.btn { height: 32px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); display: inline-flex; align-items: center; gap: 6px; font-weight: 500; white-space: nowrap; }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+[data-theme=dark] .btn.primary { color: #0d2a1b; }
+.btn.primary:hover { filter: brightness(1.06); background: var(--accent); }
+.btn.ghost { border-color: transparent; background: none; }
+.btn.danger { color: var(--danger); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn svg { width: 15px; height: 15px; }
+.field { height: 32px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; }
+.field input, .field select { border: 0; outline: 0; background: none; height: 100%; }
+.field input { width: 170px; }
+.field .cnt { color: var(--ink-3); font-size: 11px; white-space: nowrap; }
+.zoomer { display: inline-flex; align-items: center; border: 1px solid var(--line-2); border-radius: 10px; height: 32px; }
+.zoomer button { border: 0; background: none; width: 30px; height: 100%; display: grid; place-items: center; }
+.zoomer span { min-width: 44px; text-align: center; font-size: 12px; color: var(--ink-2); }
+
+.draftbar { display: none; align-items: center; gap: 10px; padding: 8px 14px; background: var(--warn-soft); border-bottom: 1px solid var(--line); color: var(--ink-2); }
+.draftbar.on { display: flex; }
+.draftbar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+.draftbar b { color: var(--ink); }
+.draftbar .sp { flex: 1; }
+.draftbar .hint { font-size: 12px; color: var(--ink-3); }
+
+/* ── chart canvas ── */
+.body { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; overflow: hidden; }
+.canvas { flex: 1; overflow: hidden; position: relative; touch-action: none; background:
+  radial-gradient(circle, var(--line-2) 1px, transparent 1.2px) 0 0 / 22px 22px, var(--surface-2); cursor: grab; }
+.canvas.panning { cursor: grabbing; user-select: none; }
+.zoom { position: absolute; left: 0; top: 0; width: max-content; padding: 40px 48px 60px; transform-origin: 0 0; will-change: transform; }
+.zoom.anim { transition: transform .35s cubic-bezier(.16,1,.3,1); }
+.oc { display: flex; justify-content: center; }
+.oc ul { display: flex; justify-content: center; padding: 22px 0 0; margin: 0; position: relative; }
+.oc > ul { padding-top: 0; }
+.oc li { list-style: none; position: relative; padding: 22px 8px 0; display: flex; flex-direction: column; align-items: center; }
+.oc li::before, .oc li::after { content: ''; position: absolute; top: 0; right: 50%; width: 50%; height: 22px; border-top: 1.5px solid var(--stem); }
+.oc li::after { right: auto; left: 50%; border-left: 1.5px solid var(--stem); }
+.oc li:only-child::before, .oc li:only-child::after { display: none; }
+.oc li:only-child { padding-top: 0; }
+.oc li:first-child::before, .oc li:last-child::after { border: 0; }
+.oc li:last-child::before { border-right: 1.5px solid var(--stem); border-radius: 0 8px 0 0; }
+.oc li:first-child::after { border-radius: 8px 0 0 0; }
+.oc ul ul::before { content: ''; position: absolute; top: 0; left: 50%; height: 22px; border-left: 1.5px solid var(--stem); }
+.oc > ul > li { padding-top: 0; }
+.oc > ul > li::before, .oc > ul > li::after { display: none; }
+/* compact: a row of leaves is stacked vertically with a side rail */
+.stack { position: relative; padding-top: 34px; width: 210px; display: flex; flex-direction: column; gap: 8px; }
+.stack::before { content: ''; position: absolute; top: 0; left: 12px; width: calc(50% - 12px); height: 16px; border-right: 1.5px solid var(--stem); border-bottom: 1.5px solid var(--stem); border-radius: 0 0 8px 0; }
+.sw { position: relative; padding-left: 24px; }
+.sw::before { content: ''; position: absolute; left: 12px; top: -8px; height: calc(50% + 8px); width: 12px; border-left: 1.5px solid var(--stem); border-bottom: 1.5px solid var(--stem); border-radius: 0 0 0 8px; }
+.sw:first-child::before { top: -18px; height: calc(50% + 18px); }
+.sw:not(:last-child)::after { content: ''; position: absolute; left: 12px; top: 50%; bottom: -8px; border-left: 1.5px solid var(--stem); }
+.sw .pc { width: 186px; }
+
+/* position card */
+.pc { width: 210px; display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+  box-shadow: var(--sh-card), inset 3px 0 0 var(--u); position: relative; cursor: pointer; text-align: left; transition: box-shadow .15s, transform .15s; }
+.pc:hover { box-shadow: var(--sh-pop), inset 3px 0 0 var(--u); }
+.pc.vacant { border-style: dashed; border-color: var(--line-2); background: var(--surface-2); }
+.pc.vacant .pc-tx b { color: var(--ink-3); font-weight: 500; font-style: italic; }
+.pc.sel { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pc.hit { background: var(--warn-soft); outline: 2px solid var(--warn); outline-offset: 2px; }
+.pc.dragging { opacity: .35; }
+.pc.root { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.pc.root .pc-tx span { color: var(--ink-4); }
+.pc-tx { min-width: 0; flex: 1; }
+.pc-tx b { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-tx span { display: block; font-size: 11.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pc-badge { position: absolute; top: -8px; right: 10px; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 99px; background: var(--info-soft); color: var(--info); border: 1px solid var(--surface); }
+.av { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; font-size: 12px; font-weight: 600; color: #fff; flex: none; }
+.av.sm { width: 26px; height: 26px; border-radius: 7px; font-size: 10.5px; }
+.av.empty { background: var(--surface-3); color: var(--ink-3); border: 1px dashed var(--line-2); }
+.avs { display: flex; flex: none; }
+.avs .av { width: 24px; height: 24px; border-radius: 7px; font-size: 10px; border: 2px solid var(--surface); margin-left: -8px; }
+.avs .av:first-child { margin-left: 0; }
+.pc-kids { position: absolute; left: 50%; bottom: -11px; transform: translateX(-50%); height: 20px; padding: 0 7px; border-radius: 99px; border: 1px solid var(--line-2); background: var(--surface);
+  font-size: 11px; font-weight: 600; color: var(--ink-2); display: inline-flex; align-items: center; gap: 2px; z-index: 2; }
+.pc-kids svg { width: 12px; height: 12px; }
+.pc-kids:hover { border-color: var(--accent); color: var(--accent-ink); }
+.pc-add { position: absolute; right: -11px; top: 50%; transform: translateY(-50%) scale(.6); width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--accent); color: #fff;
+  display: grid; place-items: center; opacity: 0; transition: .15s; z-index: 3; }
+.pc-add svg { width: 13px; height: 13px; stroke-width: 2.6; }
+.pc:hover .pc-add { opacity: 1; transform: translateY(-50%) scale(1); }
+/* drop targets */
+.pc.drop-in { outline: 2px dashed var(--accent); outline-offset: 3px; background: var(--accent-soft); }
+.pc.drop-before::after, .pc.drop-after::after { content: ''; position: absolute; background: var(--accent); border-radius: 2px; }
+.pc[data-axis=x].drop-before::after { left: -9px; top: 4px; bottom: 4px; width: 3px; }
+.pc[data-axis=x].drop-after::after { right: -9px; top: 4px; bottom: 4px; width: 3px; }
+.pc[data-axis=y].drop-before::after { top: -6px; left: 8px; right: 8px; height: 3px; }
+.pc[data-axis=y].drop-after::after { bottom: -6px; left: 8px; right: 8px; height: 3px; }
+.editing .pc { cursor: grab; }
+
+.empty-chart { text-align: center; padding: 50px 20px; max-width: 460px; color: var(--ink-3); }
+.empty-chart h4 { margin: 10px 0 4px; color: var(--ink); font-size: 15px; }
+.empty-chart .btn { margin: 12px 4px 0; }
+
+/* ── tree view ── */
+.treewrap { flex: 1; overflow: auto; padding: 8px 10px 40px; }
+.tr { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 calc(10px + var(--d) * 22px); border-radius: 10px; cursor: pointer; position: relative; }
+.tr:hover { background: var(--surface-2); }
+.tr.sel { background: var(--accent-soft); }
+.tr.hit { background: var(--warn-soft); }
+.tr .grip { color: var(--ink-4); display: none; cursor: grab; }
+.editing .tr .grip { display: block; }
+.tr .car { width: 18px; height: 18px; border: 0; background: none; display: grid; place-items: center; color: var(--ink-3); padding: 0; }
+.tr .car.none { visibility: hidden; }
+.tr .dot { width: 9px; height: 9px; border-radius: 3px; background: var(--u); flex: none; }
+.tr .t { font-weight: 600; white-space: nowrap; }
+.tr .who { color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.tr .who.vac { font-style: italic; color: var(--warn); }
+.tr .n { color: var(--ink-3); font-size: 12px; }
+.tr .add { opacity: 0; border: 0; background: none; color: var(--accent); }
+.editing .tr:hover .add { opacity: 1; }
+.tr.drop-in { outline: 2px dashed var(--accent); background: var(--accent-soft); }
+.tr.drop-before { box-shadow: inset 0 3px 0 var(--accent); }
+.tr.drop-after { box-shadow: inset 0 -3px 0 var(--accent); }
+.tr.dragging { opacity: .35; }
+
+/* ── side panel ── */
+.panel { position: absolute; top: 0; right: 0; bottom: 0; width: 360px; background: var(--surface); border-left: 1px solid var(--line); box-shadow: var(--sh-pop);
+  transform: translateX(105%); transition: transform .25s cubic-bezier(.16,1,.3,1); display: flex; flex-direction: column; z-index: 20; }
+.panel.open { transform: none; }
+.ph { padding: 14px 16px 12px; border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: flex-start; }
+.ph .unit { font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+.ph .unit i { width: 8px; height: 8px; border-radius: 3px; background: var(--u); display: inline-block; }
+.ph h3 { margin: 3px 0 0; font-size: 17px; }
+.ph .sp { flex: 1; min-width: 0; }
+.pb { flex: 1; overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 16px; }
+.pf label { display: block; font-size: 11px; font-weight: 600; color: var(--ink-3); letter-spacing: .03em; text-transform: uppercase; margin-bottom: 6px; }
+.pf input, .pf select { width: 100%; height: 36px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); padding: 0 10px; outline: 0; }
+.pf input:focus, .pf select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.pf .ro { font-weight: 500; }
+.pf .ro small { color: var(--ink-3); font-weight: 400; }
+.prow { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 10px; }
+.prow:hover { background: var(--surface-2); }
+.prow .nm { flex: 1; min-width: 0; }
+.prow .nm b { display: block; font-weight: 600; }
+.prow .nm span { font-size: 11.5px; color: var(--ink-3); }
+.prow .also { color: var(--info); }
+.prow .x { border: 0; background: none; color: var(--ink-3); width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; }
+.prow .x:hover { background: var(--danger-soft); color: var(--danger); }
+.vacant-note { padding: 10px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); font-size: 12.5px; display: flex; gap: 8px; align-items: center; }
+.finder { position: relative; }
+.finder .res { position: absolute; left: 0; right: 0; top: 40px; background: var(--surface); border: 1px solid var(--line-2); border-radius: 12px; box-shadow: var(--sh-pop); max-height: 300px; overflow: auto; padding: 4px; z-index: 5; }
+.finder .res:empty { display: none; }
+.res .prow { cursor: pointer; }
+.tag { font-size: 10.5px; padding: 1px 6px; border-radius: 99px; background: var(--surface-3); color: var(--ink-2); white-space: nowrap; }
+.tag.in { background: var(--info-soft); color: var(--info); }
+.reports { display: flex; flex-direction: column; gap: 2px; }
+.reports button { border: 0; background: none; text-align: left; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; }
+.reports button:hover { background: var(--surface-2); }
+.reports .dot { width: 8px; height: 8px; border-radius: 3px; background: var(--u); }
+.reports .who { color: var(--ink-3); margin-left: auto; font-size: 12px; max-width: 140px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pfoot { border-top: 1px solid var(--line); padding: 12px 16px; display: flex; gap: 8px; }
+.pfoot .sp { flex: 1; }
+.ro-hint { font-size: 12px; color: var(--ink-3); display: flex; gap: 6px; align-items: center; }
+
+/* ── modal / toast ── */
+.scrim { position: fixed; inset: 0; background: rgba(20,18,16,.35); display: none; place-items: center; z-index: 50; }
+.scrim.on { display: grid; }
+.modal { background: var(--surface); border-radius: 18px; box-shadow: var(--sh-pop); width: min(440px, 92vw); padding: 18px 20px; }
+.modal h3 { margin: 0 0 6px; font-size: 16px; }
+.modal p { margin: 0; color: var(--ink-2); }
+.modal .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.modal.big { width: min(940px, 94vw); max-height: 88vh; display: flex; flex-direction: column; }
+.imp { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; min-height: 0; flex: 1; }
+.imp textarea { width: 100%; height: 100%; min-height: 330px; resize: none; border: 1px solid var(--line-2); border-radius: 12px; padding: 10px 12px; font: 12.5px/1.6 ui-monospace, Consolas, monospace; background: var(--surface-2); outline: 0; }
+.imp .opts { display: flex; gap: 10px; margin-top: 10px; }
+.imp .opts .pf { flex: 1; }
+.pv { border: 1px solid var(--line); border-radius: 12px; overflow: auto; padding: 8px 10px; background: var(--surface-2); }
+.pv .pl { padding: 5px 0 5px calc(var(--d) * 18px); display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.pv .pl b { font-weight: 600; margin-right: 2px; }
+.chip { font-size: 11.5px; padding: 1px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-ink); }
+.chip.bad { background: var(--warn-soft); color: var(--warn); outline: 1px solid var(--warn); }
+.chip.vac { background: var(--surface-3); color: var(--ink-3); font-style: italic; }
+.chip.new { background: var(--info-soft); color: var(--info); }
+.chip.upd { background: var(--surface-3); color: var(--ink-2); }
+.pv-sum { font-size: 12px; color: var(--ink-2); margin-bottom: 6px; display: flex; gap: 10px; flex-wrap: wrap; }
+.tabs2 { display: inline-flex; gap: 4px; }
+.tabs2 button { border: 0; background: none; padding: 4px 10px; border-radius: 8px; color: var(--ink-3); font-weight: 500; }
+.tabs2 button.on { background: var(--surface-3); color: var(--ink); }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px); background: var(--ink); color: var(--surface); padding: 10px 16px; border-radius: 12px; box-shadow: var(--sh-pop); opacity: 0; transition: .2s; pointer-events: none; z-index: 60; }
+.toast.on { opacity: 1; transform: translateX(-50%); }
+.menu { position: absolute; background: var(--surface); border: 1px solid var(--line-2); border-radius: 12px; box-shadow: var(--sh-pop); padding: 4px; z-index: 30; display: none; }
+.menu.on { display: block; }
+.menu button { display: flex; width: 100%; border: 0; background: none; padding: 7px 10px; border-radius: 8px; gap: 8px; align-items: center; }
+.menu button:hover { background: var(--surface-2); }
+.legend { display: flex; gap: 10px; white-space: nowrap; overflow-x: auto; padding: 8px 14px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--ink-3); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 8px; height: 8px; border-radius: 3px; display: inline-block; }
+/* Zoomed far out: drop names/avatars, show the position title big and tint the box with its division colour,
+   so the shape of a 4-plant structure stays readable as an overview. */
+.canvas.far .pc { background: color-mix(in srgb, var(--u) 16%, var(--surface)); border-color: color-mix(in srgb, var(--u) 40%, var(--line)); min-height: 64px; }
+.canvas.far .pc.root { background: var(--ink); }
+.canvas.far .pc .av, .canvas.far .pc .avs, .canvas.far .pc-tx b, .canvas.far .pc-badge, .canvas.far .pc-add { display: none; }
+.canvas.far .pc-tx span { font-size: 19px; font-weight: 700; line-height: 1.15; color: var(--ink); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.canvas.far .pc.root .pc-tx span { color: var(--surface); }
+.canvas.far .pc-kids { transform: translateX(-50%) scale(1.5); }
+.zctl { position: absolute; right: 16px; bottom: 16px; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line-2); border-radius: 12px; box-shadow: var(--sh-pop); overflow: hidden; z-index: 15; transition: right .25s cubic-bezier(.16,1,.3,1); }
+.panel.open ~ .zctl { right: 376px; }
+.zctl button { border: 0; background: none; width: 44px; height: 36px; display: grid; place-items: center; color: var(--ink-2); }
+.zctl button:hover { background: var(--surface-2); color: var(--ink); }
+.zctl button + button { border-top: 1px solid var(--line); }
+.zctl #zLbl { font-size: 11px; font-weight: 600; height: 28px; }
+.zhint { position: absolute; left: 16px; bottom: 14px; font-size: 11.5px; color: var(--ink-3); background: color-mix(in srgb, var(--surface) 85%, transparent); padding: 4px 8px; border-radius: 8px; z-index: 15; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div><h1>Administration</h1><small>People, structure and system settings</small></div>
+  <div class="sp"></div>
+  <button class="icon-btn" id="themeBtn" title="Toggle dark mode"><i data-lucide="moon"></i></button>
+</header>
+
+<div class="shell">
+  <nav class="side">
+    <div class="lab">PEOPLE</div>
+    <a href="#"><span class="ic" style="background:#2563eb"><i data-lucide="users"></i></span><div><b>Users</b><span>Accounts, roles and access</span></div></a>
+    <div class="lab">STRUCTURE</div>
+    <a href="#" class="on"><span class="ic" style="background:#2e9d6b"><i data-lucide="building-2"></i></span><div><b>Organization</b><span>Plants, divisions and departments</span></div></a>
+    <div class="lab">SECURITY</div>
+    <a href="#"><span class="ic" style="background:#c2442e"><i data-lucide="shield"></i></span><div><b>Security</b><span>Sessions and audit log</span></div></a>
+    <div class="lab">COMMUNICATION</div>
+    <a href="#"><span class="ic" style="background:#ea9a0c"><i data-lucide="megaphone"></i></span><div><b>Announcements</b><span>Launch videos that pop up</span></div></a>
+    <div class="lab">INTEGRATIONS</div>
+    <a href="#"><span class="ic" style="background:#7c3aed"><i data-lucide="refresh-cw"></i></span><div><b>HRIS sync</b><span>Employee data from HRIS</span></div></a>
+  </nav>
+
+  <main>
+    <h2>Organization</h2>
+    <div class="sub">Plants, divisions and departments</div>
+    <div class="seg"><button data-view="tree">Tree</button><button data-view="chart" class="on">Chart</button></div>
+
+    <section class="card" id="card">
+      <div class="toolbar">
+        <div class="ttl"><b>Organization chart</b><span id="ttlSub">Positions and reporting lines</span></div>
+        <div class="sp"></div>
+        <label class="field"><i data-lucide="factory"></i><select id="plant"></select></label>
+        <label class="field"><i data-lucide="search"></i><input id="q" placeholder="Find a person or position"><span class="cnt" id="qCnt"></span></label>
+        <button class="btn ghost" id="expandAll" title="Expand all"><i data-lucide="unfold-vertical"></i></button>
+        <button class="btn ghost" id="collapseAll" title="Collapse all"><i data-lucide="fold-vertical"></i></button>
+        <button class="btn" id="importBtn"><i data-lucide="list-tree"></i>Import</button>
+        <button class="btn" id="exportBtn"><i data-lucide="download"></i>Export</button>
+        <button class="btn primary" id="editBtn"><i data-lucide="pencil"></i>Edit chart</button>
+      </div>
+      <div class="draftbar" id="draftbar">
+        <span class="dot"></span><b>Editing a draft</b><span id="draftCnt">No changes yet</span>
+        <span class="hint">· Drag a box onto another to change who it reports to · drag to the side to reorder · hover for +</span>
+        <div class="sp"></div>
+        <button class="btn" id="undoBtn"><i data-lucide="undo-2"></i>Undo</button>
+        <button class="btn" id="discardBtn">Discard</button>
+        <button class="btn primary" id="publishBtn"><i data-lucide="upload"></i>Publish</button>
+      </div>
+      <div class="body">
+        <div class="canvas" id="canvas"><div class="zoom" id="zoom"><div class="oc" id="oc"></div></div></div>
+        <div class="treewrap" id="tree" hidden></div>
+        <aside class="panel" id="panel"></aside>
+        <div class="zctl" id="zoomer">
+          <button data-z="in" title="Zoom in (+)"><i data-lucide="plus"></i></button>
+          <button data-z="100" id="zLbl" title="Back to 100%">100%</button>
+          <button data-z="out" title="Zoom out (−)"><i data-lucide="minus"></i></button>
+          <button data-z="fit" title="Fit the whole chart on screen (0)"><i data-lucide="scan"></i></button>
+        </div>
+        <div class="zhint" id="zhint">Scroll to zoom · drag to move · double-click to zoom in · 0 = fit</div>
+      </div>
+      <div class="legend" id="legend"></div>
+    </section>
+  </main>
+</div>
+
+<div class="menu" id="exportMenu">
+  <button data-exp="PNG"><i data-lucide="image"></i>PNG image</button>
+  <button data-exp="PDF"><i data-lucide="file-text"></i>PDF (A3 landscape)</button>
+  <button data-exp="CSV"><i data-lucide="sheet"></i>CSV / Excel (re-importable)</button>
+</div>
+<div class="scrim" id="scrim"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ───────────────────────── data ─────────────────────────
+// Real SJA Sepanjang units; colour = division accent.
+const UNITS = {
+  BOD:  { name: 'Board of Directors', color: '#3f3a34' },
+  DAFT: { name: 'DAFT', color: '#2e9d6b' },
+  FTA:  { name: 'Finance, Tax & Accounting', color: '#2563eb' },
+  FM:   { name: 'Financial Management', color: '#7c3aed' },
+  HC:   { name: 'Human Capital', color: '#db2777' },
+  ICT:  { name: 'ICT', color: '#0891b2' },
+  NI:   { name: 'Network & Infrastructure', color: '#0e7490' },
+  MKT:  { name: 'Marketing', color: '#ea580c' },
+  OPS:  { name: 'Operational', color: '#a8760c' },
+  PROC: { name: 'Procurement', color: '#65a30d' },
+  RND:  { name: 'Research & Development', color: '#c2442e' },
+  SOE:  { name: 'Strategy & Operational Excellence', color: '#64748b' },
+};
+const PLANTS = [['ALL', 'All plants'], ['SPJ', 'SJA SEPANJANG'], ['JKT', 'SJA JAKARTA'], ['KRW', 'SJA KARAWANG'], ['SMG', 'SJA SEMARANG'], ['SKD', 'SJA SUKODONO']];
+
+// Fictional people (no real employee names in the mockup).
+const FIRST = ['Adi', 'Bayu', 'Citra', 'Dimas', 'Eka', 'Fajar', 'Gita', 'Hendra', 'Indah', 'Joko', 'Kartika', 'Lukas', 'Maya', 'Nanda', 'Oki', 'Putri', 'Rizky', 'Sari', 'Teguh', 'Umi', 'Vina', 'Wahyu', 'Yuli', 'Zaki'];
+const LAST = ['Pratama', 'Wijaya', 'Santoso', 'Lestari', 'Saputra', 'Hidayat', 'Kusuma', 'Nugroho', 'Permata', 'Halim', 'Setiawan', 'Rahayu', 'Gunawan', 'Utami', 'Firmansyah', 'Anggraini', 'Susanto'];
+const EMP = Array.from({ length: 420 }, (_, i) => ({ nik: String(100231 + i * 37), name: `${FIRST[i % 24]} ${LAST[(i * 7 + Math.floor(i / 24)) % 17]}` }));
+const byNik = Object.fromEntries(EMP.map(e => [e.nik, e]));
+
+function seed() {
+  let next = 0, n = 0;
+  const take = k => EMP.slice(next, next += k).map(e => e.nik);
+  const P = [];
+  const add = (title, unit, parent, people, plant = 'SPJ') => { const id = 'p' + (++n); P.push({ id, title, unit, parent, people, plant, order: n }); return id; };
+  const pd = add('President Director', 'BOD', null, take(1), '*');
+  add('Corporate Secretary', 'BOD', pd, take(1), '*');
+  const gm = add('GM DAFT', 'DAFT', pd, take(1));
+  add('DAFT Secretary', 'DAFT', gm, take(1));
+  const fta = add('Head of Finance, Tax & Accounting', 'FTA', gm, take(1));
+  const acc = add('Accounting Supervisor', 'FTA', fta, take(1)); add('Accounting Staff', 'FTA', acc, take(12));
+  const fin = add('Finance Supervisor', 'FTA', fta, take(1)); add('Finance Staff', 'FTA', fin, take(8));
+  const tax = add('Tax Supervisor', 'FTA', fta, []); add('Tax Staff', 'FTA', tax, take(5));
+  add('DAFT Area Coordinator', 'FTA', fta, take(1));
+  const fm = add('Head of Financial Management', 'FM', gm, []);
+  add('Costing Analyst', 'FM', fm, take(2)); add('Operational & Finance Analyst', 'FM', fm, []);
+  const hc = add('Head of Human Capital', 'HC', pd, []);
+  add('HR Business Partner', 'HC', hc, take(2)); add('Payroll Officer', 'HC', hc, take(1)); add('Recruitment Officer', 'HC', hc, []);
+  const ict = add('ICT Manager', 'ICT', pd, take(1));
+  const ni = add('Network & Infrastructure Supervisor', 'NI', ict, take(1)); add('Network Engineer', 'NI', ni, take(3)); add('Helpdesk', 'NI', ni, take(3));
+  const app = add('Application Lead', 'ICT', ict, take(1)); add('Software Developer', 'ICT', app, take(4));
+  const mkt = add('Marketing Manager', 'MKT', pd, take(1));
+  add('Brand Supervisor', 'MKT', mkt, []);
+  add('Operational Manager', 'OPS', pd, []);
+  const pr = add('Procurement Head', 'PROC', pd, take(1)); add('Buyer', 'PROC', pr, take(3));
+  add('R&D Head', 'RND', pd, take(1));
+  add('SOE Head', 'SOE', pd, []);
+  // Other plants (Sukodono is left empty to show the empty state).
+  const SHORT = { FTA: 'Finance', HC: 'HR', ICT: 'ICT', OPS: 'Production', PROC: 'Procurement', RND: 'QC' };
+  Object.entries({ JKT: 'Jakarta', KRW: 'Karawang', SMG: 'Semarang' }).forEach(([code, city], ci) => {
+    const pm = add(`Plant Manager ${city}`, 'OPS', pd, take(1), code);
+    Object.keys(SHORT).forEach((u, i) => {
+      const h = add(`${SHORT[u]} Head ${city}`, u, pm, (i + ci) % 3 ? take(1) : [], code);
+      ['A', 'B'].forEach((x, k) => { const sv = add(`${SHORT[u]} Supervisor ${x}`, u, h, (i + k + ci) % 4 ? take(1) : [], code); add(`${SHORT[u]} Staff`, u, sv, take(2 + ((i + k) % 4)), code); });
+    });
+  });
+  return P;
+}
+
+// ───────────────────────── state ─────────────────────────
+let pub = seed(), draft = null, editing = false, undoStack = [];
+let sel = null, view = 'chart', plant = 'SPJ', query = '', zoom = 1, tx = 0, ty = 0, panned = false;
+const ZMIN = .08, ZMAX = 2;
+const clampZ = z => Math.min(ZMAX, Math.max(ZMIN, z));
+const collapsed = new Set();
+const S = () => editing ? draft : pub;
+const get = id => S().find(p => p.id === id);
+const kids = id => S().filter(p => p.parent === id && inPlant(p)).sort((a, b) => a.order - b.order);
+const inPlant = p => plant === 'ALL' || p.plant === '*' || p.plant === plant;
+const desc = id => kids(id).flatMap(k => [k, ...desc(k.id)]);
+const ancestors = p => { const a = []; while (p && p.parent) { p = get(p.parent); if (p) a.push(p); } return a; };
+const rolesOf = nik => S().filter(p => p.people.includes(nik));
+const peopleBelow = id => desc(id).reduce((s, p) => s + p.people.length, 0);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function initials(name) { const w = name.split(' '); return (w[0][0] + (w[1] ? w[1][0] : '')).toUpperCase(); }
+function hue(s) { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return `hsl(${h} 45% 52%)`; }
+const av = (e, cls = '') => `<span class="av ${cls}" style="background:${hue(e.name)}">${initials(e.name)}</span>`;
+
+function collapseDefault() {
+  collapsed.clear();
+  // Start at the Board: everything below the first management row is folded.
+  S().forEach(p => { if (ancestors(p).length >= 1 && S().some(c => c.parent === p.id)) collapsed.add(p.id); });
+}
+
+// ───────────────────────── render ─────────────────────────
+const $ = id => document.getElementById(id);
+function render() {
+  document.body.classList.toggle('editing', editing);
+  $('card').classList.toggle('editing', editing);
+  $('draftbar').classList.toggle('on', editing);
+  $('editBtn').style.display = editing ? 'none' : '';
+  $('importBtn').style.display = '';
+  $('draftCnt').textContent = undoStack.length ? `${undoStack.length} unpublished change${undoStack.length > 1 ? 's' : ''} · only you can see them` : 'No changes yet';
+  $('undoBtn').disabled = !undoStack.length;
+  $('canvas').hidden = view !== 'chart';
+  $('tree').hidden = view !== 'tree';
+  $('zoomer').style.display = $('zhint').style.display = view === 'chart' ? '' : 'none';
+  $('ttlSub').textContent = view === 'chart' ? 'Positions and reporting lines' : 'The same structure as a list — drag rows to move';
+  view === 'chart' ? renderChart() : renderTree();
+  renderPanel();
+  renderLegend();
+  lucide.createIcons();
+}
+
+function hits() {
+  const q = query.trim().toLowerCase();
+  if (q.length < 2) return [];
+  return S().filter(p => inPlant(p) && (p.title.toLowerCase().includes(q) || p.people.some(n => byNik[n].name.toLowerCase().includes(q) || n.includes(q))));
+}
+
+function renderChart() {
+  const roots = kids(null);
+  const plantHasOwn = plant === 'ALL' || S().some(p => p.plant === plant);
+  let html = roots.length ? `<ul>${roots.map(li).join('')}</ul>` : '';
+  if (!plantHasOwn) {
+    const pn = PLANTS.find(p => p[0] === plant)[1];
+    html += `<div class="empty-chart"><i data-lucide="network"></i><h4>No structure for ${pn} yet</h4>
+      <div>Only the Board is shown. Paste the structure from a screenshot or a spreadsheet, or start adding positions.</div>
+      <button class="btn" data-act="import"><i data-lucide="list-tree"></i>Import from list</button>
+      <button class="btn primary" data-act="addTop"><i data-lucide="plus"></i>Add position under the Board</button></div>`;
+    $('oc').style.flexDirection = 'column'; $('oc').style.alignItems = 'center';
+  } else { $('oc').style.flexDirection = ''; $('oc').style.alignItems = ''; }
+  $('oc').innerHTML = html;
+  applyView();
+}
+
+function li(p) {
+  const ks = kids(p.id), open = !collapsed.has(p.id);
+  let sub = '';
+  if (ks.length && open) {
+    const compact = ks.length >= 2 && ks.every(k => !kids(k.id).length);
+    sub = compact ? `<div class="stack">${ks.map(k => `<div class="sw">${card(k, 'y')}</div>`).join('')}</div>` : `<ul>${ks.map(li).join('')}</ul>`;
+  }
+  return `<li>${card(p, 'x')}${sub}</li>`;
+}
+
+function card(p, axis) {
+  const ppl = p.people.map(n => byNik[n]), ks = kids(p.id), open = !collapsed.has(p.id);
+  const hit = hits().includes(p);
+  const isRoot = !p.parent;
+  let avatar, name;
+  if (!ppl.length) { avatar = `<span class="av empty"><i data-lucide="user-x"></i></span>`; name = 'Vacant'; }
+  else if (ppl.length >= 3) { avatar = `<span class="avs">${ppl.slice(0, 3).map(e => av(e)).join('')}</span>`; name = `${ppl.length} people`; }
+  else { avatar = av(ppl[0]); name = ppl.map(e => e.name).join(', '); }
+  const concurrent = ppl.length === 1 && rolesOf(ppl[0].nik).length > 1 ? `<span class="pc-badge">+${rolesOf(ppl[0].nik).length - 1} role</span>` : '';
+  const below = desc(p.id).length;
+  return `<div class="pc ${ppl.length ? '' : 'vacant'} ${isRoot ? 'root' : ''} ${sel === p.id ? 'sel' : ''} ${hit ? 'hit' : ''}" data-id="${p.id}" data-axis="${axis}"
+      draggable="${editing && !isRoot}" style="--u:${UNITS[p.unit].color}" title="${esc(p.title)}">
+    ${avatar}<div class="pc-tx"><b>${esc(name)}</b><span>${esc(p.title)}</span></div>${concurrent}
+    ${ks.length ? `<button class="pc-kids" data-toggle="${p.id}" title="${open ? 'Collapse' : 'Expand'} · ${below} positions below"><i data-lucide="${open ? 'chevron-up' : 'chevron-down'}"></i>${below}</button>` : ''}
+    ${editing ? `<button class="pc-add" data-add="${p.id}" title="Add a position reporting to this one"><i data-lucide="plus"></i></button>` : ''}
+  </div>`;
+}
+
+function renderTree() {
+  const rows = [];
+  const walk = (p, d) => {
+    const ks = kids(p.id), open = !collapsed.has(p.id), ppl = p.people.map(n => byNik[n]);
+    rows.push(`<div class="tr ${sel === p.id ? 'sel' : ''} ${hits().includes(p) ? 'hit' : ''}" data-id="${p.id}" data-axis="y" style="--d:${d};--u:${UNITS[p.unit].color}" draggable="${editing && !!p.parent}">
+      <i data-lucide="grip-vertical" class="grip"></i>
+      <button class="car ${ks.length ? '' : 'none'}" data-toggle="${p.id}"><i data-lucide="${open ? 'chevron-down' : 'chevron-right'}"></i></button>
+      <span class="dot"></span><span class="t">${esc(p.title)}</span>
+      <span class="who ${ppl.length ? '' : 'vac'}">${ppl.length ? esc(ppl.length > 3 ? ppl.length + ' people' : ppl.map(e => e.name).join(', ')) : 'Vacant'}</span>
+      ${ks.length ? `<span class="n">${desc(p.id).length}</span>` : ''}
+      <button class="add" data-add="${p.id}" title="Add a position below"><i data-lucide="plus"></i></button>
+    </div>`);
+    if (open) ks.forEach(k => walk(k, d + 1));
+  };
+  kids(null).forEach(r => walk(r, 0));
+  $('tree').innerHTML = rows.join('');
+}
+
+function renderLegend() {
+  const used = [...new Set(S().filter(inPlant).map(p => p.unit))];
+  $('legend').innerHTML = used.map(u => `<span><i style="background:${UNITS[u].color}"></i>${UNITS[u].name}</span>`).join('') +
+    `<span style="margin-left:auto">${S().filter(inPlant).length} positions · ${S().filter(p => inPlant(p) && !p.people.length).length} vacant · ${new Set(S().filter(inPlant).flatMap(p => p.people)).size} people placed</span>`;
+}
+
+function renderPanel() {
+  const panel = $('panel'), p = sel && get(sel);
+  if (!p) { panel.classList.remove('open'); return; }
+  panel.classList.add('open');
+  const parent = p.parent && get(p.parent), ppl = p.people.map(n => byNik[n]), ks = kids(p.id);
+  const ro = !editing;
+  const unitOpts = Object.entries(UNITS).map(([k, u]) => `<option value="${k}" ${k === p.unit ? 'selected' : ''}>${u.name}</option>`).join('');
+  panel.style.setProperty('--u', UNITS[p.unit].color);
+  panel.innerHTML = `
+    <div class="ph"><div class="sp"><div class="unit"><i></i>${esc(UNITS[p.unit].name)}</div><h3>${esc(p.title)}</h3></div>
+      <button class="icon-btn" data-act="close" title="Close"><i data-lucide="x"></i></button></div>
+    <div class="pb">
+      ${ro ? '' : `<div class="pf"><label>Position title</label><input id="fTitle" value="${esc(p.title)}"></div>
+      <div class="pf"><label>Department</label><select id="fUnit">${unitOpts}</select></div>`}
+      <div class="pf"><label>Reports to</label><div class="ro">${parent ? `${esc(parent.title)} <small>· ${esc(parent.people.map(n => byNik[n].name).join(', ') || 'Vacant')}</small>` : 'Top of the chart'}</div></div>
+      <div class="pf"><label>People (${ppl.length})</label>
+        ${ppl.length ? ppl.map(e => {
+          const other = rolesOf(e.nik).filter(r => r.id !== p.id);
+          return `<div class="prow">${av(e, 'sm')}<div class="nm"><b>${esc(e.name)}</b><span>NIK ${e.nik}${other.length ? ` · <span class="also">also ${esc(other.map(r => r.title).join(', '))}</span>` : ''}</span></div>
+            ${ro ? '' : `<button class="x" data-remove="${e.nik}" title="Remove from this position"><i data-lucide="x"></i></button>`}</div>`;
+        }).join('') : `<div class="vacant-note"><i data-lucide="user-x"></i>Vacant — nobody holds this position yet.</div>`}
+        ${ro ? '' : `<div class="finder" style="margin-top:8px"><div class="pf"><input id="fFind" placeholder="Add person — search name or NIK" autocomplete="off"></div><div class="res" id="fRes"></div></div>`}
+      </div>
+      ${ks.length ? `<div class="pf"><label>Direct reports (${ks.length})</label><div class="reports">${ks.map(k => `<button data-goto="${k.id}" style="--u:${UNITS[k.unit].color}"><span class="dot"></span>${esc(k.title)}<span class="who">${esc(k.people.length > 2 ? k.people.length + ' people' : k.people.map(n => byNik[n].name).join(', ') || 'Vacant')}</span></button>`).join('')}</div></div>` : ''}
+    </div>
+    <div class="pfoot">${ro
+      ? `<span class="ro-hint"><i data-lucide="lock"></i>Published chart</span><div class="sp"></div><button class="btn primary" data-act="edit"><i data-lucide="pencil"></i>Edit</button>`
+      : `<button class="btn" data-add="${p.id}"><i data-lucide="plus"></i>Add position below</button><div class="sp"></div>
+         ${p.parent ? `<button class="btn danger" data-act="delete"><i data-lucide="trash-2"></i>Delete</button>` : ''}`}
+    </div>`;
+  if (!ro) {
+    $('fTitle').addEventListener('change', e => { const v = e.target.value.trim(); if (v && v !== p.title) mutate(() => get(p.id).title = v); });
+    $('fUnit').addEventListener('change', e => mutate(() => get(p.id).unit = e.target.value));
+    $('fFind').addEventListener('input', e => renderFinder(p, e.target.value));
+  }
+}
+
+function renderFinder(p, q) {
+  q = q.trim().toLowerCase();
+  const res = $('fRes');
+  if (q.length < 2) { res.innerHTML = ''; return; }
+  const list = EMP.filter(e => !p.people.includes(e.nik) && (e.name.toLowerCase().includes(q) || e.nik.includes(q))).slice(0, 8);
+  res.innerHTML = list.length ? list.map(e => {
+    const r = rolesOf(e.nik);
+    return `<div class="prow" data-pick="${e.nik}">${av(e, 'sm')}<div class="nm"><b>${esc(e.name)}</b><span>NIK ${e.nik}</span></div>${r.length ? `<span class="tag in">in: ${esc(r[0].title)}${r.length > 1 ? ' +' + (r.length - 1) : ''}</span>` : '<span class="tag">unplaced</span>'}</div>`;
+  }).join('') : `<div class="prow" style="color:var(--ink-3)">No active employee matches “${esc(q)}”.</div>`;
+  lucide.createIcons();
+}
+
+// ───────────────────────── viewport (zoom first, pan second) ─────────────────────────
+function applyView() {
+  $('zoom').style.transform = `translate(${tx}px, ${ty}px) scale(${zoom})`;
+  $('zLbl').textContent = Math.round(zoom * 100) + '%';
+  const c = $('canvas');
+  c.style.backgroundPosition = `${tx}px ${ty}px, 0 0`;
+  c.style.backgroundSize = `${Math.max(8, 22 * zoom)}px ${Math.max(8, 22 * zoom)}px, auto`;
+  c.classList.toggle('far', zoom < .55);
+}
+function animated(fn) {
+  const z = $('zoom');
+  z.classList.add('anim'); fn();
+  clearTimeout(animated.t); animated.t = setTimeout(() => z.classList.remove('anim'), 380);
+}
+/** Zoom keeping the canvas point (cx, cy) still — the cursor, or the centre for buttons/keys. */
+function zoomAt(z, cx, cy) {
+  const c = $('canvas');
+  if (cx == null) { cx = c.clientWidth / 2; cy = c.clientHeight / 2; }
+  z = clampZ(z);
+  tx = cx - (cx - tx) * z / zoom; ty = cy - (cy - ty) * z / zoom; zoom = z;
+  applyView();
+}
+/** Whole chart on screen; never enlarges past 100%. */
+function fit() {
+  const c = $('canvas'), el = $('zoom');
+  if (!c.clientWidth) return;
+  zoom = clampZ(Math.min(c.clientWidth / el.offsetWidth, c.clientHeight / el.offsetHeight, 1));
+  tx = (c.clientWidth - el.offsetWidth * zoom) / 2;
+  ty = Math.max(0, (c.clientHeight - el.offsetHeight * zoom) / 2 * .4);
+  applyView();
+}
+/** Centre a box, zooming in to at least `minZ` so it is readable. */
+function focusCard(id, minZ = .9) {
+  const el = document.querySelector(`.pc[data-id="${id}"]`); if (!el) return;
+  const c = $('canvas').getBoundingClientRect(), r = el.getBoundingClientRect();
+  const ux = (r.left + r.width / 2 - c.left - tx) / zoom, uy = (r.top + r.height / 2 - c.top - ty) / zoom;
+  zoom = clampZ(Math.max(zoom, minZ));
+  tx = c.width / 2 - ux * zoom; ty = c.height / 2 - uy * zoom;
+  applyView();
+}
+/** Re-render without the clicked box jumping (expanding a branch re-centres the tree). */
+function keepAnchor(id, fn) {
+  const at = () => document.querySelector(`.pc[data-id="${id}"]`)?.getBoundingClientRect();
+  const a = at(); fn(); const b = at();
+  if (a && b) { tx += a.left - b.left; ty += a.top - b.top; applyView(); }
+}
+
+// ───────────────────────── mutations ─────────────────────────
+function startEdit() { draft = JSON.parse(JSON.stringify(pub)); editing = true; undoStack = []; render(); }
+function mutate(fn) { undoStack.push(JSON.stringify(draft)); fn(); render(); }
+function undo() { if (!undoStack.length) return; draft = JSON.parse(undoStack.pop()); if (sel && !get(sel)) sel = null; render(); toast('Undone'); }
+
+function addChild(parentId) {
+  if (!editing) startEdit();
+  const parent = parentId && get(parentId);
+  const id = 'n' + Date.now();
+  mutate(() => {
+    const sibs = draft.filter(x => x.parent === parentId);
+    draft.push({ id, title: 'New position', unit: parent && parent.unit !== 'BOD' ? parent.unit : 'DAFT', parent: parentId, people: [], plant: plant === 'ALL' ? (parent && parent.plant !== '*' ? parent.plant : 'SPJ') : plant, order: Math.max(0, ...sibs.map(s => s.order)) + 1 });
+    if (parentId) collapsed.delete(parentId);
+    sel = id;
+  });
+  setTimeout(() => { const t = $('fTitle'); if (t) { t.focus(); t.select(); } }, 30);
+}
+
+async function pickPerson(nik) {
+  const p = get(sel), e = byNik[nik], other = rolesOf(nik);
+  let mode = 'add';
+  if (other.length) {
+    mode = await ask(`${e.name} already holds ${other.map(r => r.title).join(', ')}`,
+      `Move them to “${p.title}”, or let them hold both positions (concurrent role)?`,
+      [{ label: 'Cancel', value: null }, { label: 'Hold both', value: 'both' }, { label: 'Move here', value: 'move', primary: true }]);
+    if (!mode) return;
+  }
+  mutate(() => {
+    if (mode === 'move') other.forEach(r => { const d = get(r.id); d.people = d.people.filter(n => n !== nik); });
+    get(p.id).people.push(nik);
+  });
+  toast(mode === 'move' ? `${e.name} moved from ${other[0].title}` : `${e.name} added`);
+}
+
+async function deletePos() {
+  const p = get(sel), ks = kids(p.id), parent = get(p.parent);
+  const ok = await ask(`Delete “${p.title}”?`, ks.length ? `Its ${ks.length} direct report${ks.length > 1 ? 's' : ''} will report to “${parent.title}” instead. People in it become unplaced.` : 'People in it become unplaced.',
+    [{ label: 'Cancel', value: false }, { label: 'Delete', value: true, primary: true }]);
+  if (!ok) return;
+  mutate(() => { draft.filter(x => x.parent === p.id).forEach(x => x.parent = p.parent); draft.splice(draft.findIndex(x => x.id === p.id), 1); sel = null; });
+}
+
+async function move(id, targetId, zone) {
+  const p = get(id), t = get(targetId);
+  if (id === targetId || desc(id).some(d => d.id === targetId)) { toast('A position cannot report to itself or to someone below it'); return; }
+  const newParent = zone === 'in' ? t : get(t.parent);
+  if (!newParent) { toast('Only one top position per chart in this mockup'); return; }
+  let moveUnit = false;
+  if (newParent.unit !== 'BOD' && newParent.unit !== p.unit) {
+    const n = desc(id).filter(d => d.unit === p.unit).length;
+    moveUnit = await ask(`Also move to ${UNITS[newParent.unit].name}?`,
+      `“${p.title}” is in ${UNITS[p.unit].name}. Moving it under “${newParent.title}” can also move it${n ? ` and ${n} position${n > 1 ? 's' : ''} below it` : ''} to ${UNITS[newParent.unit].name}.`,
+      [{ label: 'Keep department', value: false }, { label: 'Move department too', value: true, primary: true }]);
+    if (moveUnit === undefined) return;
+  }
+  mutate(() => {
+    const d = get(id), oldUnit = d.unit;
+    d.parent = newParent.id;
+    if (zone === 'in') d.order = Math.max(0, ...draft.filter(x => x.parent === newParent.id && x.id !== id).map(x => x.order)) + 1;
+    else {
+      const sibs = draft.filter(x => x.parent === newParent.id && x.id !== id).sort((a, b) => a.order - b.order);
+      const i = sibs.findIndex(x => x.id === targetId);
+      sibs.splice(zone === 'before' ? i : i + 1, 0, d);
+      sibs.forEach((x, k) => x.order = k + 1);
+    }
+    if (moveUnit) [d, ...desc(id)].forEach(x => { if (x.unit === oldUnit) x.unit = newParent.unit; });
+    collapsed.delete(newParent.id);
+  });
+  toast(zone === 'in' ? `“${p.title}” now reports to “${newParent.title}”` : 'Order changed');
+}
+
+// ───────────────────────── import ─────────────────────────
+function sampleText() {
+  // What Claude would produce from a screenshot of the Marketing structure. Two names are deliberately unknown.
+  const n = i => EMP[i].name, mm = pub.find(p => p.title === 'Marketing Manager');
+  return `Marketing Manager — ${byNik[mm.people[0]].name}
+  Brand Supervisor — ${n(70)}
+    Brand Staff — ${n(71)}, ${n(72)}
+    Graphic Designer — Bambang Sutejo
+  Sales Supervisor — (vacant)
+    Sales Staff — ${n(73)}, ${n(74)}, ${n(75)}, Rini Kurniasih
+  Marketing Admin — ${n(76)}`;
+}
+const sampleCsv = () => `Position,Name,Reports to,Department
+Marketing Manager,${byNik[pub.find(p => p.title === 'Marketing Manager').people[0]].name},,Marketing
+Brand Supervisor,${EMP[70].name},Marketing Manager,Marketing
+Brand Staff,"${EMP[71].name}, ${EMP[72].name}",Brand Supervisor,Marketing
+Sales Supervisor,,Marketing Manager,Marketing
+Sales Staff,"${EMP[73].name}, Rini Kurniasih",Sales Supervisor,Marketing`;
+
+function matchName(s) {
+  const q = s.toLowerCase().replace(/[^a-z ]/g, '').trim();
+  return EMP.find(e => e.name.toLowerCase() === q) || (EMP.filter(e => e.name.toLowerCase().startsWith(q)).length === 1 ? EMP.find(e => e.name.toLowerCase().startsWith(q)) : null);
+}
+function splitNames(s) { s = (s || '').trim(); if (!s || /^\(?vacant\)?$|^-$/i.test(s)) return []; return s.split(/\s*,\s*/).filter(Boolean); }
+
+function parseIndented(text) {
+  const roots = [], stack = [];
+  text.split(/\r?\n/).forEach(line => {
+    if (!line.trim()) return;
+    const ind = line.match(/^[\t ]*/)[0].replace(/\t/g, '  ').length;
+    const [title, names] = line.trim().replace(/^[-•*]\s*/, '').split(/\s+[—–:-]\s+|\s*[—–]\s*/);
+    const node = { title: title.trim(), names: splitNames(names), kids: [], ind };
+    while (stack.length && stack[stack.length - 1].ind >= ind) stack.pop();
+    (stack.length ? stack[stack.length - 1].kids : roots).push(node);
+    stack.push(node);
+  });
+  return roots;
+}
+function parseCsv(text) {
+  const rows = text.trim().split(/\r?\n/).map(l => l.match(/("([^"]*)"|[^,]*)(,|$)/g).map(c => c.replace(/,$/, '').replace(/^"|"$/g, '').trim()));
+  rows.shift();
+  const nodes = rows.filter(r => r[0]).map(r => ({ title: r[0], names: splitNames(r[1]), parentTitle: r[2], kids: [] }));
+  const roots = [];
+  nodes.forEach(n => { const par = nodes.find(m => m.title === n.parentTitle); (par ? par.kids : roots).push(n); });
+  return roots;
+}
+
+let impMode = 'list';
+function openImport() {
+  const posOpts = S().filter(inPlant).map(p => `<option value="${p.id}" ${p.title === 'President Director' ? 'selected' : ''}>${esc(p.title)}</option>`).join('');
+  const unitOpts = Object.entries(UNITS).map(([k, u]) => `<option value="${k}" ${k === 'MKT' ? 'selected' : ''}>${u.name}</option>`).join('');
+  openModal(`<h3>Import structure</h3>
+    <p>Paste an indented list (one position per line, people after “—”) or a CSV/Excel export. Nothing changes until you add it to the draft and publish.</p>
+    <div style="margin-top:10px" class="tabs2"><button data-imp="list" class="${impMode === 'list' ? 'on' : ''}">Indented list</button><button data-imp="csv" class="${impMode === 'csv' ? 'on' : ''}">CSV / Excel</button></div>
+    <div class="imp">
+      <div style="display:flex;flex-direction:column;min-height:0">
+        <textarea id="impText" spellcheck="false">${esc(impMode === 'list' ? sampleText() : sampleCsv())}</textarea>
+        <div class="opts"><div class="pf"><label>Attach under</label><select id="impUnder">${posOpts}</select></div><div class="pf"><label>Department</label><select id="impUnit">${unitOpts}</select></div></div>
+      </div>
+      <div class="pv" id="impPv"></div>
+    </div>
+    <div class="acts"><button class="btn" data-close>Cancel</button><button class="btn primary" id="impGo"><i data-lucide="git-pull-request-arrow"></i>Add to draft</button></div>`, true);
+  const upd = () => previewImport();
+  $('impText').addEventListener('input', upd); $('impUnder').addEventListener('change', upd);
+  document.querySelectorAll('[data-imp]').forEach(b => b.onclick = () => { impMode = b.dataset.imp; openImport(); });
+  $('impGo').onclick = applyImport;
+  upd();
+}
+function previewImport() {
+  const roots = (impMode === 'list' ? parseIndented : parseCsv)($('impText').value);
+  const under = $('impUnder').value;
+  let nPos = 0, nNew = 0, nPeople = 0, nBad = 0;
+  const lines = [];
+  const walk = (n, d, parentId) => {
+    nPos++;
+    const existing = parentId && S().find(p => p.parent === parentId && p.title.toLowerCase() === n.title.toLowerCase());
+    if (!existing) nNew++;
+    const chips = n.names.length ? n.names.map(s => { const m = matchName(s); nPeople++; if (!m) nBad++; return m ? `<span class="chip" title="NIK ${m.nik}">${esc(m.name)}</span>` : `<span class="chip bad" title="No active employee with this name — fix it here or assign later">⚠ ${esc(s)}</span>`; }).join('') : '<span class="chip vac">vacant</span>';
+    const gone = existing ? existing.people.filter(k => !n.names.some(s => matchName(s)?.nik === k)).map(k => byNik[k].name) : [];
+    lines.push(`<div class="pl" style="--d:${d}"><b>${esc(n.title)}</b>${existing ? '<span class="chip upd">exists · update</span>' : '<span class="chip new">new</span>'}${chips}${gone.length ? `<span class="chip vac" title="Will be removed from this position">replaces ${esc(gone.join(', '))}</span>` : ''}</div>`);
+    n.kids.forEach(k => walk(k, d + 1, existing ? existing.id : null));
+  };
+  roots.forEach(r => walk(r, 0, under));
+  $('impPv').innerHTML = `<div class="pv-sum"><span><b>${nPos}</b> positions (${nNew} new)</span><span><b>${nPeople - nBad}</b> people matched</span>${nBad ? `<span style="color:var(--warn)"><b>${nBad}</b> not found</span>` : ''}</div>
+    <div style="font-size:11.5px;color:var(--ink-3);margin-bottom:6px">Under: ${esc(get(under).title)}</div>${lines.join('') || '<div style="color:var(--ink-3)">Nothing to import yet.</div>'}`;
+}
+function applyImport() {
+  const roots = (impMode === 'list' ? parseIndented : parseCsv)($('impText').value);
+  const under = $('impUnder').value, unit = $('impUnit').value;
+  closeModal();
+  if (!editing) startEdit();
+  let bad = 0, first = null;
+  mutate(() => {
+    const walk = (n, parentId) => {
+      let p = draft.find(x => x.parent === parentId && x.title.toLowerCase() === n.title.toLowerCase());
+      if (!p) { p = { id: 'i' + Math.random().toString(36).slice(2, 8), title: n.title, unit, parent: parentId, people: [], plant: plant === 'ALL' ? 'SPJ' : plant, order: 100 + draft.length }; draft.push(p); }
+      p.people = [];
+      n.names.forEach(s => { const m = matchName(s); if (m && !p.people.includes(m.nik)) p.people.push(m.nik); if (!m) bad++; });
+      first = first || p.id;
+      collapsed.delete(parentId);
+      n.kids.forEach(k => walk(k, p.id));
+    };
+    roots.forEach(r => walk(r, under));
+    sel = first;
+  });
+  toast(`Imported into the draft${bad ? ` · ${bad} name${bad > 1 ? 's' : ''} not matched — assign them in the panel` : ''}`);
+  if (view === 'chart') animated(() => focusCard(first, .7));
+}
+
+// ───────────────────────── modal / toast ─────────────────────────
+let modalResolve = null;
+function openModal(html, big) { $('modal').className = 'modal' + (big ? ' big' : ''); $('modal').innerHTML = html; $('scrim').classList.add('on'); lucide.createIcons(); }
+function closeModal(v) { $('scrim').classList.remove('on'); if (modalResolve) { modalResolve(v); modalResolve = null; } }
+function ask(title, body, buttons) {
+  openModal(`<h3>${esc(title)}</h3><p>${esc(body)}</p><div class="acts">${buttons.map((b, i) => `<button class="btn ${b.primary ? 'primary' : ''}" data-ans="${i}">${esc(b.label)}</button>`).join('')}</div>`);
+  document.querySelectorAll('[data-ans]').forEach(b => b.onclick = () => closeModal(buttons[+b.dataset.ans].value));
+  return new Promise(r => modalResolve = r);
+}
+let toastT;
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2600); }
+
+// ───────────────────────── events ─────────────────────────
+document.addEventListener('click', async e => {
+  if (panned) { panned = false; return; }  // the end of a drag-to-move is not a click
+  const t = e.target.closest('[data-toggle],[data-add],[data-act],[data-remove],[data-pick],[data-goto],[data-view],[data-exp],[data-close],.pc,.tr');
+  if (!t) { if (!e.target.closest('#exportBtn')) $('exportMenu').classList.remove('on'); return; }
+  if (t.dataset.toggle) { const id = t.dataset.toggle; keepAnchor(id, () => { collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id); render(); }); return; }
+  if (t.dataset.add) { addChild(t.dataset.add); return; }
+  if (t.dataset.remove) { const p = get(sel); mutate(() => get(p.id).people = get(p.id).people.filter(n => n !== t.dataset.remove)); return; }
+  if (t.dataset.pick) { pickPerson(t.dataset.pick); return; }
+  if (t.dataset.goto) { sel = t.dataset.goto; reveal(sel); return; }
+  if (t.dataset.view) { view = t.dataset.view; document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('on', b === t)); render(); return; }
+  if (t.dataset.exp) { $('exportMenu').classList.remove('on'); toast(`Exported ${t.dataset.exp} (mockup)`); return; }
+  if ('close' in t.dataset) { closeModal(); return; }
+  const act = t.dataset.act;
+  if (act === 'close') { sel = null; render(); return; }
+  if (act === 'edit') { startEdit(); return; }
+  if (act === 'delete') { deletePos(); return; }
+  if (act === 'import') { openImport(); return; }
+  if (act === 'addTop') { addChild(kids(null)[0].id); return; }
+  if (t.classList.contains('pc') || t.classList.contains('tr')) { sel = t.dataset.id; render(); }
+});
+$('editBtn').onclick = startEdit;
+$('undoBtn').onclick = undo;
+$('discardBtn').onclick = async () => {
+  if (undoStack.length && !(await ask('Discard the draft?', `${undoStack.length} change${undoStack.length > 1 ? 's' : ''} will be thrown away. The published chart stays as it is.`, [{ label: 'Keep editing', value: false }, { label: 'Discard', value: true, primary: true }]))) return;
+  editing = false; draft = null; undoStack = []; if (sel && !get(sel)) sel = null; render();
+};
+$('publishBtn').onclick = async () => {
+  if (!undoStack.length) { editing = false; draft = null; render(); return; }
+  const n = undoStack.length;
+  if (!(await ask('Publish changes?', `${n} change${n > 1 ? 's' : ''} become the official structure. Positions shown in profiles and the Directory update for admins right away.`, [{ label: 'Cancel', value: false }, { label: 'Publish', value: true, primary: true }]))) return;
+  pub = draft; draft = null; editing = false; undoStack = []; render(); toast('Published');
+};
+$('importBtn').onclick = openImport;
+$('exportBtn').onclick = e => { const m = $('exportMenu'), r = e.currentTarget.getBoundingClientRect(); m.style.left = (r.right - 230) + 'px'; m.style.top = (r.bottom + 6) + 'px'; m.style.width = '230px'; m.classList.toggle('on'); };
+$('expandAll').onclick = () => { collapsed.clear(); render(); animated(fit); };
+$('collapseAll').onclick = () => { collapseDefault(); render(); animated(fit); };
+$('zoomer').onclick = e => {
+  const b = e.target.closest('[data-z]'); if (!b) return;
+  const z = b.dataset.z;
+  animated(() => z === 'fit' ? fit() : zoomAt(z === 'in' ? zoom * 1.3 : z === 'out' ? zoom / 1.3 : 1));
+};
+$('plant').innerHTML = PLANTS.map(([c, n]) => `<option value="${c}">${n}</option>`).join('');
+$('plant').onchange = e => { plant = e.target.value; sel = null; render(); animated(fit); };
+$('themeBtn').onclick = () => { const d = document.documentElement; d.dataset.theme = d.dataset.theme === 'dark' ? 'light' : 'dark'; };
+$('q').addEventListener('input', e => {
+  query = e.target.value;
+  const h = hits();
+  h.forEach(p => ancestors(p).forEach(a => collapsed.delete(a.id)));
+  $('qCnt').textContent = query.trim().length >= 2 ? `${h.length} found` : '';
+  render();
+  if (h[0] && view === 'chart') animated(() => focusCard(h[0].id, .8));
+  else if (h[0]) document.querySelector(`[data-id="${h[0].id}"]`)?.scrollIntoView({ block: 'center' });
+});
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') { const h = hits(); if (h[0]) { sel = h[0].id; render(); } } });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { if ($('scrim').classList.contains('on')) closeModal(); else if (sel) { sel = null; render(); } }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && editing && !e.target.matches('input,textarea')) { e.preventDefault(); undo(); }
+  if (view === 'chart' && !e.ctrlKey && !e.metaKey && !e.target.matches('input,textarea,select') && !$('scrim').classList.contains('on')) {
+    if (e.key === '+' || e.key === '=') animated(() => zoomAt(zoom * 1.3));
+    if (e.key === '-') animated(() => zoomAt(zoom / 1.3));
+    if (e.key === '0') animated(fit);
+  }
+});
+function reveal(id) { ancestors(get(id)).forEach(a => collapsed.delete(a.id)); render(); if (view === 'chart') animated(() => focusCard(id)); else document.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: 'center' }); }
+
+// drag & drop (chart cards and tree rows share the same rules)
+let dragId = null;
+const zoneOf = (el, e) => {
+  const r = el.getBoundingClientRect(), y = el.dataset.axis === 'y';
+  const f = y ? (e.clientY - r.top) / r.height : (e.clientX - r.left) / r.width;
+  return f < .25 ? 'before' : f > .75 ? 'after' : 'in';
+};
+const clearDrop = () => document.querySelectorAll('.drop-in,.drop-before,.drop-after').forEach(x => x.classList.remove('drop-in', 'drop-before', 'drop-after'));
+document.addEventListener('dragstart', e => {
+  const el = e.target.closest('.pc,.tr'); if (!el || !editing) return;
+  dragId = el.dataset.id; el.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragId);
+});
+document.addEventListener('dragend', () => { document.querySelectorAll('.dragging').forEach(x => x.classList.remove('dragging')); clearDrop(); dragId = null; });
+document.addEventListener('dragover', e => {
+  const el = e.target.closest('.pc,.tr'); if (!el || !dragId || el.dataset.id === dragId) return;
+  e.preventDefault(); clearDrop();
+  const z = zoneOf(el, e);
+  el.classList.add(z === 'in' ? 'drop-in' : 'drop-' + z);
+});
+document.addEventListener('drop', e => {
+  const el = e.target.closest('.pc,.tr'); if (!el || !dragId) return;
+  e.preventDefault(); const z = zoneOf(el, e); clearDrop();
+  move(dragId, el.dataset.id, z);
+});
+
+// Scroll wheel / trackpad pinch = zoom at the cursor. Drag anywhere = move (in edit mode, dragging a box moves the position instead).
+(() => {
+  const c = $('canvas'); let sx, sy, stx, sty, on = false;
+  c.addEventListener('wheel', e => {
+    e.preventDefault();
+    const r = c.getBoundingClientRect();
+    zoomAt(zoom * Math.exp(-e.deltaY * (e.ctrlKey ? .01 : .0018)), e.clientX - r.left, e.clientY - r.top);
+  }, { passive: false });
+  c.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || e.target.closest('button,.empty-chart') || (editing && e.target.closest('.pc'))) return;
+    on = true; panned = false; sx = e.clientX; sy = e.clientY; stx = tx; sty = ty;
+  });
+  addEventListener('pointermove', e => {
+    if (!on) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    if (!panned && Math.hypot(dx, dy) < 4) return;
+    panned = true; c.classList.add('panning');
+    tx = stx + dx; ty = sty + dy; applyView();
+  });
+  addEventListener('pointerup', () => { on = false; c.classList.remove('panning'); setTimeout(() => panned = false, 0); });
+  c.addEventListener('dblclick', e => {
+    if (e.target.closest('button')) return;
+    const card = e.target.closest('.pc');
+    if (card) { animated(() => focusCard(card.dataset.id, Math.max(1, zoom))); return; }
+    const r = c.getBoundingClientRect();
+    animated(() => zoomAt(zoom * 1.6, e.clientX - r.left, e.clientY - r.top));
+  });
+})();
+
+collapseDefault();
+render();
+$('plant').value = plant;
+requestAnimationFrame(fit);
+</script>
+</body>
+</html>

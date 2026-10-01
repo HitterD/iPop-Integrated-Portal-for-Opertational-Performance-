@@ -371,6 +371,7 @@ public static class AdminEndpoints
                     .NotifyAsync(context.HttpContext.RequestAborted);
             return result;
         });
+        org.MapOrgChart();
 
         org.MapGet("", async (IPopDbContext db, CancellationToken ct) =>
         {

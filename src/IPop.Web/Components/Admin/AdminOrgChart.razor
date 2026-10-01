@@ -1,157 +1,124 @@
-@* Org chart — generated from unit heads: Board ▸ Division heads ▸ Department heads.
-   Nothing to draw by hand; set heads in the Organization tab. (The old OrgNode editor is
-   retired from the UI; its rows are left untouched.) *@
+@* Org chart editor — positions with reporting lines, edited as a draft and published as a whole.
+   The canvas (zoom, drag & drop, side panel, import) lives in js/org-chart.js; this component loads
+   /api/admin/org/chart, publishes the draft and shows toasts. *@
+@implements IAsyncDisposable
 @inject AuthState Auth
 @inject IJSRuntime JS
 @inject ToastService Toasts
 
-<div class="adm-card">
-    <div class="adm-card-head">
-        <span class="adm-card-title">Organization chart</span>
-        <span class="adm-cell-sub adm-chart-hint">Built automatically from the heads set in Organization</span>
-        <div class="adm-zoom" role="group" aria-label="Zoom">
-            <button type="button" aria-label="Zoom out" disabled="@(zoom <= 0.6)" @onclick="() => Zoom(-0.1)"><i data-lucide="minus"></i></button>
-            <button type="button" class="pct" title="Reset zoom" @onclick="() => zoom = 1">@((int)Math.Round(zoom * 100))%</button>
-            <button type="button" aria-label="Zoom in" disabled="@(zoom >= 1.3)" @onclick="() => Zoom(0.1)"><i data-lucide="plus"></i></button>
-        </div>
-        <button type="button" class="adm-btn ghost" @onclick="Export"><i data-lucide="download"></i> Export</button>
-    </div>
-
-    @if (loadError)
-    {
-        <div class="adm-empty">Could not load the organization. <button type="button" class="adm-link" @onclick="Reload">Retry</button></div>
-    }
-    else if (org is null)
-    {
-        <div style="padding:14px"><div class="skel"></div></div>
-    }
-    else
-    {
-        <div class="adm-chart-canvas">
-            <div class="adm-chart" style="transform:scale(@zoom.ToString(System.Globalization.CultureInfo.InvariantCulture))">
-                <div class="adm-chart-board">
-                    <b>Board of Directors</b>
-                    <span>PT Santos Jaya Abadi</span>
-                </div>
-                @if (Branches.Count > 0)
-                {
-                    <div class="adm-chart-stem"></div>
-                    <div class="adm-chart-row">
-                        @foreach (var b in Branches)
-                        {
-                            <div class="adm-chart-branch" @key="b.Key">
-                                @if (b.Key == "d:")
-                                {
-                                    @* Orphan departments: a grouping, not a unit that can have a head. *@
-                                    <div class="adm-pcard lead adm-pcard-group">
-                                        <span class="adm-av vacant"><i data-lucide="layers"></i></span>
-                                        <span class="adm-pcard-txt"><b>No division</b><small>Set a division in Organization</small></span>
-                                    </div>
-                                }
-                                else
-                                {
-                                    @PersonCard(b.HeadNik, b.HeadName, b.HeadTitle, b.Unit, true)
-                                }
-                                @if (b.Children.Count > 0)
-                                {
-                                    <div class="adm-chart-kids">
-                                        @foreach (var k in b.Children)
-                                        {
-                                            @PersonCard(k.HeadNik, k.HeadName, k.HeadTitle, k.Unit, false)
-                                        }
-                                    </div>
-                                }
-                            </div>
-                        }
-                    </div>
-                }
-                else
-                {
-                    <div class="adm-empty">No divisions yet. Add them in Organization → Plants &amp; divisions.</div>
-                }
-            </div>
-        </div>
-    }
-</div>
+@if (loadError)
+{
+    <div class="adm-card"><div class="adm-empty">Could not load the organization chart. <button type="button" class="adm-link" @onclick="Reload">Retry</button></div></div>
+}
+else if (!loaded)
+{
+    <div class="adm-card"><div style="padding:14px"><div class="skel"></div></div></div>
+}
+<div class="oce" @ref="host" hidden="@(!loaded || loadError)"></div>
 
 @code {
-    private AdminOrgModel? org;
-    private bool loadError;
-    private double zoom = 1;
+    private ElementReference host;
+    private IJSObjectReference? module;
+    private DotNetObjectReference<AdminOrgChart>? selfRef;
+    private int editorId;
+    private string? pending;
+    private bool loaded, loadError, disposed, mounting;
 
-    private sealed record Node(string Key, string Unit, string? HeadNik, string? HeadName, string? HeadTitle, List<Node> Children);
-
-    private List<Node> Branches = [];
+    private sealed record ChartData(int Version, List<Pos> Positions, List<Unit> Units, List<Unit> Plants, List<Person> People);
+    private sealed record Pos(string Id, string Title, string? ParentId, string? Unit, string? Plant, int Order, List<string> People);
+    private sealed record Unit(string Code, string Name);
+    private sealed record Person(string Nik, string Name, bool Active);
 
     protected override Task OnInitializedAsync() => Reload();
 
+    /// Fresh published chart (first load and directoryChanged). An open draft in the editor is kept.
     public async Task Reload()
     {
-        var m = await AdminOrgModel.LoadAsync(Auth);
-        loadError = m is null;
-        if (m is not null)
+        var data = await Auth.GetAsync<ChartData>("/api/admin/org/chart");
+        loadError = data is null;
+        if (data is null) { StateHasChanged(); return; }
+        var photos = data.People.Select(p => (p.Nik, Url: AvatarPhotos.Url(p.Nik)))
+            .Where(p => p.Url is not null).ToDictionary(p => p.Nik, p => p.Url!);
+        pending = System.Text.Json.JsonSerializer.Serialize(new
         {
-            org = m;
-            Branches = Build(m);
-        }
+            version = data.Version,
+            positions = data.Positions.Select(p => new { id = p.Id, title = p.Title, parentId = p.ParentId, unit = p.Unit, plant = p.Plant, order = p.Order, people = p.People }),
+            units = data.Units.Select(u => new { code = u.Code, name = u.Name }),
+            plants = data.Plants.Select(u => new { code = u.Code, name = u.Name }),
+            people = data.People.Select(p => new { nik = p.Nik, name = p.Name, active = p.Active }),
+            photos,
+        });
+        loaded = true;
         StateHasChanged();
+        if (editorId != 0 && !mounting && module is not null) await PushPending();
     }
 
-    public void CloseAllDrawers() => StateHasChanged();
-
-    private static List<Node> Build(AdminOrgModel m)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        var depts = m.ActiveDepartments.ToList();
-        var branches = m.ActiveDivisions
-            .Select(d => new Node("d:" + d.Code, d.Name, d.HeadNik, d.HeadName, d.HeadPosition,
-                depts.Where(x => x.DepartmentCode == d.Code)
-                    .Select(x => new Node("t:" + x.Code, x.Name, x.HeadNik, x.HeadName, x.HeadPosition, []))
-                    .ToList()))
-            .ToList();
-        var orphans = depts.Where(x => x.DepartmentCode is null || m.ActiveDivisions.All(d => d.Code != x.DepartmentCode)).ToList();
-        if (orphans.Count > 0)
-            branches.Add(new Node("d:", "No division", null, null, null,
-                orphans.Select(x => new Node("t:" + x.Code, x.Name, x.HeadNik, x.HeadName, x.HeadPosition, [])).ToList()));
-        return branches;
+        if (disposed || mounting || editorId != 0 || pending is null || !loaded || loadError) return;
+        // Renders can overlap while the module loads; only the first one mounts.
+        mounting = true;
+        var json = pending; pending = null;
+        try
+        {
+            module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/org-chart.js?v=20261001-orgchart");
+            selfRef ??= DotNetObjectReference.Create(this);
+            editorId = await module.InvokeAsync<int>("mount", host, selfRef, json);
+        }
+        finally { mounting = false; }
+        // A Reload that finished while mounting left newer data behind.
+        if (pending is not null && !disposed) await PushPending();
     }
 
-    private RenderFragment PersonCard(string? nik, string? name, string? title, string unit, bool lead) => __builder =>
+    private async Task PushPending()
     {
-        if (nik is null)
-        {
-            <button type="button" class="adm-pcard vacant @(lead ? "lead" : "")" @onclick="Vacant">
-                <span class="adm-av vacant"><i data-lucide="user-x"></i></span>
-                <span class="adm-pcard-txt"><b>Head vacant</b><small>@unit</small></span>
-            </button>
-        }
-        else
-        {
-            <div class="adm-pcard @(lead ? "lead" : "")">
-                <span class="adm-av" style="@IPop.Web.Models.AvatarPhotos.Style(nik)">@AdminOrgModel.Initials(name)</span>
-                <span class="adm-pcard-txt"><b>@name</b><small>@(string.IsNullOrWhiteSpace(title) ? unit : $"{title} · {unit}")</small></span>
-            </div>
-        }
-    };
-
-    private void Vacant() => Toasts.Show("No head assigned yet · set one in Organization", ToastKind.Info);
-
-    private void Zoom(double d) => zoom = Math.Clamp(Math.Round(zoom + d, 1), 0.6, 1.3);
-
-    private async Task Export()
-    {
-        var sb = new System.Text.StringBuilder("Level,Unit,Parent,Head NIK,Head name,Head title\n");
-        foreach (var b in Branches)
-        {
-            sb.AppendLine(Csv("Division", b.Unit, "Board of Directors", b.HeadNik, b.HeadName, b.HeadTitle));
-            foreach (var k in b.Children)
-                sb.AppendLine(Csv("Department", k.Unit, b.Unit, k.HeadNik, k.HeadName, k.HeadTitle));
-        }
-        var b64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(sb.ToString()));
-        await JS.InvokeVoidAsync("ipop.download", b64, $"org-chart-{DateTime.Now:yyyyMMdd}.csv");
+        var json = pending; pending = null;
+        if (json is not null) await module!.InvokeVoidAsync("update", editorId, json);
     }
 
-    private static string Csv(params string?[] cells) =>
-        string.Join(",", cells.Select(c => $"\"{(c ?? "").Replace("\"", "\"\"")}\""));
+    /// Admin's Esc hook. The editor handles Esc itself (dialog first, then the side panel), so a
+    /// second close from here would skip a level.
+    public void CloseAllDrawers() { }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+    [JSInvokable]
+    public async Task<PublishResult> Publish(string body)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(body);
+        HttpResponseMessage res;
+        try { res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/org/chart/publish", doc.RootElement); }
+        catch (HttpRequestException) { return new(0, "Could not reach the server."); }
+        using (res)
+        {
+            if (res.IsSuccessStatusCode) return new(200, null);
+            string? message = null;
+            try { message = (await res.Content.ReadFromJsonAsync<ApiError>())?.Message; } catch (System.Text.Json.JsonException) { }
+            return new((int)res.StatusCode, message ?? $"Publish failed ({(int)res.StatusCode}).");
+        }
+    }
+
+    [JSInvokable]
+    public Task Refresh() => Reload();
+
+    [JSInvokable]
+    public void Toast(string message, string kind) =>
+        Toasts.Show(message, Enum.TryParse<ToastKind>(kind, out var k) ? k : ToastKind.Info);
+
+    public sealed record PublishResult(int Status, string? Message);
+    private sealed record ApiError(string? Code, string? Message);
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        if (module is not null)
+        {
+            try
+            {
+                if (editorId != 0) await module.InvokeVoidAsync("dispose", editorId);
+                await module.DisposeAsync();
+            }
+            catch (JSDisconnectedException) { }
+            catch (JSException) { }
+        }
+        selfRef?.Dispose();
+    }
 }
