@@ -1,0 +1,15 @@
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: ipop-livekit
+    restart: unless-stopped
+    command: --config /livekit.yaml
+    environment:
+      LIVEKIT_KEYS: ${LIVEKIT_KEYS:?run setup.ps1 first}
+    volumes:
+      - ./livekit.yaml:/livekit.yaml:ro
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "3478:3478/udp"
+      - "50000-50050:50000-50050/udp"
