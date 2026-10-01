@@ -350,7 +350,7 @@
             if (justOpened)
             {
                 justOpened = false;
-                module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/datepicker.js?v=20260927-dp2");
+                module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/datepicker.js?v=20261001-nik");
                 self ??= DotNetObjectReference.Create(this);
                 await module.InvokeVoidAsync("open", root, layer, self);
             }

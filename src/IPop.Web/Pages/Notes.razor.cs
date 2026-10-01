@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261001-side3";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261001-nik";
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History }

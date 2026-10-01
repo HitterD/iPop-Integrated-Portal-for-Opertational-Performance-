@@ -221,7 +221,7 @@ public partial class Files
         if (firstRender && !_disposed)
         {
             mRef ??= DotNetObjectReference.Create(this);
-            fx = await JS.InvokeAsync<IJSObjectReference>("import", "./js/files.js?v=20260929-fx2");
+            fx = await JS.InvokeAsync<IJSObjectReference>("import", "./js/files.js?v=20261001-nik");
             if (_disposed) return;
             isMobile = await fx.InvokeAsync<bool>("attach", rootRef, mRef);
         }

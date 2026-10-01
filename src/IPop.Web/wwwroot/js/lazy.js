@@ -14,7 +14,7 @@
             document.head.appendChild(s);
         });
     }
-    const livekit = () => load('js/livekit-client.umd.js', () => window.LivekitClient?.Room);
+    const livekit = () => load('js/livekit-client.umd.js?v=20261001-nik', () => window.LivekitClient?.Room);
     const xlsx = () => load('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js', () => window.XLSX);
 
     function wrap(obj, name, need) {
