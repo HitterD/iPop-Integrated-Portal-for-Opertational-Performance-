@@ -318,6 +318,18 @@ public static class NotificationGatewayEndpoints
             return Results.Ok(new { success = true });
         }).RequireAuthorization();
 
+        // A module opened the thing a notification points at (chat room, mail, event, task, post,
+        // note) without going through the bell: mark that user's matching notifications read.
+        v1.MapPost("/read-by-target", async (ReadByTargetRequest req,
+            HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var updated = await MarkReadByTargetCoreAsync(db, userId.Value, req.Kind, req.Id, ct);
+            if (updated > 0) await NotifyChangedAsync(http, realtime, ct);
+            return Results.Ok(new { updated });
+        }).RequireAuthorization();
+
         v1.MapPost("/notifications/bulk-read", async (BulkNotificationActionRequest req,
             HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
         {
@@ -716,6 +728,51 @@ public static class NotificationGatewayEndpoints
         return await svc.AuthenticateClientAsync(clientId, secret, http.Connection.RemoteIpAddress?.ToString(), ct);
     }
 
+    /// TargetUrl LIKE patterns per module (see each publisher's link format). Ids are Guids, so
+    /// they never contain LIKE wildcards; an exact match plus "?…"/"&…" tails covers the variants.
+    internal static string[] TargetPatterns(string? kind, Guid id)
+    {
+        var g = id.ToString();
+        return kind switch
+        {
+            "chat" => [$"/chat/{g}", $"/chat/{g}?%"],
+            "mail" => [$"/mail?mailId={g}", $"/mail?mailId={g}&%"],
+            "calendar" => [$"/calendar?event={g}", $"/calendar?event={g}&%"],
+            "meeting" => [$"/calls?tab=scheduled&meeting={g}", $"/calls?tab=scheduled&meeting={g}&%"],
+            "task" => [$"/projects/%?task={g}", $"/projects/%?task={g}&%"],
+            "project" => [$"/projects/{g}"],
+            "news" => [$"/news/{g}", $"/news?post={g}", $"/news?post={g}&%"],
+            "note" => [$"/notes/{g}", $"/notes/{g}?%", $"/notes/{g}#%"],
+            _ => [],
+        };
+    }
+
+    internal static async Task<int> MarkReadByTargetCoreAsync(IPopDbContext db, Guid userId, string? kind, Guid id,
+        CancellationToken ct)
+    {
+        var pats = TargetPatterns(kind, id);
+        if (pats.Length == 0 || id == Guid.Empty) return 0;
+        // Fixed arity keeps the OR translatable; pad with the first pattern.
+        string p0 = pats[0], p1 = pats.ElementAtOrDefault(1) ?? p0, p2 = pats.ElementAtOrDefault(2) ?? p0;
+        var deliveries = await db.NotificationDeliveries
+            .Where(d => d.UserId == userId
+                && d.Status != NotificationStatus.Read && d.Status != NotificationStatus.Acknowledged
+                && d.Request.TargetUrl != null
+                && (EF.Functions.Like(d.Request.TargetUrl, p0) || EF.Functions.Like(d.Request.TargetUrl, p1)
+                    || EF.Functions.Like(d.Request.TargetUrl, p2)))
+            .ToListAsync(ct);
+        if (deliveries.Count == 0) return 0;
+        var now = DateTime.UtcNow;
+        foreach (var d in deliveries)
+        {
+            d.Status = NotificationStatus.Read;
+            d.ReadAt ??= now;
+            d.UpdatedAt = now;
+        }
+        await db.SaveChangesAsync(ct);
+        return deliveries.Count;
+    }
+
     /// Read/unread/snooze/delete in one tab: the user's other tabs re-fetch the bell
     /// (unread count + recent list) instead of showing stale state until a refresh.
     private static Task NotifyChangedAsync(HttpContext http, IRealtime realtime, CancellationToken ct)
@@ -761,6 +818,8 @@ public static class NotificationGatewayEndpoints
 
     // Request DTOs
     public record BulkNotificationActionRequest(IReadOnlyList<Guid>? RequestIds);
+/// Kind: chat | mail | calendar | meeting | task | project | news | note.
+public record ReadByTargetRequest(string Kind, Guid Id);
     public record RegisterClientRequest(
         string ClientId,
         string Secret,

@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.JSInterop;
 using IPop.Application.Notifications;
@@ -511,6 +512,27 @@ public class NotificationState : IDisposable
             // best-effort
         }
     }
+
+    /// A module opened the item a notification points at (kind: chat | mail | calendar | meeting |
+    /// task | project | news | note). The server marks matching notifications read; skip the
+    /// round-trip when nothing is unread, and re-fetch the bell only when something changed.
+    public async Task MarkReadByTargetAsync(string kind, Guid id)
+    {
+        if (!_auth.IsAuthenticated || id == Guid.Empty || UnreadCount == 0) return;
+        try
+        {
+            var res = await _auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/read-by-target", new { kind, id });
+            if (!res.IsSuccessStatusCode) return;
+            var body = await res.Content.ReadFromJsonAsync<ReadByTargetResult>();
+            if (body?.Updated > 0) ScheduleResync();
+        }
+        catch
+        {
+            // best-effort
+        }
+    }
+
+    private sealed record ReadByTargetResult(int Updated);
 
     public async Task MarkAllReadAsync()
     {

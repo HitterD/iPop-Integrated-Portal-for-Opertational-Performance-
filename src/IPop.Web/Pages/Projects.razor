@@ -8,6 +8,7 @@
 @attribute [Authorize]
 @implements IDisposable
 @inject AuthState Auth
+@inject NotificationState Notifs
 @inject ToastService Toasts
 @inject ConfirmService Confirm
 @inject NavigationManager Nav
@@ -751,6 +752,7 @@
                     selectedProjectId = ProjectId.Value;
                     selectedGroupId = null;
                     selectedProject = proj;
+                    _ = Notifs.MarkReadByTargetAsync("project", proj.Id);
                     await LoadMembers();
                     await LoadGroups();
                     await LoadFields();
@@ -930,6 +932,7 @@
         selectedProjectId = p.Id;
         var proj = await Auth.GetAsync<ProjectDto>($"/api/projects/{p.Id}");
         if (p.Id != selectedProjectId) return;
+        _ = Notifs.MarkReadByTargetAsync("project", p.Id);
         selectedProject = proj;
 
         await LoadMembers();
@@ -1492,6 +1495,7 @@
     private async Task OpenTaskEditor(ProjectTaskDto t)
     {
         editingTask = t;
+        _ = Notifs.MarkReadByTargetAsync("task", t.Id);
         showTaskEditor = true;
         await LoadSubtasks(t.Id);
         await LoadFieldValues(t.Id);

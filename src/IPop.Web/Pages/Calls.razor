@@ -3,6 +3,7 @@
 @using IPop.Application.Calls
 @using IPop.Web.Components.Calls
 @inject IJSRuntime JS
+@inject NotificationState Notifs
 @inject AuthState Auth
 @inject CallState CallSvc
 @inject NavigationManager Nav
@@ -748,6 +749,7 @@
         detailCall = null;
         detailMeeting = meetings.FirstOrDefault(m => m.Id == id)
             ?? await Auth.GetAsync<MeetingDto>($"/api/meetings/{id}");
+        _ = Notifs.MarkReadByTargetAsync("meeting", id);
     }
 
     // Phone layout: list and detail swap; the detail owns a history entry so phone Back closes it.

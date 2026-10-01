@@ -176,6 +176,7 @@ public partial class Notes
         }
         note = await res.Content.ReadFromJsonAsync<NotePageDto>(Json);
         if (note is null) { pageError = "not_found"; return; }
+        _ = Notifs.MarkReadByTargetAsync("note", id);
         titleDraft = note.Title;
         ExpandTo(note);
         mountPending = true;

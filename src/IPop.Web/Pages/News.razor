@@ -2,6 +2,7 @@
 @page "/news/{Id:guid}"
 @implements IDisposable
 @inject AuthState Auth
+@inject NotificationState Notifs
 @inject ToastService Toasts
 @inject ConfirmService Confirm
 @inject IJSRuntime JS
@@ -490,6 +491,7 @@
             return;
         }
         detail = d;
+        _ = Notifs.MarkReadByTargetAsync("news", id);
         // Opening a published post marks it read on the server; mirror that in the list.
         if (d.Status == "published")
         {

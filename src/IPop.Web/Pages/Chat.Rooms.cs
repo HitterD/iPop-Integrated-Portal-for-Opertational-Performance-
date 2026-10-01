@@ -121,6 +121,7 @@ public partial class Chat
         openingRoom = true;
         var previousRoomId = openedRoomId;
         openedRoomId = roomId;
+        _ = Notifs.MarkReadByTargetAsync("chat", roomId);
         ClearPendingPreviews();
         pendingAttachments = [];
         uploadError = null;

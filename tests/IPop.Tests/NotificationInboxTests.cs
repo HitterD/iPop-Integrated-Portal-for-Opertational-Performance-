@@ -69,6 +69,47 @@ public class NotificationInboxTests
     }
 
     [Fact]
+    public async Task ReadByTarget_MarksOnlyMatchingDeliveriesOfThatUser()
+    {
+        using var t = new TestDb();
+        var c = AddClient(t);
+        var me = t.AddUser("100");
+        var other = t.AddUser("200");
+        var room = Guid.NewGuid();
+        var mail = Guid.NewGuid();
+        var task = Guid.NewGuid();
+        var chat1 = AddDelivery(t, c, me.Id, "chat.mention", NotificationStatus.Delivered, "m1", "a");
+        var chat2 = AddDelivery(t, c, me.Id, "chat.emergency", NotificationStatus.Delivered, "m2", "b");
+        var otherRoom = AddDelivery(t, c, me.Id, "chat.mention", NotificationStatus.Delivered, "m3", "c");
+        var theirs = AddDelivery(t, c, other.Id, "chat.mention", NotificationStatus.Delivered, "m4", "d");
+        var mailD = AddDelivery(t, c, me.Id, "mail.new", NotificationStatus.Delivered, "m5", "e");
+        var taskD = AddDelivery(t, c, me.Id, "project.task_assigned", NotificationStatus.Delivered, "m6", "f");
+        void Url(NotificationDelivery d, string url) => t.Db.NotificationRequests.Single(r => r.Id == d.RequestId).TargetUrl = url;
+        Url(chat1, $"/chat/{room}?jump={Guid.NewGuid()}");
+        Url(chat2, $"/chat/{room}");
+        Url(otherRoom, $"/chat/{Guid.NewGuid()}");
+        Url(theirs, $"/chat/{room}");
+        Url(mailD, $"/mail?mailId={mail}");
+        Url(taskD, $"/projects/{Guid.NewGuid()}?task={task}");
+        t.Db.SaveChanges();
+
+        Assert.Equal(2, await NotificationGatewayEndpoints.MarkReadByTargetCoreAsync(t.Verify(), me.Id, "chat", room, default));
+        Assert.Equal(1, await NotificationGatewayEndpoints.MarkReadByTargetCoreAsync(t.Verify(), me.Id, "mail", mail, default));
+        Assert.Equal(1, await NotificationGatewayEndpoints.MarkReadByTargetCoreAsync(t.Verify(), me.Id, "task", task, default));
+        Assert.Equal(0, await NotificationGatewayEndpoints.MarkReadByTargetCoreAsync(t.Verify(), me.Id, "chat", room, default));
+        Assert.Equal(0, await NotificationGatewayEndpoints.MarkReadByTargetCoreAsync(t.Verify(), me.Id, "bogus", room, default));
+
+        await using var v = t.Verify();
+        var st = await v.NotificationDeliveries.ToDictionaryAsync(d => d.Id, d => d.Status);
+        Assert.Equal(NotificationStatus.Read, st[chat1.Id]);
+        Assert.Equal(NotificationStatus.Read, st[chat2.Id]);
+        Assert.Equal(NotificationStatus.Delivered, st[otherRoom.Id]);
+        Assert.Equal(NotificationStatus.Delivered, st[theirs.Id]);
+        Assert.Equal(NotificationStatus.Read, st[mailD.Id]);
+        Assert.Equal(NotificationStatus.Read, st[taskD.Id]);
+    }
+
+    [Fact]
     public async Task ClassifyEventType_MapsModuleKinds()
     {
         Assert.Equal("chat", NotificationGatewayEndpoints.ClassifyEventType("chat.mention"));

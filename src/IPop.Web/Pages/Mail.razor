@@ -1,6 +1,7 @@
 @page "/mail"
 @implements IDisposable
 @inject IJSRuntime JS
+@inject NotificationState Notifs
 @inject AuthState Auth
 @using IPop.Web.Components
 @using IPop.Web.Components.Mail
@@ -1307,6 +1308,7 @@
         if (replyOpenFor != id) { replyOpen = false; replyOpenFor = null; quickReplyText = ""; }
         detail = await MailSvc.GetAsync(id);
         if (id != selectedMail) return;
+        _ = Notifs.MarkReadByTargetAsync("mail", id);
 
         if (activeFolder == MailFolder.Draft && detail is not null)
         {

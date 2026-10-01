@@ -460,7 +460,10 @@ public partial class Calendar
         {
             drawerOpen = false;
             Toasts.Show("That event is no longer available.", ToastKind.Error);
+            return;
         }
+        _ = Notifs.MarkReadByTargetAsync("calendar", id);
+        if (detail.MeetingId is { } mid) _ = Notifs.MarkReadByTargetAsync("meeting", mid);
     }
 
     private void CloseDrawer() { drawerOpen = false; editing = false; detail = null; }
