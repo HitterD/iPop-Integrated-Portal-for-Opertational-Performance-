@@ -115,6 +115,38 @@
 .nt-row.guide { height:36px; margin-bottom:6px; background:linear-gradient(90deg,color-mix(in srgb,#FF9500 14%,transparent),color-mix(in srgb,#FF2D55 9%,transparent)); }
 .nt-row.guide.active { box-shadow:inset 0 0 0 1px color-mix(in srgb,#FF9500 40%,transparent); }
 .nt-children { padding-left:14px; }
+/* One-click new page (+ template menu), collapsible sections, row ⋯ menu, rename, drag & drop. */
+.nt-new { margin:0 12px 6px; display:flex; height:32px; border-radius:9px; background:var(--surface); box-shadow:0 0 0 1px var(--line); overflow:hidden; }
+.nt-new button { display:flex; align-items:center; justify-content:center; color:var(--ink-2); }
+.nt-new button:hover { background:var(--fill); color:var(--ink); }
+.nt-new-main { flex:1; gap:6px; font-weight:500; }
+.nt-new-main:disabled { opacity:.6; cursor:progress; }
+.nt-new-more { width:30px; border-left:1px solid var(--line) !important; }
+.nt-sect .nt-sect-t { opacity:1; width:auto; height:auto; display:flex; align-items:center; gap:3px; font:inherit; color:inherit; padding:0; border-radius:4px; }
+.nt-sect .nt-sect-t:hover { background:none; color:var(--ink-2); }
+.nt-sect .nt-sect-t .lucide { width:12px; height:12px; opacity:0; transition:transform .15s, opacity .15s; }
+.nt-sect:hover .nt-sect-t .lucide, .nt-sect .nt-sect-t .lucide.shut { opacity:1; }
+.nt-sect .nt-sect-t .lucide.shut { transform:rotate(-90deg); }
+.nt-row.menu-on .actions { display:flex; }
+.nt-row.menu-on .meta { display:none; }
+.nt-row.menu-on:not(.active) { background:var(--fill); }
+.nt-rename { flex:1; min-width:0; height:22px; border:0; outline:0; border-radius:5px; padding:0 5px; background:var(--surface); box-shadow:0 0 0 2px var(--accent, #0A84FF); }
+.nt-row.dragging { opacity:.45; }
+.nt-row.drop-in { background:color-mix(in srgb,#0A84FF 16%,transparent); box-shadow:inset 0 0 0 1.5px #0A84FF; }
+.nt-row.drop-before { box-shadow:inset 0 2px 0 #0A84FF; }
+.nt-row.drop-after { box-shadow:inset 0 -2px 0 #0A84FF; }
+.nt-count { font-size:11px; font-weight:600; color:var(--ink-3); background:var(--fill); border-radius:9px; padding:0 7px; line-height:18px; }
+.nt-mi-emo { width:16px; text-align:center; font-size:13px; }
+.nt-move { top:12vh; left:50%; transform:translateX(-50%); width:min(420px,calc(100vw - 24px)); display:flex; flex-direction:column; max-height:70vh; padding:0 0 8px; animation:none; }
+.nt-move .hd { font-weight:600; padding:14px 16px 10px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nt-move .nt-search { margin:0 12px 6px; }
+.nt-move .ls { overflow:auto; padding:0 8px; min-height:60px; }
+/* Touch: no hover, so the ⋯ stays visible (long-press opens the same menu). */
+@media (hover: none) {
+  .nt-row .actions { display:flex; }
+  .nt-row .meta { display:none; }
+  .nt-sect button, .nt-sect .nt-sect-t .lucide { opacity:1; }
+}
 .nt-side-empty { font-size:12px; color:var(--ink-4); padding:4px 10px; }
 .nt-side-foot { border-top:1px solid var(--line); padding:8px; display:flex; gap:4px; align-items:center; }
 .nt-side-foot .nt-row { flex:1; color:var(--ink-3); }

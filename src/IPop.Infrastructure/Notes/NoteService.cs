@@ -180,7 +180,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
 
         var recent = await db.NoteVisits.AsNoTracking().Where(v => v.UserId == userId && ids.Contains(v.PageId))
             .OrderByDescending(v => v.VisitedAt).Take(8).Select(v => v.PageId).ToListAsync(ct);
-        return new NoteSidebarDto(pages, recent);
+        return new NoteSidebarDto(pages, recent, await TrashQuery(userId).CountAsync(ct));
     }
 
     public async Task<IReadOnlyList<NoteSearchHitDto>> SearchAsync(Guid userId, string query, CancellationToken ct)
@@ -205,12 +205,14 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         return (start > 0 ? "…" : "") + text.Substring(start, len) + (start + len < text.Length ? "…" : "");
     }
 
+    /// Top of each trashed subtree the user owns or trashed themselves.
+    private IQueryable<NotePage> TrashQuery(Guid userId) => db.NotePages.AsNoTracking()
+        .Where(p => p.DeletedAt != null && (p.OwnerId == userId || p.DeletedById == userId)
+            && (p.ParentId == null || p.Parent!.DeletedAt == null || p.Parent.DeletedAt != p.DeletedAt));
+
     public async Task<IReadOnlyList<NoteListItemDto>> GetTrashAsync(Guid userId, CancellationToken ct)
     {
-        // Top of each trashed subtree the user owns or trashed themselves.
-        var rows = await db.NotePages.AsNoTracking()
-            .Where(p => p.DeletedAt != null && (p.OwnerId == userId || p.DeletedById == userId)
-                && (p.ParentId == null || p.Parent!.DeletedAt == null || p.Parent.DeletedAt != p.DeletedAt))
+        var rows = await TrashQuery(userId)
             .OrderByDescending(p => p.DeletedAt)
             .Select(p => new NoteListItemDto(p.Id, null, p.Title, p.Emoji, "owner", p.OwnerId == userId, false, false,
                 p.IsGuide, p.TodoDone, p.TodoTotal, p.DeletedAt!.Value, p.Owner.Name))

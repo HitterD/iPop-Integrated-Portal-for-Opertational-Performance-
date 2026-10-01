@@ -48,7 +48,7 @@ public record NoteListItemDto(Guid Id, Guid? ParentId, string Title, string? Emo
     bool IsMine, bool IsShared, bool IsFavorite, bool IsGuide, int TodoDone, int TodoTotal,
     DateTime UpdatedAt, string OwnerName, int SortOrder = 0);
 
-public record NoteSidebarDto(IReadOnlyList<NoteListItemDto> Pages, IReadOnlyList<Guid> Recent);
+public record NoteSidebarDto(IReadOnlyList<NoteListItemDto> Pages, IReadOnlyList<Guid> Recent, int TrashCount = 0);
 
 public record NoteCrumbDto(Guid Id, string Title, string? Emoji);
 

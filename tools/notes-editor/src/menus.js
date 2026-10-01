@@ -269,6 +269,7 @@ export function createBlockMenu(editor, host, getTarget) {
     } else return;
     close();
   });
-  document.addEventListener('mousedown', ev => { if (!menu.contains(ev.target) && !ev.target.closest?.('.nt-handle')) close(); });
-  return { open, close, destroy() { menu.remove(); } };
+  const outside = ev => { if (!menu.contains(ev.target) && !ev.target.closest?.('.nt-handle')) close(); };
+  document.addEventListener('mousedown', outside);
+  return { open, close, destroy() { document.removeEventListener('mousedown', outside); menu.remove(); } };
 }

@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261001-ck";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261001-side3";
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History }
@@ -111,6 +111,7 @@ public partial class Notes
             Layout?.SetHeader("Notes", "Shared notes & docs");
             module = await JS.InvokeAsync<IJSObjectReference>("import", EditorModule);
             hotkeys = await module.InvokeAsync<IJSObjectReference>("hotkeys", selfRef);
+            await SidebarFirstRenderAsync();
             if (note is not null) mountPending = true;
         }
         await JS.InvokeVoidAsync("ipop.icons");
@@ -122,6 +123,7 @@ public partial class Notes
         if (focusNewTitle) { focusNewTitle = false; await newTitleRef.FocusAsync(); }
         if (focusDraft) { focusDraft = false; try { await draftRef.FocusAsync(); } catch (JSException) { } }
         if (focusSearch) { focusSearch = false; await searchRef.FocusAsync(); }
+        await SidebarAfterRenderAsync();
     }
 
     public async ValueTask DisposeAsync()
@@ -134,6 +136,7 @@ public partial class Notes
         {
             await UnmountAsync();
             await DestroyPreviewAsync();
+            await DisposeSidebarAsync();
             if (hotkeys is not null) { await hotkeys.InvokeVoidAsync("dispose"); await hotkeys.DisposeAsync(); }
             if (module is not null) await module.DisposeAsync();
         }
@@ -297,7 +300,7 @@ public partial class Notes
     [JSInvokable]
     public void OnHotkey(string key)
     {
-        if (key == "new") OpenNewPage(null);
+        if (key == "new") _ = CreateBlank(null);
         StateHasChanged();
     }
 
@@ -393,17 +396,7 @@ public partial class Notes
 
     private async Task TrashPage()
     {
-        if (note is null) return;
-        pop = Pop.None;
-        var p = note;
-        var msg = p.Children.Count > 0 ? $"“{DisplayTitle(p.Title)}” and its {p.Children.Count} sub-page{(p.Children.Count == 1 ? "" : "s")} will move to Trash. You can restore them anytime."
-            : $"“{DisplayTitle(p.Title)}” will move to Trash. You can restore it anytime.";
-        if (!await Confirm.AskAsync("Move to Trash?", msg, "Move")) return;
-        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notes/{p.Id}");
-        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't delete the page", ToastKind.Error); return; }
-        Toasts.Show("Moved to Trash", ToastKind.Success);
-        await LoadSidebarAsync();
-        Nav.NavigateTo(p.ParentId is { } parent && sidebar?.Pages.Any(x => x.Id == parent) == true ? $"/notes/{parent}" : "/notes");
+        if (note is not null) await TrashById(note.Id);
     }
 
     private async Task CopyLink()
@@ -428,13 +421,6 @@ public partial class Notes
     private bool IsActive(Guid id) => view == View.Page && note?.Id == id;
 
     private void ToggleExpand(Guid id) { if (!expanded.Remove(id)) expanded.Add(id); }
-
-    private List<NoteListItemDto> Children(Guid id) =>
-        sidebar?.Pages.Where(p => p.ParentId == id).OrderBy(p => p.Title).ToList() ?? [];
-
-    /// Root rows: pages without a visible parent, split into mine vs. shared with me.
-    private List<NoteListItemDto> Roots(bool mine) =>
-        sidebar?.Pages.Where(p => p.ParentId is null && p.IsMine == mine).OrderByDescending(p => p.UpdatedAt).ToList() ?? [];
 
     private async Task OpenTrash()
     {

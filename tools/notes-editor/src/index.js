@@ -86,6 +86,7 @@ export async function mount(el, opts) {
   };
 
   let destroyed = false;
+  let closing = false; // destroy() started: the editor may be gone by the time Blazor or an await calls back
   let accent = opts.accent;
   const accentListeners = new Set();
   let pages = new Map((opts.pages || []).map(p => [p.id, p]));
@@ -108,7 +109,7 @@ export async function mount(el, opts) {
     avatarColor: nik => palette[[...String(nik)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % palette.length],
     initials: name => String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join(''),
     commentSelection: () => commentSelection(),
-    lockHandle: on => editor && (on ? editor.commands.lockDragHandle() : editor.commands.unlockDragHandle()),
+    lockHandle: on => editor && !closing && (on ? editor.commands.lockDragHandle() : editor.commands.unlockDragHandle()),
   };
 
   // ── Yjs doc + awareness ──────────────────────────────────────────────────
@@ -311,7 +312,7 @@ export async function mount(el, opts) {
     try {
       const r = await api(`/api/notes/${pageId}/seed`, { method: 'POST' });
       const t = r.ok ? (await r.json()).template : null;
-      if (t && TEMPLATES[t] && ydoc.getXmlFragment(FIELD).length === 0) {
+      if (!closing && t && TEMPLATES[t] && ydoc.getXmlFragment(FIELD).length === 0) {
         editor.commands.setContent(TEMPLATES[t]());
         if (t === 'guide') await postGuideThread();
       }
@@ -394,6 +395,7 @@ export async function mount(el, opts) {
           if (!r.ok) { const e = await r.json().catch(() => ({})); host.toast(e.message || `Couldn't upload ${f.name}`); continue; }
           const u = await r.json();
           const node = { type: u.contentType?.startsWith('image/') ? 'noteImage' : 'noteFile', attrs: { id: u.id, name: u.fileName, size: u.size } };
+          if (closing) return;
           at = Math.min(at, editor.state.doc.content.size);
           editor.chain().insertContentAt(at, node).run();
           at = editor.state.selection.to;
@@ -406,10 +408,12 @@ export async function mount(el, opts) {
   // ── API for Blazor ───────────────────────────────────────────────────────
   return {
     setThreads(threads, focus) {
+      if (closing) return;
       const open = (threads || []).filter(t => !t.resolvedAt && t.anchor).map(t => ({ id: t.id, anchor: t.anchor }));
       editor.view.dispatch(editor.state.tr.setMeta(commentKey, { threads: open, focus: focus ?? null }));
     },
     focusThread(id) {
+      if (closing) return;
       const st = commentKey.getState(editor.state);
       editor.view.dispatch(editor.state.tr.setMeta(commentKey, { ...st, focus: id }));
       const t = st.threads.find(x => x.id === id);
@@ -417,18 +421,18 @@ export async function mount(el, opts) {
       if (r) editor.view.domAtPos(r.from)?.node?.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' });
     },
     setAccent(k) { accent = k; accentListeners.forEach(f => f()); },
-    setPages(list) { pages = new Map((list || []).map(p => [p.id, p])); editor.view.dispatch(editor.state.tr.setMeta('pagesChanged', true)); },
+    setPages(list) { pages = new Map((list || []).map(p => [p.id, p])); if (!closing) editor.view.dispatch(editor.state.tr.setMeta('pagesChanged', true)); },
     applyTemplate(key) {
-      if (!canEdit || !TEMPLATES[key]) return false;
+      if (closing || !canEdit || !TEMPLATES[key]) return false;
       editor.commands.setContent(TEMPLATES[key]());
       if (key === 'guide') postGuideThread();
       editor.commands.focus('end');
       return true;
     },
-    isEmpty() { return editor.isEmpty; },
-    focus() { editor.commands.focus('start'); },
+    isEmpty() { return !closing && editor.isEmpty; },
+    focus() { if (!closing) editor.commands.focus('start'); },
     restore(state) {
-      if (!canEdit) return;
+      if (closing || !canEdit) return;
       const tmp = new Y.Doc();
       Y.applyUpdate(tmp, unb64(state));
       editor.commands.setContent(yXmlFragmentToProsemirrorJSON(tmp.getXmlFragment(FIELD)));
@@ -436,7 +440,8 @@ export async function mount(el, opts) {
     },
     async flushNow() { await flush(); scheduleSnapshot.cancel(); await snapshot(); },
     async destroy() {
-      if (destroyed) return;
+      if (closing) return;
+      closing = true;
       scheduleSnapshot.cancel();
       try { await flush(); await snapshot(); } catch { /* best effort */ }
       destroyed = true;
@@ -463,3 +468,4 @@ export function hotkeys(net) {
 }
 
 export function copyText(text) { return navigator.clipboard?.writeText(text).then(() => true, () => false) ?? false; }
+export { sidebar, place, openTab, focusSelect } from './sidebar.js';

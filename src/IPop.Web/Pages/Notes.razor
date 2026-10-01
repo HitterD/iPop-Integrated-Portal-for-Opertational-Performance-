@@ -14,10 +14,9 @@
 
 <div class="notes-page @(sideOpen ? "side-open" : "")">
     @* ── Sidebar ──────────────────────────────────────────────────────────── *@
-    <aside class="nt-side" aria-label="Notes">
+    <aside class="nt-side" aria-label="Notes" @ref="sideRef">
         <div class="nt-side-head">
             <h1>Notes</h1>
-            <button type="button" class="nt-icon-btn" title="New page (Alt N)" @onclick="() => OpenNewPage(null)"><i data-lucide="square-pen"></i></button>
             <button type="button" class="nt-icon-btn nt-mobile-only" title="Close" @onclick="() => sideOpen = false"><i data-lucide="x"></i></button>
         </div>
         <label class="nt-search">
@@ -25,6 +24,10 @@
             <input @ref="searchRef" placeholder="Search notes" value="@searchQ" @oninput="OnSearchInput" @onkeydown="OnSearchKey" aria-label="Search notes" />
             @if (!string.IsNullOrEmpty(searchQ)) { <button type="button" class="nt-icon-btn" style="width:20px;height:20px" title="Clear" @onclick="ClearSearch"><i data-lucide="x" class="sm"></i></button> }
         </label>
+        <div class="nt-new">
+            <button type="button" class="nt-new-main" title="New page (Alt N)" disabled="@creating" @onclick="() => CreateBlank(null)"><i data-lucide="plus" class="sm"></i>New page</button>
+            <button type="button" class="nt-new-more" title="New from a template" aria-haspopup="menu" @onclick="OpenNewMenu"><i data-lucide="chevron-down" class="sm"></i></button>
+        </div>
 
         <div class="nt-side-scroll">
             @if (!string.IsNullOrWhiteSpace(searchQ))
@@ -52,48 +55,68 @@
             else
             {
                 var guide = sidebar.Pages.FirstOrDefault(p => p.IsGuide && p.IsMine);
-                if (guide is not null)
+                if (guide is not null && (!GuideHidden(guide) || IsActive(guide.Id)))
                 {
-                    <button type="button" class="nt-row guide @(IsActive(guide.Id) ? "active" : "")" @onclick="() => Open(guide.Id)">
+                    <div class="nt-row guide @(IsActive(guide.Id) ? "active" : "")" role="button" tabindex="0" data-id="@guide.Id"
+                         @onclick="() => Open(guide.Id)" @onkeydown="e => OnRowKey(e, guide)">
                         <span class="emo">@(guide.Emoji ?? "👋")</span>
                         <span class="t">Start here</span>
                         <span class="pill @(guide.TodoTotal > 0 && guide.TodoDone == guide.TodoTotal ? "done" : "")">@guide.TodoDone/@guide.TodoTotal</span>
-                    </button>
+                        <span class="actions">
+                            <span title="More" @onclick="e => OpenRowMenu(guide, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>
+                        </span>
+                    </div>
                 }
 
                 var recent = sidebar.Recent.Select(id => sidebar.Pages.FirstOrDefault(p => p.Id == id)).Where(p => p is not null && !p.IsGuide).Take(4).ToList();
                 if (recent.Count > 0)
                 {
-                    <div class="nt-sect">Recently opened</div>
-                    @foreach (var p in recent)
+                    @Section("recent", "Recently opened", null)
+                    @if (!collapsed.Contains("recent"))
                     {
-                        <button type="button" class="nt-row @(IsActive(p!.Id) ? "active" : "")" @onclick="() => Open(p.Id)">
-                            <span class="emo">@(p.Emoji ?? "📄")</span><span class="t">@DisplayTitle(p.Title)</span>
-                            <span class="meta">@Ago(p.UpdatedAt)</span>
-                        </button>
+                        @foreach (var p in recent)
+                        {
+                            <div class="nt-row @(IsActive(p!.Id) ? "active" : "") @(menuFor?.Id == p.Id ? "menu-on" : "")" role="button" tabindex="0" data-id="@p.Id"
+                                 @onclick="() => Open(p.Id)" @onkeydown="e => OnRowKey(e, p)">
+                                <span class="emo">@(p.Emoji ?? "📄")</span><span class="t">@DisplayTitle(p.Title)</span>
+                                <span class="meta">@Ago(p.UpdatedAt)</span>
+                                <span class="actions">
+                                    <span title="More" @onclick="e => OpenRowMenu(p, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>
+                                </span>
+                            </div>
+                        }
                     }
                 }
 
                 var favs = sidebar.Pages.Where(p => p.IsFavorite).ToList();
                 if (favs.Count > 0)
                 {
-                    <div class="nt-sect">Favorites</div>
-                    @foreach (var p in favs) { @Row(p, 0, false) }
+                    @Section("favorites", "Favorites", null)
+                    @if (!collapsed.Contains("favorites")) { @foreach (var p in favs) { @Row(p, false, false) } }
                 }
 
                 var shared = Roots(false);
-                <div class="nt-sect">Shared with me</div>
-                @if (shared.Count == 0) { <div class="nt-side-empty">Nothing yet. Notes sent to your chats show up here.</div> }
-                @foreach (var p in shared) { @Row(p, 0, true) }
+                @Section("shared", "Shared with me", null)
+                @if (!collapsed.Contains("shared"))
+                {
+                    @if (shared.Count == 0) { <div class="nt-side-empty">Nothing yet. Notes sent to your chats show up here.</div> }
+                    @foreach (var p in shared) { @Row(p, true, false) }
+                }
 
-                <div class="nt-sect">Private <button type="button" title="New page" @onclick="() => OpenNewPage(null)"><i data-lucide="plus" class="sm"></i></button></div>
-                @foreach (var p in Roots(true).Where(p => !p.IsGuide)) { @Row(p, 0, true) }
-                @if (!Roots(true).Any(p => !p.IsGuide)) { <div class="nt-side-empty">Click + to create your first page.</div> }
+                var mine = Roots(true).Where(p => !p.IsGuide).ToList();
+                @Section("mine", "My pages", () => CreateBlank(null))
+                @if (!collapsed.Contains("mine"))
+                {
+                    @foreach (var p in mine) { @Row(p, true, true) }
+                    @if (mine.Count == 0) { <div class="nt-side-empty">Click “New page” to create your first page.</div> }
+                }
             }
         </div>
         <div class="nt-side-foot">
-            <button type="button" class="nt-row @(view == View.Trash ? "active" : "")" @onclick="OpenTrash"><span class="sico"><i data-lucide="trash-2" class="sm"></i></span><span class="t">Trash</span></button>
-            <button type="button" class="nt-icon-btn" title="New page (Alt N)" @onclick="() => OpenNewPage(null)"><i data-lucide="plus"></i></button>
+            <button type="button" class="nt-row @(view == View.Trash ? "active" : "")" data-drop="trash" title="Trash — drop a page here to delete it" @onclick="OpenTrash">
+                <span class="sico"><i data-lucide="trash-2" class="sm"></i></span><span class="t">Trash</span>
+                @if (sidebar?.TrashCount > 0) { <span class="nt-count">@sidebar.TrashCount</span> }
+            </button>
         </div>
     </aside>
 
@@ -245,7 +268,7 @@
                                     <button type="button" @onclick="ToggleComments"><i data-lucide="message-square" class="sm"></i>Comment</button>
                                 </div>
                             }
-                            <input class="nt-page-title" placeholder="Untitled" value="@titleDraft" readonly="@(!CanEdit)"
+                            <input class="nt-page-title" placeholder="Untitled" value="@titleDraft" readonly="@(!CanEdit)" @ref="titleRef"
                                    @oninput="OnTitleInput" @onkeydown="OnTitleKey" @onblur="FlushTitle" aria-label="Title" />
                             <div class="nt-page-props">
                                 @if (!note.OwnerNik.Equals(Auth.Me?.Nik, StringComparison.OrdinalIgnoreCase))
@@ -302,7 +325,7 @@
                     <h2>Notes</h2>
                     <div class="sub">Notes, SOPs and meeting minutes — share them to chat and edit together.</div>
                     <div class="nt-cards">
-                        <button type="button" class="nt-card" @onclick="() => OpenNewPage(null)"><span class="emo">➕</span><span class="t">New page</span><span class="m">Alt N</span></button>
+                        <button type="button" class="nt-card" @onclick="() => CreateBlank(null)"><span class="emo">➕</span><span class="t">New page</span><span class="m">Alt N</span></button>
                         @if (sidebar is not null)
                         {
                             @foreach (var p in sidebar.Pages.OrderByDescending(p => p.IsGuide).ThenByDescending(p => p.UpdatedAt).Take(11))
@@ -399,7 +422,7 @@
                 @if (CanEdit)
                 {
                     <button type="button" class="mi" @onclick="() => pop = Pop.Style"><i data-lucide="palette" class="sm"></i>Style</button>
-                    <button type="button" class="mi" @onclick="() => OpenNewPage(note.Id)"><i data-lucide="file-plus" class="sm"></i>Add sub-page</button>
+                    <button type="button" class="mi" @onclick="() => CreateBlank(note.Id)"><i data-lucide="file-plus" class="sm"></i>Add sub-page</button>
                 }
                 <button type="button" class="mi" @onclick="OpenHistory"><i data-lucide="history" class="sm"></i>Version history</button>
                 <button type="button" class="mi" @onclick="CopyLink"><i data-lucide="link" class="sm"></i>Copy link</button>
@@ -615,30 +638,135 @@
     }
 }
 
+@* ── Sidebar menus ────────────────────────────────────────────────────────── *@
+@if (menuFor is { } m)
+{
+    var edit = m.Access is "owner" or "edit";
+    <div class="nt-scrim" @onclick="CloseRowMenu" @oncontextmenu="CloseRowMenu" @oncontextmenu:preventDefault></div>
+    <div class="nt-layer nt-menu-l" role="menu" style="top:@(menuY)px;left:@(menuX)px" @ref="menuRef">
+        @if (m.IsGuide)
+        {
+            <button type="button" class="mi" @onclick="() => HideGuide(true)"><i data-lucide="eye-off" class="sm"></i>Hide from sidebar</button>
+            <div class="mh" style="font-weight:400">You can still open it from the Notes home.</div>
+        }
+        else
+        {
+            @if (edit)
+            {
+                <button type="button" class="mi" @onclick="() => StartRename(m)"><i data-lucide="pencil" class="sm"></i>Rename<span class="ds">F2</span></button>
+                <button type="button" class="mi" @onclick="() => CreateBlank(m.Id)"><i data-lucide="file-plus" class="sm"></i>Add sub-page</button>
+            }
+            <button type="button" class="mi" @onclick="() => SetFavorite(m, !m.IsFavorite)"><i data-lucide="star" class="sm"></i>@(m.IsFavorite ? "Remove from Favorites" : "Add to Favorites")</button>
+            @if (edit)
+            {
+                <button type="button" class="mi" @onclick="() => Duplicate(m)"><i data-lucide="copy" class="sm"></i>Duplicate</button>
+            }
+            <button type="button" class="mi" @onclick="() => CopyLinkOf(m.Id)"><i data-lucide="link" class="sm"></i>Copy link</button>
+            <button type="button" class="mi" @onclick="() => OpenInNewTab(m.Id)"><i data-lucide="external-link" class="sm"></i>Open in new tab</button>
+            @if (m.Access == "owner")
+            {
+                <button type="button" class="mi" @onclick="() => OpenMoveDialog(m)"><i data-lucide="folder-input" class="sm"></i>Move to…</button>
+            }
+            @if (edit)
+            {
+                <hr />
+                <button type="button" class="mi danger" @onclick="() => TrashById(m.Id)"><i data-lucide="trash-2" class="sm"></i>Move to Trash</button>
+            }
+        }
+    </div>
+}
+@if (newMenuOpen)
+{
+    <div class="nt-scrim" @onclick="() => newMenuOpen = false"></div>
+    <div class="nt-layer nt-menu-l" role="menu" style="top:@(menuY)px;left:@(menuX)px" @ref="menuRef">
+        <div class="mh">New page from a template</div>
+        @foreach (var t in Templates)
+        {
+            <button type="button" class="mi" @onclick="() => CreateFromTemplate(t.Key)"><span class="nt-mi-emo">@t.Emoji</span>@t.Name</button>
+        }
+        <hr />
+        <button type="button" class="mi" @onclick="() => CreateBlank(null)"><span class="nt-mi-emo">📄</span>Blank page</button>
+    </div>
+}
+@if (moveFor is { } mv)
+{
+    var targets = MoveTargets(mv);
+    <div class="nt-scrim dim" @onclick="() => moveFor = null"></div>
+    <div class="nt-layer nt-move" role="dialog" aria-label="Move page">
+        <div class="hd">Move “@DisplayTitle(mv.Title)” to…</div>
+        <label class="nt-search">
+            <i data-lucide="search" class="sm"></i>
+            <input @ref="moveRef" placeholder="Search pages" value="@moveQ" @oninput="e => moveQ = e.Value?.ToString() ?? string.Empty" @onkeydown="OnMoveKey" aria-label="Search pages" />
+        </label>
+        <div class="ls">
+            @if (string.IsNullOrWhiteSpace(moveQ) && mv.ParentId is not null && mv.IsMine)
+            {
+                <button type="button" class="nt-row" @onclick="() => MoveTo(mv, null, null)"><span class="sico"><i data-lucide="file-stack" class="sm"></i></span><span class="t">My pages (top level)</span></button>
+            }
+            @foreach (var t in targets)
+            {
+                <button type="button" class="nt-row" @onclick="() => MoveTo(mv, t.Id, null)">
+                    <span class="emo">@(t.Emoji ?? "📄")</span><span class="t">@DisplayTitle(t.Title)</span>
+                    @if (!t.IsMine) { <span class="meta">@t.OwnerName</span> }
+                </button>
+            }
+            @if (targets.Count == 0) { <div class="nt-side-empty" style="padding:10px">No pages you can move it into.</div> }
+        </div>
+    </div>
+}
+
 @code {
-    private RenderFragment Row(NoteListItemDto p, int depth, bool tree) => __builder =>
+    /// One page in the sidebar tree. <paramref name="sortable"/> rows accept drops before/after them
+    /// (manual order); "Shared with me" roots stay alphabetical, so they only accept drops onto them.
+    private RenderFragment Row(NoteListItemDto p, bool tree, bool sortable) => __builder =>
     {
         var kids = tree ? Children(p.Id) : [];
         var open = expanded.Contains(p.Id);
+        var edit = p.Access is "owner" or "edit";
+        var renaming = renamingId == p.Id;
         <div>
-            <div class="nt-row @(IsActive(p.Id) ? "active" : "")" role="button" tabindex="0" @onclick="() => Open(p.Id)">
+            <div class="nt-row @(IsActive(p.Id) ? "active" : "") @(menuFor?.Id == p.Id ? "menu-on" : "")" role="button" tabindex="0"
+                 data-id="@p.Id" data-drag="@(edit && tree && !renaming ? "1" : null)" data-sort="@(sortable && tree ? "1" : null)" data-nest="@(edit && tree ? "1" : null)"
+                 @onclick="() => Open(p.Id)" @ondblclick="() => StartRename(p)" @onkeydown="e => OnRowKey(e, p)">
                 <span class="chev @(kids.Count == 0 ? "none" : "") @(open ? "open" : "")" @onclick="() => ToggleExpand(p.Id)" @onclick:stopPropagation><i data-lucide="chevron-right"></i></span>
                 <span class="emo">@(p.Emoji ?? "📄")</span>
-                <span class="t">@DisplayTitle(p.Title)</span>
-                @if (p.IsShared) { <span class="meta"><i data-lucide="users" class="sm"></i></span> }
-                <span class="actions">
-                    @if (p.Access is "owner" or "edit")
-                    {
-                        <span title="Add sub-page" @onclick="() => OpenNewPage(p.Id)" @onclick:stopPropagation><i data-lucide="plus"></i></span>
-                    }
-                </span>
+                @if (renaming)
+                {
+                    <input class="nt-rename" @ref="renameRef" value="@renameDraft" aria-label="Page name" placeholder="Untitled"
+                           @oninput="e => renameDraft = e.Value?.ToString() ?? string.Empty" @onkeydown="OnRenameKey" @onkeydown:stopPropagation
+                           @onblur="CommitRename" @onclick:stopPropagation @ondblclick:stopPropagation />
+                }
+                else
+                {
+                    <span class="t">@DisplayTitle(p.Title)</span>
+                    @if (p.IsShared) { <span class="meta"><i data-lucide="users" class="sm"></i></span> }
+                    <span class="actions">
+                        <span title="More" @onclick="e => OpenRowMenu(p, e)" @onclick:stopPropagation><i data-lucide="ellipsis"></i></span>
+                        @if (edit)
+                        {
+                            <span title="Add sub-page" @onclick="() => CreateBlank(p.Id)" @onclick:stopPropagation><i data-lucide="plus"></i></span>
+                        }
+                    </span>
+                }
             </div>
             @if (open && kids.Count > 0)
             {
                 <div class="nt-children">
-                    @foreach (var k in kids) { @Row(k, depth + 1, true) }
+                    @foreach (var k in kids) { @Row(k, true, true) }
                 </div>
             }
+        </div>
+    };
+
+    /// Collapsible sidebar heading; <paramref name="add"/> shows a small + on hover.
+    private RenderFragment Section(string key, string label, Func<Task>? add) => __builder =>
+    {
+        var shut = collapsed.Contains(key);
+        <div class="nt-sect">
+            <button type="button" class="nt-sect-t" aria-expanded="@(shut ? "false" : "true")" @onclick="() => ToggleSection(key)">
+                @label<i data-lucide="chevron-down" class="sm @(shut ? "shut" : "")"></i>
+            </button>
+            @if (add is not null) { <button type="button" title="New page" @onclick="add"><i data-lucide="plus" class="sm"></i></button> }
         </div>
     };
 
