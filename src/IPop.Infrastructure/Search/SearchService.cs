@@ -13,8 +13,8 @@ public class SearchService(IPopDbContext db) : ISearchService
         var results = new List<SearchResultItem>();
 
         // 1. People / Users
-        var users = await db.Users.AsNoTracking()
-            .Where(u => u.IsActive && (u.Name.ToLower().Contains(q) || u.Nik.Contains(q) || (u.Email != null && u.Email.ToLower().Contains(q))))
+        var users = await db.Users.AsNoTracking().Include(u => u.Department)
+            .Where(u => u.IsActive && (u.Name.ToLower().Contains(q) || (u.Email != null && u.Email.ToLower().Contains(q))))
             .Take(5)
             .ToListAsync(ct);
 
@@ -25,8 +25,8 @@ public class SearchService(IPopDbContext db) : ISearchService
             results.Add(new SearchResultItem(
                 Group: "People",
                 Title: u.Name,
-                Subtitle: $"{u.Nik} · {u.Position ?? u.Department?.Name ?? "Employee"}",
-                Url: $"/directory?nik={u.Nik}",
+                Subtitle: u.Department?.Name ?? "Employee",
+                Url: $"/directory/person/{u.Id}",
                 Icon: "user",
                 AvatarColor: AvatarColorFor(u.Nik),
                 Initials: initials));

@@ -345,7 +345,7 @@ public class ProjectServiceTests
         Assert.Equal(0, workload!.TotalTasks);
         Assert.Equal(2, workload.ByAssignee.Count);
         Assert.Contains(workload.ByAssignee, a => a.UserId == owner.Id && a.TaskCount == 0);
-        Assert.Contains(workload.ByAssignee, a => a.UserId == idle.Id && a.Position == "Analyst" && a.TaskCount == 0);
+        Assert.Contains(workload.ByAssignee, a => a.UserId == idle.Id && a.Position == null && a.TaskCount == 0);
         Assert.DoesNotContain(workload.ByAssignee, a => a.IsUnassigned);
         Assert.Null(await svc.GetProjectWorkloadAsync(project.Id, outsider.Id, default));
     }

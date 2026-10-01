@@ -564,10 +564,10 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         // Readers who acknowledged but later left the audience still count toward the record.
         var ids = targeted.Union(acks.Keys).ToList();
         var users = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id))
-            .Select(u => new { u.Id, u.Nik, u.Name, Dept = u.Department != null ? u.Department.Name : null, u.Position })
+            .Select(u => new { u.Id, u.Nik, u.Name, Dept = u.Department != null ? u.Department.Name : null })
             .ToListAsync(ct);
         var entries = users
-            .Select(u => new NewsAckEntryDto(u.Id, u.Nik, u.Name, u.Dept, u.Position, acks.TryGetValue(u.Id, out var at) ? at : null))
+            .Select(u => new NewsAckEntryDto(u.Id, u.Nik, u.Name, u.Dept, null, acks.TryGetValue(u.Id, out var at) ? at : null))
             .OrderBy(e => e.AcknowledgedAt is null ? 0 : 1).ThenBy(e => e.Name)
             .ToList();
         return new NewsAckReportDto(targeted.Count, targeted.Count(acks.ContainsKey), entries);

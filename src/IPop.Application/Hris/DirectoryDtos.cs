@@ -8,7 +8,9 @@ public record DirectoryEmployee(
     /// NIK pegawai yang berkorespondensi dengan pegawai ini adalah favorit pemanggil.
     bool IsFavorite = false,
     /// NIK atasan (untuk relasi bawahan di kartu profil).
-    string? ManagerNik = null);
+    string? ManagerNik = null,
+    /// Opaque key for deep links (/chat?user=…, /directory/person/…) so URLs never carry the NIK.
+    Guid? UserId = null);
 
 public record DirectoryDepartment(string Code, string Name, string? ParentCode, int DirectMembers);
 public record DirectorySite(string Code, string Name);

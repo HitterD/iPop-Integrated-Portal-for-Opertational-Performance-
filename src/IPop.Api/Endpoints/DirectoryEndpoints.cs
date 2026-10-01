@@ -35,11 +35,11 @@ public static class DirectoryEndpoints
                 .AsNoTracking().FirstOrDefaultAsync(u => u.Nik == nik, ct);
             return me is null
                 ? Results.NotFound()
-                : Results.Ok(new DirectoryEmployee(me.Nik, me.Name, me.Position, me.Department?.Name,
+                : Results.Ok(new DirectoryEmployee(me.Nik, me.Name, null, me.Department?.Name,
                     me.Department?.Code, me.Site?.Name, me.Site?.Code, null, me.Email, me.Extension,
                     me.Location, PresenceStatus.ComputeStatus(me.PresenceLastSeenAt,
                         me.PresenceManualStatus, DateTime.UtcNow, me.PresenceIsIdle),
-                    me.UserRoles.Select(ur => ur.Role.Name).ToArray(), me.PhotoPath));
+                    me.UserRoles.Select(ur => ur.Role.Name).ToArray(), me.PhotoPath, UserId: me.Id));
         }).RequireAuthorization();
 
         // ── Kontak favorit — privat per pengguna ──
@@ -113,17 +113,17 @@ public static class DirectoryEndpoints
                 var m = await db.Users.Include(x => x.Department).Include(x => x.Site)
                     .AsNoTracking().FirstOrDefaultAsync(x => x.Nik == u.ManagerNik && x.IsActive, ct);
                 if (m is not null)
-                    manager = new DirectoryEmployee(m.Nik, m.Name, m.Position, m.Department?.Name, m.Department?.Code,
+                    manager = new DirectoryEmployee(m.Nik, m.Name, null, m.Department?.Name, m.Department?.Code,
                         m.Site?.Name, m.Site?.Code, null, m.Email, m.Extension, m.Location,
-                        PresenceStatus.ComputeStatus(m.PresenceLastSeenAt, m.PresenceManualStatus, DateTime.UtcNow, m.PresenceIsIdle), null, m.PhotoPath);
+                        PresenceStatus.ComputeStatus(m.PresenceLastSeenAt, m.PresenceManualStatus, DateTime.UtcNow, m.PresenceIsIdle), null, m.PhotoPath, UserId: m.Id);
             }
 
             var reports = await db.Users.Include(x => x.Department).Include(x => x.Site)
                 .AsNoTracking().Where(x => x.ManagerNik == u.Nik && x.IsActive)
                 .OrderBy(x => x.Name)
-                .Select(x => new DirectoryEmployee(x.Nik, x.Name, x.Position, x.Department!.Name, x.Department.Code,
+                .Select(x => new DirectoryEmployee(x.Nik, x.Name, null, x.Department!.Name, x.Department.Code,
                     x.Site!.Name, x.Site.Code, u.Name, x.Email, x.Extension, x.Location,
-                    PresenceStatus.ComputeStatus(x.PresenceLastSeenAt, x.PresenceManualStatus, DateTime.UtcNow, x.PresenceIsIdle), null, x.PhotoPath))
+                    PresenceStatus.ComputeStatus(x.PresenceLastSeenAt, x.PresenceManualStatus, DateTime.UtcNow, x.PresenceIsIdle), null, x.PhotoPath, false, null, x.Id))
                 .ToListAsync(ct);
 
             return Results.Ok(new { manager, reports });
@@ -142,9 +142,9 @@ public static class DirectoryEndpoints
                 1, 2000, callerNik, db, ct);
 
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("NIK;Name;Position;Department;Site;Email;Extension;Location;Status");
+            sb.AppendLine("Name;Department;Site;Email;Extension;Location;Status");
             foreach (var e in page.Items)
-                sb.AppendLine(string.Join(';', CsvField(e.Nik), CsvField(e.Name), CsvField(e.Position),
+                sb.AppendLine(string.Join(';', CsvField(e.Name),
                     CsvField(e.Department), CsvField(e.Site), CsvField(e.Email), CsvField(e.Extension),
                     CsvField(e.Location), CsvField(e.Status)));
 
@@ -186,14 +186,17 @@ public static class DirectoryEndpoints
 
         // Member picker: admin add-by-name on dir-group / org-node drawers.
         // Public so any directory.read caller can reuse it; admins drive it via the picker.
-        app.MapGet("/api/directory/member-search", async (string? q, IPopDbContext db, CancellationToken ct) =>
+        app.MapGet("/api/directory/member-search", async (string? q, bool? full, HttpContext http, IPopDbContext db, CancellationToken ct) =>
         {
+            // NIK and position are admin-only (office policy): only the /admin pickers ask for
+            // full=true, and only an Admin gets it; everyone else matches on name.
+            var admin = full == true && http.User.IsInRole("Admin");
             if (string.IsNullOrWhiteSpace(q) || q.Trim().Length < 2) return Results.Ok(Array.Empty<MemberSearchRow>());
             var pat = LikePattern(q);
             return Results.Ok(await db.Users.AsNoTracking().Where(u => u.IsActive)
-                .Where(u => EF.Functions.ILike(u.Name, pat, @"\") || EF.Functions.ILike(u.Nik, pat, @"\"))
+                .Where(u => EF.Functions.ILike(u.Name, pat, @"\") || (admin && EF.Functions.ILike(u.Nik, pat, @"\")))
                 .OrderBy(u => u.Name).Take(8)
-                .Select(u => new MemberSearchRow(u.Nik, u.Name, u.Position, u.Department!.Name))
+                .Select(u => new MemberSearchRow(u.Nik, u.Name, admin ? u.Position : null, u.Department!.Name))
                 .ToListAsync(ct));
         }).RequireAuthorization().RequirePermission("directory.read");
 
@@ -208,7 +211,7 @@ public static class DirectoryEndpoints
             return groups.Select(g => new DirGroupDto(
                 g.Id, g.Name, g.ParentId, g.SortOrder, g.IsActive,
                 g.Members.Select(m => new DirGroupMemberDto(
-                    m.User.Nik, m.User.Name, m.User.Position,
+                    m.User.Nik, m.User.Name, null,
                     m.User.Department?.Name, m.User.Site?.Name,
                     PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now, m.User.PresenceIsIdle)
                 )).ToArray()
@@ -226,7 +229,7 @@ public static class DirectoryEndpoints
             return nodes.Select(n => new OrgNodeDto(
                 n.Id, n.Name, n.Title, n.ParentId, n.DepartmentId, n.SortOrder, n.IsActive,
                 n.Members.Select(m => new OrgNodeMemberDto(
-                    m.User.Nik, m.User.Name, m.User.Position,
+                    m.User.Nik, m.User.Name, null,
                     m.User.Department?.Name, m.User.Site?.Name,
                     PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now, m.User.PresenceIsIdle)
                 )).ToArray()
@@ -252,7 +255,7 @@ public static class DirectoryEndpoints
         if (!string.IsNullOrWhiteSpace(q))
         {
             var pat = LikePattern(q);
-            query = query.Where(u => EF.Functions.ILike(u.Name, pat, @"\") || EF.Functions.ILike(u.Nik, pat, @"\"));
+            query = query.Where(u => EF.Functions.ILike(u.Name, pat, @"\") || EF.Functions.ILike(u.Email, pat, @"\"));
         }
         if (!string.IsNullOrWhiteSpace(departmentCode))
         {
@@ -279,7 +282,6 @@ public static class DirectoryEndpoints
         var names = rows.ToDictionary(x => x.User.Nik, x => x.User.Name);
         var ordered = (sort?.ToLowerInvariant()) switch
         {
-            "nik" => desc == true ? rows.OrderByDescending(x => x.User.Nik) : rows.OrderBy(x => x.User.Nik),
             "status" => desc == true ? rows.OrderByDescending(x => x.Status).ThenBy(x => x.User.Nik) : rows.OrderBy(x => x.Status).ThenBy(x => x.User.Nik),
             _ => desc == true ? rows.OrderByDescending(x => x.User.Name).ThenBy(x => x.User.Nik) : rows.OrderBy(x => x.User.Name).ThenBy(x => x.User.Nik),
         };
@@ -292,11 +294,11 @@ public static class DirectoryEndpoints
                 .Where(f => f.User.Nik == callerNik && pageNiks.Contains(f.ContactNik))
                 .Select(f => f.ContactNik).ToListAsync(ct)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var items = ordered.Skip((p - 1) * size).Take(size).Select(x => new DirectoryEmployee(
-            x.User.Nik, x.User.Name, x.User.Position, x.User.Department?.Name, x.User.Department?.Code,
+            x.User.Nik, x.User.Name, null, x.User.Department?.Name, x.User.Department?.Code,
             x.User.Site?.Name, x.User.Site?.Code,
             x.User.ManagerNik is not null && names.TryGetValue(x.User.ManagerNik, out var managerName) ? managerName : null,
             x.User.Email, x.User.Extension, x.User.Location, x.Status, null, x.User.PhotoPath,
-            favNiks.Contains(x.User.Nik), x.User.ManagerNik)).ToArray();
+            favNiks.Contains(x.User.Nik), x.User.ManagerNik, x.User.Id)).ToArray();
         return new DirectoryPage(total, p, size, items);
     }
 
@@ -439,7 +441,7 @@ public static class DirectoryEndpoints
             .Where(u => u.IsActive && u.Division != null && u.Division.IsActive
                 && u.Division.Department != null && u.Division.Department.IsActive
                 && u.Division.Site != null && u.Division.Site.IsActive)
-            .Where(u => EF.Functions.ILike(u.Name, pat, @"\") || EF.Functions.ILike(u.Nik, pat, @"\"))
+            .Where(u => EF.Functions.ILike(u.Name, pat, @"\") || EF.Functions.ILike(u.Email, pat, @"\"))
             .Select(u => new { u.Division!.Code, u.Division.Name }).ToListAsync(ct);
         return AggregateDivisionMatches(matches.Select(m => (m.Code, m.Name)));
     }

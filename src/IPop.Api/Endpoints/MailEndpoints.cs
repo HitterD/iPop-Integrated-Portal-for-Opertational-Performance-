@@ -1133,7 +1133,7 @@ public static class MailEndpoints
             m.IsHtml,
             m.Sender?.Name ?? "Unknown",
             m.Sender?.Nik ?? "",
-            string.Join("; ", m.Recipients.Where(r => r.RecipientType != "from").Select(r => r.User?.Name ?? r.User?.Nik ?? "")),
+            string.Join("; ", m.Recipients.Where(r => r.RecipientType != "from").Select(r => r.User?.Name ?? "Unknown")),
             m.Signature,
             m.Importance,
             m.SentAt

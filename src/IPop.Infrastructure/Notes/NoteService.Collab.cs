@@ -144,7 +144,7 @@ public sealed partial class NoteService
         var rows = await db.NoteShares.AsNoTracking().Where(s => ids.Contains(s.PageId)).OrderBy(s => s.CreatedAt)
             .Select(s => new
             {
-                s.Id, s.PageId, s.UserId, UserName = s.User!.Name, UserNik = s.User.Nik, UserPosition = s.User.Position,
+                s.Id, s.PageId, s.UserId, UserName = s.User!.Name, UserNik = s.User.Nik, UserPosition = (string?)null,
                 s.RoomId, RoomType = s.Room!.Type, s.Level, PageTitle = s.Page.Title,
             }).ToListAsync(ct);
 
@@ -163,7 +163,7 @@ public sealed partial class NoteService
                 r.UserId is null ? null : r.UserPosition, r.RoomId, roomName, r.RoomId is null ? null : r.RoomType, members,
                 r.Level, inherited ? r.PageId : null, inherited ? r.PageTitle : null));
         }
-        return Ok(new NoteSharesDto(owner.OwnerId, owner.Name, owner.Nik, owner.Position, shares));
+        return Ok(new NoteSharesDto(owner.OwnerId, owner.Name, owner.Nik, null, shares));
     }
 
     /// Only owners share. A room share also requires the sharer to be in that room, so nobody can
@@ -362,9 +362,9 @@ public sealed partial class NoteService
         var q = query.Trim().ToLower();
         if (q.Length < 2) return [];
         return await db.Users.AsNoTracking()
-            .Where(u => u.IsActive && (u.Name.ToLower().Contains(q) || u.Nik.ToLower().Contains(q)))
+            .Where(u => u.IsActive && (u.Name.ToLower().Contains(q) || (u.Email != null && u.Email.ToLower().Contains(q))))
             .OrderBy(u => u.Name).Take(8)
-            .Select(u => new NotePersonDto(u.Id, u.Nik, u.Name, u.Position))
+            .Select(u => new NotePersonDto(u.Id, u.Nik, u.Name, null))
             .ToListAsync(ct);
     }
 

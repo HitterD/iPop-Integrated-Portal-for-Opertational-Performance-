@@ -971,7 +971,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                 rows.Count(t => t.Status != "done" && t.DueDate.HasValue && t.DueDate.Value.Date < cutoff), isUnassigned, nik);
         }
 
-        var byAssignee = members.Select(m => Summarize(m.UserId, m.Name, m.Position,
+        var byAssignee = members.Select(m => Summarize(m.UserId, m.Name, null,
                 tasks.Where(t => t.Assignees.Any(a => a.UserId == m.UserId)), nik: m.Nik))
             .OrderByDescending(x => x.EstimatedHours).ThenBy(x => x.Name).ToList();
         var unassigned = tasks.Where(t => !t.Assignees.Any()).ToList();

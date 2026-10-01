@@ -106,7 +106,7 @@ public sealed class MailPdfRenderer(IDevExpressDocumentFactory factory)
 
         // ── Meta pengirim/penerima/tanggal ──
         var sent = m.SentAt?.ToLocalTime().ToString("dddd, dd MMMM yyyy HH:mm") ?? "Not yet sent";
-        var meta = $"From: {m.SenderName} ({m.SenderNik})\r\nTo: {m.Recipients}\r\nDate: {sent}\r\n";
+        var meta = $"From: {m.SenderName}\r\nTo: {m.Recipients}\r\nDate: {sent}\r\n";
         if (!string.IsNullOrWhiteSpace(m.Importance) && m.Importance == "high") meta += "Priority: High\r\n";
         var metaRange = doc.AppendText(meta + "\r\n");
         var metaProps = doc.BeginUpdateCharacters(metaRange);

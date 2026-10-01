@@ -1244,7 +1244,7 @@ public static class ChatEndpoints
 
             var users = await db.Users.AsNoTracking()
                 .Where(u => u.IsActive &&
-                    (EF.Functions.ILike(u.Name, pat) || EF.Functions.ILike(u.Nik, pat)))
+                    (EF.Functions.ILike(u.Name, pat) || EF.Functions.ILike(u.Email, pat)))
                 .OrderBy(u => u.Name)
                 .Take(20)
                 .Select(u => new { u.Id, u.Nik, u.Name, u.Email })
@@ -1268,7 +1268,7 @@ public static class ChatEndpoints
             if (!string.IsNullOrWhiteSpace(q))
             {
                 var pat = $"%{EscapeLike(q.Trim())}%";
-                query = query.Where(u => EF.Functions.ILike(u.Name, pat) || EF.Functions.ILike(u.Nik, pat));
+                query = query.Where(u => EF.Functions.ILike(u.Name, pat) || EF.Functions.ILike(u.Email, pat));
             }
 
             var now = DateTime.UtcNow;
@@ -1281,7 +1281,6 @@ public static class ChatEndpoints
                     u.Nik,
                     u.Name,
                     u.Email,
-                    u.Position,
                     u.PresenceLastSeenAt,
                     u.PresenceManualStatus,
                     u.PresenceIsIdle,
@@ -1296,7 +1295,6 @@ public static class ChatEndpoints
                 u.Nik,
                 u.Name,
                 u.Email,
-                u.Position,
                 u.Department,
                 PresenceStatus = IPop.Core.Presence.PresenceStatus.ComputeStatus(
                     u.PresenceLastSeenAt, u.PresenceManualStatus, now, u.PresenceIsIdle)
@@ -1306,10 +1304,13 @@ public static class ChatEndpoints
         // GET /api/chat/users/{nik} — single employee profile for the chat avatar drawer.
         // Returns a DirectoryEmployee-shaped row (camelCase) so the client reuses ProfileDrawer
         // verbatim. Manager resolved Nik → Name via a second lookup (1 row, no N+1).
+        // Accepts the user id (deep links carry it instead of the NIK) or, for older callers, a NIK.
         g.MapGet("/users/{nik}", async (string nik, IPopDbContext db, CancellationToken ct) =>
         {
-            var u = await db.Users.Include(x => x.Department).Include(x => x.Site)
-                .AsNoTracking().FirstOrDefaultAsync(x => x.Nik == nik, ct);
+            var users = db.Users.Include(x => x.Department).Include(x => x.Site).AsNoTracking();
+            var u = Guid.TryParse(nik, out var uid)
+                ? await users.FirstOrDefaultAsync(x => x.Id == uid, ct)
+                : await users.FirstOrDefaultAsync(x => x.Nik == nik, ct);
             if (u is null || !u.IsActive)
                 return Results.Json(new { code = "user_not_found", message = "User not found." }, statusCode: 404);
 
@@ -1319,8 +1320,8 @@ public static class ChatEndpoints
 
             var status = IPop.Core.Presence.PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, DateTime.UtcNow, u.PresenceIsIdle);
             return Results.Ok(new IPop.Application.Hris.DirectoryEmployee(
-                u.Nik, u.Name, u.Position, u.Department?.Name, u.Department?.Code,
-                u.Site?.Name, u.Site?.Code, manager, u.Email, u.Extension, u.Location, status, null, u.PhotoPath));
+                u.Nik, u.Name, null, u.Department?.Name, u.Department?.Code,
+                u.Site?.Name, u.Site?.Code, manager, u.Email, u.Extension, u.Location, status, null, u.PhotoPath, UserId: u.Id));
         });
 
         return app;
