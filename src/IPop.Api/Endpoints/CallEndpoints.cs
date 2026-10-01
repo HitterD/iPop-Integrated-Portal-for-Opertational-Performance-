@@ -160,22 +160,9 @@ public static class CallEndpoints
             => MarkSeenAsync(http, callId, svc, db, realtime, ct));
 
         // ICE servers (STUN + the LAN TURN) for the browser's RTCPeerConnection.
-        g.MapGet("/config", (IConfiguration cfg) =>
+        g.MapGet("/config", (IConfiguration cfg, HttpContext http) =>
         {
-            // Read explicitly: binding to object[] yields empty objects, so TURN never reached the browser.
-            // Layered files can give "urls" both a scalar (base file) and children (Local array);
-            // the array is the more specific one, so it wins.
-            var iceServers = cfg.GetSection("Calls:IceServers").GetChildren()
-                .Select(s =>
-                {
-                    var urls = s.GetSection("urls");
-                    var list = urls.GetChildren().Select(u => u.Value).OfType<string>().ToArray();
-                    return new IceServerDto(list.Length > 0 ? list : urls.Value is { } one ? [one] : [],
-                        s["username"], s["credential"]);
-                })
-                .Where(s => s.Urls.Length > 0)
-                .ToList();
-            if (iceServers.Count == 0) iceServers.Add(new IceServerDto(["stun:stun.l.google.com:19302"], null, null));
+            var iceServers = BuildIceServers(cfg, http.User.Identity?.Name ?? "user", DateTimeOffset.UtcNow);
             return Results.Ok(new { iceServers, ringTimeoutSeconds = (int)IPop.Infrastructure.Calls.CallService.RingTimeout.TotalSeconds });
         });
 
@@ -226,7 +213,41 @@ public static class CallEndpoints
     internal static void SyncCallToast(PushQueue? push, CallRoomDto room) =>
         push?.Enqueue((p, token) => p.SyncCallAsync(room, token));
 
-    private sealed record IceServerDto(string[] Urls,
+    /// How long an ephemeral TURN credential stays valid.
+    internal static readonly TimeSpan TurnCredentialLifetime = TimeSpan.FromHours(12);
+
+    /// ICE servers for the browser. Static TURN passwords are never sent (pentest V-02: the
+    /// configured one was the LiveKit API secret). A server with "sharedSecret" gets a
+    /// short-lived TURN REST credential instead (coturn use-auth-secret: username
+    /// "expiry:user", credential base64(HMAC-SHA1(secret, username))); one with only a static
+    /// "credential" is reduced to its STUN urls. Group calls get TURN from LiveKit's own join.
+    internal static List<IceServerDto> BuildIceServers(IConfiguration cfg, string user, DateTimeOffset now)
+    {
+        // Read explicitly: binding to object[] yields empty objects, so TURN never reached the browser.
+        // Layered files can give "urls" both a scalar (base file) and children (Local array);
+        // the array is the more specific one, so it wins.
+        var iceServers = cfg.GetSection("Calls:IceServers").GetChildren()
+            .Select(s =>
+            {
+                var urls = s.GetSection("urls");
+                var list = urls.GetChildren().Select(u => u.Value).OfType<string>().ToArray();
+                if (list.Length == 0 && urls.Value is { } one) list = [one];
+                if (s["sharedSecret"] is { Length: > 0 } secret)
+                {
+                    var username = $"{(now + TurnCredentialLifetime).ToUnixTimeSeconds()}:{user}";
+                    using var hmac = new System.Security.Cryptography.HMACSHA1(System.Text.Encoding.UTF8.GetBytes(secret));
+                    var credential = Convert.ToBase64String(hmac.ComputeHash(System.Text.Encoding.UTF8.GetBytes(username)));
+                    return new IceServerDto(list, username, credential);
+                }
+                return new IceServerDto(list.Where(u => u.StartsWith("stun:", StringComparison.OrdinalIgnoreCase)).ToArray(), null, null);
+            })
+            .Where(s => s.Urls.Length > 0)
+            .ToList();
+        if (iceServers.Count == 0) iceServers.Add(new IceServerDto(["stun:stun.l.google.com:19302"], null, null));
+        return iceServers;
+    }
+
+    internal sealed record IceServerDto(string[] Urls,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Username,
         [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)] string? Credential);
 
