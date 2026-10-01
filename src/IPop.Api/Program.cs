@@ -232,6 +232,26 @@ var app = builder.Build();
 // Unhandled errors answer a bare 500 — never a stack trace, even though the deployed API runs
 // in Development for DevSeed (pentest: sanitize framework errors). Sits inside the developer
 // exception page, so it catches first.
+// Optional client allowlist (pentest H-06): with Security:AllowedClientNetworks set, only those
+// networks (the https reverse proxy, this host, Docker) reach the API; LAN browsers go through
+// the proxy. Unset = open, as in development.
+var allowedNetworks = app.Configuration.GetSection("Security:AllowedClientNetworks").Get<string[]>()?
+    .Select(System.Net.IPNetwork.Parse).ToArray() ?? [];
+if (allowedNetworks.Length > 0)
+{
+    app.Use(async (ctx, next) =>
+    {
+        var ip = ctx.Connection.RemoteIpAddress;
+        if (ip is { IsIPv4MappedToIPv6: true }) ip = ip.MapToIPv4();
+        if (ip is null || !allowedNetworks.Any(n => n.Contains(ip)))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return;
+        }
+        await next();
+    });
+}
+
 app.UseExceptionHandler(e => e.Run(async ctx =>
 {
     // Malformed bodies/parameters keep their 4xx, just without the binder's details.
