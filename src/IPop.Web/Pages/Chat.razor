@@ -41,7 +41,7 @@
                 <input type="text" placeholder="Search conversations..." value="@roomSearchQuery" @oninput="OnRoomSearchChanged" />
                 @if (!string.IsNullOrEmpty(roomSearchQuery))
                 {
-                    <button type="button" class="room-search-clear" @onclick='() => { roomSearchQuery = ""; _ = ChatSvc.SearchRoomsAsync(""); }' title="Clear search" aria-label="Clear search">
+                    <button type="button" class="room-search-clear" @onclick='() => { roomSearchQuery = ""; searchPeople = []; _ = ChatSvc.SearchRoomsAsync(""); }' title="Clear search" aria-label="Clear search">
                         <i data-lucide="x"></i>
                     </button>
                 }
@@ -298,11 +298,34 @@
                     }
                 </div>
             }
-            else if (!rooms.Any())
+            else if (!rooms.Any() && PeopleWithoutDm.Count == 0)
             {
                 <div class="empty-state">
                     <i data-lucide="message-circle"></i>
                     <div class="sub">@(searchActive ? "No conversations match your search." : "No conversations yet")</div>
+                </div>
+            }
+
+            @* Searching: colleagues you have no DM with yet, one click from a new conversation. *@
+            @{ var people = PeopleWithoutDm; }
+            @if (people.Count > 0)
+            {
+                <div class="room-section-label room-people-head"><span>People</span></div>
+                <div class="room-people" role="list">
+                    @foreach (var person in people)
+                    {
+                        var p = person;
+                        <div class="nc-row static room-person" role="listitem">
+                            <PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="36" Status="@(p.PresenceStatus == "on" ? "on" : null)" Decorative="true" />
+                            <div class="nc-info">
+                                <div class="nc-name" title="@p.Name">@p.Name</div>
+                                @if (!string.IsNullOrWhiteSpace(p.Department)) { <div class="nc-pos">@p.Department</div> }
+                            </div>
+                            <button type="button" class="chat-now-btn" disabled="@(startingSearchDm is not null)" @onclick="() => ChatNow(p)" aria-label="@($"Chat now with {p.Name}")">
+                                @(startingSearchDm == p.Id ? "Opening…" : "Chat now")
+                            </button>
+                        </div>
+                    }
                 </div>
             }
 

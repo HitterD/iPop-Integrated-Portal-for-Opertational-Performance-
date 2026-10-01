@@ -157,6 +157,15 @@
 [data-theme="dark"] .nc-row:hover:not(.static):not(:disabled) { background: rgba(255, 255, 255, 0.06); }
 .nc-row:disabled { cursor: progress; }
 .nc-row.static { cursor: default; }
+/* Room search → "People" (no DM yet) with a Chat now pill. */
+.chat-area .room-people-head { margin-top: 10px; }
+.room-people { padding: 0 4px 8px; }
+.room-person .chat-now-btn {
+  flex: none; border: none; border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 12px; font-weight: 600;
+  background: var(--accent); color: #fff; cursor: pointer; white-space: nowrap;
+}
+.room-person .chat-now-btn:hover:not(:disabled) { filter: brightness(1.08); }
+.room-person .chat-now-btn:disabled { opacity: .6; cursor: progress; }
 .nc-row .pav { flex: none; }
 .nc-row-ic {
   width: 40px; height: 40px; flex: none; border-radius: 11px; background: var(--accent); color: #fff;

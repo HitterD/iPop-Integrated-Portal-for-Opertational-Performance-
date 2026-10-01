@@ -38,7 +38,55 @@ public partial class Chat
         try { await Task.Delay(250, t.Token); }
         catch (OperationCanceledException) { return; }
         if (t.IsCancellationRequested) return;
-        await ChatSvc.SearchRoomsAsync(roomSearchQuery);
+        await Task.WhenAll(ChatSvc.SearchRoomsAsync(roomSearchQuery), SearchPeopleAsync(roomSearchQuery, t.Token));
+    }
+
+    // ---- "People" under the search results: colleagues you have no DM with yet ----
+
+    private const int MaxSearchPeople = 8;
+    private List<NewChatPerson> searchPeople = [];
+    private Guid? startingSearchDm;
+
+    /// Directory matches for the room search. Rooms are filtered later (PeopleWithoutDm) so
+    /// a DM that shows up in the conversation results is never offered twice.
+    private async Task SearchPeopleAsync(string query, CancellationToken ct)
+    {
+        var q = query.Trim();
+        if (q.Length < 2) { searchPeople = []; return; }
+        try
+        {
+            var rows = await Auth.GetAsync<List<NewChatPerson>>($"/api/chat/users/directory?q={Uri.EscapeDataString(q)}", ct);
+            if (!ct.IsCancellationRequested) searchPeople = rows ?? [];
+        }
+        catch (OperationCanceledException) { }
+        catch { searchPeople = []; }
+    }
+
+    private IReadOnlyList<NewChatPerson> PeopleWithoutDm
+    {
+        get
+        {
+            if (!searchActive || searchPeople.Count == 0) return [];
+            var dmNiks = ChatSvc.DirectRooms.Concat(ChatSvc.ArchivedRooms)
+                .Where(r => r.Type == "dm" && r.RecipientNik is not null)
+                .Select(r => r.RecipientNik!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return searchPeople.Where(p => !dmNiks.Contains(p.Nik)).Take(MaxSearchPeople).ToList();
+        }
+    }
+
+    /// "Chat now": opens (or creates — the endpoint is idempotent) the DM and leaves search.
+    private async Task ChatNow(NewChatPerson p)
+    {
+        if (startingSearchDm is not null) return;
+        startingSearchDm = p.Id;
+        try
+        {
+            roomSearchQuery = "";
+            searchPeople = [];
+            await CreateDmWith(new UserSearchResult(p.Id, p.Nik, p.Name, p.Email));
+        }
+        finally { startingSearchDm = null; }
     }
 
     /// Thin wrappers for the load-more buttons (@onclick needs a handler; the paging
@@ -50,6 +98,7 @@ public partial class Chat
     {
         activeTab = tab;
         roomSearchQuery = "";
+        searchPeople = [];
     }
 
     private void ToggleCreateDropdown() => createDropdownOpen = !createDropdownOpen;
