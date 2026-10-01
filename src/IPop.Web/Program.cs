@@ -36,6 +36,7 @@ builder.Services.AddScoped<IPop.Web.Services.DraftStore>();
 builder.Services.AddScoped<IPop.Web.Services.OverlayStack>();
 builder.Services.AddScoped<IPop.Web.Services.ConfirmService>();
 builder.Services.AddScoped<IPop.Web.Services.CommandPaletteState>();
+builder.Services.AddScoped<IPop.Web.Services.NotificationSettingsState>();
 builder.Services.AddScoped<IPop.Web.Services.BadgeState>();
 builder.Services.AddScoped<IPop.Web.Services.TimerState>();
 builder.Services.AddScoped<IPop.Web.Services.MailService>();

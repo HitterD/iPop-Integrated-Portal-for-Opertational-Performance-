@@ -1,5 +1,6 @@
 @page "/notifications"
 @page "/notifications/inbox"
+@inject NotificationSettingsState NotifSettings
 @using System.Net.Http.Json
 @using IPop.Web.Services
 @implements IDisposable
@@ -177,7 +178,7 @@
                         </div>
                         <p class="nf-group-foot">Muted categories still collect here, but they don’t show banners or play sounds.</p>
 
-                        <a class="nf-group nf-group-link" href="/notifications/settings">
+                        <a class="nf-group nf-group-link" href="/notifications/settings" @onclick="NotifSettings.Open" @onclick:preventDefault>
                             <span class="nf-group-row">
                                 <span class="nf-ico sm k-system"><i data-lucide="settings"></i></span>
                                 <span class="nf-group-txt"><b>More settings</b><small>Channels, schedules and delivery history</small></span>

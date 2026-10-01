@@ -13,6 +13,7 @@
 @inject TutorialState Tutorials
 @inject IPop.Web.Services.PushState Push
 @inject IPop.Web.Services.SessionLockState SessionLock
+@inject NotificationSettingsState NotifSettings
 
 <div class="shell @(collapsed ? "collapsed" : "")" id="shell">
     <aside class="sidebar">
@@ -105,7 +106,7 @@
                                 }
                                 else if (Push.Permission == "denied")
                                 {
-                                    <button class="status-alerts" @onclick='() => { statusMenuOpen = false; Nav.NavigateTo("/notifications/settings"); }'><i data-lucide="bell-off"></i><span class="l">Windows notifications blocked<small>See how to allow them</small></span></button>
+                                    <button class="status-alerts" @onclick="() => { statusMenuOpen = false; NotifSettings.Open(); }"><i data-lucide="bell-off"></i><span class="l">Windows notifications blocked<small>See how to allow them</small></span></button>
                                 }
                                 else if (Push.Permission == "default" || !Push.Subscribed || Push.Idle == "prompt")
                                 {
@@ -245,6 +246,7 @@
         <CommandPalette />
         <IPop.Web.Components.Tutorial.TutorialHost />
         <IPop.Web.Components.News.AnnouncementPopup />
+        <NotificationSettingsDialog />
         <ConfirmHost />
         <PhotoViewer />
         <SessionLockHost />
@@ -573,7 +575,7 @@
     {
         statusMenuOpen = false;
         await Push.EnableAsync();
-        if (Push.Permission == "denied") Nav.NavigateTo("/notifications/settings");
+        if (Push.Permission == "denied") NotifSettings.Open();
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
     }
