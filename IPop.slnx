@@ -5,6 +5,7 @@
     <Project Path="src/IPop.Core/IPop.Core.csproj" />
     <Project Path="src/IPop.Infrastructure/IPop.Infrastructure.csproj" />
     <Project Path="src/IPop.Web/IPop.Web.csproj" />
+    <Project Path="src/IPop.WebHost/IPop.WebHost.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/IPop.Tests/IPop.Tests.csproj" />

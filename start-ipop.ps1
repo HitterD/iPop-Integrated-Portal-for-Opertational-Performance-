@@ -33,7 +33,7 @@ $repoPattern = "*$([System.Management.Automation.WildcardPattern]::Escape($PSScr
 function Get-IPopProcesses {
     @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
         $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine -like $repoPattern -and
-        ($_.Name -eq 'IPop.Api.exe' -or $_.Name -eq 'livekit-server.exe' -or $_.CommandLine -like '*blazor-devserver.dll*' -or
+        ($_.Name -eq 'IPop.Api.exe' -or $_.Name -eq 'IPop.WebHost.exe' -or $_.Name -eq 'livekit-server.exe' -or $_.CommandLine -like '*blazor-devserver.dll*' -or
          $_.CommandLine -like '*IPop.Web.dll*' -or $_.CommandLine -like '*dotnet*run*IPop.*.csproj*')
     })
 }
@@ -76,7 +76,7 @@ if (-not $NoBuild) {
     Info "Building API + Web..."
     dotnet build src/IPop.Api/IPop.Api.csproj --nologo -v q
     if ($LASTEXITCODE -ne 0) { Fail "API build failed." }
-    dotnet build src/IPop.Web/IPop.Web.csproj --nologo -v q
+    dotnet build src/IPop.WebHost/IPop.WebHost.csproj --nologo -v q
     if ($LASTEXITCODE -ne 0) { Fail "Web build failed." }
     Ok "Build succeeded."
 }
@@ -88,7 +88,9 @@ function Start-Server([string]$title, [string]$project, [string]$urls) {
     Start-Process cmd.exe -ArgumentList "/k $cmd" -WorkingDirectory $PSScriptRoot
 }
 Start-Server "IPop API" "src/IPop.Api/IPop.Api.csproj" "http://0.0.0.0:$ApiPort"
-Start-Server "IPop Web" "src/IPop.Web/IPop.Web.csproj" "http://0.0.0.0:${WebPort};https://0.0.0.0:$WebHttpsPort"
+# The Web is served by IPop.WebHost in Production (security headers, no debug symbols, no
+# Development config) rather than the Blazor dev server.
+Start-Server "IPop Web" "src/IPop.WebHost/IPop.WebHost.csproj" "http://0.0.0.0:${WebPort};https://0.0.0.0:$WebHttpsPort"
 
 # LiveKit reads its API key/secret from LIVEKIT_KEYS in the git-ignored .env.
 $liveKitUp = $false
