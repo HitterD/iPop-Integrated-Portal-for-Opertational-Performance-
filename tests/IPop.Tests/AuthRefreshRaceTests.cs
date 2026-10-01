@@ -95,7 +95,7 @@ public class AuthRefreshRaceTests
         Assert.Equal(1, handler.RefreshCalls);
     }
 
-    /// Always-401 refresh: the session really is over (14-day expiry, admin revoke, deactivation).
+    /// Always-401 refresh: the session really is over (90-day idle expiry, admin revoke, deactivation).
     private sealed class DeadSessionHandler : HttpMessageHandler
     {
         public int RefreshCalls;

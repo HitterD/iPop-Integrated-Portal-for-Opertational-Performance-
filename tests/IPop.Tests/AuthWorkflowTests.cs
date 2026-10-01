@@ -163,6 +163,22 @@ public class AuthWorkflowTests
     }
 
     [Fact]
+    public async Task Sessions_Last90Days_AndEveryRefreshSlidesTheWindow()
+    {
+        using var t = new TestDb();
+        t.AddUser("20140312");
+        var login = (await NewWorkflow(t).LoginAsync(LoginReq("1234"), null, default)).Item1!;
+        var first = await t.Verify().AuthSessions.SingleAsync();
+        Assert.InRange(first.ExpiresAt - DateTime.UtcNow, TimeSpan.FromDays(89.9), TimeSpan.FromDays(90));
+
+        // 80 days later the session is still alive, and refreshing grants a fresh 90 days.
+        await t.Verify().AuthSessions.ExecuteUpdateAsync(s => s.SetProperty(x => x.ExpiresAt, DateTime.UtcNow.AddDays(10)));
+        Assert.Equal(200, (await NewWorkflow(t).RefreshAsync(new RefreshRequest(login.RefreshToken), null, default)).Item3);
+        var next = await t.Verify().AuthSessions.Where(s => s.RevokedAt == null).SingleAsync();
+        Assert.InRange(next.ExpiresAt - DateTime.UtcNow, TimeSpan.FromDays(89.9), TimeSpan.FromDays(90));
+    }
+
+    [Fact]
     public async Task Refresh_DeactivatedUser_RevokesAndRejects()
     {
         using var t = new TestDb();

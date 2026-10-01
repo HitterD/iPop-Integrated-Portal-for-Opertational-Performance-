@@ -12,7 +12,8 @@ public class AuthWorkflow(IPopDbContext db, IPasswordHasher hasher, ITokenServic
     private const string DefaultPassword = "1234";
     private const int MaxFailedAttempts = 5;
     private static readonly TimeSpan LockDuration = TimeSpan.FromMinutes(15);
-    private static readonly TimeSpan RefreshLifetime = TimeSpan.FromDays(14);
+    // Sliding: every refresh issues a fresh 90 days, so a PC used weekly never signs out.
+    private static readonly TimeSpan RefreshLifetime = TimeSpan.FromDays(90);
 
     public async Task<(LoginResponse?, AuthError?, int)> LoginAsync(LoginRequest req, string? ip, CancellationToken ct)
     {
