@@ -321,7 +321,11 @@
                                 }
                             </div>
                         }
-                        <PeoplePicker Placeholder="Invite people by name" ValueChanged="AddPerson" />
+                        <div class="cal-people-add">
+                            <PeoplePicker Placeholder="Invite people by name" ValueChanged="AddPerson" />
+                            <button type="button" class="cal-book" title="Address book" aria-label="Address book" @onclick="OpenAddressBookAsync"><i data-lucide="book-user"></i></button>
+                        </div>
+                        <AddressBookDialog @ref="addressBook" />
                         <small>Inviting people or a group turns this into a meeting with RSVP.</small>
                     </div>
                 }

@@ -1,0 +1,236 @@
+@using IPop.Web.Services
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@inject AuthState Auth
+@inject ConfirmService Confirm
+@inject OverlayStack Overlays
+@inject IJSRuntime JS
+@implements IDisposable
+
+@* Address book: pick many people at once (name search, department filter, "Select all").
+   The type-ahead pickers stay for the quick case; this is for "the whole Finance team". *@
+@if (open)
+{
+    <style>
+        /* Above the composer (100) and the calendar drawer (900); the >20 confirm sits above it. */
+        .ab-backdrop { position: fixed; inset: 0; z-index: 920; background: rgba(0,0,0,.32); backdrop-filter: blur(3px);
+            display: flex; align-items: center; justify-content: center; padding: 24px; animation: fade-in .2s var(--ease); }
+        [data-theme="dark"] .ab-backdrop { background: rgba(0,0,0,.55); }
+        body:has(.ab-backdrop) .confirm-backdrop { z-index: 930; }
+        body:has(.ab-backdrop) .confirm-center { z-index: 931; }
+        .ab-dialog { width: 100%; max-width: 520px; height: min(80vh, 680px); display: flex; flex-direction: column; overflow: hidden;
+            background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--radius-modal, 18px);
+            box-shadow: var(--shadow-modal, var(--shadow-md)); animation: modal-in .26s var(--ease); }
+        .ab-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 10px; }
+        .ab-head h2 { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 17px; font-weight: 600; color: var(--ink); }
+        .ab-head h2 .lucide { width: 19px; height: 19px; color: var(--accent); }
+        .ab-x { width: 32px; height: 32px; border-radius: 9px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; display: grid; place-items: center; }
+        .ab-x:hover { background: var(--tray); color: var(--ink); }
+        .ab-x .lucide { width: 18px; height: 18px; }
+        .ab-filters { display: flex; gap: 8px; padding: 0 18px 10px; }
+        .ab-search { flex: 1; min-width: 0; position: relative; display: flex; align-items: center; }
+        .ab-search .lucide { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--ink-3); pointer-events: none; }
+        .ab-search input, .ab-dept { height: 36px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13.5px; }
+        .ab-search input { width: 100%; padding: 0 10px 0 34px; }
+        .ab-dept { width: 42%; padding: 0 8px; }
+        .ab-search input:focus, .ab-dept:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+        .ab-bar { display: flex; align-items: center; justify-content: space-between; padding: 4px 18px 8px; border-bottom: 1px solid var(--line-soft); font-size: 12.5px; color: var(--ink-3); }
+        .ab-all { border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 6px; border-radius: 7px; }
+        .ab-all:hover:not(:disabled) { background: var(--tray); }
+        .ab-all:disabled { color: var(--ink-3); cursor: default; }
+        .ab-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 8px; }
+        .ab-empty { text-align: center; color: var(--ink-3); font-size: 13px; padding: 28px 0; margin: 0; }
+        .ab-row { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 10px; border-radius: 10px; cursor: pointer; }
+        .ab-row:hover { background: var(--tray); }
+        .ab-row input { width: 17px; height: 17px; accent-color: var(--accent); flex: none; margin: 0; }
+        .ab-row.already { opacity: .55; cursor: default; }
+        .ab-name { display: flex; flex-direction: column; min-width: 0; font-size: 13.5px; color: var(--ink); }
+        .ab-name small { font-size: 11.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ab-foot { display: flex; align-items: center; gap: 8px; padding: 12px 18px 14px; border-top: 1px solid var(--line-soft); }
+        .ab-spacer { flex: 1; }
+        .ab-clear { border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 13px; cursor: pointer; padding: 6px 8px; border-radius: 8px; }
+        .ab-clear:hover { background: var(--tray); }
+        .ab-btn { height: 36px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; }
+        .ab-btn:hover:not(:disabled) { background: var(--tray); }
+        .ab-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .ab-btn.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.06); }
+        .ab-btn:disabled { opacity: .5; cursor: default; }
+        @@media (max-width: 640px) {
+            .ab-backdrop { padding: 0; align-items: stretch; }
+            .ab-dialog { max-width: none; height: auto; border-radius: 0; border: 0; padding-bottom: var(--m-safe-b, 0px); }
+            .ab-filters { flex-direction: column; }
+            .ab-dept { width: 100%; }
+            .ab-search input, .ab-dept { font-size: 16px; height: 40px; }
+        }
+    </style>
+    <div class="ab-backdrop" @onclick="Cancel">
+        <div class="ab-dialog" role="dialog" aria-modal="true" aria-labelledby="ab-title" @onclick:stopPropagation>
+            <header class="ab-head">
+                <h2 id="ab-title"><i data-lucide="book-user"></i> @title</h2>
+                <button type="button" class="ab-x" aria-label="Close" title="Close" @onclick="Cancel"><i data-lucide="x"></i></button>
+            </header>
+            <div class="ab-filters">
+                <label class="ab-search"><i data-lucide="search"></i>
+                    <input type="search" placeholder="Search by name" aria-label="Search by name" @bind="query" @bind:event="oninput" @bind:after="OnQueryChanged" @ref="searchRef" />
+                </label>
+                <select class="ab-dept" aria-label="Department" @bind="deptCode" @bind:after="LoadAsync">
+                    <option value="">All departments</option>
+                    @foreach (var d in departments) { <option value="@d.Code">@d.Name</option> }
+                </select>
+            </div>
+            <div class="ab-bar">
+                <span class="ab-count">@(loading ? "Loading…" : $"{rows.Count} people")</span>
+                @if (!loading && rows.Count > 0)
+                {
+                    var addable = rows.Count(r => !existing.Contains(r.Nik));
+                    <button type="button" class="ab-all" disabled="@(addable == 0)" @onclick="SelectAllAsync">
+                        @(string.IsNullOrEmpty(deptCode) && string.IsNullOrWhiteSpace(query) ? $"Select all ({addable})" : $"Add all ({addable})")
+                    </button>
+                }
+            </div>
+            <div class="ab-list" role="listbox" aria-multiselectable="true" aria-label="People">
+                @if (!loading && rows.Count == 0)
+                {
+                    <p class="ab-empty">No one matches.</p>
+                }
+                <Virtualize Items="rows" ItemSize="48" Context="r">
+                    @{ var already = existing.Contains(r.Nik); var on = already || picked.ContainsKey(r.Nik); }
+                    <label class="ab-row @(already ? "already" : "")" role="option" aria-selected="@(on ? "true" : "false")">
+                        <input type="checkbox" checked="@on" disabled="@already" @onchange="() => Toggle(r)" />
+                        <PersonAvatar Nik="@r.Nik" Name="@r.Name" Size="30" Decorative="true" />
+                        <span class="ab-name">@r.Name<small>@(already ? "Already added" : r.Department)</small></span>
+                    </label>
+                </Virtualize>
+            </div>
+            <footer class="ab-foot">
+                @if (picked.Count > 0) { <button type="button" class="ab-clear" @onclick="() => picked.Clear()">Clear (@picked.Count)</button> }
+                <span class="ab-spacer"></span>
+                <button type="button" class="ab-btn" @onclick="Cancel">Cancel</button>
+                <button type="button" class="ab-btn primary ab-add" disabled="@(picked.Count == 0)" @onclick="Accept">
+                    @(picked.Count == 0 ? "Add" : $"Add {picked.Count}")
+                </button>
+            </footer>
+        </div>
+    </div>
+}
+
+@code {
+    private bool open;
+    private string title = "Address book";
+    private string query = "";
+    private string deptCode = "";
+    private bool loading;
+    private List<DirectoryDepartmentDto> departments = [];
+    private List<MemberSearchRow> rows = [];
+    private HashSet<string> existing = new(StringComparer.OrdinalIgnoreCase);
+    // Insertion order = the order chips are added in.
+    private readonly Dictionary<string, MemberSearchRow> picked = new(StringComparer.OrdinalIgnoreCase);
+    private TaskCompletionSource<List<MemberSearchRow>>? tcs;
+    private CancellationTokenSource? loadCts;
+    private IDisposable? escReg;
+    private ElementReference searchRef;
+    private bool focusPending;
+
+    /// Opens the book; resolves with the people picked (empty when cancelled).
+    /// <paramref name="already"/> are shown ticked and can't be added twice.
+    public Task<List<MemberSearchRow>> PickAsync(string dialogTitle, IEnumerable<string>? already = null)
+    {
+        tcs?.TrySetResult([]);
+        tcs = new TaskCompletionSource<List<MemberSearchRow>>();
+        title = dialogTitle;
+        existing = new HashSet<string>(already ?? [], StringComparer.OrdinalIgnoreCase);
+        picked.Clear();
+        query = "";
+        open = true;
+        focusPending = true;
+        escReg ??= Overlays.Push(() => { Cancel(); return Task.CompletedTask; });
+        StateHasChanged();
+        _ = InitAsync();
+        return tcs.Task;
+    }
+
+    private async Task InitAsync()
+    {
+        if (departments.Count == 0)
+        {
+            var depts = await Auth.GetAsync<List<DirectoryDepartmentDto>>("/api/directory/departments");
+            departments = (depts ?? []).Where(d => d.DirectMembers > 0 || depts!.Any(c => c.ParentCode == d.Code))
+                .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+        await LoadAsync();
+    }
+
+    private async Task OnQueryChanged()
+    {
+        // Light debounce: one request per pause in typing.
+        loadCts?.Cancel();
+        var cts = loadCts = new CancellationTokenSource();
+        try { await Task.Delay(250, cts.Token); } catch (OperationCanceledException) { return; }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        loadCts?.Cancel();
+        var cts = loadCts = new CancellationTokenSource();
+        loading = true;
+        StateHasChanged();
+        var url = $"/api/directory/employees?pageSize=5000&departmentCode={Uri.EscapeDataString(deptCode)}&q={Uri.EscapeDataString(query.Trim())}";
+        var page = await Auth.GetAsync<DirectoryPageDto>(url, cts.Token);
+        if (cts.IsCancellationRequested) return;
+        var me = Auth.Me?.Nik;
+        rows = (page?.Items ?? []).Where(e => e.Nik != me)
+            .Select(e => new MemberSearchRow(e.Nik, e.Name, e.Position, e.Department)).ToList();
+        loading = false;
+        StateHasChanged();
+    }
+
+    private void Toggle(MemberSearchRow r)
+    {
+        if (!picked.Remove(r.Nik)) picked[r.Nik] = r;
+    }
+
+    private async Task SelectAllAsync()
+    {
+        var add = rows.Where(r => !existing.Contains(r.Nik)).ToList();
+        if (add.Count > 20)
+        {
+            var scope = departments.FirstOrDefault(d => d.Code == deptCode)?.Name ?? "this list";
+            if (!await Confirm.AskAsync($"Add {add.Count} people?", $"Everyone in {scope} will be added.", $"Add {add.Count}", danger: false))
+                return;
+        }
+        foreach (var r in add) picked.TryAdd(r.Nik, r);
+    }
+
+    private void Accept() => Finish(picked.Values.ToList());
+    private void Cancel() => Finish([]);
+
+    private void Finish(List<MemberSearchRow> result)
+    {
+        open = false;
+        loadCts?.Cancel();
+        escReg?.Dispose();
+        escReg = null;
+        var t = tcs;
+        tcs = null;
+        t?.TrySetResult(result);
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!open) return;
+        try
+        {
+            await JS.InvokeVoidAsync("ipop.icons");
+            if (focusPending) { focusPending = false; await searchRef.FocusAsync(); }
+        }
+        catch { }
+    }
+
+    public void Dispose()
+    {
+        loadCts?.Cancel();
+        escReg?.Dispose();
+        tcs?.TrySetResult([]);
+    }
+}

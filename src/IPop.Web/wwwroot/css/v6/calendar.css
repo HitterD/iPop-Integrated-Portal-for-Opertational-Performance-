@@ -200,6 +200,13 @@ body:has(.cal-drawer) .confirm-center { z-index: 911; }
 .cal-field { display: grid; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-2); }
 .cal-field small, .cal-hint { font-weight: 400; color: var(--ink-3); font-size: 12px; }
 .cal-people-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cal-people-add { display: flex; align-items: center; gap: 6px; }
+.cal-people-add > :first-child { flex: 1; min-width: 0; }
+.cal-book { flex: none; width: 36px; height: 36px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink-2); cursor: pointer; }
+.cal-book:hover { background: var(--tray); color: var(--accent); }
+.cal-book .lucide { width: 17px; height: 17px; }
+/* .cal-form input padding would otherwise push the text under the picker's search icon. */
+.cal-form .member-picker-input input { padding-left: 36px; }
 .cal-person-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 2px; border-radius: 999px; background: var(--fill); color: var(--ink); font-size: 12.5px; font-weight: 500; }
 .cal-person-chip .cal-person-av { width: 22px; height: 22px; font-size: 9.5px; }
 .cal-person-chip button { border: 0; background: none; color: var(--ink-3); width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; cursor: pointer; padding: 0; }

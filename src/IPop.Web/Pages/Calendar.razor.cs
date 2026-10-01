@@ -549,6 +549,16 @@ public partial class Calendar
         form.People.Add(row);
     }
 
+    private Components.AddressBookDialog? addressBook;
+
+    private async Task OpenAddressBookAsync()
+    {
+        if (addressBook is null) return;
+        foreach (var row in await addressBook.PickAsync("Invite participants", form.People.Select(p => p.Nik)))
+            AddPerson(row);
+        StateHasChanged();
+    }
+
     private async Task SaveAsync()
     {
         formError = null;

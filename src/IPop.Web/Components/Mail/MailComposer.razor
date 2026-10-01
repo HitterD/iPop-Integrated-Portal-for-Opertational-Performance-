@@ -148,6 +148,7 @@
                         }
                         <AppMemberPicker ValueChanged="OnToPick" Placeholder="@(toRows.Count == 0 ? "Add recipients…" : "")" />
                     </div>
+                    <button type="button" class="mc-book" title="Address book" aria-label="Address book (To)" @onclick="() => OpenBookAsync(toRows)"><i data-lucide="book-user"></i></button>
                     <div class="cc-bcc-toggles">
                         @if (!showCc) { <button type="button" @onclick="() => showCc = true">Cc</button> }
                         @if (!showBcc) { <button type="button" @onclick="() => showBcc = true">Bcc</button> }
@@ -166,6 +167,7 @@
                             }
                             <AppMemberPicker ValueChanged="OnCcPick" Placeholder="@(ccRows.Count == 0 ? "Add Cc…" : "")" />
                         </div>
+                        <button type="button" class="mc-book" title="Address book" aria-label="Address book (Cc)" @onclick="() => OpenBookAsync(ccRows)"><i data-lucide="book-user"></i></button>
                     </div>
                 }
                 @if (showBcc)
@@ -181,6 +183,7 @@
                             }
                             <AppMemberPicker ValueChanged="OnBccPick" Placeholder="@(bccRows.Count == 0 ? "Add Bcc…" : "")" />
                         </div>
+                        <button type="button" class="mc-book" title="Address book" aria-label="Address book (Bcc)" @onclick="() => OpenBookAsync(bccRows)"><i data-lucide="book-user"></i></button>
                     </div>
                 }
                 <div class="recipient-row subject-row">
@@ -341,6 +344,8 @@
         </div>
     </div>
 }
+
+<AddressBookDialog @ref="addressBook" />
 
 <SynologyFilePickerDialog IsOpen="@showSynologyPicker"
                           IsOpenChanged="v => showSynologyPicker = v"
@@ -609,6 +614,20 @@
         headPop = null;
         isMeeting = !isMeeting;
         OnContentChanged();
+    }
+
+    private AddressBookDialog? addressBook;
+
+    private async Task OpenBookAsync(List<MemberSearchRow> target)
+    {
+        if (addressBook is null) return;
+        var label = target == ccRows ? "Cc" : target == bccRows ? "Bcc" : "To";
+        var picked = await addressBook.PickAsync($"Add to {label}", target.Select(r => r.Nik));
+        var added = false;
+        foreach (var r in picked)
+            if (!target.Any(x => x.Nik == r.Nik)) { target.Add(r); added = true; }
+        if (added) OnContentChanged();
+        StateHasChanged();
     }
 
     private void OnToPick(MemberSearchRow r) { if (!toRows.Any(x => x.Nik == r.Nik)) { toRows.Add(r); OnContentChanged(); } }

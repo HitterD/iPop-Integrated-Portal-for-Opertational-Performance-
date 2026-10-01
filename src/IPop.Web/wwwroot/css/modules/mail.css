@@ -1641,6 +1641,30 @@ details.mail-quote details.mail-quote {
   gap: 8px;
 }
 
+/* Address book button at the end of each To/Cc/Bcc row. */
+.mc-book {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+
+.mc-book:hover {
+  background: var(--tray);
+  color: var(--accent);
+}
+
+.mc-book .lucide {
+  width: 16px;
+  height: 16px;
+}
+
 .cc-bcc-toggles button {
   background: none;
   border: none;
