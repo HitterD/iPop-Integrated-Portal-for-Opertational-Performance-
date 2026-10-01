@@ -4,6 +4,7 @@
 @inject AuthState Auth
 @inject HttpClient Http
 @inject ToastService Toasts
+@inject IPop.Web.Services.PeopleLinks PLinks
 
 @{
     var isCondolence = Detail.Type is "condolence" or "duka";
@@ -93,7 +94,7 @@
                     <div class="memo-head-title">INTERNAL MEMORANDUM</div>
                     <div class="memo-head-grid">
                         <div class="memo-row"><span class="lbl">TO:</span><span class="val">@AudienceText</span></div>
-                        <div class="memo-row"><span class="lbl">FROM:</span><span class="val"><strong>@Detail.AuthorName</strong> (@Detail.AuthorNik)</span></div>
+                        <div class="memo-row"><span class="lbl">FROM:</span><span class="val"><strong>@Detail.AuthorName</strong></span></div>
                         <div class="memo-row"><span class="lbl">DATE:</span><span class="val">@NewsUiHelper.FormatDate(Detail.PublishedAt ?? Detail.CreatedAt)</span></div>
                         <div class="memo-row full"><span class="lbl">SUBJECT:</span><span class="val perihal">@Detail.Title</span></div>
                     </div>
@@ -201,7 +202,7 @@
                         else
                         {
                             <div class="ack-filter">
-                                <div class="v6-search"><i data-lucide="search"></i><input type="search" placeholder="Search name, NIK or department" aria-label="Search acknowledgements" @bind="ackQuery" @bind:event="oninput" /></div>
+                                <div class="v6-search"><i data-lucide="search"></i><input type="search" placeholder="Search name or department" aria-label="Search acknowledgements" @bind="ackQuery" @bind:event="oninput" /></div>
                                 <div class="seg" role="group" aria-label="Filter">
                                     <button type="button" class="@(ackFilter == "all" ? "on" : "")" @onclick='() => ackFilter = "all"'>All</button>
                                     <button type="button" class="@(ackFilter == "pending" ? "on" : "")" @onclick='() => ackFilter = "pending"'>Pending @(ackReport.Total - ackReport.Acknowledged)</button>
@@ -215,7 +216,7 @@
                                 {
                                     <div class="ack-row">
                                         <PersonAvatar Nik="@e.Nik" Name="@e.Name" Size="28" Class="av sm" Decorative="true" />
-                                        <span class="who"><span class="n">@e.Name</span><span class="m">@e.Nik@(string.IsNullOrEmpty(e.Department) ? "" : $" · {e.Department}")</span></span>
+                                        <span class="who"><span class="n">@e.Name</span><span class="m">@(e.Department ?? "")</span></span>
                                         @if (e.AcknowledgedAt is { } at) { <span class="ack ok" title="@NewsUiHelper.FormatDate(at)"><i data-lucide="check"></i>@at.ToLocalTime().ToString("dd MMM, HH:mm")</span> }
                                         else { <span class="ack req">Pending</span> }
                                     </div>
@@ -344,10 +345,18 @@
         {
             "department" => $"Dept. {t.Value}",
             "role" => $"Role {t.Value}",
-            "user" => $"NIK {t.Value}",
+            "user" => userNames.GetValueOrDefault(t.Value ?? "", "Employee"),
             "project" => "Project members",
             _ => t.Value ?? t.Kind
         }));
+
+    private readonly Dictionary<string, string> userNames = new(StringComparer.OrdinalIgnoreCase);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        foreach (var t in Detail.Targets.Where(t => t.Kind == "user" && t.Value is not null && !userNames.ContainsKey(t.Value)).ToList())
+            userNames[t.Value!] = await PLinks.NameAsync(Auth, t.Value!);
+    }
 
     protected override void OnParametersSet()
     {
@@ -396,7 +405,6 @@
             .Where(e => ackFilter switch { "pending" => e.AcknowledgedAt is null, "done" => e.AcknowledgedAt is not null, _ => true })
             .Where(e => q.Length == 0
                 || e.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
-                || e.Nik.Contains(q, StringComparison.OrdinalIgnoreCase)
                 || (e.Department?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
     }
 
@@ -404,10 +412,10 @@
     {
         var report = ackReport ?? await LoadAcks();
         if (report is null) return;
-        var rows = new List<object?[]> { new object?[] { "NIK", "Name", "Department", "Position", "Status", "Acknowledged at" } };
+        var rows = new List<object?[]> { new object?[] { "Name", "Department", "Status", "Acknowledged at" } };
         rows.AddRange(report.Entries.Select(e => new object?[]
         {
-            e.Nik, e.Name, e.Department ?? "", e.Position ?? "",
+            e.Name, e.Department ?? "",
             e.AcknowledgedAt is null ? "Pending" : "Acknowledged",
             e.AcknowledgedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? ""
         }));

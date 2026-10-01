@@ -32,7 +32,7 @@
     }
     <div class="member-picker-input">
         <i data-lucide="search"></i>
-        <input placeholder="@(Placeholder ?? "Type a name or NIK...")"
+        <input placeholder="@(Placeholder ?? "Type a name...")"
                @oninput="OnInput" @onkeydown="OnKeyDown"
                @ref="inputRef" aria-label="Search people" aria-expanded="@(results.Count > 0 ? "true" : "false")" />
         @if (loading)
@@ -57,7 +57,6 @@
                     {
                         <i data-lucide="check" class="pp-check"></i>
                     }
-                    <span class="mono" style="font-size:10.5px;color:var(--ink-3)">@r.Nik</span>
                 </button>
             }
         </div>

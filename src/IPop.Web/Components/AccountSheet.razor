@@ -76,7 +76,7 @@
                                 <input type="file" accept="image/jpeg,image/png,image/webp" @ref="fileInput" @onchange="PickPhoto" disabled="@busyPhoto" hidden />
                             </label>
                             <h2 class="acct-name">@me.Name</h2>
-                            <p class="acct-role">@(string.Join(" · ", new[] { me.Position, me.Department }.Where(s => !string.IsNullOrWhiteSpace(s))))</p>
+                            <p class="acct-role">@(string.Join(" · ", new[] { me.Department, me.Site }.Where(s => !string.IsNullOrWhiteSpace(s))))</p>
                             <div class="acct-photo-links">
                                 <button type="button" class="acct-link" @onclick="OpenPicker" disabled="@busyPhoto">@(HasPhoto ? "Change photo" : "Add photo")</button>
                                 @if (HasPhoto)
@@ -124,8 +124,6 @@
 
                         <h3 class="acct-h">Employee details</h3>
                         <div class="acct-group">
-                            <div class="acct-row"><span class="acct-k">NIK</span><span class="acct-v">@me.Nik</span></div>
-                            <div class="acct-row"><span class="acct-k">Position</span><span class="acct-v">@(me.Position ?? "—")</span></div>
                             <div class="acct-row"><span class="acct-k">Department</span><span class="acct-v">@(me.Department ?? "—")</span></div>
                         </div>
                         <p class="acct-note">Your name and placement come from HR. Ask your administrator if something is wrong.</p>

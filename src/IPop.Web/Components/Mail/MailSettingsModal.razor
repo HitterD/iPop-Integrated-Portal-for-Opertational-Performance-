@@ -247,7 +247,7 @@
     /// Raised with (subject, body) when the user picks a template.
     [Parameter] public EventCallback<(string Subject, string Body)> OnUseTemplate { get; set; }
 
-    private const string SignaturePlaceholder = "Best regards,\nYour Name\nPosition · Department\nPT Santos Jaya Abadi";
+    private const string SignaturePlaceholder = "Best regards,\nYour Name\nDepartment\nPT Santos Jaya Abadi";
     private static readonly string[] LabelColors = ["#2E9E5B", "#0A84FF", "#7657C4", "#FF9F0A", "#C0513A", "#18808A"];
 
     private record MailLabelDto(Guid Id, string Name, string Color, int Count);

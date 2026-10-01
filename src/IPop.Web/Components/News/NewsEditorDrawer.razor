@@ -3,6 +3,7 @@
 @using IPop.Web.Services
 @inject AuthState Auth
 @inject ToastService Toasts
+@inject IPop.Web.Services.PeopleLinks PLinks
 
 <div class="backdrop on" @onclick="OnClose"></div>
 <div class="drawer on news-editor" role="dialog" aria-label="@(IsEdit ? "Edit post" : "New post")" aria-modal="true">
@@ -105,7 +106,7 @@
                     {
                         var target = t;
                         <span class="tag-target-chip" style="display:inline-flex;align-items:center;gap:6px">
-                            @target.Kind:@(target.Value ?? "all")
+                            @(target.Kind == "user" ? $"Employee: {userNames.GetValueOrDefault(target.Value ?? "", "…")}" : $"{target.Kind}:{target.Value ?? "all"}")
                             <button type="button" aria-label="Remove target" @onclick="() => formTargets.Remove(target)" style="background:none;border:none;cursor:pointer;padding:0;color:inherit"><i data-lucide="x" style="width:11px;height:11px"></i></button>
                         </span>
                     }
@@ -196,6 +197,13 @@
     private List<NewsAttachmentDto> attachments = [];
     private string targetKind = "all";
     private string targetValue = "";
+    private readonly Dictionary<string, string> userNames = new(StringComparer.OrdinalIgnoreCase);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        foreach (var t in formTargets.Where(t => t.Kind == "user" && t.Value is not null && !userNames.ContainsKey(t.Value)).ToList())
+            userNames[t.Value!] = await PLinks.NameAsync(Auth, t.Value!);
+    }
     private string when = "now";
     private bool uploading;
     private (bool, Guid?)? initFor;
@@ -250,6 +258,8 @@
 
     private void OnPickMember(MemberSearchRow r)
     {
+        userNames[r.Nik] = r.Name;
+        PLinks.RememberName(r.Nik, r.Name);
         if (formTargets.All(t => t.Kind != "user" || t.Value != r.Nik)) formTargets.Add(new NewsTargetInput("user", r.Nik));
         _ = JS.InvokeVoidAsync("ipop.icons");
     }

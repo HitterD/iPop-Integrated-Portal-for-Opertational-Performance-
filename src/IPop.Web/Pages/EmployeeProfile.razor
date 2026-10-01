@@ -7,6 +7,7 @@
 @inject IPop.Web.Services.CallState CallSvc
 @inject IPop.Web.Services.ToastService Toasts
 @inject IPop.Web.Services.FavoriteContacts Favorites
+@inject IPop.Web.Services.PeopleLinks PLinks
 @using IPop.Web.Services
 
 @* Kartu Profil Pegawai — halaman penuh untuk satu pegawai: identitas, relasi
@@ -60,13 +61,11 @@
                     <PersonAvatar Nik="@person.Nik" Name="@person.Name" Size="84" Viewable="true" />
                     <div style="flex:1;min-width:0">
                         <div style="font-size:19px;font-weight:700;letter-spacing:-0.01em">@person.Name</div>
-                        <div style="font-size:13px;color:var(--ink-2);margin-top:2px">@(person.Position ?? "—")</div>
                         <div style="font-size:12px;color:var(--ink-3);margin-top:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                             <i data-lucide="network" style="width:12px;height:12px"></i>
                             @(person.Department ?? "—") · @(person.Site ?? "—")
                         </div>
                         <div class="p-rows" style="margin-top:14px">
-                            <div class="p-row"><i data-lucide="badge-check"></i><span class="k">NIK</span><span class="v mono">@person.Nik</span></div>
                             <div class="p-row"><i data-lucide="at-sign"></i><span class="k">Email</span><span class="v">@person.Email</span></div>
                             @if (!string.IsNullOrWhiteSpace(person.Extension))
                             {
@@ -101,8 +100,8 @@
                             <div class="notif-row" role="button" @onclick="() => OpenPerson(manager.Nik)">
                                 <PersonAvatar Nik="@manager.Nik" Name="@manager.Name" Size="34" Decorative="true" />
                                 <div class="notif-row-main">
-                                    <div class="notif-row-t">@manager.Name <span class="mono" style="font-size:11px;color:var(--ink-3)">@manager.Nik</span></div>
-                                    <div class="notif-row-s">@(manager.Position ?? "—")</div>
+                                    <div class="notif-row-t">@manager.Name</div>
+                                    <div class="notif-row-s">Direct manager</div>
                                 </div>
                                 <i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--ink-3);flex-shrink:0"></i>
                             </div>
@@ -127,8 +126,8 @@
                                     <div class="notif-row" role="listitem" @onclick="() => OpenPerson(report.Nik)">
                                         <PersonAvatar Nik="@report.Nik" Name="@report.Name" Size="34" Decorative="true" />
                                         <div class="notif-row-main">
-                                            <div class="notif-row-t">@report.Name <span class="mono" style="font-size:11px;color:var(--ink-3)">@report.Nik</span></div>
-                                            <div class="notif-row-s">@(report.Position ?? "—")</div>
+                                            <div class="notif-row-t">@report.Name</div>
+                                            <div class="notif-row-s">Direct report</div>
                                         </div>
                                         <i data-lucide="chevron-right" style="width:14px;height:14px;color:var(--ink-3);flex-shrink:0"></i>
                                     </div>
@@ -172,7 +171,7 @@
         reports = [];
         try
         {
-            var d = await Auth.GetAsync<DirectoryEmployeeDto>($"/api/chat/users/{Uri.EscapeDataString(Nik)}");
+            var d = PLinks.Nik(Nik) is { } key ? await Auth.GetAsync<DirectoryEmployeeDto>($"/api/chat/users/{Uri.EscapeDataString(key)}") : null;
             if (d is not null)
             {
                 person = new PersonRow(d.Nik, d.Name, d.Position, d.Department, d.Site, d.Manager, d.Email, d.Extension, d.Location, d.Status, d.PhotoPath);
@@ -222,9 +221,9 @@
         isFav = await Favorites.ToggleAsync(person.Nik);
     }
 
-    private void OpenChat() { if (person is not null) Nav.NavigateTo($"/chat?nik={Uri.EscapeDataString(person.Nik)}"); }
-    private void OpenMail() { if (person is not null) Nav.NavigateTo($"/mail?to={Uri.EscapeDataString(person.Nik)}"); }
-    private void OpenPerson(string nik) => Nav.NavigateTo($"/directory/person/{Uri.EscapeDataString(nik)}");
+    private void OpenChat() { if (person is not null) Nav.NavigateTo(PLinks.Chat(person.Nik)); }
+    private void OpenMail() { if (person is not null) Nav.NavigateTo(PLinks.Mail(person.Nik)); }
+    private void OpenPerson(string nik) => Nav.NavigateTo(PLinks.Profile(nik));
 
     private async Task OpenCall()
     {

@@ -30,7 +30,7 @@
         </div>
         <div class="field">
             <label>Head</label>
-            <AppMemberPicker Value="head" ValueChanged="v => head = v" Placeholder="Not assigned — search a name or NIK" />
+            <AppMemberPicker AdminMode="true" Value="head" ValueChanged="v => head = v" Placeholder="Not assigned — search a name or NIK" />
         </div>
         @if (Org.ActiveDivisions.Any() is false || Org.ActivePlants.Any() is false)
         {

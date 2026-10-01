@@ -277,7 +277,7 @@ public partial class Chat
     private void MailPerson(string? nik)
     {
         if (string.IsNullOrWhiteSpace(nik)) return;
-        Nav.NavigateTo($"/mail?compose={Uri.EscapeDataString(nik)}");
+        Nav.NavigateTo(PLinks.Mail(nik));
     }
 
     private void OpenPinnedSection()
@@ -727,7 +727,7 @@ public partial class Chat
             StartNewDm();
         else
         {
-            var nik = QueryValue("nik");
+            var nik = PLinks.Nik(QueryValue("p") ?? QueryValue("nik"));
             if (!string.IsNullOrWhiteSpace(nik))
                 await OpenDmByNik(nik);
         }
@@ -739,7 +739,7 @@ public partial class Chat
     {
         var targetRoom = RoomId; // route param value already updated by Blazor before this fires
         if (targetRoom is not null) return;
-        var nik = QueryValue("nik");
+        var nik = PLinks.Nik(QueryValue("p") ?? QueryValue("nik"));
         if (!string.IsNullOrWhiteSpace(nik))
             _ = OpenDmByNik(nik);
     }

@@ -6,14 +6,14 @@
     <div class="proj-modal-head"><span class="vpm-tile team"><i data-lucide="users"></i></span><span>Project team members <small>@Members.Count</small></span><button type="button" class="vpm-close" @onclick="OnClose" aria-label="Close"><i data-lucide="x"></i></button></div>
     <div class="proj-modal-body">
         <label class="vpm-team-label">Add project members</label>
-        <div class="vpm-team-search"><IPop.Web.Components.AppMemberPicker Placeholder="Search people by name or NIK..." ValueChanged="AddMember" /></div>
+        <div class="vpm-team-search"><IPop.Web.Components.AppMemberPicker Placeholder="Search people by name..." ValueChanged="AddMember" /></div>
         <div class="vpm-team-list">
             @if (Members.Count == 0) { <div class="vpm-team-empty">No team members yet. Search people to add someone.</div> }
             @foreach (var m in Members)
             {
                 <div class="vpm-member">
                     <PersonAvatar Nik="@m.Nik" Name="@m.Name" Size="36" Class="vpm-member-avatar" Status="on" Decorative="true" />
-                    <span class="vpm-member-text"><strong>@m.Name</strong><small>@m.Nik · @m.Role</small></span>
+                    <span class="vpm-member-text"><strong>@m.Name</strong><small>@m.Role</small></span>
                     @if (m.Role != "owner") { <button type="button" class="vpm-member-remove" @onclick="() => OnRemoveMember.InvokeAsync(m.UserId)" title="Remove from team" aria-label="Remove @m.Name"><i data-lucide="x"></i></button> }
                     else { <span class="vpm-member-owner">Owner</span> }
                 </div>

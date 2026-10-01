@@ -4,6 +4,7 @@
 @inject IPop.Web.Services.CallState CallSvc
 @inject IPop.Web.Services.ToastService Toasts
 @inject IPop.Web.Services.FavoriteContacts Favorites
+@inject IPop.Web.Services.PeopleLinks PLinks
 
 @if (Person is not null)
 {
@@ -18,10 +19,6 @@
                 }
             </div>
             <div class="contact-name">@Person.Name</div>
-            @if (!string.IsNullOrWhiteSpace(Person.Position) && Person.Position != "—")
-            {
-                <div class="contact-pos">@Person.Position</div>
-            }
             @{
                 var orgLine = GetDeptSite(Person);
             }
@@ -58,11 +55,6 @@
             <div class="inset-group">
                 <div class="inset-sec-title">Contact</div>
                 <div class="inset-box">
-                    <div class="inset-row">
-                        <span class="inset-k">Employee ID</span>
-                        <span class="inset-v num">@Person.Nik</span>
-                        <button type="button" class="inset-copy" title="Copy employee ID" aria-label="Copy employee ID" @onclick='() => CopyAsync(Person.Nik, "Employee ID")'><i data-lucide="copy"></i></button>
-                    </div>
                     @if (!string.IsNullOrWhiteSpace(Person.Email) && Person.Email != "—")
                     {
                         <div class="inset-row">
@@ -159,7 +151,7 @@
         if (OnClose.HasDelegate) await OnClose.InvokeAsync();
         if (Person is not null && !string.IsNullOrWhiteSpace(Person.Nik))
         {
-            Nav.NavigateTo($"/chat?nik={Uri.EscapeDataString(Person.Nik)}");
+            Nav.NavigateTo(PLinks.Chat(Person.Nik));
         }
     }
 
@@ -173,7 +165,7 @@
         if (OnClose.HasDelegate) await OnClose.InvokeAsync();
         if (Person is not null && !string.IsNullOrWhiteSpace(Person.Nik))
         {
-            Nav.NavigateTo($"/mail?compose={Uri.EscapeDataString(Person.Nik)}");
+            Nav.NavigateTo(PLinks.Mail(Person.Nik));
         }
     }
 

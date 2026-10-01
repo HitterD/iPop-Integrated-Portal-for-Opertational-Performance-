@@ -11,6 +11,7 @@
 @inject IPop.Web.Services.ConfirmService Confirm
 @inject HttpClient Http
 @inject IPop.Web.Services.MailService MailSvc
+@inject IPop.Web.Services.PeopleLinks PLinks
 
 <PageTitle>Mail — IPop</PageTitle>
 
@@ -573,7 +574,6 @@
                             <div class="sender-row">
                                 <span class="sender-name">
                                     @detail.SenderName
-                                    <span class="mono sender-id">ID @detail.SenderNik</span>
                                 </span>
                                 <span class="sender-date">@FormatDetailDate(detail.SentAt ?? detail.ScheduledAt)</span>
                             </div>
@@ -1050,12 +1050,13 @@
 
             if (hasTo && !string.IsNullOrWhiteSpace(toVal))
             {
-                toList.AddRange(toVal.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+                toList.AddRange(PLinks.Niks(toVal));
             }
             if (hasCompose && !string.IsNullOrWhiteSpace(composeVal) && composeVal != "1")
             {
-                if (!toList.Contains(composeVal, StringComparer.OrdinalIgnoreCase))
-                    toList.Add(composeVal.Trim());
+                var composeNik = PLinks.Nik(composeVal)!;
+                if (!toList.Contains(composeNik, StringComparer.OrdinalIgnoreCase))
+                    toList.Add(composeNik);
             }
 
             if (toList.Count > 0)
@@ -2179,8 +2180,7 @@
     {
         try
         {
-            var rows = await Auth.GetAsync<MemberSearchRow[]>($"/api/directory/member-search?q={Uri.EscapeDataString(nik)}");
-            var hit = rows?.FirstOrDefault(r => string.Equals(r.Nik, nik, StringComparison.OrdinalIgnoreCase));
+            var hit = await Auth.GetAsync<DirectoryEmployeeDto>($"/api/chat/users/{Uri.EscapeDataString(nik)}");
             if (hit is not null) return hit.Name;
         }
         catch { }

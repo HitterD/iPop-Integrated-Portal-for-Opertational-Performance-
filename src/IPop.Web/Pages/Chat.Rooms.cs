@@ -245,8 +245,7 @@ public partial class Chat
 
     private async Task OpenDmByNik(string nik)
     {
-        var results = await Auth.GetAsync<List<UserSearchResult>>($"/api/chat/users/search?q={Uri.EscapeDataString(nik)}");
-        var user = results?.FirstOrDefault(u => string.Equals(u.Nik, nik, StringComparison.OrdinalIgnoreCase));
+        var user = await LookupUserAsync(nik);
         if (user is not null)
             await CreateDmWith(user);
     }
@@ -257,18 +256,28 @@ public partial class Chat
     {
         StartNewGroup();
         var found = new List<NewChatPerson>();
-        var niks = (QueryValue("members") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var niks = PLinks.Niks(QueryValue("members"));
         foreach (var nik in niks)
         {
             if (nik == GetCurrentUserNik()) continue;
-            var results = await Auth.GetAsync<List<UserSearchResult>>($"/api/chat/users/search?q={Uri.EscapeDataString(nik)}");
-            var user = results?.FirstOrDefault(u => string.Equals(u.Nik, nik, StringComparison.OrdinalIgnoreCase));
+            var user = await LookupUserAsync(nik);
             if (user is not null && newChatPreselected.All(m => m.Id != user.Id))
                 found.Add(new NewChatPerson(user.Id, user.Nik, user.Name, user.Email, null, null, "off"));
         }
         // New list instance so the panel's parameter change is noticed.
         newChatPreselected = [.. newChatPreselected, .. found];
         StateHasChanged();
+    }
+
+    /// Exact lookup (search no longer matches NIKs for non-admins).
+    private async Task<UserSearchResult?> LookupUserAsync(string nik)
+    {
+        try
+        {
+            var d = await Auth.GetAsync<IPop.Web.Services.DirectoryEmployeeDto>($"/api/chat/users/{Uri.EscapeDataString(nik)}");
+            return d?.UserId is { } id ? new UserSearchResult(id, d.Nik, d.Name, d.Email) : null;
+        }
+        catch { return null; }
     }
 
     private string? QueryValue(string key)

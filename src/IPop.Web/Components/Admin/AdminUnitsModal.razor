@@ -51,7 +51,7 @@
                         {
                             <div class="adm-unit-edit">
                                 <input class="org-input" @bind="editName" @bind:event="oninput" aria-label="Division name" />
-                                <AppMemberPicker Value="editHead" ValueChanged="v => editHead = v" Placeholder="Head — search a name or NIK" />
+                                <AppMemberPicker AdminMode="true" Value="editHead" ValueChanged="v => editHead = v" Placeholder="Head — search a name or NIK" />
                                 <div class="adm-unit-edit-pair">
                                     <label>Parent
                                         <select class="org-input" @bind="editParent" aria-label="Parent division">

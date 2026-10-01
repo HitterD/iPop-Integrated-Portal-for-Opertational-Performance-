@@ -155,7 +155,7 @@ public partial class NewChatPanel
     }
 
     private static bool Matches(NewChatPerson p, string q) =>
-        q.Length == 0 || p.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || p.Nik.Contains(q, StringComparison.OrdinalIgnoreCase);
+        q.Length == 0 || p.Name.Contains(q, StringComparison.OrdinalIgnoreCase) || (p.Email?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false);
 
     private List<NewChatPerson> Visible
     {
@@ -300,8 +300,8 @@ public partial class NewChatPanel
 
     private static string Subtitle(NewChatPerson p)
     {
-        var parts = new[] { p.Position, p.Department }.Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
-        return parts.Length > 0 ? string.Join(" · ", parts) : p.Nik;
+        var parts = new[] { p.Department }.Where(s => !string.IsNullOrWhiteSpace(s)).ToArray();
+        return parts.Length > 0 ? string.Join(" · ", parts) : "";
     }
 
     private static string FirstName(string? name)

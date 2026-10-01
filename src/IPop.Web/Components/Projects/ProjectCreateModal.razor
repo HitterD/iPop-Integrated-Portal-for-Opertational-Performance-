@@ -26,8 +26,8 @@
                 }
             </div>
         </div>
-        <div class="field"><label>Project owner</label><IPop.Web.Components.AppMemberPicker Placeholder="Search by name or NIK for owner..." ValueChanged="r => createOwner = r" />
-            @if (createOwner is not null) { <span class="vpm-owner">@createOwner.Name (@createOwner.Nik) · @createOwner.Position</span> }
+        <div class="field"><label>Project owner</label><IPop.Web.Components.AppMemberPicker Placeholder="Search by name for owner..." ValueChanged="r => createOwner = r" />
+            @if (createOwner is not null) { <span class="vpm-owner">@createOwner.Name · @createOwner.PositionLabel</span> }
         </div>
     </div>
     <div class="proj-modal-foot"><button type="button" class="btn-sm surface" @onclick="OnClose">Cancel</button><button type="button" class="btn-sm accent" @onclick="HandleSubmit"><i data-lucide="plus"></i>Create project</button></div>

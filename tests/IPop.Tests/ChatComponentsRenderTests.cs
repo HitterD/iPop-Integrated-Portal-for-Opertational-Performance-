@@ -27,6 +27,7 @@ public class ChatComponentsRenderTests
         }, ctx.JSInterop.JSRuntime));
         ctx.Services.AddSingleton(new ToastService());
         ctx.Services.AddScoped<PhotoViewerState>();
+        ctx.Services.AddScoped<IPop.Web.Services.PeopleLinks>();
         return ctx;
     }
 
@@ -51,6 +52,7 @@ public class ChatComponentsRenderTests
         ctx.Services.AddSingleton(new ChatAttachments(auth, Http(), ctx.JSInterop.JSRuntime));
         ctx.Services.AddSingleton(new ToastService());
         ctx.Services.AddSingleton(new ConfirmService());
+        ctx.Services.AddScoped<IPop.Web.Services.PeopleLinks>();
         ctx.Services.AddSingleton(new FavoriteContacts(ctx.JSInterop.JSRuntime, auth));
         ctx.Services.AddSingleton(new CallState(auth, Http(), ctx.JSInterop.JSRuntime));
         ctx.Services.AddSingleton(Http());
@@ -120,9 +122,14 @@ public class ChatComponentsRenderTests
     public void ContactCard_RendersCopyButtonsAndSingleActionRow()
     {
         using var ctx = CreateDrawerContext();
-        var cut = ctx.Render<IPop.Web.Components.ContactCard>(p => p.Add(m => m.Person, SamplePerson()));
+        var person = SamplePerson();
+        var cut = ctx.Render<IPop.Web.Components.ContactCard>(p => p.Add(m => m.Person, person));
 
-        Assert.Equal(3, cut.FindAll(".inset-copy").Count);
+        // Office policy: no Employee ID (NIK) row and no position line.
+        Assert.Equal(2, cut.FindAll(".inset-copy").Count);
+        Assert.DoesNotContain("Employee ID", cut.Markup);
+        Assert.DoesNotContain(person.Nik, cut.Markup);
+        Assert.DoesNotContain(person.Position, cut.Markup);
         Assert.Equal(3, cut.FindAll(".hero-btn").Count);
         Assert.DoesNotContain("View full profile", cut.Markup);
     }
@@ -148,7 +155,8 @@ public class ChatComponentsRenderTests
 
         cut.Find(".hero-btn[aria-label='Mail']").Click();
         var nav = ctx.Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>();
-        Assert.Contains("/mail?compose=", nav.Uri);
+        Assert.Contains("/mail?to=", nav.Uri);
+        Assert.DoesNotContain(SamplePerson().Nik, nav.Uri);
     }
 
     [Fact]

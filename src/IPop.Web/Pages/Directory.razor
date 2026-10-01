@@ -6,6 +6,7 @@
 @inject IPop.Web.Services.CallState CallSvc
 @inject IPop.Web.Services.FavoriteContacts Favorites
 @inject ToastService Toasts
+@inject IPop.Web.Services.PeopleLinks PLinks
 
 <PageTitle>Directory — IPop</PageTitle>
 
@@ -39,7 +40,7 @@
     <div class="push flex center gap-8">
         <div class="v6-search">
             <i data-lucide="search"></i>
-            <input type="search" placeholder="Search name, NIK or email" aria-label="Search people" value="@Layout.SearchQuery" @oninput="e => Layout.SetSearch(e.Value?.ToString())" />
+            <input type="search" placeholder="Search name or email" aria-label="Search people" value="@Layout.SearchQuery" @oninput="e => Layout.SetSearch(e.Value?.ToString())" />
         </div>
         <div class="apple-segmented view-seg">
             <button type="button" class="seg-btn @(!isGridView ? "active" : "")" title="List view" aria-label="List view" @onclick="() => isGridView = false"><i data-lucide="list"></i></button>
@@ -227,8 +228,8 @@
                                     </div>
                                     <div class="dc-av" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">@p.Initials<span class="presence @p.Status"></span></div>
                                     <span class="dc-name" title="@p.Name">@p.Name</span>
-                                    <span class="dc-pos">@p.Position</span>
-                                    <span class="dc-meta">@(p.Department) · @p.Nik</span>
+                                    <span class="dc-pos">@p.Department</span>
+                                    <span class="dc-meta">@p.Site</span>
                                     <div class="dc-acts" @onclick:stopPropagation="true">
                                         <button type="button" class="dc-msg" @onclick="() => OpenChatWith(p.Nik)"><i data-lucide="message-circle"></i>Message</button>
                                         <button type="button" class="dc-ic" title="Call" aria-label="Call @p.Name" @onclick="() => StartCallWith(p.Nik)"><i data-lucide="phone"></i></button>
@@ -256,8 +257,6 @@
                                     </button>
                                 </th>
                                 <th>Name</th>
-                                <th>NIK</th>
-                                <th>Position</th>
                                 <th>Department</th>
                                 <th>Status</th>
                                 <th class="th-acts">Actions</th>
@@ -269,14 +268,14 @@
                                 @for (var i = 0; i < 7; i++)
                                 {
                                     <tr>
-                                        <td colspan="7"><div class="skel" style="height:26px;border-radius:6px"></div></td>
+                                        <td colspan="5"><div class="skel" style="height:26px;border-radius:6px"></div></td>
                                     </tr>
                                 }
                             }
                             else if (DisplayedPeople.Count == 0 && FavoritePeople.Count == 0)
                             {
                                 <tr>
-                                    <td colspan="7" style="text-align:center;padding:32px;color:var(--ink-3)">@(loadError ?? "No one in this department yet.")</td>
+                                    <td colspan="5" style="text-align:center;padding:32px;color:var(--ink-3)">@(loadError ?? "No one in this department yet.")</td>
                                 </tr>
                             }
                             else
@@ -306,8 +305,6 @@
                                                 </div>
                                             </div>
                                         </td>
-                                        <td class="num dim">@p.Nik</td>
-                                        <td class="dim">@p.Position</td>
                                         <td>@if (p.Department != "—") { <span class="div-chip">@p.Department</span> } else { <span class="dim">—</span> }</td>
                                         <td>
                                             <span class="st-pill @p.Status"><span class="d"></span>@p.StatusLabel</span>
@@ -363,11 +360,10 @@
     private bool favOnly;
     private string selectedSort = "name-asc";
     private bool sortOpen;
-    private static readonly string[] SortOptions = ["name-asc", "name-desc", "nik-asc", "status-asc"];
+    private static readonly string[] SortOptions = ["name-asc", "name-desc", "status-asc"];
     private static string SortLabel(string key) => key switch
     {
         "name-desc" => "Name Z–A",
-        "nik-asc" => "NIK",
         "status-asc" => "Online first",
         _ => "Name A–Z",
     };
@@ -414,12 +410,12 @@
 
     private void BulkCreateGroup()
     {
-        Nav.NavigateTo($"/chat?new=group&members={string.Join(",", selectedNiks)}");
+        Nav.NavigateTo($"/chat?new=group&members={PLinks.Tokens(selectedNiks)}");
     }
 
     private void BulkEmail()
     {
-        Nav.NavigateTo($"/mail?to={string.Join(",", selectedNiks)}&compose=1");
+        Nav.NavigateTo($"/mail?to={PLinks.Tokens(selectedNiks)}&compose=1");
     }
 
     private async Task BulkFavorite()
@@ -438,16 +434,16 @@
             .DistinctBy(p => p.Nik)
             .ToList();
         static string Q(string? v) => "\"" + (v ?? "").Replace("\"", "\"\"") + "\"";
-        var sb = new System.Text.StringBuilder("Name,NIK,Email,Position,Division,Status\n");
+        var sb = new System.Text.StringBuilder("Name,Email,Division,Status\n");
         foreach (var p in rows)
-            sb.AppendLine(string.Join(",", Q(p.Name), Q(p.Nik), Q(p.Email), Q(p.Position), Q(p.Department), Q(p.StatusLabel)));
+            sb.AppendLine(string.Join(",", Q(p.Name), Q(p.Email), Q(p.Department), Q(p.StatusLabel)));
         var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
         await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(bytes), $"directory-selected-{DateTime.Now:yyyyMMdd-HHmm}.csv");
         Toasts.Show($"Exported {rows.Count} people to CSV.", ToastKind.Success);
     }
 
     private void OpenMailWith(string nik)
-        => Nav.NavigateTo($"/mail?to={Uri.EscapeDataString(nik)}&compose=1");
+        => Nav.NavigateTo(PLinks.Mail(nik));
 
     private DirectoryConnectionState ConnectionState => Auth.ConnectionState;
     private int TotalPages => total == 0 ? 1 : (int)Math.Ceiling(total / (double)PageSize);
@@ -582,12 +578,16 @@
         Nav.LocationChanged += OnLocationChanged;
     }
 
-    // ⌘K "People" results link to /directory?nik=… — filter to that person and select them.
+    // Old ⌘K links (/directory?nik=…) — filter to that person by name and select them.
     private async Task SelectFromQuery()
     {
         var nik = System.Web.HttpUtility.ParseQueryString(Nav.ToAbsoluteUri(Nav.Uri).Query)["nik"];
         if (string.IsNullOrWhiteSpace(nik)) return;
-        searchQ = nik;
+        // Legacy link: search by the person's name, never put the NIK in the search box.
+        DirectoryEmployeeDto? d = null;
+        try { d = await Auth.GetAsync<DirectoryEmployeeDto>($"/api/chat/users/{Uri.EscapeDataString(nik)}"); } catch { }
+        if (d is null) return;
+        searchQ = d.Name;
         await Reload(1, replace: true);
         selected = people.FirstOrDefault(p => string.Equals(p.Nik, nik, StringComparison.OrdinalIgnoreCase)) ?? selected;
         StateHasChanged();
@@ -732,7 +732,7 @@
     }
 
     private void OpenChatWith(string nik)
-        => Nav.NavigateTo($"/chat?nik={Uri.EscapeDataString(nik)}");
+        => Nav.NavigateTo(PLinks.Chat(nik));
 
     private async Task StartCallWith(string nik)
     {

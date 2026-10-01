@@ -497,7 +497,7 @@
                 {
                     <div class="nt-share-pane">
                         <div class="nt-inv">
-                            <label class="nt-field"><i data-lucide="user-plus" class="sm"></i><input placeholder="Search name or NIK" value="@inviteQ" @oninput="OnInviteInput" /></label>
+                            <label class="nt-field"><i data-lucide="user-plus" class="sm"></i><input placeholder="Search name or email" value="@inviteQ" @oninput="OnInviteInput" /></label>
                             <select class="nt-role" style="border:1px solid var(--line);height:34px" @bind="inviteLevel">
                                 <option value="edit">Can edit</option><option value="comment">Can comment</option><option value="view">Can view</option>
                             </select>
@@ -508,7 +508,7 @@
                                     {
                                         <button type="button" @onclick="() => Invite(p)">
                                             <PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="30" Class="nt-av s30" Decorative="true" />
-                                            <span><span class="nm">@p.Name</span><br /><span class="sub" style="font-size:11.5px;color:var(--ink-3)">@(p.Position ?? p.Nik)</span></span>
+                                            <span><span class="nm">@p.Name</span></span>
                                         </button>
                                     }
                                 </div>
@@ -521,14 +521,14 @@
                                 <div class="lbl">PEOPLE</div>
                                 <div class="nt-pr">
                                     <PersonAvatar Nik="@shares.OwnerNik" Name="@shares.OwnerName" Size="30" Class="nt-av s30" Decorative="true" />
-                                    <div class="grow"><div class="nm">@shares.OwnerName @(shares.OwnerNik.Equals(Auth.Me?.Nik, StringComparison.OrdinalIgnoreCase) ? "(you)" : "")</div><div class="sub">@(shares.OwnerPosition ?? shares.OwnerNik)</div></div>
+                                    <div class="grow"><div class="nm">@shares.OwnerName @(shares.OwnerNik.Equals(Auth.Me?.Nik, StringComparison.OrdinalIgnoreCase) ? "(you)" : "")</div><div class="sub">Owner</div></div>
                                     <span class="nt-role static">Owner</span>
                                 </div>
                                 @foreach (var s in shares.Shares.Where(s => s.UserId is not null))
                                 {
                                     <div class="nt-pr">
                                         <PersonAvatar Nik="@s.UserNik" Name="@s.UserName" Size="30" Class="nt-av s30" Decorative="true" />
-                                        <div class="grow"><div class="nm">@s.UserName</div><div class="sub">@(s.InheritedFromTitle is { } it ? $"From “{DisplayTitle(it)}”" : s.UserPosition ?? s.UserNik)</div></div>
+                                        <div class="grow"><div class="nm">@s.UserName</div><div class="sub">@(s.InheritedFromTitle is { } it ? $"From “{DisplayTitle(it)}”" : "")</div></div>
                                         @ShareRole(s)
                                     </div>
                                 }

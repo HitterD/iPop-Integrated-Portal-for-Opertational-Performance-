@@ -1,4 +1,4 @@
-@* Inline combobox: type a name or NIK, suggestions load live from
+@* Inline combobox: type a name (or NIK on /admin), suggestions load live from
    /api/directory/member-search and drop down below the input (no modal).
    Picking emits ValueChanged(MemberSearchRow). Dropdown is position:fixed
    to escape drawer overflow:auto. *@
@@ -12,7 +12,7 @@
             <span class="avatar" style="background:@(Value.AvatarColor);width:28px;height:28px;font-size:11px;font-weight:700">@(Value.Initials)</span>
             <span style="font-size:13px;font-weight:600;flex:1;color:var(--ink)">
                 @Value.Name
-                <span style="font-size:11.5px;font-weight:400;color:var(--ink-3);margin-left:4px">(@Value.Nik)</span>
+                @if (AdminMode) { <span style="font-size:11.5px;font-weight:400;color:var(--ink-3);margin-left:4px">(@Value.Nik)</span> }
             </span>
             <button type="button" class="comp-btn" style="padding:4px;background:transparent;border:none;cursor:pointer;color:var(--ink-3);display:flex;align-items:center" @onclick="Clear" title="Clear selection">
                 <i data-lucide="x" style="width:14px;height:14px"></i>
@@ -23,7 +23,7 @@
     {
         <div class="member-picker-input">
             <i data-lucide="search"></i>
-            <input placeholder="@(Placeholder ?? "Type a name or NIK...")" value="@query"
+            <input placeholder="@(Placeholder ?? (AdminMode ? "Type a name or NIK..." : "Type a name..."))" value="@query"
                    @oninput="OnInput" @onkeydown="OnKeyDown"
                    @ref="inputRef" aria-label="Search people" aria-expanded="@(results.Count > 0 ? "true" : "false")" />
             @if (loading)
@@ -44,7 +44,7 @@
                         @onmousemove="() => activeIdx = idx" @onmousedown="() => Pick(r)">
                     <span class="avatar" style="background:@(r.AvatarColor)">@(r.Initials)</span>
                     <span class="txt"><span class="n">@r.Name</span><span class="s">@r.PositionLabel</span></span>
-                    <span class="mono" style="font-size:10.5px;color:var(--ink-3)">@r.Nik</span>
+                    @if (AdminMode) { <span class="mono" style="font-size:10.5px;color:var(--ink-3)">@r.Nik</span> }
                 </button>
             }
         </div>
@@ -57,6 +57,8 @@
 
 @code {
     [Parameter] public string? Placeholder { get; set; }
+    /// /admin pickers only: search and show NIK + position (the API honours it for admins only).
+    [Parameter] public bool AdminMode { get; set; }
     [Parameter] public MemberSearchRow? Value { get; set; }
     [Parameter] public EventCallback<MemberSearchRow?> ValueChanged { get; set; }
 
@@ -123,7 +125,7 @@
         StateHasChanged();
         try { await Task.Delay(180, token.Token); } catch (TaskCanceledException) { return; }
         if (token.IsCancellationRequested) return;
-        var res = await Auth.GetAsync<MemberSearchRow[]>($"/api/directory/member-search?q={Uri.EscapeDataString(q)}");
+        var res = await Auth.GetAsync<MemberSearchRow[]>($"/api/directory/member-search?q={Uri.EscapeDataString(q)}{(AdminMode ? "&full=true" : "")}");
         if (token.IsCancellationRequested) return;
         results = res?.ToList() ?? [];
         resultsFor = q;

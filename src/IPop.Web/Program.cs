@@ -48,6 +48,7 @@ builder.Services.AddScoped<IPop.Web.Services.NotificationState>(sp =>
         sp.GetRequiredService<Microsoft.JSInterop.IJSRuntime>()));
 builder.Services.AddScoped<IPop.Web.Services.FileState>();
 builder.Services.AddScoped<IPop.Web.Services.FavoriteContacts>();
+builder.Services.AddScoped<IPop.Web.Services.PeopleLinks>();
 builder.Services.AddScoped<IPop.Web.Services.PhotoViewerState>();
 builder.Services.AddScoped<IPop.Web.Services.SessionLockState>();
 builder.Services.AddRadzenComponents();

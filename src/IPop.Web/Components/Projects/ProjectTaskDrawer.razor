@@ -115,7 +115,7 @@
                                             {
                                                 <button type="button" role="menuitem" @onclick="async () => { assignOpen = false; await OnToggleAssignee.InvokeAsync((Task.Id, m.UserId, false)); }">
                                                     <PersonAvatar Nik="@m.Nik" Name="@m.Name" Size="20" Class="td-avatar" Decorative="true" />
-                                                    <span>@m.Name<small>@m.Role · @m.Nik</small></span>
+                                                    <span>@m.Name<small>@m.Role</small></span>
                                                 </button>
                                             }
                                         </div>

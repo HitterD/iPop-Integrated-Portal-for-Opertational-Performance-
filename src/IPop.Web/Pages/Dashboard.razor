@@ -5,6 +5,7 @@
 @inject NavigationManager Nav
 @inject ToastService Toasts
 @inject IPop.Web.Services.CallState CallSvc
+@inject IPop.Web.Services.PeopleLinks PLinks
 @implements IDisposable
 
 <PageTitle>Dashboard — IPop</PageTitle>
@@ -242,7 +243,7 @@
                 <div class="dw-team">
                     @foreach (var p in data.Online)
                     {
-                        <a class="dw-tm" href="/directory/person/@p.Nik" title="@p.Name · @PresenceLabel(p.Status)">
+                        <a class="dw-tm" href="@PLinks.Profile(p.Nik)" title="@p.Name · @PresenceLabel(p.Status)">
                             <PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="46" Class="@($"av st-{p.Status}")" Decorative="true" />
                             <span>@p.Name.Split(' ')[0]</span>
                         </a>

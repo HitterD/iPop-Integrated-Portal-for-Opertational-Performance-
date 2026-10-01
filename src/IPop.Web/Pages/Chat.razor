@@ -14,6 +14,7 @@
 @inject IPop.Web.Services.CallState CallStateSvc
 @inject IPop.Web.Services.FavoriteContacts Favorites
 @inject IPop.Web.Services.PhotoViewerState PhotoViewer
+@inject IPop.Web.Services.PeopleLinks PLinks
 @using IPop.Application.Chat.Mentions
 @using Microsoft.JSInterop
 @using IPop.Application.Chat
@@ -349,7 +350,7 @@
                             if (dmMember is not null)
                             {
                                 <span class="status-dot @(dmMember.PresenceStatus ?? "off")"></span>
-                                <span class="status-txt">@PresenceLabel(dmMember.PresenceStatus)@(dmPerson is not null && !string.IsNullOrWhiteSpace(dmPerson.Position) && dmPerson.Position != "—" ? $" · {dmPerson.Position}" : "")</span>
+                                <span class="status-txt">@PresenceLabel(dmMember.PresenceStatus)@(dmPerson is not null && !string.IsNullOrWhiteSpace(dmPerson.Department) && dmPerson.Department != "—" ? $" · {dmPerson.Department}" : "")</span>
                             }
                         }
                         else
@@ -1145,9 +1146,9 @@
                                                 @if (ChatSvc.ActiveRoom?.AvatarUrl is not null) { <img class="room-photo" src="@PhotoUrl(ChatSvc.ActiveRoom.AvatarUrl)" alt="" style="width:100%;height:100%;border-radius:inherit" /> } else { @GetActiveRoomInitials() }
                                             </div>
                                             <div class="panel-hero-name">@GetActiveRoomName()</div>
-                                            @if (ChatSvc.ActiveRoom.Type == "dm" && dmPerson is not null && !string.IsNullOrWhiteSpace(dmPerson.Position) && dmPerson.Position != "—")
+                                            @if (ChatSvc.ActiveRoom.Type == "dm" && dmPerson is not null && !string.IsNullOrWhiteSpace(dmPerson.Department) && dmPerson.Department != "—")
                                             {
-                                                <div class="panel-hero-position">@dmPerson.Position</div>
+                                                <div class="panel-hero-position">@dmPerson.Department</div>
                                             }
                                             @if (ChatSvc.ActiveRoom.Type == "group" && !string.IsNullOrWhiteSpace(ChatSvc.ActiveRoom.Description))
                                             {

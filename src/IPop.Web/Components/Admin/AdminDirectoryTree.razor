@@ -157,7 +157,7 @@
             {
                 <div class="adm-group-label">@(c.Kind == "division" ? "Division head" : "Head")</div>
                 <div class="adm-list adm-head-pick">
-                    <AppMemberPicker Value="@HeadOf(c)" ValueChanged="v => SetHead(c, v)" Placeholder="No head · search a name or NIK" />
+                    <AppMemberPicker AdminMode="true" Value="@HeadOf(c)" ValueChanged="v => SetHead(c, v)" Placeholder="No head · search a name or NIK" />
                 </div>
                 @if (c.Kind == "division" && c.DivisionCode is null)
                 {

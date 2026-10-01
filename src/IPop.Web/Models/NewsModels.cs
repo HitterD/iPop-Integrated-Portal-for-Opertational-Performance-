@@ -124,7 +124,7 @@ public static class NewsUiHelper
         new("all", "All Employees (All)"),
         new("department", "Specific Department"),
         new("role", "Specific Role"),
-        new("user", "Specific Employee (NIK)")
+        new("user", "Specific employee")
     ];
 
     public static string GetCategoryIcon(string t) => t switch

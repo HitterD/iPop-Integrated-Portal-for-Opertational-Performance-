@@ -9,6 +9,7 @@
 @inject ToastService Toasts
 @inject ConfirmService Confirm
 @inject BadgeState Badges
+@inject IPop.Web.Services.PeopleLinks PLinks
 
 <PageTitle>Calls — IPop</PageTitle>
 
@@ -73,7 +74,7 @@
                     </div>
                     @if (inviteMode == "people")
                     {
-                        <PeoplePicker Placeholder="Search name or NIK…" ValueChanged="AddInvitee" />
+                        <PeoplePicker Placeholder="Search name…" ValueChanged="AddInvitee" />
                     }
                     else
                     {
@@ -163,7 +164,7 @@
             <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;flex-wrap:wrap">
                 <div style="flex:1 1 260px;min-width:220px">
                     <div style="font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:6px">Start a call with…</div>
-                    <AppMemberPicker Placeholder="Type a name or NIK…" Value="@selectedPeer" ValueChanged="OnPickPeer" />
+                    <AppMemberPicker Placeholder="Type a name…" Value="@selectedPeer" ValueChanged="OnPickPeer" />
                 </div>
                 <button class="btn" style="width:auto;margin:0;padding:10px 18px;align-self:end" disabled="@(selectedPeer is null)" @onclick="CallPeer">
                     <i data-lucide="phone-outgoing" style="width:14px;height:14px"></i> Call
@@ -308,7 +309,7 @@
                     </span>
                 }
                 <button type="button" class="btn-sm surface" @onclick="() => CopyMeetingLink(m)"><i data-lucide="link"></i> Copy link</button>
-                <a class="btn-sm surface" href="/chat?nik=@Uri.EscapeDataString(m.OrganizerNik)"><i data-lucide="message-circle"></i> Message host</a>
+                <a class="btn-sm surface" href="@PLinks.Chat(m.OrganizerNik)"><i data-lucide="message-circle"></i> Message host</a>
                 @if (m.OrganizerNik == Auth.Me?.Nik && !cancelled)
                 {
                     <button class="btn-sm surface" @onclick="() => EditMeeting(m)"><i data-lucide="pencil"></i> Edit</button>
@@ -345,7 +346,7 @@
                 @if (!string.IsNullOrWhiteSpace(h.PeerNik))
                 {
                     <a href="@ChatHref(h.PeerNik)"><i data-lucide="message-circle"></i>Chat</a>
-                    <a href="/directory/person/@Uri.EscapeDataString(h.PeerNik)"><i data-lucide="contact-round"></i>Profile</a>
+                    <a href="@PLinks.Profile(h.PeerNik)"><i data-lucide="contact-round"></i>Profile</a>
                 }
             </div>
             var withPeer = historyRows.Where(x => !string.IsNullOrWhiteSpace(h.PeerNik) && x.PeerNik == h.PeerNik).ToList();
@@ -537,6 +538,7 @@
             callee = Uri.UnescapeDataString(part[(eq + 1)..]);
             break;
         }
+        callee = PLinks.Nik(callee);
         if (string.IsNullOrWhiteSpace(callee)) return;
         _lastHandledQuery = query;
         selectedPeer = new MemberSearchRow(callee, await ResolvePeerNameAsync(callee), null, null);
@@ -551,12 +553,11 @@
     {
         try
         {
-            var rows = await Auth.GetAsync<MemberSearchRow[]>($"/api/directory/member-search?q={Uri.EscapeDataString(nik)}");
-            var hit = rows?.FirstOrDefault(r => string.Equals(r.Nik, nik, StringComparison.OrdinalIgnoreCase));
+            var hit = await Auth.GetAsync<DirectoryEmployeeDto>($"/api/chat/users/{Uri.EscapeDataString(nik)}");
             if (hit is not null) return hit.Name;
         }
-        catch { /* bounded: fall through to NIK-as-label */ }
-        return nik;
+        catch { /* bounded: fall through to a neutral label */ }
+        return "Unknown person";
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -804,8 +805,8 @@
         var people = new List<DirectoryEmployeeDto>();
         foreach (var nik in niks.Take(4))
         {
-            var page = await Auth.GetAsync<DirectoryPageDto>($"/api/directory/employees?q={Uri.EscapeDataString(nik)}&pageSize=10");
-            var person = page?.Items.FirstOrDefault(p => string.Equals(p.Nik, nik, StringComparison.OrdinalIgnoreCase));
+            DirectoryEmployeeDto? person = null;
+            try { person = await Auth.GetAsync<DirectoryEmployeeDto>($"/api/chat/users/{Uri.EscapeDataString(nik)}"); } catch { }
             if (person is not null) people.Add(person);
         }
         favorites = people;
@@ -1039,7 +1040,7 @@
         : h.DurationSeconds < 3600 ? $"{h.DurationSeconds / 60}m {h.DurationSeconds % 60}s"
         : $"{h.DurationSeconds / 3600}h {(h.DurationSeconds % 3600) / 60}m";
 
-    private static string ChatHref(string nik) => $"/chat?nik={Uri.EscapeDataString(nik)}";
+    private string ChatHref(string nik) => PLinks.Chat(nik);
 
     private async Task CallAgain(string peerNik)
     {

@@ -51,14 +51,14 @@ public static class TutorialRegistry
             "Find anyone in the company", "See how to search people, browse by department and save favourites.",
             [
                 S(".dir-toolbar .apple-segmented", "People or structure", "<p>Browse everyone as a list, or by department and site.</p>"),
-                S(".dir-toolbar .v6-search", "Search", "<p>Type a name, NIK, position or extension.</p>"),
+                S(".dir-toolbar .v6-search", "Search", "<p>Type a name or email.</p>"),
                 S(".view-seg", "Grid or list", "<p>Cards with photos, or a compact table for scanning.</p>"),
                 S(".dir-sort", "Sort", "<p>By name, department or who is online.</p>"),
                 S(".dir-structure", "Departments", "<p>Pick a department to see only its people.</p>"),
                 S(".dir-people", "Profiles", "<p>Click someone to see their profile, then chat, mail or call them. Star them to keep them in <b>Favourites</b>.</p>"),
                 GoodToKnow,
             ],
-            [("search", "Search", "Name, NIK, position or extension."), ("star", "Favourites", "Your go-to people, also used in Calls."), ("download", "Export", "Download the list as CSV."), ("user", "Profiles", "Chat, mail or call in one click.")],
+            [("search", "Search", "Name or email."), ("star", "Favourites", "Your go-to people, also used in Calls."), ("download", "Export", "Download the list as CSV."), ("user", "Profiles", "Chat, mail or call in one click.")],
             new Dictionary<string, string[]>
             {
                 ["all"] = ["Employee data comes from HRIS — ask HR to correct a wrong position or department.", "You can edit your own photo, not other people's details."],
