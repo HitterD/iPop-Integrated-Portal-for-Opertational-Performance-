@@ -23,8 +23,7 @@
         <label class="nt-search">
             <i data-lucide="search" class="sm"></i>
             <input @ref="searchRef" placeholder="Search notes" value="@searchQ" @oninput="OnSearchInput" @onkeydown="OnSearchKey" aria-label="Search notes" />
-            @if (string.IsNullOrEmpty(searchQ)) { <kbd>Ctrl K</kbd> }
-            else { <button type="button" class="nt-icon-btn" style="width:20px;height:20px" title="Clear" @onclick="ClearSearch"><i data-lucide="x" class="sm"></i></button> }
+            @if (!string.IsNullOrEmpty(searchQ)) { <button type="button" class="nt-icon-btn" style="width:20px;height:20px" title="Clear" @onclick="ClearSearch"><i data-lucide="x" class="sm"></i></button> }
         </label>
 
         <div class="nt-side-scroll">

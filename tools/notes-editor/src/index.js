@@ -449,14 +449,12 @@ export async function mount(el, opts) {
   };
 }
 
-/// Page-level shortcuts while /notes is open. Ctrl K is taken in capture phase so the global command
-/// palette stays shut here; browsers reserve Ctrl N, so a new page is Alt N.
+/// Page-level shortcuts while /notes is open. Ctrl K stays with the global search; browsers reserve
+/// Ctrl N, so a new page is Alt N.
 export function hotkeys(net) {
   const onKey = e => {
     const k = e.key.toLowerCase();
-    if (k === 'k' && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) {
-      e.preventDefault(); e.stopImmediatePropagation(); net.invokeMethodAsync('OnHotkey', 'search').catch(() => {});
-    } else if (k === 'n' && e.altKey && !e.ctrlKey && !e.metaKey) {
+    if (k === 'n' && e.altKey && !e.ctrlKey && !e.metaKey) {
       e.preventDefault(); e.stopImmediatePropagation(); net.invokeMethodAsync('OnHotkey', 'new').catch(() => {});
     }
   };

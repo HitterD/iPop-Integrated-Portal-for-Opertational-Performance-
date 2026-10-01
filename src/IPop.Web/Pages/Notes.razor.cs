@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261001-en";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261001-ck";
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History }
@@ -297,8 +297,7 @@ public partial class Notes
     [JSInvokable]
     public void OnHotkey(string key)
     {
-        if (key == "search") { sideOpen = true; focusSearch = true; }
-        else if (key == "new") OpenNewPage(null);
+        if (key == "new") OpenNewPage(null);
         StateHasChanged();
     }
 
