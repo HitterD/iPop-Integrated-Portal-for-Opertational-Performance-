@@ -134,6 +134,30 @@
                         </div>
                         <p class="acct-note">Underlines misspelled words while you type. Saved on this device only.</p>
 
+                        <h3 class="acct-h">App</h3>
+                        <div class="acct-group">
+                            <div class="acct-row">
+                                <span class="acct-ic install"><i data-lucide="monitor-down"></i></span>
+                                <span class="acct-k">Install iPop</span>
+                                @if (installState == "installed")
+                                {
+                                    <span class="acct-v acct-installed"><i data-lucide="check"></i> Installed</span>
+                                }
+                                else
+                                {
+                                    <span class="acct-v"></span>
+                                    <button type="button" class="acct-install-btn" disabled="@(installState != "available")" @onclick="InstallAsync">Install</button>
+                                }
+                            </div>
+                        </div>
+                        <p class="acct-note">@(installState switch
+                        {
+                            "installed" => "iPop runs in its own window and can open when Windows starts.",
+                            "available" => "Opens iPop in its own window with a taskbar icon, like a desktop app.",
+                            "insecure" => "Installing needs the secure address (https). Open iPop via https to install it.",
+                            _ => "Use the install icon in the address bar, or the browser menu › Apps › Install iPop.",
+                        })</p>
+
                         <h3 class="acct-h">Employee details</h3>
                         <div class="acct-group">
                             <div class="acct-row"><span class="acct-k">Department</span><span class="acct-v">@(me.Department ?? "—")</span></div>
@@ -185,6 +209,7 @@
             me = await Auth.LoadMeAsync();
             email = me?.Email ?? "";
             try { spellcheck = await JS.InvokeAsync<bool>("ipop.spellcheck"); } catch { }
+            try { installState = await JS.InvokeAsync<string>("ipop.installState"); } catch { }
         }
         else if (!IsOpen && reg is not null) { reg.Dispose(); reg = null; }
     }
@@ -203,6 +228,12 @@
     }
 
     private bool spellcheck;
+    private string installState = "unsupported";
+
+    private async Task InstallAsync()
+    {
+        try { installState = await JS.InvokeAsync<string>("ipop.install"); } catch { }
+    }
 
     private async Task ToggleSpellcheck()
     {

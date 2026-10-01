@@ -2219,6 +2219,29 @@ window.ipop = {
   },
 };
 
+// "Install iPop" (AccountSheet): Edge/Chrome offer it only over https; keep their prompt for our button.
+ipop._installEvt = null;
+ipop._installed = false;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); ipop._installEvt = e; });
+window.addEventListener("appinstalled", () => { ipop._installEvt = null; ipop._installed = true; });
+/** "installed" | "available" | "insecure" (plain http: browsers never offer it) | "unsupported". */
+ipop.installState = () => {
+  if (ipop._installed || matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: window-controls-overlay)").matches) return "installed";
+  if (ipop._installEvt) return "available";
+  return window.isSecureContext ? "unsupported" : "insecure";
+};
+ipop.install = async () => {
+  const e = ipop._installEvt;
+  if (!e) return ipop.installState();
+  e.prompt();
+  const { outcome } = await e.userChoice;
+  ipop._installEvt = null;
+  if (outcome === "accepted") ipop._installed = true;
+  return ipop.installState();
+};
+// The push-only worker also makes iPop installable; register it up front instead of on first push use.
+if (window.isSecureContext && "serviceWorker" in navigator) ipop._serviceWorker?.();
+
 // A toast click in sw.js asks an open iPop window to go to the toast's page.
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.addEventListener("message", e => {
