@@ -77,7 +77,9 @@ public record PinnedMessageDto(Guid Id, Guid MessageId, string SenderName, strin
 /// Simpanan pribadi per pengguna: membawa RoomId agar daftar bisa dikelompokkan per ruang.
 public record SavedMessageDto(Guid Id, Guid RoomId, Guid MessageId, string SenderName, string Content, DateTime SavedAt);
 public record SavedResultDto(bool Success, string? Error);
-public record PinnedChangeDto(Guid RoomId, Guid MessageId, bool IsPinned, string ActorName);
+/// SystemMessage is the persisted "X pinned/unpinned a message" row, carried on the pin event
+/// (not "newMessage") so clients show it live without unread counts, banners, sounds or push.
+public record PinnedChangeDto(Guid RoomId, Guid MessageId, bool IsPinned, string ActorName, MessageDto? SystemMessage = null);
 
 // Membership Audit
 public record MembershipAuditDto(Guid Id, string Action, string ActorName, string? TargetName, string? OldValue, string? NewValue, DateTime CreatedAt);
@@ -85,7 +87,9 @@ public record MembershipAuditDto(Guid Id, string Action, string ActorName, strin
 // Result wrappers
 public record MessageResultDto(bool Success, MessageDto? Message, string? Error);
 public record MemberResultDto(bool Success, string? Error);
-public record PinnedResultDto(bool Success, string? Error, Guid? RoomId = null);
+/// Changed is false for a no-op (already pinned / already unpinned, or a concurrent unpin won the
+/// race); only a real change carries a SystemMessage and is broadcast.
+public record PinnedResultDto(bool Success, string? Error, Guid? RoomId = null, bool Changed = false, MessageDto? SystemMessage = null);
 public record ReactionResultDto(bool Success, ReactionDto? Reaction, string? Error);
 public record PagedResult<T>(IReadOnlyList<T> Items, int TotalCount, int Page, int PageSize);
 public record RoomSettingsResultDto(bool Success, string? Error);

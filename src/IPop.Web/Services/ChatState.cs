@@ -255,7 +255,7 @@ public class ChatState : IAsyncDisposable
         _hub.On<SeenUpdateDto>("seenUpdate", OnSeenUpdate);
         _hub.On<ReactionDto>("reactionChanged", OnReactionChanged);
         _hub.On<MemberChangeDto>("memberChanged", mc => { _ = SafeAsync(async () => { await LoadActiveRoomAsync(); await LoadRoomsAsync(); MembersChanged?.Invoke(); }); });
-        _hub.On<PinnedChangeDto>("pinnedChanged", pc => PinnedChanged?.Invoke());
+        _hub.On<PinnedChangeDto>("pinnedChanged", ApplyPinnedChange);
         _hub.On<Guid>("deliveryUpdate", OnDeliveryUpdate);
         _hub.On<RoomUpdateDto>("roomUpdated", ru => { _ = SafeAsync(async () => { await LoadRoomsAsync(); await LoadActiveRoomAsync(); }); });
         _hub.On<MessageDto>("threadReply", OnThreadReply);
@@ -851,6 +851,62 @@ public class ChatState : IAsyncDisposable
         BumpRoomPreview(message, isOpen, incrementUnread: !isOpen && !isOwn);
         if (!isOwn && !message.IsDeleted) RaiseIncoming(message, isOpen);
         StateChanged?.Invoke();
+    }
+
+    /// A pin/unpin landed (hub event, or this tab's own HTTP response). Its persisted
+    /// "X pinned/unpinned a message" row joins the timeline and the room preview, but it is
+    /// not a chat message to anyone: no unread bump, no banner/sound, no delivery/read calls.
+    /// Idempotent by message id, so the hub echo of this tab's own action is a no-op.
+    public void ApplyPinnedChange(PinnedChangeDto change)
+    {
+        if (change.SystemMessage is { } sys && sys.RoomId == change.RoomId)
+        {
+            var isOpen = sys.RoomId == ActiveRoomId;
+            if (isOpen && MergeSystemMessage(ActiveMessages, sys))
+            {
+                _fresh.Add(sys.Id);
+                MessageReceived?.Invoke(sys);
+            }
+            // Preview text only: the server orders rooms by real activity, which a pin is not,
+            // so the room keeps its place and its unread count.
+            if (SetPreview(DirectRooms) | SetPreview(GroupRooms)) RoomListChanged?.Invoke();
+            StateChanged?.Invoke();
+
+            bool SetPreview(List<RoomListDto> list)
+            {
+                var idx = list.FindIndex(r => r.Id == sys.RoomId);
+                if (idx < 0) return false;
+                var preview = RoomPreview.Build(list[idx].Type, sys.Type, sys.Content, sys.IsDeleted, sys.SenderName, false);
+                if (list[idx].LastMessage == preview) return false;
+                list[idx] = list[idx] with { LastMessage = preview };
+                return true;
+            }
+        }
+        PinnedChanged?.Invoke();
+    }
+
+    /// The actor's fallback for a successful pin/unpin HTTP call: applies the persisted system row
+    /// from the response body. The hub echo may land before or after it; either way it is merged
+    /// once by id, and an actor whose hub is down still sees it. True when a change was applied
+    /// (PinnedChanged was raised), so callers can skip their own pin-list refresh.
+    public async Task<bool> ApplyPinResponseAsync(HttpResponseMessage res, Guid messageId, bool isPinned)
+    {
+        if (!res.IsSuccessStatusCode) return false;
+        PinnedResultDto? result;
+        try { result = await res.Content.ReadFromJsonAsync<PinnedResultDto>(); }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or NotSupportedException or InvalidOperationException) { return false; }
+        if (result is not { Changed: true, SystemMessage: { } sys, RoomId: { } roomId }) return false;
+        ApplyPinnedChange(new PinnedChangeDto(roomId, messageId, isPinned, sys.SenderName, sys));
+        return true;
+    }
+
+    /// Inserts a system row in time order unless it is already there. True when added.
+    public static bool MergeSystemMessage(List<MessageDto> messages, MessageDto sys)
+    {
+        if (messages.Any(m => m.Id == sys.Id)) return false;
+        var at = messages.FindLastIndex(m => m.CreatedAt <= sys.CreatedAt);
+        messages.Insert(at + 1, sys);
+        return true;
     }
 
     private void RaiseIncoming(MessageDto message, bool isActiveRoom)

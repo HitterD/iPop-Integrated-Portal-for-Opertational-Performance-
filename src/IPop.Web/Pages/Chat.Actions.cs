@@ -347,6 +347,7 @@ public partial class Chat
 
     /// ipop-34: hub 'pinnedChanged' events now land here. Always refresh the list so
     /// the sticky pinned bar stays live; the drawer tab reads the same cached list.
+    /// ChatState has already merged the event's "X pinned/unpinned a message" row.
     private void OnPinnedChanged() => _ = InvokeAsync(async () =>
     {
         if (ChatSvc.ActiveRoomId is null) return;
@@ -670,6 +671,10 @@ public partial class Chat
             Toasts.Show(unpin ? "Only whoever pinned it or a group admin can unpin this message." : "You can't pin messages in this conversation.", ToastKind.Error);
         else if (!res.IsSuccessStatusCode)
             Toasts.Show(unpin ? "Could not unpin that message." : "Could not pin that message.", ToastKind.Error);
+        // Show "X pinned/unpinned a message" now; the hub echo of it is deduped by id.
+        // Applying raises PinnedChanged, which already reloads the pin list.
+        else if (await ChatSvc.ApplyPinResponseAsync(res, msgId, !unpin))
+            return;
         await LoadPinnedMessagesAsync();
     }
 

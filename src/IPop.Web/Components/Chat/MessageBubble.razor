@@ -303,6 +303,7 @@
         var c when c.Contains(" added ") => "user-plus",
         var c when c.Contains(" removed ") => "user-minus",
         var c when c.Contains("'s role to ") => "shield",
+        var c when c.EndsWith(" unpinned a message") => "pin-off",
         var c when c.EndsWith(" pinned a message") => "pin",
         var c when c.Contains("created") => "sparkles",
         _ => "info",

@@ -195,7 +195,10 @@
                 return;
             }
             allItems = allItems.Where(c => !(c.RoomId == roomId && c.MessageId == messageId)).ToList();
-            if (roomId == RoomId) await OnChanged.InvokeAsync();
+            // The "X unpinned a message" row shows even if this tab's hub is down. Applying raises
+            // PinnedChanged, which already reloads the open room's pins, so skip a second refresh.
+            var applied = await ChatSvc.ApplyPinResponseAsync(res, messageId, isPinned: false);
+            if (!applied && roomId == RoomId) await OnChanged.InvokeAsync();
             StateHasChanged();
         }
         catch

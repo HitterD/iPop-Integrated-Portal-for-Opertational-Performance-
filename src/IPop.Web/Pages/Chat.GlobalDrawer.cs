@@ -336,8 +336,11 @@ public partial class Chat
                     : "Could not unpin that message.", ToastKind.Error);
                 return;
             }
-            // Keep the open room's own pin list in sync when the card came from there.
-            if (card.RoomId == ChatSvc.ActiveRoomId) await LoadPinnedMessagesAsync();
+            // The "X unpinned a message" row shows even if this tab's hub is down. Applying raises
+            // PinnedChanged, which already reloads the open room's pins; otherwise keep the open
+            // room's own pin list in sync when the card came from there.
+            var applied = await ChatSvc.ApplyPinResponseAsync(res, card.MessageId, isPinned: false);
+            if (!applied && card.RoomId == ChatSvc.ActiveRoomId) await LoadPinnedMessagesAsync();
             globalDrawerCards = globalDrawerCards.Where(c => c.MessageId != card.MessageId).ToList();
             StateHasChanged();
         }

@@ -100,37 +100,47 @@ public sealed partial class ChatService
         if (pinCount >= 50)
             return new PinnedResultDto(false, "pin_limit_reached");
 
-        db.ChatPinnedMessages.Add(new ChatPinnedMessage
+        var pin = new ChatPinnedMessage
         {
             Id = Guid.NewGuid(),
             RoomId = roomId,
             MessageId = messageId,
             PinnedByUserId = userId,
             PinnedAt = DateTime.UtcNow
-        });
+        };
+        db.ChatPinnedMessages.Add(pin);
+        var system = await AddPinSystemMessageAsync(userId, roomId, "pinned", ct);
 
-        var userName = await GetUserNameAsync(userId, ct);
-        db.ChatMessages.Add(new ChatMessage
+        try
         {
-            Id = Guid.NewGuid(),
-            RoomId = roomId,
-            SenderId = userId,
-            Type = "system",
-            Content = $"{userName} pinned a message",
-            IdempotencyKey = Guid.NewGuid(),
-            CreatedAt = DateTime.UtcNow
-        });
-
-        await db.SaveChangesAsync(ct);
-        return new PinnedResultDto(true, null, roomId);
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            // A concurrent pin of the same message won: no second pin, no second system row.
+            db.Entry(pin).State = EntityState.Detached;
+            db.Entry(system).State = EntityState.Detached;
+            return new PinnedResultDto(true, null, roomId);
+        }
+        return new PinnedResultDto(true, null, roomId, Changed: true, SystemMessage: MapToMessageDto(system, Guid.Empty));
     }
 
     public async Task<PinnedResultDto> UnpinMessageAsync(Guid userId, Guid messageId, CancellationToken ct)
     {
-        var pinned = await db.ChatPinnedMessages
+        var pinned = await db.ChatPinnedMessages.AsNoTracking()
             .FirstOrDefaultAsync(p => p.MessageId == messageId, ct);
         if (pinned is null)
-            return new PinnedResultDto(false, "message_not_found");
+        {
+            // Already unpinned (repeat click, another tab, or another member got there first):
+            // a no-op success for members, so nothing is broadcast or written twice.
+            var roomOfMessage = await db.ChatMessages.AsNoTracking()
+                .Where(m => m.Id == messageId).Select(m => (Guid?)m.RoomId).FirstOrDefaultAsync(ct);
+            if (roomOfMessage is null)
+                return new PinnedResultDto(false, "message_not_found");
+            if (await GetMemberRoleAsync(userId, roomOfMessage.Value, ct) is null)
+                return new PinnedResultDto(false, "forbidden");
+            return new PinnedResultDto(true, null, roomOfMessage);
+        }
 
         // DMs: any member may unpin. Groups: whoever pinned it, or an owner/admin.
         var role = await GetMemberRoleAsync(userId, pinned.RoomId, ct);
@@ -138,10 +148,40 @@ public sealed partial class ChatService
         if (role is null || (!isDm && pinned.PinnedByUserId != userId && role is not ("owner" or "admin")))
             return new PinnedResultDto(false, "forbidden");
 
-        var unpinRoomId = pinned.RoomId;
-        db.ChatPinnedMessages.Remove(pinned);
+        var roomId = pinned.RoomId;
+        // Delete and record in one transaction; only the request whose delete actually removed
+        // the row writes the "unpinned" system message, so concurrent unpins log it once.
+        await using var tx = db.Database.CurrentTransaction is null
+            ? await db.Database.BeginTransactionAsync(ct)
+            : null;
+        var removed = await db.ChatPinnedMessages.Where(p => p.Id == pinned.Id).ExecuteDeleteAsync(ct);
+        if (removed == 0)
+            return new PinnedResultDto(true, null, roomId);
+
+        var system = await AddPinSystemMessageAsync(userId, roomId, "unpinned", ct);
         await db.SaveChangesAsync(ct);
-        return new PinnedResultDto(true, null, unpinRoomId);
+        if (tx is not null) await tx.CommitAsync(ct);
+        return new PinnedResultDto(true, null, roomId, Changed: true, SystemMessage: MapToMessageDto(system, Guid.Empty));
+    }
+
+    /// The persisted "X pinned/unpinned a message" timeline row. System rows are excluded from
+    /// unread counts and push, and are broadcast on the pin event rather than "newMessage".
+    private async Task<ChatMessage> AddPinSystemMessageAsync(Guid userId, Guid roomId, string verb, CancellationToken ct)
+    {
+        var actor = await db.Users.FindAsync([userId], ct);
+        var system = new ChatMessage
+        {
+            Id = Guid.NewGuid(),
+            RoomId = roomId,
+            SenderId = userId,
+            Sender = actor!,
+            Type = "system",
+            Content = $"{actor?.Name ?? "Unknown"} {verb} a message",
+            IdempotencyKey = Guid.NewGuid(),
+            CreatedAt = DateTime.UtcNow
+        };
+        db.ChatMessages.Add(system);
+        return system;
     }
 
     public async Task<IReadOnlyList<PinnedMessageDto>> GetPinnedMessagesAsync(Guid roomId, CancellationToken ct)

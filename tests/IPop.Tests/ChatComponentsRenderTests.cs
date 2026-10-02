@@ -184,6 +184,22 @@ public class ChatComponentsRenderTests
         Assert.Contains("msg recv", cut.Markup);
     }
 
+    [Theory]
+    [InlineData("Alice unpinned a message", "pin-off")]
+    [InlineData("Alice pinned a message", "pin")]
+    public void MessageBubble_PinSystemRows_UseMatchingIcon(string content, string icon)
+    {
+        using var ctx = CreateContext();
+        var message = new MessageDto(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Alice", "U1", "system", content,
+            DateTime.UtcNow, null, false, null, null, null, null, 0, null, [], [], [], false, Guid.NewGuid());
+
+        var cut = ctx.Render<MessageBubble>(p => p.Add(m => m.Message, message));
+
+        Assert.Equal(icon, cut.Find("i.sys-icon").GetAttribute("data-lucide"));
+        Assert.Contains(content, cut.Markup);
+    }
+
     [Fact]
     public void MessageBubble_HidesAttachmentPlaceholder()
     {

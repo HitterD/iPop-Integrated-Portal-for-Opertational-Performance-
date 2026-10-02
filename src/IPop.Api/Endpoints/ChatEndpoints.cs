@@ -427,9 +427,11 @@ public static class ChatEndpoints
                 return Results.Json(new { code, message = result.Error }, statusCode: statusCode);
             }
 
+            // Already pinned / lost a concurrent race: nothing changed, so nothing to tell anyone.
+            if (!result.Changed) return Results.Ok(result);
             var broadcastRoomId = result.RoomId ?? roomId;
             var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
-            await notifier.NotifyPinnedChangeAsync(broadcastRoomId, new PinnedChangeDto(broadcastRoomId, messageId, true, user?.Name ?? "Unknown"), ct);
+            await notifier.NotifyPinnedChangeAsync(broadcastRoomId, new PinnedChangeDto(broadcastRoomId, messageId, true, user?.Name ?? "Unknown", result.SystemMessage), ct);
             db.AuditLogs.Add(new AuditLog { ActorNik = http.User.FindFirst("nik")?.Value, Action = "chat.pin", Entity = "ChatMessage", EntityId = messageId.ToString(), IpAddress = http.Connection.RemoteIpAddress?.ToString(), CreatedAt = DateTime.UtcNow });
             await db.SaveChangesAsync(ct);
 
@@ -451,9 +453,13 @@ public static class ChatEndpoints
                 return Results.Json(new { code = result.Error ?? "forbidden", message = result.Error }, statusCode: statusCode);
             }
 
+            // Already unpinned (repeat click, other tab, concurrent unpin): no event, no audit row.
+            if (!result.Changed) return Results.Ok(result);
             var broadcastRoomId2 = result.RoomId ?? roomId;
             var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
-            await notifier.NotifyPinnedChangeAsync(broadcastRoomId2, new PinnedChangeDto(broadcastRoomId2, messageId, false, user?.Name ?? "Unknown"), ct);
+            // The persisted "X unpinned a message" row rides on pinnedChanged (not newMessage),
+            // so every member sees it live without unread/push/sound side effects.
+            await notifier.NotifyPinnedChangeAsync(broadcastRoomId2, new PinnedChangeDto(broadcastRoomId2, messageId, false, user?.Name ?? "Unknown", result.SystemMessage), ct);
             db.AuditLogs.Add(new AuditLog { ActorNik = http.User.FindFirst("nik")?.Value, Action = "chat.unpin", Entity = "ChatMessage", EntityId = messageId.ToString(), IpAddress = http.Connection.RemoteIpAddress?.ToString(), CreatedAt = DateTime.UtcNow });
             await db.SaveChangesAsync(ct);
 
