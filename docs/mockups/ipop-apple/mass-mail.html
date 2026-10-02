@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iPop — Mass mail (mockup)</title>
+<style>
+  :root { --canvas:#e9e7e2; --surface:#fff; --surface-2:#faf9f7; --surface-3:#f4f2ef; --line:#edebe7; --line-2:#e2dfd9;
+    --ink:#191816; --ink-2:#5d5a54; --ink-3:#8f8c85; --accent:#2e9d6b; --accent-soft:#e7f4ed; --danger:#c2442e;
+    --warn:#a8760c; --warn-soft:#fdf6e7; --info:#2563eb; --info-soft:#eef4ff; --sh-pop:0 16px 40px -12px rgba(25,24,22,.22); }
+  [data-theme="dark"] { --canvas:#131211; --surface:#1c1b19; --surface-2:#232220; --surface-3:#201f1d; --line:#2c2a27; --line-2:#36342f;
+    --ink:#f2f0ec; --ink-2:#b5b1a9; --ink-3:#85817a; --accent-soft:#1d3428; --warn-soft:#3a2f17; --info-soft:#1a2540; --sh-pop:0 16px 40px -12px rgba(0,0,0,.6); }
+</style>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  body { background: var(--canvas); color: var(--ink); font-family: -apple-system, "Segoe UI", system-ui, sans-serif; margin: 0; }
+  .mk-nav { position: sticky; top: 0; z-index: 50; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 10px 18px;
+    background: var(--surface); border-bottom: 1px solid var(--line); }
+  .mk-nav b { margin-right: 8px; font-size: 14px; }
+  .mk-nav button { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .mk-nav button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .mk-nav .sp { flex: 1; }
+  .stage { display: none; padding: 28px; justify-content: center; }
+  .stage.on { display: flex; }
+  .note { max-width: 300px; margin-left: 24px; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+  .note h3 { font-size: 14px; color: var(--ink); margin: 0 0 6px; }
+  .note li { margin-bottom: 6px; }
+
+  /* ---------- address book ---------- */
+  .ab { width: 640px; height: 720px; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 18px; box-shadow: var(--sh-pop); overflow: hidden; }
+  .ab-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 8px; }
+  .ab-head h2 { display: flex; gap: 9px; align-items: center; margin: 0; font-size: 17px; font-weight: 600; }
+  .ab-head h2 svg { width: 19px; color: var(--accent); }
+  .ab-x { border: 0; background: none; color: var(--ink-2); width: 32px; height: 32px; border-radius: 9px; }
+  .tabs { display: flex; gap: 4px; margin: 0 18px 10px; padding: 3px; background: var(--surface-3); border-radius: 10px; width: max-content; }
+  .tabs button { border: 0; background: none; padding: 6px 14px; border-radius: 8px; font: inherit; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+  .tabs button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 18px 8px; }
+  .search { grid-column: 1 / -1; position: relative; }
+  .search svg { position: absolute; left: 11px; top: 10px; width: 16px; color: var(--ink-3); }
+  .search input { width: 100%; box-sizing: border-box; height: 36px; border: 1px solid var(--line-2); border-radius: 10px; padding: 0 10px 0 34px; font: inherit; font-size: 13.5px; background: var(--surface); color: var(--ink); }
+  .ms { position: relative; }
+  .ms-btn { width: 100%; height: 36px; display: flex; align-items: center; gap: 6px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface);
+    padding: 0 10px; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; text-align: left; }
+  .ms-btn .lbl { color: var(--ink-3); }
+  .ms-btn .val { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ms-btn svg { width: 15px; color: var(--ink-3); }
+  .ms-btn.has { border-color: var(--accent); background: var(--accent-soft); }
+  .ms-pop { position: absolute; top: 40px; left: 0; right: 0; z-index: 5; background: var(--surface); border: 1px solid var(--line-2); border-radius: 12px; box-shadow: var(--sh-pop); padding: 6px; }
+  .ms-pop input { width: 100%; box-sizing: border-box; height: 32px; border: 1px solid var(--line-2); border-radius: 8px; padding: 0 9px; font: inherit; font-size: 13px; margin-bottom: 4px; background: var(--surface); color: var(--ink); }
+  .ms-opt { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+  .ms-opt:hover { background: var(--surface-3); }
+  .ms-opt small { margin-left: auto; color: var(--ink-3); }
+  .ms-opt input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; }
+  .ms-foot { display: flex; justify-content: space-between; border-top: 1px solid var(--line); margin-top: 4px; padding: 6px 4px 2px; font-size: 12px; }
+  .ms-foot a { color: var(--accent); cursor: pointer; }
+  .fchips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 18px 8px; }
+  .fchip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 4px 0 9px; border-radius: 12px; font-size: 12px;
+    background: var(--surface-3); color: var(--ink-2); }
+  .fchip b { font-weight: 600; color: var(--ink); }
+  .fchip svg { width: 12px; }
+  .bar { display: flex; align-items: center; gap: 10px; padding: 6px 18px 8px; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--ink-3); }
+  .bar .sp { flex: 1; }
+  .link { border: 0; background: none; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 6px; border-radius: 7px; }
+  .link.muted { color: var(--ink-2); font-weight: 500; }
+  .list { flex: 1; overflow-y: auto; padding: 4px 8px; }
+  .row { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 10px; border-radius: 10px; }
+  .row:hover { background: var(--surface-3); }
+  .row input { accent-color: var(--accent); width: 17px; height: 17px; margin: 0; }
+  .av { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-size: 11px; font-weight: 600; color: #fff; flex: none; }
+  .nm { display: flex; flex-direction: column; font-size: 13.5px; min-width: 0; }
+  .nm small { font-size: 11.5px; color: var(--ink-3); }
+  .row .tag { margin-left: auto; font-size: 11px; color: var(--ink-3); }
+  .row.off { opacity: .5; }
+  .sel { display: flex; align-items: center; gap: 6px; padding: 8px 18px; border-top: 1px solid var(--line); overflow-x: auto; }
+  .sel .k { font-size: 12px; font-weight: 600; color: var(--ink-3); flex: none; }
+  .chip { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 4px 0 9px; border-radius: 13px;
+    background: var(--accent-soft); color: var(--ink); font-size: 12.5px; white-space: nowrap; }
+  .chip.grp { background: color-mix(in srgb, var(--info) 12%, transparent); }
+  .chip.grp svg:first-child { width: 13px; color: var(--info); }
+  .chip button { border: 0; background: none; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; color: var(--ink-2); padding: 0; cursor: pointer; }
+  .chip button svg { width: 12px; }
+  .chip .n { color: var(--ink-3); }
+  .foot { display: flex; align-items: center; gap: 8px; padding: 12px 18px 14px; border-top: 1px solid var(--line); }
+  .foot .sp { flex: 1; }
+  .foot .hint { font-size: 12px; color: var(--ink-3); }
+  .btn { height: 36px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .grow { display: flex; align-items: center; gap: 12px; padding: 10px; border-radius: 12px; }
+  .grow:hover { background: var(--surface-3); }
+  .gicon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: color-mix(in srgb, var(--info) 12%, transparent); color: var(--info); flex: none; }
+  .gicon.mine { background: var(--accent-soft); color: var(--accent); }
+  .gicon svg { width: 18px; }
+  .grow .nm b { font-weight: 600; font-size: 13.5px; }
+  .grow .act { margin-left: auto; display: flex; gap: 4px; }
+  .sec { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); padding: 12px 10px 4px; }
+  .save-grp { display: flex; gap: 8px; align-items: center; padding: 10px 18px; background: var(--surface-2); border-top: 1px solid var(--line); font-size: 12.5px; color: var(--ink-2); }
+  .save-grp input { flex: 1; height: 30px; border: 1px solid var(--line-2); border-radius: 8px; padding: 0 9px; font: inherit; font-size: 13px; background: var(--surface); color: var(--ink); }
+
+  /* ---------- composer ---------- */
+  .cmp { width: 760px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh-pop); overflow: hidden; }
+  .cmp-h { display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--line); font-weight: 600; }
+  .fld { display: flex; align-items: center; gap: 8px; padding: 8px 18px; border-bottom: 1px solid var(--line); font-size: 13.5px; flex-wrap: wrap; }
+  .fld > .k { width: 56px; color: var(--ink-3); flex: none; }
+  .fld .ab-open { margin-left: auto; border: 0; background: none; color: var(--ink-2); cursor: pointer; display: flex; align-items: center; gap: 4px; font: inherit; font-size: 12.5px; }
+  .fld .ab-open svg { width: 16px; }
+  .grp-exp { width: 100%; margin: 4px 0 0 64px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); font-size: 12.5px; color: var(--ink-2); }
+  .grp-exp .ppl { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; color: var(--ink); }
+  .opt { display: flex; align-items: center; gap: 8px; padding: 8px 18px; border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--ink-2); }
+  .opt input { accent-color: var(--accent); }
+  .opt .count { margin-left: auto; font-weight: 600; color: var(--ink); display: flex; gap: 6px; align-items: center; }
+  .opt .count svg { width: 15px; color: var(--accent); }
+  .editor { height: 210px; padding: 16px 18px; font-size: 14px; color: var(--ink-2); line-height: 1.6; }
+  .cmp-f { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); }
+  .cmp-f .sp { flex: 1; }
+
+  /* ---------- confirm ---------- */
+  .scrim { position: relative; width: 760px; height: 520px; border-radius: 18px; overflow: hidden; background: rgba(0,0,0,.32); display: grid; place-items: center; }
+  .cf { width: 420px; background: var(--surface); border-radius: 18px; box-shadow: var(--sh-pop); padding: 22px; }
+  .cf .ic { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; background: var(--warn-soft); color: var(--warn); margin-bottom: 12px; }
+  .cf h3 { margin: 0 0 6px; font-size: 17px; }
+  .cf p { margin: 0 0 10px; font-size: 13.5px; color: var(--ink-2); line-height: 1.5; }
+  .cf .brk { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; margin-bottom: 14px; }
+  .cf .brk div { display: flex; justify-content: space-between; padding: 2px 0; }
+  .cf .brk .warn { color: var(--warn); }
+  .cf .acts { display: flex; justify-content: flex-end; gap: 8px; }
+  .cf .btn.focus { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
+
+  /* ---------- reading ---------- */
+  .rd { width: 760px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh-pop); overflow: hidden; }
+  .rd-tb { display: flex; gap: 6px; padding: 10px 18px; border-bottom: 1px solid var(--line); }
+  .tb { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--surface); font: inherit; font-size: 13px; color: var(--ink); }
+  .tb svg { width: 15px; }
+  .tb.dis { opacity: .45; }
+  .rd-h { padding: 16px 18px 6px; }
+  .rd-h h2 { margin: 0 0 10px; font-size: 19px; }
+  .from { display: flex; gap: 10px; align-items: center; font-size: 13.5px; }
+  .from small { color: var(--ink-3); display: block; font-size: 12px; }
+  .to { margin: 8px 0 0 40px; font-size: 12.5px; color: var(--ink-2); }
+  .to .g { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 10px; background: color-mix(in srgb, var(--info) 10%, transparent); color: var(--ink); }
+  .to .g svg { width: 12px; color: var(--info); }
+  .banner { margin: 10px 18px 0; display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: var(--info-soft); color: var(--ink); font-size: 12.5px; line-height: 1.45; }
+  .banner svg { width: 16px; color: var(--info); flex: none; margin-top: 1px; }
+  .body { padding: 16px 18px 22px; font-size: 14px; line-height: 1.6; color: var(--ink-2); }
+  .stats { margin: 0 18px 18px; border: 1px solid var(--line); border-radius: 12px; }
+  .stats-h { display: flex; gap: 18px; padding: 12px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .stats-h div b { font-size: 18px; display: block; color: var(--ink); }
+  .stats-h div { color: var(--ink-3); }
+  .bar2 { height: 6px; border-radius: 3px; background: var(--surface-3); margin: 10px 14px; overflow: hidden; display: flex; }
+  .bar2 i { display: block; background: var(--accent); }
+  .bar2 i + i { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+  .stats .tabs { margin: 4px 14px 6px; }
+  .srow { display: flex; align-items: center; gap: 10px; padding: 7px 14px; font-size: 13px; }
+  .srow small { margin-left: auto; color: var(--ink-3); font-size: 12px; }
+  .pager { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px 12px; font-size: 12px; color: var(--ink-3); }
+  .skip { margin: 0 18px 18px; padding: 10px 12px; border-radius: 10px; background: var(--warn-soft); font-size: 12.5px; color: var(--ink); display: flex; gap: 8px; }
+  .skip svg { width: 16px; color: var(--warn); flex: none; }
+</style>
+</head>
+<body>
+<nav class="mk-nav">
+  <b>Mass mail mockup</b>
+  <button data-s="s1" class="on">1 · Address book — People</button>
+  <button data-s="s2">2 · Address book — Groups</button>
+  <button data-s="s3">3 · Composer with groups</button>
+  <button data-s="s4">4 · Confirm &gt; 50</button>
+  <button data-s="s5">5 · Recipient view</button>
+  <button data-s="s6">6 · Sender — Sent stats</button>
+  <span class="sp"></span>
+  <button id="theme">Toggle dark</button>
+</nav>
+
+<!-- 1. People tab with searchable multi-select filters -->
+<section class="stage on" id="s1">
+  <div class="ab">
+    <header class="ab-head"><h2><i data-lucide="book-user"></i> Address book</h2><button class="ab-x"><i data-lucide="x"></i></button></header>
+    <div class="tabs"><button class="on">People</button><button>Groups</button></div>
+    <div class="filters">
+      <label class="search"><i data-lucide="search"></i><input placeholder="Search by name or NIK"></label>
+      <div class="ms">
+        <button class="ms-btn has"><span class="lbl">Department</span><span class="val">HSE, Finance</span><i data-lucide="chevron-down"></i></button>
+        <div class="ms-pop">
+          <input placeholder="Search departments…" value="f">
+          <label class="ms-opt"><input type="checkbox" checked> Finance <small>64</small></label>
+          <label class="ms-opt"><input type="checkbox"> Facility Management <small>23</small></label>
+          <label class="ms-opt"><input type="checkbox"> Feed Mill Production <small>212</small></label>
+          <label class="ms-opt"><input type="checkbox"> Finishing Goods Warehouse <small>41</small></label>
+          <div class="ms-foot"><a>Clear</a><span>2 selected</span></div>
+        </div>
+      </div>
+      <div class="ms">
+        <button class="ms-btn has"><span class="lbl">Site</span><span class="val">Sepanjang</span><i data-lucide="chevron-down"></i></button>
+      </div>
+    </div>
+    <div class="fchips">
+      <span class="fchip">Dept <b>HSE</b><i data-lucide="x"></i></span>
+      <span class="fchip">Dept <b>Finance</b><i data-lucide="x"></i></span>
+      <span class="fchip">Site <b>Sepanjang</b><i data-lucide="x"></i></span>
+      <button class="link muted" style="font-size:12px">Clear filters</button>
+    </div>
+    <div class="bar"><span>96 people · HSE or Finance, at Sepanjang</span><span class="sp"></span>
+      <button class="link muted">Clear selection</button><button class="link">Select all (96)</button></div>
+    <div class="list">
+      <label class="row"><input type="checkbox" checked><span class="av" style="background:#4f7cac">AW</span><span class="nm">Adi Wibowo<small>HSE · Sepanjang</small></span></label>
+      <label class="row"><input type="checkbox" checked><span class="av" style="background:#b0675a">BS</span><span class="nm">Budi Santoso<small>Finance · Sepanjang</small></span></label>
+      <label class="row"><input type="checkbox"><span class="av" style="background:#6a8f5b">CL</span><span class="nm">Citra Lestari<small>HSE · Sepanjang</small></span><span class="tag">unticked after Select all</span></label>
+      <label class="row"><input type="checkbox" checked><span class="av" style="background:#8a6bb0">DP</span><span class="nm">Dewi Pratiwi<small>Finance · Sepanjang</small></span></label>
+      <label class="row"><input type="checkbox" checked><span class="av" style="background:#c08a2e">EH</span><span class="nm">Eko Hartono<small>HSE · Sepanjang</small></span></label>
+      <label class="row off"><input type="checkbox" checked disabled><span class="av" style="background:#5b8f8a">FN</span><span class="nm">Fajar Nugroho<small>Already added</small></span></label>
+      <label class="row"><input type="checkbox" checked><span class="av" style="background:#a05b7d">GR</span><span class="nm">Gita Rahma<small>Finance · Sepanjang</small></span></label>
+    </div>
+    <div class="save-grp"><i data-lucide="bookmark-plus" style="width:16px"></i> Save these 95 as a personal group <input placeholder="Group name, e.g. HSE + Finance Sepanjang"><button class="btn">Save</button></div>
+    <div class="sel"><span class="k">Selected (95)</span>
+      <span class="chip">Adi Wibowo<button><i data-lucide="x"></i></button></span>
+      <span class="chip">Budi Santoso<button><i data-lucide="x"></i></button></span>
+      <span class="chip">Dewi Pratiwi<button><i data-lucide="x"></i></button></span>
+      <span class="chip">Eko Hartono<button><i data-lucide="x"></i></button></span>
+      <span class="chip">+91 more</span>
+    </div>
+    <footer class="foot"><span class="hint">Max 1,000 recipients per mail</span><span class="sp"></span><button class="btn">Cancel</button><button class="btn primary">Add 95</button></footer>
+  </div>
+  <aside class="note"><h3>What changes</h3><ul>
+    <li><b>Department</b> and <b>Site</b> are searchable and multi-select. Inside one filter = OR; both filters together = AND (intersection).</li>
+    <li>After <b>Select all</b> you can still untick individuals.</li>
+    <li>The list is virtualized, so 1,000+ rows stay smooth.</li>
+    <li>Selections can be saved as a <b>personal group</b> (only you can see it).</li>
+  </ul></aside>
+</section>
+
+<!-- 2. Groups tab -->
+<section class="stage" id="s2">
+  <div class="ab">
+    <header class="ab-head"><h2><i data-lucide="book-user"></i> Address book</h2><button class="ab-x"><i data-lucide="x"></i></button></header>
+    <div class="tabs"><button>People</button><button class="on">Groups</button></div>
+    <div class="filters"><label class="search"><i data-lucide="search"></i><input placeholder="Search groups"></label></div>
+    <div class="list">
+      <div class="sec">Shared groups · managed by admin</div>
+      <div class="grow"><span class="gicon"><i data-lucide="users"></i></span><span class="nm"><b>HSE Committee</b><small>52 people · Shared</small></span><span class="act"><button class="btn">Add as group</button></span></div>
+      <div class="grow"><span class="gicon"><i data-lucide="users"></i></span><span class="nm"><b>All Supervisors — Sepanjang</b><small>187 people · Shared</small></span><span class="act"><button class="btn">Add as group</button></span></div>
+      <div class="grow"><span class="gicon"><i data-lucide="users"></i></span><span class="nm"><b>Management Team</b><small>24 people · Shared</small></span><span class="act"><button class="btn">Add as group</button></span></div>
+      <div class="sec">My groups · only you can see these</div>
+      <div class="grow"><span class="gicon mine"><i data-lucide="user-round-check"></i></span><span class="nm"><b>HSE + Finance Sepanjang</b><small>95 people · Personal</small></span><span class="act"><button class="link muted">Edit</button><button class="btn">Add as group</button></span></div>
+      <div class="grow"><span class="gicon mine"><i data-lucide="user-round-check"></i></span><span class="nm"><b>Weekly safety brief</b><small>310 people · Personal</small></span><span class="act"><button class="link muted">Edit</button><button class="btn">Add as group</button></span></div>
+      <button class="link" style="margin:8px 10px">+ New personal group</button>
+    </div>
+    <footer class="foot"><span class="hint">A group is added as one chip; members are resolved when you send.</span><span class="sp"></span><button class="btn">Close</button></footer>
+  </div>
+  <aside class="note"><h3>Groups</h3><ul>
+    <li><b>Shared</b> = existing admin directory groups.</li>
+    <li><b>My groups</b> = new, private to the owner.</li>
+    <li>Groups are expanded at send time, so new members are included automatically and people who have left are skipped.</li>
+  </ul></aside>
+</section>
+
+<!-- 3. Composer with group chips -->
+<section class="stage" id="s3">
+  <div class="cmp">
+    <div class="cmp-h">New message <i data-lucide="x" style="width:18px"></i></div>
+    <div class="fld"><span class="k">To</span>
+      <span class="chip grp"><i data-lucide="users"></i> HSE Committee <span class="n">· 52</span><i data-lucide="chevron-down" style="width:13px"></i><button><i data-lucide="x"></i></button></span>
+      <span class="chip grp"><i data-lucide="users"></i> Weekly safety brief <span class="n">· 310</span><i data-lucide="chevron-down" style="width:13px"></i><button><i data-lucide="x"></i></button></span>
+      <span class="chip">Budi Santoso<button><i data-lucide="x"></i></button></span>
+      <button class="ab-open"><i data-lucide="book-user"></i> Address book</button>
+      <div class="grp-exp">HSE Committee — 52 people <a style="color:var(--accent);margin-left:8px">Expand to individuals</a>
+        <div class="ppl"><span>Adi Wibowo</span><span>Citra Lestari</span><span>Eko Hartono</span><span>Hendra Kusuma</span><span>Indah Sari</span><span style="color:var(--ink-3)">+47 more</span></div></div>
+    </div>
+    <div class="fld"><span class="k">Cc</span></div>
+    <div class="fld"><span class="k">Subject</span> Jadwal safety induction Oktober</div>
+    <div class="opt"><label><input type="checkbox"> Hide recipient list (each person sees only the sender)</label>
+      <span class="count"><i data-lucide="users-round"></i> 359 recipients <span style="color:var(--ink-3);font-weight:400">(4 duplicates removed)</span></span></div>
+    <div class="editor">Dear all,<br><br>Berikut jadwal safety induction untuk bulan Oktober…</div>
+    <div class="cmp-f"><button class="btn primary">Send</button><button class="btn">Schedule</button><span class="sp"></span><span class="hint" style="font-size:12px;color:var(--ink-3);align-self:center">Mass mail: recipients can only reply to you</span></div>
+  </div>
+  <aside class="note"><h3>Composer</h3><ul>
+    <li>A group is <b>one chip</b> with its count; click it to peek or expand to individuals.</li>
+    <li>The recipient count is computed by the server, after removing duplicates across To/Cc/Bcc and groups.</li>
+    <li>Optional <b>Hide recipient list</b>, like Bcc.</li>
+    <li>The 1,001st recipient blocks Send with a clear message instead of "too_many_recipients".</li>
+  </ul></aside>
+</section>
+
+<!-- 4. Confirm -->
+<section class="stage" id="s4">
+  <div class="scrim">
+    <div class="cf" role="alertdialog">
+      <div class="ic"><i data-lucide="send"></i></div>
+      <h3>Send to 359 people?</h3>
+      <p>This message will be delivered to <b>359 people</b>. Are you sure? Please check the recipients before sending.</p>
+      <div class="brk">
+        <div><span>HSE Committee</span><span>52</span></div>
+        <div><span>Weekly safety brief</span><span>310</span></div>
+        <div><span>Individuals</span><span>1</span></div>
+        <div><span>Duplicates removed</span><span>−4</span></div>
+        <div class="warn"><span>Inactive, will be skipped</span><span>−2</span></div>
+      </div>
+      <div class="acts"><button class="btn focus">Cancel</button><button class="btn primary">Send to 359</button></div>
+    </div>
+  </div>
+  <aside class="note"><h3>Confirmation</h3><ul>
+    <li>Shown when there are <b>more than 50</b> recipients, on Send, Schedule and Forward.</li>
+    <li>Focus starts on <b>Cancel</b>, so pressing Enter by accident does not send.</li>
+    <li>The numbers come from the server (the same calculation used for sending).</li>
+  </ul></aside>
+</section>
+
+<!-- 5. Recipient view -->
+<section class="stage" id="s5">
+  <div class="rd">
+    <div class="rd-tb"><button class="tb"><i data-lucide="reply"></i> Reply</button><button class="tb dis" title="Reply all is turned off for mass mail"><i data-lucide="reply-all"></i> Reply all</button><button class="tb"><i data-lucide="forward"></i> Forward</button></div>
+    <div class="rd-h"><h2>Jadwal safety induction Oktober</h2>
+      <div class="from"><span class="av" style="background:#4f7cac">RS</span><span><b>Rina Setiawati</b><small>Today, 09:12</small></span></div>
+      <div class="to">To <span class="g"><i data-lucide="users"></i> HSE Committee</span> <span class="g"><i data-lucide="users"></i> Weekly safety brief</span> and 1 other</div>
+    </div>
+    <div class="banner"><i data-lucide="info"></i><span>This was sent to <b>359 people</b>. To avoid flooding inboxes, replies go to <b>Rina Setiawati only</b>.</span></div>
+    <div class="body">Dear all,<br><br>Berikut jadwal safety induction untuk bulan Oktober…</div>
+  </div>
+  <aside class="note"><h3>Recipient</h3><ul>
+    <li>Sees group names, not 359 names. With "Hide recipient list" on, it reads "To: undisclosed recipients".</li>
+    <li><b>Reply all</b> is turned off and also blocked by the server. Reply goes to the sender only.</li>
+    <li>The page never loads all 359 names at once.</li>
+  </ul></aside>
+</section>
+
+<!-- 6. Sender view in Sent -->
+<section class="stage" id="s6">
+  <div class="rd">
+    <div class="rd-tb"><button class="tb"><i data-lucide="reply-all"></i> Mail all again</button><button class="tb"><i data-lucide="forward"></i> Forward</button></div>
+    <div class="rd-h"><h2>Jadwal safety induction Oktober</h2>
+      <div class="to" style="margin-left:0">To <span class="g"><i data-lucide="users"></i> HSE Committee</span> <span class="g"><i data-lucide="users"></i> Weekly safety brief</span> and 1 other</div></div>
+    <div class="stats">
+      <div class="stats-h"><div><b>359</b>sent</div><div><b>359</b>delivered</div><div><b>214</b>read</div><div><b>145</b>not yet read</div></div>
+      <div class="bar2"><i style="width:59.6%"></i><i style="width:40.4%"></i></div>
+      <div class="tabs"><button class="on">Read (214)</button><button>Not read (145)</button></div>
+      <div class="srow"><span class="av" style="background:#b0675a;width:24px;height:24px;font-size:10px">BS</span>Budi Santoso<small>Read 09:20</small></div>
+      <div class="srow"><span class="av" style="background:#6a8f5b;width:24px;height:24px;font-size:10px">CL</span>Citra Lestari<small>Read 09:31</small></div>
+      <div class="srow"><span class="av" style="background:#8a6bb0;width:24px;height:24px;font-size:10px">DP</span>Dewi Pratiwi<small>Read 10:02</small></div>
+      <div class="pager"><span>1–50 of 214</span><span><button class="link muted">‹ Prev</button><button class="link">Next ›</button></span></div>
+    </div>
+    <div class="skip"><i data-lucide="user-x"></i><span><b>2 people were skipped</b> because their accounts are inactive: Joko Susilo, Lina Marlina.</span></div>
+  </div>
+  <aside class="note"><h3>Sender</h3><ul>
+    <li>Delivered and read counts, with a paged read / not-read list (50 per page).</li>
+    <li>Inactive group members are skipped and reported. A NIK typed by hand that is inactive still blocks sending, as it does today.</li>
+    <li>The sender may still mail everyone again, with the same confirmation.</li>
+  </ul></aside>
+</section>
+
+<script>
+  lucide.createIcons();
+  document.querySelectorAll('.mk-nav [data-s]').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.mk-nav [data-s]').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.stage').forEach(s => s.classList.toggle('on', s.id === b.dataset.s));
+  });
+  document.getElementById('theme').onclick = () => {
+    const r = document.documentElement;
+    r.dataset.theme = r.dataset.theme === 'dark' ? '' : 'dark';
+  };
+</script>
+</body>
+</html>
