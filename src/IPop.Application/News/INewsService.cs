@@ -18,7 +18,7 @@ public interface INewsService
     Task<NewsResultDto> UnpinAsync(Guid actorId, Guid newsId, CancellationToken ct);
 
     // Mandatory acknowledgement
-    Task<NewsResultDto> AcknowledgeAsync(Guid userId, Guid newsId, CancellationToken ct);
+    Task<NewsResultDto> AcknowledgeAsync(Guid userId, Guid newsId, CancellationToken ct, int? expectedContentVersion = null);
     Task<NewsResultDto> RemindAckAsync(Guid actorId, Guid newsId, CancellationToken ct);
     Task<IReadOnlyList<NewsAuditDto>> GetAuditsAsync(Guid newsId, Guid viewerId, CancellationToken ct);
     Task<NewsAckReportDto?> GetAckReportAsync(Guid actorId, Guid newsId, CancellationToken ct);

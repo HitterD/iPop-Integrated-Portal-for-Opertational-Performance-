@@ -220,8 +220,37 @@ public class ModuleNotificationIntegrationTests
         Assert.Equal("news.published", call.EventType);
         Assert.Equal($"/news/{newsId}", call.TargetUrl);
         Assert.Equal("normal", call.Priority);
-        Assert.True(call.Target.All);
+        Assert.False(call.Target.All);
+        Assert.Contains(admin.Id, call.Target.UserIds!);
+        Assert.Contains(author.Id, call.Target.UserIds!);
         Assert.Contains("Hari Libur Nasional Tambahan", call.Title);
+    }
+
+    [Fact]
+    public async Task Restricted_rich_news_notifications_target_only_the_audience_without_html()
+    {
+        using var t = new TestDb();
+        var author = t.AddHr("HR");
+        var reader = t.AddUser("READER");
+        var outsider = t.AddUser("OUTSIDE");
+        var gateway = new MockNotificationGatewayService();
+        var svc = new NewsService(t.Verify(), gateway);
+        var result = await svc.CreateAsync(author.Id, new CreateNewsRequest(
+            "news", "Private news", "placeholder", Targets: [new NewsTargetInput("user", reader.Nik)]), default);
+        var post = t.Db.NewsPosts.Single(p => p.Id == result.News!.Id);
+        post.BodyFormat = "html";
+        post.Body = "<p><strong>Restricted</strong> announcement</p>";
+        t.Db.SaveChanges();
+        gateway.Calls.Clear();
+
+        using var publishDb = t.Verify();
+        Assert.True((await new NewsService(publishDb, gateway).PublishAsync(author.Id, post.Id, default)).Success);
+        var call = Assert.Single(gateway.Calls);
+        Assert.False(call.Target.All);
+        Assert.Equal(reader.Id, Assert.Single(call.Target.UserIds!));
+        Assert.DoesNotContain(outsider.Id, call.Target.UserIds!);
+        Assert.Contains("Restricted", call.Message);
+        Assert.DoesNotContain("<", call.Message);
     }
 
     [Fact]
@@ -252,7 +281,8 @@ public class ModuleNotificationIntegrationTests
         Assert.Equal("memo.mandatory", call.EventType);
         Assert.Equal($"/news/{newsId}", call.TargetUrl);
         Assert.Equal("high", call.Priority);
-        Assert.True(call.Target.All);
+        Assert.False(call.Target.All);
+        Assert.Equal(admin.Id, Assert.Single(call.Target.UserIds!));
         Assert.Contains("[Required Reading]", call.Title);
     }
 

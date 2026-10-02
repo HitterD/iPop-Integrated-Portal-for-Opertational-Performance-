@@ -9,7 +9,7 @@ namespace IPop.Infrastructure.News;
 
 using IPop.Application.Rbac;
 
-public sealed class NewsService(IPopDbContext db, INotificationGatewayService? notificationGateway = null, IPermissionEvaluator? permEval = null, IRealtime? realtime = null) : INewsService
+public sealed class NewsService(IPopDbContext db, INotificationGatewayService? notificationGateway = null, IPermissionEvaluator? permEval = null, IRealtime? realtime = null) : INewsService, INewsPublicationHooks
 {
     private static readonly HashSet<string> ValidTypes = ["news", "announcement", "memo", "condolence", "duka"];
     private static readonly HashSet<string> ValidStatuses = ["draft", "pending", "published", "rejected"];
@@ -109,6 +109,8 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
             return new NewsResultDto(false, null, "title_too_long");
         if (req.Body is not null && req.Body.Trim().Length == 0)
             return new NewsResultDto(false, null, "body_required");
+        if (post.BodyFormat == "html" && (req.Body is not null || req.AttachmentIds is not null || req.Targets is not null))
+            return new NewsResultDto(false, null, "composer_required");
         if (req.Targets is not null)
         {
             var tErr = ValidateTargets(req.Targets);
@@ -118,7 +120,11 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         var changed = false;
         var contentChanged = false;
         if (req.Title is not null && req.Title.Trim() != post.Title) { post.Title = req.Title.Trim(); changed = contentChanged = true; }
-        if (req.Body is not null && req.Body != post.Body) { post.Body = req.Body; changed = contentChanged = true; }
+        if (req.Body is not null && req.Body != post.Body)
+        {
+            post.Body = post.BodyFormat == "html" ? NewsHtml.Sanitize(req.Body) : req.Body;
+            changed = contentChanged = true;
+        }
         if (req.Type is not null && req.Type.ToLowerInvariant().Trim() != post.Type) { post.Type = req.Type.ToLowerInvariant().Trim(); changed = contentChanged = true; }
         if (req.ClearPublishAt == true && post.PublishAt is not null) { post.PublishAt = null; changed = true; }
         else if (req.PublishAt is not null && req.PublishAt != post.PublishAt) { post.PublishAt = req.PublishAt; changed = true; }
@@ -146,6 +152,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         if (changed)
         {
             post.UpdatedAt = DateTime.UtcNow;
+            post.ContentVersion++;
             // Legacy rejected -> draft on any edit. Published posts stay live; readers see "Edited"
             // and existing acknowledgements remain valid.
             if (post.Status == "rejected") post.Status = "draft";
@@ -193,6 +200,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         if (post.Status != "pending") return new NewsResultDto(false, null, "invalid_transition");
 
         post.Status = "published";
+        post.ContentVersion++;
         post.ApproverId = approverId;
         post.RejectionReason = null;
         post.PublishedAt = DateTime.UtcNow;
@@ -236,6 +244,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         if (post.Status == "published") return new NewsResultDto(true, await MapDetailAsync(post.Id, actorId, ct), null);
 
         post.Status = "published";
+        post.ContentVersion++;
         post.ApproverId = actorId;
         post.RejectionReason = null;
         post.PublishedAt = DateTime.UtcNow;
@@ -256,6 +265,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         if (post.Status != "published") return new NewsResultDto(false, null, "invalid_transition");
 
         post.Status = "draft";
+        post.ContentVersion++;
         post.PublishedAt = null;
         post.UpdatedAt = DateTime.UtcNow;
         db.NewsAudits.Add(new NewsAudit { Id = Guid.NewGuid(), NewsPostId = post.Id, ActorId = actorId, Action = "unpublished", CreatedAt = post.UpdatedAt });
@@ -275,6 +285,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         var post = await db.NewsPosts.FirstOrDefaultAsync(x => x.Id == newsId, ct);
         if (post is null) return new NewsResultDto(false, null, "not_found");
         post.IsPinned = true;
+        post.ContentVersion++;
         post.PinnedAt = DateTime.UtcNow;
         post.UpdatedAt = post.PinnedAt.Value;
         db.NewsAudits.Add(new NewsAudit { Id = Guid.NewGuid(), NewsPostId = post.Id, ActorId = actorId, Action = "pinned", CreatedAt = post.UpdatedAt });
@@ -290,6 +301,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         var post = await db.NewsPosts.FirstOrDefaultAsync(x => x.Id == newsId, ct);
         if (post is null) return new NewsResultDto(false, null, "not_found");
         post.IsPinned = false;
+        post.ContentVersion++;
         post.PinnedAt = null;
         post.UpdatedAt = DateTime.UtcNow;
         db.NewsAudits.Add(new NewsAudit { Id = Guid.NewGuid(), NewsPostId = post.Id, ActorId = actorId, Action = "unpinned", CreatedAt = post.UpdatedAt });
@@ -303,13 +315,24 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
     // Acknowledgement (mandatory read)
     // ──────────────────────────────────────────────────────────────────────
 
-    public async Task<NewsResultDto> AcknowledgeAsync(Guid userId, Guid newsId, CancellationToken ct)
+    public async Task<NewsResultDto> AcknowledgeAsync(Guid userId, Guid newsId, CancellationToken ct, int? expectedContentVersion = null)
     {
+        if (!await db.Users.AsNoTracking().AnyAsync(u => u.Id == userId && u.IsActive, ct))
+            return new NewsResultDto(false, null, "forbidden");
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var post = await db.NewsPosts.AsNoTracking().FirstOrDefaultAsync(x => x.Id == newsId, ct);
         if (post is null) return new NewsResultDto(false, null, "not_found");
         if (post.Status != "published") return new NewsResultDto(false, null, "not_published");
         if (post.PublishAt is not null && post.PublishAt > DateTime.UtcNow) return new NewsResultDto(false, null, "not_published");
         if (!await IsVisibleToAsync(newsId, userId, ct)) return new NewsResultDto(false, null, "forbidden");
+        if (expectedContentVersion is { } expected && post.ContentVersion != expected)
+            return new NewsResultDto(false, null, "post_content_conflict");
+        if (post.BodyFormat == "html" && expectedContentVersion is null)
+            return new NewsResultDto(false, null, "content_version_required");
+        // Lock the version the reader saw against a concurrent publication/reset.
+        var current = await db.NewsPosts.Where(p => p.Id == newsId && p.ContentVersion == post.ContentVersion)
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.ContentVersion, p => p.ContentVersion), ct);
+        if (current == 0) return new NewsResultDto(false, null, "post_content_conflict");
 
         var exists = await db.NewsAcknowledgements.AnyAsync(x => x.NewsPostId == newsId && x.UserId == userId, ct);
         if (!exists)
@@ -319,8 +342,9 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
             db.NewsAudits.Add(new NewsAudit { Id = Guid.NewGuid(), NewsPostId = newsId, ActorId = userId, Action = "acknowledged", CreatedAt = now });
             AuditLog(newsId, "news.acknowledge", userId, now);
             await db.SaveChangesAsync(ct);
-            await NotifyUserChangedAsync(userId, ct);
         }
+        await transaction.CommitAsync(ct);
+        if (!exists) await NotifyUserChangedAsync(userId, ct);
         return new NewsResultDto(true, await MapDetailAsync(newsId, userId, ct), null);
     }
 
@@ -448,14 +472,18 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
             p.PublishAt, p.PublishedAt, p.IsPinned, p.PinnedAt, p.RequiresAcknowledgement,
             p.Targets.Select(t => new NewsTargetDto(t.Kind, t.Value)).ToList(),
             ackedIds.Contains(p.Id), p.CreatedAt, p.UpdatedAt,
-            Summary: Excerpt(p.Body, 160),
+            Summary: Excerpt(p.BodyFormat == "html" ? Mail.MailHtml.ToPlainText(p.Body) : p.Body, 160),
             IsRead: readIds.Contains(p.Id),
             IsSaved: savedIds.Contains(p.Id),
             ViewCount: views.GetValueOrDefault(p.Id),
             AttachmentCount: files.GetValueOrDefault(p.Id),
             AckDueAt: p.AckDueAt,
             EditedAt: p.EditedAt,
-            Video: videos.GetValueOrDefault(p.Id))).ToList();
+            Video: videos.GetValueOrDefault(p.Id),
+            BodyFormat: p.BodyFormat,
+            ContentVersion: p.ContentVersion,
+            CoverMediaId: p.CoverMediaId,
+            CoverMode: p.CoverMode)).ToList();
 
         return new PagedResult<NewsSummaryDto>(summaries, total, page, size);
     }
@@ -534,7 +562,9 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         if (post.AuthorId != actorId && !await CanManageAsync(actorId, ct)) return new NewsResultDto(false, null, "forbidden");
         var now = DateTime.UtcNow;
         var attachmentIds = await db.NewsAttachments.Where(a => a.NewsPostId == newsId).Select(a => a.AttachmentId).ToListAsync(ct);
-        await db.Attachments.Where(a => attachmentIds.Contains(a.Id) && a.DeletedAt == null)
+        await db.Attachments.Where(a => attachmentIds.Contains(a.Id) && a.DeletedAt == null
+                && !db.NewsComposerDraftAttachments.Any(r => r.AttachmentId == a.Id && r.Draft.State != "discarded" && r.Draft.State != "promoted")
+                && !db.NewsComposerMedia.Any(m => m.AttachmentId == a.Id && m.DeletedAt == null))
             .ForEachAsync(a => a.DeletedAt = now, ct);
         db.NewsPosts.Remove(post);
         db.AuditLogs.Add(new AuditLog
@@ -712,7 +742,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         var canManage = await CanManageAsync(viewerId, ct);
         var isAuthor = p.AuthorId == viewerId;
         return new NewsDetailDto(
-            p.Id, p.Type, p.Title, p.Body, NormalizeStatus(p.Status), p.AuthorId, p.Author.Name, p.Author.Nik,
+            p.Id, p.Type, p.Title, p.BodyFormat == "html" ? NewsHtml.Sanitize(p.Body) : p.Body, NormalizeStatus(p.Status), p.AuthorId, p.Author.Name, p.Author.Nik,
             p.ApproverId, p.Approver?.Name, p.RejectionReason,
             p.PublishAt, p.PublishedAt, p.IsPinned, p.PinnedAt, p.RequiresAcknowledgement,
             p.Targets.Select(t => new NewsTargetDto(t.Kind, t.Value)).ToList(),
@@ -727,7 +757,11 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
             CanEdit: canManage || isAuthor,
             CanDelete: canManage || isAuthor,
             CanPublish: canManage,
-            Video: (await VideoBriefsAsync([newsId], ct)).GetValueOrDefault(newsId));
+            Video: (await VideoBriefsAsync([newsId], ct)).GetValueOrDefault(newsId),
+            BodyFormat: p.BodyFormat,
+            ContentVersion: p.ContentVersion,
+            CoverMediaId: p.CoverMediaId,
+            CoverMode: p.CoverMode);
     }
 
     /// Launch videos attached to these posts (one per post), for the feed card and detail player.
@@ -795,7 +829,8 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         var linkedElsewhere = await db.NewsAttachments.AsNoTracking()
             .Where(a => wanted.Contains(a.AttachmentId) && a.NewsPostId != newsId).Select(a => a.AttachmentId).ToListAsync(ct);
         var valid = await db.Attachments.AsNoTracking()
-            .Where(a => wanted.Contains(a.Id) && a.Area == "news" && a.DeletedAt == null && !linkedElsewhere.Contains(a.Id))
+            .Where(a => wanted.Contains(a.Id) && a.Area == "news" && a.DeletedAt == null && !linkedElsewhere.Contains(a.Id)
+                && (a.UploaderId == actorId || db.NewsAttachments.Any(r => r.NewsPostId == newsId && r.AttachmentId == a.Id)))
             .Select(a => a.Id).ToListAsync(ct);
         var ordered = wanted.Where(valid.Contains).ToList();
 
@@ -805,7 +840,10 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         {
             db.NewsAttachments.Remove(row);
             var file = await db.Attachments.FirstOrDefaultAsync(a => a.Id == row.AttachmentId, ct);
-            if (file is not null && file.DeletedAt is null) file.DeletedAt = now;
+            if (file is not null && file.DeletedAt is null
+                && !await db.NewsComposerDraftAttachments.AnyAsync(r => r.AttachmentId == file.Id && r.Draft.State != "discarded" && r.Draft.State != "promoted", ct)
+                && !await db.NewsComposerMedia.AnyAsync(m => m.AttachmentId == file.Id && m.DeletedAt == null, ct))
+                file.DeletedAt = now;
             changed = true;
         }
         for (var i = 0; i < ordered.Count; i++)
@@ -900,6 +938,15 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         catch { /* realtime is a hint */ }
     }
 
+    public async Task AfterPublishedAsync(Guid postId, bool notify, CancellationToken ct)
+    {
+        await BroadcastChangedAsync(ct);
+        if (!notify) return;
+        var post = await db.NewsPosts.AsNoTracking().FirstOrDefaultAsync(p => p.Id == postId, ct);
+        if (post is not null && post.Status == "published" && (post.PublishAt is null || post.PublishAt <= DateTime.UtcNow))
+            await NotifyPublishedAsync(post, ct);
+    }
+
     private async Task NotifyPublishedAsync(NewsPost post, CancellationToken ct)
     {
         if (notificationGateway is null) return;
@@ -912,14 +959,17 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
             var titlePrefix = isCondolence ? "[Condolence] " : (isMandatory ? "[Required Reading] " : (isMemo ? "[Memo] " : "[News] "));
             var priority = (isMandatory || isCondolence) ? "high" : "normal";
             var preview = post.Title.Trim();
-            var snippet = post.Body?.Length > 120 ? post.Body[..120] + "..." : post.Body;
+            var body = post.BodyFormat == "html" ? Mail.MailHtml.ToPlainText(post.Body) : post.Body;
+            var snippet = body?.Length > 120 ? body[..120] + "..." : body;
+            var recipients = await GetTargetedUserIdsAsync(post.Id, ct);
+            if (recipients.Count == 0) return;
 
             await notificationGateway.PublishInternalAsync(
                 clientSlug: "news",
                 eventType: eventType,
                 title: $"{titlePrefix}{preview}",
                 message: string.IsNullOrWhiteSpace(snippet) ? preview : snippet,
-                target: new NotificationTarget(All: true),
+                target: new NotificationTarget(UserIds: recipients.ToList()),
                 priority: priority,
                 targetUrl: $"/news/{post.Id}",
                 ct: ct);

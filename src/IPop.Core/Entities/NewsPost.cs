@@ -14,6 +14,20 @@ public class NewsPost
     public required string Title { get; set; }
     public required string Body { get; set; }
 
+    /// "plain" | "html". Existing rows and legacy callers stay "plain" (escaped, pre-wrapped);
+    /// the composer writes "html", which is rendered through the News sanitizer allow-list.
+    public string BodyFormat { get; set; } = "plain";
+
+    /// Incremented on every content change. Private revision drafts compare-and-swap against this so
+    /// a stale revision cannot overwrite a newer live edit.
+    public int ContentVersion { get; set; }
+
+    /// Cover image chosen for the feed card; null means "derive from the first inline image".
+    public Guid? CoverMediaId { get; set; }
+
+    /// "auto" | "manual" | "none" — keeps "never chosen" distinct from "explicitly removed".
+    public string CoverMode { get; set; } = "auto";
+
     /// "draft" | "pending" | "published" | "rejected"
     public required string Status { get; set; }
 
@@ -49,4 +63,7 @@ public class NewsPost
     public ICollection<NewsAcknowledgement> Acknowledgements { get; set; } = [];
     public ICollection<NewsAudit> Audits { get; set; } = [];
     public ICollection<NewsAttachment> Attachments { get; set; } = [];
+
+    /// Normalized references to promoted composer media (inline + cover), for access checks and GC.
+    public ICollection<NewsPostMedia> Media { get; set; } = [];
 }

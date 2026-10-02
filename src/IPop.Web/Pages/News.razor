@@ -48,6 +48,7 @@
                         <span class="n">@n</span>
                     </button>
                 }
+                <a class="nn" href="/news/drafts"><i data-lucide="file-pen-line"></i><span class="lbl">My drafts</span></a>
                 <div class="nn-label">Categories</div>
                 @foreach (var cat in Categories)
                 {
@@ -114,6 +115,10 @@
                         var scheduled = post.Status == "published" && post.PublishAt > DateTime.UtcNow;
                         <button type="button" class="news-row @(openDetailId == post.Id ? "sel" : "") @(unread ? "unread" : "") @(post.Video is null || compact ? "" : "has-video") @(compact ? "compact" : "")" @onclick="() => OpenDetail(post.Id)">
                             @if (post.Video is { } video && !compact) { <IPop.Web.Components.News.NewsVideoThumb Video="@video" /> }
+                            else if (post.CoverMediaId is { } cover && post.CoverMode != "none" && !compact)
+                            {
+                                <NewsCoverThumb PostId="@post.Id" MediaId="@cover" />
+                            }
                             <div class="r1">
                                 <span class="cat-chip @post.Type">@NewsUiHelper.GetCategoryLabel(post.Type)</span>
                                 @if (post.IsPinned) { <span class="pin"><i data-lucide="pin"></i>Pinned</span> }
@@ -588,10 +593,12 @@
         StateHasChanged();
         try
         {
-            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/news/{detail.Id}/acknowledge", null);
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/news/{detail.Id}/acknowledge?contentVersion={detail.ContentVersion}", null);
             if (!res.IsSuccessStatusCode)
             {
-                detailError = "Unable to record acknowledgement.";
+                detailError = res.StatusCode == System.Net.HttpStatusCode.Conflict
+                    ? "This post has changed. Reopen it and read the latest version before acknowledging."
+                    : "Unable to record acknowledgement.";
                 StateHasChanged();
                 return;
             }
@@ -712,21 +719,14 @@
     private void OpenCreate()
     {
         if (!canManage) return;
-        formError = null;
-        showCreate = true;
-        showEdit = false;
-        StateHasChanged();
-        _ = JS.InvokeVoidAsync("ipop.icons");
+        Nav.NavigateTo($"/news/new?category={Uri.EscapeDataString(string.IsNullOrEmpty(typeFilter) ? "news" : typeFilter)}");
     }
 
     private void OpenEdit()
     {
         if (detail is null) return;
-        formError = null;
-        showEdit = true;
-        showCreate = false;
-        StateHasChanged();
-        _ = JS.InvokeVoidAsync("ipop.icons");
+        if (!detail.CanEdit) return;
+        Nav.NavigateTo($"/news/{detail.Id}/edit");
     }
 
     private void CloseForm()

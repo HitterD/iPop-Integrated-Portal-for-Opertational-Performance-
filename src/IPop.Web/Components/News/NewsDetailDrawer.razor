@@ -139,7 +139,9 @@
 
             @if (Detail.Video is { } video) { <NewsVideoBlock Video="@video" /> }
 
-            <div class="reader-body-content @(isCondolence ? "condolence-body" : isMemo ? "memo-body" : "")" style="font-size:@(FontSize)px">@Detail.Body</div>
+            <div class="reader-body-content @(isCondolence ? "condolence-body" : isMemo ? "memo-body" : "")" style="font-size:@(FontSize)px">
+                <NewsBody Html="@Detail.Body" BodyFormat="@Detail.BodyFormat" PostId="@Detail.Id" AriaLabel="Post content" />
+            </div>
 
             @if (Detail.Attachments is { Count: > 0 } files)
             {

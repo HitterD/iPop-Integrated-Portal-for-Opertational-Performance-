@@ -1,0 +1,1499 @@
+@page "/news/new"
+@page "/news/{Id:guid}/edit"
+@implements IDisposable
+@using AppDtos = IPop.Application.News
+@using WebDtos = IPop.Web.Models
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject ConfirmService Confirm
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject HttpClient Http
+@inject IPop.Web.Services.PeopleLinks PLinks
+
+<PageTitle>@(IsRevision ? "Edit post" : "New post") — News &amp; Memos — IPop</PageTitle>
+
+@* A few composer-page classes the shared news-compose.css does not define (the banner, the live
+   strip). Kept local so the stylesheet stays owned by the CSS module. *@
+<style>
+    .nc-live-strip {
+        display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        background: var(--accent-soft); border: 1px solid var(--line-2); color: var(--accent-ink);
+        padding: 10px 14px; border-radius: 14px; margin-bottom: 16px; font-size: 12.5px;
+    }
+    .nc-live-strip.warn { background: var(--warn-soft); color: var(--warn); }
+    .nc-live-strip .lucide { width: 15px; height: 15px; }
+    .nc-conflict {
+        display: flex; align-items: center; gap: 12px; flex-wrap: wrap; flex: none;
+        background: var(--danger-soft); color: var(--danger); border-bottom: 1px solid var(--line-2);
+        padding: 12px 22px; font-size: 12.5px;
+    }
+    .nc-conflict .lucide { width: 18px; height: 18px; flex: none; }
+    .nc-conflict b { display: block; font-weight: 620; }
+    .nc-conflict span { color: var(--danger); opacity: .85; }
+    .nc-conflict-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+</style>
+
+<div class="nc-shell">
+    <NavigationLock ConfirmExternalNavigation="@(dirty && !conflict)" OnBeforeInternalNavigation="OnBeforeInternalNavigation" />
+
+    <header class="nc-topbar">
+        <button type="button" class="nc-back" aria-label="Back to News and Memo" @onclick="BackAsync"><i data-lucide="arrow-left"></i></button>
+        <div class="nc-tt">
+            <div class="k">News &amp; Memo</div>
+            <h1>@(IsRevision ? "Edit post" : "New post")</h1>
+        </div>
+        <div class="nc-status @StatusClass" role="status" aria-live="polite">
+            <i data-lucide="@StatusIcon" class="@(saveState == NewsSaveState.Saving ? "nc-spin" : "")"></i>
+            <span>@StatusText</span>
+        </div>
+        <div class="nc-top-actions">
+            <button type="button" class="nc-btn2" aria-pressed="@(previewOpen ? "true" : "false")" @onclick="TogglePreview">
+                <i data-lucide="@(previewOpen ? "pencil" : "eye")"></i><span class="nc-lbl-sm">@(previewOpen ? "Editing" : "Preview")</span>
+            </button>
+            <button type="button" class="nc-btn2 primary" disabled="@(PublishBusy || conflict || loading)" @onclick="PublishAsync">
+                <i data-lucide="@(PublishBusy ? "loader-circle" : scheduleOn ? "calendar-clock" : "send")" class="@(PublishBusy ? "nc-spin" : "")"></i>
+                <span class="nc-lbl-sm">@PublishLabel</span>
+            </button>
+        </div>
+    </header>
+
+    @if (loadError is not null)
+    {
+        <div class="nc-conflict" role="alert">
+            <i data-lucide="alert-circle"></i>
+            <div><b>Could not open the composer</b><span>@loadError</span></div>
+            <div class="nc-conflict-actions"><button type="button" class="nc-btn2" @onclick="BackAsync"><i data-lucide="arrow-left"></i>Back to News</button></div>
+        </div>
+    }
+    else if (conflict)
+    {
+        <div class="nc-conflict" role="alert">
+            <i data-lucide="triangle-alert"></i>
+            <div>
+                <b>@(conflictCopy ? "This draft changed in another tab" : "This post changed since you opened it")</b>
+                <span>Your latest edits are not saved. Reload to continue from the newer version, or copy your text out first — nothing was overwritten.</span>
+            </div>
+            <div class="nc-conflict-actions">
+                <button type="button" class="nc-btn2" @onclick="CopyConflictAsync"><i data-lucide="clipboard-copy"></i>Copy my text</button>
+                <button type="button" class="nc-btn2 primary" @onclick="ReloadAfterConflictAsync"><i data-lucide="refresh-cw"></i>Reload</button>
+            </div>
+        </div>
+    }
+
+    <main class="nc-main" data-view="@(previewOpen ? "preview" : "edit")">
+        <div class="nc-editor-col">
+            <div class="nc-editor-inner">
+                @if (IsRevision && postStatus == "published")
+                {
+                    <div class="nc-live-strip">
+                        <i data-lucide="circle-check"></i>
+                        <span><b>Published</b> — edits save straight to the live post when you press Update.</span>
+                    </div>
+                }
+
+                <label class="sr" for="nc-title">Post title</label>
+                <textarea id="nc-title" class="nc-title" rows="1" maxlength="300" placeholder="Post title"
+                          @bind="title" @bind:event="oninput" @bind:after="AfterTitle"
+                          @ref="titleRef" disabled="@Locked"></textarea>
+
+                <div class="nc-author-row">
+                    <span class="nc-av">@Initials</span>
+                    <span>@AuthorName · @(IsRevision ? "editing live post" : "draft")</span>
+                </div>
+
+                <div class="nc-cover">
+                    <div class="nc-cover-frame" id="nc-cover-drop">
+                        @if (CoverUrl is not null)
+                        {
+                            <img src="@CoverUrl" alt="Post cover" />
+                        }
+                        else
+                        {
+                            <div class="nc-cover-empty">
+                                <i data-lucide="image"></i>
+                                <b>No cover yet</b>
+                                <span>Drop an image here, or the first image in the body is used automatically.</span>
+                            </div>
+                        }
+                        @if (CoverUrl is not null || coverMode == "auto")
+                        {
+                            <span class="nc-cover-chip">
+                                <i data-lucide="@(coverMode == "manual" ? "image" : "sparkles")"></i>
+                                @(coverMode == "manual" ? "Cover · custom" : "Cover · auto from first image")
+                            </span>
+                        }
+                        <div class="nc-cover-actions">
+                            <label class="nc-cover-btn @(coverUploading || conflict ? "is-busy" : "")">
+                                <i data-lucide="@(coverUploading ? "loader-circle" : "upload")" class="@(coverUploading ? "nc-spin" : "")"></i>Replace
+                                <InputFile OnChange="OnCoverPick" accept="image/png,image/jpeg,image/gif,image/webp" class="sr" disabled="@(coverUploading || Locked)" />
+                            </label>
+                            <button type="button" class="nc-cover-btn" @onclick="RemoveCover" disabled="@Locked"><i data-lucide="x"></i>Remove</button>
+                        </div>
+                    </div>
+                    <div class="nc-cover-note">
+                        <i data-lucide="info"></i>
+                        <span>@CoverNoteText</span>
+                        @if (coverMode != "auto")
+                        {
+                            <button type="button" class="nc-linkish" @onclick="UseAutoCover">Use first image again</button>
+                        }
+                    </div>
+                </div>
+
+                @if (!canManage && !IsRevision)
+                {
+                    <div class="nc-live-strip warn"><i data-lucide="lock"></i><span>Only HR and Admin can publish news and memos.</span></div>
+                }
+
+                @* The editor uploads with its own XHR (real progress, streamed — no 100 MB byte[] in wasm).
+                   The composer media endpoint takes its kind from the query string, so image and
+                   video get separate URLs. No token is passed: the editor fetches a live bearer
+                   per upload (and refreshes on 401), so a long session cannot outlive it. *@
+                <NewsRichEditor @ref="rte"
+                                Value="@body"
+                                ValueChanged="OnBodyChanged"
+                                UploadUrl="@MediaUploadUrl("image")"
+                                VideoUploadUrl="@MediaUploadUrl("video")"
+                                MediaUrls="@mediaUrls"
+                                Disabled="@Locked"
+                                OnMediaUploaded="OnMediaUploaded"
+                                UploadProgress="OnRteUploadProgress"
+                                OnNotice="OnRteNotice" />
+
+                @if (attachments.Count > 0)
+                {
+                    <div class="nc-att-list">
+                        @foreach (var att in attachments.ToList())
+                        {
+                            var a = att;
+                            <div class="nc-att @(a.Error is not null ? "err" : "")">
+                                <span class="nc-att-ic"><i data-lucide="@AttIcon(a.FileName)"></i></span>
+                                <div class="nc-att-n">
+                                    <b title="@a.FileName">@a.FileName</b>
+                                    <span>
+                                        @if (a.Error is not null)
+                                        {
+                                            @a.Error
+                                        }
+                                        else if (a.IsReady)
+                                        {
+                                            @(NewsUiHelper.FileSize(a.Size))
+                                        }
+                                        else
+                                        {
+                                            @($"uploading {a.Progress}%")
+                                        }
+                                    </span>
+                                    @if (a.Error is null && !a.IsReady)
+                                    {
+                                        <div class="nc-att-bar"><i style="width:@(a.Progress)%"></i></div>
+                                    }
+                                </div>
+                                <button type="button" class="nc-att-x" aria-label="Remove @a.FileName" @onclick="() => attachments.Remove(a)"><i data-lucide="x"></i></button>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+
+        <aside class="nc-settings-col" aria-label="Post settings">
+            <div class="nc-set">
+                <div class="nc-set-head"><i data-lucide="tag"></i>Basics</div>
+                <div class="nc-set-body">
+                    <div class="nc-frow">
+                        <div class="nc-flabel"><i data-lucide="folder-tree"></i>Category <span class="rq">*</span></div>
+                        <select class="nc-field" aria-label="Category" @bind="formType" @bind:after="AfterCategory" disabled="@Locked">
+                            @foreach (var o in NewsUiHelper.FormTypeOptions)
+                            {
+                                <option value="@o.Value">@o.Label</option>
+                            }
+                        </select>
+                        <div class="nc-fhint">Shown as the badge on the post card and in the reader.</div>
+                    </div>
+                    <div class="nc-frow">
+                        <div class="nc-flabel"><i data-lucide="users"></i>Audience <span class="rq">*</span></div>
+                        @if (formTargets.Count > 0)
+                        {
+                            <div class="nc-chips" style="margin-bottom:8px">
+                                @foreach (var t in formTargets.ToList())
+                                {
+                                    var target = t;
+                                    <button type="button" class="nc-chip" aria-pressed="true" @onclick="() => RemoveTarget(target)" disabled="@Locked">
+                                        @TargetLabel(target)<i data-lucide="x"></i>
+                                    </button>
+                                }
+                            </div>
+                        }
+                        <select class="nc-field" aria-label="Add audience" value="" @onchange="OnAddTargetKind" disabled="@Locked">
+                            <option value="">Add audience…</option>
+                            @foreach (var o in NewsUiHelper.TargetKindOptions)
+                            {
+                                <option value="@o.Value">@o.Label</option>
+                            }
+                        </select>
+                        @if (targetKind is "department" or "role")
+                        {
+                            <div style="display:flex;gap:6px;margin-top:8px">
+                                <input class="nc-field" placeholder="@(targetKind == "department" ? "Dept code (e.g. ENG, HRD)" : "Role (e.g. Manager)")"
+                                       @bind="targetValue" @bind:event="oninput" disabled="@Locked" />
+                                <button type="button" class="nc-btn2" @onclick="AddTypedTarget" disabled="@Locked"><i data-lucide="plus"></i>Add</button>
+                            </div>
+                        }
+                        @if (targetKind == "user")
+                        {
+                            <div style="margin-top:8px"><AppMemberPicker Placeholder="Select employee…" ValueChanged="OnPickMember" /></div>
+                        }
+                        <div class="nc-fhint @(formTargets.Count == 0 ? "warn" : "")">@AudienceHint</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="nc-set">
+                <div class="nc-set-head"><i data-lucide="circle-check"></i>Acknowledgement</div>
+                <div class="nc-set-body">
+                    <div class="nc-frow">
+                        <label class="nc-sw">
+                            <input type="checkbox" @bind="formRequiresAck" @bind:after="MarkDirty" disabled="@Locked" />
+                            <span class="nc-sw-track" aria-hidden="true"></span>
+                            <span class="nc-sw-tx"><b>Request acknowledgement</b><span>Readers confirm they have read this post.</span></span>
+                        </label>
+                    </div>
+                    <div class="nc-frow">
+                        <div class="nc-flabel"><i data-lucide="calendar-clock"></i>Acknowledge by</div>
+                        <AppDateTimePicker @bind-Value="formAckDueAt" @bind-Value:after="MarkDirty" AllowClear="true" Class="nc-field" AriaLabel="Acknowledge by" Disabled="@(!formRequiresAck || conflict)" />
+                        <div class="nc-fhint">@(formRequiresAck ? "Shown to readers until the deadline." : "Readers will not be asked to confirm this post.")</div>
+                    </div>
+                    @if (IsRevision && postStatus == "published")
+                    {
+                        <div class="nc-frow">
+                            <label class="nc-sw">
+                                <input type="checkbox" @bind="ackAgain" @bind:after="OnAckAgainChanged" disabled="@Locked" />
+                                <span class="nc-sw-track" aria-hidden="true"></span>
+                                <span class="nc-sw-tx"><b>Request acknowledgement again</b><span>@(ackAgainHint ?? "Clears the existing acknowledgements and asks everyone to confirm the updated post.")</span></span>
+                            </label>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="nc-set">
+                <div class="nc-set-head"><i data-lucide="send"></i>Publishing</div>
+                <div class="nc-set-body">
+                    <div class="nc-frow">
+                        <label class="nc-sw">
+                            <input type="checkbox" @bind="pinOn" @bind:after="MarkDirty" disabled="@Locked" />
+                            <span class="nc-sw-track" aria-hidden="true"></span>
+                            <span class="nc-sw-tx"><b>Pin to top</b><span>Stays above newer posts until it is unpinned.</span></span>
+                        </label>
+                    </div>
+                    <div class="nc-frow">
+                        <label class="nc-sw">
+                            <input type="checkbox" @bind="scheduleOn" @bind:after="AfterSchedule" disabled="@Locked" />
+                            <span class="nc-sw-track" aria-hidden="true"></span>
+                            <span class="nc-sw-tx"><b>Schedule</b><span>Publish automatically at a set time.</span></span>
+                        </label>
+                        @if (scheduleOn)
+                        {
+                            <div style="margin-top:8px">
+                                <AppDateTimePicker @bind-Value="publishAt" @bind-Value:after="MarkDirty" AllowClear="false" Class="nc-field" AriaLabel="Publish at" Disabled="@(conflict)" />
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="nc-set">
+                <div class="nc-set-head"><i data-lucide="paperclip"></i>Attachments</div>
+                <div class="nc-set-body">
+                    <div class="nc-frow">
+                        <div class="nc-drop" id="nc-file-drop" tabindex="0" role="button" aria-label="Add attachments">
+                            <i data-lucide="upload-cloud"></i>
+                            <b>Drop files here</b>
+                            <label class="pick-box">or <span class="pick">choose files</span>
+                                <InputFile OnChange="OnFilesPicked" multiple class="sr"
+                                           accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.png,.jpg,.jpeg" />
+                            </label>
+                        </div>
+                        <div class="nc-att-foot"><span>@AttachmentFoot</span></div>
+                        <div class="nc-fhint">Up to 10 files, 25 MB each. Inline images max 5 MB · one inline video, max 100 MB.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="nc-side-actions">
+                <button type="button" class="nc-btn2 primary" disabled="@(PublishBusy || conflict || loading)" @onclick="PublishAsync">
+                    <i data-lucide="@(PublishBusy ? "loader-circle" : scheduleOn ? "calendar-clock" : "send")" class="@(PublishBusy ? "nc-spin" : "")"></i>
+                    <span>@PublishLabel</span>
+                </button>
+                <button type="button" class="nc-btn2" aria-pressed="@(previewOpen ? "true" : "false")" @onclick="TogglePreview"><i data-lucide="eye"></i>Preview as reader</button>
+            </div>
+        </aside>
+
+        <section class="nc-preview" aria-label="Reader preview">
+            <div class="nc-pv-bar">
+                <div class="t"><i data-lucide="eye"></i>Preview <span class="hint">@(device == NewsPreviewDevice.Mobile ? "Mobile · 390 px" : "Desktop · 980 px")</span></div>
+                <div class="right">
+                    <div class="nc-seg" role="group" aria-label="Preview width">
+                        <button type="button" aria-pressed="@(device == NewsPreviewDevice.Desktop ? "true" : "false")" @onclick="() => device = NewsPreviewDevice.Desktop"><i data-lucide="monitor"></i>Desktop</button>
+                        <button type="button" aria-pressed="@(device == NewsPreviewDevice.Mobile ? "true" : "false")" @onclick="() => device = NewsPreviewDevice.Mobile"><i data-lucide="smartphone"></i>Mobile</button>
+                    </div>
+                    <button type="button" class="nc-btn2" disabled="@PublishBusy" @onclick="TogglePreview"><i data-lucide="pencil"></i>Back to editing</button>
+                </div>
+            </div>
+            <div class="nc-pv-stage">
+                <article class="nc-pv-frame @(device == NewsPreviewDevice.Mobile ? "mobile" : "")">
+                    <div class="nc-pv-screen">
+                        @if (CoverUrl is not null)
+                        {
+                            <img class="nc-pv-hero" src="@CoverUrl" alt="Post cover" />
+                        }
+                        else
+                        {
+                            <div class="nc-pv-hero empty">No cover image</div>
+                        }
+                        <div class="nc-pv-inner">
+                            <span class="nc-pv-cat"><i data-lucide="@NewsUiHelper.GetCategoryIcon(formType)"></i>@NewsUiHelper.GetCategoryLabel(formType)</span>
+                            <h1 class="nc-pv-title">@(string.IsNullOrWhiteSpace(title) ? "Untitled post" : title)</h1>
+                            <div class="nc-pv-by">
+                                <span class="nc-av">@Initials</span>
+                                <span>@AuthorName</span>
+                                @if (pinOn) { <span class="pill">Pinned</span> }
+                            </div>
+                            @if (previewError is not null)
+                            {
+                                <div class="nc-pv-empty" role="alert"><i data-lucide="alert-circle"></i> @previewError</div>
+                            }
+                            else if (previewHtml is not null)
+                            {
+                                <NewsBody Html="@previewHtml" BodyFormat="html" DraftId="@draftId" MediaUrls="@mediaUrls" />
+                            }
+                            else
+                            {
+                                <div class="nc-pv-empty">Loading the sanitized preview…</div>
+                            }
+                            <div class="nc-pv-meta">
+                                <div class="r">
+                                    <i data-lucide="users"></i><b>Audience</b>
+                                    @if (formTargets.Count == 0)
+                                    {
+                                        <span class="pill">All employees</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var t in formTargets) { <span class="pill">@TargetLabel(t)</span> }
+                                    }
+                                </div>
+                                <div class="r"><i data-lucide="tag"></i><b>Category</b><span class="pill">@NewsUiHelper.GetCategoryLabel(formType)</span></div>
+                                @if (formRequiresAck)
+                                {
+                                    <div class="r"><i data-lucide="calendar-clock"></i><b>Acknowledge by</b><span class="pill">@(formAckDueAt is { } due ? due.ToString("dd MMM yyyy HH:mm") : "not set")</span></div>
+                                }
+                            </div>
+                            @if (formRequiresAck)
+                            {
+                                <div class="nc-pv-ack">
+                                    <i data-lucide="shield-check"></i>
+                                    <div><b>Acknowledgement requested</b><br /><span>@(formAckDueAt is { } d2 ? $"Acknowledge by {d2:dd MMM yyyy HH:mm}" : "No deadline set")</span></div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+</div>
+
+@code {
+    /// Set on /news/{Id:guid}/edit: the live post this composer revises.
+    [Parameter] public Guid? Id { get; set; }
+
+    private const int MaxFiles = 10;
+    private const long MaxFileBytes = 25L * 1024 * 1024;
+    private const long MaxInlineImageBytes = 5L * 1024 * 1024;
+    private const long MaxInlineVideoBytes = 100L * 1024 * 1024;
+    private static readonly HashSet<string> ImageExts = [".png", ".jpg", ".jpeg", ".gif", ".webp"];
+
+    // ── Draft identity + form ────────────────────────────────────────────────────
+    private Guid? draftId;
+    private int baseVersion;
+    private int? baseContentVersion;
+    private bool IsRevision => Id is not null;
+    private bool loading = true;
+    private string? loadError;
+
+    private string title = "";
+    private string body = "";
+    private string formType = "news";
+    private bool formRequiresAck;
+    private DateTime? formAckDueAt;
+    private bool pinOn;
+    private bool scheduleOn;
+    private DateTime? publishAt;
+    private string coverMode = "auto";
+    private Guid? coverMediaId;
+    private readonly List<NewsComposerAttachment> attachments = [];
+    private readonly List<AppDtos.NewsTargetInput> formTargets = [];
+    private string targetKind = "";
+    private string targetValue = "";
+    private readonly Dictionary<string, string> userNames = new(StringComparer.OrdinalIgnoreCase);
+    private bool ackAgain;
+    private string? ackAgainHint;
+    private string? postStatus;
+
+    // ── Autosave ─────────────────────────────────────────────────────────────────
+    private NewsSaveState saveState = NewsSaveState.Idle;
+    private DateTime? lastSavedAt;
+    private bool conflict;
+    private bool conflictCopy;
+    private bool dirty;
+    private bool inflight;
+    private bool disposed;
+    private string? saveError;
+    private int generation;
+    /// One-shot: the author already approved leaving (Back, or the nav prompt), so the next
+    /// LocationChanging must pass without asking a second time.
+    private bool navigationApproved;
+    /// Bumped on every user edit (and on a conflict reload). A save only clears `dirty` when this is
+    /// unchanged from what it captured — so an edit made mid-save is never marked saved by the older response.
+    private int editSeq;
+    private readonly SemaphoreSlim saveGate = new(1, 1);
+    private System.Threading.Timer? debounce;
+
+    // ── Capability + UI ──────────────────────────────────────────────────────────
+    private bool canManage;
+    private bool previewOpen;
+    private NewsPreviewDevice device = NewsPreviewDevice.Desktop;
+    private bool PublishBusy;
+    private bool coverUploading;
+    private string? previewHtml;
+    private string? previewError;
+
+    /// All form editing is frozen while a conflict is unresolved or a publish is in flight.
+    private bool Locked => conflict || PublishBusy;
+
+    // ── Media ────────────────────────────────────────────────────────────────────
+    private readonly Dictionary<Guid, string> mediaUrls = [];
+    private readonly Dictionary<Guid, NewsComposerMediaRef> mediaRefs = [];
+
+    private ElementReference titleRef;
+    private NewsRichEditor? rte;
+    private int uploadsInFlight;
+    private DotNetObjectReference<NewsCompose>? selfRef;
+    private IJSObjectReference? guardModule;
+    private bool dropsInstalled;
+    private CancellationTokenSource? lifetimeCts;
+
+    private const string AttachAccept = ".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt,.png,.jpg,.jpeg";
+
+    /// A file handed over by the JS drop/pick bridge (Blazor's DragEventArgs carries names only).
+    public sealed record DroppedFile(string Name, string ContentType, byte[] Data);
+
+    private string AuthorName => Auth.Me?.Name ?? "You";
+    private string Initials => string.Concat(AuthorName.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w[0]).Take(2)).ToUpperInvariant();
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Lifecycle
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        lifetimeCts = new CancellationTokenSource();
+        try { await JS.InvokeVoidAsync("ipop.newsEditor.ensureStyle"); } catch { }
+        await LoadAsync();
+    }
+
+    /// NavigationLock handles in-app navigation; the module below covers closing/reloading the tab
+    /// and the drag-and-drop / keyboard file pickers (Blazor's DragEventArgs carries file names only).
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            guardModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/news-compose.js?v=20261002-compose");
+            if (firstRender) await guardModule.InvokeVoidAsync("install");
+            await guardModule.InvokeVoidAsync("setDirty", HasUnsavedChanges());
+            if (!dropsInstalled && !loading)
+            {
+                dropsInstalled = true;
+                selfRef ??= DotNetObjectReference.Create(this);
+                await guardModule.InvokeVoidAsync("installDrop", selfRef, "nc-cover-drop", false, "image/png,image/jpeg,image/gif,image/webp");
+                await guardModule.InvokeVoidAsync("installDrop", selfRef, "nc-file-drop", true, AttachAccept);
+            }
+        }
+        catch { /* bfcache / disposed runtime — the guard is best-effort */ }
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    // ── Files handed over by JS (drag/drop and the keyboard picker) ──────────────
+
+    [JSInvokable]
+    public async Task OnDroppedCover(List<DroppedFile> files)
+    {
+        if (files is not { Count: > 0 } || draftId is not { } id) return;
+        var f = files[0];
+        if (f?.Data is null) return;
+        await UploadCoverBytesAsync(id, f.Name, f.ContentType, f.Data);
+    }
+
+    [JSInvokable]
+    public async Task OnDroppedFile(List<DroppedFile> files)
+    {
+        if (files is null || files.Count == 0 || draftId is not { } id) return;
+        await AddFileBytesAsync(id, files);
+    }
+
+    /// The keyboard path on the drop zone: "choose files" without an InputFile ref.
+    [JSInvokable]
+    public async Task OnPickFiles()
+    {
+        if (guardModule is not null) await guardModule.InvokeVoidAsync("pickFiles", selfRef, AttachAccept);
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        loadError = null;
+        try
+        {
+            canManage = (await Auth.GetAsync<NewsCountsDto>("/api/news/counts"))?.CanManage ?? false;
+
+            var query = System.Web.HttpUtility.ParseQueryString(Nav.ToAbsoluteUri(Nav.Uri).Query);
+            var cat = query["category"];
+            if (!string.IsNullOrEmpty(cat)) formType = cat!;
+
+            if (Guid.TryParse(query["draft"], out var resumeId))
+            {
+                await ResumeDraftAsync(resumeId);
+            }
+            else if (Id is { } postId)
+            {
+                var list = await Auth.GetAsync<AppDtos.NewsDraftListDto>("/api/news/composer/drafts");
+                var existing = list?.Items.FirstOrDefault(i => i.PostId == postId);
+                if (existing is not null) await ResumeDraftAsync(existing.Id);
+                else await CreateDraftAsync(postId);
+            }
+            else
+            {
+                await CreateDraftAsync(null);
+            }
+            if (loadError is null)
+            {
+                SetClean();
+                // Resolve display URLs for media the body already references (a resumed draft or a
+                // revision seeded from the live post): the body stores ids, never URLs.
+                _ = ResolveMissingAsync(BodyMediaIds().ToList());
+        _ = ResolveMissingAsync(mediaRefs.Keys.ToList());
+            }
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task CreateDraftAsync(Guid? postId)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Post, "/api/news/composer/drafts", new AppDtos.CreateNewsDraftRequest(postId));
+        var result = await SafeReadAsync<AppDtos.NewsDraftResultDto>(res);
+        if (result is not { Success: true, Draft: not null }) { loadError = DraftError(result?.Error); return; }
+        ApplyDraft(result.Draft);
+        if (result.Draft.PostId is { } pid) await LoadPostContextAsync(pid);
+    }
+
+    private async Task ResumeDraftAsync(Guid resumeId)
+    {
+        var res = await Auth.SendAsync(HttpMethod.Get, $"/api/news/composer/drafts/{resumeId}");
+        var result = await SafeReadAsync<AppDtos.NewsDraftResultDto>(res);
+        if (result is not { Success: true, Draft: not null }) { loadError = DraftError(result?.Error); return; }
+        if (Id is { } postId && result.Draft.PostId != postId) { loadError = "That draft belongs to a different post."; return; }
+        ApplyDraft(result.Draft);
+        if (result.Draft.PostId is { } pid) await LoadPostContextAsync(pid);
+    }
+
+    private async Task LoadPostContextAsync(Guid postId)
+    {
+        var d = await Auth.GetAsync<NewsDetailDto>($"/api/news/{postId}");
+        postStatus = d?.Status;
+        if (d?.AckCount is > 0)
+            ackAgainHint = $"Clears the {(d.AckCount == 1 ? "existing acknowledgement" : $"{d.AckCount} existing acknowledgements")} and asks everyone to confirm the updated post.";
+    }
+
+    private void ApplyDraft(AppDtos.NewsDraftDto d)
+    {
+        draftId = d.Id;
+        baseVersion = d.Version;
+        baseContentVersion = d.BaseContentVersion;
+
+        var s = d.Snapshot;
+        title = s.Title ?? "";
+        body = s.Body ?? "";
+        if (!string.IsNullOrEmpty(s.Type)) formType = s.Type!;
+        formRequiresAck = s.RequiresAcknowledgement;
+        formAckDueAt = s.AckDueAt?.ToLocalTime();
+        pinOn = s.IsPinned;
+        scheduleOn = s.PublishAt is not null;
+        publishAt = s.PublishAt?.ToLocalTime();
+        coverMode = string.IsNullOrEmpty(s.CoverMode) ? "auto" : s.CoverMode;
+        coverMediaId = s.CoverMediaId;
+        attachments.Clear();
+        // Only ids survive a reload: names/sizes are not part of the snapshot.
+        foreach (var a in s.AttachmentIds ?? []) attachments.Add(new NewsComposerAttachment(a, "Attachment", "application/octet-stream", 0));
+        formTargets.Clear();
+        formTargets.AddRange(s.Targets ?? []);
+    }
+
+    private void SetClean()
+    {
+        dirty = false;
+        saveState = NewsSaveState.Saved;
+        lastSavedAt = DateTime.Now;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Edit handlers → dirty + debounce
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private Task MarkDirty()
+    {
+        // While a publish is in flight the promoted snapshot must not drift: controls are disabled,
+        // and any stray change event is ignored rather than queued behind the promote call.
+        if (disposed || conflict || PublishBusy) return Task.CompletedTask;
+        dirty = true;
+        editSeq++;
+        saveState = NewsSaveState.Dirty;
+        RestartDebounce();
+        return Task.CompletedTask;
+    }
+
+    private void RestartDebounce()
+    {
+        debounce?.Dispose();
+        debounce = new System.Threading.Timer(_ => _ = InvokeAsync(SaveAsync), null, 1500, Timeout.Infinite);
+    }
+
+    private async Task AfterTitle()
+    {
+        try { await JS.InvokeVoidAsync("ipop.measure", titleRef); } catch { }
+        await MarkDirty();
+    }
+
+    /// Clearing acknowledgements is destructive and the checkbox sits next to a Publish button, so a
+    /// deliberate confirm stands between the toggle and the reset.
+    private async Task OnAckAgainChanged()
+    {
+        if (!ackAgain)
+        {
+            _ = MarkDirty();
+            return;
+        }
+        var ok = await Confirm.AskAsync(
+            "Request acknowledgement again?",
+            "This clears every existing acknowledgement on the published post and asks the audience to confirm the updated version. It cannot be undone.",
+            "Yes, request again");
+        if (!ok) ackAgain = false;
+        _ = MarkDirty();
+    }
+
+    private void AfterCategory()
+    {
+        RefreshPreviewIfOpen();
+        _ = MarkDirty();
+    }
+
+    private void AfterSchedule()
+    {
+        if (scheduleOn && publishAt is null) publishAt = DateTime.Today.AddDays(1).AddHours(9);
+        _ = MarkDirty();
+    }
+
+    private void OnBodyChanged(string html)
+    {
+        body = html ?? "";
+        SyncMediaFromBody();
+        RefreshPreviewIfOpen();
+        _ = MarkDirty();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Audience
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private string AudienceHint => formTargets.Count == 0
+        ? "No audience selected — the post goes to all employees."
+        : $"{formTargets.Count} {(formTargets.Count == 1 ? "group" : "groups")} selected.";
+
+    private void OnAddTargetKind(ChangeEventArgs e) => targetKind = e.Value?.ToString() ?? "";
+
+    private void AddTypedTarget()
+    {
+        var kind = targetKind.Trim().ToLowerInvariant();
+        var val = targetValue.Trim();
+        if (kind is "department" or "role")
+        {
+            if (!string.IsNullOrWhiteSpace(val) && formTargets.All(t => t.Kind != kind || t.Value != val))
+                formTargets.Add(new AppDtos.NewsTargetInput(kind, val));
+        }
+        else if (kind == "all" && formTargets.All(t => t.Kind != "all"))
+        {
+            formTargets.Add(new AppDtos.NewsTargetInput("all", null));
+        }
+        targetValue = "";
+        targetKind = "";
+        _ = MarkDirty();
+    }
+
+    private void OnPickMember(MemberSearchRow r)
+    {
+        userNames[r.Nik] = r.Name;
+        PLinks.RememberName(r.Nik, r.Name);
+        if (formTargets.All(t => t.Kind != "user" || t.Value != r.Nik))
+            formTargets.Add(new AppDtos.NewsTargetInput("user", r.Nik));
+        targetKind = "";
+        _ = MarkDirty();
+    }
+
+    private void RemoveTarget(AppDtos.NewsTargetInput t)
+    {
+        formTargets.Remove(t);
+        _ = MarkDirty();
+    }
+
+    private string TargetLabel(AppDtos.NewsTargetInput t) => t.Kind switch
+    {
+        "all" => "All employees",
+        "user" => userNames.GetValueOrDefault(t.Value ?? "", "Employee"),
+        "department" => $"Dept: {t.Value}",
+        "role" => $"Role: {t.Value}",
+        _ => $"{t.Kind}: {t.Value}"
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Cover
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private string? CoverUrl
+    {
+        get
+        {
+            if (coverMode == "none") return null;
+            if (coverMode == "manual" && coverMediaId is { } manual && mediaUrls.TryGetValue(manual, out var u)) return u;
+            foreach (var mid in BodyMediaIds("image"))
+                if (mediaUrls.TryGetValue(mid, out var url)) return url;
+            return null;
+        }
+    }
+
+    private string CoverNoteText => coverMode switch
+    {
+        "manual" => "Custom cover image. The body image is ignored.",
+        "none" => "No cover — this post shows as a text card in the feed.",
+        _ => "Cover follows the first image in the body."
+    };
+
+    private IEnumerable<Guid> BodyMediaIds(string? kind = null)
+    {
+        var html = body ?? "";
+        var pattern = kind is null
+            ? "data-news-media=\"([0-9a-fA-F-]{36})\""
+            : $"data-news-media=\"([0-9a-fA-F-]{{36}})\"[^>]*data-news-kind=\"{kind}\"|data-news-kind=\"{kind}\"[^>]*data-news-media=\"([0-9a-fA-F-]{{36}})\"";
+        foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(html, pattern))
+        {
+            var raw = m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value;
+            if (Guid.TryParse(raw, out var g)) yield return g;
+        }
+    }
+
+    private void RemoveCover()
+    {
+        coverMode = "none";
+        coverMediaId = null;
+        _ = MarkDirty();
+        Toasts.Show("Cover removed. The post will show as a text card.", ToastKind.Info);
+    }
+
+    private void UseAutoCover()
+    {
+        coverMode = "auto";
+        coverMediaId = null;
+        _ = MarkDirty();
+    }
+
+    private async Task OnCoverPick(InputFileChangeEventArgs e)
+    {
+        if (e.File is not { } file) return;
+        // Guard on Size BEFORE OpenReadStream: a stream opened with a max throws once the file
+        // exceeds it, and that throw would surface as a raw exception instead of a message.
+        if (file.Size > MaxInlineImageBytes)
+        {
+            Toasts.Show($"{file.Name} is larger than the 5 MB image limit.", ToastKind.Warning);
+            return;
+        }
+        if (draftId is not { } id) return;
+        using var ms = new MemoryStream();
+        await using (var src = file.OpenReadStream(MaxInlineImageBytes, lifetimeCts?.Token ?? default))
+            await src.CopyToAsync(ms, lifetimeCts?.Token ?? default);
+        await UploadCoverBytesAsync(id, file.Name, file.ContentType, ms.ToArray());
+    }
+
+    private async Task UploadCoverBytesAsync(Guid id, string name, string? contentType, byte[] data)
+    {
+        if (!ImageExts.Contains(Path.GetExtension(name.ToLowerInvariant())))
+        {
+            Toasts.Show("Only PNG, JPEG, GIF or WebP images can be a cover.", ToastKind.Warning);
+            return;
+        }
+        if (data.LongLength > MaxInlineImageBytes)
+        {
+            Toasts.Show($"{name} is larger than the 5 MB image limit.", ToastKind.Warning);
+            return;
+        }
+
+        coverUploading = true;
+        try
+        {
+            var dto = await PostMediaAsync(id, name, contentType, data, "image");
+            if (dto is null) return;
+            coverMediaId = dto.MediaId;
+            coverMode = "manual";
+            _ = MarkDirty();
+            Toasts.Show($"Cover set: {name}", ToastKind.Success);
+        }
+        finally
+        {
+            coverUploading = false;
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    private void SyncMediaFromBody()
+    {
+        var ids = new HashSet<Guid>(BodyMediaIds());
+        foreach (var gone in mediaRefs.Keys.Where(k => !ids.Contains(k) && k != coverMediaId).ToList())
+        {
+            mediaRefs.Remove(gone);
+            mediaUrls.Remove(gone);
+        }
+        _ = ResolveMissingAsync(ids);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Uploads
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /// Multipart POST of one file's bytes to the composer media endpoint.
+    private async Task<AppDtos.NewsComposerMediaDto?> PostMediaAsync(Guid id, string fileName, string? contentType, byte[] data, string kind)
+    {
+        uploadsInFlight++;
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var bc = new ByteArrayContent(data);
+            bc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                string.IsNullOrEmpty(contentType) ? "application/octet-stream" : contentType);
+            content.Add(bc, "file", fileName);
+
+            var res = await Auth.SendMultipartAsync($"/api/news/composer/drafts/{id}/media?kind={kind}", content);
+            if (!res.IsSuccessStatusCode)
+            {
+                Toasts.Show(MediaError(res.StatusCode, fileName), ToastKind.Error);
+                return null;
+            }
+            var dto = await SafeReadAsync<AppDtos.NewsComposerMediaDto>(res);
+            if (dto is null || dto.MediaId == Guid.Empty)
+            {
+                Toasts.Show($"The server did not confirm the upload of {fileName}.", ToastKind.Error);
+                return null;
+            }
+            TrackMedia(dto);
+            return dto;
+        }
+        finally
+        {
+            uploadsInFlight--;
+        }
+    }
+
+    private void TrackMedia(AppDtos.NewsComposerMediaDto dto)
+    {
+        if (!string.IsNullOrEmpty(dto.StreamUrl)) mediaUrls[dto.MediaId] = dto.StreamUrl!;
+        mediaRefs[dto.MediaId] = new NewsComposerMediaRef(dto.MediaId, dto.Kind, dto.StreamUrl, dto.FileName, dto.Size);
+    }
+
+    /// Absolute URL the editor's XHR posts one file to. The kind is in the query string because the
+/// media endpoint reads it from there. Relative to the API origin, not the page origin.
+    private string? MediaUploadUrl(string kind)
+        => draftId is { } id ? $"{Http.BaseAddress}api/news/composer/drafts/{id}/media?kind={kind}" : null;
+
+    /// The editor finished an upload itself (its XHR path). Record the id/URL and mark the draft
+    /// dirty so the ref is autosaved. No bytes ever cross into C# on this path.
+    private Task OnMediaUploaded(NewsRichEditor.NewsMediaRef media)
+    {
+        if (media is null || media.MediaId == Guid.Empty) return Task.CompletedTask;
+        if (!string.IsNullOrEmpty(media.Url)) mediaUrls[media.MediaId] = media.Url!;
+        mediaRefs[media.MediaId] = new NewsComposerMediaRef(media.MediaId, media.Kind, media.Url, media.Name, 0);
+        _ = MarkDirty();
+        return Task.CompletedTask;
+    }
+
+    /// The editor's XHR reports each inline upload's progress. Held so save/publish can wait for it
+/// (a save mid-upload would drop the media ref the editor is about to insert).
+    private readonly HashSet<string> rteUploadsInFlight = [];
+
+    private Task OnRteUploadProgress(NewsRichEditor.NewsUploadProgress p)
+    {
+        if (p is null) return Task.CompletedTask;
+        var key = p.Kind + ":" + p.Name;
+        if (p.State == "uploading") rteUploadsInFlight.Add(key);
+        else rteUploadsInFlight.Remove(key);
+        return Task.CompletedTask;
+    }
+
+    private void OnRteNotice(string message)
+    {
+        if (!string.IsNullOrWhiteSpace(message)) Toasts.Show(message, ToastKind.Warning);
+    }
+
+    private static string MediaError(System.Net.HttpStatusCode status, string name) => status switch
+    {
+        System.Net.HttpStatusCode.RequestEntityTooLarge => $"{name}: the file is too large for this post.",
+        System.Net.HttpStatusCode.Conflict => $"{name}: only one video per post is allowed, or storage is unavailable.",
+        System.Net.HttpStatusCode.Forbidden => "You cannot attach media to this post.",
+        System.Net.HttpStatusCode.UnprocessableEntity => $"{name}: that file type isn't allowed.",
+        System.Net.HttpStatusCode.NotFound => "This draft no longer exists.",
+        _ => $"Could not upload {name}."
+    };
+
+    private async Task ResolveMissingAsync(IEnumerable<Guid> ids)
+    {
+        if (draftId is not { } id) return;
+        var missing = ids.Where(i => !mediaUrls.ContainsKey(i)).ToList();
+        if (missing.Count == 0) return;
+        var list = await Auth.GetAsync<List<AppDtos.NewsComposerMediaDto>>($"/api/news/composer/drafts/{id}/media");
+        if (list is null) return;
+        foreach (var m in list) TrackMedia(m);
+        if (rte is not null) await rte.SetMediaAsync(mediaUrls);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Regular attachments
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private string AttachmentFoot
+    {
+        get
+        {
+            var ready = attachments.Where(a => a.IsReady).ToList();
+            return ready.Count == 0
+                ? $"No files yet · up to {MaxFiles} files"
+                : $"{ready.Count} of {MaxFiles} files · {NewsUiHelper.FileSize(ready.Sum(a => a.Size))}";
+        }
+    }
+
+    private async Task OnFilesPicked(InputFileChangeEventArgs e)
+    {
+        if (draftId is not { } id) { Toasts.Show("The draft is not ready yet.", ToastKind.Error); return; }
+        var rows = new List<DroppedFile>();
+        foreach (var file in e.GetMultipleFiles(MaxFiles))
+        {
+            if (file.Size > MaxFileBytes)
+            {
+                Toasts.Show($"{file.Name} is larger than the 25 MB attachment limit.", ToastKind.Warning);
+                continue;
+            }
+            using var ms = new MemoryStream();
+            await using (var src = file.OpenReadStream(MaxFileBytes, lifetimeCts?.Token ?? default))
+                await src.CopyToAsync(ms, lifetimeCts?.Token ?? default);
+            rows.Add(new DroppedFile(file.Name,
+                string.IsNullOrEmpty(file.ContentType) ? "application/octet-stream" : file.ContentType, ms.ToArray()));
+        }
+        await AddFileBytesAsync(id, rows);
+    }
+
+    private async Task AddFileBytesAsync(Guid id, IReadOnlyList<DroppedFile> files)
+    {
+        var changed = false;
+        foreach (var file in files)
+        {
+            if (attachments.Count(a => a.IsReady) >= MaxFiles)
+            {
+                Toasts.Show($"{file.Name}: up to {MaxFiles} attachments per post.", ToastKind.Warning);
+                continue;
+            }
+            if (file.Data.LongLength > MaxFileBytes)
+            {
+                Toasts.Show($"{file.Name} is larger than the 25 MB attachment limit.", ToastKind.Warning);
+                continue;
+            }
+            var row = new NewsComposerAttachment(null, file.Name, file.ContentType, file.Data.LongLength, 0);
+            attachments.Add(row);
+            StateHasChanged();
+            try
+            {
+                using var content = new MultipartFormDataContent();
+                var bc = new ByteArrayContent(file.Data);
+                bc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(row.ContentType);
+                content.Add(bc, "file", file.Name);
+                var url = Id is { } pid ? $"/api/news/attachments?postId={pid}" : "/api/news/attachments";
+                var res = await Auth.SendMultipartAsync(url, content);
+                var index = attachments.IndexOf(row);
+                if (index < 0) continue;
+                if (!res.IsSuccessStatusCode)
+                    attachments[index] = row with { Error = AttachmentError(res.StatusCode) };
+                else if (await SafeReadAsync<NewsAttachmentDto>(res) is { } dto)
+                    attachments[index] = new NewsComposerAttachment(dto.Id, dto.FileName, dto.ContentType, dto.Size);
+            }
+            catch (Exception ex)
+            {
+                var index = attachments.IndexOf(row);
+                if (index >= 0) attachments[index] = row with { Error = ex.Message };
+            }
+            changed = true;
+            StateHasChanged();
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+        if (changed) await MarkDirty();
+    }
+
+    private static string AttachmentError(System.Net.HttpStatusCode status) => status switch
+    {
+        System.Net.HttpStatusCode.UnprocessableEntity => "This file type isn't allowed.",
+        System.Net.HttpStatusCode.Forbidden => "Only the post's author, HR or Admin can attach files.",
+        System.Net.HttpStatusCode.BadGateway => "File storage is unavailable right now.",
+        _ => "Upload failed."
+    };
+
+    private static string AttIcon(string name) => NewsUiHelper.FileIcon(name);
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Autosave
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private AppDtos.NewsDraftSnapshotDto BuildSnapshot()
+    {
+        var refs = new List<AppDtos.NewsDraftMediaRefDto>();
+        var order = 0;
+        foreach (var id in BodyMediaIds()) refs.Add(new AppDtos.NewsDraftMediaRefDto(id, "inline", order++));
+        foreach (var kv in mediaRefs)
+            if (refs.All(r => r.MediaId != kv.Key))
+                refs.Add(new AppDtos.NewsDraftMediaRefDto(kv.Key, "inline", order++));
+
+        return new AppDtos.NewsDraftSnapshotDto(
+            Type: string.IsNullOrEmpty(formType) ? "news" : formType,
+            Title: title,
+            Body: body,
+            BodyFormat: "html",
+            RequiresAcknowledgement: formRequiresAck,
+            AckDueAt: formRequiresAck ? formAckDueAt?.ToUniversalTime() : null,
+            IsPinned: pinOn,
+            PublishAt: scheduleOn ? publishAt?.ToUniversalTime() : null,
+            CoverMediaId: coverMode == "manual" ? coverMediaId : null,
+            CoverMode: coverMode,
+            Targets: formTargets.ToList(),
+            AttachmentIds: attachments.Where(a => a.IsReady).Select(a => a.Id!.Value).ToList(),
+            Media: refs);
+    }
+
+    /// Debounced, serialized, generation-checked autosave. A response may only clear `dirty` when no
+    /// newer edit happened while it was in flight — an edit made mid-save is never marked saved.
+    private async Task SaveAsync()
+    {
+        if (disposed || conflict || loading || draftId is not { } id) return;
+        await saveGate.WaitAsync();
+        try
+        {
+            if (disposed || conflict || !dirty) return;
+            // Never snapshot while an upload is still resolving: an id that lands after this save
+            // would be dropped from the refs and the next save would then hit media_ref_mismatch.
+            if (attachments.Any(a => !a.IsReady && a.Error is null) || uploadsInFlight > 0 || rteUploadsInFlight.Count > 0) return;
+            var gen = editSeq;
+            var conflictsBefore = generation;
+            inflight = true;
+            saveState = NewsSaveState.Saving;
+            saveError = null;
+            await InvokeAsync(StateHasChanged);
+
+            var req = new AppDtos.SaveNewsDraftRequest(baseVersion, BuildSnapshot(), baseContentVersion);
+            var res = await Auth.SendAsync(HttpMethod.Put, $"/api/news/composer/drafts/{id}", req);
+            var result = await SafeReadAsync<AppDtos.NewsDraftResultDto>(res);
+
+            if (res.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                EnterConflict(result?.Error);
+            }
+            else if (result is { Success: true, Draft: not null })
+            {
+                baseVersion = result.Draft.Version;
+                baseContentVersion = result.Draft.BaseContentVersion;
+                if (gen == editSeq && conflictsBefore == generation) { dirty = false; saveState = NewsSaveState.Saved; lastSavedAt = DateTime.Now; }
+                else saveState = NewsSaveState.Dirty;
+            }
+            else
+            {
+                saveError = DraftError(result?.Error);
+                saveState = NewsSaveState.Failed;
+            }
+        }
+        catch (Exception ex)
+        {
+            saveError = ex.Message;
+            saveState = NewsSaveState.Failed;
+        }
+        finally
+        {
+            inflight = false;
+            saveGate.Release();
+            await InvokeAsync(StateHasChanged);
+            // The debounce may have fired while this save was queued, or while an upload blocked it.
+            // Re-arm whenever work is still pending so a save is never silently dropped.
+            if (!disposed && !conflict && dirty) RestartDebounce();
+        }
+    }
+
+    /// Waits until every attachment and media upload has resolved, so a save/publish never snapshots
+    /// a body whose media ids are still in flight (that would drop refs and hit media_ref_mismatch).
+    private async Task<bool> WaitForUploadsAsync(int timeoutMs = 180000)
+    {
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (!disposed && (uploadsInFlight > 0 || attachments.Any(a => !a.IsReady && a.Error is null) || rteUploadsInFlight.Count > 0))
+        {
+            if (Environment.TickCount64 > deadline) return false;
+            await Task.Delay(150, lifetimeCts?.Token ?? default);
+        }
+        return !disposed;
+    }
+
+    private void EnterConflict(string? code)
+    {
+        conflict = true;
+        conflictCopy = code == "version_conflict";
+        saveState = NewsSaveState.Conflict;
+        Toasts.Show("Autosave stopped: this draft changed elsewhere. Reload or copy your work — nothing was overwritten.", ToastKind.Error);
+    }
+
+    /// Internal navigation away from dirty/in-flight/failed work: ask via ConfirmService first.
+    /// A one-shot approval flag lets the approved navigation pass without re-entering this guard.
+    private async Task OnBeforeInternalNavigation(LocationChangingContext ctx)
+    {
+        if (disposed) return;
+        if (navigationApproved) { navigationApproved = false; return; }
+        // Freeze navigation while a publish is in flight: leaving mid-promote would drop the result
+        // (and the toast) and could navigate away from a post that just went live.
+        if (PublishBusy) { ctx.PreventNavigation(); return; }
+        if (!dirty && !inflight && saveState != NewsSaveState.Failed) return;
+        ctx.PreventNavigation();
+        var ok = await Confirm.AskAsync("Leave without saving?",
+            dirty || inflight
+                ? "Your latest changes are still saving or unsaved. Leaving now keeps the last saved version only."
+                : "The last autosave failed. Leaving now keeps the last saved version only.",
+            "Leave", danger: true);
+        if (!ok) return;
+        dirty = false;
+        editSeq++;
+        generation++;              // invalidate any in-flight save so its result cannot clear the flag
+        navigationApproved = true;
+        Nav.NavigateTo(ctx.TargetLocation);
+    }
+
+    /// The browser tab-close guard asks this before letting the page unload. A conflict counts as
+    /// unsaved work: the newer version must not be lost silently by closing the tab. A publish in
+    /// flight likewise blocks the unload (its result is still coming).
+    public bool HasUnsavedChanges() => !disposed && (dirty || inflight || conflict || PublishBusy);
+
+    private async Task BackAsync()
+    {
+        if (PublishBusy) { Toasts.Show("Finishing the publish — one moment.", ToastKind.Info); return; }
+        if ((dirty || inflight || conflict))
+        {
+            var ok = await Confirm.AskAsync("Leave without saving?", "Your latest changes are still saving or unsaved.", "Leave", danger: true);
+            if (!ok) return;
+            dirty = false;
+            editSeq++;
+            generation++;
+        }
+        navigationApproved = true;
+        Nav.NavigateTo("/news");
+    }
+
+    private async Task ReloadAfterConflictAsync()
+    {
+        conflict = false;
+        dirty = false;
+        generation++;
+        if (draftId is { } id) await ResumeDraftAsync(id);
+        else await LoadAsync();
+        if (loadError is null)
+        {
+            SetClean();
+            Toasts.Show("Reloaded the newer version.", ToastKind.Info);
+        }
+        StateHasChanged();
+    }
+
+    private async Task CopyConflictAsync()
+    {
+        var text = title + "\n\n" + (rte is null ? body : await rte.GetHtmlAsync());
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            Toasts.Show("Copied your title and body to the clipboard.", ToastKind.Success);
+        }
+        catch
+        {
+            Toasts.Show("Could not copy automatically — select and copy your text manually.", ToastKind.Warning);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Preview
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private void TogglePreview()
+    {
+        if (PublishBusy) return;
+        previewOpen = !previewOpen;
+        if (previewOpen) _ = RefreshPreviewAsync();
+    }
+
+    private void RefreshPreviewIfOpen() { if (previewOpen) _ = RefreshPreviewAsync(); }
+
+    /// Preview runs the same sanitizer the reader will: flush the editor, save, then read the
+    /// sanitized HTML back from the server, so what the author sees is what a reader gets.
+    private async Task RefreshPreviewAsync()
+    {
+        if (draftId is not { } id) return;
+        previewError = null;
+        if (!await FlushAndSaveAsync())
+        {
+            // Never show a stale body as if it were the current one.
+            previewError = saveState == NewsSaveState.Conflict
+                ? "Resolve the conflict, then reload to preview the newer version."
+                : "Your latest changes could not be saved, so the preview would be out of date.";
+            previewHtml = null;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+        var preview = await Auth.GetAsync<AppDtos.NewsPreviewDto>($"/api/news/composer/drafts/{id}/preview");
+        if (preview is null)
+        {
+            previewError = "Could not load the preview.";
+            previewHtml = null;
+        }
+        else
+        {
+            previewHtml = preview.Html;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// Flushes the editor and saves. Returns false when the draft is not in a state that could be
+    /// promoted/previewed safely: a conflict, a failed save, or an edit that arrived mid-save.
+    private async Task<bool> FlushAndSaveAsync()
+    {
+        try
+        {
+            if (rte is not null)
+            {
+                var html = await rte.GetHtmlAsync();
+                if (!string.IsNullOrEmpty(html) && html != body) body = html;
+            }
+        }
+        catch { }
+        if (conflict) return false;
+        if (draftId is null) return true;
+        if (!dirty && saveState is NewsSaveState.Saved or NewsSaveState.Idle) return true;
+        await SaveAsync();
+        return !conflict && !dirty && saveState != NewsSaveState.Failed;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Publish / update / schedule (real endpoint — no fake success)
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private string PublishLabel => scheduleOn ? "Schedule" : IsRevision && postStatus == "published" ? "Update published" : "Publish post";
+
+    private async Task PublishAsync()
+    {
+        if (draftId is not { } id || PublishBusy || conflict) return;
+
+        // Take the lock BEFORE any await: the form freezes now, so the snapshot the promote call
+        // reads cannot drift and a double-click cannot start a second publish.
+        PublishBusy = true;
+        try
+        {
+            // Every attachment and inline media upload must have resolved before promoting, or the
+            // published post would reference ids the snapshot dropped.
+            if (!await WaitForUploadsAsync())
+            {
+                Toasts.Show("Still uploading — try again once the uploads finish.", ToastKind.Warning);
+                return;
+            }
+
+            // Flush the editor and land one last save so the promoted version is exactly what is on
+            // screen. If that save did not settle cleanly, publishing would push the OLDER server
+            // snapshot — so refuse instead.
+            if (!await FlushAndSaveAsync())
+            {
+                Toasts.Show(saveState == NewsSaveState.Conflict
+                    ? "Resolve the conflict before publishing."
+                    : "Could not save your latest changes. Publishing now would send an older version.",
+                    ToastKind.Error);
+                return;
+            }
+            if (!await WaitForUploadsAsync())
+            {
+                Toasts.Show("Still uploading — try again once the uploads finish.", ToastKind.Warning);
+                return;
+            }
+
+            var err = Validate();
+            if (err is not null) { Toasts.Show(err, ToastKind.Warning); return; }
+
+            var mode = scheduleOn ? "schedule" : "publish";
+            var promoteVersion = baseVersion;
+            var promoteContentVersion = baseContentVersion;
+            var req = new AppDtos.PromoteNewsDraftRequest(promoteVersion, promoteContentVersion, ackAgain, mode);
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/news/composer/drafts/{id}/publish", req);
+
+            var result = await SafeReadAsync<AppDtos.NewsPostResultDto>(res);
+            if (res.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                EnterConflict(result?.Error);
+                return;
+            }
+            if (!(result is { Success: true }))
+            {
+                Toasts.Show(PublishError(result?.Error), ToastKind.Error);
+                return;
+            }
+
+            dirty = false;
+            if (mode == "schedule")
+            {
+                // A schedule is a freeze: the live post is untouched (and News is null). The worker
+                // applies it when due, so leave the composer and list the frozen draft instead.
+                Toasts.Show($"Scheduled for {publishAt:dd MMM yyyy HH:mm}. It publishes automatically when due.", ToastKind.Success);
+                Nav.NavigateTo("/news/drafts");
+            }
+            else if (result.News is not null)
+            {
+                Toasts.Show(IsRevision ? "Published post updated." : "Post published.", ToastKind.Success);
+                Nav.NavigateTo($"/news/{result.News.Id}");
+            }
+            else
+            {
+                Nav.NavigateTo("/news/drafts");
+            }
+        }
+        catch (Exception ex)
+        {
+            Toasts.Show("Publish failed: " + ex.Message, ToastKind.Error);
+        }
+        finally
+        {
+            PublishBusy = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private string? Validate()
+    {
+        if (string.IsNullOrWhiteSpace(title)) return "A post needs a title before it can be published.";
+        // A body of media only (an image or video with no caption) is still a body.
+        if (string.IsNullOrWhiteSpace(Strip(body)) && !BodyMediaIds().Any()) return "The post body is empty.";
+        return null;
+    }
+
+    private static string Strip(string? html) =>
+        System.Text.RegularExpressions.Regex.Replace(html ?? "", "<[^>]*>", " ").Replace("&nbsp;", " ").Trim();
+
+    private static string PublishError(string? code) => code switch
+    {
+        "title_required" => "A post needs a title before it can be published.",
+        "body_required" => "The post body is empty.",
+        "title_too_long" => "The title is too long.",
+        "body_too_long" => "The body is too long.",
+        "schedule_requires_future_time" => "Choose a publish time in the future.",
+        "invalid_target_kind" or "invalid_target_value" => "One of the audience entries is not valid.",
+        "invalid_media" or "media_ref_mismatch" => "One of the images or videos is not valid for this post.",
+        "invalid_attachment" => "One of the attachments is not valid for this post.",
+        "forbidden" => "Only HR and Admin can publish news and memos.",
+        "not_found" => "This draft no longer exists.",
+        _ => "Could not publish the post."
+    };
+
+    private static string DraftError(string? code) => code switch
+    {
+        "forbidden" => "You do not have permission to edit this post.",
+        "not_found" or "not_active" => "This draft is no longer available.",
+        "invalid_media" => "One of the media items is not valid for this draft.",
+        "invalid_attachment" => "One of the attachments is not valid for this draft.",
+        "media_ref_mismatch" => "The body references media the draft does not own.",
+        "body_too_long" => "The body is too long to save.",
+        "title_too_long" => "The title is too long.",
+        _ => "Could not save the draft."
+    };
+
+    private static async Task<T?> SafeReadAsync<T>(HttpResponseMessage res) where T : class
+    {
+        try { return await res.Content.ReadFromJsonAsync<T>(); } catch { return null; }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Status pill
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private string StatusClass => saveState switch
+    {
+        NewsSaveState.Saving => "saving",
+        NewsSaveState.Saved => "saved",
+        NewsSaveState.Dirty => "dirty",
+        NewsSaveState.Failed => "failed",
+        NewsSaveState.Conflict => "conflict",
+        _ => ""
+    };
+
+    private string StatusIcon => saveState switch
+    {
+        NewsSaveState.Saving => "loader-circle",
+        NewsSaveState.Saved => "circle-check",
+        NewsSaveState.Dirty => "circle-dot",
+        NewsSaveState.Failed => "cloud-off",
+        NewsSaveState.Conflict => "triangle-alert",
+        _ => "cloud"
+    };
+
+    private string StatusText => saveState switch
+    {
+        NewsSaveState.Saving => "Saving…",
+        NewsSaveState.Saved => lastSavedAt is { } t
+            ? (IsRevision && postStatus == "published" ? $"Live post updated {t:HH:mm}" : $"Draft saved {t:HH:mm}")
+            : "Saved",
+        NewsSaveState.Dirty => "Unsaved changes",
+        NewsSaveState.Failed => saveError ?? "Autosave failed",
+        NewsSaveState.Conflict => "Not saved — conflict",
+        _ => loading ? "Loading…" : "Autosave on"
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Dispose
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    public void Dispose()
+    {
+        if (disposed) return;
+        disposed = true;
+        try { debounce?.Dispose(); } catch { }
+        try { lifetimeCts?.Cancel(); } catch { }
+        try { lifetimeCts?.Dispose(); } catch { }
+        try { if (guardModule is not null) _ = guardModule.InvokeVoidAsync("remove"); } catch { }
+        try { if (guardModule is not null) _ = guardModule.DisposeAsync(); } catch { }
+        try { selfRef?.Dispose(); } catch { }
+    }
+}

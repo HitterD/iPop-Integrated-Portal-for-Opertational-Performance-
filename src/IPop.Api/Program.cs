@@ -196,6 +196,17 @@ builder.Services.AddHostedService<IPop.Infrastructure.Notifications.Push.PushWor
 
 // News & Memos module (single table with type enum: news/announcement/memo)
 builder.Services.AddScoped<IPop.Application.News.INewsService, IPop.Infrastructure.News.NewsService>();
+builder.Services.AddScoped<IPop.Application.News.INewsComposerService, IPop.Infrastructure.News.NewsComposerService>();
+builder.Services.AddHostedService<IPop.Infrastructure.News.NewsComposerScheduleWorker>();
+builder.Services.AddSingleton(new IPop.Infrastructure.News.NewsComposerMediaOptions
+{
+    LocalRoot = Path.Combine(builder.Environment.ContentRootPath, "news-composer-media")
+});
+builder.Services.AddScoped<IPop.Application.News.INewsComposerMediaService, IPop.Infrastructure.News.NewsComposerMediaService>();
+// 24h GC of unreferenced composer media; all safety lives in the service, this is only the schedule.
+builder.Services.AddHostedService<IPop.Infrastructure.News.NewsComposerMediaCleanupWorker>();
+builder.Services.AddScoped<IPop.Application.News.INewsPublicationHooks>(sp =>
+    (IPop.Infrastructure.News.NewsService)sp.GetRequiredService<IPop.Application.News.INewsService>());
 // news-videos/ under ContentRoot holds the streaming copies; the NAS keeps the archive.
 builder.Services.AddSingleton(new IPop.Infrastructure.News.NewsVideoOptions { LocalRoot = Path.Combine(builder.Environment.ContentRootPath, "news-videos") });
 builder.Services.AddScoped<IPop.Application.News.INewsVideoService, IPop.Infrastructure.News.NewsVideoService>();
@@ -309,6 +320,8 @@ app.MapProjectPortfolio();
 app.MapMeetings();
 app.MapCalendar();
 app.MapNews();
+app.MapNewsComposer();
+app.MapNewsComposerMedia();
 app.MapNewsVideos();
 app.MapNotes();
 app.MapNotificationGateway();

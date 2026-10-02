@@ -1750,6 +1750,213 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("NewsComments");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NewsComposerDraft", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AckDueAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int?>("BaseContentVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Body")
+                        .HasMaxLength(20000)
+                        .HasColumnType("character varying(20000)");
+
+                    b.Property<string>("BodyFormat")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid?>("CoverMediaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CoverMode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DiscardedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsPinned")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("NextScheduleAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PostId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("PromotedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("PublishAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("RequiresAcknowledgement")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("ResetAcknowledgementsOnPromote")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("ScheduleAttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("TargetsJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Type")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PostId");
+
+                    b.HasIndex("OwnerId", "State", "UpdatedAt");
+
+                    b.ToTable("NewsComposerDrafts");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsComposerDraftAttachment", b =>
+                {
+                    b.Property<Guid>("DraftId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AttachmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("DraftId", "AttachmentId");
+
+                    b.HasIndex("AttachmentId");
+
+                    b.ToTable("NewsComposerDraftAttachments");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsComposerDraftMedia", b =>
+                {
+                    b.Property<Guid>("DraftId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MediaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("DraftId", "MediaId");
+
+                    b.HasIndex("MediaId");
+
+                    b.ToTable("NewsComposerDraftMedia");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsComposerMedia", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("AttachmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(127)
+                        .HasColumnType("character varying(127)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DurationSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("LocalPath")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("NasPath")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ThumbnailPath")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid?>("UploadDraftId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttachmentId");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("UploadDraftId");
+
+                    b.HasIndex("OwnerId", "Kind", "DeletedAt");
+
+                    b.ToTable("NewsComposerMedia");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NewsLike", b =>
                 {
                     b.Property<Guid>("NewsPostId")
@@ -1787,6 +1994,26 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(20000)
                         .HasColumnType("character varying(20000)");
+
+                    b.Property<string>("BodyFormat")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("plain");
+
+                    b.Property<int>("ContentVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("CoverMediaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CoverMode")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("auto");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1848,6 +2075,29 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("Type", "Status", "CreatedAt");
 
                     b.ToTable("NewsPosts");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsPostMedia", b =>
+                {
+                    b.Property<Guid>("NewsPostId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("MediaId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("NewsPostId", "MediaId");
+
+                    b.HasIndex("MediaId");
+
+                    b.ToTable("NewsPostMedia");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NewsRead", b =>
@@ -4626,6 +4876,87 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("NewsPost");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NewsComposerDraft", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "Owner")
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.NewsPost", "Post")
+                        .WithMany()
+                        .HasForeignKey("PostId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Owner");
+
+                    b.Navigation("Post");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsComposerDraftAttachment", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Attachment", "Attachment")
+                        .WithMany()
+                        .HasForeignKey("AttachmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.NewsComposerDraft", "Draft")
+                        .WithMany("Attachments")
+                        .HasForeignKey("DraftId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Attachment");
+
+                    b.Navigation("Draft");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsComposerDraftMedia", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.NewsComposerDraft", "Draft")
+                        .WithMany("Media")
+                        .HasForeignKey("DraftId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.NewsComposerMedia", "Media")
+                        .WithMany()
+                        .HasForeignKey("MediaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Draft");
+
+                    b.Navigation("Media");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsComposerMedia", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Attachment", "Attachment")
+                        .WithMany()
+                        .HasForeignKey("AttachmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("IPop.Core.Entities.User", "Owner")
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.NewsComposerDraft", "UploadDraft")
+                        .WithMany()
+                        .HasForeignKey("UploadDraftId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Attachment");
+
+                    b.Navigation("Owner");
+
+                    b.Navigation("UploadDraft");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NewsLike", b =>
                 {
                     b.HasOne("IPop.Core.Entities.NewsPost", "NewsPost")
@@ -4661,6 +4992,25 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Approver");
 
                     b.Navigation("Author");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.NewsPostMedia", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.NewsComposerMedia", "Media")
+                        .WithMany()
+                        .HasForeignKey("MediaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.NewsPost", "NewsPost")
+                        .WithMany("Media")
+                        .HasForeignKey("NewsPostId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Media");
+
+                    b.Navigation("NewsPost");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NewsRead", b =>
@@ -5592,6 +5942,13 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Attendees");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.NewsComposerDraft", b =>
+                {
+                    b.Navigation("Attachments");
+
+                    b.Navigation("Media");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.NewsPost", b =>
                 {
                     b.Navigation("Acknowledgements");
@@ -5599,6 +5956,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Attachments");
 
                     b.Navigation("Audits");
+
+                    b.Navigation("Media");
 
                     b.Navigation("Targets");
                 });

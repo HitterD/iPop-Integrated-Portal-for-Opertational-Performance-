@@ -1,0 +1,238 @@
+@page "/news/drafts"
+@using AppDtos = IPop.Application.News
+@using WebDtos = IPop.Web.Models
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject ConfirmService Confirm
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>My drafts — News &amp; Memos — IPop</PageTitle>
+
+<div class="nc-shell nd-page">
+    <header class="nc-topbar">
+        <button type="button" class="nc-back" aria-label="Back to News and Memo" @onclick='() => Nav.NavigateTo("/news")'><i data-lucide="arrow-left"></i></button>
+        <div class="nc-tt">
+            <div class="k">News &amp; Memo</div>
+            <h1>My drafts</h1>
+        </div>
+        <div class="nc-top-actions">
+            <button type="button" class="nc-btn2 primary" @onclick='() => Nav.NavigateTo("/news/new")'><i data-lucide="square-pen"></i><span>New post</span></button>
+        </div>
+    </header>
+
+    <div class="nd-body">
+        @if (loading)
+        {
+            <div class="nd-skel" aria-hidden="true"></div>
+            <div class="nd-skel" aria-hidden="true"></div>
+            <div class="nd-skel" aria-hidden="true"></div>
+        }
+        else if (error is not null)
+        {
+            <div class="nc-conflict" role="alert">
+                <i data-lucide="alert-circle"></i>
+                <div><b>Could not load your drafts</b><span>@error</span></div>
+                <div class="nc-conflict-actions"><button type="button" class="nc-btn2" @onclick="LoadAsync"><i data-lucide="refresh-cw"></i>Retry</button></div>
+            </div>
+        }
+        else if (drafts.Count == 0)
+        {
+            <div class="nd-empty">
+                <i data-lucide="file-pen-line"></i>
+                <div class="t">No drafts yet</div>
+                <div class="s">Unfinished posts you start are kept here, private to you, until you publish or discard them.</div>
+                <button type="button" class="nc-btn2 primary" @onclick='() => Nav.NavigateTo("/news/new")'><i data-lucide="square-pen"></i>Start a post</button>
+            </div>
+        }
+        else
+        {
+            <div class="nd-list">
+                @foreach (var d in drafts.ToList())
+                {
+                    var draft = d;
+                    var scheduled = draft.State == "scheduled";
+                    <div class="nc-set nd-row">
+                        <div class="nd-main">
+                            <div class="nd-title">
+                                @if (draft.PostId is not null) { <i data-lucide="pencil-line" title="Revision of a published post"></i> }
+                                @(string.IsNullOrWhiteSpace(draft.Snapshot.Title) ? "Untitled post" : draft.Snapshot.Title)
+                            </div>
+                            <div class="nd-meta">
+                                <span class="pill">@NewsUiHelper.GetCategoryLabel(draft.Snapshot.Type ?? "news")</span>
+                                @if (scheduled)
+                                {
+                                    <span class="pill">Scheduled @(draft.Snapshot.PublishAt?.ToLocalTime().ToString("dd MMM yyyy HH:mm"))</span>
+                                }
+                                else if (draft.PostId is not null)
+                                {
+                                    <span class="pill">Revision@(string.IsNullOrWhiteSpace(draft.PostTitle) ? "" : $": {draft.PostTitle}")</span>
+                                }
+                                <span>Saved @draft.UpdatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span>
+                            </div>
+                        </div>
+                        <div class="nd-actions">
+                            @if (scheduled)
+                            {
+                                <button type="button" class="nc-btn2" disabled="@busy" @onclick="() => EditScheduledAsync(draft)"><i data-lucide="pencil"></i>Edit</button>
+                                <button type="button" class="nc-btn2" disabled="@busy" @onclick="() => DiscardAsync(draft)"><i data-lucide="x"></i>Cancel schedule</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="nc-btn2" @onclick="() => ResumeAsync(draft)"><i data-lucide="pencil"></i>Resume</button>
+                                <button type="button" class="nc-btn2" disabled="@busy" @onclick="() => DiscardAsync(draft)"><i data-lucide="trash-2"></i>Discard</button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .nd-page { background: var(--window); min-height: 100%; }
+    .nd-body { padding: 22px; max-width: 860px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 12px; }
+    .nd-list { display: flex; flex-direction: column; gap: 12px; }
+    .nd-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 16px; }
+    .nd-main { flex: 1; min-width: 0; }
+    .nd-title { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 7px; }
+    .nd-title .lucide { width: 15px; height: 15px; color: var(--ink-3); }
+    .nd-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; font-size: 12px; color: var(--ink-3); }
+    .nd-meta .pill { background: var(--surface-3); border-radius: var(--r-pill); padding: 3px 9px; font-size: 11.5px; }
+    .nd-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .nd-empty { text-align: center; color: var(--ink-3); padding: 60px 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .nd-empty .lucide { width: 30px; height: 30px; color: var(--ink-4); }
+    .nd-empty .t { font-size: 15px; font-weight: 600; color: var(--ink); }
+    .nd-empty .s { font-size: 12.5px; max-width: 420px; }
+    .nd-skel { height: 76px; border-radius: 16px; background: var(--surface-3); animation: nd-pulse 1.2s ease-in-out infinite; }
+    @@keyframes nd-pulse { 50% { opacity: .55; } }
+</style>
+
+@code {
+    private List<AppDtos.NewsDraftDto> drafts = [];
+    private bool loading = true;
+    private bool busy;
+    private string? error;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task LoadAsync()
+    {
+        loading = true;
+        error = null;
+        try
+        {
+            var list = await Auth.GetAsync<AppDtos.NewsDraftListDto>("/api/news/composer/drafts");
+            drafts = list?.Items.ToList() ?? [];
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private async Task ResumeAsync(AppDtos.NewsDraftDto d)
+    {
+        // A new-post draft resumes on the composer; a revision reopens its post route.
+        var url = d.PostId is { } pid ? $"/news/{pid}/edit" : $"/news/new?draft={d.Id}";
+        Nav.NavigateTo(url);
+        await Task.CompletedTask;
+    }
+
+    /// Cancelling a schedule hands the draft back as an editable "active" draft, so the author can
+    /// keep working on it. The scheduled (old) live post, if any, stays visible until then.
+    private async Task EditScheduledAsync(AppDtos.NewsDraftDto d)
+    {
+        var name = string.IsNullOrWhiteSpace(d.Snapshot.Title) ? "this scheduled post" : $"\"{d.Snapshot.Title}\"";
+        if (!await Confirm.AskAsync("Cancel the schedule and edit?",
+                $"{name} will no longer publish automatically. You can keep editing it and publish when ready.",
+                "Cancel schedule & edit", danger: false)) return;
+
+        busy = true;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/news/composer/drafts/{d.Id}/resume");
+            var result = await ReadAsync(res);
+            if (result is { Success: true })
+                Nav.NavigateTo(d.PostId is { } pid ? $"/news/{pid}/edit" : $"/news/new?draft={d.Id}");
+            else
+            {
+                Toasts.Show(result?.Error switch
+                {
+                    "not_found" => "That draft no longer exists.",
+                    "not_active" => "That draft is no longer scheduled.",
+                    "forbidden" => "You can only change your own drafts.",
+                    _ => "Could not cancel the schedule."
+                }, ToastKind.Error);
+                await LoadAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Toasts.Show("Could not cancel the schedule: " + ex.Message, ToastKind.Error);
+        }
+        finally
+        {
+            busy = false;
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    private async Task DiscardAsync(AppDtos.NewsDraftDto d)
+    {
+        var name = string.IsNullOrWhiteSpace(d.Snapshot.Title) ? "this draft" : $"\"{d.Snapshot.Title}\"";
+        var isScheduled = d.State == "scheduled";
+        if (!await Confirm.AskAsync(
+                isScheduled ? "Cancel the scheduled post?" : "Discard draft?",
+                isScheduled
+                    ? $"{name} will not be published automatically. The live post (if any) is left untouched."
+                    : $"{name} will be permanently removed. Published posts are not affected.",
+                isScheduled ? "Cancel schedule" : "Discard")) return;
+
+        busy = true;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/news/composer/drafts/{d.Id}");
+            var result = await ReadAsync(res);
+            if (result is { Success: true })
+            {
+                drafts.Remove(d);
+                Toasts.Show(isScheduled ? "Scheduled post cancelled." : "Draft discarded.", ToastKind.Success);
+            }
+            else
+            {
+                Toasts.Show(result?.Error switch
+                {
+                    "not_found" => "That draft no longer exists.",
+                    "forbidden" => "You can only discard your own drafts.",
+                    _ => "Could not discard the draft."
+                }, ToastKind.Error);
+                await LoadAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Toasts.Show("Discard failed: " + ex.Message, ToastKind.Error);
+        }
+        finally
+        {
+            busy = false;
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
+    }
+
+    private static async Task<AppDtos.NewsDraftResultDto?> ReadAsync(HttpResponseMessage res)
+    {
+        try { return await res.Content.ReadFromJsonAsync<AppDtos.NewsDraftResultDto>(); } catch { return null; }
+    }
+}

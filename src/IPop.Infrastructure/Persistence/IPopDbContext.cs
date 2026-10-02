@@ -123,6 +123,12 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<NewsAttachment> NewsAttachments => Set<NewsAttachment>();
     public DbSet<NewsVideo> NewsVideos => Set<NewsVideo>();
     public DbSet<NewsVideoView> NewsVideoViews => Set<NewsVideoView>();
+    // Composer (private drafts + media references)
+    public DbSet<NewsComposerDraft> NewsComposerDrafts => Set<NewsComposerDraft>();
+    public DbSet<NewsComposerMedia> NewsComposerMedia => Set<NewsComposerMedia>();
+    public DbSet<NewsComposerDraftMedia> NewsComposerDraftMedia => Set<NewsComposerDraftMedia>();
+    public DbSet<NewsComposerDraftAttachment> NewsComposerDraftAttachments => Set<NewsComposerDraftAttachment>();
+    public DbSet<NewsPostMedia> NewsPostMedia => Set<NewsPostMedia>();
 
     // Calls stub entities (signaling only — no media transport this wave)
     public DbSet<CallRoom> CallRooms => Set<CallRoom>();
@@ -788,6 +794,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Body).HasMaxLength(20000);
             e.Property(x => x.Status).HasMaxLength(32);
             e.Property(x => x.RejectionReason).HasMaxLength(2000);
+            e.Property(x => x.BodyFormat).HasMaxLength(16).HasDefaultValue("plain");
+            e.Property(x => x.CoverMode).HasMaxLength(16).HasDefaultValue("auto");
             e.HasOne(x => x.Author).WithMany().HasForeignKey(x => x.AuthorId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(x => x.Approver).WithMany().HasForeignKey(x => x.ApproverId).OnDelete(DeleteBehavior.Restrict);
         });
@@ -865,6 +873,66 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasIndex(x => x.AttachmentId);
             e.HasOne(x => x.NewsPost).WithMany(p => p.Attachments).HasForeignKey(x => x.NewsPostId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Attachment).WithMany().HasForeignKey(x => x.AttachmentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ── News composer: private drafts and their media/attachment references ──
+        b.Entity<NewsComposerDraft>(e =>
+        {
+            e.HasIndex(x => new { x.OwnerId, x.State, x.UpdatedAt });
+            e.HasIndex(x => x.PostId);
+            e.Property(x => x.State).HasMaxLength(16);
+            e.Property(x => x.BodyFormat).HasMaxLength(16);
+            e.Property(x => x.CoverMode).HasMaxLength(16);
+            e.Property(x => x.Type).HasMaxLength(32);
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.Property(x => x.Body).HasMaxLength(20000);
+            // Version is the compare-and-swap token: EF also treats it as the concurrency token so a
+            // tracked save cannot slip past a concurrent one.
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
+            // A discarded draft never deletes its post; deleting a post discards the revision drafts.
+            e.HasOne(x => x.Post).WithMany().HasForeignKey(x => x.PostId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NewsComposerMedia>(e =>
+        {
+            e.HasIndex(x => x.OwnerId);
+            e.HasIndex(x => new { x.OwnerId, x.Kind, x.DeletedAt });
+            e.HasIndex(x => x.AttachmentId);
+            e.HasIndex(x => x.UploadDraftId);
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.FileName).HasMaxLength(255);
+            e.Property(x => x.ContentType).HasMaxLength(127);
+            e.Property(x => x.Sha256).HasMaxLength(64);
+            e.Property(x => x.LocalPath).HasMaxLength(500);
+            e.Property(x => x.NasPath).HasMaxLength(1000);
+            e.Property(x => x.ThumbnailPath).HasMaxLength(500);
+            e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Attachment).WithMany().HasForeignKey(x => x.AttachmentId).OnDelete(DeleteBehavior.SetNull);
+            // Deleting a draft must not delete the asset: media lifetime belongs to the cleanup pass.
+            e.HasOne(x => x.UploadDraft).WithMany().HasForeignKey(x => x.UploadDraftId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<NewsComposerDraftMedia>(e =>
+        {
+            e.HasKey(x => new { x.DraftId, x.MediaId });
+            e.HasIndex(x => x.MediaId);
+            e.Property(x => x.Role).HasMaxLength(16);
+            e.HasOne(x => x.Draft).WithMany(d => d.Media).HasForeignKey(x => x.DraftId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Media).WithMany().HasForeignKey(x => x.MediaId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<NewsComposerDraftAttachment>(e =>
+        {
+            e.HasKey(x => new { x.DraftId, x.AttachmentId });
+            e.HasIndex(x => x.AttachmentId);
+            e.HasOne(x => x.Draft).WithMany(d => d.Attachments).HasForeignKey(x => x.DraftId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Attachment).WithMany().HasForeignKey(x => x.AttachmentId).OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<NewsPostMedia>(e =>
+        {
+            e.HasKey(x => new { x.NewsPostId, x.MediaId });
+            e.HasIndex(x => x.MediaId);
+            e.Property(x => x.Role).HasMaxLength(16);
+            e.HasOne(x => x.NewsPost).WithMany(p => p.Media).HasForeignKey(x => x.NewsPostId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Media).WithMany().HasForeignKey(x => x.MediaId).OnDelete(DeleteBehavior.Cascade);
         });
 
         // Calls stub — pure signaling; no media transport this wave.

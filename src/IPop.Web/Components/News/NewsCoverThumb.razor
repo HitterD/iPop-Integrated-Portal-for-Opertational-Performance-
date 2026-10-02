@@ -1,0 +1,32 @@
+@using System.Net.Http.Json
+@inject AuthState Auth
+@inject HttpClient Http
+
+@if (url is not null)
+{
+    <img class="news-cover-thumb" src="@url" alt="" loading="lazy" />
+}
+
+@code {
+    [Parameter] public Guid PostId { get; set; }
+    [Parameter] public Guid MediaId { get; set; }
+    private (Guid, Guid)? loaded;
+    private string? url;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = (PostId, MediaId);
+        if (loaded == key) return;
+        loaded = key;
+        url = null;
+        try
+        {
+            var items = await Auth.GetAsync<List<IPop.Application.News.NewsComposerMediaDto>>($"/api/news/composer/posts/{PostId}/media");
+            if (loaded != key) return;
+            var media = items?.FirstOrDefault(m => m.MediaId == MediaId && m.Kind == "image");
+            if (!string.IsNullOrWhiteSpace(media?.StreamUrl))
+                url = Http.BaseAddress is { } origin ? new Uri(origin, media.StreamUrl).ToString() : media.StreamUrl;
+        }
+        catch { /* The post remains readable when its cover is unavailable. */ }
+    }
+}

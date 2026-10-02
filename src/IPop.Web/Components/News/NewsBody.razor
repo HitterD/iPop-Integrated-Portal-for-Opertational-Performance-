@@ -1,0 +1,248 @@
+@namespace IPop.Web.Components.News
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject AuthState Auth
+@inject HttpClient Http
+
+@* Reader-side renderer for a News body. Used by the reader drawer, the composer preview and any
+   card that wants the same output.
+
+   It renders *canonical* markup only:
+     <figure data-news-media="GUID">                    → <img>/<video>, kind from the media record
+     <figure data-news-youtube="11chars">               → click-to-load YouTube poster
+     <figure data-news-video-url="https://…mp4|webm">   → <video src=…>
+   Nothing in the stored body is trusted for authorization: `data-news-kind` is only a hint, and a
+   GUID means nothing until the media record authorizes it. No ticket URL is ever stored.
+
+   URL resolution, in order (first that applies wins):
+     1. `MediaUrls` — the host already has them (composer preview, a page that fetched a list).
+     2. `OnMediaNeeded` — the host resolves them and re-renders (optional).
+     3. the manifest: one authorized GET returning the body's media records, resolved by
+        *this component* through AuthState. `MediaManifestUrl` overrides the default route, which
+        is derived from context: `/api/news/composer/posts/{PostId}/media` for a post and
+        `/api/news/composer/drafts/{DraftId}/media` for a draft.
+   `StreamUrl` comes back relative (`/api/news/composer/media/{id}?t=…`) and is resolved against
+   `Http.BaseAddress` — the API origin — because the WASM app is usually served from a different
+   origin than the API.
+   Ids with no record stay as placeholders and raise `OnMediaUnavailable`, so the reader can say
+   "media unavailable" instead of showing an empty box.
+
+   BodyFormat "html" (default) renders rich content; anything else is legacy plain text and is
+   shown escaped and pre-wrapped, exactly like the old reader. *@
+
+@if (IsRich)
+{
+    <div class="nc-body @CssClass" @ref="hostRef"></div>
+}
+else
+{
+    <div class="nc-body nc-plain @CssClass" role="document" aria-label="@AriaLabel"><pre>@PlainText</pre></div>
+}
+
+@code {
+    /// Canonical body HTML (or plain text when `BodyFormat` is not "html").
+    [Parameter] public string? Html { get; set; }
+    /// "html" | "plain" (legacy). Unknown values are treated as plain text.
+    [Parameter] public string? BodyFormat { get; set; } = "html";
+    /// Context for media resolution. The reader passes the post id; a composer preview passes
+    /// `DraftId` and `FetchMedia="false"`.
+    [Parameter] public Guid? PostId { get; set; }
+    [Parameter] public Guid? DraftId { get; set; }
+    /// GUID → URL, or GUID → { kind, url }. When present these win over anything fetched here.
+    [Parameter] public IReadOnlyDictionary<Guid, string>? MediaUrls { get; set; }
+    /// Overrides the derived manifest route. One GET returning the body's media records.
+    [Parameter] public string? MediaManifestUrl { get; set; }
+    /// False when the caller must resolve media itself (drafts, unsaved bodies). Default true.
+    [Parameter] public bool FetchMedia { get; set; } = true;
+    /// Host-side resolution hook. When handled, the component does not fetch on its own.
+    [Parameter] public EventCallback<NewsMediaRequest> OnMediaNeeded { get; set; }
+    /// A media record could not be read (deleted, or the viewer is not authorized). Informational.
+    [Parameter] public EventCallback<NewsMediaFailure> OnMediaUnavailable { get; set; }
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public string? AriaLabel { get; set; }
+
+    /// The GUIDs this body references, and which of them the caller has not covered.
+    public sealed record NewsMediaRequest(Guid? PostId, Guid? DraftId, IReadOnlyList<Guid> MissingIds, IReadOnlyList<Guid> AllIds);
+    /// `Reason` is the HTTP status when there was one, otherwise a short description.
+    public sealed record NewsMediaFailure(Guid MediaId, string Reason);
+
+    /// One entry of the manifest response (`NewsComposerMediaDto`). Field names are matched
+    /// case-insensitively, so camelCase JSON binds to these PascalCase names.
+    private sealed record ManifestItem(Guid MediaId, string? StreamUrl, string? Kind);
+    private sealed record Resolved(string? Kind, string Url);
+
+    private static readonly System.Text.RegularExpressions.Regex MediaRe =
+        new("data-news-media=\"([0-9a-fA-F-]{36})\"", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private const string ModuleUrl = "./js/news-editor.js?v=20261002-compose";
+    private static Task? moduleReady;
+
+    private ElementReference hostRef;
+    private bool created, disposed, asked, fetching, manifestDone;
+    private string lastHtml = "\u0000";
+    private string lastMap = "";
+    /// Resolved once per mount. Never static: a stream URL is a short-lived authorized ticket, and
+    /// reusing it across a permission change, another user or 15 minutes would be a stale grant.
+    private Dictionary<Guid, Resolved> loaded = new();
+    /// The context these URLs were fetched for, so a change re-resolves instead of reusing.
+    private (Guid? Post, Guid? Draft) loadedFor;
+
+    private bool IsRich => string.IsNullOrWhiteSpace(BodyFormat) || BodyFormat.Equals("html", StringComparison.OrdinalIgnoreCase);
+    private string PlainText => Html ?? "";
+
+    /// The route the media agent exposes for a post/draft body. `MediaManifestUrl` overrides it.
+    private string? ManifestRoute => !string.IsNullOrWhiteSpace(MediaManifestUrl) ? MediaManifestUrl
+        : PostId is { } p ? $"/api/news/composer/posts/{p}/media"
+        : DraftId is { } d ? $"/api/news/composer/drafts/{d}/media"
+        : null;
+
+    /// index.html loads js/news-editor.js directly, so `ipop.newsBody` is normally already
+    /// registered. The import is only a fallback; the module's registration guard keeps a second
+    /// evaluation from wiping a registry with live editors.
+    private async Task EnsureApi()
+    {
+        if (await JS.InvokeAsync<bool>("eval", "!!(window.ipop && window.ipop.newsBody && window.ipop.newsBody.render)")) return;
+        moduleReady ??= JS.InvokeVoidAsync("import", ModuleUrl).AsTask();
+        try { await moduleReady; }
+        catch (Exception) { moduleReady = null; throw; }
+    }
+
+    protected override void OnParametersSet()
+    {
+        // A different body or a different post/draft resolves again from scratch: the previous
+        // ticket may belong to another scope, and it has a short life anyway.
+        if (created && ((Html ?? "") != lastHtml || (PostId, DraftId) != loadedFor))
+        {
+            loaded = new();
+            manifestDone = false;
+            asked = false;
+        }
+    }
+
+    /// Caller-supplied URLs win; anything fetched here is layered underneath.
+    /// Values are strings (kind unknown) or `{ kind, url }` — the module accepts both.
+    private Dictionary<string, object> EffectMap()
+    {
+        var map = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in loaded) map[kv.Key.ToString()] = new { kind = kv.Value.Kind, url = kv.Value.Url };
+        foreach (var kv in MediaUrls ?? new Dictionary<Guid, string>()) map[kv.Key.ToString()] = kv.Value;
+        return map;
+    }
+
+    private static string MapKey(Dictionary<string, object> map) => string.Join(",",
+        map.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => kv.Key + "=" + kv.Value));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Plain text needs no JS; nothing is registered either, so there is no module to reach.
+        if (IsRich)
+        {
+            try { await EnsureApi(); }
+            catch (Exception) { created = false; return; }
+        }
+        if (!IsRich || disposed) return;
+
+        var map = EffectMap();
+        var mapKey = MapKey(map);
+        var html = Html ?? "";
+        if (firstRender || !created || html != lastHtml || mapKey != lastMap)
+        {
+            created = true;
+            lastHtml = html;
+            lastMap = mapKey;
+            await JS.InvokeVoidAsync("ipop.newsBody.render", hostRef, html, map);
+        }
+
+        var missing = MissingIds();
+        if (missing.Count == 0) return;
+
+        if (OnMediaNeeded.HasDelegate)
+        {
+            if (asked) return;
+            asked = true;
+            await OnMediaNeeded.InvokeAsync(new NewsMediaRequest(PostId, DraftId, missing, AllIds()));
+            return;
+        }
+        if (!FetchMedia || fetching || manifestDone || ManifestRoute is null) return;
+        await FetchManifestAsync(missing);
+    }
+
+    private List<Guid> AllIds()
+    {
+        var all = new List<Guid>();
+        foreach (System.Text.RegularExpressions.Match m in MediaRe.Matches(Html ?? ""))
+            if (Guid.TryParse(m.Groups[1].Value, out var g) && !all.Contains(g)) all.Add(g);
+        return all;
+    }
+
+    private List<Guid> MissingIds()
+    {
+        var known = new HashSet<Guid>(loaded.Keys);
+        foreach (var k in MediaUrls?.Keys ?? Enumerable.Empty<Guid>()) known.Add(k);
+        return AllIds().Where(id => !known.Contains(id)).ToList();
+    }
+
+    /// One authorized GET for the whole body. `AuthState.GetAsync` carries the bearer token and
+    /// retries once on 401, so an expired session resolves instead of showing placeholders.
+    private async Task FetchManifestAsync(List<Guid> missing)
+    {
+        fetching = true;
+        manifestDone = true;
+        loadedFor = (PostId, DraftId);
+        try
+        {
+            var changed = false;
+            List<ManifestItem>? items = null;
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                items = await Auth.GetAsync<List<ManifestItem>>(ManifestRoute!, cts.Token);
+            }
+            catch (Exception) { /* fall through: nothing resolves */ }
+
+            if (items is not null)
+            {
+                foreach (var item in items)
+                {
+                    if (item.MediaId == Guid.Empty || string.IsNullOrWhiteSpace(item.StreamUrl)) continue;
+                    loaded[item.MediaId] = new Resolved(item.Kind, AbsoluteUrl(item.StreamUrl!));
+                    changed = true;
+                }
+            }
+            // Anything the manifest did not cover cannot be shown; say so rather than leave an
+            // empty frame. Reported once — manifestDone stops the retry.
+            foreach (var id in missing.Where(id => !loaded.ContainsKey(id)))
+                await Unavailable(id, items is null ? "unreachable" : "not-found");
+
+            if (changed && !disposed)
+            {
+                lastMap = "";           // force the next render to push the new URLs
+                StateHasChanged();
+            }
+        }
+        finally { fetching = false; }
+    }
+
+    /// `StreamUrl` is relative to the API origin, not the page origin — resolve it explicitly.
+    private string AbsoluteUrl(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var abs)) return abs.ToString();
+        var b = Http.BaseAddress;
+        return b is null ? url : new Uri(b, url).ToString();
+    }
+
+    private Task Unavailable(Guid id, string reason)
+        => OnMediaUnavailable.HasDelegate ? InvokeAsync(() => OnMediaUnavailable.InvokeAsync(new NewsMediaFailure(id, reason))) : Task.CompletedTask;
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        try
+        {
+            if (created) await JS.InvokeVoidAsync("ipop.newsBody.unmount", hostRef);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (JSException) { }
+    }
+}

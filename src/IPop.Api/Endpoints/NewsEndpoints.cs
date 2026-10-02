@@ -212,14 +212,14 @@ public static class NewsEndpoints
         });
 
         // ── Acknowledge ─────────────────────────────────────────────────
-        g.MapPost("/{id:guid}/acknowledge", async (Guid id, HttpContext http, INewsService svc, CancellationToken ct) =>
+        g.MapPost("/{id:guid}/acknowledge", async (Guid id, int? contentVersion, HttpContext http, INewsService svc, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http);
             if (userId is null) return Results.Unauthorized();
-            var result = await svc.AcknowledgeAsync(userId.Value, id, ct);
+            var result = await svc.AcknowledgeAsync(userId.Value, id, ct, contentVersion);
             if (!result.Success)
             {
-                var sc = result.Error == "not_found" ? 404 : result.Error == "forbidden" ? 403 : 422;
+                var sc = result.Error == "not_found" ? 404 : result.Error == "forbidden" ? 403 : result.Error == "post_content_conflict" ? 409 : 422;
                 return Results.Json(new { code = result.Error, message = result.Error }, statusCode: sc);
             }
             return Results.Ok(result.News);

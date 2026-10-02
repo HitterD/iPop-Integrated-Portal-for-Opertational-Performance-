@@ -1,0 +1,731 @@
+@namespace IPop.Web.Components.News
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject AuthState Auth
+@inject HttpClient Http
+
+@* Full-page News composer body editor.
+
+   Own contract (see the summary in the task): `Value` / `ValueChanged` mirror MailRteEditor.razor
+   so a host page can `@bind-Value`; `Html` / `HtmlChanged` are accepted aliases for the same state
+   when a page prefers the news-specific name.
+
+   The editor never stores base64, and never stores a media URL or ticket: uploaded media is
+   inserted as `<figure data-news-media="GUID" data-news-kind="image|video">`, YouTube as
+   `<figure data-news-youtube="11chars">`, a direct link as `<figure data-news-video-url="https://…">`.
+   URLs live only on editor-only chrome nodes and are stripped again before OnChange fires.
+
+   Uploads follow one of two paths, decided by the host page:
+     • `UploadUrl` (+ `UploadToken`) set  → the JS module POSTs the file itself (XHR, real progress)
+       and inserts the returned media id. Nothing but a GUID crosses into C#.
+     • `UploadUrl` empty                  → the module hands the raw blob over through
+       `OnBlobReady`; the host uploads it (e.g. AuthState.SendMultipartAsync) and calls
+       `InsertMediaAsync` on @ref. *@
+
+<div class="nce @(Disabled ? "is-disabled" : "")">
+    <div class="nce-bar" role="toolbar" aria-label="Formatting">
+        <div class="nce-grp">
+            <button type="button" class="nce-btn" title="Undo (Ctrl+Z)" aria-label="Undo" disabled="@(!st.CanUndo)"
+                    @onmousedown:preventDefault @onclick='() => Exec("undo")'><i data-lucide="undo-2"></i></button>
+            <button type="button" class="nce-btn" title="Redo (Ctrl+Y)" aria-label="Redo" disabled="@(!st.CanRedo)"
+                    @onmousedown:preventDefault @onclick='() => Exec("redo")'><i data-lucide="redo-2"></i></button>
+        </div>
+
+        <div class="nce-grp nce-wrap">
+            <button type="button" class="nce-btn" title="Text style" aria-label="Text style" aria-haspopup="true"
+                    aria-expanded="@P(pop == "style")" disabled="@Disabled"
+                    @onmousedown:preventDefault @onclick='() => Toggle("style")'>
+                <i data-lucide="heading"></i><i data-lucide="chevron-down" class="nce-caret"></i>
+            </button>
+            @if (pop == "style")
+            {
+                <div class="nce-pop nce-styles" role="menu" aria-label="Text style" @onmousedown:preventDefault>
+                    <div class="nce-pop-lbl">Text style</div>
+                    <button type="button" role="menuitem" class="nce-style @On(st.Block == "p")" @onclick='() => Block("p")'>Body text</button>
+                    <button type="button" role="menuitem" class="nce-style h2 @On(st.Block == "h2")" @onclick='() => Block("h2")'>Heading</button>
+                    <button type="button" role="menuitem" class="nce-style h3 @On(st.Block == "h3")" @onclick='() => Block("h3")'>Subheading</button>
+                    <button type="button" role="menuitem" class="nce-style q @On(st.Block == "blockquote")" @onclick='() => Block("blockquote")'>Pull quote</button>
+                    <div class="nce-pop-sep"></div>
+                    <button type="button" role="menuitem" class="nce-style" @onclick='() => Cmd("removeFormat")'><i data-lucide="eraser"></i> Clear formatting</button>
+                </div>
+            }
+        </div>
+
+        <div class="nce-grp">
+            <button type="button" class="nce-btn @On(st.Bold)" title="Bold (Ctrl+B)" aria-label="Bold" aria-pressed="@P(st.Bold)"
+                    disabled="@Disabled" @onmousedown:preventDefault @onclick='() => Exec("bold")'><i data-lucide="bold"></i></button>
+            <button type="button" class="nce-btn @On(st.Italic)" title="Italic (Ctrl+I)" aria-label="Italic" aria-pressed="@P(st.Italic)"
+                    disabled="@Disabled" @onmousedown:preventDefault @onclick='() => Exec("italic")'><i data-lucide="italic"></i></button>
+            <button type="button" class="nce-btn @On(st.Underline)" title="Underline (Ctrl+U)" aria-label="Underline" aria-pressed="@P(st.Underline)"
+                    disabled="@Disabled" @onmousedown:preventDefault @onclick='() => Exec("underline")'><i data-lucide="underline"></i></button>
+            <button type="button" class="nce-btn @On(st.Strike)" title="Strikethrough" aria-label="Strikethrough" aria-pressed="@P(st.Strike)"
+                    disabled="@Disabled" @onmousedown:preventDefault @onclick='() => Exec("strikeThrough")'><i data-lucide="strikethrough"></i></button>
+        </div>
+
+        <div class="nce-grp">
+            <button type="button" class="nce-btn @On(st.Ul)" title="Bulleted list" aria-label="Bulleted list" aria-pressed="@P(st.Ul)"
+                    disabled="@Disabled" @onmousedown:preventDefault @onclick='() => Exec("insertUnorderedList")'><i data-lucide="list"></i></button>
+            <button type="button" class="nce-btn @On(st.Ol)" title="Numbered list" aria-label="Numbered list" aria-pressed="@P(st.Ol)"
+                    disabled="@Disabled" @onmousedown:preventDefault @onclick='() => Exec("insertOrderedList")'><i data-lucide="list-ordered"></i></button>
+        </div>
+
+        <div class="nce-grp" role="group" aria-label="Alignment">
+            @foreach (var (key, icon, label) in Aligns)
+            {
+                <button type="button" class="nce-btn @On(st.Align == key)" title="@label" aria-label="@label" aria-pressed="@P(st.Align == key)"
+                        disabled="@Disabled" @onmousedown:preventDefault @onclick='() => Exec("justify" + key)'><i data-lucide="@icon"></i></button>
+            }
+        </div>
+
+        <div class="nce-grp nce-wrap">
+            <button type="button" class="nce-btn @On(pop == "link" || st.InLink)" title="Link (Ctrl+K)" aria-label="Link" aria-haspopup="true"
+                    aria-expanded="@P(pop == "link")" disabled="@Disabled" @onmousedown:preventDefault @onclick="OpenLink"><i data-lucide="link"></i></button>
+            @if (pop == "link")
+            {
+                <div class="nce-pop nce-link">
+                    <div class="nce-pop-lbl">@(st.InLink ? "Edit link" : "Insert link")</div>
+                    <div class="nce-row">
+                        <input @ref="linkUrlRef" class="nce-input" placeholder="https:// or mail@ipop.local" aria-label="Link address"
+                               @bind="linkUrl" @bind:event="oninput" @onkeydown="OnPopKey" />
+                        <button type="button" class="nce-btn" title="Apply link" aria-label="Apply link"
+                                disabled="@string.IsNullOrWhiteSpace(linkUrl)" @onclick="ApplyLink"><i data-lucide="check"></i></button>
+                    </div>
+                    @if (popError is not null) { <p class="nce-err" role="alert">@popError</p> }
+                    <button type="button" class="nce-style" @onclick='() => { pop = null; Exec("unlink"); }'><i data-lucide="unlink"></i> Remove link</button>
+                </div>
+            }
+        </div>
+
+        <div class="nce-grp">
+            <button type="button" class="nce-btn" title="Divider" aria-label="Divider" disabled="@Disabled"
+                    @onmousedown:preventDefault @onclick='() => Exec("insertHorizontalRule")'><i data-lucide="minus"></i></button>
+        </div>
+
+        <div class="nce-grp nce-wrap">
+            <button type="button" class="nce-btn" title="Insert image (max 5 MB)" aria-label="Insert image" aria-haspopup="true"
+                    aria-expanded="@P(pop == "image")" disabled="@Disabled" @onmousedown:preventDefault @onclick='() => Toggle("image")'><i data-lucide="image"></i></button>
+            @if (pop == "image")
+            {
+                <div class="nce-pop">
+                    <div class="nce-pop-lbl">Image</div>
+                    @* The host may own the picker (its own InputFile); otherwise the editor's own
+                       <label>-wrapped InputFile opens the OS dialog — InputFile has no
+                       programmatic Click, and a synthetic input.click() is blocked. *@
+                    @if (OnPickImage.HasDelegate)
+                    {
+                        <button type="button" class="nce-style" @onclick="PickImage"><i data-lucide="upload"></i> Upload an image…</button>
+                    }
+                    else
+                    {
+                        <label class="nce-style nce-pick">
+                            <i data-lucide="upload"></i> Upload an image…
+                            <InputFile OnChange="OnImagePicked" accept="@ImageAccept" class="nce-hidden-file" />
+                        </label>
+                    }
+                    @* No remote-image option: the server sanitizer only keeps images that were
+                       uploaded as media, so a pasted URL would silently disappear on save. *@
+                    <p class="nce-hint">Images up to 5 MB. PNG, JPEG, GIF or WebP. Paste or drop an image straight into the body to upload it.</p>
+                </div>
+            }
+        </div>
+
+        <div class="nce-grp nce-wrap">
+            <button type="button" class="nce-btn" title="Insert video (max 100 MB)" aria-label="Insert video" aria-haspopup="true"
+                    aria-expanded="@P(pop == "video")" disabled="@Disabled" @onmousedown:preventDefault @onclick='() => Toggle("video")'><i data-lucide="video"></i></button>
+            @if (pop == "video")
+            {
+                <div class="nce-pop nce-wide">
+                    <div class="nce-pop-lbl">Video</div>
+                    @if (OnPickVideo.HasDelegate)
+                    {
+                        <button type="button" class="nce-style" @onclick="PickVideo"><i data-lucide="upload"></i> Upload a video… (MP4/WebM, max 100 MB)</button>
+                    }
+                    else
+                    {
+                        <label class="nce-style nce-pick">
+                            <i data-lucide="upload"></i> Upload a video… (MP4/WebM, max 100 MB)
+                            <InputFile OnChange="OnVideoPicked" accept="@VideoAccept" class="nce-hidden-file" />
+                        </label>
+                    }
+                    <div class="nce-pop-sep"></div>
+                    <div class="nce-pop-lbl">YouTube link</div>
+                    <div class="nce-row">
+                        <input class="nce-input" placeholder="https://youtu.be/…" aria-label="YouTube address"
+                               @bind="ytUrl" @bind:event="oninput" @onkeydown="OnPopKey" />
+                        <button type="button" class="nce-btn" title="Insert YouTube video" aria-label="Insert YouTube video"
+                                disabled="@string.IsNullOrWhiteSpace(ytUrl)" @onclick="InsertYouTube"><i data-lucide="check"></i></button>
+                    </div>
+                    <div class="nce-pop-lbl">Direct video link (HTTPS MP4/WebM)</div>
+                    <div class="nce-row">
+                        <input class="nce-input" placeholder="https://…mp4" aria-label="Direct video address"
+                               @bind="vidUrl" @bind:event="oninput" @onkeydown="OnPopKey" />
+                        <button type="button" class="nce-btn" title="Insert video link" aria-label="Insert video link"
+                                disabled="@string.IsNullOrWhiteSpace(vidUrl)" @onclick="InsertVideoLink"><i data-lucide="check"></i></button>
+                    </div>
+                    @if (popError is not null) { <p class="nce-err" role="alert">@popError</p> }
+                    <p class="nce-hint">External video (YouTube, direct link) is not covered by iPop access rules — anyone with the address can watch it.</p>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (pop is not null)
+    {
+        <div class="nce-scrim" @onclick="() => pop = null"></div>
+    }
+
+    <div class="nce-host" @ref="hostRef"></div>
+
+    <div class="nce-foot" aria-live="polite">
+        <span><i data-lucide="type"></i><b>@st.Words</b>&nbsp;words</span>
+        <span><i data-lucide="clock"></i>~<b>@Math.Max(1, (int)Math.Ceiling(st.Words / 200.0))</b>&nbsp;min read</span>
+        <span><i data-lucide="image"></i><b>@st.MediaCount</b>&nbsp;media in body</span>
+        @if (uploading.Count > 0)
+        {
+            <span class="nce-up"><i data-lucide="loader-circle" class="spin"></i>@UploadLabel()</span>
+        }
+    </div>
+
+    @if (notice is not null)
+    {
+        <div class="nce-notice" role="status">
+            <i data-lucide="triangle-alert"></i><span>@notice</span>
+            <button type="button" class="nce-btn" aria-label="Dismiss" @onclick="() => notice = null"><i data-lucide="x"></i></button>
+        </div>
+    }
+</div>
+
+@code {
+    /// Canonical body HTML (media as GUID placeholders). Bind with `@bind-Value`.
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    /// Alias for `Value` so a page can also `@bind-Html`. Both describe the same state.
+    [Parameter] public string? Html { get; set; }
+    [Parameter] public EventCallback<string> HtmlChanged { get; set; }
+
+    [Parameter] public string Placeholder { get; set; } = "Write the post… Use the toolbar for headings, lists and media.";
+    /// Media endpoint that accepts one multipart `file` field, e.g.
+    /// `/api/news/composer/drafts/{draftId}/media?kind=image`. Empty ⇒ uploads are delegated to the
+    /// host through `OnBlobReady`. The JS appends `kind` when the URL does not already carry it.
+    [Parameter] public string? UploadUrl { get; set; }
+    /// Separate endpoint for video when it differs from `UploadUrl` (e.g. `?kind=video`).
+    /// Leave null to use `UploadUrl`.
+    [Parameter] public string? VideoUploadUrl { get; set; }
+    /// Bearer token used for the upload request only. Never written into the document.
+    /// This is the *fallback*: the JS asks for the current token through `GetUploadToken` before
+    /// every upload and through `RefreshUploadToken` after a 401, so a composer session that
+    /// outlives the access token still uploads.
+    [Parameter] public string? UploadToken { get; set; }
+    /// Optional host hook that returns a live access token. When unset, `UploadToken` is used.
+    [Parameter] public Func<Task<string?>>? GetUploadTokenAsync { get; set; }
+    /// Optional host hook that renews the session and returns a fresh token (used once after a 401).
+    [Parameter] public Func<Task<string?>>? RefreshUploadTokenAsync { get; set; }
+    /// GUID → ephemeral display URL. Re-resolved by the host after every load/upload.
+    [Parameter] public IReadOnlyDictionary<Guid, string>? MediaUrls { get; set; }
+    [Parameter] public long MaxImageBytes { get; set; } = 5 * 1024 * 1024;
+    [Parameter] public long MaxVideoBytes { get; set; } = 100 * 1024 * 1024;
+    [Parameter] public bool Disabled { get; set; }
+
+    /// Fires with the canonical HTML on every user edit (the host's autosave hook).
+    [Parameter] public EventCallback<string> OnChanged { get; set; }
+    /// Non-fatal message for the author (oversized file, unsupported type, upload failure).
+    [Parameter] public EventCallback<string> OnNotice { get; set; }
+    /// Upload lifecycle for the host: `State` is uploading | done | failed, `Percent` 0-100.
+    /// The composer uses this to gate autosave/publish while bytes are still moving.
+    /// Distinct from the `OnUploadProgress` JSInvokable below, which is the JS entry point.
+    [Parameter] public EventCallback<NewsUploadProgress> UploadProgress { get; set; }
+    /// Upload finished — the host records the media id against the draft.
+    [Parameter] public EventCallback<NewsMediaRef> OnMediaUploaded { get; set; }
+    /// No `UploadUrl` configured: the host uploads this blob itself, then calls `InsertMediaAsync`.
+    [Parameter] public EventCallback<NewsBlob> OnBlobReady { get; set; }
+    /// The author pressed the image button. When handled, the host opens its own `<InputFile>`
+    /// and then calls `UploadAndInsertAsync`. When not handled, the editor opens its own picker
+    /// and uploads through `UploadUrl` (or falls back to `OnBlobReady`).
+    [Parameter] public EventCallback OnPickImage { get; set; }
+    [Parameter] public EventCallback OnPickVideo { get; set; }
+    /// Ctrl/⌘+K inside the editor.
+    [Parameter] public EventCallback OnLinkShortcut { get; set; }
+
+    /// `accept` values for the host's `<InputFile>`.
+    public const string ImageAccept = "image/png,image/jpeg,image/gif,image/webp";
+    public const string VideoAccept = "video/mp4,video/webm";
+
+    internal static readonly (string Key, string Icon, string Label)[] Aligns =
+        [("Left", "align-left", "Align left"), ("Center", "align-center", "Align centre"), ("Right", "align-right", "Align right")];
+
+    /// Mirrors the module's `OnState` payload.
+    public sealed record NewsEditorState(
+        bool Bold = false, bool Italic = false, bool Underline = false, bool Strike = false,
+        bool Ul = false, bool Ol = false, string Align = "left", string Block = "p",
+        int Words = 0, int MediaCount = 0, int UploadsInFlight = 0, bool CanUndo = false, bool CanRedo = false)
+    {
+        public bool InLink { get; init; }
+    }
+
+    /// One media record. `MediaId`/`Kind` are the canonical fields; `Url`,`Name`,`SizeText` are UX.
+    /// `ContentType` and `Size` come straight from the upload response (the server re-checks them).
+    /// System.Text.Json binds the JS camelCase payload (`mediaId`, `streamUrl`, `contentType`, …)
+    /// to these names case-insensitively, so the record stays idiomatic C# on both sides.
+    public sealed record NewsMediaRef(
+        Guid MediaId, string Kind, string? Url = null, string? Name = null,
+        string? SizeText = null, string? ContentType = null, long Size = 0);
+
+    /// A picked file the host may upload itself (no configured endpoint).
+    public sealed record NewsBlob(string Kind, string Name, string ContentType, long Size, string ObjectUrl);
+
+    /// Mirrors the module's `OnUploadProgress` payload. `State`: uploading | done | failed.
+    /// `Sequence` disambiguates two concurrent uploads of the same file name.
+    public sealed record NewsUploadProgress(string Kind, string Name, string State, int Percent, string? Message = null, int Sequence = 0);
+
+    private readonly string id = "nce-" + Guid.NewGuid().ToString("N")[..10];
+    private const string ModuleUrl = "./js/news-editor.js?v=20261002-compose";
+    private static Task? moduleReady;
+    private ElementReference hostRef;
+    private ElementReference linkUrlRef;
+    private DotNetObjectReference<NewsRichEditor>? selfRef;
+    private NewsEditorState st = new();
+    private readonly Dictionary<string, int> uploading = new();
+    private string lastSynced = "";
+    private bool created, pendingSet, mediaDirty, lastDisabled;
+    private string? pop;
+    private string? popError;
+    private string? notice;
+    private string linkUrl = "", ytUrl = "", vidUrl = "";
+
+    private string Current => Html ?? Value;
+
+    /// index.html loads js/news-editor.js directly, so `ipop.newsEditor` is normally already
+    /// registered. The import is only a fallback for a host that does not carry the tag yet; the
+    /// module's own registration guard keeps a second evaluation from wiping live editors.
+    private async Task EnsureApi()
+    {
+        if (await JS.InvokeAsync<bool>("eval", "!!(window.ipop && window.ipop.newsEditor && window.ipop.newsEditor.mount)")) return;
+        moduleReady ??= JS.InvokeVoidAsync("import", ModuleUrl).AsTask();
+        try { await moduleReady; }
+        catch (Exception) { moduleReady = null; throw; }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (created && (Current ?? "") != lastSynced) pendingSet = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            lastSynced = Current ?? "";
+            var opts = new
+            {
+                html = lastSynced,
+                placeholder = Placeholder,
+                uploadUrl = UploadUrl,
+                videoUploadUrl = VideoUploadUrl ?? UploadUrl,
+                token = UploadToken,
+                apiBase = Http.BaseAddress?.ToString(),
+                media = MediaMap(),
+                maxImageBytes = MaxImageBytes,
+                maxVideoBytes = MaxVideoBytes,
+                readOnly = Disabled,
+            };
+            await EnsureApi();
+            selfRef ??= DotNetObjectReference.Create(this);
+            created = await JS.InvokeAsync<int>("ipop.newsEditor.mount", hostRef, selfRef, opts) != 0;
+            lastDisabled = Disabled;   // mount already applied it; don't re-send on the next render
+        }
+        else if (pendingSet)
+        {
+            pendingSet = false;
+            lastSynced = Current ?? "";
+            await JS.InvokeVoidAsync("ipop.newsEditor.setHtml", id, lastSynced, MediaMap());
+        }
+        else if (mediaDirty)
+        {
+            mediaDirty = false;
+            await JS.InvokeVoidAsync("ipop.newsEditor.setMedia", id, MediaMap());
+        }
+        else if (lastDisabled != Disabled)
+        {
+            lastDisabled = Disabled;
+            await JS.InvokeVoidAsync("ipop.newsEditor.setReadOnly", id, Disabled);
+        }
+        if (pop is not null && popJustOpened)
+        {
+            popJustOpened = false;
+            if (pop == "link") { try { await linkUrlRef.FocusAsync(); } catch { } }
+        }
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    /// The host re-resolves media URLs (e.g. after a refresh) without touching the caret or Value.
+    public async Task SetMediaAsync(IReadOnlyDictionary<Guid, string> urls)
+    {
+        MediaUrls = urls;
+        mediaDirty = true;
+    }
+
+    private Dictionary<string, string> MediaMap() =>
+        (MediaUrls ?? new Dictionary<Guid, string>()).ToDictionary(kv => kv.Key.ToString(), kv => kv.Value);
+
+    [JSInvokable]
+    public async Task OnChange(string html)
+    {
+        lastSynced = html ?? "";
+        Value = lastSynced;
+        Html = lastSynced;
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(lastSynced);
+        if (HtmlChanged.HasDelegate) await HtmlChanged.InvokeAsync(lastSynced);
+        if (OnChanged.HasDelegate) await OnChanged.InvokeAsync(lastSynced);
+    }
+
+    [JSInvokable]
+    public void OnState(NewsEditorState state)
+    {
+        st = state;
+        StateHasChanged();
+    }
+
+    // The JS identifiers are the parameter names, so the C# method names (which cannot collide
+    // with a [Parameter] of the same name) carry an explicit [JSInvokable] name.
+    [JSInvokable("OnLinkShortcut")]
+    public Task OnLinkShortcutJs() => InvokeAsync(OpenLink);
+
+    /// The editor asks for a token before each upload, so a long session never posts a stale one.
+    /// `Auth.AccessToken` is the in-memory token, which is newer than any value the host bound —
+    /// the bound `UploadToken` is only the last resort.
+    [JSInvokable("GetUploadToken")]
+    public async Task<string?> GetUploadTokenJs()
+    {
+        if (GetUploadTokenAsync is not null) return await GetUploadTokenAsync();
+        return Auth.AccessToken ?? UploadToken;
+    }
+
+    /// Called once after a 401 so the upload can be retried with a renewed session. The default
+    /// path is `AuthState.TryRestoreAsync`, the same silent-refresh the rest of the app uses; it
+    /// performs a real refresh request (not a no-op) and returns null when the session is gone.
+    [JSInvokable("RefreshUploadToken")]
+    public async Task<string?> RefreshUploadTokenJs()
+    {
+        if (RefreshUploadTokenAsync is not null) return await RefreshUploadTokenAsync();
+        try { await Auth.TryRestoreAsync(); } catch { }
+        return Auth.AccessToken ?? UploadToken;
+    }
+
+    [JSInvokable("OnNotice")]
+    public async Task OnNoticeJs(string message)
+    {
+        notice = message;
+        if (OnNotice.HasDelegate) await OnNotice.InvokeAsync(message);
+    }
+
+    [JSInvokable("OnUploadProgress")]
+    public async Task OnUploadProgressJs(NewsUploadProgress p)
+    {
+        // Keyed per upload, not per kind+name: two files with the same name (or the same file
+        // dropped twice) would otherwise collapse into one row and undercount the footer.
+        if (p?.State == "uploading") uploading[p.Kind + ":" + p.Name + ":" + p.Sequence] = p.Percent;
+        else if (p is not null) uploading.Remove(p.Kind + ":" + p.Name + ":" + p.Sequence);
+        StateHasChanged();
+        if (UploadProgress.HasDelegate) await UploadProgress.InvokeAsync(p);
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    [JSInvokable("OnMediaUploaded")]
+    public async Task OnMediaUploadedJs(NewsMediaRef media)
+    {
+        if (OnMediaUploaded.HasDelegate) await OnMediaUploaded.InvokeAsync(media);
+    }
+
+    [JSInvokable("OnBlobReady")]
+    public async Task OnBlobReadyJs(NewsBlob blob)
+    {
+        if (OnBlobReady.HasDelegate) await OnBlobReady.InvokeAsync(blob);
+        else notice = "Uploads are not configured for this editor yet.";
+    }
+
+    /// Inserts an uploaded image/video block. The host calls this after its own upload.
+    public Task InsertMediaAsync(NewsMediaRef media) => InsertMediaAsync(media, new Dictionary<Guid, string>());
+
+    /// Same, with the ephemeral URLs to preview straight away.
+    public async Task InsertMediaAsync(NewsMediaRef media, IReadOnlyDictionary<Guid, string> urls)
+    {
+        if (media is null || media.MediaId == Guid.Empty) return;
+        // The preview <img>/<video> src is resolved against the API origin, not the page origin:
+        // the media route is usually on a different host than the WASM app.
+        var preview = AbsoluteUrl(media.Url);
+        if (!string.IsNullOrWhiteSpace(preview))
+        {
+            var merged = new Dictionary<Guid, string>(MediaUrls ?? new Dictionary<Guid, string>());
+            foreach (var kv in urls) merged[kv.Key] = kv.Value;
+            merged[media.MediaId] = preview!;
+            MediaUrls = merged;
+        }
+        if (!created) return;
+        await JS.InvokeVoidAsync("ipop.newsEditor.insertMedia", id, new
+        {
+            mediaId = media.MediaId.ToString(),
+            // Preserve the server's kind; anything not explicitly video is treated as an image.
+            kind = string.Equals(media.Kind, "video", StringComparison.OrdinalIgnoreCase) ? "video" : "image",
+            url = preview,
+            name = media.Name,
+            sizeText = media.SizeText,
+        });
+    }
+
+    /// Resolves a media URL (the API returns `/api/news/composer/media/{id}?t=…`) against the API
+    /// origin. Absolute URLs pass through untouched.
+    public string? AbsoluteUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return url;
+        if (Uri.TryCreate(url, UriKind.Absolute, out var abs)) return abs.ToString();
+        var b = Http.BaseAddress;
+        return b is null ? url : new Uri(b, url).ToString();
+    }
+
+    /// Aborts the upload in flight, if any.
+    public Task CancelUploadAsync() => created ? JS.InvokeVoidAsync("ipop.newsEditor.cancelUpload", id).AsTask() : Task.CompletedTask;
+
+    /// Current canonical HTML. The host flushes this before publish/schedule.
+    public async Task<string> GetHtmlAsync()
+        => created ? await JS.InvokeAsync<string>("ipop.newsEditor.getHtml", id) : (Current ?? "");
+
+    public async Task FocusAsync()
+    {
+        if (created) await JS.InvokeVoidAsync("ipop.newsEditor.focus", id);
+    }
+
+    private Task Exec(string cmd) => JS.InvokeVoidAsync("ipop.newsEditor.exec", id, cmd).AsTask();
+    private Task Cmd(string cmd) { pop = null; return Exec(cmd); }
+    private async Task Block(string tag) { pop = null; await JS.InvokeVoidAsync("ipop.newsEditor.exec", id, "formatBlock", tag); }
+    private static string On(bool on) => on ? "on" : "";
+    private static string P(bool on) => on ? "true" : "false";
+
+    private string UploadLabel()
+    {
+        var n = uploading.Count;
+        var noun = n == 1 ? "file" : "files";
+        var pct = uploading.Values.DefaultIfEmpty(0).Max();
+        return $"Uploading {n} {noun} · {pct}%";
+    }
+
+    private bool popJustOpened;
+
+    private void Toggle(string name)
+    {
+        pop = pop == name ? null : name;
+        popError = null;
+        popJustOpened = pop is not null;
+    }
+
+    private async Task OpenLink()
+    {
+        if (pop == "link") { pop = null; return; }
+        var info = await JS.InvokeAsync<LinkInfo?>("ipop.newsEditor.linkInfo", id);
+        linkUrl = info?.Href ?? "";
+        pop = "link";
+        popError = null;
+        popJustOpened = true;
+        StateHasChanged();
+    }
+
+    internal sealed record LinkInfo(string Href, string Text);
+
+    private async Task OnPopKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            if (pop == "link") await ApplyLink();
+            else if (pop == "video") await InsertVideoLink();
+        }
+        else if (e.Key == "Escape") pop = null;
+    }
+
+    private async Task ApplyLink()
+    {
+        var url = NormalizeUrl(linkUrl);
+        if (url is null) { popError = "That address can't be used."; return; }
+        pop = null;
+        await JS.InvokeVoidAsync("ipop.newsEditor.link", id, url, null);
+    }
+
+    /// Reuses MailRteEditor's rules: bare hosts get https://, bare addresses get mailto:,
+    /// script schemes are refused. External links open in a new tab (target set by Jodit).
+    public static string? NormalizeUrl(string? raw)
+    {
+        var u = (raw ?? "").Trim();
+        if (u.Length == 0) return null;
+        if (u.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase) || u.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
+            || u.StartsWith("vbscript:", StringComparison.OrdinalIgnoreCase)) return null;
+        if (u.Contains('@') && !u.Contains(':') && !u.Contains('/')) return "mailto:" + u;
+        if (!System.Text.RegularExpressions.Regex.IsMatch(u, "^[a-zA-Z][a-zA-Z0-9+.-]*:")) return "https://" + u;
+        return u;
+    }
+
+    private async Task PickImage()
+    {
+        pop = null;
+        if (OnPickImage.HasDelegate) { await OnPickImage.InvokeAsync(); return; }
+        await JS.InvokeVoidAsync("ipop.newsEditor.chooseFile", id, "image");
+    }
+
+    private async Task PickVideo()
+    {
+        pop = null;
+        if (OnPickVideo.HasDelegate) { await OnPickVideo.InvokeAsync(); return; }
+        await JS.InvokeVoidAsync("ipop.newsEditor.chooseFile", id, "video");
+    }
+
+    /// The toolbar's own picker. The popover closes and the file goes through the same
+    /// `UploadAndInsertAsync` path the host would use.
+    private async Task OnImagePicked(InputFileChangeEventArgs e)
+    {
+        pop = null;
+        await UploadAndInsertAsync(e.File, "image");
+    }
+
+    private async Task OnVideoPicked(InputFileChangeEventArgs e)
+    {
+        pop = null;
+        await UploadAndInsertAsync(e.File, "video");
+    }
+
+    /// Uploads one host-picked file through the configured endpoint and inserts it at the caret.
+    /// `OnUploadProgress` reports the usual uploading/done/failed states, so the page needs no
+    /// progress UI of its own.
+    public async Task UploadAndInsertAsync(IBrowserFile file, string kind)
+    {
+        if (file is null) return;
+        var isVideo = kind == "video";
+        var limit = isVideo ? MaxVideoBytes : MaxImageBytes;
+        if (file.Size > limit)
+        {
+            var message = $"{file.Name} is {NewsUiHelper.FileSize(file.Size)} — the limit is {NewsUiHelper.FileSize(limit)}.";
+            await Report(message, kind, file.Name, "failed", 0, "Too large");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(UploadUrl))
+        {
+            await Report("Uploads are not available in this editor yet.", kind, file.Name, "failed", 0, "No endpoint");
+            return;
+        }
+        await OnUploadProgressJs(new NewsUploadProgress(kind, file.Name, "uploading", 0));
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var stream = new StreamContent(file.OpenReadStream(limit));
+            stream.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                string.IsNullOrEmpty(file.ContentType) ? (isVideo ? "video/mp4" : "image/png") : file.ContentType);
+            content.Add(stream, "file", file.Name);
+            var res = await Auth.SendMultipartAsync(UploadUrl!, content);
+            if (!res.IsSuccessStatusCode)
+            {
+                string? reason = null;
+                try { if ((await res.Content.ReadFromJsonAsync<Dictionary<string, string>>())?.TryGetValue("message", out var m) == true) reason = m; } catch { }
+                await Report($"{file.Name}: {reason ?? "the server refused the upload."}", kind, file.Name, "failed", 0, reason);
+                return;
+            }
+            var dto = await res.Content.ReadFromJsonAsync<MediaResponse>();
+            if (dto?.MediaId is not { } mediaId || mediaId == Guid.Empty)
+            {
+                await Report($"{file.Name}: the server did not return a media id.", kind, file.Name, "failed", 0, "No media id");
+                return;
+            }
+            // The API returns `streamUrl` relative to its own origin; resolve before previewing.
+            var preview = AbsoluteUrl(dto.StreamUrl);
+            var media = new NewsMediaRef(mediaId, kind, preview, dto.FileName ?? file.Name,
+                NewsUiHelper.FileSize(dto.Size > 0 ? dto.Size : file.Size), file.ContentType, file.Size);
+            await OnUploadProgressJs(new NewsUploadProgress(kind, file.Name, "done", 100));
+            await InsertMediaAsync(media, new Dictionary<Guid, string> { [mediaId] = preview ?? "" });
+            if (OnMediaUploaded.HasDelegate) await OnMediaUploaded.InvokeAsync(media);
+        }
+        catch (Exception ex)
+        {
+            await Report($"{file.Name}: {ex.Message}", kind, file.Name, "failed", 0, ex.Message);
+        }
+    }
+
+    /// One place for "the author must see this" — the inline notice, the host hook and the
+    /// progress row all get the same story.
+    private async Task Report(string message, string kind, string name, string state, int percent, string? reason)
+    {
+        await OnNoticeJs(message);
+        await OnUploadProgressJs(new NewsUploadProgress(kind, name, state, percent, reason));
+    }
+
+    /// Shape of the composer media endpoint's JSON. Field names are matched case-insensitively.
+    private sealed record MediaResponse(Guid MediaId, string? StreamUrl, string? FileName, long Size, string? ContentType);
+
+    private async Task InsertYouTube()
+    {
+        var vid = YouTubeId(ytUrl);
+        if (vid is null) { popError = "That doesn't look like a YouTube video link."; return; }
+        pop = null;
+        await JS.InvokeVoidAsync("ipop.newsEditor.insertYouTube", id, new { videoId = vid, title = "YouTube video" });
+    }
+
+    /// Strict, mirrored in the module: only watch/short/live/embed/youtu.be produce an id.
+    public static string? YouTubeId(string? raw)
+    {
+        var s = (raw ?? "").Trim();
+        if (System.Text.RegularExpressions.Regex.IsMatch(s, "^[A-Za-z0-9_-]{11}$")) return s;
+        if (!Uri.TryCreate(s, UriKind.Absolute, out var uri)) return null;
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) return null;
+        var host = uri.Host.ToLowerInvariant();
+        if (host.StartsWith("www.") || host.StartsWith("m.") || host.StartsWith("music.")) host = host[(host.IndexOf('.') + 1)..];
+        string id = "";
+        if (host == "youtu.be") id = uri.AbsolutePath.TrimStart('/');
+        else if (host is "youtube.com" or "youtube-nocookie.com")
+        {
+            if (uri.AbsolutePath == "/watch") id = QueryValue(uri.Query, "v");
+            else if (uri.AbsolutePath.StartsWith("/embed/") || uri.AbsolutePath.StartsWith("/shorts/") || uri.AbsolutePath.StartsWith("/live/"))
+            {
+                var parts = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length > 1) id = parts[1];
+            }
+        }
+        id = id.Split(['?', '&', '#', '/'])[0];
+        return System.Text.RegularExpressions.Regex.IsMatch(id, "^[A-Za-z0-9_-]{11}$") ? id : null;
+    }
+
+    /// First value of `key` in a query string (no System.Web dependency in wasm).
+    private static string QueryValue(string query, string key)
+    {
+        foreach (var pair in (query ?? "").TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var eq = pair.IndexOf('=');
+            var k = eq < 0 ? pair : pair[..eq];
+            if (!k.Equals(key, StringComparison.OrdinalIgnoreCase)) continue;
+            return eq < 0 ? "" : Uri.UnescapeDataString(pair[(eq + 1)..]);
+        }
+        return "";
+    }
+
+    private async Task InsertVideoLink()
+    {
+        var url = NormalizeUrl(vidUrl);
+        if (url is null || !IsDirectVideo(url))
+        {
+            popError = "Direct video links must be an https:// address ending in .mp4 or .webm";
+            return;
+        }
+        pop = null;
+        await JS.InvokeVoidAsync("ipop.newsEditor.insertVideoUrl", id, new { url });
+    }
+
+    /// Direct HTTPS + .mp4/.webm — matches the sanitizer's allow-list and JS `directVideoUrl`.
+    public static bool IsDirectVideo(string url)
+        => url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+           && System.Text.RegularExpressions.Regex.IsMatch(url, @"\.(mp4|webm)([?#].*)?$", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (created) await JS.InvokeVoidAsync("ipop.newsEditor.unmount", id);
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (JSException) { }
+        selfRef?.Dispose();
+    }
+}
