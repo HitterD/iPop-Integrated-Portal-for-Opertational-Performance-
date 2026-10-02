@@ -52,6 +52,10 @@ public class AuthState(HttpClient http, IJSRuntime js)
     /// dead session behind a red error bar and a permanent "Reconnecting…".
     public event Action? SessionEnded;
 
+    /// Raised whenever local session state is wiped (sign-out, session end, password change),
+    /// so per-user caches can drop what they hold.
+    public event Action? SignedOut;
+
     /// The signed-in user's own directory row, loaded lazily by the shell.
     public DirectoryEmployeeDto? Me { get; private set; }
 
@@ -314,18 +318,74 @@ public class AuthState(HttpClient http, IJSRuntime js)
         return true; // presence is started by TryRestoreAsync, once the refresh gate is released
     }
 
-    /// GET with bearer + one silent refresh retry on 401 (spec §3.2).
+    /// Raised when a read could not reach the API at all: timed out after ResilientHandler's
+    /// retries, network down, or the proxy answered 502/503/504. The shell turns it into a
+    /// visible "couldn't load · Try again" instead of a page that silently stays empty.
+    public event Action<string>? RequestFailed;
+
+    /// GET with bearer + one silent refresh retry on 401 (spec §3.2). A transport failure
+    /// returns default (as a non-success status always has) and raises RequestFailed.
     public async Task<T?> GetAsync<T>(string url, CancellationToken ct = default)
     {
-        var res = await Send(HttpMethod.Get, url, null, ct);
-        if (res.StatusCode == HttpStatusCode.Unauthorized && await TryRestoreAsync())
+        HttpResponseMessage res;
+        try
+        {
             res = await Send(HttpMethod.Get, url, null, ct);
+            if (res.StatusCode == HttpStatusCode.Unauthorized && await TryRestoreAsync())
+                res = await Send(HttpMethod.Get, url, null, ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested && ex is TimeoutException or HttpRequestException or TaskCanceledException)
+        {
+            RequestFailed?.Invoke(url);
+            return LastGood<T>(url);
+        }
         if (ct.IsCancellationRequested) ct.ThrowIfCancellationRequested();
+        if (res.StatusCode is HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout)
+        {
+            RequestFailed?.Invoke(url);
+            return LastGood<T>(url);
+        }
         if (!res.IsSuccessStatusCode) return default;
         // Guard empty bodies: 204/idle endpoints (e.g. /api/calls/ringing with no ring)
         // return 200 + Content-Length: 0 → ReadFromJsonAsync would throw and crash the page.
         if (res.Content.Headers.ContentLength is 0) return default;
-        return await res.Content.ReadFromJsonAsync<T>(cancellationToken: ct);
+        var value = await res.Content.ReadFromJsonAsync<T>(cancellationToken: ct);
+        Remember(url, value);
+        return value;
+    }
+
+    // ── Last good answer per URL, this tab only ──
+    // When a read cannot reach the API, the page gets what it was shown last time instead of
+    // nothing, so a hiccup doesn't blank lists that were fine a moment ago. Memory only (never
+    // storage), bounded, and dropped on sign-out with everything else.
+    private const int LastGoodLimit = 150;
+    private readonly Dictionary<string, object> _lastGood = [];
+    private readonly LinkedList<string> _lastGoodOrder = new();
+
+    // Browser WASM is single-threaded, but server-side callers (and tests) run GETs in parallel.
+    private readonly Lock _lastGoodLock = new();
+
+    private void Remember<T>(string url, T? value)
+    {
+        if (value is null) return;
+        var key = $"{typeof(T).FullName}|{url}";
+        lock (_lastGoodLock)
+        {
+            if (_lastGood.ContainsKey(key)) _lastGoodOrder.Remove(key);
+            _lastGood[key] = value;
+            _lastGoodOrder.AddFirst(key);
+            while (_lastGoodOrder.Count > LastGoodLimit)
+            {
+                _lastGood.Remove(_lastGoodOrder.Last!.Value);
+                _lastGoodOrder.RemoveLast();
+            }
+        }
+    }
+
+    private T? LastGood<T>(string url)
+    {
+        lock (_lastGoodLock)
+            return _lastGood.TryGetValue($"{typeof(T).FullName}|{url}", out var v) && v is T t ? t : default;
     }
 
     /// Session moved to another tab: drop the app hub, idle detection and the heartbeat, but keep
@@ -367,6 +427,12 @@ public class AuthState(HttpClient http, IJSRuntime js)
         MyStatus = "off";
         Me = null;
         IPop.Web.Models.AvatarPhotos.Clear();
+        lock (_lastGoodLock)
+        {
+            _lastGood.Clear();
+            _lastGoodOrder.Clear();
+        }
+        SignedOut?.Invoke();
         SetConnectionState(DirectoryConnectionState.Connecting);
     }
 

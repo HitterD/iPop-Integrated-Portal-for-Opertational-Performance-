@@ -9,6 +9,13 @@
 // inner markup of the ORIGINAL <i> — node identity survives re-renders and Blazor's
 // tree stays in sync.
 window.ipop = {
+  // PageCache (C#): removes every last-seen page snapshot on sign-out, for all users of this browser.
+  cacheClear(prefix) {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(prefix)) localStorage.removeItem(k);
+    }
+  },
   // Spell-check: off by default everywhere (the red squiggles distracted people writing in
   // Indonesian). The spellcheck attribute is inherited, so one on <html> covers every
   // input, textarea and contenteditable. Per device, in localStorage.

@@ -6,6 +6,7 @@
 @inject ToastService Toasts
 @inject IPop.Web.Services.CallState CallSvc
 @inject IPop.Web.Services.PeopleLinks PLinks
+@inject IPop.Web.Services.PageCache Cache
 @implements IDisposable
 
 <PageTitle>Dashboard — IPop</PageTitle>
@@ -331,8 +332,16 @@
     {
         Auth.PresenceChanged += OnPresenceChanged;
         await Auth.LoadMeAsync();
+        // Last-seen dashboard first, then refresh behind it: no skeletons on a repeat visit.
+        data ??= Normalize(Cache.Peek<DashboardDto>(CacheKey));
         await LoadAsync();
     }
+
+    private const string CacheKey = "dashboard";
+
+    /// What may outlive the tab on a shared PC: counts, titles and names, but no chat text.
+    private static DashboardDto ForStorage(DashboardDto d)
+        => d with { Chats = d.Chats.Select(c => c with { LastMessage = null }).ToList() };
 
     // ── Team online, live ──
     // A listed person changing between on/away/busy is patched in place. Anyone arriving
@@ -360,6 +369,7 @@
             var fresh = await Auth.GetAsync<DashboardDto>("/api/dashboard");
             if (cts.IsCancellationRequested || fresh is null) return;
             data = Normalize(fresh);
+            Cache.Put(CacheKey, ForStorage(data!), persist: true);
             StateHasChanged();
         });
     }
@@ -372,8 +382,13 @@
 
     private async Task LoadAsync()
     {
-        data = Normalize(await Auth.GetAsync<DashboardDto>("/api/dashboard"));
-        if (data is null) Toasts.Show("Couldn't load the dashboard.", ToastKind.Error);
+        var fresh = Normalize(await Auth.GetAsync<DashboardDto>("/api/dashboard"));
+        if (fresh is not null)
+        {
+            data = fresh;
+            Cache.Put(CacheKey, ForStorage(fresh), persist: true);
+        }
+        else if (data is null) Toasts.Show("Couldn't load the dashboard.", ToastKind.Error);
     }
 
     // An older API build omits the newer lists; treat them as empty rather than crash the page.

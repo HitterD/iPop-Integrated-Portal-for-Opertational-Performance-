@@ -20,13 +20,16 @@ builder.Services.AddScoped(sp =>
         var secure = builder.Configuration["ApiBaseHttps"];
         baseUri = !string.IsNullOrWhiteSpace(secure) ? new Uri(secure) : new Uri(hostBase);
     }
-    // PracticeGate answers /api calls with sample data while practice mode is on.
-    return new HttpClient(sp.GetRequiredService<IPop.Web.Services.PracticeGate>()) { BaseAddress = baseUri };
+    // PracticeGate answers /api calls with sample data while practice mode is on; above it,
+    // ResilientHandler caps and retries reads that stall.
+    var handler = new IPop.Web.Services.ResilientHandler(sp.GetRequiredService<IPop.Web.Services.PracticeGate>());
+    return new HttpClient(handler) { BaseAddress = baseUri };
 });
 builder.Services.AddScoped<IPop.Web.Services.PracticeGate>();
 builder.Services.AddScoped<IPop.Web.Services.PracticeSandbox>();
 builder.Services.AddScoped<IPop.Web.Services.TutorialState>();
 builder.Services.AddScoped<IPop.Web.Services.AuthState>();
+builder.Services.AddScoped<IPop.Web.Services.PageCache>();
 builder.Services.AddScoped<IPop.Web.Services.ChatState>();
 builder.Services.AddScoped<IPop.Web.Services.ChatAttachments>();
 builder.Services.AddScoped<IPop.Web.Services.ToastService>();

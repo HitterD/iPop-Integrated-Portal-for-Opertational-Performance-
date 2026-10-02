@@ -76,6 +76,9 @@ else builder.Services.AddSingleton<IEmailSender, LogEmailSender>();
 builder.Services.AddScoped<IEmailQueue, DbEmailQueue>();
 builder.Services.AddScoped<EmailOutboxProcessor>();
 builder.Services.AddHostedService<EmailOutboxWorker>();
+// Requests over 1 s land in logs/slow-requests.log (see SlowRequestLog).
+builder.Services.AddSingleton<IPop.Api.Diagnostics.SlowRequestLog>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<IPop.Api.Diagnostics.SlowRequestLog>());
 // Reuses Synology:ServiceAccount + Synology:{Area}Folder when no "Attachments" section exists;
 // attachment-files/ under ContentRoot is the local fallback (like chat-files/ and mail-files/).
 builder.Services.AddSingleton(AttachmentOptions.Bind(builder.Configuration,
@@ -264,6 +267,8 @@ if (allowedNetworks.Length > 0)
         await next();
     });
 }
+
+IPop.Api.Diagnostics.SlowRequestLog.UseSlowRequestLog(app);
 
 app.UseExceptionHandler(e => e.Run(async ctx =>
 {

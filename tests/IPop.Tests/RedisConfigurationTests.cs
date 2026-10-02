@@ -18,7 +18,9 @@ public sealed class RedisConfigurationTests
         var settings = File.ReadAllText(path);
 
         Assert.Contains("\"Redis\"", settings);
-        Assert.Contains("localhost:6399", settings, StringComparison.Ordinal);
+        // 127.0.0.1, not localhost: on the server localhost resolves to ::1 first and the
+        // docker-published port hangs on IPv6.
+        Assert.Contains("127.0.0.1:6399", settings, StringComparison.Ordinal);
         Assert.DoesNotContain("localhost:6379", settings, StringComparison.Ordinal);
     }
 }

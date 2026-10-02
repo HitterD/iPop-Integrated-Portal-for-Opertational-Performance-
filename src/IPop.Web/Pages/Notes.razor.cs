@@ -148,7 +148,12 @@ public partial class Notes
 
     private async Task LoadSidebarAsync()
     {
-        sidebar = await Auth.GetAsync<NoteSidebarDto>("/api/notes/sidebar") ?? sidebar;
+        // Last-seen page tree renders at once; the fetch replaces it (memory only).
+        sidebar ??= Cache.Peek<NoteSidebarDto>("notes.sidebar");
+        if (sidebar is not null) StateHasChanged();
+        var fresh = await Auth.GetAsync<NoteSidebarDto>("/api/notes/sidebar");
+        if (fresh is not null) Cache.Put("notes.sidebar", fresh);
+        sidebar = fresh ?? sidebar;
         if (note is not null) ExpandTo(note);
         if (editor is not null && sidebar is not null)
             await editor.InvokeVoidAsync("setPages", sidebar.Pages.Select(p => new { id = p.Id, title = DisplayTitle(p.Title), emoji = p.Emoji ?? "📄" }));

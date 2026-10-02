@@ -10,6 +10,7 @@
 @inject NavigationManager Nav
 @inject HttpClient Http
 @inject TutorialState Tutorials
+@inject IPop.Web.Services.PageCache Cache
 
 <PageTitle>@(note is null ? "Notes" : $"{DisplayTitle(note.Title)} - Notes") - IPop</PageTitle>
 

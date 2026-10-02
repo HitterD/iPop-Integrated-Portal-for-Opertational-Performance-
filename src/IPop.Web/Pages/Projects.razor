@@ -13,6 +13,7 @@
 @inject ConfirmService Confirm
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject IPop.Web.Services.PageCache Cache
 
 <PageTitle>Project Management - iPop</PageTitle>
 
@@ -880,10 +881,18 @@
 
     private async Task ReloadProjects()
     {
-        loading = true;
+        // Last-seen project list renders at once (no skeleton); the fetch below replaces it.
+        if (projects.Count == 0 && Cache.Peek<List<ProjectListDto>>("projects") is { Count: > 0 } cached)
+        {
+            projects = cached;
+            ApplyProjectFilter();
+        }
+        loading = projects.Count == 0;
         StateHasChanged();
 
-        projects = await GetAllProjects();
+        var fresh = await GetAllProjects();
+        if (fresh.Count > 0 || projects.Count == 0) projects = fresh;
+        Cache.Put("projects", projects, persist: true);
         Layout?.SetSubtitle($"{projects.Count} {(projects.Count == 1 ? "project" : "projects")} · {projects.Sum(p => p.TaskCount)} tasks");
         ApplyProjectFilter();
 

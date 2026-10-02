@@ -401,6 +401,8 @@ a { color: var(--accent-ink); }
 .push-banner .sp { flex: 1; }
 .push-banner button { height: 28px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .push-banner button.p { background: var(--accent); border-color: transparent; color: #fff; }
+.push-banner.load-fail { background: var(--warn-soft, color-mix(in srgb, #ff9500 12%, var(--surface))); }
+.push-banner.load-fail > .lucide, .push-banner.load-fail > svg { color: var(--warn, #c93400); }
 @media (max-width: 767px) {
   .push-banner { padding: 8px 14px; flex-wrap: wrap; gap: 6px 10px; }
   .push-banner .long { display: none; }

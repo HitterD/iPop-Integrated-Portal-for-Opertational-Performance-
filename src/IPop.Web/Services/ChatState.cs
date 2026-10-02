@@ -304,6 +304,9 @@ public class ChatState : IAsyncDisposable
         var directTask = _auth.GetAsync<PagedResult<RoomListDto>>("/api/chat/rooms?tab=direct&pageSize=50");
         var groupTask = _auth.GetAsync<PagedResult<RoomListDto>>("/api/chat/rooms?tab=groups&pageSize=50");
         await Task.WhenAll(directTask, groupTask);
+        // Unreachable API: keep the list already on screen rather than blank it (the shell
+        // shows the "couldn't load" bar). A real empty list still comes back as Items = [].
+        if (directTask.Result is null && groupTask.Result is null && RoomsLoaded) return;
         DirectRooms = directTask.Result?.Items.ToList() ?? [];
         GroupRooms = groupTask.Result?.Items.ToList() ?? [];
         _directTotal = directTask.Result?.TotalCount ?? DirectRooms.Count;

@@ -14,6 +14,7 @@
 @inject IPop.Web.Services.MailService MailSvc
 @inject IPop.Web.Services.MailComposerHost ComposerHost
 @inject IPop.Web.Services.PeopleLinks PLinks
+@inject IPop.Web.Services.PageCache Cache
 
 <PageTitle>Mail — IPop</PageTitle>
 
@@ -1246,9 +1247,20 @@
         await LoadPage(1);
     }
 
+    /// The plain first page of a folder (no search or filters) is what a return visit shows
+    /// while it refreshes. Memory only: summaries carry body snippets.
+    private string? ListCacheKey(int p) =>
+        p == 1 && string.IsNullOrWhiteSpace(search) && tabFilter is not ("unread" or "starred") && labelFilter is null
+        && advDateFrom is null && advDateTo is null && !advHasAttachment ? $"mail.{activeFolder}" : null;
+
     private async Task LoadPage(int p, bool append = false)
     {
         if (!append) loading = true;
+        if (!append && ListCacheKey(p) is { } ck && Cache.Peek<MailPaged<MailSummary>>(ck) is { } cached)
+        {
+            Items = cached.Items.ToList();
+            pageTotal = cached.TotalCount;
+        }
         StateHasChanged();
         try
         {
@@ -1260,9 +1272,12 @@
 
             var res = await MailSvc.GetFolderAsync(activeFolder, p, pageSize, q, starredOnly, unreadOnly, labelFilter, advDateFrom, advDateTo, advHasAttachment ? true : null);
             if (folderAtStart != activeFolder || searchAtStart != search) return;
+            // Unreachable API: keep what is on screen (the shell shows the "couldn't load" bar).
+            if (res is null) return;
+            if (!append && ListCacheKey(p) is { } key) Cache.Put(key, res);
 
-            var fetched = res?.Items?.ToList() ?? [];
-            pageTotal = res?.TotalCount ?? 0;
+            var fetched = res.Items?.ToList() ?? [];
+            pageTotal = res.TotalCount;
             page = p;
 
             if (append)

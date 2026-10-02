@@ -8,6 +8,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 @inject BadgeState Badges
+@inject IPop.Web.Services.PageCache Cache
 
 <PageTitle>News & Memos — IPop</PageTitle>
 
@@ -411,12 +412,20 @@
 
     private async Task Reload(int p, bool replace)
     {
-        loading = items is null;
         page = p;
         listError = null;
         var qs = BuildQuery(p);
+        // Same filters as last visit: show that first page while this one loads (memory only).
+        var cacheKey = p == 1 ? $"news{qs}" : null;
+        if (cacheKey is not null && (replace || items is null) && Cache.Peek<PagedNewsResult<NewsSummaryDto>>(cacheKey) is { } cached)
+        {
+            items = cached.Items.ToList();
+            total = cached.TotalCount;
+        }
+        loading = items is null;
         var res = await Auth.GetAsync<PagedNewsResult<NewsSummaryDto>>($"/api/news{qs}");
         if (qs != BuildQuery(p)) return;
+        if (res is not null && cacheKey is not null) Cache.Put(cacheKey, res);
         if (res is null)
         {
             listError = "Failed to load news list.";

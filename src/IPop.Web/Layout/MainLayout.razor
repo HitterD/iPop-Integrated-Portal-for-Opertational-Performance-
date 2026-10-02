@@ -211,6 +211,16 @@
             </div>
         </header>
         <IPop.Web.Components.Tutorial.PracticeBar />
+        @if (loadFailed)
+        {
+            <div class="push-banner load-fail" role="alert">
+                <i data-lucide="wifi-off"></i>
+                <span><b>Some of this page couldn't load</b><span class="long"> — the server took too long to answer. What you see may be out of date.</span></span>
+                <span class="sp"></span>
+                <button type="button" class="p" @onclick="RetryPage">Try again</button>
+                <button type="button" @onclick="() => loadFailed = false">Dismiss</button>
+            </div>
+        }
         @if (Push.BannerVisible)
         {
             <div class="push-banner" role="status">
@@ -225,7 +235,8 @@
         <CascadingValue Value="this">
             <ErrorBoundary @ref="errorBoundary">
                 <ChildContent>
-                    @Body
+                    @* Re-keyed by "Try again" so the page is rebuilt and loads its data afresh. *@
+                    <div @key="bodyKey" style="display:contents">@Body</div>
                 </ChildContent>
                 <ErrorContent Context="ex">
                     <div style="padding:48px 24px;text-align:center;max-width:480px;margin:60px auto;background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--sh-card)">
@@ -477,6 +488,24 @@
     /// document is both simpler and safer than unwinding it page by page.
     private void OnSessionEnded() => _ = InvokeAsync(() => Nav.NavigateTo("/login", forceLoad: true));
 
+    // ── Reads that never answered (AuthState.RequestFailed, after ResilientHandler's retries) ──
+    private bool loadFailed;
+    private int bodyKey;
+
+    private void OnRequestFailed(string url) => _ = InvokeAsync(() =>
+    {
+        if (loadFailed) return;
+        loadFailed = true;
+        StateHasChanged();
+    });
+
+    private void RetryPage()
+    {
+        loadFailed = false;
+        bodyKey++;
+        _ = Badges.RefreshAsync();
+    }
+
     private void OnChatUnreadChanged() { Badges.Set("chat", Chat.TotalUnread); _ = InvokeAsync(StateHasChanged); }
     private void OnChatIncoming(IncomingChatMessage m)
         => _ = InvokeAsync(() => Notifs.ShowChatMessage(m, "/" + Nav.ToBaseRelativePath(Nav.Uri)));
@@ -676,6 +705,7 @@
         Auth.PresenceChanged += OnPresenceChanged;
         Auth.ConnectionStateChanged += OnConnectionStateChanged;
         Auth.SessionEnded += OnSessionEnded;
+        Auth.RequestFailed += OnRequestFailed;
         Chat.RoomListChanged += OnChatUnreadChanged;
         Chat.IncomingMessage += OnChatIncoming;
         Chat.RoomOpened += OnChatRoomOpened;
@@ -687,24 +717,39 @@
         Auth.MeChanged += OnMeChanged;
         Auth.DirectoryChanged += OnDirectoryChanged;
         AvatarPhotos.Changed += OnPhotosChanged;
-        await Auth.LoadMeAsync();
         Tutorials.Changed += OnTutorialsChanged;
-        _ = Tutorials.LoadAsync();
-        await Auth.LoadPhotosAsync();
+        Push.Changed += OnPushChanged;
+        // Me first: roles gate the nav and most of what follows reads it. Everything after it
+        // is independent and runs side by side; one slow call used to hold up all the rest.
+        await Auth.LoadMeAsync();
         // Another tab in a call keeps the session: this one shows the yield prompt and the
         // hub connects below all no-op (Auth.IsSuspended) until "Tetap gunakan di sini".
         await SessionLock.StartAsync();
-        await Auth.StartPresenceAsync();
-        await Badges.StartAsync();
-        await Timer.StartAsync();
-        await Chat.ConnectAsync();
-        // Connect notification SignalR AFTER auth so the token provider has a token.
-        await Notifs.ConnectAsync();
-        await Notifs.LoadRecentAsync(6);
-        await CallSvc.ConnectAsync();
-        Push.Changed += OnPushChanged;
-        await Push.StartAsync();
-        await AnswerFromToastAsync();
+        await Task.WhenAll(
+            Quietly(Tutorials.LoadAsync),
+            Quietly(Auth.LoadPhotosAsync),
+            Quietly(Auth.StartPresenceAsync),
+            Quietly(Badges.StartAsync),
+            Quietly(Timer.StartAsync),
+            Quietly(Chat.ConnectAsync),
+            // Connect notification SignalR AFTER auth so the token provider has a token.
+            Quietly(async () => { await Notifs.ConnectAsync(); await Notifs.LoadRecentAsync(6); }),
+            Quietly(async () => { await CallSvc.ConnectAsync(); await AnswerFromToastAsync(); }),
+            Quietly(Push.StartAsync),
+            Quietly(LoadHrisStatusAsync));
+    }
+
+    /// One shell service failing to start must not stop the others, nor take down the layout.
+    private static async Task Quietly(Func<Task> start)
+    {
+        try { await start(); }
+        catch (Exception ex) { Console.Error.WriteLine($"[shell] start failed: {ex.Message}"); }
+    }
+
+    private async Task LoadHrisStatusAsync()
+    {
+        // Admin-only endpoint; everyone else would just collect a 403 on every page load.
+        if (!Auth.IsAdmin) return;
         var s = await Auth.GetAsync<SyncStatusDto>("/api/admin/hris/status");
         if (s is not null) { syncedAt = s.LastSyncedAt?.ToLocalTime(); syncCount = s.EmployeeCount; }
     }
@@ -719,6 +764,7 @@
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
         errorBoundary?.Recover();
+        loadFailed = false;
         CloseMore();
         if (e.Location.Contains("answer=")) _ = InvokeAsync(AnswerFromToastAsync);
         _ = InvokeAsync(StateHasChanged);
@@ -772,6 +818,7 @@
         Auth.PresenceChanged -= OnPresenceChanged;
         Auth.ConnectionStateChanged -= OnConnectionStateChanged;
         Auth.SessionEnded -= OnSessionEnded;
+        Auth.RequestFailed -= OnRequestFailed;
         Push.Changed -= OnPushChanged;
         Chat.RoomListChanged -= OnChatUnreadChanged;
         Chat.IncomingMessage -= OnChatIncoming;
