@@ -286,6 +286,9 @@ public class ChatState : IAsyncDisposable
             await _hub.StartAsync();
             ConnectionChanged?.Invoke();
             await LoadRoomsAsync();
+            // A room opened before the hub was up (e.g. /chat/{room} straight from a push
+            // notification) had its MarkRead dropped; mark it now so the sender sees "read".
+            await MarkActiveRoomReadAsync();
         }
         catch
         {
@@ -751,6 +754,30 @@ public class ChatState : IAsyncDisposable
     // render -> MarkRead -> broadcast -> render loop, so each message is only ever marked once.
     private readonly HashSet<Guid> _markedRead = [];
 
+    /// The message whose read receipt covers the open room: the newest one from someone else,
+    /// else the newest confirmed one. Optimistic bubbles (outbox temp ids) never qualify.
+    internal static MessageDto? LatestReadable(IReadOnlyList<MessageDto> messages, string? myNik, Func<Guid, bool> isPending)
+    {
+        MessageDto? latestAny = null;
+        for (var i = messages.Count - 1; i >= 0; i--)
+        {
+            var m = messages[i];
+            if (m.Id == Guid.Empty || isPending(m.Id)) continue;
+            if (!string.Equals(m.SenderNik, myNik, StringComparison.OrdinalIgnoreCase)) return m;
+            latestAny ??= m;
+        }
+        return latestAny;
+    }
+
+    /// Marks the open room read up to its newest message. Safe to call repeatedly: MarkReadAsync
+    /// dedupes, and it no-ops while the hub is down (the next connect/reconnect calls this again).
+    public Task MarkActiveRoomReadAsync()
+    {
+        if (ActiveRoomId is null || PracticeSend is not null) return Task.CompletedTask;
+        var latest = LatestReadable(ActiveMessages, _auth.Me?.Nik, _outbox.ContainsKey);
+        return latest is null ? Task.CompletedTask : MarkReadAsync(latest.Id);
+    }
+
     public async Task MarkReadAsync(Guid messageId)
     {
         if (messageId == Guid.Empty) return;
@@ -1182,6 +1209,9 @@ public class ChatState : IAsyncDisposable
         {
             await LoadMessagesAsync(1);
             await _hub!.InvokeAsync("JoinRoom", ActiveRoomId.Value);
+            // Messages that landed while the hub was down arrived via the page-1 reload, not
+            // newMessage, so nothing marked them read.
+            await MarkActiveRoomReadAsync();
         }
         // Drain offline queue (Task 17.2)
         await DrainOfflineQueueAsync();

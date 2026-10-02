@@ -240,10 +240,8 @@ public partial class Chat
                     dmUserBlocked = blocked?.Contains(other.UserId) == true;
                 }
             }
-            var lastMsg = ChatSvc.ActiveMessages.LastOrDefault(m => !string.Equals(m.SenderNik, Auth.Me?.Nik, StringComparison.OrdinalIgnoreCase))
-                          ?? ChatSvc.ActiveMessages.LastOrDefault();
-            if (lastMsg is not null)
-                await ChatSvc.MarkReadAsync(lastMsg.Id);
+            // No-ops if the hub is still connecting (fresh tab); ChatState re-runs it on connect.
+            await ChatSvc.MarkActiveRoomReadAsync();
             // Entry point for cross-page jumps (e.g. /chat/pins "open in chat"):
             // ?jump=<messageId> scrolls to that message, pulling older pages as needed.
             var jumpRaw = QueryValue("jump");
