@@ -9,7 +9,7 @@ namespace IPop.Web.Services;
 /// Real-time chat state for Blazor WASM. Manages the /hubs/chat SignalR connection,
 /// room/message state, typing indicators, and exposes events for UI components.
 /// Follows the same patterns as AuthState (HubConnectionBuilder, WithAutomaticReconnect, .On<T>).
-public class ChatState : IAsyncDisposable
+public partial class ChatState : IAsyncDisposable
 {
     private readonly AuthState _auth;
     private readonly HttpClient _http;
@@ -22,6 +22,7 @@ public class ChatState : IAsyncDisposable
         _auth = auth;
         _http = http;
         _drafts = drafts;
+        HookOutbox();
     }
 
     // ---- Custom stickers ----
@@ -301,20 +302,31 @@ public class ChatState : IAsyncDisposable
 
     public async Task LoadRoomsAsync()
     {
-        var directTask = _auth.GetAsync<PagedResult<RoomListDto>>("/api/chat/rooms?tab=direct&pageSize=50");
-        var groupTask = _auth.GetAsync<PagedResult<RoomListDto>>("/api/chat/rooms?tab=groups&pageSize=50");
+        var gen = ++_roomsGen;
+        var directTask = _auth.GetResultAsync<PagedResult<RoomListDto>>("/api/chat/rooms?tab=direct&pageSize=50");
+        var groupTask = _auth.GetResultAsync<PagedResult<RoomListDto>>("/api/chat/rooms?tab=groups&pageSize=50");
         await Task.WhenAll(directTask, groupTask);
-        // Unreachable API: keep the list already on screen rather than blank it (the shell
-        // shows the "couldn't load" bar). A real empty list still comes back as Items = [].
-        if (directTask.Result is null && groupTask.Result is null && RoomsLoaded) return;
-        DirectRooms = directTask.Result?.Items.ToList() ?? [];
-        GroupRooms = groupTask.Result?.Items.ToList() ?? [];
-        _directTotal = directTask.Result?.TotalCount ?? DirectRooms.Count;
-        _groupTotal = groupTask.Result?.TotalCount ?? GroupRooms.Count;
-        _directPage = 1;
-        _groupPage = 1;
+        if (gen != _roomsGen) return; // a newer load/search owns the lists now
+        var direct = directTask.Result;
+        var group = groupTask.Result;
+        // A failed side keeps what is already on screen: an error must never read as
+        // "No conversations yet". A real empty list still comes back Ok with Items = [].
+        if (direct is { IsOk: true, Value: { } d })
+        {
+            DirectRooms = d.Items.ToList();
+            _directTotal = d.TotalCount;
+            _directPage = 1;
+        }
+        if (group is { IsOk: true, Value: { } g })
+        {
+            GroupRooms = g.Items.ToList();
+            _groupTotal = g.TotalCount;
+            _groupPage = 1;
+        }
         foreach (var r in DirectRooms.Concat(GroupRooms).Where(r => r.HasUnreadMention)) _mentionFlags[r.Id] = true;
-        RoomsLoaded = true;
+        RoomsError = direct.IsOk && group.IsOk ? ChatLoadError.None : ChatLoadError.Unavailable;
+        // Only a complete answer ends the skeleton; a failure shows RoomsError instead.
+        if (RoomsError == ChatLoadError.None) RoomsLoaded = true;
         RoomListChanged?.Invoke();
         StateChanged?.Invoke();
     }
@@ -331,9 +343,18 @@ public class ChatState : IAsyncDisposable
 
     public async Task LoadMoreDirectRoomsAsync()
     {
+        var gen = _roomsGen;
         var next = _directPage + 1;
-        var r = await _auth.GetAsync<PagedResult<RoomListDto>>($"/api/chat/rooms?tab=direct&page={next}&pageSize=50");
-        if (r is null) return;
+        var res = await _auth.GetResultAsync<PagedResult<RoomListDto>>($"/api/chat/rooms?tab=direct&page={next}&pageSize=50");
+        if (gen != _roomsGen) return; // the list was reloaded/searched meanwhile
+        if (res is not { IsOk: true, Value: { } r })
+        {
+            // Page counter not advanced: the next attempt asks for the same page.
+            RoomsError = ChatLoadError.Unavailable;
+            StateChanged?.Invoke();
+            return;
+        }
+        RoomsError = ChatLoadError.None;
         _directTotal = r.TotalCount;
         _directPage = next;
         var fresh = r.Items.Where(i => DirectRooms.All(d => d.Id != i.Id));
@@ -344,9 +365,18 @@ public class ChatState : IAsyncDisposable
 
     public async Task LoadMoreGroupRoomsAsync()
     {
+        var gen = _roomsGen;
         var next = _groupPage + 1;
-        var r = await _auth.GetAsync<PagedResult<RoomListDto>>($"/api/chat/rooms?tab=groups&page={next}&pageSize=50");
-        if (r is null) return;
+        var res = await _auth.GetResultAsync<PagedResult<RoomListDto>>($"/api/chat/rooms?tab=groups&page={next}&pageSize=50");
+        if (gen != _roomsGen) return; // the list was reloaded/searched meanwhile
+        if (res is not { IsOk: true, Value: { } r })
+        {
+            // Page counter not advanced: the next attempt asks for the same page.
+            RoomsError = ChatLoadError.Unavailable;
+            StateChanged?.Invoke();
+            return;
+        }
+        RoomsError = ChatLoadError.None;
         _groupTotal = r.TotalCount;
         _groupPage = next;
         var fresh = r.Items.Where(i => GroupRooms.All(d => d.Id != i.Id));
@@ -367,8 +397,18 @@ public class ChatState : IAsyncDisposable
             await LoadRoomsAsync();
             return;
         }
-        var r = await _auth.GetAsync<PagedResult<RoomListDto>>($"/api/chat/rooms/search?q={Uri.EscapeDataString(query.Trim())}");
-        var flat = r?.Items.ToList() ?? [];
+        var gen = ++_roomsGen;
+        var res = await _auth.GetResultAsync<PagedResult<RoomListDto>>($"/api/chat/rooms/search?q={Uri.EscapeDataString(query.Trim())}");
+        if (gen != _roomsGen) return; // superseded by a newer query
+        if (res is not { IsOk: true, Value: { } r })
+        {
+            // Keep the previous results rather than a false "No conversations match".
+            RoomsError = ChatLoadError.Unavailable;
+            StateChanged?.Invoke();
+            return;
+        }
+        RoomsError = ChatLoadError.None;
+        var flat = r.Items.ToList();
         DirectRooms = flat.Where(x => x.Type == "dm").ToList();
         GroupRooms = flat.Where(x => x.Type == "group").ToList();
         foreach (var room in flat.Where(room => room.HasUnreadMention)) _mentionFlags[room.Id] = true;
@@ -389,39 +429,50 @@ public class ChatState : IAsyncDisposable
         _openCts?.Dispose();
         var cts = new CancellationTokenSource();
         _openCts = cts;
-        var ct = cts.Token;
 
         SnapshotActiveRoom();
         _fresh.Clear();
         ActiveRoomId = roomId;
+        ResetRoomLoadState();
+        var gen = _roomGen;
         RoomOpened?.Invoke(roomId);
         MessagePage = 1;
         TypingUsers.Clear();
         if (_roomCache.TryGetValue(roomId, out var snap))
         {
-            // Paint what we saw last time; the fetches below replace it silently.
+            // Paint what we saw last time; the fetches below replace it silently. Unconfirmed
+            // sends for this room come back with it.
             ActiveRoom = snap.Room;
-            ActiveMessages = snap.Messages.ToList();
+            ActiveMessages = ReconcileOptimisticHistory(roomId, snap.Messages);
             HasOlderMessages = snap.HasOlder;
             IsLoadingMessages = false;
         }
         else
         {
             ActiveRoom = null;
-            ActiveMessages = [];
+            ActiveMessages = ReconcileOptimisticHistory(roomId, []);
             HasOlderMessages = false;
             IsLoadingMessages = true;
         }
         StateChanged?.Invoke();
 
+        await LoadOpenedRoomAsync(roomId, cts, gen);
+    }
+
+    /// Room details + page 1 for a room that was just opened (or is being retried), then the
+    /// hub join. Shared by OpenRoomAsync and RetryActiveRoomAsync; `gen` is the room-load
+    /// generation the attempt belongs to.
+    private async Task LoadOpenedRoomAsync(Guid roomId, CancellationTokenSource cts, int gen)
+    {
+        var ct = cts.Token;
         try
         {
             // Deliberately do NOT LeaveRoom(prevRoom): the hub only auto-joins every room
             // once, on connect. Leaving a room on switch permanently stopped its newMessage
             // events, so unread badges and previews for background rooms went stale.
             // Room details and page 1 are independent: fetch them side by side.
-            await Task.WhenAll(LoadActiveRoomAsync(ct), LoadMessagesAsync(1, ct));
-            if (ct.IsCancellationRequested) return;
+            await Task.WhenAll(LoadActiveRoomCoreAsync(roomId, gen, ct), LoadMessagesCoreAsync(roomId, 1, gen, ct));
+            if (ct.IsCancellationRequested || !IsCurrent(roomId, gen) || RoomError != ChatLoadError.None) return;
             if (ActiveRoom is { Type: "group" }) _ = RefreshGroupReadCountsAsync(roomId, immediate: true);
             if (_hub?.State == HubConnectionState.Connected)
             {
@@ -441,44 +492,66 @@ public class ChatState : IAsyncDisposable
             if (_openCts == cts) { _openCts.Dispose(); _openCts = null; }
             else cts.Dispose();
             if (_openingRoomId == roomId) _openingRoomId = null;
-            if (ActiveRoomId == roomId) IsLoadingMessages = false;
+            // A newer attempt (switch or retry) owns the loading flag now.
+            if (IsCurrent(roomId, gen)) IsLoadingMessages = false;
             StateChanged?.Invoke();
         }
     }
 
-    public async Task LoadActiveRoomAsync(CancellationToken ct = default)
+    public Task LoadActiveRoomAsync(CancellationToken ct = default)
+        => ActiveRoomId is { } roomId ? LoadActiveRoomCoreAsync(roomId, _roomGen, ct) : Task.CompletedTask;
+
+    private async Task LoadActiveRoomCoreAsync(Guid roomId, int gen, CancellationToken ct)
     {
-        var roomId = ActiveRoomId;
-        if (roomId is null) return;
         // ipop-44: read into a local, THEN guard, THEN write — matching LoadMessagesAsync.
         // Assigning inside the await expression let a superseded hub handler
         // (memberChanged/roomUpdated fire without a token) leave a stale room's DTO
         // in ActiveRoom after the user switched. Cosmetic-only: Pin/Emergency buttons
         // may flicker for the wrong room, but both mutations read ActiveRoomId live and
         // the server re-checks role — so no wrong-target write is possible.
-        ChatRoomDto? room;
-        try { room = await _auth.GetAsync<ChatRoomDto>($"/api/chat/rooms/{roomId}", ct); }
+        GetResult<ChatRoomDto> res;
+        try { res = await _auth.GetResultAsync<ChatRoomDto>($"/api/chat/rooms/{roomId}", ct); }
         catch (OperationCanceledException) { return; }
-        if (ct.IsCancellationRequested || roomId != ActiveRoomId) return;
+        if (ct.IsCancellationRequested || !IsCurrent(roomId, gen)) return;
+        // 404 is how this endpoint says "deleted or not a member" (the messages endpoint
+        // answers an empty page instead), so this is the membership check that matters.
+        if (res.IsGone) { HandleRoomGone(roomId, definitive: true); return; }
+        if (res is not { IsOk: true, Value: { } room })
+        {
+            // Cached details (if any) stay on screen; the pane shows a refresh banner, or
+            // the error state instead of a skeleton when there are no details at all.
+            SetPartFailed(details: true, failed: true);
+            StateChanged?.Invoke();
+            return;
+        }
         ActiveRoom = room;
+        SetPartFailed(details: true, failed: false);
         StateChanged?.Invoke();
     }
 
-    public async Task LoadMessagesAsync(int page, CancellationToken ct = default)
+    public Task LoadMessagesAsync(int page, CancellationToken ct = default)
+        => ActiveRoomId is { } roomId ? LoadMessagesCoreAsync(roomId, page, _roomGen, ct) : Task.CompletedTask;
+
+    private async Task LoadMessagesCoreAsync(Guid roomId, int page, int gen, CancellationToken ct)
     {
-        var roomId = ActiveRoomId;
-        if (roomId is null) return;
-        PagedResult<MessageDto>? result;
-        try { result = await _auth.GetAsync<PagedResult<MessageDto>>($"/api/chat/rooms/{roomId}/messages?page={page}&pageSize=50", ct); }
+        GetResult<PagedResult<MessageDto>> res;
+        try { res = await _auth.GetResultAsync<PagedResult<MessageDto>>(MessagesUrl(roomId, page), ct); }
         catch (OperationCanceledException) { return; }
-        if (result is null) return;
-        if (ct.IsCancellationRequested || roomId != ActiveRoomId) return;
+        if (ct.IsCancellationRequested || !IsCurrent(roomId, gen)) return;
+        if (res.IsGone) { HandleRoomGone(roomId, definitive: false); return; }
+        if (res is not { IsOk: true, Value: { Items: not null } result })
+        {
+            // History already on screen stays; MessagePage/HasOlder are untouched.
+            SetPartFailed(details: false, failed: true);
+            IsLoadingMessages = false;
+            StateChanged?.Invoke();
+            return;
+        }
         if (page == 1)
         {
-            // A fresh page 1 is authoritative; any unreconciled optimistic bubbles for
-            // this room would otherwise linger forever.
-            DropOptimisticFor(roomId.Value);
-            ActiveMessages = result.Items.ToList();
+            // A fresh page 1 is authoritative for server rows; unconfirmed sends for this
+            // room are carried over by the outbox, never silently dropped.
+            ActiveMessages = ReconcileOptimisticHistory(roomId, result.Items);
         }
         else
         {
@@ -489,10 +562,11 @@ public class ChatState : IAsyncDisposable
         MessagePage = page;
         HasOlderMessages = page * result.PageSize < result.TotalCount;
         IsLoadingMessages = false;
+        SetPartFailed(details: false, failed: false);
         StateChanged?.Invoke();
         // Group bubbles show reader avatars; the page payload only carries counts.
         // (OpenRoomAsync fetches the room alongside page 1 and refreshes once both land.)
-        if (ActiveRoom is { Type: "group" } && _openingRoomId != roomId) _ = RefreshGroupReadCountsAsync(roomId.Value, immediate: true);
+        if (ActiveRoom is { Type: "group" } && _openingRoomId != roomId) _ = RefreshGroupReadCountsAsync(roomId, immediate: true);
     }
 
     /// Single-flight: a double click (or JumpToMessage looping while a click is in flight)
@@ -501,9 +575,11 @@ public class ChatState : IAsyncDisposable
     private Task? _olderLoad;
     private Guid? _olderLoadRoomId;
 
+    /// After a failure this stays quiet (no automatic re-fetch on every scroll to the top)
+    /// until RetryOlderMessagesAsync clears OlderError.
     public Task LoadOlderMessagesAsync()
     {
-        if (!HasOlderMessages) return Task.CompletedTask;
+        if (!HasOlderMessages || OlderError != ChatLoadError.None) return Task.CompletedTask;
         if (_olderLoad is { IsCompleted: false } && _olderLoadRoomId == ActiveRoomId) return _olderLoad;
         _olderLoadRoomId = ActiveRoomId;
         return _olderLoad = LoadOlderCoreAsync();
@@ -513,21 +589,28 @@ public class ChatState : IAsyncDisposable
     /// longer shift the offset window, which used to re-serve rows already on screen.
     private async Task LoadOlderCoreAsync()
     {
-        var roomId = ActiveRoomId;
         // Optimistic bubbles are always newest, so the oldest loaded row is a server row.
         var oldest = ActiveMessages.FirstOrDefault();
-        if (roomId is null || oldest is null) return;
+        if (ActiveRoomId is not { } roomId || oldest is null) return;
+        var gen = _roomGen;
         var ct = _openCts?.Token ?? CancellationToken.None;
         // Server timestamps are UTC; an offset-less value must not be shifted by the local zone.
         var cursor = oldest.CreatedAt.Kind == DateTimeKind.Local
             ? oldest.CreatedAt.ToUniversalTime()
             : DateTime.SpecifyKind(oldest.CreatedAt, DateTimeKind.Utc);
         var before = Uri.EscapeDataString(cursor.ToString("O"));
-        PagedResult<MessageDto>? result;
-        try { result = await _auth.GetAsync<PagedResult<MessageDto>>($"/api/chat/rooms/{roomId}/messages?before={before}&pageSize=50", ct); }
+        GetResult<PagedResult<MessageDto>> res;
+        try { res = await _auth.GetResultAsync<PagedResult<MessageDto>>($"/api/chat/rooms/{roomId}/messages?before={before}&pageSize=50", ct); }
         catch (OperationCanceledException) { return; }
-        if (result is null) return;
-        if (ct.IsCancellationRequested || roomId != ActiveRoomId) return;
+        if (ct.IsCancellationRequested || !IsCurrent(roomId, gen)) return;
+        if (res.IsGone) { HandleRoomGone(roomId, definitive: false); return; }
+        if (res is not { IsOk: true, Value: { Items: not null } result })
+        {
+            // Cursor, page and HasOlder stay as they were: Retry asks for the same page.
+            OlderError = ChatLoadError.Unavailable;
+            StateChanged?.Invoke();
+            return;
+        }
         // The list was replaced meanwhile (room re-opened, reconnect reloaded page 1):
         // this page no longer lines up with what's on screen.
         if (ActiveMessages.Count == 0 || ActiveMessages[0].Id != oldest.Id) return;
@@ -539,7 +622,7 @@ public class ChatState : IAsyncDisposable
         MessagePage++;
         HasOlderMessages = result.Items.Count > 0 && result.Items.Count < result.TotalCount;
         StateChanged?.Invoke();
-        if (ActiveRoom is { Type: "group" }) _ = RefreshGroupReadCountsAsync(roomId.Value, immediate: true);
+        if (ActiveRoom is { Type: "group" }) _ = RefreshGroupReadCountsAsync(roomId, immediate: true);
     }
 
     public async Task JoinRoomAsync(Guid roomId)
@@ -562,6 +645,7 @@ public class ChatState : IAsyncDisposable
         if (ActiveRoomId is null && ActiveRoom is null) return;
         SnapshotActiveRoom();
         ActiveRoomId = null;
+        ResetRoomLoadState();
         IsLoadingMessages = false;
         ActiveRoom = null;
         ActiveMessages = [];
@@ -575,159 +659,6 @@ public class ChatState : IAsyncDisposable
         _typingCts.Clear();
         TypingUsers.Clear();
         StateChanged?.Invoke();
-    }
-
-    // ---- Send Message ----
-
-    // ---- Offline Queue (Task 17.1) — H3: carry RoomId so drain doesn't mis-route on room switch
-    public List<(Guid RoomId, string Content, Guid IdempotencyKey, Guid? ReplyToId, string? Type, IReadOnlyList<Guid>? AttachmentIds)> OfflineQueue { get; } = [];
-
-    // ---- Optimistic outbox ----
-    // A locally-rendered copy of the message appears the instant Send is pressed, so the
-    // composer can clear without the text seeming to vanish. Entries are keyed by a
-    // temporary id and reconciled when the server echoes the real message back.
-
-    private sealed class Outgoing
-    {
-        public Guid TempId { get; init; }
-        public Guid Key { get; init; }
-        public Guid RoomId { get; init; }
-        public string Content { get; init; } = "";
-        public bool Failed { get; set; }
-        /// Set from the server's messageAck, which maps our idempotency key to the real id.
-        public Guid? ServerId { get; set; }
-    }
-
-    private readonly Dictionary<Guid, Outgoing> _outbox = [];
-
-    /// True while a message is still in flight (or queued offline) — the UI shows a clock.
-    public bool IsPending(Guid messageId) =>
-        _outbox.TryGetValue(messageId, out var o) && !o.Failed;
-
-    /// True when the send failed and the user can retry.
-    public bool IsFailed(Guid messageId) =>
-        _outbox.TryGetValue(messageId, out var o) && o.Failed;
-
-    public async Task SendMessageAsync(string content, Guid? replyToId = null, string? type = null,
-        IReadOnlyList<Guid>? attachmentIds = null,
-        IReadOnlyList<AttachmentDto>? attachmentPreviews = null)
-    {
-        var key = Guid.NewGuid();
-        var roomId = ActiveRoomId;
-        if (roomId is null) return;
-
-        if (PracticeSend?.Invoke(roomId.Value, content) is var (mine, reply))
-        {
-            ActiveMessages.Add(mine);
-            _fresh.Add(mine.Id);
-            StateChanged?.Invoke();
-            await Task.Delay(1400);
-            if (ActiveRoomId == roomId) { var r = reply(); _fresh.Add(r.Id); ActiveMessages.Add(r); StateChanged?.Invoke(); }
-            return;
-        }
-
-        var temp = AddOptimistic(roomId.Value, content, key, replyToId, type, attachmentPreviews);
-
-        if (_hub?.State != HubConnectionState.Connected)
-        {
-            OfflineQueue.Add((roomId.Value, content, key, replyToId, type, attachmentIds));
-            StateChanged?.Invoke();
-            return;
-        }
-
-        var request = new SendMessageHubRequest(
-            roomId.Value, content, key, replyToId, type ?? "text", attachmentIds);
-
-        try
-        {
-            await _hub.InvokeAsync("SendMessage", request);
-        }
-        catch
-        {
-            // Connection dropped mid-invoke: keep the bubble, mark it retryable.
-            if (_outbox.TryGetValue(temp, out var o)) o.Failed = true;
-            OfflineQueue.Add((roomId.Value, content, key, replyToId, type, attachmentIds));
-            StateChanged?.Invoke();
-        }
-    }
-
-    private Guid AddOptimistic(Guid roomId, string content, Guid key, Guid? replyToId, string? type,
-        IReadOnlyList<AttachmentDto>? attachments)
-    {
-        var tempId = Guid.NewGuid();
-        _outbox[tempId] = new Outgoing { TempId = tempId, Key = key, RoomId = roomId, Content = content };
-
-        if (roomId == ActiveRoomId)
-        {
-            var replyPreview = replyToId is null
-                ? null
-                : ActiveMessages.FirstOrDefault(m => m.Id == replyToId) is { } src
-                    ? new ReplyPreviewDto(src.SenderName, src.Content)
-                    : null;
-
-            _fresh.Add(tempId);
-            ActiveMessages.Add(new MessageDto(
-                tempId, roomId, Guid.Empty,
-                _auth.Me?.Name ?? "You", _auth.Me?.Nik ?? "",
-                type ?? "text", content, DateTime.UtcNow, null, false, null,
-                replyToId, replyPreview, null, 0, null,
-                attachments ?? [], [], [], false, Guid.NewGuid()));
-            StateChanged?.Invoke();
-        }
-        return tempId;
-    }
-
-    /// Finds the optimistic entry that `real` is the server echo of. The ack-supplied
-    /// ServerId is authoritative; content matching only covers the case where the room
-    /// broadcast overtakes the ack.
-    private Outgoing? MatchOutgoing(MessageDto real)
-    {
-        var byId = _outbox.Values.FirstOrDefault(o => o.ServerId == real.Id);
-        if (byId is not null) return byId;
-
-        if (!string.Equals(real.SenderNik, _auth.Me?.Nik, StringComparison.OrdinalIgnoreCase)) return null;
-        return _outbox.Values
-            .Where(o => o.ServerId is null && o.RoomId == real.RoomId && o.Content == real.Content)
-            .OrderBy(o => o.TempId)
-            .FirstOrDefault();
-    }
-
-    private void RemoveOptimistic(Guid tempId)
-    {
-        _outbox.Remove(tempId);
-        var idx = ActiveMessages.FindIndex(m => m.Id == tempId);
-        if (idx >= 0) ActiveMessages.RemoveAt(idx);
-    }
-
-    /// Clears optimistic bubbles that can no longer be reconciled (room reload / switch).
-    private void DropOptimisticFor(Guid roomId)
-    {
-        foreach (var k in _outbox.Where(kv => kv.Value.RoomId == roomId).Select(kv => kv.Key).ToList())
-            _outbox.Remove(k);
-    }
-
-    /// Re-queues a failed message for another attempt.
-    public async Task RetryAsync(Guid tempId)
-    {
-        if (!_outbox.TryGetValue(tempId, out var o) || !o.Failed) return;
-        var queued = OfflineQueue.FirstOrDefault(q => q.IdempotencyKey == o.Key);
-        o.Failed = false;
-        StateChanged?.Invoke();
-        if (_hub?.State != HubConnectionState.Connected) return;
-        if (queued.Content is null) { RemoveOptimistic(tempId); return; }
-        OfflineQueue.RemoveAll(q => q.IdempotencyKey == o.Key);
-        try
-        {
-            await _hub.InvokeAsync("SendMessage", new SendMessageHubRequest(
-                queued.RoomId, queued.Content, queued.IdempotencyKey, queued.ReplyToId,
-                queued.Type ?? "text", queued.AttachmentIds));
-        }
-        catch
-        {
-            o.Failed = true;
-            OfflineQueue.Add(queued);
-            StateChanged?.Invoke();
-        }
     }
 
     // ---- Typing ----
@@ -816,16 +747,11 @@ public class ChatState : IAsyncDisposable
         }
 
         var isOpen = message.RoomId == ActiveRoomId;
+        // Our own echo is matched by room + idempotency key in any room, open or not.
+        var wasOutgoing = ReconcileEcho(message);
         if (isOpen)
         {
-            var mine = MatchOutgoing(message);
-            if (mine is not null)
-            {
-                _outbox.Remove(mine.TempId);
-                var ti = ActiveMessages.FindIndex(m => m.Id == mine.TempId);
-                if (ti >= 0) ActiveMessages[ti] = message with { DeliveryStatus = message.DeliveryStatus ?? "sent" };
-                else if (ActiveMessages.All(m => m.Id != message.Id)) ActiveMessages.Add(message with { DeliveryStatus = message.DeliveryStatus ?? "sent" });
-            }
+            if (wasOutgoing) { }
             else if (ActiveMessages.All(m => m.Id != message.Id))
             {
                 ActiveMessages.Add(message);
@@ -982,22 +908,6 @@ public class ChatState : IAsyncDisposable
                 ActiveMessages[idx] = old with { IsDeleted = true, Content = dto.Replacement };
             }
             MessageDeleted?.Invoke(dto.MessageId, dto.Replacement);
-        }
-        StateChanged?.Invoke();
-    }
-
-    private void OnMessageAck(MessageAckDto ack)
-    {
-        var entry = _outbox.Values.FirstOrDefault(o => o.Key == ack.IdempotencyKey);
-        if (entry is not null)
-        {
-            entry.ServerId = ack.MessageId;
-            entry.Failed = false;
-            OfflineQueue.RemoveAll(q => q.IdempotencyKey == ack.IdempotencyKey);
-            // If the room broadcast already delivered the real message, the optimistic
-            // copy is now a duplicate.
-            if (ActiveMessages.Any(m => m.Id == ack.MessageId))
-                RemoveOptimistic(entry.TempId);
         }
         StateChanged?.Invoke();
     }
@@ -1276,28 +1186,17 @@ public class ChatState : IAsyncDisposable
         await DrainOfflineQueueAsync();
     }
 
-    private async Task DrainOfflineQueueAsync()
-    {
-        if (_hub?.State != HubConnectionState.Connected) return;
-        var queue = OfflineQueue.ToList();
-        OfflineQueue.Clear();
-        foreach (var (roomId, content, key, replyToId, type, attachmentIds) in queue)
-        {
-            if (roomId == Guid.Empty) continue;
-            var request = new SendMessageHubRequest(roomId, content, key, replyToId, type ?? "text", attachmentIds);
-            try { await _hub.InvokeAsync("SendMessage", request); }
-            catch { OfflineQueue.Add((roomId, content, key, replyToId, type, attachmentIds)); break; }
-        }
-        StateChanged?.Invoke();
-    }
-
     private async Task OnRemovedFromRoomAsync(Guid roomId)
     {
         if (_drafts != null) try { await _drafts.RemoveAsync(roomId); } catch { }
         ForgetRoom(roomId);
         if (roomId != ActiveRoomId) { await LoadRoomsAsync(); return; }
         try { await _hub!.InvokeAsync("LeaveRoom", roomId); } catch { }
+        if (roomId != ActiveRoomId) { await LoadRoomsAsync(); return; } // switched away meanwhile
+        _openCts?.Cancel();
         ActiveRoomId = null;
+        ResetRoomLoadState();
+        IsLoadingMessages = false;
         _openingRoomId = null;
         ActiveRoom = null;
         ActiveMessages = [];

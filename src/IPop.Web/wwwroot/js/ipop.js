@@ -788,25 +788,24 @@ window.ipop = {
   chatBindPaste(wrap, dotNet) {
     if (!wrap || !dotNet) return;
     if (wrap._ipopPaste) this.chatUnbindPaste(wrap);
-    const chunkB64 = buf => {
-      const bytes = new Uint8Array(buf);
-      const chunk = 0x8000;
-      let binary = "";
-      for (let i = 0; i < bytes.length; i += chunk) {
-        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    const deliver = files => {
+      if (!wrap.isConnected) return;
+      if (wrap.dataset.uploading === "true") {
+        dotNet.invokeMethodAsync("OnPasteUploadNotice", "Wait for the current upload to finish.").catch(() => {});
+        return;
       }
-      return btoa(binary);
-    };
-    const toPayload = async files => {
-      const sliced = Array.from(files).filter(Boolean).slice(0, 5);
-      const out = [];
-      for (const f of sliced) {
-        if (!f.size) continue;
-        if (f.size > 50 * 1024 * 1024) continue;
-        const buf = await f.arrayBuffer();
-        out.push({ FileName: f.name || "pasted-image.png", ContentType: f.type || "application/octet-stream", Base64: chunkB64(buf), FileSize: f.size });
+      const input = wrap.querySelector('input[type="file"]');
+      if (!input) return;
+      try {
+        // Reuse Blazor InputFile streaming and the same validation for picker, paste and drop.
+        // No base64 copies of whole files and no silent size/count filtering here.
+        const transfer = new DataTransfer();
+        Array.from(files).filter(Boolean).forEach(file => transfer.items.add(file));
+        input.files = transfer.files;
+        input.dispatchEvent(new Event("change", { bubbles: true }));
+      } catch {
+        dotNet.invokeMethodAsync("OnPasteUploadNotice", "Couldn't attach these files. Use the attachment button to select them.").catch(() => {});
       }
-      return out;
     };
     // Windows Snipping Tool / PrintScreen put the image on items, not files.
     const filesFromClipboard = e => {
@@ -819,20 +818,16 @@ window.ipop = {
     };
     const onPaste = async e => {
       const files = filesFromClipboard(e);
-      if (!files.length || !files.some(f => f.size > 0)) return;
+      if (!files.length) return;
       e.preventDefault();
-      const payload = await toPayload(files);
-      if (payload.length) dotNet.invokeMethodAsync("OnPasteFiles", payload);
+      deliver(files);
     };
     const onDrop = async e => {
       const files = e.dataTransfer && e.dataTransfer.files;
       if (!files || files.length === 0) return;
-      const hasFile = Array.from(files).some(f => f.size > 0);
-      if (!hasFile) return;
       e.preventDefault();
       wrap.classList.remove("drag-over");
-      const payload = await toPayload(files);
-      if (payload.length) dotNet.invokeMethodAsync("OnPasteFiles", payload);
+      deliver(files);
     };
     const onDragOver = e => {
       if (e.dataTransfer && e.dataTransfer.types && Array.from(e.dataTransfer.types).includes("Files")) {

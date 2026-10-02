@@ -23,6 +23,10 @@ public record MessageDto(Guid Id, Guid RoomId, Guid SenderId, string SenderName,
     int? ReadTotal = null,
     IReadOnlyList<SeenByDto>? ReadPreview = null);
 public record MessageAckDto(Guid MessageId, DateTime ServerTimestamp, Guid IdempotencyKey);
+/// SendMessage's hub return value on every exit path. RoomId + IdempotencyKey echo the request so
+/// the client settles exactly that message; Error is a stable code (e.g. "rate_limited").
+public record SendMessageResultDto(bool Success, Guid RoomId, Guid IdempotencyKey, Guid? MessageId = null,
+    DateTime? ServerTimestamp = null, string? Error = null);
 public record ReplyPreviewDto(string SenderName, string Content);
 
 // Room DTOs

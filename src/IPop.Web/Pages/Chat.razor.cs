@@ -656,7 +656,7 @@ public partial class Chat
         {
             // Persist before clearing, exactly like a room switch: Half-typed text must
             // survive Escape and come back when the conversation is reopened.
-            _ = Drafts.SaveAsync(roomId.Value, ComposerWireText());
+            FlushComposerDraft(roomId.Value);
         }
         messageText = "";
         replyToMsg = null;
@@ -680,6 +680,7 @@ public partial class Chat
 
     protected override async Task OnInitializedAsync()
     {
+        InitializeDraftLifecycle();
         Layout.SetHeader("Messages");
         UpdateSubtitle();
         Layout.EscapePressed += OnEscapePressed;
@@ -709,9 +710,12 @@ public partial class Chat
         // this the reader lands at the start of the conversation instead of the newest message.
         if (RoomId is null && ChatSvc.ActiveRoomId is not null) scrollToBottom = true;
         _ = ChatSvc.LoadArchivedRoomsAsync();
+        if (Auth.Me is null) await Auth.LoadMeAsync();
         await ChatSvc.ConnectAsync();
         if (RoomId is not null)
             await OpenRoomCore(RoomId.Value);
+        else if (ChatSvc.ActiveRoomId is { } retainedRoom && string.IsNullOrWhiteSpace(QueryValue("new")) && string.IsNullOrWhiteSpace(QueryValue("nik")) && string.IsNullOrWhiteSpace(QueryValue("p")))
+            await OpenRoomCore(retainedRoom);
         else if (QueryValue("new") == "group")
             await StartGroupFromQuery();
         else if (QueryValue("new") == "dm")
@@ -865,6 +869,7 @@ public partial class Chat
                 try { await composerRef.FocusAsync(); } catch { }
         }
         await SyncMobileChromeAsync();
+        await A11yAfterRenderAsync(paneReady);
     }
 
     private bool scrollToBottom;
@@ -961,8 +966,14 @@ public partial class Chat
     /// Desktop has no CSS for .m-tools, so this is inert there.
     private void ToggleMobileTools(Guid msgId) => mToolsMsgId = mToolsMsgId == msgId ? null : msgId;
 
+    private bool _disposed;
+
     public void Dispose()
     {
+        DisposeDraftLifecycle();
+        CancelComposerUpload();
+        _disposed = true;
+        A11yDispose();
         Layout.EscapePressed -= OnEscapePressed;
         try { _ = JS.InvokeVoidAsync("ipop.chatUnbindPaste", composerWrapRef); } catch { }
         try { _ = JS.InvokeVoidAsync("ipop.chatUnbindComposer", composerRef); } catch { }
@@ -1001,6 +1012,7 @@ public partial class Chat
             openedRoomId = null;
             if (RoomId is not null) Nav.NavigateTo("/chat", replace: true);
         }
+        A11yOnStateChanged();
         UpdateSubtitle();
         // One hub event raises StateChanged + RoomListChanged (and often TypingChanged) back to
         // back; each used to re-render the whole page. Yield once and paint them together.
@@ -1019,6 +1031,7 @@ public partial class Chat
     private void OnMessageReceived(IPop.Application.Chat.MessageDto msg)
     {
         // Soft: never drag a reader who scrolled up back to the bottom (OnAfterRenderAsync).
+        AnnounceIncoming(msg);
         pendingIncoming++;
         _ = InvokeAsync(StateHasChanged);
     }

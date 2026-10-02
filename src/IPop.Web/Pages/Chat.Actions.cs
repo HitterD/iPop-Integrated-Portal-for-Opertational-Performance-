@@ -16,10 +16,14 @@ public partial class Chat
 
     private void ShowCtx(Guid msgId, Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
     {
+        lastEscapeTicks = 0; // A newly opened menu is a new layer, even after a rapid Escape.
         ctxMsgId = msgId;
         ctxX = e.ClientX;
         ctxY = e.ClientY;
         ctxNeedsPlacement = true;
+        a11yKbdCtxFor = msgId;
+        a11yFocusMenuPending = true;
+        a11yAnchorPending = false;
     }
 
     private void CloseCtx()

@@ -327,6 +327,29 @@ public class AuthState(HttpClient http, IJSRuntime js)
     /// returns default (as a non-success status always has) and raises RequestFailed.
     public async Task<T?> GetAsync<T>(string url, CancellationToken ct = default)
     {
+        // tolerateBadBody: false keeps the old contract: a 2xx with a body that is not the
+        // expected JSON still throws to the caller, exactly as before GetResultAsync existed.
+        var r = await GetCoreAsync<T>(url, tolerateBadBody: false, ct);
+        if (r.Status == GetStatus.Unreachable)
+        {
+            RequestFailed?.Invoke(url);
+            return LastGood<T>(url);
+        }
+        if (r.Status != GetStatus.Ok) return default;
+        Remember(url, r.Value);
+        return r.Value;
+    }
+
+    /// GET that says what happened instead of collapsing every failure into null. No last-good
+    /// fallback and no RequestFailed: the caller owns the error UI and must be able to tell
+    /// "not a member / gone" (403/404) from "try again" (network, timeout, 5xx). Caller
+    /// cancellation still throws OperationCanceledException. A 2xx whose body is not the
+    /// expected JSON (proxy HTML page, truncated body) is Failed, never an exception.
+    public Task<GetResult<T>> GetResultAsync<T>(string url, CancellationToken ct = default)
+        => GetCoreAsync<T>(url, tolerateBadBody: true, ct);
+
+    private async Task<GetResult<T>> GetCoreAsync<T>(string url, bool tolerateBadBody, CancellationToken ct)
+    {
         HttpResponseMessage res;
         try
         {
@@ -336,22 +359,31 @@ public class AuthState(HttpClient http, IJSRuntime js)
         }
         catch (Exception ex) when (!ct.IsCancellationRequested && ex is TimeoutException or HttpRequestException or TaskCanceledException)
         {
-            RequestFailed?.Invoke(url);
-            return LastGood<T>(url);
+            return new(GetStatus.Unreachable, default, null);
         }
         if (ct.IsCancellationRequested) ct.ThrowIfCancellationRequested();
-        if (res.StatusCode is HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout)
+        var code = res.StatusCode;
+        var status = code switch
         {
-            RequestFailed?.Invoke(url);
-            return LastGood<T>(url);
+            HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout => GetStatus.Unreachable,
+            HttpStatusCode.Unauthorized => GetStatus.Unauthorized,
+            HttpStatusCode.Forbidden => GetStatus.Forbidden,
+            HttpStatusCode.NotFound => GetStatus.NotFound,
+            _ when !res.IsSuccessStatusCode => GetStatus.Failed,
+            // Guard empty bodies: 204/idle endpoints (e.g. /api/calls/ringing with no ring)
+            // return 200 + Content-Length: 0 → ReadFromJsonAsync would throw and crash the page.
+            _ when res.Content.Headers.ContentLength is 0 => GetStatus.Empty,
+            _ => GetStatus.Ok,
+        };
+        if (status != GetStatus.Ok) return new(status, default, code);
+        T? value;
+        try { value = await res.Content.ReadFromJsonAsync<T>(cancellationToken: ct); }
+        catch (Exception ex) when (tolerateBadBody && !ct.IsCancellationRequested
+            && ex is System.Text.Json.JsonException or NotSupportedException or HttpRequestException or IOException)
+        {
+            return new(GetStatus.Failed, default, code);
         }
-        if (!res.IsSuccessStatusCode) return default;
-        // Guard empty bodies: 204/idle endpoints (e.g. /api/calls/ringing with no ring)
-        // return 200 + Content-Length: 0 → ReadFromJsonAsync would throw and crash the page.
-        if (res.Content.Headers.ContentLength is 0) return default;
-        var value = await res.Content.ReadFromJsonAsync<T>(cancellationToken: ct);
-        Remember(url, value);
-        return value;
+        return value is null ? new(GetStatus.Empty, default, code) : new(GetStatus.Ok, value, code);
     }
 
     // ── Last good answer per URL, this tab only ──
@@ -451,10 +483,10 @@ public class AuthState(HttpClient http, IJSRuntime js)
         return res;
     }
 
-    public async Task<HttpResponseMessage> SendMultipartAsync(string url, MultipartFormDataContent content)
+    public async Task<HttpResponseMessage> SendMultipartAsync(string url, MultipartFormDataContent content, CancellationToken ct = default)
     {
         // MultipartFormDataContent's inner streams are consumed on Send — buffer once so 401 retry can resend.
-        var buffered = await content.ReadAsByteArrayAsync();
+        var buffered = await content.ReadAsByteArrayAsync(ct);
         var contentType = content.Headers.ContentType?.ToString();
         content.Dispose();
 
@@ -464,7 +496,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
             if (contentType is not null) c.Headers.TryAddWithoutValidation("Content-Type", contentType);
             var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = c };
             if (token is not null) req.Headers.Authorization = new("Bearer", token);
-            return await http.SendAsync(req);
+            return await http.SendAsync(req, ct);
         }
 
         var res = await SendOnce(_accessToken);
@@ -495,4 +527,28 @@ public class AuthState(HttpClient http, IJSRuntime js)
     private record RefreshDto(string AccessToken, string RefreshToken, DateTime AccessTokenExpiresAt, bool MustChangePassword);
     private record PresenceDto(string Status);
     private record ApiError(string? Code, string? Message, Dictionary<string, string[]>? Fields);
+}
+
+/// Outcome of AuthState.GetResultAsync.
+public enum GetStatus
+{
+    /// 2xx with a body.
+    Ok,
+    /// 2xx with no body (204 / Content-Length 0 / JSON null).
+    Empty,
+    /// 401 that a token refresh could not fix.
+    Unauthorized,
+    Forbidden,
+    NotFound,
+    /// Any other non-success status (400, 409, 500…).
+    Failed,
+    /// Never answered: network error, timeout, or the proxy said 502/503/504.
+    Unreachable,
+}
+
+public readonly record struct GetResult<T>(GetStatus Status, T? Value, HttpStatusCode? Code)
+{
+    public bool IsOk => Status == GetStatus.Ok;
+    /// The server says this caller may not (or can no longer) see the resource.
+    public bool IsGone => Status is GetStatus.Forbidden or GetStatus.NotFound;
 }

@@ -23,6 +23,7 @@
 @using IPop.Web.Components.Chat
 
 <PageTitle>Messages — IPop</PageTitle>
+<div class="chat-live-status" role="status" aria-live="polite" aria-atomic="true">@A11yLiveText</div>
 
 <div class="chat-area @(mobileRoomsOpen ? "rooms-open" : "") @(ChatSvc.ActiveRoomId is not null && !newChatOpen ? "m-detail" : "") @(drawerOpen ? "with-drawer" : "") @(globalDrawerView is not null ? "with-global-drawer" : "")" @onclick="CloseCtx">
     @* ============ ROOM PANE ============ *@
@@ -288,7 +289,20 @@
                 }
             }
 
-            @if (!rooms.Any() && !ChatSvc.RoomsLoaded && !searchActive)
+            @if (ChatSvc.RoomsError != ChatLoadError.None && rooms.Any())
+            {
+                <div class="load-older" role="alert">Couldn't refresh conversations.
+                    <button type="button" @onclick="ChatSvc.RetryRoomsAsync">Try again</button>
+                </div>
+            }
+            @if (!rooms.Any() && ChatSvc.RoomsError != ChatLoadError.None && !searchActive)
+            {
+                <div class="empty-state" role="alert">
+                    <div class="sub">Couldn't load conversations.</div>
+                    <button type="button" class="btn" @onclick="ChatSvc.RetryRoomsAsync">Try again</button>
+                </div>
+            }
+            else if (!rooms.Any() && !ChatSvc.RoomsLoaded && !searchActive)
             {
                 @* Shimmer fades in only if the first fetch takes longer than ~300ms. *@
                 <div class="room-skel" role="status" aria-label="Loading conversations">
@@ -530,7 +544,13 @@
 
                     @* ---- Messages ---- *@
                     <div class="messages" @ref="messagesRef">
-                        @if (ChatSvc.IsLoadingMessages && ChatSvc.ActiveMessages.Count == 0)
+                        @if (ChatSvc.RoomError == ChatLoadError.Unavailable)
+                        {
+                            <div class="load-older" role="alert">Couldn't refresh messages.
+                                <button type="button" @onclick="ChatSvc.RetryActiveRoomAsync">Try again</button>
+                            </div>
+                        }
+                        @if (ChatSvc.IsLoadingMessages && ChatSvc.ActiveMessages.Count == 0 && ChatSvc.RoomError == ChatLoadError.None)
                         {
                             <div class="msg-skel" role="status" aria-label="Loading messages">
                                 <span class="sk in" style="width:46%"></span><span class="sk in" style="width:62%"></span>
@@ -541,7 +561,12 @@
                         else if (ChatSvc.HasOlderMessages)
                         {
                             <div class="load-older">
-                                @if (loadingOlder)
+                                @if (ChatSvc.OlderError != ChatLoadError.None && !loadingOlder)
+                                {
+                                    <span role="alert">Couldn't load older messages.</span>
+                                    <button type="button" @onclick="RetryOlder">Try again</button>
+                                }
+                                else if (loadingOlder)
                                 {
                                     <span class="load-older-spin" role="status" aria-label="Loading older messages"></span>
                                 }
@@ -551,7 +576,7 @@
                                 }
                             </div>
                         }
-                        else if (ChatSvc.ActiveRoom is not null)
+                        else if (ChatSvc.ActiveRoom is not null && ChatSvc.RoomError == ChatLoadError.None)
                         {
                             <div class="conv-start-card">
                                 <div class="conv-start-avatar" style="background:@GetActiveRoomColor()">
@@ -620,7 +645,7 @@
                             prevMsg = msg;
                             var currentMsg = msg;
 
-                            <div @key="msg.Id" data-msg-id="@msg.Id" class="@msgClass @(ChatSvc.IsFresh(msg.Id) ? "fresh" : "") @(mToolsMsgId == msg.Id ? "m-tools" : "") @(editingMsgId == msg.Id ? "editing" : "")" @onclick="() => ToggleMobileTools(currentMsg.Id)" @oncontextmenu="(e) => ShowCtx(currentMsg.Id, e)" @oncontextmenu:preventDefault>
+                            <div @key="msg.Id" data-msg-id="@msg.Id" tabindex="-1" aria-label="@A11yRowLabel(currentMsg)" class="@msgClass @(ChatSvc.IsFresh(msg.Id) ? "fresh" : "") @(mToolsMsgId == msg.Id ? "m-tools" : "") @(editingMsgId == msg.Id ? "editing" : "")" @onclick="() => ToggleMobileTools(currentMsg.Id)" @oncontextmenu="(e) => { A11yPointerCtx(); ShowCtx(currentMsg.Id, e); }" @oncontextmenu:preventDefault>
                                 @if (msg.Type != "system" && msg.Type != "emergency" && editingMsgId != msg.Id)
                                 {
                                     var pinnedMsg = IsMsgPinned(currentMsg.Id);
@@ -637,7 +662,7 @@
                                                 <i data-lucide="pin"></i>
                                             </button>
                                         }
-                                        <button type="button" class="act-btn" title="More" aria-label="More options" @onclick="(e) => ShowCtx(currentMsg.Id, e)" @onclick:stopPropagation>
+                                        <button type="button" class="act-btn" title="More" aria-label="More options" @onclick="(e) => ShowCtxFromButton(currentMsg.Id, e)" @onclick:stopPropagation>
                                             <i data-lucide="ellipsis"></i>
                                         </button>
                                         @if (reactPickerMsgId == msg.Id)
@@ -687,10 +712,13 @@
 
                                     @if (isFailed)
                                     {
-                                        <div class="msg-retry">
-                                            <span>Not sent</span>
+                                        <div class="msg-retry" role="alert">
+                                            <span>@(ChatSvc.SendFailureText(currentMsg.Id) ?? "Not sent")</span>
                                             <button type="button" @onclick="() => ChatSvc.RetryAsync(currentMsg.Id)" @onclick:stopPropagation>
                                                 <i data-lucide="rotate-ccw"></i> Retry
+                                            </button>
+                                            <button type="button" @onclick="() => RestoreFailedMessage(currentMsg.Id)" @onclick:stopPropagation>
+                                                <i data-lucide="pencil"></i> Edit
                                             </button>
                                         </div>
                                     }
@@ -726,7 +754,7 @@
                     }
 
                     @* ---- Apple-style Composer ---- *@
-                    <div class="composer-wrap" @ref="composerWrapRef">
+                    <div class="composer-wrap" @ref="composerWrapRef" data-uploading="@(uploading ? "true" : "false")">
                         @* v6: emoji popover (smile inside the input) and the "+" menu; stickers live under "+". *@
                         @if (pickerOpen)
                         {
@@ -821,7 +849,10 @@
                         }
                         @if (!string.IsNullOrEmpty(uploadError))
                         {
-                            <div class="upload-error">@uploadError</div>
+                            <div class="upload-error" role="alert">
+                                <span>@uploadError</span>
+                                <button type="button" class="icon-btn" aria-label="Dismiss upload message" @onclick="() => uploadError = null"><i data-lucide="x"></i></button>
+                            </div>
                         }
 
                         @if (pendingAttachments.Count > 0)
@@ -851,13 +882,21 @@
                                         </button>
                                     </div>
                                 }
-                                @if (uploading)
-                                {
-                                    <div class="pending-item uploading"><span class="att-skeleton"></span></div>
-                                }
                             </div>
                         }
 
+                        @if (uploading)
+                        {
+                            <div class="pending-strip" role="status" aria-live="polite">
+                                <div class="pending-item uploading"><span class="att-skeleton"></span></div>
+                                <span>Uploading @uploadingFiles file(s)…</span>
+                            </div>
+                        }
+
+                        @if (ComposerWireText().Length >= 3500)
+                        {
+                            <div class="composer-limit" role="status">@ComposerWireText().Length / @ChatState.MaxMessageLength characters</div>
+                        }
                         <div class="composer v6-composer">
                             <InputFile @ref="fileInput" OnChange="OnFileSelected" class="hidden-input" accept="*/*" multiple />
                             @if (isRecordingVoice)
@@ -886,7 +925,7 @@
                                     <textarea @ref="composerRef" class="input-wrap"
                                               data-mention-open="@(MentionListVisible ? "1" : "0")"
                                               aria-autocomplete="list" aria-expanded="@(MentionListVisible ? "true" : "false")"
-                                              placeholder="@ComposerPlaceholder"
+                                              placeholder="@ComposerPlaceholder" aria-label="@ComposerPlaceholder"
                                               @bind="messageText"
                                               @bind:event="oninput"
                                               @bind:after="OnComposerInput"
@@ -898,7 +937,7 @@
                                     </button>
                                     @if (hasDraft)
                                     {
-                                        <button type="button" class="v6-send on" title="Send" aria-label="Send message" @onclick="SendMessage">
+                                        <button type="button" class="v6-send on" title="Send" aria-label="Send message" disabled="@uploading" @onclick="SendMessage">
                                             <i data-lucide="arrow-up"></i>
                                         </button>
                                     }
@@ -1537,11 +1576,29 @@
                 }
             </div>
             <div class="messages pending-room">
-                <div class="msg-skel" role="status" aria-label="Loading messages">
-                                <span class="sk in" style="width:46%"></span><span class="sk in" style="width:62%"></span>
-                                <span class="sk out" style="width:38%"></span><span class="sk in" style="width:54%"></span>
-                                <span class="sk out" style="width:58%"></span><span class="sk out" style="width:30%"></span>
-                            </div>
+                @if (ChatSvc.RoomError == ChatLoadError.Gone)
+                {
+                    <div class="empty-state" role="alert">
+                        <div class="title">Conversation unavailable</div>
+                        <div class="sub">It was deleted or you're no longer a member.</div>
+                        <button type="button" class="btn" @onclick="MobileBackToList">Back to conversations</button>
+                    </div>
+                }
+                else if (ChatSvc.RoomError == ChatLoadError.Unavailable)
+                {
+                    <div class="empty-state" role="alert">
+                        <div class="sub">Couldn't load this conversation.</div>
+                        <button type="button" class="btn" @onclick="ChatSvc.RetryActiveRoomAsync">Try again</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="msg-skel" role="status" aria-label="Loading messages">
+                        <span class="sk in" style="width:46%"></span><span class="sk in" style="width:62%"></span>
+                        <span class="sk out" style="width:38%"></span><span class="sk in" style="width:54%"></span>
+                        <span class="sk out" style="width:58%"></span><span class="sk out" style="width:30%"></span>
+                    </div>
+                }
             </div>
         }
         else

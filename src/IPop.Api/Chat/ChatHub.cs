@@ -74,50 +74,38 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
     // Messaging (Task 8.2)
     // ──────────────────────────────────────────────────────────────────────────
 
-    public async Task SendMessage(SendMessageHubRequest request)
+    /// Returns the outcome on every path, echoing RoomId + IdempotencyKey, so the client settles
+    /// exactly the message it sent (never "the oldest pending one").
+    public async Task<SendMessageResultDto> SendMessage(SendMessageHubRequest request)
     {
+        if (request is null) return new SendMessageResultDto(false, Guid.Empty, Guid.Empty, Error: "content_required");
+        SendMessageResultDto Fail(string code) => new(false, request.RoomId, request.IdempotencyKey, Error: code);
+
         var userId = GetUserId();
         var nik = GetNik();
-        if (userId is null || nik is null) return;
+        if (userId is null || nik is null) return Fail("unauthorized");
         if (!await perms.IsAllowedAsync(userId.Value, "chat.send", null, Context.ConnectionAborted))
-        {
-            await Clients.Caller.SendAsync("error", new { code = "forbidden" });
-            return;
-        }
+            return Fail("forbidden");
+
+        if (request.Content is null) return Fail("content_required");
+        if (request.Content.Length > 4000) return Fail("payload_too_large");
 
         // Rate limit: 30 messages per 60-second sliding window (Req 30.6)
-        if (!CheckRateLimit(nik))
-        {
-            await Clients.Caller.SendAsync("error", new { code = "rate_limited", message = "30 messages per minute exceeded." });
-            return;
-        }
-
-        if (request.Content is null)
-        {
-            await Clients.Caller.SendAsync("error", new { code = "content_required" });
-            return;
-        }
-        if (request.Content.Length > 4000)
-        {
-            await Clients.Caller.SendAsync("error", new { code = "payload_too_large", message = "Message exceeds 4000 characters." });
-            return;
-        }
+        if (!CheckRateLimit(nik)) return Fail("rate_limited");
 
         var req = new SendMessageRequest(request.RoomId, request.Content, request.IdempotencyKey, request.ReplyToId, request.Type, request.AttachmentIds);
         var result = await chatService.SendMessageAsync(userId.Value, req, Context.ConnectionAborted);
 
-        if (!result.Success)
-        {
-            await Clients.Caller.SendAsync("error", new { code = result.Error });
-            return;
-        }
+        if (!result.Success) return Fail(result.Error ?? "unknown");
 
-        // ACK to sender with server timestamp
+        // ACK to sender with server timestamp (older clients still read this event)
         var ack = new MessageAckDto(result.Message!.Id, result.Message.CreatedAt, request.IdempotencyKey);
         await Clients.Caller.SendAsync("messageAck", ack);
 
         // Broadcast to room group via IChatNotifier (which routes through IHubContext)
         await notifier.NotifyNewMessageAsync(request.RoomId, result.Message, Context.ConnectionAborted);
+
+        return new SendMessageResultDto(true, request.RoomId, request.IdempotencyKey, result.Message.Id, result.Message.CreatedAt);
     }
 
     public async Task EditMessage(Guid messageId, string newContent)

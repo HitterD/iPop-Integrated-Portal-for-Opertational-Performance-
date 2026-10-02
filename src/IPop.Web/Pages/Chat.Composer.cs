@@ -19,6 +19,7 @@ public partial class Chat
 
     private async Task OnComposerInput()
     {
+        StageComposerDraft();
         await ChatSvc.SendTypingAsync();
         await CheckMentionAsync();
         await GrowComposer();
@@ -139,44 +140,69 @@ public partial class Chat
         StateHasChanged();
     }
 
+    /// Raised (synchronously, before any await) once a composer send is handed to ChatState.
+    /// Chat.Drafts.cs implements it to remember which draft version this send consumed; the
+    /// matching ChatSvc.SendSettled (same RoomId + IdempotencyKey) says whether it went out.
+    partial void OnComposerSendStarted(ComposerSendSnapshot snapshot);
+
+    /// What a composer send consumed: the wire text (mentions as tokens) and the exact
+    /// composer text it came from, so a later edit is never mistaken for the sent version.
+    internal sealed record ComposerSendSnapshot(Guid RoomId, Guid IdempotencyKey, string WireText, string ComposerText,
+        Guid? ReplyToId, IReadOnlyList<IPop.Web.Models.PendingAttachmentItem> Attachments);
+
     private async Task SendMessage()
     {
         var hasText = !string.IsNullOrWhiteSpace(messageText);
         var hasAttachments = pendingAttachments.Count > 0;
         if (!hasText && !hasAttachments) return;
+        // Attachments still uploading would be dropped from this message: wait for them.
+        if (uploading) { uploadError = "Wait for the upload to finish before sending."; return; }
+        var sendRoomId = ChatSvc.ActiveRoomId;
+        if (sendRoomId is null) return;
         // no sentinel; the bubble renders attachments directly. Picked "@Name" text becomes
         // @[Name](u:GUID) tokens here so the server records mentions and notifies.
         var text = hasText ? ComposerMentionModel.ToWire(messageText.Trim(), ComposerMentionModel.Prune(messageText, pickedMentions)) : "";
+        // Refuse before clearing anything: the text stays in the composer to be shortened.
+        if (text.Length > IPop.Web.Services.ChatState.MaxMessageLength)
+        {
+            Toasts.Show($"Message is too long (max {IPop.Web.Services.ChatState.MaxMessageLength:N0} characters).", ToastKind.Error);
+            return;
+        }
+
+        // Capture everything this send consumes before the first await, so text typed (or a
+        // room switched to) while it is in flight is never cleared or attributed to it.
+        var key = Guid.NewGuid();
+        var composerText = messageText;
+        var replyId = replyToMsg?.Id;
+        var sentAttachments = pendingAttachments;
+        var ids = hasAttachments ? sentAttachments.Select(a => a.Id).ToList() : null;
+        // The optimistic bubble needs real attachment metadata to draw its tiles.
+        var previews = hasAttachments ? sentAttachments.Select(a => a.AsDto()).ToList() : null;
+        var blobUrls = sentAttachments.Where(p => !string.IsNullOrEmpty(p.PreviewUrl)).Select(p => p.PreviewUrl!).ToList();
+        OnComposerSendStarted(new ComposerSendSnapshot(sendRoomId.Value, key, text, composerText, replyId, sentAttachments));
+
         pickedMentions = [];
         activeMention = null;
         CloseMentionPopup(true);
-        // ipop-38b: snapshot the room up front with everything else — reading
-        // ActiveRoomId after the awaits below can pick up a room the user
-        // switched to mid-send and delete THEIR draft (silent data loss).
-        var sendRoomId = ChatSvc.ActiveRoomId;
         messageText = "";
         uploadError = null;
-        try { await JS.InvokeVoidAsync("ipop.resetComposer", composerRef); } catch { }
-        var ids = hasAttachments ? pendingAttachments.Select(a => a.Id).ToList() : null;
-        // The optimistic bubble needs real attachment metadata to draw its tiles.
-        var previews = hasAttachments ? pendingAttachments.Select(a => a.AsDto()).ToList() : null;
-        var toRevoke = pendingAttachments.Where(p => !string.IsNullOrEmpty(p.PreviewUrl)).Select(p => p.PreviewUrl!).ToList();
         pendingAttachments = [];
+        replyToMsg = null;
         scrollToBottom = true;
         // Clicking Send moves focus to the button; hand it back so typing can continue.
         focusComposerPending = true;
 
-        // Tell the room we stopped typing before the message lands, otherwise remote
-        // clients keep the indicator up until their 8s local timeout expires.
-        await ChatSvc.StopTypingAsync();
-        await ChatSvc.SendMessageAsync(text, replyToMsg?.Id, null, ids, previews);
-        foreach (var u in toRevoke) _ = JS.InvokeVoidAsync("ipop.revokeBlob", u);
-        replyToMsg = null;
+        // ChatState adds the bubble before its first await, so the message is in the outbox
+        // (and retryable) even if anything below throws.
+        var sendTask = ChatSvc.SendMessageAsync(text, replyId, null, ids, previews, key, blobUrls);
         try { await JS.InvokeVoidAsync("ipop.resetComposer", composerRef); } catch { }
-        // ipop-38: the sent draft is consumed — drop it from the per-room draft store
-        // so returning to this room doesn't restore an already-sent message.
-        if (sendRoomId is not null)
-            _ = Drafts.RemoveAsync(sendRoomId.Value);
+        // Tell the room we stopped typing, otherwise remote clients keep the indicator up
+        // until their 8s local timeout expires.
+        try { await ChatSvc.StopTypingAsync(); } catch { }
+        var outcome = await sendTask;
+        // Local previews are only needed to put a failed message back into the composer.
+        if (outcome?.State == IPop.Web.Services.SendState.Confirmed)
+            foreach (var u in blobUrls) _ = JS.InvokeVoidAsync("ipop.revokeBlob", u);
     }
 
     private async Task ScrollToBottom()
@@ -472,6 +498,7 @@ public partial class Chat
         if (text.Length > MentionSyntax.MaxContentLength) { CloseMentionPopup(true); return; }
         messageText = text;
         if (picked is not null && !pickedMentions.Contains(picked)) pickedMentions.Add(picked);
+        StageComposerDraft();
         activeMention = null;
         CloseMentionPopup(true);
         StateHasChanged();
@@ -537,6 +564,7 @@ public partial class Chat
         if (text.Length > MentionSyntax.MaxContentLength) { CloseMentionPopup(true); return; }
         var caret = active.Value.AtIndex + token.Length;
         messageText = text;
+        StageComposerDraft();
         activeMention = null;
         CloseMentionPopup(true);
         StateHasChanged();
@@ -588,11 +616,22 @@ public partial class Chat
                d.Department ?? "—", d.DepartmentCode, d.Site ?? "—", d.SiteCode,
                d.Manager ?? "—", d.Email, d.Status, IPop.Web.Models.AvatarPalette.For(d.Nik), d.PhotoPath, d.ManagerNik);
 
-    private const long MaxUploadBytes = 50L * 1024 * 1024;
+    private const long MaxUploadBytes = ChatUploadPolicy.MaxBytes;
+    private int uploadingFiles;
+    private CancellationTokenSource? composerUploadCts;
+
+    private void CancelComposerUpload()
+    {
+        composerUploadCts?.Cancel();
+        composerUploadCts = null;
+        uploading = false;
+        uploadingFiles = 0;
+    }
 
     private async Task TriggerFileUpload()
     {
-        if (pendingAttachments.Count >= 5)
+        if (uploading) { uploadError = "Wait for the current upload to finish."; return; }
+        if (pendingAttachments.Count >= ChatUploadPolicy.MaxFiles)
         {
             uploadError = "You can attach up to 5 files per message.";
             return;
@@ -603,97 +642,75 @@ public partial class Chat
 
     private async Task OnFileSelected(InputFileChangeEventArgs e)
     {
-        if (ChatSvc.ActiveRoomId is null) return;
-        uploadError = null;
+        if (ChatSvc.ActiveRoomId is not { } roomId) return;
+        if (uploading) { uploadError = "Wait for the current upload to finish."; return; }
+        var composerId = composerWrapRef.Id;
+        var selected = e.GetMultipleFiles(e.FileCount);
+        var plan = ChatUploadPolicy.Plan(selected.Select(f => new ChatUploadPolicy.File(f.Name, f.Size)).ToList(), pendingAttachments.Count);
+        uploadError = plan.Notice;
+        if (plan.Accepted.Count == 0) return;
+        var cts = composerUploadCts = new CancellationTokenSource();
         uploading = true;
+        uploadingFiles = plan.Accepted.Count;
         StateHasChanged();
-
         try
         {
-            var remaining = Math.Max(0, 5 - pendingAttachments.Count);
-            if (remaining == 0)
+            using var content = new MultipartFormDataContent();
+            content.Add(new StringContent(roomId.ToString()), "roomId");
+            foreach (var i in plan.Accepted)
             {
-                uploadError = "You can attach up to 5 files per message.";
-                return;
-            }
-
-            // GetMultipleFiles throws above its cap, so ask for the browser's full
-            // selection and trim here — that lets us explain what was dropped.
-            var selected = e.GetMultipleFiles(e.FileCount);
-            var skippedTooBig = new List<string>();
-            var accepted = 0;
-
-            var content = new MultipartFormDataContent();
-            content.Add(new StringContent(ChatSvc.ActiveRoomId.Value.ToString()), "roomId");
-
-            foreach (var file in selected)
-            {
-                if (accepted >= remaining) break;
-                if (file.Size > MaxUploadBytes) { skippedTooBig.Add(file.Name); continue; }
-
-                var part = new StreamContent(file.OpenReadStream(MaxUploadBytes));
-                // Without an explicit Content-Type the server sees "" and cannot tell an
-                // image from a spreadsheet — this is what broke every attachment preview.
-                part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
-                    ChatAttachments.Mime(file.ContentType, file.Name));
+                var file = selected[i];
+                var part = new StreamContent(file.OpenReadStream(MaxUploadBytes, cts.Token));
+                part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(ChatAttachments.Mime(file.ContentType, file.Name));
                 content.Add(part, "file", file.Name);
-                accepted++;
             }
-
-            var notes = new List<string>();
-            if (skippedTooBig.Count > 0)
-                notes.Add($"{string.Join(", ", skippedTooBig)} exceeded the 50 MB limit.");
-            if (selected.Count - skippedTooBig.Count > remaining)
-                notes.Add($"Only {remaining} more file(s) can be attached to this message.");
-
-            if (accepted == 0)
-            {
-                uploadError = notes.Count > 0 ? string.Join(" ", notes) : "No files were uploaded.";
-                return;
-            }
-
-            var resp = await Auth.SendMultipartAsync("/api/chat/attachments/upload", content);
+            using var resp = await Auth.SendMultipartAsync("/api/chat/attachments/upload", content, cts.Token);
+            if (ChatSvc.ActiveRoomId != roomId || composerWrapRef.Id != composerId || _disposed) return;
             if (resp.IsSuccessStatusCode)
             {
                 var uploaded = await resp.Content.ReadFromJsonAsync<List<IPop.Application.Chat.AttachmentDto>>();
-                if (uploaded is not null)
-                    await AddPendingWithThumbs(uploaded);
-                if (notes.Count > 0) uploadError = string.Join(" ", notes);
+                if (uploaded is { Count: > 0 }) await AddPendingWithThumbs(uploaded, roomId, composerId);
+                else uploadError = "No files were uploaded. Select the files and try again.";
             }
-            else
-            {
-                uploadError = await ReadUploadError(resp);
-            }
+            else uploadError = await ReadUploadError(resp);
         }
-        catch (Exception ex)
-        {
-            uploadError = ex.Message;
-        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested) { }
+        catch (Exception) { if (ChatSvc.ActiveRoomId == roomId && composerWrapRef.Id == composerId && !_disposed) uploadError = "Couldn't upload. Check your connection, then select the files and try again."; }
         finally
         {
-            uploading = false;
-            StateHasChanged();
+            if (composerUploadCts == cts)
+            {
+                composerUploadCts = null;
+                uploading = false;
+                uploadingFiles = 0;
+            }
+            cts.Dispose();
+            if (!_disposed) StateHasChanged();
         }
     }
 
-    private async Task AddPendingWithThumbs(IEnumerable<IPop.Application.Chat.AttachmentDto> uploaded)
+    private async Task AddPendingWithThumbs(IEnumerable<IPop.Application.Chat.AttachmentDto> uploaded, Guid roomId, string? composerId)
     {
         foreach (var a in uploaded)
         {
+            if (ChatSvc.ActiveRoomId != roomId || composerWrapRef.Id != composerId || _disposed) return;
             string? preview = null;
             if (ChatAttachments.IsImage(a))
             {
                 try
                 {
-                    var thumbPath = $"/api/chat/attachments/{a.Id}/thumbnail";
-                    var url = new Uri(Http.BaseAddress!, thumbPath).ToString();
+                    var url = new Uri(Http.BaseAddress!, $"/api/chat/attachments/{a.Id}/thumbnail").ToString();
                     preview = await JS.InvokeAsync<string?>("ipop.authBlob", url, Auth.AccessToken);
                 }
                 catch { /* keep the typed-card fallback */ }
             }
+            if (ChatSvc.ActiveRoomId != roomId || composerWrapRef.Id != composerId || _disposed)
+            {
+                if (preview is not null) await JS.InvokeVoidAsync("ipop.revokeBlob", preview);
+                return;
+            }
             pendingAttachments.Add(new PendingAttachmentItem(a.Id, a.FileName, a.FileSize, a.MimeType, preview));
         }
-        // Files picked/dropped/pasted: ready for a caption.
         focusComposerPending = true;
     }
 
@@ -707,67 +724,31 @@ public partial class Chat
         pendingAttachments.RemoveAt(idx);
     }
 
-    public record PastedFileDto(string FileName, string ContentType, string Base64, long FileSize);
-
     [JSInvokable]
-    public async Task OnPasteFiles(PastedFileDto[] files)
+    public Task OnPasteUploadNotice(string message) => InvokeAsync(() =>
     {
-        if (ChatSvc.ActiveRoomId is null || files is null || files.Length == 0) return;
-        // Respect 5-file staging limit
-        var remaining = Math.Max(0, 5 - pendingAttachments.Count);
-        if (remaining == 0) return;
-        var toUpload = files.Take(remaining).ToArray();
-
-        uploadError = null;
+        uploadError = message;
         StateHasChanged();
-        try
-        {
-            var content = new MultipartFormDataContent();
-            content.Add(new StringContent(ChatSvc.ActiveRoomId.Value.ToString()), "roomId");
-            foreach (var f in toUpload)
-            {
-                if (string.IsNullOrWhiteSpace(f.Base64)) continue;
-                byte[] bytes;
-                try { bytes = Convert.FromBase64String(f.Base64); } catch { continue; }
-                if (bytes.Length > 50 * 1024 * 1024) continue;
-                var bc = new ByteArrayContent(bytes);
-                bc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
-                    string.IsNullOrWhiteSpace(f.ContentType) ? "application/octet-stream" : f.ContentType);
-                content.Add(bc, "file", string.IsNullOrWhiteSpace(f.FileName) ? "pasted-image.png" : f.FileName);
-            }
-
-            var resp = await Auth.SendMultipartAsync("/api/chat/attachments/upload", content);
-            if (resp.IsSuccessStatusCode)
-            {
-                var uploaded = await resp.Content.ReadFromJsonAsync<List<IPop.Application.Chat.AttachmentDto>>();
-                if (uploaded is not null)
-                    await AddPendingWithThumbs(uploaded);
-                StateHasChanged();
-            }
-            else
-            {
-                uploadError = await ReadUploadError(resp);
-            }
-        }
-        catch (Exception ex)
-        {
-            uploadError = ex.Message;
-        }
-        finally
-        {
-            StateHasChanged();
-        }
-    }
+    });
 
     private static async Task<string> ReadUploadError(HttpResponseMessage resp)
     {
         try
         {
             var body = await resp.Content.ReadFromJsonAsync<Dictionary<string, string>>();
-            if (body is not null && body.TryGetValue("message", out var msg) && !string.IsNullOrWhiteSpace(msg))
-                return msg;
+            if (body is not null && body.TryGetValue("code", out var code))
+                return code switch
+                {
+                    "file_too_large" => "Files can be up to 50 MB each.",
+                    "too_many_attachments" => "You can attach up to 5 files per message.",
+                    "room_not_found" => "This conversation is no longer available.",
+                    "file_required" => "No files were uploaded. Select the files and try again.",
+                    _ => "Couldn't upload. Select the files and try again."
+                };
         }
-        catch { /* non-JSON body */ }
-        return $"Upload failed ({(int)resp.StatusCode}).";
+        catch { /* non-JSON proxy response */ }
+        return resp.StatusCode is System.Net.HttpStatusCode.Forbidden or System.Net.HttpStatusCode.Unauthorized
+            ? "You don't have permission to upload to this conversation."
+            : "Couldn't upload. Check your connection, then select the files and try again.";
     }
 }

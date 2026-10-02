@@ -72,6 +72,8 @@
 }
 
 /* Upload error */
+.upload-error > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.upload-error > button { flex: none; }
 .upload-error {
   padding: 8px 16px;
   font-size: var(--text-sm);

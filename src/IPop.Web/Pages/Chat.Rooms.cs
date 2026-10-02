@@ -171,6 +171,7 @@ public partial class Chat
         var previousRoomId = openedRoomId;
         openedRoomId = roomId;
         _ = Notifs.MarkReadByTargetAsync("chat", roomId);
+        CancelComposerUpload();
         ClearPendingPreviews();
         pendingAttachments = [];
         uploadError = null;
@@ -203,7 +204,7 @@ public partial class Chat
         // swallows storage failures); messageText clears synchronously here so a slow
         // LoadAsync can never leave room B showing room A's text.
         if (previousRoomId is not null)
-            _ = Drafts.SaveAsync(previousRoomId.Value, ComposerWireText());
+            FlushComposerDraft(previousRoomId.Value);
         messageText = "";
         replyToMsg = null;
         plusMenuOpen = false;
@@ -219,7 +220,11 @@ public partial class Chat
             // ipop-38: superseded-request guard before assigning — a second room switch
             // during OpenRoomAsync must not paste this room's draft into that one.
             if (roomId == openedRoomId)
-                LoadComposerFromWire(await Drafts.LoadAsync(roomId));
+                {
+                    var draft = await SafeLoadDraftAsync(roomId);
+                    if (openedRoomId == roomId && ChatSvc.ActiveRoomId == roomId && ChatSvc.RoomError != IPop.Web.Services.ChatLoadError.Gone)
+                        LoadComposerFromWire(draft);
+                }
             scrollToBottom = true;
             focusComposerPending = true;
             // Must run before MarkReadAsync: marking read zeroes the room's UnreadCount,
@@ -279,6 +284,21 @@ public partial class Chat
         loadingOlder = true;
         StateHasChanged();
         try { await LoadOlderCore(); }
+        finally { loadingOlder = false; }
+    }
+
+    private async Task RetryOlder()
+    {
+        if (loadingOlder) return;
+        loadingOlder = true;
+        StateHasChanged();
+        try
+        {
+            try { anchorFromBottom = (await JS.InvokeAsync<ScrollInfo>("ipop.scrollInfo", messagesRef)).FromBottom; } catch { }
+            anchorBaseCount = ChatSvc.ActiveMessages.Count;
+            await ChatSvc.RetryOlderMessagesAsync();
+            if (ChatSvc.ActiveMessages.Count <= anchorBaseCount) anchorFromBottom = null;
+        }
         finally { loadingOlder = false; }
     }
 
