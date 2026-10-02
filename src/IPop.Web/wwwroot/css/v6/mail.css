@@ -41,6 +41,8 @@
 .mail-page .inline-reply-box textarea { border: none; background: transparent; resize: none; font: inherit; font-size: 13px; }
 .mail-page .inline-reply-box .ra { gap: 8px; }
 .mail-page .inline-reply-box .btn-primary:disabled { opacity: .5; }
+/* Quick reply opens above the conversation, directly under the subject header. */
+.mail-page .inline-reply-box.qr-top { margin: 12px 16px 0; flex-shrink: 0; box-shadow: var(--shadow-xs); }
 .mail-page .detail-actions-bar > button, .mail-page .detail-actions-bar > .ghost-btn { flex: none; white-space: nowrap; }
 .mail-page .detail-actions-bar .ghost-btn { padding: 0 10px; }
 .mail-page .detail-actions-bar .ghost-btn .lucide, .mail-page .detail-actions-bar .btn-primary-reply .lucide { display: inline-block; }
@@ -53,6 +55,14 @@
   border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; color: var(--ink);
 }
 .mail-page .thr-acts .comp-btn .lucide { width: 13px; height: 13px; }
+.mail-page .thr-older {
+  align-self: center; width: auto; height: 30px; padding: 0 12px; margin-top: 4px; display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; color: var(--ink-2); cursor: pointer;
+}
+.mail-page .thr-older:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.mail-page .thr-older .lucide { width: 13px; height: 13px; }
+.mail-page .thr-older:disabled { opacity: .6; cursor: default; }
+.mail-page .thr-msg[data-thr-id] { scroll-margin-top: 8px; }
 .mail-page .mail-detail-card .detail-actions-bar { gap: 6px; }
 .mail-page .detail-actions-bar .icon-btn { width: 28px; }
 .mail-page .detail-actions-bar .ghost-btn + .icon-btn:not(.mobile-back-btn) { margin-left: auto; }

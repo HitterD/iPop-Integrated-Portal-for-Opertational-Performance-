@@ -210,7 +210,7 @@ public partial class Chat
     // ---- Scroll position ----
 
     private bool showJumpToLatest;
-    private bool scrollWatchBound;
+    private string? scrollWatchBoundId;
     /// Messages from others that arrived while the reader was scrolled up; shown on the pill.
     private int newBelowCount;
     private bool loadingOlder;

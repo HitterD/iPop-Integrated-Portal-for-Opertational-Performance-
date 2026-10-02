@@ -3,8 +3,10 @@
 @inject IJSRuntime JS
 
 @*
-    Chronological conversation stack (Gmail-style): every message in the thread, oldest first,
-    so a reply is read in the order it was written and you can see what it answers.
+    Conversation stack: every message in the thread, NEWEST first, so the latest reply is at the
+    top and older history sits below it. The server pages newest-first (50 per page); older
+    messages come in with "Load older messages" at the bottom. The opened message stays expanded
+    with the "This message" badge and is scrolled into view when it is not the newest.
 
     Two facts drive this component:
       • The thread ROOT has ThreadRootId == null — only replies carry it. Testing ThreadRootId
@@ -24,6 +26,7 @@
         var body = isCurrent ? Detail : (bodies.TryGetValue(m.Id, out var b) ? b : null);
 
         <article class="thr-msg @(isOpen ? "open" : "collapsed") @(isCurrent ? "current" : "")"
+                 data-thr-id="@m.Id" @key="m.Id"
                  aria-expanded="@(isOpen ? "true" : "false")">
 
             <header class="thr-head" role="button" tabindex="0"
@@ -81,6 +84,14 @@
             }
         </article>
     }
+
+    @if (HasOlder)
+    {
+        <button type="button" class="thr-older comp-btn" disabled="@loadingOlder" @onclick="LoadOlderAsync">
+            <i data-lucide="history"></i>
+            @(loadingOlder ? "Loading…" : $"Load older messages ({totalCount - stack.Count})")
+        </button>
+    }
 </div>
 
 @code {
@@ -91,10 +102,21 @@
     [Parameter] public EventCallback<MailDetail> OnReply { get; set; }
     [Parameter] public EventCallback<MailDetail> OnForward { get; set; }
 
+    private const int PageSize = 50;
+    // Safety cap when paging back to reach an old opened message (50 × 20 = 1000 messages).
+    private const int MaxAutoPages = 20;
+
     private List<MailSummary> stack = [];
     private readonly HashSet<Guid> expanded = [];
     private readonly Dictionary<Guid, MailDetail> bodies = [];
     private Guid loadedFor;
+    private Guid threadKey;
+    private int pagesLoaded;
+    private int totalCount;
+    private bool loadingOlder;
+    private Guid? scrollTo;
+
+    private bool HasOlder => threadKey != Guid.Empty && stack.Count < totalCount;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -110,9 +132,14 @@
 
     private async Task LoadStackAsync(bool expandLatest)
     {
-        loadedFor = Detail.Id;
+        var openedId = Detail.Id;
+        loadedFor = openedId;
         expanded.Clear();
         bodies.Clear();
+        threadKey = Guid.Empty;
+        pagesLoaded = 0;
+        totalCount = 0;
+        scrollTo = null;
 
         // A message belongs to a conversation if it has replies (ThreadCount > 0) OR if it is
         // itself a reply (ThreadRootId != null or InReplyToId != null). The root message of a
@@ -121,9 +148,19 @@
         if (hasThread)
         {
             var key = Detail.ThreadRootId ?? Detail.Id;
-            var page = await MailSvc.GetThreadAsync(key, 1, 50);
-            if (loadedFor != Detail.Id) return;   // a different mail was opened while we waited
+            var page = await MailSvc.GetThreadAsync(key, 1, PageSize);
+            if (loadedFor != openedId) return;   // a different mail was opened while we waited
             stack = page?.Items?.ToList() ?? [];
+            threadKey = key;
+            pagesLoaded = 1;
+            totalCount = page?.TotalCount ?? stack.Count;
+
+            // The opened message may be older than the newest page: page back until it is in
+            // the stack, so it can be shown expanded with its badge.
+            while (!expandLatest && stack.Count < totalCount && stack.All(x => x.Id != openedId) && pagesLoaded < MaxAutoPages)
+            {
+                if (!await FetchNextPageAsync(openedId)) return;
+            }
         }
         else
         {
@@ -135,15 +172,70 @@
 
         if (expandLatest && stack.Count > 0)
         {
-            expanded.Add(stack.Last().Id);
+            // Newest first: the reply just sent is at the top.
+            var newest = stack[0];
+            expanded.Add(newest.Id);
+            if (newest.Id != Detail.Id) _ = FetchBodyAsync(newest.Id);
         }
         else
         {
             expanded.Add(Detail.Id);
+            // Not the newest? Bring it into view inside the reading pane after render.
+            if (stack.Count > 1 && stack[0].Id != Detail.Id) scrollTo = Detail.Id;
         }
 
         await JS.InvokeVoidAsync("ipop.icons");
         StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (scrollTo is { } id)
+        {
+            scrollTo = null;
+            await JS.InvokeAsync<bool>("ipop.scrollIntoView", $".thr-msg[data-thr-id=\"{id}\"]");
+        }
+    }
+
+    /// Appends the next (older) page. Returns false when the opened mail changed meanwhile.
+    private async Task<bool> FetchNextPageAsync(Guid openedId)
+    {
+        var page = await MailSvc.GetThreadAsync(threadKey, pagesLoaded + 1, PageSize);
+        if (loadedFor != openedId) return false;
+        var items = page?.Items ?? [];
+        pagesLoaded++;
+        if (page is not null) totalCount = page.TotalCount;
+        var seen = stack.Select(x => x.Id).ToHashSet();
+        stack.AddRange(items.Where(x => seen.Add(x.Id)));
+        // An empty page means the count moved under us: stop offering more.
+        if (items.Count == 0) totalCount = stack.Count;
+        return true;
+    }
+
+    private async Task LoadOlderAsync()
+    {
+        if (loadingOlder || !HasOlder) return;
+        loadingOlder = true;
+        StateHasChanged();
+        try
+        {
+            await FetchNextPageAsync(loadedFor);
+        }
+        finally
+        {
+            loadingOlder = false;
+        }
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task FetchBodyAsync(Guid id)
+    {
+        if (bodies.ContainsKey(id)) return;
+        var full = await MailSvc.GetAsync(id);
+        if (full is not null) bodies[id] = full;
+        StateHasChanged();
+        await JS.InvokeVoidAsync("ipop.icons");
     }
 
     private async Task Toggle(Guid id)

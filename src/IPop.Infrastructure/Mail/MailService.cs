@@ -318,7 +318,10 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         var mails = await query
             .Include(m => m.Sender)
             .Include(m => m.Attachments)
-            .OrderBy(m => m.CreatedAt)
+            // Newest first so page 1 holds the latest messages; Id breaks CreatedAt ties so
+            // paging is stable (no message skipped or repeated across pages).
+            .OrderByDescending(m => m.CreatedAt)
+            .ThenByDescending(m => m.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);

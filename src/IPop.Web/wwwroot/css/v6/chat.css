@@ -68,11 +68,13 @@
 .chat-area .conv-header .actions button:hover, .chat-area .conv-header > button:not(.conv-back):not(.header-avatar-btn):hover { background: var(--tray); }
 .chat-area .conv-header .lucide { width: 17px; height: 17px; }
 
-/* Bubbles — timestamp sits under the bubble, never inside it. */
-.chat-area .msg .bubble { padding: 8px 14px; border-radius: 18px; font-size: 14px; line-height: 1.4; }
+/* Bubble fill + type. Geometry (padding, corners, tail) lives under "Message geometry". */
+.chat-area .msg .bubble { font-size: 14px; line-height: 1.4; }
 .chat-area .msg.recv .bubble { background: #E9E9EB; color: var(--ink); border: none; }
 [data-theme="dark"] .chat-area .msg.recv .bubble { background: #2C2C2E; }
 .chat-area .msg.sent .bubble { background: var(--accent); color: #fff; }
+/* Dark theme: the accent (#30D158) is too bright for white text/ticks (2:1); the bubble alone uses a deeper green (white 4.4:1). */
+[data-theme="dark"] .chat-area .msg.sent .bubble:not(.media-only):not(.jumbo-emoji):not(.sticker-only):not(.deleted) { background: #1F8A4C; }
 .chat-area .msg .bubble .time {
   float: none; position: absolute; top: 100%; margin: 3px 0 0; opacity: 0; color: var(--ink-3) !important;
   font-size: 10px; pointer-events: none;
@@ -264,17 +266,39 @@
 [data-theme="dark"] .chat-area .sticky-pinned-bar .pin-text { color: #F4E6CB; }
 
 /* Message geometry and metadata */
-.chat-area .messages { padding: 16px 24px; gap: 4px; }
-.chat-area .messages > .msg { max-width: 74%; margin-top: 5px; }
+/* Vertical rhythm is the rows' own margin: 2px inside a same-sender run, 8px between runs. */
+.chat-area .messages { padding: 16px 24px; gap: 0; }
+.chat-area .messages > .msg { max-width: 74%; margin-top: 8px; }
 .chat-area .messages > .msg.grouped { margin-top: 2px; }
 .chat-area .messages > .msg > .msg { max-width: 100%; width: 100%; margin: 0; }
 .chat-area .messages > .msg.sent > .msg { justify-content: flex-start; }
 .chat-area .msg .msg-avatar { width: 28px; height: 28px; border-radius: 8px; align-self: flex-end; margin-bottom: 0; }
 .chat-area .msg.grouped .msg-avatar { visibility: hidden; }
 .chat-area .msg .sender { padding: 0 12px; margin-bottom: 3px; font-size: 11px; font-weight: 600; }
-.chat-area .msg .bubble { padding: 9px 14px; line-height: 1.4; border-radius: 18px; }
-.chat-area .msg.sent.grouped .bubble { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
-.chat-area .msg.recv.grouped .bubble { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+.chat-area .msg .bubble { padding: 10px 14px; line-height: 1.4; border-radius: var(--bubble-radius); }
+/* Runs (grp-first/mid/last/single, see ChatFormatters.RunClass): sender-side corners tighten
+   where two bubbles of the run touch. Full shorthand so the legacy .grouped corners can't leak. */
+.chat-area .msg.sent.grp-single .bubble, .chat-area .msg.recv.grp-single .bubble { border-radius: var(--bubble-radius); }
+.chat-area .msg.sent.grp-first .bubble { border-radius: var(--bubble-radius) var(--bubble-radius) var(--bubble-grouped-radius) var(--bubble-radius); }
+.chat-area .msg.sent.grp-mid .bubble { border-radius: var(--bubble-radius) var(--bubble-grouped-radius) var(--bubble-grouped-radius) var(--bubble-radius); }
+.chat-area .msg.sent.grp-last .bubble { border-radius: var(--bubble-radius) var(--bubble-grouped-radius) var(--bubble-radius) var(--bubble-radius); }
+.chat-area .msg.recv.grp-first .bubble { border-radius: var(--bubble-radius) var(--bubble-radius) var(--bubble-radius) var(--bubble-grouped-radius); }
+.chat-area .msg.recv.grp-mid .bubble { border-radius: var(--bubble-grouped-radius) var(--bubble-radius) var(--bubble-radius) var(--bubble-grouped-radius); }
+.chat-area .msg.recv.grp-last .bubble { border-radius: var(--bubble-grouped-radius) var(--bubble-radius) var(--bubble-radius) var(--bubble-radius); }
+/* Tail on the last bubble of a run (WhatsApp-style), sender side, bottom. Filled bubbles only:
+   media / jumbo emoji / image stickers are transparent and deleted ones are dashed outlines.
+   ::before because ::after is the hover ring (modules/chat/interactions.css). */
+.chat-area .msg.sent:is(.grp-last, .grp-single) .bubble:not(.media-only):not(.jumbo-emoji):not(.sticker-only):not(.deleted) { border-bottom-right-radius: var(--bubble-grouped-radius); }
+.chat-area .msg.recv:is(.grp-last, .grp-single) .bubble:not(.media-only):not(.jumbo-emoji):not(.sticker-only):not(.deleted) { border-bottom-left-radius: var(--bubble-grouped-radius); }
+.chat-area .msg:is(.grp-last, .grp-single) .bubble:not(.media-only):not(.jumbo-emoji):not(.sticker-only):not(.deleted)::before {
+  content: ""; position: absolute; bottom: 0; width: 12px; height: 14px; background: inherit; pointer-events: none;
+}
+.chat-area .msg.sent:is(.grp-last, .grp-single) .bubble:not(.media-only):not(.jumbo-emoji):not(.sticker-only):not(.deleted)::before {
+  right: -6px; -webkit-mask: radial-gradient(circle at 100% 0, transparent 11.5px, #000 12px); mask: radial-gradient(circle at 100% 0, transparent 11.5px, #000 12px);
+}
+.chat-area .msg.recv:is(.grp-last, .grp-single) .bubble:not(.media-only):not(.jumbo-emoji):not(.sticker-only):not(.deleted)::before {
+  left: -6px; -webkit-mask: radial-gradient(circle at 0 0, transparent 11.5px, #000 12px); mask: radial-gradient(circle at 0 0, transparent 11.5px, #000 12px);
+}
 .chat-area .msg .bubble.mention-me { box-shadow: 0 0 0 2px #FF9F0A !important; }
 .chat-area .msg .bubble.deleted { border: 1px dashed #C7C7CC; background: var(--surface-2); color: var(--ink-3); font-style: italic; }
 .chat-area .msg .bubble.deleted.mention-me { box-shadow: none !important; }
@@ -283,30 +307,40 @@
 /* Time + ticks inside the bubble, bottom-right (WhatsApp-style). See MessageBubble.MetaMode. */
 .chat-area .msg .bmeta { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; line-height: 1; font-style: normal; font-weight: 400;
   letter-spacing: 0; font-variant-numeric: tabular-nums; white-space: nowrap; user-select: none; color: var(--ink-3); }
-.chat-area .msg.sent .bmeta { color: rgba(255,255,255,.78); }
+.chat-area .msg.recv .bmeta { color: #6E6E73; }
+[data-theme="dark"] .chat-area .msg.recv .bmeta { color: #98989D; }
+/* Full white on the green: sent + delivered ticks and the time. Read is navy (below). */
+.chat-area .msg.sent .bmeta { color: #fff; }
 /* Deleted own bubbles drop the accent fill, so white meta would vanish. */
 .chat-area .msg.sent .bubble.deleted .bmeta { color: var(--ink-3); }
-.chat-area .msg.sent .bubble.deleted .bmeta .msg-status.read { color: #0A84FF !important; }
 .chat-area .msg .bmeta svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .chat-area .msg .bmeta .meta-pin { width: 11px; height: 11px; }
 .chat-area .msg .bmeta .edited { font-style: italic; }
 .chat-area .msg .bmeta .msg-status { display: inline-flex; color: inherit; }
 .chat-area .msg .bmeta .msg-status.dbl, .chat-area .msg .bmeta .msg-status svg.dbl { width: 15px; }
-.chat-area .msg.sent .bmeta .msg-status.read { color: #9FE3FF !important; }
+/* Read: navy + heavier stroke. #05367D is >= 3:1 on both accents (3.36 on #2E9E5B, 5.68 on #30D158). */
+.chat-area .msg.sent .bmeta .msg-status.read { color: #05367D !important; }
+.chat-area .msg.sent .bmeta .msg-status.read svg { stroke-width: 2.7; }
+[data-theme="dark"] .chat-area .msg.sent .bmeta .msg-status.read { color: #001F4D !important; }
 .chat-area .msg .bmeta .msg-status.failed { color: #FFD2CC; }
 /* The invisible copy at the end of the text reserves the corner for the real one. */
 .chat-area .msg .bmeta.ghost { visibility: hidden; margin-left: 8px; vertical-align: -1px; }
+/* 11px/7px from the corner keeps the ticks inside the 16px curve (corner point is ~10px from its centre). */
 .chat-area .msg .bmeta.text { position: absolute; right: 11px; bottom: 7px; }
 .chat-area .msg .bmeta.block { display: flex; justify-content: flex-end; margin-top: 5px; }
 .chat-area .msg .bubble.media-only:has(> .bmeta.block) { display: flex; flex-direction: column; }
 .chat-area .msg .bubble.media-only .bmeta.block { color: var(--ink-3); padding: 0 4px; }
 .chat-area .msg .bmeta.media, .chat-area .msg .bmeta.float { position: absolute; right: 8px; bottom: 8px; padding: 3px 7px; border-radius: 10px; }
-.chat-area .msg .bmeta.media { background: rgba(0,0,0,.45); color: #fff !important; }
+.chat-area .msg .bmeta.media { background: rgba(0,0,0,.6); color: #fff !important; }
 .chat-area .msg .bmeta.float { position: static; align-self: flex-end; margin-top: 2px; background: var(--surface-2); color: var(--ink-3) !important; }
 .chat-area .msg .bubble.jumbo-emoji:has(> .bmeta.float), .chat-area .msg .bubble.sticker-only:has(> .bmeta.float) { display: flex; flex-direction: column; align-items: flex-start; }
 .chat-area .msg.sent .bubble.jumbo-emoji:has(> .bmeta.float), .chat-area .msg.sent .bubble.sticker-only:has(> .bmeta.float) { align-items: flex-end; }
-.chat-area .msg .bmeta.media .msg-status.read, .chat-area .msg .bmeta.float .msg-status.read { color: #0A84FF !important; }
-.chat-area .msg .bmeta.media .msg-status.read { color: #9FE3FF !important; }
+/* Read on surfaces without the green (float pill, media cards, deleted): theme-specific blue. */
+.chat-area .msg .bmeta.float .msg-status.read, .chat-area .msg .bubble.media-only .bmeta.block .msg-status.read,
+.chat-area .msg.sent .bubble.deleted .bmeta .msg-status.read { color: #0060DF !important; }
+[data-theme="dark"] .chat-area .msg .bmeta.float .msg-status.read, [data-theme="dark"] .chat-area .msg .bubble.media-only .bmeta.block .msg-status.read,
+[data-theme="dark"] .chat-area .msg.sent .bubble.deleted .bmeta .msg-status.read { color: #4DA3FF !important; }
+.chat-area .msg .bmeta.media .msg-status.read { color: #64D2FF !important; }
 .chat-area .msg .reply-quote { background: var(--surface-2); border-left: 3px solid var(--accent); border-radius: 6px; padding: 7px 9px; }
 .chat-area .msg.sent .reply-quote { background: rgba(255,255,255,.16); border-left-color: #fff; }
 .chat-area .msg .reactions { margin-top: 3px; }

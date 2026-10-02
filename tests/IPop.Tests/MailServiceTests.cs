@@ -552,7 +552,7 @@ public class MailServiceTests
     }
 
     [Fact]
-    public async Task Thread_is_returned_oldest_first_for_chronological_stacking()
+    public async Task Thread_is_returned_newest_first()
     {
         using var t = new TestDb();
         var a = t.AddUser("A");
@@ -561,13 +561,42 @@ public class MailServiceTests
 
         var root = await svc.SendAsync(a.Id, new ComposeMailRequest("Root", "one", [b.Nik], [], []), default);
         var r1 = await svc.SendAsync(b.Id, new ComposeMailRequest("Re: Root", "two", [a.Nik], [], [], InReplyToId: root.MailId), default);
-        await svc.SendAsync(a.Id, new ComposeMailRequest("Re: Root", "three", [b.Nik], [], [], InReplyToId: r1.MailId), default);
+        var r2 = await svc.SendAsync(a.Id, new ComposeMailRequest("Re: Root", "three", [b.Nik], [], [], InReplyToId: r1.MailId), default);
 
         var thread = await svc.GetThreadAsync(a.Id, root.MailId!.Value, 1, 50, default);
 
         Assert.Equal(3, thread.Items.Count);
-        Assert.Equal(root.MailId.Value, thread.Items[0].Id);
+        Assert.Equal(r2.MailId!.Value, thread.Items[0].Id);
         Assert.Equal(r1.MailId!.Value, thread.Items[1].Id);
+        Assert.Equal(root.MailId.Value, thread.Items[2].Id);
+    }
+
+    [Fact]
+    public async Task Thread_pages_hold_newest_first_then_older_without_overlap()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var svc = new MailService(t.Verify());
+
+        var root = await svc.SendAsync(a.Id, new ComposeMailRequest("Root", "m0", [b.Nik], [], []), default);
+        var ids = new List<Guid> { root.MailId!.Value };
+        for (var i = 1; i < 5; i++)
+        {
+            var sender = i % 2 == 0 ? a : b;
+            var to = i % 2 == 0 ? b : a;
+            var r = await svc.SendAsync(sender.Id, new ComposeMailRequest("Re: Root", $"m{i}", [to.Nik], [], [], InReplyToId: ids[^1]), default);
+            ids.Add(r.MailId!.Value);
+        }
+
+        var p1 = await svc.GetThreadAsync(a.Id, root.MailId.Value, 1, 2, default);
+        var p2 = await svc.GetThreadAsync(a.Id, root.MailId.Value, 2, 2, default);
+        var p3 = await svc.GetThreadAsync(a.Id, root.MailId.Value, 3, 2, default);
+
+        Assert.Equal(5, p1.TotalCount);
+        Assert.Equal([ids[4], ids[3]], p1.Items.Select(m => m.Id));
+        Assert.Equal([ids[2], ids[1]], p2.Items.Select(m => m.Id));
+        Assert.Equal([ids[0]], p3.Items.Select(m => m.Id));
     }
 
     [Fact]

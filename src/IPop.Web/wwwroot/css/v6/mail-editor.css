@@ -75,7 +75,13 @@
 
 /* Body: borderless rows separated by hairlines, like Mail.app */
 .mc-sheet .composer-body-wrap { padding: 0; overflow: hidden; min-height: 0; display: flex; flex-direction: column; }
-.mc-sheet .recipients-block { gap: 0; margin: 0; padding: 0 16px; border-bottom: none; flex: none; }
+/* The recipients block may shrink (and scroll) so the editor always keeps a usable height;
+   the Subject row sticks to its bottom edge so it never scrolls out of view. */
+.mc-sheet .recipients-block {
+  gap: 0; margin: 0; padding: 0 16px; border-bottom: none;
+  flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+}
+.mc-sheet .recipients-block > .subject-row { position: sticky; bottom: 0; z-index: 1; background: var(--surface); }
 .mc-sheet .recipient-row {
   min-height: 40px; gap: 8px; padding: 4px 0; border-bottom: 0.5px solid var(--mc-hair); margin: 0;
 }
@@ -83,7 +89,31 @@
   width: auto; min-width: 58px; text-transform: none; font-size: 13px; font-weight: 400; color: var(--ink-3); letter-spacing: 0;
 }
 .mc-sheet .recipient-input-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
-.mc-sheet .recipient-input-wrap > :last-child { flex: 1; min-width: 140px; }
+.mc-sheet .recipient-input-wrap > :last-child,
+.mc-sheet .recipient-input-wrap > .member-picker { flex: 1; min-width: 140px; }
+/* Rows with more than a few chips collapse to "+N more" (MailComposer.RecipientField), so a
+   row stays within ~2-3 lines; expanded, the chips scroll inside .rcpt-list. */
+.mc-sheet .rcpt-more {
+  border: none; cursor: pointer; font: inherit; font-size: 12.5px; font-weight: 600; padding: 3px 10px;
+  background: var(--mc-fill-2) !important; color: var(--ink-2) !important;
+}
+.mc-sheet .rcpt-more:hover { background: color-mix(in srgb, var(--accent) 18%, transparent) !important; color: var(--accent-ink) !important; }
+.mc-sheet .rcpt-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.mc-sheet .rcpt-expanded { padding: 2px 0; }
+.mc-sheet .rcpt-list {
+  flex: 1 0 100%; display: flex; flex-wrap: wrap; align-content: flex-start; gap: 4px;
+  max-height: min(40vh, 256px); overflow-y: auto; overscroll-behavior: contain; padding: 2px 0;
+}
+.mc-sheet.maximized .rcpt-list { max-height: min(36vh, 360px); }
+.mc-sheet .rcpt-expanded > .member-picker { flex: 1; min-width: 140px; }
+.mc-sheet .recipient-input-wrap > .rcpt-acts { display: inline-flex; align-items: center; gap: 4px; flex: none; min-width: 0; margin-left: auto; }
+.mc-sheet .rcpt-count { font-size: 12px; color: var(--ink-3); margin-right: 4px; font-variant-numeric: tabular-nums; }
+.mc-sheet .rcpt-act {
+  border: none; background: transparent; font: inherit; font-size: 12.5px; font-weight: 500;
+  padding: 3px 8px; border-radius: 6px; color: var(--mc-blue); cursor: pointer;
+}
+.mc-sheet .rcpt-act:hover { background: var(--mc-fill); }
+.mc-sheet .rcpt-act.danger { color: var(--danger); }
 .mc-sheet .recipient-input-wrap input,
 .mc-sheet .recipient-input-wrap .org-input {
   border: none !important; background: transparent !important; box-shadow: none !important; padding: 4px 0 !important; height: 28px; font-size: 13px;
@@ -137,7 +167,7 @@
 @keyframes mc-spin { to { transform: rotate(360deg); } }
 
 /* Editor fills the remaining height; the toolbar sticks to the top of the sheet body */
-.mc-sheet .mrte { flex: 1; min-height: 0; margin-top: 8px; border: none; border-radius: 0; }
+.mc-sheet .mrte { flex: 1 1 0; min-height: 180px; margin-top: 8px; border: none; border-radius: 0; }
 
 /* Footer */
 .mc-sheet .composer-foot {

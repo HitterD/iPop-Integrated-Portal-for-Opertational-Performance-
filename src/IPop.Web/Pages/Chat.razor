@@ -579,9 +579,8 @@
                         }
                         @{
                             DateTime? lastDate = null;
-                            string? prevSenderNik = null;
-                            DateTime prevSentAt = DateTime.MinValue;
-                            string? prevType = null;
+                            MessageDto? prevMsg = null;
+                            var msgIndex = -1;
                         }
                         @foreach (var msg in ChatSvc.ActiveMessages)
                         {
@@ -611,16 +610,14 @@
                             if (isPending) msgClass += " pending";
                             if (isFailed) msgClass += " failed";
 
-                            var isGrouped = prevSenderNik is not null
-                                && prevSenderNik == msg.SenderNik
-                                && !startsNewDay && !startsUnread
-                                && msg.Type is not ("system" or "emergency")
-                                && prevType is not ("system" or "emergency")
-                                && (msg.CreatedAt - prevSentAt).TotalMinutes < GroupWindowMinutes;
+                            // Runs: first/mid/last/single shape the sender-side corners; the last one wears the tail.
+                            msgIndex++;
+                            var isGrouped = ChatFormatters.ContinuesRun(prevMsg, msg, unreadDividerMsgId);
+                            var nextMsg = msgIndex + 1 < ChatSvc.ActiveMessages.Count ? ChatSvc.ActiveMessages[msgIndex + 1] : null;
+                            var continuesNext = nextMsg is not null && ChatFormatters.ContinuesRun(msg, nextMsg, unreadDividerMsgId);
                             if (isGrouped) msgClass += " grouped";
-                            prevSenderNik = msg.SenderNik;
-                            prevSentAt = msg.CreatedAt;
-                            prevType = msg.Type;
+                            if (msg.Type is not ("system" or "emergency")) msgClass += " " + ChatFormatters.RunClass(isGrouped, continuesNext);
+                            prevMsg = msg;
                             var currentMsg = msg;
 
                             <div @key="msg.Id" data-msg-id="@msg.Id" class="@msgClass @(ChatSvc.IsFresh(msg.Id) ? "fresh" : "") @(mToolsMsgId == msg.Id ? "m-tools" : "") @(editingMsgId == msg.Id ? "editing" : "")" @onclick="() => ToggleMobileTools(currentMsg.Id)" @oncontextmenu="(e) => ShowCtx(currentMsg.Id, e)" @oncontextmenu:preventDefault>

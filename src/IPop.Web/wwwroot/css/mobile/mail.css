@@ -176,6 +176,7 @@
   .mail-page .att-cards { grid-template-columns: 1fr; }
   .mail-page .linked-projects-row { flex-wrap: wrap; }
   .mail-page .inline-reply-box { margin: 0 12px 12px; }
+  .mail-page .inline-reply-box.qr-top { margin: 10px 12px 0; }
   .mail-page .inline-reply-box .ra { flex-wrap: wrap; }
 
   /* Reschedule popover -> bottom sheet */
@@ -211,7 +212,11 @@
   .mc-sheet .recipients-block { padding: 0 12px; }
   .mc-sheet .recipient-row { flex-wrap: wrap; }
   .mc-sheet .recipient-input-wrap { flex: 1; min-width: 0; }
-  .mc-sheet .recipient-input-wrap > :last-child { min-width: 120px; }
+  .mc-sheet .recipient-input-wrap > :last-child,
+  .mc-sheet .recipient-input-wrap > .member-picker { min-width: 120px; }
+  .mc-sheet .rcpt-list { max-height: 35dvh; }
+  .mc-sheet .rcpt-more, .mc-sheet .rcpt-act { min-height: 36px; }
+  .mc-sheet .recipient-input-wrap > .rcpt-acts { min-width: 0; }
   .mc-sheet .cc-bcc-toggles button { min-height: 36px; }
   .mc-sheet .subject-input { min-width: 0; flex: 1; }
   .mc-sheet .composer-body-wrap { overflow-y: auto; }

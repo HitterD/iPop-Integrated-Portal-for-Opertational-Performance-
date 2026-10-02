@@ -1,10 +1,37 @@
 using System.Text.RegularExpressions;
+using IPop.Application.Chat;
 
 namespace IPop.Web.Services;
 
 /// Pure formatters (no I/O, no JS).
 public static class ChatFormatters
 {
+    /// How long a gap may be before a same-sender run is broken into a new block.
+    /// 5 minutes matches Slack's default; long enough to keep a burst together,
+    /// short enough that a reply hours later still gets its own header.
+    public const double GroupWindowMinutes = 5;
+
+    /// True when <paramref name="msg"/> continues <paramref name="prev"/>'s run: same sender,
+    /// same local day, inside the window, neither is a system/emergency row, and the unread
+    /// divider doesn't sit between them.
+    public static bool ContinuesRun(MessageDto? prev, MessageDto msg, Guid? unreadDividerMsgId) =>
+        prev is not null
+        && prev.SenderNik == msg.SenderNik
+        && msg.Id != unreadDividerMsgId
+        && msg.Type is not ("system" or "emergency")
+        && prev.Type is not ("system" or "emergency")
+        && prev.CreatedAt.ToLocalTime().Date == msg.CreatedAt.ToLocalTime().Date
+        && (msg.CreatedAt - prev.CreatedAt).TotalMinutes < GroupWindowMinutes;
+
+    /// Position inside a run, for corner shaping and the tail on the run's last bubble.
+    public static string RunClass(bool continuesPrev, bool continuesNext) => (continuesPrev, continuesNext) switch
+    {
+        (false, false) => "grp-single",
+        (false, true) => "grp-first",
+        (true, true) => "grp-mid",
+        (true, false) => "grp-last",
+    };
+
     /// Messages of only 1–3 emoji render big without a bubble; returns that count, else 0.
     /// Whitespace between emoji is allowed; any other character (text, digits) disqualifies.
     public static int JumboEmojiCount(string? text)

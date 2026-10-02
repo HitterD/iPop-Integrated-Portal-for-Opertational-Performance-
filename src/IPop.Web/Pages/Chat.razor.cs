@@ -24,20 +24,18 @@ public partial class Chat
     private ElementReference qsInputRef;
     private ElementReference ctxMenuRef;
     private bool ctxNeedsPlacement;
-    private bool composerKeyBound;
+    // Id of the textarea the JS Enter/Escape handlers are bound to. The textarea is a new
+    // element after a skeleton, a room switch or a voice recording, so binding follows the
+    // element itself rather than a one-shot flag (ipop.chatBindComposer is idempotent).
+    private string? composerKeyBoundId;
     private DotNetObjectReference<Chat>? selfRef;
-    private bool composerPasteBound;
+    private string? composerPasteBoundId;
     private string messageText = "";
     private string roomSearchQuery = "";
     private bool createDropdownOpen;
     private RoomTab activeTab = RoomTab.Direct;
 
     // ---- Message grouping / unread divider / read receipts ----
-
-    /// How long a gap may be before a same-sender run is broken into a new block.
-    /// 5 minutes matches Slack's default; long enough to keep a burst together,
-    /// short enough that a reply hours later still gets its own header.
-    private const double GroupWindowMinutes = 5;
 
     /// First message the reader had not seen when the room was opened, or null when
     /// they were already caught up. Captured once per room open and deliberately NOT
@@ -780,24 +778,33 @@ public partial class Chat
             // C4: global Ctrl+K / Cmd+K quick switcher (document-level, bound once)
             try { await JS.InvokeVoidAsync("ipop.chatBindQuickSwitcher", selfRef); } catch { }
         }
-        // Bind paste + drag-drop when the composer is in the DOM (retry after room switch).
-        if (!composerPasteBound && paneReady)
+        if (!paneReady)
+        {
+            // Skeleton / empty state: whatever was bound is gone (or about to be), so the
+            // next ready pane binds afresh even if a stale render bound the old room's DOM.
+            composerPasteBoundId = null;
+            composerKeyBoundId = null;
+            scrollWatchBoundId = null;
+        }
+        // Bind paste + drag-drop to the composer actually in the DOM (rebinds when it changes).
+        if (paneReady && composerWrapRef.Id is { } wrapId && wrapId != composerPasteBoundId)
         {
             try
             {
                 selfRef ??= DotNetObjectReference.Create(this);
                 await JS.InvokeVoidAsync("ipop.chatBindPaste", composerWrapRef, selfRef);
-                composerPasteBound = true;
+                composerPasteBoundId = wrapId;
             }
             catch { /* composer not yet rendered (empty state) — retry next frame */ }
         }
-        if (!composerKeyBound && paneReady)
+        // The textarea is absent while recording voice; it comes back as a new element.
+        if (paneReady && composerRef.Id is { } keyId && keyId != composerKeyBoundId && !isRecordingVoice)
         {
             try
             {
                 selfRef ??= DotNetObjectReference.Create(this);
                 await JS.InvokeVoidAsync("ipop.chatBindComposer", composerRef, selfRef);
-                composerKeyBound = true;
+                composerKeyBoundId = keyId;
             }
             catch { }
         }
@@ -810,13 +817,13 @@ public partial class Chat
             }
             catch { }
         }
-        if (!scrollWatchBound && paneReady)
+        if (paneReady && messagesRef.Id is { } listId && listId != scrollWatchBoundId)
         {
             selfRef ??= DotNetObjectReference.Create(this);
             try
             {
                 await JS.InvokeVoidAsync("ipop.bindScrollWatch", messagesRef, selfRef, 400);
-                scrollWatchBound = true;
+                scrollWatchBoundId = listId;
             }
             catch { /* older cached ipop.js — the jump button just stays hidden */ }
             // ipop-22: project/task chip click delegation lives on the same messages element,

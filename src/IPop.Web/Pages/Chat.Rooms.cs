@@ -174,8 +174,8 @@ public partial class Chat
         ClearPendingPreviews();
         pendingAttachments = [];
         uploadError = null;
-        composerPasteBound = false;
-        composerKeyBound = false;
+        composerPasteBoundId = null;
+        composerKeyBoundId = null;
         mobileRoomsOpen = false;
         CloseAttachment();
         showJumpToLatest = false;
@@ -194,7 +194,7 @@ public partial class Chat
         unreadDividerMsgId = null;
         // The messages element is replaced on room switch, so re-bind the scroll watcher.
         try { await JS.InvokeVoidAsync("ipop.unbindScrollWatch", messagesRef); } catch { }
-        scrollWatchBound = false;
+        scrollWatchBoundId = null;
         newBelowCount = 0;
         showJumpToLatest = false;
         // Attachment blobs stay cached (LRU-bounded in ChatAttachments) so coming back is instant.
