@@ -267,9 +267,12 @@
 
     private static string RecipientsOf(MailDetail d)
     {
-        var names = d.Recipients.Where(r => r.RecipientType is "to" or "cc").Select(r => r.Name).ToList();
-        if (names.Count == 0) return "—";
-        return names.Count <= 2 ? string.Join(", ", names) : $"{names[0]} +{names.Count - 1}";
+        var names = d.RecipientGroups.Where(g => g.Field != "bcc").Select(g => g.Name)
+            .Concat(d.Recipients.Where(r => r.RecipientType is "to" or "cc").Select(r => r.Name)).ToList();
+        if (names.Count == 0) return d.HideRecipients ? "undisclosed recipients" : "—";
+        // RecipientTotal counts people (a mass mail lists only the first few names).
+        var more = Math.Max(names.Count - 1, d.RecipientTotal - 1);
+        return names.Count <= 2 && d.RecipientTotal <= names.Count ? string.Join(", ", names) : $"{names[0]} +{more:N0}";
     }
 
     private static string ShortStamp(DateTime? t)

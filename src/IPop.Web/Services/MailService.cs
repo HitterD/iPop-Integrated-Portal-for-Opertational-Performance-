@@ -40,8 +40,8 @@ public sealed class MailService(AuthState Auth, HttpClient http)
     public Task<MailPaged<MailSummary>?> GetThreadAsync(Guid rootId, int page, int pageSize, CancellationToken ct = default)
         => Auth.GetAsync<MailPaged<MailSummary>>($"/api/mail/threads/{rootId}?page={page}&pageSize={pageSize}", ct);
 
-    public async Task<SendMailResult?> SendAsync(MailSendRequest req, CancellationToken ct = default)
-        => await PostAsync<SendMailResult>("/api/mail/send", req, ct);
+    public Task<SendMailResult?> SendAsync(MailSendRequest req, CancellationToken ct = default)
+        => SendWithErrorAsync("/api/mail/send", req, ct);
 
     public async Task<SendMailResult?> SaveDraftAsync(MailSendRequest req, CancellationToken ct = default)
         => await PostAsync<SendMailResult>("/api/mail/drafts", req, ct);
@@ -52,8 +52,68 @@ public sealed class MailService(AuthState Auth, HttpClient http)
     public async Task<SendMailResult?> DiscardDraftAsync(Guid id, CancellationToken ct = default)
         => await DeleteAsync<SendMailResult>($"/api/mail/drafts/{id}", ct);
 
-    public async Task<SendMailResult?> ForwardAsync(Guid id, MailSendRequest req, CancellationToken ct = default)
-        => await PostAsync<SendMailResult>($"/api/mail/{id}/forward", req, ct);
+    public Task<SendMailResult?> ForwardAsync(Guid id, MailSendRequest req, CancellationToken ct = default)
+        => SendWithErrorAsync($"/api/mail/{id}/forward", req, ct);
+
+    /// Send/forward keep the server's code and message ("This mail would go to 1,204 people…").
+    private async Task<SendMailResult?> SendWithErrorAsync(string url, MailSendRequest req, CancellationToken ct)
+    {
+        using var resp = await Auth.SendAsync(HttpMethod.Post, url, req);
+        if (resp.IsSuccessStatusCode) return await resp.Content.ReadFromJsonAsync<SendMailResult>(cancellationToken: ct);
+        string? code = null, message = null;
+        int? count = null;
+        try
+        {
+            var text = await resp.Content.ReadAsStringAsync(ct);
+            if (text.TrimStart().StartsWith('{'))
+            {
+                using var doc = JsonDocument.Parse(text);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String) code = c.GetString();
+                if (root.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String) message = m.GetString();
+                if (root.TryGetProperty("recipientCount", out var n) && n.ValueKind == JsonValueKind.Number) count = n.GetInt32();
+            }
+        }
+        catch (JsonException) { }
+        return new SendMailResult(false, null, message ?? $"Couldn't send the mail ({(int)resp.StatusCode}).", count) { Code = code };
+    }
+
+    /// The server's de-duplicated count and breakdown for the "Send to N people?" dialog.
+    public Task<RecipientPreview?> PreviewRecipientsAsync(MailSendRequest req, CancellationToken ct = default)
+        => PostAsync<RecipientPreview>("/api/mail/recipients/preview", req, ct);
+
+    public Task<MailStats?> GetStatsAsync(Guid id, CancellationToken ct = default)
+        => Auth.GetAsync<MailStats>($"/api/mail/{id}/stats", ct);
+    public Task<MailPaged<MailReader>?> GetReadersAsync(Guid id, bool read, int page, CancellationToken ct = default)
+        => Auth.GetAsync<MailPaged<MailReader>>($"/api/mail/{id}/readers?read={(read ? "true" : "false")}&page={page}&pageSize=50", ct);
+    public Task<MailPaged<MailRecipient>?> GetRecipientsAsync(Guid id, int page, CancellationToken ct = default)
+        => Auth.GetAsync<MailPaged<MailRecipient>>($"/api/mail/{id}/recipients?page={page}&pageSize=50", ct);
+
+    // ── Address-book groups ──
+    public Task<MailGroupList?> GetGroupsAsync(CancellationToken ct = default) => Auth.GetAsync<MailGroupList>("/api/mail/groups", ct);
+    public Task<MailGroupDetail?> GetGroupAsync(string kind, Guid id, CancellationToken ct = default)
+        => Auth.GetAsync<MailGroupDetail>($"/api/mail/groups/{kind}/{id}", ct);
+
+    /// Creates (id null) or updates a personal group. Returns the error message on failure.
+    public async Task<(Guid? Id, string? Error)> SaveGroupAsync(Guid? id, SaveMailGroup req, CancellationToken ct = default)
+    {
+        using var resp = id is { } gid
+            ? await Auth.SendAsync(HttpMethod.Put, $"/api/mail/groups/{gid}", req)
+            : await Auth.SendAsync(HttpMethod.Post, "/api/mail/groups", req);
+        if (!resp.IsSuccessStatusCode) return (null, await ReadErrorAsync(resp, ct));
+        try
+        {
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
+            return (doc.RootElement.TryGetProperty("id", out var v) ? v.GetGuid() : id, null);
+        }
+        catch (JsonException) { return (id, null); }
+    }
+
+    public async Task<bool> DeleteGroupAsync(Guid id, CancellationToken ct = default)
+    {
+        using var resp = await Auth.SendAsync(HttpMethod.Delete, $"/api/mail/groups/{id}");
+        return resp.IsSuccessStatusCode;
+    }
 
     public Task<SendMailResult?> MarkReadAsync(Guid id, CancellationToken ct = default) => PostEmpty($"/api/mail/{id}/read", ct);
     public Task<SendMailResult?> MarkUnreadAsync(Guid id, CancellationToken ct = default) => PostEmpty($"/api/mail/{id}/unread", ct);

@@ -3,11 +3,14 @@
 @inject AuthState Auth
 @inject ConfirmService Confirm
 @inject OverlayStack Overlays
+@inject IPop.Web.Services.MailService MailSvc
+@inject ToastService Toasts
 @inject IJSRuntime JS
 @implements IDisposable
 
-@* Address book: pick many people at once (name search, department filter, "Select all").
-   The type-ahead pickers stay for the quick case; this is for "the whole Finance team". *@
+@* Address book: pick many people at once (name search, multi-select department + site filters,
+   "Select all"). Mail also gets a Groups tab: shared directory groups and the user's own
+   personal groups, added as one chip each and expanded by the server at send time. *@
 @if (open)
 {
     <style>
@@ -17,7 +20,7 @@
         [data-theme="dark"] .ab-backdrop { background: rgba(0,0,0,.55); }
         body:has(.ab-backdrop) .confirm-backdrop { z-index: 930; }
         body:has(.ab-backdrop) .confirm-center { z-index: 931; }
-        .ab-dialog { width: 100%; max-width: 520px; height: min(80vh, 680px); display: flex; flex-direction: column; overflow: hidden;
+        .ab-dialog { width: 100%; max-width: 560px; height: min(84vh, 720px); display: flex; flex-direction: column; overflow: hidden;
             background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--radius-modal, 18px);
             box-shadow: var(--shadow-modal, var(--shadow-md)); animation: modal-in .26s var(--ease); }
         .ab-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 10px; }
@@ -26,51 +29,96 @@
         .ab-x { width: 32px; height: 32px; border-radius: 9px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; display: grid; place-items: center; }
         .ab-x:hover { background: var(--tray); color: var(--ink); }
         .ab-x .lucide { width: 18px; height: 18px; }
-        .ab-filters { display: flex; gap: 8px; padding: 0 18px 10px; }
-        .ab-search { flex: 1; min-width: 0; position: relative; display: flex; align-items: center; }
+        .ab-tabs { display: flex; gap: 4px; margin: 0 18px 10px; padding: 3px; border-radius: 10px; background: var(--tray); }
+        .ab-tabs button { flex: 1; height: 30px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; }
+        .ab-tabs button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+        .ab-filters { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 18px 8px; }
+        .ab-search { grid-column: 1 / -1; min-width: 0; position: relative; display: flex; align-items: center; }
         .ab-search .lucide { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--ink-3); pointer-events: none; }
-        .ab-dialog .ab-search input, .ab-dialog .ab-dept { height: 36px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13.5px; }
-        .ab-dialog .ab-search input { width: 100%; padding: 0 10px 0 34px; }
-        .ab-dept { width: 42%; padding: 0 8px; }
-        .ab-search input:focus, .ab-dept:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
-        .ab-bar { display: flex; align-items: center; justify-content: space-between; padding: 4px 18px 8px; border-bottom: 1px solid var(--line-soft); font-size: 12.5px; color: var(--ink-3); }
-        .ab-all { border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 6px; border-radius: 7px; }
-        .ab-all:hover:not(:disabled) { background: var(--tray); }
-        .ab-all:disabled { color: var(--ink-3); cursor: default; }
+        .ab-dialog .ab-search input { width: 100%; height: 36px; padding: 0 10px 0 34px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13.5px; }
+        .ab-search input:focus, .ab-ms-btn:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+        .ab-ms { position: relative; min-width: 0; }
+        .ab-ms-btn { width: 100%; height: 36px; display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+            padding: 0 10px; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; text-align: left; }
+        .ab-ms-btn .k { color: var(--ink-3); flex: none; }
+        .ab-ms-btn .v { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ab-ms-btn .lucide { width: 15px; height: 15px; color: var(--ink-3); flex: none; }
+        .ab-ms-btn.has { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+        .ab-ms-scrim { position: fixed; inset: 0; z-index: 4; }
+        .ab-ms-pop { position: absolute; top: 40px; left: 0; right: 0; z-index: 5; max-height: 300px; display: flex; flex-direction: column;
+            background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-md); padding: 6px; }
+        .ab-dialog .ab-ms-pop input[type=search] { width: 100%; box-sizing: border-box; height: 32px; border: 1px solid var(--line); border-radius: 8px; padding: 0 9px;
+            font: inherit; font-size: 13px; margin-bottom: 4px; background: var(--surface); color: var(--ink); }
+        .ab-ms-list { overflow-y: auto; min-height: 0; flex: 1; overscroll-behavior: contain; }
+        .ab-dialog .ab-ms-opt { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font-size: 13px; color: var(--ink); cursor: pointer; }
+        .ab-ms-opt:hover { background: var(--tray); }
+        .ab-dialog .ab-ms-opt input { accent-color: var(--accent); width: 15px; height: 15px; margin: 0; flex: none; }
+        .ab-ms-foot { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line-soft); margin-top: 4px; padding: 6px 4px 2px; font-size: 12px; color: var(--ink-3); }
+        .ab-fchips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 0 18px 8px; }
+        .ab-fchip { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 3px 0 9px; border-radius: 12px; font-size: 12px; background: var(--tray); color: var(--ink-2); }
+        .ab-fchip b { font-weight: 600; color: var(--ink); }
+        .ab-fchip button { width: 18px; height: 18px; border: 0; border-radius: 50%; background: transparent; color: var(--ink-2); display: grid; place-items: center; cursor: pointer; padding: 0; }
+        .ab-fchip button:hover { background: var(--surface); color: var(--ink); }
+        .ab-fchip .lucide { width: 12px; height: 12px; }
+        .ab-bar { display: flex; align-items: center; gap: 6px; padding: 4px 18px 8px; border-bottom: 1px solid var(--line-soft); font-size: 12.5px; color: var(--ink-3); }
+        .ab-bar .ab-count { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ab-link { border: 0; background: transparent; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 6px; border-radius: 7px; white-space: nowrap; }
+        .ab-link.muted { color: var(--ink-2); font-weight: 500; }
+        .ab-link:hover:not(:disabled) { background: var(--tray); }
+        .ab-link:disabled { color: var(--ink-3); cursor: default; }
         .ab-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 8px; }
         .ab-empty { text-align: center; color: var(--ink-3); font-size: 13px; padding: 28px 0; margin: 0; }
-        .ab-dialog .ab-search { display: flex; gap: 0; font-size: inherit; font-weight: inherit; }
         .ab-dialog .ab-row { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 10px; border-radius: 10px; cursor: pointer;
             font-size: inherit; font-weight: inherit; }
-        .ab-chips { display: flex; align-items: center; gap: 6px; padding: 8px 18px; border-bottom: 1px solid var(--line-soft);
-            overflow-x: auto; scrollbar-width: thin; flex: none; }
-        .ab-chips-k { flex: none; font-size: 12px; font-weight: 600; color: var(--ink-3); margin-right: 2px; }
-        .ab-chip { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 4px 0 9px; border-radius: 13px;
-            background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--ink); font-size: 12.5px; white-space: nowrap; }
-        .ab-chip button { width: 18px; height: 18px; border: 0; border-radius: 50%; background: transparent; color: var(--ink-2);
-            display: grid; place-items: center; cursor: pointer; padding: 0; }
-        .ab-chip button:hover { background: var(--tray); color: var(--ink); }
-        .ab-chip .lucide { width: 12px; height: 12px; }
         .ab-row:hover { background: var(--tray); }
         .ab-dialog .ab-row input { width: 17px; height: 17px; accent-color: var(--accent); flex: none; margin: 0; }
         .ab-row.already { opacity: .55; cursor: default; }
         .ab-name { display: flex; flex-direction: column; min-width: 0; font-size: 13.5px; color: var(--ink); }
         .ab-name small { font-size: 11.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ab-sec { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); padding: 12px 10px 4px; }
+        .ab-grow { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 12px; }
+        .ab-grow:hover { background: var(--tray); }
+        .ab-gicon { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex: none;
+            background: color-mix(in srgb, var(--info) 14%, transparent); color: var(--info); }
+        .ab-gicon.mine { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+        .ab-gicon .lucide { width: 18px; height: 18px; }
+        .ab-grow .ab-name b { font-weight: 600; }
+        .ab-grow-acts { margin-left: auto; display: flex; gap: 4px; align-items: center; flex: none; }
+        .ab-chips { display: flex; align-items: center; gap: 6px; padding: 8px 18px; border-top: 1px solid var(--line-soft);
+            overflow-x: auto; scrollbar-width: thin; flex: none; }
+        .ab-chips-k { flex: none; font-size: 12px; font-weight: 600; color: var(--ink-3); margin-right: 2px; }
+        .ab-chip { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 4px 0 9px; border-radius: 13px;
+            background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--ink); font-size: 12.5px; white-space: nowrap; }
+        .ab-chip.grp { background: color-mix(in srgb, var(--info) 14%, transparent); }
+        .ab-chip.grp > .lucide { width: 13px; height: 13px; color: var(--info); }
+        .ab-chip .n { color: var(--ink-3); }
+        .ab-chip.more { padding-right: 9px; color: var(--ink-2); }
+        .ab-chip button { width: 18px; height: 18px; border: 0; border-radius: 50%; background: transparent; color: var(--ink-2);
+            display: grid; place-items: center; cursor: pointer; padding: 0; }
+        .ab-chip button:hover { background: var(--tray); color: var(--ink); }
+        .ab-chip button .lucide { width: 12px; height: 12px; }
+        .ab-save { display: flex; gap: 8px; align-items: center; padding: 8px 18px; background: var(--tray); border-top: 1px solid var(--line-soft); font-size: 12.5px; color: var(--ink-2); flex: none; }
+        .ab-save > .lucide { width: 16px; height: 16px; flex: none; color: var(--accent); }
+        .ab-save .lbl { flex: none; white-space: nowrap; }
+        .ab-dialog .ab-save input { flex: 1; min-width: 0; height: 30px; border: 1px solid var(--line); border-radius: 8px; padding: 0 9px; font: inherit; font-size: 13px; background: var(--surface); color: var(--ink); }
+        .ab-save input:focus { outline: none; border-color: var(--accent); }
         .ab-foot { display: flex; align-items: center; gap: 8px; padding: 12px 18px 14px; border-top: 1px solid var(--line-soft); }
+        .ab-hint { font-size: 12px; color: var(--ink-3); }
         .ab-spacer { flex: 1; }
-        .ab-clear { border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 13px; cursor: pointer; padding: 6px 8px; border-radius: 8px; }
-        .ab-clear:hover { background: var(--tray); }
-        .ab-btn { height: 36px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; }
+        .ab-btn { height: 36px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+        .ab-btn.sm { height: 30px; padding: 0 12px; font-size: 12.5px; }
         .ab-btn:hover:not(:disabled) { background: var(--tray); }
         .ab-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
         .ab-btn.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.06); }
+        .ab-btn.on { border-color: var(--accent); color: var(--accent); }
         .ab-btn:disabled { opacity: .5; cursor: default; }
         @@media (max-width: 640px) {
             .ab-backdrop { padding: 0; align-items: stretch; }
             .ab-dialog { max-width: none; height: auto; border-radius: 0; border: 0; padding-bottom: var(--m-safe-b, 0px); }
-            .ab-filters { flex-direction: column; }
-            .ab-dept { width: 100%; }
-            .ab-search input, .ab-dept { font-size: 16px; height: 40px; }
+            .ab-filters { grid-template-columns: 1fr; }
+            .ab-search input, .ab-ms-btn { font-size: 16px; height: 40px; }
+            .ab-save { flex-wrap: wrap; }
+            .ab-hint { display: none; }
         }
     </style>
     <div class="ab-backdrop" @onclick="Cancel">
@@ -79,55 +127,120 @@
                 <h2 id="ab-title"><i data-lucide="book-user"></i> @title</h2>
                 <button type="button" class="ab-x" aria-label="Close" title="Close" @onclick="Cancel"><i data-lucide="x"></i></button>
             </header>
-            <div class="ab-filters">
-                <label class="ab-search"><i data-lucide="search"></i>
-                    <input type="search" placeholder="Search by name" aria-label="Search by name" @bind="query" @bind:event="oninput" @bind:after="OnQueryChanged" @ref="searchRef" />
-                </label>
-                <select class="ab-dept" aria-label="Department" @bind="deptCode" @bind:after="LoadAsync">
-                    <option value="">All departments</option>
-                    @foreach (var d in departments) { <option value="@d.Code">@d.Name</option> }
-                </select>
-            </div>
-            <div class="ab-bar">
-                <span class="ab-count">@(loading ? "Loading…" : $"{rows.Count} people")</span>
-                @if (!loading && rows.Count > 0)
-                {
-                    var addable = rows.Count(r => !existing.Contains(r.Nik));
-                    <button type="button" class="ab-all" disabled="@(addable == 0)" @onclick="SelectAllAsync">
-                        @(string.IsNullOrEmpty(deptCode) && string.IsNullOrWhiteSpace(query) ? $"Select all ({addable})" : $"Add all ({addable})")
-                    </button>
-                }
-            </div>
-            @if (picked.Count > 0)
+            @if (allowGroups)
             {
-                <div class="ab-chips" aria-label="Selected people">
-                    <span class="ab-chips-k">Selected (@picked.Count)</span>
-                    @foreach (var p in picked.Values.Reverse())
+                <div class="ab-tabs" role="tablist">
+                    <button type="button" role="tab" class="@(tab == "people" ? "on" : "")" aria-selected="@(tab == "people" ? "true" : "false")" @onclick="@(() => SetTab("people"))">People</button>
+                    <button type="button" role="tab" class="@(tab == "groups" ? "on" : "")" aria-selected="@(tab == "groups" ? "true" : "false")" @onclick="@(() => SetTab("groups"))">Groups</button>
+                </div>
+            }
+            @if (tab == "people")
+            {
+                <div class="ab-filters">
+                    <label class="ab-search"><i data-lucide="search"></i>
+                        <input type="search" placeholder="Search by name or NIK" aria-label="Search by name or NIK" @bind="query" @bind:event="oninput" @bind:after="OnQueryChanged" @ref="searchRef" />
+                    </label>
+                    @MultiSelect("dept", "Department", "All departments", departments.Select(d => (d.Code, d.Name)).ToList(), deptCodes)
+                    @MultiSelect("site", "Site", "All sites", sites.Select(s => (s.Code, s.Name)).ToList(), siteCodes)
+                </div>
+                @if (deptCodes.Count + siteCodes.Count > 0)
+                {
+                    <div class="ab-fchips" aria-label="Active filters">
+                        @foreach (var c in deptCodes.ToList())
+                        {
+                            <span class="ab-fchip">Dept <b>@DeptName(c)</b><button type="button" aria-label="@($"Remove department {DeptName(c)}")" @onclick="() => RemoveFilter(deptCodes, c)"><i data-lucide="x"></i></button></span>
+                        }
+                        @foreach (var c in siteCodes.ToList())
+                        {
+                            <span class="ab-fchip">Site <b>@SiteName(c)</b><button type="button" aria-label="@($"Remove site {SiteName(c)}")" @onclick="() => RemoveFilter(siteCodes, c)"><i data-lucide="x"></i></button></span>
+                        }
+                        <button type="button" class="ab-link muted" style="font-size:12px" @onclick="ClearFilters">Clear filters</button>
+                    </div>
+                }
+                <div class="ab-bar">
+                    <span class="ab-count">@(loading ? "Loading…" : CountLabel())</span>
+                    @if (picked.Count > 0) { <button type="button" class="ab-link muted" @onclick="ClearPicked">Clear selection</button> }
+                    @if (!loading && rows.Count > 0)
                     {
-                        <span class="ab-chip">@p.Name<button type="button" aria-label="Remove @p.Name" title="Remove" @onclick="() => picked.Remove(p.Nik)"><i data-lucide="x"></i></button></span>
+                        var addable = rows.Count(r => !existing.Contains(r.Nik) && !picked.ContainsKey(r.Nik));
+                        <button type="button" class="ab-link ab-all" disabled="@(addable == 0)" @onclick="SelectAllAsync">Select all (@addable)</button>
+                    }
+                </div>
+                <div class="ab-list" role="listbox" aria-multiselectable="true" aria-label="People">
+                    @if (!loading && rows.Count == 0)
+                    {
+                        <p class="ab-empty">No one matches.</p>
+                    }
+                    <Virtualize Items="rows" ItemSize="48" Context="r">
+                        @{ var already = existing.Contains(r.Nik); var on = already || picked.ContainsKey(r.Nik); }
+                        <label class="ab-row @(already ? "already" : "")" role="option" aria-selected="@(on ? "true" : "false")">
+                            <input type="checkbox" checked="@on" disabled="@already" @onchange="() => Toggle(r)" />
+                            <PersonAvatar Nik="@r.Nik" Name="@r.Name" Size="30" Decorative="true" />
+                            <span class="ab-name">@r.Name<small>@(already ? "Already added" : r.Department)</small></span>
+                        </label>
+                    </Virtualize>
+                </div>
+                @if (allowGroups && (picked.Count > 0 || editingGroup is not null))
+                {
+                    <div class="ab-save">
+                        <i data-lucide="bookmark-plus"></i>
+                        <span class="lbl">@(editingGroup is not null ? "Update group" : $"Save these {picked.Count} as a group")</span>
+                        <input type="text" maxlength="120" placeholder="Group name, e.g. HSE + Finance Sepanjang" aria-label="Group name" @bind="groupName" @bind:event="oninput" />
+                        <button type="button" class="ab-btn sm" disabled="@(savingGroup || string.IsNullOrWhiteSpace(groupName) || picked.Count == 0)" @onclick="SaveGroupAsync">@(savingGroup ? "Saving…" : "Save")</button>
+                        @if (editingGroup is not null)
+                        {
+                            <button type="button" class="ab-link muted" @onclick="CancelEditGroup">Cancel</button>
+                        }
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="ab-filters">
+                    <label class="ab-search"><i data-lucide="search"></i>
+                        <input type="search" placeholder="Search groups" aria-label="Search groups" @bind="groupQuery" @bind:event="oninput" />
+                    </label>
+                </div>
+                <div class="ab-list" aria-label="Groups">
+                    @if (groups is null)
+                    {
+                        <p class="ab-empty">Loading…</p>
+                    }
+                    else
+                    {
+                        var shared = FilterGroups(groups.Shared);
+                        var mine = FilterGroups(groups.Personal);
+                        <div class="ab-sec">Shared groups · managed by admin</div>
+                        @if (shared.Count == 0) { <p class="ab-empty" style="padding:10px 0">No shared groups.</p> }
+                        @foreach (var g in shared) { @GroupRow(g) }
+                        <div class="ab-sec">My groups · only you can see these</div>
+                        @if (mine.Count == 0) { <p class="ab-empty" style="padding:10px 0">No personal groups yet. Pick people on the People tab and save them as a group.</p> }
+                        @foreach (var g in mine) { @GroupRow(g) }
+                        <button type="button" class="ab-link" style="margin:8px 10px" @onclick="NewGroup">+ New personal group</button>
                     }
                 </div>
             }
-            <div class="ab-list" role="listbox" aria-multiselectable="true" aria-label="People">
-                @if (!loading && rows.Count == 0)
-                {
-                    <p class="ab-empty">No one matches.</p>
-                }
-                <Virtualize Items="rows" ItemSize="48" Context="r">
-                    @{ var already = existing.Contains(r.Nik); var on = already || picked.ContainsKey(r.Nik); }
-                    <label class="ab-row @(already ? "already" : "")" role="option" aria-selected="@(on ? "true" : "false")">
-                        <input type="checkbox" checked="@on" disabled="@already" @onchange="() => Toggle(r)" />
-                        <PersonAvatar Nik="@r.Nik" Name="@r.Name" Size="30" Decorative="true" />
-                        <span class="ab-name">@r.Name<small>@(already ? "Already added" : r.Department)</small></span>
-                    </label>
-                </Virtualize>
-            </div>
+            @if (picked.Count + pickedGroups.Count > 0)
+            {
+                <div class="ab-chips" aria-label="Selected">
+                    <span class="ab-chips-k">Selected (@SelectedLabel())</span>
+                    @foreach (var g in pickedGroups.ToList())
+                    {
+                        <span class="ab-chip grp"><i data-lucide="users"></i>@g.Name <span class="n">· @g.Count</span><button type="button" aria-label="@($"Remove {g.Name}")" title="Remove" @onclick="() => pickedGroups.Remove(g)"><i data-lucide="x"></i></button></span>
+                    }
+                    @foreach (var p in picked.Values.Reverse().Take(ChipCap))
+                    {
+                        <span class="ab-chip">@p.Name<button type="button" aria-label="Remove @p.Name" title="Remove" @onclick="() => picked.Remove(p.Nik)"><i data-lucide="x"></i></button></span>
+                    }
+                    @if (picked.Count > ChipCap) { <span class="ab-chip more">+@(picked.Count - ChipCap) more</span> }
+                </div>
+            }
             <footer class="ab-foot">
-                @if (picked.Count > 0) { <button type="button" class="ab-clear" @onclick="() => picked.Clear()">Clear (@picked.Count)</button> }
+                @if (allowGroups) { <span class="ab-hint">Max @MailLimits.MaxRecipients.ToString("N0") recipients per mail</span> }
                 <span class="ab-spacer"></span>
                 <button type="button" class="ab-btn" @onclick="Cancel">Cancel</button>
-                <button type="button" class="ab-btn primary ab-add" disabled="@(picked.Count == 0)" @onclick="Accept">
-                    @(picked.Count == 0 ? "Add" : $"Add {picked.Count}")
+                <button type="button" class="ab-btn primary ab-add" disabled="@(picked.Count + pickedGroups.Count == 0)" @onclick="Accept">
+                    @AddLabel()
                 </button>
             </footer>
         </div>
@@ -135,17 +248,36 @@
 }
 
 @code {
+    /// What the mail address book hands back: individual people plus whole groups.
+    public sealed record Selection(List<MemberSearchRow> People, List<MailGroupSummary> Groups);
+
+    // The selection strip renders this many name chips; the rest is a count.
+    private const int ChipCap = 30;
+
     private bool open;
+    private bool allowGroups;
+    private string tab = "people";
     private string title = "Address book";
     private string query = "";
-    private string deptCode = "";
     private bool loading;
     private List<DirectoryDepartmentDto> departments = [];
+    private List<DirectorySiteDto> sites = [];
+    private readonly HashSet<string> deptCodes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> siteCodes = new(StringComparer.OrdinalIgnoreCase);
+    private string? msOpen;
+    private string msQuery = "";
     private List<MemberSearchRow> rows = [];
     private HashSet<string> existing = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<Guid> existingGroups = [];
     // Insertion order = the order chips are added in.
     private readonly Dictionary<string, MemberSearchRow> picked = new(StringComparer.OrdinalIgnoreCase);
-    private TaskCompletionSource<List<MemberSearchRow>>? tcs;
+    private readonly List<MailGroupSummary> pickedGroups = [];
+    private MailGroupList? groups;
+    private string groupQuery = "";
+    private string groupName = "";
+    private MailGroupSummary? editingGroup;
+    private bool savingGroup;
+    private TaskCompletionSource<Selection>? tcs;
     private CancellationTokenSource? loadCts;
     private IDisposable? escReg;
     private ElementReference searchRef;
@@ -153,20 +285,42 @@
 
     /// Opens the book; resolves with the people picked (empty when cancelled).
     /// <paramref name="already"/> are shown ticked and can't be added twice.
-    public Task<List<MemberSearchRow>> PickAsync(string dialogTitle, IEnumerable<string>? already = null)
+    public async Task<List<MemberSearchRow>> PickAsync(string dialogTitle, IEnumerable<string>? already = null)
+        => (await OpenCore(dialogTitle, already, null, withGroups: false)).People;
+
+    /// Mail: people and/or groups. <paramref name="alreadyGroups"/> are group ids already in the field.
+    public Task<Selection> PickWithGroupsAsync(string dialogTitle, IEnumerable<string>? already, IEnumerable<Guid>? alreadyGroups)
+        => OpenCore(dialogTitle, already, alreadyGroups, withGroups: true);
+
+    private Task<Selection> OpenCore(string dialogTitle, IEnumerable<string>? already, IEnumerable<Guid>? alreadyGroups, bool withGroups)
     {
-        tcs?.TrySetResult([]);
-        tcs = new TaskCompletionSource<List<MemberSearchRow>>();
+        tcs?.TrySetResult(new([], []));
+        tcs = new TaskCompletionSource<Selection>();
         title = dialogTitle;
+        allowGroups = withGroups;
+        tab = "people";
         existing = new HashSet<string>(already ?? [], StringComparer.OrdinalIgnoreCase);
+        existingGroups = (alreadyGroups ?? []).ToHashSet();
         picked.Clear();
+        pickedGroups.Clear();
+        editingGroup = null;
+        groupName = "";
+        groupQuery = "";
         query = "";
+        msOpen = null;
         open = true;
         focusPending = true;
-        escReg ??= Overlays.Push(() => { Cancel(); return Task.CompletedTask; });
+        escReg ??= Overlays.Push(() => { OnEscape(); return Task.CompletedTask; });
         StateHasChanged();
         _ = InitAsync();
         return tcs.Task;
+    }
+
+    private void OnEscape()
+    {
+        // Esc closes an open filter menu first, then the book.
+        if (msOpen is not null) { msOpen = null; StateHasChanged(); return; }
+        Cancel();
     }
 
     private async Task InitAsync()
@@ -177,6 +331,8 @@
             departments = (depts ?? []).Where(d => d.DirectMembers > 0 || depts!.Any(c => c.ParentCode == d.Code))
                 .OrderBy(d => d.Name, StringComparer.OrdinalIgnoreCase).ToList();
         }
+        if (sites.Count == 0)
+            sites = await Auth.GetAsync<List<DirectorySiteDto>>("/api/directory/sites") ?? [];
         await LoadAsync();
     }
 
@@ -195,14 +351,96 @@
         var cts = loadCts = new CancellationTokenSource();
         loading = true;
         StateHasChanged();
-        var url = $"/api/directory/employees?pageSize=5000&departmentCode={Uri.EscapeDataString(deptCode)}&q={Uri.EscapeDataString(query.Trim())}";
+        // Comma lists: any of the departments AND any of the sites (server-side).
+        var url = $"/api/directory/employees?pageSize=5000&q={Uri.EscapeDataString(query.Trim())}"
+            + $"&departmentCode={Uri.EscapeDataString(string.Join(',', deptCodes))}"
+            + $"&siteCode={Uri.EscapeDataString(string.Join(',', siteCodes))}";
         var page = await Auth.GetAsync<DirectoryPageDto>(url, cts.Token);
         if (cts.IsCancellationRequested) return;
         var me = Auth.Me?.Nik;
         rows = (page?.Items ?? []).Where(e => e.Nik != me)
-            .Select(e => new MemberSearchRow(e.Nik, e.Name, e.Position, e.Department)).ToList();
+            .Select(e => new MemberSearchRow(e.Nik, e.Name, e.Position,
+                string.Join(" · ", new[] { e.Department, e.Site }.Where(x => !string.IsNullOrWhiteSpace(x))))).ToList();
         loading = false;
         StateHasChanged();
+    }
+
+    // ── Multi-select filter (department / site) ──
+    private RenderFragment MultiSelect(string key, string label, string allLabel, List<(string Code, string Name)> options, HashSet<string> chosen) => __builder =>
+    {
+        var isOpen = msOpen == key;
+        var value = chosen.Count == 0 ? allLabel
+            : chosen.Count == 1 ? options.FirstOrDefault(o => o.Code == chosen.First()).Name ?? chosen.First()
+            : $"{chosen.Count} selected";
+        <div class="ab-ms">
+            <button type="button" class="ab-ms-btn @(chosen.Count > 0 ? "has" : "")" aria-haspopup="listbox" aria-expanded="@(isOpen ? "true" : "false")"
+                    aria-label="@($"{label}: {value}")" @onclick="() => ToggleMs(key)">
+                <span class="k">@label</span><span class="v">@value</span><i data-lucide="chevron-down"></i>
+            </button>
+            @if (isOpen)
+            {
+                <div class="ab-ms-scrim" @onclick="() => msOpen = null"></div>
+                <div class="ab-ms-pop" role="listbox" aria-multiselectable="true" aria-label="@label">
+                    <input type="search" placeholder="@($"Search {label.ToLowerInvariant()}s…")" aria-label="@($"Search {label.ToLowerInvariant()}s")" @bind="msQuery" @bind:event="oninput" />
+                    <div class="ab-ms-list">
+                        @foreach (var o in options.Where(o => msQuery.Length == 0 || o.Name.Contains(msQuery, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            var on = chosen.Contains(o.Code);
+                            <label class="ab-ms-opt" role="option" aria-selected="@(on ? "true" : "false")">
+                                <input type="checkbox" checked="@on" @onchange="() => ToggleFilter(chosen, o.Code)" /> @o.Name
+                            </label>
+                        }
+                    </div>
+                    <div class="ab-ms-foot">
+                        <button type="button" class="ab-link" disabled="@(chosen.Count == 0)" @onclick="() => ClearFilter(chosen)">Clear</button>
+                        <span>@chosen.Count selected</span>
+                    </div>
+                </div>
+            }
+        </div>
+    };
+
+    private void ToggleMs(string key)
+    {
+        msQuery = "";
+        msOpen = msOpen == key ? null : key;
+    }
+
+    private async Task ToggleFilter(HashSet<string> set, string code)
+    {
+        if (!set.Remove(code)) set.Add(code);
+        await LoadAsync();
+    }
+
+    private async Task ClearFilter(HashSet<string> set)
+    {
+        set.Clear();
+        await LoadAsync();
+    }
+
+    private Task RemoveFilter(HashSet<string> set, string code)
+    {
+        set.Remove(code);
+        return LoadAsync();
+    }
+
+    private Task ClearFilters()
+    {
+        deptCodes.Clear();
+        siteCodes.Clear();
+        return LoadAsync();
+    }
+
+    private string DeptName(string code) => departments.FirstOrDefault(d => d.Code == code)?.Name ?? code;
+    private string SiteName(string code) => sites.FirstOrDefault(s => s.Code == code)?.Name ?? code;
+
+    private string CountLabel()
+    {
+        var label = $"{rows.Count:N0} {(rows.Count == 1 ? "person" : "people")}";
+        var parts = new List<string>();
+        if (deptCodes.Count > 0) parts.Add(string.Join(" or ", deptCodes.Select(DeptName)));
+        if (siteCodes.Count > 0) parts.Add("at " + string.Join(" or ", siteCodes.Select(SiteName)));
+        return parts.Count == 0 ? label : $"{label} · {string.Join(", ", parts)}";
     }
 
     private void Toggle(MemberSearchRow r)
@@ -210,24 +448,148 @@
         if (!picked.Remove(r.Nik)) picked[r.Nik] = r;
     }
 
+    private void ClearPicked() => picked.Clear();
+
     private async Task SelectAllAsync()
     {
-        var add = rows.Where(r => !existing.Contains(r.Nik)).ToList();
+        var add = rows.Where(r => !existing.Contains(r.Nik) && !picked.ContainsKey(r.Nik)).ToList();
         if (add.Count > 20)
         {
-            var scope = departments.FirstOrDefault(d => d.Code == deptCode)?.Name ?? "this list";
-            if (!await Confirm.AskAsync($"Add {add.Count} people?", $"Everyone in {scope} will be added.", $"Add {add.Count}", danger: false))
+            var scope = deptCodes.Count + siteCodes.Count > 0 || !string.IsNullOrWhiteSpace(query) ? "this filtered list" : "the whole directory";
+            if (!await Confirm.AskAsync($"Add {add.Count:N0} people?", $"Everyone in {scope} will be selected. You can still untick people afterwards.", $"Select {add.Count:N0}", danger: false))
                 return;
         }
         foreach (var r in add) picked.TryAdd(r.Nik, r);
     }
 
-    private void Accept() => Finish(picked.Values.ToList());
-    private void Cancel() => Finish([]);
+    // ── Groups tab ──
+    private async Task SetTab(string t)
+    {
+        tab = t;
+        msOpen = null;
+        if (t == "groups" && groups is null) await LoadGroupsAsync();
+    }
 
-    private void Finish(List<MemberSearchRow> result)
+    private async Task LoadGroupsAsync()
+    {
+        groups = await MailSvc.GetGroupsAsync() ?? new MailGroupList([], []);
+        StateHasChanged();
+    }
+
+    private List<MailGroupSummary> FilterGroups(IReadOnlyList<MailGroupSummary> list)
+        => list.Where(g => groupQuery.Length == 0 || g.Name.Contains(groupQuery, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    private RenderFragment GroupRow(MailGroupSummary g) => __builder =>
+    {
+        var mine = g.Kind == "personal";
+        var already = existingGroups.Contains(g.Id);
+        var added = already || pickedGroups.Any(x => x.Id == g.Id);
+        <div class="ab-grow">
+            <span class="ab-gicon @(mine ? "mine" : "")"><i data-lucide="@(mine ? "user-round-check" : "users")"></i></span>
+            <span class="ab-name"><b>@g.Name</b><small>@g.Count.ToString("N0") @(g.Count == 1 ? "person" : "people") · @(mine ? "Personal" : "Shared")</small></span>
+            <span class="ab-grow-acts">
+                @if (mine)
+                {
+                    <button type="button" class="ab-link muted" @onclick="() => EditGroupAsync(g)">Edit</button>
+                    <button type="button" class="ab-link muted" aria-label="@($"Delete group {g.Name}")" @onclick="() => DeleteGroupAsync(g)">Delete</button>
+                }
+                <button type="button" class="ab-btn sm @(added ? "on" : "")" disabled="@already" aria-pressed="@(added ? "true" : "false")" @onclick="() => ToggleGroup(g)">
+                    @(already ? "Already added" : added ? "Added" : "Add as group")
+                </button>
+            </span>
+        </div>
+    };
+
+    private void ToggleGroup(MailGroupSummary g)
+    {
+        var at = pickedGroups.FindIndex(x => x.Id == g.Id);
+        if (at >= 0) pickedGroups.RemoveAt(at); else pickedGroups.Add(g);
+    }
+
+    private void NewGroup()
+    {
+        editingGroup = null;
+        groupName = "";
+        tab = "people";
+        focusPending = true;
+    }
+
+    /// Edit = load the members into the People selection; Save writes them back to the group.
+    private async Task EditGroupAsync(MailGroupSummary g)
+    {
+        var detail = await MailSvc.GetGroupAsync("personal", g.Id);
+        if (detail is null) { Toasts.Show("That group no longer exists.", ToastKind.Error); await LoadGroupsAsync(); return; }
+        picked.Clear();
+        foreach (var m in detail.Members.Where(m => m.IsActive))
+            picked[m.Nik] = new MemberSearchRow(m.Nik, m.Name, null, m.Department);
+        editingGroup = g;
+        groupName = g.Name;
+        tab = "people";
+        StateHasChanged();
+    }
+
+    private void CancelEditGroup()
+    {
+        editingGroup = null;
+        groupName = "";
+        picked.Clear();
+    }
+
+    private async Task DeleteGroupAsync(MailGroupSummary g)
+    {
+        if (!await Confirm.AskAsync($"Delete \"{g.Name}\"?", "Only the group is deleted. Mail already sent to it is not affected.", "Delete"))
+            return;
+        if (!await MailSvc.DeleteGroupAsync(g.Id)) { Toasts.Show("Could not delete the group.", ToastKind.Error); return; }
+        pickedGroups.RemoveAll(x => x.Id == g.Id);
+        if (editingGroup?.Id == g.Id) CancelEditGroup();
+        await LoadGroupsAsync();
+    }
+
+    private async Task SaveGroupAsync()
+    {
+        if (savingGroup || picked.Count == 0 || string.IsNullOrWhiteSpace(groupName)) return;
+        if (picked.Count > MailLimits.MaxRecipients)
+        {
+            Toasts.Show($"A group can have up to {MailLimits.MaxRecipients:N0} people.", ToastKind.Warning);
+            return;
+        }
+        savingGroup = true;
+        try
+        {
+            var (id, error) = await MailSvc.SaveGroupAsync(editingGroup?.Id, new SaveMailGroup(groupName.Trim(), picked.Keys.ToList()));
+            if (error is not null) { Toasts.Show(error, ToastKind.Error); return; }
+            Toasts.Show(editingGroup is null ? $"Saved \"{groupName.Trim()}\" to My groups." : $"Updated \"{groupName.Trim()}\".", ToastKind.Success);
+            editingGroup = null;
+            groupName = "";
+            groups = null;
+            await LoadGroupsAsync();
+        }
+        finally { savingGroup = false; }
+    }
+
+    private string SelectedLabel()
+    {
+        var parts = new List<string>();
+        if (pickedGroups.Count > 0) parts.Add($"{pickedGroups.Count} {(pickedGroups.Count == 1 ? "group" : "groups")}");
+        if (picked.Count > 0) parts.Add(picked.Count.ToString("N0"));
+        return string.Join(" + ", parts);
+    }
+
+    private string AddLabel()
+    {
+        if (picked.Count + pickedGroups.Count == 0) return "Add";
+        if (pickedGroups.Count == 0) return $"Add {picked.Count:N0}";
+        if (picked.Count == 0) return pickedGroups.Count == 1 ? "Add group" : $"Add {pickedGroups.Count} groups";
+        return $"Add {picked.Count:N0} + {pickedGroups.Count} {(pickedGroups.Count == 1 ? "group" : "groups")}";
+    }
+
+    private void Accept() => Finish(new(picked.Values.ToList(), pickedGroups.ToList()));
+    private void Cancel() => Finish(new([], []));
+
+    private void Finish(Selection result)
     {
         open = false;
+        msOpen = null;
         loadCts?.Cancel();
         escReg?.Dispose();
         escReg = null;
@@ -243,7 +605,7 @@
         try
         {
             await JS.InvokeVoidAsync("ipop.icons");
-            if (focusPending) { focusPending = false; await searchRef.FocusAsync(); }
+            if (focusPending && tab == "people") { focusPending = false; await searchRef.FocusAsync(); }
         }
         catch { }
     }
@@ -252,6 +614,6 @@
     {
         loadCts?.Cancel();
         escReg?.Dispose();
-        tcs?.TrySetResult([]);
+        tcs?.TrySetResult(new([], []));
     }
 }

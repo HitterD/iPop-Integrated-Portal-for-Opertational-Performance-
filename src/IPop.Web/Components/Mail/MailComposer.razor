@@ -139,28 +139,31 @@
             <div class="recipients-block">
                 <div class="recipient-row">
                     <span class="recipient-label">To:</span>
-                    @RecipientField("To", toRows, "Add recipients…")
+                    @RecipientField("To", toRows, toGroups, "Add recipients…")
                     <button type="button" class="mc-book" title="Address book" aria-label="Address book (To)" @onclick="() => OpenBookAsync(toRows)"><i data-lucide="book-user"></i></button>
                     <div class="cc-bcc-toggles">
                         @if (!showCc) { <button type="button" @onclick="() => showCc = true">Cc</button> }
                         @if (!showBcc) { <button type="button" @onclick="() => showBcc = true">Bcc</button> }
                     </div>
                 </div>
+                @GroupPeek("To")
                 @if (showCc)
                 {
                     <div class="recipient-row">
                         <span class="recipient-label">Cc:</span>
-                        @RecipientField("Cc", ccRows, "Add Cc…")
+                        @RecipientField("Cc", ccRows, ccGroups, "Add Cc…")
                         <button type="button" class="mc-book" title="Address book" aria-label="Address book (Cc)" @onclick="() => OpenBookAsync(ccRows)"><i data-lucide="book-user"></i></button>
                     </div>
+                    @GroupPeek("Cc")
                 }
                 @if (showBcc)
                 {
                     <div class="recipient-row">
                         <span class="recipient-label">Bcc:</span>
-                        @RecipientField("Bcc", bccRows, "Add Bcc…")
+                        @RecipientField("Bcc", bccRows, bccGroups, "Add Bcc…")
                         <button type="button" class="mc-book" title="Address book" aria-label="Address book (Bcc)" @onclick="() => OpenBookAsync(bccRows)"><i data-lucide="book-user"></i></button>
                     </div>
+                    @GroupPeek("Bcc")
                 }
                 <div class="recipient-row subject-row">
                     <span class="recipient-label">Subject:</span>
@@ -169,6 +172,19 @@
                     else if (importance == "low") { <span class="mc-badge" title="Low importance"><i data-lucide="arrow-down"></i> Low</span> }
                 </div>
             </div>
+
+            @if (ShowMassRow)
+            {
+                <div class="mc-mass-row">
+                    <label class="mc-hide-opt">
+                        <input type="checkbox" checked="@hideRecipients" @onchange="ToggleHideRecipients" />
+                        Hide recipient list <span class="mc-mass-sub">(each person sees only the sender)</span>
+                    </label>
+                    <span class="mc-rcpt-count @(CountOverLimit ? "over" : "")" aria-live="polite">
+                        <i data-lucide="users-round"></i> @RecipientCountLabel()
+                    </span>
+                </div>
+            }
 
             @if (selectedLabelIds.Count > 0)
             {
@@ -283,6 +299,10 @@
 
             <div style="flex:1"></div>
 
+            @if (IsMassMail)
+            {
+                <span class="mc-mass-hint" title="Reply all is turned off for mail to more than @MailLimits.ConfirmAbove people or to a group">Mass mail: recipients can only reply to you</span>
+            }
             <span class="draft-status" aria-live="polite">@DraftStatus</span>
 
             <button type="button" class="comp-btn icon-only danger" @onclick="DiscardDraft" title="Discard" aria-label="Discard">
@@ -321,6 +341,34 @@
     </div>
 }
 
+@if (confirmPreview is { } cp)
+{
+    <div class="mc-cf-scrim" @onclick="() => ResolveConfirm(false)">
+        <div class="mc-cf" role="alertdialog" aria-modal="true" aria-labelledby="mc-cf-title" aria-describedby="mc-cf-body"
+             @onclick:stopPropagation @onkeydown="OnConfirmKey">
+            <div class="mc-cf-ic"><i data-lucide="send"></i></div>
+            <h3 id="mc-cf-title">@(confirmScheduled ? "Schedule" : "Send") to @cp.Total.ToString("N0") people?</h3>
+            <p id="mc-cf-body">This message will be delivered to <b>@cp.Total.ToString("N0") people</b>. Please check the recipients before sending.</p>
+            <div class="mc-cf-brk">
+                @foreach (var g in cp.Groups)
+                {
+                    <div><span>@g.Name</span><span>@g.Count.ToString("N0")</span></div>
+                }
+                @if (cp.Individuals > 0) { <div><span>Individuals</span><span>@cp.Individuals.ToString("N0")</span></div> }
+                @if (cp.Duplicates > 0) { <div><span>Duplicates removed</span><span>−@cp.Duplicates.ToString("N0")</span></div> }
+                @if (cp.Skipped.Count > 0)
+                {
+                    <div class="warn" title="@string.Join(", ", cp.Skipped.Take(20).Select(x => x.Name))"><span>Inactive, will be skipped</span><span>−@cp.Skipped.Count.ToString("N0")</span></div>
+                }
+            </div>
+            <div class="mc-cf-acts">
+                <button type="button" class="comp-btn" @ref="confirmCancelRef" @onclick="() => ResolveConfirm(false)">Cancel</button>
+                <button type="button" class="btn mc-cf-go" @onclick="() => ResolveConfirm(true)">@(confirmScheduled ? "Schedule" : "Send") to @cp.Total.ToString("N0")</button>
+            </div>
+        </div>
+    </div>
+}
+
 <AddressBookDialog @ref="addressBook" />
 
 <SynologyFilePickerDialog IsOpen="@showSynologyPicker"
@@ -352,6 +400,11 @@
     private List<MemberSearchRow> toRows = [];
     private List<MemberSearchRow> ccRows = [];
     private List<MemberSearchRow> bccRows = [];
+    // Group chips per field; the server expands them to people at send time.
+    private List<MailGroupSummary> toGroups = [];
+    private List<MailGroupSummary> ccGroups = [];
+    private List<MailGroupSummary> bccGroups = [];
+    private bool hideRecipients;
     private List<MailAttachment> composerAtts = [];
 
     private Guid? editingDraftId;
@@ -387,6 +440,11 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (focusConfirm && confirmPreview is not null)
+        {
+            focusConfirm = false;
+            try { await confirmCancelRef.FocusAsync(); } catch { }
+        }
         if (IsOpen)
         {
             await JS.InvokeVoidAsync("ipop.icons");
@@ -428,6 +486,11 @@
         toRows = [];
         ccRows = [];
         bccRows = [];
+        toGroups = [];
+        ccGroups = [];
+        bccGroups = [];
+        hideRecipients = false;
+        ResetMassState();
         composerAtts = [];
         showCc = false;
         showBcc = false;
@@ -468,6 +531,7 @@
         subject = initialSubject ?? "";
         body = initialBody ?? "";
         toRows = initialTo ?? [];
+        SchedulePreview();
         Show();
     }
 
@@ -485,6 +549,7 @@
     {
         ccRows = cc;
         showCc = ccRows.Count > 0;
+        SchedulePreview();
         StateHasChanged();
     }
 
@@ -507,8 +572,13 @@
         toRows = draft.Recipients.Where(r => r.RecipientType == "to").Select(r => new MemberSearchRow(r.Nik, r.Name, null, null)).ToList();
         ccRows = draft.Recipients.Where(r => r.RecipientType == "cc").Select(r => new MemberSearchRow(r.Nik, r.Name, null, null)).ToList();
         bccRows = draft.Recipients.Where(r => r.RecipientType == "bcc").Select(r => new MemberSearchRow(r.Nik, r.Name, null, null)).ToList();
-        showCc = ccRows.Count > 0;
-        showBcc = bccRows.Count > 0;
+        toGroups = DraftGroups(draft, "to");
+        ccGroups = DraftGroups(draft, "cc");
+        bccGroups = DraftGroups(draft, "bcc");
+        hideRecipients = draft.HideRecipients;
+        showCc = ccRows.Count + ccGroups.Count > 0;
+        showBcc = bccRows.Count + bccGroups.Count > 0;
+        SchedulePreview();
         composerAtts = draft.Attachments.ToList();
         selectedLabelIds = draft.LabelIds.ToHashSet();
         if (ReadExtras(draft.DraftExtra) is { } x)
@@ -599,11 +669,14 @@
     {
         if (addressBook is null) return;
         var label = target == ccRows ? "Cc" : target == bccRows ? "Bcc" : "To";
-        var picked = await addressBook.PickAsync($"Add to {label}", target.Select(r => r.Nik));
+        var groups = GroupsFor(label);
+        var picked = await addressBook.PickWithGroupsAsync($"Add to {label}", target.Select(r => r.Nik), groups.Select(g => g.Id));
         var added = false;
-        foreach (var r in picked)
+        foreach (var r in picked.People)
             if (!target.Any(x => x.Nik == r.Nik)) { target.Add(r); added = true; }
-        if (added) OnContentChanged();
+        foreach (var g in picked.Groups)
+            if (!groups.Any(x => x.Id == g.Id)) { groups.Add(g); added = true; }
+        if (added) OnRecipientsChanged();
         StateHasChanged();
     }
 
@@ -611,13 +684,13 @@
     {
         if (r is null || list.Any(x => x.Nik == r.Nik)) return;
         list.Add(r);
-        OnContentChanged();
+        OnRecipientsChanged();
     }
 
     private void RemoveRecipient(List<MemberSearchRow> list, MemberSearchRow r)
     {
         list.Remove(r);
-        OnContentChanged();
+        OnRecipientsChanged();
     }
 
     // ── Long recipient lists ─────────────────────────────────────────────────
@@ -637,16 +710,28 @@
         if (list.Count == 0) return;
         list.Clear();
         expandedRecipientRow = null;
-        OnContentChanged();
+        OnRecipientsChanged();
     }
 
-    private RenderFragment RecipientField(string row, List<MemberSearchRow> rows, string placeholder) => __builder =>
+    private RenderFragment RecipientField(string row, List<MemberSearchRow> rows, List<MailGroupSummary> groups, string placeholder) => __builder =>
     {
         var overflowing = rows.Count > CollapseAfter;
         var expanded = overflowing && expandedRecipientRow == row;
         var collapsed = overflowing && !expanded;
         var shown = collapsed ? rows.Take(CollapsedChips) : rows;
         <div class="recipient-input-wrap @(collapsed ? "rcpt-collapsed" : "") @(expanded ? "rcpt-expanded" : "")">
+            @foreach (var g in groups)
+            {
+                var isOpen = peek is { } pk && pk.Row == row && pk.Id == g.Id;
+                <span class="chip mc-grp-chip @(isOpen ? "open" : "")">
+                    <button type="button" class="mc-grp-btn" aria-expanded="@(isOpen ? "true" : "false")"
+                            title="@($"{g.Name}: {g.Count:N0} people ({(g.Kind == "personal" ? "my group" : "shared group")})")"
+                            aria-label="@($"Group {g.Name}, {g.Count} people. Show members")" @onclick="() => TogglePeekAsync(row, g)">
+                        <i data-lucide="users"></i>@g.Name <span class="n">· @g.Count.ToString("N0")</span><i data-lucide="chevron-down" class="cv"></i>
+                    </button>
+                    <button type="button" class="chip-x" title="Remove" aria-label="@($"Remove group {g.Name}")" @onclick="() => RemoveGroup(groups, g)"><i data-lucide="x"></i></button>
+                </span>
+            }
             @if (expanded)
             {
                 <div class="rcpt-list" role="list" aria-label="@($"{row} recipients ({rows.Count})")">
@@ -674,7 +759,7 @@
                     </button>
                 }
             }
-            <AppMemberPicker ValueChanged="(MemberSearchRow? r) => AddRecipient(rows, r)" Placeholder="@(rows.Count == 0 ? placeholder : "")" />
+            <AppMemberPicker ValueChanged="(MemberSearchRow? r) => AddRecipient(rows, r)" Placeholder="@(rows.Count + groups.Count == 0 ? placeholder : "")" />
             @if (expanded)
             {
                 <span class="rcpt-acts">
@@ -685,6 +770,182 @@
             }
         </div>
     };
+
+    // ── Groups, live count and the >50 confirmation ─────────────────────────
+    private sealed record PeekState(string Row, Guid Id, MailGroupDetail? Detail, bool Failed);
+    private PeekState? peek;
+    private RecipientPreview? preview;
+    private bool previewLoading;
+    private CancellationTokenSource? previewCts;
+    private RecipientPreview? confirmPreview;
+    private bool confirmScheduled;
+    private TaskCompletionSource<bool>? confirmTcs;
+    private ElementReference confirmCancelRef;
+    private bool focusConfirm;
+
+    private List<MailGroupSummary> GroupsFor(string row) => row switch { "Cc" => ccGroups, "Bcc" => bccGroups, _ => toGroups };
+    private List<MemberSearchRow> RowsFor(string row) => row switch { "Cc" => ccRows, "Bcc" => bccRows, _ => toRows };
+    private int GroupCount => toGroups.Count + ccGroups.Count + bccGroups.Count;
+    private int TypedCount => toRows.Concat(ccRows).Concat(bccRows).Select(r => r.Nik).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+    /// The count row appears once a mail gets big (or uses groups); small mail looks unchanged.
+    private bool ShowMassRow => GroupCount > 0 || TypedCount >= 10 || hideRecipients;
+    private int RecipientEstimate => preview?.Total ?? TypedCount + toGroups.Concat(ccGroups).Concat(bccGroups).Sum(g => g.Count);
+    private bool IsMassMail => GroupCount > 0 || RecipientEstimate > MailLimits.ConfirmAbove;
+    private bool CountOverLimit => RecipientEstimate > MailLimits.MaxRecipients;
+
+    private string RecipientCountLabel()
+    {
+        if (preview is null) return previewLoading ? "Counting…" : $"{RecipientEstimate:N0} recipients";
+        var text = $"{preview.Total:N0} {(preview.Total == 1 ? "recipient" : "recipients")}";
+        if (preview.Duplicates > 0) text += $" ({preview.Duplicates:N0} duplicate{(preview.Duplicates == 1 ? "" : "s")} removed)";
+        if (preview.Total > preview.Limit) text += $" · max {preview.Limit:N0}";
+        return text;
+    }
+
+    private void ResetMassState()
+    {
+        peek = null;
+        preview = null;
+        previewLoading = false;
+        previewCts?.Cancel();
+        previewCts = null;
+        ResolveConfirm(false);
+    }
+
+    private static List<MailGroupSummary> DraftGroups(MailDetail draft, string field)
+        => draft.RecipientGroups.Where(g => g.Field == field).Select(g => new MailGroupSummary(g.Id, g.Kind, g.Name, g.Count)).ToList();
+
+    private IReadOnlyList<MailGroupRef> GroupRefs()
+        => toGroups.Select(g => new MailGroupRef("to", g.Kind, g.Id))
+            .Concat(ccGroups.Select(g => new MailGroupRef("cc", g.Kind, g.Id)))
+            .Concat(bccGroups.Select(g => new MailGroupRef("bcc", g.Kind, g.Id)))
+            .ToList();
+
+    private void OnRecipientsChanged()
+    {
+        OnContentChanged();
+        SchedulePreview();
+    }
+
+    private void ToggleHideRecipients(ChangeEventArgs e)
+    {
+        hideRecipients = e.Value is true;
+        OnContentChanged();
+    }
+
+    /// The server's de-duplicated count (groups expanded, inactive skipped), debounced.
+    private void SchedulePreview()
+    {
+        previewCts?.Cancel();
+        if (GroupCount == 0 && TypedCount < 10)
+        {
+            preview = null;
+            previewLoading = false;
+            return;
+        }
+        var cts = previewCts = new CancellationTokenSource();
+        previewLoading = true;
+        _ = RunPreviewAsync(cts.Token);
+    }
+
+    private async Task RunPreviewAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(500, ct);
+            var res = await MailSvc.PreviewRecipientsAsync(BuildRequest(), ct);
+            if (ct.IsCancellationRequested) return;
+            preview = res;
+        }
+        catch (OperationCanceledException) { return; }
+        catch { if (ct.IsCancellationRequested) return; preview = null; }
+        previewLoading = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void RemoveGroup(List<MailGroupSummary> groups, MailGroupSummary g)
+    {
+        groups.Remove(g);
+        if (peek?.Id == g.Id) peek = null;
+        OnRecipientsChanged();
+    }
+
+    private async Task TogglePeekAsync(string row, MailGroupSummary g)
+    {
+        if (peek is { } p && p.Row == row && p.Id == g.Id) { peek = null; return; }
+        peek = new PeekState(row, g.Id, null, false);
+        var detail = await MailSvc.GetGroupAsync(g.Kind, g.Id);
+        if (peek is null || peek.Id != g.Id || peek.Row != row) return;
+        peek = peek with { Detail = detail, Failed = detail is null };
+        StateHasChanged();
+    }
+
+    /// Swaps the chip for its active members as ordinary recipients in the same field.
+    private void ExpandGroup(string row)
+    {
+        if (peek?.Detail is not { } d || peek.Row != row) return;
+        var rows = RowsFor(row);
+        foreach (var m in d.Members.Where(m => m.IsActive))
+            if (!rows.Any(x => string.Equals(x.Nik, m.Nik, StringComparison.OrdinalIgnoreCase)))
+                rows.Add(new MemberSearchRow(m.Nik, m.Name, null, m.Department));
+        GroupsFor(row).RemoveAll(x => x.Id == d.Id);
+        peek = null;
+        OnRecipientsChanged();
+    }
+
+    private RenderFragment GroupPeek(string row) => __builder =>
+    {
+        if (peek is not { } p || p.Row != row) return;
+        var g = GroupsFor(row).FirstOrDefault(x => x.Id == p.Id);
+        if (g is null) return;
+        <div class="mc-grp-peek" role="region" aria-label="@($"Members of {g.Name}")">
+            <div class="mc-grp-peek-h">
+                <span><b>@g.Name</b> · @g.Count.ToString("N0") @(g.Count == 1 ? "person" : "people")</span>
+                @if (p.Detail is not null)
+                {
+                    <button type="button" class="rcpt-act" @onclick="() => ExpandGroup(row)">Expand to individuals</button>
+                }
+                <button type="button" class="rcpt-act mc-grp-close" @onclick="() => peek = null">Close</button>
+            </div>
+            @if (p.Failed) { <div class="mc-grp-ppl">Couldn't load the members.</div> }
+            else if (p.Detail is null) { <div class="mc-grp-ppl">Loading…</div> }
+            else
+            {
+                var active = p.Detail.Members.Where(m => m.IsActive).ToList();
+                var inactive = p.Detail.Members.Count - active.Count;
+                <div class="mc-grp-ppl">
+                    @foreach (var m in active.Take(24)) { <span>@m.Name</span> }
+                    @if (active.Count > 24) { <span class="more">+@(active.Count - 24) more</span> }
+                    @if (inactive > 0) { <span class="warn">@inactive inactive, will be skipped</span> }
+                </div>
+            }
+        </div>
+    };
+
+    /// Shows the "Send to N people?" dialog; resolves false on Cancel/Esc/backdrop.
+    private Task<bool> AskConfirmAsync(RecipientPreview p, bool scheduled)
+    {
+        confirmTcs?.TrySetResult(false);
+        confirmTcs = new TaskCompletionSource<bool>();
+        confirmPreview = p;
+        confirmScheduled = scheduled;
+        focusConfirm = true;
+        StateHasChanged();
+        return confirmTcs.Task;
+    }
+
+    private void ResolveConfirm(bool ok)
+    {
+        confirmPreview = null;
+        var t = confirmTcs;
+        confirmTcs = null;
+        t?.TrySetResult(ok);
+    }
+
+    private void OnConfirmKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") ResolveConfirm(false);
+    }
 
     private async Task InsertSignature()
     {
@@ -852,7 +1113,9 @@
         Importance: importance,
         LabelIds: selectedLabelIds.Count > 0 ? selectedLabelIds.ToList() : null,
         ForwardAttachmentIds: IsForward ? forwardAtts.Select(a => a.Id).ToList() : null,
-        DraftExtra: WriteExtras());
+        DraftExtra: WriteExtras(),
+        Groups: GroupCount > 0 ? GroupRefs() : null,
+        HideRecipients: hideRecipients);
 
     private async Task AutosaveDebouncedAsync(TimeSpan wait, CancellationToken ct)
     {
@@ -873,7 +1136,7 @@
     {
         var since = dirtySince;
         if (since is null) return;
-        if (string.IsNullOrWhiteSpace(subject) && IsBodyEmpty(body) && toRows.Count + ccRows.Count + bccRows.Count == 0 && composerAtts.Count == 0)
+        if (string.IsNullOrWhiteSpace(subject) && IsBodyEmpty(body) && toRows.Count + ccRows.Count + bccRows.Count + GroupCount == 0 && composerAtts.Count == 0)
         {
             dirtySince = null;
             return;
@@ -967,7 +1230,7 @@
     private async Task DoSendAsync(DateTime? scheduledAt)
     {
         if (sending) return;
-        if (toRows.Count == 0 && ccRows.Count == 0 && bccRows.Count == 0)
+        if (toRows.Count == 0 && ccRows.Count == 0 && bccRows.Count == 0 && GroupCount == 0)
         {
             Toasts.Show("Please add at least one recipient.", ToastKind.Warning);
             return;
@@ -985,9 +1248,43 @@
         try
         {
             var req = BuildRequest(scheduledAt);
-            var res = forwardOfId is { } fwd
-                ? await MailSvc.ForwardAsync(fwd, req)
-                : await MailSvc.SendAsync(req);
+            SendMailResult? res = null;
+            // Big or group mail: the server counts (deduped, groups expanded) and the user confirms
+            // that exact number. If it changed in between, the server asks again.
+            var needsCount = GroupCount > 0 || TypedCount > MailLimits.ConfirmAbove;
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                int? confirmed = null;
+                if (needsCount || res?.Code == "confirm_required")
+                {
+                    var p = await MailSvc.PreviewRecipientsAsync(req);
+                    if (p is null) { Toasts.Show("Couldn't count the recipients. Try again.", ToastKind.Error); return; }
+                    preview = p;
+                    if (p.Invalid.Count > 0)
+                    {
+                        Toasts.Show(p.Invalid.Any(i => i.StartsWith("group:"))
+                            ? "One of the groups no longer exists. Remove it and try again."
+                            : "Some recipients don't exist or are no longer active. Remove them and try again.", ToastKind.Error);
+                        return;
+                    }
+                    if (p.Total == 0) { Toasts.Show("Nobody to send to: everyone in these groups is inactive.", ToastKind.Warning); return; }
+                    if (p.Total > p.Limit)
+                    {
+                        Toasts.Show($"This mail would go to {p.Total:N0} people. The limit is {p.Limit:N0} per mail. Remove {p.Total - p.Limit:N0} or split it into several mails.", ToastKind.Error);
+                        return;
+                    }
+                    if (p.NeedsConfirm)
+                    {
+                        if (!await AskConfirmAsync(p, scheduledAt.HasValue)) return;
+                        confirmed = p.Total;
+                    }
+                }
+                var sendReq = req with { ConfirmedRecipientCount = confirmed };
+                res = forwardOfId is { } fwd
+                    ? await MailSvc.ForwardAsync(fwd, sendReq)
+                    : await MailSvc.SendAsync(sendReq);
+                if (res?.Code != "confirm_required") break;
+            }
             if (res?.Success == true)
             {
                 if (editingDraftId.HasValue)
@@ -1153,6 +1450,8 @@
     {
         Nav.LocationChanged -= OnLocationChanged;
         CancelAutosave();
+        previewCts?.Cancel();
+        confirmTcs?.TrySetResult(false);
         if (dropZoneRef.Id is not null)
             _ = JS.InvokeVoidAsync("ipop.mailUnbindDropZone", dropZoneRef);
     }

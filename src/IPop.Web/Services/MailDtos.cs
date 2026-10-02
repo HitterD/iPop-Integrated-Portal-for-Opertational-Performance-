@@ -44,9 +44,42 @@ public record MailDetail(
     public IReadOnlyList<Guid> LabelIds { get; init; } = [];
     /// Drafts only: the composer's own extras (meeting fields, forward source), stored verbatim.
     public string? DraftExtra { get; init; }
+    /// People the reader may see (excluding the sender); Recipients holds at most 50 of them.
+    public int RecipientTotal { get; init; }
+    public IReadOnlyList<RecipientGroupCount> RecipientGroups { get; init; } = [];
+    /// More than 50 recipients or sent to a group: reply-all is off for everyone but the sender.
+    public bool IsMass { get; init; }
+    public bool HideRecipients { get; init; }
+    public bool CanReplyAll { get; init; } = true;
 }
 
-public record SendMailResult(bool Success, Guid? MailId, string? Error);
+/// Error is the server's human message; Code is the machine one (confirm_required, …).
+public record SendMailResult(bool Success, Guid? MailId, string? Error, int? RecipientCount = null)
+{
+    public string? Code { get; init; }
+}
+
+/// A group chip in To/Cc/Bcc. Kind: "shared" (admin directory group) | "personal".
+public record MailGroupRef(string Field, string Kind, Guid Id);
+
+public static class MailLimits
+{
+    public const int MaxRecipients = 1000;
+    public const int ConfirmAbove = 50;
+}
+
+public record RecipientGroupCount(string Field, string Kind, Guid Id, string Name, int Count);
+public record SkippedRecipient(string Nik, string Name);
+public record RecipientPreview(int Total, int Individuals, int Duplicates, int Limit, bool NeedsConfirm,
+    IReadOnlyList<RecipientGroupCount> Groups, IReadOnlyList<SkippedRecipient> Skipped, IReadOnlyList<string> Invalid);
+public record MailStats(int Sent, int Delivered, int Read, IReadOnlyList<SkippedRecipient> Skipped);
+public record MailReader(string Name, string Nik, DateTime? ReadAt);
+
+public record MailGroupSummary(Guid Id, string Kind, string Name, int Count);
+public record MailGroupList(IReadOnlyList<MailGroupSummary> Shared, IReadOnlyList<MailGroupSummary> Personal);
+public record MailGroupMember(string Nik, string Name, string? Department, string? Site, bool IsActive);
+public record MailGroupDetail(Guid Id, string Kind, string Name, int Count, IReadOnlyList<MailGroupMember> Members);
+public record SaveMailGroup(string? Name, IReadOnlyList<string>? Niks);
 
 public record MailSendRequest(
     string Subject, string Body,
@@ -58,7 +91,10 @@ public record MailSendRequest(
     string? Importance = "normal",
     IReadOnlyList<Guid>? LabelIds = null,
     IReadOnlyList<Guid>? ForwardAttachmentIds = null,
-    string? DraftExtra = null);
+    string? DraftExtra = null,
+    IReadOnlyList<MailGroupRef>? Groups = null,
+    bool HideRecipients = false,
+    int? ConfirmedRecipientCount = null);
 
 public record BatchIds(IReadOnlyList<Guid> MailIds);
 public record BatchMove(IReadOnlyList<Guid> MailIds, string Folder);

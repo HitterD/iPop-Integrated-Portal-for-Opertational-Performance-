@@ -523,7 +523,9 @@
                         {
                             <div class="menu-backdrop" @onclick="() => moreMenuOpen = false"></div>
                             <div class="more-dropdown" role="menu" @onclick:stopPropagation>
-                                <button type="button" class="more-item" role="menuitem" @onclick="() => { moreMenuOpen = false; ReplyAllMessage(detail); }"><i data-lucide="reply-all"></i><span>Reply all</span></button>
+                                <button type="button" class="more-item" role="menuitem" disabled="@(!detail.CanReplyAll)"
+                                        title="@(detail.CanReplyAll ? null : "Reply all is turned off for mass mail")"
+                                        @onclick="() => { moreMenuOpen = false; ReplyAllMessage(detail); }"><i data-lucide="reply-all"></i><span>Reply all</span></button>
                                 <button type="button" class="more-item" role="menuitem" @onclick="() => { moreMenuOpen = false; ForwardMessage(detail); }"><i data-lucide="forward"></i><span>Forward</span></button>
                                 <div class="msm-divider" role="separator"></div>
                                 <button type="button" class="more-item" role="menuitem" @onclick="() => { moreMenuOpen = false; labelMenuOpen = true; }"><i data-lucide="tag"></i><span>Label…</span></button>
@@ -580,10 +582,26 @@
                                 <span class="sender-date">@FormatDetailDate(detail.SentAt ?? detail.ScheduledAt)</span>
                             </div>
                             <div class="sender-to">
-                                To: <span class="recipients-names">@RecipientsShort</span>
-                                @if (!string.IsNullOrWhiteSpace(CcShort))
+                                @if (IsUndisclosed)
                                 {
-                                    <text> · Cc: <span class="recipients-names">@CcShort</span></text>
+                                    <text>To: <span class="recipients-names">undisclosed recipients</span></text>
+                                }
+                                else if (detail.RecipientGroups.Count > 0 || detail.RecipientTotal > detail.Recipients.Count(r => r.RecipientType != "from"))
+                                {
+                                    <text>To: </text>
+                                    @foreach (var g in detail.RecipientGroups.Where(g => g.Field != "bcc"))
+                                    {
+                                        <span class="mm-grp" title="@($"{g.Name}: {g.Count:N0} people")"><i data-lucide="users"></i>@g.Name</span>
+                                    }
+                                    <span class="recipients-names">@MassRecipientsTail()</span>
+                                }
+                                else
+                                {
+                                    <text>To: <span class="recipients-names">@RecipientsShort</span></text>
+                                    @if (!string.IsNullOrWhiteSpace(CcShort))
+                                    {
+                                        <text> · Cc: <span class="recipients-names">@CcShort</span></text>
+                                    }
                                 }
                                 @if (detail.IsRead)
                                 {
@@ -681,6 +699,7 @@
 
                 @* Detail Scroll Area: Body + Attachments or Conversation Stack *@
                 <div class="detail-scroll-area">
+                    <MailMassPanel Detail="detail" IsSender="@IsMyMail(detail)" />
                     @* Linked Projects chip row if any *@
                     @if (detail.LinkedProjects.Count > 0)
                     {
@@ -814,7 +833,7 @@
                     <div class="subj">@(string.IsNullOrWhiteSpace(detail.Subject) ? "(no subject)" : detail.Subject)</div>
                     <div class="meta">
                         <span><strong>From:</strong> @detail.SenderName</span>
-                        <span><strong>To:</strong> @string.Join(", ", detail.Recipients.Where(r => r.RecipientType == "to").Select(r => r.Name))</span>
+                        <span><strong>To:</strong> @(IsUndisclosed ? "undisclosed recipients" : string.Join(", ", detail.RecipientGroups.Where(g => g.Field == "to").Select(g => g.Name).Concat(detail.Recipients.Where(r => r.RecipientType == "to").Select(r => r.Name))))</span>
                         @{
                             var ccNames = detail.Recipients.Where(r => r.RecipientType == "cc").Select(r => r.Name).ToList();
                         }
@@ -1980,7 +1999,7 @@
             case "?": kbdSheetOpen = !kbdSheetOpen; break;
             case "c": OpenComposer(); break;
             case "r": if (detail is not null) await OpenQuickReply(); else return; break;
-            case "a": if (detail is not null) ReplyAllMessage(detail); else return; break;
+            case "a": if (detail is not null && detail.CanReplyAll) ReplyAllMessage(detail); else return; break;
             case "f": if (detail is not null) ForwardMessage(detail); else return; break;
             case "e": if (detail is not null) await MoveDetail(MailFolder.Archive); else return; break;
             case "Delete": if (detail is not null) await MoveDetail(MailFolder.Trash); else return; break;
@@ -2039,6 +2058,13 @@
 
     private void ReplyAllMessage(MailDetail d)
     {
+        // Mass mail / hidden list: the server would refuse; replying to the sender is what's allowed.
+        if (!d.CanReplyAll)
+        {
+            Toasts.Show($"This mail went to many people, so replies go to {d.SenderName} only.", ToastKind.Info);
+            ReplyMessage(d);
+            return;
+        }
         var myNik = Auth.Me?.Nik ?? "";
         var to = new List<MemberSearchRow> { new(d.SenderNik, d.SenderName, null, null) };
         foreach (var r in d.Recipients.Where(r => r.RecipientType == "to" && !r.Nik.Equals(myNik, StringComparison.OrdinalIgnoreCase) && !r.Nik.Equals(d.SenderNik, StringComparison.OrdinalIgnoreCase)))
@@ -2243,6 +2269,25 @@
         (_, MailFolder.Starred) => counts.StarredTotal,
         _ => 0
     };
+
+    private bool IsMyMail(MailDetail d) => string.Equals(d.SenderNik, Auth.Me?.Nik, StringComparison.OrdinalIgnoreCase);
+    /// Hidden recipient list: everyone but the sender sees "undisclosed recipients".
+    private bool IsUndisclosed => detail is { HideRecipients: true } d && !IsMyMail(d);
+
+    /// After the group chips: the typed names (at most 3) and "and N others" for the rest.
+    private string MassRecipientsTail()
+    {
+        if (detail is null) return "";
+        var names = detail.Recipients.Where(r => r.RecipientType is "to" or "cc").Select(r => r.Name).Take(3).ToList();
+        var inGroups = detail.RecipientGroups.Where(g => g.Field != "bcc").Sum(g => g.Count);
+        var others = Math.Max(0, detail.RecipientTotal - inGroups - names.Count);
+        // Recipients can't tell overlap between groups apart; never claim a negative remainder.
+        if (detail.RecipientGroups.Count == 0) others = Math.Max(0, detail.RecipientTotal - names.Count);
+        var parts = string.Join(", ", names);
+        if (others == 0) return parts;
+        var tail = $"{others:N0} {(others == 1 ? "other" : "others")}";
+        return parts.Length == 0 && detail.RecipientGroups.Count == 0 ? tail : $"{(parts.Length > 0 ? parts + " " : "")}and {tail}";
+    }
 
     private string RecipientsShort => detail is null ? "" : string.Join(", ", detail.Recipients.Where(r => r.RecipientType is "to" or "cc").Select(r => r.Name));
     private string? CcShort => detail is null ? null : string.Join(", ", detail.Recipients.Where(r => r.RecipientType == "cc").Select(r => r.Name));
