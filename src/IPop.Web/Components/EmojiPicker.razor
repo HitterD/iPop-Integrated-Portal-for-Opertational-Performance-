@@ -1,21 +1,317 @@
-@* Static set from the v6 mockup's composer. No external dependency. *@
-<div class="emoji-pop">
-    @foreach (var e in Emojis)
+@* Shared full-Unicode emoji picker (Chat composer, Mail editor, Mail quick reply).
+   Native glyphs only; the list is wwwroot/data/emoji (Unicode 18.0 + CLDR 48.2.3, LICENSE.txt),
+   fetched on first open. Recents and skin tone are per account (EmojiPrefs). Rows are
+   virtualized, so a tab never puts more than a screenful of buttons in the DOM.
+   Root: .emoji-picker. The caller positions it (its wrapper) and closes it in OnPick/OnClose. *@
+@implements IAsyncDisposable
+@inject EmojiCatalog Catalog
+@inject EmojiPrefs Prefs
+@inject IJSRuntime JS
+
+<div class="emoji-picker" role="dialog" aria-label="Emoji picker" @ref="root"
+     @onkeydown="OnKeyDown" @onkeydown:stopPropagation>
+    <div class="ep-head">
+        <div class="ep-search">
+            <span class="ep-search-ic" aria-hidden="true">🔍</span>
+            <input @ref="searchInput" type="search" placeholder="Search emoji" aria-label="Search emoji"
+                   autocomplete="off" spellcheck="false" maxlength="60"
+                   value="@query" @oninput="OnSearch" />
+        </div>
+        <div class="ep-tone-wrap">
+            <button type="button" class="ep-tone-btn" aria-haspopup="true" aria-expanded="@(toneOpen ? "true" : "false")"
+                    aria-label="@($"Skin tone: {ToneLabel(Prefs.Tone)}")" title="Skin tone" @onclick="() => toneOpen = !toneOpen">
+                @ToneSwatch(Prefs.Tone)
+            </button>
+            @if (toneOpen)
+            {
+                <div class="ep-tones" role="radiogroup" aria-label="Skin tone">
+                    @for (var i = 0; i <= 5; i++)
+                    {
+                        var tone = i;
+                        <button type="button" role="radio" class="ep-tone @(Prefs.Tone == tone ? "on" : "")"
+                                aria-checked="@(Prefs.Tone == tone ? "true" : "false")" aria-label="@ToneLabel(tone)" title="@ToneLabel(tone)"
+                                @onclick="() => SetTone(tone)">@ToneSwatch(tone)</button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (!Searching)
     {
-        <button type="button" class="emoji-btn" title="@e" @onclick="() => Pick(e)">@e</button>
+        <div class="ep-tabs" role="tablist" aria-label="Emoji categories">
+            @foreach (var (cat, idx) in Tabs)
+            {
+                var i = idx;
+                <button type="button" role="tab" id="@TabId(i)" class="ep-tab @(tab == i ? "on" : "")" data-tab="@cat.Id"
+                        aria-selected="@(tab == i ? "true" : "false")" aria-controls="@PanelId" aria-label="@cat.Label" title="@cat.Label"
+                        tabindex="@(tab == i ? 0 : -1)" @onclick="() => SelectTab(i)">
+                    <span aria-hidden="true">@cat.Icon</span>
+                </button>
+            }
+        </div>
+    }
+
+    <div class="ep-body" id="@PanelId" role="@(Searching ? "region" : "tabpanel")" data-panel="@(Searching ? "search" : CurrentTab.Id)"
+         aria-label="@(Searching ? "Search results" : CurrentTab.Label)" aria-labelledby="@(Searching ? null : TabId(tab))" tabindex="-1">
+        @if (!Searching)
+        {
+            <div class="ep-title">@CurrentTab.Label</div>
+        }
+        @if (tab != RecentTab && !Catalog.IsLoaded)
+        {
+            @if (Catalog.LoadFailed)
+            {
+                <div class="ep-empty" role="alert">
+                    Couldn't load emoji.
+                    <button type="button" class="ep-retry" @onclick="RetryLoad">Retry</button>
+                </div>
+            }
+            else
+            {
+                <div class="ep-empty" role="status">Loading emoji…</div>
+            }
+        }
+        else if (rows.Count == 0)
+        {
+            <div class="ep-empty" role="status">
+                @(Searching ? $"No emoji match \"{query.Trim()}\"" : "Emoji you pick show up here.")
+            </div>
+        }
+        else
+        {
+            @if (Searching)
+            {
+                <div class="ep-sr" role="status">@ResultCount result@(ResultCount == 1 ? "" : "s")</div>
+            }
+            <div class="ep-grid">
+                <Virtualize Items="rows" ItemSize="RowHeight" OverscanCount="4" Context="row">
+                    <div class="ep-row" style="--ep-cols:@Columns">
+                        @foreach (var cell in row)
+                        {
+                            var c = cell;
+                            <button type="button" class="ep-emoji" aria-label="@c.Label" title="@c.Label" @onclick="() => Pick(c.Glyph)">@c.Glyph</button>
+                        }
+                    </div>
+                </Virtualize>
+            </div>
+        }
+    </div>
+
+    @if (Catalog.IsLoaded)
+    {
+        <label class="ep-newer">
+            <input type="checkbox" checked="@Prefs.ShowNewer" @onchange="ToggleNewer" />
+            <span>Show newer emoji</span>
+            @if (Prefs.ShowNewer)
+            {
+                <small>Newer emoji (Unicode @(EmojiCatalog.DefaultMaxVersion.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))+) may show as boxes on this device.</small>
+            }
+        </label>
     }
 </div>
 
 @code {
+    /// Called with the chosen emoji (already skin-toned). Recents are updated first.
     [Parameter] public EventCallback<string> OnPick { get; set; }
 
-    private static readonly string[] Emojis =
-    [
-        "😀","😂","🙂","😉","😍","😎","🤔","😅","😢","😮",
-        "👍","👎","👏","🙏","💪","🤝","👋","✌️","🫡","🙌",
-        "❤️","🔥","✅","❌","⚠️","⭐","🎉","💡","📌","📎",
-        "😴","🤒","☕","🍽️","🚗","🏠","📅","⏰","📈","🔒",
-    ];
+    /// Escape, and outside clicks when <see cref="OnDismiss"/> is not supplied.
+    [Parameter] public EventCallback OnClose { get; set; }
 
-    private async Task Pick(string e) => await OnPick.InvokeAsync(e);
+    /// Optional: outside click without moving focus anywhere. Falls back to OnClose.
+    [Parameter] public EventCallback OnDismiss { get; set; }
+
+    /// Close when the pointer goes down outside the picker. No scrim: the click still lands.
+    [Parameter] public bool CloseOnOutsideClick { get; set; } = true;
+
+    /// Outside clicks on elements matching this selector don't close (the caller's toggle button,
+    /// which would otherwise close and immediately reopen the picker).
+    [Parameter] public string OutsideIgnore { get; set; } = "[data-emoji-toggle], [aria-label='Emoji']";
+
+    /// Focus the search box when the picker opens.
+    [Parameter] public bool AutoFocus { get; set; } = true;
+
+    [Parameter] public int Columns { get; set; } = 8;
+
+    public const int RecentTab = -1;
+    public const float RowHeight = 40;
+    public const int SearchLimit = 160;
+
+    public sealed record Cell(string Glyph, string Label);
+
+    private readonly string idBase = "ep" + Guid.NewGuid().ToString("N")[..8];
+    private string PanelId => idBase + "-panel";
+    private string TabId(int i) => $"{idBase}-tab-{(i < 0 ? "recent" : i.ToString())}";
+
+    private ElementReference root;
+    private ElementReference searchInput;
+    private IJSObjectReference? module;
+    private DotNetObjectReference<EmojiPicker>? selfRef;
+    private bool attached;
+    private bool disposed;
+
+    private int tab = RecentTab;
+    private string query = "";
+    private bool toneOpen;
+    private List<Cell[]> rows = [];
+    private int ResultCount => rows.Sum(r => r.Length);
+
+    private bool Searching => query.Trim().Length > 0;
+
+    private IEnumerable<(EmojiCategory, int)> Tabs =>
+        new[] { (EmojiCategory.Recent, RecentTab) }.Concat(EmojiCategory.All.Select((c, i) => (c, i)));
+
+    private EmojiCategory CurrentTab => tab == RecentTab ? EmojiCategory.Recent : EmojiCategory.All[tab];
+
+    private double? MaxVersion => Prefs.ShowNewer ? null : EmojiCatalog.DefaultMaxVersion;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Prefs.Changed += OnPrefsChanged;
+        await Prefs.EnsureLoadedAsync();
+        tab = Prefs.Recent.Count > 0 ? RecentTab : 0;
+        Rebuild();
+        // The list loads in the background: the Recent tab and the frame render right away.
+        _ = LoadCatalogAsync();
+    }
+
+    private async Task LoadCatalogAsync()
+    {
+        if (Catalog.IsLoaded) { Rebuild(); return; }
+        await Catalog.EnsureLoadedAsync();
+        if (disposed) return;
+        Rebuild();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task RetryLoad() => LoadCatalogAsync();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        if (AutoFocus)
+        {
+            try { await searchInput.FocusAsync(preventScroll: true); } catch { /* not attached (tests, prerender) */ }
+        }
+        if (CloseOnOutsideClick && (OnDismiss.HasDelegate || OnClose.HasDelegate))
+        {
+            try
+            {
+                module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/emoji-picker.js?v=20261002-emoji");
+                if (disposed) return;
+                selfRef = DotNetObjectReference.Create(this);
+                await module.InvokeVoidAsync("attach", root, selfRef, OutsideIgnore);
+                attached = true;
+            }
+            catch { /* outside-click is a convenience; Escape and the caller's own handling still close */ }
+        }
+    }
+
+    [JSInvokable]
+    public async Task OutsidePointerDown()
+    {
+        if (disposed) return;
+        await (OnDismiss.HasDelegate ? OnDismiss.InvokeAsync() : OnClose.InvokeAsync());
+    }
+
+    private void OnPrefsChanged()
+    {
+        if (disposed) return;
+        Rebuild();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void Rebuild()
+    {
+        IEnumerable<Cell> cells;
+        if (Searching)
+        {
+            cells = Catalog.IsLoaded
+                ? Catalog.Search(query, SearchLimit, MaxVersion).Select(ToCell)
+                : [];
+        }
+        else if (tab == RecentTab)
+        {
+            cells = Prefs.Recent.Select(g => Catalog.Find(g) is { } hit
+                ? new Cell(g, hit.Entry.LabelWithTone(hit.Tone))
+                : new Cell(g, "Recent emoji"));
+        }
+        else
+        {
+            cells = Catalog.IsLoaded ? Catalog.InCategory(tab, MaxVersion).Select(ToCell) : [];
+        }
+        rows = cells.Chunk(Math.Max(1, Columns)).ToList();
+    }
+
+    /// Applies the account's tone only where Unicode defines all five tone sequences (and they
+    /// are offered at the current version cap), so a picked glyph is always a valid sequence.
+    private Cell ToCell(EmojiEntry e)
+    {
+        var tone = EmojiCatalog.TonesOffered(e, MaxVersion) ? Prefs.Tone : 0;
+        return new Cell(e.WithTone(tone), e.LabelWithTone(tone));
+    }
+
+    private void SelectTab(int i)
+    {
+        tab = i;
+        toneOpen = false;
+        Rebuild();
+    }
+
+    private void OnSearch(ChangeEventArgs e)
+    {
+        query = (e.Value?.ToString() ?? "");
+        if (query.Length > 60) query = query[..60];
+        Rebuild();
+    }
+
+    private async Task SetTone(int tone)
+    {
+        toneOpen = false;
+        await Prefs.SetToneAsync(tone);
+        Rebuild();
+    }
+
+    private async Task ToggleNewer(ChangeEventArgs e)
+    {
+        await Prefs.SetShowNewerAsync(e.Value is true || string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase));
+        Rebuild();
+    }
+
+    private async Task Pick(string glyph)
+    {
+        await Prefs.AddRecentAsync(glyph);
+        await OnPick.InvokeAsync(glyph);
+    }
+
+    /// Escape closes the tone menu if open, otherwise the picker.
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Escape") return;
+        if (toneOpen) { toneOpen = false; return; }
+        await OnClose.InvokeAsync();
+    }
+
+    private static string ToneLabel(int tone) => tone == 0 ? "Default" : char.ToUpperInvariant(EmojiEntry.ToneNames[tone - 1][0]) + EmojiEntry.ToneNames[tone - 1][1..];
+
+    private static string ToneSwatch(int tone) => tone switch
+    {
+        1 => "✋🏻", 2 => "✋🏼", 3 => "✋🏽", 4 => "✋🏾", 5 => "✋🏿", _ => "✋",
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        Prefs.Changed -= OnPrefsChanged;
+        if (module is not null)
+        {
+            try
+            {
+                if (attached) await module.InvokeVoidAsync("detach", root);
+                await module.DisposeAsync();
+            }
+            catch { /* circuit gone */ }
+        }
+        selfRef?.Dispose();
+    }
 }

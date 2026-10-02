@@ -731,13 +731,7 @@
                         @if (pickerOpen)
                         {
                             <div class="v6-pop v6-emoji-pop" @onclick:stopPropagation>
-                                <div class="v6-emoji-grid">
-                                    @foreach (var emoji in ComposerEmoji)
-                                    {
-                                        var e = emoji;
-                                        <button type="button" class="v6-emoji" @onclick="() => InsertEmoji(e)">@e</button>
-                                    }
-                                </div>
+                                <EmojiPicker OnPick="InsertEmoji" OnClose="CloseEmojiPicker" />
                             </div>
                         }
                         @if (stickerOpen)
@@ -899,7 +893,7 @@
                                               @onblur="OnComposerBlur"
                                               rows="1"></textarea>
                                     <button type="button" class="v6-smile @(pickerOpen ? "on" : "")" title="Emoji" aria-label="Emoji"
-                                            @onclick="() => { pickerOpen = !pickerOpen; plusMenuOpen = false; stickerOpen = false; }" @onclick:stopPropagation>
+                                            @onmousedown:preventDefault @onclick="ToggleEmojiPicker" @onclick:stopPropagation>
                                         <i data-lucide="smile"></i>
                                     </button>
                                     @if (hasDraft)

@@ -2,6 +2,7 @@
 @using IPop.Web.Services
 @using IPop.Web.Models
 @inject ChatState ChatSvc
+@inject IJSRuntime JS
 
 <div class="composer-wrap" @ref="wrapRef">
     @* ---- Emoji/Sticker Picker Panel ---- *@
@@ -14,13 +15,7 @@
             </div>
             @if (pickerTab == "emoji")
             {
-                <div class="picker-grid">
-                    @foreach (var emoji in EmojiGrid)
-                    {
-                        var e = emoji;
-                        <button type="button" class="picker-emoji" @onclick="() => OnInsertEmoji(e)" @onclick:stopPropagation>@e</button>
-                    }
-                </div>
+                <EmojiPicker OnPick="OnInsertEmoji" OnClose="() => OnTogglePicker.InvokeAsync()" />
             }
             else
             {
@@ -82,7 +77,7 @@
             <button type="button" class="comp-btn @(Uploading ? "busy" : "")" title="Attach file" disabled="@Uploading" @onclick="OnTriggerUpload">
                 <i data-lucide="@(Uploading ? "loader" : "paperclip")"></i>
             </button>
-            <button type="button" class="comp-btn @(PickerOpen ? "on" : "")" title="Emoji & Stickers" @onclick="OnTogglePicker">
+            <button type="button" class="comp-btn @(PickerOpen ? "on" : "")" title="Emoji & Stickers" @onmousedown:preventDefault @onclick="TogglePicker">
                 <i data-lucide="smile-plus"></i>
             </button>
 
@@ -169,7 +164,6 @@
     public ElementReference TextareaReference => textareaRef;
 
     private string pickerTab = "emoji";
-    private static readonly string[] EmojiGrid = ["👍", "❤️", "😂", "🎉", "🔥", "👀", "✅", "💯", "🚀", "⭐", "💡", "🙏", "👏", "😊", "😎", "🤔", "😅", "☕", "🏆", "💪", "📌", "📎", "🎯", "⚡"];
     private static readonly string[] StickerIcons = ["thumbs-up", "heart", "party-popper", "rocket", "flame", "coffee", "zap", "star", "check-circle", "alert-triangle", "lightbulb", "trophy", "hand-metal", "smile", "laugh", "frown", "badge-check", "brain", "target", "shield-check", "clock", "sparkles", "medal", "gift"];
 
     private async Task OnInput(ChangeEventArgs e)
@@ -187,9 +181,16 @@
         await OnComposerBlur.InvokeAsync();
     }
 
+    private async Task TogglePicker()
+    {
+        await JS.InvokeVoidAsync("ipop.emojiSaveCaret", textareaRef);
+        await OnTogglePicker.InvokeAsync();
+    }
+
     private async Task OnInsertEmoji(string em)
     {
-        await TextChanged.InvokeAsync(Text + em);
+        var value = await JS.InvokeAsync<string>("ipop.emojiInsert", textareaRef, em);
+        await TextChanged.InvokeAsync(value);
     }
 
     private async Task OnSendSticker(string st)

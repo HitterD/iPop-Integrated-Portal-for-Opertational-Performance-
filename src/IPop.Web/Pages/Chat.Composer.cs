@@ -206,7 +206,28 @@ public partial class Chat
 
     // ---- Emoji/Sticker Picker (Task 16.1) ----
 
-    private void InsertEmoji(string emoji) { messageText += emoji; pickerOpen = false; focusComposerPending = true; }
+    private async Task ToggleEmojiPicker()
+    {
+        await JS.InvokeVoidAsync("ipop.emojiSaveCaret", composerRef);
+        pickerOpen = !pickerOpen;
+        plusMenuOpen = false;
+        stickerOpen = false;
+    }
+
+    private Task CloseEmojiPicker()
+    {
+        pickerOpen = false;
+        focusComposerPending = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task InsertEmoji(string emoji)
+    {
+        messageText = await JS.InvokeAsync<string>("ipop.emojiInsert", composerRef, emoji);
+        pickerOpen = false;
+        focusComposerPending = true;
+        await OnComposerInput();
+    }
     // ---- Stickers ----
 
     private async Task OpenStickers()

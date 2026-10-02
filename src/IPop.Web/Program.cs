@@ -55,6 +55,11 @@ builder.Services.AddScoped<IPop.Web.Services.FavoriteContacts>();
 builder.Services.AddScoped<IPop.Web.Services.PeopleLinks>();
 builder.Services.AddScoped<IPop.Web.Services.PhotoViewerState>();
 builder.Services.AddScoped<IPop.Web.Services.SessionLockState>();
+// Emoji picker: the Unicode list is a static file under wwwroot (fetched once from the app's own
+// origin, not ApiBase); recents/tone are per account in localStorage.
+builder.Services.AddScoped(_ => new IPop.Web.Services.EmojiCatalog(
+    IPop.Web.Services.EmojiCatalog.HttpLoader(builder.HostEnvironment.BaseAddress)));
+builder.Services.AddScoped<IPop.Web.Services.EmojiPrefs>();
 builder.Services.AddRadzenComponents();
 
 await builder.Build().RunAsync();

@@ -640,6 +640,16 @@
                         </div>
                         <textarea id="mail-quick-reply-text" rows="3" placeholder="Write a reply…" aria-label="Reply text" @bind="quickReplyText" @bind:event="oninput"></textarea>
                         <div class="ra">
+                            <div style="position:relative">
+                                <button type="button" class="icon-btn" title="Emoji" aria-label="Emoji" aria-expanded="@(quickEmojiOpen ? "true" : "false")"
+                                        @onmousedown:preventDefault @onclick="ToggleQuickEmoji"><i data-lucide="smile"></i></button>
+                                @if (quickEmojiOpen)
+                                {
+                                    <div class="quick-emoji-pop" @onclick:stopPropagation>
+                                        <EmojiPicker OnPick="InsertQuickEmoji" OnClose="CloseQuickEmoji" OnDismiss="() => quickEmojiOpen = false" />
+                                    </div>
+                                }
+                            </div>
                             <button type="button" class="btn-primary" @onclick="SendQuickReply" disabled="@(quickReplySending || string.IsNullOrWhiteSpace(quickReplyText))">
                                 <i data-lucide="send"></i>
                                 @(quickReplySending ? "Sending…" : "Send")
@@ -902,6 +912,26 @@
     ];
     private MailThreadStack? threadStackRef;
     private bool composerOpen;
+    private bool quickEmojiOpen;
+
+    private async Task ToggleQuickEmoji()
+    {
+        await JS.InvokeVoidAsync("ipop.emojiSaveCaret", "mail-quick-reply-text");
+        quickEmojiOpen = !quickEmojiOpen;
+    }
+
+    private async Task InsertQuickEmoji(string emoji)
+    {
+        quickReplyText = await JS.InvokeAsync<string>("ipop.emojiInsert", "mail-quick-reply-text", emoji);
+        quickEmojiOpen = false;
+    }
+
+    private async Task CloseQuickEmoji()
+    {
+        quickEmojiOpen = false;
+        await JS.InvokeVoidAsync("ipop.mailFocusReply");
+    }
+
     private string quickReplyText = "";
     private bool quickReplySending;
     private bool replyOpen;
@@ -2003,7 +2033,8 @@
         switch (key)
         {
             case "Escape":
-                if (kbdSheetOpen) kbdSheetOpen = false;
+                if (quickEmojiOpen) await CloseQuickEmoji();
+                else if (kbdSheetOpen) kbdSheetOpen = false;
                 else if (rescheduleOpen) rescheduleOpen = false;
                 else if (moreMenuOpen) moreMenuOpen = false;
                 else if (labelMenuOpen) labelMenuOpen = false;
@@ -2059,6 +2090,7 @@
 
     private void CloseQuickReply()
     {
+        quickEmojiOpen = false;
         replyOpen = false;
         replyOpenFor = null;
     }

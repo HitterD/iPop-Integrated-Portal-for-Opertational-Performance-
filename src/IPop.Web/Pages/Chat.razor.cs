@@ -477,7 +477,6 @@ public partial class Chat
     private string? stickerError;
     private IPop.Web.Components.Chat.StickerEditor? stickerEditor;
     private Guid? reactPickerMsgId;
-    private static readonly string[] ComposerEmoji = ["😀", "😁", "😂", "🙂", "😉", "😍", "🤔", "😅", "😎", "😢", "😮", "🙏", "👍", "👏", "🙌", "💪", "🔥", "✅", "❤️", "🎉", "☕", "📌", "📎", "⏰"];
     private static readonly string[] ReactEmoji = ["👍", "❤️", "😂", "😮", "🙏", "✅"];
 
     // ---- Mention Autocomplete State (Task 16.2) ----

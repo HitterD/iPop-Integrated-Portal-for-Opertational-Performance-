@@ -9,6 +9,22 @@
 // inner markup of the ORIGINAL <i> — node identity survives re-renders and Blazor's
 // tree stays in sync.
 window.ipop = {
+  // Keep the selection before an emoji picker takes focus. WeakMap keys never outlive inputs.
+  _emojiCarets: new WeakMap(),
+  emojiSaveCaret(input) {
+    if (typeof input === "string") input = document.getElementById(input);
+    if (input) this._emojiCarets.set(input, [input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length]);
+  },
+  emojiInsert(input, text) {
+    if (typeof input === "string") input = document.getElementById(input);
+    if (!input) return "";
+    const [start, end] = this._emojiCarets.get(input) ?? [input.selectionStart ?? input.value.length, input.selectionEnd ?? input.value.length];
+    input.setRangeText(text, start, end, "end");
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
+    this._emojiCarets.delete(input);
+    return input.value;
+  },
   // PageCache (C#): removes every last-seen page snapshot on sign-out, for all users of this browser.
   cacheClear(prefix) {
     for (let i = localStorage.length - 1; i >= 0; i--) {
@@ -2009,6 +2025,19 @@ window.ipop = {
       if (!src) return;
       const safe = String(src).replace(/"/g, "&quot;");
       this.insertHtml(id, `<img src="${safe}" style="max-width: 100%; height: auto" alt="">`);
+    },
+    saveCaret(id) {
+      const st = this._eds[id];
+      if (st) this._saveRange(st);
+    },
+    insertText(id, text) {
+      const st = this._eds[id];
+      if (!st) return;
+      this._focus(st);
+      const safe = document.createElement("span");
+      safe.textContent = text || "";
+      st.ed.s.insertHTML(safe.innerHTML);
+      this._flush(id);
     },
     // Templates/signatures go through insertHTML so Ctrl+Z can take them back out.
     insertHtml(id, html) {

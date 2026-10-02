@@ -217,7 +217,20 @@
                 }
             </div>
         </div>
+        <div class="mrte-group">
+            <div class="mrte-pop-wrap">
+                <button type="button" class="mrte-btn" title="Emoji" aria-label="Emoji" aria-expanded="@(pop == "emoji" ? "true" : "false")"
+                        @onmousedown:preventDefault @onclick="ToggleEmoji"><i data-lucide="smile"></i></button>
+            </div>
+        </div>
     </div>
+
+    @if (pop == "emoji")
+    {
+        <div class="mrte-pop mrte-emoji-pop" @onclick:stopPropagation>
+            <EmojiPicker OnPick="InsertEmoji" OnClose="CloseEmoji" OnDismiss="DismissEmoji" />
+        </div>
+    }
 
     @if (pop is not null)
     {
@@ -332,6 +345,26 @@
     public Task OnNoticeJs(string message) => OnNotice.InvokeAsync(message);
 
     private Task Exec(string cmd, string? arg = null) => JS.InvokeVoidAsync("ipop.rte.exec", id, cmd, arg).AsTask();
+
+    private async Task ToggleEmoji()
+    {
+        await JS.InvokeVoidAsync("ipop.rte.saveCaret", id);
+        Toggle("emoji");
+    }
+
+    private async Task InsertEmoji(string emoji)
+    {
+        pop = null;
+        await JS.InvokeVoidAsync("ipop.rte.insertText", id, emoji);
+    }
+
+    private void DismissEmoji() => pop = null;
+
+    private async Task CloseEmoji()
+    {
+        pop = null;
+        await FocusAsync();
+    }
 
     private void Toggle(string name)
     {

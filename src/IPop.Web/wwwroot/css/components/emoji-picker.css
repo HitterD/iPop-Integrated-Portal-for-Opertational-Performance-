@@ -1,0 +1,141 @@
+/* Shared emoji picker (Components/EmojiPicker.razor, root .emoji-picker) and the three wrappers
+   that host it: Chat composer (.v6-emoji-pop), Mail editor toolbar (.mrte-pop) and Mail quick
+   reply (.quick-emoji-pop). Loaded after the module and mobile sheets so the wrapper overrides
+   win over v6/chat.css (248px) and mrte-pop's menu sizing without editing those files. */
+
+.emoji-picker {
+  --ep-cell: 40px;
+  display: flex; flex-direction: column;
+  width: min(344px, calc(100vw - 16px));
+  height: min(400px, calc(100dvh - 120px));
+  min-height: 220px;
+  background: var(--surface); color: var(--ink);
+  border-radius: 12px; overflow: hidden;
+  font-size: 13px;
+}
+.emoji-picker .ep-head { display: flex; align-items: center; gap: 6px; padding: 10px 10px 6px; flex: none; }
+.emoji-picker .ep-search {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px;
+  padding: 0 10px; height: 34px; border-radius: 9px;
+  background: var(--fill, var(--tray)); border: 1px solid transparent;
+}
+.emoji-picker .ep-search:focus-within { border-color: var(--accent); background: var(--surface); }
+.emoji-picker .ep-search-ic { font-size: 12px; opacity: .6; filter: grayscale(1); }
+.emoji-picker .ep-search input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: transparent;
+  font: inherit; font-size: 13px; color: var(--ink);
+}
+.emoji-picker .ep-search input::-webkit-search-cancel-button { cursor: pointer; }
+
+.emoji-picker .ep-tone-wrap { position: relative; flex: none; }
+.emoji-picker .ep-tone-btn, .emoji-picker .ep-tone {
+  width: 34px; height: 34px; display: grid; place-items: center;
+  border: 0; border-radius: 9px; background: transparent; cursor: pointer;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; font-size: 18px; line-height: 1;
+}
+.emoji-picker .ep-tone-btn:hover, .emoji-picker .ep-tone:hover { background: var(--tray); }
+.emoji-picker .ep-tones {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 2;
+  display: flex; gap: 2px; padding: 4px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow-md);
+}
+.emoji-picker .ep-tone.on { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+
+.emoji-picker .ep-tabs {
+  display: flex; flex: none; gap: 1px; padding: 0 6px;
+  border-bottom: 1px solid var(--line-soft);
+  overflow-x: auto; scrollbar-width: none;
+}
+.emoji-picker .ep-tabs::-webkit-scrollbar { display: none; }
+.emoji-picker .ep-tab {
+  flex: 1 0 32px; height: 34px; display: grid; place-items: center;
+  border: 0; background: transparent; cursor: pointer; border-radius: 8px 8px 0 0;
+  border-bottom: 2px solid transparent; opacity: .55; filter: grayscale(.6);
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; font-size: 17px; line-height: 1;
+  transition: opacity .15s, filter .15s, border-color .15s;
+}
+.emoji-picker .ep-tab:hover { opacity: .9; filter: none; background: var(--tray); }
+.emoji-picker .ep-tab.on { opacity: 1; filter: none; border-bottom-color: var(--accent); }
+
+.emoji-picker .ep-body {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: 2px 8px 8px; outline: none;
+}
+.emoji-picker .ep-title {
+  position: sticky; top: 0; z-index: 1; padding: 6px 4px 4px;
+  background: var(--surface); color: var(--ink-3); font-size: 11.5px; font-weight: 600;
+}
+.emoji-picker .ep-row {
+  display: grid; grid-template-columns: repeat(var(--ep-cols, 8), minmax(0, 1fr));
+  height: var(--ep-cell); /* Virtualize measures rows; EmojiPicker.RowHeight is only its first estimate */
+}
+.emoji-picker .ep-emoji {
+  display: grid; place-items: center; min-width: 0; height: var(--ep-cell);
+  border: 0; border-radius: 8px; background: transparent; cursor: pointer; padding: 0;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla", sans-serif;
+  font-size: 23px; line-height: 1; transition: background .12s, transform .12s;
+}
+.emoji-picker .ep-emoji:hover { background: var(--tray); transform: scale(1.12); }
+.emoji-picker .ep-emoji:focus-visible,
+.emoji-picker .ep-tab:focus-visible,
+.emoji-picker .ep-tone:focus-visible,
+.emoji-picker .ep-tone-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.emoji-picker .ep-empty { padding: 28px 12px; text-align: center; color: var(--ink-3); font-size: 12.5px; }
+.emoji-picker .ep-retry {
+  margin-left: 6px; border: 1px solid var(--line); border-radius: 7px; padding: 3px 9px;
+  background: var(--surface); color: var(--ink); font: inherit; cursor: pointer;
+}
+.emoji-picker .ep-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.emoji-picker .ep-newer {
+  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px;
+  padding: 7px 12px; border-top: 1px solid var(--line-soft);
+  color: var(--ink-3); font-size: 11.5px; cursor: pointer;
+}
+.emoji-picker .ep-newer input { margin: 0; accent-color: var(--accent); }
+.emoji-picker .ep-newer small { flex-basis: 100%; color: var(--warn); font-size: 11px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .emoji-picker .ep-emoji, .emoji-picker .ep-tab { transition: none; }
+  .emoji-picker .ep-emoji:hover { transform: none; }
+}
+
+/* ---------- Wrappers ---------- */
+
+/* Chat composer: the popover keeps its frame; the picker fills it. */
+.chat-area .v6-pop.v6-emoji-pop { width: auto; padding: 0; overflow: hidden; }
+.chat-area .v6-pop.v6-emoji-pop > .emoji-picker { border-radius: inherit; }
+
+/* Mail emoji popup lives outside the horizontally scrolling toolbar, so mobile scroll
+   cannot shift or clip it. The editor itself is its containing block. */
+.mrte:has(> .mrte-emoji-pop) { z-index: 115; }
+.mrte > .mrte-emoji-pop { top: 44px; right: 8px; left: auto; }
+.mrte-group:has(> .mrte-pop-wrap > .mrte-pop > .emoji-picker),
+.mrte-pop-wrap:has(> .mrte-pop > .emoji-picker) { position: static; }
+.mrte-pop:has(> .emoji-picker) {
+  top: calc(100% + 4px); left: auto; right: 8px;
+  min-width: 0; padding: 0; overflow: hidden;
+  background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+.mrte-pop > .emoji-picker { max-width: calc(100vw - 32px); }
+
+/* Mail quick reply: above the smile button. */
+.quick-emoji-pop {
+  position: absolute; bottom: calc(100% + 6px); left: 0; z-index: 60;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: var(--shadow-lg); overflow: hidden;
+}
+
+@media (max-width: 767px) {
+  .emoji-picker { --ep-cell: 44px; height: min(380px, 52dvh); }
+  .emoji-picker .ep-emoji { font-size: 26px; }
+  .emoji-picker .ep-emoji:hover { transform: none; }
+  .emoji-picker .ep-search input { font-size: 16px; } /* no iOS zoom-on-focus */
+  /* mobile/chat.css stretches .v6-pop edge to edge and makes it scroll: the picker scrolls itself. */
+  .chat-area .v6-pop.v6-emoji-pop { max-height: none; overflow: hidden; }
+  .chat-area .v6-pop.v6-emoji-pop > .emoji-picker { width: 100%; }
+  .mrte > .mrte-emoji-pop { top: 44px; left: 8px; right: 8px; }
+  .mrte-pop:has(> .emoji-picker) { left: 8px; right: 8px; }
+  .mrte-pop > .emoji-picker { width: 100%; max-width: none; }
+  .quick-emoji-pop > .emoji-picker { width: min(344px, calc(100vw - 40px)); }
+}
