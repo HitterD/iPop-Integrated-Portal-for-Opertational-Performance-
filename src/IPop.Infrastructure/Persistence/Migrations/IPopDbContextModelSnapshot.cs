@@ -1176,6 +1176,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<bool>("HasAttachment")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("HideRecipients")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("Importance")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -1189,6 +1192,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsHtml")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsMass")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime?>("LastThreadAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -1196,6 +1202,12 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PdfExportRequestedBy")
+                        .HasColumnType("text");
+
+                    b.Property<int>("RecipientCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("RecipientGroupsJson")
                         .HasColumnType("text");
 
                     b.Property<DateTime?>("ScheduledAt")
@@ -1208,6 +1220,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Signature")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SkippedJson")
                         .HasColumnType("text");
 
                     b.Property<string>("Status")
@@ -1323,6 +1338,48 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("MailAutoReplySettings");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.MailGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId");
+
+                    b.ToTable("MailGroups");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MailGroupMember", b =>
+                {
+                    b.Property<Guid>("GroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("GroupId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("MailGroupMembers");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.MailLabel", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1378,6 +1435,38 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("MailLabelAssignments");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.MailNotifyJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DoneAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("MailId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DoneAt", "NextAttemptAt");
+
+                    b.ToTable("MailNotifyJobs");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.MailRecipient", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1420,6 +1509,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("ViaGroup")
+                        .HasColumnType("boolean");
 
                     b.HasKey("Id");
 
@@ -4653,6 +4745,36 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.MailGroup", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "Owner")
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Owner");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MailGroupMember", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.MailGroup", "Group")
+                        .WithMany("Members")
+                        .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Group");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.MailLabel", b =>
                 {
                     b.HasOne("IPop.Core.Entities.User", "User")
@@ -5930,6 +6052,11 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Attachments");
 
                     b.Navigation("Recipients");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MailGroup", b =>
+                {
+                    b.Navigation("Members");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.MailLabel", b =>

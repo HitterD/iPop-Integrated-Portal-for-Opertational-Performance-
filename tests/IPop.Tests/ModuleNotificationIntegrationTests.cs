@@ -69,6 +69,8 @@ public class ModuleNotificationIntegrationTests
 
         var result = await mailSvc.SendAsync(sender.Id, req, default);
         Assert.True(result.Success);
+        Assert.Empty(mockGateway.Calls); // queued, not sent inside the request
+        Assert.Equal(1, await mailSvc.ProcessNotifyJobsAsync(default));
 
         Assert.Single(mockGateway.Calls);
         var call = mockGateway.Calls[0];
@@ -98,6 +100,7 @@ public class ModuleNotificationIntegrationTests
         Assert.Empty(mockGateway.Calls); // nothing while it is still scheduled
 
         Assert.Equal(1, await mailSvc.DeliverDueScheduledMailsAsync(default));
+        Assert.Equal(1, await mailSvc.ProcessNotifyJobsAsync(default));
 
         var call = Assert.Single(mockGateway.Calls);
         Assert.Equal("mail.new", call.EventType);

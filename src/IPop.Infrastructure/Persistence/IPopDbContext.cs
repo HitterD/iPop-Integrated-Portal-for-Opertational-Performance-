@@ -70,6 +70,9 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     // Mail entities (use fully-qualified name to avoid shadowing by sibling namespace IPop.Infrastructure.Mail)
     public DbSet<IPop.Core.Entities.Mail> Mails => Set<IPop.Core.Entities.Mail>();
     public DbSet<MailRecipient> MailRecipients => Set<MailRecipient>();
+    public DbSet<MailGroup> MailGroups => Set<MailGroup>();
+    public DbSet<MailGroupMember> MailGroupMembers => Set<MailGroupMember>();
+    public DbSet<MailNotifyJob> MailNotifyJobs => Set<MailNotifyJob>();
     public DbSet<MailAttachment> MailAttachments => Set<MailAttachment>();
     // Surat Lanjutan (Fase 3)
     public DbSet<MailLabel> MailLabels => Set<MailLabel>();
@@ -443,6 +446,24 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Folder).HasMaxLength(16);
             e.HasOne(x => x.Mail).WithMany(m => m.Recipients).HasForeignKey(x => x.MailId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<MailGroup>(e =>
+        {
+            e.Property(x => x.Name).HasMaxLength(120);
+            e.HasIndex(x => x.OwnerId);
+            e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<MailGroupMember>(e =>
+        {
+            e.HasKey(x => new { x.GroupId, x.UserId });
+            e.HasOne(x => x.Group).WithMany(g => g.Members).HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<MailNotifyJob>(e =>
+        {
+            e.HasIndex(x => new { x.DoneAt, x.NextAttemptAt });
+            e.Property(x => x.LastError).HasMaxLength(1000);
         });
 
         b.Entity<MailAttachment>(e =>

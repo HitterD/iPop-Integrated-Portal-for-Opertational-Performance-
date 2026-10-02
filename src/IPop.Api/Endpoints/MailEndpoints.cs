@@ -73,9 +73,9 @@ public static class MailEndpoints
             if (userId is null) return Results.Unauthorized();
 
             var result = await svc.SendAsync(userId.Value, req, ct);
-            if (!result.Success)
-                return Results.Json(new { code = result.Error, message = result.Error }, statusCode: ErrorStatus(result.Error));
+            if (!result.Success) return SendError(result);
             await WriteAuditAsync(http, db, "mail.send", result.MailId!.Value.ToString(), ct);
+            await AuditMassAsync(http, db, result, ct);
             return Results.Ok(result);
         }).RequirePermission("mail.send");
 
@@ -123,11 +123,51 @@ public static class MailEndpoints
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
             var result = await svc.ForwardAsync(userId.Value, id, req, ct);
-            if (!result.Success)
-                return Results.Json(new { code = result.Error, message = result.Error }, statusCode: ErrorStatus(result.Error));
+            if (!result.Success) return SendError(result);
             await WriteAuditAsync(http, db, "mail.forward", id.ToString(), ct);
+            await AuditMassAsync(http, db, result, ct);
             return Results.Ok(result);
         }).RequirePermission("mail.send");
+
+        // POST /api/mail/recipients/preview — the compose payload expanded server-side: the
+        // de-duplicated count and breakdown shown in the "Send to N people?" dialog.
+        g.MapPost("/recipients/preview", async (ComposeMailRequest req,
+            HttpContext http, IMailService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            return Results.Ok(await svc.PreviewRecipientsAsync(userId.Value, req, ct));
+        }).RequirePermission("mail.send");
+
+        // GET /api/mail/{id}/stats — sender only: sent / delivered / read counts + skipped.
+        g.MapGet("/{id:guid}/stats", async (Guid id,
+            HttpContext http, IMailService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var stats = await svc.GetStatsAsync(userId.Value, id, ct);
+            return stats is not null ? Results.Ok(stats) : Results.Json(new { code = "mail_not_found", message = "Mail not found." }, statusCode: 404);
+        });
+
+        // GET /api/mail/{id}/readers?read=true&page=1 — sender only: who has (not) read it, 50 a page.
+        g.MapGet("/{id:guid}/readers", async (Guid id, bool? read, int? page, int? pageSize,
+            HttpContext http, IMailService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await svc.GetReadersAsync(userId.Value, id, read ?? true, page ?? 1, pageSize ?? 50, ct);
+            return result is not null ? Results.Ok(result) : Results.Json(new { code = "mail_not_found", message = "Mail not found." }, statusCode: 404);
+        });
+
+        // GET /api/mail/{id}/recipients?page=1 — the full recipient list the caller may see, paged.
+        g.MapGet("/{id:guid}/recipients", async (Guid id, int? page, int? pageSize,
+            HttpContext http, IMailService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await svc.GetRecipientsAsync(userId.Value, id, page ?? 1, pageSize ?? 50, ct);
+            return result is not null ? Results.Ok(result) : Results.Json(new { code = "mail_not_found", message = "Mail not found." }, statusCode: 404);
+        });
 
         // ──────────────────────────────────────────────────────────────────────
         // Reading + delivery
@@ -1038,6 +1078,45 @@ public static class MailEndpoints
         });
         await db.SaveChangesAsync(ct);
     }
+
+    /// Sends above MailLimits.AuditAbove recipients are logged for admins with the count.
+    private static async Task AuditMassAsync(HttpContext http, IPopDbContext db, SendMailResult result, CancellationToken ct)
+    {
+        if (result.RecipientCount is not int n || n <= MailLimits.AuditAbove) return;
+        db.AuditLogs.Add(new AuditLog
+        {
+            ActorNik = http.User.FindFirst("nik")?.Value,
+            Action = "mail.send.mass",
+            Entity = "Mail",
+            EntityId = result.MailId?.ToString(),
+            DetailJson = System.Text.Json.JsonSerializer.Serialize(new { recipients = n }),
+            IpAddress = http.Connection.RemoteIpAddress?.ToString(),
+            CreatedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static IResult SendError(SendMailResult result)
+        => Results.Json(new { code = result.Error, message = SendErrorMessage(result), recipientCount = result.RecipientCount },
+            statusCode: ErrorStatus(result.Error));
+
+    /// Human text for compose errors — the composer shows it as is.
+    internal static string SendErrorMessage(SendMailResult result) => result.Error switch
+    {
+        "too_many_recipients" => result.RecipientCount is int n
+            ? $"This mail would go to {n:N0} people. The limit is {MailLimits.MaxRecipients:N0} — remove some recipients or split it into two mails."
+            : $"Too many recipients. The limit is {MailLimits.MaxRecipients:N0} people per mail.",
+        "too_many_groups" => "Too many groups in one mail. Pick at most 100.",
+        "confirm_required" => $"Please confirm sending to {result.RecipientCount:N0} people.",
+        "recipient_not_found" => "One or more recipients don't exist or are no longer active. Remove them and try again.",
+        "group_not_found" => "One of the groups no longer exists. Remove it and try again.",
+        "reply_all_blocked" => "This mail went to many people. Your reply can only go to the sender.",
+        "no_recipients" => "Add at least one recipient.",
+        "subject_required" => "Add a subject.",
+        "subject_too_long" => "The subject is too long.",
+        "body_required" => "Write a message.",
+        _ => result.Error ?? "Couldn't send the mail.",
+    };
 
     private static IResult ResultOrError(SendMailResult result)
         => result.Success

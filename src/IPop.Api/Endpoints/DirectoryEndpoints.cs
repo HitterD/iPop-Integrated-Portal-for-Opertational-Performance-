@@ -260,15 +260,21 @@ public static class DirectoryEndpoints
             query = query.Where(u => EF.Functions.ILike(u.Name, pat, @"\")
                 || (u.Extension != null && EF.Functions.ILike(u.Extension, pat, @"\")));
         }
-        if (!string.IsNullOrWhiteSpace(departmentCode))
+        // departmentCode / siteCode take a comma-separated list (the mail address book's multi-select):
+        // any of the departments AND any of the sites.
+        var deptCodes = SplitCodes(departmentCode);
+        if (deptCodes.Count > 0)
         {
             // Parent units include their sub-departments; a Division counts toward its Department.
-            var deptIds = await DepartmentSubtreeIdsAsync(db, departmentCode.Trim(), ct);
-            query = query.Where(u => (u.DepartmentId != null && deptIds.Contains(u.DepartmentId.Value))
-                || (u.Division != null && u.Division.DepartmentId != null && deptIds.Contains(u.Division.DepartmentId.Value)));
+            var deptIds = new HashSet<Guid>();
+            foreach (var code in deptCodes) deptIds.UnionWith(await DepartmentSubtreeIdsAsync(db, code, ct));
+            var ids = deptIds.ToList();
+            query = query.Where(u => (u.DepartmentId != null && ids.Contains(u.DepartmentId.Value))
+                || (u.Division != null && u.Division.DepartmentId != null && ids.Contains(u.Division.DepartmentId.Value)));
         }
-        if (!string.IsNullOrWhiteSpace(siteCode))
-            query = query.Where(u => u.Site != null && u.Site.Code == siteCode.Trim());
+        var siteCodes = SplitCodes(siteCode);
+        if (siteCodes.Count > 0)
+            query = query.Where(u => u.Site != null && siteCodes.Contains(u.Site.Code));
         if (!string.IsNullOrWhiteSpace(divisionCode))
             query = query.Where(u => u.Division != null && u.Division.Code == divisionCode.Trim());
         // Bawahan langsung: hanya pegawai dengan ManagerNik = NIK ini (kartu profil).
@@ -414,6 +420,11 @@ public static class DirectoryEndpoints
 
     // Ids of the Department with this code plus all its descendants, so filtering on a parent
     // unit also returns people placed in its sub-departments.
+    private static List<string> SplitCodes(string? csv)
+        => string.IsNullOrWhiteSpace(csv)
+            ? []
+            : csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct().Take(100).ToList();
+
     internal static async Task<List<Guid>> DepartmentSubtreeIdsAsync(IPopDbContext db, string code, CancellationToken ct)
     {
         var all = await db.Departments.AsNoTracking().Select(d => new { d.Id, d.ParentId, d.Code }).ToListAsync(ct);

@@ -20,6 +20,8 @@ public class MailRecipient
     public bool IsRead { get; set; }
     public bool IsPinned { get; set; }
     public bool IsMuted { get; set; }
+    /// Added through a group chip rather than typed/picked individually.
+    public bool ViaGroup { get; set; }
     public DateTime? DeliveredAt { get; set; }
     public DateTime? ReadAt { get; set; }
     public DateTime CreatedAt { get; set; }

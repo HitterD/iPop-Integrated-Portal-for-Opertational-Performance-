@@ -24,9 +24,44 @@ public record ComposeMailRequest(
     // Forward only: which of the original's attachments to carry over (null = all of them).
     IReadOnlyList<Guid>? ForwardAttachmentIds = null,
     // Drafts only: composer-only state the server stores verbatim (meeting fields, forward source).
-    string? DraftExtra = null);
+    string? DraftExtra = null,
+    // Group chips (shared DirGroups or the sender's personal groups), expanded at send time.
+    IReadOnlyList<MailGroupRef>? Groups = null,
+    // Recipients see only the sender and themselves.
+    bool HideRecipients = false,
+    // The count the user confirmed in the "Send to N people?" dialog; required above
+    // MailLimits.ConfirmAbove and must match the server's count.
+    int? ConfirmedRecipientCount = null);
 
-public record SendMailResult(bool Success, Guid? MailId, string? Error);
+/// A group chip in To/Cc/Bcc. Kind: "shared" (admin DirGroup) | "personal" (the sender's MailGroup).
+public record MailGroupRef(string Field, string Kind, Guid Id);
+
+public static class MailLimits
+{
+    public const int MaxRecipients = 1000;
+    /// Above this many recipients the sender must confirm, and the mail counts as mass mail.
+    public const int ConfirmAbove = 50;
+    /// Above this many recipients the send is written to the audit log for admins.
+    public const int AuditAbove = 100;
+    /// The reading pane gets at most this many recipient names; the rest are paged.
+    public const int DetailRecipients = 50;
+}
+
+public record SendMailResult(bool Success, Guid? MailId, string? Error, int? RecipientCount = null);
+
+/// Server-side expansion of a compose request: the numbers shown in the confirm dialog.
+public record RecipientPreviewDto(
+    int Total, int Individuals, int Duplicates, int Limit, bool NeedsConfirm,
+    IReadOnlyList<RecipientGroupCountDto> Groups,
+    IReadOnlyList<SkippedRecipientDto> Skipped,
+    IReadOnlyList<string> Invalid);
+
+public record RecipientGroupCountDto(string Field, string Kind, Guid Id, string Name, int Count);
+public record SkippedRecipientDto(string Nik, string Name);
+
+/// Sender's delivery summary for a sent mail.
+public record MailStatsDto(int Sent, int Delivered, int Read, IReadOnlyList<SkippedRecipientDto> Skipped);
+public record MailReaderDto(string Name, string Nik, DateTime? ReadAt);
 
 // One item in a folder listing, flattened for the list view.
 public record MailSummaryDto(
@@ -114,6 +149,14 @@ public record MailDetailDto(
     public IReadOnlyList<Guid> LabelIds { get; init; } = [];
     /// Drafts only (to their author): the composer's opaque extras, see ComposeMailRequest.DraftExtra.
     public string? DraftExtra { get; init; }
+    /// All recipients the caller may see; Recipients holds at most MailLimits.DetailRecipients of them.
+    public int RecipientTotal { get; init; }
+    /// Groups the mail was sent to (names + counts; ids only for the sender).
+    public IReadOnlyList<RecipientGroupCountDto> RecipientGroups { get; init; } = [];
+    public bool IsMass { get; init; }
+    public bool HideRecipients { get; init; }
+    /// False for mass mail unless the caller sent it: reply goes to the sender only.
+    public bool CanReplyAll { get; init; } = true;
 }
 
 // Delivery/read state of one recipient, for the sender's "terkirim/dibaca" view.

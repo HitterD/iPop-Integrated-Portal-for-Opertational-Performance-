@@ -49,10 +49,12 @@ public class LiveRefreshRealtimeTests
         var b = t.AddUser("B");
         var rt = new RecordingRealtime();
 
-        var res = await new MailService(t.Verify(), null, rt).SendAsync(a.Id,
-            new ComposeMailRequest("Hi", "<p>x</p>", [b.Nik], [], []), default);
+        var svc = new MailService(t.Verify(), null, rt);
+        var res = await svc.SendAsync(a.Id, new ComposeMailRequest("Hi", "<p>x</p>", [b.Nik], [], []), default);
 
         Assert.True(res.Success, res.Error);
+        // Recipient badges/banners come from the durable notify queue, not the request.
+        Assert.Equal(1, await svc.ProcessNotifyJobsAsync(default));
         Assert.True(rt.Got("B", RealtimeEvents.MailChanged));
         Assert.True(rt.Got("A", RealtimeEvents.MailChanged));
         Assert.Equal(1, rt.MailBadge("B"));

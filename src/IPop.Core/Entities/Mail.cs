@@ -27,6 +27,19 @@ public class Mail
     /// rows are created on send) plus the client's opaque extras (meeting fields, forward source).
     public string? DraftState { get; set; }
 
+    /// Mass mail: true when sent to more than 50 people or through a group. Recipients other than
+    /// the sender can then only reply to the sender (no reply all).
+    public bool IsMass { get; set; }
+    /// Recipients see only the sender and themselves (Bcc-like), not the list.
+    public bool HideRecipients { get; set; }
+    /// Distinct recipients at send time (excluding the sender).
+    public int RecipientCount { get; set; }
+    /// JSON of the groups the sender picked: [{ field, kind, id, name, count }] — shown instead of
+    /// hundreds of names.
+    public string? RecipientGroupsJson { get; set; }
+    /// JSON of group members skipped because their account is inactive: [{ nik, name }].
+    public string? SkippedJson { get; set; }
+
     public string? PdfExportRequestedBy { get; set; }  // PDF export stub: records who asked; real export is Wave-2
     public DateTime? PdfExportRequestedAt { get; set; }
 

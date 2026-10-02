@@ -12,9 +12,10 @@ using MailEntity = IPop.Core.Entities.Mail;
 
 namespace IPop.Infrastructure.Mail;
 
-public sealed class MailService(IPopDbContext db, INotificationGatewayService? notificationGateway = null, IRealtime? realtime = null) : IMailService
+public sealed class MailService(IPopDbContext db, INotificationGatewayService? notificationGateway = null, IRealtime? realtime = null,
+    MailNotifySignal? notifySignal = null) : IMailService
 {
-    private const int MaxRecipients = 100;
+    private static readonly System.Text.Json.JsonSerializerOptions Json = new(System.Text.Json.JsonSerializerDefaults.Web);
     private const int MaxSubjectLength = 500;
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -27,8 +28,28 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         var validation = Validate(req);
         if (validation is not null) return validation;
 
-        var recipientUsers = await ResolveRecipientsAsync(req, ct);
-        if (recipientUsers is null) return new SendMailResult(false, null, "recipient_not_found");
+        var x = await ExpandAsync(senderId, req, ct);
+        if (x.Invalid.Count > 0)
+            return new SendMailResult(false, null, x.Invalid.Any(i => i.StartsWith("group:")) ? "group_not_found" : "recipient_not_found");
+        // Sending to yourself: the sender's own row (Folder=sent) IS the record — a second (mail,
+        // user) row would trip the unique index, so the sender never gets a recipient row.
+        var recipients = x.Recipients.Where(r => r.User.Id != senderId).ToList();
+        if (x.Recipients.Count == 0) return new SendMailResult(false, null, "no_recipients");
+        var total = recipients.Count;
+        if (total > MailLimits.MaxRecipients) return new SendMailResult(false, null, "too_many_recipients", total);
+        // The sender must have seen (and confirmed) the server's own count for a big send.
+        if (total > MailLimits.ConfirmAbove && req.ConfirmedRecipientCount != total)
+            return new SendMailResult(false, null, "confirm_required", total);
+
+        // Mass mail: everyone but the original sender may only reply to the sender.
+        if (req.InReplyToId is Guid parentId)
+        {
+            var parent = await db.Mails.AsNoTracking().Where(m => m.Id == parentId)
+                .Select(m => new { m.SenderId, m.IsMass, m.HideRecipients }).FirstOrDefaultAsync(ct);
+            if (parent is not null && (parent.IsMass || parent.HideRecipients) && parent.SenderId != senderId
+                && (x.Groups.Count > 0 || recipients.Any(r => r.User.Id != parent.SenderId)))
+                return new SendMailResult(false, null, "reply_all_blocked");
+        }
 
         var now = DateTime.UtcNow;
         var isScheduled = req.ScheduledAt.HasValue;
@@ -47,6 +68,11 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             ScheduledAt = req.ScheduledAt,
             CreatedAt = now,
             SentAt = isScheduled ? null : now,
+            IsMass = total > MailLimits.ConfirmAbove || x.Groups.Count > 0,
+            HideRecipients = req.HideRecipients,
+            RecipientCount = total,
+            RecipientGroupsJson = x.Groups.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(x.Groups, Json) : null,
+            SkippedJson = x.Skipped.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(x.Skipped, Json) : null,
         };
         if (!isScheduled) await BumpThreadAsync(mail, now, ct);
         db.Mails.Add(mail);
@@ -54,36 +80,117 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         // Sender's own row lives in Scheduled or Sent.
         db.MailRecipients.Add(MakeRecipient(mail.Id, senderId, "from", isScheduled ? "scheduled" : "sent", now));
 
-        foreach (var u in recipientUsers)
+        foreach (var r in recipients)
         {
-            // Sending to yourself: the sender's row above (Folder=sent) IS the record — adding a
-            // second (mail, user) row would trip the unique index, so skip the sender here.
-            if (u.Id == senderId) continue;
-            var type = req.To.Contains(u.Nik) ? "to" : req.Cc.Contains(u.Nik) ? "cc" : "bcc";
-            db.MailRecipients.Add(MakeRecipient(mail.Id, u.Id, type, isScheduled ? "pending" : "inbox", now));
+            var row = MakeRecipient(mail.Id, r.User.Id, r.Type, isScheduled ? "pending" : "inbox", now);
+            row.ViaGroup = r.ViaGroup;
+            row.DeliveredAt = isScheduled ? null : now;
+            db.MailRecipients.Add(row);
         }
 
         mail.HasAttachment = await LinkAttachmentsAsync(mail.Id, senderId, req.AttachmentIds, ct);
         await ApplySenderLabelsAsync(mail.Id, senderId, req.LabelIds, now, ct);
+        // Badges/banners/push go through a durable queue written with the inbox rows: the send
+        // returns as soon as the mail is in everyone's inbox, and no notification is lost.
+        if (!isScheduled) QueueNotify(mail.Id, now);
         await db.SaveChangesAsync(ct);
 
+        var recipientUsers = recipients.Select(r => r.User).ToList();
         // Fase 3 — aturan label otomatis: untuk tiap penerima non-pengirim, tempel label
         // dari aturan aktif yang cocok dengan pengirim (nama/NIK/email).
         if (!isScheduled)
             await ApplyAutoRulesAsync(mail, recipientUsers, ct);
 
         // Fase 3 — balasan otomatis (OOO): tiap penerima yang sedang OOO membalas sekali
-        // per hari per pengirim. Dijalankan setelah surat masuk tersimpan.
-        if (!isScheduled)
+        // per hari per pengirim. Not for mass mail: a broadcast would flood the sender.
+        if (!isScheduled && !mail.IsMass)
             await SendAutoRepliesAsync(mail, recipientUsers, ct);
 
-        if (!isScheduled)
-            await NotifyDeliveredAsync(mail, senderId, recipientUsers, ct);
-        else
-            await SyncUserAsync(senderId, ct);
+        await SyncUserAsync(senderId, ct);
+        if (!isScheduled) notifySignal?.Notify();
 
-        return new SendMailResult(true, mail.Id, null);
+        return new SendMailResult(true, mail.Id, null, total);
     }
+
+    public async Task<RecipientPreviewDto> PreviewRecipientsAsync(Guid senderId, ComposeMailRequest req, CancellationToken ct)
+    {
+        req = NormalizeRecipients(req);
+        var x = await ExpandAsync(senderId, req, ct);
+        var total = x.Recipients.Count(r => r.User.Id != senderId);
+        return new RecipientPreviewDto(total, x.Individuals, x.Duplicates, MailLimits.MaxRecipients,
+            total > MailLimits.ConfirmAbove, x.Groups, x.Skipped, x.Invalid);
+    }
+
+    private sealed record Expanded(User User, string Type, bool ViaGroup);
+    private sealed record Expansion(
+        List<Expanded> Recipients, List<RecipientGroupCountDto> Groups, List<SkippedRecipientDto> Skipped,
+        List<string> Invalid, int Individuals, int Duplicates);
+
+    private static int TypeRank(string type) => type switch { "to" => 0, "cc" => 1, _ => 2 };
+    private static string NormalizeField(string? field) => field?.Trim().ToLowerInvariant() switch { "cc" => "cc", "bcc" => "bcc", _ => "to" };
+    private static string NormalizeKind(string? kind) => string.Equals(kind?.Trim(), "personal", StringComparison.OrdinalIgnoreCase) ? "personal" : "shared";
+
+    /// Typed NIKs + group chips → one entry per person. Someone reached twice keeps the most
+    /// visible field (To over Cc over Bcc) and counts as typed if they were typed anywhere.
+    /// Typed NIKs that don't resolve to an active user are invalid; inactive group members are
+    /// skipped and reported instead (groups go stale, typed names don't).
+    private async Task<Expansion> ExpandAsync(Guid senderId, ComposeMailRequest req, CancellationToken ct)
+    {
+        var map = new Dictionary<Guid, Expanded>();
+        var order = new List<Guid>();
+        var entries = 0;
+        void Add(User u, string type, bool viaGroup)
+        {
+            entries++;
+            if (map.TryGetValue(u.Id, out var cur))
+                map[u.Id] = cur with { Type = TypeRank(type) < TypeRank(cur.Type) ? type : cur.Type, ViaGroup = cur.ViaGroup && viaGroup };
+            else
+            {
+                map[u.Id] = new Expanded(u, type, viaGroup);
+                order.Add(u.Id);
+            }
+        }
+
+        var typed = req.To.Select(n => (Nik: n, Type: "to"))
+            .Concat(req.Cc.Select(n => (Nik: n, Type: "cc")))
+            .Concat(req.Bcc.Select(n => (Nik: n, Type: "bcc")))
+            .ToList();
+        var niks = typed.Select(t => t.Nik).Distinct().ToList();
+        var users = niks.Count == 0
+            ? new Dictionary<string, User>()
+            : (await db.Users.AsNoTracking().Where(u => niks.Contains(u.Nik) && u.IsActive).ToListAsync(ct))
+                .GroupBy(u => u.Nik).ToDictionary(g => g.Key, g => g.First());
+        var invalid = niks.Where(n => !users.ContainsKey(n)).ToList();
+        foreach (var (nik, type) in typed)
+            if (users.TryGetValue(nik, out var u)) Add(u, type, false);
+        var individuals = map.Count;
+
+        var groups = new List<RecipientGroupCountDto>();
+        var skipped = new Dictionary<string, SkippedRecipientDto>();
+        var seen = new HashSet<(string, Guid)>();
+        foreach (var g in req.Groups ?? [])
+        {
+            var kind = NormalizeKind(g.Kind);
+            if (!seen.Add((kind, g.Id))) continue;
+            var field = NormalizeField(g.Field);
+            var found = kind == "personal"
+                ? await db.MailGroups.AsNoTracking().Where(x => x.Id == g.Id && x.OwnerId == senderId)
+                    .Select(x => new { x.Name, Users = x.Members.Select(m => m.User).ToList() }).FirstOrDefaultAsync(ct)
+                : await db.DirGroups.AsNoTracking().Where(x => x.Id == g.Id && x.IsActive)
+                    .Select(x => new { x.Name, Users = x.Members.Select(m => m.User).ToList() }).FirstOrDefaultAsync(ct);
+            if (found is null) { invalid.Add($"group:{g.Id}"); continue; }
+            var active = found.Users.Where(u => u.IsActive).ToList();
+            foreach (var u in found.Users.Where(u => !u.IsActive)) skipped.TryAdd(u.Nik, new SkippedRecipientDto(u.Nik, u.Name));
+            foreach (var u in active) Add(u, field, true);
+            groups.Add(new RecipientGroupCountDto(field, kind, g.Id, found.Name, active.Count));
+        }
+
+        return new Expansion(order.Select(id => map[id]).ToList(), groups, skipped.Values.OrderBy(v => v.Name).ToList(),
+            invalid, individuals, entries - map.Count);
+    }
+
+    private void QueueNotify(Guid mailId, DateTime now)
+        => db.MailNotifyJobs.Add(new MailNotifyJob { Id = Guid.NewGuid(), MailId = mailId, CreatedAt = now, NextAttemptAt = now });
 
     public async Task<SendMailResult> SaveDraftAsync(Guid userId, ComposeMailRequest req, CancellationToken ct)
     {
@@ -342,25 +449,43 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             .FirstOrDefaultAsync(r => r.MailId == mailId && r.UserId == userId, ct);
         if (recipient is null) return null; // hidden from non-participants (BCC stays private)
 
+        // Recipients are NOT included: a mass mail has up to 1000 of them. The reading pane gets
+        // the first DetailRecipients names plus counts; the rest is paged on demand.
         var mail = await db.Mails
             .AsNoTracking()
             .Include(m => m.Sender)
-            .Include(m => m.Recipients).ThenInclude(r => r.User)
             .Include(m => m.Attachments)
             .FirstAsync(m => m.Id == mailId, ct);
 
-        // BCC privacy (spec): a BCC recipient is visible only to the sender and to themselves.
         var callerIsSender = mail.SenderId == userId;
-        var visibleRecipients = mail.Recipients
-            .Where(r => r.RecipientType != "bcc" || callerIsSender || r.UserId == userId)
-            .ToList();
+        var visible = VisibleRecipients(mail, userId);
+        var recipientTotal = await visible.CountAsync(r => r.RecipientType != "from", ct);
+        // Typed people first; group members are summarised by their group chip.
+        var visibleRecipients = await visible
+            .Where(r => !r.ViaGroup || r.UserId == userId || r.RecipientType == "from")
+            .OrderBy(r => r.RecipientType == "to" ? 0 : r.RecipientType == "cc" ? 1 : r.RecipientType == "bcc" ? 2 : 3)
+            .ThenBy(r => r.CreatedAt)
+            .Take(MailLimits.DetailRecipients + 1)
+            .Include(r => r.User)
+            .ToListAsync(ct);
         // A draft's recipients live as NIKs in DraftState; show them to the author like real rows.
         var draftState = mail.Status == "draft" && callerIsSender ? DeserializeDraftState(mail.DraftState) : null;
         if (draftState is not null)
-            visibleRecipients.AddRange(await DraftRecipientsAsync(mail.Id, draftState, ct));
-        var visibleDelivery = mail.Recipients
-            .Where(r => r.RecipientType != "from" && r.RecipientType != "bcc" && (callerIsSender || r.RecipientType is "to" or "cc" || r.UserId == userId))
-            .ToList();
+        {
+            var drafted = await DraftRecipientsAsync(mail.Id, draftState, ct);
+            visibleRecipients.AddRange(drafted);
+            recipientTotal += drafted.Count;
+        }
+        // Per-recipient delivery state stays for ordinary mail; mass mail uses GetStatsAsync.
+        var visibleDelivery = mail.IsMass
+            ? []
+            : visibleRecipients
+                .Where(r => r.RecipientType != "from" && r.RecipientType != "bcc" && r.Folder != "draft" && (callerIsSender || r.RecipientType is "to" or "cc" || r.UserId == userId))
+                .ToList();
+
+        var groups = draftState is not null
+            ? await ResolveGroupRefsAsync(userId, draftState.Groups ?? [], ct)
+            : VisibleGroups(mail, callerIsSender);
 
         return new MailDetailDto(
             mail.Id, mail.SenderId, mail.Sender.Name, mail.Sender.Nik,
@@ -370,6 +495,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             mail.PdfExportRequestedBy, mail.PdfExportRequestedAt,
             visibleRecipients
                 .OrderBy(r => r.RecipientType == "to" ? 0 : r.RecipientType == "cc" ? 1 : r.RecipientType == "bcc" ? 2 : 3)
+                .Take(MailLimits.DetailRecipients)
                 .Select(r => new MailRecipientDto(r.UserId, r.User.Name, r.User.Nik, r.User.Email, r.RecipientType))
                 .ToList(),
             mail.Attachments.OrderBy(a => a.SortOrder).ThenBy(a => a.CreatedAt)
@@ -389,15 +515,115 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
                 .Select(a => a.LabelId)
                 .ToListAsync(ct),
             DraftExtra = draftState?.Extra,
+            RecipientTotal = recipientTotal,
+            RecipientGroups = groups,
+            IsMass = mail.IsMass,
+            HideRecipients = draftState?.HideRecipients ?? mail.HideRecipients,
+            CanReplyAll = callerIsSender || !(mail.IsMass || mail.HideRecipients),
         };
     }
 
-    private sealed record DraftStateJson(IReadOnlyList<string>? To, IReadOnlyList<string>? Cc, IReadOnlyList<string>? Bcc, string? Extra);
+    /// Recipient rows the caller may see. BCC privacy (spec): a BCC recipient is visible only to
+    /// the sender and to themselves; with "Hide recipient list" everyone else is BCC-like too.
+    private IQueryable<MailRecipient> VisibleRecipients(MailEntity mail, Guid userId)
+    {
+        var q = db.MailRecipients.AsNoTracking().Where(r => r.MailId == mail.Id);
+        if (mail.SenderId == userId) return q;
+        if (mail.HideRecipients) return q.Where(r => r.UserId == userId || r.RecipientType == "from");
+        return q.Where(r => r.RecipientType != "bcc" || r.UserId == userId);
+    }
+
+    private static List<RecipientGroupCountDto> VisibleGroups(MailEntity mail, bool callerIsSender)
+    {
+        if (string.IsNullOrEmpty(mail.RecipientGroupsJson)) return [];
+        if (!callerIsSender && mail.HideRecipients) return [];
+        List<RecipientGroupCountDto> all;
+        try { all = System.Text.Json.JsonSerializer.Deserialize<List<RecipientGroupCountDto>>(mail.RecipientGroupsJson, Json) ?? []; }
+        catch (System.Text.Json.JsonException) { return []; }
+        return callerIsSender
+            ? all
+            // Others see names and sizes only — no ids to enumerate a personal group with.
+            : all.Where(g => g.Field != "bcc").Select(g => g with { Id = Guid.Empty }).ToList();
+    }
+
+    /// Group chips saved on a draft → names + current active member counts.
+    private async Task<List<RecipientGroupCountDto>> ResolveGroupRefsAsync(Guid ownerId, IReadOnlyList<MailGroupRef> refs, CancellationToken ct)
+    {
+        var result = new List<RecipientGroupCountDto>();
+        foreach (var g in refs)
+        {
+            var kind = NormalizeKind(g.Kind);
+            var found = kind == "personal"
+                ? await db.MailGroups.AsNoTracking().Where(x => x.Id == g.Id && x.OwnerId == ownerId)
+                    .Select(x => new { x.Name, Count = x.Members.Count(m => m.User.IsActive) }).FirstOrDefaultAsync(ct)
+                : await db.DirGroups.AsNoTracking().Where(x => x.Id == g.Id && x.IsActive)
+                    .Select(x => new { x.Name, Count = x.Members.Count(m => m.User.IsActive) }).FirstOrDefaultAsync(ct);
+            if (found is not null) result.Add(new RecipientGroupCountDto(NormalizeField(g.Field), kind, g.Id, found.Name, found.Count));
+        }
+        return result;
+    }
+
+    public async Task<MailStatsDto?> GetStatsAsync(Guid userId, Guid mailId, CancellationToken ct)
+    {
+        var mail = await db.Mails.AsNoTracking().FirstOrDefaultAsync(m => m.Id == mailId && m.SenderId == userId, ct);
+        if (mail is null) return null;
+        var rows = db.MailRecipients.AsNoTracking().Where(r => r.MailId == mailId && r.RecipientType != "from");
+        var counts = await rows.GroupBy(_ => 1).Select(g => new
+        {
+            Sent = g.Count(),
+            Delivered = g.Count(r => r.DeliveredAt != null),
+            Read = g.Count(r => r.ReadAt != null),
+        }).FirstOrDefaultAsync(ct);
+        List<SkippedRecipientDto> skipped = [];
+        if (!string.IsNullOrEmpty(mail.SkippedJson))
+        {
+            try { skipped = System.Text.Json.JsonSerializer.Deserialize<List<SkippedRecipientDto>>(mail.SkippedJson, Json) ?? []; }
+            catch (System.Text.Json.JsonException) { }
+        }
+        return new MailStatsDto(counts?.Sent ?? 0, counts?.Delivered ?? 0, counts?.Read ?? 0, skipped);
+    }
+
+    public async Task<PagedResult<MailReaderDto>?> GetReadersAsync(Guid userId, Guid mailId, bool read, int page, int pageSize, CancellationToken ct)
+    {
+        if (!await db.Mails.AnyAsync(m => m.Id == mailId && m.SenderId == userId, ct)) return null;
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        var q = db.MailRecipients.AsNoTracking()
+            .Where(r => r.MailId == mailId && r.RecipientType != "from" && (read ? r.ReadAt != null : r.ReadAt == null));
+        var total = await q.CountAsync(ct);
+        var ordered = read ? q.OrderByDescending(r => r.ReadAt).ThenBy(r => r.User.Name) : q.OrderBy(r => r.User.Name);
+        var items = await ordered.Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(r => new MailReaderDto(r.User.Name, r.User.Nik, r.ReadAt))
+            .ToListAsync(ct);
+        return new PagedResult<MailReaderDto>(items, total, page, pageSize);
+    }
+
+    public async Task<PagedResult<MailRecipientDto>?> GetRecipientsAsync(Guid userId, Guid mailId, int page, int pageSize, CancellationToken ct)
+    {
+        var mail = await db.Mails.AsNoTracking().FirstOrDefaultAsync(m => m.Id == mailId, ct);
+        if (mail is null || !await db.MailRecipients.AnyAsync(r => r.MailId == mailId && r.UserId == userId, ct)) return null;
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        var q = VisibleRecipients(mail, userId).Where(r => r.RecipientType != "from");
+        // Group members are listed only to the sender; others see the group chip.
+        if (mail.SenderId != userId) q = q.Where(r => !r.ViaGroup || r.UserId == userId);
+        var total = await q.CountAsync(ct);
+        var items = await q
+            .OrderBy(r => r.RecipientType == "to" ? 0 : r.RecipientType == "cc" ? 1 : 2).ThenBy(r => r.User.Name)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(r => new MailRecipientDto(r.UserId, r.User.Name, r.User.Nik, r.User.Email, r.RecipientType))
+            .ToListAsync(ct);
+        return new PagedResult<MailRecipientDto>(items, total, page, pageSize);
+    }
+
+    private sealed record DraftStateJson(IReadOnlyList<string>? To, IReadOnlyList<string>? Cc, IReadOnlyList<string>? Bcc, string? Extra,
+        IReadOnlyList<MailGroupRef>? Groups = null, bool HideRecipients = false);
 
     private static string? SerializeDraftState(ComposeMailRequest req)
-        => req.To.Count + req.Cc.Count + req.Bcc.Count == 0 && string.IsNullOrEmpty(req.DraftExtra)
+        => req.To.Count + req.Cc.Count + req.Bcc.Count + (req.Groups?.Count ?? 0) == 0 && string.IsNullOrEmpty(req.DraftExtra) && !req.HideRecipients
             ? null
-            : System.Text.Json.JsonSerializer.Serialize(new DraftStateJson(req.To, req.Cc, req.Bcc, req.DraftExtra));
+            : System.Text.Json.JsonSerializer.Serialize(new DraftStateJson(req.To, req.Cc, req.Bcc, req.DraftExtra,
+                req.Groups is { Count: > 0 } ? req.Groups : null, req.HideRecipients));
 
     private static DraftStateJson? DeserializeDraftState(string? json)
     {
@@ -731,12 +957,11 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             r.Folder = "inbox";
             r.DeliveredAt = now;
         }
+        QueueNotify(mail.Id, now);
 
         await db.SaveChangesAsync(ct);
-
-        var deliveredIds = delivered.Select(r => r.UserId).ToList();
-        var deliveredUsers = await db.Users.AsNoTracking().Where(u => deliveredIds.Contains(u.Id)).ToListAsync(ct);
-        await NotifyDeliveredAsync(mail, userId, deliveredUsers, ct);
+        await SyncUserAsync(userId, ct);
+        notifySignal?.Notify();
         return new SendMailResult(true, mailId, null);
     }
 
@@ -751,63 +976,97 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         return new SendMailResult(true, mailId, null);
     }
 
-    /// Badge + "mail.new" banner for everyone who just got the mail in their inbox.
-    /// Shared by immediate send and scheduled delivery so both surface the same way.
-    private async Task NotifyDeliveredAsync(MailEntity mail, Guid senderId, IReadOnlyList<User> recipientUsers, CancellationToken ct)
+    public async Task<int> ProcessNotifyJobsAsync(CancellationToken ct)
     {
-        if (realtime != null)
+        var now = DateTime.UtcNow;
+        var jobs = await db.MailNotifyJobs
+            .Where(j => j.DoneAt == null && j.NextAttemptAt <= now && j.Attempts < MailNotifyJob.MaxAttempts)
+            .OrderBy(j => j.NextAttemptAt)
+            .Take(10)
+            .ToListAsync(ct);
+        foreach (var job in jobs)
         {
-            foreach (var u in recipientUsers.Where(u => u.Id != senderId))
+            try
             {
-                var unread = await db.MailRecipients.AsNoTracking()
-                    .CountAsync(r => r.UserId == u.Id && r.Folder == "inbox" && !r.IsRead && !r.IsMuted, ct);
-                _ = realtime.ToUserAsync(u.Nik, RealtimeEvents.BadgeChanged, new RealtimeArgs("mail", unread), ct);
-                _ = realtime.ToUserAsync(u.Nik, "mailReceived", new { mailId = mail.Id, subject = mail.Subject }, ct);
-                _ = realtime.ToUserAsync(u.Nik, RealtimeEvents.MailChanged, ct: ct);
+                await NotifyDeliveredAsync(job, ct);
+                job.DoneAt = DateTime.UtcNow;
+                job.LastError = null;
             }
-            // Sender's Sent folder in their other tabs (and any OOO auto-reply that just landed).
-            await SyncUserAsync(senderId, ct);
-        }
-
-        if (notificationGateway != null)
-        {
-            var mutedUserIds = mail.ThreadRootId != null
-                ? await db.MailRecipients.AsNoTracking()
-                    .Where(r => (r.MailId == mail.ThreadRootId || r.Mail.ThreadRootId == mail.ThreadRootId) && r.IsMuted)
-                    .Select(r => r.UserId).ToListAsync(ct)
-                : new List<Guid>();
-
-            var recipientIds = recipientUsers
-                .Where(u => u.Id != senderId && !mutedUserIds.Contains(u.Id))
-                .Select(u => u.Id)
-                .Distinct()
-                .ToList();
-
-            if (recipientIds.Count > 0)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                job.LastError = Truncate(ex.Message, 1000);
+                // 10s, 20s, 40s … capped at 10 minutes.
+                job.NextAttemptAt = DateTime.UtcNow.AddSeconds(Math.Min(600, 10 * Math.Pow(2, job.Attempts)));
+            }
+            job.Attempts++;
+            await db.SaveChangesAsync(ct);
+        }
+        return jobs.Count;
+    }
+
+    /// Badge + "mail.new" banner for everyone who just got the mail in their inbox. Shared by
+    /// immediate send and scheduled delivery so both surface the same way. Realtime is a hint and
+    /// runs once; the gateway (notification centre + push) is what a failed attempt retries.
+    private async Task NotifyDeliveredAsync(MailNotifyJob job, CancellationToken ct)
+    {
+        var mail = await db.Mails.AsNoTracking().Include(m => m.Sender).FirstOrDefaultAsync(m => m.Id == job.MailId, ct);
+        if (mail is null || mail.Status != "sent") return;
+        var recipients = await db.MailRecipients.AsNoTracking()
+            .Where(r => r.MailId == mail.Id && r.RecipientType != "from" && r.UserId != mail.SenderId && r.DeliveredAt != null)
+            .Select(r => new { r.UserId, r.User.Nik })
+            .ToListAsync(ct);
+        if (recipients.Count == 0) return;
+
+        if (realtime != null && job.Attempts == 0)
+        {
+            foreach (var chunk in recipients.Chunk(500))
+            {
+                var ids = chunk.Select(r => r.UserId).ToList();
+                var unread = await db.MailRecipients.AsNoTracking()
+                    .Where(r => ids.Contains(r.UserId) && r.Folder == "inbox" && !r.IsRead && !r.IsMuted)
+                    .GroupBy(r => r.UserId)
+                    .Select(g => new { UserId = g.Key, Count = g.Count() })
+                    .ToDictionaryAsync(x => x.UserId, x => x.Count, ct);
                 try
                 {
-                    var senderUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == senderId, ct);
-                    var senderDisplayName = senderUser?.Name ?? "Someone";
-                    var preview = Truncate(MailHtml.ToPlainText(mail.Body), 120);
-
-                    await notificationGateway.PublishInternalAsync(
-                        clientSlug: "mail",
-                        eventType: "mail.new",
-                        title: $"New email from {senderDisplayName}",
-                        message: string.IsNullOrWhiteSpace(preview) ? mail.Subject : $"{mail.Subject} — {preview}",
-                        target: new NotificationTarget(UserIds: recipientIds),
-                        priority: mail.Importance == "high" ? "high" : "normal",
-                        targetUrl: $"/mail?mailId={mail.Id}",
-                        ct: ct);
+                    foreach (var r in chunk)
+                        await realtime.ToUserAsync(r.Nik, RealtimeEvents.BadgeChanged, new RealtimeArgs("mail", unread.GetValueOrDefault(r.UserId)), ct);
+                    var niks = chunk.Select(r => r.Nik).ToList();
+                    await realtime.ToUsersAsync(niks, "mailReceived", new { mailId = mail.Id, subject = mail.Subject }, ct);
+                    await realtime.ToUsersAsync(niks, RealtimeEvents.MailChanged, ct: ct);
                 }
                 catch
                 {
-                    // Non-blocking notification delivery
+                    // Realtime is a hint; clients re-fetch over REST on next load.
                 }
             }
         }
 
+        if (notificationGateway is null) return;
+        var mutedUserIds = mail.ThreadRootId != null
+            ? (await db.MailRecipients.AsNoTracking()
+                .Where(r => (r.MailId == mail.ThreadRootId || r.Mail.ThreadRootId == mail.ThreadRootId) && r.IsMuted)
+                .Select(r => r.UserId).ToListAsync(ct)).ToHashSet()
+            : [];
+        var recipientIds = recipients.Select(r => r.UserId).Where(id => !mutedUserIds.Contains(id)).Distinct().ToList();
+        if (recipientIds.Count == 0) return;
+
+        var preview = Truncate(MailHtml.ToPlainText(mail.Body), 120);
+        var result = await notificationGateway.PublishInternalAsync(
+            clientSlug: "mail",
+            eventType: "mail.new",
+            title: $"New email from {mail.Sender?.Name ?? "Someone"}",
+            message: string.IsNullOrWhiteSpace(preview) ? mail.Subject : $"{mail.Subject} — {preview}",
+            target: new NotificationTarget(UserIds: recipientIds),
+            priority: mail.Importance == "high" ? "high" : "normal",
+            targetUrl: $"/mail?mailId={mail.Id}",
+            ct: ct);
+        // A rejected request (validation) won't succeed on retry; only exceptions are retried.
+        if (result is { Success: false }) job.LastError = Truncate($"{result.ErrorCode}: {result.Error}", 1000);
     }
 
     public async Task<int> DeliverDueScheduledMailsAsync(CancellationToken ct)
@@ -838,18 +1097,14 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
                     r.DeliveredAt = now;
                 }
             }
+            // Scheduled mail used to land silently: no badge, no banner.
+            QueueNotify(mail.Id, now);
         }
 
         await db.SaveChangesAsync(ct);
-
-        // Scheduled mail used to land silently: no badge, no banner.
-        foreach (var mail in dueMails)
-        {
-            var ids = mail.Recipients.Where(r => r.Folder == "inbox" && r.DeliveredAt == now).Select(r => r.UserId).ToList();
-            if (ids.Count == 0) continue;
-            var users = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).ToListAsync(ct);
-            await NotifyDeliveredAsync(mail, mail.SenderId, users, ct);
-        }
+        foreach (var senderId in dueMails.Select(m => m.SenderId).Distinct())
+            await SyncUserAsync(senderId, ct);
+        notifySignal?.Notify();
         return dueMails.Count;
     }
 
@@ -921,18 +1176,11 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             To = req.To ?? [],
             Cc = req.Cc ?? [],
             Bcc = req.Bcc ?? [],
+            Groups = req.Groups ?? [],
         };
 
-    private async Task<IReadOnlyList<User>?> ResolveRecipientsAsync(ComposeMailRequest req, CancellationToken ct)
-    {
-        var niks = req.To.Concat(req.Cc).Concat(req.Bcc).Distinct().ToList();
-        if (niks.Count == 0) return [];
-        var users = await db.Users.AsNoTracking()
-            .Where(u => niks.Contains(u.Nik) && u.IsActive)
-            .ToListAsync(ct);
-        // Every requested NIK must resolve to an active user — no silent drops.
-        return users.Count == niks.Count ? users : null;
-    }
+    private static ComposeMailRequest NormalizeRecipients(ComposeMailRequest req)
+        => req with { To = req.To ?? [], Cc = req.Cc ?? [], Bcc = req.Bcc ?? [], Groups = req.Groups ?? [] };
 
     /// Attaches the composer's files to <paramref name="mailId"/>. A file can be claimed when it is
     /// a pending upload of this user (MailId null, UploaderId = user) or already sits on another of
@@ -1103,16 +1351,22 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         if (string.IsNullOrWhiteSpace(req.Subject)) return new SendMailResult(false, null, "subject_required");
         if (req.Subject.Trim().Length > MaxSubjectLength) return new SendMailResult(false, null, "subject_too_long");
         if (string.IsNullOrWhiteSpace(req.Body)) return new SendMailResult(false, null, "body_required");
-        if (req.To.Count + req.Cc.Count + req.Bcc.Count == 0) return new SendMailResult(false, null, "no_recipients");
-        if (req.To.Count + req.Cc.Count + req.Bcc.Count > MaxRecipients) return new SendMailResult(false, null, "too_many_recipients");
-        return null;
+        if (req.To.Count + req.Cc.Count + req.Bcc.Count == 0 && req.Groups!.Count == 0) return new SendMailResult(false, null, "no_recipients");
+        return ValidateSize(req);
     }
 
     private static SendMailResult? ValidateDraft(ComposeMailRequest req)
     {
         // Drafts are lenient: subject/body/recipients are all optional (auto-save).
         if (req.Subject.Length > MaxSubjectLength) return new SendMailResult(false, null, "subject_too_long");
-        if (req.To.Count + req.Cc.Count + req.Bcc.Count > MaxRecipients) return new SendMailResult(false, null, "too_many_recipients");
+        return ValidateSize(req);
+    }
+
+    /// Cheap guard before any lookup; the real limit applies to the de-duplicated count.
+    private static SendMailResult? ValidateSize(ComposeMailRequest req)
+    {
+        if (req.To.Count + req.Cc.Count + req.Bcc.Count > MailLimits.MaxRecipients * 3) return new SendMailResult(false, null, "too_many_recipients");
+        if ((req.Groups?.Count ?? 0) > 100) return new SendMailResult(false, null, "too_many_groups");
         return null;
     }
 

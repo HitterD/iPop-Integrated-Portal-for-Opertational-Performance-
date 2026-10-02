@@ -224,6 +224,8 @@ else
     builder.Services.AddSingleton<IHrisGateway, JsonHrisGateway>();
 builder.Services.AddHostedService<HrisSyncWorker>();
 builder.Services.AddHostedService<MailScheduledDeliveryWorker>();
+builder.Services.AddSingleton<MailNotifySignal>();
+builder.Services.AddHostedService<MailNotifyWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Notifications.NotificationRetentionWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Notifications.NotificationLinkBackfill>();
 builder.Services.AddHostedService<IPop.Infrastructure.Files.FileOperationWorker>();
@@ -313,6 +315,7 @@ app.MapGet("/api/chat-avatars/{name}", (string name, IWebHostEnvironment env) =>
 app.MapStickers();
 app.MapCalls();
 app.MapMail();
+app.MapMailGroups();
 app.MapProjects();
 app.MapProjectFields();
 app.MapProjectTime();

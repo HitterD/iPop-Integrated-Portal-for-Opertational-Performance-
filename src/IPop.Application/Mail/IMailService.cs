@@ -42,6 +42,14 @@ public interface IMailService
     Task<IReadOnlyList<DeliveryReadStateDto>> GetDeliveryStateAsync(Guid userId, Guid mailId, CancellationToken ct);
     Task RecordDeliveredAsync(Guid userId, Guid mailId, CancellationToken ct);
 
+    // Mass mail: recipient expansion preview, sender stats, paged readers / recipients.
+    Task<RecipientPreviewDto> PreviewRecipientsAsync(Guid senderId, ComposeMailRequest req, CancellationToken ct);
+    Task<MailStatsDto?> GetStatsAsync(Guid userId, Guid mailId, CancellationToken ct);
+    Task<PagedResult<MailReaderDto>?> GetReadersAsync(Guid userId, Guid mailId, bool read, int page, int pageSize, CancellationToken ct);
+    Task<PagedResult<MailRecipientDto>?> GetRecipientsAsync(Guid userId, Guid mailId, int page, int pageSize, CancellationToken ct);
+    /// Drains due "new mail" notification jobs (badges, banners, push); returns how many ran.
+    Task<int> ProcessNotifyJobsAsync(CancellationToken ct);
+
     // Signature/paraf + export/print stubs.
     Task<SendMailResult> RequestPdfExportAsync(Guid userId, Guid mailId, CancellationToken ct);
 
