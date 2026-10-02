@@ -495,7 +495,8 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             mail.PdfExportRequestedBy, mail.PdfExportRequestedAt,
             visibleRecipients
                 .OrderBy(r => r.RecipientType == "to" ? 0 : r.RecipientType == "cc" ? 1 : r.RecipientType == "bcc" ? 2 : 3)
-                .Take(MailLimits.DetailRecipients)
+                // The author reopening a draft needs every typed recipient back in the composer.
+                .Take(draftState is not null ? int.MaxValue : MailLimits.DetailRecipients)
                 .Select(r => new MailRecipientDto(r.UserId, r.User.Name, r.User.Nik, r.User.Email, r.RecipientType))
                 .ToList(),
             mail.Attachments.OrderBy(a => a.SortOrder).ThenBy(a => a.CreatedAt)

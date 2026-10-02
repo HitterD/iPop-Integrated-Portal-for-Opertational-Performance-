@@ -226,6 +226,21 @@ public class MassMailTests
     }
 
     [Fact]
+    public async Task Reopened_draft_returns_every_typed_recipient()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var niks = AddUsers(t, "P", 120).Select(p => p.Nik).ToList();
+        var svc = new MailService(t.Verify());
+        var saved = await svc.SaveDraftAsync(a.Id, Req(niks), default);
+        Assert.True(saved.Success, saved.Error);
+
+        // The composer rebuilds the To field from this; capping it would drop people on the next save.
+        var draft = await svc.GetAsync(a.Id, saved.MailId!.Value, default);
+        Assert.Equal(120, draft!.Recipients.Count(r => r.RecipientType == "to"));
+    }
+
+    [Fact]
     public async Task Stats_and_readers_are_sender_only_and_paged()
     {
         using var t = new TestDb();
