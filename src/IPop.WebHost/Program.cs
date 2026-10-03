@@ -28,7 +28,7 @@ var isProduction = app.Environment.IsProduction();
 app.Use(async (ctx, next) =>
 {
     // Debug symbols are a build artefact, never content (pentest H-01).
-    // Per-environment client config (appsettings.Development.json…) stays private in production.
+    // Per-environment client config (appsettings.Development.jsonï¿½) stays private in production.
     var path = ctx.Request.Path.Value ?? "";
     if (path.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase) ||
         (isProduction && path.StartsWith("/appsettings.", StringComparison.OrdinalIgnoreCase) &&
@@ -56,6 +56,14 @@ app.Use(async (ctx, next) =>
 
 // Classic static files: MIME types come from the extension (the static-assets manifest leaves
 // some framework files without one, which nosniff then refuses to execute).
+// Published assets keep index.html as a fallback rather than a direct endpoint. The version
+// checker fetches /index.html explicitly; route it through the same root document.
+app.Use(async (ctx, next) =>
+{
+    if (ctx.Request.Path.Equals("/index.html", StringComparison.OrdinalIgnoreCase))
+        ctx.Request.Path = "/";
+    await next();
+});
 app.UseRouting();
 app.MapStaticAssets();
 app.MapFallbackToFile("index.html");
