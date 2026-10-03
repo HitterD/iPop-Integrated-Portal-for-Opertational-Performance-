@@ -21,6 +21,8 @@ public class Meeting
     public Guid? RoomId { get; set; }
     /// Menit sebelum mulai untuk pengingat.
     public int? ReminderMinutes { get; set; }
+    /// <see cref="CalendarVisibility"/> for people who aren't invited: public | busy | private.
+    public string Visibility { get; set; } = CalendarVisibility.Busy;
     public DateTime CreatedAt { get; set; }
 
     public User Organizer { get; set; } = default!;
@@ -73,6 +75,8 @@ public class CalendarEvent
     public int? ReminderMinutes { get; set; }
     /// Kapan pengingat event pribadi terkirim (event rapat memakai MeetingReminder).
     public DateTime? ReminderSentAt { get; set; }
+    /// <see cref="CalendarVisibility"/> for other people: public | busy | private (meeting rows follow the Meeting).
+    public string Visibility { get; set; } = CalendarVisibility.Busy;
     public DateTime CreatedAt { get; set; }
 
     public User Owner { get; set; } = default!;

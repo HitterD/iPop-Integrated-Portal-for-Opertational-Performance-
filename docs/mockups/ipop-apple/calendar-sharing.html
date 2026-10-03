@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iPop — Calendar sharing &amp; delegates (mockup)</title>
+<style>
+  :root { --canvas:#e9e7e2; --surface:#fff; --surface-2:#faf9f7; --surface-3:#f4f2ef; --line:#edebe7; --line-2:#e2dfd9;
+    --ink:#191816; --ink-2:#5d5a54; --ink-3:#8f8c85; --accent:#2e9d6b; --accent-soft:#e7f4ed; --danger:#c2442e;
+    --warn:#a8760c; --warn-soft:#fdf6e7; --info:#2563eb; --info-soft:#eef4ff; --sh-pop:0 16px 40px -12px rgba(25,24,22,.22);
+    --p-me:#2e9d6b; --p-a:#2563eb; --p-b:#b5528c; --p-c:#c27b1c; }
+  [data-theme="dark"] { --canvas:#131211; --surface:#1c1b19; --surface-2:#232220; --surface-3:#201f1d; --line:#2c2a27; --line-2:#36342f;
+    --ink:#f2f0ec; --ink-2:#b5b1a9; --ink-3:#85817a; --accent:#4cd787; --accent-soft:#1d3428; --warn-soft:#3a2f17; --info-soft:#1a2540;
+    --sh-pop:0 16px 40px -12px rgba(0,0,0,.6); --p-me:#4cd787; --p-a:#7aa7ff; --p-b:#e48bc0; --p-c:#e0b44a; }
+</style>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { background: var(--canvas); color: var(--ink); font-family: -apple-system, "Segoe UI", system-ui, sans-serif; margin: 0; font-size: 13.5px; }
+  svg.lucide { width: 16px; height: 16px; }
+  .mk-nav { position: sticky; top: 0; z-index: 50; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 10px 18px;
+    background: var(--surface); border-bottom: 1px solid var(--line); }
+  .mk-nav b { margin-right: 8px; font-size: 14px; }
+  .mk-nav button { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .mk-nav button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .mk-nav .sp { flex: 1; }
+  .stage { display: none; padding: 28px; justify-content: center; align-items: flex-start; }
+  .stage.on { display: flex; }
+  .note { width: 300px; flex: none; margin-left: 24px; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+  .note h3 { font-size: 14px; color: var(--ink); margin: 0 0 6px; }
+  .note li { margin-bottom: 6px; }
+  .note .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); margin-bottom: 8px; }
+
+  .win { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh-pop); overflow: hidden; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2);
+    background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+  .btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.ghost { border-color: transparent; background: none; }
+  .seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-3); border-radius: 10px; }
+  .seg button { border: 0; background: none; padding: 5px 12px; border-radius: 8px; font: inherit; font-size: 12.5px; color: var(--ink-2); cursor: pointer; }
+  .seg button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .av { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; color: #fff; font-size: 10.5px; font-weight: 600; flex: none; }
+
+  /* ---------- calendar shell ---------- */
+  .cal { width: 1120px; height: 700px; display: grid; grid-template-columns: 250px 1fr; }
+  .side { border-right: 1px solid var(--line); background: var(--surface-2); padding: 14px 12px; overflow: auto; }
+  .side h4 { margin: 16px 6px 6px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); display: flex; align-items: center; justify-content: space-between; }
+  .side h4 button { border: 0; background: none; color: var(--ink-2); cursor: pointer; padding: 2px; border-radius: 6px; }
+  .src { display: flex; align-items: center; gap: 8px; padding: 6px 6px; border-radius: 8px; font-size: 13px; }
+  .src:hover { background: var(--surface-3); }
+  .chk { width: 15px; height: 15px; border-radius: 4px; flex: none; display: grid; place-items: center; }
+  .chk svg { width: 11px; height: 11px; color: #fff; stroke-width: 3; }
+  .src .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .src small { color: var(--ink-3); font-size: 11px; }
+  .src .more { color: var(--ink-3); opacity: 0; }
+  .src:hover .more { opacity: 1; }
+  .addp { display: flex; align-items: center; gap: 8px; margin: 4px 0; height: 32px; padding: 0 9px; border: 1px dashed var(--line-2); border-radius: 9px; color: var(--ink-3); font-size: 12.5px; background: var(--surface); }
+  .main { display: flex; flex-direction: column; min-width: 0; }
+  .tb { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .tb .btn, .tb h2, .seg button { white-space: nowrap; }
+  .tb h2 { margin: 0 8px 0 4px; font-size: 17px; font-weight: 600; }
+  .tb .sp { flex: 1; }
+
+  .grid { flex: 1; display: grid; overflow: hidden; position: relative; }
+  .gh { display: grid; border-bottom: 1px solid var(--line); }
+  .gh div { padding: 8px 6px; font-size: 12px; color: var(--ink-2); text-align: center; border-left: 1px solid var(--line); }
+  .gh div b { display: block; font-size: 17px; color: var(--ink); font-weight: 600; }
+  .gh div.today b { color: var(--accent); }
+  .gh .person { display: flex; align-items: center; justify-content: center; gap: 7px; text-align: left; font-size: 12.5px; color: var(--ink); }
+  .gh .person small { display: block; color: var(--ink-3); font-size: 11px; }
+  .body { position: relative; overflow: hidden; display: grid; }
+  .hours { position: relative; }
+  .hours span { position: absolute; right: 6px; font-size: 10.5px; color: var(--ink-3); transform: translateY(-6px); }
+  .col { position: relative; border-left: 1px solid var(--line); background-image: linear-gradient(var(--line) 1px, transparent 1px); background-size: 100% 52px; }
+  .ev { position: absolute; border-radius: 7px; padding: 4px 6px; font-size: 11.5px; line-height: 1.25; overflow: hidden; border-left: 3px solid; }
+  .ev b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ev span { opacity: .8; font-size: 10.5px; }
+  .ev .ico { position: absolute; right: 4px; top: 4px; }
+  .ev .ico svg { width: 12px; height: 12px; }
+  .ev.busy { background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(127,127,127,.12) 6px 12px) !important; }
+  .ev.tent { border-style: dashed; border-width: 1.5px 1.5px 1.5px 3px; background: transparent !important; }
+  .now { position: absolute; left: 0; right: 0; height: 2px; background: var(--danger); z-index: 3; }
+  .now::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+
+  .pop { position: absolute; width: 290px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-pop); padding: 14px; z-index: 10; font-size: 13px; }
+  .pop h5 { margin: 0 0 6px; font-size: 15px; display: flex; gap: 8px; align-items: center; }
+  .pop .r { display: flex; gap: 8px; align-items: center; color: var(--ink-2); margin: 6px 0; }
+  .pop .hint { margin-top: 10px; padding: 8px 10px; border-radius: 9px; background: var(--surface-3); color: var(--ink-2); font-size: 12px; }
+  .pop .acts { display: flex; gap: 6px; margin-top: 12px; }
+
+  /* ---------- dialog ---------- */
+  .dlg { width: 640px; }
+  .dlg-h { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px 10px; }
+  .dlg-h h2 { margin: 0; font-size: 17px; display: flex; gap: 9px; align-items: center; }
+  .dlg-h h2 svg { color: var(--accent); width: 19px; height: 19px; }
+  .dlg-b { padding: 4px 20px 16px; }
+  .dlg-f { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); background: var(--surface-2); }
+  .fld { margin: 12px 0; }
+  .fld > label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 6px; }
+  .inp { width: 100%; height: 36px; border: 1px solid var(--line-2); border-radius: 10px; padding: 0 11px; font: inherit; background: var(--surface); color: var(--ink); display: flex; align-items: center; gap: 8px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .vis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .vis div { border: 1px solid var(--line-2); border-radius: 12px; padding: 10px; cursor: pointer; }
+  .vis div.on { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .vis b { display: flex; gap: 6px; align-items: center; font-size: 13px; margin-bottom: 4px; }
+  .vis small { color: var(--ink-2); font-size: 11.5px; line-height: 1.4; display: block; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 36px; border: 1px solid var(--line-2); border-radius: 10px; padding: 4px 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px 3px 3px; border-radius: 8px; background: var(--surface-3); font-size: 12.5px; }
+  .chip .av { width: 20px; height: 20px; font-size: 9px; border-radius: 6px; }
+  .tabs { display: flex; gap: 18px; border-bottom: 1px solid var(--line); margin: 14px 0 10px; }
+  .tabs span { padding: 8px 0; font-size: 13px; color: var(--ink-2); border-bottom: 2px solid transparent; }
+  .tabs span.on { color: var(--ink); font-weight: 600; border-color: var(--accent); }
+
+  /* find a time */
+  .fat { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .fat-h, .fat-r { display: grid; grid-template-columns: 150px 1fr; }
+  .fat-h { background: var(--surface-2); font-size: 10.5px; color: var(--ink-3); }
+  .fat-h .ticks { display: grid; grid-template-columns: repeat(10, 1fr); }
+  .fat-h .ticks span { padding: 5px 0 5px 3px; border-left: 1px solid var(--line); }
+  .fat-r { border-top: 1px solid var(--line); height: 34px; }
+  .fat-r .who { display: flex; align-items: center; gap: 7px; padding: 0 10px; font-size: 12.5px; }
+  .fat-r .who .av { width: 20px; height: 20px; font-size: 9px; border-radius: 6px; }
+  .fat-r .who small { color: var(--ink-3); font-size: 10.5px; }
+  .lane { position: relative; background-image: linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: 10% 100%; }
+  .blk { position: absolute; top: 6px; bottom: 6px; border-radius: 5px; background: var(--ink-3); opacity: .55; }
+  .blk.t { background: transparent; border: 1.5px dashed var(--ink-3); }
+  .slot { position: absolute; top: 0; bottom: 0; background: rgba(46,157,107,.14); border-left: 2px solid var(--accent); border-right: 2px solid var(--accent); pointer-events: none; }
+  .sugg { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--ink-2); }
+  .sugg button { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+  .sugg button.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  .legend { display: flex; gap: 14px; margin-top: 8px; font-size: 11.5px; color: var(--ink-3); }
+  .legend i { display: inline-block; width: 18px; height: 9px; border-radius: 3px; vertical-align: -1px; margin-right: 4px; }
+
+  /* settings */
+  .set { width: 700px; overflow: visible; }
+  .dl-r .btn.ghost { padding: 0; width: 32px; justify-content: center; }
+  .opt { display: flex; gap: 12px; align-items: flex-start; padding: 11px 12px; border: 1px solid var(--line-2); border-radius: 12px; margin-bottom: 8px; }
+  .opt.on { border-color: var(--accent); background: var(--accent-soft); }
+  .radio { width: 17px; height: 17px; border-radius: 50%; border: 2px solid var(--line-2); flex: none; margin-top: 1px; }
+  .opt.on .radio { border: 5px solid var(--accent); }
+  .opt b { display: block; font-size: 13.5px; }
+  .opt small { color: var(--ink-2); font-size: 12px; }
+  .sec { margin: 18px 0 8px; display: flex; justify-content: space-between; align-items: end; }
+  .sec h3 { margin: 0; font-size: 14px; }
+  .sec p { margin: 2px 0 0; font-size: 12px; color: var(--ink-3); }
+  .dl { border: 1px solid var(--line); border-radius: 12px; }
+  .dl-r { display: grid; grid-template-columns: 1fr 190px 32px; gap: 10px; align-items: center; padding: 10px 12px; border-top: 1px solid var(--line); }
+  .dl-r:first-child { border-top: 0; }
+  .dl-r .p { display: flex; gap: 10px; align-items: center; }
+  .dl-r .p small { display: block; color: var(--ink-3); font-size: 11.5px; }
+  .sel { height: 32px; border: 1px solid var(--line-2); border-radius: 9px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; font-size: 12.5px; background: var(--surface); }
+  .menu { position: absolute; width: 300px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--sh-pop); padding: 5px; z-index: 5; }
+  .menu div { padding: 8px 10px; border-radius: 8px; font-size: 12.5px; }
+  .menu div.on { background: var(--accent-soft); }
+  .menu div b { display: flex; justify-content: space-between; }
+  .menu small { color: var(--ink-2); font-size: 11.5px; }
+  .tog { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 13px; }
+  .tog small { display: block; color: var(--ink-3); font-size: 12px; }
+  .sw { width: 36px; height: 21px; border-radius: 999px; background: var(--line-2); position: relative; flex: none; }
+  .sw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 17px; height: 17px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  .sw.on { background: var(--accent); }
+  .sw.on::after { left: 17px; }
+  .info { display: flex; gap: 8px; padding: 9px 11px; border-radius: 10px; background: var(--info-soft); color: var(--ink-2); font-size: 12px; margin-top: 10px; }
+  .info svg { color: var(--info); flex: none; }
+
+  /* delegate banner */
+  .onbehalf { display: flex; align-items: center; gap: 10px; padding: 9px 16px; background: var(--warn-soft); border-bottom: 1px solid var(--line); font-size: 12.5px; }
+  .onbehalf svg { color: var(--warn); }
+  .onbehalf .sp { flex: 1; }
+  .who-sw { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 10px; background: var(--surface); font-size: 13px; }
+
+  /* notification + invite */
+  .stack { display: flex; flex-direction: column; gap: 16px; width: 520px; }
+  .ntf { display: flex; gap: 12px; padding: 14px; }
+  .ntf .ic { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); flex: none; }
+  .ntf b { font-size: 13.5px; }
+  .ntf p { margin: 3px 0 0; color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+  .ntf time { color: var(--ink-3); font-size: 11.5px; }
+  .inv { padding: 16px; }
+  .inv .meta { font-size: 12px; color: var(--ink-3); margin-bottom: 8px; }
+  .inv h4 { margin: 0 0 4px; font-size: 16px; }
+  .rsvp { display: flex; gap: 6px; margin-top: 12px; }
+  .audit { font-size: 12px; color: var(--ink-2); padding: 10px 16px; border-top: 1px solid var(--line); background: var(--surface-2); }
+  .audit div { display: flex; gap: 8px; margin: 4px 0; }
+  .audit time { color: var(--ink-3); width: 82px; flex: none; }
+</style>
+</head>
+<body>
+
+<nav class="mk-nav">
+  <b>Calendar sharing</b>
+  <button data-s="s1" class="on">1 · Week, others overlaid</button>
+  <button data-s="s2">2 · Day side by side</button>
+  <button data-s="s3">3 · New event + Find a time</button>
+  <button data-s="s4">4 · Sharing &amp; delegates</button>
+  <button data-s="s5">5 · Working as a delegate</button>
+  <button data-s="s6">6 · Notifications &amp; invites</button>
+  <span class="sp"></span>
+  <button id="theme">Light / dark</button>
+</nav>
+
+<!-- ============ 1. Week view with others overlaid ============ -->
+<section class="stage on" id="s1">
+  <div class="win cal">
+    <aside class="side" id="side1"></aside>
+    <div class="main">
+      <div class="tb">
+        <button class="btn pri"><i data-lucide="plus"></i>New event</button>
+        <button class="btn">Today</button>
+        <button class="btn ghost"><i data-lucide="chevron-left"></i></button><button class="btn ghost"><i data-lucide="chevron-right"></i></button>
+        <h2>6 – 10 Oct 2026</h2>
+        <span class="sp"></span>
+        <div class="seg"><button>Day</button><button class="on">Week</button><button>Month</button><button>Agenda</button></div>
+      </div>
+      <div class="grid" style="grid-template-rows:auto 1fr">
+        <div class="gh" style="grid-template-columns:52px repeat(5,1fr)">
+          <div style="border:0"></div><div>Mon <b>6</b></div><div class="today">Tue <b>7</b></div><div>Wed <b>8</b></div><div>Thu <b>9</b></div><div>Fri <b>10</b></div>
+        </div>
+        <div class="body" id="week" style="grid-template-columns:52px repeat(5,1fr)"></div>
+      </div>
+    </div>
+  </div>
+  <aside class="note"><span class="tag">Stage 1</span><h3>Other people's calendars</h3><ul>
+    <li><b>Other calendars</b> in the sidebar: add anyone with the people picker. Each person gets a colour and a checkbox. The list is saved to your account.</li>
+    <li>What you see depends on each event's visibility:
+      <ul><li><b>Public</b>: title and location.</li>
+      <li><b>Busy only</b> / <b>Private</b>: a striped "Busy" block, no title.</li>
+      <li>Meetings not answered yet: dashed "Tentative".</li></ul></li>
+    <li>Only personal events and meetings count as busy. Tasks, scheduled mail and News never appear on other people's calendars. Declined meetings don't appear.</li>
+    <li>Click a block to see the popover (shown on Rina's Tue 13:00).</li>
+  </ul></aside>
+</section>
+
+<!-- ============ 2. Day side by side ============ -->
+<section class="stage" id="s2">
+  <div class="win cal">
+    <aside class="side" id="side2"></aside>
+    <div class="main">
+      <div class="tb">
+        <button class="btn pri"><i data-lucide="plus"></i>New event</button>
+        <button class="btn">Today</button>
+        <button class="btn ghost"><i data-lucide="chevron-left"></i></button><button class="btn ghost"><i data-lucide="chevron-right"></i></button>
+        <h2>Tuesday, 7 Oct</h2>
+        <div class="seg"><button>Overlay</button><button class="on">Side by side</button></div>
+        <span class="sp"></span>
+        <div class="seg"><button class="on">Day</button><button>Week</button><button>Month</button><button>Agenda</button></div>
+      </div>
+      <div class="grid" style="grid-template-rows:auto 1fr">
+        <div class="gh" id="dayhead" style="grid-template-columns:52px repeat(4,1fr)"></div>
+        <div class="body" id="day" style="grid-template-columns:52px repeat(4,1fr)"></div>
+      </div>
+    </div>
+  </div>
+  <aside class="note"><span class="tag">Stage 1</span><h3>Compare people in one day</h3><ul>
+    <li>Day view gets an <b>Overlay / Side by side</b> switch. Side by side gives one column per checked calendar, so everyone's free time lines up.</li>
+    <li>Selecting an empty range across columns (green band, 14:00–15:00) starts <b>New meeting</b> with those people already invited.</li>
+    <li>Week and Month stay overlay-only; too many columns stop being readable.</li>
+  </ul></aside>
+</section>
+
+<!-- ============ 3. New event + Find a time ============ -->
+<section class="stage" id="s3">
+  <div class="win dlg">
+    <div class="dlg-h"><h2><i data-lucide="calendar-plus"></i>New meeting</h2><button class="btn ghost"><i data-lucide="x"></i></button></div>
+    <div class="dlg-b">
+      <div class="fld"><div class="inp" style="font-size:15px;font-weight:600">Q4 budget review</div></div>
+      <div class="fld"><label>Invite</label><div class="chips">
+        <span class="chip"><span class="av" style="background:var(--p-a)">RS</span>Rina Susanti</span>
+        <span class="chip"><span class="av" style="background:var(--p-b)">BH</span>Budi Hartono</span>
+        <span class="chip"><span class="av" style="background:var(--p-c)">DP</span>Dewi Pratiwi</span>
+        <span style="color:var(--ink-3);font-size:12.5px;padding-left:4px">Add people…</span></div></div>
+      <div class="tabs"><span>Details</span><span class="on">Find a time</span></div>
+      <div class="fat" id="fat"></div>
+      <div class="legend"><span><i style="background:var(--ink-3);opacity:.55"></i>Busy</span><span><i style="border:1.5px dashed var(--ink-3)"></i>Tentative</span><span><i style="background:rgba(46,157,107,.2);border:1px solid var(--accent)"></i>Your meeting</span></div>
+      <div class="sugg"><span>Free for everyone:</span><button class="on">Tue 14:00</button><button>Tue 16:00</button><button>Wed 09:00</button><button>Wed 13:30</button></div>
+      <div class="row2" style="margin-top:14px"><div class="inp"><i data-lucide="calendar"></i>Tue, 7 Oct</div><div class="inp"><i data-lucide="clock"></i>14:00</div><div class="inp">60 min</div></div>
+      <div class="fld"><label>Who can see the details</label>
+        <div class="vis">
+          <div><b><i data-lucide="globe"></i>Public</b><small>Everyone sees the title and location.</small></div>
+          <div class="on"><b><i data-lucide="eye-off"></i>Busy only</b><small>Others see "Busy". Your delegates see details.</small></div>
+          <div><b><i data-lucide="lock"></i>Private</b><small>Only you and the people invited. Delegates see "Busy" too.</small></div>
+        </div>
+      </div>
+    </div>
+    <div class="dlg-f"><button class="btn">Cancel</button><button class="btn pri"><i data-lucide="send"></i>Send invites</button></div>
+  </div>
+  <aside class="note"><span class="tag">Stage 1</span><h3>Visibility per event + Find a time</h3><ul>
+    <li>Every event and meeting has the three-way <b>visibility</b> choice. The preselected value is your default from Settings (stage 4), initially <b>Busy only</b>.</li>
+    <li>Invited people always see the full meeting, whatever the visibility.</li>
+    <li><b>Find a time</b> shows each invitee's busy and tentative blocks for the chosen day and suggests slots free for everyone in working hours (08:00–17:00, project holidays excluded). Click a suggestion to move the meeting.</li>
+    <li>Existing events become <b>Busy only</b> on rollout, so no old title is suddenly public.</li>
+  </ul></aside>
+</section>
+
+<!-- ============ 4. Sharing & delegates ============ -->
+<section class="stage" id="s4">
+  <div class="win dlg set" style="position:relative">
+    <div class="dlg-h"><h2><i data-lucide="share-2"></i>Calendar sharing</h2><button class="btn ghost"><i data-lucide="x"></i></button></div>
+    <div class="dlg-b">
+      <div class="sec"><div><h3>What others see by default</h3><p>Everyone at Santos can always see when you're busy. This picks what they see for new events.</p></div></div>
+      <div class="opt"><span class="radio"></span><div><b>Titles and locations</b><small>New events start as Public.</small></div></div>
+      <div class="opt on"><span class="radio"></span><div><b>Busy only</b><small>New events start as Busy only. You can still make any single event Public.</small></div></div>
+      <div class="opt"><span class="radio"></span><div><b>Hide my calendar details</b><small>Every event shows as Busy to others, even ones marked Public. Your free/busy times stay visible so people can schedule with you.</small></div></div>
+
+      <div class="sec"><div><h3>Delegates</h3><p>People who can see or manage your calendar. Anyone can be a delegate, not only a secretary.</p></div>
+        <button class="btn"><i data-lucide="user-plus"></i>Add delegate</button></div>
+      <div class="dl">
+        <div class="dl-r"><div class="p"><span class="av" style="background:var(--p-b)">SA</span><div>Sari Anggraini<small>Added 2 Oct by you</small></div></div>
+          <div class="sel">Full delegate <i data-lucide="chevron-down"></i></div><button class="btn ghost"><i data-lucide="trash-2"></i></button></div>
+        <div class="dl-r"><div class="p"><span class="av" style="background:var(--p-c)">AW</span><div>Andi Wijaya<small>Added 28 Sep by Admin IT</small></div></div>
+          <div class="sel" style="box-shadow:0 0 0 2px var(--accent)">View all details <i data-lucide="chevron-down"></i></div><button class="btn ghost"><i data-lucide="trash-2"></i></button></div>
+      </div>
+      <div class="menu" style="right:72px;top:500px">
+        <div class="on"><b>View all details <i data-lucide="check"></i></b><small>Reads titles, places and notes of Public and Busy only events. Can't change anything.</small></div>
+        <div><b>Can edit</b><small>Also creates, changes and deletes events on your calendar.</small></div>
+        <div><b>Full delegate</b><small>Also gets your meeting invites and can accept or decline them for you.</small></div>
+      </div>
+
+      <div class="tog"><div>Notify me when a delegate changes my calendar<small>Each change is always labelled "by Sari on behalf of you", even with this off.</small></div><span class="sw on"></span></div>
+      <div class="info"><i data-lucide="lock"></i><span><b>Private</b> events are never shown to delegates. They see a Busy block only.</span></div>
+    </div>
+    <div class="dlg-f"><button class="btn">Close</button></div>
+  </div>
+  <aside class="note"><span class="tag">Stage 2 (default setting in stage 1)</span><h3>Settings → Calendar sharing</h3><ul>
+    <li>Opened from a gear icon in the Calendar sidebar.</li>
+    <li>"Manager–secretary" is just one use: any employee can grant one of three levels to anyone.</li>
+    <li>Adding, changing or removing a delegate notifies both people and writes an audit log entry.</li>
+    <li><b>Admin</b> gets the same screen per user in Admin → People, for executives who don't set it themselves. The row then says "by Admin IT".</li>
+  </ul></aside>
+</section>
+
+<!-- ============ 5. Working as a delegate ============ -->
+<section class="stage" id="s5">
+  <div class="win cal" style="position:relative">
+    <aside class="side" id="side5"></aside>
+    <div class="main">
+      <div class="onbehalf"><i data-lucide="user-cog"></i><span>You're managing <b>Pak Hendra Gunawan's</b> calendar. New events and invites are created in his name.</span><span class="sp"></span><button class="btn">Back to my calendar</button></div>
+      <div class="tb">
+        <div class="who-sw"><span class="av" style="background:var(--p-a);width:22px;height:22px;font-size:9px">HG</span>Hendra Gunawan<i data-lucide="chevron-down"></i></div>
+        <button class="btn pri"><i data-lucide="plus"></i>New event for Hendra</button>
+        <span class="sp"></span>
+        <div class="seg"><button>Day</button><button class="on">Week</button><button>Month</button><button>Agenda</button></div>
+      </div>
+      <div class="grid" style="grid-template-rows:auto 1fr">
+        <div class="gh" style="grid-template-columns:52px repeat(5,1fr)">
+          <div style="border:0"></div><div>Mon <b>6</b></div><div class="today">Tue <b>7</b></div><div>Wed <b>8</b></div><div>Thu <b>9</b></div><div>Fri <b>10</b></div>
+        </div>
+        <div class="body" id="dweek" style="grid-template-columns:52px repeat(5,1fr)"></div>
+      </div>
+    </div>
+  </div>
+  <aside class="note"><span class="tag">Stage 2</span><h3>Sari, Full delegate for Pak Hendra</h3><ul>
+    <li><b>Managed calendars</b> in the sidebar lists everyone who made you a delegate. Picking one switches the whole view to that calendar, with a yellow banner so it's never confused with your own.</li>
+    <li>Busy only events show full details to delegates. <b>Private</b> stays a locked Busy block (Thu 14:00).</li>
+    <li>Events made here belong to Pak Hendra. Meetings list him as organizer and show "Sent by Sari Anggraini on behalf of Hendra Gunawan".</li>
+    <li>Wed 10:00 is a pending invite. A Full delegate can accept or decline it right from the popover.</li>
+    <li>With "View all details" the New event button and edit actions are hidden.</li>
+  </ul></aside>
+</section>
+
+<!-- ============ 6. Notifications & invites ============ -->
+<section class="stage" id="s6">
+  <div class="stack">
+    <div class="win ntf"><span class="ic"><i data-lucide="user-cog"></i></span><div><b>Sari Anggraini moved "Vendor visit — PT Maju"</b><p>On your calendar: Thu 9 Oct, 09:00 → 13:30. Changed on your behalf.</p><time>2 min ago · Calendar</time></div></div>
+    <div class="win ntf"><span class="ic" style="background:var(--info-soft);color:var(--info)"><i data-lucide="shield-check"></i></span><div><b>Hendra Gunawan made you a delegate</b><p>Full delegate: you can manage his calendar and answer his meeting invites. Find it under Managed calendars.</p><time>2 Oct · Calendar</time></div></div>
+    <div class="win">
+      <div class="inv">
+        <div class="meta">Meeting invite · Sent by <b>Sari Anggraini</b> on behalf of <b>Hendra Gunawan</b></div>
+        <h4>Q4 budget review</h4>
+        <div style="color:var(--ink-2);font-size:13px">Tue 7 Oct, 14:00 – 15:00 · Meeting room 2</div>
+        <div style="color:var(--ink-2);font-size:13px;margin-top:4px">Organizer: Hendra Gunawan</div>
+        <div class="rsvp"><button class="btn pri"><i data-lucide="check"></i>Accept</button><button class="btn">Maybe</button><button class="btn">Decline</button></div>
+      </div>
+      <div class="audit"><b style="color:var(--ink)">History</b>
+        <div><time>2 Oct 10:14</time>Created by Sari Anggraini on behalf of Hendra Gunawan</div>
+        <div><time>2 Oct 11:02</time>Budi Hartono accepted</div>
+        <div><time>3 Oct 08:40</time>Hendra Gunawan's reply "Accept" set by Sari Anggraini</div>
+      </div>
+    </div>
+  </div>
+  <aside class="note"><span class="tag">Stage 2</span><h3>Traceability</h3><ul>
+    <li>The owner gets a notification for each change a delegate makes (switchable off in stage 4). The label on the event and the history stay either way.</li>
+    <li>Both people are told when delegate access is granted, changed or removed.</li>
+    <li>Invites show who actually sent them. RSVPs a delegate gives are recorded as "set by".</li>
+    <li>Full delegates also receive the owner's invite notifications, marked "for Hendra Gunawan".</li>
+  </ul></aside>
+</section>
+
+<script>
+  const H0 = 8, PX = 52; // grid starts 08:00, 52px per hour
+  const C = { me: 'var(--p-me)', a: 'var(--p-a)', b: 'var(--p-b)', c: 'var(--p-c)' };
+  const icon = n => `<span class="ico"><i data-lucide="${n}"></i></span>`;
+
+  function sidebar(el, opts) {
+    const mine = opts.delegate
+      ? `<div class="src"><span class="chk" style="background:${C.me}"><i data-lucide="check"></i></span><span class="nm">My calendar</span></div>`
+      : `<div class="src"><span class="chk" style="background:${C.me}"><i data-lucide="check"></i></span><span class="nm">My events</span></div>
+         <div class="src"><span class="chk" style="background:${C.me}"><i data-lucide="check"></i></span><span class="nm">Meetings</span></div>
+         <div class="src"><span class="chk" style="border:1.5px solid var(--line-2)"></span><span class="nm">Projects</span></div>
+         <div class="src"><span class="chk" style="border:1.5px solid var(--line-2)"></span><span class="nm">News &amp; Memos</span></div>`;
+    const ppl = [['a','RS','Rina Susanti','Finance'],['b','BH','Budi Hartono','Procurement'],['c','DP','Dewi Pratiwi','HR']];
+    el.innerHTML = `
+      <h4>My calendar <button title="Sharing settings"><i data-lucide="settings-2"></i></button></h4>${mine}
+      ${opts.managed ? `<h4>Managed calendars</h4>
+        <div class="src" style="background:var(--warn-soft)"><span class="av" style="background:var(--p-a);width:22px;height:22px;font-size:9px">HG</span><span class="nm">Hendra Gunawan<br><small>Full delegate</small></span></div>` : ''}
+      <h4>Other calendars <button title="Add person"><i data-lucide="plus"></i></button></h4>
+      ${ppl.map(([k,i,n,d],x) => `<div class="src"><span class="chk" style="background:${opts.off && x===2 ? 'transparent;border:1.5px solid var(--line-2)' : C[k]}">${opts.off && x===2 ? '' : '<i data-lucide="check"></i>'}</span><span class="nm">${n}<br><small>${d}</small></span><i class="more" data-lucide="more-horizontal"></i></div>`).join('')}
+      <div class="addp"><i data-lucide="user-plus"></i>Add someone's calendar…</div>`;
+  }
+
+  function hours(el) { let h = ''; for (let i = 1; i < 10; i++) h += `<span style="top:${i*PX}px">${String(H0+i).padStart(2,'0')}:00</span>`; el.innerHTML = h; }
+
+  // ev: [col, start, end, who, kind, title, sub, ico]  kind: '', 'busy', 'tent'
+  function draw(body, cols, evs, extra = '') {
+    let html = '<div class="hours"></div>';
+    for (let c = 0; c < cols; c++) html += `<div class="col" data-c="${c}"></div>`;
+    body.innerHTML = html;
+    body.style.height = (10 * PX) + 'px';
+    hours(body.querySelector('.hours'));
+    const colEls = body.querySelectorAll('.col');
+    evs.forEach(([c, s, e, who, kind, t, sub, ic, lane, lanes]) => {
+      lanes = lanes || 1; lane = lane || 0;
+      const d = document.createElement('div');
+      d.className = 'ev ' + (kind || '');
+      const col = C[who];
+      d.style.cssText = `top:${(s-H0)*PX+1}px;height:${(e-s)*PX-3}px;left:calc(${lane*100/lanes}% + 3px);width:calc(${100/lanes}% - 6px);border-color:${col};color:var(--ink);background:color-mix(in srgb, ${col} 16%, var(--surface));`;
+      d.innerHTML = `<b>${t}</b><span>${sub || ''}</span>${ic ? icon(ic) : ''}`;
+      colEls[c].appendChild(d);
+    });
+    if (extra) body.insertAdjacentHTML('beforeend', extra);
+  }
+  const t = (h, m = 0) => `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+
+  // ---- 1. week overlay
+  sidebar(document.getElementById('side1'), {});
+  draw(document.getElementById('week'), 5, [
+    [0, 9, 10, 'me', '', 'Weekly ops sync', '09:00 · Room 1', 'users'],
+    [0, 13, 14.5, 'a', '', 'Rina · Audit prep', '13:00 · Finance', 'globe'],
+    [0, 15, 16, 'b', 'busy', 'Busy', 'Budi', null],
+    [1, 8.5, 9.5, 'b', '', 'Budi · Supplier call', '08:30', 'globe'],
+    [1, 10, 11.5, 'me', '', 'Design review', '10:00 · Online', 'video', 0, 2],
+    [1, 10, 11, 'a', 'busy', 'Busy', 'Rina', null, 1, 2],
+    [1, 13, 14, 'a', 'busy', 'Busy', 'Rina', 'eye-off'],
+    [1, 15.5, 16.5, 'c', 'tent', 'Tentative', 'Dewi', 'help-circle'],
+    [2, 9, 12, 'c', 'busy', 'Busy', 'Dewi', null],
+    [2, 13.5, 15, 'me', '', 'Q4 budget review', '13:30 · Room 2', 'users', 0, 2],
+    [2, 14, 15, 'a', '', 'Rina · Q4 budget review', '14:00', 'users', 1, 2],
+    [3, 8, 9, 'me', '', 'Focus time', '08:00', 'lock'],
+    [3, 11, 12, 'b', 'busy', 'Busy', 'Budi', null],
+    [3, 14, 16, 'c', '', 'Dewi · Interviews', '14:00 · HR room', 'globe'],
+    [4, 9, 10, 'a', 'tent', 'Tentative', 'Rina', 'help-circle'],
+    [4, 13, 14, 'me', '', 'Lunch & learn', '13:00 · Hall', 'users'],
+    [4, 15, 17, 'b', '', 'Budi · Site visit SJA', '15:00 · Sepanjang', 'globe'],
+  ], `<div class="now" style="top:${(11.4-H0)*PX}px;left:calc(52px + (100% - 52px)/5);width:calc((100% - 52px)/5)"></div>
+     <div class="pop" style="left:calc(52px + (100% - 52px)/5*2 - 6px);top:${(13-H0)*PX-30}px">
+       <h5><span class="av" style="background:var(--p-a);width:22px;height:22px;font-size:9px">RS</span>Rina Susanti is busy</h5>
+       <div class="r"><i data-lucide="clock"></i>Tue 7 Oct, 13:00 – 14:00</div>
+       <div class="hint">Rina keeps this event's details private. You can only see the time.</div>
+       <div class="acts"><button class="btn pri"><i data-lucide="calendar-plus"></i>Meet another time</button><button class="btn"><i data-lucide="message-circle"></i>Chat</button></div>
+     </div>`);
+
+  // ---- 2. day side by side
+  sidebar(document.getElementById('side2'), {});
+  document.getElementById('dayhead').innerHTML = '<div style="border:0"></div>' + [
+    ['me','You','Today'],['a','RS','Rina Susanti'],['b','BH','Budi Hartono'],['c','DP','Dewi Pratiwi']]
+    .map(([k,i,n],x) => `<div class="person"><span class="av" style="background:${C[k]}">${x? i : 'ME'}</span><span>${x ? n : 'You'}<small>${['Me','Finance','Procurement','HR'][x]}</small></span></div>`).join('');
+  draw(document.getElementById('day'), 4, [
+    [0, 10, 11.5, 'me', '', 'Design review', '10:00 · Online', 'video'],
+    [1, 10, 11, 'a', 'busy', 'Busy', '', null],
+    [1, 13, 14, 'a', 'busy', 'Busy', '', 'eye-off'],
+    [2, 8.5, 9.5, 'b', '', 'Supplier call', '08:30', 'globe'],
+    [2, 11, 13, 'b', '', 'Contract review', '11:00 · Legal', 'globe'],
+    [3, 15.5, 16.5, 'c', 'tent', 'Tentative', '', 'help-circle'],
+    [3, 9, 10, 'c', 'busy', 'Busy', '', null],
+  ], `<div style="position:absolute;left:52px;right:0;top:${(14-H0)*PX}px;height:${PX}px;background:rgba(46,157,107,.13);border-top:2px solid var(--accent);border-bottom:2px solid var(--accent);z-index:2;display:flex;align-items:center;justify-content:center">
+        <span style="background:var(--surface);border:1px solid var(--accent);color:var(--accent);border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600">14:00 – 15:00 · everyone free · New meeting with 3 people</span></div>
+      <div class="now" style="top:${(11.4-H0)*PX}px;left:52px"></div>`);
+
+  // ---- 3. find a time
+  (function () {
+    const ticks = Array.from({length: 10}, (_, i) => `<span>${String(8+i).padStart(2,'0')}</span>`).join('');
+    const pct = h => ((h - 8) / 10 * 100) + '%';
+    const rows = [
+      ['me','ME','You','Organizer',[[10,11.5]],[]],
+      ['a','RS','Rina Susanti','Finance',[[10,11],[13,14]],[]],
+      ['b','BH','Budi Hartono','Procurement',[[8.5,9.5],[11,13]],[]],
+      ['c','DP','Dewi Pratiwi','HR',[[9,10]],[[15.5,16.5]]],
+    ];
+    let h = `<div class="fat-h"><div style="padding:5px 10px">Tue 7 Oct</div><div class="ticks">${ticks}</div></div>`;
+    rows.forEach(([k,i,n,d,b,tn]) => {
+      h += `<div class="fat-r"><div class="who"><span class="av" style="background:${C[k]}">${i}</span><span>${n}<br><small>${d}</small></span></div><div class="lane">
+        ${b.map(([s,e]) => `<div class="blk" style="left:${pct(s)};width:calc(${pct(e)} - ${pct(s)})"></div>`).join('')}
+        ${tn.map(([s,e]) => `<div class="blk t" style="left:${pct(s)};width:calc(${pct(e)} - ${pct(s)})"></div>`).join('')}
+      </div></div>`;
+    });
+    const fat = document.getElementById('fat');
+    fat.innerHTML = h;
+    fat.style.position = 'relative';
+    fat.insertAdjacentHTML('beforeend', `<div class="slot" style="left:calc(150px + (100% - 150px) * .6);width:calc((100% - 150px) * .1)"></div>`);
+  })();
+
+  // ---- 5. delegate view
+  sidebar(document.getElementById('side5'), { delegate: true, managed: true, off: true });
+  draw(document.getElementById('dweek'), 5, [
+    [0, 9, 10.5, 'a', '', 'Board prep', '09:00 · Busy only', 'eye-off'],
+    [0, 14, 15, 'a', '', 'Call with Bank Mandiri', '14:00 · Public', 'globe'],
+    [1, 10, 11, 'a', '', 'Weekly ops sync', '10:00 · Room 1', 'users'],
+    [1, 14, 15, 'a', '', 'Q4 budget review', '14:00 · by Sari', 'user-cog'],
+    [2, 10, 11, 'a', 'tent', 'Invite: Plant safety walk', 'pending · answer for Hendra', 'help-circle'],
+    [3, 9, 13.5, 'a', '', 'Vendor visit — PT Maju', '09:00 · moved by Sari', 'user-cog'],
+    [3, 14, 15, 'a', 'busy', 'Private', '', 'lock'],
+    [4, 13, 15, 'a', '', 'Directors meeting', '13:00 · Busy only', 'eye-off'],
+  ], `<div class="pop" style="left:calc(52px + (100% - 52px)/5 + 10px);top:${(11.2-H0)*PX}px">
+       <h5>Plant safety walk</h5>
+       <div class="r"><i data-lucide="clock"></i>Wed 8 Oct, 10:00 – 11:00</div>
+       <div class="r"><i data-lucide="user"></i>Invited by Dewi Pratiwi</div>
+       <div class="hint">You're answering for <b>Hendra Gunawan</b>. Dewi will see "Accepted by Hendra Gunawan (set by Sari)".</div>
+       <div class="acts"><button class="btn pri"><i data-lucide="check"></i>Accept</button><button class="btn">Maybe</button><button class="btn">Decline</button></div>
+     </div>`);
+
+  lucide.createIcons();
+  document.querySelectorAll('.mk-nav [data-s]').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.mk-nav [data-s]').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.stage').forEach(s => s.classList.toggle('on', s.id === b.dataset.s));
+  });
+  document.getElementById('theme').onclick = () => {
+    const r = document.documentElement;
+    r.dataset.theme = r.dataset.theme === 'dark' ? '' : 'dark';
+  };
+</script>
+</body>
+</html>

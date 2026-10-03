@@ -341,6 +341,7 @@ public static class MeetingEndpoints
             OrganizerId = userId, Status = MeetingStatus.Active, RoomId = req.RoomId,
             SourceMailId = req.SourceMailId,
             ReminderMinutes = reminder, CreatedAt = DateTime.UtcNow,
+            Visibility = await CalendarSharingEndpoints.DefaultEventVisibilityAsync(db, userId, ct),
         };
         db.Meetings.Add(meeting);
 
@@ -368,6 +369,7 @@ public static class MeetingEndpoints
         {
             Id = Guid.NewGuid(), Title = title, StartAt = meeting.StartAt, EndAt = meeting.EndAt,
             Type = "rapat", OwnerId = userId, RoomId = req.RoomId, MeetingId = meeting.Id, CreatedAt = DateTime.UtcNow,
+            Visibility = meeting.Visibility,
         });
 
         // Pengingat terjadwal per peserta, sesuai pilihan pembuat.

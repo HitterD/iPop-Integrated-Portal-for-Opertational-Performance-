@@ -17,7 +17,8 @@ public partial class Calendar
 
     // ── Client-side mirrors of the API records (Web does not reference IPop.Api) ──
     public record FeedItem(string Id, string Source, string Kind, string Title, DateTime StartAt, DateTime EndAt, bool AllDay,
-        string? Url, string? Subtitle, Guid? EventId, Guid? MeetingId, string? Rsvp, bool CanEdit, string? Location, string? Link)
+        string? Url, string? Subtitle, Guid? EventId, Guid? MeetingId, string? Rsvp, bool CanEdit, string? Location, string? Link,
+        string? Visibility = null, string? OwnerNik = null)
     {
         /// Timed items are shown in local time; all-day items are calendar dates (stored as UTC midnight).
         public DateTime Start => AllDay ? StartAt.Date : StartAt.ToLocalTime();
@@ -26,7 +27,7 @@ public partial class Calendar
     public record Person(Guid UserId, string Nik, string Name, string Rsvp);
     public record EventDetail(Guid Id, string Title, DateTime StartAt, DateTime EndAt, bool AllDay, string? Location, string? Link,
         string? Notes, int? ReminderMinutes, Guid? RoomId, string? RoomName, Guid? MeetingId, string? MeetingStatus,
-        string OwnerName, bool CanEdit, List<Person> Attendees);
+        string OwnerName, bool CanEdit, List<Person> Attendees, string Visibility = "busy");
 
     private sealed record SourceDef(string Key, string Label, string Icon);
     private static readonly SourceDef[] Sources =
@@ -69,6 +70,7 @@ public partial class Calendar
         if (DateTime.TryParseExact(DateQuery, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) anchor = d.Date;
         miniMonth = new(anchor.Year, anchor.Month, 1);
         await LoadPrefsAsync();
+        await LoadSharingAsync();
         await LoadAsync();
         // Now line and "Awaiting reply" drift with the clock; refresh every minute.
         nowTimer = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
@@ -107,6 +109,7 @@ public partial class Calendar
             // A navigation-triggered load started meanwhile: it owns the result.
             if (res is null || loadingFeed || from != loadedFrom || to != loadedTo) return;
             items = res;
+            _ = LoadPeopleAsync();
 
             // Refresh a read-only drawer in place; never touch the editor or a save in flight.
             if (drawerOpen && !editing && !saving && detail is { } open)
@@ -143,11 +146,12 @@ public partial class Calendar
         calendarSub?.Dispose();
         liveCts?.Cancel();
         liveCts?.Dispose();
+        peopleCts?.Cancel();
     }
 
     // ── Preferences (view + hidden sources) in localStorage ──
 
-    private sealed class Prefs { public string? View { get; set; } public List<string>? Hidden { get; set; } }
+    private sealed class Prefs { public string? View { get; set; } public List<string>? Hidden { get; set; } public bool SideBySide { get; set; } }
 
     private async Task LoadPrefsAsync()
     {
@@ -158,6 +162,7 @@ public partial class Calendar
             var p = System.Text.Json.JsonSerializer.Deserialize<Prefs>(json);
             if (p?.View is "day" or "week" or "month" or "agenda") view = p.View;
             if (p?.Hidden is not null) hidden = p.Hidden.ToHashSet();
+            sideBySide = p?.SideBySide ?? false;
         }
         catch { /* corrupt prefs: keep defaults */ }
     }
@@ -166,7 +171,7 @@ public partial class Calendar
     {
         try
         {
-            var json = System.Text.Json.JsonSerializer.Serialize(new Prefs { View = view, Hidden = hidden.ToList() });
+            var json = System.Text.Json.JsonSerializer.Serialize(new Prefs { View = view, Hidden = hidden.ToList(), SideBySide = sideBySide });
             await JS.InvokeVoidAsync("localStorage.setItem", PrefsKey, json);
         }
         catch { }
@@ -301,6 +306,7 @@ public partial class Calendar
             if (res is null) { loadError = true; return; }
             items = res;
             loadedFrom = windowFrom; loadedTo = windowTo;
+            _ = LoadPeopleAsync();
         }
         catch (OperationCanceledException) { }
         catch { loadError = true; }
@@ -316,11 +322,15 @@ public partial class Calendar
 
     private static bool IsAllDayLike(FeedItem i) => i.AllDay || (i.End - i.Start).TotalHours >= 24;
 
-    private IEnumerable<FeedItem> ItemsOn(DateTime day) => Visible
+    /// withOthers adds the checked people's busy blocks (day/week/month grids only); col narrows to
+    /// one person's column in Day "Side by side".
+    private IEnumerable<FeedItem> ItemsOn(DateTime day, bool withOthers = false, GridCol? col = null) =>
+        (withOthers ? Visible.Concat(OverlayItems) : Visible)
+        .Where(i => InCol(col, i))
         .Where(i => i.Start < day.AddDays(1) && (i.End > day || (i.End == i.Start && i.Start.Date == day)))
         .OrderBy(i => IsAllDayLike(i) ? 0 : 1).ThenBy(i => i.Start).ThenBy(i => i.Title);
 
-    private IEnumerable<FeedItem> AllDayOn(DateTime day) => ItemsOn(day).Where(IsAllDayLike);
+    private IEnumerable<FeedItem> AllDayOn(DateTime day, GridCol? col = null) => ItemsOn(day, true, col).Where(IsAllDayLike);
 
     private bool HasItems(DateTime day) => day >= loadedFrom && day < loadedTo && ItemsOn(day).Any();
 
@@ -333,10 +343,10 @@ public partial class Calendar
     private const int MaxCols = 3;
 
     /// Timed items for one day, clipped to the day, laid out in side-by-side columns per overlap cluster.
-    private List<Placed> LayoutDay(DateTime day)
+    private List<Placed> LayoutDay(DateTime day, GridCol? gridCol = null)
     {
         var dayEnd = day.AddDays(1);
-        var timed = ItemsOn(day).Where(i => !IsAllDayLike(i))
+        var timed = ItemsOn(day, true, gridCol).Where(i => !IsAllDayLike(i))
             .Select(i => (Item: i, S: i.Start < day ? day : i.Start, E: i.End > dayEnd ? dayEnd : (i.End <= i.Start ? i.Start.AddMinutes(30) : i.End)))
             .OrderBy(x => x.S).ThenByDescending(x => x.E).ToList();
         var placed = new List<Placed>();
@@ -399,7 +409,7 @@ public partial class Calendar
     private static string When(FeedItem i) => IsAllDayLike(i) ? i.Start.ToString("ddd d MMM") : i.Start.ToString("ddd d MMM, HH:mm");
 
     private static string Tooltip(FeedItem i) =>
-        $"{i.Title}\n{(IsAllDayLike(i) ? "All day" : TimeRange(i))} · {SourceLabel(i.Source)}{(i.Subtitle is null ? "" : $"\n{i.Subtitle}")}";
+        $"{i.Title}\n{(IsAllDayLike(i) ? "All day" : TimeRange(i))} · {(i.OwnerNik is null ? SourceLabel(i.Source) : i.Subtitle)}{(i.Subtitle is null ? "" : $"\n{i.Subtitle}")}";
 
     private static string SourceLabel(string source) => Sources.FirstOrDefault(s => s.Key == source)?.Label ?? source;
 
@@ -415,6 +425,7 @@ public partial class Calendar
         "ack-due" => "clipboard-check",
         "news-scheduled" => "clock",
         "memo" => "file-text",
+        "busy" or "busy-tentative" => i.Visibility == "private" ? "lock" : "user",
         _ when i.Source == "news" => "newspaper",
         _ => "calendar",
     };
@@ -444,8 +455,9 @@ public partial class Calendar
 
     // ── Opening items ──
 
-    private async Task OpenItemAsync(FeedItem item)
+    private async Task OpenItemAsync(FeedItem item, MouseEventArgs? e = null)
     {
+        if (item.OwnerNik is not null) { OpenPopover(item, e); return; }
         // Own/invited events open in the drawer; everything else deep-links into its module.
         if (item.EventId is { } eid) { await OpenEventAsync(eid); return; }
         if (item.Url is not null) Nav.NavigateTo(item.Url);
@@ -500,6 +512,7 @@ public partial class Calendar
         public int Reminder { get; set; } = 15;
         public string RoomIdText { get; set; } = "";
         public List<MemberSearchRow> People { get; set; } = [];
+        public string Visibility { get; set; } = "busy";
     }
 
     private DateTime DefaultStart()
@@ -517,7 +530,9 @@ public partial class Calendar
             StartDate = start.Date, StartTime = TimeOnly.FromDateTime(start),
             EndDate = start.AddHours(1).Date, EndTime = TimeOnly.FromDateTime(start.AddHours(1)),
             Reminder = allDay ? 0 : 15,
+            Visibility = DefaultFormVisibility,
         };
+        fat = null;
         if (form.EndDate > form.StartDate && !allDay) { form.EndDate = form.StartDate; form.EndTime = new TimeOnly(23, 59); }
         detail = null; formError = null;
         drawerOpen = true; editing = true;
@@ -535,9 +550,12 @@ public partial class Calendar
             Location = detail.Location, Link = detail.Link, Notes = detail.Notes, Reminder = detail.ReminderMinutes ?? 0,
             RoomIdText = detail.RoomId?.ToString() ?? "",
             People = detail.Attendees.Where(a => a.Nik != Auth.Me?.Nik).Select(a => new MemberSearchRow(a.Nik, a.Name, null, null)).ToList(),
+            Visibility = detail.Visibility,
         };
         formError = null;
         editing = true;
+        fat = null;
+        if (form.People.Count > 0 && !form.AllDay) _ = InvokeAsync(async () => { await LoadFreeBusyAsync(); StateHasChanged(); });
     }
 
     private void CancelEdit()
@@ -550,6 +568,15 @@ public partial class Calendar
     {
         if (row.Nik == Auth.Me?.Nik || form.People.Any(p => p.Nik == row.Nik)) return;
         form.People.Add(row);
+        fat = null;
+        if (!form.AllDay) _ = InvokeAsync(async () => { await LoadFreeBusyAsync(); StateHasChanged(); });
+    }
+
+    private void RemovePerson(MemberSearchRow row)
+    {
+        form.People.Remove(row);
+        fat = null;
+        if (form.People.Count > 0 && !form.AllDay) _ = InvokeAsync(async () => { await LoadFreeBusyAsync(); StateHasChanged(); });
     }
 
     private Components.AddressBookDialog? addressBook;
@@ -583,7 +610,7 @@ public partial class Calendar
             title = form.Title, startAt = start, endAt = end, allDay = form.AllDay,
             location = form.Location, link = form.Link, notes = form.Notes,
             reminderMinutes = form.Reminder > 0 ? form.Reminder : (int?)null,
-            roomId,
+            roomId, visibility = form.Visibility,
             // Meeting edits resend the full list (organizer stays); personal events only send when inviting.
             attendeeNiks = roomId is null && (form.MeetingId is not null || form.People.Count > 0) ? form.People.Select(p => p.Nik).ToList() : null,
         };

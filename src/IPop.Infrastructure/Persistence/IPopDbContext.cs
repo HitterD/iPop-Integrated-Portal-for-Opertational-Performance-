@@ -68,6 +68,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<MeetingAttendee> MeetingAttendees => Set<MeetingAttendee>();
     public DbSet<CalendarEvent> CalendarEvents => Set<CalendarEvent>();
     public DbSet<MeetingReminder> MeetingReminders => Set<MeetingReminder>();
+    public DbSet<CalendarSettings> CalendarSettings => Set<CalendarSettings>();
+    public DbSet<CalendarSubscription> CalendarSubscriptions => Set<CalendarSubscription>();
 
     // Mail entities (use fully-qualified name to avoid shadowing by sibling namespace IPop.Infrastructure.Mail)
     public DbSet<IPop.Core.Entities.Mail> Mails => Set<IPop.Core.Entities.Mail>();
@@ -800,6 +802,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Status).HasMaxLength(16);
             e.Property(x => x.TimeZone).HasMaxLength(64);
             e.Property(x => x.Agenda).HasMaxLength(4000);
+            // Existing rows become Busy only, so no old title turns public on rollout.
+            e.Property(x => x.Visibility).HasMaxLength(8).HasDefaultValue(CalendarVisibility.Busy);
             e.HasOne(x => x.Organizer).WithMany().HasForeignKey(x => x.OrganizerId).OnDelete(DeleteBehavior.Restrict);
         });
         b.Entity<MeetingAttendee>(e =>
@@ -820,8 +824,22 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Location).HasMaxLength(300);
             e.Property(x => x.Link).HasMaxLength(1000);
             e.Property(x => x.Notes).HasMaxLength(4000);
+            e.Property(x => x.Visibility).HasMaxLength(8).HasDefaultValue(CalendarVisibility.Busy);
             e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Meeting).WithMany().HasForeignKey(x => x.MeetingId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<CalendarSettings>(e =>
+        {
+            e.HasKey(x => x.UserId);
+            e.Property(x => x.DefaultVisibility).HasMaxLength(8);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<CalendarSubscription>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.TargetUserId }).IsUnique();
+            e.Property(x => x.Color).HasMaxLength(8);
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.TargetUser).WithMany().HasForeignKey(x => x.TargetUserId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<MeetingReminder>(e =>
         {

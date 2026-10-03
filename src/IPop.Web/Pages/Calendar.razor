@@ -55,6 +55,50 @@
             }
         </div>
 
+        <div class="cal-others">
+            <div class="cal-rail-title cal-others-head">
+                <span>Other calendars</span>
+                <button class="cal-icon sm" title="Sharing settings" aria-label="Sharing settings" @onclick="OpenSettings"><i data-lucide="settings-2"></i></button>
+                <button class="cal-icon sm" title="Add a calendar" aria-label="Add a calendar" @onclick="() => addingOther = !addingOther"><i data-lucide="@(addingOther ? "x" : "plus")"></i></button>
+            </div>
+            @if (addingOther)
+            {
+                <div class="cal-others-add"><PeoplePicker Placeholder="Add a colleague's calendar" ValueChanged="AddOtherAsync" /></div>
+            }
+            @if (others.Count == 0 && !addingOther)
+            {
+                <button class="cal-others-empty" @onclick="() => addingOther = true"><i data-lucide="users"></i> See when colleagues are busy</button>
+            }
+            @foreach (var o in others)
+            {
+                var oc = o;
+                <div class="cal-other oc-@oc.Color">
+                    <label class="cal-source">
+                        <input type="checkbox" checked="@oc.IsVisible" @onchange="() => ToggleOtherAsync(oc)" />
+                        <span class="cal-check" aria-hidden="true">@if (oc.IsVisible) { <i data-lucide="check"></i> }</span>
+                        <PersonAvatar Nik="@oc.Nik" Name="@oc.Name" Size="20" Class="cal-other-av" Decorative="true" />
+                        <span class="cal-source-name" title="@(oc.Department is null ? oc.Name : $"{oc.Name} · {oc.Department}")">@oc.Name</span>
+                    </label>
+                    <button class="cal-icon sm cal-other-more" title="Options" aria-label="Options for @oc.Name" @onclick="() => otherMenu = otherMenu == oc.Nik ? null : oc.Nik"><i data-lucide="more-horizontal"></i></button>
+                    @if (otherMenu == oc.Nik)
+                    {
+                        <div class="cal-other-menu" role="menu">
+                            <div class="cal-swatches">
+                                @foreach (var c in OtherPalette)
+                                {
+                                    var cc = c;
+                                    <button class="cal-swatch oc-@cc @(oc.Color == cc ? "on" : "")" title="Colour" aria-label="Colour @cc" @onclick="() => SetOtherColorAsync(oc, cc)"></button>
+                                }
+                            </div>
+                            <button role="menuitem" @onclick="() => MeetWithAsync(oc.Nik, oc.Name)"><i data-lucide="calendar-plus"></i> New meeting with @oc.Name</button>
+                            <a role="menuitem" href="/chat?nik=@Uri.EscapeDataString(oc.Nik)"><i data-lucide="message-circle"></i> Chat</a>
+                            <button role="menuitem" class="danger" @onclick="() => RemoveOtherAsync(oc)"><i data-lucide="trash-2"></i> Remove from list</button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
         @if (UpcomingPending.Count > 0)
         {
             <div class="cal-invites">
@@ -80,6 +124,13 @@
             </div>
             <h2 class="cal-range">@RangeLabel</h2>
             @if (loadingFeed) { <i data-lucide="loader-circle" class="cal-spin"></i> }
+            @if (view == "day" && VisibleOthers.Count > 0)
+            {
+                <div class="cal-seg" role="group" aria-label="Other calendars layout">
+                    <button class="cal-seg-item @(!sideBySide ? "on" : "")" aria-pressed="@(!sideBySide ? "true" : "false")" @onclick="() => SetSideBySideAsync(false)">Overlay</button>
+                    <button class="cal-seg-item @(sideBySide ? "on" : "")" aria-pressed="@(sideBySide ? "true" : "false")" @onclick="() => SetSideBySideAsync(true)">Side by side</button>
+                </div>
+            }
             <div class="cal-seg" role="tablist" aria-label="View">
                 @foreach (var (key, label) in Views)
                 {
@@ -97,12 +148,25 @@
         @if (view is "day" or "week")
         {
             var days = VisibleDays().ToList();
-            <div class="cal-grid-wrap" style="--cal-days:@days.Count">
+            var cols = GridColumns(days);
+            <div class="cal-grid-wrap @(SideBySideActive ? "split" : "")" style="--cal-days:@cols.Count">
                 <div class="cal-grid-head">
                     <div class="cal-gutter"></div>
-                    @foreach (var d in days)
+                    @foreach (var c in cols)
                     {
-                        var dd = d;
+                        var dd = c.Day;
+                        if (c.Split)
+                        {
+                            <div class="cal-col-head person @(c.Person is null ? "me" : $"oc-{c.Person.Color}")">
+                                @if (c.Person is null) { <span class="cal-col-name">You</span> }
+                                else
+                                {
+                                    <PersonAvatar Nik="@c.Person.Nik" Name="@c.Person.Name" Size="22" Class="cal-other-av" Decorative="true" />
+                                    <span class="cal-col-name" title="@c.Person.Name">@c.Person.Name</span>
+                                }
+                            </div>
+                            continue;
+                        }
                         <button class="cal-col-head @(dd == DateTime.Today ? "today" : "")" @onclick="() => PickDayView(dd)">
                             <span class="cal-dow">@dd.ToString("ddd")</span><span class="cal-dnum">@dd.Day</span>
                         </button>
@@ -110,14 +174,14 @@
                 </div>
                 <div class="cal-allday">
                     <div class="cal-gutter">all-day</div>
-                    @foreach (var d in days)
+                    @foreach (var c in cols)
                     {
-                        var dd = d;
+                        var dd = c.Day; var col = c;
                         <div class="cal-allday-cell" @ondblclick="() => OpenCreate(dd, allDay: true)">
-                            @foreach (var it in AllDayOn(dd))
+                            @foreach (var it in AllDayOn(dd, col))
                             {
                                 var item = it;
-                                <button class="cal-chip src-@item.Source kind-@item.Kind @(item.Rsvp == "pending" ? "pending" : "")" title="@Tooltip(item)" @onclick="() => OpenItemAsync(item)" @onclick:stopPropagation="true">
+                                <button class="cal-chip src-@item.Source kind-@item.Kind @OtherClass(item) @(item.Rsvp == "pending" ? "pending" : "")" title="@Tooltip(item)" @onclick="e => OpenItemAsync(item, e)" @onclick:stopPropagation="true">
                                     <i data-lucide="@IconFor(item)"></i><span>@item.Title</span>
                                 </button>
                             }
@@ -129,16 +193,21 @@
                         <div class="cal-hours">
                             @for (var h = 0; h < 24; h++) { <div class="cal-hour-label">@(h == 0 ? "" : $"{h:00}:00")</div> }
                         </div>
-                        @foreach (var d in days)
+                        @foreach (var c in cols)
                         {
-                            var dd = d;
-                            <div class="cal-day-col @(dd == DateTime.Today ? "today" : "")">
+                            var dd = c.Day; var col = c;
+                            <div class="cal-day-col @(dd == DateTime.Today && !c.Split ? "today" : "") @(c.Person is { } cp ? $"oc-{cp.Color} person" : "")">
                                 @for (var h = 0; h < 24; h++)
                                 {
                                     var hh = h;
+                                    if (col.Person is { } who)
+                                    {
+                                        <div class="cal-slot" @onclick="() => MeetWithAsync(who.Nik, who.Name, dd.AddHours(hh))" title="New meeting with @who.Name at @($"{hh:00}:00")"></div>
+                                        continue;
+                                    }
                                     <div class="cal-slot" @onclick="() => OpenCreate(dd.AddHours(hh))" title="New event at @($"{hh:00}:00")"></div>
                                 }
-                                @foreach (var p in LayoutDay(dd))
+                                @foreach (var p in LayoutDay(dd, col))
                                 {
                                     if (p.Item is null)
                                     {
@@ -147,11 +216,11 @@
                                         continue;
                                     }
                                     var item = p.Item;
-                                    <button class="cal-event src-@item.Source kind-@item.Kind @(item.Rsvp == "pending" ? "pending" : "") @(item.Rsvp == "decline" ? "declined" : "")"
+                                    <button class="cal-event src-@item.Source kind-@item.Kind @OtherClass(item) @(item.Rsvp == "pending" ? "pending" : "") @(item.Rsvp == "decline" ? "declined" : "")"
                                             style="top:@Px(p.Top);height:@Px(p.Height);left:calc(@Pct(p.Col, p.Cols) + 2px);width:calc(@Pct(1, p.Cols) - 4px)"
-                                            title="@Tooltip(item)" @onclick="() => OpenItemAsync(item)" @onclick:stopPropagation="true">
+                                            title="@Tooltip(item)" @onclick="e => OpenItemAsync(item, e)" @onclick:stopPropagation="true">
                                         <span class="cal-event-title"><i data-lucide="@IconFor(item)"></i>@item.Title</span>
-                                        @if (p.Height >= 34) { <span class="cal-event-time">@TimeRange(item)</span> }
+                                        @if (p.Height >= 34) { <span class="cal-event-time">@TimeRange(item)@(item.OwnerNik is not null && !SideBySideActive ? $" · {item.Subtitle}" : "")</span> }
                                     </button>
                                 }
                                 @if (dd == DateTime.Today)
@@ -171,13 +240,13 @@
                 @foreach (var day in MonthCells(anchor))
                 {
                     var dd = day;
-                    var dayItems = ItemsOn(dd).ToList();
+                    var dayItems = ItemsOn(dd, true).ToList();
                     <div class="cal-month-cell @(dd.Month != anchor.Month ? "out" : "") @(dd == DateTime.Today ? "today" : "")" @ondblclick="() => OpenCreate(dd.AddHours(9))">
                         <button class="cal-month-num" @onclick="() => PickDayView(dd)" aria-label="Open @dd.ToString("d MMMM")">@dd.Day</button>
                         @foreach (var it in dayItems.Take(3))
                         {
                             var item = it;
-                            <button class="cal-chip src-@item.Source kind-@item.Kind @(item.Rsvp == "pending" ? "pending" : "")" title="@Tooltip(item)" @onclick="() => OpenItemAsync(item)">
+                            <button class="cal-chip src-@item.Source kind-@item.Kind @OtherClass(item) @(item.Rsvp == "pending" ? "pending" : "")" title="@Tooltip(item)" @onclick="e => OpenItemAsync(item, e)">
                                 @if (!IsAllDayLike(item)) { <span class="cal-chip-time">@item.Start.ToString("HH:mm")</span> }
                                 <span>@item.Title</span>
                             </button>
@@ -256,6 +325,7 @@
                 @if (detail.RoomName is not null) { <div class="cal-detail-row"><i data-lucide="users"></i><a href="/chat/@detail.RoomId">@detail.RoomName</a></div> }
                 @if (detail.ReminderMinutes is > 0) { <div class="cal-detail-row"><i data-lucide="bell"></i><span>@ReminderLabel(detail.ReminderMinutes.Value) before</span></div> }
                 <div class="cal-detail-row"><i data-lucide="user"></i><span>Organizer: @detail.OwnerName</span></div>
+                @if (detail.CanEdit) { <div class="cal-detail-row"><i data-lucide="@VisIcon(detail.Visibility)"></i><span>@VisLabel(detail.Visibility)</span></div> }
                 @if (detail.Notes is not null) { <div class="cal-detail-notes">@detail.Notes</div> }
 
                 @if (detail.MeetingId is not null && detail.MeetingStatus is not "cancelled" && MyRsvp is not null && !detail.CanEdit)
@@ -294,6 +364,19 @@
                     <label>Start<AppDatePicker @bind-Value="form.StartDate" AriaLabel="Start date" />@if (!form.AllDay) { <AppTimePicker @bind-Value="form.StartTime" AriaLabel="Start time" /> }</label>
                     <label>End<AppDatePicker @bind-Value="form.EndDate" AriaLabel="End date" />@if (!form.AllDay) { <AppTimePicker @bind-Value="form.EndTime" AriaLabel="End time" /> }</label>
                 </div>
+                <div class="cal-field">
+                    <span>Who can see details</span>
+                    <div class="cal-vis" role="radiogroup" aria-label="Who can see details">
+                        @foreach (var v in VisibilityOptions)
+                        {
+                            var vk = v.Key;
+                            <button type="button" role="radio" aria-checked="@(form.Visibility == vk ? "true" : "false")" class="cal-vis-card @(form.Visibility == vk ? "on" : "")"
+                                    title="@v.Hint" @onclick="() => form.Visibility = vk">
+                                <i data-lucide="@v.Icon"></i><b>@v.Label</b><small>@v.Hint</small>
+                            </button>
+                        }
+                    </div>
+                </div>
                 <label>Location<input placeholder="Room, address…" @bind="form.Location" maxlength="300" /></label>
                 <label>Meeting link<input placeholder="https://" @bind="form.Link" maxlength="1000" /></label>
                 <label>Reminder
@@ -318,7 +401,7 @@
                                 {
                                     var person = p;
                                     <span class="cal-person-chip"><PersonAvatar Nik="@person.Nik" Name="@person.Name" Size="22" Class="cal-person-av" Decorative="true" />@person.Name
-                                        <button title="Remove" aria-label="Remove @person.Name" @onclick="() => form.People.Remove(person)"><i data-lucide="x"></i></button></span>
+                                        <button title="Remove" aria-label="Remove @person.Name" @onclick="() => RemovePerson(person)"><i data-lucide="x"></i></button></span>
                                 }
                             </div>
                         }
@@ -328,6 +411,59 @@
                         </div>
                         <small>Inviting people or a group turns this into a meeting with RSVP.</small>
                     </div>
+                    @if (ShowFindATime)
+                    {
+                        <div class="cal-fat" aria-label="Find a time">
+                            <div class="cal-fat-head">
+                                <b><i data-lucide="calendar-search"></i> Find a time</b>
+                                <button type="button" class="cal-icon sm" title="Previous day" aria-label="Previous day" disabled="@(fatDay <= DateTime.Today)" @onclick="() => FatShiftAsync(-1)"><i data-lucide="chevron-left"></i></button>
+                                <span class="cal-fat-day">@(fatDay == default ? "" : fatDay.ToString("ddd d MMM"))</span>
+                                <button type="button" class="cal-icon sm" title="Next day" aria-label="Next day" @onclick="() => FatShiftAsync(1)"><i data-lucide="chevron-right"></i></button>
+                                @if (fatLoading) { <i data-lucide="loader-circle" class="cal-spin"></i> }
+                                @if (fat is null && !fatLoading) { <button type="button" class="cal-link" @onclick="() => LoadFreeBusyAsync()">Check availability</button> }
+                            </div>
+                            @if (fat is not null)
+                            {
+                                var prop = FatProposal();
+                                <div class="cal-fat-grid">
+                                    <div class="cal-fat-scale"><span class="cal-fat-who"></span><div class="cal-fat-track">@for (var h = FatFromHour; h < FatFromHour + FatHours; h += 2) { <span style="left:@Pct(h - FatFromHour, FatHours)">@h.ToString("00")</span> }</div></div>
+                                    @foreach (var lane in fat.Lanes)
+                                    {
+                                        var clash = ProposalClashes(lane);
+                                        <div class="cal-fat-lane">
+                                            <span class="cal-fat-who" title="@lane.Name">@(lane.Nik == Auth.Me?.Nik ? "You" : lane.Name)@if (clash) { <i data-lucide="alert-circle" class="cal-fat-warn" aria-label="Busy at the proposed time"></i> }</span>
+                                            <div class="cal-fat-track">
+                                                @foreach (var b in lane.Blocks)
+                                                {
+                                                    if (FatSpan(b.StartAt, b.EndAt) is { } sp)
+                                                    {
+                                                        <span class="cal-fat-busy @(b.Tentative ? "tentative" : "")" style="left:@sp.Left;width:@sp.Width" title="@(b.Tentative ? "Tentative" : "Busy") @b.StartAt.ToLocalTime().ToString("HH:mm")–@b.EndAt.ToLocalTime().ToString("HH:mm")"></span>
+                                                    }
+                                                }
+                                                @if (prop is { } pp) { <span class="cal-fat-prop @(clash ? "clash" : "")" style="left:@pp.Left;width:@pp.Width"></span> }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="cal-fat-legend"><span class="busy"></span>Busy <span class="tentative"></span>Tentative <span class="prop"></span>Proposed</div>
+                                @if (fat.Suggestions.Count > 0)
+                                {
+                                    <div class="cal-fat-sugg-title">Free for everyone</div>
+                                    <div class="cal-fat-sugg">
+                                        @foreach (var sg in fat.Suggestions)
+                                        {
+                                            var slot = sg;
+                                            <button type="button" class="cal-fat-slot" @onclick="() => ApplySlot(slot)">@slot.ToLocalTime().ToString("ddd d MMM, HH:mm")</button>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <small class="cal-hint">No common free slot between 08:00 and 17:00 this week.</small>
+                                }
+                            }
+                        </div>
+                    }
                 }
                 else
                 {
@@ -347,6 +483,47 @@
         }
     </aside>
 }
+
+@if (pop is not null)
+{
+    var po = pop;
+    <div class="cal-pop-backdrop" @onclick="() => pop = null"></div>
+    <div class="cal-pop oc-@ColorOf(po.OwnerNik)" role="dialog" aria-label="@OtherName(po.OwnerNik)" style="left:min(@Px(popX), calc(100vw - 320px));top:min(@Px(popY), calc(100vh - 240px))">
+        <div class="cal-pop-who"><PersonAvatar Nik="@po.OwnerNik" Name="@OtherName(po.OwnerNik)" Size="28" Class="cal-other-av" Decorative="true" /><b>@OtherName(po.OwnerNik)</b>
+            <button class="cal-icon sm" title="Close" aria-label="Close" @onclick="() => pop = null"><i data-lucide="x"></i></button></div>
+        <div class="cal-pop-title">@po.Title</div>
+        <div class="cal-detail-row"><i data-lucide="clock"></i><span>@(IsAllDayLike(po) ? When(po) + " · all day" : $"{po.Start:ddd d MMM, HH:mm} – {po.End:HH:mm}")</span></div>
+        @if (po.Location is not null) { <div class="cal-detail-row"><i data-lucide="map-pin"></i><span>@po.Location</span></div> }
+        @if (po.Kind == "busy-tentative") { <div class="cal-detail-row"><i data-lucide="help-circle"></i><span>Hasn't replied to this invitation yet</span></div> }
+        else if (po.Visibility != "public" && PopMine is null) { <div class="cal-detail-row"><i data-lucide="lock"></i><span>Details are only visible to @OtherName(po.OwnerNik)</span></div> }
+        <div class="cal-pop-actions">
+            @if (PopMine is not null) { <button class="cal-btn" @onclick="OpenPopMineAsync"><i data-lucide="calendar"></i> Open</button> }
+            <button class="cal-btn primary" @onclick="() => MeetWithAsync(po.OwnerNik!, OtherName(po.OwnerNik))"><i data-lucide="calendar-plus"></i> Meet another time</button>
+            <a class="cal-btn" href="/chat?nik=@Uri.EscapeDataString(po.OwnerNik!)"><i data-lucide="message-circle"></i> Chat</a>
+        </div>
+    </div>
+}
+
+<Modal IsOpen="settingsOpen" IsOpenChanged="v => settingsOpen = v" Title="Calendar sharing" Subtitle="Everyone at the company can see when you're busy.">
+    <ChildContent>
+        <div class="cal-share">
+            <div class="cal-rail-title">Others see</div>
+            @foreach (var o in DefaultOptions)
+            {
+                var ok = o.Key;
+                <label class="cal-share-opt @(draftDefault == ok ? "on" : "")">
+                    <input type="radio" name="cal-share-default" checked="@(draftDefault == ok)" @onchange="() => draftDefault = ok" />
+                    <span><b>@o.Label</b><small>@o.Hint</small></span>
+                </label>
+            }
+            <small class="cal-hint">Private events always show only as Busy. You can change any single event in its form.</small>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="cal-btn" @onclick="() => settingsOpen = false">Cancel</button>
+        <button class="cal-btn primary" disabled="@savingSettings" @onclick="SaveSettingsAsync">@(savingSettings ? "Saving…" : "Save")</button>
+    </Footer>
+</Modal>
 
 @* Outside the drawer form so its .cal-form label/input rules never reach the dialog. *@
 <AddressBookDialog @ref="addressBook" />

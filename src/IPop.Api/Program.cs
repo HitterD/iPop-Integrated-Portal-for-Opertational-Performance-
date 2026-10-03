@@ -379,6 +379,7 @@ app.MapProjectTime();
 app.MapProjectPortfolio();
 app.MapMeetings();
 app.MapCalendar();
+app.MapCalendarSharing();
 app.MapNews();
 app.MapNewsComposer();
 app.MapNewsComposerMedia();

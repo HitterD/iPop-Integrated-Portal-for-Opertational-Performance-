@@ -118,7 +118,7 @@ public static class CalendarEndpoints
             .ToListAsync(ct);
         items.AddRange(personal.Select(e => new CalendarFeedItem(
             $"event:{e.Id}", "personal", e.Type == "rapat" ? "meeting" : "event", e.Title, e.StartAt, e.EndAt, e.AllDay,
-            null, null, e.Id, null, null, true, e.Location, e.Link)));
+            null, null, e.Id, null, null, true, e.Location, e.Link, e.Visibility)));
 
         // 2) Rapat yang saya ikuti/selenggarakan (termasuk event ruang chat), kecuali dibatalkan.
         var meetings = await db.Meetings.AsNoTracking()
@@ -126,7 +126,7 @@ public static class CalendarEndpoints
                 && (m.OrganizerId == userId || m.Attendees.Any(a => a.UserId == userId)))
             .Select(m => new
             {
-                m.Id, m.Title, m.StartAt, m.EndAt, m.Location, m.Link, m.RoomId, m.OrganizerId,
+                m.Id, m.Title, m.StartAt, m.EndAt, m.Location, m.Link, m.RoomId, m.OrganizerId, m.Visibility,
                 OrganizerName = m.Organizer.Name,
                 Rsvp = m.Attendees.Where(a => a.UserId == userId).Select(a => a.RsvpStatus).FirstOrDefault(),
                 EventId = db.CalendarEvents.Where(e => e.MeetingId == m.Id).OrderBy(e => e.CreatedAt).Select(e => (Guid?)e.Id).FirstOrDefault(),
@@ -142,7 +142,7 @@ public static class CalendarEndpoints
                 $"meeting:{m.Id}", isRoom ? "chat" : "meetings", "meeting", m.Title, m.StartAt, m.EndAt, m.AllDay,
                 isRoom ? $"/chat/{m.RoomId}" : $"/calls?tab=scheduled&meeting={m.Id}",
                 isRoom ? m.RoomName : $"Organizer: {m.OrganizerName}",
-                m.EventId, m.Id, m.Rsvp ?? (m.OrganizerId == userId ? "accept" : null), m.OrganizerId == userId, m.Location, m.Link));
+                m.EventId, m.Id, m.Rsvp ?? (m.OrganizerId == userId ? "accept" : null), m.OrganizerId == userId, m.Location, m.Link, m.Visibility));
         }
 
         // 3) Proyek saya: tugas saya yang belum selesai, milestone, hari libur/off proyek.
@@ -305,6 +305,7 @@ public static class CalendarEndpoints
         ev.Link = Clean(req.Link, 1000);
         ev.Notes = Clean(req.Notes, 4000);
         ev.ReminderMinutes = reminder;
+        if (CalendarVisibility.IsEventLevel(req.Visibility)) ev.Visibility = req.Visibility!;
         if (!string.IsNullOrWhiteSpace(req.Type)) ev.Type = req.Type.Trim().ToLowerInvariant() is "rapat" or "kerja" or "pribadi" ? req.Type.Trim().ToLowerInvariant() : ev.Type;
     }
 
@@ -314,7 +315,11 @@ public static class CalendarEndpoints
     {
         var (r, title, start, end) = Normalize(req);
         if (r != SaveResult.Ok) return (r, null, []);
-        var ev = new CalendarEvent { Id = Guid.NewGuid(), Title = title, OwnerId = userId, RoomId = req.RoomId, CreatedAt = DateTime.UtcNow, Type = "kerja" };
+        var ev = new CalendarEvent
+        {
+            Id = Guid.NewGuid(), Title = title, OwnerId = userId, RoomId = req.RoomId, CreatedAt = DateTime.UtcNow, Type = "kerja",
+            Visibility = await CalendarSharingEndpoints.DefaultEventVisibilityAsync(db, userId, ct),
+        };
         ApplyDetails(ev, req, title, start, end);
 
         IReadOnlyList<Guid> invited = [];
@@ -326,7 +331,7 @@ public static class CalendarEndpoints
             {
                 Id = Guid.NewGuid(), Title = title, StartAt = start, EndAt = end, OrganizerId = userId, Status = "aktif",
                 RoomId = req.RoomId, Location = ev.Location, Link = ev.Link, Agenda = ev.Notes,
-                ReminderMinutes = ev.ReminderMinutes, CreatedAt = DateTime.UtcNow,
+                ReminderMinutes = ev.ReminderMinutes, Visibility = ev.Visibility, CreatedAt = DateTime.UtcNow,
             };
             db.Meetings.Add(meeting);
             foreach (var uid in ids)
@@ -373,6 +378,7 @@ public static class CalendarEndpoints
             invited = added;
             ev = await db.CalendarEvents.FirstAsync(e => e.Id == id, ct);
             ApplyDetails(ev, req, title, start, end);
+            if (CalendarVisibility.IsEventLevel(req.Visibility)) m.Visibility = req.Visibility!;
         }
         else
         {
@@ -386,7 +392,7 @@ public static class CalendarEndpoints
                 {
                     Id = Guid.NewGuid(), Title = title, StartAt = start, EndAt = end, OrganizerId = userId, Status = "aktif",
                     RoomId = req.RoomId, Location = ev.Location, Link = ev.Link, Agenda = ev.Notes,
-                    ReminderMinutes = ev.ReminderMinutes, CreatedAt = DateTime.UtcNow,
+                    ReminderMinutes = ev.ReminderMinutes, Visibility = ev.Visibility, CreatedAt = DateTime.UtcNow,
                 };
                 db.Meetings.Add(meeting);
                 foreach (var uid in ids)
@@ -475,18 +481,21 @@ public static class CalendarEndpoints
         if (ev is null) return null;
         List<CalendarPersonDto> people = [];
         string? status = null, roomName = null;
+        var visibility = ev.Visibility;
         if (ev.MeetingId is { } mid)
         {
             people = await db.MeetingAttendees.AsNoTracking().Where(a => a.MeetingId == mid)
                 .OrderBy(a => a.User.Name)
                 .Select(a => new CalendarPersonDto(a.UserId, a.User.Nik, a.User.Name, a.RsvpStatus)).ToListAsync(ct);
-            status = await db.Meetings.AsNoTracking().Where(m => m.Id == mid).Select(m => m.Status).FirstOrDefaultAsync(ct);
+            var meta = await db.Meetings.AsNoTracking().Where(m => m.Id == mid).Select(m => new { m.Status, m.Visibility }).FirstOrDefaultAsync(ct);
+            status = meta?.Status;
+            if (meta is not null) visibility = meta.Visibility;
         }
         if (ev.OwnerId != viewerId && people.All(p => p.UserId != viewerId)) return null;
         if (ev.RoomId is { } rid) roomName = await db.ChatRooms.AsNoTracking().Where(r => r.Id == rid).Select(r => r.Name).FirstOrDefaultAsync(ct);
         var owner = await db.Users.AsNoTracking().Where(u => u.Id == ev.OwnerId).Select(u => u.Name).FirstOrDefaultAsync(ct) ?? "";
         return new CalendarEventDetailDto(ev.Id, ev.Title, ev.StartAt, ev.EndAt, ev.AllDay, ev.Location, ev.Link, ev.Notes,
-            ev.ReminderMinutes, ev.RoomId, roomName, ev.MeetingId, status, owner, ev.OwnerId == viewerId, people);
+            ev.ReminderMinutes, ev.RoomId, roomName, ev.MeetingId, status, owner, ev.OwnerId == viewerId, people, visibility);
     }
 
     private static DateTime AsUtc(DateTime dt) => dt.Kind switch
@@ -506,15 +515,16 @@ public static class CalendarEndpoints
     /// One calendar entry from any module. Source = filter group (personal/meetings/chat/projects/mail/news);
     /// Kind = sub-type for icon/colour. Url = where clicking goes (null → open the event drawer).
     public record CalendarFeedItem(string Id, string Source, string Kind, string Title, DateTime StartAt, DateTime EndAt, bool AllDay,
-        string? Url, string? Subtitle, Guid? EventId, Guid? MeetingId, string? Rsvp, bool CanEdit, string? Location, string? Link);
+        string? Url, string? Subtitle, Guid? EventId, Guid? MeetingId, string? Rsvp, bool CanEdit, string? Location, string? Link,
+        string? Visibility = null);
     public record SaveEventRequest(string? Title, DateTime StartAt, DateTime EndAt, bool AllDay = false, string? Location = null,
         string? Link = null, string? Notes = null, int? ReminderMinutes = null, IReadOnlyList<Guid>? AttendeeIds = null,
-        Guid? RoomId = null, string? Type = null, IReadOnlyList<string>? AttendeeNiks = null)
+        Guid? RoomId = null, string? Type = null, IReadOnlyList<string>? AttendeeNiks = null, string? Visibility = null)
     {
         public bool HasAttendees => AttendeeIds is { Count: > 0 } || AttendeeNiks is { Count: > 0 };
     }
     public record CalendarPersonDto(Guid UserId, string Nik, string Name, string Rsvp);
     public record CalendarEventDetailDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, bool AllDay, string? Location,
         string? Link, string? Notes, int? ReminderMinutes, Guid? RoomId, string? RoomName, Guid? MeetingId, string? MeetingStatus,
-        string OwnerName, bool CanEdit, IReadOnlyList<CalendarPersonDto> Attendees);
+        string OwnerName, bool CanEdit, IReadOnlyList<CalendarPersonDto> Attendees, string Visibility = CalendarVisibility.Busy);
 }
