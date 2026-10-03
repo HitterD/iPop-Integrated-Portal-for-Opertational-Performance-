@@ -1,0 +1,55 @@
+@using IPop.Web.Services
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+@inject ConfirmService Confirm
+@inject ToastService Toasts
+
+@* Renders nothing. Binds wwwroot/js/links.js (one delegated click handler for links in chat
+   messages, preview cards and mail bodies) to the app: in-app navigation, toasts and the
+   "this link goes somewhere else" confirm. *@
+
+@code {
+    private DotNetObjectReference<LinkClickHost>? _self;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        _self = DotNetObjectReference.Create(this);
+        try { await JS.InvokeVoidAsync("ipopLinks.attach", _self, IPop.Web.Pages.Files.NasHosts); }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+    }
+
+    /// Internal route only: links.js already reduced the URL to path + query + hash.
+    [JSInvokable]
+    public void Navigate(string path)
+    {
+        if (string.IsNullOrEmpty(path) || !path.StartsWith('/') || path.StartsWith("//")) return;
+        Nav.NavigateTo(path);
+    }
+
+    [JSInvokable]
+    public void Toast(string message, bool ok) => Toasts.Show(message, ok ? ToastKind.Info : ToastKind.Warning);
+
+    /// Mail body link whose visible text names a different site than where it really goes.
+    [JSInvokable]
+    public Task<bool> ConfirmMismatch(string shown, string real)
+    {
+        var host = Uri.TryCreate(real, UriKind.Absolute, out var u) ? u.Host : real;
+        return Confirm.AskAsync(
+            "Open this link?",
+            $"The link text says \"{Trim(shown)}\" but it actually goes to {host} ({Trim(real, 300)}). Only continue if you trust the sender.",
+            "Open link", danger: true);
+    }
+
+    private static string Trim(string s, int max = 120) => s.Length <= max ? s : s[..max] + "…";
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("ipopLinks.detach"); }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        _self?.Dispose();
+    }
+}

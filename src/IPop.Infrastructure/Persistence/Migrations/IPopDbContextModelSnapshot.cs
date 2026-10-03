@@ -537,6 +537,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("LastThreadReplyAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<bool>("LinkPreviewOff")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid?>("ReplyToId")
                         .HasColumnType("uuid");
 

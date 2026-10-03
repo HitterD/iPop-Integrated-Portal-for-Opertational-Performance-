@@ -206,6 +206,7 @@ public partial class Chat
         if (previousRoomId is not null)
             FlushComposerDraft(previousRoomId.Value);
         messageText = "";
+        ResetComposerLink();
         replyToMsg = null;
         plusMenuOpen = false;
         pickerOpen = false;

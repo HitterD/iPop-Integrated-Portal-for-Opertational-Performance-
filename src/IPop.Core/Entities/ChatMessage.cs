@@ -18,6 +18,8 @@ public class ChatMessage
     // asli) sehingga label "Diteruskan" tidak bergantung pada prefix teks.
     public Guid? ForwardedFromMessageId { get; set; }
     public string? ForwardedFromSenderName { get; set; }
+    /// The sender dismissed the link preview card before sending.
+    public bool LinkPreviewOff { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? EditedAt { get; set; }
 

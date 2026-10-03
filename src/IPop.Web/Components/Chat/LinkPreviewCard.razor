@@ -1,0 +1,147 @@
+@using IPop.Application.Links
+@using IPop.Web.Services
+@implements IAsyncDisposable
+@inject LinkPreviewService Previews
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+@* WhatsApp-style preview for one link. Message mode: loads only once the slot is near the
+   viewport (ipopLinks.observe), the whole card is a link handled by links.js. Composer mode:
+   loads at once, is not a link, and carries the "Remove link preview" button.
+   204 / error → renders nothing; never blocks the bubble. *@
+<div class="lp-slot @(Composer ? "lp-compose" : "")" @ref="_el">
+    @if (_preview is { } p)
+    {
+        var ip = p.Internal;
+        var title = ip?.Title ?? p.Title ?? HostOf(Url);
+        var sub = ip is not null ? ip.Subtitle : p.Description;
+        var site = ip is not null ? TypeLabel(ip.Type) : (string.IsNullOrWhiteSpace(p.SiteName) ? HostOf(Url) : p.SiteName);
+        var img = ip is null ? ImageUrl(p.Image) : null;
+        var label = $"Link preview: {title}{(string.IsNullOrWhiteSpace(site) ? "" : " — " + site)}";
+        if (Composer)
+        {
+            <div class="lp-card @(ip is not null ? "lp-internal" : "")" role="group" aria-label="@label">
+                @Body(ip, title, sub, site, img)
+                <button type="button" class="lp-remove" aria-label="Remove link preview" title="Remove link preview" @onclick="() => OnRemove.InvokeAsync(Url)">
+                    <i data-lucide="x"></i>
+                </button>
+            </div>
+        }
+        else
+        {
+            <a class="lp-card @(ip is not null ? "lp-internal" : "")" href="@Url" target="_blank" rel="noopener noreferrer"
+               title="@Url" aria-label="@label" @onclick:stopPropagation>
+                @Body(ip, title, sub, site, img)
+            </a>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Url { get; set; } = "";
+    [Parameter] public bool Composer { get; set; }
+    [Parameter] public EventCallback<string> OnRemove { get; set; }
+
+    private ElementReference _el;
+    private DotNetObjectReference<LinkPreviewCard>? _self;
+    private LinkPreviewDto? _preview;
+    private string? _for;          // URL the current state belongs to
+    private bool _watching, _iconsDue, _settleDue, _disposed;
+
+    private RenderFragment Body(InternalLinkDto? ip, string title, string? sub, string? site, string? img) => __builder =>
+    {
+        if (ip is not null)
+        {
+            <span class="lp-icon" aria-hidden="true"><i data-lucide="@TypeIcon(ip.Type)"></i></span>
+        }
+        else if (img is not null)
+        {
+            <span class="lp-thumb" aria-hidden="true"><img src="@img" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" onerror="this.parentElement.style.display='none'" /></span>
+        }
+        <span class="lp-text">
+            @if (!string.IsNullOrWhiteSpace(site)) { <span class="lp-site">@site</span> }
+            <span class="lp-title">@title</span>
+            @if (!string.IsNullOrWhiteSpace(sub)) { <span class="lp-desc">@sub</span> }
+        </span>
+    };
+
+    protected override void OnParametersSet()
+    {
+        if (_for == Url) return;
+        _for = Url;
+        _preview = null;
+        _watching = false;
+        // Already known (re-render, scrolled back, composer → sent bubble): draw it at once.
+        if (Previews.TryGetCached(Url, out var cached)) { _preview = cached; _iconsDue = cached is not null; }
+        else if (Composer) _ = LoadAsync(Url);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_disposed) return;
+        try
+        {
+            if (!Composer && _preview is null && !_watching && !Previews.TryGetCached(Url, out _))
+            {
+                _watching = true;
+                _self ??= DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("ipopLinks.observe", _el, _self);
+            }
+            if (_iconsDue) { _iconsDue = false; await JS.InvokeVoidAsync("ipop.icons"); }
+            if (_settleDue) { _settleDue = false; await JS.InvokeVoidAsync("ipopLinks.settle", _el); }
+        }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { }
+        catch (TaskCanceledException) { }
+    }
+
+    [JSInvokable]
+    public Task OnVisible() => LoadAsync(Url);
+
+    private async Task LoadAsync(string url)
+    {
+        var p = await Previews.GetAsync(url);
+        if (_disposed || url != Url || p is null) return;
+        _preview = p;
+        _iconsDue = true;
+        _settleDue = !Composer;
+        StateHasChanged();
+    }
+
+    private string? ImageUrl(string? image)
+    {
+        if (string.IsNullOrWhiteSpace(image)) return null;
+        // Only our own proxied image endpoint (API-relative) or plain https — never data:/javascript:.
+        if (image.StartsWith('/')) return Http.BaseAddress is { } b ? new Uri(b, image.TrimStart('/')).ToString() : image;
+        return Uri.TryCreate(image, UriKind.Absolute, out var u) && u.Scheme == Uri.UriSchemeHttps ? u.ToString() : null;
+    }
+
+    private static string HostOf(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var u) ? (u.Host.StartsWith("www.") ? u.Host[4..] : u.Host) : url;
+
+    private static string TypeIcon(string? type) => type switch
+    {
+        "news" => "newspaper",
+        "project" => "folder-kanban",
+        "task" => "square-check-big",
+        _ => "app-window",
+    };
+
+    private static string TypeLabel(string? type) => type switch
+    {
+        "news" => "iPop News",
+        "project" => "iPop Project",
+        "task" => "iPop Task",
+        _ => "iPop",
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        try { if (_watching) await JS.InvokeVoidAsync("ipopLinks.unobserve", _el); }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { }
+        catch (TaskCanceledException) { }
+        _self?.Dispose();
+    }
+}

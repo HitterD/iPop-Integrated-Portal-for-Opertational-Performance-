@@ -78,6 +78,10 @@ public static class ChatFormatters
     private static readonly Regex RxItalic = new(@"(?<=^|[^\w])_([^_ \r\n][^_\r\n]*?)_(?=[^\w]|$)");
     private static readonly Regex RxStrike = new(@"(?<=^|[^\w])~([^~ \r\n][^~\r\n]*?)~(?=[^\w]|$)");
 
+    // Anchors emitted by MentionRenderer: shielded so "_x_" / "*x*" inside a URL never turns into
+    // <em>/<strong> inside the href or the visible link text.
+    private static readonly Regex RxAnchor = new(@"<a\s[^>]*>.*?</a>", RegexOptions.Singleline);
+
     /// Renders lightweight markdown formatting (bold, italic, code, strikethrough) and preserves linebreaks.
     public static string FormatMarkdown(string html)
     {
@@ -91,6 +95,15 @@ public static class ChatFormatters
             var code = m.Groups[1].Value;
             codeBlocks.Add($"<pre class=\"chat-code\"><code>{code}</code></pre>");
             return $"{blockPlaceholder}{codeBlocks.Count - 1}\x1A";
+        });
+
+        // 1b. Shield links (after code blocks so a fenced block keeps its own content).
+        var anchors = new List<string>();
+        const string linkPlaceholder = "\u001ALINK_";
+        html = RxAnchor.Replace(html, m =>
+        {
+            anchors.Add(m.Value);
+            return $"{linkPlaceholder}{anchors.Count - 1}\u001A";
         });
 
         // 2. Inline code `...`
@@ -109,7 +122,12 @@ public static class ChatFormatters
         // 6. Convert newlines to <br /> (outside code blocks)
         html = html.Replace("\r\n", "\n").Replace("\n", "<br />");
 
-        // 7. Reinsert code blocks
+        // 7. Reinsert links, then code blocks
+        for (int i = 0; i < anchors.Count; i++)
+        {
+            html = html.Replace($"{linkPlaceholder}{i}\u001A", anchors[i]);
+        }
+
         for (int i = 0; i < codeBlocks.Count; i++)
         {
             html = html.Replace($"{blockPlaceholder}{i}\x1A", codeBlocks[i]);

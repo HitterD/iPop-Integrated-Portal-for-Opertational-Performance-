@@ -897,6 +897,10 @@
                         {
                             <div class="composer-limit" role="status">@ComposerWireText().Length / @ChatState.MaxMessageLength characters</div>
                         }
+                        @if (ComposerPreviewUrl is { } composerPreview)
+                        {
+                            <IPop.Web.Components.Chat.LinkPreviewCard @key="composerPreview" Url="@composerPreview" Composer="true" OnRemove="RemoveComposerPreview" />
+                        }
                         <div class="composer v6-composer">
                             <InputFile @ref="fileInput" OnChange="OnFileSelected" class="hidden-input" accept="*/*" multiple />
                             @if (isRecordingVoice)

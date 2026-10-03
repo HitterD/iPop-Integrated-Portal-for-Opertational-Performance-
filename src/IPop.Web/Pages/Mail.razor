@@ -732,7 +732,7 @@
                     }
                     else
                     {
-                        <div class="body">@((MarkupString)detail.Body)</div>
+                        <div class="body mail-body-links">@((MarkupString)detail.Body)</div>
 
                         <MailAttachmentCards Attachments="detail.Attachments" />
                     }
@@ -862,7 +862,7 @@
                 }
                 else
                 {
-                    <div class="mail-html-body">
+                    <div class="mail-html-body mail-body-links">
                         @((MarkupString)(detail.IsHtml ? detail.Body : $"<pre style=\"white-space:pre-wrap;font-family:inherit\">{detail.Body}</pre>"))
                     </div>
                 }
@@ -1093,6 +1093,23 @@
             return;
         }
 
+        // mailto: links in chat/mail (links.js) → iPop's own composer. Recipients are iPop users
+        // (NIK-based), so the address is looked up; an outside address can't be mailed from iPop.
+        if (parsed.TryGetValue("toEmail", out var toEmail) && !string.IsNullOrWhiteSpace(toEmail))
+        {
+            _lastHandledQuery = query;
+            toEmail = toEmail.Trim();
+            var hit = await FindUserByEmailAsync(toEmail);
+            if (hit is not null)
+                OpenComposer(initialTo: [new MemberSearchRow(hit.Nik, hit.Name, null, null)]);
+            else
+            {
+                OpenComposer();
+                Toasts.Show($"{toEmail} isn't an iPop user — iPop Mail only reaches iPop accounts.", ToastKind.Warning);
+            }
+            return;
+        }
+
         var hasCompose = parsed.TryGetValue("compose", out var composeVal);
         var hasTo = parsed.TryGetValue("to", out var toVal);
 
@@ -1128,6 +1145,18 @@
             }
             return;
         }
+    }
+
+    private sealed record EmailUserHit(Guid Id, string Nik, string Name, string? Email);
+
+    private async Task<EmailUserHit?> FindUserByEmailAsync(string email)
+    {
+        try
+        {
+            var rows = await Auth.GetAsync<List<EmailUserHit>>($"/api/chat/users/search?q={Uri.EscapeDataString(email)}");
+            return rows?.FirstOrDefault(r => string.Equals(r.Email?.Trim(), email, StringComparison.OrdinalIgnoreCase));
+        }
+        catch { return null; }
     }
 
     private async Task SetTabFilter(string tab)

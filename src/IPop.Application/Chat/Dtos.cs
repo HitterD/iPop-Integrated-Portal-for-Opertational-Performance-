@@ -1,7 +1,9 @@
 namespace IPop.Application.Chat;
 
 // Message DTOs
-public record SendMessageRequest(Guid RoomId, string Content, Guid IdempotencyKey, Guid? ReplyToId, string? Type, IReadOnlyList<Guid>? AttachmentIds = null);
+public record SendMessageRequest(Guid RoomId, string Content, Guid IdempotencyKey, Guid? ReplyToId, string? Type, IReadOnlyList<Guid>? AttachmentIds = null,
+    /// Sender removed the link preview card before sending (default false = preview shown).
+    bool LinkPreviewOff = false);
 public record MessageDto(Guid Id, Guid RoomId, Guid SenderId, string SenderName, string SenderNik,
     string Type, string Content, DateTime CreatedAt, DateTime? EditedAt, bool IsDeleted,
     string? DeletedByType, Guid? ReplyToId, ReplyPreviewDto? ReplyPreview,
@@ -21,7 +23,9 @@ public record MessageDto(Guid Id, Guid RoomId, Guid SenderId, string SenderName,
     /// out of ReadTotal active members. Null outside groups and for received messages.
     int? ReadCount = null,
     int? ReadTotal = null,
-    IReadOnlyList<SeenByDto>? ReadPreview = null);
+    IReadOnlyList<SeenByDto>? ReadPreview = null,
+    /// True when the sender removed the link preview card; clients then show no preview.
+    bool LinkPreviewOff = false);
 public record MessageAckDto(Guid MessageId, DateTime ServerTimestamp, Guid IdempotencyKey);
 /// SendMessage's hub return value on every exit path. RoomId + IdempotencyKey echo the request so
 /// the client settles exactly that message; Error is a stable code (e.g. "rate_limited").
@@ -102,6 +106,7 @@ public record DeleteRoomResultDto(bool Success, string? Error, IReadOnlyList<Gui
 public record StoredChatFile(string Server, string Path);
 
 // Hub-specific DTOs
-public record SendMessageHubRequest(Guid RoomId, string Content, Guid IdempotencyKey, Guid? ReplyToId, string? Type, IReadOnlyList<Guid>? AttachmentIds = null);
+public record SendMessageHubRequest(Guid RoomId, string Content, Guid IdempotencyKey, Guid? ReplyToId, string? Type, IReadOnlyList<Guid>? AttachmentIds = null,
+    bool LinkPreviewOff = false);
 public record DeletedDto(Guid MessageId, string Replacement);
 public record RoomUpdateDto(Guid RoomId, string? Name, DateTime LastMessageAt);

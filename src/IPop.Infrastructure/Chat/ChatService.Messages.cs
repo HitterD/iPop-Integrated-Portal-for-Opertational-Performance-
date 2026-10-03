@@ -88,6 +88,7 @@ public sealed partial class ChatService
             Content = req.Content,
             IdempotencyKey = req.IdempotencyKey,
             ReplyToId = req.ReplyToId,
+            LinkPreviewOff = req.LinkPreviewOff,
             CreatedAt = now
         };
 

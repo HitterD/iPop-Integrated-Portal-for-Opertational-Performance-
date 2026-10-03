@@ -141,7 +141,7 @@ public static class ChatEndpoints
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
-            var req = new SendMessageRequest(roomId, body.Content, body.IdempotencyKey, body.ReplyToId, body.Type, body.AttachmentIds);
+            var req = new SendMessageRequest(roomId, body.Content, body.IdempotencyKey, body.ReplyToId, body.Type, body.AttachmentIds, body.LinkPreviewOff);
             var result = await svc.SendMessageAsync(userId.Value, req, ct);
 
             if (!result.Success)
@@ -281,7 +281,7 @@ public static class ChatEndpoints
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
-            var req = new SendMessageRequest(body.RoomId ?? Guid.Empty, body.Content, body.IdempotencyKey, body.ReplyToId, body.Type, body.AttachmentIds);
+            var req = new SendMessageRequest(body.RoomId ?? Guid.Empty, body.Content, body.IdempotencyKey, body.ReplyToId, body.Type, body.AttachmentIds, body.LinkPreviewOff);
             var result = await svc.SendThreadReplyAsync(userId.Value, parentId, req, ct);
 
             if (!result.Success)
@@ -1693,7 +1693,7 @@ public static class ChatEndpoints
     // Request DTOs
     public record DeleteRoomRequest(string? ConfirmName);
     public record CreateDmRequest(Guid RecipientId);
-    public record SendMessageBody(string Content, Guid IdempotencyKey, Guid? ReplyToId, string? Type, Guid? RoomId, IReadOnlyList<Guid>? AttachmentIds = null);
+    public record SendMessageBody(string Content, Guid IdempotencyKey, Guid? ReplyToId, string? Type, Guid? RoomId, IReadOnlyList<Guid>? AttachmentIds = null, bool LinkPreviewOff = false);
     public record EditRequest(string Content);
     public record ForwardRequest(Guid TargetRoomId);
     public record ReactRequest(string Emoji);

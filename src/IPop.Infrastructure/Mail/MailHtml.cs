@@ -1,4 +1,7 @@
+using AngleSharp.Dom;
+using AngleSharp.Html.Parser;
 using Ganss.Xss;
+using IPop.Application.Links;
 
 namespace IPop.Infrastructure.Mail;
 
@@ -15,6 +18,9 @@ public static class MailHtml
         s.AllowedAttributes.Add("class");
         s.AllowedAttributes.Add("data-nik");     // @mention chips
         s.AllowedAttributes.Add("data-project"); // linked-project chips
+        s.AllowedAttributes.Add("data-unc");     // linkified \\host\share paths (client opens them)
+        s.AllowedAttributes.Add("target");
+        s.AllowedAttributes.Add("rel");
 
         // Pasted/dropped images are stored inline as data: URIs. Only raster images on <img>,
         // capped per image — never data: on links, CSS url() or other MIME types (svg can script).
@@ -48,6 +54,83 @@ public static class MailHtml
 
     public static string Sanitize(string? html) =>
         string.IsNullOrEmpty(html) ? "" : Sanitizer.Sanitize(html);
+
+    /// What readers get: sanitized, plain-text links made clickable, sanitized again so the
+    /// linkify output is held to the same allow-list as everything else.
+    public static string ForDisplay(string? html) =>
+        string.IsNullOrEmpty(html) ? "" : Sanitizer.Sanitize(Linkify(Sanitizer.Sanitize(html)));
+
+    private static readonly HashSet<string> NoLinkifyTags = new(StringComparer.OrdinalIgnoreCase)
+        { "A", "CODE", "PRE", "STYLE", "SCRIPT", "TEXTAREA", "BUTTON", "SELECT", "OPTION", "TITLE" };
+
+    /// Wraps URLs, www. hosts, email addresses and \\host\share paths found in TEXT nodes in
+    /// anchors (see <see cref="LinkDetector"/>). Text already inside an anchor, code/pre, style/script
+    /// or a mention/project chip is left alone, so running it twice changes nothing. External links
+    /// open in a new tab without referrer; UNC paths become <c>&lt;a class="unc-link" href="#"
+    /// data-unc="…"&gt;</c> for the client to handle.
+    public static string Linkify(string? html)
+    {
+        if (string.IsNullOrEmpty(html)) return "";
+        var doc = new HtmlParser().ParseDocument("<!doctype html><html><body>" + html + "</body></html>");
+        var body = doc.Body;
+        if (body is null) return html;
+
+        var targets = new List<IText>();
+        Collect(body, targets);
+        if (targets.Count == 0) return html;
+
+        foreach (var text in targets)
+        {
+            var value = text.Data;
+            var spans = LinkDetector.Find(value);
+            if (spans.Count == 0) continue;
+            var parent = text.Parent!;
+            var pos = 0;
+            foreach (var span in spans)
+            {
+                if (span.Start > pos) parent.InsertBefore(doc.CreateTextNode(value[pos..span.Start]), text);
+                var a = doc.CreateElement("a");
+                switch (span.Kind)
+                {
+                    case LinkKind.Web:
+                        a.SetAttribute("href", span.Href);
+                        a.SetAttribute("target", "_blank");
+                        a.SetAttribute("rel", "noopener noreferrer");
+                        break;
+                    case LinkKind.Email:
+                        a.SetAttribute("href", span.Href);
+                        break;
+                    case LinkKind.Unc:
+                        a.SetAttribute("class", "unc-link");
+                        a.SetAttribute("href", "#");
+                        a.SetAttribute("data-unc", span.Href);
+                        break;
+                }
+                a.TextContent = span.Display;
+                parent.InsertBefore(a, text);
+                pos = span.Start + span.Length;
+            }
+            if (pos < value.Length) parent.InsertBefore(doc.CreateTextNode(value[pos..]), text);
+            parent.RemoveChild(text);
+        }
+        return body.InnerHtml;
+    }
+
+    private static void Collect(INode node, List<IText> into)
+    {
+        foreach (var child in node.ChildNodes)
+        {
+            if (child is IText t)
+            {
+                if (t.Data.Length > 3) into.Add(t);
+            }
+            else if (child is IElement e)
+            {
+                if (NoLinkifyTags.Contains(e.TagName) || e.HasAttribute("data-nik") || e.HasAttribute("data-project")) continue;
+                Collect(e, into);
+            }
+        }
+    }
 
     public static string ToPlainText(string? html)
     {

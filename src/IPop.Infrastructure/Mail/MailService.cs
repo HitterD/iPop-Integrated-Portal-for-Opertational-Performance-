@@ -489,7 +489,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
 
         return new MailDetailDto(
             mail.Id, mail.SenderId, mail.Sender.Name, mail.Sender.Nik,
-            mail.Subject, mail.IsHtml ? MailHtml.Sanitize(mail.Body) : mail.Body, mail.IsHtml, mail.Signature, mail.SentAt,
+            mail.Subject, mail.IsHtml ? (draftState is not null || mail.Status == "draft" ? MailHtml.Sanitize(mail.Body) : MailHtml.ForDisplay(mail.Body)) : mail.Body, mail.IsHtml, mail.Signature, mail.SentAt,
             mail.InReplyToId, mail.ThreadRootId, mail.ThreadCount,
             recipient.IsStarred, recipient.IsRead, recipient.Folder,
             mail.PdfExportRequestedBy, mail.PdfExportRequestedAt,

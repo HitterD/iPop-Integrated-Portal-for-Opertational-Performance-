@@ -63,6 +63,14 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy("push-action", http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1) }));
+    // Link previews make the server fetch the web: 60 lookups per user per minute.
+    o.AddPolicy(IPop.Api.Endpoints.LinkPreviewEndpoints.RateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+        http.User.FindFirst("nik")?.Value ?? http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 60, Window = TimeSpan.FromMinutes(1) }));
+    // Signed preview images are anonymous (<img>); cap per client address.
+    o.AddPolicy(IPop.Api.Endpoints.LinkPreviewEndpoints.ImageRateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 240, Window = TimeSpan.FromMinutes(1) }));
 });
 builder.Services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
 builder.Services.AddSingleton<SynologySessionCache>();
@@ -243,6 +251,16 @@ builder.Services.AddDevExpressDocumentServices();
 builder.Services.AddScoped<IPop.Application.Search.ISearchService, IPop.Infrastructure.Search.SearchService>();
 builder.Services.AddScoped<IPop.Application.Dashboard.IDashboardService, IPop.Infrastructure.Dashboard.DashboardService>();
 
+// Link previews: server-side OpenGraph fetch behind an SSRF guard, signed image proxy.
+builder.Services.AddSingleton(IPop.Infrastructure.Links.LinkPreviewOptions.Bind(builder.Configuration));
+builder.Services.AddSingleton<IPop.Infrastructure.Links.LinkPreviewCache>();
+builder.Services.AddSingleton<IPop.Infrastructure.Links.IDnsResolver, IPop.Infrastructure.Links.SystemDnsResolver>();
+builder.Services.AddSingleton(sp => new IPop.Infrastructure.Links.SafeHttpFetcher(sp.GetRequiredService<IPop.Infrastructure.Links.IDnsResolver>()));
+// HMAC key is HKDF-derived from Jwt:Key with its own purpose label (never the JWT key itself).
+builder.Services.AddSingleton(new IPop.Infrastructure.Links.LinkPreviewImageSigner(builder.Configuration["Jwt:Key"]!));
+builder.Services.AddScoped<IPop.Infrastructure.Links.InternalLinkResolver>();
+builder.Services.AddScoped<IPop.Infrastructure.Links.LinkPreviewService>();
+
 var app = builder.Build();
 
 // Unhandled errors answer a bare 500 — never a stack trace, even though the deployed API runs
@@ -339,6 +357,7 @@ app.MapDocumentDemo();
 app.MapSettings();
 app.MapAttachments();
 app.MapDashboardAndSearch();
+app.MapLinkPreview();
 app.MapHub<ChatHub>("/hubs/chat").RequireAuthorization();
 app.MapHub<IPop.Api.Calls.CallHub>("/hubs/calls").RequireAuthorization();
 app.MapHub<IPop.Api.Notes.NotesHub>("/hubs/notes").RequireAuthorization();

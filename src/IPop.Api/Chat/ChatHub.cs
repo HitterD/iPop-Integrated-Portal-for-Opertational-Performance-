@@ -93,7 +93,7 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
         // Rate limit: 30 messages per 60-second sliding window (Req 30.6)
         if (!CheckRateLimit(nik)) return Fail("rate_limited");
 
-        var req = new SendMessageRequest(request.RoomId, request.Content, request.IdempotencyKey, request.ReplyToId, request.Type, request.AttachmentIds);
+        var req = new SendMessageRequest(request.RoomId, request.Content, request.IdempotencyKey, request.ReplyToId, request.Type, request.AttachmentIds, request.LinkPreviewOff);
         var result = await chatService.SendMessageAsync(userId.Value, req, Context.ConnectionAborted);
 
         if (!result.Success) return Fail(result.Error ?? "unknown");

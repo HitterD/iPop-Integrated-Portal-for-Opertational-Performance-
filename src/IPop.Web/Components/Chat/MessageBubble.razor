@@ -110,6 +110,10 @@
             }
             @if (Message.Type != "system") { @Meta(false) }
         </div>
+        @if (PreviewUrl is { } previewUrl)
+        {
+            <LinkPreviewCard @key="previewUrl" Url="@previewUrl" />
+        }
         @if (Reactions.Count > 0)
         {
             <div class="reactions">
@@ -280,6 +284,22 @@
             var html = MentionRenderer.ToHtml(text, dir, room?.Type == "group", Auth.Me?.Nik, LegacyMentionNames(room));
             (_htmlFor, _htmlRoom, _html) = (Message.Content, room, ChatFormatters.FormatMarkdown(html));
             return _html;
+        }
+    }
+
+    // First web link of a plain text message gets one preview card, unless the sender removed it.
+    private string? _previewFor;
+    private string? _previewUrl;
+    private string? PreviewUrl
+    {
+        get
+        {
+            if (Message.IsDeleted || Message.LinkPreviewOff || Message.Type is "system" or "sticker" or "event" or "emergency"
+                || string.IsNullOrWhiteSpace(Message.Content) || IsAttachmentPlaceholder(Message)
+                || Message.Content.StartsWith("[note]") || IsPollMessage(Message)) return null;
+            if (!ReferenceEquals(_previewFor, Message.Content))
+                (_previewFor, _previewUrl) = (Message.Content, MentionRenderer.FirstWebLink(Message.Content));
+            return _previewUrl;
         }
     }
 

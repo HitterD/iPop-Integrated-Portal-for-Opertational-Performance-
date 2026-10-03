@@ -143,7 +143,8 @@ public sealed partial class ChatService : IChatService
             ForwardedFromSenderName: m.ForwardedFromSenderName
                 ?? (m.Content.StartsWith("[forwarded]", StringComparison.Ordinal) ? "" : null),
             ReadCount: groupReadCount,
-            ReadTotal: groupReadTotal);
+            ReadTotal: groupReadTotal,
+            LinkPreviewOff: m.LinkPreviewOff);
     }
 
     private static string Truncate(string value, int maxLength)

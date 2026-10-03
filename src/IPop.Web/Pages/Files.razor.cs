@@ -92,6 +92,35 @@ public partial class Files
         new("jtb", "JTB", "10.11.2.6"),
         new("smg", "SMG", "10.14.2.16"),
     ];
+    /// NAS host (as written in a UNC path) → site id. links.js opens UNC paths (\\host\share\…) here.
+    public static IReadOnlyDictionary<string, string> NasHosts { get; } =
+        Servers.ToDictionary(s => s.Host, s => s.Id, StringComparer.OrdinalIgnoreCase);
+
+    // Deep link from a chat/mail UNC path: /files?server=spj&path=/share/sub
+    [SupplyParameterFromQuery(Name = "server")] public string? QueryServer { get; set; }
+    [SupplyParameterFromQuery(Name = "path")] public string? QueryPath { get; set; }
+    private (string Server, string Path)? _deepLink;
+    private bool _filesReady;
+
+    private (string Server, string Path)? QueryTarget()
+    {
+        if (string.IsNullOrWhiteSpace(QueryServer) || string.IsNullOrWhiteSpace(QueryPath)) return null;
+        var site = QueryServer.Trim().ToLowerInvariant();
+        var path = QueryPath.Trim().Replace('\\', '/');
+        if (!path.StartsWith('/') || path.Contains("/../") || path.EndsWith("/..")) return null;
+        if (path.Length > 1) path = path.TrimEnd('/');
+        return Servers.Any(s => s.Id == site) ? (site, path) : null;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Already on /files and a new UNC link was clicked: same component, new query.
+        if (!_filesReady || QueryTarget() is not { } t || t == _deepLink) return;
+        _deepLink = t;
+        await GoTo(t.Server, t.Path);
+        await FileStateService.SaveLastSeenAsync(JS);
+    }
+
     private string serverLabel => Servers.FirstOrDefault(s => s.Id == server)?.Label ?? server.ToUpperInvariant();
     private void ToggleSort(string key)
     {
@@ -152,6 +181,12 @@ public partial class Files
     protected override void OnInitialized()
     {
         Layout.SetHeader("Files", "Files");
+        if (QueryTarget() is { } dl)
+        {
+            _deepLink = dl;
+            FileStateService.CurrentServer = dl.Server;
+            FileStateService.CurrentPath = dl.Path;
+        }
         // Pulihkan state server dan path dari in-memory state seketika (0ms)
         server = FileStateService.CurrentServer;
         credServer = server;
@@ -187,7 +222,10 @@ public partial class Files
         gridView = await JS.InvokeAsync<string?>("localStorage.getItem", ViewKey) == "grid";
 
         // Pulihkan persistent last-seen dari localStorage (jika browser di-refresh / tab baru)
-        var restored = await FileStateService.LoadLastSeenAsync(JS);
+        // A deep link wins over the last-seen folder (and becomes the new last-seen).
+        (string, string)? restored = null;
+        if (_deepLink is null) restored = await FileStateService.LoadLastSeenAsync(JS);
+        else await FileStateService.SaveLastSeenAsync(JS);
         if (restored.HasValue)
         {
             server = FileStateService.CurrentServer;
@@ -206,6 +244,7 @@ public partial class Files
         }
 
         expandedSites.Add(server);
+        _filesReady = true;
         await Task.WhenAll(Reload(), LoadSiteCredentials(), LoadPrefs());
         await MigrateLocalStars();
 

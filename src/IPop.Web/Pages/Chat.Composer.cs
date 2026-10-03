@@ -19,10 +19,65 @@ public partial class Chat
 
     private async Task OnComposerInput()
     {
+        ScheduleComposerLink();
         StageComposerDraft();
         await ChatSvc.SendTypingAsync();
         await CheckMentionAsync();
         await GrowComposer();
+    }
+
+    // ---- Composer link preview ----
+    // The first web link in the composer gets a preview card above the input ~500ms after typing
+    // stops. ✕ turns it off for that URL only (sent with linkPreviewOff); a different first link
+    // brings the card back, and every send starts over.
+    private string? composerLinkUrl;      // debounced first link the card is showing
+    private string? composerLinkOff;      // URL whose preview the sender removed
+    private CancellationTokenSource? composerLinkCts;
+    private string? _firstLinkFor;
+    private string? _firstLink;
+
+    private string? ComposerFirstLink()
+    {
+        if (!ReferenceEquals(_firstLinkFor, messageText))
+            (_firstLinkFor, _firstLink) = (messageText, MentionRenderer.FirstWebLink(messageText));
+        return _firstLink;
+    }
+
+    /// The card is shown only while the debounced link is still the composer's first link, so
+    /// clearing or editing the text hides a stale card immediately.
+    private string? ComposerPreviewUrl =>
+        composerLinkUrl is { } u && u != composerLinkOff && ComposerFirstLink() == u ? u : null;
+
+    private void ScheduleComposerLink()
+    {
+        var first = ComposerFirstLink();
+        if (first == composerLinkUrl) return;
+        composerLinkCts?.Cancel();
+        if (first is null) { composerLinkUrl = null; return; }
+        var cts = composerLinkCts = new CancellationTokenSource();
+        _ = DebounceComposerLinkAsync(first, cts.Token);
+    }
+
+    private async Task DebounceComposerLinkAsync(string url, CancellationToken ct)
+    {
+        try { await Task.Delay(500, ct); } catch (OperationCanceledException) { return; }
+        if (ct.IsCancellationRequested || _disposed || ComposerFirstLink() != url) return;
+        composerLinkUrl = url;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void RemoveComposerPreview(string url)
+    {
+        composerLinkOff = url;
+        focusComposerPending = true;
+    }
+
+    private void ResetComposerLink()
+    {
+        composerLinkCts?.Cancel();
+        composerLinkCts = null;
+        composerLinkUrl = null;
+        composerLinkOff = null;
     }
 
     /// Picks from the @-popup, kept beside the plain-text composer ("@Full Name" in the
@@ -43,6 +98,8 @@ public partial class Chat
     private void LoadComposerFromWire(string? wire)
     {
         (messageText, pickedMentions) = ComposerMentionModel.FromWire(wire);
+        ResetComposerLink();
+        ScheduleComposerLink();
         activeMention = null;
         CloseMentionPopup(true);
     }
@@ -180,6 +237,8 @@ public partial class Chat
         var previews = hasAttachments ? sentAttachments.Select(a => a.AsDto()).ToList() : null;
         var blobUrls = sentAttachments.Where(p => !string.IsNullOrEmpty(p.PreviewUrl)).Select(p => p.PreviewUrl!).ToList();
         OnComposerSendStarted(new ComposerSendSnapshot(sendRoomId.Value, key, text, composerText, replyId, sentAttachments));
+        var linkOff = composerLinkOff is { } off && MentionRenderer.FirstWebLink(text) == off;
+        ResetComposerLink();
 
         pickedMentions = [];
         activeMention = null;
@@ -194,7 +253,7 @@ public partial class Chat
 
         // ChatState adds the bubble before its first await, so the message is in the outbox
         // (and retryable) even if anything below throws.
-        var sendTask = ChatSvc.SendMessageAsync(text, replyId, null, ids, previews, key, blobUrls);
+        var sendTask = ChatSvc.SendMessageAsync(text, replyId, null, ids, previews, key, blobUrls, linkOff);
         try { await JS.InvokeVoidAsync("ipop.resetComposer", composerRef); } catch { }
         // Tell the room we stopped typing, otherwise remote clients keep the indicator up
         // until their 8s local timeout expires.

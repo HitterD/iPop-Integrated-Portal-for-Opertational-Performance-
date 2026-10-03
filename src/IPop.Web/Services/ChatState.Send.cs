@@ -41,6 +41,8 @@ public partial class ChatState
         public string? Type { get; init; }
         public IReadOnlyList<Guid>? AttachmentIds { get; init; }
         public IReadOnlyList<string>? LocalPreviewUrls { get; init; }
+        /// Sender removed the link preview card in the composer.
+        public bool LinkPreviewOff { get; init; }
         /// The optimistic bubble, rebuilt into the timeline whenever the room is repainted.
         public MessageDto Bubble { get; init; } = null!;
         public long Seq { get; init; }
@@ -105,7 +107,8 @@ public partial class ChatState
         IReadOnlyList<Guid>? attachmentIds = null,
         IReadOnlyList<AttachmentDto>? attachmentPreviews = null,
         Guid? idempotencyKey = null,
-        IReadOnlyList<string>? localPreviewUrls = null)
+        IReadOnlyList<string>? localPreviewUrls = null,
+        bool linkPreviewOff = false)
     {
         HookOutbox();
         var key = idempotencyKey ?? Guid.NewGuid();
@@ -125,7 +128,7 @@ public partial class ChatState
         if (content.Length > MaxMessageLength)
             return new SendOutcome(Guid.Empty, roomId.Value, key, SendState.Failed, "payload_too_large");
 
-        var entry = AddOptimistic(roomId.Value, content, key, replyToId, type, attachmentIds, attachmentPreviews, localPreviewUrls);
+        var entry = AddOptimistic(roomId.Value, content, key, replyToId, type, attachmentIds, attachmentPreviews, localPreviewUrls, linkPreviewOff);
         await SendCoreAsync(entry);
         return Outcome(entry);
     }
@@ -161,7 +164,7 @@ public partial class ChatState
         o.State = SendState.Pending;
         StateChanged?.Invoke();
 
-        var request = new SendMessageHubRequest(o.RoomId, o.Content, o.Key, o.ReplyToId, o.Type ?? "text", o.AttachmentIds);
+        var request = new SendMessageHubRequest(o.RoomId, o.Content, o.Key, o.ReplyToId, o.Type ?? "text", o.AttachmentIds, o.LinkPreviewOff);
         SendMessageResultDto? result;
         using var cts = new CancellationTokenSource(SendTimeout);
         try
@@ -221,7 +224,7 @@ public partial class ChatState
     }
 
     private Outgoing AddOptimistic(Guid roomId, string content, Guid key, Guid? replyToId, string? type,
-        IReadOnlyList<Guid>? attachmentIds, IReadOnlyList<AttachmentDto>? attachments, IReadOnlyList<string>? localPreviewUrls)
+        IReadOnlyList<Guid>? attachmentIds, IReadOnlyList<AttachmentDto>? attachments, IReadOnlyList<string>? localPreviewUrls, bool linkPreviewOff = false)
     {
         var tempId = Guid.NewGuid();
         var replyPreview = replyToId is null || roomId != ActiveRoomId
@@ -234,11 +237,11 @@ public partial class ChatState
             _auth.Me?.Name ?? "You", _auth.Me?.Nik ?? "",
             type ?? "text", content, DateTime.UtcNow, null, false, null,
             replyToId, replyPreview, null, 0, null,
-            attachments ?? [], [], [], false, key);
+            attachments ?? [], [], [], false, key, LinkPreviewOff: linkPreviewOff);
         var o = new Outgoing
         {
             TempId = tempId, Key = key, RoomId = roomId, Content = content, ReplyToId = replyToId, Type = type,
-            AttachmentIds = attachmentIds, LocalPreviewUrls = localPreviewUrls, Bubble = bubble,
+            AttachmentIds = attachmentIds, LocalPreviewUrls = localPreviewUrls, LinkPreviewOff = linkPreviewOff, Bubble = bubble,
             Seq = ++_outboxSeq, State = SendState.Pending,
         };
         _outbox[tempId] = o;
