@@ -11,7 +11,7 @@ namespace IPop.Infrastructure.Auth;
 /// Access token 15 min; refresh token random 64 bytes, only its SHA-256 hash is stored (spec §3.7).
 public class JwtTokenService(IConfiguration config) : ITokenService
 {
-    public string CreateAccessToken(Guid userId, string nik, IEnumerable<string> roles, out DateTime expiresAt)
+    public string CreateAccessToken(Guid userId, string nik, IEnumerable<string> roles, out DateTime expiresAt, Guid? sessionFamily = null)
     {
         expiresAt = DateTime.UtcNow.AddMinutes(15);
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(
@@ -22,6 +22,7 @@ public class JwtTokenService(IConfiguration config) : ITokenService
             new("nik", nik),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
+        if (sessionFamily is { } family) claims.Add(new(AccessTokenGuard.SessionClaim, family.ToString()));
         claims.AddRange(roles.Select(r => new Claim(ClaimTypes.Role, r)));
         var token = new JwtSecurityToken(
             issuer: config["Jwt:Issuer"] ?? "ipop",

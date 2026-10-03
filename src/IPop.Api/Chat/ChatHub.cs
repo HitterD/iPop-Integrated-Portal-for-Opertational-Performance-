@@ -28,6 +28,7 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
     {
         var userId = GetUserId();
         if (userId is null) { Context.Abort(); return; }
+        ChatConnections.Add(userId.Value, Context.ConnectionId);
 
         // Auto-join all rooms the user is currently a member of
         var roomIds = await db.ChatRoomMembers
@@ -45,6 +46,7 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         // SignalR handles group cleanup automatically on disconnect
+        if (GetUserId() is { } userId) ChatConnections.Remove(userId, Context.ConnectionId);
         await base.OnDisconnectedAsync(exception);
     }
 

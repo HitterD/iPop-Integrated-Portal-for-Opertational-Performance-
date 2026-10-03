@@ -70,8 +70,14 @@ public sealed class ChatNotifier(IHubContext<ChatHub> hub, IPopDbContext db,
     public Task NotifyDeliveryAsync(Guid userId, Guid messageId, CancellationToken ct)
         => hub.Clients.User(userId.ToString()).SendAsync("deliveryUpdate", messageId, ct);
 
-    public Task NotifyRemovedAsync(Guid removedUserId, Guid roomId, CancellationToken ct)
-        => hub.Clients.User(removedUserId.ToString()).SendAsync("removedFromRoom", roomId, ct);
+    public async Task NotifyRemovedAsync(Guid removedUserId, Guid roomId, CancellationToken ct)
+    {
+        // Unsubscribe server-side first: a removed member must stop receiving the room's live events
+        // whether or not their client honours "removedFromRoom".
+        await Task.WhenAll(ChatConnections.Of(removedUserId)
+            .Select(c => hub.Groups.RemoveFromGroupAsync(c, Group(roomId), ct)));
+        await hub.Clients.User(removedUserId.ToString()).SendAsync("removedFromRoom", roomId, ct);
+    }
 
     public Task NotifyAddedAsync(IEnumerable<Guid> userIds, Guid roomId, CancellationToken ct)
         => hub.Clients.Users(userIds.Select(u => u.ToString()).ToList()).SendAsync("addedToRoom", roomId, ct);

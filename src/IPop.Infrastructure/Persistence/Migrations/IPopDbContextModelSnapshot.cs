@@ -144,6 +144,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("FamilyId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("IpAddress")
                         .HasColumnType("text");
 
@@ -158,6 +161,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("FamilyId");
 
                     b.HasIndex("RefreshTokenHash")
                         .IsUnique();

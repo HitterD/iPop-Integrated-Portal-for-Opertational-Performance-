@@ -25,7 +25,9 @@ public class FileAccessTests
             => OnList is not null ? OnList(server, sid, path, ct) : Task.FromResult<IReadOnlyList<SynoItem>>([]);
         public Task<Stream> DownloadAsync(string server, string sid, string path, CancellationToken ct)
             => Task.FromResult<Stream>(new MemoryStream(Encoding.UTF8.GetBytes("hello")));
-        public Task UploadAsync(string server, string sid, string dir, string fn, Stream c, CancellationToken ct) => Task.CompletedTask;
+        public Func<Stream, Task>? OnUpload;
+        public Task UploadAsync(string server, string sid, string dir, string fn, Stream c, CancellationToken ct)
+            => OnUpload is not null ? OnUpload(c) : Task.CompletedTask;
         public Task DeleteAsync(string server, string sid, string path, CancellationToken ct) => Task.CompletedTask;
         public Task RenameAsync(string server, string sid, string path, string name, CancellationToken ct) => Task.CompletedTask;
         public Task CreateFolderAsync(string server, string sid, string folderPath, string name, CancellationToken ct) => Task.CompletedTask;
@@ -107,6 +109,40 @@ public class FileAccessTests
         var shares = await svc.ListSharesAsync(user.Id, "spj", default);
         Assert.Single(shares);
         Assert.True(gw.AuthCalls >= 2);
+    }
+
+    /// A forward-only stream, like the OnlyOffice HTTP download the editor saves from.
+    private sealed class ForwardOnlyStream(byte[] data) : MemoryStream(data)
+    {
+        public override bool CanSeek => false;
+        public override long Position { get => base.Position; set => throw new NotSupportedException(); }
+        public override long Seek(long offset, SeekOrigin loc) => throw new NotSupportedException();
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Upload_SessionExpiredRetry_ResendsTheSameBytes(bool seekable)
+    {
+        var m = Make();
+        using var tdb = m.tdb; var svc = m.svc; var gw = m.gw;
+        var user = tdb.AddUser("90010");
+        await svc.SetCredentialAsync(user.Id, "spj", "erin", "pw", default);
+        var sent = new List<byte[]>();
+        gw.OnUpload = async c =>
+        {
+            var buf = new MemoryStream();
+            await c.CopyToAsync(buf);
+            sent.Add(buf.ToArray());
+            if (sent.Count == 1) throw new SynoException("expired", sessionExpired: true);
+        };
+        var data = Encoding.UTF8.GetBytes("the edited document");
+        Stream src = seekable ? new MemoryStream(data) : new ForwardOnlyStream(data);
+
+        await svc.UploadAsync(user.Id, "spj", "/home", "doc.docx", src, default);
+
+        Assert.Equal(2, sent.Count);
+        Assert.Equal(data, sent[1]);   // the retry must not upload an empty file over the real one
     }
 
     [Fact]

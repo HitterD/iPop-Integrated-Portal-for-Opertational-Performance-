@@ -117,6 +117,24 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 if (!string.IsNullOrEmpty(token) && ctx.HttpContext.Request.Path.StartsWithSegments("/hubs"))
                     ctx.Token = token;
                 return Task.CompletedTask;
+            },
+            OnTokenValidated = async ctx =>
+            {
+                var sub = ctx.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                          ?? ctx.Principal?.FindFirst("sub")?.Value;
+                if (!Guid.TryParse(sub, out var userId)) { ctx.Fail("no subject"); return; }
+                Guid? family = Guid.TryParse(ctx.Principal!.FindFirst(AccessTokenGuard.SessionClaim)?.Value, out var f) ? f : null;
+                var db = ctx.HttpContext.RequestServices.GetRequiredService<IPopDbContext>();
+                switch (await AccessTokenGuard.CheckAsync(db, userId, family, DateTime.UtcNow, ctx.HttpContext.RequestAborted))
+                {
+                    case AccessCheck.Rejected:
+                        ctx.Fail("session revoked, account locked or deactivated");
+                        break;
+                    case AccessCheck.MustChangePassword:
+                        ((System.Security.Claims.ClaimsIdentity)ctx.Principal.Identity!)
+                            .AddClaim(new System.Security.Claims.Claim(AccessTokenGuard.PasswordChangeClaim, "1"));
+                        break;
+                }
             }
         };
         o.TokenValidationParameters = new TokenValidationParameters
@@ -315,6 +333,21 @@ app.UseCors("web-dev");
 // redirecting would push http pages onto the self-signed port and break their CORS preflights.
 if (!app.Environment.IsDevelopment()) app.UseHttpsRedirection();
 app.UseAuthentication();
+// A default/reset password must be replaced before anything else is reachable (the client's
+// /set-password redirect alone was bypassable with the token it had already been given).
+app.Use(async (http, next) =>
+{
+    if (http.User.HasClaim(AccessTokenGuard.PasswordChangeClaim, "1")
+        && !AccessTokenGuard.AllowedDuringPasswordChange(http.Request.Path)
+        && http.GetEndpoint()?.Metadata.GetMetadata<Microsoft.AspNetCore.Authorization.IAllowAnonymous>() is null
+        && (http.Request.Path.StartsWithSegments("/api") || http.Request.Path.StartsWithSegments("/hubs")))
+    {
+        http.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await http.Response.WriteAsJsonAsync(new { code = "password_change_required", message = "Set a new password first." });
+        return;
+    }
+    await next();
+});
 app.UseAuthorization();
 app.UseRateLimiter();
 

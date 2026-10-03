@@ -180,6 +180,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
         b.Entity<AuthSession>(e =>
         {
             e.HasIndex(x => x.RefreshTokenHash).IsUnique();
+            e.HasIndex(x => x.FamilyId);
             e.HasOne(x => x.User).WithMany(u => u.Sessions).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<HrisSyncState>().HasData(new HrisSyncState { Id = 1 });

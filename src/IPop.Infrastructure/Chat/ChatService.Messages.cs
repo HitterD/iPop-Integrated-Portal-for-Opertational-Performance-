@@ -18,6 +18,8 @@ public sealed partial class ChatService
             return new MessageResultDto(false, null, "content_required");
         if (req.Content.Length > 4000)
             return new MessageResultDto(false, null, "content_too_long");
+        if (!ChatLimits.SenderTypes.Contains(req.Type ?? "text"))
+            return new MessageResultDto(false, null, "invalid_type");
 
         // Validate sender is active member of room
         var isMember = await db.ChatRoomMembers
@@ -339,7 +341,8 @@ public sealed partial class ChatService
             Id = Guid.NewGuid(),
             RoomId = targetRoomId,
             SenderId = userId,
-            Type = original.Type ?? "text",
+            // A forwarded emergency/system row becomes ordinary text: forwarding must not mint a mute-bypassing alert.
+            Type = original.Type is { } ot && ChatLimits.SenderTypes.Contains(ot) ? ot : "text",
             Content = cleanContent,
             IdempotencyKey = Guid.NewGuid(),
             ForwardedFromMessageId = originMessageId,

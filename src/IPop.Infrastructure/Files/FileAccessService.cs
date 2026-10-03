@@ -170,13 +170,34 @@ public class FileAccessService(
     public async Task UploadAsync(Guid userId, string server, string dir, string filename, Stream content, CancellationToken ct)
     {
         server = NormalizeServer(server);
-        var sid = await GetSidAsync(userId, server, ct);
-        try { await gateway.UploadAsync(server, sid, dir, filename, content, ct); }
-        catch (SynoException ex) when (ex.IsSessionExpired)
+        // A session-expired retry must resend the same bytes. The first attempt reads the stream to
+        // the end, so a non-seekable source (OnlyOffice's HTTP download) is spooled to disk first —
+        // retrying on the drained stream would overwrite the file with nothing.
+        Stream? spool = null;
+        if (!content.CanSeek)
         {
-            _sessions.Remove(userId, server);
-            var fresh = await GetSidAsync(userId, server, ct);
-            await gateway.UploadAsync(server, fresh, dir, filename, content, ct);
+            spool = new FileStream(Path.GetTempFileName(), FileMode.Open, FileAccess.ReadWrite, FileShare.None,
+                81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
+            await content.CopyToAsync(spool, ct);
+            spool.Position = 0;
+            content = spool;
+        }
+        try
+        {
+            var start = content.Position;
+            var sid = await GetSidAsync(userId, server, ct);
+            try { await gateway.UploadAsync(server, sid, dir, filename, content, ct); }
+            catch (SynoException ex) when (ex.IsSessionExpired)
+            {
+                _sessions.Remove(userId, server);
+                var fresh = await GetSidAsync(userId, server, ct);
+                content.Position = start;
+                await gateway.UploadAsync(server, fresh, dir, filename, content, ct);
+            }
+        }
+        finally
+        {
+            if (spool is not null) await spool.DisposeAsync();
         }
     }
 

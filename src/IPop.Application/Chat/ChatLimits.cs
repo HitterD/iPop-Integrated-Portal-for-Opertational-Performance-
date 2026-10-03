@@ -14,4 +14,9 @@ public static class ChatLimits
     public const int GroupMembers = 256;
     public const int MentionQueryLength = 40;
     public const int MentionPopupItems = 10;
+
+    /// Message types a member may send. "system" and "emergency" are server-written only:
+    /// emergency overrides mutes and quiet hours, so it must go through the owner/admin broadcast path.
+    public static readonly IReadOnlySet<string> SenderTypes =
+        new HashSet<string>(StringComparer.Ordinal) { "text", "sticker", "poll", "note", "voice" };
 }

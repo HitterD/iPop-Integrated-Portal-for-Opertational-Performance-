@@ -26,6 +26,8 @@ public sealed partial class ChatService
 
         if (!isMember)
             return new MessageResultDto(false, null, "room_not_found");
+        if (!ChatLimits.SenderTypes.Contains(req.Type ?? "text"))
+            return new MessageResultDto(false, null, "invalid_type");
 
         var threadProjErr = await ValidateProjectTaskMentionsAsync(senderId, req.Content, ct);
         if (threadProjErr != null)

@@ -100,6 +100,8 @@ public static class ChatEndpoints
             var leaver = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
             await notifier.NotifyMemberChangeAsync(roomId, new MemberChangeDto(
                 roomId, "left", leaver?.Name ?? "Unknown", leaver?.Name ?? "Unknown", userId.Value), ct);
+            // Every tab of the leaver, not only the one that clicked Leave, stops getting the room's events.
+            await notifier.NotifyRemovedAsync(userId.Value, roomId, ct);
 
             return Results.Ok(result);
         });
@@ -152,6 +154,7 @@ public static class ChatEndpoints
                     var e when e?.Contains("content_too_long") == true => 422,
                     var e when e?.Contains("message_not_found") == true => 404,
                     var e when e?.Contains("not a member") == true => 403,
+                    "invalid_type" => 400,
                     _ => 422
                 };
                 return Results.Json(new { code = ErrorCode(result.Error), message = result.Error }, statusCode: statusCode);
@@ -287,7 +290,7 @@ public static class ChatEndpoints
             if (!result.Success)
             {
                 var code = result.Error?.Contains("full") == true ? "thread_full" : ErrorCode(result.Error);
-                var statusCode = result.Error?.Contains("full") == true ? 422 : 404;
+                var statusCode = result.Error == "invalid_type" ? 400 : result.Error?.Contains("full") == true ? 422 : 404;
                 return Results.Json(new { code, message = result.Error }, statusCode: statusCode);
             }
 
@@ -1404,6 +1407,7 @@ public static class ChatEndpoints
         {
             var e when e.Contains("conflict") => "idempotency_conflict",
             var e when e.Contains("content_too_long") => "content_too_long",
+            "invalid_type" => "invalid_type",
             var e when e.Contains("not found") => "message_not_found",
             var e when e.Contains("permission") || e.Contains("forbidden") => "forbidden",
             var e when e.Contains("rate") => "rate_limited",

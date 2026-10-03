@@ -62,11 +62,13 @@ public static class OnlyOfficeEndpoints
             var internalApiUrl = cfg["OnlyOffice:InternalApiUrl"] ?? "http://host.docker.internal:5083";
 
             var cleanPath = path.Trim();
-            var token = CreateFileToken(user.Id, server, cleanPath);
+            var exp = DateTimeOffset.UtcNow.Add(FileLinkLifetime).ToUnixTimeSeconds();
+            var token = CreateFileToken(LinkKey(cfg), user.Id, server, cleanPath, exp);
             var key = GenerateDocumentKey(server, cleanPath);
 
-            var downloadUrl = $"{internalApiUrl}/api/onlyoffice/file?server={Uri.EscapeDataString(server)}&path={Uri.EscapeDataString(cleanPath)}&userId={user.Id}&token={token}";
-            var callbackUrl = $"{internalApiUrl}/api/onlyoffice/callback?server={Uri.EscapeDataString(server)}&path={Uri.EscapeDataString(cleanPath)}&userId={user.Id}&token={token}";
+            var query = $"server={Uri.EscapeDataString(server)}&path={Uri.EscapeDataString(cleanPath)}&userId={user.Id}&exp={exp}&token={token}";
+            var downloadUrl = $"{internalApiUrl}/api/onlyoffice/file?{query}";
+            var callbackUrl = $"{internalApiUrl}/api/onlyoffice/callback?{query}";
 
             var config = new
             {
@@ -120,9 +122,9 @@ public static class OnlyOfficeEndpoints
         }).RequireAuthorization().RequirePermission("files.read");
 
         // 2. Endpoint file: Diunduh oleh ONLYOFFICE server (tanpa cookie, validasi token)
-        g.MapGet("/file", async (string server, string path, Guid userId, string token, IFileAccessService svc, CancellationToken ct) =>
+        g.MapGet("/file", async (string server, string path, Guid userId, long? exp, string token, IConfiguration cfg, IFileAccessService svc, CancellationToken ct) =>
         {
-            if (!ValidateFileToken(userId, server, path, token))
+            if (!ValidateFileToken(LinkKey(cfg), userId, server, path, exp, token))
                 return Results.Unauthorized();
 
             try
@@ -138,10 +140,10 @@ public static class OnlyOfficeEndpoints
         });
 
         // 3. Endpoint callback: Dipanggil oleh ONLYOFFICE server saat autosave / selesai edit
-        g.MapPost("/callback", async (string server, string path, Guid userId, string token, HttpContext http, IFileAccessService svc, HttpClient httpClient, IPopDbContext db, ILoggerFactory loggerFactory, CancellationToken ct) =>
+        g.MapPost("/callback", async (string server, string path, Guid userId, long? exp, string token, HttpContext http, IConfiguration cfg, IFileAccessService svc, HttpClient httpClient, IPopDbContext db, ILoggerFactory loggerFactory, CancellationToken ct) =>
         {
             var logger = loggerFactory.CreateLogger("OnlyOfficeEndpoints");
-            if (!ValidateFileToken(userId, server, path, token))
+            if (!ValidateFileToken(LinkKey(cfg), userId, server, path, exp, token))
                 return Results.Unauthorized();
 
             CallbackPayload? payload;
@@ -168,10 +170,19 @@ public static class OnlyOfficeEndpoints
                     return Results.Json(new { error = 1 });
                 }
 
+                // Only ever fetch from our own Document Server: the callback body is not signed, so
+                // its URL is reduced to the /cache/files/ path and re-rooted on the configured server.
+                var source = ResolveEditedFileUrl(cfg["OnlyOffice:ServerUrl"] ?? "http://localhost:8088", payload.Url);
+                if (source is null)
+                {
+                    logger.LogWarning("OnlyOffice callback URL rejected (not a Document Server cache file)");
+                    return Results.Json(new { error = 1 });
+                }
+
                 try
                 {
                     // Unduh dokumen editan terbaru dari server ONLYOFFICE
-                    using var response = await httpClient.GetAsync(payload.Url, HttpCompletionOption.ResponseHeadersRead, ct);
+                    using var response = await httpClient.GetAsync(source, HttpCompletionOption.ResponseHeadersRead, ct);
                     if (!response.IsSuccessStatusCode)
                     {
                         logger.LogError("Gagal mengunduh dokumen dari OnlyOffice URL: {StatusCode}", response.StatusCode);
@@ -256,20 +267,39 @@ public static class OnlyOfficeEndpoints
         _docVersions.AddOrUpdate(docId, 2, (_, v) => v + 1);
     }
 
-    private const string SecretSalt = "ipop-onlyoffice-session-salt-2026";
+    // Long enough for an editor left open over a weekend: the save callback carries the same link.
+    private static readonly TimeSpan FileLinkLifetime = TimeSpan.FromDays(7);
 
-    private static string CreateFileToken(Guid userId, string server, string path)
+    /// These links act as the user's NAS credential for whoever holds them, so they are signed
+    /// with a server secret (derived from Jwt:Key) — never a constant that ships in the source.
+    private static byte[] LinkKey(IConfiguration cfg) => HMACSHA256.HashData(
+        Encoding.UTF8.GetBytes(cfg["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is required")),
+        Encoding.UTF8.GetBytes("ipop-onlyoffice-file-link-v2"));
+
+    private static string CreateFileToken(byte[] key, Guid userId, string server, string path, long exp)
     {
-        var raw = $"{userId:N}:{server}:{path}:{SecretSalt}";
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(raw));
-        return Convert.ToHexString(hash)[..16];
+        var raw = $"{userId:N}\n{server}\n{path}\n{exp}";
+        return Convert.ToHexString(HMACSHA256.HashData(key, Encoding.UTF8.GetBytes(raw)));
     }
 
-    private static bool ValidateFileToken(Guid userId, string server, string path, string token)
+    private static bool ValidateFileToken(byte[] key, Guid userId, string server, string path, long? exp, string token)
     {
-        if (string.IsNullOrWhiteSpace(token)) return false;
-        var expected = CreateFileToken(userId, server, path);
+        if (string.IsNullOrWhiteSpace(token) || exp is null) return false;
+        if (DateTimeOffset.UtcNow.ToUnixTimeSeconds() > exp.Value) return false;
+        var expected = CreateFileToken(key, userId, server, path, exp.Value);
         return CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(expected), Encoding.UTF8.GetBytes(token));
+    }
+
+    /// The Document Server names the edited file by a URL under /cache/files/ (possibly behind the
+    /// public proxy prefix). Keep only that path + query and point it at the internal server.
+    private static Uri? ResolveEditedFileUrl(string serverUrl, string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var given) || given.Scheme is not ("http" or "https")) return null;
+        if (!Uri.TryCreate(serverUrl, UriKind.Absolute, out var server)) return null;
+        var path = given.AbsolutePath;
+        var at = path.IndexOf("/cache/files/", StringComparison.Ordinal);
+        if (at < 0 || path.Contains("/../", StringComparison.Ordinal)) return null;
+        return new Uri(server, path[at..] + given.Query);
     }
 
     private record CallbackPayload(

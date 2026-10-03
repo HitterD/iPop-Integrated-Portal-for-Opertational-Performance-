@@ -54,11 +54,13 @@ public class AuthWorkflow(IPopDbContext db, IPasswordHasher hasher, ITokenServic
 
         var roles = await db.UserRoles.Where(ur => ur.UserId == user.Id)
             .Select(ur => ur.Role.Name).ToListAsync(ct);
-        var access = tokens.CreateAccessToken(user.Id, user.Nik, roles, out var exp);
+        var family = Guid.NewGuid();
+        var access = tokens.CreateAccessToken(user.Id, user.Nik, roles, out var exp, family);
         var refresh = tokens.CreateRefreshToken();
         db.AuthSessions.Add(new AuthSession
         {
             UserId = user.Id,
+            FamilyId = family,
             RefreshTokenHash = tokens.HashRefreshToken(refresh),
             DeviceFingerprint = req.DeviceFingerprint,
             IpAddress = ip,
@@ -128,11 +130,14 @@ public class AuthWorkflow(IPopDbContext db, IPasswordHasher hasher, ITokenServic
         session.RevokedAt = DateTime.UtcNow;
         var roles = await db.UserRoles.Where(ur => ur.UserId == session.UserId)
             .Select(ur => ur.Role.Name).ToListAsync(ct);
-        var access = tokens.CreateAccessToken(session.User.Id, session.User.Nik, roles, out var exp);
+        // Pre-family rows start a family on their first rotation.
+        var family = session.FamilyId ?? Guid.NewGuid();
+        var access = tokens.CreateAccessToken(session.User.Id, session.User.Nik, roles, out var exp, family);
         var refresh = tokens.CreateRefreshToken();
         db.AuthSessions.Add(new AuthSession
         {
             UserId = session.UserId,
+            FamilyId = family,
             RefreshTokenHash = tokens.HashRefreshToken(refresh),
             DeviceFingerprint = session.DeviceFingerprint,
             IpAddress = ip ?? session.IpAddress,
