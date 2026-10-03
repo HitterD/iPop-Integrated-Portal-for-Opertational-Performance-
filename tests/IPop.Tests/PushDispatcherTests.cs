@@ -524,6 +524,23 @@ public class PushDispatcherTests
         Assert.False(PushDispatcher.IsSilenced(pref, null, "project.assigned", "normal", Night));
     }
 
+    [Fact]
+    public async Task Busy_silences_Windows_alerts_only_while_online_and_unexpired()
+    {
+        using var t = new TestDb();
+        var busy = t.AddUser("BUSY"); busy.PresenceManualStatus = "busy"; busy.PresenceLastSeenAt = Night;
+        var lapsed = t.AddUser("LAPSED"); lapsed.PresenceManualStatus = "busy"; lapsed.PresenceLastSeenAt = Night;
+        lapsed.PresenceBusyUntilUtc = Night.AddMinutes(-1);
+        var offline = t.AddUser("OFF"); offline.PresenceManualStatus = "busy"; offline.PresenceLastSeenAt = Night.AddHours(-1);
+        var free = t.AddUser("FREE"); free.PresenceLastSeenAt = Night;
+        await t.Db.SaveChangesAsync();
+
+        var silenced = await PushDispatcher.SilencedAsync(t.Db, [busy.Id, lapsed.Id, offline.Id, free.Id],
+            "news.published", "normal", Night, default);
+
+        Assert.Equal([busy.Id], silenced.ToArray());
+    }
+
     // ── Calls ──────────────────────────────────────────────────────────────────
 
     private static CallRoom AddCall(TestDb t, Guid caller, Guid callee, DateTime? ringAt = null)

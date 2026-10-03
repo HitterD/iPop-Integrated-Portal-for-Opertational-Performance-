@@ -26,6 +26,13 @@ public class PresenceSweepWorker(
                 var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
                 var now = DateTime.UtcNow;
 
+                // A timed Busy that ran out is automatic again, for every reader of the row.
+                await db.Users
+                    .Where(u => u.PresenceManualStatus == "busy" && u.PresenceBusyUntilUtc != null && u.PresenceBusyUntilUtc <= now)
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(u => u.PresenceManualStatus, (string?)null)
+                        .SetProperty(u => u.PresenceBusyUntilUtc, (DateTime?)null), stoppingToken);
+
                 var users = await db.Users.AsNoTracking()
                     .Where(u => u.IsActive)
                     .Select(u => new { u.Nik, u.PresenceLastSeenAt, u.PresenceManualStatus, u.PresenceIsIdle })

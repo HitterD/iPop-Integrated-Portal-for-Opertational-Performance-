@@ -361,7 +361,7 @@ public partial class CallState
         {
             Current = room;
             LastError = null;
-            await _js.InvokeVoidAsync("ipopAudio.playRingtone");
+            if (!_auth.IsBusy) await _js.InvokeVoidAsync("ipopAudio.playRingtone");
             ScheduleGroupRingStop(room);
             StateChanged?.Invoke();
         }

@@ -252,8 +252,9 @@ public partial class CallState : IAsyncDisposable
             {
                 await _js.InvokeVoidAsync("ipopAudio.playDialTone");
             }
-            else if (me?.Status == CallParticipantStatus.Invited)
+            else if (me?.Status == CallParticipantStatus.Invited && !_auth.IsBusy)
             {
+                // Busy: the incoming call still shows, it just does not ring.
                 await _js.InvokeVoidAsync("ipopAudio.playRingtone");
             }
         }

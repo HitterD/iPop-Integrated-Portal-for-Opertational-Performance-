@@ -99,7 +99,13 @@
                         {
                             <div class="status-menu" @onclick:stopPropagation>
                                 <button @onclick="() => SetStatus(false)"><span class="sdot on"></span><span class="l">Online<small>Automatic</small></span>@if (Auth.MyStatus != "busy") {<i data-lucide="check"></i>}</button>
-                                <button @onclick="() => SetStatus(true)"><span class="sdot busy"></span><span class="l">Busy<small>Mute calls &amp; banners</small></span>@if (Auth.MyStatus == "busy") {<i data-lucide="check"></i>}</button>
+                                <div class="status-busy-head"><span class="sdot busy"></span><span class="l">Busy<small>@BusySubtitle</small></span>@if (Auth.IsBusy) {<i data-lucide="check"></i>}</div>
+                                <div class="status-busy-opts" role="group" aria-label="Busy for">
+                                    <button @onclick='() => SetStatus(true, "1h")'>1 hour</button>
+                                    <button @onclick='() => SetStatus(true, "2h")'>2 hours</button>
+                                    <button @onclick='() => SetStatus(true, "today")'>Today</button>
+                                    <button @onclick="() => SetStatus(true, null)">Until off</button>
+                                </div>
                                 <div class="status-sep"></div>
                                 @if (!Push.Secure || Push.Permission == "unsupported")
                                 {
@@ -659,12 +665,17 @@
 
     private void OnDirectoryChanged() => _ = InvokeAsync(Auth.LoadPhotosAsync);
 
-    private async Task SetStatus(bool busy)
+    private async Task SetStatus(bool busy, string? duration = null)
     {
         statusMenuOpen = false;
-        if ((Auth.MyStatus == "busy") != busy) await Auth.SetBusyAsync(busy);
+        // Busy is re-sent even when already Busy: picking another duration replaces the end time.
+        if (busy || Auth.IsBusy) await Auth.SetBusyAsync(busy, duration);
         await InvokeAsync(StateHasChanged);
     }
+
+    private string BusySubtitle => Auth.IsBusy
+        ? Auth.BusyUntil is { } end ? $"Until {end.ToLocalTime():HH:mm} · calls & banners muted" : "Until you turn it off"
+        : "Mute calls & banners";
 
     private async Task SignOut()
     {

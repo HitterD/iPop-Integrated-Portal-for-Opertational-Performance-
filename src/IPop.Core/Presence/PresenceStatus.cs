@@ -20,4 +20,33 @@ public static class PresenceStatus
         : manualStatus == "busy" ? "busy"
         : idle ? "away"
         : "on";
+
+    /// Busy durations offered in the status menu. Null/empty = until turned off.
+    public static readonly string[] BusyDurations = ["1h", "2h", "today"];
+
+    /// When a Busy chosen now ends: null = until turned off. "today" ends at the next local
+    /// midnight in the user's time zone. False for an unknown duration.
+    public static bool TryBusyUntil(string? duration, DateTime nowUtc, TimeZoneInfo tz, out DateTime? until)
+    {
+        until = null;
+        switch (duration)
+        {
+            case null or "": return true;
+            case "1h": until = nowUtc.AddHours(1); return true;
+            case "2h": until = nowUtc.AddHours(2); return true;
+            case "today":
+                var local = TimeZoneInfo.ConvertTimeFromUtc(nowUtc, tz);
+                until = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(local.Date.AddDays(1), DateTimeKind.Unspecified), tz);
+                return true;
+            default: return false;
+        }
+    }
+
+    /// The manual status still in force: a timed Busy past its end is automatic again.
+    public static string? EffectiveManual(string? manualStatus, DateTime? busyUntilUtc, DateTime now) =>
+        manualStatus == "busy" && busyUntilUtc is { } end && end <= now ? null : manualStatus;
+
+    /// Busy mutes banners, sounds and ringing — but only while the user is actually online.
+    public static bool IsBusy(DateTime? lastSeenAt, string? manualStatus, DateTime? busyUntilUtc, DateTime now) =>
+        ComputeStatus(lastSeenAt, EffectiveManual(manualStatus, busyUntilUtc, now), now) == "busy";
 }

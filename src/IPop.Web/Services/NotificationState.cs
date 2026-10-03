@@ -203,7 +203,8 @@ public class NotificationState : IDisposable
         // Add to floating banners queue (max 3 concurrent) — kecuali preferensi membisukan.
         // Prioritas diteruskan agar AllowImportant bisa menembus jam senyap untuk "high".
         var suppress = ShouldSuppress(item.Type, item.Priority);
-        if (suppress) return;
+        // Busy: no banner or sound; the bell still counts it. Emergencies always break through.
+        if (suppress || (_auth.IsBusy && !IsEmergency(delivery.EventType))) return;
 
         // The banner is the single on-screen surface for incoming notifications; toasts are
         // reserved for feedback on the user's own actions, so the two never duplicate.
@@ -211,6 +212,9 @@ public class NotificationState : IDisposable
         var (module, urgent) = SoundFor(delivery.EventType, item.Priority);
         PlaySound("ipopSound.playFor", module, urgent);
     }
+
+    internal static bool IsEmergency(string? eventType) =>
+        string.Equals(eventType, "chat.emergency", StringComparison.OrdinalIgnoreCase);
 
     /// Which module sound an event plays (js/sounds.js), and whether it is the louder variant.
     internal static (string Module, bool Urgent) SoundFor(string? eventType, string? priority)
@@ -391,10 +395,10 @@ public class NotificationState : IDisposable
         if (!ShouldBannerChat(m, currentPath))
         {
             // A message landing in the conversation on screen gets only a soft tick.
-            if (IsTickChat(m, currentPath) && !ShouldSuppress("chat")) PlaySound("ipopSound.play", "tick");
+            if (IsTickChat(m, currentPath) && !ShouldSuppress("chat") && !_auth.IsBusy) PlaySound("ipopSound.play", "tick");
             return;
         }
-        if (ShouldSuppress("chat")) return;
+        if (ShouldSuppress("chat") || _auth.IsBusy) return;
 
         var roomId = m.Message.RoomId;
         var count = 1;

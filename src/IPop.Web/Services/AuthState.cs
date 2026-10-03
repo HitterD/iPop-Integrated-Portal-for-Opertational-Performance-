@@ -33,7 +33,11 @@ public class AuthState(HttpClient http, IJSRuntime js)
 
     /// The current access token for Hub connections (ChatState, etc.). Null when signed out.
     public string? AccessToken => _accessToken;
-    public string MyStatus { get; private set; } = "off";
+    public string MyStatus { get; internal set; } = "off";
+    /// When a timed Busy ends (UTC); null = until turned off, or not Busy.
+    public DateTime? BusyUntil { get; private set; }
+    /// Busy mutes banners, sounds and call ringing (calls still show). Only while online.
+    public bool IsBusy => MyStatus == "busy";
 
     /// Presence-hub link state, for the Directory page's status pill.
     public DirectoryConnectionState ConnectionState { get; private set; } = DirectoryConnectionState.Connecting;
@@ -125,7 +129,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
             .Build();
         _presence.On<string, string>(RealtimeEvents.PresenceChanged, (nik, status) =>
         {
-            if (Me?.Nik == nik) MyStatus = status;
+            if (Me?.Nik == nik) { MyStatus = status; if (status != "busy") BusyUntil = null; }
             PresenceChanged?.Invoke(nik, status);
         });
         _presence.On(RealtimeEvents.DirectoryChanged, () => DirectoryChanged?.Invoke());
@@ -187,12 +191,14 @@ public class AuthState(HttpClient http, IJSRuntime js)
         return SafeBeatAsync();
     }
 
-    public async Task SetBusyAsync(bool busy)
+    /// duration: "1h", "2h", "today", or null for until turned off. Ignored when clearing Busy.
+    public async Task SetBusyAsync(bool busy, string? duration = null)
     {
-        var res = await PostWithAuth("/api/presence/status", new { status = busy ? "busy" : (string?)null });
+        var res = await PostWithAuth("/api/presence/status",
+            new { status = busy ? "busy" : (string?)null, duration = busy ? duration : null });
         if (!res.IsSuccessStatusCode) return;
         var body = await res.Content.ReadFromJsonAsync<PresenceDto>();
-        if (body is not null) { MyStatus = body.Status; PresenceChanged?.Invoke(Me?.Nik ?? "", MyStatus); }
+        if (body is not null) { MyStatus = body.Status; BusyUntil = body.BusyUntil; PresenceChanged?.Invoke(Me?.Nik ?? "", MyStatus); }
     }
 
     private async Task SafeBeatAsync()
@@ -207,7 +213,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
         var res = await PostWithAuth("/api/presence/beat", new { idle = _idle });
         if (!res.IsSuccessStatusCode) return;
         var body = await res.Content.ReadFromJsonAsync<PresenceDto>();
-        if (body is not null) MyStatus = body.Status;
+        if (body is not null) { MyStatus = body.Status; BusyUntil = body.BusyUntil; }
     }
 
     public async Task<(bool Ok, string? Error, bool Locked)> LoginAsync(string nik, string password, string? fingerprint, bool keepSignedIn = true)
@@ -529,7 +535,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
 
     private record LoginDto(string AccessToken, string RefreshToken, DateTime AccessTokenExpiresAt, bool MustChangePassword);
     private record RefreshDto(string AccessToken, string RefreshToken, DateTime AccessTokenExpiresAt, bool MustChangePassword);
-    private record PresenceDto(string Status);
+    private record PresenceDto(string Status, DateTime? BusyUntil = null);
     private record ApiError(string? Code, string? Message, Dictionary<string, string[]>? Fields);
 }
 

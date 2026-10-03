@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using IPop.Application.Calls;
 using IPop.Core.Entities;
+using IPop.Core.Presence;
 using IPop.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -480,8 +481,21 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
             .Where(p => userIds.Contains(p.UserId) && (p.QuietHoursEnabled || p.MutedTypes != ""))
             .Select(p => new { Pref = p, p.User.TimeZoneId })
             .ToListAsync(ct);
-        return prefs.Where(x => IsSilenced(x.Pref, x.TimeZoneId, eventType, priority, now))
+        var silenced = prefs.Where(x => IsSilenced(x.Pref, x.TimeZoneId, eventType, priority, now))
             .Select(x => x.Pref.UserId).ToHashSet();
+        silenced.UnionWith(await BusyAsync(db, userIds, now, ct));
+        return silenced;
+    }
+
+    /// Users whose Busy mutes alerts right now (online, and a timed Busy not yet over).
+    internal static async Task<List<Guid>> BusyAsync(IPopDbContext db, IReadOnlyCollection<Guid> userIds, DateTime now, CancellationToken ct)
+    {
+        var rows = await db.Users.AsNoTracking()
+            .Where(u => userIds.Contains(u.Id) && u.PresenceManualStatus == "busy")
+            .Select(u => new { u.Id, u.PresenceLastSeenAt, u.PresenceManualStatus, u.PresenceBusyUntilUtc })
+            .ToListAsync(ct);
+        return rows.Where(u => PresenceStatus.IsBusy(u.PresenceLastSeenAt, u.PresenceManualStatus, u.PresenceBusyUntilUtc, now))
+            .Select(u => u.Id).ToList();
     }
 
     internal static bool IsSilenced(NotificationPreference pref, string? timeZoneId, string eventType, string priority, DateTime now)

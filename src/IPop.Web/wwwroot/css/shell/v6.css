@@ -289,6 +289,11 @@ body {
 }
 .v6-topbar .status-menu .status-note .lucide { color: var(--ink-3); }
 .v6-topbar .status-menu .status-alerts .l { font-weight: 600; }
+.v6-topbar .status-menu .status-busy-head { display: flex; align-items: center; gap: 10px; padding: 8px 10px 4px; font-size: 13px; }
+.v6-topbar .status-menu .status-busy-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 0 6px 4px 28px; }
+.v6-topbar .topbar-right .status-wrap .status-menu .status-busy-opts button {
+  justify-content: center; padding: 6px 8px; font-size: 12px; border: 1px solid var(--line-soft);
+}
 
 .v6-topbar .theme-btn, .v6-topbar .bell-btn {
   position: relative; width: 34px; height: 34px; padding: 0;

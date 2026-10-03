@@ -4144,6 +4144,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<string>("Position")
                         .HasColumnType("text");
 
+                    b.Property<DateTime?>("PresenceBusyUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<bool>("PresenceIsIdle")
                         .HasColumnType("boolean");
 

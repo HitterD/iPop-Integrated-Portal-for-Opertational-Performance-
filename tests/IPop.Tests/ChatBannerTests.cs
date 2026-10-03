@@ -32,6 +32,24 @@ public class ChatBannerTests
     }
 
     [Fact]
+    public void Busy_shows_no_chat_banner_until_back_online()
+    {
+        using var ctx = new BunitContext();
+        var auth = new AuthState(new HttpClient { BaseAddress = new Uri("http://localhost/") }, ctx.JSInterop.JSRuntime);
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        var s = new NotificationState(auth, new HttpClient { BaseAddress = new Uri("http://localhost/") }, new ToastService(), ctx.JSInterop.JSRuntime);
+
+        auth.MyStatus = "busy";
+        s.ShowChatMessage(In(Msg("sst")), "/home");
+        Assert.Empty(s.ActiveBanners);
+        Assert.DoesNotContain(ctx.JSInterop.Invocations, i => i.Identifier.StartsWith("ipopSound"));
+
+        auth.MyStatus = "on";
+        s.ShowChatMessage(In(Msg("halo")), "/home");
+        Assert.Single(s.ActiveBanners);
+    }
+
+    [Fact]
     public void Room_open_on_chat_page_is_skipped_but_shows_elsewhere()
     {
         var m = In(active: true);
