@@ -134,12 +134,12 @@ public partial class Chat
         };
     }
 
-    private static string PresenceLabel(string? status) => status switch
+    private static string PresenceLabel(string? status, DateTime? lastSeen = null) => status switch
     {
         "on" => "Online",
         "away" => "Away",
         "busy" => "Busy",
-        _ => "Offline"
+        _ => IPop.Web.Models.LastSeen.OfflineLabel(lastSeen)
     };
 
     private static readonly System.Text.RegularExpressions.Regex UrlRx = new(

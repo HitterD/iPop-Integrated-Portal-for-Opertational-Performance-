@@ -398,7 +398,7 @@
                             if (dmMember is not null)
                             {
                                 <span class="status-dot @(dmMember.PresenceStatus ?? "off")"></span>
-                                <span class="status-txt">@PresenceLabel(dmMember.PresenceStatus)@(dmPerson is not null && !string.IsNullOrWhiteSpace(dmPerson.Department) && dmPerson.Department != "—" ? $" · {dmPerson.Department}" : "")</span>
+                                <span class="status-txt">@PresenceLabel(dmMember.PresenceStatus, dmMember.LastSeenAt)@(dmPerson is not null && !string.IsNullOrWhiteSpace(dmPerson.Department) && dmPerson.Department != "—" ? $" · {dmPerson.Department}" : "")</span>
                             }
                         }
                         else
@@ -1247,7 +1247,7 @@
                                                 {
                                                     var dmOther = ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
                                                     <span class="presence-badge @(dmOther?.PresenceStatus ?? "off")">
-                                                        <span class="dot"></span> @PresenceLabel(dmOther?.PresenceStatus)
+                                                        <span class="dot"></span> @PresenceLabel(dmOther?.PresenceStatus, dmOther?.LastSeenAt)
                                                     </span>
                                                 }
                                                 else
