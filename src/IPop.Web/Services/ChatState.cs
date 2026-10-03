@@ -767,10 +767,17 @@ public partial class ChatState : IAsyncDisposable
 
     // ---- Event Handlers ----
 
+    private readonly HashSet<Guid> _receivedMessageIds = [];
+    private readonly Queue<Guid> _receivedMessageOrder = [];
+
     internal void OnNewMessage(MessageDto message)
     {
         if (PracticeSend is not null) { PracticeHeld?.Invoke(); return; } // real chat waits until practice ends
         if (message.ThreadParentId != null) return; // thread replies via OnThreadReply
+        // Retransmitted hub events must not bump unread or ring twice, even for a closed room.
+        if (!_receivedMessageIds.Add(message.Id)) return;
+        _receivedMessageOrder.Enqueue(message.Id);
+        if (_receivedMessageOrder.Count > 4096) _receivedMessageIds.Remove(_receivedMessageOrder.Dequeue());
         var isOwn = string.Equals(message.SenderNik, _auth.Me?.Nik, StringComparison.OrdinalIgnoreCase);
         if (!isOwn && _hub?.State == HubConnectionState.Connected)
         {

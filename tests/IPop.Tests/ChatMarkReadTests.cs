@@ -86,6 +86,27 @@ public class ChatMarkReadTests
     }
 
     [Fact]
+    public async Task Duplicate_live_message_only_increments_unread_and_notifies_once()
+    {
+        var room = Guid.NewGuid();
+        var (ctx, chat) = await OpenAsync(room);
+        using var _ = ctx;
+        await chat.SetChatPageMountedAsync(false);
+        chat.DirectRooms.Add(new RoomListDto(room, "dm", null, "B", "B", null, null,
+            0, false, false, false, "on", false, false, null));
+        var notifications = 0;
+        chat.IncomingMessage += _ => notifications++;
+        var message = In(room, "B");
+
+        chat.OnNewMessage(message);
+        chat.OnNewMessage(message);
+
+        Assert.Equal(1, chat.DirectRooms.Single().UnreadCount);
+        Assert.Equal(1, notifications);
+        Assert.Single(chat.ActiveMessages.Where(m => m.Id == message.Id));
+    }
+
+    [Fact]
     public async Task Own_seen_update_never_marks_own_messages_read()
     {
         var room = Guid.NewGuid();

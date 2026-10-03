@@ -428,6 +428,8 @@ public partial class ChatState
     /// Sign-out: unsent message bodies belong to the account that wrote them.
     private void ClearOutbox()
     {
+        _receivedMessageIds.Clear();
+        _receivedMessageOrder.Clear();
         foreach (var k in _outbox.Keys.ToList()) RemoveOptimistic(k);
         // Me is already gone at sign-out, so wipe the owner's stored copy by name.
         if (_js is not null && _outboxOwner is { } owner)
