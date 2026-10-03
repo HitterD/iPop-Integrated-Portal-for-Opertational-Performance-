@@ -41,16 +41,43 @@ public class ChatServiceTests
         t.Db.SaveChanges();
 
         var older = await new ChatService(t.Verify()).GetMessagesBeforeAsync(room, a, latest.Items[0].CreatedAt, 50, default);
-        Assert.Equal(30, older.Items.Count);
-        Assert.Equal(30, older.TotalCount); // only what's older than the cursor
+        // Inclusive cursor: the cursor row itself comes back once more (the client de-dupes it).
+        Assert.Equal(31, older.Items.Count);
+        Assert.Equal(31, older.TotalCount); // only what's not newer than the cursor
         Assert.Equal("m1", older.Items[0].Content);
-        Assert.Equal("m30", older.Items[^1].Content);
-        Assert.Empty(older.Items.Select(m => m.Id).Intersect(latest.Items.Select(m => m.Id)));
+        Assert.Equal("m31", older.Items[^1].Content);
+        Assert.Equal([latest.Items[0].Id], older.Items.Select(m => m.Id).Intersect(latest.Items.Select(m => m.Id)));
 
         // Smaller pages: TotalCount > Items.Count signals more history remains.
         var small = await svc.GetMessagesBeforeAsync(room, a, latest.Items[0].CreatedAt, 10, default);
-        Assert.Equal(["m21", "m22", "m23", "m24", "m25", "m26", "m27", "m28", "m29", "m30"], small.Items.Select(m => m.Content));
+        Assert.Equal(["m22", "m23", "m24", "m25", "m26", "m27", "m28", "m29", "m30", "m31"], small.Items.Select(m => m.Content));
         Assert.True(small.TotalCount > small.Items.Count);
+    }
+
+    [Fact]
+    public async Task GetMessagesBefore_never_skips_messages_sharing_the_cursor_timestamp()
+    {
+        using var t = new TestDb();
+        var (a, _, room) = SeedDm(t, 0);
+        // Ten messages in the same tick: a page boundary falls inside the tie.
+        var at = DateTime.UtcNow;
+        for (var i = 1; i <= 10; i++)
+            t.Db.ChatMessages.Add(Msg(room, a, "text", $"t{i}", at));
+        t.Db.SaveChanges();
+        var svc = new ChatService(t.Verify());
+
+        var seen = new HashSet<Guid>();
+        var page = await svc.GetMessagesAsync(room, a, page: 1, pageSize: 4, default);
+        foreach (var m in page.Items) seen.Add(m.Id);
+        // Walk back the way the client does: cursor = oldest loaded, keep only unseen ids.
+        for (var guard = 0; guard < 10; guard++)
+        {
+            var older = await svc.GetMessagesBeforeAsync(room, a, page.Items[0].CreatedAt, 50, default);
+            if (!older.Items.Any(m => seen.Add(m.Id))) break;
+            page = older;
+        }
+
+        Assert.Equal(10, seen.Count);
     }
 
     [Fact]

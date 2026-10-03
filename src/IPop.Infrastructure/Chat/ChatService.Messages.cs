@@ -203,14 +203,16 @@ public sealed partial class ChatService
 
         if (before is not null)
         {
+            // Inclusive: messages sharing the cursor's timestamp may straddle the page boundary and
+            // a strict "<" skipped them for good. The client de-dupes the overlap by id.
             var cursor = before.Value;
-            query = query.Where(m => m.CreatedAt < cursor);
+            query = query.Where(m => m.CreatedAt <= cursor);
         }
 
         var totalCount = await query.CountAsync(ct);
 
         var messages = await query
-            .OrderByDescending(m => m.CreatedAt)
+            .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Include(m => m.Sender)

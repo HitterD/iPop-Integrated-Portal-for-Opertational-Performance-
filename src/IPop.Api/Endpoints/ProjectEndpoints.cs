@@ -1,5 +1,6 @@
 using IPop.Application.Realtime;
 using IPop.Api.Rbac;
+using IPop.Application.Chat;
 using IPop.Application.Projects;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
@@ -46,7 +47,7 @@ public static class ProjectEndpoints
 
         // POST /api/projects — create
         g.MapPost("", async (CreateProjectRequest req,
-            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, IChatNotifier chat, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -64,6 +65,7 @@ public static class ProjectEndpoints
 
             await Audit(http, db, "projects.create", result.Project!.Id.ToString(), ct);
             await PushProjectChangedAsync(realtime, result.Project!.Id);
+            await SyncProjectRoomLiveAsync(db, chat, result.Project!.Id, added: null, removed: null);
             return Results.Ok(result.Project);
         }); // any signed-in user may create a project (decision 2026-09-23)
 
@@ -223,7 +225,7 @@ public static class ProjectEndpoints
 
         // POST /api/projects/{id}/members — { userId, role }
         g.MapPost("/{id:guid}/members", async (Guid id, AddProjectMemberRequest req,
-            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, IChatNotifier chat, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -241,12 +243,15 @@ public static class ProjectEndpoints
 
             await Audit(http, db, "projects.member.add", $"{id}:{req.UserId}", ct);
             await PushProjectChangedAsync(realtime, id);
+            var addedId = req.UserId != Guid.Empty ? req.UserId
+                : await db.Users.AsNoTracking().Where(u => u.Nik == (req.Nik ?? "").Trim()).Select(u => u.Id).FirstOrDefaultAsync(ct);
+            await SyncProjectRoomLiveAsync(db, chat, id, added: addedId, removed: null);
             return Results.Ok(result);
         }).RequirePermission("projects.write");
 
         // DELETE /api/projects/{id}/members/{userId}
         g.MapDelete("/{id:guid}/members/{userId:guid}", async (Guid id, Guid userId,
-            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, IChatNotifier chat, CancellationToken ct) =>
         {
             var actorId = await GetUserIdAsync(http, db);
             if (actorId is null) return Results.Unauthorized();
@@ -265,6 +270,7 @@ public static class ProjectEndpoints
 
             await Audit(http, db, "projects.member.remove", $"{id}:{userId}", ct);
             await PushProjectChangedAsync(realtime, id);
+            await SyncProjectRoomLiveAsync(db, chat, id, added: null, removed: userId);
             return Results.Ok(result);
         }).RequirePermission("projects.write");
 
@@ -1396,6 +1402,25 @@ public static class ProjectEndpoints
     /// Best effort: the mutation has already committed, so a failed push must not fail the
     /// request, and it is not tied to the request token (a caller hanging up should not
     /// silence everyone else's update).
+    /// Project membership writes the linked chat room's members directly; the live hub groups
+    /// must follow, or an added member gets nothing until they reconnect and a removed one keeps
+    /// receiving the room. added/removed null = (re)announce the room to all current members.
+    private static async Task SyncProjectRoomLiveAsync(IPopDbContext db, IChatNotifier chat, Guid projectId, Guid? added, Guid? removed)
+    {
+        try
+        {
+            var roomId = await db.ProjectRooms.AsNoTracking().Where(r => r.ProjectId == projectId)
+                .Select(r => r.RoomId).FirstOrDefaultAsync();
+            if (roomId == Guid.Empty) return;
+            if (removed is { } gone) { await chat.NotifyRemovedAsync(gone, roomId, CancellationToken.None); return; }
+            var ids = added is { } a && a != Guid.Empty ? [a]
+                : await db.ChatRoomMembers.AsNoTracking().Where(m => m.RoomId == roomId && m.LeftAt == null)
+                    .Select(m => m.UserId).ToListAsync();
+            if (ids.Count > 0) await chat.NotifyAddedAsync(ids, roomId, CancellationToken.None);
+        }
+        catch { /* membership is saved; clients resync on reconnect */ }
+    }
+
     private static async Task PushProjectChangedAsync(IRealtime realtime, Guid? projectId)
     {
         if (projectId is not { } id) return;

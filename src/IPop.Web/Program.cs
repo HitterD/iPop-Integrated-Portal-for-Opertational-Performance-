@@ -30,7 +30,8 @@ builder.Services.AddScoped<IPop.Web.Services.PracticeSandbox>();
 builder.Services.AddScoped<IPop.Web.Services.TutorialState>();
 builder.Services.AddScoped<IPop.Web.Services.AuthState>();
 builder.Services.AddScoped<IPop.Web.Services.PageCache>();
-builder.Services.AddScoped<IPop.Web.Services.ChatState>();
+builder.Services.AddScoped(sp => new IPop.Web.Services.ChatState(sp.GetRequiredService<IPop.Web.Services.AuthState>(),
+    sp.GetRequiredService<HttpClient>(), sp.GetService<IPop.Web.Services.DraftStore>(), sp.GetRequiredService<Microsoft.JSInterop.IJSRuntime>()));
 builder.Services.AddScoped<IPop.Web.Services.ChatAttachments>();
 builder.Services.AddScoped<IPop.Web.Services.ToastService>();
 builder.Services.AddScoped<IPop.Web.Services.CallState>();

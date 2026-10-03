@@ -3,11 +3,16 @@ using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace IPop.Infrastructure.Chat;
 
-public sealed class ChatMentionNotifyWorker(IServiceScopeFactory scopeFactory) : BackgroundService
+public sealed class ChatMentionNotifyWorker(IServiceScopeFactory scopeFactory, ILogger<ChatMentionNotifyWorker>? log = null) : BackgroundService
 {
+    // Backoff 5s, 30s, 2m, 10m, 30m: a short DB/push outage must not cost anyone their mention.
+    internal const int MaxAttempts = 6;
+    private static readonly TimeSpan[] Backoff = [TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(30)];
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
@@ -21,7 +26,7 @@ public sealed class ChatMentionNotifyWorker(IServiceScopeFactory scopeFactory) :
                     var gateway = scope.ServiceProvider.GetRequiredService<INotificationGateway>();
                     var now = DateTime.UtcNow;
                     var pending = await db.ChatMentions
-                        .Where(m => m.NotifiedAt == null && !m.SuppressNotification && m.NotifyAttempts < 3 && (m.NextAttemptAt == null || m.NextAttemptAt <= now))
+                        .Where(m => m.NotifiedAt == null && !m.SuppressNotification && m.NotifyAttempts < MaxAttempts && (m.NextAttemptAt == null || m.NextAttemptAt <= now))
                         .OrderBy(m => m.CreatedAt)
                         .Take(200)
                         .Include(m => m.Message).ThenInclude(msg => msg.Sender)
@@ -45,15 +50,21 @@ public sealed class ChatMentionNotifyWorker(IServiceScopeFactory scopeFactory) :
                                 continue;
                             }
                             var preview = IPop.Application.Chat.Mentions.MentionPlainText.Project(mention.Message.Content, 120);
-                            var roomName = mention.Message.Room?.Name ?? "Chat";
                             var senderName = mention.Message.Sender?.Name ?? "Unknown";
-                            await gateway.SendMentionNotificationAsync(mention.UserId, senderName, roomName, preview, true, stoppingToken, mention.MessageId);
+                            // A DM has no name: title it after the sender rather than a generic "Chat".
+                            var roomName = mention.Message.Room?.Name ?? senderName;
+                            await gateway.SendMentionNotificationAsync(mention.UserId, senderName, roomName, preview, true, stoppingToken,
+                                mention.MessageId, mention.Message.RoomId);
                             mention.NotifiedAt = DateTime.UtcNow;
                         }
-                        catch
+                        catch (Exception ex) when (ex is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
                         {
                             mention.NotifyAttempts++;
-                            mention.NextAttemptAt = DateTime.UtcNow.AddSeconds(5);
+                            mention.NextAttemptAt = DateTime.UtcNow + Backoff[Math.Min(mention.NotifyAttempts - 1, Backoff.Length - 1)];
+                            if (mention.NotifyAttempts >= MaxAttempts)
+                                log?.LogError(ex, "Mention notification {MentionId} for user {UserId} gave up after {Attempts} attempts.", mention.Id, mention.UserId, mention.NotifyAttempts);
+                            else
+                                log?.LogWarning("Mention notification {MentionId} failed (attempt {Attempts}): {Error}", mention.Id, mention.NotifyAttempts, ex.GetType().Name);
                         }
                     }
                     if (pending.Count > 0) await db.SaveChangesAsync(stoppingToken);
@@ -62,7 +73,7 @@ public sealed class ChatMentionNotifyWorker(IServiceScopeFactory scopeFactory) :
                 {
                     break;
                 }
-                catch { /* swallow — retry next tick */ }
+                catch (Exception ex) { log?.LogWarning(ex, "Mention notify pass failed; retrying."); }
 
                 await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
             }

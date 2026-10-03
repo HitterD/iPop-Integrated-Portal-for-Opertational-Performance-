@@ -21,15 +21,25 @@ public sealed class ChatNotifier(IHubContext<ChatHub> hub, IPopDbContext db,
         // before the realtime fan-out; recipients, preferences and preview are resolved by the push worker.
         // The message is already committed: an enqueue failure must not turn a sent message into a
         // client-side "failed" (and a duplicate resend), so it is logged instead of thrown.
+        // The caller's token is deliberately ignored: once the message is saved, the sender closing
+        // the tab or dropping the request must not cancel the toast intent or the room fan-out.
         if (push is not null)
         {
-            try { await push.EnqueueAsync(db, "chat", message.Id, ct); }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            try { await push.EnqueueAsync(db, "chat", message.Id, CancellationToken.None); }
+            catch (Exception ex)
             {
                 log?.LogError("Chat push intent for message {MessageId} was not saved ({Error}).", message.Id, ex.GetType().Name);
             }
         }
-        await hub.Clients.Group(Group(roomId)).SendAsync("newMessage", message, ct);
+        // Thread replies have their own event: clients drop newMessage carrying a ThreadParentId.
+        var evt = message.ThreadParentId is null ? "newMessage" : "threadReply";
+        // A backplane (Redis) hiccup must not report a saved message as failed either; clients
+        // that missed the fan-out catch up on reconnect/refresh.
+        try { await hub.Clients.Group(Group(roomId)).SendAsync(evt, message, CancellationToken.None); }
+        catch (Exception ex)
+        {
+            log?.LogError("Realtime fan-out of message {MessageId} failed ({Error}).", message.Id, ex.GetType().Name);
+        }
     }
 
     public Task NotifyMessageEditedAsync(Guid roomId, MessageDto message, CancellationToken ct)

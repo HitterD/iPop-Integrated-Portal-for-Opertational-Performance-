@@ -1,6 +1,7 @@
 using IPop.Application.Chat;
 using IPop.Application.Chat.Mentions;
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.JSInterop;
 
 namespace IPop.Web.Services;
 
@@ -52,6 +53,7 @@ public partial class ChatState
         public int Attempt { get; set; }
         /// Set from the ack/result, which maps our idempotency key to the real id.
         public Guid? ServerId { get; set; }
+        public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
     }
 
     private readonly Dictionary<Guid, Outgoing> _outbox = [];
@@ -209,6 +211,7 @@ public partial class ChatState
     {
         o.State = state;
         o.Error = error;
+        PersistOutbox();
         SendSettled?.Invoke(Outcome(o));
         StateChanged?.Invoke();
     }
@@ -220,6 +223,7 @@ public partial class ChatState
         if (o.State == SendState.Confirmed) return;
         o.State = SendState.Confirmed;
         o.Error = null;
+        PersistOutbox();
         SendSettled?.Invoke(Outcome(o));
     }
 
@@ -245,6 +249,7 @@ public partial class ChatState
             Seq = ++_outboxSeq, State = SendState.Pending,
         };
         _outbox[tempId] = o;
+        PersistOutbox();
 
         if (roomId == ActiveRoomId)
         {
@@ -319,22 +324,98 @@ public partial class ChatState
 
     private void RemoveOptimistic(Guid tempId)
     {
-        _outbox.Remove(tempId);
+        if (_outbox.Remove(tempId)) PersistOutbox();
         var idx = ActiveMessages.FindIndex(m => m.Id == tempId);
         if (idx >= 0) ActiveMessages.RemoveAt(idx);
     }
 
     /// Sends everything queued while offline, oldest first. An entry leaves the queue only when
     /// its own attempt is answered; if the connection drops again the rest stay queued.
+    /// Unknown (no answer: timeout, dropped connection) is resent too: the same idempotency key
+    /// makes the server return the existing message instead of sending it twice. Failed (the
+    /// server refused) waits for a manual Retry.
     private async Task DrainOfflineQueueAsync()
     {
-        foreach (var o in _outbox.Values.Where(o => o.State == SendState.Queued).OrderBy(o => o.Seq).ToList())
+        foreach (var o in _outbox.Values.Where(o => o.State is SendState.Queued or SendState.Unknown).OrderBy(o => o.Seq).ToList())
         {
             if (_hub?.State != HubConnectionState.Connected) break;
-            if (!_outbox.ContainsKey(o.TempId) || o.State != SendState.Queued) continue;
+            if (!_outbox.ContainsKey(o.TempId) || o.State is not (SendState.Queued or SendState.Unknown)) continue;
             await SendCoreAsync(o);
         }
         StateChanged?.Invoke();
+    }
+
+    // ── Persistence: unsent messages survive a reload or closed tab (per account, 7 days) ──
+
+    internal static readonly TimeSpan OutboxRetention = TimeSpan.FromDays(7);
+    internal const string OutboxKeyPrefix = "ipop.chat.outbox.";
+    /// The account whose stored outbox this tab has read back and now owns.
+    private string? _outboxOwner;
+
+    internal sealed record StoredOutgoing(Guid TempId, Guid Key, Guid RoomId, string Content, Guid? ReplyToId, string? Type,
+        IReadOnlyList<Guid>? AttachmentIds, IReadOnlyList<AttachmentDto>? Attachments, bool LinkPreviewOff,
+        SendState State, string? Error, DateTime CreatedAt);
+
+    /// Entries the server has not confirmed yet, oldest first. Confirmed ones are the server's now.
+    internal List<StoredOutgoing> SnapshotOutbox() => _outbox.Values
+        .Where(o => o.State != SendState.Confirmed)
+        .OrderBy(o => o.Seq)
+        .Select(o => new StoredOutgoing(o.TempId, o.Key, o.RoomId, o.Content, o.ReplyToId, o.Type, o.AttachmentIds,
+            o.Bubble.Attachments, o.LinkPreviewOff, o.State, o.Error, o.CreatedAt))
+        .ToList();
+
+    private void PersistOutbox()
+    {
+        // Not before this account's stored entries were read back, or an early write would wipe them.
+        if (_js is null || _outboxOwner is not { } nik || _auth.Me?.Nik != nik) return;
+        var items = SnapshotOutbox();
+        var key = OutboxKeyPrefix + nik;
+        _ = (items.Count == 0
+                ? _js.InvokeVoidAsync("localStorage.removeItem", key)
+                : _js.InvokeVoidAsync("localStorage.setItem", key, System.Text.Json.JsonSerializer.Serialize(items)))
+            .AsTask().ContinueWith(t => _ = t.Exception, TaskScheduler.Default);
+    }
+
+    /// Reads this account's unsent messages back (once per account) so the caller's drain
+    /// resends them; anything past the retention window is dropped.
+    private async Task RestoreOutboxAsync()
+    {
+        if (_js is null || _auth.Me?.Nik is not { Length: > 0 } nik || _outboxOwner == nik) return;
+        string? json = null;
+        try { json = await _js.InvokeAsync<string?>("localStorage.getItem", OutboxKeyPrefix + nik); }
+        catch { }
+        if (_auth.Me?.Nik != nik) return;
+        _outboxOwner = nik;
+        List<StoredOutgoing>? stored = null;
+        try { if (!string.IsNullOrEmpty(json)) stored = System.Text.Json.JsonSerializer.Deserialize<List<StoredOutgoing>>(json); }
+        catch { }
+        RestoreOutbox(stored ?? [], DateTime.UtcNow);
+        PersistOutbox();
+        StateChanged?.Invoke();
+    }
+
+    internal void RestoreOutbox(IEnumerable<StoredOutgoing> stored, DateTime now)
+    {
+        var known = _outbox.Values.Select(o => (o.RoomId, o.Key)).ToHashSet();
+        foreach (var s in stored)
+        {
+            if (now - s.CreatedAt > OutboxRetention || !known.Add((s.RoomId, s.Key))) continue;
+            var bubble = new MessageDto(
+                s.TempId, s.RoomId, Guid.Empty, _auth.Me?.Name ?? "You", _auth.Me?.Nik ?? "",
+                s.Type ?? "text", s.Content, s.CreatedAt, null, false, null,
+                s.ReplyToId, null, null, 0, null,
+                s.Attachments ?? [], [], [], false, s.Key, LinkPreviewOff: s.LinkPreviewOff);
+            _outbox[s.TempId] = new Outgoing
+            {
+                TempId = s.TempId, Key = s.Key, RoomId = s.RoomId, Content = s.Content, ReplyToId = s.ReplyToId, Type = s.Type,
+                AttachmentIds = s.AttachmentIds, LinkPreviewOff = s.LinkPreviewOff, Bubble = bubble,
+                Seq = ++_outboxSeq, CreatedAt = s.CreatedAt,
+                // A refusal stays a refusal (manual Retry); anything else is resent on this connect.
+                State = s.State == SendState.Failed ? SendState.Failed : SendState.Unknown,
+                Error = s.State == SendState.Failed ? s.Error : null,
+            };
+            if (s.RoomId == ActiveRoomId && ActiveMessages.All(m => m.Id != s.TempId)) ActiveMessages.Add(bubble);
+        }
     }
 
     /// The room is gone for this user (403/404): nothing of it may linger or be resent.
@@ -348,6 +429,11 @@ public partial class ChatState
     private void ClearOutbox()
     {
         foreach (var k in _outbox.Keys.ToList()) RemoveOptimistic(k);
+        // Me is already gone at sign-out, so wipe the owner's stored copy by name.
+        if (_js is not null && _outboxOwner is { } owner)
+            _ = _js.InvokeVoidAsync("localStorage.removeItem", OutboxKeyPrefix + owner).AsTask()
+                .ContinueWith(t => _ = t.Exception, TaskScheduler.Default);
+        _outboxOwner = null;
         _outboxSeq = 0;
     }
 }

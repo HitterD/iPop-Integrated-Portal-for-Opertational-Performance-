@@ -125,7 +125,7 @@ public sealed partial class ChatService
         var totalCount = await query.CountAsync(ct);
 
         var replies = await query
-            .OrderBy(m => m.CreatedAt)
+            .OrderBy(m => m.CreatedAt).ThenBy(m => m.Id)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Include(m => m.Sender)

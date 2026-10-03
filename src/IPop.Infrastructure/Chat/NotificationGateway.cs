@@ -21,7 +21,7 @@ public sealed class NotificationGateway(
 {
     private const string ChatClientId = "chat"; // well-known internal client for chat-originated notifications
 
-    public async Task SendMentionNotificationAsync(Guid recipientId, string senderName, string roomName, string preview, bool isHighPriority, CancellationToken ct, Guid? messageId = null)
+    public async Task SendMentionNotificationAsync(Guid recipientId, string senderName, string roomName, string preview, bool isHighPriority, CancellationToken ct, Guid? messageId = null, Guid? roomId = null)
     {
         logger.LogInformation("Notification: Mention for {RecipientId} from {Sender} in {Room}: {Preview}", recipientId, senderName, roomName, preview);
 
@@ -47,16 +47,22 @@ public sealed class NotificationGateway(
             await db.SaveChangesAsync(ct);
         }
 
-        var room = await db.ChatRooms.AsNoTracking().FirstOrDefaultAsync(r => r.Name == roomName, ct);
-        var targetUrl = room != null ? $"/chat/{room.Id}" : "/chat";
+        // By id: DMs have no name and group names repeat, so a name lookup linked the wrong room (or none).
+        roomId ??= (await db.ChatRooms.AsNoTracking().FirstOrDefaultAsync(r => r.Name == roomName, ct))?.Id;
+        var targetUrl = roomId is { } rid ? $"/chat/{rid}" : "/chat";
         // ?jump= makes the chat page scroll to the message itself, not just open the room.
-        if (room != null && messageId is { } mid) targetUrl += $"?jump={mid}";
+        if (roomId != null && messageId is { } mid) targetUrl += $"?jump={mid}";
+
+        // A retry after a half-finished attempt must not notify the same mention twice.
+        var idempotencyKey = messageId is { } m2 ? $"chat-mention-{m2:N}-{recipientId:N}" : $"chat-mention-{Guid.NewGuid():N}";
+        if (messageId is not null && await db.NotificationRequests.AsNoTracking().AnyAsync(r => r.IdempotencyKey == idempotencyKey, ct))
+            return;
 
         var request = new NotificationRequest
         {
             Id = Guid.NewGuid(),
             ClientId = client.Id,
-            IdempotencyKey = $"chat-mention-{Guid.NewGuid():N}",
+            IdempotencyKey = idempotencyKey,
             Priority = isHighPriority ? "high" : "normal",
             EventType = "chat.mention",
             Title = $"Mention in {roomName}",

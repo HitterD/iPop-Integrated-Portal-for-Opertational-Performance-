@@ -92,7 +92,11 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
                 db.ChangeTracker.Clear();
                 job = await db.PushJobs.FirstAsync(j => j.Id == d.Id, ct);
                 job.LastError = job.Attempts >= PushJob.MaxExpandAttempts ? "max-attempts" : "expand-error";
-                if (job.Attempts >= PushJob.MaxExpandAttempts) job.ExpandedAt = now;
+                if (job.Attempts >= PushJob.MaxExpandAttempts)
+                {
+                    job.ExpandedAt = now;
+                    log.LogError(ex, "Web push job {JobId} ({Kind}) dropped after {Attempts} expansion attempts.", job.Id, job.Kind, job.Attempts);
+                }
                 else job.NextAttemptAt = now.AddSeconds(Math.Min(300, 5 * Math.Pow(2, job.Attempts)));
                 log.LogWarning("Web push job {JobId} ({Kind}) expansion failed: {Error}.", job.Id, job.Kind, ex.GetType().Name);
             }
@@ -106,7 +110,12 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
     /// Creates the per-browser rows. Calls diff against earlier rings so each ring/close is queued once.
     internal async Task ExpandAsync(PushJob job, DateTime now, CancellationToken ct)
     {
-        if (!transport.IsConfigured) { job.LastError = "push-disabled"; return; }
+        if (!transport.IsConfigured)
+        {
+            job.LastError = "push-disabled";
+            log.LogWarning("Web push is not configured (VAPID); {Kind} job {JobId} produced no Windows toast.", job.Kind, job.Id);
+            return;
+        }
         if (job.Kind == "call") { await ExpandCallAsync(job, now, ct); return; }
 
         var audience = await AudienceAsync(job, null, now, ct);
@@ -211,6 +220,10 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
                 var outcome = await transport.SendAsync(sub, JsonSerializer.Serialize(payload, Json), ttl, urgent, TopicOf(payload.Tag), ct);
                 Apply(row, outcome, now);
                 if (row.Status == Status.Gone) gone.Add(sub.Id);
+                // Final failures used to vanish into debug logs; a toast nobody got must be visible.
+                else if (row.Status is Status.AuthError or Status.Rejected or Status.Failed)
+                    log.LogWarning("Web push {Kind} delivery {DeliveryId} for user {UserId} failed permanently: {Status} ({Code}).",
+                        job.Kind, row.Id, row.UserId, row.Status, row.Code ?? "-");
             }
         }
 

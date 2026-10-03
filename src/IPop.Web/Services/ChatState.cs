@@ -14,14 +14,16 @@ public partial class ChatState : IAsyncDisposable
     private readonly AuthState _auth;
     private readonly HttpClient _http;
     private readonly DraftStore? _drafts;
+    private readonly Microsoft.JSInterop.IJSRuntime? _js;
     private HubConnection? _hub;
     private DateTime _lastTypingBroadcast = DateTime.MinValue;
 
-    public ChatState(AuthState auth, HttpClient http, DraftStore? drafts = null)
+    public ChatState(AuthState auth, HttpClient http, DraftStore? drafts = null, Microsoft.JSInterop.IJSRuntime? js = null)
     {
         _auth = auth;
         _http = http;
         _drafts = drafts;
+        _js = js;
         HookOutbox();
     }
 
@@ -287,6 +289,9 @@ public partial class ChatState : IAsyncDisposable
             await _hub.StartAsync();
             ConnectionChanged?.Invoke();
             await LoadRoomsAsync();
+            // Messages a previous tab/session never got confirmed: back into the outbox, then resent.
+            await RestoreOutboxAsync();
+            await DrainOfflineQueueAsync();
             // A room opened before the hub was up (e.g. /chat/{room} straight from a push
             // notification) had its MarkRead dropped; mark it now so the sender sees "read".
             await MarkActiveRoomReadAsync();
@@ -620,7 +625,8 @@ public partial class ChatState : IAsyncDisposable
         var fresh = result.Items.Where(m => known.Add(m.Id)).ToList();
         ActiveMessages.InsertRange(0, fresh);
         MessagePage++;
-        HasOlderMessages = result.Items.Count > 0 && result.Items.Count < result.TotalCount;
+        // The cursor is inclusive, so a page that only re-served what's on screen means the start.
+        HasOlderMessages = fresh.Count > 0 && result.Items.Count < result.TotalCount;
         StateChanged?.Invoke();
         if (ActiveRoom is { Type: "group" }) _ = RefreshGroupReadCountsAsync(roomId, immediate: true);
     }
