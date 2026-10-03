@@ -287,7 +287,7 @@ public partial class Notes
     {
         await DestroyPreviewAsync();
         if (module is null || selVersionState is null || pop != Pop.History) return;
-        try { previewer = await module.InvokeAsync<IJSObjectReference>("preview", previewRef, selVersionState); }
+        try { previewer = await module.InvokeAsync<IJSObjectReference>("preview", previewRef, selVersionState, new { apiBase = Http.BaseAddress?.ToString() ?? "", dotnet = selfRef }); }
         catch (JSException) { Toasts.Show("This version can't be displayed", ToastKind.Error); }
     }
 

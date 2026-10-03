@@ -310,6 +310,7 @@
 .nt-handle button { width:22px; height:24px; border-radius:5px; display:grid; place-items:center; color:var(--ink-4); background:none; border:0; cursor:pointer; font-size:15px; line-height:1; }
 .nt-handle button:hover { background:var(--fill); color:var(--ink-2); }
 .nt-handle .grip { cursor:grab; }
+@media (pointer: coarse) { .nt-handle button { width:32px; height:32px; font-size:18px; } }
 
 /* new page: templates */
 .nt-tpl-hint { color:var(--ink-3); font-size:12px; font-weight:600; margin:28px 0 10px; letter-spacing:.02em; }
@@ -407,11 +408,9 @@
 .nt-switch.on { background:#34C759 !important; }
 .nt-switch.on::after { transform:translateX(14px); }
 
-.nt-emoji { width:300px; padding:10px; }
-.nt-emoji-grid { display:grid; grid-template-columns:repeat(8,1fr); gap:2px; max-height:220px; overflow:auto; }
-.nt-emoji-grid button { height:32px; border-radius:7px; font-size:19px; }
-.nt-emoji-grid button:hover { background:var(--fill) !important; }
-.nt-emoji .foot { display:flex; justify-content:space-between; margin-top:8px; }
+.nt-emoji { width:min(344px,calc(100vw - 16px)); padding:0 0 8px; overflow:hidden; }
+.nt-emoji > .emoji-picker { width:100%; box-shadow:none; border:0; border-radius:0; }
+.nt-emoji .foot { display:flex; justify-content:space-between; margin-top:4px; padding:0 8px; }
 
 /* share */
 .nt-share { top:58px; right:14px; width:440px; }
@@ -496,6 +495,13 @@
 .nt-menu .swrow .sq:hover { transform:scale(1.1); }
 .nt-menu .swrow .sq.on { box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--ink); }
 .nt-colors { width:210px; max-height:420px; }
+.nt-link-pop { width:min(320px,calc(100vw - 16px)); padding:8px; }
+.nt-link-in { width:100%; box-sizing:border-box; height:32px; padding:0 10px; border-radius:7px; border:1px solid var(--line); background:var(--surface); color:var(--ink); font:inherit; }
+.nt-link-in:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent); }
+.nt-link-acts { display:flex; justify-content:flex-end; gap:6px; margin-top:8px; }
+.nt-link-acts button { height:28px; padding:0 12px; border-radius:7px; font-size:12.5px; font-weight:500; }
+.nt-link-rm { color:var(--danger) !important; margin-right:auto; }
+.nt-link-ok { background:var(--accent) !important; color:#fff !important; }
 
 /* ── Chat card (MessageBubble) ─────────────────────────────────────────── */
 .notecard { --pc:#0A84FF; width:340px; max-width:100%; border-radius:16px; overflow:hidden; background:var(--surface); border:1px solid var(--line); box-shadow:0 1px 2px rgba(0,0,0,.05); cursor:pointer; transition:transform .12s,box-shadow .12s; text-align:left; display:block; padding:0; color:var(--ink); font:inherit; }

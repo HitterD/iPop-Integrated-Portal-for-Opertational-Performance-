@@ -476,12 +476,8 @@
 
         case Pop.Emoji:
             <div class="nt-layer nt-emoji" style="top:@(note.Cover is null ? 170 : 290)px;left:50%;transform:translateX(-50%)">
-                <div class="nt-emoji-grid">
-                    @foreach (var e in Emojis)
-                    {
-                        <button type="button" @onclick="() => SetEmoji(e)">@e</button>
-                    }
-                </div>
+                @* Same searchable picker as Chat/Mail. The page scrim handles outside clicks. *@
+                <EmojiPicker OnPick="SetEmoji" OnClose="ClosePop" CloseOnOutsideClick="false" />
                 <div class="foot">
                     <button type="button" class="nt-btn ghost" @onclick="() => SetEmoji(Emojis[Random.Shared.Next(Emojis.Length)])"><i data-lucide="shuffle" class="sm"></i>Random</button>
                     <button type="button" class="nt-btn ghost" @onclick='() => SetEmoji("")'>Remove icon</button>

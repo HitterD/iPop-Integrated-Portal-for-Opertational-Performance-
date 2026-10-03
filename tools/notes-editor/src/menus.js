@@ -55,7 +55,7 @@ export function slashCommands(host) {
     ['Media', 'Code', 'Capture a code snippet', '</>', '```', setBlock(byKey('code'))],
     ['Inline', 'Mention person', 'Notify someone', '@', '@', ({ editor, range }) => editor.chain().focus().deleteRange(range).insertContent('@').run()],
     ['Inline', 'Date', 'Insert today\'s date', '📅', '', ({ editor, range }) => editor.chain().focus().deleteRange(range)
-      .insertContent(new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) + ' ').run()],
+      .insertContent(new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) + ' ').run()],
   ].map(([group, name, desc, box, kbd, run]) => ({ group, name, desc, box, kbd, run }));
 }
 
@@ -155,8 +155,45 @@ export function createToolbar(editor, host) {
     + COLORS.map(c => `<div class="mi" data-tc="${c}"><span class="sw" style="color:var(--nt-${c})">A</span>${cap(c)}</div>`).join('')
     + '<hr><div class="mh">HIGHLIGHT</div><div class="mi" data-hc=""><span class="sw"></span>No highlight</div>'
     + COLORS.map(c => `<div class="mi" data-hc="${c}"><span class="sw" style="background:var(--nb-${c})"></span>${cap(c)} background</div>`).join(''));
-  document.body.append(bar, colors);
+  // Link editor: an inline popover instead of the browser's prompt().
+  const linkPop = $el('nt-pop nt-link-pop', `
+    <input type="url" class="nt-link-in" placeholder="Paste or type a link" aria-label="Link URL" spellcheck="false">
+    <div class="nt-link-acts"><button type="button" class="nt-link-rm" data-l="remove">Remove</button><button type="button" class="nt-link-ok" data-l="apply">Apply</button></div>`);
+  const linkIn = linkPop.querySelector('input');
+  let linkRange = null;
+  document.body.append(bar, colors, linkPop);
   [bar, colors].forEach(e => e.addEventListener('mousedown', ev => ev.preventDefault()));
+  linkPop.addEventListener('mousedown', ev => { if (ev.target !== linkIn) ev.preventDefault(); });
+  const closeLink = (refocus = true) => {
+    linkPop.classList.remove('show');
+    if (refocus && linkRange) editor.chain().focus().setTextSelection(linkRange).run();
+    linkRange = null;
+  };
+  const applyLink = remove => {
+    if (!linkRange) return;
+    const url = linkIn.value.trim();
+    const c = editor.chain().focus().setTextSelection(linkRange).extendMarkRange('link');
+    if (remove || !url) c.unsetLink().run();
+    else c.setLink({ href: /^(https?:|mailto:|\/)/i.test(url) ? url : `https://${url}` }).run();
+    linkRange = null;
+    linkPop.classList.remove('show');
+  };
+  function openLink(anchor) {
+    const { from, to } = editor.state.selection;
+    linkRange = { from, to };
+    linkIn.value = editor.getAttributes('link').href || '';
+    linkPop.querySelector('[data-l="remove"]').hidden = !editor.isActive('link');
+    colors.classList.remove('show');
+    place(linkPop, anchor.getBoundingClientRect());
+    linkIn.focus(); linkIn.select();
+  }
+  linkPop.addEventListener('click', e => { const b = e.target.closest('[data-l]'); if (b) applyLink(b.dataset.l === 'remove'); });
+  linkIn.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); applyLink(false); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeLink(); }
+  });
+  const linkOutside = ev => { if (linkPop.classList.contains('show') && !linkPop.contains(ev.target) && !bar.contains(ev.target)) closeLink(false); };
+  document.addEventListener('mousedown', linkOutside);
 
   bar.addEventListener('click', e => {
     const b = e.target.closest('[data-c]'); if (!b) return;
@@ -167,14 +204,9 @@ export function createToolbar(editor, host) {
       case 'underline': c.toggleUnderline().run(); break;
       case 'strike': c.toggleStrike().run(); break;
       case 'code': c.toggleCode().run(); break;
-      case 'link': {
-        const prev = editor.getAttributes('link').href || '';
-        const url = window.prompt('Link URL', prev);
-        if (url === null) break;
-        if (!url) c.unsetLink().run();
-        else c.setLink({ href: /^(https?:|mailto:|\/)/i.test(url) ? url : `https://${url}` }).run();
-        break;
-      }
+      case 'link':
+        if (linkPop.classList.contains('show')) closeLink(); else openLink(b);
+        return;
       case 'color':
         if (colors.classList.contains('show')) colors.classList.remove('show');
         else place(colors, b.getBoundingClientRect());
@@ -190,7 +222,7 @@ export function createToolbar(editor, host) {
     colors.classList.remove('show');
   });
 
-  const hide = () => { bar.classList.remove('show'); colors.classList.remove('show'); };
+  const hide = () => { if (linkPop.contains(document.activeElement)) return; bar.classList.remove('show'); colors.classList.remove('show'); };
   function sync() {
     const { state, view } = editor;
     const { from, to, empty } = state.selection;
@@ -211,8 +243,8 @@ export function createToolbar(editor, host) {
     bar.style.visibility = '';
   }
   editor.on('selectionUpdate', sync);
-  editor.on('blur', ({ event }) => { if (!bar.contains(event?.relatedTarget) && !colors.contains(event?.relatedTarget)) setTimeout(() => { if (!editor.view.hasFocus()) hide(); }, 120); });
-  return { sync, hide, destroy() { bar.remove(); colors.remove(); } };
+  editor.on('blur', ({ event }) => { if (!bar.contains(event?.relatedTarget) && !colors.contains(event?.relatedTarget) && !linkPop.contains(event?.relatedTarget)) setTimeout(() => { if (!editor.view.hasFocus()) hide(); }, 120); });
+  return { sync, hide, destroy() { document.removeEventListener('mousedown', linkOutside); bar.remove(); colors.remove(); linkPop.remove(); } };
 }
 
 // ── Block handle + menu ─────────────────────────────────────────────────────

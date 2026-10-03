@@ -48,7 +48,7 @@ export const Callout = Node.create({
       const dom = el('div', `nt-callout c-${node.attrs.color}`);
       dom.dataset.callout = '';
       const emo = el('button', 'nt-callout-emo', esc(node.attrs.emoji));
-      emo.type = 'button'; emo.contentEditable = 'false'; emo.title = 'Ganti ikon';
+      emo.type = 'button'; emo.contentEditable = 'false'; emo.title = 'Change icon';
       const body = el('div', 'nt-callout-body');
       const cycle = ['💡', '⚠️', '⛔', '✅', '✨', '📌', '👥', '🎯', '📖', '🙋', '👋', '📅'];
       emo.addEventListener('mousedown', e => {
@@ -160,6 +160,11 @@ export async function loadBlob(host, id) {
   p.catch(() => blobCache.delete(id));
   return p;
 }
+/// Frees every object URL; called when the editor for a page is torn down.
+export function releaseBlobs() {
+  for (const p of blobCache.values()) p.then(u => URL.revokeObjectURL(u), () => {});
+  blobCache.clear();
+}
 
 export const NoteImage = Node.create({
   name: 'noteImage',
@@ -181,7 +186,7 @@ export const NoteImage = Node.create({
       const host = this.options.host?.() ?? {};
       const dom = el('figure', 'nt-img');
       dom.contentEditable = 'false';
-      dom.innerHTML = `<div class="nt-img-box"><span class="nt-img-wait">Memuat gambar…</span></div><figcaption><span>${esc(node.attrs.name)}</span><span>${node.attrs.size ? fmtSize(node.attrs.size) + ' · ' : ''}NAS</span></figcaption>`;
+      dom.innerHTML = `<div class="nt-img-box"><span class="nt-img-wait">Loading image…</span></div><figcaption><span>${esc(node.attrs.name)}</span><span>${node.attrs.size ? fmtSize(node.attrs.size) + ' · ' : ''}NAS</span></figcaption>`;
       if (node.attrs.id) loadBlob(host, node.attrs.id).then(url => {
         const img = document.createElement('img'); img.src = url; img.alt = node.attrs.name;
         dom.querySelector('.nt-img-box').replaceChildren(img);

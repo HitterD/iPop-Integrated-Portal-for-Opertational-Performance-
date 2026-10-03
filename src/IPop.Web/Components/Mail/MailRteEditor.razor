@@ -463,7 +463,7 @@
         await Exec(cmd);
     }
 
-    private async Task SaveCaret() => await JS.InvokeVoidAsync("ipop.rte.linkInfo", id);
+    private async Task SaveCaret() => await JS.InvokeVoidAsync("ipop.rte.saveCaret", id);
 
     private const long MaxImageBytes = 2 * 1024 * 1024;
 

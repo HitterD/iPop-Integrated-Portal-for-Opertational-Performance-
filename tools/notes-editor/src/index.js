@@ -18,7 +18,7 @@ import * as Y from 'yjs';
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import * as signalR from '@microsoft/signalr';
 
-import { BlockBackground, Callout, NoteWidget, SubPage, NoteImage, NoteFile, CommentHighlights, commentKey, countTodos } from './nodes.js';
+import { BlockBackground, Callout, NoteWidget, SubPage, NoteImage, NoteFile, CommentHighlights, commentKey, countTodos, releaseBlobs } from './nodes.js';
 import { SlashMenu, mentionSuggestion, createToolbar, createHandle, createBlockMenu } from './menus.js';
 import { TEMPLATES, GUIDE_COMMENT_TEXT } from './templates.js';
 
@@ -56,13 +56,24 @@ function baseExtensions(host, { collab = true } = {}) {
   ];
 }
 
-/// Renders a stored version read-only (history dialog).
-export function preview(el, state) {
+/// Renders a stored version read-only (history dialog). opts: { apiBase, dotnet } so images and files
+/// in the old version can still be fetched with the user's token.
+export function preview(el, state, opts = {}) {
   const doc = new Y.Doc();
   Y.applyUpdate(doc, unb64(state));
   const json = yXmlFragmentToProsemirrorJSON(doc.getXmlFragment(FIELD));
-  const host = { fetch: () => Promise.reject(new Error('preview')), pageInfo: () => null };
-  const ed = new Editor({ element: el, editable: false, extensions: baseExtensions(host, { collab: false }), content: json });
+  const apiBase = (opts.apiBase || '').replace(/\/$/, '');
+  const host = {
+    fetch: async path => {
+      if (!opts.dotnet) throw new Error('preview');
+      const t = await opts.dotnet.invokeMethodAsync('GetToken');
+      return fetch(apiBase + path, { headers: { Authorization: `Bearer ${t}` } });
+    },
+    pageInfo: () => null,
+    toast: () => {},
+  };
+  const ed = new Editor({ element: el, editable: false, extensions: baseExtensions(host, { collab: false }), content: json,
+    editorProps: { attributes: { class: 'nt-editor' } } });
   return { destroy: () => { ed.destroy(); doc.destroy(); } };
 }
 
@@ -281,6 +292,11 @@ export async function mount(el, opts) {
     editor.chain().insertContentAt(at, { type: 'paragraph', content: [{ type: 'text', text: '/' }] }).setTextSelection(at + 2).focus().run();
   });
   if (!canEdit) el.addEventListener('mouseup', () => setTimeout(toolbar.sync, 0));
+  // Touch has no hover, and the drag handle only follows mousemove: a tap shows it for the tapped block.
+  if (canEdit) editor.view.dom.addEventListener('pointerup', e => {
+    if (e.pointerType === 'mouse') return;
+    editor.view.dom.dispatchEvent(new MouseEvent('mousemove', { clientX: e.clientX, clientY: e.clientY, bubbles: true }));
+  });
 
   // Progress (tutorial ring + sidebar pill) follows the checkboxes.
   let lastProgress = '';
@@ -368,11 +384,15 @@ export async function mount(el, opts) {
   const mentionQueue = new Map();
   const sendMentions = debounce(async () => {
     if (!mentionQueue.size) return;
-    const ids = [...mentionQueue.keys()]; mentionQueue.clear();
+    const present = new Set();
+    editor.state.doc.descendants(n => { if (n.type.name === 'mention' && n.attrs.id) present.add(n.attrs.id); });
+    // Typed then deleted (or undone) before the batch went out: nobody to notify.
+    const ids = [...mentionQueue.keys()].filter(id => present.has(id)); mentionQueue.clear();
+    if (!ids.length) return;
     const $from = editor.state.selection.$from;
     const context = $from.parent.textContent.slice(0, 200);
     await api(`/api/notes/${pageId}/mentions`, { method: 'POST', json: { userIds: ids, context } }).catch(() => {});
-  }, 1500);
+  }, 4000);
   function queueMention(p) { if (canEdit) { mentionQueue.set(p.id, p); sendMentions(); } }
 
   // ── Uploads ──────────────────────────────────────────────────────────────
@@ -386,21 +406,31 @@ export async function mount(el, opts) {
     if (!canEdit || !files?.length) return false;
     const list = [...files];
     (async () => {
-      host.toast(list.length > 1 ? `Mengunggah ${list.length} file…` : `Mengunggah ${list[0].name}…`);
-      let at = pos;
+      // Files land in the order they were picked, each right after the previous one. The insert point
+      // is a Yjs relative position so edits by others while uploading don't shift it.
+      const y = ySyncPluginKey.getState(editor.state);
+      const toRel = p => absolutePositionToRelativePosition(p, y.type, y.binding.mapping);
+      const toAbs = r => relativePositionToAbsolutePosition(y.doc, y.type, r, y.binding.mapping);
+      let rel = toRel(Math.min(pos, editor.state.doc.content.size));
+      let done = 0, failed = 0;
+      // One toast when it starts and one summary at the end; per-file toasts just stack up.
+      host.toast(list.length > 1 ? `Uploading ${list.length} files…` : `Uploading ${list[0].name}…`);
       for (const f of list) {
         const form = new FormData(); form.append('file', f, f.name);
         try {
           const r = await api(`/api/notes/${pageId}/uploads`, { method: 'POST', body: form });
-          if (!r.ok) { const e = await r.json().catch(() => ({})); host.toast(e.message || `Couldn't upload ${f.name}`); continue; }
+          if (!r.ok) { const e = await r.json().catch(() => ({})); host.toast(e.message || `Couldn't upload ${f.name}`); failed++; continue; }
           const u = await r.json();
           const node = { type: u.contentType?.startsWith('image/') ? 'noteImage' : 'noteFile', attrs: { id: u.id, name: u.fileName, size: u.size } };
           if (closing) return;
-          at = Math.min(at, editor.state.doc.content.size);
+          const at = Math.min(toAbs(rel) ?? editor.state.doc.content.size, editor.state.doc.content.size);
+          const before = editor.state.doc.content.size;
           editor.chain().insertContentAt(at, node).run();
-          at = editor.state.selection.to;
-        } catch { host.toast(`Couldn't upload ${f.name}`); }
+          rel = toRel(Math.min(at + (editor.state.doc.content.size - before), editor.state.doc.content.size));
+          done++;
+        } catch { host.toast(`Couldn't upload ${f.name}`); failed++; }
       }
+      if (list.length > 1 && !closing) host.toast(failed ? `Uploaded ${done} of ${list.length} files` : `Uploaded ${done} files`);
     })();
     return true;
   }
@@ -450,6 +480,7 @@ export async function mount(el, opts) {
       await hub.stop().catch(() => {});
       toolbar.destroy(); blockMenu.destroy();
       editor.destroy(); awareness.destroy(); ydoc.destroy();
+      releaseBlobs();
     },
   };
 }
