@@ -218,7 +218,7 @@ public class DirectoryReadEndpointsTests
         t.AddUser("20080101").PresenceLastSeenAt = now;
         { var idle = t.AddUser("20080102"); idle.PresenceLastSeenAt = now; idle.PresenceIsIdle = true; } // away (beating, computer idle)
         t.AddUser("20080103").PresenceLastSeenAt = now.AddHours(-3);     // off (no beat for >2m)
-        t.AddUser("20080104").PresenceManualStatus = "busy";
+        { var busy = t.AddUser("20080104"); busy.PresenceManualStatus = "busy"; busy.PresenceLastSeenAt = now; }
         t.AddUser("20080105", active: false).PresenceLastSeenAt = now;   // inactive -> excluded
         t.Db.SaveChanges();
 

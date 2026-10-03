@@ -239,7 +239,7 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
         // ── Team online ──
         var awayCutoff = now - PresenceStatus.OfflineAfter;
         var present = await db.Users.AsNoTracking()
-            .Where(u => u.IsActive && u.Id != userId && (u.PresenceLastSeenAt >= awayCutoff || u.PresenceManualStatus == "busy"))
+            .Where(u => u.IsActive && u.Id != userId && u.PresenceLastSeenAt > awayCutoff)
             .Select(u => new { u.Nik, u.Name, u.PresenceLastSeenAt, u.PresenceManualStatus, u.PresenceIsIdle })
             .ToListAsync(ct);
         var online = present

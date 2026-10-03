@@ -14,10 +14,10 @@ public static class PresenceStatus
     public static readonly TimeSpan OfflineAfter = TimeSpan.FromMinutes(2);
 
     /// Returns "on" | "away" | "busy" | "off".
-    /// Manual "busy" wins over the clock; everything else is heartbeat-derived.
+    /// Busy is shown only while heartbeat-derived presence is online.
     public static string ComputeStatus(DateTime? lastSeenAt, string? manualStatus, DateTime now, bool idle = false) =>
-        manualStatus == "busy" ? "busy"
-        : lastSeenAt is null || now - lastSeenAt >= OfflineAfter ? "off"
+        lastSeenAt is null || now - lastSeenAt >= OfflineAfter ? "off"
+        : manualStatus == "busy" ? "busy"
         : idle ? "away"
         : "on";
 }

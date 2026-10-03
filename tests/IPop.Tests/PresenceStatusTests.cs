@@ -26,9 +26,11 @@ public class PresenceStatusTests
     }
 
     [Fact]
-    public void ComputeStatus_BusyWinsUntilCleared()
+    public void ComputeStatus_BusyWinsOnlyWhileOnline()
     {
-        Assert.Equal("busy", PresenceStatus.ComputeStatus(Now.AddHours(-1), "busy", Now));
+        Assert.Equal("off", PresenceStatus.ComputeStatus(Now.AddHours(-1), "busy", Now));
+        Assert.Equal("off", PresenceStatus.ComputeStatus(null, "busy", Now));
+        Assert.Equal("off", PresenceStatus.ComputeStatus(Now.AddMinutes(-2), "busy", Now));
         Assert.Equal("busy", PresenceStatus.ComputeStatus(Now, "busy", Now, idle: true));
         Assert.Equal("off", PresenceStatus.ComputeStatus(Now.AddHours(-1), null, Now));
     }
