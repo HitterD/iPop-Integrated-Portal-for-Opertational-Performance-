@@ -604,8 +604,9 @@ public partial class ChatState : IAsyncDisposable
             ? oldest.CreatedAt.ToUniversalTime()
             : DateTime.SpecifyKind(oldest.CreatedAt, DateTimeKind.Utc);
         var before = Uri.EscapeDataString(cursor.ToString("O"));
+        var beforeSkip = ActiveMessages.Count(m => m.CreatedAt == oldest.CreatedAt && !_outbox.ContainsKey(m.Id));
         GetResult<PagedResult<MessageDto>> res;
-        try { res = await _auth.GetResultAsync<PagedResult<MessageDto>>($"/api/chat/rooms/{roomId}/messages?before={before}&pageSize=50", ct); }
+        try { res = await _auth.GetResultAsync<PagedResult<MessageDto>>($"/api/chat/rooms/{roomId}/messages?before={before}&beforeSkip={beforeSkip}&pageSize=50", ct); }
         catch (OperationCanceledException) { return; }
         if (ct.IsCancellationRequested || !IsCurrent(roomId, gen)) return;
         if (res.IsGone) { HandleRoomGone(roomId, definitive: false); return; }

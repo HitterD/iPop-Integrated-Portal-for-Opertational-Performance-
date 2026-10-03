@@ -59,9 +59,9 @@ public class ChatServiceTests
     {
         using var t = new TestDb();
         var (a, _, room) = SeedDm(t, 0);
-        // Ten messages in the same tick: a page boundary falls inside the tie.
+        // More than two pages in the same tick: every page boundary falls inside the tie.
         var at = DateTime.UtcNow;
-        for (var i = 1; i <= 10; i++)
+        for (var i = 1; i <= 120; i++)
             t.Db.ChatMessages.Add(Msg(room, a, "text", $"t{i}", at));
         t.Db.SaveChanges();
         var svc = new ChatService(t.Verify());
@@ -72,12 +72,28 @@ public class ChatServiceTests
         // Walk back the way the client does: cursor = oldest loaded, keep only unseen ids.
         for (var guard = 0; guard < 10; guard++)
         {
-            var older = await svc.GetMessagesBeforeAsync(room, a, page.Items[0].CreatedAt, 50, default);
-            if (!older.Items.Any(m => seen.Add(m.Id))) break;
+            var older = await svc.GetMessagesBeforeAsync(room, a, page.Items[0].CreatedAt, 50, default, seen.Count);
+            var added = 0;
+            foreach (var m in older.Items) if (seen.Add(m.Id)) added++;
+            if (added == 0) break;
             page = older;
         }
 
-        Assert.Equal(10, seen.Count);
+        Assert.Equal(120, seen.Count);
+    }
+
+    [Fact]
+    public async Task Cursor_boundary_skip_is_clamped_and_never_skips_older_messages()
+    {
+        using var t = new TestDb();
+        var (a, _, room) = SeedDm(t, 3);
+        var at = t.Db.ChatMessages.Where(m => m.RoomId == room).Max(m => m.CreatedAt);
+        var svc = new ChatService(t.Verify());
+
+        var older = await svc.GetMessagesBeforeAsync(room, a, at, 50, default, int.MaxValue);
+
+        Assert.Equal(["m1", "m2"], older.Items.Select(m => m.Content));
+        Assert.Equal(2, older.TotalCount);
     }
 
     [Fact]

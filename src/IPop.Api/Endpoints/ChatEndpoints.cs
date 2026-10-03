@@ -113,7 +113,7 @@ public static class ChatEndpoints
         // GET /api/chat/rooms/{roomId}/messages?page=1&pageSize=50
         // GET /api/chat/rooms/{roomId}/messages?before=<ISO-8601 UTC>&pageSize=50 — keyset
         // "load older": immune to new messages shifting offsets. `page` is ignored with it.
-        g.MapGet("/rooms/{roomId:guid}/messages", async (Guid roomId, int? page, int? pageSize, string? before,
+        g.MapGet("/rooms/{roomId:guid}/messages", async (Guid roomId, int? page, int? pageSize, string? before, int? beforeSkip,
             HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
@@ -129,7 +129,7 @@ public static class ChatEndpoints
                 if (!DateTimeOffset.TryParse(before, System.Globalization.CultureInfo.InvariantCulture,
                         System.Globalization.DateTimeStyles.AssumeUniversal, out var cursor))
                     return Results.Json(new { code = "invalid_cursor", message = "before must be an ISO-8601 timestamp." }, statusCode: 400);
-                return Results.Ok(await svc.GetMessagesBeforeAsync(roomId, userId.Value, cursor.UtcDateTime, size, ct));
+                return Results.Ok(await svc.GetMessagesBeforeAsync(roomId, userId.Value, cursor.UtcDateTime, size, ct, Math.Max(0, beforeSkip ?? 0)));
             }
 
             var result = await svc.GetMessagesAsync(roomId, userId.Value, p, size, ct);

@@ -16,7 +16,7 @@ public interface IChatService
     Task<MessageResultDto> ForwardMessageAsync(Guid userId, Guid messageId, Guid targetRoomId, CancellationToken ct);
     Task<PagedResult<MessageDto>> GetMessagesAsync(Guid roomId, Guid userId, int page, int pageSize, CancellationToken ct);
     /// Keyset paging for "load older": messages strictly older than `before` (UTC).
-    Task<PagedResult<MessageDto>> GetMessagesBeforeAsync(Guid roomId, Guid userId, DateTime before, int pageSize, CancellationToken ct);
+    Task<PagedResult<MessageDto>> GetMessagesBeforeAsync(Guid roomId, Guid userId, DateTime before, int pageSize, CancellationToken ct, int beforeSkip = 0);
 
     // Threads
     Task<MessageResultDto> SendThreadReplyAsync(Guid senderId, Guid parentMessageId, SendMessageRequest req, CancellationToken ct);

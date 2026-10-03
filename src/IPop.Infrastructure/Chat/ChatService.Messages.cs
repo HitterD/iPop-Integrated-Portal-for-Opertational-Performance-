@@ -176,14 +176,14 @@ public sealed partial class ChatService
     public Task<PagedResult<MessageDto>> GetMessagesAsync(Guid roomId, Guid userId, int page, int pageSize, CancellationToken ct)
         => GetMessagesCoreAsync(roomId, userId, page, pageSize, before: null, ct);
 
-    /// Keyset page: the newest pageSize messages strictly older than `before`. Offset pages
-    /// shift when new messages arrive (page 2 re-serves rows already on screen), which is
-    /// what fed duplicate ids into the client list. TotalCount here counts only the
-    /// messages older than the cursor, so more remain while TotalCount exceeds Items.Count.
-    public Task<PagedResult<MessageDto>> GetMessagesBeforeAsync(Guid roomId, Guid userId, DateTime before, int pageSize, CancellationToken ct)
-        => GetMessagesCoreAsync(roomId, userId, 1, pageSize, before, ct);
+    /// Keyset page: messages at or before the cursor. beforeSkip is the number of rows
+    /// already loaded at exactly that timestamp; older rows are never skipped. This keeps
+    /// history reachable even when a timestamp tie spans multiple pages, while newer
+    /// arrivals cannot shift the window. TotalCount excludes the skipped boundary rows.
+    public Task<PagedResult<MessageDto>> GetMessagesBeforeAsync(Guid roomId, Guid userId, DateTime before, int pageSize, CancellationToken ct, int beforeSkip = 0)
+        => GetMessagesCoreAsync(roomId, userId, 1, pageSize, before, ct, beforeSkip);
 
-    private async Task<PagedResult<MessageDto>> GetMessagesCoreAsync(Guid roomId, Guid userId, int page, int pageSize, DateTime? before, CancellationToken ct)
+    private async Task<PagedResult<MessageDto>> GetMessagesCoreAsync(Guid roomId, Guid userId, int page, int pageSize, DateTime? before, CancellationToken ct, int beforeSkip = 0)
     {
         var isMember = await db.ChatRoomMembers
             .AsNoTracking()
@@ -209,11 +209,16 @@ public sealed partial class ChatService
             query = query.Where(m => m.CreatedAt <= cursor);
         }
 
-        var totalCount = await query.CountAsync(ct);
+        // The client supplies how many boundary-timestamp rows it already holds.
+        // Clamp to that timestamp only: never skip older rows on a stale/invalid cursor.
+        var boundarySkip = before is { } at
+            ? Math.Min(Math.Max(0, beforeSkip), await query.CountAsync(m => m.CreatedAt == at, ct))
+            : 0;
+        var totalCount = await query.CountAsync(ct) - boundarySkip;
 
         var messages = await query
             .OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
-            .Skip((page - 1) * pageSize)
+            .Skip((page - 1) * pageSize + boundarySkip)
             .Take(pageSize)
             .Include(m => m.Sender)
             .Include(m => m.Room)
