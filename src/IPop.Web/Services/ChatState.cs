@@ -298,7 +298,9 @@ public partial class ChatState : IAsyncDisposable
         }
         catch
         {
-            await DisposeHubAsync();
+            // Automatic reconnect does not cover an initial StartAsync failure.
+            _ = HubRetry.RunAsync(hub, () => _hub == hub && _auth.IsAuthenticated && !_auth.IsSuspended,
+                () => { ConnectionChanged?.Invoke(); _ = SafeAsync(RefreshOnReconnectAsync); });
         }
         finally { _connecting = false; }
     }
@@ -1216,6 +1218,7 @@ public partial class ChatState : IAsyncDisposable
     private async Task RefreshOnReconnectAsync()
     {
         await LoadRoomsAsync();
+        await RestoreOutboxAsync();
         if (ActiveRoomId is not null)
         {
             await LoadMessagesAsync(1);

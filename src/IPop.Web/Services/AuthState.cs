@@ -145,8 +145,12 @@ public class AuthState(HttpClient http, IJSRuntime js)
             await _presence.StartAsync();
             SetConnectionState(DirectoryConnectionState.Live);
         }
-        catch { await _presence.DisposeAsync(); _presence = null; SetConnectionState(DirectoryConnectionState.Offline); }
-        if (_presence is null) return;
+        catch
+        {
+            SetConnectionState(DirectoryConnectionState.Offline);
+            _ = HubRetry.RunAsync(conn, () => _presence == conn && IsAuthenticated && !IsSuspended, OnHubBack);
+        }
+        // HTTP heartbeats and idle detection must keep working even when SignalR cannot connect.
 
         try
         {

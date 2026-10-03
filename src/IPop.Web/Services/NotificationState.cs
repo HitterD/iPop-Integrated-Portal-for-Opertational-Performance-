@@ -114,7 +114,8 @@ public class NotificationState : IDisposable
         }
         catch
         {
-            await DisposeHubAsync();
+            _ = HubRetry.RunAsync(hub, () => _hub == hub && _auth.IsAuthenticated && !_auth.IsSuspended,
+                () => { ScheduleResync(); _ = LoadPreferencesAsync(); });
         }
     }
 

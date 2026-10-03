@@ -138,9 +138,9 @@ public partial class CallState : IAsyncDisposable
         }
         catch
         {
-            await _hub.DisposeAsync();
-            _hub = null;
             StateChanged?.Invoke();
+            _ = HubRetry.RunAsync(hub, () => _hub == hub && _auth.IsAuthenticated && !_auth.IsSuspended,
+                () => _ = RefreshAsync());
         }
     }
 
