@@ -83,5 +83,36 @@
   .cal-rsvp-btn { min-height: 36px; flex: 1; }
   .cal-person-chip button { width: 32px; height: 32px; }
 
+  /* ---------- Other calendars: the heading's two buttons stay reachable as icons in the strip ---------- */
+  .cal-others { display: flex; flex-direction: row; align-items: center; gap: 6px; flex: none; }
+  .cal-rail-title.cal-others-head { display: flex; order: 9; gap: 4px; margin: 0; }
+  .cal-others-head > span { display: none; }
+  .cal-others-head .cal-icon.sm { width: 36px; height: 36px; border: 1px solid var(--line-soft); border-radius: 999px; background: var(--surface); }
+  .cal-others-empty { white-space: nowrap; min-height: 36px; }
+  .cal-other { flex: none; }
+  .cal-others-add { flex: none; width: 240px; }
+
+  /* ---------- Delegates: managed calendars join the pill strip; banner stacks its button ---------- */
+  .cal-managed { display: flex; flex-direction: row; gap: 6px; flex: none; }
+  .cal-managed-row {
+    flex: none; min-height: 36px; padding: 0 12px 0 6px; box-sizing: border-box; white-space: nowrap;
+    border: 1px solid var(--line-soft); border-radius: 999px; background: var(--surface);
+  }
+  .cal-managed-row.on { background: var(--warn-soft); border-color: var(--warn); }
+  .cal-managed-name { display: block; }
+  .cal-managed-name small { display: none; }
+  .cal-onbehalf { flex-wrap: wrap; gap: 6px 10px; margin-bottom: 0; padding: 8px 12px; font-size: 12.5px; flex: none; }
+  .cal-onbehalf > span { flex: 1 1 200px; }
+  .cal-onbehalf .cal-btn { flex: 1 1 100%; justify-content: center; height: 36px; }
+  .cal-dlg-row { flex-wrap: wrap; }
+  .cal-dlg-name { flex: 1 1 calc(100% - 50px); }
+  .cal-dlg-row .cal-dlg-level { flex: 1; height: 40px; font-size: 16px; }
+  .cal-dlg-add { flex-wrap: wrap; }
+  .cal-dlg-add .cal-dlg-level { height: 40px; font-size: 16px; }
+  .cal-dlg-add > :nth-child(2) { flex: 1 1 100%; order: 3; }
+  .cal-dlg-levels { grid-template-columns: minmax(0, 1fr); }
+  .cal-share .cal-rail-title { display: block; }
+  .cal-dlg-levels dd { margin-bottom: 4px; }
+
   @keyframes cal-m-sheet { from { transform: translateY(100%); } to { transform: none; } }
 }

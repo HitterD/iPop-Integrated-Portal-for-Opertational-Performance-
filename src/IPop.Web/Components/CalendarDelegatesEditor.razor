@@ -3,6 +3,7 @@
 @inject AuthState Auth
 @inject ToastService Toasts
 @inject ConfirmService Confirm
+@inject IJSRuntime JS
 
 @* Calendar delegates of one owner. Used by the owner (Calendar → Sharing settings, BaseUrl
    /api/calendar/delegates) and by admins (Admin → People, /api/admin/users/{nik}/calendar-delegates).
@@ -91,6 +92,9 @@
         try { rows = await Auth.GetAsync<List<DelegateRow>>(BaseUrl) ?? []; }
         catch { rows = []; Toasts.Show("Could not load delegates.", ToastKind.Error); }
     }
+
+    // Rows load and change after the host page rendered, so icons need their own pass.
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
 
     private Task AddAsync(MemberSearchRow p) => SetAsync(p.Nik, newLevel, added: true);
 
