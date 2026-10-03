@@ -759,7 +759,7 @@
                         @if (pickerOpen)
                         {
                             <div class="v6-pop v6-emoji-pop" @onclick:stopPropagation>
-                                <EmojiPicker OnPick="InsertEmoji" OnClose="CloseEmojiPicker" />
+                                <EmojiPicker OnPick="InsertEmoji" OnClose="CloseEmojiPicker" OnDismiss="DismissEmojiPicker" />
                             </div>
                         }
                         @if (stickerOpen)

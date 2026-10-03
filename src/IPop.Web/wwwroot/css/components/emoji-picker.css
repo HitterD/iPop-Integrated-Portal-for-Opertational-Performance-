@@ -106,18 +106,16 @@
 .chat-area .v6-pop.v6-emoji-pop { width: auto; padding: 0; overflow: hidden; }
 .chat-area .v6-pop.v6-emoji-pop > .emoji-picker { border-radius: inherit; }
 
-/* Mail emoji popup lives outside the horizontally scrolling toolbar, so mobile scroll
-   cannot shift or clip it. The editor itself is its containing block. */
+/* Mail compose emoji popup lives outside the horizontally scrolling toolbar; emoji-picker.js
+   pins it to the emoji button in viewport coordinates (position:fixed), so neither toolbar
+   scroll nor the composer body's overflow:hidden can shift or clip it. */
 .mrte:has(> .mrte-emoji-pop) { z-index: 115; }
-.mrte > .mrte-emoji-pop { top: 44px; right: 8px; left: auto; }
-.mrte-group:has(> .mrte-pop-wrap > .mrte-pop > .emoji-picker),
-.mrte-pop-wrap:has(> .mrte-pop > .emoji-picker) { position: static; }
-.mrte-pop:has(> .emoji-picker) {
-  top: calc(100% + 4px); left: auto; right: 8px;
+.mrte > .mrte-emoji-pop {
+  position: fixed; top: 0; left: 0; right: auto; z-index: 125;
   min-width: 0; padding: 0; overflow: hidden;
   background: var(--surface); backdrop-filter: none; -webkit-backdrop-filter: none;
 }
-.mrte-pop > .emoji-picker { max-width: calc(100vw - 32px); }
+.mrte-emoji-pop > .emoji-picker { width: 100%; max-width: calc(100vw - 16px); }
 
 /* Mail quick reply: above the smile button. */
 .quick-emoji-pop {
@@ -134,8 +132,6 @@
   /* mobile/chat.css stretches .v6-pop edge to edge and makes it scroll: the picker scrolls itself. */
   .chat-area .v6-pop.v6-emoji-pop { max-height: none; overflow: hidden; }
   .chat-area .v6-pop.v6-emoji-pop > .emoji-picker { width: 100%; }
-  .mrte > .mrte-emoji-pop { top: 44px; left: 8px; right: 8px; }
-  .mrte-pop:has(> .emoji-picker) { left: 8px; right: 8px; }
-  .mrte-pop > .emoji-picker { width: 100%; max-width: none; }
-  .quick-emoji-pop > .emoji-picker { width: min(344px, calc(100vw - 40px)); }
+  .mrte-emoji-pop > .emoji-picker { width: 100%; max-width: none; }
+  .quick-emoji-pop > .emoji-picker { width: 100%; }
 }

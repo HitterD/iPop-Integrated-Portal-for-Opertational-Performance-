@@ -216,12 +216,8 @@
                     </div>
                 }
             </div>
-        </div>
-        <div class="mrte-group">
-            <div class="mrte-pop-wrap">
-                <button type="button" class="mrte-btn" title="Emoji" aria-label="Emoji" aria-expanded="@(pop == "emoji" ? "true" : "false")"
-                        @onmousedown:preventDefault @onclick="ToggleEmoji"><i data-lucide="smile"></i></button>
-            </div>
+            <button type="button" class="mrte-btn mrte-emoji-btn" title="Emoji" aria-label="Emoji" aria-expanded="@(pop == "emoji" ? "true" : "false")"
+                    @onmousedown:preventDefault @onclick="ToggleEmoji"><i data-lucide="smile"></i></button>
         </div>
     </div>
 
@@ -232,7 +228,9 @@
         </div>
     }
 
-    @if (pop is not null)
+    @* The emoji picker closes itself on an outside pointerdown (emoji-picker.js), so the first click
+       on the editor or Send still lands; only the toolbar popovers need the scrim. *@
+    @if (pop is not null && pop != "emoji")
     {
         <div class="mrte-pop-scrim" @onclick="() => pop = null"></div>
     }

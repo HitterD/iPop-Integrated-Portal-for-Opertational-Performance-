@@ -306,6 +306,9 @@ public partial class Chat
         return Task.CompletedTask;
     }
 
+    // Outside click: just close; focus goes wherever the user clicked.
+    private void DismissEmojiPicker() => pickerOpen = false;
+
     private async Task InsertEmoji(string emoji)
     {
         messageText = await JS.InvokeAsync<string>("ipop.emojiInsert", composerRef, emoji);

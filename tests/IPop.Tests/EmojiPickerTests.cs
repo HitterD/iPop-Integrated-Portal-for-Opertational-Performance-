@@ -322,7 +322,7 @@ public class EmojiPickerTests
     public void Outside_click_helper_attaches_and_closes()
     {
         using var ctx = Context(out _);
-        var module = ctx.JSInterop.SetupModule("./js/emoji-picker.js?v=20261002-emoji");
+        var module = ctx.JSInterop.SetupModule("./js/emoji-picker.js?v=20261003-compose");
         module.Mode = JSRuntimeMode.Loose;
         var closed = 0;
         var cut = ctx.Render<EmojiPicker>(p => p.Add(x => x.OnClose, () => closed++));
@@ -330,6 +330,37 @@ public class EmojiPickerTests
         cut.WaitForAssertion(() => Assert.Single(module.Invocations["attach"]));
         cut.InvokeAsync(() => cut.Instance.OutsidePointerDown()).GetAwaiter().GetResult();
         Assert.Equal(1, closed);
+    }
+
+    [Fact]
+    public void Mail_compose_emoji_opens_without_a_click_eating_scrim()
+    {
+        using var ctx = Context(out _);
+        var cut = ctx.Render<IPop.Web.Components.Mail.MailRteEditor>();
+
+        // The emoji button sits inside a toolbar group, not alone in its own trailing group.
+        Assert.NotNull(cut.Find(".mrte-group .mrte-aa").ParentElement!.ParentElement!.QuerySelector(".mrte-emoji-btn"));
+
+        cut.Find(".mrte-emoji-btn").Click();
+        cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll(".mrte-emoji-pop .emoji-picker")));
+        Assert.Empty(cut.FindAll(".mrte-pop-scrim"));
+        Assert.Equal("true", cut.Find(".mrte-emoji-btn").GetAttribute("aria-expanded"));
+
+        // Other toolbar popovers keep their scrim.
+        cut.Find(".mrte-aa").Click();
+        Assert.NotEmpty(cut.FindAll(".mrte-pop-scrim"));
+    }
+
+    [Fact]
+    public void Compose_emoji_popup_css_is_not_overridden_below_the_editor()
+    {
+        var css = File.ReadAllText(Path.Combine(RepoRoot(), "src/IPop.Web/wwwroot/css/components/emoji-picker.css"));
+        // The old ".mrte-pop:has(> .emoji-picker) { top: calc(100% + 4px) }" rule pushed the picker under
+        // the editor where the composer's overflow:hidden clipped it.
+        Assert.DoesNotContain(".mrte-pop:has(> .emoji-picker)", css);
+        Assert.Matches(@"\.mrte > \.mrte-emoji-pop \{\s*position: fixed;", css);
+        var js = File.ReadAllText(Path.Combine(RepoRoot(), "src/IPop.Web/wwwroot/js/emoji-picker.js"));
+        Assert.Contains(".mrte-emoji-pop", js);
     }
 
     [Fact]
