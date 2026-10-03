@@ -107,6 +107,31 @@ public class ChatMarkReadTests
     }
 
     [Fact]
+    public async Task Editing_or_deleting_the_last_message_updates_the_room_preview()
+    {
+        var room = Guid.NewGuid();
+        var (ctx, chat) = await OpenAsync(room);
+        using var _ = ctx;
+        await chat.SetChatPageMountedAsync(false);
+        var older = In(room, "B") with { Content = "older", CreatedAt = DateTime.UtcNow.AddMinutes(-5) };
+        var last = In(room, "B") with { Content = "typo" };
+        chat.DirectRooms.Add(new RoomListDto(room, "dm", null, "B", "B", "typo",
+            // The list's timestamp comes back from the database rounded to microseconds.
+            new DateTime(last.CreatedAt.Ticks / 10 * 10, DateTimeKind.Utc),
+            0, false, false, false, "on", false, false, null));
+        chat.ActiveMessages.AddRange([older, last]);
+
+        chat.OnMessageEdited(older with { Content = "older edited" });
+        Assert.Equal("typo", chat.DirectRooms.Single().LastMessage);
+
+        chat.OnMessageEdited(last with { Content = "fixed" });
+        Assert.Equal("fixed", chat.DirectRooms.Single().LastMessage);
+
+        chat.OnMessageDeleted(new DeletedDto(last.Id, "This message was deleted"));
+        Assert.NotEqual("fixed", chat.DirectRooms.Single().LastMessage);
+    }
+
+    [Fact]
     public async Task Own_seen_update_never_marks_own_messages_read()
     {
         var room = Guid.NewGuid();

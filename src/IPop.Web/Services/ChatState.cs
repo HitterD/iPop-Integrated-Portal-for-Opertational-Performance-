@@ -928,7 +928,7 @@ public partial class ChatState : IAsyncDisposable
         }
     }
 
-    private void OnMessageEdited(MessageDto message)
+    internal void OnMessageEdited(MessageDto message)
     {
         if (message.RoomId == ActiveRoomId)
         {
@@ -936,10 +936,31 @@ public partial class ChatState : IAsyncDisposable
             if (idx >= 0) ActiveMessages[idx] = message;
             MessageEdited?.Invoke(message);
         }
+        if (RefreshLastPreview(message)) RoomListChanged?.Invoke();
         StateChanged?.Invoke();
     }
 
-    private void OnMessageDeleted(DeletedDto dto)
+    /// The room list shows the newest message; an edit or delete of that message must show there
+    /// too. Matched by timestamp, the only "which message is last" the list row carries; within a
+    /// millisecond because the live event has full ticks and the database keeps microseconds.
+    internal bool RefreshLastPreview(MessageDto message)
+    {
+        return Refresh(DirectRooms) | Refresh(GroupRooms);
+
+        bool Refresh(List<RoomListDto> list)
+        {
+            var idx = list.FindIndex(r => r.Id == message.RoomId);
+            if (idx < 0 || list[idx].LastMessageAt is not { } at
+                || Math.Abs((at - message.CreatedAt).Ticks) >= TimeSpan.TicksPerMillisecond) return false;
+            var preview = RoomPreview.Build(list[idx].Type, message.Type, message.Content, message.IsDeleted, message.SenderName,
+                string.Equals(message.SenderNik, _auth.Me?.Nik, StringComparison.OrdinalIgnoreCase));
+            if (list[idx].LastMessage == preview) return false;
+            list[idx] = list[idx] with { LastMessage = preview };
+            return true;
+        }
+    }
+
+    internal void OnMessageDeleted(DeletedDto dto)
     {
         if (ActiveRoomId is not null)
         {
@@ -948,6 +969,7 @@ public partial class ChatState : IAsyncDisposable
             {
                 var old = ActiveMessages[idx];
                 ActiveMessages[idx] = old with { IsDeleted = true, Content = dto.Replacement };
+                if (RefreshLastPreview(ActiveMessages[idx])) RoomListChanged?.Invoke();
             }
             MessageDeleted?.Invoke(dto.MessageId, dto.Replacement);
         }
