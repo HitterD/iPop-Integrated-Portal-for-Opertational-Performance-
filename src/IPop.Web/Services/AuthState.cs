@@ -182,6 +182,8 @@ public class AuthState(HttpClient http, IJSRuntime js)
     private static readonly TimeSpan HeartbeatInterval = TimeSpan.FromSeconds(30);
     private DotNetObjectReference<AuthState>? _selfRef;
     private bool _idle;
+    /// One lease per tab: Away needs every open tab/device idle, and logout drops only this one.
+    private readonly string _deviceId = Guid.NewGuid().ToString("N");
 
     /// Called from ipop.js when the computer goes idle/locked (away) or becomes active again.
     [JSInvokable]
@@ -210,7 +212,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
     private async Task BeatAsync()
     {
         if (!IsAuthenticated) return;
-        var res = await PostWithAuth("/api/presence/beat", new { idle = _idle });
+        var res = await PostWithAuth("/api/presence/beat", new { idle = _idle, device = _deviceId });
         if (!res.IsSuccessStatusCode) return;
         var body = await res.Content.ReadFromJsonAsync<PresenceDto>();
         if (body is not null) { MyStatus = body.Status; BusyUntil = body.BusyUntil; }
@@ -446,6 +448,9 @@ public class AuthState(HttpClient http, IJSRuntime js)
 
     public async Task SignOutAsync()
     {
+        // While the token is still valid: show offline now instead of after the 2-minute timeout.
+        if (IsAuthenticated)
+            try { await PostWithAuth("/api/presence/leave", new { device = _deviceId }); } catch { /* best-effort */ }
         var refresh = await js.InvokeAsync<string?>("localStorage.getItem", RefreshKey)
             ?? await js.InvokeAsync<string?>("sessionStorage.getItem", RefreshKey);
         if (!string.IsNullOrEmpty(refresh))

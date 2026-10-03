@@ -172,6 +172,7 @@ builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.NewsBadgeP
 builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.CallsBadgeProvider>();
 builder.Services.AddSingleton<PresenceBroadcaster>();
 builder.Services.AddSingleton<PresenceConnections>();
+builder.Services.AddSingleton<PresenceDevices>();
 builder.Services.AddSingleton<IDirectoryChangeNotifier, DirectoryChangeNotifier>();
 builder.Services.AddSingleton<IAuditChangeNotifier, AuditChangeNotifier>();
 builder.Services.AddHostedService<PresenceSweepWorker>();

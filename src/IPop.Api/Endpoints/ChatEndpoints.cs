@@ -1341,7 +1341,8 @@ public static class ChatEndpoints
             var status = IPop.Core.Presence.PresenceStatus.ComputeStatus(u.PresenceLastSeenAt, u.PresenceManualStatus, DateTime.UtcNow, u.PresenceIsIdle);
             return Results.Ok(new IPop.Application.Hris.DirectoryEmployee(
                 u.Nik, u.Name, null, u.Department?.Name, u.Department?.Code,
-                u.Site?.Name, u.Site?.Code, manager, u.Email, u.Extension, u.Location, status, null, u.PhotoPath, UserId: u.Id));
+                u.Site?.Name, u.Site?.Code, manager, u.Email, u.Extension, u.Location, status, null, u.PhotoPath, UserId: u.Id,
+                LastSeenAt: IPop.Core.Presence.PresenceStatus.LastSeen(u.PresenceLastBeatAt, u.PresenceLastSeenAt)));
         });
 
         return app;

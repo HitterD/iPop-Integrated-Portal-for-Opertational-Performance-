@@ -21,6 +21,10 @@ public static class PresenceStatus
         : idle ? "away"
         : "on";
 
+    /// "Last seen" time: the real last heartbeat, falling back to the (possibly aged) status clock
+    /// for rows written before the beat column existed.
+    public static DateTime? LastSeen(DateTime? lastBeatAt, DateTime? lastSeenAt) => lastBeatAt ?? lastSeenAt;
+
     /// Busy durations offered in the status menu. Null/empty = until turned off.
     public static readonly string[] BusyDurations = ["1h", "2h", "today"];
 

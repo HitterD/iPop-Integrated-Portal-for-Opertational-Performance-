@@ -12,7 +12,9 @@ public record DirectoryEmployee(
     /// Opaque key for deep links (/chat?user=…, /directory/person/…) so URLs never carry the NIK.
     Guid? UserId = null,
     /// Division name ("Section"), shown as "Department › Section" in the Directory list.
-    string? Section = null);
+    string? Section = null,
+    /// Last heartbeat (UTC), for "Last seen …" while offline. Shown to everyone by policy.
+    DateTime? LastSeenAt = null);
 
 public record DirectoryDepartment(string Code, string Name, string? ParentCode, int DirectMembers);
 public record DirectorySite(string Code, string Name);

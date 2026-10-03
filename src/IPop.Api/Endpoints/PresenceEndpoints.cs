@@ -13,13 +13,15 @@ public static class PresenceEndpoints
         // computer's idle state flips. Stamps LastSeenAt server-side (never trust the client's
         // clock), records idle, then broadcasts only if the effective status actually changed.
         app.MapPost("/api/presence/beat", async (
-            BeatRequest? req, IPopDbContext db, PresenceBroadcaster presence, HttpContext http, CancellationToken ct) =>
+            BeatRequest? req, IPopDbContext db, PresenceBroadcaster presence, PresenceDevices devices,
+            HttpContext http, CancellationToken ct) =>
         {
             var nik = http.User.FindFirst("nik")?.Value;
             if (nik is null) return Results.Unauthorized();
 
             var now = DateTime.UtcNow;
-            var idle = req?.Idle == true;
+            // Away only when every open device is idle: one active computer keeps the user on.
+            var idle = devices.Beat(nik, req?.Device, req?.Idle == true, now);
             var row = await db.Users.AsNoTracking()
                 .Where(u => u.Nik == nik)
                 .Select(u => new { u.PresenceManualStatus, u.PresenceBusyUntilUtc })
@@ -28,11 +30,44 @@ public static class PresenceEndpoints
             await db.Users.Where(u => u.Nik == nik)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(u => u.PresenceLastSeenAt, now)
+                    .SetProperty(u => u.PresenceLastBeatAt, now)
                     .SetProperty(u => u.PresenceIsIdle, idle), ct);
 
             var status = PresenceStatus.ComputeStatus(now, manual, now, idle);
             if (presence.Track(nik, status)) await presence.BroadcastAsync(nik, status, ct);
             return Results.Ok(new { status, busyUntil = manual == "busy" ? row?.PresenceBusyUntilUtc : null });
+        }).RequireAuthorization();
+
+        // Sign-out from one device: drop its lease now instead of waiting out the heartbeat. If no
+        // other device is still beating, the user is offline immediately (last seen = last beat).
+        app.MapPost("/api/presence/leave", async (
+            BeatRequest? req, IPopDbContext db, PresenceBroadcaster presence, PresenceDevices devices,
+            HttpContext http, CancellationToken ct) =>
+        {
+            var nik = http.User.FindFirst("nik")?.Value;
+            if (nik is null) return Results.Unauthorized();
+
+            var now = DateTime.UtcNow;
+            var remaining = devices.Leave(nik, req?.Device, now);
+            string status;
+            if (remaining is { } idle)
+            {
+                await db.Users.Where(u => u.Nik == nik)
+                    .ExecuteUpdateAsync(s => s.SetProperty(u => u.PresenceIsIdle, idle), ct);
+                var row = await db.Users.AsNoTracking().Where(u => u.Nik == nik)
+                    .Select(u => new { u.PresenceLastSeenAt, u.PresenceManualStatus, u.PresenceBusyUntilUtc }).FirstAsync(ct);
+                status = PresenceStatus.ComputeStatus(row.PresenceLastSeenAt,
+                    PresenceStatus.EffectiveManual(row.PresenceManualStatus, row.PresenceBusyUntilUtc, now), now, idle);
+            }
+            else
+            {
+                var cutoff = now - PresenceStatus.OfflineAfter;
+                await db.Users.Where(u => u.Nik == nik && u.PresenceLastSeenAt > cutoff)
+                    .ExecuteUpdateAsync(s => s.SetProperty(u => u.PresenceLastSeenAt, cutoff), ct);
+                status = "off";
+            }
+            if (presence.Track(nik, status)) await presence.BroadcastAsync(nik, status, ct);
+            return Results.Ok(new { status });
         }).RequireAuthorization();
 
         // Manual override: "busy" or null (back to automatic). Anything else is rejected —
@@ -78,5 +113,6 @@ public static class PresenceEndpoints
     }
 
     public record SetStatusRequest(string? Status, string? Duration = null);
-    public record BeatRequest(bool Idle);
+    /// Device = a random id per open tab, so idle is tracked per device.
+    public record BeatRequest(bool Idle, string? Device = null);
 }

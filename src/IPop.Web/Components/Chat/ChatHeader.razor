@@ -34,7 +34,7 @@
                 {
                     <span class="status-badge @(dmMember.PresenceStatus ?? "off")">
                         <span class="status-dot"></span>
-                        @PresenceLabel(dmMember.PresenceStatus)
+                        @(dmMember.PresenceStatus is null or "off" ? IPop.Web.Models.LastSeen.OfflineLabel(dmMember.LastSeenAt) : PresenceLabel(dmMember.PresenceStatus))
                     </span>
                 }
             }

@@ -76,7 +76,9 @@ public record SeenListDto(IReadOnlyList<SeenByDto> Readers, int TotalReaders, in
 public record TypingDto(Guid RoomId, string UserNik, string DisplayName, bool IsTyping);
 
 // Member DTOs
-public record MemberDto(Guid UserId, string Nik, string Name, string Role, string? PresenceStatus);
+public record MemberDto(Guid UserId, string Nik, string Name, string Role, string? PresenceStatus,
+    /// Last heartbeat (UTC), for "Last seen …" while offline.
+    DateTime? LastSeenAt = null);
 public record MemberChangeDto(Guid RoomId, string Action, string ActorName, string TargetName, Guid? TargetUserId);
 
 // Pinned DTOs

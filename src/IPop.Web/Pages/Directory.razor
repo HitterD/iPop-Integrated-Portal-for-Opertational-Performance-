@@ -746,7 +746,7 @@
         }
     }
 
-    private static Employee Map(DirectoryEmployeeDto d) => new(d.Name, d.Position ?? "—", d.Nik, d.Extension ?? "—", d.Location ?? "—", d.Department ?? "—", d.DepartmentCode, d.Site ?? "—", d.SiteCode, d.Manager ?? "—", d.Email, d.Status, AvatarPalette.For(d.Nik), d.PhotoPath, d.ManagerNik, d.Section);
+    private static Employee Map(DirectoryEmployeeDto d) => new(d.Name, d.Position ?? "—", d.Nik, d.Extension ?? "—", d.Location ?? "—", d.Department ?? "—", d.DepartmentCode, d.Site ?? "—", d.SiteCode, d.Manager ?? "—", d.Email, d.Status, AvatarPalette.For(d.Nik), d.PhotoPath, d.ManagerNik, d.Section, d.LastSeenAt);
 
     private async Task Reload(int requestedPage, bool replace)
     {
@@ -783,7 +783,7 @@
         var index = people.FindIndex(p => p.Nik == nik);
         if (index >= 0)
         {
-            var updated = people[index] with { Status = status };
+            var updated = people[index] with { Status = status, LastSeenAt = status == "off" ? DateTime.UtcNow : people[index].LastSeenAt };
             people[index] = updated;
             if (selected?.Nik == nik) selected = updated;
             StateHasChanged();

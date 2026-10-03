@@ -40,6 +40,9 @@ public class User
 
     // Presence stores raw facts only; the effective status is computed on read.
     public DateTime? PresenceLastSeenAt { get; set; }
+    /// The real time of the last heartbeat, for "last seen". PresenceLastSeenAt is aged on
+    /// disconnect/sign-out to flip the status to off, so it is not a faithful clock.
+    public DateTime? PresenceLastBeatAt { get; set; }
     /// Null = automatic; "busy" = user-set override. Other values are rejected at the API boundary.
     public string? PresenceManualStatus { get; set; }
     /// When a timed Busy ends (UTC); null with Busy set = until the user turns it off.

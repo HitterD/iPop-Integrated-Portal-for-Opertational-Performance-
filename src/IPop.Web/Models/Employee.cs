@@ -16,7 +16,8 @@ public record Employee(
     string Color,
     string? PhotoPath = null,
     string? ManagerNik = null,
-    string? Section = null)
+    string? Section = null,
+    DateTime? LastSeenAt = null)
 {
     /// "Department › Section" for the Directory list; "—" when neither is known.
     public string Placement => string.IsNullOrEmpty(Section) ? Department : $"{Department} › {Section}";
@@ -31,7 +32,7 @@ public record Employee(
         "on" => "Online",
         "away" => "Away",
         "busy" => "Busy",
-        _ => "Offline"
+        _ => LastSeen.OfflineLabel(LastSeenAt)
     };
 }
 

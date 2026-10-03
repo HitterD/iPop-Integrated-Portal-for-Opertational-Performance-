@@ -48,7 +48,7 @@
             <div class="core" style="padding:0;overflow:hidden">
                 <div class="panel-head">
                     <i data-lucide="id-card"></i> <span>Profile</span>
-                    <span class="meta"><span class="dot @person.Status" style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px"></span>@StatusLabel(person.Status)</span>
+                    <span class="meta"><span class="dot @person.Status" style="width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px"></span>@StatusLabel(person.Status, person.LastSeenAt)</span>
                     <span style="margin-left:auto;display:flex;gap:6px">
                         <button class="btn-sm surface" title="@(isFav ? "Remove from favorites" : "Add to favorites")"
                                 style="@(isFav ? "color:var(--accent-ink);border-color:var(--accent-soft);background:var(--accent-soft)" : "")"
@@ -147,7 +147,8 @@
     [Parameter] public string Nik { get; set; } = "";
 
     private record PersonRow(string Nik, string Name, string? Position, string? Department, string? Site,
-        string? Manager, string Email, string? Extension, string? Location, string Status, string? PhotoPath);
+        string? Manager, string Email, string? Extension, string? Location, string Status, string? PhotoPath,
+        DateTime? LastSeenAt = null);
     private record ReportRow(string Nik, string Name, string? Position);
 
     private PersonRow? person;
@@ -174,7 +175,7 @@
             var d = PLinks.Nik(Nik) is { } key ? await Auth.GetAsync<DirectoryEmployeeDto>($"/api/chat/users/{Uri.EscapeDataString(key)}") : null;
             if (d is not null)
             {
-                person = new PersonRow(d.Nik, d.Name, d.Position, d.Department, d.Site, d.Manager, d.Email, d.Extension, d.Location, d.Status, d.PhotoPath);
+                person = new PersonRow(d.Nik, d.Name, d.Position, d.Department, d.Site, d.Manager, d.Email, d.Extension, d.Location, d.Status, d.PhotoPath, d.LastSeenAt);
                 await Favorites.EnsureLoadedAsync();
                 isFav = Favorites.IsFavorite(d.Nik);
                 _ = LoadRelationsAsync(d);
@@ -211,7 +212,7 @@
     private void OnPresenceChanged(string nik, string status) => _ = InvokeAsync(() =>
     {
         if (person is not null && string.Equals(person.Nik, nik, StringComparison.OrdinalIgnoreCase))
-            person = person with { Status = status };
+            person = person with { Status = status, LastSeenAt = status == "off" ? DateTime.UtcNow : person.LastSeenAt };
         StateHasChanged();
     });
 
@@ -232,12 +233,12 @@
         if (room is null) Toasts.Show("Unable to start a call with this colleague.", ToastKind.Error);
     }
 
-    private static string StatusLabel(string status) => status switch
+    private static string StatusLabel(string status, DateTime? lastSeen) => status switch
     {
         "on" => "Online",
         "busy" => "Busy",
         "away" => "Away",
-        _ => "Offline"
+        _ => IPop.Web.Models.LastSeen.OfflineLabel(lastSeen)
     };
 
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");

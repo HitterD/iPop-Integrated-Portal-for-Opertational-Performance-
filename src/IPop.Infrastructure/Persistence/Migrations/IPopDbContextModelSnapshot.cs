@@ -4150,6 +4150,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<bool>("PresenceIsIdle")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTime?>("PresenceLastBeatAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime?>("PresenceLastSeenAt")
                         .HasColumnType("timestamp with time zone");
 

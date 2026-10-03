@@ -6,7 +6,7 @@
     <PersonAvatar Nik="@Member.Nik" Name="@Member.Name" Size="32" Class="avatar member-row-avatar" Decorative="true" />
     <div class="member-row-copy">
         <div class="name">@Member.Name</div>
-        <div class="role">@(IsSelf ? "You" : PresenceLabel(Member.PresenceStatus))</div>
+        <div class="role">@(IsSelf ? "You" : PresenceLabel(Member.PresenceStatus, Member.LastSeenAt))</div>
     </div>
     @if (Member.Role is "owner" or "admin")
     {
@@ -76,12 +76,12 @@
             await OnProfile.InvokeAsync(Member.Nik);
     }
 
-    private static string PresenceLabel(string? status) => status switch
+    private static string PresenceLabel(string? status, DateTime? lastSeen) => status switch
     {
         "on" or "online" => "Online",
         "away" => "Away",
         "busy" => "Busy",
-        _ => "Offline"
+        _ => LastSeen.OfflineLabel(lastSeen)
     };
 
     private static string DisplayRole(string? role) => role switch

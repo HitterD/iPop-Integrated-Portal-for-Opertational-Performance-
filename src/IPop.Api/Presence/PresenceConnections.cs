@@ -45,8 +45,8 @@ public class PresenceConnections(
 
             using var scope = scopes.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
-            // Age the heartbeat past the offline threshold rather than clearing it, so the
-            // approximate last-seen time survives. The next beat restores it.
+            // Age the heartbeat past the offline threshold so the status reads off now; the real
+            // last-seen time lives in PresenceLastBeatAt. The next beat restores it.
             var cutoff = DateTime.UtcNow - PresenceStatus.OfflineAfter;
             await db.Users.Where(u => u.Nik == nik && u.PresenceLastSeenAt > cutoff)
                 .ExecuteUpdateAsync(s => s.SetProperty(u => u.PresenceLastSeenAt, cutoff));

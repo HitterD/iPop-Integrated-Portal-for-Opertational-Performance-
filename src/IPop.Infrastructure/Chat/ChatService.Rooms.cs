@@ -162,7 +162,8 @@ public sealed partial class ChatService
                 m.User.Nik,
                 m.User.Name,
                 m.Role,
-                PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now, m.User.PresenceIsIdle)
+                PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now, m.User.PresenceIsIdle),
+                m.User.PresenceLastBeatAt ?? m.User.PresenceLastSeenAt
             ))
             .ToListAsync(ct);
 

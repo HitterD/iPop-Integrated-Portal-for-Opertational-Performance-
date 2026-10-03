@@ -312,7 +312,8 @@ public static class DirectoryEndpoints
             x.User.ManagerNik is not null && names.TryGetValue(x.User.ManagerNik, out var managerName) ? managerName : null,
             x.User.Email, x.User.Extension, x.User.Location, x.Status, null, x.User.PhotoPath,
             favNiks.Contains(x.User.Nik), x.User.ManagerNik, x.User.Id,
-            x.User.Division is { } dv && (x.User.Department is not null || dv.Department is not null) ? dv.Name : null)).ToArray();
+            x.User.Division is { } dv && (x.User.Department is not null || dv.Department is not null) ? dv.Name : null,
+            PresenceStatus.LastSeen(x.User.PresenceLastBeatAt, x.User.PresenceLastSeenAt))).ToArray();
         return new DirectoryPage(total, p, size, items);
     }
 

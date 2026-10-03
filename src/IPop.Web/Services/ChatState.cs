@@ -1206,7 +1206,10 @@ public partial class ChatState : IAsyncDisposable
         if (!room.Members.Any(m => string.Equals(m.Nik, nik, StringComparison.OrdinalIgnoreCase) && m.PresenceStatus != status))
             return room;
         var members = room.Members
-            .Select(m => string.Equals(m.Nik, nik, StringComparison.OrdinalIgnoreCase) ? m with { PresenceStatus = status } : m)
+            .Select(m => string.Equals(m.Nik, nik, StringComparison.OrdinalIgnoreCase)
+                // Going offline live: they were here until just now.
+                ? m with { PresenceStatus = status, LastSeenAt = status == "off" ? DateTime.UtcNow : m.LastSeenAt }
+                : m)
             .ToList();
         return room with { Members = members, OnlineCount = members.Count(m => m.PresenceStatus == "on") };
     }

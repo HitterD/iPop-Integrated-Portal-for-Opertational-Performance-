@@ -8,7 +8,8 @@ public record DirectoryEmployeeDto(
     string Nik, string Name, string? Position, string? Department, string? DepartmentCode,
     string? Site, string? SiteCode, string? Manager, string Email, string? Extension,
     string? Location, string Status, string[]? Roles = null, string? PhotoPath = null,
-    bool IsFavorite = false, string? ManagerNik = null, Guid? UserId = null, string? Section = null);
+    bool IsFavorite = false, string? ManagerNik = null, Guid? UserId = null, string? Section = null,
+    DateTime? LastSeenAt = null);
 
 public record DirectoryDepartmentDto(string Code, string Name, string? ParentCode, int DirectMembers);
 public record DirectorySiteDto(string Code, string Name);
