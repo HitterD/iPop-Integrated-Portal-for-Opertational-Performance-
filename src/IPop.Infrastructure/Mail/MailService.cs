@@ -4,6 +4,8 @@ using IPop.Application.Realtime;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 // Alias: our own namespace IPop.Infrastructure.Mail shadows the Mail entity type in name lookup.
 // Use a distinct alias name (MailEntity) so simple-name resolution inside this namespace
@@ -13,10 +15,11 @@ using MailEntity = IPop.Core.Entities.Mail;
 namespace IPop.Infrastructure.Mail;
 
 public sealed class MailService(IPopDbContext db, INotificationGatewayService? notificationGateway = null, IRealtime? realtime = null,
-    MailNotifySignal? notifySignal = null) : IMailService
+    MailNotifySignal? notifySignal = null, ILogger<MailService>? log = null) : IMailService
 {
     private static readonly System.Text.Json.JsonSerializerOptions Json = new(System.Text.Json.JsonSerializerDefaults.Web);
     private const int MaxSubjectLength = 500;
+    private ILogger Log => log ?? NullLogger<MailService>.Instance;
 
     // ──────────────────────────────────────────────────────────────────────────
     // Compose & delivery
@@ -1002,6 +1005,10 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             catch (Exception ex)
             {
                 job.LastError = Truncate(ex.Message, 1000);
+                if (job.Attempts + 1 >= MailNotifyJob.MaxAttempts)
+                    Log.LogError(ex, "Mail {MailId} notification gave up after {Attempts} attempts", job.MailId, job.Attempts + 1);
+                else
+                    Log.LogWarning(ex, "Mail {MailId} notification attempt {Attempt} failed; retrying", job.MailId, job.Attempts + 1);
                 // 10s, 20s, 40s … capped at 10 minutes.
                 job.NextAttemptAt = DateTime.UtcNow.AddSeconds(Math.Min(600, 10 * Math.Pow(2, job.Attempts)));
             }
@@ -1042,9 +1049,10 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
                     await realtime.ToUsersAsync(niks, "mailReceived", new { mailId = mail.Id, subject = mail.Subject }, ct);
                     await realtime.ToUsersAsync(niks, RealtimeEvents.MailChanged, ct: ct);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Realtime is a hint; clients re-fetch over REST on next load.
+                    // Realtime is a hint; clients re-fetch over REST on next load/reconnect.
+                    Log.LogWarning(ex, "Mail {MailId} realtime hint failed for {Count} recipients", mail.Id, chunk.Length);
                 }
             }
         }

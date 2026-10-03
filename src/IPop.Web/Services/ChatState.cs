@@ -718,8 +718,18 @@ public partial class ChatState : IAsyncDisposable
     {
         var was = _attentive;
         _attentive = attentive;
-        return attentive && !was ? MarkActiveRoomReadAsync() : Task.CompletedTask;
+        if (!attentive) { _inattentiveSince ??= DateTime.UtcNow; return Task.CompletedTask; }
+        var away = _inattentiveSince is { } since ? DateTime.UtcNow - since : TimeSpan.Zero;
+        _inattentiveSince = null;
+        // A long-hidden tab can keep a socket that silently missed events (sleep, throttling):
+        // re-read instead of trusting it. The resync marks read itself.
+        if (away >= ResyncAfterHidden && _hub?.State == HubConnectionState.Connected)
+            return SafeAsync(RefreshOnReconnectAsync);
+        return !was ? MarkActiveRoomReadAsync() : Task.CompletedTask;
     }
+
+    private DateTime? _inattentiveSince;
+    internal static readonly TimeSpan ResyncAfterHidden = TimeSpan.FromMinutes(1);
 
     /// The message whose read receipt covers the open room: the newest one from someone else,
     /// else the newest confirmed one. Optimistic bubbles (outbox temp ids) never qualify.
@@ -1240,7 +1250,16 @@ public partial class ChatState : IAsyncDisposable
         }, TaskScheduler.Default);
     }
 
-    private async Task RefreshOnReconnectAsync()
+    /// Single-flight: reconnect, initial-connect retry and tab-return can fire together; they
+    /// share one resync instead of stacking duplicate room/history fetches.
+    private Task? _resync;
+    private Task RefreshOnReconnectAsync()
+    {
+        if (_resync is { IsCompleted: false }) return _resync;
+        return _resync = RefreshCoreAsync();
+    }
+
+    private async Task RefreshCoreAsync()
     {
         await LoadRoomsAsync();
         await RestoreOutboxAsync();

@@ -957,6 +957,8 @@
             await JS.InvokeVoidAsync("ipop.icons");
         }
         _mailSub = Auth.On(IPop.Application.Realtime.RealtimeEvents.MailChanged, OnMailChanged);
+        // mailChanged pushes sent while the hub was down are lost: re-read once it's back.
+        Auth.HubReconnected += OnMailChanged;
     }
 
     // ── Live refresh (mailChanged) ──
@@ -2400,6 +2402,7 @@
         cts?.Cancel();
         cts?.Dispose();
         _mailSub?.Dispose();
+        Auth.HubReconnected -= OnMailChanged;
         _liveCts?.Cancel();
         _liveCts?.Dispose();
         if (_navSubscribed) Nav.LocationChanged -= OnLocationChanged;
