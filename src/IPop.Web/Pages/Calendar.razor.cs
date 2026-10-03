@@ -24,10 +24,12 @@ public partial class Calendar
         public DateTime Start => AllDay ? StartAt.Date : StartAt.ToLocalTime();
         public DateTime End => AllDay ? EndAt.Date : EndAt.ToLocalTime();
     }
-    public record Person(Guid UserId, string Nik, string Name, string Rsvp);
+    public record Person(Guid UserId, string Nik, string Name, string Rsvp, string? RespondedBy = null);
     public record EventDetail(Guid Id, string Title, DateTime StartAt, DateTime EndAt, bool AllDay, string? Location, string? Link,
         string? Notes, int? ReminderMinutes, Guid? RoomId, string? RoomName, Guid? MeetingId, string? MeetingStatus,
-        string OwnerName, bool CanEdit, List<Person> Attendees, string Visibility = "busy");
+        string OwnerName, bool CanEdit, List<Person> Attendees, string Visibility = "busy",
+        string? OwnerNik = null, string? CreatedBy = null, string? SentBy = null, string? UpdatedBy = null, string? DelegateLevel = null,
+        string? DelegateForNik = null, string? DelegateForName = null);
 
     private sealed record SourceDef(string Key, string Label, string Icon);
     private static readonly SourceDef[] Sources =
@@ -70,7 +72,7 @@ public partial class Calendar
         if (DateTime.TryParseExact(DateQuery, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) anchor = d.Date;
         miniMonth = new(anchor.Year, anchor.Month, 1);
         await LoadPrefsAsync();
-        await LoadSharingAsync();
+        await Task.WhenAll(LoadSharingAsync(), LoadManagedAsync());
         await LoadAsync();
         // Now line and "Awaiting reply" drift with the clock; refresh every minute.
         nowTimer = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
@@ -104,9 +106,10 @@ public partial class Calendar
         if (from == default || to <= from) return;
         try
         {
-            var url = $"/api/calendar/feed?from={Uri.EscapeDataString(from.ToUniversalTime().ToString("o"))}&to={Uri.EscapeDataString(to.ToUniversalTime().ToString("o"))}";
-            var res = await Auth.GetAsync<List<FeedItem>>(url);
-            // A navigation-triggered load started meanwhile: it owns the result.
+            var who = managing?.Nik;
+            var res = await Auth.GetAsync<List<FeedItem>>(FeedUrl(from, to));
+            // A navigation-triggered load (or a switch of managed calendar) started meanwhile: it owns the result.
+            if (who != managing?.Nik) return;
             if (res is null || loadingFeed || from != loadedFrom || to != loadedTo) return;
             items = res;
             _ = LoadPeopleAsync();
@@ -300,8 +303,7 @@ public partial class Calendar
         StateHasChanged();
         try
         {
-            var url = $"/api/calendar/feed?from={Uri.EscapeDataString(windowFrom.ToUniversalTime().ToString("o"))}&to={Uri.EscapeDataString(windowTo.ToUniversalTime().ToString("o"))}";
-            var res = await Auth.GetAsync<List<FeedItem>>(url, ct);
+            var res = await Auth.GetAsync<List<FeedItem>>(FeedUrl(windowFrom, windowTo), ct);
             if (ct.IsCancellationRequested) return;
             if (res is null) { loadError = true; return; }
             items = res;
@@ -485,11 +487,11 @@ public partial class Calendar
         if (e.Key == "Escape") CloseDrawer();
     }
 
-    private async Task RsvpAsync(string response)
+    private async Task RsvpAsync(string response, string? onBehalfOf = null)
     {
         if (detail?.MeetingId is not { } mid) return;
-        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/meetings/{mid}/rsvp", new { response });
-        if (!res.IsSuccessStatusCode) { Toasts.Show("Could not save your reply.", ToastKind.Error); return; }
+        var res = await Auth.SendAsync(HttpMethod.Post, $"/api/meetings/{mid}/rsvp", new { response, onBehalfOf });
+        if (!res.IsSuccessStatusCode) { Toasts.Show(onBehalfOf is null ? "Could not save your reply." : await ErrorAsync(res), ToastKind.Error); return; }
         await OpenEventAsync(detail.Id);
         await LoadAsync();
     }
@@ -524,6 +526,7 @@ public partial class Calendar
 
     private void OpenCreate(DateTime start, bool allDay = false)
     {
+        if (!CanCreate) return; // a view delegate looking at someone else's calendar
         form = new EventForm
         {
             AllDay = allDay,
@@ -549,7 +552,7 @@ public partial class Calendar
             StartDate = s.Date, StartTime = TimeOnly.FromDateTime(s), EndDate = e.Date < s.Date ? s.Date : e.Date, EndTime = TimeOnly.FromDateTime(e),
             Location = detail.Location, Link = detail.Link, Notes = detail.Notes, Reminder = detail.ReminderMinutes ?? 0,
             RoomIdText = detail.RoomId?.ToString() ?? "",
-            People = detail.Attendees.Where(a => a.Nik != Auth.Me?.Nik).Select(a => new MemberSearchRow(a.Nik, a.Name, null, null)).ToList(),
+            People = detail.Attendees.Where(a => a.Nik != (detail.OwnerNik ?? Auth.Me?.Nik)).Select(a => new MemberSearchRow(a.Nik, a.Name, null, null)).ToList(),
             Visibility = detail.Visibility,
         };
         formError = null;
@@ -611,6 +614,8 @@ public partial class Calendar
             location = form.Location, link = form.Link, notes = form.Notes,
             reminderMinutes = form.Reminder > 0 ? form.Reminder : (int?)null,
             roomId, visibility = form.Visibility,
+            // Managing someone's calendar: a new event belongs to them (the API records me as "on behalf").
+            ownerNik = form.Id is null ? managing?.Nik : null,
             // Meeting edits resend the full list (organizer stays); personal events only send when inviting.
             attendeeNiks = roomId is null && (form.MeetingId is not null || form.People.Count > 0) ? form.People.Select(p => p.Nik).ToList() : null,
         };

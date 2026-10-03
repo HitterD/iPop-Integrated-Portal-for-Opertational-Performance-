@@ -43,3 +43,35 @@ public class CalendarSubscription
     public User User { get; set; } = default!;
     public User TargetUser { get; set; } = default!;
 }
+
+/// How much a delegate may do on the owner's calendar.
+public static class DelegateLevel
+{
+    /// See every detail of Public and Busy only events (Private stays a block).
+    public const string View = "view";
+    /// View + create, edit and cancel events and meetings on the owner's behalf.
+    public const string Edit = "edit";
+    /// Edit + receive the owner's meeting invites and answer them on the owner's behalf.
+    public const string Full = "full";
+
+    public static bool IsValid(string? v) => v is View or Edit or Full;
+    public static bool CanEdit(string? v) => v is Edit or Full;
+    public static int Rank(string? v) => v switch { Full => 3, Edit => 2, View => 1, _ => 0 };
+}
+
+/// The owner lets <see cref="DelegateId"/> manage their calendar (manager → assistant).
+/// Granted by the owner in Calendar settings or by an admin; both people are notified.
+public class CalendarDelegate
+{
+    public Guid Id { get; set; }
+    public Guid OwnerId { get; set; }
+    public Guid DelegateId { get; set; }
+    /// <see cref="DelegateLevel"/>: view | edit | full
+    public string Level { get; set; } = DelegateLevel.View;
+    public Guid? CreatedById { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+
+    public User Owner { get; set; } = default!;
+    public User Delegate { get; set; } = default!;
+}

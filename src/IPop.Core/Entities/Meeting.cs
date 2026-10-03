@@ -23,6 +23,8 @@ public class Meeting
     public int? ReminderMinutes { get; set; }
     /// <see cref="CalendarVisibility"/> for people who aren't invited: public | busy | private.
     public string Visibility { get; set; } = CalendarVisibility.Busy;
+    /// A delegate who sent this meeting on the organizer's behalf ("Sent by X on behalf of Y").
+    public Guid? SentById { get; set; }
     public DateTime CreatedAt { get; set; }
 
     public User Organizer { get; set; } = default!;
@@ -49,6 +51,8 @@ public class MeetingAttendee
     public string RsvpStatus { get; set; } = "pending";
     public string? Note { get; set; }
     public DateTime? RespondedAt { get; set; }
+    /// A full delegate who answered on this attendee's behalf.
+    public Guid? RespondedById { get; set; }
 
     public Meeting Meeting { get; set; } = default!;
     public User User { get; set; } = default!;
@@ -77,6 +81,10 @@ public class CalendarEvent
     public DateTime? ReminderSentAt { get; set; }
     /// <see cref="CalendarVisibility"/> for other people: public | busy | private (meeting rows follow the Meeting).
     public string Visibility { get; set; } = CalendarVisibility.Busy;
+    /// A delegate who created this event on the owner's behalf; null = the owner.
+    public Guid? CreatedById { get; set; }
+    /// The delegate who last changed it on the owner's behalf; null = the owner.
+    public Guid? UpdatedById { get; set; }
     public DateTime CreatedAt { get; set; }
 
     public User Owner { get; set; } = default!;

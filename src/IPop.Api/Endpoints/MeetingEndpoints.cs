@@ -32,7 +32,10 @@ public static class MeetingEndpoints
             var dto = await LoadMeetingDto(meetingId!.Value, userId.Value, db, ct);
             // A mail invitation (SourceMailId) already notified its recipients through mail.new.
             if (notifs is not null && dto is not null && req.SourceMailId is null)
+            {
                 await PublishInvitedAsync(notifs, dto, invited, ct, NotifyLog(http));
+                await CalendarDelegateEndpoints.ForwardInvitesAsync(db, notifs, NotifyLog(http), invited, dto.Title, dto.StartAt, dto.OrganizerName, null, ct);
+            }
             return Results.Ok(dto);
         }).RequirePermission("mail.send");
 
@@ -62,13 +65,16 @@ public static class MeetingEndpoints
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
-            var result = await ApplyRsvpAsync(db, id, userId.Value, req.Response, req.Note, ct);
-            if (result == RsvpResult.Applied) await NotifyMeetingChangedAsync(db, realtime, id, [], ct);
+            // onBehalfOf = a full delegate answering for the invited owner.
+            var (attendee, actedBy, denied) = await CalendarDelegateEndpoints.ResolveOwnerAsync(db, userId.Value, req.OnBehalfOf, DelegateLevel.Full, ct);
+            if (denied is not null) return denied;
+            var result = await ApplyRsvpAsync(db, id, attendee, req.Response, req.Note, ct, actedBy);
+            if (result == RsvpResult.Applied) await NotifyMeetingChangedAsync(db, realtime, id, [userId.Value], ct);
             return result switch
             {
                 RsvpResult.InvalidResponse => Results.Json(new { code = "invalid_response", message = "Response must be accept/maybe/decline." }, statusCode: 422),
                 RsvpResult.NotInvited => Results.Json(new { code = "not_invited", message = "You are not an attendee of this meeting." }, statusCode: 403),
-                _ => Results.Ok(await LoadMeetingDto(id, userId.Value, db, ct)),
+                _ => Results.Ok(await LoadMeetingDto(id, attendee, db, ct)),
             };
         });
 
@@ -234,6 +240,7 @@ public static class MeetingEndpoints
                 await PublishBestEffortAsync(notifs, log, "meeting.updated", $"Meeting updated: {dto.Title}",
                     $"{dto.OrganizerName} updated \"{dto.Title}\".",
                     others.ToList(), "normal", link);
+                await CalendarDelegateEndpoints.ForwardInvitesAsync(db, notifs, log, added, dto.Title, dto.StartAt, dto.OrganizerName, null, ct);
             }
             return Results.Ok(dto);
         });
@@ -532,6 +539,7 @@ public static class MeetingEndpoints
             {
                 a.RsvpStatus = "pending";
                 a.RespondedAt = null;
+                a.RespondedById = null;
             }
 
         foreach (var ev in await db.CalendarEvents.Where(e => e.MeetingId == m.Id).ToListAsync(ct))
@@ -559,7 +567,8 @@ public static class MeetingEndpoints
 
     /// Terapkan jawaban RSVP peserta (dipisah agar bisa diuji unit tanpa HTTP host).
     public enum RsvpResult { Applied, InvalidResponse, NotInvited }
-    public static async Task<RsvpResult> ApplyRsvpAsync(IPopDbContext db, Guid meetingId, Guid userId, string? response, string? note, CancellationToken ct)
+    public static async Task<RsvpResult> ApplyRsvpAsync(IPopDbContext db, Guid meetingId, Guid userId, string? response, string? note, CancellationToken ct,
+        Guid? respondedBy = null)
     {
         var r = response?.Trim().ToLowerInvariant() ?? "";
         if (r is not ("accept" or "maybe" or "decline")) return RsvpResult.InvalidResponse;
@@ -568,6 +577,7 @@ public static class MeetingEndpoints
         att.RsvpStatus = r;
         att.Note = note?.Trim();
         att.RespondedAt = DateTime.UtcNow;
+        att.RespondedById = respondedBy;
         await db.SaveChangesAsync(ct);
         return RsvpResult.Applied;
     }
@@ -585,7 +595,7 @@ public static class MeetingEndpoints
     public record UpdateMeetingRequest(string? Title, DateTime StartAt, DateTime EndAt, string? Location, string? Link, string? Agenda,
         IReadOnlyList<string>? AttendeeNiks, int? ReminderMinutes);
     public record MeetingJoinDto(Guid MeetingId, string Title, string RoomName, string? ExternalLink, string? LiveKitUrl, string? LiveKitToken);
-    public record RsvpRequest(string? Response, string? Note);
+    public record RsvpRequest(string? Response, string? Note, string? OnBehalfOf = null);
     public record CreateCalendarEventRequest(string? Title, DateTime StartAt, DateTime EndAt, string? Type, Guid? RoomId);
     public record MeetingAttendeeDto(Guid UserId, string Name, string Nik, bool Required, string RsvpStatus, string? Note);
     public record MeetingDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string? TimeZone, string? Location, string? Link,

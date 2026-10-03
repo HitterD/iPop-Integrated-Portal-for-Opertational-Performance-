@@ -1,0 +1,135 @@
+@using System.Net.Http.Json
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject ConfirmService Confirm
+
+@* Calendar delegates of one owner. Used by the owner (Calendar → Sharing settings, BaseUrl
+   /api/calendar/delegates) and by admins (Admin → People, /api/admin/users/{nik}/calendar-delegates).
+   Every change saves at once; the API notifies both people and writes the audit log. *@
+
+<div class="cal-dlg">
+    @if (rows is null)
+    {
+        <div class="cal-dlg-empty">Loading delegates…</div>
+    }
+    else
+    {
+        @if (rows.Count == 0)
+        {
+            <div class="cal-dlg-empty">No delegates yet. @(IsAdmin ? "Nobody else can manage this calendar." : "Only you can manage your calendar.")</div>
+        }
+        @foreach (var r in rows)
+        {
+            var row = r;
+            <div class="cal-dlg-row" @key="row.Nik">
+                <PersonAvatar Nik="@row.Nik" Name="@row.Name" Size="28" Decorative="true" />
+                <span class="cal-dlg-name">
+                    <b>@row.Name</b>
+                    <small>@(row.Department ?? "")@(row.GrantedBy is not null ? $"{(row.Department is null ? "" : " · ")}Set by {row.GrantedBy}" : "")</small>
+                </span>
+                <select class="cal-dlg-level" aria-label="Access for @row.Name" disabled="@busy" value="@row.Level"
+                        @onchange="e => SetAsync(row.Nik, e.Value?.ToString() ?? row.Level)">
+                    @foreach (var (key, label, _) in Levels)
+                    {
+                        <option value="@key">@label</option>
+                    }
+                </select>
+                <button type="button" class="cal-icon sm" title="Remove" aria-label="Remove @row.Name" disabled="@busy" @onclick="() => RemoveAsync(row)"><i data-lucide="trash-2"></i></button>
+            </div>
+        }
+        @if (adding)
+        {
+            <div class="cal-dlg-add">
+                <select class="cal-dlg-level" aria-label="Access level" @bind="newLevel">
+                    @foreach (var (key, label, _) in Levels)
+                    {
+                        <option value="@key">@label</option>
+                    }
+                </select>
+                <PeoplePicker Placeholder="Add a delegate" ValueChanged="AddAsync" />
+                <button type="button" class="cal-icon sm" title="Cancel" aria-label="Cancel" @onclick="() => adding = false"><i data-lucide="x"></i></button>
+            </div>
+        }
+        else if (rows.Count < 10)
+        {
+            <button type="button" class="cal-btn cal-dlg-addbtn" @onclick="() => adding = true"><i data-lucide="user-plus"></i> Add delegate</button>
+        }
+        <dl class="cal-dlg-levels">
+            @foreach (var (_, label, hint) in Levels)
+            {
+                <dt>@label</dt><dd>@hint</dd>
+            }
+        </dl>
+    }
+</div>
+
+@code {
+    public record DelegateRow(string Nik, string Name, string? Department, string Level, string? GrantedBy, DateTime CreatedAt);
+
+    private static readonly (string Key, string Label, string Hint)[] Levels =
+    [
+        ("view", "View all details", "Sees Busy only events in full. Can't change anything."),
+        ("edit", "Can edit", "Also creates, changes and cancels events and meetings on this calendar."),
+        ("full", "Full delegate", "Also gets the meeting invites and can accept or decline them."),
+    ];
+
+    /// "/api/calendar/delegates" or "/api/admin/users/{nik}/calendar-delegates".
+    [Parameter, EditorRequired] public string BaseUrl { get; set; } = "";
+    [Parameter] public bool IsAdmin { get; set; }
+
+    private List<DelegateRow>? rows;
+    private bool adding, busy;
+    private string newLevel = "edit";
+    private string loadedUrl = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (BaseUrl == loadedUrl) return;
+        loadedUrl = BaseUrl;
+        rows = null; adding = false;
+        try { rows = await Auth.GetAsync<List<DelegateRow>>(BaseUrl) ?? []; }
+        catch { rows = []; Toasts.Show("Could not load delegates.", ToastKind.Error); }
+    }
+
+    private Task AddAsync(MemberSearchRow p) => SetAsync(p.Nik, newLevel, added: true);
+
+    private async Task SetAsync(string nik, string level, bool added = false)
+    {
+        busy = true;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Put, $"{BaseUrl}/{Uri.EscapeDataString(nik)}", new { level });
+            if (!res.IsSuccessStatusCode) { Toasts.Show(await ErrorAsync(res), ToastKind.Error); return; }
+            rows = await res.Content.ReadFromJsonAsync<List<DelegateRow>>() ?? rows;
+            if (added) adding = false;
+            Toasts.Show(added ? "Delegate added. They've been notified." : "Access updated.", ToastKind.Success);
+        }
+        finally { busy = false; }
+    }
+
+    private async Task RemoveAsync(DelegateRow row)
+    {
+        if (!await Confirm.AskAsync("Remove delegate?", $"{row.Name} will no longer see or manage this calendar.", "Remove", danger: true)) return;
+        busy = true;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Delete, $"{BaseUrl}/{Uri.EscapeDataString(row.Nik)}");
+            if (!res.IsSuccessStatusCode) { Toasts.Show(await ErrorAsync(res), ToastKind.Error); return; }
+            rows = await res.Content.ReadFromJsonAsync<List<DelegateRow>>() ?? rows;
+            Toasts.Show("Delegate removed.", ToastKind.Success);
+        }
+        finally { busy = false; }
+    }
+
+    private static async Task<string> ErrorAsync(HttpResponseMessage res)
+    {
+        try
+        {
+            var b = await res.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+            if (b?.GetValueOrDefault("message")?.ToString() is { Length: > 0 } m) return m;
+        }
+        catch { }
+        return $"Request failed ({(int)res.StatusCode}).";
+    }
+}

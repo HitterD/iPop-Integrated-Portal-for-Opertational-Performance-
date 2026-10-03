@@ -195,6 +195,7 @@ public partial class Calendar
     private void OpenSettings()
     {
         draftDefault = sharing.DefaultVisibility;
+        draftNotify = sharing.NotifyDelegateChanges;
         settingsOpen = true;
     }
 
@@ -204,7 +205,7 @@ public partial class Calendar
         try
         {
             var res = await Auth.SendAsync(HttpMethod.Put, "/api/calendar/settings",
-                new { defaultVisibility = draftDefault, notifyDelegateChanges = sharing.NotifyDelegateChanges });
+                new { defaultVisibility = draftDefault, notifyDelegateChanges = draftNotify });
             if (!res.IsSuccessStatusCode) { Toasts.Show(await ErrorAsync(res), ToastKind.Error); return; }
             sharing = await res.Content.ReadFromJsonAsync<SharingSettings>() ?? sharing;
             settingsOpen = false;

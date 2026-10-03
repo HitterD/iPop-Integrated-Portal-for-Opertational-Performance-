@@ -42,10 +42,15 @@ public static class CalendarEndpoints
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
-            var (result, ev, invited) = await CreateEventAsync(db, userId.Value, req, ct);
+            // ownerNik = a delegate creating on someone else's calendar (they become the owner/organizer).
+            var (ownerId, actedBy, denied) = await CalendarDelegateEndpoints.ResolveOwnerAsync(db, userId.Value, req.OwnerNik, DelegateLevel.Edit, ct);
+            if (denied is not null) return denied;
+            var (result, ev, invited) = await CreateEventAsync(db, ownerId, req, ct, actedBy);
             if (result != SaveResult.Ok) return Error(result);
-            await NotifyChangedAsync(db, realtime, ev!.MeetingId, [userId.Value], ct);
-            await NotifyInvitedAsync(db, notifs, ev!, userId.Value, invited, MeetingEndpoints.NotifyLog(http), ct);
+            var log = MeetingEndpoints.NotifyLog(http);
+            await NotifyChangedAsync(db, realtime, ev!.MeetingId, [ownerId, userId.Value], ct);
+            await NotifyInvitedAsync(db, notifs, ev!, ownerId, invited, log, ct, actedBy);
+            if (actedBy is { } by) await CalendarDelegateEndpoints.NotifyOwnerOfChangeAsync(db, notifs, log, ownerId, by, "added", ev!.Title, ct);
             return Results.Ok(await LoadDetailAsync(db, ev!.Id, userId.Value, ct));
         });
 
@@ -59,10 +64,13 @@ public static class CalendarEndpoints
             var before = beforeMeeting is { } bm
                 ? await db.MeetingAttendees.AsNoTracking().Where(a => a.MeetingId == bm).Select(a => a.UserId).ToListAsync(ct)
                 : [];
-            var (result, ev, invited) = await UpdateEventAsync(db, id, userId.Value, req, ct);
+            var (ownerId, actedBy) = await CalendarDelegateEndpoints.ActorForEventAsync(db, id, userId.Value, ct);
+            var (result, ev, invited) = await UpdateEventAsync(db, id, ownerId, req, ct, actedBy);
             if (result != SaveResult.Ok) return Error(result);
-            await NotifyChangedAsync(db, realtime, ev!.MeetingId, before.Append(userId.Value), ct);
-            await NotifyInvitedAsync(db, notifs, ev!, userId.Value, invited, MeetingEndpoints.NotifyLog(http), ct);
+            var log = MeetingEndpoints.NotifyLog(http);
+            await NotifyChangedAsync(db, realtime, ev!.MeetingId, before.Append(ownerId).Append(userId.Value), ct);
+            await NotifyInvitedAsync(db, notifs, ev!, ownerId, invited, log, ct, actedBy);
+            if (actedBy is { } by) await CalendarDelegateEndpoints.NotifyOwnerOfChangeAsync(db, notifs, log, ownerId, by, "changed", ev!.Title, ct);
             return Results.Ok(await LoadDetailAsync(db, id, userId.Value, ct));
         });
 
@@ -72,11 +80,14 @@ public static class CalendarEndpoints
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
             var meetingId = await db.CalendarEvents.AsNoTracking().Where(e => e.Id == id).Select(e => e.MeetingId).FirstOrDefaultAsync(ct);
-            var (result, title, attendees) = await DeleteEventAsync(db, id, userId.Value, ct);
+            var (ownerId, actedBy) = await CalendarDelegateEndpoints.ActorForEventAsync(db, id, userId.Value, ct);
+            var (result, title, attendees) = await DeleteEventAsync(db, id, ownerId, ct);
             if (result != SaveResult.Ok) return Error(result);
-            await NotifyChangedAsync(db, realtime, meetingId, attendees.Append(userId.Value), ct);
-            await MeetingEndpoints.PublishBestEffortAsync(notifs, MeetingEndpoints.NotifyLog(http), "meeting.cancelled",
-                $"Meeting cancelled: {title}", $"\"{title}\" has been cancelled.", attendees.ToList(), "high", "/calendar");
+            var log = MeetingEndpoints.NotifyLog(http);
+            await NotifyChangedAsync(db, realtime, meetingId, attendees.Append(ownerId).Append(userId.Value), ct);
+            await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "meeting.cancelled",
+                $"Meeting cancelled: {title}", $"\"{title}\" has been cancelled.", attendees.Where(a => a != userId.Value).ToList(), "high", "/calendar");
+            if (actedBy is { } by) await CalendarDelegateEndpoints.NotifyOwnerOfChangeAsync(db, notifs, log, ownerId, by, meetingId is null ? "deleted" : "cancelled", title, ct);
             return Results.NoContent();
         });
 
@@ -265,7 +276,7 @@ public static class CalendarEndpoints
     private static IResult Error(SaveResult r) => r switch
     {
         SaveResult.NotFound => Results.NotFound(),
-        SaveResult.Forbidden => Results.Json(new { code = "forbidden", message = "Only the organizer can change this event." }, statusCode: 403),
+        SaveResult.Forbidden => Results.Json(new { code = "forbidden", message = "Only the organizer or their delegate can change this event." }, statusCode: 403),
         SaveResult.NotRoomMember => Results.Json(new { code = "forbidden", message = "You are not a member of that group." }, statusCode: 403),
         SaveResult.InvalidTitle => Results.Json(new { code = "invalid_title", message = "Title is required (max 200 characters)." }, statusCode: 422),
         SaveResult.InvalidRange => Results.Json(new { code = "invalid_range", message = "End must be after start." }, statusCode: 422),
@@ -311,14 +322,16 @@ public static class CalendarEndpoints
 
     /// Creates a personal event, or — with attendees or a chat group — a Meeting (RSVP + reminders)
     /// linked to the organizer's calendar row. Returns the users newly invited.
-    public static async Task<(SaveResult, CalendarEvent?, IReadOnlyList<Guid>)> CreateEventAsync(IPopDbContext db, Guid userId, SaveEventRequest req, CancellationToken ct)
+    /// <paramref name="actedBy"/> = a delegate creating it on <paramref name="userId"/>'s behalf.
+    public static async Task<(SaveResult, CalendarEvent?, IReadOnlyList<Guid>)> CreateEventAsync(IPopDbContext db, Guid userId, SaveEventRequest req, CancellationToken ct,
+        Guid? actedBy = null)
     {
         var (r, title, start, end) = Normalize(req);
         if (r != SaveResult.Ok) return (r, null, []);
         var ev = new CalendarEvent
         {
             Id = Guid.NewGuid(), Title = title, OwnerId = userId, RoomId = req.RoomId, CreatedAt = DateTime.UtcNow, Type = "kerja",
-            Visibility = await CalendarSharingEndpoints.DefaultEventVisibilityAsync(db, userId, ct),
+            Visibility = await CalendarSharingEndpoints.DefaultEventVisibilityAsync(db, userId, ct), CreatedById = actedBy,
         };
         ApplyDetails(ev, req, title, start, end);
 
@@ -331,7 +344,7 @@ public static class CalendarEndpoints
             {
                 Id = Guid.NewGuid(), Title = title, StartAt = start, EndAt = end, OrganizerId = userId, Status = "aktif",
                 RoomId = req.RoomId, Location = ev.Location, Link = ev.Link, Agenda = ev.Notes,
-                ReminderMinutes = ev.ReminderMinutes, Visibility = ev.Visibility, CreatedAt = DateTime.UtcNow,
+                ReminderMinutes = ev.ReminderMinutes, Visibility = ev.Visibility, CreatedAt = DateTime.UtcNow, SentById = actedBy,
             };
             db.Meetings.Add(meeting);
             foreach (var uid in ids)
@@ -350,7 +363,9 @@ public static class CalendarEndpoints
         return (SaveResult.Ok, ev, invited);
     }
 
-    public static async Task<(SaveResult, CalendarEvent?, IReadOnlyList<Guid>)> UpdateEventAsync(IPopDbContext db, Guid id, Guid userId, SaveEventRequest req, CancellationToken ct)
+    /// <paramref name="actedBy"/> = a delegate editing on <paramref name="userId"/>'s behalf.
+    public static async Task<(SaveResult, CalendarEvent?, IReadOnlyList<Guid>)> UpdateEventAsync(IPopDbContext db, Guid id, Guid userId, SaveEventRequest req, CancellationToken ct,
+        Guid? actedBy = null)
     {
         var ev = await db.CalendarEvents.FirstOrDefaultAsync(e => e.Id == id, ct);
         if (ev is null) return (SaveResult.NotFound, null, []);
@@ -378,11 +393,13 @@ public static class CalendarEndpoints
             invited = added;
             ev = await db.CalendarEvents.FirstAsync(e => e.Id == id, ct);
             ApplyDetails(ev, req, title, start, end);
+            ev.UpdatedById = actedBy;
             if (CalendarVisibility.IsEventLevel(req.Visibility)) m.Visibility = req.Visibility!;
         }
         else
         {
             ApplyDetails(ev, req, title, start, end);
+            ev.UpdatedById = actedBy;
             // Menambah peserta/grup ke event pribadi menjadikannya rapat.
             if (req.RoomId is not null || req.HasAttendees)
             {
@@ -392,7 +409,7 @@ public static class CalendarEndpoints
                 {
                     Id = Guid.NewGuid(), Title = title, StartAt = start, EndAt = end, OrganizerId = userId, Status = "aktif",
                     RoomId = req.RoomId, Location = ev.Location, Link = ev.Link, Agenda = ev.Notes,
-                    ReminderMinutes = ev.ReminderMinutes, Visibility = ev.Visibility, CreatedAt = DateTime.UtcNow,
+                    ReminderMinutes = ev.ReminderMinutes, Visibility = ev.Visibility, CreatedAt = DateTime.UtcNow, SentById = actedBy,
                 };
                 db.Meetings.Add(meeting);
                 foreach (var uid in ids)
@@ -466,13 +483,16 @@ public static class CalendarEndpoints
     /// that follows, and a concurrent second operation on it threw after a successful save,
     /// so the client saw a 500 for an event that had in fact been created.
     internal static async Task NotifyInvitedAsync(IPopDbContext db, INotificationGatewayService? notifs, CalendarEvent ev, Guid organizerId,
-        IReadOnlyList<Guid> invited, ILogger? log, CancellationToken ct)
+        IReadOnlyList<Guid> invited, ILogger? log, CancellationToken ct, Guid? sentBy = null)
     {
         if (notifs is null || invited.Count == 0) return;
         var organizer = await db.Users.AsNoTracking().Where(u => u.Id == organizerId).Select(u => u.Name).FirstOrDefaultAsync(ct) ?? "Someone";
+        var sender = sentBy is { } sb ? await db.Users.AsNoTracking().Where(u => u.Id == sb).Select(u => u.Name).FirstOrDefaultAsync(ct) : null;
+        var who = sender is null ? organizer : $"{organizer} (sent by {sender} on their behalf)";
         await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "meeting.invited", $"Meeting invite: {ev.Title}",
-            $"{organizer} invited you to \"{ev.Title}\" on {ev.StartAt.ToLocalTime():dd MMM, HH:mm}.",
-            invited.ToList(), "normal", "/calendar");
+            $"{who} invited you to \"{ev.Title}\" on {ev.StartAt.ToLocalTime():dd MMM, HH:mm}.",
+            invited.Where(i => i != sentBy).ToList(), "normal", "/calendar");
+        await CalendarDelegateEndpoints.ForwardInvitesAsync(db, notifs, log, invited, ev.Title, ev.StartAt, organizer, sentBy, ct);
     }
 
     public static async Task<CalendarEventDetailDto?> LoadDetailAsync(IPopDbContext db, Guid id, Guid viewerId, CancellationToken ct)
@@ -482,20 +502,40 @@ public static class CalendarEndpoints
         List<CalendarPersonDto> people = [];
         string? status = null, roomName = null;
         var visibility = ev.Visibility;
+        Guid? sentById = null;
         if (ev.MeetingId is { } mid)
         {
             people = await db.MeetingAttendees.AsNoTracking().Where(a => a.MeetingId == mid)
                 .OrderBy(a => a.User.Name)
-                .Select(a => new CalendarPersonDto(a.UserId, a.User.Nik, a.User.Name, a.RsvpStatus)).ToListAsync(ct);
-            var meta = await db.Meetings.AsNoTracking().Where(m => m.Id == mid).Select(m => new { m.Status, m.Visibility }).FirstOrDefaultAsync(ct);
+                .Select(a => new CalendarPersonDto(a.UserId, a.User.Nik, a.User.Name, a.RsvpStatus,
+                    a.RespondedById != null ? db.Users.Where(u => u.Id == a.RespondedById).Select(u => u.Name).FirstOrDefault() : null))
+                .ToListAsync(ct);
+            var meta = await db.Meetings.AsNoTracking().Where(m => m.Id == mid).Select(m => new { m.Status, m.Visibility, m.SentById }).FirstOrDefaultAsync(ct);
             status = meta?.Status;
-            if (meta is not null) visibility = meta.Visibility;
+            if (meta is not null) { visibility = meta.Visibility; sentById = meta.SentById; }
         }
-        if (ev.OwnerId != viewerId && people.All(p => p.UserId != viewerId)) return null;
+        // A delegate of the owner — or of an invitee (the row belongs to the organizer) — sees everything
+        // but Private. Only the owner's edit/full delegates may change it; an invitee's full delegate answers for them.
+        string? delegateLevel = null;
+        Guid? delegateFor = null;
+        if (ev.OwnerId != viewerId && visibility != CalendarVisibility.Private)
+        {
+            var principals = people.Select(p => p.UserId).Append(ev.OwnerId).Where(id => id != viewerId).ToList();
+            var rows = await db.CalendarDelegates.AsNoTracking()
+                .Where(d => d.DelegateId == viewerId && principals.Contains(d.OwnerId)).Select(d => new { d.OwnerId, d.Level }).ToListAsync(ct);
+            var pick = rows.FirstOrDefault(r => r.OwnerId == ev.OwnerId) ?? rows.OrderByDescending(r => CalendarDelegateEndpoints.LevelRank(r.Level)).FirstOrDefault();
+            if (pick is not null) { delegateLevel = pick.Level; delegateFor = pick.OwnerId; }
+        }
+        if (ev.OwnerId != viewerId && delegateFor is null && people.All(p => p.UserId != viewerId)) return null;
         if (ev.RoomId is { } rid) roomName = await db.ChatRooms.AsNoTracking().Where(r => r.Id == rid).Select(r => r.Name).FirstOrDefaultAsync(ct);
-        var owner = await db.Users.AsNoTracking().Where(u => u.Id == ev.OwnerId).Select(u => u.Name).FirstOrDefaultAsync(ct) ?? "";
+        var nameIds = new[] { ev.OwnerId, ev.CreatedById, ev.UpdatedById, sentById, delegateFor }.OfType<Guid>().Distinct().ToList();
+        var names = await db.Users.AsNoTracking().Where(u => nameIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => new { u.Name, u.Nik }, ct);
+        string? NameOf(Guid? id) => id is { } x ? names.GetValueOrDefault(x)?.Name : null;
+        var canEdit = ev.OwnerId == viewerId || (delegateFor == ev.OwnerId && DelegateLevel.CanEdit(delegateLevel));
         return new CalendarEventDetailDto(ev.Id, ev.Title, ev.StartAt, ev.EndAt, ev.AllDay, ev.Location, ev.Link, ev.Notes,
-            ev.ReminderMinutes, ev.RoomId, roomName, ev.MeetingId, status, owner, ev.OwnerId == viewerId, people, visibility);
+            ev.ReminderMinutes, ev.RoomId, roomName, ev.MeetingId, status, NameOf(ev.OwnerId) ?? "", canEdit, people, visibility,
+            names.GetValueOrDefault(ev.OwnerId)?.Nik, NameOf(ev.CreatedById), NameOf(sentById), NameOf(ev.UpdatedById), delegateLevel,
+            delegateFor is { } df ? names.GetValueOrDefault(df)?.Nik : null, NameOf(delegateFor));
     }
 
     private static DateTime AsUtc(DateTime dt) => dt.Kind switch
@@ -519,12 +559,16 @@ public static class CalendarEndpoints
         string? Visibility = null);
     public record SaveEventRequest(string? Title, DateTime StartAt, DateTime EndAt, bool AllDay = false, string? Location = null,
         string? Link = null, string? Notes = null, int? ReminderMinutes = null, IReadOnlyList<Guid>? AttendeeIds = null,
-        Guid? RoomId = null, string? Type = null, IReadOnlyList<string>? AttendeeNiks = null, string? Visibility = null)
+        Guid? RoomId = null, string? Type = null, IReadOnlyList<string>? AttendeeNiks = null, string? Visibility = null,
+        string? OwnerNik = null)
     {
         public bool HasAttendees => AttendeeIds is { Count: > 0 } || AttendeeNiks is { Count: > 0 };
     }
-    public record CalendarPersonDto(Guid UserId, string Nik, string Name, string Rsvp);
+    /// RespondedBy = the delegate who answered on this person's behalf.
+    public record CalendarPersonDto(Guid UserId, string Nik, string Name, string Rsvp, string? RespondedBy = null);
     public record CalendarEventDetailDto(Guid Id, string Title, DateTime StartAt, DateTime EndAt, bool AllDay, string? Location,
         string? Link, string? Notes, int? ReminderMinutes, Guid? RoomId, string? RoomName, Guid? MeetingId, string? MeetingStatus,
-        string OwnerName, bool CanEdit, IReadOnlyList<CalendarPersonDto> Attendees, string Visibility = CalendarVisibility.Busy);
+        string OwnerName, bool CanEdit, IReadOnlyList<CalendarPersonDto> Attendees, string Visibility = CalendarVisibility.Busy,
+        string? OwnerNik = null, string? CreatedBy = null, string? SentBy = null, string? UpdatedBy = null, string? DelegateLevel = null,
+        string? DelegateForNik = null, string? DelegateForName = null);
 }

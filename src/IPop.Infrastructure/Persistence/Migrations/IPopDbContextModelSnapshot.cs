@@ -172,6 +172,42 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("AuthSessions");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.CalendarDelegate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DelegateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DelegateId");
+
+                    b.HasIndex("OwnerId", "DelegateId")
+                        .IsUnique();
+
+                    b.ToTable("CalendarDelegates");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.CalendarEvent", b =>
                 {
                     b.Property<Guid>("Id")
@@ -183,6 +219,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedById")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("EndAt")
                         .HasColumnType("timestamp with time zone");
@@ -226,6 +265,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
+
+                    b.Property<Guid?>("UpdatedById")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Visibility")
                         .IsRequired()
@@ -1698,6 +1740,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("RoomId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("SentById")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid?>("SourceMailId")
                         .HasColumnType("uuid");
 
@@ -1754,6 +1799,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime?>("RespondedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("RespondedById")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("RsvpStatus")
                         .IsRequired()
@@ -4527,6 +4575,25 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.CalendarDelegate", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.User", "Delegate")
+                        .WithMany()
+                        .HasForeignKey("DelegateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "Owner")
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Delegate");
+
+                    b.Navigation("Owner");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.CalendarEvent", b =>

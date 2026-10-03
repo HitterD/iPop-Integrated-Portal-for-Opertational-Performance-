@@ -70,6 +70,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<MeetingReminder> MeetingReminders => Set<MeetingReminder>();
     public DbSet<CalendarSettings> CalendarSettings => Set<CalendarSettings>();
     public DbSet<CalendarSubscription> CalendarSubscriptions => Set<CalendarSubscription>();
+    public DbSet<CalendarDelegate> CalendarDelegates => Set<CalendarDelegate>();
 
     // Mail entities (use fully-qualified name to avoid shadowing by sibling namespace IPop.Infrastructure.Mail)
     public DbSet<IPop.Core.Entities.Mail> Mails => Set<IPop.Core.Entities.Mail>();
@@ -840,6 +841,14 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Color).HasMaxLength(8);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.TargetUser).WithMany().HasForeignKey(x => x.TargetUserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<CalendarDelegate>(e =>
+        {
+            e.HasIndex(x => new { x.OwnerId, x.DelegateId }).IsUnique();
+            e.HasIndex(x => x.DelegateId);
+            e.Property(x => x.Level).HasMaxLength(8);
+            e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Delegate).WithMany().HasForeignKey(x => x.DelegateId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<MeetingReminder>(e =>
         {

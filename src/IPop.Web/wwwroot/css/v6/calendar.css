@@ -318,6 +318,36 @@ body:has(.cal-drawer) .confirm-center { z-index: 911; }
 .cal-share-opt span { display: grid; gap: 2px; font-size: 13.5px; color: var(--ink); }
 .cal-share-opt small { font-size: 12px; color: var(--ink-3); }
 
+/* ── Delegates (stage 2) ── */
+.cal-managed { display: grid; gap: 2px; }
+.cal-managed-row { display: flex; align-items: center; gap: 8px; border: 0; background: none; border-radius: 9px; padding: 5px 8px; text-align: left; cursor: pointer; color: var(--ink); font-size: 13px; }
+.cal-managed-row:hover { background: var(--fill); }
+.cal-managed-row.on { background: var(--warn-soft); }
+.cal-managed-name { display: grid; min-width: 0; }
+.cal-managed-name small { font-size: 11px; color: var(--ink-3); }
+.cal-onbehalf { display: flex; align-items: center; gap: 10px; padding: 8px 14px; margin-bottom: 8px; border-radius: 12px; background: var(--warn-soft); color: var(--ink); font-size: 13px; }
+.cal-onbehalf > i, .cal-onbehalf > svg { color: var(--warn); flex: none; }
+.cal-onbehalf > span { flex: 1; }
+.cal-create:disabled { opacity: .55; cursor: default; }
+.cal-detail-row.behalf { color: var(--ink-2); font-size: 12.5px; }
+.cal-rsvp.behalf { background: var(--warn-soft); border-radius: 10px; padding: 6px 8px; }
+.cal-set-by { display: block; font-size: 11px; color: var(--ink-3); }
+.cal-share-sec { margin-top: 12px; }
+.cal-share-toggle input { accent-color: var(--accent); }
+.cal-dlg { display: grid; gap: 6px; }
+.cal-dlg-empty { font-size: 12.5px; color: var(--ink-3); padding: 4px 0; }
+.cal-dlg-row { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
+.cal-dlg-name { flex: 1; min-width: 0; display: grid; font-size: 13.5px; color: var(--ink); }
+.cal-dlg-name small { font-size: 11.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-dlg-level { height: 30px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 12.5px; padding: 0 6px; }
+.cal-dlg-add { display: flex; align-items: center; gap: 8px; }
+.cal-dlg-add > :nth-child(2) { flex: 1; min-width: 0; }
+.cal-dlg-addbtn { justify-self: start; }
+.cal-dlg-levels { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; margin: 4px 0 0; font-size: 12px; }
+.cal-dlg-levels dt { font-weight: 600; color: var(--ink-2); }
+.cal-dlg-levels dd { margin: 0; color: var(--ink-3); }
+.adm-cal-dlg { padding: 10px; }
+
 /* ── Responsive ── */
 @media (max-width: 1100px) {
   .cal-page { grid-template-columns: minmax(0, 1fr); height: auto; }

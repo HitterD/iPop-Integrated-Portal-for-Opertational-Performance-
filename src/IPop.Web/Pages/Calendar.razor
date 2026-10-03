@@ -17,7 +17,7 @@
 
 <div class="cal-page">
     <aside class="cal-rail">
-        <button class="cal-create" @onclick="() => OpenCreate(DefaultStart())"><i data-lucide="plus"></i> New event</button>
+        <button class="cal-create" disabled="@(!CanCreate)" title="@(CanCreate ? null : "You can view this calendar but not change it")" @onclick="() => OpenCreate(DefaultStart())"><i data-lucide="plus"></i> New event</button>
 
         <div class="cal-mini" aria-label="Mini calendar">
             <div class="cal-mini-head">
@@ -99,10 +99,29 @@
             }
         </div>
 
+        @if (managed.Count > 0)
+        {
+            <div class="cal-managed">
+                <div class="cal-rail-title">Calendars I manage</div>
+                <button class="cal-managed-row @(managing is null ? "on" : "")" aria-pressed="@(managing is null ? "true" : "false")" @onclick="() => ManageAsync(null)">
+                    <PersonAvatar Nik="@(Auth.Me?.Nik ?? "")" Name="@(Auth.Me?.Name ?? "Me")" Size="22" Decorative="true" />
+                    <span class="cal-managed-name">My calendar</span>
+                </button>
+                @foreach (var m in managed)
+                {
+                    var mc = m;
+                    <button class="cal-managed-row @(managing?.Nik == mc.Nik ? "on" : "")" aria-pressed="@(managing?.Nik == mc.Nik ? "true" : "false")" @onclick="() => ManageAsync(mc)">
+                        <PersonAvatar Nik="@mc.Nik" Name="@mc.Name" Size="22" Decorative="true" />
+                        <span class="cal-managed-name">@mc.Name<small>@LevelLabel(mc.Level)</small></span>
+                    </button>
+                }
+            </div>
+        }
+
         @if (UpcomingPending.Count > 0)
         {
             <div class="cal-invites">
-                <div class="cal-rail-title">Awaiting your reply</div>
+                <div class="cal-rail-title">@(managing is null ? "Awaiting your reply" : $"Awaiting {managing.Name}'s reply")</div>
                 @foreach (var inv in UpcomingPending)
                 {
                     var it = inv;
@@ -116,6 +135,14 @@
     </aside>
 
     <section class="cal-main">
+        @if (managing is not null)
+        {
+            <div class="cal-onbehalf" role="status">
+                <i data-lucide="user-cog"></i>
+                <span>You're managing <b>@managing.Name's</b> calendar.@(CanCreate ? " New events and invites are created in their name." : " You can view it but not change it.")</span>
+                <button class="cal-btn" @onclick="() => ManageAsync(null)">Back to my calendar</button>
+            </div>
+        }
         <header class="cal-toolbar">
             <button class="cal-btn" @onclick="GoToday">Today</button>
             <div class="cal-nav">
@@ -325,6 +352,18 @@
                 @if (detail.RoomName is not null) { <div class="cal-detail-row"><i data-lucide="users"></i><a href="/chat/@detail.RoomId">@detail.RoomName</a></div> }
                 @if (detail.ReminderMinutes is > 0) { <div class="cal-detail-row"><i data-lucide="bell"></i><span>@ReminderLabel(detail.ReminderMinutes.Value) before</span></div> }
                 <div class="cal-detail-row"><i data-lucide="user"></i><span>Organizer: @detail.OwnerName</span></div>
+                @if (detail.SentBy is not null)
+                {
+                    <div class="cal-detail-row behalf"><i data-lucide="user-cog"></i><span>Sent by <b>@detail.SentBy</b> on behalf of <b>@detail.OwnerName</b></span></div>
+                }
+                else if (detail.CreatedBy is not null)
+                {
+                    <div class="cal-detail-row behalf"><i data-lucide="user-cog"></i><span>Created by <b>@detail.CreatedBy</b> on behalf of <b>@detail.OwnerName</b></span></div>
+                }
+                @if (detail.UpdatedBy is not null)
+                {
+                    <div class="cal-detail-row behalf"><i data-lucide="history"></i><span>Last changed by <b>@detail.UpdatedBy</b> on behalf of <b>@detail.OwnerName</b></span></div>
+                }
                 @if (detail.CanEdit) { <div class="cal-detail-row"><i data-lucide="@VisIcon(detail.Visibility)"></i><span>@VisLabel(detail.Visibility)</span></div> }
                 @if (detail.Notes is not null) { <div class="cal-detail-notes">@detail.Notes</div> }
 
@@ -339,13 +378,24 @@
                         }
                     </div>
                 }
+                @if (detail.MeetingId is not null && detail.MeetingStatus is not "cancelled" && BehalfRow is { } behalf)
+                {
+                    <div class="cal-rsvp behalf">
+                        <span>Reply for @behalf.Name</span>
+                        @foreach (var (key, label) in RsvpOptions)
+                        {
+                            var k = key;
+                            <button class="cal-rsvp-btn @(behalf.Rsvp == k ? "on" : "")" @onclick="() => RsvpForAsync(k)">@label</button>
+                        }
+                    </div>
+                }
                 @if (detail.Attendees.Count > 0)
                 {
                     <div class="cal-rail-title">Participants · @detail.Attendees.Count</div>
                     <ul class="cal-people">
                         @foreach (var p in detail.Attendees)
                         {
-                            <li><PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="26" Class="cal-person-av" Decorative="true" /><span>@p.Name</span><span class="cal-rsvp-tag rsvp-@p.Rsvp">@RsvpLabel(p.Rsvp)</span></li>
+                            <li><PersonAvatar Nik="@p.Nik" Name="@p.Name" Size="26" Class="cal-person-av" Decorative="true" /><span>@p.Name@if (p.RespondedBy is not null) { <small class="cal-set-by">set by @p.RespondedBy</small> }</span><span class="cal-rsvp-tag rsvp-@p.Rsvp">@RsvpLabel(p.Rsvp)</span></li>
                         }
                     </ul>
                 }
@@ -517,6 +567,18 @@
                 </label>
             }
             <small class="cal-hint">Private events always show only as Busy. You can change any single event in its form.</small>
+
+            <div class="cal-rail-title cal-share-sec">Delegates</div>
+            <small class="cal-hint">People who can see or manage your calendar. Changes save right away and both of you are notified.</small>
+            @if (settingsOpen)
+            {
+                <CalendarDelegatesEditor BaseUrl="/api/calendar/delegates" />
+            }
+            <label class="cal-share-opt cal-share-toggle">
+                <input type="checkbox" checked="@draftNotify" @onchange="e => draftNotify = e.Value is true" />
+                <span><b>Notify me when a delegate changes my calendar</b><small>Each change is always labelled "on behalf of you", even with this off.</small></span>
+            </label>
+            <div class="cal-hint"><i data-lucide="lock"></i> <b>Private</b> events are never shown to delegates. They see a Busy block only.</div>
         </div>
     </ChildContent>
     <Footer>

@@ -209,13 +209,17 @@ public static class CalendarSharingEndpoints
         var meetingIds = blocks.Where(b => b.MeetingId is not null).Select(b => b.MeetingId!.Value).Distinct().ToList();
         var invitedTo = (await db.MeetingAttendees.AsNoTracking()
             .Where(a => a.UserId == viewerId && meetingIds.Contains(a.MeetingId)).Select(a => a.MeetingId).ToListAsync(ct)).ToHashSet();
+        // Delegates see the details of everything but Private, even when the owner hides details.
+        var managed = (await db.CalendarDelegates.AsNoTracking()
+            .Where(d => d.DelegateId == viewerId && ids.Contains(d.OwnerId)).Select(d => d.OwnerId).ToListAsync(ct)).ToHashSet();
         var nikOf = owners.ToDictionary(o => o.Id, o => o.Nik);
         return blocks
             .Select(b =>
             {
                 var invited = b.MeetingId is { } mid && invitedTo.Contains(mid);
                 var visibility = hiding.Contains(b.OwnerId) && b.Visibility == CalendarVisibility.Public ? CalendarVisibility.Busy : b.Visibility;
-                var details = b.OwnerId == viewerId || invited || visibility == CalendarVisibility.Public;
+                var details = b.OwnerId == viewerId || invited || visibility == CalendarVisibility.Public
+                    || (managed.Contains(b.OwnerId) && b.Visibility != CalendarVisibility.Private);
                 return new PersonBusyItem(nikOf[b.OwnerId], b.Id, b.StartAt, b.EndAt, b.AllDay, b.Tentative, visibility,
                     details ? b.Title : null, details ? b.Location : null, invited ? b.MeetingId : null);
             })

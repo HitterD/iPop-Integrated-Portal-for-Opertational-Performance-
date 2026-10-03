@@ -380,6 +380,7 @@ app.MapProjectPortfolio();
 app.MapMeetings();
 app.MapCalendar();
 app.MapCalendarSharing();
+app.MapCalendarDelegates();
 app.MapNews();
 app.MapNewsComposer();
 app.MapNewsComposerMedia();
