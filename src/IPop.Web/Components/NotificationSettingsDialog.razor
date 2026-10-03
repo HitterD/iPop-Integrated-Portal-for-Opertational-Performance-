@@ -632,7 +632,7 @@
             <div class="settings-panel">
                 <div class="setting-group push-group">
                     <h3 class="setting-title">Windows Notifications</h3>
-                    <p class="setting-desc">Toasts in the bottom-right corner of Windows — they still appear when the iPop tab is closed, as long as Chrome is running</p>
+                    <p class="setting-desc">Windows toasts can arrive with iPop tabs closed while the browser's background push service is running. A fully exited browser, Windows Do not disturb, or a blocked push connection can delay or hide alerts.</p>
 
                     @if (!Push.ServerEnabled)
                     {
@@ -686,11 +686,47 @@
                             <div class="setting-item">
                                 <div class="setting-info">
                                     <div class="setting-name">Send Test Toast</div>
-                                    <div class="setting-hint">@(pushTestNote ?? "The toast appears on all your active devices")</div>
+                                    <div class="setting-hint">@(pushTestNote ?? "Queues a test for registered devices. Acceptance by the push service does not confirm a Windows popup was shown.")</div>
                                 </div>
                                 <button type="button" class="btn-secondary" disabled="@pushBusy" @onclick="SendPushTest">Send test</button>
                             </div>
                         }
+                    }
+
+                    <div class="setting-item">
+                        <div class="setting-info">
+                            <div class="setting-name">Push health: @Push.Status</div>
+                            <div class="setting-hint">
+                                @(Push.LastCheckedAt is { } checkedAt ? $"Last checked {checkedAt.ToLocalTime():HH:mm:ss}. " : "Not checked yet. ")
+                                @(Push.RepairNeeded ? "Subscription repair is needed. " : "")
+                                Worker schema: @Push.SwSchema.
+                            </div>
+                            @if (Push.LastError is { } error)
+                            {
+                                <div class="setting-hint" role="alert">@error.Message</div>
+                            }
+                            @if (Push.LastWorkerResult is { } result)
+                            {
+                                <div class="setting-hint">Worker: @result.Outcome. This does not confirm a Windows popup was displayed.</div>
+                            }
+                        </div>
+                        <button type="button" class="btn-secondary" disabled="@(pushBusy || Push.Checking)" @onclick="CheckPushHealth">Check / repair</button>
+                    </div>
+                    @if (pushDiagnostics is { } diagnostic)
+                    {
+                        <div class="push-devices">
+                            <div class="setting-name">Recent delivery attempts</div>
+                            <div class="setting-hint">Accepted means the push provider accepted the request, not that Windows displayed it.</div>
+                            @foreach (var attempt in diagnostic.Recent.Take(5))
+                            {
+                                <div class="push-device">
+                                    <div class="setting-info">
+                                        <div class="setting-name">@attempt.Kind · @attempt.Status</div>
+                                        <div class="setting-hint">@attempt.Attempts attempt(s) · @attempt.CreatedAt.ToLocalTime().ToString("HH:mm:ss") @attempt.Code</div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
                     }
 
                     @if (pushDevices.Count > 0)
@@ -1080,11 +1116,23 @@
 
     private sealed record PushDeviceDto(Guid Id, string Label, string Endpoint, DateTime CreatedAt, DateTime LastSeenAt);
     private sealed record PushPreferencesDto(bool ShowPreview);
+    private PushDiagnosticsDto? pushDiagnostics;
+    private sealed record PushDiagnosticsDto(bool Enabled, List<PushAttemptDto> Recent);
+    private sealed record PushAttemptDto(Guid DeliveryId, Guid JobId, string Kind, Guid DeviceId, string Status, int Attempts, DateTime CreatedAt, DateTime? AcceptedAt, string? Code);
+
+    private async Task CheckPushHealth()
+    {
+        pushBusy = true;
+        try { await Push.RefreshAsync(); await LoadPush(); }
+        finally { pushBusy = false; }
+    }
 
     private async Task LoadPush()
     {
         pushDevices = await Auth.GetAsync<List<PushDeviceDto>>("/api/push/devices") ?? [];
         pushPreview = (await Auth.GetAsync<PushPreferencesDto>("/api/push/preferences"))?.ShowPreview ?? true;
+        var query = Push.CurrentDeviceId is { } id ? $"?current={id}" : "";
+        pushDiagnostics = await Auth.GetAsync<PushDiagnosticsDto>("/api/push/diagnostics" + query);
     }
 
     private void OnPushChanged() => _ = InvokeAsync(async () => { StateHasChanged(); await JS.InvokeVoidAsync("ipop.icons"); });
@@ -1452,6 +1500,7 @@
     private async Task SaveSoundPrefs()
     {
         try { await JS.InvokeVoidAsync("ipopSound.setPrefs", soundVolume, soundMap); } catch { }
+        try { await Push.SyncPreferencesAsync(settings.PlaySound, soundVolume / 100.0); } catch { }
     }
 
     private record SoundPrefs(int Volume, Dictionary<string, string>? Map);

@@ -92,6 +92,8 @@
         choices: CHOICES,
         /// The sound for a module (dm, group, mention, mail, meeting, project, announce, notes, system).
         playFor(module, urgent) {
+            // Hidden tab with push active: the service worker's Windows toast owns the alert sound.
+            if (document.visibilityState === 'hidden' && window.ipopPushBackgroundHandoff) return;
             if (!MODULES.includes(module)) module = 'system';
             const picked = prefs().map[module];
             const name = picked === undefined ? module : picked; // "" = no sound

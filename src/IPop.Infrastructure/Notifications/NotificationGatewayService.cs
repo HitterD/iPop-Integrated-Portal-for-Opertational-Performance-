@@ -340,7 +340,13 @@ public sealed class NotificationGatewayService(
             requestToUpdate.FailedAt = now;
         }
         requestToUpdate.UpdatedAt = now;
+        // Windows toast (Web Push) intent for every recipient not silenced by their preferences —
+        // online or not; saved with the request's final state. The worker re-checks preferences on send.
+        var toast = deliveries.Select(d => d.UserId).Where(u => !silenced.Contains(u)).Distinct().ToList();
+        if (push is not null && toast.Count > 0)
+            Push.PushQueue.Add(db, "notif", requestId, toast, request.EventType, request.Priority);
         await db.SaveChangesAsync(ct);
+        push?.Notify();
 
         // Real-time push: for every delivery that just landed, notify the recipient's
         // SignalR connection(s). Fan-out happens per-user — each user only gets their own.
@@ -350,15 +356,6 @@ public sealed class NotificationGatewayService(
             .ToList();
         if (states.Count > 0)
             await broadcaster.BroadcastAsync(states, ct);
-
-        // Windows toast (Web Push) for every recipient not silenced by their preferences —
-        // online or not; the service worker skips it when an iPop window is in focus.
-        var toast = deliveries.Select(d => d.UserId).Where(u => !silenced.Contains(u)).Distinct().ToList();
-        if (push is not null && toast.Count > 0)
-        {
-            var (type, priority, title, body, url) = (request.EventType, request.Priority, request.Title, request.Body, request.TargetUrl);
-            push.Enqueue((p, token) => p.NotifyRequestAsync(toast, type, priority, title, body, url, requestId, token));
-        }
     }
 
     /// <summary>

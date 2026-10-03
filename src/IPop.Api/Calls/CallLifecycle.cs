@@ -12,7 +12,7 @@ public static class CallBroadcast
     {
         foreach (var room in rooms)
         {
-            IPop.Api.Endpoints.CallEndpoints.SyncCallToast(push, room);
+            if (db is not null) await IPop.Api.Endpoints.CallEndpoints.SyncCallToastAsync(push, db, room, ct);
             // Group calls: every group member's banner must learn the call changed/ended.
             if (db is not null && room.ChatRoomId is not null)
             {

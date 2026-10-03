@@ -11,16 +11,25 @@ namespace IPop.Api.Chat;
 /// Cross-node delivery is handled by the Redis backplane configured on the SignalR pipeline.
 /// </summary>
 public sealed class ChatNotifier(IHubContext<ChatHub> hub, IPopDbContext db,
-    IPop.Infrastructure.Notifications.Push.PushQueue? push = null) : IChatNotifier
+    IPop.Infrastructure.Notifications.Push.PushQueue? push = null, ILogger<ChatNotifier>? log = null) : IChatNotifier
 {
     private static string Group(Guid roomId) => $"chat:{roomId}";
 
-    public Task NotifyNewMessageAsync(Guid roomId, MessageDto message, CancellationToken ct)
+    public async Task NotifyNewMessageAsync(Guid roomId, MessageDto message, CancellationToken ct)
     {
-        // Windows toast for the other members; recipients and preferences are resolved off the request.
-        var messageId = message.Id;
-        push?.Enqueue((p, token) => p.NotifyChatMessageAsync(messageId, token));
-        return hub.Clients.Group(Group(roomId)).SendAsync("newMessage", message, ct);
+        // Windows toast for the other members: a durable intent (message reference only), written
+        // before the realtime fan-out; recipients, preferences and preview are resolved by the push worker.
+        // The message is already committed: an enqueue failure must not turn a sent message into a
+        // client-side "failed" (and a duplicate resend), so it is logged instead of thrown.
+        if (push is not null)
+        {
+            try { await push.EnqueueAsync(db, "chat", message.Id, ct); }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                log?.LogError("Chat push intent for message {MessageId} was not saved ({Error}).", message.Id, ex.GetType().Name);
+            }
+        }
+        await hub.Clients.Group(Group(roomId)).SendAsync("newMessage", message, ct);
     }
 
     public Task NotifyMessageEditedAsync(Guid roomId, MessageDto message, CancellationToken ct)

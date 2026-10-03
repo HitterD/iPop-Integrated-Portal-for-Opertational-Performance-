@@ -83,12 +83,24 @@ public static class PushEndpoints
             if (!o.IsConfigured) return Results.Json(new { code = "push_disabled" }, statusCode: 503);
             var userId = await MyId(http, db, ct);
             if (userId is null) return Results.Unauthorized();
-            var uid = userId.Value;
-            push.Enqueue((p, token) => p.SendAsync([uid],
-                new PushPayload("test", "iPop", "Desktop notifications are on ✔", "/notifications/settings", $"test:{Guid.NewGuid():N}"),
-                urgent: true, token));
-            return Results.Accepted();
+            // Durable before 202: the returned jobId shows up in /diagnostics as it is delivered.
+            var jobId = await push.EnqueueAsync(db, "test", null, ct, [userId.Value]);
+            return Results.Accepted(value: new PushTestResultDto(jobId));
         }).RequireAuthorization();
+
+        // This user's own browsers and recent toast attempts — sanitized: no endpoint, keys, titles or bodies.
+        // "accepted" means the push service took the message; it does not prove Windows displayed it.
+        g.MapGet("/diagnostics", async (Guid? current, HttpContext http, IPopDbContext db, PushOptions o, CancellationToken ct) =>
+        {
+            var userId = await MyId(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            return Results.Ok(await PushDiagnostics.ForUserAsync(db, userId.Value, current, o.IsConfigured, DateTime.UtcNow, ct));
+        }).RequireAuthorization();
+
+        // Admin: fleet-wide aggregate only — counts, no users, devices, names or content.
+        app.MapGet("/api/admin/push/diagnostics", async (IPopDbContext db, PushOptions o, CancellationToken ct) =>
+            Results.Ok(await PushDiagnostics.AggregateAsync(db, o.IsConfigured, DateTime.UtcNow, ct)))
+            .RequireAuthorization("AdminOnly");
 
         g.MapGet("/preferences", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
         {
@@ -171,4 +183,5 @@ public static class PushEndpoints
     public sealed record PushDeviceDto(Guid Id, string Label, string Endpoint, DateTime CreatedAt, DateTime LastSeenAt);
     public sealed record PushPreferencesDto(bool ShowPreview);
     public sealed record PushCallActionRequest(string Token, string Action);
+    public sealed record PushTestResultDto(Guid JobId);
 }

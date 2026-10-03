@@ -86,7 +86,14 @@ public sealed class NotificationGateway(
 
         db.NotificationDeliveries.Add(delivery);
 
+        // Windows toast intent, saved atomically with the notification. Room mute/archive was checked
+        // by the caller; quiet hours and a muted "chat" type are applied by the push worker (and again on retry).
+        if (push is not null)
+            IPop.Infrastructure.Notifications.Push.PushQueue.Add(db, "notif", request.Id, [recipientId], "chat.mention", request.Priority,
+                $"{senderName} mentioned you · {roomName}");
+
         await db.SaveChangesAsync(ct);
+        push?.Notify();
 
         // Push to the recipient's live connections so badge + inbox react immediately.
         try
@@ -111,18 +118,6 @@ public sealed class NotificationGateway(
         catch (Exception ex)
         {
             logger.LogDebug(ex, "Failed to broadcast mention notification (non-fatal)");
-        }
-
-        // Windows toast. Room mute/archive was checked by the caller; quiet hours and
-        // a muted "chat" type still apply unless the mention is high priority and allowed.
-        if (push is not null)
-        {
-            var (priority, body, requestId) = (request.Priority, request.Body, request.Id);
-            var title = $"{senderName} mentioned you · {roomName}";
-            var silenced = await IPop.Infrastructure.Notifications.Push.PushDispatcher.SilencedAsync(
-                db, [recipientId], "chat.mention", priority, now, ct);
-            if (silenced.Count == 0)
-                push.Enqueue((p, token) => p.NotifyRequestAsync([recipientId], "chat.mention", priority, title, body, targetUrl, requestId, token));
         }
     }
 
@@ -187,7 +182,11 @@ public sealed class NotificationGateway(
         }).ToList();
 
         db.NotificationDeliveries.AddRange(deliveries);
+        // Emergency toasts bypass quiet hours and mutes by design; the intent commits with the request.
+        if (push is not null)
+            IPop.Infrastructure.Notifications.Push.PushQueue.Add(db, "notif", request.Id, recipientIds, "chat.emergency", "high");
         await db.SaveChangesAsync(ct);
+        push?.Notify();
 
         try
         {
@@ -200,13 +199,6 @@ public sealed class NotificationGateway(
         catch (Exception ex)
         {
             logger.LogDebug(ex, "Failed to broadcast emergency (non-fatal)");
-        }
-
-        // Emergency toasts bypass quiet hours and mutes by design.
-        if (push is not null)
-        {
-            var (title, body, requestId, ids) = (request.Title, request.Body, request.Id, recipientIds.ToList());
-            push.Enqueue((p, token) => p.NotifyRequestAsync(ids, "chat.emergency", "high", title, body, targetUrl, requestId, token));
         }
     }
 }

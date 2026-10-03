@@ -61,6 +61,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<NotificationDelivery> NotificationDeliveries => Set<NotificationDelivery>();
     public DbSet<NotificationPreference> NotificationPreferences => Set<NotificationPreference>();
     public DbSet<PushSubscription> PushSubscriptions => Set<PushSubscription>();
+    public DbSet<PushJob> PushJobs => Set<PushJob>();
+    public DbSet<PushDelivery> PushDeliveries => Set<PushDelivery>();
     // Kalender & Rapat
     public DbSet<Meeting> Meetings => Set<Meeting>();
     public DbSet<MeetingAttendee> MeetingAttendees => Set<MeetingAttendee>();
@@ -762,6 +764,29 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Label).HasMaxLength(200);
             e.Property(x => x.ApiBase).HasMaxLength(300);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<PushJob>(e =>
+        {
+            e.HasIndex(x => new { x.ExpandedAt, x.NextAttemptAt });
+            e.HasIndex(x => x.CreatedAt);
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.EventType).HasMaxLength(100);
+            e.Property(x => x.Priority).HasMaxLength(16);
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.Property(x => x.LastError).HasMaxLength(64);
+        });
+        b.Entity<PushDelivery>(e =>
+        {
+            e.HasIndex(x => new { x.Status, x.NextAttemptAt });
+            e.HasIndex(x => new { x.SubscriptionId, x.CreatedAt });
+            e.HasIndex(x => new { x.UserId, x.CreatedAt });
+            e.HasIndex(x => new { x.JobId, x.UserId, x.Kind, x.Key });
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.Property(x => x.Key).HasMaxLength(64);
+            e.Property(x => x.Provider).HasMaxLength(16);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.Code).HasMaxLength(32);
+            e.HasOne(x => x.Job).WithMany(j => j.Deliveries).HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade);
         });
 
         // Kalender & Rapat

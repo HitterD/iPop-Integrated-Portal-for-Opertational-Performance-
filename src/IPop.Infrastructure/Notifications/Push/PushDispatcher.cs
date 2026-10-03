@@ -1,4 +1,5 @@
-using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using IPop.Application.Calls;
@@ -11,16 +12,24 @@ using Microsoft.Extensions.Logging;
 namespace IPop.Infrastructure.Notifications.Push;
 
 /// What the service worker (wwwroot/sw.js) receives. Kind drives its behaviour:
-/// "notif" | "chat" (grouped per room tag) | "call" (sticky, Answer/Decline) | "close" (dismiss Tag).
+/// "notif" | "chat" (grouped per room tag) | "call" (sticky, Answer/Decline) | "close" (dismiss Tag) | "test".
+/// DeliveryId/JobId identify the outbox rows (diagnostics); Acct is the account binding the
+/// service worker compares with the signed-in account before showing anything.
 public sealed record PushPayload(
     string Kind, string Title, string Body, string? Url, string Tag,
     bool RequireInteraction = false,
     Guid? CallId = null,
     string? ActionToken = null,
-    string? ApiBase = null);
+    string? ApiBase = null,
+    string? DeliveryId = null,
+    string? JobId = null,
+    string? Acct = null);
 
-/// Sends Web Push to every browser a user subscribed, deleting subscriptions the push
-/// service reports gone (404/410). Runs inside <see cref="PushWorker"/>, never on a request.
+/// Web Push from the durable outbox. A <see cref="PushJob"/> is expanded once into one
+/// <see cref="PushDelivery"/> per browser; each delivery is sent and retried on its own, and the
+/// toast is rebuilt from current data on every attempt so a retry never shows something the
+/// user may no longer see (left room, muted, preview off, call already answered). Runs in
+/// <see cref="PushWorker"/>, never on a request.
 public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport, IDataProtectionProvider dataProtection,
     ILogger<PushDispatcher> log)
 {
@@ -33,62 +42,270 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
     public const string CallActionPurpose = "push.call-action";
     public static readonly TimeSpan CallActionLifetime = TimeSpan.FromMinutes(2);
 
-    /// (callId, userId) pairs whose ring toast is showing — so a ring is sent once and closed once.
-    /// In-process: after a restart an open ring toast is not closed, but its push TTL (the ring
-    /// timeout) keeps it from arriving late.
-    /// The value is the ring start (participant JoinedAt ticks): a re-invite ("Add person") rings again.
-    private static readonly ConcurrentDictionary<(Guid CallId, Guid UserId), long> Rung = new();
+    /// A claimed job/delivery is retaken by any worker once this passes (crash mid-send).
+    internal static readonly TimeSpan Lease = TimeSpan.FromMinutes(2);
+    public static readonly TimeSpan Retention = TimeSpan.FromDays(7);
+    private const int Batch = 50;
 
-    public async Task SendAsync(IReadOnlyCollection<Guid> userIds, Func<Guid, PushPayload?> payloadFor,
-        bool urgent, TimeSpan ttl, CancellationToken ct)
+    public static class Status
     {
-        if (!transport.IsConfigured || userIds.Count == 0) return;
-        var subs = await db.PushSubscriptions.Where(s => userIds.Contains(s.UserId)).ToListAsync(ct);
-        var gone = new List<PushSubscription>();
-        var sent = 0;
-        string? kind = null;
-        foreach (var sub in subs)
-        {
-            var payload = payloadFor(sub.UserId);
-            if (payload is null) continue;
-            kind = payload.Kind;
-            var json = JsonSerializer.Serialize(payload with { ApiBase = sub.ApiBase }, Json);
-            var result = await transport.SendAsync(sub, json, ttl, urgent, TopicOf(payload.Tag), ct);
-            if (result == PushSendResult.Gone) gone.Add(sub);
-            else if (result == PushSendResult.Sent) sent++;
-        }
-        if (kind is not null) log.LogDebug("Web push {Kind}: {Sent}/{Total} delivered to the push service.", kind, sent, subs.Count);
-        if (gone.Count > 0)
-        {
-            db.PushSubscriptions.RemoveRange(gone);
-            await db.SaveChangesAsync(ct);
-            log.LogInformation("Removed {Count} expired push subscription(s).", gone.Count);
-        }
+        public const string Queued = "queued", Retrying = "retrying", Sending = "sending", Accepted = "accepted",
+            Gone = "gone", AuthError = "auth-error", Rejected = "rejected", Expired = "expired",
+            Suppressed = "suppressed", Failed = "failed";
+        public static bool IsPending(string s) => s is Queued or Retrying or Sending;
     }
 
-    public Task SendAsync(IReadOnlyCollection<Guid> userIds, PushPayload payload, bool urgent, CancellationToken ct) =>
-        SendAsync(userIds, _ => payload, urgent, TimeSpan.FromHours(12), ct);
+    // ── Worker entry points ───────────────────────────────────────────────────
 
-    // ── Chat ──────────────────────────────────────────────────────────────────
+    /// One pass: expand due jobs, then send due deliveries. Returns how much work was done.
+    public async Task<int> ProcessAsync(DateTime now, CancellationToken ct)
+    {
+        var n = await ExpandDueJobsAsync(now, ct);
+        n += await SendDueAsync(now, ct);
+        return n;
+    }
+
+    public async Task<int> ExpandDueJobsAsync(DateTime now, CancellationToken ct)
+    {
+        var due = await db.PushJobs.AsNoTracking()
+            .Where(j => j.ExpandedAt == null && j.NextAttemptAt <= now)
+            .OrderBy(j => j.NextAttemptAt).Take(Batch)
+            .Select(j => new { j.Id, j.NextAttemptAt })
+            .ToListAsync(ct);
+        var done = 0;
+        foreach (var d in due)
+        {
+            // Claim: whoever moves NextAttemptAt first owns the job until the lease passes.
+            var claimed = await db.PushJobs.Where(j => j.Id == d.Id && j.ExpandedAt == null && j.NextAttemptAt == d.NextAttemptAt)
+                .ExecuteUpdateAsync(s => s.SetProperty(j => j.NextAttemptAt, now + Lease).SetProperty(j => j.Attempts, j => j.Attempts + 1), ct);
+            if (claimed == 0) continue;
+            var job = await db.PushJobs.FirstAsync(j => j.Id == d.Id, ct);
+            try
+            {
+                await ExpandAsync(job, now, ct);
+                job.ExpandedAt = now;
+                job.LastError = null;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                db.ChangeTracker.Clear();
+                job = await db.PushJobs.FirstAsync(j => j.Id == d.Id, ct);
+                job.LastError = job.Attempts >= PushJob.MaxExpandAttempts ? "max-attempts" : "expand-error";
+                if (job.Attempts >= PushJob.MaxExpandAttempts) job.ExpandedAt = now;
+                else job.NextAttemptAt = now.AddSeconds(Math.Min(300, 5 * Math.Pow(2, job.Attempts)));
+                log.LogWarning("Web push job {JobId} ({Kind}) expansion failed: {Error}.", job.Id, job.Kind, ex.GetType().Name);
+            }
+            await db.SaveChangesAsync(ct);
+            db.ChangeTracker.Clear();
+            done++;
+        }
+        return done;
+    }
+
+    /// Creates the per-browser rows. Calls diff against earlier rings so each ring/close is queued once.
+    internal async Task ExpandAsync(PushJob job, DateTime now, CancellationToken ct)
+    {
+        if (!transport.IsConfigured) { job.LastError = "push-disabled"; return; }
+        if (job.Kind == "call") { await ExpandCallAsync(job, now, ct); return; }
+
+        var audience = await AudienceAsync(job, null, now, ct);
+        if (audience is null || audience.Users.Count == 0 || audience.ExpiresAt <= now) return;
+        var subs = await db.PushSubscriptions.AsNoTracking().Where(s => audience.Users.Contains(s.UserId))
+            .Select(s => new { s.Id, s.UserId, s.Endpoint }).ToListAsync(ct);
+        foreach (var s in subs)
+            db.PushDeliveries.Add(NewDelivery(job, s.Id, s.UserId, s.Endpoint, audience.Kind, null, audience.ExpiresAt, now));
+    }
+
+    private async Task ExpandCallAsync(PushJob job, DateTime now, CancellationToken ct)
+    {
+        if (job.RefId is not { } callId) return;
+        var room = await LoadCallAsync(callId, ct);
+        if (room is null) return;
+        var invited = Invited(room, now);
+
+        // Earlier rings/closes of this call, per user and ring start.
+        var history = await db.PushDeliveries.AsNoTracking()
+            .Where(d => d.Job.Kind == "call" && d.Job.RefId == callId)
+            .Select(d => new { d.UserId, d.Kind, d.Key }).Distinct().ToListAsync(ct);
+        var rung = history.Where(h => h.Kind == "call").Select(h => (h.UserId, h.Key)).ToHashSet();
+        var closed = history.Where(h => h.Kind == "close").Select(h => (h.UserId, h.Key)).ToHashSet();
+
+        var plan = new List<(Guid UserId, string Kind, string Key, DateTime Expires)>();
+        foreach (var (u, since) in invited)
+        {
+            var key = since.Ticks.ToString();
+            if (!rung.Contains((u, key))) plan.Add((u, "call", key, since + CallRingTimeout));
+        }
+        // Close a ring once the user is no longer invited. A re-invite replaces the toast via the same tag,
+        // so no close is sent while any ring of theirs is live (it would dismiss the new one).
+        foreach (var (u, key) in rung)
+            if (!closed.Contains((u, key)) && !invited.ContainsKey(u))
+                plan.Add((u, "close", key!, now + TimeSpan.FromHours(12)));
+        plan.RemoveAll(p => p.Expires <= now);
+        if (plan.Count == 0) return;
+
+        var users = plan.Select(p => p.UserId).Distinct().ToList();
+        var subs = await db.PushSubscriptions.AsNoTracking().Where(s => users.Contains(s.UserId))
+            .Select(s => new { s.Id, s.UserId, s.Endpoint }).ToListAsync(ct);
+        foreach (var p in plan)
+        foreach (var s in subs.Where(s => s.UserId == p.UserId))
+            db.PushDeliveries.Add(NewDelivery(job, s.Id, s.UserId, s.Endpoint, p.Kind, p.Key, p.Expires, now));
+    }
+
+    private static PushDelivery NewDelivery(PushJob job, Guid subId, Guid userId, string endpoint, string kind, string? key,
+        DateTime expires, DateTime now) => new()
+    {
+        Id = Guid.NewGuid(), JobId = job.Id, SubscriptionId = subId, UserId = userId, Kind = kind, Key = key,
+        Provider = ProviderOf(endpoint), Status = Status.Queued, NextAttemptAt = now, ExpiresAt = expires,
+        CreatedAt = now, UpdatedAt = now,
+    };
+
+    public async Task<int> SendDueAsync(DateTime now, CancellationToken ct)
+    {
+        var due = await db.PushDeliveries.AsNoTracking()
+            .Where(d => (d.Status == Status.Queued || d.Status == Status.Retrying || d.Status == Status.Sending) && d.NextAttemptAt <= now)
+            .OrderBy(d => d.NextAttemptAt).Take(Batch)
+            .Select(d => new { d.Id, d.Status, d.NextAttemptAt })
+            .ToListAsync(ct);
+        var claimedIds = new List<Guid>();
+        foreach (var d in due)
+        {
+            var n = await db.PushDeliveries.Where(x => x.Id == d.Id && x.Status == d.Status && x.NextAttemptAt == d.NextAttemptAt)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.Status, Status.Sending).SetProperty(x => x.NextAttemptAt, now + Lease), ct);
+            if (n == 1) claimedIds.Add(d.Id);
+        }
+        if (claimedIds.Count == 0) return 0;
+
+        var rows = await db.PushDeliveries.Include(d => d.Job).Where(d => claimedIds.Contains(d.Id)).ToListAsync(ct);
+        var subIds = rows.Select(r => r.SubscriptionId).Distinct().ToList();
+        var subs = await db.PushSubscriptions.Where(s => subIds.Contains(s.Id)).ToDictionaryAsync(s => s.Id, ct);
+        var gone = new HashSet<Guid>();
+
+        foreach (var group in rows.GroupBy(r => r.JobId))
+        {
+            var job = group.First().Job;
+            var users = group.Select(r => r.UserId).Distinct().ToList();
+            Audience? audience = null;
+            CallRoomDto? call = null;
+            if (job.Kind == "call") call = job.RefId is { } cid ? await LoadCallAsync(cid, ct) : null;
+            else audience = await AudienceAsync(job, users, now, ct);
+
+            foreach (var row in group)
+            {
+                row.Attempts++;
+                row.UpdatedAt = now;
+                if (now >= row.ExpiresAt) { Finish(row, Status.Expired, "expired"); continue; }
+                if (!subs.TryGetValue(row.SubscriptionId, out var sub) || gone.Contains(sub.Id)) { Finish(row, Status.Suppressed, "unsubscribed"); continue; }
+                // The browser now belongs to someone else (re-subscribed after an account switch).
+                if (sub.UserId != row.UserId) { Finish(row, Status.Suppressed, "rebound"); continue; }
+
+                var payload = job.Kind == "call" ? CallPayload(call, row, now) : audience?.PayloadFor(row.UserId);
+                if (payload is null) { Finish(row, Status.Suppressed, job.Kind == "call" ? "stale-call" : "not-authorized"); continue; }
+                payload = payload with
+                {
+                    ApiBase = sub.ApiBase, DeliveryId = row.Id.ToString("N"), JobId = job.Id.ToString("N"), Acct = AcctOf(sub.UserId),
+                };
+                var urgent = job.Kind == "call" || job.Kind == "test" || (audience?.Urgent ?? false);
+                var ttl = row.ExpiresAt - now;
+                var outcome = await transport.SendAsync(sub, JsonSerializer.Serialize(payload, Json), ttl, urgent, TopicOf(payload.Tag), ct);
+                Apply(row, outcome, now);
+                if (row.Status == Status.Gone) gone.Add(sub.Id);
+            }
+        }
+
+        if (gone.Count > 0)
+        {
+            db.PushSubscriptions.RemoveRange(subs.Values.Where(s => gone.Contains(s.Id)));
+            log.LogInformation("Removed {Count} expired push subscription(s).", gone.Count);
+        }
+        await db.SaveChangesAsync(ct);
+        db.ChangeTracker.Clear();
+        foreach (var g in rows.GroupBy(r => (r.Status, r.Code)))
+            log.LogDebug("Web push: {Count} delivery(ies) {Status} ({Code}).", g.Count(), g.Key.Status, g.Key.Code ?? "-");
+        return rows.Count;
+    }
+
+    private static void Finish(PushDelivery row, string status, string code)
+    {
+        row.Status = status;
+        row.Code = code;
+    }
+
+    /// Maps a transport outcome to the row: accepted is final, transient errors back off
+    /// (honouring Retry-After) inside the original deadline, everything else is final.
+    internal static void Apply(PushDelivery row, PushSendOutcome outcome, DateTime now)
+    {
+        row.Code = outcome.Code;
+        switch (outcome.Result)
+        {
+            case PushSendResult.Sent:
+                row.Status = Status.Accepted; row.AcceptedAt = now; row.Code = null; return;
+            case PushSendResult.Gone:
+                row.Status = Status.Gone; return;
+            case PushSendResult.AuthError:
+                row.Status = Status.AuthError; return;
+            case PushSendResult.Rejected:
+                row.Status = Status.Rejected; return;
+        }
+        var backoff = TimeSpan.FromSeconds(Math.Min(300, 5 * Math.Pow(2, row.Attempts - 1)));
+        var wait = outcome.RetryAfter is { } ra && ra > backoff ? ra : backoff;
+        if (row.Attempts >= PushDelivery.MaxAttempts) { row.Status = Status.Failed; row.Code = "max-attempts"; }
+        else if (now + wait >= row.ExpiresAt) { row.Status = Status.Expired; }
+        else { row.Status = Status.Retrying; row.NextAttemptAt = now + wait; }
+    }
+
+    /// Drops outbox history past the retention window (deliveries cascade with their job).
+    public Task<int> PurgeAsync(DateTime now, CancellationToken ct)
+    {
+        var cutoff = now - Retention;
+        return db.PushJobs.Where(j => j.CreatedAt < cutoff
+                && !j.Deliveries.Any(d => d.Status == Status.Queued || d.Status == Status.Retrying || d.Status == Status.Sending))
+            .ExecuteDeleteAsync(ct);
+    }
+
+    // ── Audience: who may see the toast now, and what it says ─────────────────
+
+    internal sealed record Audience(string Kind, IReadOnlyList<Guid> Users, Func<Guid, PushPayload?> PayloadFor, bool Urgent, DateTime ExpiresAt);
+
+    private static readonly IReadOnlyList<Guid> NoUsers = [];
+
+    /// Rebuilds the toast for a job from current data. Users outside the returned set get null.
+    internal Task<Audience?> AudienceAsync(PushJob job, IReadOnlyCollection<Guid>? only, DateTime now, CancellationToken ct) => job.Kind switch
+    {
+        "chat" => ChatAudienceAsync(job, only, now, ct),
+        "notif" => NotifAudienceAsync(job, only, now, ct),
+        "test" => Task.FromResult<Audience?>(TestAudience(job, only)),
+        _ => Task.FromResult<Audience?>(null),
+    };
+
+    private static Audience TestAudience(PushJob job, IReadOnlyCollection<Guid>? only)
+    {
+        var users = Restrict(ParseIds(job.UserIds), only);
+        var tag = $"test:{job.Id:N}";
+        return new Audience("test", users,
+            uid => users.Contains(uid) ? new PushPayload("test", "iPop", "Desktop notifications are on ✔", "/notifications/settings", tag) : null,
+            true, job.CreatedAt + TimeSpan.FromMinutes(10));
+    }
 
     /// A new chat message → a toast for every other member of the room, except where the
     /// room is muted/archived, the sender is blocked, chat is a muted type or quiet hours
     /// apply, or the member is @-mentioned (the mention notification toasts instead).
-    public async Task NotifyChatMessageAsync(Guid messageId, CancellationToken ct)
+    private async Task<Audience?> ChatAudienceAsync(PushJob job, IReadOnlyCollection<Guid>? only, DateTime now, CancellationToken ct)
     {
         var msg = await db.ChatMessages.AsNoTracking()
-            .Where(m => m.Id == messageId)
-            .Select(m => new { m.Id, m.RoomId, m.SenderId, SenderName = m.Sender.Name, m.Type, m.Content, m.IsDeleted,
+            .Where(m => m.Id == job.RefId)
+            .Select(m => new { m.Id, m.RoomId, m.SenderId, SenderName = m.Sender.Name, m.Type, m.Content, m.IsDeleted, m.CreatedAt,
                 RoomType = m.Room.Type, RoomName = m.Room.Name, Files = m.Attachments.Count })
             .FirstOrDefaultAsync(ct);
-        if (msg is null || msg.IsDeleted || msg.Type == "system") return;
+        if (msg is null || msg.IsDeleted || msg.Type == "system") return null;
         var emergency = msg.Type == "emergency";
 
-        var now = DateTime.UtcNow;
-        var members = await db.ChatRoomMembers.AsNoTracking()
-            .Where(m => m.RoomId == msg.RoomId && m.LeftAt == null && m.UserId != msg.SenderId && m.User.IsActive)
-            .Select(m => m.UserId).ToListAsync(ct);
-        if (members.Count == 0) return;
+        var membersQ = db.ChatRoomMembers.AsNoTracking()
+            .Where(m => m.RoomId == msg.RoomId && m.LeftAt == null && m.UserId != msg.SenderId && m.User.IsActive);
+        if (only is not null) membersQ = membersQ.Where(m => only.Contains(m.UserId));
+        var members = await membersQ.Select(m => m.UserId).ToListAsync(ct);
+        if (members.Count == 0) return new Audience("chat", NoUsers, _ => null, emergency, msg.CreatedAt);
 
         var silencedRoom = await db.ChatRoomUserSettings.AsNoTracking()
             .Where(s => s.RoomId == msg.RoomId && members.Contains(s.UserId)
@@ -103,22 +320,58 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
         var silenced = await SilencedAsync(db, members, "chat.message", "normal", now, ct);
 
         // Emergency broadcasts ignore room mutes, quiet hours and muted types.
-        var recipients = emergency
-            ? members.Except(blockers).ToList()
-            : members.Except(silencedRoom).Except(blockers).Except(mentioned).Except(silenced).ToList();
-        if (recipients.Count == 0) return;
+        var recipients = (emergency
+            ? members.Except(blockers)
+            : members.Except(silencedRoom).Except(blockers).Except(mentioned).Except(silenced)).ToHashSet();
 
         var previewOff = emergency ? [] : await PreviewOffAsync(recipients, ct);
         var title = emergency ? $"🚨 EMERGENCY · {msg.RoomName ?? msg.SenderName}"
             : msg.RoomType == "group" ? $"{msg.SenderName} · {msg.RoomName ?? "Group"}" : msg.SenderName;
         var preview = msg.Type == "sticker" ? "🎨 Sticker" : ChatPreview(msg.Content, msg.Files);
         var url = $"/chat/{msg.RoomId}";
-        var tag = $"chat:{msg.RoomId}";
+        var tag = emergency ? $"emergency:{msg.Id:N}" : $"chat:{msg.RoomId}";
 
-        await SendAsync(recipients,
-            uid => new PushPayload("chat", title, previewOff.Contains(uid) ? "New message" : preview, url,
-                emergency ? $"emergency:{msg.Id:N}" : tag, RequireInteraction: emergency),
-            urgent: emergency, TimeSpan.FromHours(emergency ? 1 : 12), ct);
+        return new Audience("chat", recipients.ToList(),
+            uid => recipients.Contains(uid)
+                ? new PushPayload("chat", title, previewOff.Contains(uid) ? "New message" : preview, url, tag, RequireInteraction: emergency)
+                : null,
+            emergency, msg.CreatedAt + TimeSpan.FromHours(emergency ? 1 : 12));
+    }
+
+    /// Gateway notifications (mentions, emergencies, module events). The producer filtered the
+    /// recipients; a retry re-checks quiet hours/muted types and, for chat links, room membership.
+    private async Task<Audience?> NotifAudienceAsync(PushJob job, IReadOnlyCollection<Guid>? only, DateTime now, CancellationToken ct)
+    {
+        var req = await db.NotificationRequests.AsNoTracking().Where(r => r.Id == job.RefId)
+            .Select(r => new { r.Id, r.Title, r.Body, r.TargetUrl, r.EventType, r.Priority }).FirstOrDefaultAsync(ct);
+        if (req is null) return null;
+        var eventType = job.EventType ?? req.EventType;
+        var priority = job.Priority ?? req.Priority;
+        var isChat = NotificationGatewayService.ClassifyEventType(eventType) == "chat";
+        var emergency = eventType == "chat.emergency";
+
+        var candidates = Restrict(ParseIds(job.UserIds), only);
+        var users = await db.Users.AsNoTracking().Where(u => candidates.Contains(u.Id) && u.IsActive).Select(u => u.Id).ToListAsync(ct);
+        // Chat notifications share the room's tag so they replace that room's message toast.
+        var roomId = isChat ? ChatRoomOf(req.TargetUrl) : null;
+        if (roomId is { } rid)
+            users = await db.ChatRoomMembers.AsNoTracking()
+                .Where(m => m.RoomId == rid && m.LeftAt == null && users.Contains(m.UserId)).Select(m => m.UserId).ToListAsync(ct);
+        if (!emergency)
+        {
+            var silenced = await SilencedAsync(db, users, eventType, priority, now, ct);
+            users = users.Where(u => !silenced.Contains(u)).ToList();
+        }
+        var recipients = users.ToHashSet();
+        var previewOff = isChat && !emergency ? await PreviewOffAsync(recipients, ct) : [];
+        var tag = roomId is { } r ? $"chat:{r}" : $"notif:{req.Id:N}";
+        var title = job.Title ?? req.Title;
+        return new Audience(isChat ? "chat" : "notif", recipients.ToList(),
+            uid => recipients.Contains(uid)
+                ? new PushPayload(isChat ? "chat" : "notif", title, previewOff.Contains(uid) ? "New message" : req.Body,
+                    req.TargetUrl ?? "/notifications", tag, RequireInteraction: emergency)
+                : null,
+            priority == "high", job.CreatedAt + TimeSpan.FromHours(emergency ? 1 : 24));
     }
 
     /// One line for the toast body: mention markup flattened, cards/attachments named.
@@ -131,68 +384,49 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
         return attachments switch { 0 => "New message", 1 => "📎 Attachment", _ => $"📎 {attachments} attachments" };
     }
 
-    // ── Gateway notifications (mentions, emergencies, module events) ──────────
-
-    /// Recipients were already filtered by the caller; chat bodies honour the preview switch.
-    public async Task NotifyRequestAsync(IReadOnlyCollection<Guid> userIds, string eventType, string priority,
-        string title, string body, string? url, Guid requestId, CancellationToken ct)
-    {
-        var isChat = NotificationGatewayService.ClassifyEventType(eventType) == "chat";
-        var emergency = eventType == "chat.emergency";
-        var previewOff = isChat && !emergency ? await PreviewOffAsync(userIds, ct) : [];
-        // Chat notifications share the room's tag so they replace that room's message toast.
-        var roomId = isChat ? ChatRoomOf(url) : null;
-        var tag = roomId is { } r ? $"chat:{r}" : $"notif:{requestId:N}";
-        await SendAsync(userIds,
-            uid => new PushPayload(isChat ? "chat" : "notif", title,
-                previewOff.Contains(uid) ? "New message" : body, url ?? "/notifications", tag,
-                RequireInteraction: emergency),
-            urgent: priority == "high", TimeSpan.FromHours(emergency ? 1 : 24), ct);
-    }
-
     internal static Guid? ChatRoomOf(string? url) =>
         url is not null && url.StartsWith("/chat/") && url.Length >= 42 && Guid.TryParse(url.AsSpan(6, 36), out var id) ? id : null;
 
     // ── Calls ─────────────────────────────────────────────────────────────────
 
-    /// Mirrors every call state broadcast: invited users of a live call get one sticky ring
-    /// toast; once they answer, decline, or the call ends, the toast is closed on all devices.
-    public async Task SyncCallAsync(CallRoomDto room, CancellationToken ct)
+    private static TimeSpan CallRingTimeout => IPop.Infrastructure.Calls.CallService.RingTimeout;
+
+    /// Invited users of a live call and their ring start; empty once the call is over.
+    internal static Dictionary<Guid, DateTime> Invited(CallRoomDto room, DateTime now)
     {
         var live = room.Status == CallStatus.Ringing || (CallKind.IsLiveKit(room.Kind) && room.Status == CallStatus.Active);
-        var invited = live
-            ? room.Participants.Where(p => p.Status == CallParticipantStatus.Invited && p.UserId != room.CreatorId)
-                .ToDictionary(p => p.UserId, p => p.JoinedAt?.Ticks ?? 0)
+        return live
+            ? room.Participants.Where(p => p.Status == CallParticipantStatus.Invited && p.UserId != room.CreatorId && p.JoinedAt is not null)
+                .ToDictionary(p => p.UserId, p => p.JoinedAt!.Value)
             : [];
-        var ringNow = new List<Guid>();
-        foreach (var (u, since) in invited)
-        {
-            var key = (room.Id, u);
-            if (Rung.TryGetValue(key, out var was) && was == since) continue;
-            Rung[key] = since;
-            ringNow.Add(u);
-        }
-        var closeNow = Rung.Keys.Where(k => k.CallId == room.Id && !invited.ContainsKey(k.UserId)).Select(k => k.UserId).ToList();
-        foreach (var u in closeNow) Rung.TryRemove((room.Id, u), out _);
+    }
 
+    /// The ring toast, only while this exact ring is still live; closes always go out.
+    private PushPayload? CallPayload(CallRoomDto? room, PushDelivery row, DateTime now)
+    {
+        if (room is null) return null;
         var tag = $"call:{room.Id}";
-        if (ringNow.Count > 0)
-        {
-            var caller = room.Participants.FirstOrDefault(p => p.UserId == room.CreatorId)?.Name ?? "Someone";
-            var isGroup = room.Kind == CallKind.Group;
-            var title = isGroup ? $"Group call · {room.Title ?? "Group"}" : $"Incoming call · {caller}";
-            var body = isGroup ? $"{caller} started a group call" : "iPop voice call";
-            var protector = dataProtection.CreateProtector(CallActionPurpose).ToTimeLimitedDataProtector();
-            await SendAsync(ringNow,
-                uid => InviteText(room, uid) is { } invite
-                    ? new PushPayload("call", invite.Title, invite.Body, "/calls", tag, RequireInteraction: true, CallId: room.Id,
-                        ActionToken: protector.Protect($"{room.Id:N}|{uid:N}", CallActionLifetime))
-                    : new PushPayload("call", title, body, "/calls", tag, RequireInteraction: true, CallId: room.Id,
-                        ActionToken: protector.Protect($"{room.Id:N}|{uid:N}", CallActionLifetime)),
-                urgent: true, IPop.Infrastructure.Calls.CallService.RingTimeout, ct);
-        }
-        if (closeNow.Count > 0)
-            await SendAsync(closeNow, new PushPayload("close", "", "", null, tag), urgent: true, ct);
+        if (row.Kind == "close") return new PushPayload("close", "", "", null, tag);
+        if (!Invited(room, now).TryGetValue(row.UserId, out var since) || since.Ticks.ToString() != row.Key) return null;
+        var token = dataProtection.CreateProtector(CallActionPurpose).ToTimeLimitedDataProtector()
+            .Protect($"{room.Id:N}|{row.UserId:N}", CallActionLifetime);
+        if (InviteText(room, row.UserId) is { } invite)
+            return new PushPayload("call", invite.Title, invite.Body, "/calls", tag, RequireInteraction: true, CallId: room.Id, ActionToken: token);
+        var caller = room.Participants.FirstOrDefault(p => p.UserId == room.CreatorId)?.Name ?? "Someone";
+        var isGroup = room.Kind == CallKind.Group;
+        return new PushPayload("call", isGroup ? $"Group call · {room.Title ?? "Group"}" : $"Incoming call · {caller}",
+            isGroup ? $"{caller} started a group call" : "iPop voice call", "/calls", tag,
+            RequireInteraction: true, CallId: room.Id, ActionToken: token);
+    }
+
+    private async Task<CallRoomDto?> LoadCallAsync(Guid callId, CancellationToken ct)
+    {
+        var r = await db.CallRooms.AsNoTracking().Include(c => c.Participants).ThenInclude(p => p.User).Include(c => c.ChatRoom)
+            .AsSplitQuery().FirstOrDefaultAsync(c => c.Id == callId, ct);
+        return r is null ? null : new CallRoomDto(r.Id, r.Kind, r.Status, null, r.CreatorId, r.StartedAt, r.EstablishedAt, r.EndedAt, r.Quality,
+            r.Participants.Select(p => new CallParticipantDto(p.UserId, p.User?.Nik ?? "", p.User?.Name ?? "", p.Status,
+                p.IsMuted, p.IsScreenSharing, p.LeftAt, p.JoinedAt, p.InvitedById)).ToList(),
+            ChatRoomId: r.ChatRoomId, Title: r.ChatRoom?.Name);
     }
 
     /// Toast text for someone added to a running call ("Add person"); null for the original invitees.
@@ -260,6 +494,33 @@ public sealed class PushDispatcher(IPopDbContext db, IWebPushTransport transport
         (await db.NotificationPreferences.AsNoTracking()
             .Where(p => userIds.Contains(p.UserId) && !p.PushShowPreview)
             .Select(p => p.UserId).ToListAsync(ct)).ToHashSet();
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// Account binding for the service worker: first 16 hex of SHA-256("ipop-push:" + userId).
+    /// Not reversible to the id without a candidate list; never logged.
+    public static string AcctOf(Guid userId) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes("ipop-push:" + userId.ToString("D").ToLowerInvariant())))[..16];
+
+    /// Push service family from the endpoint host — diagnostics never expose the endpoint itself.
+    public static string ProviderOf(string endpoint)
+    {
+        var host = Uri.TryCreate(endpoint, UriKind.Absolute, out var u) ? u.Host : "";
+        return host.EndsWith("googleapis.com") ? "fcm"
+            : host.EndsWith("mozilla.com") || host.EndsWith("mozaws.net") ? "mozilla"
+            : host.EndsWith("notify.windows.com") ? "wns"
+            : host.EndsWith("push.apple.com") ? "apple"
+            : "other";
+    }
+
+    internal static string JoinIds(IEnumerable<Guid> ids) => string.Join(',', ids.Distinct().Select(i => i.ToString("N")));
+
+    private static List<Guid> ParseIds(string? ids) =>
+        (ids ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => Guid.TryParse(s, out var g) ? g : Guid.Empty)
+            .Where(g => g != Guid.Empty).Distinct().ToList();
+
+    private static List<Guid> Restrict(List<Guid> ids, IReadOnlyCollection<Guid>? only) =>
+        only is null ? ids : ids.Where(only.Contains).ToList();
 
     /// RFC 8030 topic (≤32 URL-safe chars): a newer message replaces a still-queued one with the same tag.
     private static string? TopicOf(string tag)

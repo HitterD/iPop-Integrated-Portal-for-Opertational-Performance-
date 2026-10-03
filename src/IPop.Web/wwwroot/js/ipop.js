@@ -257,33 +257,16 @@ window.ipop = {
     }
     return ipop.desktopAlertsState();
   },
+  // Kept for older callers. The typed versions live in push-lifecycle.js (window.ipopPush).
   // Subscribes this browser (never prompts). Returns { endpoint, p256dh, auth } for the API, or null.
   async pushSubscribe(publicKey) {
-    if (!ipop._pushSupported() || Notification.permission !== "granted" || !publicKey) return null;
-    try {
-      const reg = await ipop._serviceWorker();
-      if (!reg) return null;
-      const key = Uint8Array.from(atob(publicKey.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
-      let sub = await reg.pushManager.getSubscription();
-      // A subscription made for another VAPID key can never be delivered to — replace it.
-      if (sub && sub.options && sub.options.applicationServerKey) {
-        const old = new Uint8Array(sub.options.applicationServerKey);
-        if (old.length !== key.length || old.some((b, i) => b !== key[i])) { await sub.unsubscribe(); sub = null; }
-      }
-      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
-      const json = sub.toJSON();
-      return { endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth };
-    } catch { return null; }
+    if (!window.ipopPush) return null;
+    const r = await window.ipopPush.subscribe(publicKey);
+    return r && r.ok ? { endpoint: r.endpoint, p256dh: r.p256dh, auth: r.auth } : null;
   },
   // Drops this browser's subscription; returns its endpoint so the API can forget it too.
   async pushUnsubscribe() {
-    try {
-      const sub = await ipop._pushSubscription();
-      if (!sub) return null;
-      const endpoint = sub.endpoint;
-      await sub.unsubscribe();
-      return endpoint;
-    } catch { return null; }
+    return window.ipopPush ? await window.ipopPush.unsubscribe() : null;
   },
 
   // ── Unread count in the tab title: "(3) Messages — IPop" ──

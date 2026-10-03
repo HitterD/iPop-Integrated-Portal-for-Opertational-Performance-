@@ -36,7 +36,7 @@ public static class CallEndpoints
             // Signal() today — create must broadcast too).
             foreach (var p in result.Room.Participants)
                 await hub.Clients.Group($"user:{p.UserId}").SendAsync("callStateChanged", result.Room, ct);
-            SyncCallToast(push, result.Room);
+            await SyncCallToastAsync(push, db, result.Room, ct);
 
             return Results.Created($"/api/calls/{result.Room.Id}", result.Room);
         });
@@ -197,7 +197,7 @@ public static class CallEndpoints
     internal static async Task BroadcastGroupAsync(IHubContext<CallHub> hub, IPopDbContext db, CallRoomDto room, CancellationToken ct,
         PushQueue? push = null)
     {
-        SyncCallToast(push, room);
+        await SyncCallToastAsync(push, db, room, ct);
         var targets = room.Participants.Select(p => p.UserId).ToHashSet();
         if (room.ChatRoomId is { } chatId)
         {
@@ -210,8 +210,18 @@ public static class CallEndpoints
     }
 
     /// Ring (or close) the Windows call toast of invited users to match this call state.
-    internal static void SyncCallToast(PushQueue? push, CallRoomDto room) =>
-        push?.Enqueue((p, token) => p.SyncCallAsync(room, token));
+    /// The call change is already committed; this durably records "sync this call's toasts", and the
+    /// push worker diffs the current call state against earlier rings (ring once, close once, stale rings never sent).
+    internal static async Task SyncCallToastAsync(PushQueue? push, IPopDbContext db, CallRoomDto room, CancellationToken ct)
+    {
+        if (push is null) return;
+        try { await push.EnqueueAsync(db, "call", room.Id, ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Never fail the call itself over its toast; SignalR already carried the state.
+            Console.Error.WriteLine($"Call toast enqueue failed: {ex.GetType().Name}");
+        }
+    }
 
     /// How long an ephemeral TURN credential stays valid.
     internal static readonly TimeSpan TurnCredentialLifetime = TimeSpan.FromHours(12);

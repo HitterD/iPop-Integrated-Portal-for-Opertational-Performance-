@@ -3702,6 +3702,129 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("ProjectTemplateTasks");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.PushDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Code")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("SubscriptionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "NextAttemptAt");
+
+                    b.HasIndex("SubscriptionId", "CreatedAt");
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.HasIndex("JobId", "UserId", "Kind", "Key");
+
+                    b.ToTable("PushDeliveries");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.PushJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EventType")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime?>("ExpandedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Priority")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid?>("RefId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("UserIds")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("ExpandedAt", "NextAttemptAt");
+
+                    b.ToTable("PushJobs");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.PushSubscription", b =>
                 {
                     b.Property<Guid>("Id")
@@ -5730,6 +5853,17 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Template");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.PushDelivery", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.PushJob", "Job")
+                        .WithMany("Deliveries")
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Job");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.PushSubscription", b =>
                 {
                     b.HasOne("IPop.Core.Entities.User", "User")
@@ -6155,6 +6289,11 @@ namespace IPop.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("IPop.Core.Entities.ProjectTemplate", b =>
                 {
                     b.Navigation("Tasks");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.PushJob", b =>
+                {
+                    b.Navigation("Deliveries");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.Role", b =>
