@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iPop — Notes enrichment (mockup)</title>
+<style>
+:root{
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,sans-serif;
+  --bg:#F5F5F7;--surface:#fff;--surface-2:#F5F5F7;--line:rgba(0,0,0,.08);--line-2:rgba(0,0,0,.14);
+  --ink:#1D1D1F;--ink-2:#424245;--ink-3:#86868B;--accent:#34A853;--accent-soft:rgba(52,168,83,.12);
+  --blue:#0A84FF;--blue-soft:rgba(10,132,255,.1);--orange:#FF9500;--orange-soft:rgba(255,149,0,.12);
+  --yellow-soft:rgba(255,204,0,.16);--red:#FF3B30;
+  --pop:0 12px 40px rgba(0,0,0,.14),0 0 0 .5px rgba(0,0,0,.08);
+}
+[data-theme=dark]{
+  --bg:#000;--surface:#1C1C1E;--surface-2:#2C2C2E;--line:rgba(255,255,255,.1);--line-2:rgba(255,255,255,.18);
+  --ink:#F5F5F7;--ink-2:#D1D1D6;--ink-3:#8E8E93;--blue-soft:rgba(64,156,255,.16);--yellow-soft:rgba(255,214,10,.14);
+  --pop:0 12px 40px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.12);
+}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.5 var(--font);background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+header.top{position:sticky;top:0;z-index:20;display:flex;gap:10px;align-items:center;padding:10px 24px;background:color-mix(in srgb,var(--surface) 85%,transparent);backdrop-filter:blur(20px);border-bottom:1px solid var(--line)}
+header.top h1{font-size:15px;margin:0 auto 0 0}
+header.top a{color:var(--ink-2);text-decoration:none;font-size:13px;padding:5px 10px;border-radius:8px}
+header.top a:hover{background:var(--surface-2)}
+header.top button{font:inherit;font-size:13px;border:1px solid var(--line-2);background:var(--surface);color:var(--ink);border-radius:8px;padding:5px 10px;cursor:pointer}
+main{max-width:1180px;margin:0 auto;padding:24px}
+section{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;margin:0 0 40px;scroll-margin-top:70px}
+@media(max-width:960px){section{grid-template-columns:1fr}}
+.page{background:var(--surface);border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.06),0 0 0 .5px var(--line);padding:36px 56px 44px;position:relative;min-width:0}
+@media(max-width:600px){.page{padding:24px 18px}}
+.page h2{font:700 26px/1.25 var(--font);letter-spacing:-.02em;margin:0 0 4px}
+.page .sub{color:var(--ink-3);font-size:13px;margin:0 0 22px}
+.notes{background:var(--surface);border-radius:14px;padding:18px 20px;box-shadow:0 0 0 .5px var(--line);font-size:13px;color:var(--ink-2);align-self:start;position:sticky;top:70px}
+.notes h3{margin:0 0 8px;font-size:13px;color:var(--ink);display:flex;gap:8px;align-items:center}
+.notes .n{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:7px;background:var(--accent);color:#fff;font-size:12px}
+.notes ul{margin:6px 0 0;padding-left:18px}.notes li{margin:3px 0}
+.notes .q{margin-top:10px;padding:8px 10px;border-radius:9px;background:var(--yellow-soft);color:var(--ink)}
+.ed{font-size:15.5px;line-height:1.65}
+.ed p{margin:0;padding:2px 0}
+.ed h3{font:600 18px/1.35 var(--font);margin:18px 0 4px}
+.muted{color:var(--ink-3)}
+/* hover handle */
+.blk{position:relative}
+.blk:hover>.hdl{opacity:1}
+.hdl{position:absolute;left:-44px;top:3px;display:flex;gap:2px;opacity:0;transition:.15s}
+.hdl span{width:20px;height:22px;display:grid;place-items:center;border-radius:5px;color:var(--ink-3);font-size:14px;cursor:grab}
+.hdl span:hover{background:var(--surface-2)}
+
+/* ── 12 rich to-do ── */
+.todo{list-style:none;margin:0;padding:0}
+.todo>li{display:flex;gap:10px;padding:3px 0;align-items:flex-start}
+.cb{flex:none;width:18px;height:18px;margin-top:4px;border-radius:5px;border:1.6px solid var(--line-2);display:grid;place-items:center;cursor:pointer;background:var(--surface)}
+.cb.on{background:var(--accent);border-color:var(--accent);color:#fff;font-size:12px}
+.todo .body{flex:1;min-width:0}
+li.done>.body>p{color:var(--ink-3);text-decoration:line-through}
+.todo .meta{display:flex;gap:6px;align-items:center;margin:2px 0 4px;font-size:12px;color:var(--ink-3)}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:999px;background:var(--surface-2);font-size:12px;color:var(--ink-2)}
+.chip.due{background:var(--orange-soft);color:#B25E00}
+.chip.who{background:var(--blue-soft);color:var(--blue)}
+.thumbs{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 2px}
+.thumb{width:92px;height:68px;border-radius:9px;overflow:hidden;position:relative;box-shadow:0 0 0 .5px var(--line)}
+.thumb .x{position:absolute;inset:auto 4px 4px auto;background:rgba(0,0,0,.55);color:#fff;font-size:10px;padding:0 5px;border-radius:5px}
+.file{display:inline-flex;gap:8px;align-items:center;padding:6px 10px;border-radius:9px;background:var(--surface-2);font-size:13px;margin:4px 0}
+.file b{font-weight:600}.file .muted{font-size:12px}
+.todo .todo{margin-left:2px}
+.progress{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3);margin:0 0 6px}
+.bar{flex:0 0 120px;height:5px;border-radius:9px;background:var(--surface-2);overflow:hidden}.bar i{display:block;height:100%;background:var(--accent)}
+.rowmenu{position:absolute;right:-6px;top:38px;width:230px;background:var(--surface);border-radius:12px;box-shadow:var(--pop);padding:6px;font-size:13px;z-index:3}
+.rowmenu .mi{display:flex;gap:10px;align-items:center;padding:6px 8px;border-radius:7px}
+.rowmenu .mi:hover,.rowmenu .mi.hi{background:var(--surface-2)}
+.rowmenu .mi kbd{margin-left:auto;font:11px var(--font);color:var(--ink-3)}
+.rowmenu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+
+/* placeholder images */
+.ph{width:100%;height:100%;display:block}
+.ph1{background:linear-gradient(135deg,#7CC4FA,#3B82F6)}
+.ph2{background:linear-gradient(135deg,#FDE68A,#F59E0B)}
+.ph3{background:linear-gradient(135deg,#A7F3D0,#10B981)}
+.ph4{background:linear-gradient(135deg,#FBCFE8,#EC4899)}
+.ph5{background:linear-gradient(135deg,#DDD6FE,#8B5CF6)}
+
+/* ── 13 image ── */
+.imgblk{margin:10px 0;position:relative}
+.imgblk figure{margin:0;position:relative;display:inline-block;max-width:100%}
+.imgblk.center{text-align:center}.imgblk.right{text-align:right}
+.imgblk .frame{position:relative;border-radius:10px;overflow:hidden;outline:2px solid var(--blue);outline-offset:2px}
+.imgblk .rs{position:absolute;top:50%;width:6px;height:44px;margin-top:-22px;border-radius:9px;background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.3),0 1px 4px rgba(0,0,0,.3);cursor:ew-resize}
+.imgblk .rs.l{left:8px}.imgblk .rs.r{right:8px}
+.imgblk .size{position:absolute;right:10px;bottom:10px;font-size:11px;background:rgba(0,0,0,.6);color:#fff;padding:1px 6px;border-radius:5px}
+figcaption{font-size:13px;color:var(--ink-3);text-align:center;padding:6px 0 0}
+figcaption.edit{color:var(--ink-2);border-bottom:1px dashed var(--line-2)}
+.imgbar{position:absolute;top:-44px;left:50%;transform:translateX(-50%);display:flex;gap:2px;padding:4px;background:var(--surface);border-radius:10px;box-shadow:var(--pop);white-space:nowrap;z-index:2}
+.imgbar button{font:inherit;font-size:12.5px;border:0;background:none;color:var(--ink);padding:4px 8px;border-radius:7px;cursor:pointer}
+.imgbar button:hover,.imgbar button.on{background:var(--surface-2)}
+.imgbar .sep{width:1px;background:var(--line);margin:3px 2px}
+.gal{display:grid;gap:6px;margin:10px 0 2px;border-radius:10px;overflow:hidden}
+.gal.c3{grid-template-columns:2fr 1fr;grid-template-rows:120px 120px}
+.gal.c3>:first-child{grid-row:span 2}
+.gal.c4{grid-template-columns:repeat(4,1fr);height:120px}
+.gal .more{position:relative}.gal .more::after{content:"+3";position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.45);color:#fff;font-size:20px;font-weight:600}
+.small{font-size:12px;color:var(--ink-3)}
+.lbx{margin-top:14px;border-radius:12px;background:#0b0b0c;color:#fff;padding:10px 12px;display:grid;grid-template-columns:28px 1fr 28px;gap:8px;align-items:center}
+.lbx .img{height:150px;border-radius:8px;overflow:hidden}
+.lbx .ar{font-size:20px;text-align:center;opacity:.8}
+.lbx .cap{grid-column:1/-1;display:flex;justify-content:space-between;font-size:12px;opacity:.8}
+
+/* ── 14 table ── */
+.tblwrap{position:relative;margin:10px 0 6px;overflow-x:auto}
+table.nt{border-collapse:collapse;width:100%;font-size:14.5px}
+table.nt th,table.nt td{border:1px solid var(--line-2);padding:6px 10px;text-align:left;vertical-align:top;min-width:90px}
+table.nt th{background:var(--surface-2);font-weight:600}
+table.nt td.sel{outline:2px solid var(--blue);outline-offset:-2px;background:var(--blue-soft)}
+.tbtns{position:absolute;display:grid;place-items:center;width:18px;height:18px;border-radius:5px;background:var(--surface);box-shadow:var(--pop);font-size:13px;color:var(--ink-3)}
+.tbar{display:inline-flex;gap:2px;padding:4px;background:var(--surface);border-radius:10px;box-shadow:var(--pop);margin:0 0 8px;flex-wrap:wrap}
+.tbar button{font:inherit;font-size:12.5px;border:0;background:none;color:var(--ink);padding:4px 8px;border-radius:7px}
+.tbar button:hover{background:var(--surface-2)}
+.tbar .danger{color:var(--red)}
+.grid-pick{display:inline-grid;grid-template-columns:repeat(6,16px);gap:3px;padding:10px;background:var(--surface);border-radius:12px;box-shadow:var(--pop)}
+.grid-pick i{width:16px;height:16px;border-radius:3px;border:1px solid var(--line-2)}
+.grid-pick i.on{background:var(--blue-soft);border-color:var(--blue)}
+.grid-pick span{grid-column:1/-1;text-align:center;font-size:12px;color:var(--ink-3);margin-top:4px}
+.tag{display:inline-block;padding:0 7px;border-radius:6px;font-size:12.5px}
+.t-ok{background:var(--accent-soft);color:#1E7B3A}.t-wait{background:var(--orange-soft);color:#B25E00}
+
+/* ── 15 embeds ── */
+.paste{display:flex;gap:8px;align-items:center;margin:8px 0}
+.paste .url{color:var(--blue);text-decoration:underline}
+.pastemenu{display:inline-flex;flex-direction:column;background:var(--surface);border-radius:12px;box-shadow:var(--pop);padding:6px;font-size:13px;min-width:200px}
+.pastemenu .mi{padding:6px 8px;border-radius:7px;display:flex;gap:8px}
+.pastemenu .mi.hi{background:var(--surface-2)}
+.bookmark{display:flex;border:1px solid var(--line-2);border-radius:10px;overflow:hidden;margin:10px 0;text-decoration:none;color:inherit}
+.bookmark .tx{flex:1;padding:10px 14px;min-width:0}
+.bookmark .t{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bookmark .d{font-size:12.5px;color:var(--ink-3);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.bookmark .u{font-size:12px;color:var(--ink-2);margin-top:6px;display:flex;gap:6px;align-items:center}
+.bookmark .fav{width:14px;height:14px;border-radius:4px;background:#24292F}
+.bookmark .og{flex:0 0 190px}
+@media(max-width:600px){.bookmark .og{display:none}}
+.yt{margin:10px 0;border-radius:10px;overflow:hidden;position:relative;aspect-ratio:16/9;max-height:280px;background:linear-gradient(135deg,#1f2937,#111827);display:grid;place-items:center;color:#fff}
+.yt .play{width:64px;height:44px;border-radius:12px;background:#FF0000;display:grid;place-items:center;font-size:18px}
+.yt .cap{position:absolute;left:12px;bottom:10px;right:12px;font-size:12px;opacity:.85;display:flex;justify-content:space-between}
+.internal{display:flex;gap:12px;align-items:center;border:1px solid var(--line-2);border-radius:10px;padding:10px 14px;margin:10px 0}
+.internal .ic{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--blue-soft);color:var(--blue);font-weight:700}
+.internal .t{font-weight:600}.internal .d{font-size:12.5px;color:var(--ink-3)}
+
+/* ── 16 templates ── */
+.tpls{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin:8px 0 18px}
+.tpl{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--surface)}
+.tpl .e{font-size:22px}.tpl b{display:block;margin:4px 0 2px}
+.tpl .d{font-size:12.5px;color:var(--ink-3)}
+.tpl.new{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.tpl.new::after{content:"NEW";float:right;margin-top:-62px;font-size:10px;font-weight:700;color:var(--accent)}
+.prev{border:1px dashed var(--line-2);border-radius:12px;padding:16px 18px}
+.callout{display:flex;gap:10px;padding:10px 14px;border-radius:10px;background:var(--yellow-soft);margin:8px 0}
+.mobile{width:300px;border-radius:30px;border:9px solid #1d1d1f;background:var(--surface);overflow:hidden;margin-top:16px}
+.mobile .in{padding:16px 14px;font-size:14px}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>📝 Notes — enrichment mockup (items 12–16)</h1>
+  <a href="#todo">12 To-do</a><a href="#image">13 Images</a><a href="#table">14 Tables</a><a href="#embed">15 Embeds</a><a href="#tpl">16 Templates</a>
+  <button onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'">◐ Theme</button>
+</header>
+<main>
+
+<!-- ═════════ 12 ═════════ -->
+<section id="todo">
+  <div class="page">
+    <h2>Warehouse audit — week 40</h2>
+    <p class="sub">Mockup · to-do items that hold photos, files and sub-items</p>
+    <div class="progress"><div class="bar"><i style="width:40%"></i></div>2 of 5 done</div>
+    <ul class="todo ed">
+      <li class="done blk"><div class="hdl"><span>+</span><span>⋮⋮</span></div><div class="cb on">✓</div><div class="body">
+        <p>Check fire extinguisher pressure — Gudang A</p>
+        <div class="meta"><span class="chip who">@Rina</span><span class="chip">✓ Done Oct 2</span></div>
+        <div class="thumbs"><div class="thumb"><i class="ph ph1"></i></div><div class="thumb"><i class="ph ph3"></i></div></div>
+      </div></li>
+      <li class="blk" style="position:relative"><div class="hdl" style="opacity:1"><span>+</span><span>⋮⋮</span></div><div class="cb"></div><div class="body">
+        <p>Photograph damaged pallets and attach the claim form</p>
+        <div class="meta"><span class="chip who">@Budi</span><span class="chip due">📅 Oct 4</span></div>
+        <div class="thumbs"><div class="thumb"><i class="ph ph2"></i></div><div class="thumb"><i class="ph ph4"></i></div><div class="thumb"><i class="ph ph5"></i><span class="x">+2</span></div></div>
+        <div class="file">📄 <b>Claim-form-pallet.pdf</b> <span class="muted">184 KB · NAS</span></div>
+        <ul class="todo">
+          <li class="done"><div class="cb on">✓</div><div class="body"><p>Pallet row C</p></div></li>
+          <li><div class="cb"></div><div class="body"><p>Pallet row D</p></div></li>
+        </ul>
+      </div>
+        <div class="rowmenu">
+          <div class="mi hi">🖼 Add photo <kbd>or paste / drop</kbd></div>
+          <div class="mi">📎 Attach file</div>
+          <div class="mi">↳ Add sub-item <kbd>Tab</kbd></div>
+          <hr>
+          <div class="mi">@ Assign person</div>
+          <div class="mi">📅 Due date</div>
+          <hr>
+          <div class="mi">🎨 Colour</div>
+          <div class="mi" style="color:var(--red)">🗑 Delete</div>
+        </div>
+      </li>
+      <li class="blk"><div class="cb"></div><div class="body"><p>Count stock in rack 12 <span class="muted">(press <b>Tab</b> on a new line for a sub-item)</span></p></div></li>
+    </ul>
+    <div class="mobile"><div class="in">
+      <div class="small" style="margin-bottom:6px">Mobile — tap the checkbox row to open the same actions as a bottom sheet</div>
+      <ul class="todo"><li><div class="cb"></div><div class="body"><p>Photograph damaged pallets</p>
+      <div class="thumbs"><div class="thumb" style="width:72px;height:54px"><i class="ph ph2"></i></div><div class="thumb" style="width:72px;height:54px"><i class="ph ph4"></i></div></div></div></li></ul>
+    </div></div>
+  </div>
+  <aside class="notes">
+    <h3><span class="n">12</span>Rich to-do items</h3>
+    <ul>
+      <li>Setiap item to-do bisa berisi <b>foto</b> (thumbnail grid, klik = lightbox), <b>file</b>, dan <b>sub-item</b> (Tab / Shift+Tab).</li>
+      <li>Cara menambah: paste/drop gambar ke baris itu, atau menu <b>⋮⋮ → Add photo / Attach file</b>.</li>
+      <li>Foto/file tetap disimpan di NAS seperti blok gambar sekarang.</li>
+      <li>Bar progres "2 of 5 done" muncul otomatis di atas daftar yang punya ≥3 item.</li>
+      <li>Coret otomatis saat dicentang (sudah ada), plus label "Done Oct 2".</li>
+    </ul>
+    <div class="q">❓ <b>@Assign person</b> dan <b>📅 Due date</b> per item: ikut dibuat (mention memberi notifikasi), atau cukup foto/file/sub-item dulu?</div>
+  </aside>
+</section>
+
+<!-- ═════════ 13 ═════════ -->
+<section id="image">
+  <div class="page">
+    <h2>Site visit — Sepanjang</h2>
+    <p class="sub">Mockup · resize, caption, align, gallery</p>
+    <div class="ed"><p>Click an image to select it. Drag the side handles to resize.</p></div>
+    <div class="imgblk center" style="margin-top:56px">
+      <figure style="width:62%">
+        <div class="imgbar"><button>⬅ Left</button><button class="on">⬌ Center</button><button>➡ Right</button><span class="sep"></span><button>S</button><button class="on">M</button><button>Full</button><span class="sep"></span><button>✎ Caption</button><button>⤢ View</button><button>⬇</button><button style="color:var(--red)">🗑</button></div>
+        <div class="frame" style="height:220px"><i class="ph ph1"></i><span class="rs l"></span><span class="rs r"></span><span class="size">62%</span></div>
+        <figcaption class="edit">Loading bay after the new canopy was installed</figcaption>
+      </figure>
+    </div>
+    <div class="ed"><h3>Gallery</h3><p class="muted" style="font-size:13px">Drop 3+ images at once → offered as one gallery block. Click any tile to open the lightbox.</p></div>
+    <div class="gal c3"><i class="ph ph2"></i><i class="ph ph3"></i><i class="ph ph4"></i></div>
+    <div class="small">3 photos · Gallery</div>
+    <div class="gal c4" style="margin-top:14px"><i class="ph ph5"></i><i class="ph ph1"></i><i class="ph ph3"></i><i class="ph ph2 more"></i></div>
+    <div class="small">7 photos · Gallery (4 shown)</div>
+    <div class="lbx"><span class="ar">‹</span><div class="img"><i class="ph ph2"></i></div><span class="ar">›</span>
+      <div class="cap"><span>Lightbox · 2 / 7 · "Rack 12 before"</span><span>⬇ Download · Esc to close</span></div></div>
+  </div>
+  <aside class="notes">
+    <h3><span class="n">13</span>Images</h3>
+    <ul>
+      <li><b>Resize</b>: drag handle kiri/kanan, snap ke S (33%) / M (60%) / Full. Lebar disimpan dalam %, jadi tetap pas di mobile.</li>
+      <li><b>Align</b> kiri / tengah / kanan (teks tidak mengalir di samping gambar — lebih rapi & aman di mobile).</li>
+      <li><b>Caption</b> di bawah gambar, bisa diedit langsung.</li>
+      <li><b>Gallery</b>: drop ≥3 gambar → tawarkan "Gabung jadi gallery"; layout otomatis 2–4 kolom; klik = lightbox dengan panah ‹ ›.</li>
+      <li>Gambar lama tetap tampil seperti sekarang (default: Full, tengah).</li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ═════════ 14 ═════════ -->
+<section id="table">
+  <div class="page">
+    <h2>Vendor comparison</h2>
+    <p class="sub">Mockup · simple tables</p>
+    <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:10px">
+      <div><div class="small" style="margin-bottom:4px">/table → pick size</div><div class="grid-pick">
+        <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i>
+        <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i>
+        <i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i><i></i>
+        <i></i><i></i><i></i><i></i><i></i><i></i><span>3 × 4</span></div></div>
+      <div><div class="small" style="margin-bottom:4px">Toolbar when a cell is selected</div>
+      <div class="tbar"><button>↑ Row above</button><button>↓ Row below</button><button>← Col left</button><button>→ Col right</button><button>▤ Header row</button><button>🎨 Cell colour</button><button class="danger">Delete row</button><button class="danger">Delete col</button><button class="danger">🗑 Table</button></div></div>
+    </div>
+    <div class="tblwrap">
+      <table class="nt">
+        <tr><th>Vendor</th><th>Price / unit</th><th>Lead time</th><th>Status</th></tr>
+        <tr><td>PT Sinar Jaya</td><td>Rp 12.500</td><td class="sel">7 days</td><td><span class="tag t-ok">Approved</span></td></tr>
+        <tr><td>CV Maju Bersama</td><td>Rp 11.900</td><td>14 days</td><td><span class="tag t-wait">Waiting quote</span></td></tr>
+        <tr><td>UD Sentosa</td><td>Rp 13.200</td><td>5 days</td><td>—</td></tr>
+      </table>
+    </div>
+    <div class="small">Tab → next cell · Tab on the last cell adds a row · drag column border to resize · wide tables scroll sideways on mobile</div>
+  </div>
+  <aside class="notes">
+    <h3><span class="n">14</span>Simple tables</h3>
+    <ul>
+      <li>Insert lewat <b>/table</b> dengan pemilih ukuran (seperti Mail).</li>
+      <li>Tambah/hapus baris & kolom, baris header on/off, warna sel, resize kolom.</li>
+      <li>Sel berisi teks biasa (bold, link, mention, tag warna). Tidak ada rumus/sort — itu tetap di Spreadsheet.</li>
+      <li>Kolaborasi real-time tetap jalan (Yjs).</li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ═════════ 15 ═════════ -->
+<section id="embed">
+  <div class="page">
+    <h2>Reference links</h2>
+    <p class="sub">Mockup · link embeds (reuses the Chat link preview)</p>
+    <div class="paste"><span class="url">https://github.com/ueberdosis/tiptap</span></div>
+    <div class="pastemenu"><div class="small" style="padding:2px 8px">Pasted a link — show as:</div>
+      <div class="mi">🔗 Link (keep text)</div><div class="mi hi">🗂 Bookmark card</div><div class="mi">▶ Embed (YouTube / video)</div></div>
+    <a class="bookmark" href="#">
+      <div class="tx"><div class="t">ueberdosis/tiptap: The headless rich text editor framework</div>
+      <div class="d">Tiptap is a suite of open source content editing and real-time collaboration tools for developers building apps like Notion or Google Docs.</div>
+      <div class="u"><span class="fav"></span>github.com</div></div>
+      <div class="og"><i class="ph ph5"></i></div>
+    </a>
+    <div class="yt"><div class="play">▶</div><div class="cap"><span>YouTube · Forklift safety training (12:04)</span><span>Loads only when you press play</span></div></div>
+    <div class="internal"><div class="ic">P</div><div><div class="t">Project · Gudang B renovation</div><div class="d">In progress · 14 tasks · due Nov 12 — iPop link, opens in-app</div></div></div>
+  </div>
+  <aside class="notes">
+    <h3><span class="n">15</span>Link embeds</h3>
+    <ul>
+      <li>Saat paste URL sendiri di baris kosong → menu kecil: <b>Link / Bookmark / Embed</b>. Enter = Bookmark.</li>
+      <li><b>Bookmark</b> memakai preview OG server yang sudah ada di Chat (cache 24 jam, anti-SSRF, gambar di-proxy).</li>
+      <li><b>Embed</b> hanya YouTube dan video HTTPS langsung (sama dengan aturan News). Tidak ada iframe bebas. Video baru dimuat saat diklik.</li>
+      <li>Link iPop internal (proyek, note, file) → kartu native dari data iPop.</li>
+      <li>Juga lewat <b>/bookmark</b> dan <b>/embed</b>.</li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ═════════ 16 ═════════ -->
+<section id="tpl">
+  <div class="page">
+    <h2>New page</h2>
+    <p class="sub">Mockup · template picker (Meeting notes and SOP already exist — these are added)</p>
+    <div class="tpls">
+      <div class="tpl"><div class="e">📅</div><b>Meeting notes</b><div class="d">Agenda, notes, decisions, action items</div></div>
+      <div class="tpl"><div class="e">✅</div><b>To-do list</b><div class="d">Today, tomorrow, later</div></div>
+      <div class="tpl"><div class="e">🎯</div><b>Project brief</b><div class="d">Goals, scope, timeline</div></div>
+      <div class="tpl"><div class="e">📖</div><b>SOP</b><div class="d">Step-by-step procedure</div></div>
+      <div class="tpl new"><div class="e">🔍</div><b>Inspection checklist</b><div class="d">Checklist with photo per item, findings table</div></div>
+      <div class="tpl new"><div class="e">📊</div><b>Weekly report</b><div class="d">Highlights, KPIs table, issues, next week</div></div>
+      <div class="tpl new"><div class="e">☀️</div><b>Daily stand-up</b><div class="d">Yesterday, today, blockers per person</div></div>
+      <div class="tpl new"><div class="e">🧯</div><b>Incident report</b><div class="d">What happened, photos, cause, corrective actions</div></div>
+    </div>
+    <div class="prev">
+      <div class="small" style="margin-bottom:8px">Preview — Inspection checklist (uses 12, 13 and 14)</div>
+      <div class="ed">
+        <h3 style="margin-top:0">🔍 Inspection — <span class="muted">location</span></h3>
+        <div class="callout">💡 <span>Tick each item. Add a photo to any item that needs attention.</span></div>
+        <ul class="todo">
+          <li><div class="cb"></div><div class="body"><p>Emergency exits clear</p></div></li>
+          <li><div class="cb"></div><div class="body"><p>Fire extinguishers checked</p><div class="thumbs"><div class="thumb" style="width:70px;height:50px;display:grid;place-items:center;border:1px dashed var(--line-2);box-shadow:none;color:var(--ink-3);font-size:12px">+ Photo</div></div></div></li>
+          <li><div class="cb"></div><div class="body"><p>Lighting working</p></div></li>
+        </ul>
+        <h3>Findings</h3>
+        <table class="nt"><tr><th>#</th><th>Finding</th><th>Owner</th><th>Due</th></tr><tr><td>1</td><td></td><td></td><td></td></tr></table>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <h3><span class="n">16</span>Templates</h3>
+    <ul>
+      <li><b>Meeting notes</b> dan <b>SOP</b> ternyata <b>sudah ada</b>. Saya usulkan 4 template baru yang memakai fitur 12–14.</li>
+      <li>Muncul di tempat yang sama dengan sekarang (halaman kosong + menu New page).</li>
+    </ul>
+    <div class="q">❓ Template baru mana yang mau dipakai? (rekomendasi: Inspection checklist + Weekly report + Incident report; Daily stand-up opsional)</div>
+  </aside>
+</section>
+
+</main>
+</body>
+</html>
