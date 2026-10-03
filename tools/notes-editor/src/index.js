@@ -5,7 +5,7 @@
 // an editor periodically folds the tail into a new state with a compare-and-set on the version.
 import { Editor, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import { TaskList, TaskItem } from '@tiptap/extension-list';
+import { TaskList } from '@tiptap/extension-list';
 import { TextStyle, Color, BackgroundColor } from '@tiptap/extension-text-style';
 import { Details, DetailsSummary, DetailsContent } from '@tiptap/extension-details';
 import { Placeholder } from '@tiptap/extensions';
@@ -18,8 +18,9 @@ import * as Y from 'yjs';
 import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness';
 import * as signalR from '@microsoft/signalr';
 
-import { BlockBackground, Callout, NoteWidget, SubPage, NoteImage, NoteFile, CommentHighlights, commentKey, countTodos, releaseBlobs } from './nodes.js';
+import { BlockBackground, Callout, NoteWidget, SubPage, NoteFile, CommentHighlights, commentKey, countTodos, releaseBlobs } from './nodes.js';
 import { SlashMenu, mentionSuggestion, createToolbar, createHandle, createBlockMenu } from './menus.js';
+import { NoteImage, NoteGallery, NoteBookmark, NoteEmbed, RichTaskItem, TodoExtras, tableExtensions, taskItemAt, todoInsertPos, createRichUi, closeLightboxes } from './rich.js';
 import { TEMPLATES, GUIDE_COMMENT_TEXT } from './templates.js';
 
 const FIELD = 'default';
@@ -31,7 +32,7 @@ const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const debounce = (fn, ms) => { let t; const d = (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; d.cancel = () => clearTimeout(t); return d; };
 
 /// Extensions shared by the live editor and read-only previews (version history).
-function baseExtensions(host, { collab = true } = {}) {
+function baseExtensions(host, { collab = true, rich = {} } = {}) {
   return [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
@@ -39,7 +40,9 @@ function baseExtensions(host, { collab = true } = {}) {
       link: { openOnClick: true, autolink: true, HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' } },
       trailingNode: {},
     }),
-    TaskList, TaskItem.configure({ nested: true }),
+    TaskList, RichTaskItem.configure({ nested: true }),
+    TodoExtras.configure(rich),
+    ...tableExtensions(),
     TextStyle, Color, BackgroundColor,
     Details.configure({ persist: true, HTMLAttributes: { class: 'nt-toggle' } }), DetailsSummary, DetailsContent,
     BlockBackground, Callout,
@@ -47,6 +50,9 @@ function baseExtensions(host, { collab = true } = {}) {
     SubPage.configure({ host: () => host }),
     NoteImage.configure({ host: () => host }),
     NoteFile.configure({ host: () => host }),
+    NoteGallery.configure({ host: () => host }),
+    NoteBookmark.configure({ host: () => host }),
+    NoteEmbed,
     Mention.configure({
       HTMLAttributes: { class: 'nt-mention' },
       renderText: ({ node }) => `@${node.attrs.label ?? ''}`,
@@ -69,12 +75,13 @@ export function preview(el, state, opts = {}) {
       const t = await opts.dotnet.invokeMethodAsync('GetToken');
       return fetch(apiBase + path, { headers: { Authorization: `Bearer ${t}` } });
     },
+    apiBase,
     pageInfo: () => null,
     toast: () => {},
   };
   const ed = new Editor({ element: el, editable: false, extensions: baseExtensions(host, { collab: false }), content: json,
     editorProps: { attributes: { class: 'nt-editor' } } });
-  return { destroy: () => { ed.destroy(); doc.destroy(); } };
+  return { destroy: () => { closeLightboxes(host); ed.destroy(); doc.destroy(); } };
 }
 
 /// opts: { apiBase, pageId, access: view|comment|edit|owner, user: {name,nik,color}, accent, pages, dotnet }
@@ -97,6 +104,7 @@ export async function mount(el, opts) {
   };
 
   let destroyed = false;
+  let rich = null; // floating UI for images/tables/to-dos/links (edit mode only)
   let closing = false; // destroy() started: the editor may be gone by the time Blazor or an await calls back
   let accent = opts.accent;
   const accentListeners = new Set();
@@ -114,7 +122,10 @@ export async function mount(el, opts) {
     toast: m => call('OnToast', m),
     canComment: () => canComment,
     createSubPage: () => net.invokeMethodAsync('CreateSubPage').catch(() => null),
-    pickFiles: accept => pickFiles(accept),
+    pickFiles: (accept, pos) => pickFiles(accept, pos),
+    apiBase,
+    tablePicker: () => rich?.tablePicker(),
+    askLink: kind => rich?.askLink(kind),
     searchPeople: async q => { try { const r = await api(`/api/notes/people?q=${encodeURIComponent(q)}`); return r.ok ? await r.json() : []; } catch { return []; } },
     mentioned: p => queueMention(p),
     avatarColor: nik => palette[[...String(nik)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % palette.length],
@@ -255,7 +266,7 @@ export async function mount(el, opts) {
     element: el,
     editable: canEdit,
     extensions: [
-      ...baseExtensions(host),
+      ...baseExtensions(host, { rich: { onMenu: (pos, a) => rich?.openTodoMenu(pos, a), onChip: (pos, a, k) => rich?.onChip(pos, a, k) } }),
       Collaboration.configure({ document: ydoc, field: FIELD }),
       CollaborationCaret.configure({ provider: { awareness }, user: { name: opts.user.name, nik: opts.user.nik, color: opts.user.color } }),
       Placeholder.configure({
@@ -272,16 +283,19 @@ export async function mount(el, opts) {
     ],
     editorProps: {
       attributes: { class: 'nt-editor', spellcheck: 'true' },
-      handlePaste: (view, event) => dropFiles(event.clipboardData?.files, view.state.selection.from),
+      handlePaste: (view, event) => dropFiles(event.clipboardData?.files, todoInsertPos(view.state.doc, view.state.selection.from))
+        || !!rich?.handlePasteUrl(event),
       handleDrop: (view, event, _slice, moved) => {
         if (moved || !event.dataTransfer?.files?.length) return false;
         const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
-        return dropFiles(event.dataTransfer.files, at?.pos ?? view.state.selection.from);
+        const pos = at?.pos ?? view.state.selection.from;
+        return dropFiles(event.dataTransfer.files, todoInsertPos(view.state.doc, pos));
       },
     },
   });
 
   const toolbar = createToolbar(editor, host);
+  rich = canEdit ? createRichUi(editor, host) : null;
   const blockMenu = createBlockMenu(editor, host, () => handlePos >= 0 ? handlePos : null);
   handleEl.querySelector('.grip').addEventListener('click', e => { e.preventDefault(); blockMenu.open(e.currentTarget); });
   handleEl.querySelector('.add').addEventListener('click', e => {
@@ -385,7 +399,10 @@ export async function mount(el, opts) {
   const sendMentions = debounce(async () => {
     if (!mentionQueue.size) return;
     const present = new Set();
-    editor.state.doc.descendants(n => { if (n.type.name === 'mention' && n.attrs.id) present.add(n.attrs.id); });
+    editor.state.doc.descendants(n => {
+      if (n.type.name === 'mention' && n.attrs.id) present.add(n.attrs.id);
+      else if (n.type.name === 'taskItem' && n.attrs.assigneeId) present.add(n.attrs.assigneeId);
+    });
     // Typed then deleted (or undone) before the batch went out: nobody to notify.
     const ids = [...mentionQueue.keys()].filter(id => present.has(id)); mentionQueue.clear();
     if (!ids.length) return;
@@ -396,10 +413,19 @@ export async function mount(el, opts) {
   function queueMention(p) { if (canEdit) { mentionQueue.set(p.id, p); sendMentions(); } }
 
   // ── Uploads ──────────────────────────────────────────────────────────────
-  function pickFiles(accept) {
+  function pickFiles(accept, pos) {
+    if (closing || !canEdit) return;
+    const y = ySyncPluginKey.getState(editor.state);
+    const at = pos ?? todoInsertPos(editor.state.doc, editor.state.selection.from);
+    const anchor = absolutePositionToRelativePosition(at, y.type, y.binding.mapping);
     const input = document.createElement('input');
     input.type = 'file'; input.multiple = true; if (accept) input.accept = accept;
-    input.onchange = () => dropFiles(input.files, editor.state.selection.from);
+    input.onchange = () => {
+      if (closing) return;
+      const current = ySyncPluginKey.getState(editor.state);
+      const resolved = relativePositionToAbsolutePosition(current.doc, current.type, anchor, current.binding.mapping);
+      if (resolved != null) dropFiles(input.files, resolved);
+    };
     input.click();
   }
   function dropFiles(files, pos) {
@@ -413,6 +439,7 @@ export async function mount(el, opts) {
       const toAbs = r => relativePositionToAbsolutePosition(y.doc, y.type, r, y.binding.mapping);
       let rel = toRel(Math.min(pos, editor.state.doc.content.size));
       let done = 0, failed = 0;
+      const images = [];
       // One toast when it starts and one summary at the end; per-file toasts just stack up.
       host.toast(list.length > 1 ? `Uploading ${list.length} files…` : `Uploading ${list[0].name}…`);
       for (const f of list) {
@@ -427,9 +454,11 @@ export async function mount(el, opts) {
           const before = editor.state.doc.content.size;
           editor.chain().insertContentAt(at, node).run();
           rel = toRel(Math.min(at + (editor.state.doc.content.size - before), editor.state.doc.content.size));
+          if (node.type === 'noteImage') images.push(u.id);
           done++;
         } catch { host.toast(`Couldn't upload ${f.name}`); failed++; }
       }
+      if (images.length >= 3 && !closing) rich?.offerGallery(images);
       if (list.length > 1 && !closing) host.toast(failed ? `Uploaded ${done} of ${list.length} files` : `Uploaded ${done} files`);
     })();
     return true;
@@ -478,7 +507,8 @@ export async function mount(el, opts) {
       removeAwarenessStates(awareness, [ydoc.clientID], 'local');
       await hub.invoke('LeavePage', pageId).catch(() => {});
       await hub.stop().catch(() => {});
-      toolbar.destroy(); blockMenu.destroy();
+      closeLightboxes(host);
+      toolbar.destroy(); blockMenu.destroy(); rich?.destroy();
       editor.destroy(); awareness.destroy(); ydoc.destroy();
       releaseBlobs();
     },

@@ -7,7 +7,7 @@ const i = s => txt(s, 'italic');
 const code = s => txt(s, 'code');
 const color = (s, c) => txt(s, { type: 'textStyle', attrs: { color: `var(--nt-${c})` } });
 const hl = (s, c) => txt(s, { type: 'textStyle', attrs: { backgroundColor: `var(--nb-${c})` } });
-const inl = parts => parts.map(x => typeof x === 'string' ? txt(x) : x);
+const inl = parts => parts.filter(x => x !== '').map(x => typeof x === 'string' ? txt(x) : x);
 
 export const p = (...parts) => ({ type: 'paragraph', ...(parts.length ? { content: inl(parts) } : {}) });
 export const h = (level, ...parts) => ({ type: 'heading', attrs: { level }, content: inl(parts) });
@@ -135,4 +135,34 @@ const sop = () => doc(
   h(2, 'If something goes wrong'), bullets([['Contact ']]),
 );
 
-export const TEMPLATES = { guide, meeting, todo, brief, sop };
+// Plain-text table: first row is the header.
+const cell = (type, text) => ({ type, content: [text ? p(text) : p()] });
+const table = (head, rows) => ({ type: 'table', content: [
+  { type: 'tableRow', content: head.map(t => cell('tableHeader', t)) },
+  ...rows.map(r => ({ type: 'tableRow', content: r.map(t => cell('tableCell', t)) })),
+] });
+
+const inspection = () => doc(
+  callout('🔍', 'teal', p(b('Tip: '), 'tick each point on site and add a photo to it with ⋯ → Add photo. Assign an owner and a due date to anything that needs fixing.')),
+  h(2, 'Details'), bullets([[b('Area: ')], [b('Inspector: ')], [b('Date: ')]]),
+  h(2, 'Checklist'), todos([['Floor and walkways clear'], ['Fire extinguisher in place and checked'], ['Emergency exits free'], ['Lighting working'], ['Cleanliness OK']]),
+  h(2, 'Findings'), table(['#', 'Finding', 'Owner', 'Due'], [['1', '', '', ''], ['2', '', '', '']]),
+  h(2, 'Notes'), p(),
+);
+const weekly = () => doc(
+  callout('📊', 'blue', p(b('Week: '), 'fill in the dates, then keep each section short.')),
+  h(2, 'Highlights'), bullets([[''], ['']]),
+  h(2, 'Numbers'), table(['KPI', 'Target', 'Actual', 'Note'], [['', '', '', ''], ['', '', '', ''], ['', '', '', '']]),
+  h(2, 'Issues and blockers'), bullets([['']]),
+  h(2, 'Next week'), todos([[''], ['']]),
+);
+const incident = () => doc(
+  callout('🧯', 'red', p(b('Report as soon as possible. '), 'Write facts first; the cause can be filled in later.')),
+  h(2, 'What happened'), bullets([[b('When: ')], [b('Where: ')], [b('Who was involved: ')], [b('What happened: ')]]),
+  h(2, 'Photos'), p('Drop photos here.'),
+  h(2, 'Cause'), p(),
+  h(2, 'Corrective actions'), todos([[''], ['']]),
+  callout('⚠️', 'yellow', p(b('Prevent it happening again: '), 'what will change?')),
+);
+
+export const TEMPLATES = { guide, meeting, todo, brief, sop, inspection, weekly, incident };

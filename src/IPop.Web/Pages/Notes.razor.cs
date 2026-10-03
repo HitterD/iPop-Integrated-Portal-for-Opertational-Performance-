@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261003-sweep2";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261003-enrich1";
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History }
@@ -582,6 +582,9 @@ public partial class Notes
         new("todo", "To-do list", "Today, tomorrow, later", "✅", "green", "green", null),
         new("brief", "Project brief", "Goals, scope, timeline", "🎯", "purple", "purple", "lavender"),
         new("sop", "SOP", "Step-by-step procedure", "📖", "orange", "orange", "sand"),
+        new("inspection", "Inspection checklist", "Checklist with photos, findings table", "🔍", "teal", "teal", "teal"),
+        new("weekly", "Weekly report", "Highlights, KPI table, next week", "📊", "blue", "indigo", "graphite"),
+        new("incident", "Incident report", "What happened, cause, actions", "🧯", "red", "red", "sunset"),
     ];
 
     private static readonly string[] Emojis =

@@ -34,7 +34,7 @@ public static class NoteStyle
     public static readonly IReadOnlySet<string> Accents = new HashSet<string>
         { "blue", "indigo", "purple", "pink", "red", "orange", "yellow", "green", "teal", "gray" };
     public static readonly IReadOnlySet<string> Fonts = new HashSet<string> { "default", "serif", "mono" };
-    public static readonly IReadOnlySet<string> Templates = new HashSet<string> { "guide", "meeting", "todo", "brief", "sop" };
+    public static readonly IReadOnlySet<string> Templates = new HashSet<string> { "guide", "meeting", "todo", "brief", "sop", "inspection", "weekly", "incident" };
 }
 
 public record NoteResult<T>(T? Data, string? Error)

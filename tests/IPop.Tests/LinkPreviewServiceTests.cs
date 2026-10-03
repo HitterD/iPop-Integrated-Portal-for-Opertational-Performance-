@@ -116,7 +116,7 @@ public class LinkPreviewServiceTests
     private static LinkPreviewService NewService(TestDb t, SafeHttpFetcher fetcher, LinkPreviewCache? cache = null)
     {
         var db = t.Verify();
-        var resolver = new InternalLinkResolver(new NewsService(db), new ProjectService(db), new PermissionEvaluator(db));
+        var resolver = new InternalLinkResolver(new NewsService(db), new ProjectService(db), new PermissionEvaluator(db), new IPop.Infrastructure.Notes.NoteService(db));
         return new LinkPreviewService(cache ?? new LinkPreviewCache(), fetcher, new LinkPreviewOptions(),
             new LinkPreviewImageSigner("test-secret-0123456789-0123456789"), resolver, NullLogger<LinkPreviewService>.Instance);
     }
@@ -172,6 +172,31 @@ public class LinkPreviewServiceTests
         }
         t.Db.SaveChanges();
         t.AssignRole(userId, "Employee");
+    }
+
+    [Fact]
+    public async Task Note_preview_respects_page_access_and_does_not_leak_through_shared_cache()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("NOTEOWN");
+        var outsider = t.AddUser("NOTEOUT");
+        GrantRead(t, owner.Id, "notes.read");
+        GrantRead(t, outsider.Id, "notes.read");
+        var notes = new IPop.Infrastructure.Notes.NoteService(t.Verify());
+        var created = await notes.CreateAsync(owner.Id,
+            new IPop.Application.Notes.CreateNoteRequest(null, "Private inspection", null, null, null, null), default);
+        Assert.True(created.Success);
+        var transport = new FakeTransport(_ => throw new InvalidOperationException("internal links must not be fetched"));
+        using var fetcher = new SafeHttpFetcher(new FakeDns([]), transport);
+        var cache = new LinkPreviewCache();
+        var url = $"https://ipop.santos.co.id/notes/{created.Data!.Id}";
+        var visible = await NewService(t, fetcher, cache).GetAsync(url, owner.Id, default);
+        Assert.Equal("Private inspection", visible!.Internal!.Title);
+        Assert.Equal("Note", visible.Internal.Subtitle);
+        var hidden = await NewService(t, fetcher, cache).GetAsync(url, outsider.Id, default);
+        Assert.Null(hidden!.Internal!.Title);
+        Assert.Null(hidden.Internal.Id);
+        Assert.Empty(transport.Requests);
     }
 
     [Fact]

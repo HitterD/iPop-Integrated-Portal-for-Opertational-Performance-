@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using IPop.Application.Links;
 using IPop.Application.News;
+using IPop.Application.Notes;
 using IPop.Application.Projects;
 using IPop.Application.Rbac;
 
@@ -10,13 +11,16 @@ namespace IPop.Infrastructure.Links;
 /// Uses the same services (and therefore the same visibility rules) as the news and project
 /// endpoints; anything unknown or not visible degrades to a bare "page" with the path only.
 public sealed partial class InternalLinkResolver(
-    INewsService news, IProjectService projects, IPermissionEvaluator perms)
+    INewsService news, IProjectService projects, IPermissionEvaluator perms, INoteService notes)
 {
     [GeneratedRegex(@"^/news/(?<id>[0-9a-fA-F\-]{32,36})/?$")]
     private static partial Regex NewsPath();
 
     [GeneratedRegex(@"^/projects/(?<id>[0-9a-fA-F\-]{32,36})/?$")]
     private static partial Regex ProjectPath();
+
+    [GeneratedRegex(@"^/notes/(?<id>[0-9a-fA-F\-]{32,36})/?$")]
+    private static partial Regex NotePath();
 
     public async Task<InternalLinkDto> ResolveAsync(Uri uri, Guid viewerId, CancellationToken ct)
     {
@@ -56,6 +60,15 @@ public sealed partial class InternalLinkResolver(
             var p = await projects.GetProjectAsync(projectId, viewerId, ct);
             if (p is null) return page;
             return new InternalLinkDto("project", p.Id, p.Name, $"Project · {p.Progress}% · {p.TaskCount} tasks", display);
+        }
+
+        m = NotePath().Match(path);
+        if (m.Success && Guid.TryParse(m.Groups["id"].Value, out var noteId))
+        {
+            if (!await perms.IsAllowedAsync(viewerId, "notes.read", null, ct)) return page;
+            var result = await notes.GetPageAsync(viewerId, noteId, ct);
+            if (!result.Success || result.Data is not { } note) return page;
+            return new InternalLinkDto("page", note.Id, note.Title, "Note", display);
         }
 
         return page;

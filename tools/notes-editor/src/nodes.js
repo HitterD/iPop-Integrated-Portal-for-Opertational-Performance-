@@ -6,7 +6,7 @@ export const COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'teal', 'bl
 export const ACCENTS = { blue: '#0A84FF', indigo: '#5856D6', purple: '#AF52DE', pink: '#FF2D55', red: '#FF3B30', orange: '#FF9500', yellow: '#FFCC00', green: '#34C759', teal: '#30B0C7', gray: '#8E8E93' };
 export const cap = s => s[0].toUpperCase() + s.slice(1);
 
-const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+export const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 export const fmtSize = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(0)} KB` : `${(n / 1048576).toFixed(1)} MB`;
 
@@ -165,36 +165,6 @@ export function releaseBlobs() {
   for (const p of blobCache.values()) p.then(u => URL.revokeObjectURL(u), () => {});
   blobCache.clear();
 }
-
-export const NoteImage = Node.create({
-  name: 'noteImage',
-  group: 'block',
-  atom: true,
-  draggable: true,
-  addAttributes() {
-    return {
-      id: { default: null, parseHTML: e => e.getAttribute('data-id') },
-      name: { default: '', parseHTML: e => e.getAttribute('data-name') },
-      size: { default: 0, parseHTML: e => +e.getAttribute('data-size') || 0 },
-    };
-  },
-  parseHTML() { return [{ tag: 'figure[data-image]' }]; },
-  renderHTML({ node }) { return ['figure', { 'data-image': '', 'data-id': node.attrs.id, 'data-name': node.attrs.name, 'data-size': node.attrs.size }]; },
-  addOptions() { return { host: null }; },
-  addNodeView() {
-    return ({ node }) => {
-      const host = this.options.host?.() ?? {};
-      const dom = el('figure', 'nt-img');
-      dom.contentEditable = 'false';
-      dom.innerHTML = `<div class="nt-img-box"><span class="nt-img-wait">Loading image…</span></div><figcaption><span>${esc(node.attrs.name)}</span><span>${node.attrs.size ? fmtSize(node.attrs.size) + ' · ' : ''}NAS</span></figcaption>`;
-      if (node.attrs.id) loadBlob(host, node.attrs.id).then(url => {
-        const img = document.createElement('img'); img.src = url; img.alt = node.attrs.name;
-        dom.querySelector('.nt-img-box').replaceChildren(img);
-      }).catch(() => { dom.querySelector('.nt-img-wait').textContent = "Couldn't load the image"; });
-      return { dom, ignoreMutation: () => true };
-    };
-  },
-});
 
 export const NoteFile = Node.create({
   name: 'noteFile',

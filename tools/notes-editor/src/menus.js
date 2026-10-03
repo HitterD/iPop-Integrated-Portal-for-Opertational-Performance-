@@ -53,6 +53,9 @@ export function slashCommands(host) {
     ['Media', 'Image', 'Upload or paste — stored on NAS', '🖼', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.pickFiles('image/*'); }],
     ['Media', 'File', 'Attach any file', '📎', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.pickFiles(''); }],
     ['Media', 'Code', 'Capture a code snippet', '</>', '```', setBlock(byKey('code'))],
+    ['Media', 'Table', 'Rows and columns of plain text', '▦', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.tablePicker?.(); }],
+    ['Media', 'Bookmark', 'Link card with title and picture', '🔖', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.askLink?.('bookmark'); }],
+    ['Media', 'Embed video', 'YouTube or .mp4 link, plays in the page', '▶', '', ({ editor, range }) => { editor.chain().focus().deleteRange(range).run(); host.askLink?.('embed'); }],
     ['Inline', 'Mention person', 'Notify someone', '@', '@', ({ editor, range }) => editor.chain().focus().deleteRange(range).insertContent('@').run()],
     ['Inline', 'Date', 'Insert today\'s date', '📅', '', ({ editor, range }) => editor.chain().focus().deleteRange(range)
       .insertContent(new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) + ' ').run()],
