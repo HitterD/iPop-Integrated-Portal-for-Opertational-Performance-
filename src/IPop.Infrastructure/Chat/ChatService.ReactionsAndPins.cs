@@ -246,11 +246,13 @@ public sealed partial class ChatService
         return new SavedResultDto(true, null);
     }
 
-    public async Task<IReadOnlyList<SavedMessageDto>> GetSavedMessagesAsync(Guid userId, CancellationToken ct)
+    /// Newest first, a page at a time; only messages in rooms the user is still in.
+    public async Task<IReadOnlyList<SavedMessageDto>> GetSavedMessagesAsync(Guid userId, CancellationToken ct, int skip = 0, int take = 500)
     {
         return await db.ChatSavedMessages
             .AsNoTracking()
-            .Where(s => s.UserId == userId && !s.Message.IsDeleted)
+            .Where(s => s.UserId == userId && !s.Message.IsDeleted
+                        && db.ChatRoomMembers.Any(m => m.RoomId == s.Message.RoomId && m.UserId == userId && m.LeftAt == null))
             .Include(s => s.Message)
                 .ThenInclude(m => m.Sender)
             .OrderByDescending(s => s.SavedAt)
@@ -262,6 +264,7 @@ public sealed partial class ChatService
                 MentionPlainText.Project(s.Message.Content, 120),
                 s.SavedAt
             ))
+            .Skip(Math.Max(0, skip)).Take(Math.Clamp(take, 1, 500))
             .ToListAsync(ct);
     }
 }

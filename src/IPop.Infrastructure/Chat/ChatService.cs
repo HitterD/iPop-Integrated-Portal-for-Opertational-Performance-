@@ -49,8 +49,8 @@ public sealed partial class ChatService : IChatService
     Task<SavedResultDto> IChatService.UnsaveMessageAsync(Guid userId, Guid messageId, CancellationToken ct)
         => UnsaveMessageAsync(userId, messageId, ct);
 
-    Task<IReadOnlyList<SavedMessageDto>> IChatService.GetSavedMessagesAsync(Guid userId, CancellationToken ct)
-        => GetSavedMessagesAsync(userId, ct);
+    Task<IReadOnlyList<SavedMessageDto>> IChatService.GetSavedMessagesAsync(Guid userId, CancellationToken ct, int skip, int take)
+        => GetSavedMessagesAsync(userId, ct, skip, take);
 
     // ──────────────────────────────────────────────────────────────────────────
     // Private Helpers

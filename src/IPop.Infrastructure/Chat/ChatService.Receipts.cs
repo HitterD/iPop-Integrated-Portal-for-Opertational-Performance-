@@ -10,13 +10,13 @@ public sealed partial class ChatService
     // Delivery and Read Receipts
     // ──────────────────────────────────────────────────────────────────────────
 
-    public async Task RecordDeliveryAsync(Guid userId, Guid messageId, CancellationToken ct)
+    public async Task<bool> RecordDeliveryAsync(Guid userId, Guid messageId, CancellationToken ct)
     {
         var msgRoomId = await db.ChatMessages.AsNoTracking()
             .Where(m => m.Id == messageId).Select(m => m.RoomId).FirstOrDefaultAsync(ct);
-        if (msgRoomId == Guid.Empty) return;
+        if (msgRoomId == Guid.Empty) return false;
         if (!await db.ChatRoomMembers.AsNoTracking().AnyAsync(m => m.RoomId == msgRoomId && m.UserId == userId && m.LeftAt == null, ct))
-            return;
+            return false;
 
         var receipt = await db.ChatReadReceipts
             .FirstOrDefaultAsync(r => r.MessageId == messageId && r.UserId == userId, ct);
@@ -44,17 +44,20 @@ public sealed partial class ChatService
             receipt.DeliveredAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
         }
+        return true;
     }
 
-    public async Task RecordReadAsync(Guid userId, Guid messageId, CancellationToken ct)
+    public Task<bool> RecordReadAsync(Guid userId, Guid messageId, CancellationToken ct) => RecordReadAsync(userId, messageId, ct, retried: false);
+
+    private async Task<bool> RecordReadAsync(Guid userId, Guid messageId, CancellationToken ct, bool retried)
     {
         var msg = await db.ChatMessages.AsNoTracking()
             .Where(m => m.Id == messageId)
             .Select(m => new { m.RoomId, m.CreatedAt })
             .FirstOrDefaultAsync(ct);
-        if (msg is null) return;
+        if (msg is null) return false;
         if (!await db.ChatRoomMembers.AsNoTracking().AnyAsync(m => m.RoomId == msg.RoomId && m.UserId == userId && m.LeftAt == null, ct))
-            return;
+            return false;
 
         var receipt = await db.ChatReadReceipts
             .FirstOrDefaultAsync(r => r.MessageId == messageId && r.UserId == userId, ct);
@@ -122,9 +125,17 @@ public sealed partial class ChatService
         {
             await db.SaveChangesAsync(ct);
         }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex) && !retried)
+        {
+            // A concurrent delivery receipt won the insert race for one of the rows. The whole
+            // batch (and LastReadMessageAt) rolled back with it — redo it once against fresh rows.
+            db.ChangeTracker.Clear();
+            return await RecordReadAsync(userId, messageId, ct, retried: true);
+        }
         catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
         {
         }
+        return true;
     }
 
     public async Task<IReadOnlyList<SeenByDto>> GetSeenByAsync(Guid messageId, CancellationToken ct)
@@ -150,7 +161,7 @@ public sealed partial class ChatService
         if (msg is null || msg.IsDeleted) return new SeenListDto([], 0, 0);
         if (!await IsMemberAsync(callerId, msg.RoomId, ct)) return new SeenListDto([], 0, 0);
         var activeCount = await db.ChatRoomMembers.CountAsync(m => m.RoomId == msg.RoomId && m.LeftAt == null && m.UserId != msg.SenderId, ct);
-        var readers = await db.ChatReadReceipts.AsNoTracking().Where(r => r.MessageId == messageId)
+        var readers = await db.ChatReadReceipts.AsNoTracking().Where(r => r.MessageId == messageId && r.UserId != msg.SenderId)
             .Join(db.ChatRoomUserSettings.AsNoTracking().Where(s => s.RoomId == msg.RoomId),
                 r => r.UserId, s => s.UserId, (r, s) => new { r, s })
             .Where(x => x.s.LastReadMessageAt != null && x.s.LastReadMessageAt >= msg.CreatedAt)

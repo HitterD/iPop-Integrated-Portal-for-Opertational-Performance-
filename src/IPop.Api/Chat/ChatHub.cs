@@ -149,20 +149,14 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
             return;
         }
 
-        var memberRole = await db.ChatRoomMembers.AsNoTracking()
-            .Where(m => m.RoomId == message.RoomId && m.UserId == userId.Value && m.LeftAt == null)
-            .Select(m => m.Role)
-            .FirstOrDefaultAsync(Context.ConnectionAborted);
-
-        if (memberRole is null)
+        var isAdmin = await IPop.Api.Endpoints.ChatEndpoints.DeleteAuthorityAsync(db, perms, userId.Value, message.RoomId, Context.ConnectionAborted);
+        if (isAdmin is null)
         {
             await Clients.Caller.SendAsync("error", new { code = "forbidden" });
             return;
         }
 
-        var isAdmin = memberRole is "owner" or "admin";
-
-        var result = await chatService.DeleteMessageAsync(userId.Value, messageId, isAdmin, Context.ConnectionAborted);
+        var result = await chatService.DeleteMessageAsync(userId.Value, messageId, isAdmin.Value, Context.ConnectionAborted);
         if (!result.Success)
         {
             await Clients.Caller.SendAsync("error", new { code = result.Error });
@@ -185,7 +179,8 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
         var userId = GetUserId();
         if (userId is null) return;
 
-        await chatService.RecordDeliveryAsync(userId.Value, messageId, Context.ConnectionAborted);
+        // Non-members (e.g. kicked) record nothing and must not ping the sender.
+        if (!await chatService.RecordDeliveryAsync(userId.Value, messageId, Context.ConnectionAborted)) return;
 
         // Notify original sender of delivery
         var senderId = await db.ChatMessages.AsNoTracking()
@@ -204,7 +199,7 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
         var userId = GetUserId();
         if (userId is null) return;
 
-        await chatService.RecordReadAsync(userId.Value, messageId, Context.ConnectionAborted);
+        if (!await chatService.RecordReadAsync(userId.Value, messageId, Context.ConnectionAborted)) return;
 
         // The reader's other tabs clear this room's unread badge (debounced reload client-side).
         if (GetNik() is { } nik)

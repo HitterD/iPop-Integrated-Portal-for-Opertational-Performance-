@@ -423,23 +423,27 @@ public static class FileEndpoints
             {
                 var shares = await svc.ListSharesAsync(userId.Value, req.Server.Trim(), ct);
                 var emptied = new List<string>();
+                var deleted = 0;
+                var failed = 0;
                 foreach (var sh in shares)
                 {
-                    try
+                    var recyclePath = $"{sh.TrimEnd('/')}/#recycle";
+                    IReadOnlyList<SynoItem> items;
+                    try { items = await svc.ListFolderAsync(userId.Value, req.Server.Trim(), recyclePath, ct); }
+                    catch (SynoException ex) when (!ex.IsAuthFailure) { continue; /* share has no #recycle */ }
+                    foreach (var it in items)
                     {
-                        var recyclePath = $"{sh.TrimEnd('/')}/#recycle";
-                        var items = await svc.ListFolderAsync(userId.Value, req.Server.Trim(), recyclePath, ct);
-                        foreach (var it in items)
-                        {
-                            await svc.DeleteAsync(userId.Value, req.Server.Trim(), it.Path, ct);
-                        }
-                        if (items.Count > 0) emptied.Add(recyclePath);
+                        try { await svc.DeleteAsync(userId.Value, req.Server.Trim(), it.Path, ct); deleted++; }
+                        catch (SynoException ex) when (!ex.IsAuthFailure) { failed++; }
                     }
-                    catch { }
+                    if (items.Count > 0) emptied.Add(recyclePath);
                 }
-                await Audit(http, db, "files.recycle.empty", $"{req.Server.Trim()}:#recycle", ct);
+                await Audit(http, db, "files.recycle.empty", $"{req.Server.Trim()}:#recycle deleted={deleted} failed={failed}", ct);
                 await FilesRealtime.PushAsync(realtime, req.Server, emptied);
-                return Results.Ok();
+                // Report a partial failure instead of a false "emptied".
+                if (failed > 0)
+                    return Results.Json(new { code = "recycle_partial", message = $"{failed} item(s) could not be deleted.", deleted, failed }, statusCode: 502);
+                return Results.Ok(new { deleted });
             }
             catch (SynoException ex) when (ex.IsAuthFailure) { return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401); }
             catch (SynoException ex) { return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502); }
@@ -593,26 +597,63 @@ public static class FileEndpoints
             if (string.IsNullOrWhiteSpace(req.Server) || req.Paths is not { Length: > 0 })
                 return Results.BadRequest(new { code = "invalid_request", message = "Server and paths are required." });
 
-            var memStream = new MemoryStream();
-            using (var zip = new ZipArchive(memStream, ZipArchiveMode.Create, leaveOpen: true))
+            if (req.Paths.Length > MaxBulkDownloadItems)
+                return Results.BadRequest(new { code = "too_many_items", message = $"Select at most {MaxBulkDownloadItems} files." });
+
+            // Spool to a temp file (deleted on close) rather than a MemoryStream: the archive
+            // never sits in API memory, and the total is capped so one request can't fill the disk.
+            var tmp = new FileStream(Path.GetTempFileName(), FileMode.Create, FileAccess.ReadWrite, FileShare.None,
+                81920, FileOptions.DeleteOnClose | FileOptions.Asynchronous);
+            var skipped = 0;
+            var added = 0;
+            var tooLarge = false;
+            try
             {
-                foreach (var p in req.Paths)
+                using (var zip = new ZipArchive(tmp, ZipArchiveMode.Create, leaveOpen: true))
                 {
-                    try
+                    var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var p in req.Paths)
                     {
-                        await using var fileStream = await svc.DownloadAsync(userId.Value, req.Server.Trim(), p.Trim(), ct);
-                        var entryName = Path.GetFileName(p);
-                        var entry = zip.CreateEntry(entryName, CompressionLevel.Fastest);
-                        await using var entryStream = entry.Open();
-                        await fileStream.CopyToAsync(entryStream, ct);
+                        if (tmp.Length > MaxBulkDownloadBytes) { tooLarge = true; break; }
+                        try
+                        {
+                            await using var fileStream = await svc.DownloadAsync(userId.Value, req.Server.Trim(), p.Trim(), ct);
+                            // Two files with the same name from different folders must not collide.
+                            var entryName = Path.GetFileName(p.TrimEnd('/'));
+                            for (var n = 2; !names.Add(entryName); n++)
+                                entryName = $"{Path.GetFileNameWithoutExtension(p)} ({n}){Path.GetExtension(p)}";
+                            var entry = zip.CreateEntry(entryName, CompressionLevel.Fastest);
+                            await using var entryStream = entry.Open();
+                            await fileStream.CopyToAsync(entryStream, ct);
+                            added++;
+                        }
+                        catch (SynoException ex) when (ex.IsAuthFailure) { throw; }
+                        catch (Exception ex) when (ex is not OperationCanceledException) { skipped++; }
                     }
-                    catch { /* best-effort skip unreadable file in batch */ }
                 }
             }
+            catch (SynoException ex) when (ex.IsAuthFailure)
+            {
+                await tmp.DisposeAsync();
+                return Results.Json(new { code = "synology_credential_required", message = ex.Message }, statusCode: 401);
+            }
+            catch
+            {
+                await tmp.DisposeAsync();
+                throw;
+            }
 
-            memStream.Position = 0;
-            await Audit(http, db, "files.bulk-download", $"{req.Server.Trim()}:{req.Paths.Length} items", ct);
-            return Results.File(memStream, "application/zip", $"ipop_{req.Server.Trim()}_{DateTime.UtcNow:yyyyMMdd-HHmm}.zip");
+            if (tooLarge || added == 0)
+            {
+                await tmp.DisposeAsync();
+                return tooLarge
+                    ? Results.Json(new { code = "zip_too_large", message = $"The selection is larger than {MaxBulkDownloadBytes / (1024 * 1024)} MB. Download fewer files at a time." }, statusCode: 413)
+                    : Results.Json(new { code = "synology_error", message = "None of the selected files could be read." }, statusCode: 502);
+            }
+
+            tmp.Position = 0;
+            await Audit(http, db, "files.bulk-download", $"{req.Server.Trim()}:{added} items, {skipped} skipped", ct);
+            return Results.File(tmp, "application/zip", $"ipop_{req.Server.Trim()}_{DateTime.UtcNow:yyyyMMdd-HHmm}.zip");
         });
 
         return app;
@@ -634,6 +675,10 @@ public static class FileEndpoints
     }
 
     private static string PrefsKey(Guid userId) => $"files.prefs:{userId:N}";
+
+    // The browser holds the whole zip in WASM memory before saving it, so keep it modest.
+    private const int MaxBulkDownloadItems = 200;
+    private const long MaxBulkDownloadBytes = 500L * 1024 * 1024;
 
     // Matches the page's 100 MB per-file limit, plus room for the multipart envelope.
     private const long MaxUploadRequestBytes = 100L * 1024 * 1024 + 1024 * 1024;

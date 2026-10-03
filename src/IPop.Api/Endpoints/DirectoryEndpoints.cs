@@ -211,7 +211,7 @@ public static class DirectoryEndpoints
             return groups.Select(g => new DirGroupDto(
                 g.Id, g.Name, g.ParentId, g.SortOrder, g.IsActive,
                 g.Members.Select(m => new DirGroupMemberDto(
-                    m.User.Nik, m.User.Name, null,
+                    "", m.User.Name, null, // NIK is not shown to users (office rule); no client reads it here
                     m.User.Department?.Name, m.User.Site?.Name,
                     PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now, m.User.PresenceIsIdle)
                 )).ToArray()
@@ -229,7 +229,7 @@ public static class DirectoryEndpoints
             return nodes.Select(n => new OrgNodeDto(
                 n.Id, n.Name, n.Title, n.ParentId, n.DepartmentId, n.SortOrder, n.IsActive,
                 n.Members.Select(m => new OrgNodeMemberDto(
-                    m.User.Nik, m.User.Name, null,
+                    "", m.User.Name, null, // NIK is not shown to users (office rule); no client reads it here
                     m.User.Department?.Name, m.User.Site?.Name,
                     PresenceStatus.ComputeStatus(m.User.PresenceLastSeenAt, m.User.PresenceManualStatus, now, m.User.PresenceIsIdle)
                 )).ToArray()

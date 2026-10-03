@@ -74,6 +74,37 @@ public class DashboardAndSearchTests
     }
 
     [Fact]
+    public async Task SearchService_News_RespectsAudienceAndSchedule()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("SRCH_ME");
+        var author = t.AddUser("SRCH_AUTH");
+        NewsPost Post(string title, DateTime? publishAt = null)
+        {
+            var p = new NewsPost
+            {
+                Id = Guid.NewGuid(), Type = "news", Title = title, Body = "b", Status = "published",
+                AuthorId = author.Id, PublishAt = publishAt, PublishedAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
+            };
+            t.Db.NewsPosts.Add(p);
+            return p;
+        }
+        Post("Orion for all");
+        var scheduled = Post("Orion scheduled", DateTime.UtcNow.AddDays(2));
+        var targeted = Post("Orion for someone else");
+        t.Db.NewsTargets.Add(new NewsTarget { Id = Guid.NewGuid(), NewsPostId = targeted.Id, Kind = "user", Value = author.Nik });
+        var mine = Post("Orion for me");
+        t.Db.NewsTargets.Add(new NewsTarget { Id = Guid.NewGuid(), NewsPostId = mine.Id, Kind = "user", Value = me.Nik });
+        await t.Db.SaveChangesAsync();
+
+        var titles = (await new SearchService(t.Verify()).SearchAsync(me.Id, "Orion", default))
+            .Where(r => r.Group == "News & Memos").Select(r => r.Title).OrderBy(x => x).ToList();
+
+        Assert.Equal(["Orion for all", "Orion for me"], titles);
+    }
+
+    [Fact]
     public async Task DashboardService_AggregatesKpisTasksAttentionAndAgenda()
     {
         using var t = new TestDb();

@@ -151,7 +151,15 @@ public static class AdminEndpoints
                 ? tokens.HashRefreshToken(req.CurrentRefreshToken)
                 : null;
 
+            // The caller's own sign-in always survives: its session family comes from the access
+            // token itself, so an empty body can no longer sign the admin out with everyone else.
+            Guid? ownFamily = Guid.TryParse(http.User.FindFirst(IPop.Infrastructure.Auth.AccessTokenGuard.SessionClaim)?.Value, out var fam) ? fam : null;
+            if (ownFamily is null && req?.CurrentSessionId is null && currentHash is null)
+                return Results.BadRequest(new { code = "current_session_unknown", message = "Sign in again, then retry." });
+
             var query = db.AuthSessions.Where(s => s.RevokedAt == null && s.ExpiresAt > now);
+            if (ownFamily is { } own)
+                query = query.Where(s => s.FamilyId != own);
             if (req?.CurrentSessionId is not null)
                 query = query.Where(s => s.Id != req.CurrentSessionId.Value);
             else if (currentHash is not null)
@@ -207,6 +215,8 @@ public static class AdminEndpoints
             var nik = req.Nik.Trim();
             if (nik.Length == 0 || string.IsNullOrWhiteSpace(req.Name) || string.IsNullOrWhiteSpace(req.Email))
                 return Results.BadRequest(new { code = "invalid_request", message = "NIK, name, and email are required." });
+            if (!IsEmail(req.Email))
+                return Results.BadRequest(new { code = "invalid_email", message = "Enter a valid email address." });
             if (await db.Users.AnyAsync(u => u.Nik == nik, ct))
                 return Results.Conflict(new { code = "duplicate_nik", message = "A user with this NIK already exists." });
 
@@ -233,7 +243,12 @@ public static class AdminEndpoints
             var user = await db.Users.FirstOrDefaultAsync(u => u.Nik == nik, ct);
             if (user is null) return Results.NotFound();
             if (req.Name is not null) user.Name = req.Name.Trim();
-            if (req.Email is not null) user.Email = req.Email.Trim();
+            if (req.Email is not null)
+            {
+                if (!IsEmail(req.Email))
+                    return Results.BadRequest(new { code = "invalid_email", message = "Enter a valid email address." });
+                user.Email = req.Email.Trim();
+            }
             if (req.Position is not null) user.Position = req.Position.Trim();
             if (req.Location is not null) user.Location = req.Location.Trim();
             // "" clears the extension; null leaves it alone.
@@ -1071,6 +1086,14 @@ public static class AdminEndpoints
             return Results.BadRequest(new { code = "unknown_head", message = "Head must be an active user." });
         set(head.Id);
         return null;
+    }
+
+    /// One plain address (no display name, no list) — what HRIS and the mail notifier expect.
+    internal static bool IsEmail(string? value)
+    {
+        var v = value?.Trim();
+        if (string.IsNullOrEmpty(v) || v.Length > 254 || v.Contains(' ') || v.Contains(',') || v.Contains(';')) return false;
+        return System.Net.Mail.MailAddress.TryCreate(v, out var a) && a.Address == v && a.Host.Contains('.');
     }
 
     private static string? CallerNik(HttpContext http) => http.User.FindFirst("nik")?.Value;

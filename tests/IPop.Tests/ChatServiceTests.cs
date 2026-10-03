@@ -578,3 +578,29 @@ public class TaskDiscussionTests
         Assert.Equal("comment_added", rows[0].Action);
     }
 }
+
+public class ReceiptMembershipTests
+{
+    [Fact]
+    public async Task NonMember_receipts_are_refused_and_seen_list_skips_sender()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("a"); var b = t.AddUser("b"); var x = t.AddUser("x");
+        var room = t.AddRoom("group", "Team");
+        t.AddMember(room.Id, a.Id, "owner"); t.AddMember(room.Id, b.Id);
+        var msg = t.AddMessage(room.Id, a.Id, "hi");
+        IChatService svc = new ChatService(t.Verify());
+
+        Assert.False(await svc.RecordReadAsync(x.Id, msg.Id, default));
+        Assert.False(await svc.RecordDeliveryAsync(x.Id, msg.Id, default));
+        Assert.True(await svc.RecordReadAsync(b.Id, msg.Id, default));
+
+        // A stray self-receipt from the sender must not count as a reader.
+        t.Db.ChatReadReceipts.Add(new ChatReadReceipt { MessageId = msg.Id, UserId = a.Id, ReadAt = DateTime.UtcNow });
+        await t.Db.SaveChangesAsync();
+        var seen = await svc.GetSeenDetailAsync(a.Id, msg.Id, default);
+        Assert.Equal([b.Id], seen.Readers.Select(r => r.UserId));
+        Assert.Equal(1, seen.ActiveMemberCount);
+        Assert.False(t.Verify().ChatReadReceipts.Any(r => r.UserId == x.Id));
+    }
+}

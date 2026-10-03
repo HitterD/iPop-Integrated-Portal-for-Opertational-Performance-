@@ -65,8 +65,19 @@ public sealed class TaskReminderWorker(IServiceScopeFactory scopeFactory, ILogge
         {
             try
             {
+                // Already past due (worker outage, or reminder set after the deadline): retire
+                // it unsent instead of firing a stale "due on …" reminder.
+                if (row.Task.DueDate!.Value <= now)
+                {
+                    var stale = await db.ProjectTaskReminders.FirstOrDefaultAsync(r => r.Id == row.Id, ct);
+                    if (stale is not null) stale.SentAt = now;
+                    continue;
+                }
+
+                // Only assignees who are still members of the project.
                 var assignees = await db.ProjectTaskAssignees.AsNoTracking()
-                    .Where(a => a.TaskId == row.Task.Id)
+                    .Where(a => a.TaskId == row.Task.Id
+                                && db.ProjectMembers.Any(m => m.ProjectId == row.Task.ProjectId && m.UserId == a.UserId))
                     .Select(a => a.UserId)
                     .ToListAsync(ct);
                 if (assignees.Count == 0) continue;

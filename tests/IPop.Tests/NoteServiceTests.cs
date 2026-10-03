@@ -159,6 +159,20 @@ public class NoteServiceTests
         Assert.Equal("invalid_template", (await Svc(t).CreateAsync(a.Id, new CreateNoteRequest(null, "x", null, "guide", null, null), Ct)).Error);
     }
 
+    // A page that already has edits (a collaborator typed first, or a duplicate carried the
+    // content along) must not get the template dropped on top; the claim still clears it.
+    [Fact]
+    public async Task Seed_template_is_withheld_once_page_has_content()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("a");
+        var r = await Svc(t).CreateAsync(a.Id, new CreateNoteRequest(null, "Rapat", null, "meeting", null, null), Ct);
+        t.Db.NoteUpdates.Add(new IPop.Core.Entities.NoteUpdate { PageId = r.Data!.Id, UserId = a.Id, Data = [1, 2, 3], CreatedAt = DateTime.UtcNow });
+        await t.Db.SaveChangesAsync();
+        Assert.Null((await Svc(t).ClaimSeedAsync(a.Id, r.Data!.Id, Ct)).Data);
+        Assert.Null(await t.Verify().NotePages.Where(p => p.Id == r.Data!.Id).Select(p => p.SeedTemplate).SingleAsync());
+    }
+
     [Fact]
     public async Task Guide_is_created_once_per_user()
     {

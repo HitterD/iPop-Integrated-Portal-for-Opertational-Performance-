@@ -89,6 +89,11 @@ public sealed partial class CallService
         }
         else if (me.Status != CallParticipantStatus.Accepted)
         {
+            // A group call's row was created from membership at ring time: someone removed from
+            // (or who left) the group since then may not come back in, unless "Add person" asked them.
+            if (room.Kind == CallKind.Group && room.ChatRoomId is not null && me.InvitedById is null
+                && !await db.ChatRoomMembers.AnyAsync(m => m.RoomId == room.ChatRoomId && m.UserId == userId && m.LeftAt == null, ct))
+                return Fail(CallErrors.NotParticipant, "You are not in this call.");
             // Invited, declined earlier or left: (re)join.
             me.Status = CallParticipantStatus.Accepted;
             me.JoinedAt = now;

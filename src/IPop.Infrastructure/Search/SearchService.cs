@@ -72,11 +72,16 @@ public class SearchService(IPopDbContext db) : ISearchService
                 Icon: "check-square"));
         }
 
-        // 3. News & Memos
-        var news = await db.NewsPosts.AsNoTracking()
-            .Where(n => n.Status == "published" && n.Title.ToLower().Contains(q))
-            .Take(4)
-            .ToListAsync(ct);
+        // 3. News & Memos — only live posts the viewer's audience targeting reaches (same as the feed).
+        var now = DateTime.UtcNow;
+        var newsQuery = db.NewsPosts.AsNoTracking()
+            .Where(n => n.Status == "published" && (n.PublishAt == null || n.PublishAt <= now) && n.Title.ToLower().Contains(q));
+        if (!isAdmin)
+        {
+            var visibleNews = await IPop.Infrastructure.News.NewsService.VisiblePostIdsAsync(db, userId, ct);
+            newsQuery = newsQuery.Where(n => visibleNews.Contains(n.Id));
+        }
+        var news = await newsQuery.Take(4).ToListAsync(ct);
 
         foreach (var n in news)
         {

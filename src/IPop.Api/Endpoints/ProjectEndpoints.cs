@@ -982,6 +982,10 @@ public static class ProjectEndpoints
             if (name.Length == 0 || name.Length > 200)
                 return Results.Json(new { code = "invalid_name", message = "Template name is required." }, statusCode: 422);
 
+            // Copying a project into a template exposes its task list: only its members may.
+            if (req.SourceProjectId is { } source && !await db.ProjectMembers.AnyAsync(pm => pm.ProjectId == source && pm.UserId == userId.Value, ct))
+                return Results.Json(new { code = "forbidden", message = "Not a project member." }, statusCode: 403);
+
             var tpl = new ProjectTemplate
             {
                 Id = Guid.NewGuid(), Name = name, Description = req.Description?.Trim(),
@@ -1122,6 +1126,8 @@ public static class ProjectEndpoints
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
+            var isMember = await db.ProjectMembers.AnyAsync(pm => pm.ProjectId == id && pm.UserId == userId.Value, ct);
+            if (!isMember) return Results.Json(new { code = "forbidden", message = "Not a project member." }, statusCode: 403);
             var m = await db.ProjectMilestones.FirstOrDefaultAsync(x => x.Id == milestoneId && x.ProjectId == id, ct);
             if (m is null) return Results.Json(new { code = "not_found", message = "Milestone not found." }, statusCode: 404);
 
@@ -1154,6 +1160,8 @@ public static class ProjectEndpoints
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
+            var isMember = await db.ProjectMembers.AnyAsync(pm => pm.ProjectId == id && pm.UserId == userId.Value, ct);
+            if (!isMember) return Results.Json(new { code = "forbidden", message = "Not a project member." }, statusCode: 403);
             var m = await db.ProjectMilestones.FirstOrDefaultAsync(x => x.Id == milestoneId && x.ProjectId == id, ct);
             if (m is null) return Results.Json(new { code = "not_found", message = "Milestone not found." }, statusCode: 404);
             db.ProjectMilestones.Remove(m);

@@ -921,8 +921,11 @@ public static class MailEndpoints
                 return Results.Json(new { code = "already_read", message = "Mail has already been read by recipient — cannot be recalled." }, statusCode: 422);
 
             var now = DateTime.UtcNow;
-            foreach (var r in mail.Recipients.Where(r => r.RecipientType != "from"))
-                r.Folder = "trash"; // ditarik dari inbox penerima
+            var affected = mail.Recipients.Select(r => r.UserId).Distinct().ToList();
+            // Every read path (detail, thread, attachments, restore) is gated on the recipient row,
+            // so removing it is what actually withdraws the mail — trash would stay readable/restorable.
+            // The sender's own "from" row stays: the recalled mail remains in their Sent folder.
+            db.MailRecipients.RemoveRange(mail.Recipients.Where(r => r.RecipientType != "from" && r.UserId != mail.SenderId));
             mail.Status = "recalled";
             mail.UpdatedAt = now;
             await db.SaveChangesAsync(ct);
@@ -931,7 +934,6 @@ public static class MailEndpoints
             // sender's other tabs. Best-effort — a hub failure never fails the recall.
             try
             {
-                var affected = mail.Recipients.Select(r => r.UserId).Distinct().ToList();
                 var users = await db.Users.AsNoTracking().Where(u => affected.Contains(u.Id))
                     .Select(u => new { u.Id, u.Nik }).ToListAsync(ct);
                 foreach (var u in users)
@@ -1115,13 +1117,15 @@ public static class MailEndpoints
         "subject_required" => "Add a subject.",
         "subject_too_long" => "The subject is too long.",
         "body_required" => "Write a message.",
+        "schedule_in_past" => "The scheduled time has already passed. Pick a time in the future.",
+        "schedule_too_far" => "Mail can be scheduled at most a year ahead.",
         _ => result.Error ?? "Couldn't send the mail.",
     };
 
     private static IResult ResultOrError(SendMailResult result)
         => result.Success
             ? Results.Ok(result)
-            : Results.Json(new { code = result.Error, message = result.Error }, statusCode: ErrorStatus(result.Error));
+            : Results.Json(new { code = result.Error, message = SendErrorMessage(result) }, statusCode: ErrorStatus(result.Error));
 
     private static int ErrorStatus(string? error) => error switch
     {

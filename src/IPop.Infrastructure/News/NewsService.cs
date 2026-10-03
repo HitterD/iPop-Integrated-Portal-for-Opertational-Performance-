@@ -468,7 +468,7 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
         var videos = await VideoBriefsAsync(postIds, ct);
 
         var summaries = items.Select(p => new NewsSummaryDto(
-            p.Id, p.Type, p.Title, NormalizeStatus(p.Status), p.Author.Name, p.Author.Nik,
+            p.Id, p.Type, p.Title, NormalizeStatus(p.Status), p.Author.Name, AuthorNik: "", // unused by the list; detail carries it for the avatar
             p.PublishAt, p.PublishedAt, p.IsPinned, p.PinnedAt, p.RequiresAcknowledgement,
             p.Targets.Select(t => new NewsTargetDto(t.Kind, t.Value)).ToList(),
             ackedIds.Contains(p.Id), p.CreatedAt, p.UpdatedAt,
@@ -669,13 +669,17 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
     public async Task<bool> CanManageAsync(Guid userId, CancellationToken ct)
     {
         if (_canManage.TryGetValue(userId, out var cached)) return cached;
+        // With the evaluator present it is the only authority: a Deny override must win over the
+        // role grant, so the raw role join below is just the evaluator-less (test) fallback.
         var allowed = await IsAdminAsync(userId, ct)
-            || (permEval is not null && await permEval.IsAllowedAsync(userId, "news.publish", null, ct))
-            || await (from ur in db.UserRoles.AsNoTracking()
+            || (permEval is not null
+                ? await permEval.IsAllowedAsync(userId, "news.publish", null, ct)
+                  || await permEval.IsAllowedAsync(userId, "news.approve", null, ct)
+                : await (from ur in db.UserRoles.AsNoTracking()
                       join rp in db.RolePermissions.AsNoTracking() on ur.RoleId equals rp.RoleId
                       join p in db.Permissions.AsNoTracking() on rp.PermissionId equals p.Id
                       where ur.UserId == userId && (p.Code == "news.publish" || p.Code == "news.approve")
-                      select p.Id).AnyAsync(ct);
+                      select p.Id).AnyAsync(ct));
         _canManage[userId] = allowed;
         return allowed;
     }
@@ -795,7 +799,10 @@ public sealed class NewsService(IPopDbContext db, INotificationGatewayService? n
     }
 
     /// Post ids the reader may see through targeting (untargeted posts are for everyone).
-    private async Task<List<Guid>> VisiblePostIdsAsync(Guid viewerId, CancellationToken ct)
+    private Task<List<Guid>> VisiblePostIdsAsync(Guid viewerId, CancellationToken ct) => VisiblePostIdsAsync(db, viewerId, ct);
+
+    /// Posts whose targeting reaches the viewer (status/schedule not applied). Shared with search.
+    internal static async Task<List<Guid>> VisiblePostIdsAsync(IPopDbContext db, Guid viewerId, CancellationToken ct)
     {
         var viewer = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == viewerId, ct);
         if (viewer is null) return [];

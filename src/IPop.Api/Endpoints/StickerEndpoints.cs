@@ -102,12 +102,25 @@ public static class StickerEndpoints
         {
             var file = await svc.GetFileAsync(id, ct);
             if (file is null) return Results.NotFound();
-            // A sticker never changes: cache hard in the browser.
-            http.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+            // A sticker never changes: cache hard in the browser — but only once the bytes are in
+            // hand, so a passing NAS error is not remembered as a year-long 404.
+            const string forever = "public, max-age=31536000, immutable";
             if (ChatEndpoints.TryLocalFile(env.ContentRootPath, file.Server, file.Path, out var local))
+            {
+                http.Response.Headers.CacheControl = forever;
                 return Results.File(local, "image/webp");
-            try { return Results.File(await ChatEndpoints.DownloadAttachmentAsync(fileSvc, file.Path, ct), "image/webp"); }
-            catch (SynoException) { return Results.NotFound(); }
+            }
+            try
+            {
+                var stream = await ChatEndpoints.DownloadAttachmentAsync(fileSvc, file.Path, ct);
+                http.Response.Headers.CacheControl = forever;
+                return Results.File(stream, "image/webp");
+            }
+            catch (SynoException)
+            {
+                http.Response.Headers.CacheControl = "no-store";
+                return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
+            }
         }).AllowAnonymous();
 
         return app;

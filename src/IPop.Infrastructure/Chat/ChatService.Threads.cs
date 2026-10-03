@@ -76,8 +76,11 @@ public sealed partial class ChatService
 
         if (req.AttachmentIds is { Count: > 0 })
         {
+            var roomD = parent.RoomId.ToString("D"); var roomN = parent.RoomId.ToString("N");
             var orphans = await db.ChatAttachments
-                .Where(a => req.AttachmentIds.Contains(a.Id) && a.MessageId == null)
+                .Where(a => req.AttachmentIds.Contains(a.Id) && a.MessageId == null
+                    // Only files uploaded into this room: an id from another room must not be pulled in.
+                    && (a.SynologyPath.Contains(roomD) || a.SynologyPath.Contains(roomN)))
                 .ToListAsync(ct);
             foreach (var a in orphans)
                 a.MessageId = reply.Id;

@@ -371,6 +371,21 @@ public class MailServiceTests
     }
 
     [Fact]
+    public async Task Schedule_rejects_long_past_and_far_future_times()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A");
+        var b = t.AddUser("B");
+        var svc = new MailService(t.Verify());
+        ComposeMailRequest Req(DateTime at) => new("S", "<p>x</p>", [b.Nik], [], [], ScheduledAt: at);
+        Assert.Equal("schedule_in_past", (await svc.SendAsync(a.Id, Req(DateTime.UtcNow.AddDays(-1)), default)).Error);
+        Assert.Equal("schedule_too_far", (await svc.SendAsync(a.Id, Req(DateTime.UtcNow.AddYears(2)), default)).Error);
+        var ok = await svc.SendAsync(a.Id, Req(DateTime.UtcNow.AddHours(2)), default);
+        Assert.True(ok.Success);
+        Assert.Equal("schedule_in_past", (await svc.RescheduleAsync(a.Id, ok.MailId!.Value, DateTime.UtcNow.AddDays(-2), default)).Error);
+    }
+
+    [Fact]
     public async Task DeliverDueScheduledMails_delivers_ready_mails_and_moves_sender_to_sent()
     {
         using var t = new TestDb();

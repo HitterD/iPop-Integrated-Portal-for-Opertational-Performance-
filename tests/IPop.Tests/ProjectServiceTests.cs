@@ -1027,6 +1027,45 @@ public class MeetingFlowTests
         Assert.Equal(0, remaining);
     }
 
+    // A reminder for someone who left the meeting's room, one for someone who declined, and
+    // one whose meeting already started are all retired (SentAt set) without a notification.
+    [Fact]
+    public async Task Meeting_reminder_skips_left_declined_and_started()
+    {
+        using var t = new TestDb();
+        var org = t.AddUser("RM_ORG");
+        var left = t.AddUser("RM_LEFT");
+        var declined = t.AddUser("RM_DECL");
+        var stays = t.AddUser("RM_STAY");
+        var db = t.Verify();
+        var room = new IPop.Core.Entities.ChatRoom { Id = Guid.NewGuid(), Name = "R", Type = "group", IsActive = true, CreatedAt = DateTime.UtcNow };
+        db.ChatRooms.Add(room);
+        foreach (var (u, leftAt) in new[] { (org, (DateTime?)null), (left, DateTime.UtcNow), (declined, null), (stays, null) })
+            db.ChatRoomMembers.Add(new IPop.Core.Entities.ChatRoomMember { Id = Guid.NewGuid(), RoomId = room.Id, UserId = u.Id, Role = "member", JoinedAt = DateTime.UtcNow, LeftAt = leftAt });
+        IPop.Core.Entities.Meeting Meet(DateTime start)
+        {
+            var m = new IPop.Core.Entities.Meeting
+            {
+                Id = Guid.NewGuid(), Title = "M", StartAt = start, EndAt = start.AddHours(1),
+                OrganizerId = org.Id, Status = "aktif", RoomId = room.Id, CreatedAt = DateTime.UtcNow,
+            };
+            db.Meetings.Add(m);
+            foreach (var u in new[] { org, left, declined, stays })
+                db.MeetingAttendees.Add(new IPop.Core.Entities.MeetingAttendee { Id = Guid.NewGuid(), MeetingId = m.Id, UserId = u.Id, RsvpStatus = u == declined ? "decline" : "pending" });
+            return m;
+        }
+        var soon = Meet(DateTime.UtcNow.AddMinutes(20));
+        var started = Meet(DateTime.UtcNow.AddMinutes(-5));
+        foreach (var (m, u) in new[] { (soon, left), (soon, declined), (soon, stays), (started, stays) })
+            db.MeetingReminders.Add(new IPop.Core.Entities.MeetingReminder { Id = Guid.NewGuid(), MeetingId = m.Id, UserId = u.Id, SendAt = DateTime.UtcNow.AddMinutes(-1) });
+        await db.SaveChangesAsync();
+
+        var gateway = new RecordingGateway();
+        Assert.Equal(1, await IPop.Infrastructure.Meetings.MeetingReminderWorker.ProcessDueRemindersAsync(db, gateway, default));
+        Assert.Equal(stays.Id, Assert.Single(gateway.Published).Target.UserId);
+        Assert.Equal(0, await t.Verify().MeetingReminders.CountAsync(r => r.SentAt == null));
+    }
+
     private sealed class RecordingGateway : IPop.Application.Notifications.INotificationGatewayService
     {
         public List<(string EventType, IPop.Application.Notifications.NotificationTarget Target, string Priority)> Published = [];

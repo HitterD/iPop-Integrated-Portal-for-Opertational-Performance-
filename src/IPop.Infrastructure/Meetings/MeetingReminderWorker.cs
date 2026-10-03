@@ -74,9 +74,33 @@ public sealed class MeetingReminderWorker(IServiceScopeFactory scopeFactory, ILo
             .ToListAsync(ct);
         if (due.Count == 0) return 0;
 
+        // Recipients who still belong to the meeting: an attendee who has not declined and,
+        // for a room meeting, is still an active member of that room. Anyone else (removed,
+        // left the room) and any reminder whose meeting already started is retired unsent —
+        // a worker outage must not flood people with reminders for meetings in the past.
+        var meetingIds = due.Select(r => r.Meeting.Id).Distinct().ToList();
+        var attendees = await db.MeetingAttendees.AsNoTracking()
+            .Where(a => meetingIds.Contains(a.MeetingId) && a.RsvpStatus != "decline")
+            .Select(a => new { a.MeetingId, a.UserId }).ToListAsync(ct);
+        var attending = attendees.Select(a => (a.MeetingId, a.UserId)).ToHashSet();
+        var roomIds = due.Where(r => r.Meeting.RoomId != null).Select(r => r.Meeting.RoomId!.Value).Distinct().ToList();
+        var members = (await db.ChatRoomMembers.AsNoTracking()
+            .Where(m => roomIds.Contains(m.RoomId) && m.LeftAt == null)
+            .Select(m => new { m.RoomId, m.UserId }).ToListAsync(ct))
+            .Select(m => (m.RoomId, m.UserId)).ToHashSet();
+
         var sent = 0;
         foreach (var row in due)
         {
+            var stillInvited = (row.UserId == row.Meeting.OrganizerId || attending.Contains((row.Meeting.Id, row.UserId)))
+                && (row.Meeting.RoomId is not { } roomId || members.Contains((roomId, row.UserId)));
+            if (row.Meeting.StartAt <= now || !stillInvited)
+            {
+                var stale = await db.MeetingReminders.FirstOrDefaultAsync(r => r.Id == row.Id, ct);
+                if (stale is not null) stale.SentAt = now;
+                continue;
+            }
+
             // Terbitkan; tandai SentAt HANYA bila publish berhasil — kegagalan mencoba
             // lagi tick berikutnya, tidak menandai terkirim palsu.
             var result = await gateway.PublishInternalAsync(

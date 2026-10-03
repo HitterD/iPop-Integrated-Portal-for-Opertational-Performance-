@@ -199,3 +199,21 @@ public class GroupCallServiceTests
         Assert.Equal("call-" + id.ToString("N"), CallService.LiveKitRoomName(id));
     }
 }
+
+public class GroupCallRejoinTests
+{
+    [Fact]
+    public async Task Member_who_left_the_group_cannot_rejoin_its_call()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("A"); var b = t.AddUser("B");
+        var g = t.AddRoom("group", "Tim");
+        t.AddMember(g.Id, a.Id, "owner");
+        var mb = t.AddMember(g.Id, b.Id);
+        var call = (await new CallService(t.Verify()).StartGroupCallAsync(a.Id, g.Id, default)).Room!;
+
+        mb.LeftAt = DateTime.UtcNow;
+        await t.Db.SaveChangesAsync();
+        Assert.Equal(CallErrors.NotParticipant, (await new CallService(t.Verify()).JoinGroupCallAsync(b.Id, call.Id, default)).ErrorCode);
+    }
+}

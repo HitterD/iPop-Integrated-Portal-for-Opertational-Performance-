@@ -209,8 +209,13 @@ public static class ChatEndpoints
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
 
-            var isAdmin = await permEval.IsAllowedAsync(userId.Value, "chat.admin", null);
-            var result = await svc.DeleteMessageAsync(userId.Value, id, isAdmin, ct);
+            // Same rule as the hub's DeleteMessage; the message must also belong to the route's room.
+            if (!await db.ChatMessages.AnyAsync(m => m.Id == id && m.RoomId == roomId, ct))
+                return Results.Json(new { code = "message_not_found", message = "Message not found." }, statusCode: 404);
+            var isAdmin = await DeleteAuthorityAsync(db, permEval, userId.Value, roomId, ct);
+            if (isAdmin is null)
+                return Results.Json(new { code = "forbidden", message = "You are not a member of this room." }, statusCode: 403);
+            var result = await svc.DeleteMessageAsync(userId.Value, id, isAdmin.Value, ct);
 
             if (!result.Success)
             {
@@ -474,11 +479,11 @@ public static class ChatEndpoints
         // ──────────────────────────────────────────────────────────────────────
 
         // GET /api/chat/saved — daftar simpanan milik pengguna yang sedang login
-        g.MapGet("/saved", async (HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+        g.MapGet("/saved", async (int? skip, int? take, HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            return Results.Ok(await svc.GetSavedMessagesAsync(userId.Value, ct));
+            return Results.Ok(await svc.GetSavedMessagesAsync(userId.Value, ct, skip ?? 0, take ?? 500));
         });
 
         // POST /api/chat/saved/{messageId}
@@ -980,6 +985,11 @@ public static class ChatEndpoints
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
+            // Up to 5 files of 50 MB each (checked per file below); reject anything larger up front.
+            if (http.Request.ContentLength > MaxAttachmentRequestBytes)
+                return Results.Json(new { code = "file_too_large", message = "Attachments are limited to 5 files of 50 MB each." }, statusCode: 413);
+            http.Features.Set<Microsoft.AspNetCore.Http.Features.IFormFeature>(new Microsoft.AspNetCore.Http.Features.FormFeature(http.Request,
+                new Microsoft.AspNetCore.Http.Features.FormOptions { MultipartBodyLengthLimit = MaxAttachmentRequestBytes }));
 
             var form = await http.Request.ReadFormAsync(ct);
             var roomIdStr = form["roomId"].ToString();
@@ -1147,7 +1157,8 @@ public static class ChatEndpoints
 
             await db.SaveChangesAsync(ct);
             return Results.Ok(attachments);
-        }).RequirePermission("chat.send").DisableAntiforgery();
+        }).RequirePermission("chat.send").DisableAntiforgery()
+          .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxAttachmentRequestBytes));
 
         // GET /api/chat/attachments/{id}/download?inline=true
         // inline=true drops the Content-Disposition filename so the browser renders the
@@ -1551,6 +1562,21 @@ public static class ChatEndpoints
         [".gz"] = "application/gzip",
     };
 
+    /// Who may delete in a room, shared by the hub and REST: null = not allowed at all (not an
+    /// active member and no global chat.admin); true = may delete anyone's message (room
+    /// owner/admin or chat.admin); false = only their own.
+    internal static async Task<bool?> DeleteAuthorityAsync(IPopDbContext db, IPermissionEvaluator perms, Guid userId, Guid roomId, CancellationToken ct)
+    {
+        var role = await db.ChatRoomMembers.AsNoTracking()
+            .Where(m => m.RoomId == roomId && m.UserId == userId && m.LeftAt == null)
+            .Select(m => m.Role).FirstOrDefaultAsync(ct);
+        var globalAdmin = await perms.IsAllowedAsync(userId, "chat.admin", null, ct);
+        if (role is null && !globalAdmin) return null;
+        return globalAdmin || role is "owner" or "admin";
+    }
+
+    // 5 attachments × 50 MB plus room for the multipart envelope.
+    private const long MaxAttachmentRequestBytes = 5 * 50L * 1024 * 1024 + 1024 * 1024;
     private const string FallbackMime = "application/octet-stream";
 
     /// Resolves the effective MIME type for a stored file. A concrete, non-generic

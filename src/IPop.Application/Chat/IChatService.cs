@@ -30,8 +30,9 @@ public interface IChatService
     Task<MessageResultDto> VotePollAsync(Guid userId, Guid messageId, int optionIndex, CancellationToken ct);
 
     // Read receipts
-    Task RecordDeliveryAsync(Guid userId, Guid messageId, CancellationToken ct);
-    Task RecordReadAsync(Guid userId, Guid messageId, CancellationToken ct);
+    /// False when the caller is not an active member of the message's room (nothing recorded).
+    Task<bool> RecordDeliveryAsync(Guid userId, Guid messageId, CancellationToken ct);
+    Task<bool> RecordReadAsync(Guid userId, Guid messageId, CancellationToken ct);
     Task<IReadOnlyList<SeenByDto>> GetSeenByAsync(Guid messageId, CancellationToken ct);
     Task<SeenListDto> GetSeenDetailAsync(Guid callerId, Guid messageId, CancellationToken ct);
 
@@ -43,7 +44,7 @@ public interface IChatService
     // Saved messages (personal bookmarks — private to the saving user)
     Task<SavedResultDto> SaveMessageAsync(Guid userId, Guid messageId, CancellationToken ct);
     Task<SavedResultDto> UnsaveMessageAsync(Guid userId, Guid messageId, CancellationToken ct);
-    Task<IReadOnlyList<SavedMessageDto>> GetSavedMessagesAsync(Guid userId, CancellationToken ct);
+    Task<IReadOnlyList<SavedMessageDto>> GetSavedMessagesAsync(Guid userId, CancellationToken ct, int skip = 0, int take = 500);
 
     // Group management
     Task<MemberResultDto> AddMemberAsync(Guid actorId, Guid roomId, Guid userId, CancellationToken ct);

@@ -99,7 +99,12 @@ public sealed partial class NoteService
         if (template is null) return Ok<string?>(null);
         var won = await db.NotePages.Where(p => p.Id == pageId && p.SeedTemplate == template)
             .ExecuteUpdateAsync(s => s.SetProperty(p => p.SeedTemplate, (string?)null), ct);
-        return Ok<string?>(won == 1 ? template : null);
+        if (won != 1) return Ok<string?>(null);
+        // Someone already typed into the page (another tab or collaborator raced the seed):
+        // dropping the template on top would mix it into their text. The claim still clears it.
+        var hasContent = await db.NotePages.AnyAsync(p => p.Id == pageId && p.PlainText != null && p.PlainText != "", ct)
+            || await db.NoteUpdates.AnyAsync(u => u.PageId == pageId, ct);
+        return Ok<string?>(hasContent ? null : template);
     }
 
     // ── Versions ─────────────────────────────────────────────────────────────

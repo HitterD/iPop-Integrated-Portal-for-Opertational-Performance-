@@ -45,17 +45,19 @@ public class CallHub(ICallService callService, IPopDbContext db, IPermissionEval
         var userId = GetUserId();
         if (userId is null) { Context.Abort(); return; }
 
-        var room = await db.CallRooms.Include(r => r.Participants)
-            .FirstOrDefaultAsync(r => r.Id == signal.CallId, Context.ConnectionAborted);
-        if (room is null) return;
+        if (!await perms.IsAllowedAsync(userId.Value, "calls.use", null, Context.ConnectionAborted)) return;
 
-        // Verify sender is participant in this room
-        if (!room.Participants.Any(p => p.UserId == userId.Value)) return;
+        var room = await db.CallRooms.AsNoTracking().Include(r => r.Participants)
+            .FirstOrDefaultAsync(r => r.Id == signal.CallId, Context.ConnectionAborted);
+        // Only a live call, and only someone still in it (not left/declined) may signal.
+        if (room is null || room.Status is not (CallStatus.Ringing or CallStatus.Active)) return;
+        static bool InCall(string status) => status is CallParticipantStatus.Accepted or CallParticipantStatus.Invited;
+        if (!room.Participants.Any(p => p.UserId == userId.Value && InCall(p.Status))) return;
 
         // Broadcast to other participants, stamped with the sending connection: the other
         // user may have several tabs/devices, and the receiver must stick to one peer.
         signal = signal with { From = Context.ConnectionId };
-        var others = room.Participants.Where(p => p.UserId != userId.Value);
+        var others = room.Participants.Where(p => p.UserId != userId.Value && InCall(p.Status));
         foreach (var p in others)
         {
             await Clients.Group($"user:{p.UserId}").SendAsync("webrtcSignalReceived", signal, Context.ConnectionAborted);

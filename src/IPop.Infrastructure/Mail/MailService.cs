@@ -65,7 +65,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             ThreadRootId = req.ThreadRootId ?? req.InReplyToId, // reply without explicit root telescopes to its parent
             Status = isScheduled ? "scheduled" : "sent",
             Importance = string.IsNullOrWhiteSpace(req.Importance) ? "normal" : req.Importance,
-            ScheduledAt = req.ScheduledAt,
+            ScheduledAt = req.ScheduledAt is { } schedAt ? ToUtc(schedAt) : null,
             CreatedAt = now,
             SentAt = isScheduled ? null : now,
             IsMass = total > MailLimits.ConfirmAbove || x.Groups.Count > 0,
@@ -927,7 +927,9 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         var mail = await db.Mails.FindAsync([mailId], ct);
         if (mail is null) return new SendMailResult(false, null, "mail_not_found");
 
-        mail.ScheduledAt = scheduledAt;
+        if (mail.Status != "scheduled") return new SendMailResult(false, null, "mail_not_found");
+        if (ScheduleError(scheduledAt) is { } bad) return new SendMailResult(false, null, bad);
+        mail.ScheduledAt = ToUtc(scheduledAt);
         mail.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(ct);
@@ -1353,8 +1355,27 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         if (req.Subject.Trim().Length > MaxSubjectLength) return new SendMailResult(false, null, "subject_too_long");
         if (string.IsNullOrWhiteSpace(req.Body)) return new SendMailResult(false, null, "body_required");
         if (req.To.Count + req.Cc.Count + req.Bcc.Count == 0 && req.Groups!.Count == 0) return new SendMailResult(false, null, "no_recipients");
+        if (req.ScheduledAt is { } at && ScheduleError(at) is { } bad) return new SendMailResult(false, null, bad);
         return ValidateSize(req);
     }
+
+    /// A scheduled time a few minutes in the past (clock skew, slow click) still sends right
+    /// away; anything older, or more than a year out, is almost certainly a mistake.
+    internal static string? ScheduleError(DateTime at)
+    {
+        var utc = ToUtc(at);
+        var now = DateTime.UtcNow;
+        if (utc < now.AddMinutes(-15)) return "schedule_in_past";
+        if (utc > now.AddYears(1)) return "schedule_too_far";
+        return null;
+    }
+
+    private static DateTime ToUtc(DateTime at) => at.Kind switch
+    {
+        DateTimeKind.Utc => at,
+        DateTimeKind.Local => at.ToUniversalTime(),
+        _ => DateTime.SpecifyKind(at, DateTimeKind.Utc),
+    };
 
     private static SendMailResult? ValidateDraft(ComposeMailRequest req)
     {

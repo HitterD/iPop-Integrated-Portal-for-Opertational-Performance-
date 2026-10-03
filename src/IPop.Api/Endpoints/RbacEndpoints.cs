@@ -18,7 +18,7 @@ public static class RbacEndpoints
 
         g.MapPost("/roles", async (RoleRequest req, IPopDbContext db, CancellationToken ct) =>
         {
-            if (string.IsNullOrWhiteSpace(req.Name) || await db.Roles.AnyAsync(r => r.Name == req.Name.Trim(), ct))
+            if (string.IsNullOrWhiteSpace(req.Name) || await db.Roles.AnyAsync(r => r.Name.ToLower() == req.Name.Trim().ToLower(), ct))
                 return Results.BadRequest(new { code = "invalid_role" });
             var role = new Role { Id = Guid.NewGuid(), Name = req.Name.Trim(), ParentRoleId = req.ParentRoleId };
             if (await CreatesCycle(role, db, ct)) return Results.BadRequest(new { code = "role_cycle" });
@@ -30,7 +30,16 @@ public static class RbacEndpoints
         {
             var role = await db.Roles.FirstOrDefaultAsync(r => r.Id == id, ct);
             if (role is null) return Results.NotFound();
-            if (!string.IsNullOrWhiteSpace(req.Name)) role.Name = req.Name.Trim();
+            if (!string.IsNullOrWhiteSpace(req.Name) && req.Name.Trim() != role.Name)
+            {
+                // Role names carry meaning ("Admin" is checked by name in many places), so a rename
+                // may not take or give up a name that is already in use — same rule as create.
+                var name = req.Name.Trim();
+                if (role.Name == "Admin" || await db.Roles.AnyAsync(r => r.Id != id && r.Name.ToLower() == name.ToLower(), ct)
+                    || string.Equals(name, "Admin", StringComparison.OrdinalIgnoreCase))
+                    return Results.BadRequest(new { code = "invalid_role" });
+                role.Name = name;
+            }
             role.ParentRoleId = req.ParentRoleId;
             if (await CreatesCycle(role, db, ct)) return Results.BadRequest(new { code = "role_cycle" });
             if (await InheritsAdmin(role, db, ct)) return Results.BadRequest(new { code = "admin_not_inheritable" });

@@ -111,8 +111,11 @@ public sealed partial class ChatService
         // Link pre-uploaded attachments (uploaded via /attachments/upload with MessageId=null)
         if (req.AttachmentIds is { Count: > 0 })
         {
+            var roomD = req.RoomId.ToString("D"); var roomN = req.RoomId.ToString("N");
             var orphans = await db.ChatAttachments
-                .Where(a => req.AttachmentIds.Contains(a.Id) && a.MessageId == null)
+                .Where(a => req.AttachmentIds.Contains(a.Id) && a.MessageId == null
+                    // Only files uploaded into this room: an id from another room must not be pulled in.
+                    && (a.SynologyPath.Contains(roomD) || a.SynologyPath.Contains(roomN)))
                 .ToListAsync(ct);
             foreach (var a in orphans)
                 a.MessageId = message.Id;

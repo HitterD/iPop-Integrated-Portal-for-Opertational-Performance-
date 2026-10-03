@@ -286,8 +286,20 @@ public partial class Files
         }
         else
         {
-            Toasts.Show("Could not empty Recycle Bin.", ToastKind.Error);
+            Toasts.Show(await ErrorTextAsync(res, "Could not empty Recycle Bin."), ToastKind.Error);
+            await Reload();
         }
+    }
+
+    private static async Task<string> ErrorTextAsync(HttpResponseMessage res, string fallback)
+    {
+        try
+        {
+            var json = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            if (json.TryGetProperty("message", out var m) && !string.IsNullOrWhiteSpace(m.GetString())) return m.GetString()!;
+        }
+        catch { }
+        return fallback;
     }
 
     private async Task DownloadSelectedZip()
@@ -303,7 +315,11 @@ public partial class Files
                 await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(bytes), $"files_{server}_{stamp}.zip");
                 Toasts.ShowDetailed("Download Ready", "ZIP archive downloaded.", ToastKind.Success, "download");
             }
+            else
+            {
+                Toasts.Show(await ErrorTextAsync(res, "Could not create the ZIP archive."), ToastKind.Error);
+            }
         }
-        catch { }
+        catch { Toasts.Show("Could not create the ZIP archive.", ToastKind.Error); }
     }
 }
