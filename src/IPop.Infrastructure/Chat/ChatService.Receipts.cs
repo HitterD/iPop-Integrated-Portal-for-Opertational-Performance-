@@ -53,11 +53,14 @@ public sealed partial class ChatService
     {
         var msg = await db.ChatMessages.AsNoTracking()
             .Where(m => m.Id == messageId)
-            .Select(m => new { m.RoomId, m.CreatedAt })
+            .Select(m => new { m.RoomId, m.CreatedAt, m.SenderId })
             .FirstOrDefaultAsync(ct);
         if (msg is null) return false;
         if (!await db.ChatRoomMembers.AsNoTracking().AnyAsync(m => m.RoomId == msg.RoomId && m.UserId == userId && m.LeftAt == null, ct))
             return false;
+        // Reading up to your own message still advances your read position (clears the badge),
+        // but never writes a receipt on it: that would count you as one of its readers.
+        var ownMessage = msg.SenderId == userId;
 
         var receipt = await db.ChatReadReceipts
             .FirstOrDefaultAsync(r => r.MessageId == messageId && r.UserId == userId, ct);
@@ -66,7 +69,8 @@ public sealed partial class ChatService
         var readerSettings = await GetOrCreateSettingsAsync(userId, msg.RoomId, ct);
         bool sendReadReceipt = readerSettings.ReadReceiptsEnabled;
 
-        if (receipt is not null)
+        if (ownMessage) { }
+        else if (receipt is not null)
         {
             if (receipt.DeliveredAt is null) receipt.DeliveredAt = now;
             if (sendReadReceipt)

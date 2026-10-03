@@ -780,6 +780,9 @@ public partial class Chat
             selfRef ??= DotNetObjectReference.Create(this);
             // C4: global Ctrl+K / Cmd+K quick switcher (document-level, bound once)
             try { await JS.InvokeVoidAsync("ipop.chatBindQuickSwitcher", selfRef); } catch { }
+            // Read receipts only while this page is up and its tab is attended (see ChatState.CanMarkRead).
+            try { await ChatSvc.SetAttentiveAsync(await JS.InvokeAsync<bool>("ipop.watchAttention", selfRef)); } catch { }
+            if (!_disposed) await ChatSvc.SetChatPageMountedAsync(true);
         }
         if (!paneReady)
         {
@@ -935,6 +938,9 @@ public partial class Chat
         catch { /* older cached mobile.js or prerender — phone chrome just stays as-is */ }
     }
 
+    [JSInvokable]
+    public Task OnAttentionChanged(bool attentive) => ChatSvc.SetAttentiveAsync(attentive);
+
     /// Phone Back while a side panel / global drawer is open: close it, keep the room.
     [JSInvokable]
     public Task MobilePanelBack() => InvokeAsync(() =>
@@ -974,6 +980,8 @@ public partial class Chat
         CancelComposerUpload();
         _disposed = true;
         A11yDispose();
+        _ = ChatSvc.SetChatPageMountedAsync(false);
+        try { _ = JS.InvokeVoidAsync("ipop.unwatchAttention"); } catch { }
         Layout.EscapePressed -= OnEscapePressed;
         try { _ = JS.InvokeVoidAsync("ipop.chatUnbindPaste", composerWrapRef); } catch { }
         try { _ = JS.InvokeVoidAsync("ipop.chatUnbindComposer", composerRef); } catch { }

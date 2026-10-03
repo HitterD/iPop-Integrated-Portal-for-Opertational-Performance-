@@ -140,6 +140,35 @@ window.ipop = {
     return document.visibilityState;
   },
 
+  // Chat read receipts: report whether this tab is visible AND its window focused, so a
+  // background tab or a minimized window never marks messages read.
+  watchAttention(dotnet) {
+    ipop.unwatchAttention();
+    let last = null;
+    const report = () => {
+      const now = document.visibilityState === "visible" && document.hasFocus();
+      if (now === last) return;
+      last = now;
+      dotnet.invokeMethodAsync("OnAttentionChanged", now).catch(() => {});
+    };
+    // Focus moving into an iframe (embedded viewer) blurs the window; re-check after it settles.
+    const later = () => setTimeout(report, 0);
+    window.addEventListener("focus", report);
+    window.addEventListener("blur", later);
+    document.addEventListener("visibilitychange", report);
+    ipop._attention = { report, later };
+    report();
+    return last;
+  },
+  unwatchAttention() {
+    const a = ipop._attention;
+    if (!a) return;
+    window.removeEventListener("focus", a.report);
+    window.removeEventListener("blur", a.later);
+    document.removeEventListener("visibilitychange", a.report);
+    ipop._attention = null;
+  },
+
   // ── Presence idle detection ──
   // Away = the computer has been idle 10 minutes or its screen is locked. The Idle Detection
   // API (Chrome/Edge, secure context, one-time permission) sees system-wide input; without it

@@ -688,6 +688,30 @@ public partial class ChatState : IAsyncDisposable
     // render -> MarkRead -> broadcast -> render loop, so each message is only ever marked once.
     private readonly HashSet<Guid> _markedRead = [];
 
+    // A message only counts as read while someone is actually looking at it: the Chat page is
+    // mounted (ActiveRoomId outlives it, so Mail/Dashboard would otherwise keep marking the last
+    // room read) and the tab is visible with the window focused.
+    private bool _chatPageMounted;
+    private bool _attentive = true;
+
+    public bool CanMarkRead => _chatPageMounted && _attentive;
+
+    /// Chat page mount/unmount. Mounting marks the open room read if the tab is attended.
+    public Task SetChatPageMountedAsync(bool mounted)
+    {
+        _chatPageMounted = mounted;
+        return mounted ? MarkActiveRoomReadAsync() : Task.CompletedTask;
+    }
+
+    /// Tab visibility + window focus, reported by the Chat page's JS watcher. Coming back to
+    /// an attended tab marks whatever arrived meanwhile.
+    public Task SetAttentiveAsync(bool attentive)
+    {
+        var was = _attentive;
+        _attentive = attentive;
+        return attentive && !was ? MarkActiveRoomReadAsync() : Task.CompletedTask;
+    }
+
     /// The message whose read receipt covers the open room: the newest one from someone else,
     /// else the newest confirmed one. Optimistic bubbles (outbox temp ids) never qualify.
     internal static MessageDto? LatestReadable(IReadOnlyList<MessageDto> messages, string? myNik, Func<Guid, bool> isPending)
@@ -707,7 +731,7 @@ public partial class ChatState : IAsyncDisposable
     /// dedupes, and it no-ops while the hub is down (the next connect/reconnect calls this again).
     public Task MarkActiveRoomReadAsync()
     {
-        if (ActiveRoomId is null || PracticeSend is not null) return Task.CompletedTask;
+        if (ActiveRoomId is null || PracticeSend is not null || !CanMarkRead) return Task.CompletedTask;
         var latest = LatestReadable(ActiveMessages, _auth.Me?.Nik, _outbox.ContainsKey);
         return latest is null ? Task.CompletedTask : MarkReadAsync(latest.Id);
     }
@@ -736,7 +760,7 @@ public partial class ChatState : IAsyncDisposable
 
     // ---- Event Handlers ----
 
-    private void OnNewMessage(MessageDto message)
+    internal void OnNewMessage(MessageDto message)
     {
         if (PracticeSend is not null) { PracticeHeld?.Invoke(); return; } // real chat waits until practice ends
         if (message.ThreadParentId != null) return; // thread replies via OnThreadReply
@@ -747,6 +771,8 @@ public partial class ChatState : IAsyncDisposable
         }
 
         var isOpen = message.RoomId == ActiveRoomId;
+        // Open but unattended (background tab, other page): it stays unread and banners like any other room.
+        var isSeen = isOpen && CanMarkRead;
         // Our own echo is matched by room + idempotency key in any room, open or not.
         var wasOutgoing = ReconcileEcho(message);
         if (isOpen)
@@ -757,7 +783,7 @@ public partial class ChatState : IAsyncDisposable
                 ActiveMessages.Add(message);
                 _fresh.Add(message.Id);
                 MessageReceived?.Invoke(message);
-                _ = MarkReadAsync(message.Id);
+                if (isSeen) _ = MarkReadAsync(message.Id);
             }
         }
         else
@@ -774,8 +800,8 @@ public partial class ChatState : IAsyncDisposable
                 }
             }
         }
-        BumpRoomPreview(message, isOpen, incrementUnread: !isOpen && !isOwn);
-        if (!isOwn && !message.IsDeleted) RaiseIncoming(message, isOpen);
+        BumpRoomPreview(message, isSeen, incrementUnread: !isSeen && !isOwn);
+        if (!isOwn && !message.IsDeleted) RaiseIncoming(message, isSeen);
         StateChanged?.Invoke();
     }
 
@@ -937,8 +963,10 @@ public partial class ChatState : IAsyncDisposable
         if (changed) StateChanged?.Invoke();
     }
 
-    private void OnSeenUpdate(SeenUpdateDto update)
+    internal void OnSeenUpdate(SeenUpdateDto update)
     {
+        // Our own receipt (this or another tab) says nothing about whether the others read us.
+        if (_auth.Me?.UserId is { } myId && update.Reader.UserId == myId) return;
         var isDirect = ActiveRoom?.Type == "dm" || ActiveRoom?.Type == "direct";
         var isGroup = ActiveRoom?.Type == "group";
         var targetMsg = ActiveMessages.FirstOrDefault(m => m.Id == update.MessageId);

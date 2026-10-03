@@ -43,7 +43,9 @@ public sealed class ChatNotifier(IHubContext<ChatHub> hub, IPopDbContext db,
 
     public async Task NotifySeenUpdateAsync(Guid roomId, Guid messageId, SeenByDto reader, CancellationToken ct)
     {
-        var totalRead = await db.ChatReadReceipts.CountAsync(r => r.MessageId == messageId && r.ReadAt != null, ct);
+        // The sender is never one of their own message's readers (legacy rows may say otherwise).
+        var senderId = await db.ChatMessages.Where(m => m.Id == messageId).Select(m => m.SenderId).FirstOrDefaultAsync(ct);
+        var totalRead = await db.ChatReadReceipts.CountAsync(r => r.MessageId == messageId && r.ReadAt != null && r.UserId != senderId, ct);
         var totalMembers = await db.ChatRoomMembers.CountAsync(m => m.RoomId == roomId && m.LeftAt == null, ct);
         var dto = new SeenUpdateDto(messageId, reader, totalRead, totalMembers);
         await hub.Clients.Group(Group(roomId)).SendAsync("seenUpdate", dto, ct);

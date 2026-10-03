@@ -459,6 +459,22 @@ public class ChatServiceTests
     }
 
     [Fact]
+    public async Task Reading_up_to_your_own_message_never_counts_you_as_its_reader()
+    {
+        using var t = new TestDb();
+        var (a, b, room) = SeedDm(t, 2);
+        var svc = new ChatService(t.Verify());
+        var msgs = await svc.GetMessagesAsync(room, a, 1, 10, default);
+
+        // A's own tab marks the room read at A's newest message (it fell back to it).
+        Assert.True(await svc.RecordReadAsync(a, msgs.Items[1].Id, default));
+
+        Assert.False(t.Db.ChatReadReceipts.Any(r => r.UserId == a));
+        var after = await svc.GetMessagesAsync(room, a, 1, 10, default);
+        Assert.All(after.Items, m => Assert.Equal("sent", m.DeliveryStatus));
+    }
+
+    [Fact]
     public async Task Group_delivery_and_read_status_requires_all_other_members()
     {
         using var t = new TestDb();

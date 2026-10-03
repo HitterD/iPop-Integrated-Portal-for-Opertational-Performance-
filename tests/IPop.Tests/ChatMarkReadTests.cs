@@ -40,4 +40,64 @@ public class ChatMarkReadTests
         Assert.Same(confirmed, ChatState.LatestReadable(list, "A", id => id == pending.Id));
         Assert.Null(ChatState.LatestReadable([], "A", _ => false));
     }
+    // ── Only an attended Chat page marks read; your own receipt never flips your bubbles ──
+
+    private sealed class NotFound : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound) { RequestMessage = request });
+    }
+
+    private static readonly Guid MyId = Guid.NewGuid();
+
+    private static async Task<(Bunit.BunitContext Ctx, ChatState Chat)> OpenAsync(Guid room)
+    {
+        var ctx = new Bunit.BunitContext();
+        var http = new HttpClient(new NotFound()) { BaseAddress = new Uri("http://localhost/") };
+        var auth = new AuthState(http, ctx.JSInterop.JSRuntime);
+        typeof(AuthState).GetProperty(nameof(AuthState.Me))!.SetValue(auth,
+            new DirectoryEmployeeDto("A", "Me", null, null, null, null, null, null, "a@x", null, null, "on", UserId: MyId));
+        var chat = new ChatState(auth, http);
+        await chat.OpenRoomAsync(room);
+        return (ctx, chat);
+    }
+
+    private static MessageDto In(Guid room, string senderNik) => Msg(senderNik) with { RoomId = room };
+
+    [Theory]
+    [InlineData(false, true, false)] // left the Chat page: Mail/Dashboard must not read the last room
+    [InlineData(true, false, false)] // background tab / minimized window
+    [InlineData(true, true, true)]
+    public async Task Open_room_counts_as_seen_only_while_the_page_is_up_and_attended(bool mounted, bool attentive, bool seen)
+    {
+        var room = Guid.NewGuid();
+        var (ctx, chat) = await OpenAsync(room);
+        using var _ = ctx;
+        await chat.SetChatPageMountedAsync(mounted);
+        await chat.SetAttentiveAsync(attentive);
+        IncomingChatMessage? incoming = null;
+        chat.IncomingMessage += m => incoming = m;
+
+        chat.OnNewMessage(In(room, "B"));
+
+        Assert.Equal(mounted && attentive, chat.CanMarkRead);
+        Assert.NotNull(incoming);
+        Assert.Equal(seen, incoming!.IsActiveRoom); // unseen → banner + unread like any other room
+    }
+
+    [Fact]
+    public async Task Own_seen_update_never_marks_own_messages_read()
+    {
+        var room = Guid.NewGuid();
+        var (ctx, chat) = await OpenAsync(room);
+        using var _ = ctx;
+        var mine = In(room, "A") with { DeliveryStatus = "sent" };
+        chat.ActiveMessages.Add(mine);
+
+        chat.OnSeenUpdate(new SeenUpdateDto(mine.Id, new SeenByDto(MyId, "Me", null, null, DateTime.UtcNow), 1, 2));
+        Assert.Equal("sent", chat.ActiveMessages.Single().DeliveryStatus);
+
+        chat.OnSeenUpdate(new SeenUpdateDto(mine.Id, new SeenByDto(Guid.NewGuid(), "B", null, null, DateTime.UtcNow), 1, 2));
+        Assert.NotEqual("sent", chat.ActiveMessages.Single().DeliveryStatus);
+    }
 }
