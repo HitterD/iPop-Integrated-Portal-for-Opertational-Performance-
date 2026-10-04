@@ -255,6 +255,8 @@
         await SaveColumnPrefs();
     }
     private static readonly string[] GroupColors = ["#8E8E93", "#0A84FF", "#FF9F0A", "#34C759", "#7657C4", "#C0513A"];
+    private static List<AppOption>? groupColorOptions;
+    private static List<AppOption> GroupColorOptions => groupColorOptions ??= GroupColors.Select(c => new AppOption(c, ColorName(c))).ToList();
     private static string ColorName(string hex) => hex switch { "#8E8E93" => "Gray", "#0A84FF" => "Blue", "#FF9F0A" => "Orange", "#34C759" => "Green", "#7657C4" => "Purple", "#C0513A" => "Brick red", _ => hex };
     private readonly HashSet<Guid> collapsedGroups = [];
     private bool addingGroup;
@@ -572,9 +574,7 @@
                     {
                         <button type="button" aria-label="Rename @group.Name" @onclick="() => StartRename(group)"><i data-lucide="pencil"></i></button>
                     }
-                    <select aria-label="Color for @group.Name" value="@group.Color" @onchange="e => OnUpdateGroup.InvokeAsync((group.Id, group.Name, e.Value?.ToString() ?? group.Color))">
-                        @foreach (var color in GroupColors) { <option value="@color">@ColorName(color)</option> }
-                    </select>
+                    <AppSelect Value="@group.Color" ValueChanged="v => OnUpdateGroup.InvokeAsync((group.Id, group.Name, v ?? group.Color))" Options="GroupColorOptions" Label="@($"Color for {group.Name}")" CssClass="plist-group-color" />
                     <button type="button" aria-label="Move @group.Name up" @onclick="() => OnReorderGroup.InvokeAsync((group.Id, -1))"><i data-lucide="arrow-up"></i></button>
                     <button type="button" aria-label="Move @group.Name down" @onclick="() => OnReorderGroup.InvokeAsync((group.Id, 1))"><i data-lucide="arrow-down"></i></button>
                     <button type="button" aria-label="Delete @group.Name" disabled="@(Groups.Count <= 1)" @onclick="() => OnDeleteGroup.InvokeAsync(group.Id)"><i data-lucide="trash-2"></i></button>

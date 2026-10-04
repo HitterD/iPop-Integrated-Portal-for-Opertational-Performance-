@@ -65,13 +65,7 @@
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
                 <div class="field" style="margin:0">
                     <label style="font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase">Priority</label>
-                    <select class="filter-select" style="width:100%;height:30px;font-size:11.5px;margin-top:4px" @bind="editPriority">
-                        <option value="">(No Priority)</option>
-                        <option value="urgent">Urgent</option>
-                        <option value="high">High</option>
-                        <option value="medium">Medium</option>
-                        <option value="low">Low</option>
-                    </select>
+                    <AppSelect Value="@(editPriority ?? "")" ValueChanged="v => editPriority = v" Options="PriorityOptions" Label="Priority" CssClass="qv-priority" Style="margin-top:4px" Block="true" />
                 </div>
                 <div class="field" style="margin:0">
                     <div style="display:flex;align-items:center;justify-content:space-between">
@@ -247,6 +241,8 @@
     private string? editDesc;
     private string editStatus = "todo";
     private string? editPriority;
+    private static List<AppOption>? priorityOptions;
+    private static List<AppOption> PriorityOptions => priorityOptions ??= [new("", "(No Priority)"), new("urgent", "Urgent"), new("high", "High"), new("medium", "Medium"), new("low", "Low")];
     private DateTime? editStartDate;
     private DateTime? editDue;
     private decimal? editEstH;

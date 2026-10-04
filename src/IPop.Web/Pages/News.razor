@@ -19,15 +19,8 @@
             <input type="search" placeholder="Search news, memos or authors" aria-label="Search news" value="@q" @oninput="e => OnSearchInput(e.Value?.ToString() ?? string.Empty)" />
         </div>
         <div class="push flex center gap-8">
-            <label class="v6-select">
-                <i data-lucide="arrow-up-down"></i>
-                <select aria-label="Sort" @bind="sortOrder" @bind:after="() => Reload(1, true)">
-                    <option value="newest">Newest</option>
-                    <option value="oldest">Oldest</option>
-                    <option value="mostRead">Most read</option>
-                </select>
-                <i data-lucide="chevron-down" class="chev"></i>
-            </label>
+            <AppSelect Label="Sort" CssClass="news-sort" Value="@sortOrder" Options="@SortOptions"
+                       ValueChanged="async v => { sortOrder = v ?? sortOrder; await Reload(1, true); }" />
             @if (canManage)
             {
                 <button type="button" class="btn-primary" @onclick="OpenCreate"><i data-lucide="square-pen"></i>New post</button>
@@ -203,6 +196,12 @@
     private string typeFilter = "";
     private string activeView = "all";
     private string sortOrder = "newest";
+    private static List<AppOption> SortOptions =>
+    [
+        new("newest", "Newest", Icon: "arrow-down-wide-narrow"),
+        new("oldest", "Oldest", Icon: "arrow-up-narrow-wide"),
+        new("mostRead", "Most read", Icon: "eye"),
+    ];
     private int page = 1;
     private int total;
     private int totalPages => Math.Max(1, (int)Math.Ceiling(total / 20.0));

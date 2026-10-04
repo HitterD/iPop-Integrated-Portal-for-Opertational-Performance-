@@ -935,11 +935,7 @@
                     <p class="setting-desc">Review your past notifications</p>
 
                     <div class="history-filters">
-                        <select class="filter-select" @bind="historyFilter">
-                            <option value="all">All</option>
-                            <option value="unread">Unread</option>
-                            <option value="read">Read</option>
-                        </select>
+                        <AppSelect Value="@historyFilter" ValueChanged="SetHistoryFilter" Options="HistoryFilterOptions" Label="Filter history" />
                         <button type="button" class="btn-secondary" @onclick="LoadHistory">
                             <i data-lucide="refresh-cw"></i>
                             Refresh
@@ -1248,6 +1244,13 @@
 
     // History tab state
     private string historyFilter = "all";
+    private static readonly List<AppOption> HistoryFilterOptions =
+    [
+        new("all", "All"),
+        new("unread", "Unread"),
+        new("read", "Read"),
+    ];
+    private void SetHistoryFilter(string? v) => historyFilter = string.IsNullOrEmpty(v) ? "all" : v;
     private bool historyLoading;
     private bool historyHasMore = true;
     private int historyPage = 1;

@@ -55,13 +55,7 @@
                         <label style="font-size:11.5px;color:var(--ink-3)">Target date</label>
                         <AppDatePicker @bind-Value="msDate" Compact="true" AriaLabel="Target date" />
                         <label style="font-size:11.5px;color:var(--ink-3)">Linked task</label>
-                        <select class="filter-select" style="height:32px;font-size:12px" @bind="msTaskId">
-                            <option value="">(no link)</option>
-                            @foreach (var t in AllTasks.Where(t => t.ParentTaskId is null).OrderBy(t => t.Title))
-                            {
-                                <option value="@t.Id">@t.Title</option>
-                            }
-                        </select>
+                        <AppSelect Value="@msTaskId" ValueChanged="v => msTaskId = v ?? string.Empty" Options="TaskLinkOptions" Label="Linked task" CssClass="proj-rep-sel" />
                     </div>
                     <div style="display:flex;gap:6px">
                         <button class="btn-sm accent" disabled="@(string.IsNullOrWhiteSpace(msName))" @onclick="AddMilestone">Save</button>
@@ -86,13 +80,7 @@
                             {
                                 <input class="org-input" style="height:26px;font-size:12px;flex:1" @bind="editingMilestoneTitle" />
                                 <AppDatePicker @bind-Value="editingMilestoneDate" Compact="true" AriaLabel="Milestone date" />
-                                <select class="filter-select" style="height:26px;font-size:11px;padding:0 6px" @bind="editingMilestoneTaskId">
-                                    <option value="">(no link)</option>
-                                    @foreach (var t in AllTasks.Where(t => t.ParentTaskId is null).OrderBy(t => t.Title))
-                                    {
-                                        <option value="@t.Id">@t.Title</option>
-                                    }
-                                </select>
+                                <AppSelect Value="@editingMilestoneTaskId" ValueChanged="v => editingMilestoneTaskId = v ?? string.Empty" Options="TaskLinkOptions" Label="Linked task" CssClass="proj-rep-sel sm" />
                                 <button class="btn-sm accent" style="padding:2px 8px" @onclick="SaveMilestoneEdit"><i data-lucide="check" style="width:11px;height:11px"></i></button>
                                 <button class="btn-sm surface" style="padding:2px 8px" @onclick="() => editingMilestone = null"><i data-lucide="x" style="width:11px;height:11px"></i></button>
                             }
@@ -140,19 +128,9 @@
                     <span class="meta">remaining tasks over time</span>
                     <span style="margin-left:auto;display:flex;gap:4px;align-items:center">
                         <label style="font-size:10.5px;color:var(--ink-3)">Milestone</label>
-                        <select class="filter-select" style="height:26px;font-size:11px;padding:0 8px" @bind="burndownMilestoneId">
-                            <option value="">(all)</option>
-                            @foreach (var m in customMilestones)
-                            {
-                                <option value="@m.Id">@m.Title</option>
-                            }
-                        </select>
+                        <AppSelect Value="@burndownMilestoneId" ValueChanged="v => burndownMilestoneId = v ?? string.Empty" Options="BurndownMilestoneOptions" Label="Milestone" CssClass="proj-rep-sel sm" />
                         <label style="font-size:10.5px;color:var(--ink-3)">Range</label>
-                        <select class="filter-select" style="height:26px;font-size:11px;padding:0 8px" @bind="burndownWeeks">
-                            <option value="4">4 weeks</option>
-                            <option value="6">6 weeks</option>
-                            <option value="12">12 weeks</option>
-                        </select>
+                        <AppSelect Value="@burndownWeeks.ToString()" ValueChanged="v => { if (int.TryParse(v, out var w)) burndownWeeks = w; }" Options="WeekOptions" Label="Burndown range" CssClass="proj-rep-sel sm" />
                     </span>
                 </div>
                 <div style="padding:14px">
@@ -183,11 +161,7 @@
                     <span class="meta">tasks completed per week</span>
                     <span style="margin-left:auto;display:flex;gap:4px;align-items:center">
                         <label style="font-size:10.5px;color:var(--ink-3)">Period</label>
-                        <select class="filter-select" style="height:26px;font-size:11px;padding:0 8px" @bind="velocityWeeks">
-                            <option value="4">4 weeks</option>
-                            <option value="6">6 weeks</option>
-                            <option value="12">12 weeks</option>
-                        </select>
+                        <AppSelect Value="@velocityWeeks.ToString()" ValueChanged="v => { if (int.TryParse(v, out var w)) velocityWeeks = w; }" Options="WeekOptions" Label="Velocity range" CssClass="proj-rep-sel sm" />
                     </span>
                 </div>
                 <div style="padding:14px">
@@ -280,6 +254,10 @@
     private string msName = "";
     private DateTime msDate = DateTime.Today.AddDays(14);
     private string msTaskId = "";
+    private List<AppOption> TaskLinkOptions => [new("", "(no link)"), .. AllTasks.Where(t => t.ParentTaskId is null).OrderBy(t => t.Title).Select(t => new AppOption(t.Id.ToString(), t.Title))];
+    private List<AppOption> BurndownMilestoneOptions => [new("", "(all)"), .. customMilestones.Select(m => new AppOption(m.Id.ToString(), m.Title))];
+    private static List<AppOption>? weekOptions;
+    private static List<AppOption> WeekOptions => weekOptions ??= [new("4", "4 weeks"), new("6", "6 weeks"), new("12", "12 weeks")];
 
     private void AddMilestone()
     {

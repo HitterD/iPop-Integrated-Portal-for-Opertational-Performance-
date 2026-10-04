@@ -117,16 +117,10 @@ else if (CallSvc.IsInGroupCall)
             {
                 <div class="callx-devices">
                     <label>Microphone
-                        <select @onchange="OnInputChanged">
-                            @foreach (var d in devices.Inputs) { <option value="@d.Id" selected="@(d.Id == inputId)">@d.Label</option> }
-                            @if (devices.Inputs.Count == 0) { <option value="">No microphone</option> }
-                        </select>
+                        <AppSelect Value="@inputId" ValueChanged="OnInputChanged" Options="InputOptions" Label="Microphone" Block="true" />
                     </label>
                     <label>Speaker
-                        <select @onchange="OnOutputChanged" disabled="@(CallSvc.Support?.OutputSelect != true)">
-                            @foreach (var d in devices.Outputs) { <option value="@d.Id" selected="@(d.Id == outputId)">@d.Label</option> }
-                            @if (devices.Outputs.Count == 0) { <option value="">System default</option> }
-                        </select>
+                        <AppSelect Value="@outputId" ValueChanged="OnOutputChanged" Options="OutputOptions" Label="Speaker" Block="true" Disabled="@(CallSvc.Support?.OutputSelect != true)" />
                     </label>
                 </div>
             }
@@ -252,16 +246,10 @@ else if (CallSvc.IsOutgoingRing || CallSvc.IsActiveCall)
             {
                 <div class="callx-devices">
                     <label>Microphone
-                        <select @onchange="OnInputChanged">
-                            @foreach (var d in devices.Inputs) { <option value="@d.Id" selected="@(d.Id == inputId)">@d.Label</option> }
-                            @if (devices.Inputs.Count == 0) { <option value="">No microphone</option> }
-                        </select>
+                        <AppSelect Value="@inputId" ValueChanged="OnInputChanged" Options="InputOptions" Label="Microphone" Block="true" />
                     </label>
                     <label>Speaker
-                        <select @onchange="OnOutputChanged" disabled="@(CallSvc.Support?.OutputSelect != true)">
-                            @foreach (var d in devices.Outputs) { <option value="@d.Id" selected="@(d.Id == outputId)">@d.Label</option> }
-                            @if (devices.Outputs.Count == 0) { <option value="">System default</option> }
-                        </select>
+                        <AppSelect Value="@outputId" ValueChanged="OnOutputChanged" Options="OutputOptions" Label="Speaker" Block="true" Disabled="@(CallSvc.Support?.OutputSelect != true)" />
                     </label>
                     @if (CallSvc.Support?.OutputSelect != true) { <small>This browser uses the system default speaker.</small> }
                 </div>
@@ -552,15 +540,23 @@ else if (!string.IsNullOrEmpty(CallSvc.LastEndReason))
         if (showDevices) devices = await CallSvc.ListDevicesAsync();
     }
 
-    private async Task OnInputChanged(ChangeEventArgs e)
+    private List<AppOption> InputOptions => devices.Inputs.Count == 0
+        ? [new AppOption("", "No microphone")]
+        : devices.Inputs.Select(d => new AppOption(d.Id, d.Label)).ToList();
+
+    private List<AppOption> OutputOptions => devices.Outputs.Count == 0
+        ? [new AppOption("", "System default")]
+        : devices.Outputs.Select(d => new AppOption(d.Id, d.Label)).ToList();
+
+    private async Task OnInputChanged(string? v)
     {
-        inputId = e.Value?.ToString() ?? "";
+        inputId = v ?? "";
         if (!await CallSvc.SetInputDeviceAsync(inputId)) Toasts.Show("That microphone can't be used.", ToastKind.Error);
     }
 
-    private async Task OnOutputChanged(ChangeEventArgs e)
+    private async Task OnOutputChanged(string? v)
     {
-        outputId = e.Value?.ToString() ?? "";
+        outputId = v ?? "";
         await CallSvc.SetOutputDeviceAsync(outputId);
     }
 

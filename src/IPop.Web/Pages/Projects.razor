@@ -120,19 +120,10 @@
                                 @if (projectGroups.Count > 1)
                                 {
                                     <div class="pf-label">Group</div>
-                                    <select class="pf-select" aria-label="Group" value="@(selectedGroupId?.ToString() ?? "")" @onchange="ChangeGroupFilter">
-                                        <option value="">All groups</option>
-                                        @foreach (var group in projectGroups) { <option value="@group.Id">@group.Name</option> }
-                                    </select>
+                                    <AppSelect Value="@(selectedGroupId?.ToString() ?? "")" ValueChanged="ChangeGroupFilter" Options="GroupFilterOptions" Label="Group" CssClass="pf-sel" Block="true" />
                                 }
                                 <div class="pf-label">Priority</div>
-                                <select class="pf-select" aria-label="Priority" @bind="priorityFilter">
-                                    <option value="">All priorities</option>
-                                    <option value="urgent">Urgent</option>
-                                    <option value="high">High</option>
-                                    <option value="normal">Normal</option>
-                                    <option value="low">Low</option>
-                                </select>
+                                <AppSelect Value="@priorityFilter" ValueChanged="v => priorityFilter = v ?? string.Empty" Options="PriorityFilterOptions" Label="Priority" CssClass="pf-sel" Block="true" />
                             </div>
                         }
                     </div>
@@ -244,9 +235,7 @@
                                                 <button type="button" @onclick="PresetVendor">Vendor · Dropdown</button>
                                             </div>
                                             <input aria-label="Field name" maxlength="100" placeholder="Field name" @bind="newFieldName" />
-                                            <select aria-label="Field type" @bind="newFieldType">
-                                                @foreach (var type in new[] { "Text", "Number", "Date", "Dropdown", "Person", "Link" }) { <option value="@type">@type</option> }
-                                            </select>
+                                            <AppSelect Value="@newFieldType" ValueChanged="v => newFieldType = v ?? newFieldType" Options="FieldTypeOptions" Label="Field type" CssClass="project-field-type" />
                                             @if (newFieldType == "Dropdown") { <input aria-label="Dropdown options" placeholder="Options separated by commas" @bind="newFieldOptions" /> }
                                             <button type="button" @onclick="CreateField">Add field</button>
                                             <button type="button" @onclick="() => addingField = false">Cancel</button>
@@ -1180,9 +1169,15 @@
         StateHasChanged();
     }
 
-    private async Task ChangeGroupFilter(ChangeEventArgs args)
+    private List<AppOption> GroupFilterOptions => [new("", "All groups"), .. projectGroups.Select(g => new AppOption(g.Id.ToString(), g.Name))];
+    private static List<AppOption>? priorityFilterOptions;
+    private static List<AppOption> PriorityFilterOptions => priorityFilterOptions ??= [new("", "All priorities"), new("urgent", "Urgent"), new("high", "High"), new("normal", "Normal"), new("low", "Low")];
+    private static List<AppOption>? fieldTypeOptions;
+    private static List<AppOption> FieldTypeOptions => fieldTypeOptions ??= new[] { "Text", "Number", "Date", "Dropdown", "Person", "Link" }.Select(t => new AppOption(t, t)).ToList();
+
+    private async Task ChangeGroupFilter(string? value)
     {
-        await SetGroupFilter(Guid.TryParse(args.Value?.ToString(), out var groupId) ? groupId : null);
+        await SetGroupFilter(Guid.TryParse(value, out var groupId) ? groupId : null);
     }
 
     private async Task SetGroupFilter(Guid? groupId)

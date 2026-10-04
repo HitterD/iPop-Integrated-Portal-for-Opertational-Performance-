@@ -207,12 +207,7 @@
                         <label>Start<AppDateTimePicker @bind-Value="meetingStart" @bind-Value:after="OnContentChanged" AriaLabel="Meeting start" /></label>
                         <label>End<AppDateTimePicker @bind-Value="meetingEnd" @bind-Value:after="OnContentChanged" AriaLabel="Meeting end" /></label>
                         <label>Reminder
-                            <select class="mc-field" @bind="meetingReminderMin" @bind:after="OnContentChanged">
-                                <option value="10">10 minutes</option>
-                                <option value="30">30 minutes</option>
-                                <option value="60">1 hour</option>
-                                <option value="1440">1 day</option>
-                            </select>
+                            <AppSelect Value="@meetingReminderMin.ToString()" ValueChanged="OnReminderChanged" Options="ReminderOptions" Label="Reminder" Block="true" />
                         </label>
                     </div>
                     <input class="mc-field" placeholder="Location or meeting link" aria-label="Meeting location" @bind="meetingLocation" @bind:after="OnContentChanged" />
@@ -433,6 +428,20 @@
     private DateTime meetingStart;
     private DateTime meetingEnd;
     private int meetingReminderMin = 30;
+    private static readonly List<AppOption> ReminderOptions =
+    [
+        new("10", "10 minutes"),
+        new("30", "30 minutes"),
+        new("60", "1 hour"),
+        new("1440", "1 day"),
+    ];
+
+    private void OnReminderChanged(string? v)
+    {
+        if (!int.TryParse(v, out var m)) return;
+        meetingReminderMin = m;
+        OnContentChanged();
+    }
     private string meetingLocation = "";
 
     private string HeaderTitle => !string.IsNullOrWhiteSpace(subject) ? subject : IsForward ? "Forward" : inReplyToId.HasValue ? "Reply" : "New Message";

@@ -88,12 +88,8 @@
                         <div class="field"><label for="vmm-rsender">When sender contains</label><input id="vmm-rsender" class="org-input" @bind="newRuleSender" @bind:event="oninput" placeholder="e.g. hr@@company.com" /></div>
                         <div class="field">
                             <label for="vmm-rlabel">Apply label</label>
-                            <select id="vmm-rlabel" class="filter-select" @bind="newRuleLabelId">
-                                @foreach (var l in labels)
-                                {
-                                    <option value="@l.Id">@l.Name</option>
-                                }
-                            </select>
+                            <AppSelect Id="vmm-rlabel" Value="@newRuleLabelId.ToString()" ValueChanged="v => newRuleLabelId = Guid.TryParse(v, out var g) ? g : Guid.Empty"
+                                       Options="@labels.Select(l => new AppOption(l.Id.ToString(), l.Name)).ToList()" Label="Apply label" Block="true" />
                         </div>
                     </div>
                     <div class="vmm-form-acts">

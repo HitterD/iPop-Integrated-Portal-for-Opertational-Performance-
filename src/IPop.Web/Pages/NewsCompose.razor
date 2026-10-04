@@ -204,12 +204,8 @@
                 <div class="nc-set-body">
                     <div class="nc-frow">
                         <div class="nc-flabel"><i data-lucide="folder-tree"></i>Category <span class="rq">*</span></div>
-                        <select class="nc-field" aria-label="Category" @bind="formType" @bind:after="AfterCategory" disabled="@Locked">
-                            @foreach (var o in NewsUiHelper.FormTypeOptions)
-                            {
-                                <option value="@o.Value">@o.Label</option>
-                            }
-                        </select>
+                        <AppSelect Block="true" Label="Category" Value="@formType" Options="@NewsUiHelper.FormTypeOptions" Disabled="@Locked"
+                                   ValueChanged="v => { formType = v ?? formType; AfterCategory(); }" />
                         <div class="nc-fhint">Shown as the badge on the post card and in the reader.</div>
                     </div>
                     <div class="nc-frow">
@@ -226,13 +222,9 @@
                                 }
                             </div>
                         }
-                        <select class="nc-field" aria-label="Add audience" value="" @onchange="OnAddTargetKind" disabled="@Locked">
-                            <option value="">Add audience…</option>
-                            @foreach (var o in NewsUiHelper.TargetKindOptions)
-                            {
-                                <option value="@o.Value">@o.Label</option>
-                            }
-                        </select>
+                        @* Action menu: Value stays "" so the trigger always shows the placeholder. *@
+                        <AppSelect Block="true" Label="Add audience" Value="" Placeholder="Add audience…" Options="@NewsUiHelper.TargetKindOptions"
+                                   Disabled="@Locked" ValueChanged="OnAddTargetKind" />
                         @if (targetKind is "department" or "role")
                         {
                             <div style="display:flex;gap:6px;margin-top:8px">
@@ -728,7 +720,7 @@
         ? "No audience selected — the post goes to all employees."
         : $"{formTargets.Count} {(formTargets.Count == 1 ? "group" : "groups")} selected.";
 
-    private void OnAddTargetKind(ChangeEventArgs e) => targetKind = e.Value?.ToString() ?? "";
+    private void OnAddTargetKind(string? kind) => targetKind = kind ?? "";
 
     private void AddTypedTarget()
     {

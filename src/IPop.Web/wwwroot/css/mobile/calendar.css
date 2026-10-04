@@ -118,13 +118,11 @@
   .cal-onbehalf .cal-btn { flex: 1 1 100%; justify-content: center; height: 36px; }
   .cal-dlg-row { flex-wrap: wrap; }
   .cal-dlg-name { flex: 1 1 calc(100% - 50px); }
-  .cal-dlg-row .cal-dlg-level { flex: 1; height: 40px; font-size: 16px; }
+  .cal-dlg-row .app-select.cal-dlg-level { flex: 1; }
+  .app-select.cal-dlg-level .app-select-trigger { width: 100%; height: 40px; font-size: 16px; }
   .cal-dlg-add { flex-wrap: wrap; }
-  .cal-dlg-add .cal-dlg-level { height: 40px; font-size: 16px; }
   .cal-dlg-add > :nth-child(2) { flex: 1 1 100%; order: 3; }
-  .cal-dlg-levels { grid-template-columns: minmax(0, 1fr); }
   .cal-share .cal-rail-title { display: block; }
-  .cal-dlg-levels dd { margin-bottom: 4px; }
 
   @keyframes cal-m-sheet { from { transform: translateY(100%); } to { transform: none; } }
 }

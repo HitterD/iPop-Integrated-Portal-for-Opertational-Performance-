@@ -33,6 +33,11 @@
 .td-select { justify-self: start; height: 26px; max-width: 100%; border: none; border-radius: 13px; padding: 0 10px; background: var(--fill); color: var(--ink-2); font: 600 12px/1 inherit; cursor: pointer; }
 .td-select.td-status.doing { background: var(--info-soft); color: #0A63D1; } .td-select.td-status.review { background: var(--warn-soft); color: #B25E00; } .td-select.td-status.done { background: var(--success-soft); color: #1C7A44; }
 .td-select.td-priority { border-radius: 7px; } .td-select.td-priority.urgent, .td-select.td-priority.high { background: var(--danger-soft); color: var(--danger-ink); } .td-select.td-priority.normal { background: var(--warn-soft); color: var(--warn-ink); } .td-select.td-priority.low { background: var(--info-soft); color: #0A63D1; }
+/* AppSelect variant: the wrapper is the pill (td-select / td-priority colours), the trigger is see-through */
+.app-select.td-select { align-items: center; padding: 0; font-size: 12px; }
+.app-select.td-select .app-select-trigger { height: 100%; min-height: 26px; padding: 0 10px; gap: 6px; border: none; border-radius: inherit; background: transparent; color: inherit; font: inherit; font-weight: 600; }
+.app-select.td-select .app-select-trigger:hover { background: rgba(0, 0, 0, 0.05); }
+.app-select.td-select .app-select-trigger .chev { color: inherit; opacity: .7; }
 .td-assign-list, .td-due-row, .td-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .td-assign-pill { height: 26px; padding: 0 6px 0 3px; border-radius: 13px; background: var(--fill); display: inline-flex; align-items: center; gap: 5px; font-size: 12px; white-space: nowrap; }
 .td-avatar { width: 20px; height: 20px; flex: none; border-radius: 50%; color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 8px; font-weight: 600; }

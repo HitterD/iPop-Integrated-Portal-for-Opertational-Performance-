@@ -62,7 +62,7 @@ public class ProjectTaskDrawerTests
             .Add(c => c.Task, task)
             .Add(c => c.OnStatusChange, ((ProjectTaskDto Task, string NewStatus) a) => moves.Add((a.Task.Id, a.NewStatus))));
 
-        Assert.Empty(cut.FindAll("select.td-status"));
+        Assert.Empty(cut.FindAll("select.td-status, .app-select.td-status"));
         var pills = cut.FindAll(".td-status-pill");
         Assert.Equal(new[] { "To Do", "In Progress", "Review", "Done" }, pills.Select(p => p.TextContent.Trim()));
         Assert.Equal("true", cut.Find(".td-status-pill.todo").GetAttribute("aria-checked"));

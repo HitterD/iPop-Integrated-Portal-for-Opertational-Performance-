@@ -54,22 +54,12 @@
                                 <AppMemberPicker AdminMode="true" Value="editHead" ValueChanged="v => editHead = v" Placeholder="Head — search a name or NIK" />
                                 <div class="adm-unit-edit-pair">
                                     <label>Parent
-                                        <select class="org-input" @bind="editParent" aria-label="Parent division">
-                                            <option value="">— Top level —</option>
-                                            @foreach (var o in Org.ActiveDivisions.Where(o => !IsSelfOrDescendant(o.Code, d.Code)))
-                                            {
-                                                <option value="@o.Code">@o.Name</option>
-                                            }
-                                        </select>
+                                        <AppSelect Block="true" Label="Parent division" Value="@editParent" ValueChanged="v => editParent = v ?? string.Empty"
+                                                   Options="@ParentOptions(d.Code)" />
                                     </label>
                                     <label>Plant
-                                        <select class="org-input" @bind="editSite" aria-label="Home plant" disabled="@(!string.IsNullOrEmpty(editParent))">
-                                            <option value="">— None —</option>
-                                            @foreach (var s in Org.Plants.Where(s => s.IsActive).OrderBy(s => s.Name))
-                                            {
-                                                <option value="@s.Code">@s.Name</option>
-                                            }
-                                        </select>
+                                        <AppSelect Block="true" Label="Home plant" Value="@editSite" ValueChanged="v => editSite = v ?? string.Empty"
+                                                   Disabled="@(!string.IsNullOrEmpty(editParent))" Options="@PlantOptions" />
                                     </label>
                                 </div>
                                 <div class="adm-unit-edit-acts">
@@ -104,6 +94,11 @@
 </div>
 
 @code {
+    private List<AppOption> ParentOptions(string selfCode) =>
+        [new("", "— Top level —"), .. Org.ActiveDivisions.Where(o => !IsSelfOrDescendant(o.Code, selfCode)).Select(o => new AppOption(o.Code, o.Name))];
+    private List<AppOption> PlantOptions =>
+        [new("", "— None —"), .. Org.Plants.Where(s => s.IsActive).OrderBy(s => s.Name).Select(s => new AppOption(s.Code, s.Name))];
+
     [Parameter, EditorRequired] public AdminOrgModel Org { get; set; } = default!;
     [Parameter] public string InitialKind { get; set; } = "plant";
     [Parameter] public EventCallback OnClose { get; set; }

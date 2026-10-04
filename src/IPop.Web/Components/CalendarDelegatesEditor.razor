@@ -29,25 +29,16 @@
                     <b>@row.Name</b>
                     <small>@(row.Department ?? "")@(row.GrantedBy is not null ? $"{(row.Department is null ? "" : " · ")}Set by {row.GrantedBy}" : "")</small>
                 </span>
-                <select class="cal-dlg-level" aria-label="Access for @row.Name" disabled="@busy" value="@row.Level"
-                        @onchange="e => SetAsync(row.Nik, e.Value?.ToString() ?? row.Level)">
-                    @foreach (var (key, label, _) in Levels)
-                    {
-                        <option value="@key">@label</option>
-                    }
-                </select>
+                <AppSelect CssClass="cal-dlg-level" Label="@($"Access for {row.Name}")" Disabled="@busy" Value="@row.Level" Options="@LevelOptions"
+                           ValueChanged="v => SetAsync(row.Nik, v ?? row.Level)" />
                 <button type="button" class="cal-icon sm" title="Remove" aria-label="Remove @row.Name" disabled="@busy" @onclick="() => RemoveAsync(row)"><i data-lucide="trash-2"></i></button>
             </div>
         }
         @if (adding)
         {
             <div class="cal-dlg-add">
-                <select class="cal-dlg-level" aria-label="Access level" @bind="newLevel">
-                    @foreach (var (key, label, _) in Levels)
-                    {
-                        <option value="@key">@label</option>
-                    }
-                </select>
+                <AppSelect CssClass="cal-dlg-level" Label="Access level" Value="@newLevel" Options="@LevelOptions"
+                           ValueChanged="v => newLevel = v ?? newLevel" />
                 <PeoplePicker Placeholder="Add a delegate" ValueChanged="AddAsync" />
                 <button type="button" class="cal-icon sm" title="Cancel" aria-label="Cancel" @onclick="() => adding = false"><i data-lucide="x"></i></button>
             </div>
@@ -56,23 +47,18 @@
         {
             <button type="button" class="cal-btn cal-dlg-addbtn" @onclick="() => adding = true"><i data-lucide="user-plus"></i> Add delegate</button>
         }
-        <dl class="cal-dlg-levels">
-            @foreach (var (_, label, hint) in Levels)
-            {
-                <dt>@label</dt><dd>@hint</dd>
-            }
-        </dl>
     }
 </div>
 
 @code {
     public record DelegateRow(string Nik, string Name, string? Department, string Level, string? GrantedBy, DateTime CreatedAt);
 
-    private static readonly (string Key, string Label, string Hint)[] Levels =
+    // Each level's hint shows inside the dropdown, so the picker explains itself (no separate legend).
+    private static List<AppOption> LevelOptions =>
     [
-        ("view", "View all details", "Sees Busy only events in full. Can't change anything."),
-        ("edit", "Can edit", "Also creates, changes and cancels events and meetings on this calendar."),
-        ("full", "Full delegate", "Also gets the meeting invites and can accept or decline them."),
+        new("view", "View all details", "Sees Busy only events in full. Can't change anything."),
+        new("edit", "Can edit", "Also creates, changes and cancels events and meetings on this calendar."),
+        new("full", "Full delegate", "Also gets the meeting invites and can accept or decline them."),
     ];
 
     /// "/api/calendar/delegates" or "/api/admin/users/{nik}/calendar-delegates".

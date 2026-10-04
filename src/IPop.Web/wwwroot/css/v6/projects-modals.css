@@ -11,6 +11,7 @@
 .v6-project-modal .field label, .vpm-team-label { color: var(--ink-2); font-size: 12px; font-weight: 600; }
 .vpm-required { color: var(--danger-ink); }
 .v6-project-modal .field .org-input, .v6-project-modal .field .filter-select { width: 100%; height: 40px; box-sizing: border-box; padding: 0 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); font-size: 13px; }
+.v6-project-modal .field .app-select.block .app-select-trigger { min-height: 40px; padding: 0 11px; border-radius: 10px; font-size: 13px; }
 .v6-project-modal .field textarea.org-input { min-height: 70px; padding: 10px 11px; resize: vertical; }
 .vpm-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
 .vpm-owner { margin-top: 2px; color: var(--accent-ink); font-size: 12px; font-weight: 600; }

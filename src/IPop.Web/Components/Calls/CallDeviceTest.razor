@@ -20,10 +20,7 @@
 
         <section class="callx-test-block">
             <label>Microphone
-                <select @onchange="OnInputChanged" disabled="@(devices.Inputs.Count == 0)">
-                    @foreach (var d in devices.Inputs) { <option value="@d.Id" selected="@(d.Id == inputId)">@d.Label</option> }
-                    @if (devices.Inputs.Count == 0) { <option value="">No microphone detected yet</option> }
-                </select>
+                <AppSelect Value="@inputId" ValueChanged="OnInputChanged" Options="InputOptions" Label="Microphone" Block="true" Disabled="@(devices.Inputs.Count == 0)" />
             </label>
             <div class="callx-test-meter">
                 <i data-lucide="mic"></i>
@@ -37,10 +34,7 @@
 
         <section class="callx-test-block">
             <label>Speaker
-                <select @onchange="e => outputId = e.Value?.ToString() ?? string.Empty" disabled="@(support?.OutputSelect != true)">
-                    @foreach (var d in devices.Outputs) { <option value="@d.Id" selected="@(d.Id == outputId)">@d.Label</option> }
-                    @if (devices.Outputs.Count == 0) { <option value="">System default</option> }
-                </select>
+                <AppSelect Value="@outputId" ValueChanged="v => outputId = v ?? string.Empty" Options="OutputOptions" Label="Speaker" Block="true" Disabled="@(support?.OutputSelect != true)" />
             </label>
             @if (support?.OutputSelect != true) { <small>This browser uses the system default speaker.</small> }
             <small class="@(speakerError ? "bad" : "")">@speakerStatus</small>
@@ -95,9 +89,17 @@
         if (r.Ok) devices = await CallSvc.ListDevicesAsync();
     }
 
-    private async Task OnInputChanged(ChangeEventArgs e)
+    private List<AppOption> InputOptions => devices.Inputs.Count == 0
+        ? [new AppOption("", "No microphone detected yet")]
+        : devices.Inputs.Select(d => new AppOption(d.Id, d.Label)).ToList();
+
+    private List<AppOption> OutputOptions => devices.Outputs.Count == 0
+        ? [new AppOption("", "System default")]
+        : devices.Outputs.Select(d => new AppOption(d.Id, d.Label)).ToList();
+
+    private async Task OnInputChanged(string? v)
     {
-        inputId = e.Value?.ToString() ?? "";
+        inputId = v ?? "";
         if (micOn) { await StopMic(); await ToggleMic(); }
     }
 

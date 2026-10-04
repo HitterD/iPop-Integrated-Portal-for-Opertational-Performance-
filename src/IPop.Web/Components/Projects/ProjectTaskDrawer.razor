@@ -85,15 +85,10 @@
                         @if (Groups.Count > 1)
                         {
                             <span class="td-label"><i data-lucide="layers"></i>Group</span>
-                            <select class="td-select" aria-label="Task group" value="@Task.GroupId" @onchange="ChangeGroup">
-                                @foreach (var group in Groups) { <option value="@group.Id">@group.Name</option> }
-                            </select>
+                            <AppSelect Value="@Task.GroupId.ToString()" ValueChanged="ChangeGroup" Options="GroupOptions" Label="Task group" CssClass="td-select" />
                         }
                         <span class="td-label"><i data-lucide="flag"></i>Priority</span>
-                        <select class="td-select td-priority @ProjectUiHelpers.GetPriorityPill(editPriority).Key" aria-label="Priority" @bind="editPriority">
-                            <option value="">No priority</option><option value="urgent">Urgent</option>
-                            <option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
-                        </select>
+                        <AppSelect Value="@(editPriority ?? "")" ValueChanged="v => editPriority = v" Options="PriorityOptions" Label="Priority" CssClass="@($"td-select td-priority {ProjectUiHelpers.GetPriorityPill(editPriority).Key}")" />
                         <span class="td-label"><i data-lucide="users"></i>Assignees</span>
                         <div class="td-assign-list">
                             @foreach (var a in Task.Assignees)
@@ -338,9 +333,13 @@
     // Status is saved immediately through the page's move flow, never through Save changes, so
     // the evidence modal and the dependency guard (server /move) always apply. editStatus only
     // mirrors the saved status for the save model.
-    private async Task ChangeGroup(ChangeEventArgs args)
+    private List<AppOption> GroupOptions => Groups.Select(g => new AppOption(g.Id.ToString(), g.Name)).ToList();
+    private static List<AppOption>? priorityOptions;
+    private static List<AppOption> PriorityOptions => priorityOptions ??= [new("", "No priority"), new("urgent", "Urgent"), new("high", "High"), new("medium", "Medium"), new("low", "Low")];
+
+    private async Task ChangeGroup(string? value)
     {
-        if (Task is null || !Guid.TryParse(args.Value?.ToString(), out var id) || Task.GroupId == id) return;
+        if (Task is null || !Guid.TryParse(value, out var id) || Task.GroupId == id) return;
         await OnMoveToGroup.InvokeAsync((Task.Id, id));
     }
 

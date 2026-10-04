@@ -13,27 +13,10 @@
         </div>
 
         <div class="mrte-group">
-            <select class="mrte-select mrte-font" title="Font" aria-label="Font" value="@FontValue" @onchange="OnFont">
-                <option value="">Default</option>
-                @foreach (var f in Fonts)
-                {
-                    <option value="@f" style="font-family:'@f'">@f</option>
-                }
-                @if (FontValue != "" && !Fonts.Contains(FontValue, StringComparer.OrdinalIgnoreCase))
-                {
-                    <option value="@FontValue">@FontValue</option>
-                }
-            </select>
-            <select class="mrte-select mrte-size" title="Font size (pt)" aria-label="Font size" value="@st.Size" @onchange="OnSize">
-                @if (st.Size != "" && !Sizes.Contains(st.Size))
-                {
-                    <option value="@st.Size">@st.Size</option>
-                }
-                @foreach (var s in Sizes)
-                {
-                    <option value="@s">@s</option>
-                }
-            </select>
+            @* Picking from the AppSelect moves focus off the editor like the old native select did:
+               Jodit's blur handler saves the range and ipop.rte.exec restores it before formatting. *@
+            <AppSelect CssClass="mrte-select mrte-font" Label="Font" Value="@FontValue" ValueChanged="OnFont" Options="FontOptions" />
+            <AppSelect CssClass="mrte-select mrte-size" Label="Font size (pt)" Value="@st.Size" ValueChanged="OnSize" Options="SizeOptions" Placeholder="Size" />
         </div>
 
         <div class="mrte-group">
@@ -371,13 +354,35 @@
         gridR = gridC = 0;
     }
 
-    private async Task OnFont(ChangeEventArgs e)
+    private List<AppOption> FontOptions
     {
-        var f = e.Value?.ToString() ?? "";
+        get
+        {
+            var list = new List<AppOption> { new("", "Default") };
+            list.AddRange(Fonts.Select(f => new AppOption(f, f)));
+            if (FontValue != "" && !Fonts.Contains(FontValue, StringComparer.OrdinalIgnoreCase)) list.Add(new(FontValue, FontValue));
+            return list;
+        }
+    }
+
+    private List<AppOption> SizeOptions
+    {
+        get
+        {
+            var list = new List<AppOption>();
+            if (st.Size != "" && !Sizes.Contains(st.Size)) list.Add(new(st.Size, st.Size));
+            list.AddRange(Sizes.Select(s => new AppOption(s, s)));
+            return list;
+        }
+    }
+
+    private async Task OnFont(string? v)
+    {
+        var f = v ?? "";
         await Exec("fontname", f == "" ? "inherit" : f);
     }
 
-    private Task OnSize(ChangeEventArgs e) => Exec("fontsize", e.Value?.ToString());
+    private Task OnSize(string? v) => Exec("fontsize", v);
 
     private async Task Color(string cmd, string? value)
     {

@@ -444,10 +444,12 @@
 .nt-pr .sub { font-size:11.5px; color:var(--ink-3); }
 .nt-pr .grow { flex:1; min-width:0; }
 .nt-pr .grow > div { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.nt-role { height:26px; border-radius:7px; padding:0 4px 0 7px; color:var(--ink-2); font-size:12.5px; border:0; background:transparent; cursor:pointer; }
-.nt-role:hover { background:var(--fill); }
-.nt-role.static { color:var(--ink-3); cursor:default; padding:0 8px; display:inline-flex; align-items:center; }
-.nt-role.static:hover { background:none; }
+.app-select.nt-role .app-select-trigger { height:26px; box-sizing:border-box; gap:4px; border-radius:7px; padding:0 4px 0 7px; color:var(--ink-2); font-size:12.5px; font-weight:400; border:0; background:transparent; }
+.app-select.nt-role .app-select-trigger:hover { background:var(--fill); }
+.app-select.nt-role .chev { width:12px; height:12px; }
+.app-select.nt-role-invite { flex:none; }
+.app-select.nt-role-invite .app-select-trigger { height:34px; border:1px solid var(--line); padding:0 8px 0 10px; }
+.nt-role.static { height:26px; border-radius:7px; font-size:12.5px; color:var(--ink-3); cursor:default; padding:0 8px; display:inline-flex; align-items:center; }
 .nt-general { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; background:var(--surface-2); margin-top:12px; }
 .nt-general .gi { width:30px; height:30px; border-radius:9px; background:var(--fill); display:grid; place-items:center; color:var(--ink-2); flex:none; }
 .nt-general .sub { font-size:11.5px; color:var(--ink-3); }

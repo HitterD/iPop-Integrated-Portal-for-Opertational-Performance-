@@ -392,13 +392,12 @@ body:has(.cal-drawer) .confirm-center { z-index: 911; }
 .cal-dlg-row { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; }
 .cal-dlg-name { flex: 1; min-width: 0; display: grid; font-size: 13.5px; color: var(--ink); }
 .cal-dlg-name small { font-size: 11.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cal-dlg-level { height: 30px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 12.5px; padding: 0 6px; }
+.app-select.cal-dlg-level { flex: none; }
+.app-select.cal-dlg-level .app-select-trigger { height: 30px; box-sizing: border-box; gap: 6px; border-radius: 8px; font-size: 12.5px; padding: 0 8px 0 10px; }
+.app-select.cal-dlg-level .app-select-label { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; }
 .cal-dlg-add { display: flex; align-items: center; gap: 8px; }
 .cal-dlg-add > :nth-child(2) { flex: 1; min-width: 0; }
 .cal-dlg-addbtn { justify-self: start; }
-.cal-dlg-levels { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; margin: 4px 0 0; font-size: 12px; }
-.cal-dlg-levels dt { font-weight: 600; color: var(--ink-2); }
-.cal-dlg-levels dd { margin: 0; color: var(--ink-3); }
 .adm-cal-dlg { padding: 10px; }
 
 /* ── Event form: Apple Calendar-style grouped rows ── */

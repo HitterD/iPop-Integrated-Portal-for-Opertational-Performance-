@@ -60,8 +60,12 @@
         if (firstRender) _ = JS.InvokeVoidAsync("ipop.icons");
     }
 
+    // Enter/Space on a <button> fire keydown and then click; the keydown already acted.
+    private bool keyHandled;
+
     private async Task Toggle()
     {
+        if (keyHandled) { keyHandled = false; return; }
         if (Disabled) return;
         if (open) { await Close(); return; }
         open = true;
@@ -100,6 +104,7 @@
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
+        if (e.Key is "Enter" or " ") keyHandled = true;
         switch (e.Key)
         {
             case "Enter" or " " when Disabled:

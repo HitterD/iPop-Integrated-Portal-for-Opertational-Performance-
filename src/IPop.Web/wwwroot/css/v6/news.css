@@ -4,16 +4,12 @@
 .news-v6x .toolbar { flex: none; }
 .news-v6x .news-search { width: 320px; }
 
-.v6-select {
-  position: relative; height: 32px; box-sizing: border-box; display: inline-flex; align-items: center; gap: 6px;
-  padding: 0 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); cursor: pointer;
+/* Sort dropdown (AppSelect): toolbar-height trigger, same as the old .v6-select pill. */
+.news-v6x .app-select.news-sort .app-select-trigger {
+  height: 32px; box-sizing: border-box; gap: 6px; padding: 0 10px; border-radius: 9px; font-size: 13px;
 }
-.v6-select .lucide { width: 14px; height: 14px; flex: none; }
-.v6-select .chev { width: 12px; height: 12px; color: var(--ink-3); }
-.v6-select select {
-  appearance: none; -webkit-appearance: none; border: none; outline: none; background: transparent;
-  font: inherit; font-size: 13px; font-weight: 500; color: var(--ink); cursor: pointer; padding: 0;
-}
+.news-v6x .app-select.news-sort .app-select-trigger .app-select-ic { width: 14px; height: 14px; color: var(--ink); }
+.news-v6x .app-select.news-sort .chev { width: 12px; height: 12px; }
 
 .news-cols {
   flex: 1; min-height: 0; display: grid; gap: 16px; padding: 0 24px 24px;

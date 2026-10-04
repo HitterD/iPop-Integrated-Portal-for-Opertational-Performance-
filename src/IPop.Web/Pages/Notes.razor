@@ -496,9 +496,8 @@
                     <div class="nt-share-pane">
                         <div class="nt-inv">
                             <label class="nt-field"><i data-lucide="user-plus" class="sm"></i><input placeholder="Search name or email" value="@inviteQ" @oninput="OnInviteInput" /></label>
-                            <select class="nt-role" style="border:1px solid var(--line);height:34px" @bind="inviteLevel">
-                                <option value="edit">Can edit</option><option value="comment">Can comment</option><option value="view">Can view</option>
-                            </select>
+                            <AppSelect CssClass="nt-role nt-role-invite" Label="Invite access level" Value="@inviteLevel" Options="@InviteLevelOptions"
+                                       ValueChanged="v => inviteLevel = v ?? inviteLevel" />
                             @if (inviteHits.Count > 0)
                             {
                                 <div class="nt-sugg">
@@ -714,6 +713,9 @@
 }
 
 @code {
+    private static List<AppOption> InviteLevelOptions => [new("edit", "Can edit"), new("comment", "Can comment"), new("view", "Can view")];
+    private static List<AppOption> ShareLevelOptions => [.. InviteLevelOptions, new("remove", "Remove access")];
+
     /// One page in the sidebar tree. <paramref name="sortable"/> rows accept drops before/after them
     /// (manual order); "Shared with me" roots stay alphabetical, so they only accept drops onto them.
     private RenderFragment Row(NoteListItemDto p, bool tree, bool sortable) => __builder =>
@@ -776,12 +778,8 @@
         }
         else
         {
-            <select class="nt-role" value="@s.Level" @onchange="e => ChangeShare(s, e.Value?.ToString())">
-                <option value="edit">Can edit</option>
-                <option value="comment">Can comment</option>
-                <option value="view">Can view</option>
-                <option value="remove">Remove access</option>
-            </select>
+            <AppSelect CssClass="nt-role" Label="Access level" Value="@s.Level" Options="@ShareLevelOptions"
+                       ValueChanged="v => ChangeShare(s, v)" />
         }
     };
 }

@@ -7,12 +7,7 @@
         <div class="proj-title-col">
         <div class="proj-title-row">
         <h2 class="proj-title-text">@Project.Name</h2>
-        <select class="proj-st-select proj-st @Project.Status.ToLower()" aria-label="Project status" value="@Project.Status" @onchange="HandleStatusChange">
-            <option value="planning">Planning</option>
-            <option value="active">Active</option>
-            <option value="on_hold">On hold</option>
-            <option value="completed">Completed</option>
-        </select>
+        <AppSelect Value="@Project.Status" ValueChanged="HandleStatusChange" Options="StatusOptions" Label="Project status" CssClass="@($"proj-st-select proj-st {Project.Status.ToLower()}")" />
         </div>
         <div class="proj-title-sub">
             @if (!string.IsNullOrWhiteSpace(Project.Description)) { <span class="desc">@Project.Description</span> }
@@ -93,9 +88,11 @@
 
     private bool showMore;
 
-    private async Task HandleStatusChange(ChangeEventArgs e)
+    private static List<AppOption>? statusOptions;
+    private static List<AppOption> StatusOptions => statusOptions ??= [new("planning", "Planning"), new("active", "Active"), new("on_hold", "On hold"), new("completed", "Completed")];
+
+    private async Task HandleStatusChange(string? s)
     {
-        var s = e.Value?.ToString();
         if (!string.IsNullOrEmpty(s)) await OnStatusChanged.InvokeAsync(s);
     }
 

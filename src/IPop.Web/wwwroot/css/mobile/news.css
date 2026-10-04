@@ -28,7 +28,7 @@
   .news-v6x > .toolbar::-webkit-scrollbar { display: none; }
   .news-v6x .news-search { flex: 1 1 auto; width: auto; min-width: 150px; height: 40px; }
   .news-v6x > .toolbar .push { margin-left: 0; flex: none; gap: 6px; }
-  .news-v6x .v6-select { height: 40px; }
+  .news-v6x .app-select.news-sort .app-select-trigger { height: 40px; }
   .news-v6x > .toolbar .btn-primary { height: 40px; white-space: nowrap; }
 
   /* ---------- Views + categories: one horizontal scroll row of chips ---------- */

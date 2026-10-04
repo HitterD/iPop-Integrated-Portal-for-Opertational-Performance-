@@ -5,17 +5,11 @@
     {
         @if (Field.Type == "Dropdown")
         {
-            <select aria-label="@Field.Name" value="@current" @onchange="e => Save(e.Value?.ToString())">
-                <option value="">—</option>
-                @foreach (var option in Field.Options) { <option value="@option">@option</option> }
-            </select>
+            <AppSelect Value="@(current ?? "")" ValueChanged="Save" Options="DropdownOptions" Label="@Field.Name" Block="true" />
         }
         else if (Field.Type == "Person")
         {
-            <select aria-label="@Field.Name" value="@current" @onchange="e => Save(e.Value?.ToString())">
-                <option value="">—</option>
-                @foreach (var member in Members) { <option value="@member.UserId">@member.Name</option> }
-            </select>
+            <AppSelect Value="@(current ?? "")" ValueChanged="Save" Options="PersonOptions" Label="@Field.Name" Block="true" />
         }
         else
         {
@@ -41,6 +35,9 @@
     private string DisplayValue => Field.Type == "Person" && Guid.TryParse(Value, out var id)
         ? Members.FirstOrDefault(m => m.UserId == id)?.Name ?? "—"
         : string.IsNullOrEmpty(Value) ? "—" : Value;
+
+    private List<AppOption> DropdownOptions => [new("", "—"), .. Field.Options.Select(o => new AppOption(o, o))];
+    private List<AppOption> PersonOptions => [new("", "—"), .. Members.Select(m => new AppOption(m.UserId.ToString(), m.Name))];
 
     private void BeginEdit() { current = Value; editing = true; }
     private void Cancel() { editing = false; current = Value; }

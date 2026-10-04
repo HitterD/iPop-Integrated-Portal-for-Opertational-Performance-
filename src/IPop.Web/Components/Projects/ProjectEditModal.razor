@@ -15,7 +15,7 @@
             <div class="field"><label>Deadline</label><AppDatePicker @bind-Value="editProjDeadline" AllowClear="true" AriaLabel="Deadline" /></div>
         </div>
         <div class="vpm-grid">
-            <div class="field"><label>Status</label><select class="filter-select" @bind="editProjStatus"><option value="planning">Planning</option><option value="doing">Active / Doing</option><option value="on_hold">On hold</option><option value="completed">Done</option></select></div>
+            <div class="field"><label>Status</label><AppSelect Value="@editProjStatus" ValueChanged="v => editProjStatus = v ?? editProjStatus" Options="StatusOptions" Label="Status" CssClass="proj-edit-status" Block="true" /></div>
             <div class="field"><label>Start date</label><AppDatePicker @bind-Value="editProjStartDate" AllowClear="true" AriaLabel="Start date" /></div>
         </div>
         <div class="field">
@@ -43,6 +43,8 @@
     private string editProjName = "";
     private string selectedColor = "#2E9E5B";
     private string editProjStatus = "doing";
+    private static List<AppOption>? statusOptions;
+    private static List<AppOption> StatusOptions => statusOptions ??= [new("planning", "Planning"), new("doing", "Active / Doing"), new("on_hold", "On hold"), new("completed", "Done")];
     private int editProjYear = DateTime.UtcNow.Year;
     private DateTime? editProjStartDate;
     private DateTime? editProjDeadline;

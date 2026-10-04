@@ -103,6 +103,11 @@ button.portfolio-metric:hover, .portfolio-row:hover { background: var(--tray); }
   appearance: none; -webkit-appearance: none; border: none; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600;
   height: 22px; padding: 0 8px; border-radius: 6px;
 }
+/* AppSelect variant: the wrapper carries the .proj-st pill colours, the trigger stays see-through */
+.app-select.proj-st-select { padding: 0; align-items: center; }
+.app-select.proj-st-select .app-select-trigger { height: 22px; padding: 0 8px; gap: 4px; border: none; border-radius: 6px; background: transparent; color: inherit; font: inherit; font-weight: 600; }
+.app-select.proj-st-select .app-select-trigger:hover { background: rgba(0, 0, 0, 0.05); }
+.app-select.proj-st-select .app-select-trigger .chev { width: 12px; height: 12px; color: inherit; opacity: .7; }
 .proj-title-sub { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ink-3); min-width: 0; }
 .proj-title-sub .desc { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; }
 .proj-head-actions { gap: 8px; }
@@ -139,6 +144,8 @@ button.portfolio-metric:hover, .portfolio-row:hover { background: var(--tray); }
 .proj-filter-pop .pf-row input { accent-color: var(--accent); margin: 0; }
 .proj-filter-pop .pf-label { padding: 8px 10px 4px; font-size: 11px; color: var(--ink-3); }
 .proj-filter-pop .pf-select { width: calc(100% - 20px); margin: 0 10px 6px; height: 30px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; padding: 0 8px; }
+.proj-filter-pop .app-select.pf-sel { width: calc(100% - 20px); margin: 0 10px 6px; }
+.proj-filter-pop .app-select.pf-sel .app-select-trigger { min-height: 30px; height: 30px; padding: 0 8px; border-radius: 8px; font-size: 13px; }
 .proj-filter-pop .pf-sep { height: 1px; margin: 4px 6px; background: var(--line-soft); }
 .proj-bar-2 { display: flex; align-items: center; gap: 12px; padding: 12px 24px 0; }
 .proj-bar-2 .btn-primary { display: inline-flex; align-items: center; cursor: pointer; border: none; color: #fff; }
@@ -456,6 +463,8 @@ button.portfolio-metric:hover, .portfolio-row:hover { background: var(--tray); }
 .plist-group-heading { display: flex; align-items: center; border-bottom: 1px solid var(--line-soft); }
 .plist-group-heading > .plist-group-head { flex: 1; min-width: 0; }
 .plist-group-heading > button, .plist-group-heading > select { flex: none; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; font: inherit; font-size: 11px; padding: 6px; }
+.plist-group-heading > .app-select { flex: none; }
+.plist-group-heading > .app-select .app-select-trigger { border: 0; background: transparent; color: var(--ink-2); font-size: 11px; padding: 6px; gap: 4px; }
 .plist-group-heading > input, .plist-group-create input { border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 6px 8px; }
 .plist-group-heading .ct { white-space: nowrap; }
 .plist-group-create, .plist-field-totals { padding: 9px 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; border-top: 1px solid var(--line-soft); color: var(--ink-2); font-size: 11px; }
@@ -487,12 +496,20 @@ button.portfolio-metric:hover, .portfolio-row:hover { background: var(--tray); }
 .project-fields-add .lucide { width: 13px; height: 13px; }
 .project-fields-create { position: absolute; right: 0; top: 38px; width: min(300px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); z-index: 10; box-shadow: var(--sh-pop); }
 .project-fields-create input, .project-fields-create select { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px; }
+.project-fields-create .app-select .app-select-trigger { border-radius: 8px; padding: 7px; }
 .project-field-presets { display: flex; gap: 4px; flex-wrap: wrap; }
 .project-field-presets button, .project-fields-create button { border: 1px solid var(--line); border-radius: 8px; background: var(--fill); color: var(--ink); padding: 6px 8px; font: inherit; font-size: 11px; cursor: pointer; }
 .project-field-cell { min-width: 0; display: flex; align-items: center; gap: 4px; }
 .project-field-cell .project-field-value { padding: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
 .project-field-cell .project-field-value:hover { background: var(--fill); }
 .project-field-cell input, .project-field-cell select { width: 100%; min-width: 0; border: 1px solid var(--accent); border-radius: 6px; background: var(--surface); color: var(--ink); padding: 5px; font: inherit; font-size: 12px; }
+.project-field-cell .app-select.block { flex: 1; min-width: 0; }
+.project-field-cell .app-select.block .app-select-trigger { min-height: 0; padding: 5px; border: 1px solid var(--accent); border-radius: 6px; font-size: 12px; }
+/* Reports panel (milestone link, burndown/velocity filters) */
+.app-select.proj-rep-sel .app-select-trigger { height: 32px; min-width: 128px; padding: 0 12px; font-size: 12px; }
+.app-select.proj-rep-sel.sm .app-select-trigger { height: 26px; padding: 0 8px; font-size: 11px; gap: 6px; }
+/* Quick viewer priority */
+.app-select.block.qv-priority .app-select-trigger { min-height: 30px; height: 30px; padding: 0 10px; font-size: 11.5px; }
 .project-field-cell > button:not(.project-field-value) { border: 0; background: none; color: var(--ink-3); cursor: pointer; font-size: 11px; }
 .td-field-row { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 10px; align-items: center; padding: 6px 0; }
 .td-field-row label { font-size: 12px; color: var(--ink-2); }
