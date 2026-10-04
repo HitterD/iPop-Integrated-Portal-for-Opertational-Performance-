@@ -190,7 +190,10 @@ window.ipopMicro = (() => {
   }
   /** Mark an element as a file drop target (Chat composer, Mail composer, task drawer, Notes, News). */
   function registerDrop(zone, title, hint) {
-    if (!zone || dropZones.has(zone)) return;
+    if (!zone) return;
+    if (title) zone.dataset.miDropTitle = title;
+    if (hint) zone.dataset.miDropHint = hint;
+    if (dropZones.has(zone)) return;
     zone.classList.add('mi-drop-zone');
     if (title) zone.dataset.miDropTitle = title;
     if (hint) zone.dataset.miDropHint = hint;

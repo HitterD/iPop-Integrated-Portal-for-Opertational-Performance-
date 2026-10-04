@@ -841,3 +841,16 @@
 mark.mi-hl { background: #ffe58f; color: inherit; border-radius: 3px; padding: 0 1px; animation: mi-mark-in .45s var(--ease-out); }
 [data-theme="dark"] mark.mi-hl { background: #6b5a14; }
 @keyframes mi-mark-in { from { background: transparent; } }
+
+/* Chat: the whole open conversation is the drop target — a big, centred card over the messages. */
+.conv-pane.mi-drop-zone > .mi-drop-ov { inset: 10px; border-radius: 18px; border-width: 2.5px; z-index: 60;
+  background: color-mix(in srgb, var(--accent-soft) 92%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.conv-pane.mi-drop-zone > .mi-drop-ov > div { display: grid; justify-items: center; gap: 6px; padding: 28px 36px; border-radius: 20px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent); }
+.conv-pane.mi-drop-zone > .mi-drop-ov .mi-drop-ic { width: 76px; height: 76px; border-radius: 24px; margin: 0 0 8px;
+  box-shadow: 0 16px 30px -14px color-mix(in srgb, var(--accent) 70%, transparent); }
+.conv-pane.mi-drop-zone > .mi-drop-ov .mi-drop-ic svg { width: 36px; height: 36px; }
+.conv-pane.mi-drop-zone > .mi-drop-ov b { font-size: 19px; letter-spacing: -.01em; }
+.conv-pane.mi-drop-zone > .mi-drop-ov small { font-size: 13px; max-width: 280px; }
+.conv-pane.mi-drop-zone.mi-drag-over > .mi-drop-ov > div { animation: mi-drop-card .28s var(--ease-spring); }
+@keyframes mi-drop-card { from { transform: scale(.92); opacity: 0; } to { transform: none; opacity: 1; } }

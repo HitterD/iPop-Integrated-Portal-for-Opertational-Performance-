@@ -872,6 +872,9 @@ window.ipop = {
       e.preventDefault();
       deliver(files);
     };
+    // Files dropped anywhere on the open conversation (messages + composer) attach to the
+    // composer, so the target is the whole pane rather than the thin composer strip.
+    const zone = wrap.closest(".conv-pane") || wrap;
     const onDrop = async e => {
       const files = e.dataTransfer && e.dataTransfer.files;
       if (!files || files.length === 0) return;
@@ -882,17 +885,18 @@ window.ipop = {
     const onDragOver = e => {
       if (e.dataTransfer && e.dataTransfer.types && Array.from(e.dataTransfer.types).includes("Files")) {
         e.preventDefault();
-        wrap.classList.add("drag-over");
+        e.dataTransfer.dropEffect = "copy";
       }
     };
     const onDragLeave = e => {
-      if (!wrap.contains(e.relatedTarget)) wrap.classList.remove("drag-over");
+      if (!zone.contains(e.relatedTarget)) wrap.classList.remove("drag-over");
     };
-    window.ipopMicro && ipopMicro.registerDrop(wrap, "Drop to send", "Images, PDF, Office files");
+    window.ipopMicro && ipopMicro.registerDrop(zone, "Drop to send", "Images, PDF, Office files — they attach to your message");
     wrap.addEventListener("paste", onPaste);
-    wrap.addEventListener("drop", onDrop);
-    wrap.addEventListener("dragover", onDragOver);
-    wrap.addEventListener("dragleave", onDragLeave);
+    zone.addEventListener("drop", onDrop);
+    zone.addEventListener("dragover", onDragOver);
+    zone.addEventListener("dragleave", onDragLeave);
+    wrap._ipopZone = zone;
     wrap._ipopPaste = onPaste;
     wrap._ipopDrop = onDrop;
     wrap._ipopDragOver = onDragOver;
@@ -900,11 +904,12 @@ window.ipop = {
   },
   chatUnbindPaste(wrap) {
     if (!wrap || !wrap._ipopPaste) return;
-    window.ipopMicro && ipopMicro.unregisterDrop(wrap);
+    const zone = wrap._ipopZone || wrap;
+    window.ipopMicro && ipopMicro.unregisterDrop(zone);
     wrap.removeEventListener("paste", wrap._ipopPaste);
-    wrap.removeEventListener("drop", wrap._ipopDrop);
-    wrap.removeEventListener("dragover", wrap._ipopDragOver);
-    wrap.removeEventListener("dragleave", wrap._ipopDragLeave);
+    zone.removeEventListener("drop", wrap._ipopDrop);
+    zone.removeEventListener("dragover", wrap._ipopDragOver);
+    zone.removeEventListener("dragleave", wrap._ipopDragLeave);
     wrap.classList.remove("drag-over");
     delete wrap._ipopPaste;
     delete wrap._ipopDrop;
