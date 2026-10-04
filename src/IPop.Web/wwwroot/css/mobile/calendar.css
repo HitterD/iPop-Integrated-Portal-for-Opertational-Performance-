@@ -125,4 +125,6 @@
   .cal-share .cal-rail-title { display: block; }
 
   @keyframes cal-m-sheet { from { transform: translateY(100%); } to { transform: none; } }
+  .cal-drawer.closing { animation: cal-m-sheet-out .18s ease-in forwards; }
+  @keyframes cal-m-sheet-out { to { transform: translateY(100%); } }
 }

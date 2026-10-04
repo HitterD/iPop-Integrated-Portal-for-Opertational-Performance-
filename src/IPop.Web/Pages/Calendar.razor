@@ -224,7 +224,7 @@
                             @foreach (var it in AllDayOn(dd, col))
                             {
                                 var item = it;
-                                <button class="cal-chip src-@item.Source kind-@item.Kind @OtherClass(item) @(item.Rsvp == "pending" ? "pending" : "")" title="@Tooltip(item)" @onclick="e => OpenItemAsync(item, e)" @onclick:stopPropagation="true">
+                                <button class="cal-chip src-@item.Source kind-@item.Kind @OtherClass(item) @(item.Rsvp == "pending" ? "pending" : "") @JustSaved(item)" title="@Tooltip(item)" @onclick="e => OpenItemAsync(item, e)" @onclick:stopPropagation="true">
                                     <i data-lucide="@IconFor(item)"></i><span>@item.Title</span>
                                 </button>
                             }
@@ -259,7 +259,7 @@
                                         continue;
                                     }
                                     var item = p.Item;
-                                    <button class="cal-event src-@item.Source kind-@item.Kind @OtherClass(item) @(item.Rsvp == "pending" ? "pending" : "") @(item.Rsvp == "decline" ? "declined" : "")"
+                                    <button class="cal-event src-@item.Source kind-@item.Kind @OtherClass(item) @(item.Rsvp == "pending" ? "pending" : "") @(item.Rsvp == "decline" ? "declined" : "") @JustSaved(item)"
                                             style="top:@Px(p.Top);height:@Px(p.Height);left:calc(@Pct(p.Col, p.Cols) + 2px);width:calc(@Pct(1, p.Cols) - 4px)"
                                             title="@Tooltip(item)" @onclick="e => OpenItemAsync(item, e)" @onclick:stopPropagation="true">
                                         <span class="cal-event-title"><i data-lucide="@IconFor(item)"></i>@item.Title</span>
@@ -289,7 +289,7 @@
                         @foreach (var it in dayItems.Take(3))
                         {
                             var item = it;
-                            <button class="cal-chip src-@item.Source kind-@item.Kind @OtherClass(item) @(item.Rsvp == "pending" ? "pending" : "")" title="@Tooltip(item)" @onclick="e => OpenItemAsync(item, e)">
+                            <button class="cal-chip src-@item.Source kind-@item.Kind @OtherClass(item) @(item.Rsvp == "pending" ? "pending" : "") @JustSaved(item)" title="@Tooltip(item)" @onclick="e => OpenItemAsync(item, e)">
                                 @if (!IsAllDayLike(item)) { <span class="cal-chip-time">@item.Start.ToString("HH:mm")</span> }
                                 <span>@item.Title</span>
                             </button>
@@ -321,7 +321,7 @@
                             @foreach (var it in g.Items)
                             {
                                 var item = it;
-                                <button class="cal-agenda-item src-@item.Source kind-@item.Kind" @onclick="() => OpenItemAsync(item)">
+                                <button class="cal-agenda-item src-@item.Source kind-@item.Kind @JustSaved(item)" @onclick="() => OpenItemAsync(item)">
                                     <span class="cal-agenda-time">@(IsAllDayLike(item) ? "All day" : TimeRange(item))</span>
                                     <span class="cal-agenda-bar"></span>
                                     <i data-lucide="@IconFor(item)"></i>
@@ -343,10 +343,10 @@
 </div>
 
 @* ---- Event drawer: view / create / edit ---- *@
-@if (drawerOpen)
+@if (drawerOpen || drawerClosing)
 {
-    <div class="cal-drawer-backdrop" @onclick="CloseDrawer"></div>
-    <aside class="cal-drawer" role="dialog" aria-modal="true" aria-label="@(editing ? (form.Id is null ? "New event" : "Edit event") : "Event")" @onkeydown="DrawerKey">
+    <div class="cal-drawer-backdrop @(drawerOpen ? "" : "closing")" @onclick="CloseDrawer"></div>
+    <aside class="cal-drawer @(drawerOpen ? "" : "closing")" role="dialog" aria-modal="true" aria-label="@(editing ? (form.Id is null ? "New event" : "Edit event") : "Event")" @onkeydown="DrawerKey">
         <header class="cal-drawer-head">
             <h3>@(editing ? (form.Id is null ? "New event" : "Edit event") : "Event")</h3>
             @if (!editing && detail is { CanEdit: true })

@@ -14,9 +14,10 @@
     }
     else
     {
-        <span>@AdminHumanize.Plural(stats.Active, "active person", "active people")</span>
-        <span>@AdminHumanize.Plural(stats.Admins, "admin")</span>
-        <span><i class="adm-dot on"></i>@stats.Online.ToString("N0") online now</span>
+        @* #33 count-up: js/attach-drop.js animates [data-mi-count]; the rendered text is already final. *@
+        <span><span class="adm-num" data-mi-count="@stats.Active" data-mi-count-key="adm.active" @key="@($"a{stats.Active}")">@stats.Active.ToString("N0")</span> @(stats.Active == 1 ? "active person" : "active people")</span>
+        <span><span class="adm-num" data-mi-count="@stats.Admins" data-mi-count-key="adm.admins" @key="@($"d{stats.Admins}")">@stats.Admins.ToString("N0")</span> @(stats.Admins == 1 ? "admin" : "admins")</span>
+        <span><i class="adm-dot on"></i><span class="adm-num" data-mi-count="@stats.Online" data-mi-count-key="adm.online" @key="@($"o{stats.Online}")">@stats.Online.ToString("N0")</span> online now</span>
         @if (stats.Locked > 0)
         {
             <button type="button" class="adm-summary-warn" @onclick='() => SetFilter("locked")'><i data-lucide="lock"></i> @AdminHumanize.Plural(stats.Locked, "locked account")</button>
@@ -160,7 +161,7 @@
                     </div>
 
                     <div class="adm-group-label">Profile</div>
-                    <div class="adm-list">
+                    <div class="adm-list adm-profile-list">
                         <div class="adm-list-row"><span>Email</span><b>@(string.IsNullOrWhiteSpace(sel.Email) ? "—" : sel.Email)</b></div>
                         <div class="adm-list-row"><span>Ext.</span><b>@(string.IsNullOrWhiteSpace(sel.Extension) ? "—" : sel.Extension)</b></div>
                         <div class="adm-list-row"><span>Plant</span><b>@(sel.Site ?? "—")</b></div>
@@ -215,7 +216,7 @@
                             @foreach (var s in sessions.Take(showAllSessions ? 50 : 4))
                             {
                                 var dev = AdminHumanize.ParseDevice(s.DeviceFingerprint);
-                                <div class="adm-list-row" @key="s.Id">
+                                <div class="adm-list-row" @key="s.Id" data-row-key="@s.Id">
                                     <span class="adm-dev"><i data-lucide="@dev.Icon"></i>
                                         <span><b>@dev.Label @if (dev.Automated) { <em class="adm-tag">Automated</em> }</b>
                                         <small>@(s.IpAddress ?? "Unknown IP") · signed in @AdminHumanize.Ago(s.CreatedAt).ToLowerInvariant()</small></span>
@@ -453,6 +454,7 @@
         }
         Toasts.Show($"{u.Name} is now {role}", ToastKind.Success);
         await AfterChange(u.Nik);
+        await Flash(".adm-role-seg");
     }
 
     private async Task ResetPassword(AdminUserRowDto u)
@@ -485,6 +487,7 @@
             return;
         }
         Toasts.Show("Session ended", ToastKind.Success);
+        await Leave(s.Id);
         await LoadSessions(u.Nik);
     }
 
@@ -623,11 +626,28 @@
         Toasts.Show(created ? $"{form.Name} added" : "Changes saved", ToastKind.Success);
         form = null;
         await Refresh();
+        if (!created) await Flash(".adm-profile-list");
         if (created && userPage?.Items.FirstOrDefault(x => x.Nik == nik) is { } row) await OpenInspector(row);
         else if (sel is not null) await LoadActivity(sel.Nik);
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+        try { await JS.InvokeVoidAsync("ipopCount.scan"); } catch (JSException) { }
+    }
+
+    // #32 inline save flash / #9 row exit (js/attach-drop.js, micro.js). Decoration only.
+    private async Task Flash(string selector)
+    {
+        StateHasChanged();
+        try { await JS.InvokeVoidAsync("ipopSavedFlash", selector); } catch (JSException) { }
+    }
+
+    private async Task Leave(Guid rowId)
+    {
+        try { await JS.InvokeVoidAsync("ipopMicro.leaveSelector", $"[data-row-key=\"{rowId}\"]"); } catch (JSException) { }
+    }
 
     public void Dispose()
     {

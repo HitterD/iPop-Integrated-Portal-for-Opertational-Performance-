@@ -145,7 +145,7 @@
             </div>
 
             <div class="adm-facts">
-                <div><b>@c.Count.ToString("N0")</b><span>@(c.Count == 1 ? "person" : "people")</span></div>
+                <div><b data-mi-count="@c.Count" data-mi-count-key="adm.tree.@c.Kind" @key="@($"{c.Label}|{c.Count}")">@c.Count.ToString("N0")</b><span>@(c.Count == 1 ? "person" : "people")</span></div>
                 @if (c.Single is null)
                 {
                     <div><b>@c.Departments.Count</b><span>@(c.Departments.Count == 1 ? "department" : "departments")</span></div>
@@ -381,6 +381,8 @@
         }
         Toasts.Show(v is null ? $"{c.Label} has no head now" : $"{v.Name} now heads {c.Label}", ToastKind.Success);
         await Reload();
+        StateHasChanged();
+        try { await JS.InvokeVoidAsync("ipopSavedFlash", ".adm-head-pick"); } catch (JSException) { } // #32
     }
 
     private void Toggle(string key)
@@ -482,5 +484,9 @@
         if (Current is null) sel = Tree.Count > 0 ? "p:" + Tree[0].Code : null;
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JS.InvokeVoidAsync("ipop.icons");
+        try { await JS.InvokeVoidAsync("ipopCount.scan"); } catch (JSException) { } // #33
+    }
 }

@@ -79,7 +79,7 @@
                         <div class="adm-sess-devices">
                             @foreach (var s in p.Sessions)
                             {
-                                <div class="adm-list-row" @key="s.Id">
+                                <div class="adm-list-row" @key="s.Id" data-row-key="@s.Id">
                                     @DeviceCell(s)
                                     @if (s.IsCurrent)
                                     {
@@ -114,7 +114,7 @@
                         <div class="adm-sess-devices">
                             @foreach (var s in Automated.Take(showAllAuto ? 500 : 6))
                             {
-                                <div class="adm-list-row" @key="s.Id">
+                                <div class="adm-list-row" @key="s.Id" data-row-key="@s.Id">
                                     @DeviceCell(s, withName: true)
                                     @if (s.IsCurrent)
                                     {
@@ -257,6 +257,8 @@
             return;
         }
         Toasts.Show("Session ended", ToastKind.Success);
+        // #9 row exit before the list drops it.
+        try { await JS.InvokeVoidAsync("ipopMicro.leaveSelector", $"[data-row-key=\"{s.Id}\"]"); } catch (JSException) { }
         await LoadSessions();
     }
 

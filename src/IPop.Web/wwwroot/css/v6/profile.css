@@ -101,3 +101,12 @@
   .acct-backdrop { padding:0; align-items:flex-end; }
   .acct-sheet { max-width:none; max-height:92vh; border-radius:20px 20px 0 0; }
 }
+
+/* ── Micro-interactions (docs/mockups/ipop-apple/micro-interactions.html). Profile editing lives in
+   AccountSheet.razor; these are CSS-only so that component's markup stays untouched. ── */
+/* #20 invalid input nudge: when a save error appears under a group, the group shakes once and the
+   message fades in (the animation starts when the selector begins to match, i.e. once per error). */
+.acct-group:has(~ .acct-err) { animation: mi-shake .4s; }
+.acct-err { animation: mi-fade .2s var(--ease-out); }
+/* #19 success check: each password requirement's tick pops as it turns satisfied. */
+.acct-req li.ok > svg.lucide { animation: mi-pop .45s var(--ease-spring); }

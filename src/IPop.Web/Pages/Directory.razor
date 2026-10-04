@@ -122,9 +122,9 @@
                     {
                         var open = navigation.IsOpen(node);
                         var hasKids = navigation.HasChildren(node);
-                        <div class="tree-row" style="--lv:@node.Depth" @key="node.Key">
+                        <div class="tree-row @(node.ParentKey is not null && node.ParentKey == justExpandedKey ? "tree-in" : "")" style="--lv:@node.Depth" @key="node.Key">
                             <button type="button" class="tree-twist" disabled="@(!hasKids)" aria-expanded="@(open ? "true" : "false")" aria-label="@(open ? "Collapse" : "Expand") @node.Name" @onclick="() => ToggleNode(node)">
-                                @if (hasKids) { <i data-lucide="@(open ? "chevron-down" : "chevron-right")"></i> }
+                                @if (hasKids) { <i data-lucide="chevron-right"></i> }
                             </button>
                             <button type="button" class="tree-node @(navigation.SelectedKey == node.Key ? "on" : "")" title="@node.Name" aria-pressed="@(navigation.SelectedKey == node.Key ? "true" : "false")" @onclick="() => SelectOccurrence(node)">
                                 <i data-lucide="@(node.Kind == "site" ? "factory" : node.Kind == "div" ? "users" : node.Depth == 1 ? "network" : "folder-tree")"></i><span class="lbl">@node.Name</span><span class="tree-n">@node.Count</span>
@@ -219,12 +219,12 @@
                                                 aria-label="Select @p.Name" @onclick="() => TogglePersonSelection(p.Nik)">
                                             @if (isChecked) { <i data-lucide="check"></i> }
                                         </button>
-                                        <button type="button" class="dc-star @(isFav ? "on" : "")" title="@(isFav ? "Remove favorite" : "Add favorite")" @onclick="() => ToggleFavorite(p.Nik)">
+                                        <button type="button" class="dc-star @(isFav ? "on" : "")" data-fav-nik="@p.Nik" title="@(isFav ? "Remove favorite" : "Add favorite")" @onclick="() => ToggleFavorite(p.Nik)">
                                             <i data-lucide="star"></i>
                                         </button>
                                     </div>
-                                    <div class="dc-av" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">@p.Initials<span class="presence @p.Status"></span></div>
-                                    <span class="dc-name" title="@p.Name">@p.Name</span>
+                                    <div class="dc-av" data-fav-av="@p.Nik" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">@p.Initials<span class="presence @p.Status"></span></div>
+                                    <span class="dc-name" title="@p.Name">@Highlight(p.Name)</span>
                                     <span class="dc-pos" title="@p.Placement">@p.Placement</span>
                                     <span class="dc-meta">@(p.HasExtension ? $"Ext. {p.Extension}" : p.Site)</span>
                                     <div class="dc-acts" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
@@ -295,11 +295,11 @@
                                         <td>
                                             <div class="cell-person">
                                                 <div class="av-wrap">
-                                                    <div class="av" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">@p.Initials</div>
+                                                    <div class="av" data-fav-av="@p.Nik" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">@p.Initials</div>
                                                     <span class="presence @p.Status"></span>
                                                 </div>
                                                 <div class="cp-text">
-                                                    <div class="n" title="@p.Name">@p.Name</div>
+                                                    <div class="n" title="@p.Name">@Highlight(p.Name)</div>
                                                 </div>
                                             </div>
                                         </td>
@@ -316,7 +316,7 @@
                                                 <button type="button" class="ra" title="Call" aria-label="Call @p.Name" @onclick='() => StartCallWith(p.Nik)' @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
                                                     <i data-lucide="phone"></i>
                                                 </button>
-                                                <button type="button" class="ra fav @(isFav ? "on" : "")"
+                                                <button type="button" class="ra fav @(isFav ? "on" : "")" data-fav-nik="@p.Nik"
                                                         title="@(isFav ? "Remove from favorites" : "Add to favorites")"
                                                         @onclick="() => ToggleFavorite(p.Nik)" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
                                                     <i data-lucide="star"></i>
@@ -519,7 +519,27 @@
 
     private async Task Unfavorite(string nik) => await Favorites.ToggleAsync(nik);
 
-    private async Task ToggleFavorite(string nik) => await Favorites.ToggleAsync(nik);
+    private async Task ToggleFavorite(string nik)
+    {
+        var nowFav = await Favorites.ToggleAsync(nik);
+        StateHasChanged();
+        // #3 star pops; #36 a new favorite's avatar arcs into the Favorites panel (only when it is on screen).
+        try { await JS.InvokeVoidAsync("ipopDirMotion.favorite", nik, nowFav); } catch (JSException) { }
+    }
+
+    // #38: wrap the part of a name that matches the people search in <mark>.
+    private RenderFragment Highlight(string text) => builder =>
+    {
+        var q = searchQ;
+        var at = string.IsNullOrWhiteSpace(q) || q.Length < 2 ? -1 : text.IndexOf(q, StringComparison.OrdinalIgnoreCase);
+        if (at < 0) { builder.AddContent(0, text); return; }
+        builder.AddContent(1, text[..at]);
+        builder.OpenElement(2, "mark");
+        builder.AddAttribute(3, "class", "dir-hl");
+        builder.AddContent(4, text.Substring(at, q!.Length));
+        builder.CloseElement();
+        builder.AddContent(5, text[(at + q.Length)..]);
+    };
 
     // ---- Ekspor CSV (hasil pencarian/filter saat ini) ----
     private bool exporting;

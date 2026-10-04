@@ -64,7 +64,11 @@
         <div class="adm-an-fields">
             <div class="field">
                 <label for="adm-an-title">Title</label>
-                <input id="adm-an-title" class="org-input" maxlength="300" @bind="title" @bind:event="oninput" placeholder="e.g. Meet the new iPop" disabled="@uploading" />
+                <input id="adm-an-title" class="org-input" maxlength="@TitleMax" @bind="title" @bind:event="oninput" placeholder="e.g. Meet the new iPop" disabled="@uploading" aria-describedby="adm-an-title-count" />
+                @* #44 character counter: appears near the limit, turns red and nudges at it. *@
+                @{ var titleLen = title?.Length ?? 0; }
+                <span id="adm-an-title-count" class="mi-counter adm-an-count @(titleLen >= TitleMax ? "full" : titleLen >= TitleMax * 0.8 ? "near" : "")" aria-live="polite"
+                      hidden="@(titleLen < TitleMax * 0.8)">@titleLen / @TitleMax</span>
             </div>
             <div class="field">
                 <label for="adm-an-desc">Description</label>
@@ -136,7 +140,7 @@
             @foreach (var v in videos)
             {
                 var video = v;
-                <div class="adm-an-item" @key="video.Id">
+                <div class="adm-an-item" @key="video.Id" data-row-key="@video.Id">
                     <div class="adm-an-thumb">
                         @if (video.HasPoster && posters.TryGetValue(video.Id, out var pu)) { <img src="@pu" alt="" loading="lazy" /> }
                         else { <i data-lucide="film"></i> }
@@ -188,6 +192,7 @@
 
     private NewsVideoPick? pick;
     private double posterAt;
+    private const int TitleMax = 300;
     private string title = "", description = "", popupDays = "14";
     private List<NewsTargetInput> targets = [];
     private string targetKind = "all", targetValue = "";
@@ -333,6 +338,7 @@
             var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/news-videos/{v.Id}");
             if (!res.IsSuccessStatusCode) { Toasts.Show("Could not delete the video.", ToastKind.Error); return; }
             Toasts.Show("Video deleted", ToastKind.Success);
+            try { await JS.InvokeVoidAsync("ipopMicro.leaveSelector", $"[data-row-key=\"{v.Id}\"]"); } catch (JSException) { } // #9
             posters.Remove(v.Id);
             await Reload();
         }

@@ -8,7 +8,7 @@
 @if (Task is not null)
 {
     <div class="task-drawer-backdrop" @onclick="OnClose"></div>
-    <div class="task-drawer v6-task-drawer" role="dialog" aria-modal="true" aria-label="Task Detail">
+    <div class="task-drawer v6-task-drawer" data-attach-scope role="dialog" aria-modal="true" aria-label="Task Detail">
         <div class="task-drawer-inner">
             <div class="task-drawer-head">
                 <span class="td-project-dot" style="background:@(!string.IsNullOrWhiteSpace(ProjectColor) ? ProjectColor : ProjectUiHelpers.GetAvatarBg(ProjectName))"></span>
@@ -222,7 +222,7 @@
                         @foreach (var st in Subtasks)
                         {
                             var isDone = st.Status == "done";
-                            <div class="td-subtask">
+                            <div class="td-subtask" @key="st.Id" data-flip-key="@st.Id">
                                 <button type="button" class="td-sub-check @(isDone ? "on" : "")" aria-label="Toggle @st.Title" @onclick="() => OnToggleSubtask.InvokeAsync(st)">@if (isDone) { <i data-lucide="check"></i> }</button>
                                 <span class="@(isDone ? "done" : "")">@st.Title</span>
                                 <button type="button" class="td-sub-remove" title="Remove" @onclick="() => OnDeleteSubtask.InvokeAsync(st.Id)"><i data-lucide="x"></i></button>
@@ -233,7 +233,7 @@
                     <TaskTimeSection TaskId="Task.Id" Estimated="editEstH" Version="Task" />
                     <section class="td-section td-evidence">
                         <span class="td-section-title">EVIDENCE</span>
-                        <div class="task-evidence-section">
+                        <div class="task-evidence-section" data-attach-zone data-attach-title="Drop field photos" data-attach-hint="Images up to 4 MB">
                             <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="activity"></i>Progress Breakdown & Field Evidence</div><span class="task-evidence-badge doing">In Progress</span></div>
                             <div class="td-sub-add"><input placeholder="Add active progress activity..." @bind="newStepText" @onkeydown="@(e => { if (e.Key == "Enter") AddProgressStep(); })" /><button type="button" @onclick="AddProgressStep"><i data-lucide="plus"></i></button></div>
                             @foreach (var step in evidence.ProgressSteps)
@@ -241,12 +241,12 @@
                                 <div class="td-subtask"><input type="checkbox" checked="@step.IsDone" @onchange="() => step.IsDone = !step.IsDone" /><span>@step.Text</span><button type="button" @onclick="() => evidence.ProgressSteps.Remove(step)"><i data-lucide="x"></i></button></div>
                             }
                             <label class="td-upload"><i data-lucide="camera"></i>Upload Field Photos<InputFile OnChange="HandleUploadFieldPhoto" accept="image/*" multiple style="display:none" /></label>
-                            @if (evidence.FieldPhotos.Count > 0) { <div class="evidence-photo-grid">@foreach (var photo in evidence.FieldPhotos) { <div class="evidence-photo-thumb" title="@photo.Name">@if (!string.IsNullOrEmpty(photo.DataUrl)) { <img src="@photo.DataUrl" alt="@photo.Name" /> } else { <i data-lucide="image"></i> }<button type="button" class="remove-thumb" @onclick="() => evidence.FieldPhotos.Remove(photo)" title="Remove photo">×</button></div> }</div> }
+                            @if (evidence.FieldPhotos.Count > 0) { <div class="evidence-photo-grid">@foreach (var photo in evidence.FieldPhotos) { <div class="evidence-photo-thumb" @key="photo" title="@photo.Name">@if (!string.IsNullOrEmpty(photo.DataUrl)) { <img src="@photo.DataUrl" alt="@photo.Name" /> } else { <i data-lucide="image"></i> }<button type="button" class="remove-thumb" @onclick="() => evidence.FieldPhotos.Remove(photo)" title="Remove photo">×</button></div> }</div> }
                         </div>
-                        <div class="task-evidence-section">
+                        <div class="task-evidence-section" data-attach-zone data-attach-default data-attach-title="Drop to attach" data-attach-hint="Photos or documents up to 10 MB · Ctrl+V pastes">
                             <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="file-check"></i>Completion Evidence & Deliverables</div><span class="task-evidence-badge done">Done</span></div>
                             <label class="td-upload"><i data-lucide="paperclip"></i>Attach photo or document<InputFile OnChange="HandleUploadDeliverable" multiple style="display:none" /></label>
-                            @foreach (var item in evidence.CompletionDeliverables) { <div class="td-subtask"><i data-lucide="@(item.Type == "photo" ? "image" : "file-text")"></i><span>@item.Name (@FormatSize(item.Size))</span><button type="button" @onclick="() => evidence.CompletionDeliverables.Remove(item)"><i data-lucide="x"></i></button></div> }
+                            @foreach (var item in evidence.CompletionDeliverables) { <div class="td-subtask td-deliverable" @key="item"><i data-lucide="@(item.Type == "photo" ? "image" : "file-text")"></i><span>@item.Name (@FormatSize(item.Size))</span><button type="button" @onclick="() => evidence.CompletionDeliverables.Remove(item)"><i data-lucide="x"></i></button></div> }
                             <textarea rows="2" placeholder="Completion notes..." @bind="evidence.CompletionNotes"></textarea>
                         </div>
                     </section>

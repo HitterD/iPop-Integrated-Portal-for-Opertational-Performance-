@@ -13,6 +13,7 @@ public partial class Directory
     private bool disposed, sheetSynced;
     private IJSObjectReference? sheetModule;
     private string? navigationAccount;
+    private string? justExpandedKey;
     private async Task CleanupSheet() { if (sheetModule is not null) { try { await sheetModule.InvokeVoidAsync("close"); await sheetModule.DisposeAsync(); } catch (JSException) { } } }
     private void OnAccountChanged() => _ = InvokeAsync(async () =>
     {
@@ -57,7 +58,9 @@ public partial class Directory
     private async Task ToggleNode(DirectoryNavNode node)
     {
         if (!string.IsNullOrWhiteSpace(navigation.Search)) return;
-        if (!navigation.Expanded.Remove(node.Key)) navigation.Expanded.Add(node.Key);
+        // #23: only the children of the node just opened fade in (never the whole tree).
+        if (!navigation.Expanded.Remove(node.Key)) { navigation.Expanded.Add(node.Key); justExpandedKey = node.Key; }
+        else justExpandedKey = null;
         await SaveNavigation();
     }
     private async Task CollapseAll() { navigation.Search = ""; navigation.Expanded.Clear(); await SaveNavigation(); }

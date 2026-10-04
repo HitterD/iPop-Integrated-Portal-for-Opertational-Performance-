@@ -1300,6 +1300,9 @@
 
     private async Task ExecuteTaskMove(Guid taskId, string targetStatus)
     {
+        // #37: completing from the List remembers row positions so the row can pop, strike, then glide.
+        var animateDone = tab == 1 && targetStatus == "done";
+        if (animateDone) { try { await JS.InvokeVoidAsync("ipopTaskMotion.prepare"); } catch { } }
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{taskId}/move", new TaskMoveRequest(targetStatus, null));
         if (res.IsSuccessStatusCode)
         {
@@ -1313,6 +1316,7 @@
             RefreshEditingTask();
             StateHasChanged();
             await JS.InvokeVoidAsync("ipop.icons");
+            if (animateDone) { try { await JS.InvokeVoidAsync("ipopTaskMotion.completed", taskId.ToString()); } catch { } }
             NotifyRecurringSpawn(moved);
         }
         else
@@ -1572,6 +1576,7 @@
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/tasks/{subtaskId}");
         if (res.IsSuccessStatusCode)
         {
+            await LeaveTasks([subtaskId]);
             if (editingTask is not null) await LoadSubtasks(editingTask.Id);
             await LoadKanban();
             await LoadTaskList();
@@ -1582,6 +1587,11 @@
         {
             Toasts.Show("Failed to delete subtask.", ToastKind.Error);
         }
+    }
+
+    private async Task LeaveTasks(List<Guid> ids)
+    {
+        try { await JS.InvokeVoidAsync("ipopTaskMotion.leave", ids.Select(i => i.ToString()).ToArray()); } catch { }
     }
 
     private static async Task<DeleteTaskResultDto?> ReadDeleteResult(HttpResponseMessage res)
@@ -1660,6 +1670,7 @@
                 }, ToastKind.Error);
                 return;
             }
+            if (action == "delete") await LeaveTasks(selectedTaskIds.ToList());
             selectedTaskIds = new HashSet<Guid>();
             await ReloadCurrentView();
             RefreshEditingTask();
@@ -1995,6 +2006,8 @@
         if (res.IsSuccessStatusCode)
         {
             CloseTaskEditor();
+            StateHasChanged();
+            await LeaveTasks([taskId]); // #9 row exit before the list drops it
             await ReloadCurrentView();
             if (selectedProjectId != Guid.Empty)
                 selectedProject = await Auth.GetAsync<ProjectDto>($"/api/projects/{selectedProjectId}");

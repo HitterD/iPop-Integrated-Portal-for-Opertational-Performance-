@@ -386,3 +386,12 @@
 .adm-runlog .err { color:#FF6961; }
 @media(max-width:1100px) { .adm-hris-top { grid-template-columns:1fr; } }
 [data-theme="dark"] .adm-runlog { background:rgba(255,255,255,.06); }
+
+/* ── Micro-interactions (docs/mockups/ipop-apple/micro-interactions.html) ── */
+/* #44 announcement title counter: right-aligned under the field, only near the limit. */
+.adm-an-count { display: block; text-align: right; margin-top: 4px; }
+.adm-an-count[hidden] { display: none; }
+/* #33 summary numbers count up without the line jittering. */
+.adm-num, .adm-facts b[data-mi-count] { font-variant-numeric: tabular-nums; }
+/* #32 a list that saved in place washes accent once (micro.js .mi-saved); keep the rounded corners. */
+.adm-list.mi-saved, .adm-seg.mi-saved { border-radius: 12px; }

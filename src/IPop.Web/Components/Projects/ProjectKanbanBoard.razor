@@ -235,7 +235,7 @@
                     var isJustCreated = HighlightTaskId == t.Id;
 
 
-                    <div id="task-card-@t.Id"
+                    <div id="task-card-@t.Id" @key="t.Id"
                          class="kanban-task-card @(t.Status == "done" ? "is-done" : "") @(isJustArrived ? "task-just-arrived" : "") @(isJustCreated ? "task-just-created" : "") @(HighlightTaskId == t.Id ? "task-highlight" : "")"
                          draggable="true"
                          @onclick="() => OnTaskClick.InvokeAsync(t)"

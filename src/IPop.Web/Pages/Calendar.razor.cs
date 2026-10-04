@@ -71,6 +71,12 @@ public partial class Calendar
 
     // Drawer state
     private bool drawerOpen, editing, saving;
+    // Exit animation: the drawer markup stays for DrawerExitMs after closing (micro-interactions #4).
+    private const int DrawerExitMs = 180;
+    private bool drawerClosing;
+    private CancellationTokenSource? drawerExitCts;
+    // #10: the event just saved pops onto the grid once.
+    private Guid? justSavedId;
     private EventDetail? detail;
     private EventForm form = new();
     private string? formError;
@@ -160,6 +166,7 @@ public partial class Calendar
         liveCts?.Cancel();
         liveCts?.Dispose();
         peopleCts?.Cancel();
+        drawerExitCts?.Cancel();
     }
 
     // ── Preferences (view + hidden sources) in localStorage ──
@@ -477,6 +484,7 @@ public partial class Calendar
 
     private async Task OpenEventAsync(Guid id)
     {
+        CancelDrawerExit();
         drawerOpen = true; editing = false; detail = null; formError = null;
         StateHasChanged();
         detail = await Auth.GetAsync<EventDetail>($"/api/calendar/events/{id}");
@@ -490,7 +498,37 @@ public partial class Calendar
         if (detail.MeetingId is { } mid) _ = Notifs.MarkReadByTargetAsync("meeting", mid);
     }
 
-    private void CloseDrawer() { drawerOpen = false; editing = false; detail = null; }
+    private void CloseDrawer()
+    {
+        if (!drawerOpen) { editing = false; detail = null; return; }
+        drawerOpen = false;
+        _ = PlayDrawerExitAsync();
+    }
+
+    private async Task PlayDrawerExitAsync()
+    {
+        drawerExitCts?.Cancel();
+        var cts = drawerExitCts = new CancellationTokenSource();
+        drawerClosing = true;
+        try { await Task.Delay(DrawerExitMs, cts.Token); } catch (TaskCanceledException) { return; }
+        drawerClosing = false;
+        // Content is cleared only after the slide-out so the drawer doesn't flash a spinner while leaving.
+        if (!drawerOpen) { editing = false; detail = null; }
+        StateHasChanged();
+    }
+
+    /// Opening (or re-opening mid-exit) cancels a pending exit.
+    private void CancelDrawerExit() { drawerExitCts?.Cancel(); drawerClosing = false; }
+
+    private string JustSaved(FeedItem i) => justSavedId is { } id && i.EventId == id ? "cal-evpop" : "";
+
+    private async Task PopSavedAsync(Guid id)
+    {
+        justSavedId = id;
+        StateHasChanged();
+        await Task.Delay(600);
+        if (justSavedId == id) { justSavedId = null; StateHasChanged(); }
+    }
 
     private void DrawerKey(KeyboardEventArgs e)
     {
@@ -548,6 +586,7 @@ public partial class Calendar
         fat = null;
         if (form.EndDate > form.StartDate && !allDay) { form.EndDate = form.StartDate; form.EndTime = new TimeOnly(23, 59); }
         detail = null; formError = null;
+        CancelDrawerExit();
         drawerOpen = true; editing = true;
     }
 
@@ -644,9 +683,10 @@ public partial class Calendar
             Toasts.Show(form.Id is null ? (saved?.MeetingId is null ? "Event created." : "Meeting created — invitations sent.") : "Event updated.", ToastKind.Success);
             editing = false;
             detail = saved;
-            if (saved is null) drawerOpen = false;
+            if (saved is null) CloseDrawer();
             anchor = form.StartDate.Date;
             await LoadAsync();
+            if (saved is not null) _ = InvokeAsync(() => PopSavedAsync(saved.Id));
         }
         catch (Exception ex) { formError = ex.Message; }
         finally { saving = false; }

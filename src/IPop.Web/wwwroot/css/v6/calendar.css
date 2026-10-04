@@ -161,6 +161,13 @@
 .cal-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100vw); background: var(--surface); border-left: 1px solid var(--line-soft);
   box-shadow: -12px 0 32px rgba(0,0,0,.18); z-index: 901; display: flex; flex-direction: column; animation: cal-slide .16s ease-out; }
 @keyframes cal-slide { from { transform: translateX(24px); opacity: 0; } }
+/* Exit (micro-interactions #4): Calendar.razor keeps the drawer for 180ms with .closing. */
+.cal-drawer.closing { animation: cal-slide-out .18s ease-in forwards; pointer-events: none; }
+.cal-drawer-backdrop.closing { animation: mi-fade-out .18s ease-in forwards; pointer-events: none; }
+@keyframes cal-slide-out { to { transform: translateX(24px); opacity: 0; } }
+/* #10: the event just saved pops onto the grid (once; the class is dropped after 600ms). */
+.cal-event.cal-evpop, .cal-chip.cal-evpop, .cal-agenda-item.cal-evpop { animation: cal-evpop .38s var(--ease-spring); transform-origin: left center; }
+@keyframes cal-evpop { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
 /* The drawer's Delete/Cancel-meeting confirm (ConfirmHost, z 90/91) must sit above the drawer.
    PeoplePicker's body-portalled results compute their own z from the drawer (ipop.positionPopup). */
 body:has(.cal-drawer) .confirm-backdrop { z-index: 910; }
@@ -453,3 +460,6 @@ body:has(.cal-drawer) .confirm-center { z-index: 911; }
   .cal-month .cal-chip-time { display: none; }
   .cal-vis { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* #3 toggles pop: the tick in a calendar / colleague checkbox springs in when it appears. */
+.cal-check > svg.lucide { animation: mi-check .28s var(--ease-spring); }

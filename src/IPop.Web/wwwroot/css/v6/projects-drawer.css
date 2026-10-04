@@ -208,3 +208,9 @@
 .td-time-tools button:hover { background: var(--surface); color: var(--ink); }
 .td-time-tools button .lucide { width: 13px; height: 13px; }
 @media (hover: none) { .td-time-tools { opacity: 1; } }
+
+/* Micro-interactions #12–#14: evidence sections accept files dropped from Windows or pasted with
+   Ctrl+V (js/attach-drop.js feeds the existing InputFile; micro.js draws the drop overlay). */
+.td-evidence .task-evidence-section[data-attach-zone] { position: relative; border-radius: 12px; }
+.td-evidence .task-evidence-section.mi-attach-took { animation: mi-saved .9s var(--ease-smooth); }
+.td-evidence .evidence-photo-thumb, .td-evidence .td-deliverable { animation: mi-rise .3s var(--ease-spring) backwards; }

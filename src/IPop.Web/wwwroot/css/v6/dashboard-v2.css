@@ -243,3 +243,11 @@
   .dw-card { padding: 16px 14px 14px; border-radius: 18px; }
   .dw .li { min-height: 48px; }
 }
+
+/* #24 card lift: core/micro.css lifts .dash-card/.widget, but the v2 dashboard's widgets are .dw-card.
+   Mouse only — phones keep the flat tap (see the 767px block above). */
+@media (hover: hover) {
+  .dw-card { transition: box-shadow .25s var(--ease), transform .2s var(--ease-out); }
+  .dw-card:hover { transform: translateY(-2px); }
+  a.dw-card:active { transform: translateY(-1px) scale(.99); }
+}

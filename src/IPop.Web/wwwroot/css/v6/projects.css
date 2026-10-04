@@ -529,7 +529,8 @@ button.portfolio-metric:hover, .portfolio-row:hover { background: var(--tray); }
   opacity: .4 !important; border: 1px solid var(--line-soft) !important;
   background: var(--surface) !important; box-shadow: none !important; transform: none !important;
 }
-.kanban-task-card.task-just-arrived { animation: kc-fade-in .2s ease both; }
+/* #7 landing bounce (micro-interactions demo): the dropped card springs into its slot. */
+.kanban-task-card.task-just-arrived { animation: task-land-bounce .45s var(--ease-spring, cubic-bezier(.34,1.56,.64,1)) both; }
 .kanban-task-card.task-highlight { outline: none; animation: none; box-shadow: 0 0 0 2px rgba(46, 158, 91, .35); }
 .kanban-floating-ghost, .kanban-slot-gap, .kanban-drop-placeholder { display: none !important; }
 .kanban-empty-lane { border: none; background: transparent; color: var(--ink-4); font-size: 12px; text-align: center; padding: 18px 0; }
@@ -753,3 +754,12 @@ button.portfolio-metric:hover, .portfolio-row:hover { background: var(--tray); }
 .timesheet-table tfoot th, .timesheet-table tfoot td { border-bottom: none; font-weight: 600; color: var(--ink-2); }
 .v6-workload__timesheet { padding: 16px 24px 20px; border-top: 1px solid var(--line-soft); }
 .portfolio-timesheet { margin-top: 14px; }
+
+/* #37 task completed in the List: the check pops (mi-pop via js/attach-drop.js ipopTaskMotion) and the
+   strike-through draws left→right once; the row then glides to its new slot only if the order changed. */
+.plist-task.mi-just-done .plist-title .tt {
+  text-decoration: none;
+  background: linear-gradient(currentColor, currentColor) no-repeat 0 55% / 100% 1.5px;
+  animation: mi-strike .32s .1s var(--ease-out) backwards;
+}
+@keyframes mi-strike { from { background-size: 0 1.5px; } }

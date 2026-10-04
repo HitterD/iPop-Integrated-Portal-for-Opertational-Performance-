@@ -590,7 +590,7 @@
                     var pp = ProjectUiHelpers.GetPriorityPill(t.Priority);
                     var dueState = ProjectUiHelpers.GetDueState(t);
                     var selected = SelectedIds.Contains(t.Id);
-                    <div class="plist-row plist-task @(t.Status == "done" ? "is-done" : "") @(selected ? "is-selected" : "") @(SelectedIds.Count > 0 ? "selecting" : "")" style="@ColumnsStyle" draggable="true" @ondragstart="() => dragTaskId = t.Id" @ondragend="() => dragTaskId = null"
+                    <div @key="t.Id" data-flip-key="@t.Id" class="plist-row plist-task @(t.Status == "done" ? "is-done" : "") @(selected ? "is-selected" : "") @(SelectedIds.Count > 0 ? "selecting" : "")" style="@ColumnsStyle" draggable="true" @ondragstart="() => dragTaskId = t.Id" @ondragend="() => dragTaskId = null"
                          @onclick="() => RowClick(t)" @onpointerdown="e => StartLongPress(t.Id, e)" @onpointerup="CancelLongPress" @onpointerleave="CancelLongPress" @onpointercancel="CancelLongPress">
                         <span class="plist-lead" @onclick:stopPropagation="true">
                             <input type="checkbox" class="plist-sel" aria-label="Select @t.Title" checked="@selected" @onclick="e => ToggleSelect(t.Id, e.ShiftKey)" />
