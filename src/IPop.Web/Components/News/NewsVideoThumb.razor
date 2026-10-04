@@ -1,25 +1,41 @@
-@* 16:9 poster with a play badge and duration for a video post in the News feed. *@
+@* 16:9 poster with a play badge and duration for a video post in the News feed. When the poster is
+   missing or fails to load, the video's own first frame stands in, so the card never shows a broken image. *@
 @inject AuthState Auth
 @inject HttpClient Http
 
-<div class="an-thumb">
-    @if (poster is not null) { <img src="@poster" alt="" loading="lazy" /> }
+<div class="an-thumb @CssClass">
+    @if (poster is not null && !posterFailed)
+    {
+        <img src="@poster" alt="" loading="lazy" @onerror="() => posterFailed = true" />
+    }
+    else if (stream is not null)
+    {
+        <video src="@($"{stream}#t=0.5")" preload="metadata" muted playsinline tabindex="-1" aria-hidden="true"></video>
+    }
     <span class="play"><i data-lucide="play"></i></span>
     @if (Video.DurationSeconds > 0) { <span class="dur">@NewsVideoFormat.Duration(Video.DurationSeconds)</span> }
 </div>
 
 @code {
     [Parameter, EditorRequired] public NewsVideoBriefDto Video { get; set; } = default!;
+    [Parameter] public string CssClass { get; set; } = "";
 
     private string? poster;
+    private string? stream;
+    private bool posterFailed;
     private Guid loadedFor;
 
     protected override async Task OnParametersSetAsync()
     {
-        if (Video.Id == loadedFor || !Video.HasPoster) return;
+        if (Video.Id == loadedFor) return;
         loadedFor = Video.Id;
-        // The poster URL needs a per-user ticket; the reader endpoint hands one out.
-        if (await Auth.GetAsync<NewsVideoViewDto>($"/api/news/videos/{Video.Id}") is { PosterUrl: { } p })
-            poster = Http.BaseAddress is null ? p : new Uri(Http.BaseAddress, p).ToString();
+        poster = stream = null;
+        posterFailed = false;
+        // Poster and stream URLs carry a per-user ticket; the reader endpoint hands them out.
+        if (await Auth.GetAsync<NewsVideoViewDto>($"/api/news/videos/{Video.Id}") is not { } view) return;
+        if (Video.HasPoster && view.PosterUrl is { } p) poster = Absolute(p);
+        stream = Absolute(view.StreamUrl);
     }
+
+    private string Absolute(string url) => Http.BaseAddress is null ? url : new Uri(Http.BaseAddress, url).ToString();
 }

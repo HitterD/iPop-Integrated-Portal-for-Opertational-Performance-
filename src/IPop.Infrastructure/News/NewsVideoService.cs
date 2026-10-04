@@ -108,6 +108,7 @@ public sealed class NewsVideoService(
                 return true;
             }, ct);
             v.NasPath = $"{dir}/{name}";
+            await ArchivePosterAsync(v, dir, ct);
             await db.SaveChangesAsync(ct);
             return true;
         }
@@ -156,7 +157,11 @@ public sealed class NewsVideoService(
             if (rel is not null && SafeFull(rel) is { } f && File.Exists(f)) File.Delete(f);
         if (v.NasPath is not null && gw is not null && nas is not null && nasSession is not null)
         {
-            try { await WithNasAsync(async sid => { await gw.DeleteAsync(nas.Server, sid, v.NasPath, ct); return true; }, ct); }
+            try
+            {
+                await WithNasAsync(async sid => { await gw.DeleteAsync(nas.Server, sid, v.NasPath, ct); return true; }, ct);
+                if (PosterNasPath(v) is { } pn) await WithNasAsync(async sid => { await gw.DeleteAsync(nas.Server, sid, pn, ct); return true; }, ct);
+            }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 log?.LogWarning(ex, "Deleting archived news video {Path} failed; the file is orphaned on the NAS.", v.NasPath);
@@ -223,26 +228,27 @@ public sealed class NewsVideoService(
         if (v is null) return null;
         if (poster)
         {
-            if (v.ThumbnailPath is null || SafeFull(v.ThumbnailPath) is not { } pf || !File.Exists(pf)) return null;
+            if (v.ThumbnailPath is null || SafeFull(v.ThumbnailPath) is not { } pf) return null;
+            if (!File.Exists(pf) && (PosterNasPath(v) is not { } pn || !await RestoreFromNasAsync(v, pn, pf, ct))) return null;
             return new NewsVideoFile(pf, PosterTypes.GetValueOrDefault(Path.GetExtension(pf), "image/jpeg"), Path.GetFileName(pf));
         }
         var full = SafeFull(v.LocalPath);
         if (full is null) return null;
-        if (!File.Exists(full) && !await RestoreFromNasAsync(v, full, ct)) return null;
+        if (!File.Exists(full) && (v.NasPath is null || !await RestoreFromNasAsync(v, v.NasPath, full, ct))) return null;
         return new NewsVideoFile(full, v.ContentType, v.FileName);
     }
 
     /// The local copy is a cache of the NAS archive: bring it back when the API disk lost it.
-    private async Task<bool> RestoreFromNasAsync(NewsVideo v, string full, CancellationToken ct)
+    private async Task<bool> RestoreFromNasAsync(NewsVideo v, string nasPath, string full, CancellationToken ct)
     {
-        if (v.NasPath is null || gw is null || nas is null || nasSession is null) return false;
+        if (gw is null || nas is null || nasSession is null) return false;
         var tmp = full + ".part";
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
             await WithNasAsync(async sid =>
             {
-                await using var src = await gw.DownloadAsync(nas.Server, sid, v.NasPath, ct);
+                await using var src = await gw.DownloadAsync(nas.Server, sid, nasPath, ct);
                 await using var dst = File.Create(tmp);
                 await src.CopyToAsync(dst, ct);
                 return true;
@@ -252,7 +258,7 @@ public sealed class NewsVideoService(
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            log?.LogWarning(ex, "Restoring news video {Id} from {Path} failed.", v.Id, v.NasPath);
+            log?.LogWarning(ex, "Restoring news video {Id} from {Path} failed.", v.Id, nasPath);
             if (File.Exists(tmp)) File.Delete(tmp);
             return false;
         }
@@ -275,6 +281,46 @@ public sealed class NewsVideoService(
 
     private async Task<bool> IsAdminAsync(Guid userId, CancellationToken ct) =>
         await db.UserRoles.AsNoTracking().AnyAsync(ur => ur.UserId == userId && ur.Role.Name == "Admin", ct);
+
+    /// The poster is archived next to the video under its local file name, so its NAS path is derived
+    /// rather than stored (no schema change).
+    internal static string? PosterNasPath(NewsVideo v) =>
+        v.NasPath is null || v.ThumbnailPath is null ? null
+        : $"{v.NasPath[..(v.NasPath.LastIndexOf('/') + 1)]}{Path.GetFileName(v.ThumbnailPath)}";
+
+    /// Best effort: a poster that fails to archive only means no NAS copy; the video archive still counts.
+    private async Task ArchivePosterAsync(NewsVideo v, string dir, CancellationToken ct)
+    {
+        if (v.ThumbnailPath is null || SafeFull(v.ThumbnailPath) is not { } pf || !File.Exists(pf)) return;
+        try
+        {
+            await WithNasAsync(async sid =>
+            {
+                await using var fs = File.OpenRead(pf);
+                await gw!.UploadAsync(nas!.Server, sid, dir, Path.GetFileName(pf), fs, ct);
+                return true;
+            }, ct);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            log?.LogWarning(ex, "Archiving the poster of news video {Id} failed; the local copy still serves it.", v.Id);
+        }
+    }
+
+    /// Videos archived before posters were: copy their posters to the NAS too. Returns how many were copied.
+    public async Task<int> ArchiveMissingPostersAsync(CancellationToken ct)
+    {
+        if (gw is null || nas is null || nasSession is null || !nas.HasServiceAccount) return 0;
+        var list = await db.NewsVideos.AsNoTracking().Where(v => v.NasPath != null && v.ThumbnailPath != null).ToListAsync(ct);
+        var n = 0;
+        foreach (var v in list)
+        {
+            if (SafeFull(v.ThumbnailPath!) is not { } pf || !File.Exists(pf)) continue;
+            await ArchivePosterAsync(v, v.NasPath![..v.NasPath!.LastIndexOf('/')], ct);
+            n++;
+        }
+        return n;
+    }
 
     private async Task<T> WithNasAsync<T>(Func<string, Task<T>> call, CancellationToken ct)
     {

@@ -19,6 +19,13 @@
     <div class="tray"><div class="core" style="display:flex;flex-direction:column;height:100%;padding:0;overflow:hidden">
         <div class="drawer-head">
             <span style="display:flex;align-items:center;gap:8px;min-width:0">
+                @if (Inline && (OnPrev is not null || OnNext is not null))
+                {
+                    <span class="reader-nav">
+                        <button type="button" class="org-act" title="Previous post (K)" aria-label="Previous post" disabled="@(OnPrev is null)" @onclick="() => OnPrev!()"><i data-lucide="chevron-up"></i></button>
+                        <button type="button" class="org-act" title="Next post (J)" aria-label="Next post" disabled="@(OnNext is null)" @onclick="() => OnNext!()"><i data-lucide="chevron-down"></i></button>
+                    </span>
+                }
                 <span class="cat-chip @Detail.Type">@NewsUiHelper.GetCategoryLabel(Detail.Type)</span>
                 @if (!isPublished) { <span class="status-pill draft">Draft</span> }
                 else if (isScheduled) { <span class="status-pill scheduled"><i data-lucide="clock-3"></i>Scheduled</span> }
@@ -72,7 +79,8 @@
             </span>
         </div>
 
-        <div class="drawer-body" style="flex:1;overflow:auto;padding:20px">
+        <div class="drawer-body reader-scroll @(isCondolence ? "is-condolence" : "")" style="flex:1;overflow:auto;padding:20px">
+            <div class="reader-measure">
             @if (Detail.IsPinned)
             {
                 <div class="reader-kicker"><span><i data-lucide="pin"></i>Pinned announcement</span></div>
@@ -81,7 +89,7 @@
             @if (isCondolence)
             {
                 <div class="reader-condolence-banner">
-                    <div class="condolence-banner-icon"><i data-lucide="heart" style="width:22px;height:22px"></i></div>
+                    <div class="condolence-banner-icon"><i data-lucide="flower-2" style="width:24px;height:24px"></i></div>
                     <div>
                         <div class="condolence-primary-headline" lang="id">Turut Berduka Cita</div>
                         <div class="condolence-banner-desc" lang="id">Semoga keluarga yang ditinggalkan diberi kekuatan dan ketabahan.</div>
@@ -169,10 +177,16 @@
                     }
                     else
                     {
-                        <div class="ack-ask">By confirming, you state that you have read and understood this @(isMemo ? "memo" : "post").</div>
-                        <button type="button" class="btn-primary ack-confirm" @onclick="OnAcknowledge" disabled="@AckBusy">
-                            <i data-lucide="check"></i>@(AckBusy ? "Recording…" : "I have read and understood")
-                        </button>
+                        <div class="ack-card">
+                            <span class="ack-ic"><i data-lucide="clipboard-check"></i></span>
+                            <span class="ack-tx">
+                                <b>Please confirm you've read this @(isMemo ? "memo" : "post")</b>
+                                <small>@(Detail.AckDueAt is { } d ? $"{(overdue ? "Was due" : "Due")} {NewsUiHelper.FormatDate(d)} · " : "")@Detail.AckCount of @Detail.AckTotal colleagues done</small>
+                            </span>
+                            <button type="button" class="btn-primary ack-confirm" @onclick="OnAcknowledge" disabled="@AckBusy">
+                                <i data-lucide="check"></i>@(AckBusy ? "Recording…" : "I've read it")
+                            </button>
+                        </div>
                     }
                 </div>
             }
@@ -233,15 +247,26 @@
             @if (isPublished)
             {
                 <div class="news-v6-discussion">
-                    <button type="button" class="ghost-btn like-btn @(Discussion?.IsLiked == true ? "on" : "")" @onclick="OnToggleLike" aria-label="@(Discussion?.IsLiked == true ? "Unlike post" : "Like post")">
-                        <i data-lucide="thumbs-up"></i> @(Discussion?.IsLiked == true ? "Liked" : "Like") · @(Discussion?.LikeCount ?? 0)
-                    </button>
-                    <strong>@(Discussion?.Comments.Count ?? 0) comments</strong>
+                    @if (isCondolence)
+                    {
+                        <button type="button" class="ghost-btn like-btn condo @(Discussion?.IsLiked == true ? "on" : "")" @onclick="OnToggleLike" aria-pressed="@(Discussion?.IsLiked == true ? "true" : "false")" aria-label="Send condolences">
+                            <i data-lucide="hand-heart"></i> Turut berduka · @(Discussion?.LikeCount ?? 0)
+                        </button>
+                        <small class="condo-hint">@(Discussion?.IsLiked == true ? "Your condolences were sent." : "Your name is added to the colleagues who sent condolences.")</small>
+                        <strong>@(Discussion?.Comments.Count ?? 0) condolence @((Discussion?.Comments.Count ?? 0) == 1 ? "message" : "messages")</strong>
+                    }
+                    else
+                    {
+                        <button type="button" class="ghost-btn like-btn @(Discussion?.IsLiked == true ? "on" : "")" @onclick="OnToggleLike" aria-label="@(Discussion?.IsLiked == true ? "Unlike post" : "Like post")">
+                            <i data-lucide="thumbs-up"></i> @(Discussion?.IsLiked == true ? "Liked" : "Like") · @(Discussion?.LikeCount ?? 0)
+                        </button>
+                        <strong>@(Discussion?.Comments.Count ?? 0) comments</strong>
+                    }
                     @foreach (var comment in Discussion?.Comments ?? [])
                     {
                         <p><b>@comment.AuthorName</b> <span>@comment.CreatedAt.ToLocalTime().ToString("dd MMM, HH:mm")</span><br />@comment.Body</p>
                     }
-                    <div class="news-v6-comment-form"><input value="@CommentText" @oninput="HandleCommentInput" placeholder="Add a comment…" maxlength="2000" aria-label="Add a comment" /><button type="button" class="btn-primary" @onclick="OnComment" disabled="@(string.IsNullOrWhiteSpace(CommentText))">Post</button></div>
+                    <div class="news-v6-comment-form"><input value="@CommentText" @oninput="HandleCommentInput" placeholder="@(isCondolence ? "Write a condolence message…" : "Add a comment…")" maxlength="2000" aria-label="@(isCondolence ? "Write a condolence message" : "Add a comment")" /><button type="button" class="btn-primary" @onclick="OnComment" disabled="@(string.IsNullOrWhiteSpace(CommentText))">Post</button></div>
                 </div>
             }
 
@@ -300,6 +325,7 @@
             {
                 <div class="note err" style="margin-top:14px"><i data-lucide="alert-circle"></i><span>@DetailError</span></div>
             }
+            </div>
         </div>
     </div></div>
 </div>
@@ -340,6 +366,9 @@
     [Parameter] public EventCallback OnAcknowledge { get; set; }
     [Parameter] public EventCallback OnRemindAck { get; set; }
     [Parameter] public EventCallback OnDelete { get; set; }
+    /// Inline reader only: jump to the previous / next post in the list (null at either end).
+    [Parameter] public Func<Task>? OnPrev { get; set; }
+    [Parameter] public Func<Task>? OnNext { get; set; }
 
     private string AudienceText => Detail.Targets.Count == 0 || Detail.Targets.Any(t => t.Kind == "all")
         ? "All employees"

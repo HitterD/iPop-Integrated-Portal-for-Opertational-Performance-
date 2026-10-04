@@ -12,15 +12,45 @@
 
 <PageTitle>News & Memos — IPop</PageTitle>
 
-<div class="news-v6x @(showDetail ? "m-detail" : "")">
-    <div class="toolbar">
-        <div class="v6-search news-search">
-            <i data-lucide="search"></i>
-            <input type="search" placeholder="Search news, memos or authors" aria-label="Search news" value="@q" @oninput="e => OnSearchInput(e.Value?.ToString() ?? string.Empty)" />
+<div class="news-v6x nm @(showDetail ? "m-detail" : "") @(IsHome ? "nm-home" : "nm-read")">
+    <div class="nm-top">
+        <div class="nm-tabs" role="tablist" aria-label="News filters">
+            @if (!IsHome)
+            {
+                <button type="button" class="nm-back" @onclick="GoHome"><i data-lucide="chevron-left"></i>All news</button>
+                <span class="nm-sep"></span>
+            }
+            @foreach (var v in Views)
+            {
+                var view = v;
+                if (view.ManagerOnly && !canManage) continue;
+                var n = CountFor(view.Key);
+                if (view.Key is "pinned" or "scheduled" && n == 0 && activeView != view.Key) continue;
+                var on = activeView == view.Key && typeFilter == "";
+                <button type="button" role="tab" aria-selected="@(on ? "true" : "false")" class="nm-tab @(on ? "on" : "")" @onclick="() => SetView(view.Key)">
+                    @view.Label
+                    @if (view.Key == "ack" && n > 0) { <span class="nm-badge">@n</span> }
+                    else if (view.Key is "unread" or "drafts" or "scheduled" && n > 0) { <span class="nm-count">@n</span> }
+                </button>
+            }
+            <span class="nm-sep"></span>
+            @foreach (var cat in Categories)
+            {
+                var c = cat;
+                <button type="button" class="nm-tab cat @NewsHome.Kind(c.Key) @(typeFilter == c.Key ? "on" : "")" aria-pressed="@(typeFilter == c.Key ? "true" : "false")"
+                        @onclick="() => SetCategory(typeFilter == c.Key ? string.Empty : c.Key)"><i data-lucide="@NewsHome.Icon(c.Key)"></i>@c.Label</button>
+            }
         </div>
-        <div class="push flex center gap-8">
-            <AppSelect Label="Sort" CssClass="news-sort" Value="@sortOrder" Options="@SortOptions"
-                       ValueChanged="async v => { sortOrder = v ?? sortOrder; await Reload(1, true); }" />
+        <div class="nm-actions">
+            <div class="v6-search news-search">
+                <i data-lucide="search"></i>
+                <input type="search" placeholder="Search news, memos or authors" aria-label="Search news" value="@q" @oninput="e => OnSearchInput(e.Value?.ToString() ?? string.Empty)" />
+            </div>
+            @if (!IsHome)
+            {
+                <AppSelect Label="Sort" CssClass="news-sort" Value="@sortOrder" Options="@SortOptions"
+                           ValueChanged="async v => { sortOrder = v ?? sortOrder; await Reload(1, true); }" />
+            }
             @if (canManage)
             {
                 <button type="button" class="btn-primary" @onclick="OpenCreate"><i data-lucide="square-pen"></i>New post</button>
@@ -28,42 +58,57 @@
         </div>
     </div>
 
-    <div class="news-cols">
-        <div class="news-side">
-            <nav class="card news-nav" aria-label="News filters">
-                @foreach (var v in Views)
-                {
-                    var view = v;
-                    if (view.ManagerOnly && !canManage) continue;
-                    var n = CountFor(view.Key);
-                    <button type="button" class="nn @(activeView == view.Key && typeFilter == "" ? "on" : "")" aria-current="@(activeView == view.Key && typeFilter == "" ? "page" : null)" @onclick="() => SetView(view.Key)">
-                        <i data-lucide="@view.Icon"></i><span class="lbl">@view.Label</span>
-                        @if (view.Key == "ack" && n > 0) { <span class="dot"></span> }
-                        <span class="n">@n</span>
-                    </button>
-                }
-                <a class="nn" href="/news/drafts"><i data-lucide="file-pen-line"></i><span class="lbl">My drafts</span></a>
-                <div class="nn-label">Categories</div>
-                @foreach (var cat in Categories)
-                {
-                    var c = cat;
-                    <button type="button" class="nn @(typeFilter == c.Key ? "on" : "")" @onclick="() => SetCategory(typeFilter == c.Key ? string.Empty : c.Key)"><i data-lucide="@c.Icon"></i><span class="lbl">@c.Label</span></button>
-                }
-            </nav>
+    @if (IsHome)
+    {
+        <div class="nm-body">
             @if ((counts?.NeedsAck ?? 0) > 0)
             {
-                <div class="news-review">
-                    <div class="t"><i data-lucide="clipboard-check"></i><span>@counts!.NeedsAck @(counts.NeedsAck == 1 ? "memo needs" : "memos need") your acknowledgement</span></div>
-                    <button type="button" @onclick="ReviewNow">Review now</button>
+                <div class="nm-ack-strip" role="status">
+                    <span class="ic"><i data-lucide="clipboard-check"></i></span>
+                    <span class="tx"><b>@counts!.NeedsAck @(counts.NeedsAck == 1 ? "memo needs" : "memos need") your acknowledgement</b>
+                        @if (NextAck is { } na) { <small>@na.Title@(na.AckDueAt is { } due ? $" is due {due.ToLocalTime():ddd d MMM}" : "")</small> }</span>
+                    <button type="button" class="nm-btn" @onclick="ReviewNow">Review now</button>
                 </div>
             }
+            @if (!string.IsNullOrEmpty(listError))
+            {
+                <div class="note err"><i data-lucide="alert-circle"></i><span>@listError</span></div>
+            }
+            @if (loading && items is null)
+            {
+                <div class="nh-hero"><div class="skel" style="height:330px;border-radius:18px"></div><div class="skel" style="height:330px;border-radius:18px"></div></div>
+            }
+            else if (items is { Count: 0 })
+            {
+                <div class="news-empty">
+                    <i data-lucide="newspaper"></i>
+                    <div class="t">No posts yet</div>
+                    <div class="s">@(canManage ? "Publish the first announcement for your team." : "New announcements will show up here.")</div>
+                    @if (canManage) { <button type="button" class="btn-primary" @onclick="OpenCreate"><i data-lucide="square-pen"></i>New post</button> }
+                </div>
+            }
+            else if (items is not null)
+            {
+                <NewsHome Items="items" OnOpen="OpenDetail" />
+                @if (page < totalPages)
+                {
+                    <div class="nm-more"><button type="button" class="ghost-btn" @onclick="LoadMore">Show more (@(total - items.Count) remaining)</button></div>
+                }
+            }
         </div>
-
+    }
+    else
+    {
+    <div class="news-cols">
         <div class="card news-list">
             <div class="card-head">
                 <span class="card-title">@ListTitle</span>
                 <span class="card-meta">@total @(total == 1 ? "post" : "posts")</span>
-                @if (HasActiveFilters)
+                @if (activeView == "drafts")
+                {
+                    <a class="link-btn" style="margin-left:auto" href="/news/drafts">Private autosaves</a>
+                }
+                else if (HasActiveFilters)
                 {
                     <button type="button" class="link-btn" style="margin-left:auto" @onclick="ClearFilters">Clear filters</button>
                 }
@@ -75,60 +120,35 @@
             <div class="news-rows">
                 @if (loading && items is null)
                 {
-                    @for (var i = 0; i < 5; i++) { <div class="skel" style="height:96px;margin:12px 16px;border-radius:10px"></div> }
+                    @for (var i = 0; i < 5; i++) { <div class="skel" style="height:72px;margin:12px 16px;border-radius:10px"></div> }
                 }
                 else if (items is not null && items.Count == 0)
                 {
                     <div class="news-empty">
                         <i data-lucide="@EmptyIcon"></i>
                         <div class="t">@EmptyTitle</div>
-                        <div class="s">@(HasActiveFilters ? "Try clearing the filters." : canManage ? "Publish the first announcement for your team." : "New announcements will show up here.")</div>
-                        @if (canManage && !HasActiveFilters)
-                        {
-                            <button type="button" class="btn-primary" @onclick="OpenCreate"><i data-lucide="square-pen"></i>New post</button>
-                        }
+                        <div class="s">@(HasActiveFilters ? "Try another filter." : canManage ? "Publish the first announcement for your team." : "New announcements will show up here.")</div>
                     </div>
                 }
                 else if (items is not null)
                 {
-                    // "Newest" lists pinned posts first (server order); label them as their own compact section so the
-                    // date-ordered feed below reads as newest-first.
-                    var sectioned = sortOrder == "newest" && activeView != "pinned" && items.Any(i => i.IsPinned);
-                    bool? lastPinned = null;
                     @foreach (var p in items)
                     {
                         var post = p;
-                        var compact = sectioned && post.IsPinned;
-                        @if (sectioned && post.IsPinned != lastPinned)
-                        {
-                            <div class="news-sec">@(post.IsPinned ? "Pinned" : "Latest")</div>
-                        }
-                        lastPinned = post.IsPinned;
-                        var needsAck = post.Status == "published" && post.RequiresAcknowledgement && !post.IsAcknowledged;
                         var unread = post.Status == "published" && !post.IsRead;
-                        var scheduled = post.Status == "published" && post.PublishAt > DateTime.UtcNow;
-                        <button type="button" class="news-row @(openDetailId == post.Id ? "sel" : "") @(unread ? "unread" : "") @(post.Video is null || compact ? "" : "has-video") @(compact ? "compact" : "")" @onclick="() => OpenDetail(post.Id)">
-                            @if (post.Video is { } video && !compact) { <IPop.Web.Components.News.NewsVideoThumb Video="@video" /> }
-                            else if (post.CoverMediaId is { } cover && post.CoverMode != "none" && !compact)
-                            {
-                                <NewsCoverThumb PostId="@post.Id" MediaId="@cover" />
-                            }
-                            <div class="r1">
-                                <span class="cat-chip @post.Type">@NewsUiHelper.GetCategoryLabel(post.Type)</span>
-                                @if (post.IsPinned) { <span class="pin"><i data-lucide="pin"></i>Pinned</span> }
-                                @if (post.Status != "published") { <span class="status-pill draft">Draft</span> }
-                                else if (scheduled) { <span class="status-pill scheduled"><i data-lucide="clock-3"></i>@post.PublishAt!.Value.ToLocalTime().ToString("MMM d, HH:mm")</span> }
-                                <span class="date">@((post.PublishedAt ?? post.CreatedAt).ToLocalTime().ToString("MMM d, yyyy"))</span>
-                            </div>
-                            <div class="ttl">@if (unread) { <span class="udot" title="Unread"></span> }@post.Title</div>
-                            @if (!string.IsNullOrEmpty(post.Summary) && !compact) { <div class="sum">@post.Summary</div> }
-                            <div class="r3">
-                                <span class="by">@post.AuthorName@(post.ViewCount > 0 ? $" · {post.ViewCount} views" : "")</span>
-                                @if (post.AttachmentCount > 0) { <span class="clip" title="@post.AttachmentCount attachment(s)"><i data-lucide="paperclip"></i>@post.AttachmentCount</span> }
-                                @if (post.IsSaved) { <i data-lucide="bookmark" class="saved-mark" aria-label="Saved"></i> }
-                                @if (needsAck) { <span class="ack req">@(post.AckDueAt is { } due ? $"Due {due.ToLocalTime():MMM d}" : "Action required")</span> }
-                                else if (post.RequiresAcknowledgement && post.IsAcknowledged) { <span class="ack ok"><i data-lucide="check"></i>Acknowledged</span> }
-                            </div>
+                        <button type="button" class="nm-row @NewsHome.Kind(post.Type) @(openDetailId == post.Id ? "sel" : "") @(unread ? "unread" : "")" @onclick="() => OpenDetail(post.Id)">
+                            <span class="nh-th">
+                                @if (post.Video is { } video) { <NewsVideoThumb Video="@video" CssClass="nh-media sm" /> }
+                                else if (post.CoverMediaId is { } cover && post.CoverMode != "none") { <NewsCoverThumb PostId="@post.Id" MediaId="@cover" /> }
+                                else { <span class="nh-ill"><i data-lucide="@NewsHome.Icon(post.Type)"></i></span> }
+                            </span>
+                            <span class="nm-rtxt">
+                                <span class="nh-r1"><span class="nh-chip"><i data-lucide="@NewsHome.Icon(post.Type)"></i>@NewsUiHelper.GetCategoryLabel(post.Type)</span>
+                                    @if (post.IsPinned) { <i data-lucide="pin" class="nm-pin" aria-label="Pinned"></i> }
+                                    <span class="nh-when">@NewsHome.When(post)</span></span>
+                                <span class="nm-rtitle">@if (unread) { <span class="nh-udot" title="Unread"></span> }@post.Title</span>
+                                <Meta Post="post" />
+                            </span>
                         </button>
                     }
                     @if (page < totalPages)
@@ -160,7 +180,9 @@
                                   OnDelete="DeleteCurrentPost"
                                   Discussion="@discussion" CommentText="@commentText"
                                   OnCommentTextChanged="v => commentText = v"
-                                  OnToggleLike="ToggleLike" OnComment="AddComment" />
+                                  OnToggleLike="ToggleLike" OnComment="AddComment"
+                                  OnPrev="@(PrevId is null ? null : () => OpenDetail(PrevId.Value))"
+                                  OnNext="@(NextId is null ? null : () => OpenDetail(NextId.Value))" />
             }
             else if (showDetail && detailError is not null)
             {
@@ -170,9 +192,10 @@
             {
                 <div style="padding:24px"><div class="skel" style="height:28px;width:60%;border-radius:8px"></div><div class="skel" style="height:160px;margin-top:16px;border-radius:12px"></div></div>
             }
-            else { <div class="news-v6-empty"><i data-lucide="newspaper"></i>Select a post to read</div> }
+            else { <div class="news-v6-empty"><i data-lucide="newspaper"></i>Pick a post on the left to read it</div> }
         </aside>
     </div>
+    }
 </div>
 
 @if (showCreate || showEdit)
@@ -225,11 +248,36 @@
     private bool canManage => counts?.CanManage ?? (Auth.Me?.Roles.Any(r => r is "Admin" or "HR") == true);
     private bool HasActiveFilters => !string.IsNullOrEmpty(q) || !string.IsNullOrEmpty(typeFilter) || activeView != "all";
 
+    /// Front page: "For you" with no category or search and no post open. Anything else reads in two columns.
+    private bool IsHome => !HasActiveFilters && !showDetail && !readMode;
+    /// Set by "Latest"/list navigation so closing a post keeps the two-column list.
+    private bool readMode;
+
+    private NewsSummaryDto? NextAck => items?.FirstOrDefault(p => p.Status == "published" && p.RequiresAcknowledgement && !p.IsAcknowledged);
+
+    private int OpenIndex => items is null || openDetailId is null ? -1 : items.FindIndex(p => p.Id == openDetailId);
+    private Guid? PrevId => OpenIndex > 0 ? items![OpenIndex - 1].Id : null;
+    private Guid? NextId => OpenIndex >= 0 && OpenIndex < items!.Count - 1 ? items[OpenIndex + 1].Id : null;
+
+    [JSInvokable]
+    public Task NewsStep(int dir) => InvokeAsync(async () =>
+    {
+        if (!showDetail || showCreate || showEdit) return;
+        if ((dir > 0 ? NextId : PrevId) is { } id) await OpenDetail(id);
+    });
+
+    private async Task GoHome()
+    {
+        readMode = false;
+        if (showDetail) CloseDetail();
+        if (HasActiveFilters) await ClearFilters();
+    }
+
     private static readonly (string Key, string Label, string Icon, bool ManagerOnly)[] Views =
     [
-        ("all", "All posts", "newspaper", false),
+        ("all", "For you", "newspaper", false),
         ("unread", "Unread", "mail", false),
-        ("ack", "Needs acknowledgement", "clipboard-check", false),
+        ("ack", "To acknowledge", "clipboard-check", false),
         ("saved", "Saved", "bookmark", false),
         ("pinned", "Pinned", "pin", false),
         ("scheduled", "Scheduled", "clock-3", true),
@@ -239,7 +287,7 @@
     private static readonly (string Key, string Label, string Icon)[] Categories =
     [
         ("news", "Company news", "building-2"),
-        ("memo", "Internal memos", "file-text"),
+        ("memo", "Memos", "file-text"),
         ("announcement", "Announcements", "megaphone"),
         ("condolence", "Condolences", "heart"),
     ];
@@ -257,6 +305,7 @@
 
     private string ListTitle =>
         !string.IsNullOrEmpty(typeFilter) ? Categories.FirstOrDefault(c => c.Key == typeFilter).Label ?? NewsUiHelper.GetCategoryLabel(typeFilter)
+        : activeView == "all" ? (string.IsNullOrWhiteSpace(q) ? "All posts" : $"Results for “{q.Trim()}”")
         : Views.FirstOrDefault(v => v.Key == activeView).Label ?? "All posts";
 
     private string EmptyIcon => activeView switch
@@ -383,6 +432,8 @@
 
     private async Task SetView(string view)
     {
+        // "For you" is the front page: leave the reader and go back to the magazine.
+        if (view == "all" && string.IsNullOrWhiteSpace(q)) { await GoHome(); return; }
         activeView = view;
         typeFilter = "";
         await Reload(1, true);
@@ -844,7 +895,15 @@
         return r.StatusCode.ToString();
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _selfRef ??= DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("ipop.newsKeys", _selfRef); } catch (JSException) { }
+        }
+        await JS.InvokeVoidAsync("ipop.icons");
+    }
     public void Dispose()
     {
         Layout.SearchChanged -= OnLayoutSearch;
@@ -852,6 +911,7 @@
         _liveCts?.Cancel();
         _liveCts?.Dispose();
         _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail").AsTask().ContinueWith(_ => { });
+        _ = JS.InvokeVoidAsync("ipop.newsKeysOff").AsTask().ContinueWith(_ => { });
         _selfRef?.Dispose();
     }
 }

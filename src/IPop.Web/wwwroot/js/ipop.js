@@ -317,6 +317,24 @@ window.ipop = {
     const want = n > 0 ? `(${n > 99 ? "99+" : n}) ${base}` : base;
     if (document.title !== want) document.title = want;
   },
+  // News reader: J / K (or arrow down / up) step through the list while a post is open.
+  newsKeys(dotnet) {
+    if (window.ipop._newsKeys) document.removeEventListener("keydown", window.ipop._newsKeys);
+    const onKey = e => {
+      if (e.metaKey || e.ctrlKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable) return;
+      const k = e.key;
+      if (k === "j" || k === "J") { e.preventDefault(); dotnet.invokeMethodAsync("NewsStep", 1); }
+      else if (k === "k" || k === "K") { e.preventDefault(); dotnet.invokeMethodAsync("NewsStep", -1); }
+    };
+    window.ipop._newsKeys = onKey;
+    document.addEventListener("keydown", onKey);
+    return true;
+  },
+  newsKeysOff() {
+    if (window.ipop._newsKeys) document.removeEventListener("keydown", window.ipop._newsKeys);
+    window.ipop._newsKeys = null;
+    return true;
+  },
   // Global shortcuts live in JS because they fire on document, not on a component.
   // MainLayout registers once; the returned handles let Blazor detach on dispose.
   shortcuts(dotnet) {

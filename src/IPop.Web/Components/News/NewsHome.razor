@@ -1,0 +1,105 @@
+@* News front page (magazine): one featured story, three side stories, then a Latest grid.
+   Condolences are never featured. Posts without a picture get their category illustration. *@
+@using IPop.Web.Models
+
+@if (Items.Count == 0) { return; }
+
+<div class="nh">
+    @if (Featured is { } f)
+    {
+        <div class="nh-hero">
+            <button type="button" class="nh-feature @Kind(f.Type)" @onclick="() => OnOpen.InvokeAsync(f.Id)">
+                @if (f.Video is { } fv) { <NewsVideoThumb Video="@fv" CssClass="nh-media" /> }
+                else if (HasCover(f)) { <NewsCoverThumb PostId="@f.Id" MediaId="@f.CoverMediaId!.Value" /> }
+                else { <span class="nh-ill big"><i data-lucide="@Icon(f.Type)"></i></span> }
+                <span class="nh-shade"></span>
+                <span class="nh-ftxt">
+                    <span class="nh-chip glass"><i data-lucide="@Icon(f.Type)"></i>@NewsUiHelper.GetCategoryLabel(f.Type)</span>
+                    <span class="nh-ftitle">@f.Title</span>
+                    @if (!string.IsNullOrWhiteSpace(f.Summary)) { <span class="nh-fsum">@f.Summary</span> }
+                    <span class="nh-fmeta">@f.AuthorName · @When(f)@(f.ViewCount > 0 ? $" · {f.ViewCount} views" : "")</span>
+                </span>
+            </button>
+            @if (Side.Count > 0)
+            {
+                <div class="nh-side">
+                    @foreach (var s in Side)
+                    {
+                        var p = s;
+                        <button type="button" class="nh-mini @Kind(p.Type)" @onclick="() => OnOpen.InvokeAsync(p.Id)">
+                            <span class="nh-th">
+                                @if (p.Video is { } sv) { <NewsVideoThumb Video="@sv" CssClass="nh-media sm" /> }
+                                else if (HasCover(p)) { <NewsCoverThumb PostId="@p.Id" MediaId="@p.CoverMediaId!.Value" /> }
+                                else { <span class="nh-ill"><i data-lucide="@Icon(p.Type)"></i></span> }
+                            </span>
+                            <span class="nh-mtxt">
+                                <span class="nh-chip"><i data-lucide="@Icon(p.Type)"></i>@NewsUiHelper.GetCategoryLabel(p.Type)</span>
+                                <span class="nh-mtitle">@if (Unread(p)) { <span class="nh-udot" title="Unread"></span> }@p.Title</span>
+                                <Meta Post="p" />
+                            </span>
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @if (Rest.Count > 0)
+    {
+        <div class="nh-sec"><h3>Latest</h3><span>@Rest.Count more @(Rest.Count == 1 ? "post" : "posts")</span></div>
+        <div class="nh-grid">
+            @foreach (var r in Rest)
+            {
+                var p = r;
+                <button type="button" class="nh-card @Kind(p.Type)" @onclick="() => OnOpen.InvokeAsync(p.Id)">
+                    <span class="nh-th">
+                        @if (p.Video is { } gv) { <NewsVideoThumb Video="@gv" CssClass="nh-media" /> }
+                        else if (HasCover(p)) { <NewsCoverThumb PostId="@p.Id" MediaId="@p.CoverMediaId!.Value" /> }
+                        else { <span class="nh-ill"><i data-lucide="@Icon(p.Type)"></i></span> }
+                    </span>
+                    <span class="nh-bd">
+                        <span class="nh-r1"><span class="nh-chip"><i data-lucide="@Icon(p.Type)"></i>@NewsUiHelper.GetCategoryLabel(p.Type)</span><span class="nh-when">@When(p)</span></span>
+                        <span class="nh-ctitle">@if (Unread(p)) { <span class="nh-udot" title="Unread"></span> }@p.Title</span>
+                        @if (!string.IsNullOrWhiteSpace(p.Summary)) { <span class="nh-csum">@p.Summary</span> }
+                        <span class="nh-ft">
+                            <span class="nh-by">@p.AuthorName</span>
+                            @if (p.AttachmentCount > 0) { <span class="nh-clip"><i data-lucide="paperclip"></i>@p.AttachmentCount</span> }
+                            <Meta Post="p" Compact="true" />
+                        </span>
+                    </span>
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<NewsSummaryDto> Items { get; set; } = [];
+    [Parameter] public EventCallback<Guid> OnOpen { get; set; }
+
+    /// Pinned or the newest non-condolence post; condolences never lead the page.
+    private NewsSummaryDto? Featured =>
+        Items.FirstOrDefault(p => p.IsPinned && !IsCondolence(p.Type))
+        ?? Items.FirstOrDefault(p => !IsCondolence(p.Type));
+
+    private List<NewsSummaryDto> Side => Items.Where(p => p.Id != Featured?.Id).Take(3).ToList();
+    private List<NewsSummaryDto> Rest => Items.Where(p => p.Id != Featured?.Id).Skip(3).ToList();
+
+    internal static bool IsCondolence(string type) => type is "condolence" or "duka";
+    internal static string Kind(string type) => type switch
+    {
+        "memo" => "k-memo", "announcement" => "k-ann", "condolence" or "duka" => "k-con", _ => "k-news",
+    };
+    internal static string Icon(string type) => type switch
+    {
+        "memo" => "file-text", "announcement" => "megaphone", "condolence" or "duka" => "flower-2", _ => "building-2",
+    };
+    private static bool HasCover(NewsSummaryDto p) => p.CoverMediaId is not null && p.CoverMode != "none";
+    private static bool Unread(NewsSummaryDto p) => p.Status == "published" && !p.IsRead;
+    internal static string When(NewsSummaryDto p)
+    {
+        var d = (p.PublishedAt ?? p.CreatedAt).ToLocalTime();
+        return d.Date == DateTime.Today ? "Today" : d.Date == DateTime.Today.AddDays(-1) ? "Yesterday"
+            : d.Year == DateTime.Today.Year ? d.ToString("d MMM") : d.ToString("d MMM yyyy");
+    }
+}

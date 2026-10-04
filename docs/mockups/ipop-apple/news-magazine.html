@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iPop — News &amp; Memos magazine (mockup)</title>
+<style>
+  :root { --canvas:#e9e7e2; --surface:#fff; --surface-2:#faf9f7; --surface-3:#f4f2ef; --line:#edebe7; --line-2:#e2dfd9;
+    --ink:#191816; --ink-2:#5d5a54; --ink-3:#8f8c85; --accent:#2e9d6b; --accent-soft:#e7f4ed; --danger:#d93a2b;
+    --sh-pop:0 16px 40px -12px rgba(25,24,22,.22); --sh-card:0 1px 2px rgba(25,24,22,.05), 0 6px 18px -10px rgba(25,24,22,.18);
+    --c-news:#2563eb; --c-news-soft:#eaf1ff; --c-memo:#7c5cc4; --c-memo-soft:#f1ecfb; --c-ann:#e07a1f; --c-ann-soft:#fdf0e3;
+    --c-con:#6b6862; --c-con-soft:#efeeec; }
+  [data-theme="dark"] { --canvas:#131211; --surface:#1c1b19; --surface-2:#232220; --surface-3:#201f1d; --line:#2c2a27; --line-2:#36342f;
+    --ink:#f2f0ec; --ink-2:#b5b1a9; --ink-3:#85817a; --accent:#4cd787; --accent-soft:#1d3428; --sh-pop:0 16px 40px -12px rgba(0,0,0,.6);
+    --sh-card:0 1px 2px rgba(0,0,0,.4), 0 6px 18px -10px rgba(0,0,0,.6);
+    --c-news:#7aa7ff; --c-news-soft:#1a2540; --c-memo:#b39ef0; --c-memo-soft:#2a2340; --c-ann:#f2a35b; --c-ann-soft:#3a2a18;
+    --c-con:#b5b1a9; --c-con-soft:#2a2927; }
+</style>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { background: var(--canvas); color: var(--ink); font-family: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif; margin: 0; font-size: 13.5px; }
+  svg.lucide { width: 16px; height: 16px; flex: none; }
+  .mk-nav { position: sticky; top: 0; z-index: 50; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 10px 18px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .mk-nav b { margin-right: 8px; font-size: 14px; }
+  .mk-nav button { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .mk-nav button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .mk-nav .sp { flex: 1; }
+  .stage { display: none; padding: 28px; justify-content: center; align-items: flex-start; gap: 24px; }
+  .stage.on { display: flex; }
+  .note { width: 290px; flex: none; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+  .note h3 { font-size: 14px; color: var(--ink); margin: 0 0 6px; }
+  .note li { margin-bottom: 6px; }
+  .note .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); margin-bottom: 8px; }
+  .win { background: var(--surface-2); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh-pop); overflow: hidden; }
+
+  /* category tokens */
+  .k-news { --k: var(--c-news); --ks: var(--c-news-soft); } .k-memo { --k: var(--c-memo); --ks: var(--c-memo-soft); }
+  .k-ann { --k: var(--c-ann); --ks: var(--c-ann-soft); } .k-con { --k: var(--c-con); --ks: var(--c-con-soft); }
+  .chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--k); background: var(--ks); padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .chip svg { width: 12px; height: 12px; }
+
+  /* shell */
+  .news { width: 1180px; height: 760px; display: flex; flex-direction: column; }
+  .top { display: flex; align-items: center; gap: 10px; padding: 14px 22px 0; }
+  .top h1 { margin: 0; font-size: 24px; letter-spacing: -.02em; }
+  .top .date { color: var(--ink-3); font-size: 13px; margin-left: 4px; }
+  .search { display: flex; align-items: center; gap: 8px; height: 34px; width: 280px; padding: 0 12px; border-radius: 10px; background: var(--surface-3); color: var(--ink-3); margin-left: auto; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+  .btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.ghost { border-color: transparent; background: none; }
+  .tabs { display: flex; align-items: center; gap: 6px; padding: 14px 22px 12px; border-bottom: 1px solid var(--line); }
+  .tab { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 999px; font-size: 13px; color: var(--ink-2); border: 1px solid transparent; }
+  .tab.on { background: var(--ink); color: var(--surface); font-weight: 600; }
+  .tab .n { font-size: 11px; font-weight: 700; color: #fff; background: var(--danger); border-radius: 999px; padding: 0 6px; line-height: 17px; }
+  .tab.cat { border-color: var(--line-2); }
+  .tab.cat svg { color: var(--k); width: 14px; height: 14px; }
+  .tabs .sep { width: 1px; height: 20px; background: var(--line-2); margin: 0 4px; }
+  .tabs .more { margin-left: auto; display: flex; gap: 6px; }
+  .body { flex: 1; overflow: auto; padding: 18px 22px 24px; }
+
+  /* attention strip */
+  .ack-strip { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: color-mix(in srgb, var(--danger) 9%, var(--surface)); border: 1px solid color-mix(in srgb, var(--danger) 22%, transparent); margin-bottom: 16px; }
+  .ack-strip .ic { width: 34px; height: 34px; border-radius: 10px; background: var(--danger); color: #fff; display: grid; place-items: center; }
+  .ack-strip b { font-size: 14px; } .ack-strip small { display: block; color: var(--ink-2); font-size: 12.5px; }
+  .ack-strip .btn { margin-left: auto; }
+
+  /* hero */
+  .hero { display: grid; grid-template-columns: 1.45fr 1fr; gap: 16px; margin-bottom: 22px; }
+  .hcard { position: relative; border-radius: 18px; overflow: hidden; min-height: 330px; color: #fff; box-shadow: var(--sh-card); }
+  .hcard .img { position: absolute; inset: 0; background: linear-gradient(135deg, #0f3d2e, #2e9d6b 55%, #9fd9b9); }
+  .hcard .img.video { background: radial-gradient(circle at 70% 30%, #3d6b8f, #0d1b2a 70%); }
+  .hcard .shade { position: absolute; inset: 0; background: linear-gradient(180deg, transparent 35%, rgba(0,0,0,.72)); }
+  .hcard .play { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 64px; height: 64px; border-radius: 50%; background: rgba(255,255,255,.92); color: #111; display: grid; place-items: center; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+  .hcard .play svg { width: 26px; height: 26px; margin-left: 3px; }
+  .hcard .dur { position: absolute; top: 14px; right: 14px; background: rgba(0,0,0,.55); padding: 3px 8px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+  .hcard .txt { position: absolute; left: 22px; right: 22px; bottom: 20px; }
+  .hcard .chip { background: rgba(255,255,255,.18); color: #fff; backdrop-filter: blur(8px); }
+  .hcard h2 { margin: 10px 0 6px; font-size: 28px; line-height: 1.15; letter-spacing: -.02em; }
+  .hcard p { margin: 0; color: rgba(255,255,255,.85); font-size: 14px; line-height: 1.45; max-width: 560px; }
+  .hcard .meta { margin-top: 10px; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: rgba(255,255,255,.8); }
+  .av { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; background: #fff3; color: #fff; font-size: 9.5px; font-weight: 700; flex: none; }
+  .side-stack { display: grid; gap: 12px; align-content: start; }
+  .mini { display: grid; grid-template-columns: 96px 1fr; gap: 12px; padding: 10px; border-radius: 14px; background: var(--surface); box-shadow: var(--sh-card); }
+  .mini .th { border-radius: 10px; height: 76px; }
+  .mini b { font-size: 14px; line-height: 1.3; display: block; margin: 5px 0 4px; }
+  .mini small { color: var(--ink-3); font-size: 12px; }
+  .ill { display: grid; place-items: center; background: var(--ks); color: var(--k); }
+  .ill svg { width: 30px; height: 30px; }
+
+  /* grid */
+  .sec-h { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 12px; }
+  .sec-h h3 { margin: 0; font-size: 18px; letter-spacing: -.01em; }
+  .sec-h span { color: var(--ink-3); font-size: 12.5px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .card { background: var(--surface); border-radius: 16px; overflow: hidden; box-shadow: var(--sh-card); display: flex; flex-direction: column; }
+  .card .th { height: 140px; position: relative; }
+  .card .th.photo { background: linear-gradient(135deg, #d7e8f7, #8db7e0); }
+  .card .th.photo2 { background: linear-gradient(135deg, #f6d9b8, #e08e45); }
+  .card .bd { padding: 12px 14px 14px; display: grid; gap: 6px; }
+  .card .r1 { display: flex; align-items: center; gap: 8px; }
+  .card .r1 .when { margin-left: auto; color: var(--ink-3); font-size: 12px; }
+  .card h4 { margin: 0; font-size: 15.5px; line-height: 1.3; letter-spacing: -.01em; }
+  .card p { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card .ft { display: flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 12px; margin-top: 2px; }
+  .card .ft .av { background: var(--ks); color: var(--k); }
+  .card .ft .sp { flex: 1; }
+  .udot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: inline-block; }
+  .due { color: var(--danger); font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+  .due svg { width: 13px; height: 13px; }
+  .ok { color: var(--accent); display: inline-flex; align-items: center; gap: 4px; }
+  .ok svg { width: 13px; height: 13px; }
+  .card.con { background: var(--surface); }
+  .card.con .th { background: var(--c-con-soft); display: grid; place-items: center; color: var(--c-con); }
+  .card.con .th svg { width: 34px; height: 34px; stroke-width: 1.4; }
+  .card.con h4 { font-weight: 500; }
+
+  /* reading (2-col) */
+  .read { display: grid; grid-template-columns: 340px 1fr; flex: 1; min-height: 0; }
+  .rlist { border-right: 1px solid var(--line); overflow: auto; background: var(--surface-2); }
+  .rrow { display: grid; grid-template-columns: 64px 1fr; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .rrow.sel { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
+  .rrow .th { height: 52px; border-radius: 9px; }
+  .rrow .th svg { width: 20px; height: 20px; }
+  .rrow b { font-size: 13.5px; line-height: 1.3; display: block; margin-top: 3px; }
+  .rrow small { color: var(--ink-3); font-size: 11.5px; }
+  .article { overflow: auto; background: var(--surface); }
+  .art-bar { position: sticky; top: 0; display: flex; align-items: center; gap: 4px; padding: 10px 18px; background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); z-index: 2; }
+  .art-bar .ib { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; color: var(--ink-2); }
+  .art-bar .sp { flex: 1; }
+  .art { max-width: 680px; margin: 0 auto; padding: 26px 24px 40px; }
+  .art .cover { height: 300px; border-radius: 16px; margin-bottom: 22px; position: relative; overflow: hidden; }
+  .art h1 { font-size: 32px; line-height: 1.15; letter-spacing: -.025em; margin: 12px 0 10px; }
+  .art .by { display: flex; align-items: center; gap: 10px; color: var(--ink-3); font-size: 13px; margin-bottom: 20px; }
+  .art .by .av { width: 32px; height: 32px; border-radius: 10px; background: var(--accent); font-size: 11px; }
+  .art .by b { color: var(--ink); display: block; font-size: 13.5px; }
+  .art p { font-size: 16.5px; line-height: 1.7; color: var(--ink); margin: 0 0 16px; font-family: "New York", "Iowan Old Style", Georgia, serif; }
+  .ackbox { display: flex; align-items: center; gap: 12px; padding: 16px; border-radius: 14px; background: var(--accent-soft); margin: 24px 0; }
+  .ackbox .ic { width: 36px; height: 36px; border-radius: 10px; background: var(--accent); color: #fff; display: grid; place-items: center; }
+  .ackbox b { display: block; } .ackbox small { color: var(--ink-2); }
+  .ackbox .btn { margin-left: auto; }
+  .att { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 12px; margin-bottom: 8px; font-size: 13px; }
+  .att .ic { width: 32px; height: 38px; border-radius: 6px; background: #d93a2b; color: #fff; display: grid; place-items: center; font-size: 9px; font-weight: 700; }
+  .react { display: flex; align-items: center; gap: 8px; padding-top: 18px; border-top: 1px solid var(--line); margin-top: 26px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; background: var(--surface-3); font-size: 13px; }
+  .pill.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .comment { display: flex; gap: 10px; margin-top: 14px; }
+  .comment .av { background: var(--c-memo); width: 28px; height: 28px; }
+  .comment .bub { background: var(--surface-3); border-radius: 12px; padding: 8px 12px; font-size: 13px; }
+  .comment .bub b { display: block; font-size: 12.5px; }
+
+  /* condolence article */
+  .art.con .cover { background: var(--c-con-soft); display: grid; place-items: center; color: var(--c-con); height: 200px; }
+  .art.con .cover svg { width: 56px; height: 56px; stroke-width: 1.1; }
+  .art.con h1 { font-weight: 500; text-align: center; font-size: 28px; }
+  .art.con .by { justify-content: center; }
+  .art.con p { text-align: center; color: var(--ink-2); }
+  .condo { text-align: center; margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line); }
+  .condo .pill { height: 40px; padding: 0 18px; font-size: 14px; }
+  .condo small { display: block; color: var(--ink-3); margin-top: 8px; }
+  .wishes { max-width: 460px; margin: 16px auto 0; text-align: left; }
+
+  /* mobile */
+  .phone { width: 390px; height: 800px; border-radius: 44px; border: 10px solid #111; background: var(--surface-2); overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--sh-pop); }
+  .phone .top { padding: 18px 16px 0; } .phone .top h1 { font-size: 28px; }
+  .phone .tabs { overflow: hidden; padding: 12px 16px 10px; }
+  .phone .body { padding: 14px 16px; }
+  .phone .hcard { min-height: 260px; } .phone .hcard h2 { font-size: 22px; }
+  .phone .grid { grid-template-columns: 1fr; }
+  .phone .lrow { display: grid; grid-template-columns: 1fr 84px; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .phone .lrow .th { height: 84px; border-radius: 12px; }
+  .phone .lrow b { font-size: 15px; line-height: 1.3; display: block; margin: 5px 0; }
+  .phone .lrow small { color: var(--ink-3); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="mk-nav">
+  <b>News &amp; Memos — magazine</b>
+  <button data-s="s1" class="on">1 · Home (magazine)</button>
+  <button data-s="s2">2 · Reading a memo</button>
+  <button data-s="s3">3 · Condolence</button>
+  <button data-s="s4">4 · Phone</button>
+  <span class="sp"></span>
+  <button id="theme">Dark mode</button>
+</div>
+
+<!-- ============ 1. Home ============ -->
+<section class="stage on" id="s1">
+  <div class="win news">
+    <div class="top">
+      <h1>News &amp; Memos</h1><span class="date">Sunday, 4 October</span>
+      <div class="search"><i data-lucide="search"></i>Search news, memos or people</div>
+      <button class="btn pri"><i data-lucide="square-pen"></i>New post</button>
+    </div>
+    <div class="tabs">
+      <span class="tab on">For you</span>
+      <span class="tab">Unread</span>
+      <span class="tab">To acknowledge <span class="n">2</span></span>
+      <span class="tab">Saved</span>
+      <span class="sep"></span>
+      <span class="tab cat k-news"><i data-lucide="building-2"></i>Company news</span>
+      <span class="tab cat k-memo"><i data-lucide="file-text"></i>Memos</span>
+      <span class="tab cat k-ann"><i data-lucide="megaphone"></i>Announcements</span>
+      <span class="tab cat k-con"><i data-lucide="flower-2"></i>Condolences</span>
+      <span class="more"><span class="tab">Drafts · 1</span></span>
+    </div>
+    <div class="body">
+      <div class="ack-strip">
+        <span class="ic"><i data-lucide="clipboard-check"></i></span>
+        <div><b>2 memos need your acknowledgement</b><small>Overtime policy 2026 is due Tue 6 Oct.</small></div>
+        <button class="btn">Review now</button>
+      </div>
+      <div class="hero">
+        <div class="hcard">
+          <div class="img video"></div><div class="shade"></div>
+          <span class="dur">1:56</span>
+          <span class="play"><i data-lucide="play"></i></span>
+          <div class="txt">
+            <span class="chip"><i data-lucide="megaphone"></i>Announcement</span>
+            <h2>Meet the new iPop</h2>
+            <p>Satu tempat untuk chat, mail, project, notes dan call. Lebih cepat, lebih rapi, dan siap untuk semua tim di Santos.</p>
+            <div class="meta"><span class="av">IA</span>iPop Administrator · 1 Oct · 63 views</div>
+          </div>
+        </div>
+        <div class="side-stack">
+          <div class="mini k-memo"><div class="th ill"><i data-lucide="file-text"></i></div>
+            <div><span class="chip"><i data-lucide="file-text"></i>Memo</span><b>Overtime policy 2026</b><small><span class="due"><i data-lucide="clock-3"></i>Acknowledge by Tue</span></small></div></div>
+          <div class="mini k-news"><div class="th" style="background:linear-gradient(135deg,#d7e8f7,#8db7e0)"></div>
+            <div><span class="chip"><i data-lucide="building-2"></i>Company news</span><b>Sepanjang plant hits 1M hours without incident</b><small>HR Department · 2 Oct</small></div></div>
+          <div class="mini k-ann"><div class="th ill"><i data-lucide="megaphone"></i></div>
+            <div><span class="chip"><i data-lucide="megaphone"></i>Announcement</span><b>Office closed on Friday for maintenance</b><small>GA · 3 Oct · <span class="udot"></span> new</small></div></div>
+        </div>
+      </div>
+      <div class="sec-h"><h3>Latest</h3><span>Everything from the last two weeks</span></div>
+      <div class="grid">
+        <div class="card k-news"><div class="th photo2"></div><div class="bd">
+          <div class="r1"><span class="chip"><i data-lucide="building-2"></i>Company news</span><span class="when">30 Sep</span></div>
+          <h4>Kapal Api coffee corner opens on floor 3</h4><p>Free tasting all week. Bring your own tumbler and get a 20% discount at the café.</p>
+          <div class="ft"><span class="av">GA</span>General Affairs<span class="sp"></span><i data-lucide="paperclip"></i>1</div></div></div>
+        <div class="card k-memo"><div class="th ill"><i data-lucide="file-text"></i></div><div class="bd">
+          <div class="r1"><span class="chip"><i data-lucide="file-text"></i>Memo</span><span class="when">29 Sep</span></div>
+          <h4>New expense claim form from October</h4><p>Claims must use the new form in iPop Files. Old forms are accepted until 15 October.</p>
+          <div class="ft"><span class="av">FN</span>Finance<span class="sp"></span><span class="ok"><i data-lucide="check"></i>Acknowledged</span></div></div></div>
+        <div class="card con"><div class="th"><i data-lucide="flower-2"></i></div><div class="bd">
+          <div class="r1"><span class="chip k-con"><i data-lucide="flower-2"></i>Condolence</span><span class="when">28 Sep</span></div>
+          <h4>Turut Berduka</h4><p>Keluarga besar Santos turut berduka cita atas berpulangnya…</p>
+          <div class="ft"><span class="av" style="background:var(--c-con-soft);color:var(--c-con)">JK</span>Jason Kristanto<span class="sp"></span>🙏 24</div></div></div>
+      </div>
+    </div>
+  </div>
+  <aside class="note"><span class="tag">Q1 C · Q2 C · Q7 · Q9 B</span><h3>Home — a front page, not a mailbox</h3><ul>
+    <li><b>Featured</b>: the newest pinned or announcement post, big. Video posts play from here. Condolences are never featured.</li>
+    <li>Three smaller stories beside it; then a <b>Latest</b> grid.</li>
+    <li>Posts without a picture get a <b>category illustration</b> (icon on the category colour) instead of an empty box.</li>
+    <li>Filters are one row of tabs: For you · Unread · <b>To acknowledge</b> (red count) · Saved, then category chips. "Drafts" only for people who can post.</li>
+    <li>The red strip appears only when something needs acknowledgement.</li>
+  </ul></aside>
+</section>
+
+<!-- ============ 2. Reading ============ -->
+<section class="stage" id="s2">
+  <div class="win news">
+    <div class="tabs" style="padding-top:14px">
+      <span class="btn ghost" style="padding:0 6px"><i data-lucide="chevron-left"></i>All news</span>
+      <span class="sep"></span>
+      <span class="tab on">For you</span><span class="tab">Unread</span><span class="tab">To acknowledge <span class="n">2</span></span>
+      <div class="search" style="width:240px"><i data-lucide="search"></i>Search</div>
+    </div>
+    <div class="read">
+      <div class="rlist">
+        <div class="rrow sel k-memo"><div class="th ill"><i data-lucide="file-text"></i></div><div><span class="chip"><i data-lucide="file-text"></i>Memo</span><b>Overtime policy 2026</b><small><span class="due"><i data-lucide="clock-3"></i>Due Tue</span></small></div></div>
+        <div class="rrow k-ann"><div class="th" style="background:radial-gradient(circle at 70% 30%,#3d6b8f,#0d1b2a 70%)"></div><div><span class="chip"><i data-lucide="megaphone"></i>Announcement</span><b>Meet the new iPop</b><small>1 Oct · 63 views</small></div></div>
+        <div class="rrow k-news"><div class="th" style="background:linear-gradient(135deg,#d7e8f7,#8db7e0)"></div><div><span class="chip"><i data-lucide="building-2"></i>Company news</span><b>Sepanjang plant hits 1M hours without incident</b><small>2 Oct</small></div></div>
+        <div class="rrow k-ann"><div class="th ill"><i data-lucide="megaphone"></i></div><div><span class="chip"><i data-lucide="megaphone"></i>Announcement</span><b>Office closed on Friday</b><small><span class="udot"></span> 3 Oct</small></div></div>
+        <div class="rrow k-con"><div class="th ill"><i data-lucide="flower-2"></i></div><div><span class="chip"><i data-lucide="flower-2"></i>Condolence</span><b>Turut Berduka</b><small>28 Sep</small></div></div>
+      </div>
+      <div class="article">
+        <div class="art-bar"><span class="ib"><i data-lucide="chevron-up"></i></span><span class="ib"><i data-lucide="chevron-down"></i></span><span class="sp"></span>
+          <span class="ib"><i data-lucide="bookmark"></i></span><span class="ib"><i data-lucide="link"></i></span><span class="ib"><i data-lucide="mail"></i></span><span class="ib"><i data-lucide="more-horizontal"></i></span></div>
+        <div class="art">
+          <span class="chip k-memo"><i data-lucide="file-text"></i>Internal memo</span>
+          <h1>Overtime policy 2026</h1>
+          <div class="by"><span class="av">HR</span><div><b>Human Resources</b>2 Oct 2026 · 4 min read · 128 views</div></div>
+          <p>Mulai 1 November 2026, pengajuan lembur dilakukan melalui iPop paling lambat H-1. Atasan langsung menyetujui sebelum lembur dimulai.</p>
+          <p>Lembur di hari libur nasional memerlukan persetujuan Kepala Departemen. Rekap bulanan dikirim otomatis ke Payroll setiap tanggal 25.</p>
+          <div class="att"><span class="ic">PDF</span><div><b>Kebijakan Lembur 2026.pdf</b><br><small style="color:var(--ink-3)">412 KB</small></div><span style="margin-left:auto"><i data-lucide="download"></i></span></div>
+          <div class="ackbox"><span class="ic"><i data-lucide="clipboard-check"></i></span><div><b>Please confirm you've read this memo</b><small>Due Tuesday 6 October · 86 of 140 colleagues done</small></div><button class="btn pri"><i data-lucide="check"></i>I've read it</button></div>
+          <div class="react"><span class="pill on"><i data-lucide="thumbs-up"></i>Like · 12</span><span class="pill"><i data-lucide="message-circle"></i>3 comments</span></div>
+          <div class="comment"><span class="av">RA</span><div class="bub"><b>Rina Aulia</b>Apakah berlaku juga untuk shift malam?</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <aside class="note"><span class="tag">Q1 C</span><h3>Reading — two columns</h3><ul>
+    <li>Opening a story switches to <b>list + article</b>; ↑ ↓ (or J / K) jumps to the next post. "All news" goes back to the front page.</li>
+    <li>The article uses a <b>reading width</b> (~680px) and a serif body, like Apple News.</li>
+    <li>Acknowledgement is a clear card with the deadline and progress, instead of a small button.</li>
+    <li>Save, copy link, mark unread, and manager actions (edit, pin, remind, delete) live in the top bar / ⋯ menu.</li>
+  </ul></aside>
+</section>
+
+<!-- ============ 3. Condolence ============ -->
+<section class="stage" id="s3">
+  <div class="win news" style="height:700px">
+    <div class="article" style="flex:1">
+      <div class="art-bar"><span class="btn ghost" style="padding:0 6px"><i data-lucide="chevron-left"></i>All news</span><span class="sp"></span><span class="ib"><i data-lucide="link"></i></span></div>
+      <div class="art con">
+        <div class="cover"><i data-lucide="flower-2"></i></div>
+        <h1>Berita Duka Cita: Telah Berpulang Bapak Hendra Wijaya</h1>
+        <div class="by"><span class="av" style="background:var(--c-con)">IA</span><div><b>iPop Administrator</b>18 Sep 2026</div></div>
+        <p>Inna lillahi wa inna ilaihi raji'un. Telah berpulang ke rahmatullah Bapak Hendra Wijaya, ayahanda dari rekan kita Budi Santoso, pada hari Kamis, 17 September 2026.</p>
+        <p>Semoga almarhum diberikan tempat terbaik dan keluarga yang ditinggalkan diberi ketabahan.</p>
+        <div class="condo">
+          <span class="pill on">🙏 Turut berduka · 48</span>
+          <small>Your name is added to the list of colleagues who sent condolences.</small>
+          <div class="wishes">
+            <div class="comment"><span class="av" style="background:var(--c-con)">DS</span><div class="bub"><b>Dewi Sartika</b>Turut berduka cita, semoga keluarga diberi kekuatan.</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <aside class="note"><span class="tag">Q3</span><h3>Condolence — calm and respectful</h3><ul>
+    <li>Monochrome: grey flower illustration, no bright colours, centred text.</li>
+    <li>Never shown as the featured story.</li>
+    <li>Only one reaction: <b>🙏 Turut berduka</b> (replaces Like). Comments become "condolence messages".</li>
+  </ul></aside>
+</section>
+
+<!-- ============ 4. Phone ============ -->
+<section class="stage" id="s4">
+  <div class="phone">
+    <div class="top"><h1>News</h1><span style="margin-left:auto" class="btn ghost"><i data-lucide="search"></i></span></div>
+    <div class="tabs"><span class="tab on">For you</span><span class="tab">Unread</span><span class="tab">To acknowledge <span class="n">2</span></span><span class="tab">Saved</span></div>
+    <div class="body">
+      <div class="hcard"><div class="img video"></div><div class="shade"></div><span class="dur">1:56</span><span class="play"><i data-lucide="play"></i></span>
+        <div class="txt"><span class="chip"><i data-lucide="megaphone"></i>Announcement</span><h2>Meet the new iPop</h2><div class="meta">1 Oct · 63 views</div></div></div>
+      <div class="lrow k-memo"><div><span class="chip"><i data-lucide="file-text"></i>Memo</span><b>Overtime policy 2026</b><small><span class="due"><i data-lucide="clock-3"></i>Acknowledge by Tue</span></small></div><div class="th ill"><i data-lucide="file-text"></i></div></div>
+      <div class="lrow k-news"><div><span class="chip"><i data-lucide="building-2"></i>Company news</span><b>Sepanjang plant hits 1M hours</b><small>2 Oct</small></div><div class="th" style="background:linear-gradient(135deg,#d7e8f7,#8db7e0)"></div></div>
+      <div class="lrow k-con"><div><span class="chip"><i data-lucide="flower-2"></i>Condolence</span><b>Turut Berduka</b><small>28 Sep</small></div><div class="th ill"><i data-lucide="flower-2"></i></div></div>
+    </div>
+  </div>
+  <aside class="note"><span class="tag">Phone</span><h3>Phone</h3><ul>
+    <li>Big featured story, then a simple list with the picture on the right (Apple News style).</li>
+    <li>Tabs scroll sideways; categories move into the search sheet.</li>
+    <li>Opening a story is full-screen with a back arrow.</li>
+  </ul></aside>
+</section>
+
+<script>
+  lucide.createIcons();
+  document.querySelectorAll('.mk-nav [data-s]').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.mk-nav [data-s]').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.stage').forEach(s => s.classList.toggle('on', s.id === b.dataset.s));
+  });
+  document.getElementById('theme').onclick = e => {
+    const d = document.documentElement.toggleAttribute('data-theme');
+    if (document.documentElement.hasAttribute('data-theme')) document.documentElement.setAttribute('data-theme', 'dark');
+    e.target.textContent = document.documentElement.hasAttribute('data-theme') ? 'Light mode' : 'Dark mode';
+  };
+</script>
+</body>
+</html>

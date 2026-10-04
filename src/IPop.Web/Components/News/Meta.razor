@@ -1,0 +1,24 @@
+@* Status line for a News card: acknowledgement due / done, draft, scheduled, saved; otherwise author · date. *@
+@using IPop.Web.Models
+
+@{
+    var needsAck = Post.Status == "published" && Post.RequiresAcknowledgement && !Post.IsAcknowledged;
+    var scheduled = Post.Status == "published" && Post.PublishAt > DateTime.UtcNow;
+}
+<span class="nh-meta">
+    @if (Post.Status != "published") { <span class="nh-pill draft">Draft</span> }
+    else if (scheduled) { <span class="nh-pill sched"><i data-lucide="clock-3"></i>@Post.PublishAt!.Value.ToLocalTime().ToString("d MMM, HH:mm")</span> }
+    @if (needsAck)
+    {
+        var overdue = Post.AckDueAt is { } d && d < DateTime.UtcNow;
+        <span class="nh-due @(overdue ? "late" : "")"><i data-lucide="clock-3"></i>@(Post.AckDueAt is { } due ? (overdue ? "Overdue" : $"Acknowledge by {due.ToLocalTime():ddd d MMM}") : "Please acknowledge")</span>
+    }
+    else if (Post.RequiresAcknowledgement && Post.IsAcknowledged) { <span class="nh-ok"><i data-lucide="check"></i>Acknowledged</span> }
+    else if (!Compact) { <span>@Post.AuthorName · @NewsHome.When(Post)</span> }
+    @if (Post.IsSaved) { <i data-lucide="bookmark" class="nh-saved" aria-label="Saved"></i> }
+</span>
+
+@code {
+    [Parameter, EditorRequired] public NewsSummaryDto Post { get; set; } = default!;
+    [Parameter] public bool Compact { get; set; }
+}

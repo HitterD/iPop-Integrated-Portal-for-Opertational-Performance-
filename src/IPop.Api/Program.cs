@@ -402,4 +402,17 @@ app.MapMe();
 app.MapProfile();
 app.MapHub<AppHub>("/hubs/app").RequireAuthorization();
 
+// News video posters were not archived to the NAS before 2026-10; copy any missing ones once the
+// API is up (best effort, in the background, so startup isn't held up by the NAS).
+app.Lifetime.ApplicationStarted.Register(() => _ = Task.Run(async () =>
+{
+    try
+    {
+        await using var scope = app.Services.CreateAsyncScope();
+        if (scope.ServiceProvider.GetRequiredService<IPop.Application.News.INewsVideoService>() is IPop.Infrastructure.News.NewsVideoService svc)
+            await svc.ArchiveMissingPostersAsync(CancellationToken.None);
+    }
+    catch (Exception ex) { app.Logger.LogWarning(ex, "Archiving news video posters at startup failed."); }
+}));
+
 app.Run();

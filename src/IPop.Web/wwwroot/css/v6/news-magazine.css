@@ -1,0 +1,175 @@
+/* News & Memos magazine layer (docs/mockups/ipop-apple/news-magazine.html, approved 2026-10-04).
+   Front page (.nm-home): featured story + side stories + Latest grid. Reading (.nm-read): list + article.
+   Loaded after v6/news.css; mobile overrides live in mobile/news.css. */
+
+.nm {
+  --c-news: #2563eb; --c-news-soft: #eaf1ff; --c-memo: #7c5cc4; --c-memo-soft: #f1ecfb;
+  --c-ann: #e07a1f; --c-ann-soft: #fdf0e3; --c-con: #6b6862; --c-con-soft: #efeeec;
+  --nm-card-sh: 0 1px 2px rgba(25,24,22,.05), 0 6px 18px -10px rgba(25,24,22,.18);
+}
+:root[data-theme="dark"] .nm {
+  --c-news: #7aa7ff; --c-news-soft: #1a2540; --c-memo: #b39ef0; --c-memo-soft: #2a2340;
+  --c-ann: #f2a35b; --c-ann-soft: #3a2a18; --c-con: #b5b1a9; --c-con-soft: #2a2927;
+  --nm-card-sh: 0 1px 2px rgba(0,0,0,.4), 0 6px 18px -10px rgba(0,0,0,.6);
+}
+.nm .k-news { --k: var(--c-news); --ks: var(--c-news-soft); }
+.nm .k-memo { --k: var(--c-memo); --ks: var(--c-memo-soft); }
+.nm .k-ann  { --k: var(--c-ann);  --ks: var(--c-ann-soft); }
+.nm .k-con  { --k: var(--c-con);  --ks: var(--c-con-soft); }
+
+/* ── Top: tabs + actions ── */
+.nm-top { flex: none; display: flex; align-items: center; gap: 10px 12px; padding: 4px 24px 14px; flex-wrap: wrap; }
+/* Two rows: search + actions, then the full-width tab row (it never fights the search box for room). */
+.nm-tabs { order: 2; flex: 1 1 100%; display: flex; align-items: center; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 2px 0; }
+.nm-tabs::-webkit-scrollbar { display: none; }
+.nm-tab { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 999px; border: 1px solid transparent;
+  background: none; color: var(--ink-2); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.nm-tab:hover { background: var(--fill); color: var(--ink); }
+.nm-tab.on { background: var(--ink); color: var(--surface); font-weight: 600; }
+.nm-tab.cat { border-color: var(--line); }
+.nm-tab.cat svg.lucide { width: 14px; height: 14px; color: var(--k); }
+.nm-tab.cat.on { background: var(--ks); color: var(--k); border-color: transparent; }
+.nm-badge { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; display: inline-grid; place-items: center; }
+.nm-count { font-size: 11.5px; color: var(--ink-3); font-weight: 500; }
+.nm-tab.on .nm-count { color: inherit; opacity: .7; }
+.nm-sep { flex: none; width: 1px; height: 20px; background: var(--line); margin: 0 2px; }
+.nm-back { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 8px 0 4px; border: 0; border-radius: 9px; background: none;
+  color: var(--accent-ink, var(--accent)); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.nm-back:hover { background: var(--fill); }
+.nm-back svg.lucide { width: 18px; height: 18px; }
+.nm-actions { order: 1; flex: 1 1 100%; display: flex; align-items: center; gap: 8px; }
+.nm-actions .news-search { width: 340px; }
+.nm-actions .app-select.news-sort { margin-left: auto; }
+.nm-actions .news-search + .btn-primary { margin-left: auto; }
+
+/* ── Front page ── */
+.nm-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 24px 28px; }
+.nm-ack-strip { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 16px; border-radius: 14px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--danger) 22%, transparent); }
+.nm-ack-strip .ic { flex: none; width: 34px; height: 34px; border-radius: 10px; background: var(--danger); color: #fff; display: grid; place-items: center; }
+.nm-ack-strip .tx { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.nm-ack-strip b { font-size: 14px; color: var(--ink); }
+.nm-ack-strip small { font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nm-btn { flex: none; height: 34px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.nm-btn:hover { background: var(--fill); }
+.nm-more { text-align: center; padding: 18px 0 4px; }
+.nm-more .ghost-btn { margin: 0 auto; }
+
+.nh { display: grid; gap: 0; }
+.nh-hero { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 16px; margin-bottom: 24px; }
+.nh-feature { position: relative; display: block; min-height: 340px; border: 0; padding: 0; border-radius: 18px; overflow: hidden; cursor: pointer;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--k) 70%, #000), var(--k)); color: #fff; text-align: left; box-shadow: var(--nm-card-sh); font: inherit; }
+.nh-feature > .an-thumb, .nh-feature > img, .nh-feature > .news-cover-thumb { position: absolute; inset: 0; width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; object-fit: cover; }
+.nh-feature > .an-thumb .play { width: 64px; height: 64px; top: -40px; }
+.nh-feature > .an-thumb .play svg { width: 26px; height: 26px; }
+.nh-feature > .an-thumb .dur { top: 14px; right: 14px; bottom: auto; font-size: 12px; padding: 3px 8px; }
+.nh-feature .nh-ill.big { position: absolute; inset: 0; background: none; color: rgba(255,255,255,.22); }
+.nh-feature .nh-ill.big svg { width: 120px; height: 120px; stroke-width: 1.2; }
+.nh-shade { position: absolute; inset: 0; background: linear-gradient(180deg, transparent 30%, rgba(0,0,0,.74)); pointer-events: none; }
+.nh-ftxt { position: absolute; left: 22px; right: 22px; bottom: 20px; display: grid; gap: 6px; justify-items: start; }
+.nh-ftitle { font-size: 28px; font-weight: 700; line-height: 1.15; letter-spacing: -.02em; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.nh-fsum { font-size: 14px; line-height: 1.45; color: rgba(255,255,255,.86); max-width: 560px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.nh-fmeta { font-size: 12.5px; color: rgba(255,255,255,.78); }
+.nh-feature:focus-visible, .nh-mini:focus-visible, .nh-card:focus-visible, .nm-row:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.nh-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; color: var(--k); background: var(--ks);
+  padding: 3px 9px; border-radius: 999px; white-space: nowrap; width: max-content; max-width: 100%; }
+.nh-chip svg.lucide { width: 12px; height: 12px; }
+.nh-chip.glass { background: rgba(255,255,255,.18); color: #fff; backdrop-filter: blur(8px); }
+
+.nh-side { display: grid; gap: 12px; align-content: start; }
+.nh-mini { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 12px; padding: 10px; border: 0; border-radius: 14px; background: var(--surface);
+  box-shadow: var(--nm-card-sh); text-align: left; cursor: pointer; font: inherit; color: var(--ink); }
+.nh-mini:hover, .nh-card:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(25,24,22,.06), 0 12px 26px -12px rgba(25,24,22,.28); }
+.nh-mini, .nh-card { transition: transform .15s ease, box-shadow .15s ease; }
+.nh-th { position: relative; display: block; border-radius: 10px; overflow: hidden; background: var(--ks); }
+.nh-mini .nh-th { height: 82px; }
+.nh-th > .an-thumb, .nh-th > img, .nh-th > .news-cover-thumb { width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; object-fit: cover; display: block; }
+.nh-th .an-thumb.sm .play { width: 30px; height: 30px; }
+.nh-th .an-thumb.sm .play svg { width: 13px; height: 13px; margin-left: 2px; }
+.nh-th .an-thumb.sm .dur { font-size: 10px; padding: 1px 5px; right: 5px; bottom: 5px; }
+.nh-ill { display: grid; place-items: center; width: 100%; height: 100%; background: var(--ks); color: var(--k); }
+.nh-ill svg.lucide { width: 30px; height: 30px; stroke-width: 1.6; }
+.nh-mtxt { display: grid; gap: 4px; align-content: center; min-width: 0; }
+.nh-mtitle { font-size: 14px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.nh-udot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: 1px; }
+
+.nh-sec { display: flex; align-items: baseline; gap: 8px; margin: 0 0 12px; }
+.nh-sec h3 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+.nh-sec span { font-size: 12.5px; color: var(--ink-3); }
+.nh-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+.nh-card { display: flex; flex-direction: column; padding: 0; border: 0; border-radius: 16px; overflow: hidden; background: var(--surface); box-shadow: var(--nm-card-sh);
+  text-align: left; cursor: pointer; font: inherit; color: var(--ink); }
+.nh-card .nh-th { height: 150px; border-radius: 0; }
+.nh-bd { display: grid; gap: 6px; padding: 12px 14px 14px; }
+.nh-r1 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.nh-when { margin-left: auto; font-size: 12px; color: var(--ink-3); white-space: nowrap; }
+.nh-ctitle { font-size: 15.5px; font-weight: 650; line-height: 1.3; letter-spacing: -.01em; }
+.nh-csum { font-size: 13px; line-height: 1.45; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.nh-ft { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+.nh-by { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nh-clip { display: inline-flex; align-items: center; gap: 3px; }
+.nh-clip svg.lucide { width: 12px; height: 12px; }
+.nh-meta { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); min-width: 0; flex-wrap: wrap; }
+.nh-due { display: inline-flex; align-items: center; gap: 4px; color: var(--danger); font-weight: 600; }
+.nh-due.late { background: color-mix(in srgb, var(--danger) 12%, transparent); padding: 1px 7px; border-radius: 6px; }
+.nh-ok { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); }
+.nh-due svg.lucide, .nh-ok svg.lucide, .nh-pill svg.lucide { width: 12px; height: 12px; }
+.nh-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; }
+.nh-pill.draft { background: var(--fill); color: var(--ink-2); }
+.nh-pill.sched { background: var(--info-soft, var(--fill)); color: var(--info); }
+.nh-saved { width: 13px !important; height: 13px !important; color: var(--accent); fill: currentColor; }
+
+/* Condolences: calm, monochrome */
+.nh-card.k-con .nh-ctitle, .nh-mini.k-con .nh-mtitle { font-weight: 500; }
+.nh-card.k-con .nh-ill svg.lucide, .nm-row.k-con .nh-ill svg.lucide { stroke-width: 1.3; }
+
+/* ── Reading: list + article ── */
+.nm.nm-read .news-cols { grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); }
+.nm-row { width: 100%; display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--line-soft);
+  background: none; color: var(--ink); text-align: left; cursor: pointer; font: inherit; }
+.nm-row:hover { background: var(--surface-2); }
+.nm-row.sel { background: color-mix(in srgb, var(--accent) 8%, var(--surface)); box-shadow: inset 3px 0 0 var(--accent); }
+.nm-row .nh-th { height: 54px; border-radius: 9px; }
+.nm-row .nh-ill svg.lucide { width: 20px; height: 20px; }
+.nm-rtxt { display: grid; gap: 4px; min-width: 0; }
+.nm-rtitle { font-size: 13.5px; font-weight: 600; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.nm-row.k-con .nm-rtitle { font-weight: 500; }
+.nm-pin { width: 12px !important; height: 12px !important; color: var(--ink-3); }
+
+.nm .reader-nav { display: inline-flex; gap: 2px; margin-right: 4px; }
+.nm .reader-nav .org-act:disabled { opacity: .35; cursor: default; }
+.nm .reader-measure { max-width: 700px; margin: 0 auto; }
+.nm .news-inline-reader .drawer-body { padding: 26px 32px 40px !important; }
+.nm .reader-article-title { font-size: 32px; line-height: 1.15; letter-spacing: -.025em; }
+.nm .reader-body-content { font-family: "New York", "Iowan Old Style", Georgia, "Times New Roman", serif; font-size: 16.5px; }
+
+/* acknowledgement card */
+.nm .reader-ack-box.req { padding: 0; border: 0; background: none; }
+.nm .ack-card { display: flex; align-items: center; gap: 12px; padding: 16px; border-radius: 14px; background: var(--accent-soft); }
+.nm .ack-ic { flex: none; width: 38px; height: 38px; border-radius: 11px; background: var(--accent); color: #fff; display: grid; place-items: center; }
+.nm .ack-tx { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.nm .ack-tx b { font-size: 14px; color: var(--ink); }
+.nm .ack-tx small { font-size: 12.5px; color: var(--ink-2); }
+.nm .ack-card .ack-confirm { margin: 0; flex: none; }
+
+/* condolence article */
+.nm .is-condolence .reader-measure { max-width: 600px; text-align: center; }
+.nm .is-condolence .reader-condolence-banner { flex-direction: column; align-items: center; text-align: center; gap: 10px; background: var(--c-con-soft); border: 0; border-radius: 16px; padding: 28px 18px; color: var(--c-con); }
+.nm .is-condolence .condolence-banner-icon { width: 48px; height: 48px; border-radius: 50%; background: var(--surface); color: var(--c-con); }
+.nm .is-condolence .condolence-primary-headline { color: var(--ink); font-size: 17px; font-weight: 600; }
+.nm .is-condolence .condolence-banner-desc { color: var(--ink-2); font-size: 13px; }
+.nm .is-condolence .reader-article-title { font-weight: 500; font-size: 28px; }
+.nm .is-condolence .reader-author, .nm .is-condolence .reader-audience { justify-content: center; }
+.nm .is-condolence .reader-body-content { color: var(--ink-2); }
+.nm .is-condolence .news-v6-discussion { text-align: left; }
+.nm .like-btn.condo { height: 40px; padding: 0 18px; border-radius: 999px; font-size: 14px; }
+.nm .like-btn.condo.on { background: var(--c-con-soft); color: var(--ink); border-color: transparent; font-weight: 600; }
+.nm .condo-hint { display: block; font-size: 12px; color: var(--ink-3); margin: 6px 0 10px; }
+
+@media (max-width: 1200px) {
+  .nh-hero { grid-template-columns: minmax(0, 1fr); }
+  .nh-side { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .nh-mini { grid-template-columns: minmax(0, 1fr); }
+  .nh-mini .nh-th { height: 110px; }
+}
