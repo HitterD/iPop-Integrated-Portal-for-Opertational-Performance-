@@ -90,7 +90,7 @@
 .dir-favs .fav-list { padding: 0 10px 12px; }
 .dir-favs .fav-row { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 8px; border-radius: 8px; cursor: pointer; }
 .dir-favs .fav-row:hover { background: var(--tray); }
-.dir-favs .fav-row .av { width: 26px; height: 26px; font-size: 10px; }
+.dir-favs .fav-row .av { width: 26px; height: 26px; border-radius: 7px; font-size: 10px; }
 .dir-favs .fav-row .n { flex: 1; min-width: 0; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dir-favs .fav-row .act { border: none; background: transparent; color: var(--accent); width: 26px; height: 26px; border-radius: 7px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 .dir-favs .fav-row .act:hover { background: var(--accent-soft); }
@@ -128,6 +128,7 @@
 /* Name + email truncate inside their column instead of spilling over NIK. */
 .dir-people .cell-person { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .dir-people .cell-person .av-wrap { flex: none; }
+.dir-people .cell-person .av { border-radius: 9px; }
 .dir-people .cell-person .cp-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .dir-people .cell-person .n, .dir-people .cell-person .s { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dir-people .tbl td:nth-child(2) { overflow: hidden; }
@@ -147,7 +148,7 @@
 .dir-card .dc-star.on { background: var(--warn-soft); color: var(--warn); }
 .dir-card .dc-star.on .lucide { fill: currentColor; }
 .dir-card .dc-av {
-  position: relative; width: 56px; height: 56px; border-radius: 50%; color: #fff; font-size: 18px; font-weight: 600;
+  position: relative; width: 56px; height: 56px; border-radius: 15px; color: #fff; font-size: 18px; font-weight: 600;
   display: flex; align-items: center; justify-content: center; flex: none;
 }
 .dir-card .dc-av .presence { position: absolute; right: 1px; bottom: 1px; width: 13px; height: 13px; border: 2.5px solid var(--surface); }

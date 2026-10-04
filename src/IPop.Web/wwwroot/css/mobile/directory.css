@@ -112,7 +112,7 @@
   .dir-people .tbl td:nth-child(5) { display: none; }
   .div-chip { max-width: 100%; }
   .dir-people .cell-person { gap: 10px; }
-  .dir-people .cell-person .av { width: 40px; height: 40px; }
+  .dir-people .cell-person .av { width: 40px; height: 40px; border-radius: 11px; }
   .dir-people .cell-person .n { font-size: 15px; }
   .dir-people .cell-person .s { font-size: 12.5px; }
   .row-acts { gap: 0; }
@@ -127,7 +127,7 @@
   .dir-card { padding: 10px 8px; gap: 4px; }
   .dir-card .dc-top { margin: -2px 0 -8px; }
   .dir-card .dc-star { width: 36px; height: 36px; }
-  .dir-card .dc-av { width: 48px; height: 48px; font-size: 16px; }
+  .dir-card .dc-av { width: 48px; height: 48px; border-radius: 13px; font-size: 16px; }
   .dir-card .dc-name { font-size: 14px; }
   .dir-card .dc-pos { font-size: 12px; min-height: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .dir-card .dc-meta { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
