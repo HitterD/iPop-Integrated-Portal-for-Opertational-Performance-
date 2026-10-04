@@ -17,6 +17,7 @@
 
 <div class="cal-page">
     <aside class="cal-rail">
+        <div class="cal-rail-strip">
         <button class="cal-create" disabled="@(!CanCreate)" title="@(CanCreate ? null : "You can view this calendar but not change it")" @onclick="() => OpenCreate(DefaultStart())"><i data-lucide="plus"></i> New event</button>
 
         <div class="cal-mini" aria-label="Mini calendar">
@@ -68,51 +69,6 @@
             </div>
         }
 
-        <div class="cal-others">
-            <div class="cal-rail-title cal-others-head">
-                <span>Colleagues</span>
-                <button class="cal-icon sm" title="Add a colleague" aria-label="Add a colleague" @onclick="() => addingOther = !addingOther"><i data-lucide="@(addingOther ? "x" : "plus")"></i></button>
-            </div>
-            @if (addingOther)
-            {
-                <div class="cal-others-add"><PeoplePicker Placeholder="Search a colleague by name" ValueChanged="AddOtherAsync" /></div>
-            }
-            @if (others.Count == 0 && !addingOther)
-            {
-                <button class="cal-others-empty" @onclick="() => addingOther = true">
-                    <span class="cal-others-empty-ic"><i data-lucide="user-plus"></i></span>
-                    <span><b>Add a colleague</b><small>See when they're free before you invite them.</small></span>
-                </button>
-            }
-            @foreach (var o in others)
-            {
-                var oc = o;
-                <div class="cal-other oc-@oc.Color">
-                    <label class="cal-source">
-                        <input type="checkbox" checked="@oc.IsVisible" @onchange="() => ToggleOtherAsync(oc)" />
-                        <span class="cal-check" aria-hidden="true">@if (oc.IsVisible) { <i data-lucide="check"></i> }</span>
-                        <PersonAvatar Nik="@oc.Nik" Name="@oc.Name" Size="20" Class="cal-other-av" Decorative="true" />
-                        <span class="cal-source-name" title="@(oc.Department is null ? oc.Name : $"{oc.Name} · {oc.Department}")">@oc.Name</span>
-                    </label>
-                    <button class="cal-icon sm cal-other-more" title="Options" aria-label="Options for @oc.Name" @onclick="() => otherMenu = otherMenu == oc.Nik ? null : oc.Nik"><i data-lucide="more-horizontal"></i></button>
-                    @if (otherMenu == oc.Nik)
-                    {
-                        <div class="cal-other-menu" role="menu">
-                            <div class="cal-swatches">
-                                @foreach (var c in OtherPalette)
-                                {
-                                    var cc = c;
-                                    <button class="cal-swatch oc-@cc @(oc.Color == cc ? "on" : "")" title="Colour" aria-label="Colour @cc" @onclick="() => SetOtherColorAsync(oc, cc)"></button>
-                                }
-                            </div>
-                            <button role="menuitem" @onclick="() => MeetWithAsync(oc.Nik, oc.Name)"><i data-lucide="calendar-plus"></i> New meeting with @oc.Name</button>
-                            <a role="menuitem" href="/chat?nik=@Uri.EscapeDataString(oc.Nik)"><i data-lucide="message-circle"></i> Chat</a>
-                            <button role="menuitem" class="danger" @onclick="() => RemoveOtherAsync(oc)"><i data-lucide="trash-2"></i> Remove from list</button>
-                        </div>
-                    }
-                </div>
-            }
-        </div>
 
         @if (managed.Count > 0)
         {
@@ -147,6 +103,45 @@
                 }
             </div>
         }
+        </div>
+        <div class="cal-others">
+            <div class="cal-rail-title cal-others-head">
+                <span>Colleagues</span>
+
+            </div>
+            <button type="button" class="cal-btn cal-add-colleagues" @onclick="OpenColleaguesAsync"><i data-lucide="plus"></i> Add colleagues</button>
+            @foreach (var o in others)
+            {
+                var oc = o;
+                <div class="cal-other oc-@oc.Color">
+                    <div class="cal-other-row">
+                    <label class="cal-source">
+                        <input type="checkbox" aria-label="Show @oc.Name calendar" checked="@oc.IsVisible" @onchange="() => ToggleOtherAsync(oc)" />
+                        <span class="cal-check" aria-hidden="true">@if (oc.IsVisible) { <i data-lucide="check"></i> }</span>
+                        <PersonAvatar Nik="@oc.Nik" Name="@oc.Name" Size="20" Class="cal-other-av" Decorative="true" />
+                        <span class="cal-source-name" title="@(oc.Department is null ? oc.Name : $"{oc.Name} · {oc.Department}")">@oc.Name</span>
+                    </label>
+                    <button class="cal-icon sm cal-other-more" title="Options" aria-label="Options for @oc.Name" aria-expanded="@(otherMenu == oc.Nik ? "true" : "false")" @onclick="() => otherMenu = otherMenu == oc.Nik ? null : oc.Nik"><i data-lucide="more-horizontal"></i></button>
+                    </div>
+                    @if (otherMenu == oc.Nik)
+                    {
+                        <div class="cal-other-menu" role="menu" aria-label="Calendar options for @oc.Name">
+                            <div class="cal-swatches">
+                                @foreach (var c in OtherPalette)
+                                {
+                                    var cc = c;
+                                    <button class="cal-swatch oc-@cc @(oc.Color == cc ? "on" : "")" title="Colour" aria-label="Colour @cc" @onclick="() => SetOtherColorAsync(oc, cc)"></button>
+                                }
+                            </div>
+                            <button role="menuitem" @onclick="() => MeetWithAsync(oc.Nik, oc.Name)"><i data-lucide="calendar-plus"></i> New meeting with @oc.Name</button>
+                            <a role="menuitem" href="/chat?nik=@Uri.EscapeDataString(oc.Nik)"><i data-lucide="message-circle"></i> Chat</a>
+                            <button role="menuitem" class="danger" @onclick="() => RemoveOtherAsync(oc)"><i data-lucide="trash-2"></i> Remove from list</button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
     </aside>
 
     <section class="cal-main">

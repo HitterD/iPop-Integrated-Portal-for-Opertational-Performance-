@@ -36,7 +36,7 @@ public partial class Calendar
     private List<OtherCalendar> others = [];
     private List<FeedItem> otherItems = [];
     private SharingSettings sharing = new("busy", true);
-    private bool addingOther, sideBySide, settingsOpen, savingSettings;
+    private bool sideBySide, settingsOpen, savingSettings;
     private string draftDefault = "busy";
     private string? otherMenu;
     private CancellationTokenSource? peopleCts;
@@ -113,13 +113,27 @@ public partial class Calendar
 
     // ── Other calendars list ──
 
+    private async Task OpenColleaguesAsync()
+    {
+        if (addressBook is null) return;
+        var remaining = Math.Max(0, 20 - others.Count);
+        if (remaining == 0) { Toasts.Show("You can add up to 20 colleague calendars.", ToastKind.Info); return; }
+        var existing = others.Select(o => o.Nik).Append(Auth.Me?.Nik ?? "");
+        var selected = await addressBook.PickAsync("Add colleagues", existing, remaining, "Add calendars");
+        foreach (var person in selected) await AddOtherAsync(person);
+    }
+
     private async Task AddOtherAsync(MemberSearchRow row)
     {
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/calendar/others", new { nik = row.Nik });
-        if (!res.IsSuccessStatusCode) { Toasts.Show(await ErrorAsync(res), ToastKind.Error); return; }
-        others = await res.Content.ReadFromJsonAsync<List<OtherCalendar>>() ?? others;
-        addingOther = false;
-        await LoadPeopleAsync();
+        if (row.Nik == Auth.Me?.Nik || others.Any(o => o.Nik == row.Nik)) return;
+        try
+        {
+            using var res = await Auth.SendAsync(HttpMethod.Post, "/api/calendar/others", new { nik = row.Nik });
+            if (!res.IsSuccessStatusCode) { Toasts.Show(await ErrorAsync(res), ToastKind.Error); return; }
+            others = await res.Content.ReadFromJsonAsync<List<OtherCalendar>>() ?? others;
+            await LoadPeopleAsync();
+        }
+        catch { Toasts.Show("Could not add that calendar. Try again.", ToastKind.Error); }
     }
 
     private Task ToggleOtherAsync(OtherCalendar o) => UpdateOtherAsync(o, new { isVisible = !o.IsVisible });

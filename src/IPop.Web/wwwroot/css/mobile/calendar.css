@@ -128,3 +128,15 @@
   .cal-drawer.closing { animation: cal-m-sheet-out .18s ease-in forwards; }
   @keyframes cal-m-sheet-out { to { transform: translateY(100%); } }
 }
+
+@media (max-width: 767px) {
+  .cal-rail { flex-direction: column; align-items: stretch; overflow: visible; }
+  .cal-rail-strip { display: flex; align-items: center; gap: 8px; min-width: 0; width: 100%; overflow-x: auto; flex: none; }
+  .cal-others { display: grid; width: 100%; min-width: 0; }
+  .cal-others .cal-rail-title { display: block; }
+  .cal-others .cal-source { white-space: normal; border-radius: 10px; }
+  .cal-others .cal-source-name { overflow: hidden; }
+  .cal-others .cal-other { width: 100%; }
+  .cal-add-colleagues { height: 40px; }
+  .cal-colleague-result .cal-btn { min-height: 40px; }
+}

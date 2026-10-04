@@ -256,6 +256,8 @@
 
     private bool open;
     private bool allowGroups;
+    private int? maxPeople;
+    private string? actionLabel;
     private string tab = "people";
     private string title = "Address book";
     private string query = "";
@@ -285,12 +287,19 @@
 
     /// Opens the book; resolves with the people picked (empty when cancelled).
     /// <paramref name="already"/> are shown ticked and can't be added twice.
-    public async Task<List<MemberSearchRow>> PickAsync(string dialogTitle, IEnumerable<string>? already = null)
-        => (await OpenCore(dialogTitle, already, null, withGroups: false)).People;
+    public async Task<List<MemberSearchRow>> PickAsync(string dialogTitle, IEnumerable<string>? already = null,
+        int? maximumPeople = null, string? confirmLabel = null)
+    {
+        maxPeople = maximumPeople; actionLabel = confirmLabel;
+        return (await OpenCore(dialogTitle, already, null, withGroups: false)).People;
+    }
 
     /// Mail: people and/or groups. <paramref name="alreadyGroups"/> are group ids already in the field.
     public Task<Selection> PickWithGroupsAsync(string dialogTitle, IEnumerable<string>? already, IEnumerable<Guid>? alreadyGroups)
-        => OpenCore(dialogTitle, already, alreadyGroups, withGroups: true);
+    {
+        maxPeople = null; actionLabel = null;
+        return OpenCore(dialogTitle, already, alreadyGroups, withGroups: true);
+    }
 
     private Task<Selection> OpenCore(string dialogTitle, IEnumerable<string>? already, IEnumerable<Guid>? alreadyGroups, bool withGroups)
     {
@@ -445,7 +454,9 @@
 
     private void Toggle(MemberSearchRow r)
     {
-        if (!picked.Remove(r.Nik)) picked[r.Nik] = r;
+        if (picked.Remove(r.Nik)) return;
+        if (maxPeople is { } max && picked.Count >= max) { Toasts.Show($"Select up to {max} colleagues.", ToastKind.Warning); return; }
+        picked[r.Nik] = r;
     }
 
     private void ClearPicked() => picked.Clear();
@@ -453,6 +464,7 @@
     private async Task SelectAllAsync()
     {
         var add = rows.Where(r => !existing.Contains(r.Nik) && !picked.ContainsKey(r.Nik)).ToList();
+        if (maxPeople is { } max) add = add.Take(Math.Max(0, max - picked.Count)).ToList();
         if (add.Count > 20)
         {
             var scope = deptCodes.Count + siteCodes.Count > 0 || !string.IsNullOrWhiteSpace(query) ? "this filtered list" : "the whole directory";
@@ -577,6 +589,7 @@
 
     private string AddLabel()
     {
+        if (actionLabel is not null) return picked.Count == 0 ? actionLabel : $"{actionLabel} ({picked.Count})";
         if (picked.Count + pickedGroups.Count == 0) return "Add";
         if (pickedGroups.Count == 0) return $"Add {picked.Count:N0}";
         if (picked.Count == 0) return pickedGroups.Count == 1 ? "Add group" : $"Add {pickedGroups.Count} groups";
