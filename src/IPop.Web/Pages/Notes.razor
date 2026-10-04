@@ -724,7 +724,10 @@
         var open = expanded.Contains(p.Id);
         var edit = p.Access is "owner" or "edit";
         var renaming = renamingId == p.Id;
-        <div>
+        @* Keyed so a row that slid out (#9 trash / move) is discarded, not reused for its neighbour.
+           Favorites (tree=false) can repeat a tree row in the same list, hence the prefix. *@
+        var rowKey = (tree ? "t" : "f") + p.Id;
+        <div @key="rowKey" data-nt-node="@(tree ? p.Id.ToString() : null)">
             <div class="nt-row @(IsActive(p.Id) ? "active" : "") @(menuFor?.Id == p.Id ? "menu-on" : "")" role="button" tabindex="0"
                  data-id="@p.Id" data-drag="@(edit && tree && !renaming ? "1" : null)" data-sort="@(sortable && tree ? "1" : null)" data-nest="@(edit && tree ? "1" : null)"
                  @onclick="() => Open(p.Id)" @ondblclick="() => StartRename(p)" @onkeydown="e => OnRowKey(e, p)">

@@ -115,6 +115,7 @@ public partial class Files
             var res = await Auth.SendAsync(HttpMethod.Post, endpoint, new { server, paths = moveCopyPaths, destDir = targetDestDir, overwrite = true });
             if (res.IsSuccessStatusCode)
             {
+                if (moveCopyMode == "move") await LeaveItemsAsync(moveCopyPaths);
                 Toasts.ShowDetailed("Completed", $"Items {(moveCopyMode == "move" ? "moved" : "copied")} successfully.", ToastKind.Success, "folder-check");
                 selectedPaths.Clear();
                 await Reload();
@@ -144,6 +145,25 @@ public partial class Files
                 Toasts.Show("Could not initiate cross-server transfer.", ToastKind.Error);
             }
         }
+    }
+
+    /// Micro-interaction #9: rows that leave this folder (delete, move, restore) slide out, then drop
+    /// out of the local listing so the reload that follows cannot flash them back in.
+    private async Task LeaveItemsAsync(IEnumerable<string> paths)
+    {
+        var gone = paths.ToHashSet(StringComparer.Ordinal);
+        if (gone.Count == 0) return;
+        var keys = DisplayRows().Where(r => r.Server == server && gone.Contains(r.Item.Path)).Select(r => r.Key).Take(40).ToList();
+        if (keys.Count > 0 && fx is not null)
+        {
+            try { await fx.InvokeVoidAsync("leaveItems", keys); }
+            catch (JSException) { /* motion is decoration */ }
+        }
+        items = items.Where(i => !gone.Contains(i.Path)).ToList();
+        // Reload() paints the cached listing first; trim it too, or the rows flash back for a moment.
+        if (FileStateService.TryGetCachedItems(server, currentPath, out var cached))
+            FileStateService.SetCachedItems(server, currentPath, cached.Where(i => !gone.Contains(i.Path)).ToList());
+        StateHasChanged();
     }
 
     private async Task OpenShareModal(SynoItemDto it)
@@ -195,6 +215,7 @@ public partial class Files
         var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/delete", new { server, paths = new[] { it.Path } });
         if (res.IsSuccessStatusCode)
         {
+            await LeaveItemsAsync([it.Path]);
             Toasts.ShowDetailed("Deleted", $"\"{it.Name}\" moved to Recycle Bin.", ToastKind.Success, "trash-2");
             await Reload();
         }
@@ -209,6 +230,7 @@ public partial class Files
         var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/delete", new { server, paths = selectedPaths.ToArray() });
         if (res.IsSuccessStatusCode)
         {
+            await LeaveItemsAsync(selectedPaths);
             Toasts.ShowDetailed("Deleted", $"{selectedPaths.Count} items moved to Recycle Bin.", ToastKind.Success, "trash-2");
             selectedPaths.Clear();
             await Reload();
@@ -223,6 +245,7 @@ public partial class Files
         var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/delete", new { server, paths = new[] { it.Path } });
         if (res.IsSuccessStatusCode)
         {
+            await LeaveItemsAsync([it.Path]);
             Toasts.ShowDetailed("Deleted", $"\"{it.Name}\" permanently deleted.", ToastKind.Success, "trash-2");
             await Reload();
         }
@@ -237,6 +260,7 @@ public partial class Files
         var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/delete", new { server, paths = selectedPaths.ToArray() });
         if (res.IsSuccessStatusCode)
         {
+            await LeaveItemsAsync(selectedPaths);
             Toasts.ShowDetailed("Deleted", $"{selectedPaths.Count} items permanently deleted.", ToastKind.Success, "trash-2");
             selectedPaths.Clear();
             await Reload();
@@ -248,6 +272,7 @@ public partial class Files
         var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/recycle/restore", new { server, paths = new[] { it.Path }, destDir = "" });
         if (res.IsSuccessStatusCode)
         {
+            await LeaveItemsAsync([it.Path]);
             Toasts.ShowDetailed("Restored", $"\"{it.Name}\" restored.", ToastKind.Success, "undo-2");
             await Reload();
         }
@@ -263,6 +288,7 @@ public partial class Files
         var res = await Auth.SendAsync(HttpMethod.Post, "/api/files/recycle/restore", new { server, paths = selectedPaths.ToArray(), destDir = "" });
         if (res.IsSuccessStatusCode)
         {
+            await LeaveItemsAsync(selectedPaths);
             Toasts.ShowDetailed("Restored", $"{selectedPaths.Count} items restored.", ToastKind.Success, "undo-2");
             selectedPaths.Clear();
             await Reload();

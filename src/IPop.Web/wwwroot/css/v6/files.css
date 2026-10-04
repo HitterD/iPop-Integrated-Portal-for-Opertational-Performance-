@@ -417,3 +417,23 @@
 .ed-art { width:60px; height:60px; border-radius:16px; display:grid; place-items:center; background:var(--fill); color:var(--ink-3); margin-bottom:6px; }
 .ed-art .lucide { width:28px; height:28px; stroke-width:1.6; }
 .ed-acts { display:flex; gap:8px; margin-top:10px; }
+
+/* ── Micro-interactions (approved demo docs/mockups/ipop-apple/micro-interactions.html) ── */
+/* #12 Files from Windows over the open folder: the shared drop target (micro.js) replaces the old
+   dashed ::after, sits below the toolbar and only shows while files.js accepts the folder (.fx-drop). */
+.fx-main.mi-drop-zone.fx-drop::after { content: none; }
+.fx-main.mi-drop-zone > .mi-drop-ov { inset: 52px 10px 32px; border-color: var(--fx-sel); background: color-mix(in srgb, var(--fx-sel-soft) 92%, transparent); }
+.fx-main.mi-drop-zone > .mi-drop-ov .mi-drop-ic { background: var(--fx-sel); }
+.fx-main.mi-drop-zone.mi-drag-over:not(.fx-drop) > .mi-drop-ov { opacity: 0; }
+/* #13 Upload: the bar eases between progress reports; finished, the tick pops and the bar settles. */
+.fx-meter > span { transition: width .5s var(--ease-out), background-color .3s; }
+.fx-task.is-running .fx-meter > span { background-image: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.35) 50%, transparent 70%); background-size: 300% 100%; animation: mi-shimmer 1.4s linear infinite; }
+.fx-task.is-done .fx-task-head > i:first-child { animation: mi-pop .45s var(--ease-spring); color: #34c759; }
+.fx-task.is-done .fx-meter > span { background-color: #34c759; }
+/* #9 Delete / move / restore: rows slide out via ipopMicro.leave (grid tiles fade and shrink instead). */
+.fx-grid .fx-item.mi-leaving { animation: fx-tile-out .3s var(--ease-out) forwards; }
+@keyframes fx-tile-out { to { opacity: 0; transform: scale(.85); } }
+@media (prefers-reduced-motion: reduce) {
+  .fx-task.is-running .fx-meter > span { animation: none; background-image: none; }
+  .fx-meter > span { transition: none; }
+}

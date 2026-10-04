@@ -215,7 +215,7 @@
                 </div>
             }
 
-            @if (composerAtts.Count > 0 || forwardAtts.Count > 0)
+            @if (composerAtts.Count > 0 || forwardAtts.Count > 0 || uploading)
             {
                 <div class="composer-atts">
                     @foreach (var a in forwardAtts)
@@ -229,7 +229,7 @@
                     }
                     @foreach (var (a, i) in composerAtts.Select((x, idx) => (x, idx)))
                     {
-                        <span class="composer-att-chip">
+                        <span class="composer-att-chip @(justAdded.Contains(a.Id) ? "mc-just-added" : "")">
                             <i data-lucide="@FileIcon(a)"></i>
                             <span class="name">@a.FileName</span>
                             <span class="size">@HumanSize(a.FileSize)</span>
@@ -251,7 +251,7 @@
 
         <div class="composer-foot">
             <div class="split-send">
-                <button type="button" class="send-main" @onclick="SendNow" disabled="@sending" title="Send (Ctrl+Enter)">
+                <button type="button" class="send-main @(uploading || sending ? "mc-waiting" : "")" @onclick="SendNow" disabled="@sending" title="@(uploading ? "Waiting for the upload to finish" : "Send (Ctrl+Enter)")" aria-busy="@(uploading || sending ? "true" : "false")">
                     <i data-lucide="send"></i>
                     @(sending ? "Sending…" : "Send")
                 </button>
@@ -1399,6 +1399,7 @@
             if (uploaded != null)
             {
                 composerAtts.AddRange(uploaded);
+                MarkJustAdded(uploaded);
                 OnContentChanged();
             }
             else Toasts.Show($"Upload failed: {error ?? "unknown error"}", ToastKind.Error);
@@ -1411,9 +1412,19 @@
         }
     }
 
+    // #13: a freshly uploaded chip pops its icon once; the mark clears after the animation.
+    private readonly HashSet<Guid> justAdded = [];
+    private void MarkJustAdded(IEnumerable<MailAttachment> added)
+    {
+        var ids = added.Select(a => a.Id).ToList();
+        foreach (var id in ids) justAdded.Add(id);
+        _ = Task.Delay(700).ContinueWith(_ => InvokeAsync(() => { foreach (var id in ids) justAdded.Remove(id); StateHasChanged(); }));
+    }
+
     private void OnSynologyFilesSelected(List<MailAttachment> files)
     {
         composerAtts.AddRange(files);
+        MarkJustAdded(files);
         OnContentChanged();
         StateHasChanged();
     }

@@ -69,6 +69,9 @@ export function installDrop(dotNet, elementId, multiple, accept) {
     el.dataset.ncDrop = "1";
     const ok = acceptFilter(accept);
     const stop = e => { e.preventDefault(); e.stopPropagation(); };
+    // #12: the shared drop target appears while a file from Windows is over the zone.
+    if (window.ipopMicro) ipopMicro.registerDrop(el, multiple ? "Drop to attach" : "Drop to set the cover",
+        multiple ? "PDF, Office files or images" : "PNG, JPEG, GIF or WebP");
 
     el.addEventListener("dragover", e => { stop(e); el.classList.add("drag"); });
     el.addEventListener("dragenter", e => { stop(e); el.classList.add("drag"); });

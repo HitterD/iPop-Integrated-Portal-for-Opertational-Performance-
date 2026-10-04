@@ -503,7 +503,7 @@
     {
         try
         {
-            guardModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/news-compose.js?v=20261002-compose");
+            guardModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/news-compose.js?v=20261004-micro");
             if (firstRender) await guardModule.InvokeVoidAsync("install");
             await guardModule.InvokeVoidAsync("setDirty", HasUnsavedChanges());
             if (!dropsInstalled && !loading)

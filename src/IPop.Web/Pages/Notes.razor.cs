@@ -215,6 +215,11 @@ public partial class Notes
             var ed = await module!.InvokeAsync<IJSObjectReference>("mount", editorRef, opts);
             if (disposed || note?.Id != p.Id) { await ed.InvokeVoidAsync("destroy"); await ed.DisposeAsync(); return; }
             editor = ed;
+            // #12: files from Windows dropped on the page show the shared drop target (the editor
+            // already uploads dropped/pasted files and images itself).
+            if (p.Access is "owner" or "edit")
+                try { await JS.InvokeVoidAsync("ipopMicro.registerDrop", editorRef, "Drop to add to the page", "Images go inline, other files as attachments"); }
+                catch (JSException) { }
             await PushThreadsAsync();
             await RefreshEmptyAsync();
             StateHasChanged();

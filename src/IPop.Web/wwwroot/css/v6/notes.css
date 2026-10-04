@@ -661,3 +661,19 @@
 }
 
 .nt-editor .nt-tmeta .done { color:var(--ink-3); font-size:11.5px; }
+
+/* ── Micro-interactions (approved demo docs/mockups/ipop-apple/micro-interactions.html) ── */
+/* #8 Sidebar drag: the dragged row dims and settles; a "make it a sub-page" target breathes while hovered. */
+.nt-row { transition: background-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out), opacity var(--dur-fast), transform var(--dur-fast) var(--ease-out); }
+.nt-row.dragging { transform: scale(.98); }
+.nt-row.drop-in { animation: nt-breathe 1s var(--ease-smooth) infinite alternate; }
+@keyframes nt-breathe {
+  from { box-shadow: inset 0 0 0 1.5px #0A84FF; }
+  to { box-shadow: inset 0 0 0 1.5px #0A84FF, 0 0 0 4px color-mix(in srgb, #0A84FF 18%, transparent); }
+}
+/* #9 Trash / move: the row (and its open sub-pages) slides out via ipopMicro.leave. */
+.nt-side [data-nt-node].mi-leaving { overflow: hidden; }
+@media (prefers-reduced-motion: reduce) { .nt-row.drop-in { animation: none; } .nt-row.dragging { transform: none; } }
+/* #12 Files from Windows over the page: the shared drop card stays near the top of a long page. */
+.nt-page > .mi-drop-zone > .mi-drop-ov { place-items: start center; }
+.nt-page > .mi-drop-zone > .mi-drop-ov > div { position: sticky; top: 72px; padding-top: 48px; }

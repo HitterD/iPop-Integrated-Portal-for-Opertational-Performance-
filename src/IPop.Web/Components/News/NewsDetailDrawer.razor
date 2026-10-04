@@ -173,7 +173,7 @@
                 <div class="reader-ack-box @(Detail.IsAcknowledged ? "done" : "req")">
                     @if (Detail.IsAcknowledged)
                     {
-                        <div class="ack-done"><i data-lucide="check-circle-2"></i><span>You acknowledged this @(isMemo ? "memo" : "post")@(Detail.AcknowledgedAt is { } at ? $" on {NewsUiHelper.FormatDate(at)}" : "").</span></div>
+                        <div class="ack-done">@if (ackJustDone) { <span class="mi-check-draw" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></span> } else { <i data-lucide="check-circle-2"></i> }<span>You acknowledged this @(isMemo ? "memo" : "post")@(Detail.AcknowledgedAt is { } at ? $" on {NewsUiHelper.FormatDate(at)}" : "").</span></div>
                     }
                     else
                     {
@@ -249,7 +249,7 @@
                 <div class="news-v6-discussion">
                     @if (isCondolence)
                     {
-                        <button type="button" class="ghost-btn like-btn condo @(Discussion?.IsLiked == true ? "on" : "")" @onclick="OnToggleLike" aria-pressed="@(Discussion?.IsLiked == true ? "true" : "false")" aria-label="Send condolences">
+                        <button type="button" class="ghost-btn like-btn condo @(Discussion?.IsLiked == true ? "on" : "")" @onclick="ToggleLikeWithPop" aria-pressed="@(Discussion?.IsLiked == true ? "true" : "false")" aria-label="Send condolences">
                             <i data-lucide="hand-heart"></i> Turut berduka · @(Discussion?.LikeCount ?? 0)
                         </button>
                         <small class="condo-hint">@(Discussion?.IsLiked == true ? "Your condolences were sent." : "Your name is added to the colleagues who sent condolences.")</small>
@@ -257,7 +257,7 @@
                     }
                     else
                     {
-                        <button type="button" class="ghost-btn like-btn @(Discussion?.IsLiked == true ? "on" : "")" @onclick="OnToggleLike" aria-label="@(Discussion?.IsLiked == true ? "Unlike post" : "Like post")">
+                        <button type="button" class="ghost-btn like-btn @(Discussion?.IsLiked == true ? "on" : "")" @onclick="ToggleLikeWithPop" aria-label="@(Discussion?.IsLiked == true ? "Unlike post" : "Like post")">
                             <i data-lucide="thumbs-up"></i> @(Discussion?.IsLiked == true ? "Liked" : "Like") · @(Discussion?.LikeCount ?? 0)
                         </button>
                         <strong>@(Discussion?.Comments.Count ?? 0) comments</strong>
@@ -391,6 +391,7 @@
 
     protected override void OnParametersSet()
     {
+        TrackAck();
         // A different post, or a new acknowledgement on this one, invalidates the loaded report.
         if (Detail.Id != loadedFor || Detail.AckCount != loadedAckCount)
         {
@@ -399,6 +400,32 @@
             loadedAckCount = Detail.AckCount;
             ackReport = null;
             if (ackOpen) _ = LoadAcks();
+        }
+    }
+
+    // ── Micro-interactions: #3 like / condolence pop, #19 drawn check on acknowledge ──
+    private Guid ackSeenFor;
+    private bool ackSeenDone;
+    private bool ackJustDone;
+
+    private void TrackAck()
+    {
+        // Only a change on the same post draws the check; opening an already-acknowledged post does not.
+        if (Detail.Id == ackSeenFor && !ackSeenDone && Detail.IsAcknowledged) ackJustDone = true;
+        else if (Detail.Id != ackSeenFor) ackJustDone = false;
+        ackSeenFor = Detail.Id;
+        ackSeenDone = Detail.IsAcknowledged;
+    }
+
+    private async Task ToggleLikeWithPop()
+    {
+        // Pop only when adding the reaction; the parent re-renders the "on" state itself.
+        var adding = Discussion?.IsLiked != true;
+        await OnToggleLike.InvokeAsync();
+        if (adding)
+        {
+            try { await JS.InvokeVoidAsync("ipopMicro.popSelector", ".news-v6-discussion .like-btn > i"); }
+            catch (JSException) { /* decoration only */ }
         }
     }
 

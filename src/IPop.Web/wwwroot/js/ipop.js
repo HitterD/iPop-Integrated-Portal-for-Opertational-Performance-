@@ -888,6 +888,7 @@ window.ipop = {
     const onDragLeave = e => {
       if (!wrap.contains(e.relatedTarget)) wrap.classList.remove("drag-over");
     };
+    window.ipopMicro && ipopMicro.registerDrop(wrap, "Drop to send", "Images, PDF, Office files");
     wrap.addEventListener("paste", onPaste);
     wrap.addEventListener("drop", onDrop);
     wrap.addEventListener("dragover", onDragOver);
@@ -899,6 +900,7 @@ window.ipop = {
   },
   chatUnbindPaste(wrap) {
     if (!wrap || !wrap._ipopPaste) return;
+    window.ipopMicro && ipopMicro.unregisterDrop(wrap);
     wrap.removeEventListener("paste", wrap._ipopPaste);
     wrap.removeEventListener("drop", wrap._ipopDrop);
     wrap.removeEventListener("dragover", wrap._ipopDragOver);
@@ -942,6 +944,7 @@ window.ipop = {
     el.addEventListener("dragleave", onDragLeave);
     el.addEventListener("drop", onDrop);
     el._ipopMailDrop = { onDragOver, onDragLeave, onDrop };
+    window.ipopMicro && ipopMicro.registerDrop(el, "Drop to attach", "Images, PDF, Office files");
   },
   // Mail composer: the latest unsaved draft request, sent with keepalive if the tab closes
   // or reloads before the 2 s autosave fires. Called with nulls once it is saved.
@@ -973,44 +976,60 @@ window.ipop = {
   // Mail RTE: paste gambar dari clipboard (Ctrl+V) disisipkan inline sebagai
   // <img src="data:..."> di posisi kursor. Teks tetap dibiarkan ke handler
   // paste bawaan contenteditable.
-  rteBindImagePaste(el) {
+  // Micro-interaction #14: a shimmering placeholder holds the caret spot while the file is read,
+  // then the picture fades in (img.mi-revealed). Capture phase, so it runs before Jodit's own paste.
+  // `onDone` lets the host editor sync its value (Jodit does not listen to "input").
+  rteBindImagePaste(el, onDone) {
     if (!el || el._ipopRtePaste) return;
     const onPaste = e => {
       const items = e.clipboardData && e.clipboardData.items;
       if (!items) return;
       const imgItem = Array.from(items).find(i => i.kind === "file" && i.type.startsWith("image/"));
       if (!imgItem) return; // bukan gambar → biarkan teks tertempel normal
-      e.preventDefault();
+      // Word / web copies carry HTML next to a rendered image: keep Jodit's HTML paste for those.
+      if (Array.from(e.clipboardData.types || []).includes("text/html")) return;
       const file = imgItem.getAsFile();
       if (!file) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const ph = window.ipopMicro ? ipopMicro.pastePlaceholder() : document.createElement("span");
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(ph);
+        range.setStartAfter(ph);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } else {
+        el.appendChild(ph);
+      }
       const reader = new FileReader();
+      reader.onerror = () => ph.remove();
       reader.onload = ev => {
-        const dataUrl = ev.target.result;
         const img = document.createElement("img");
-        img.src = dataUrl;
+        img.src = ev.target.result;
         img.style.maxWidth = "100%";
-        const sel = window.getSelection();
-        if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
-          const range = sel.getRangeAt(0);
-          range.deleteContents();
-          range.insertNode(img);
-          range.setStartAfter(img);
-          range.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(range);
-        } else {
-          el.appendChild(img);
+        if (!(window.ipopMicro && ipopMicro.reduced())) {
+          img.className = "mi-revealed";
+          // Drop the class again (and re-sync) so it never ends up in the saved HTML.
+          const clear = () => { if (!img.classList.contains("mi-revealed")) return; img.classList.remove("mi-revealed"); if (!img.getAttribute("class")) img.removeAttribute("class"); if (onDone) onDone(); };
+          img.addEventListener("animationend", clear, { once: true });
+          setTimeout(clear, 600);
         }
+        if (ph.isConnected) ph.replaceWith(img); else el.appendChild(img);
         el.dispatchEvent(new Event("input", { bubbles: true }));
+        if (onDone) onDone();
       };
       reader.readAsDataURL(file);
     };
-    el.addEventListener("paste", onPaste);
+    el.addEventListener("paste", onPaste, true);
     el._ipopRtePaste = onPaste;
   },
   rteUnbindImagePaste(el) {
     if (!el || !el._ipopRtePaste) return;
-    el.removeEventListener("paste", el._ipopRtePaste);
+    el.removeEventListener("paste", el._ipopRtePaste, true);
     delete el._ipopRtePaste;
   },
 
@@ -1879,6 +1898,8 @@ window.ipop = {
       });
       const st = { ed, dotNet, range: null, lastState: "", lastValue: "", changeT: 0, stateT: 0 };
       this._eds[id] = st;
+      // #14: pasted screenshots show a placeholder, then fade in (size/format still checked on change).
+      ipop.rteBindImagePaste(ed.editor, () => { try { ed.synchronizeValues(); ed.e.fire("change"); } catch { } });
       ed.value = html || "";
       try { ed.history.clear(); } catch { }
       st.lastValue = ed.value;

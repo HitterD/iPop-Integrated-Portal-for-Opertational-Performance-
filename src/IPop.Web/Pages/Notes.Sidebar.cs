@@ -322,9 +322,17 @@ public partial class Notes
             }, ToastKind.Error);
             return;
         }
+        if (parentId != page.ParentId) await LeaveRowAsync(page.Id);
         if (parentId is { } parent) expanded.Add(parent);
         await LoadSidebarAsync();
         await RefreshNoteAsync();
+    }
+
+    /// Micro-interaction #9: the page's tree row (with its sub-pages) slides out before the sidebar reloads.
+    private async Task LeaveRowAsync(Guid id)
+    {
+        try { await JS.InvokeVoidAsync("ipopMicro.leaveSelector", $".nt-side [data-nt-node=\"{id}\"]"); }
+        catch (JSException) { /* motion is decoration */ }
     }
 
     private static async Task<string?> ErrorCodeAsync(HttpResponseMessage res)
@@ -353,6 +361,7 @@ public partial class Notes
         var openId = note?.Id;
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notes/{id}");
         if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't delete the page", ToastKind.Error); return; }
+        await LeaveRowAsync(id);
         await LoadSidebarAsync();
         if (wasOpen)
         {

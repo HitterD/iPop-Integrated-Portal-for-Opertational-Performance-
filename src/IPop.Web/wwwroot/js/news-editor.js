@@ -569,12 +569,15 @@ async function handleFiles(st, files, kind) {
     const edId = id_of(st);
     notify(st, { kind, name: file.name, state: "uploading", percent: 0 });
     st.uploads = (st.uploads || 0) + 1;
+    const ph = isVideo ? null : uploadPlaceholder(st);
     try {
       const raw = await uploadWithRefresh(st, file, kind);
       const m = readMedia(raw, kind, file);
       if (!m.mediaId || !GUID_RE.test(m.mediaId)) throw new Error("The server did not return a media id.");
       notify(st, { kind, name: file.name, state: "done", percent: 100 });
+      takePlaceholder(st, ph);
       insertMedia(edId, { mediaId: m.mediaId, kind, url: m.url, name: m.name, sizeText: fmtSize(m.size) });
+      revealMedia(st, m.mediaId);
       st.dotNet?.invokeMethodAsync("OnMediaUploaded", {
         mediaId: m.mediaId, kind, url: m.url, name: m.name,
         contentType: m.contentType, size: m.size,
@@ -586,10 +589,46 @@ async function handleFiles(st, files, kind) {
       notify(st, { kind, name: file.name, state: "failed", percent: 0, message });
       notice(st, `${file.name}: ${message}`);
     } finally {
+      if (ph && ph.isConnected) ph.remove();
       st.uploads = Math.max(0, (st.uploads || 1) - 1);
       queueState(edId);
     }
   }
+}
+
+// ── Micro-interaction #14: a shimmering placeholder holds the spot while an image uploads ──
+// It is editor chrome ([data-nce-chrome]), so serialize() never stores it.
+function uploadPlaceholder(st) {
+  if (!window.ipopMicro) return null;
+  try {
+    focusWithRange(st);
+    escapeMediaBlock(st);
+    const ph = st.ed.editor.ownerDocument.createElement("div");
+    ph.className = "mi-paste-ph";
+    ph.setAttribute("data-nce-chrome", "");
+    ph.contentEditable = "false";
+    ph.textContent = "Adding image…";
+    st.ed.s.insertNode(ph, true, false);
+    return ph;
+  } catch { return null; }
+}
+/** The upload finished: the image goes exactly where its placeholder was. */
+function takePlaceholder(st, ph) {
+  if (!ph || !ph.isConnected) return;
+  try {
+    const r = ph.ownerDocument.createRange();
+    r.setStartBefore(ph);
+    r.collapse(true);
+    st.range = r;
+  } catch { }
+  ph.remove();
+}
+function revealMedia(st, mediaId) {
+  if (!window.ipopMicro || ipopMicro.reduced()) return;
+  const img = st.ed.editor.querySelector(`figure[data-news-media="${String(mediaId).toLowerCase()}"] img`);
+  if (!img) return;
+  img.classList.add("mi-revealed");
+  setTimeout(() => img.classList.remove("mi-revealed"), 500);
 }
 
 function id_of(st) {
@@ -688,6 +727,8 @@ async function mount(host, dotNet, opts) {
   };
   ed.editor.addEventListener("paste", takeFiles, true);
   ed.editor.addEventListener("drop", takeFiles, true);
+  // #12: dragging a file from Windows over the body shows the shared drop target.
+  if (window.ipopMicro) ipopMicro.registerDrop(host, "Drop to insert", "PNG, JPEG, GIF or WebP images · MP4 or WebM video");
   ed.editor.addEventListener("dragover", ev => {
     if (ev.dataTransfer && Array.from(ev.dataTransfer.types || []).includes("Files")) ev.preventDefault();
   }, true);

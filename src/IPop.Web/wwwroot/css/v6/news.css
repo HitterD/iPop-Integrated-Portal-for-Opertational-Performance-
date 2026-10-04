@@ -262,3 +262,15 @@
 .news-sec { padding: 12px 16px 6px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--line-soft); }
 .news-row.compact { padding: 10px 16px; gap: 4px; }
 .news-row.compact .pin { display: none; }
+
+/* ── Micro-interactions (approved demo docs/mockups/ipop-apple/micro-interactions.html) ── */
+/* #3 Like / condolence: the icon pops when the reaction is added (ipopMicro.pop on the <i>). */
+.news-v6-discussion .like-btn > i { display: inline-flex; transform-origin: center; }
+.news-v6-discussion .like-btn { transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast), border-color var(--dur-fast); }
+/* #19 Acknowledged: a check draws itself next to the confirmation (only right after "I've read it"). */
+.news-v6x .reader-ack-box .ack-done .mi-check-draw { flex: none; width: 20px; height: 20px; background: #1C7A44; }
+[data-theme="dark"] .news-v6x .reader-ack-box .ack-done .mi-check-draw { background: #30a46c; }
+/* #34 Acknowledgement progress fills smoothly when the count changes and grows in on open. */
+.ack-panel .ack-progress-fill { transition: width .7s var(--ease-out); transform-origin: left; animation: news-ack-grow .7s var(--ease-out); }
+@keyframes news-ack-grow { from { transform: scaleX(0); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ack-panel .ack-progress-fill { animation: none; transition: none; } }

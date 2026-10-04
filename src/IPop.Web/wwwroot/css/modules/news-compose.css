@@ -435,3 +435,12 @@ textarea.nc-field { height: auto; min-height: 62px; padding: 9px 11px; resize: v
 @media (prefers-reduced-motion: reduce) {
   .nc-spin { animation-duration: .01ms !important; }
 }
+/* ── Micro-interaction #12: the shared drop target (micro.js) inside the composer's drop zones ── */
+.nc-drop.mi-drop-zone > .mi-drop-ov { inset: 3px; border-radius: 11px; }
+.nc-drop.mi-drop-zone > .mi-drop-ov .mi-drop-ic { width: 32px; height: 32px; border-radius: 10px; margin-bottom: 4px; }
+.nc-drop.mi-drop-zone > .mi-drop-ov .mi-drop-ic svg { width: 18px; height: 18px; }
+.nc-drop.mi-drop-zone > .mi-drop-ov small { display: none; }
+.nc-cover-frame.mi-drop-zone > .mi-drop-ov { inset: 8px; }
+/* The news body editor can be long: keep the drop card near the top of what is visible. */
+.nce-jodit-host.mi-drop-zone > .mi-drop-ov { place-items: start center; }
+.nce-jodit-host.mi-drop-zone > .mi-drop-ov > div { position: sticky; top: 72px; padding-top: 48px; }

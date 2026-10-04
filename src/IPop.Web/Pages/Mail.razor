@@ -343,8 +343,8 @@
                     {
                         var item = it;
                         var isSel = selected.Contains(item.Id);
-                        <div class="mail-row @(item.IsRead ? "" : "unread") @(item.IsPinned ? "pinned" : "") @(selectedMail == item.Id ? "sel" : "")"
-                             role="listitem"
+                        <div @key="item.Id" class="mail-row @(item.IsRead ? "" : "unread") @(item.IsPinned ? "pinned" : "") @(selectedMail == item.Id ? "sel" : "") @(returningIds.Contains(item.Id) ? "mi-returning" : "")"
+                             role="listitem" data-mail-row="@item.Id"
                              aria-selected="@(isSel ? "true" : "false")"
                              @onclick="() => OpenDetail(item.Id)">
 
@@ -379,7 +379,7 @@
                                     <span class="imp-tag low" title="Low Importance"><i data-lucide="arrow-down"></i></span>
                                 }
 
-                                <span class="m-from">@item.SenderName</span>
+                                <span class="m-from">@Hl(item.SenderName)</span>
                                 <span class="m-time">@FormatTime(item.ReceivedAt)</span>
 
                                 @* Hover quick actions *@
@@ -421,12 +421,12 @@
 
                             @* Line 2: Subject *@
                             <div class="m-l2">
-                                <span class="m-subj">@item.Subject</span>
+                                <span class="m-subj">@Hl(item.Subject)</span>
                             </div>
 
                             @* Line 3: Snippet & Labels & Attachment clip *@
                             <div class="m-l3">
-                                <span class="m-snip">@item.Snippet</span>
+                                <span class="m-snip">@Hl(item.Snippet)</span>
                                 @if (item.Labels is { Count: > 0 })
                                 {
                                     @foreach (var lbl in item.Labels.Take(3))
@@ -1614,6 +1614,7 @@
             if (res?.Success != true) { Toasts.Show("Could not move the message to Trash.", ToastKind.Error); return; }
             undoAfter = () => ShowMoveUndo(new[] { id }, activeFolder == MailFolder.Starred ? MailFolder.Inbox : activeFolder, MailFolder.Trash);
         }
+        await LeaveRowsAsync([id]);
         if (selectedMail == id) BackToList();
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
@@ -1653,6 +1654,7 @@
         var origin = Enum.TryParse<MailFolder>(DetailFolder, true, out var o) ? o : MailFolder.Inbox;
         var res = await MailSvc.MoveAsync(id, f);
         if (res?.Success != true) { Toasts.Show($"Could not move the message to {FolderLabel(f)}.", ToastKind.Error); return; }
+        await LeaveRowsAsync([id]);
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
         BackToList();
@@ -1669,10 +1671,54 @@
             if (!await MailSvc.BulkMoveAsync(ids, origin)) { Toasts.Show("Could not undo.", ToastKind.Error); return; }
             counts = await MailSvc.GetCountsAsync();
             UpdateHeader();
+            foreach (var rid in ids) returningIds.Add(rid);
             await LoadPage(page);
+            await InvokeAsync(StateHasChanged);
+            // #9: the restored rows slide back in (class only lives for the animation).
+            await Task.Delay(450);
+            foreach (var rid in ids) returningIds.Remove(rid);
             await InvokeAsync(StateHasChanged);
         }, "Undo", 8000);
     }
+
+    // ── Micro-interactions (#9 row exit, #38 search highlight) ──
+    private readonly HashSet<Guid> returningIds = [];
+
+    /// #9: rows leaving the folder slide out first, then are dropped locally (and from the
+    /// first-page cache) so the refresh that follows cannot flash them back in.
+    /// Starred lists mail from every folder, so a move there does not remove the row.
+    private async Task LeaveRowsAsync(IReadOnlyCollection<Guid> ids)
+    {
+        if (ids.Count == 0 || activeFolder == MailFolder.Starred) return;
+        var gone = ids.ToHashSet();
+        var shown = Items.Where(m => gone.Contains(m.Id)).Select(m => m.Id).Take(40).ToList();
+        if (shown.Count > 0)
+        {
+            try
+            {
+                await Task.WhenAll(shown.Select(id =>
+                    JS.InvokeVoidAsync("ipopMicro.leaveSelector", $"[data-mail-row=\"{id}\"]").AsTask()));
+            }
+            catch (JSException) { /* motion is decoration */ }
+        }
+        Items.RemoveAll(m => gone.Contains(m.Id));
+        if (ListCacheKey(page) is { } key) Cache.Remove(key);
+    }
+
+    /// #38: the typed search lights up where it matches in sender, subject and snippet.
+    private RenderFragment Hl(string? text) => builder =>
+    {
+        var t = text ?? "";
+        var q = search?.Trim();
+        var at = string.IsNullOrEmpty(q) || q.Length < 2 ? -1 : t.IndexOf(q, StringComparison.OrdinalIgnoreCase);
+        if (at < 0) { builder.AddContent(0, t); return; }
+        builder.AddContent(1, t[..at]);
+        builder.OpenElement(2, "mark");
+        builder.AddAttribute(3, "class", "mail-hl");
+        builder.AddContent(4, t.Substring(at, q!.Length));
+        builder.CloseElement();
+        builder.AddContent(5, t[(at + q.Length)..]);
+    };
 
     /// The open message's own folder. Starred shows mail from every folder (Trash included),
     /// so actions go by this rather than by the folder being browsed.
@@ -1696,6 +1742,7 @@
         if (!await Confirm.AskAsync("Delete forever?", "This message will be permanently deleted from your mailbox. This cannot be undone.", "Delete forever", danger: true)) return;
         var res = await MailSvc.DeleteAsync(id);
         if (res?.Success != true) { Toasts.Show("Could not delete the message.", ToastKind.Error); return; }
+        await LeaveRowsAsync([id]);
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
         if (selectedMail == id) BackToList();
@@ -1706,6 +1753,7 @@
     private Task QuickRestore(Guid id) => RunAction(async () =>
     {
         if (!await MailSvc.BulkRestoreAsync([id])) { Toasts.Show("Could not restore the message.", ToastKind.Error); return; }
+        await LeaveRowsAsync([id]);
         if (selectedMail == id) BackToList();
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
@@ -1717,6 +1765,7 @@
     {
         var res = await MailSvc.MoveAsync(id, f);
         if (res?.Success != true) { Toasts.Show($"Could not move the message to {FolderLabel(f)}.", ToastKind.Error); return; }
+        await LeaveRowsAsync([id]);
         if (selectedMail == id) BackToList();
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
@@ -1990,6 +2039,7 @@
         var origin = activeFolder is MailFolder.Trash or MailFolder.Archive ? activeFolder : MailFolder.Inbox;
         await MailSvc.BulkMoveAsync(ids, f);
         selected.Clear();
+        await LeaveRowsAsync(ids);
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
         await LoadPage(page);
@@ -2000,8 +2050,10 @@
     {
         if (selected.Count == 0) return;
         var n = selected.Count;
-        await MailSvc.BulkRestoreAsync(selected.ToList());
+        var ids = selected.ToList();
+        await MailSvc.BulkRestoreAsync(ids);
         selected.Clear();
+        await LeaveRowsAsync(ids);
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();
         await LoadPage(page);
@@ -2027,6 +2079,7 @@
         var ids = selected.ToList();
         if (!await MailSvc.BulkDeleteAsync(ids)) { Toasts.Show("Could not delete the selected messages.", ToastKind.Error); return; }
         selected.Clear();
+        await LeaveRowsAsync(ids);
         if (selectedMail is { } open && ids.Contains(open)) BackToList();
         counts = await MailSvc.GetCountsAsync();
         UpdateHeader();

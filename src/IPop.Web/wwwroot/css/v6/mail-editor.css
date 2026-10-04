@@ -558,3 +558,27 @@
 @media (prefers-reduced-motion: reduce) {
   .mrte-pop, .mail-preview-overlay, .mail-kbd-sheet, .resched-pop { animation: none; }
 }
+
+/* ── Micro-interactions ── */
+/* #12 The composer's old dashed hint steps aside for the shared drop overlay (micro.js). */
+.composer-body-wrap.mi-drop-zone .composer-drop-hint { display: none !important; }
+/* #13 Chips spring in (micro.css); the uploading chip carries a filling line while it lasts,
+   and a finished chip pops its file icon once (.mc-just-added, set by MailComposer). */
+.composer-att-chip.mc-just-added > i:first-child { animation: mi-pop .45s var(--ease-spring); color: var(--accent); }
+.composer-att-chip.uploading { position: relative; overflow: hidden; }
+.composer-att-chip.uploading::after {
+  content: ''; position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: var(--accent);
+  transform-origin: left; animation: mc-upfill 2.4s var(--ease-out) forwards;
+}
+@keyframes mc-upfill { from { transform: scaleX(.04); } to { transform: scaleX(.9); } }
+/* #15 Send waits for uploads: a ring spins on the send button until they finish. */
+.split-send .send-main.mc-waiting { position: relative; }
+.split-send .send-main.mc-waiting::before {
+  content: ''; width: 12px; height: 12px; flex: none; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: mc-spin .8s linear infinite;
+}
+.split-send .send-main.mc-waiting .lucide { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .composer-att-chip.uploading::after { animation: none; transform: scaleX(.5); }
+  .split-send .send-main.mc-waiting::before { animation: none; }
+}

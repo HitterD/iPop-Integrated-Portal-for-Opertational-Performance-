@@ -30,6 +30,9 @@ public partial class Files
         showPreview = true;
         mMenuPath = null;
         StateHasChanged();
+        // #40: in icon view a photo grows out of the tile it was opened from.
+        if (gridView && fx is not null && previewMime?.StartsWith("image/") == true)
+            try { await fx.InvokeVoidAsync("zoomPreview", server + ":" + it.Path); } catch (JSException) { }
         mRef ??= DotNetObjectReference.Create(this);
         try { mPreviewPushed = await JS.InvokeAsync<bool>("ipop.mobile.pushDetail", mRef, nameof(CloseMobilePreview)); } catch (JSException) { }
         if (IsSheetPreviewable(it.Name))

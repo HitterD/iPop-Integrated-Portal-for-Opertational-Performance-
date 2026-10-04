@@ -354,9 +354,10 @@
                 var done = uploads.Count(u => u.Ok is not null);
                 var failed = uploads.Count(u => u.Ok == false);
                 var running = uploads.Any(u => u.Ok is null) && !uploadCancelled;
-                <div class="fx-task">
+                <div class="fx-task @(running ? "is-running" : failed == 0 && !uploadCancelled ? "is-done" : "")">
                     <div class="fx-task-head">
-                        <i data-lucide="@(running ? "cloud-upload" : failed > 0 ? "circle-alert" : "check")" class="@(failed > 0 && !running ? "err" : "")"></i>
+                        @* @key swaps the icon element when the state changes, so the finished tick pops in fresh (#13). *@
+                        <i @key="@(running ? "up" : failed > 0 ? "err" : "ok")" data-lucide="@(running ? "cloud-upload" : failed > 0 ? "circle-alert" : "check")" class="@(failed > 0 && !running ? "err" : "")"></i>
                         <strong>@(running ? $"Uploading {Math.Min(done + 1, uploads.Count)} of {uploads.Count}" : failed > 0 ? $"{failed} upload{(failed == 1 ? "" : "s")} failed" : uploadCancelled ? "Upload stopped" : "Uploaded")</strong>
                         <span>@FileKinds.Size(UploadSent) / @FileKinds.Size(UploadTotal)</span>
                         @if (running) { <button type="button" class="fx-task-x" title="Cancel" @onclick="CancelUpload"><i data-lucide="x"></i></button> }

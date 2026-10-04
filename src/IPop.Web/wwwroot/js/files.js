@@ -87,6 +87,14 @@ export function attach(root, dotnet) {
       upload(Array.from(e.dataTransfer.files), destServer, destPath);
     }
   };
+  // #12: the open folder (data-fx-dropzone) uses the shared drop target from micro.js. Registered on
+  // the first file drag (capture phase, before the zone's own dragenter) so a re-rendered zone is
+  // picked up too; CSS only shows it while files.js has accepted the folder as the target (.fx-drop).
+  s.onDragEnterCap = e => {
+    if (!window.ipopMicro || !Array.from(e.dataTransfer?.types || []).includes("Files")) return;
+    const zone = s.root.querySelector("[data-fx-dropzone]");
+    if (zone) ipopMicro.registerDrop(zone, "Drop to upload here", "Files go into the open folder");
+  };
   s.onPick = e => {
     const input = e.target;
     if (!input.matches || !input.matches("[data-fx-upload]")) return;
@@ -96,6 +104,7 @@ export function attach(root, dotnet) {
   };
 
   document.addEventListener("keydown", s.onKey);
+  root.addEventListener("dragenter", s.onDragEnterCap, true);
   root.addEventListener("dragstart", s.onDragStart);
   root.addEventListener("dragend", s.onDragEnd);
   root.addEventListener("dragover", s.onDragOver);
@@ -109,6 +118,7 @@ export function attach(root, dotnet) {
 export function detach() {
   if (!s) return;
   document.removeEventListener("keydown", s.onKey);
+  s.root.removeEventListener("dragenter", s.onDragEnterCap, true);
   s.root.removeEventListener("dragstart", s.onDragStart);
   s.root.removeEventListener("dragend", s.onDragEnd);
   s.root.removeEventListener("dragover", s.onDragOver);
@@ -137,6 +147,35 @@ export function cancelUpload() {
   if (!s) return;
   s.cancelled = true;
   try { s.xhr?.abort(); } catch { /* already done */ }
+}
+
+// ── Micro-interactions ──────────────────────────────────────────────────────────────────────
+
+/** #9: rows leaving the folder (delete, move, restore) slide out before the listing updates. */
+export function leaveItems(keys) {
+  const m = window.ipopMicro;
+  if (!s || !m || !keys?.length) return;
+  const want = new Set(keys);
+  const rows = Array.from(s.root.querySelectorAll("[data-fx-item]")).filter(el => want.has(el.dataset.fxItem));
+  return Promise.all(rows.map(el => m.leave(el)));
+}
+
+/** #40: an image opened from a grid tile grows out of that tile once it has loaded. */
+export function zoomPreview(key) {
+  const m = window.ipopMicro;
+  if (!s || !m || m.reduced()) return;
+  const tile = Array.from(s.root.querySelectorAll(".fx-grid [data-fx-item]")).find(el => el.dataset.fxItem === key);
+  if (!tile) return;
+  const from = tile.querySelector(".fx-icon") || tile;
+  const t0 = performance.now();
+  const wait = () => {
+    if (!document.querySelector(".fx-ql") || performance.now() - t0 > 15000) return;
+    const img = document.querySelector(".fx-ql .fx-ql-img");
+    if (!img) { setTimeout(wait, 60); return; }
+    const go = () => m.zoomFrom(from, img);
+    if (img.complete && img.naturalWidth) go(); else img.addEventListener("load", go, { once: true });
+  };
+  wait();
 }
 
 function clearDrop() {

@@ -244,3 +244,15 @@
   .mfp-chip { height: 36px; }
   .mfp-apply { height: 40px; }
 }
+
+/* ── Micro-interactions (approved demo docs/mockups/ipop-apple/micro-interactions.html) ── */
+/* #30 Unread → read: bold text, the unread rail and the accent time fade instead of snapping. */
+.mail-page .mail-row { transition: background-color .35s var(--ease-out), border-left-color .35s var(--ease-out), box-shadow .2s; }
+.mail-page .mail-row .m-from, .mail-page .mail-row .m-subj, .mail-page .mail-row .m-time { transition: color .35s var(--ease-out), font-weight .35s; }
+/* #38 Search highlights the match in sender, subject and snippet. */
+mark.mail-hl { background: #ffe58f; color: inherit; border-radius: 3px; padding: 0 1px; animation: mail-markin .45s var(--ease-out); }
+[data-theme="dark"] mark.mail-hl { background: #6b5a14; }
+@keyframes mail-markin { from { background: transparent; } }
+/* #9 Archive / delete / move: the row slides out (ipopMicro.leave), restored rows slide back. */
+.mail-page .mail-row.mi-leaving { border-bottom-color: transparent; }
+@media (prefers-reduced-motion: reduce) { mark.mail-hl { animation: none; } }
