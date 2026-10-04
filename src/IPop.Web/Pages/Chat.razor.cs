@@ -772,6 +772,7 @@ public partial class Chat
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+        await MicroAfterRenderAsync();
         // The conversation pane (composer, messages list) only exists once the room's
         // details are in; until then the refs point at nothing and binding would no-op.
         var paneReady = ChatSvc.ActiveRoom is not null && ChatSvc.ActiveRoomId is not null;
@@ -978,6 +979,7 @@ public partial class Chat
     {
         DisposeDraftLifecycle();
         CancelComposerUpload();
+        if (isRecordingVoice) MicroVoiceStopped();
         _disposed = true;
         A11yDispose();
         _ = ChatSvc.SetChatPageMountedAsync(false);

@@ -120,9 +120,12 @@
                 @foreach (var r in Reactions)
                 {
                     var reaction = r;
-                    <span class="pill @(reaction.CurrentUserReacted ? "mine" : "") hover-pop" @onclick="() => OnReact.InvokeAsync((Message.Id, reaction.Emoji))" @onclick:stopPropagation>
-                        <span class="emoji">@reaction.Emoji</span>
-                        <span class="count">@reaction.Count</span>
+                    var moved = _reactionMoves.TryGetValue(reaction.Emoji, out var dir) ? dir : 0;
+                    @* Micro #11: only a reaction that just appeared or changed count animates; the keyed
+                       spans are re-created per count, so the roll replays on every change. *@
+                    <span @key="reaction.Emoji" class="pill @(reaction.CurrentUserReacted ? "mine" : "") hover-pop @(moved > 0 ? "mi-react-up" : moved < 0 ? "mi-react-down" : "")" @onclick="() => OnReact.InvokeAsync((Message.Id, reaction.Emoji))" @onclick:stopPropagation>
+                        <span @key="@("e" + reaction.Count)" class="emoji">@reaction.Emoji</span>
+                        <span @key="@("c" + reaction.Count)" class="count">@reaction.Count</span>
                     </span>
                 }
             </div>
@@ -179,7 +182,8 @@
             @if (isSent)
             {
                 @* Inline SVG ticks: data-lucide placeholders aren't re-hydrated when the status changes. *@
-                <span class="msg-status @statusCls" title="@statusLabel" aria-label="@statusLabel">
+                @* Micro #18: keyed by state so sent → delivered → read re-creates the tick and it pops once. *@
+                <span @key="statusCls" class="msg-status @statusCls @(!ghost && _tickPop ? "mi-tick" : "")" title="@statusLabel" aria-label="@statusLabel">
                     @switch (statusCls)
                     {
                         case "pending":
@@ -302,6 +306,56 @@
             return _previewUrl;
         }
     }
+
+    // ---- Micro-interactions (#11 reaction pop, #18 tick pop) ----
+    // Only changes seen by this live bubble animate; a bubble painted from history never does.
+    private Guid _motionFor;
+    private Dictionary<string, int>? _lastReactionCounts;
+    private Dictionary<string, int> _reactionMoves = new();
+    private string? _lastStatus;
+    private bool _tickPop;
+
+    private string StatusClass
+    {
+        get
+        {
+            var ds = Message.DeliveryStatus;
+            return isPending ? "pending" : isFailed ? "failed" : ds == "read" ? "read" : ds == "delivered" ? "delivered" : "sent";
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        var counts = Reactions.ToDictionary(r => r.Emoji, r => r.Count);
+        var status = isSent ? StatusClass : null;
+        if (_motionFor != Message.Id)
+        {
+            // First paint of this bubble. The confirmed echo of our own send replaces the optimistic
+            // bubble (new id, new component), so a just-sent message still pops its first tick.
+            _motionFor = Message.Id;
+            _reactionMoves = new();
+            _tickPop = status is "sent" or "delivered" or "read" && DateTime.UtcNow - Message.CreatedAt.ToUniversalTime() < TimeSpan.FromSeconds(15);
+        }
+        else
+        {
+            if (ReferenceEquals(_drawnReactions, Message.Reactions)) _reactionMoves = new();
+            else if (_lastReactionCounts is not null)
+            {
+                var moves = new Dictionary<string, int>();
+                foreach (var (emoji, count) in counts)
+                {
+                    var before = _lastReactionCounts.TryGetValue(emoji, out var b) ? b : 0;
+                    if (count != before) moves[emoji] = count > before ? 1 : -1;
+                }
+                _reactionMoves = moves;
+            }
+            _tickPop = status is not null && _lastStatus is not null && status != _lastStatus && status is "sent" or "delivered" or "read";
+        }
+        _lastReactionCounts = counts;
+        _drawnReactions = Message.Reactions;
+        _lastStatus = status;
+    }
+    private IReadOnlyList<ReactionGroupDto>? _drawnReactions;
 
     /// The chat page re-renders on every hub event (typing, presence, other rooms); a bubble
     /// only needs to when something it draws changed. MessageDto is an immutable record that

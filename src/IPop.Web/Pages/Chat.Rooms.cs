@@ -175,6 +175,7 @@ public partial class Chat
         ClearPendingPreviews();
         pendingAttachments = [];
         uploadError = null;
+        failedUpload = null;
         composerPasteBoundId = null;
         composerKeyBoundId = null;
         mobileRoomsOpen = false;

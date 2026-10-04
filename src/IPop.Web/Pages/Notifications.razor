@@ -102,7 +102,7 @@
                                 var isSel = !selecting && selectedItem?.Id == n.Id;
                                 var isChecked = selectedIds.Contains(n.Id);
                                 var kind = Classify(n.Type);
-                                <div class="notifs-row @(isSel ? "sel" : "") @(n.IsRead ? "" : "unread") @(isChecked ? "checked" : "")" @key="n.Id"
+                                <div class="notifs-row @(isSel ? "sel" : "") @(n.IsRead ? "" : "unread") @(isChecked ? "checked" : "")" @key="n.Id" data-nid="@n.Id"
                                      role="button" tabindex="0" aria-pressed="@(selecting ? (isChecked ? "true" : "false") : null)"
                                      @onclick="() => RowClick(n)" @onkeydown="e => SelectOnKey(e, n)">
                                     @if (selecting)
@@ -708,6 +708,7 @@
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/notifications/v1/notifications/{n.Id}", null);
         if (res.IsSuccessStatusCode)
         {
+            await LeaveRowsAsync([n.Id]);
             items.RemoveAll(x => x.Id == n.Id);
             selectedIds.Remove(n.Id);
             if (selectedItem?.Id == n.Id) selectedItem = null;
@@ -733,6 +734,7 @@
         var res = await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/notifications/bulk-delete", new { requestIds = selectedIds.ToList() });
         if (res.IsSuccessStatusCode)
         {
+            await LeaveRowsAsync(selectedIds.ToList());
             items.RemoveAll(x => selectedIds.Contains(x.Id));
             if (selectedItem is not null && selectedIds.Contains(selectedItem.Id)) selectedItem = null;
             EndSelecting();
@@ -747,6 +749,8 @@
         var res = await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/notifications/bulk-read", new { requestIds = selectedIds.ToList() });
         if (res.IsSuccessStatusCode)
         {
+            // In the Unread view, read rows leave the list: slide them out first.
+            if (categoryFilter == "unread") await LeaveRowsAsync(selectedIds.ToList());
             foreach (var item in items.Where(x => selectedIds.Contains(x.Id))) item.IsRead = true;
             EndSelecting();
             Toasts.Show("Notifications marked as read.", ToastKind.Success);
@@ -781,6 +785,7 @@
             var res = await Auth.SendAsync(HttpMethod.Post, $"/api/notifications/v1/notifications/{n.Id}/read", new { });
             if (res.IsSuccessStatusCode)
             {
+                if (categoryFilter == "unread") await LeaveRowsAsync([n.Id]);
                 n.IsRead = true;
                 if (unreadCount > 0) unreadCount--;
             }
@@ -809,9 +814,18 @@
         }
     }
 
+    /// Micro #9: rows about to disappear slide out (300ms) before the list drops them.
+    private async Task LeaveRowsAsync(IReadOnlyCollection<Guid> ids)
+    {
+        if (ids.Count == 0 || ids.Count > 30) return; // a mass removal just closes the gap
+        try { await Task.WhenAll(ids.Select(id => JS.InvokeVoidAsync("ipopMicro.leaveSelector", $".notifs-row[data-nid=\"{id}\"]").AsTask())); }
+        catch { /* motion is optional */ }
+    }
+
     private async Task MarkAllRead()
     {
         await Auth.SendAsync(HttpMethod.Post, "/api/notifications/v1/inbox/read-all", new { });
+        if (categoryFilter == "unread") await LeaveRowsAsync(items.Where(i => !i.IsRead).Select(i => i.Id).ToList());
         foreach (var i in items) i.IsRead = true;
         unreadCount = 0;
         Notifs.SetUnread(0);

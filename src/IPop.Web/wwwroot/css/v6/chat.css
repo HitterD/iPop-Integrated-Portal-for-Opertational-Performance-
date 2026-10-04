@@ -790,3 +790,54 @@
   .se-foot > .se-ghost:first-child { display: none; }
   .se-emoji-grid { grid-template-columns: repeat(8, 1fr); }
 }
+
+/* ── Micro-interactions (docs/mockups/ipop-apple/micro-interactions.html) ──
+   Static under prefers-reduced-motion: core/motion.css neutralises animations globally. */
+
+/* #11 Reaction: the emoji pops and the count rolls (MessageBubble re-keys both spans per count). */
+.chat-area .msg .reactions .pill.mi-react-up .emoji { display: inline-block; animation: mi-pop .45s var(--ease-spring); }
+.chat-area .msg .reactions .pill.mi-react-up .count { display: inline-block; animation: mi-count-up .3s var(--ease-out); }
+.chat-area .msg .reactions .pill.mi-react-down .count { display: inline-block; animation: mi-count-down .3s var(--ease-out); }
+@keyframes mi-count-up { from { transform: translateY(60%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes mi-count-down { from { transform: translateY(-60%); opacity: 0; } to { transform: none; opacity: 1; } }
+.chat-area .v6-react-pop button { transition: transform .2s var(--ease-spring), background-color var(--dur-fast); }
+.chat-area .v6-react-pop button:hover { transform: scale(1.25); }
+
+/* #18 Message states: own fresh bubble pops in from its tail; each new tick (sent → delivered → read) pops once. */
+.chat-area .msg.sent.fresh .bubble { animation: mi-bubble-in .32s var(--ease-spring); transform-origin: bottom right; }
+@keyframes mi-bubble-in { from { opacity: 0; transform: scale(.8) translateY(8px); } to { opacity: 1; transform: none; } }
+.chat-area .msg .bmeta .msg-status.mi-tick svg { animation: mi-pop .4s var(--ease-spring); }
+
+/* #12 Files dragged from Windows: compact drop target over the composer (micro.js draws .mi-drop-ov). */
+.chat-area .composer-wrap.mi-drop-zone.drag-over { outline: none; background: var(--surface); }
+.chat-area .composer-wrap > .mi-drop-ov { inset: 4px; border-radius: 12px; }
+.chat-area .composer-wrap > .mi-drop-ov > div { display: flex; align-items: center; gap: 10px; text-align: left; }
+.chat-area .composer-wrap > .mi-drop-ov .mi-drop-ic { width: 34px; height: 34px; border-radius: 10px; margin: 0; flex: none; }
+.chat-area .composer-wrap > .mi-drop-ov .mi-drop-ic svg { width: 18px; height: 18px; }
+.chat-area .composer-wrap > .mi-drop-ov b { display: inline; font-size: 13px; }
+.chat-area .composer-wrap > .mi-drop-ov small { margin-left: 6px; }
+
+/* #13 Upload failure: the banner shakes once and offers Retry (chips spring in via core/micro.css). */
+.chat-area .upload-error .upload-retry { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; padding: 3px 8px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--danger); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.chat-area .upload-error .upload-retry:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.chat-area .upload-error .upload-retry .lucide { width: 13px; height: 13px; }
+
+/* #15 Send button: a ring spins while uploads are pending; the arrow flies out when sent. */
+.chat-area .v6-send.mi-send-busy { position: relative; color: #2E9E5B; background: var(--fill); opacity: 1; cursor: progress; }
+.chat-area .v6-send.mi-send-busy::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 2.5px solid transparent;
+  border-top-color: #2E9E5B; animation: spin .8s linear infinite; pointer-events: none; }
+.chat-area .v6-send.mi-send-fly .lucide { animation: mi-send-fly .45s var(--ease-out); }
+@keyframes mi-send-fly { 0% { transform: none; } 45% { transform: translate(0, -16px); opacity: 0; } 46% { transform: translate(0, 12px); opacity: 0; } 100% { transform: none; opacity: 1; } }
+
+/* #42 Voice note: live waveform (js/chat-micro.js scales the bars) and a breathing stop/send button. */
+.chat-area .v6-rec-pill .mi-wave { flex: 1; display: flex; align-items: center; gap: 2px; height: 20px; min-width: 0; overflow: hidden; }
+.chat-area .v6-rec-pill .mi-wave i { flex: none; width: 3px; height: 18px; border-radius: 2px; background: #C4271C; opacity: .75;
+  transform: scaleY(.08); transform-origin: center; transition: transform .12s linear; }
+.chat-area .v6-send.mi-rec-stop { animation: mi-breathe 1.2s ease-in-out infinite; }
+@keyframes mi-breathe { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, #2E9E5B 24%, transparent); } }
+
+/* #38 Search results: matches light up (in-room search, global drawer, /chat/search). */
+mark.mi-hl { background: #ffe58f; color: inherit; border-radius: 3px; padding: 0 1px; animation: mi-mark-in .45s var(--ease-out); }
+[data-theme="dark"] mark.mi-hl { background: #6b5a14; }
+@keyframes mi-mark-in { from { background: transparent; } }

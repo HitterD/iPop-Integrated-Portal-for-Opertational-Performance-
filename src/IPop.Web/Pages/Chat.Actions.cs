@@ -161,6 +161,7 @@ public partial class Chat
         if (ok)
         {
             isRecordingVoice = true;
+            MicroVoiceStarted();
             StateHasChanged();
         }
         else
@@ -172,6 +173,7 @@ public partial class Chat
     private async Task StopAndSendVoiceRecord()
     {
         selfRef ??= DotNetObjectReference.Create(this);
+        MicroVoiceStopped();
         await JS.InvokeVoidAsync("ipop.stopAudioRecord", selfRef);
         isRecordingVoice = false;
         StateHasChanged();
@@ -179,6 +181,7 @@ public partial class Chat
 
     private async Task CancelVoiceRecord()
     {
+        MicroVoiceStopped();
         await JS.InvokeVoidAsync("ipop.cancelAudioRecord");
         isRecordingVoice = false;
         StateHasChanged();
@@ -187,6 +190,7 @@ public partial class Chat
     [Microsoft.JSInterop.JSInvokable]
     public async Task OnVoiceRecorded(string base64Audio, long fileSize, long durationMs)
     {
+        if (isRecordingVoice) MicroVoiceStopped(); // 2-minute limit stopped it from JS
         isRecordingVoice = false;
         await InvokeAsync(StateHasChanged);
         if (durationMs > 120000 || string.IsNullOrWhiteSpace(base64Audio) || ChatSvc.ActiveRoomId is null) return;
@@ -372,6 +376,7 @@ public partial class Chat
     private void OpenAttachment(IPop.Application.Chat.AttachmentDto att, IReadOnlyList<IPop.Application.Chat.AttachmentDto> siblings)
     {
         viewerSiblings = siblings;
+        if (viewerAttachment is null && IPop.Web.Services.ChatAttachments.IsImage(att)) MicroArmZoom();
         viewerAttachment = att;
     }
 

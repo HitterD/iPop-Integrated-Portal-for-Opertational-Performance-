@@ -19,7 +19,7 @@
     var starter = room.Participants.FirstOrDefault(p => p.UserId == room.CreatorId)?.Name ?? "Colleague";
     var joined = CallSvc.GroupJoinedCount;
     var inviteLine = CallSvc.InviteLine;
-    <div class="callx-incoming callx-group" role="alertdialog" aria-live="assertive" aria-label="@(inviteLine ?? $"Group call {CallSvc.GroupName} from {starter}")">
+    <div class="callx-incoming callx-group @(busy ? "" : "mi-ringing-call")" role="alertdialog" aria-live="assertive" aria-label="@(inviteLine ?? $"Group call {CallSvc.GroupName} from {starter}")">
         <div class="callx-incoming-main">
             @GroupAvatar(room, "callx-ring")
             <div class="callx-incoming-text">
@@ -146,7 +146,7 @@ else if (CallSvc.IsIncomingRing)
 {
     var caller = CallSvc.RemotePeer?.Name ?? "Colleague";
     var callerNik = CallSvc.RemotePeer?.Nik;
-    <div class="callx-incoming" role="alertdialog" aria-live="assertive" aria-label="Incoming call from @caller">
+    <div class="callx-incoming @(busy ? "" : "mi-ringing-call")" role="alertdialog" aria-live="assertive" aria-label="Incoming call from @caller">
         <div class="callx-incoming-main">
             <PersonAvatar Nik="@callerNik" Name="@caller" Size="52" Class="callx-avatar callx-ring" Decorative="true" />
             <div class="callx-incoming-text">

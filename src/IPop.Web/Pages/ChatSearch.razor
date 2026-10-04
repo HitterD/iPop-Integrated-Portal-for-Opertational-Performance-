@@ -89,7 +89,7 @@
                                             <span class="tag" style="background:var(--tray);color:var(--ink-2)"><i data-lucide="forward" style="width:10px;height:10px"></i> Forwarded</span>
                                         }
                                     </div>
-                                    <div class="notif-row-s">@Snippet(msg.Content)</div>
+                                    <div class="notif-row-s">@IPop.Web.Components.Chat.SearchHighlight.Mark(Snippet(msg.Content), lastQuery)</div>
                                     <div class="notif-row-meta">
                                         <i data-lucide="clock" style="width:11px;height:11px"></i>
                                         <span>@FormatTime(msg.CreatedAt.ToLocalTime())</span>
@@ -118,6 +118,7 @@
     private List<RoomHits> Groups = [];
     private Dictionary<Guid, string> roomNames = [];
     private string query = "";
+    private string lastQuery = ""; // the query the shown results came from (highlight #38)
     private bool searching;
     private bool searched;
     private int roomCount;
@@ -229,6 +230,7 @@
                 }));
                 grouped = results.ToList();
             }
+            lastQuery = q;
             Groups = grouped.Where(g => g.Items.Count > 0)
                             .OrderByDescending(g => g.Items.Max(m => m.CreatedAt))
                             .ToList();

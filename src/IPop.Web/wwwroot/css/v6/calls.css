@@ -444,3 +444,16 @@ html.callx-resizing, html.callx-resizing * { cursor:nwse-resize !important; }
   body.m-hide-tabbar .callx-window[data-free], body.m-hide-tabbar .callx-pill[data-free] { right:auto; bottom:auto; }
   .callx-window[data-sized] .callx-grid { max-height:none; }
 }
+
+/* ── Micro #41: incoming call — two ripples spread from the caller and the answer button wiggles,
+   only while .mi-ringing-call is on (removed the moment Accept/Decline is pressed). ── */
+.callx-incoming.mi-ringing-call .callx-ring::before { content:""; position:absolute; inset:-4px; border-radius:inherit; border:2px solid var(--accent);
+  opacity:0; pointer-events:none; animation:mi-call-ripple 1.6s var(--ease-out) .55s infinite; }
+.callx-incoming.mi-ringing-call .callx-ring::after { animation:mi-call-ripple 1.6s var(--ease-out) infinite; }
+.callx-incoming.mi-ringing-call .callx-accept .lucide { animation:mi-call-wiggle 1.2s infinite; }
+@keyframes mi-call-ripple { from { opacity:.7; transform:scale(1); } to { opacity:0; transform:scale(1.6); } }
+@keyframes mi-call-wiggle { 0%, 60%, 100% { transform:rotate(0); } 10%, 30% { transform:rotate(-14deg); } 20%, 40% { transform:rotate(14deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .callx-incoming.mi-ringing-call .callx-ring::before, .callx-incoming.mi-ringing-call .callx-ring::after,
+  .callx-incoming.mi-ringing-call .callx-accept .lucide { animation:none; }
+}

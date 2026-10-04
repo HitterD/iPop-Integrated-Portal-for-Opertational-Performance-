@@ -462,3 +462,10 @@
   height: 14px !important;
   color: #2E9E5B !important;
 }
+
+/* ── Micro #30: unread → read fades (weight, colour, dot) instead of snapping.
+   Rows keep @key=n.Id so the same element transitions. #9 exit uses .mi-leaving (core/micro.css). ── */
+.notifs-row .notifs-row-title { transition: color .35s, font-weight .35s; }
+.notifs-row .notifs-dot { transition: background-color .3s, transform .25s var(--ease-out), opacity .25s; }
+.notifs-row:not(.unread) .notifs-dot { transform: scale(.3); opacity: 0; }
+.apple-notif-row, .apple-notif-row .apple-notif-row-title { transition: background-color .35s, color .35s, font-weight .35s; }

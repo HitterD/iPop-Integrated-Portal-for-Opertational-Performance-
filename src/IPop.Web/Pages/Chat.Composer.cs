@@ -243,6 +243,7 @@ public partial class Chat
         pickedMentions = [];
         activeMention = null;
         CloseMentionPopup(true);
+        _ = FlySendArrowAsync();
         messageText = "";
         uploadError = null;
         pendingAttachments = [];
@@ -262,6 +263,17 @@ public partial class Chat
         // Local previews are only needed to put a failed message back into the composer.
         if (outcome?.State == IPop.Web.Services.SendState.Confirmed)
             foreach (var u in blobUrls) _ = JS.InvokeVoidAsync("ipop.revokeBlob", u);
+    }
+
+    // Micro #15: the send button stays for one beat after sending so its arrow can fly out.
+    private Microsoft.AspNetCore.Components.ElementReference sendBtnRef;
+    private bool sendFlying;
+    private async Task FlySendArrowAsync()
+    {
+        sendFlying = true;
+        await Task.Delay(460);
+        sendFlying = false;
+        if (!_disposed) StateHasChanged();
     }
 
     private async Task ScrollToBottom()
@@ -704,13 +716,32 @@ public partial class Chat
 
     private async Task OnFileSelected(InputFileChangeEventArgs e)
     {
-        if (ChatSvc.ActiveRoomId is not { } roomId) return;
+        if (ChatSvc.ActiveRoomId is null) return;
         if (uploading) { uploadError = "Wait for the current upload to finish."; return; }
+        failedUpload = null;
+        await UploadFilesAsync(e.GetMultipleFiles(e.FileCount));
+    }
+
+    // Micro #13: a failed upload keeps its files so the error banner can offer Retry
+    // (the input still holds them until the next pick, paste or drop).
+    private IReadOnlyList<IBrowserFile>? failedUpload;
+
+    private async Task RetryFailedUpload()
+    {
+        if (failedUpload is not { } files || uploading) return;
+        failedUpload = null;
+        uploadError = null;
+        await UploadFilesAsync(files);
+    }
+
+    private async Task UploadFilesAsync(IReadOnlyList<IBrowserFile> selected)
+    {
+        if (ChatSvc.ActiveRoomId is not { } roomId) return;
         var composerId = composerWrapRef.Id;
-        var selected = e.GetMultipleFiles(e.FileCount);
         var plan = ChatUploadPolicy.Plan(selected.Select(f => new ChatUploadPolicy.File(f.Name, f.Size)).ToList(), pendingAttachments.Count);
         uploadError = plan.Notice;
         if (plan.Accepted.Count == 0) return;
+        var failed = false;
         var cts = composerUploadCts = new CancellationTokenSource();
         uploading = true;
         uploadingFiles = plan.Accepted.Count;
@@ -734,12 +765,13 @@ public partial class Chat
                 if (uploaded is { Count: > 0 }) await AddPendingWithThumbs(uploaded, roomId, composerId);
                 else uploadError = "No files were uploaded. Select the files and try again.";
             }
-            else uploadError = await ReadUploadError(resp);
+            else { uploadError = await ReadUploadError(resp); failed = (int)resp.StatusCode >= 500 || resp.StatusCode is System.Net.HttpStatusCode.RequestTimeout or System.Net.HttpStatusCode.BadGateway; }
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested) { }
-        catch (Exception) { if (ChatSvc.ActiveRoomId == roomId && composerWrapRef.Id == composerId && !_disposed) uploadError = "Couldn't upload. Check your connection, then select the files and try again."; }
+        catch (Exception) { if (ChatSvc.ActiveRoomId == roomId && composerWrapRef.Id == composerId && !_disposed) { uploadError = "Couldn't upload. Check your connection, then try again."; failed = true; } }
         finally
         {
+            if (failed && ChatSvc.ActiveRoomId == roomId && !_disposed) failedUpload = plan.Accepted.Select(i => selected[i]).ToList();
             if (composerUploadCts == cts)
             {
                 composerUploadCts = null;

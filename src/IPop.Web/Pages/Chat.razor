@@ -531,7 +531,7 @@
                                             <span class="who">@r.SenderName</span>
                                             <span class="when">@r.CreatedAt.ToLocalTime().ToString("MMM d, HH:mm")</span>
                                         </span>
-                                        <span class="sr-text">@TruncateStr(r.Content, 110)</span>
+                                        <span class="sr-text">@SearchHighlight.Mark(TruncateStr(r.Content, 110), searchQuery)</span>
                                     </button>
                                 }
                             </div>
@@ -849,9 +849,13 @@
                         }
                         @if (!string.IsNullOrEmpty(uploadError))
                         {
-                            <div class="upload-error" role="alert">
+                            <div @key="uploadError" class="upload-error mi-shake" role="alert">
                                 <span>@uploadError</span>
-                                <button type="button" class="icon-btn" aria-label="Dismiss upload message" @onclick="() => uploadError = null"><i data-lucide="x"></i></button>
+                                @if (failedUpload is not null && !uploading)
+                                {
+                                    <button type="button" class="upload-retry" @onclick="RetryFailedUpload"><i data-lucide="rotate-ccw"></i> Retry</button>
+                                }
+                                <button type="button" class="icon-btn" aria-label="Dismiss upload message" @onclick="() => { uploadError = null; failedUpload = null; }"><i data-lucide="x"></i></button>
                             </div>
                         }
 
@@ -862,10 +866,10 @@
                                 {
                                     var a = att;
                                     var dto = a.AsDto();
-                                    <div class="pending-item @(a.PreviewUrl is not null ? "has-thumb" : "")" title="@a.FileName">
+                                    <div @key="a.Id" class="pending-item @(a.PreviewUrl is not null ? "has-thumb" : "")" title="@a.FileName">
                                         @if (a.PreviewUrl is not null)
                                         {
-                                            <img src="@a.PreviewUrl" alt="@a.FileName" />
+                                            <img class="mi-revealed" src="@a.PreviewUrl" alt="@a.FileName" />
                                         }
                                         else
                                         {
@@ -910,9 +914,10 @@
                                 </button>
                                 <div class="v6-rec-pill">
                                     <span class="rec-dot"></span>
-                                    <span>Recording voice message…</span>
+                                    <span>Recording…</span>
+                                    <span class="mi-wave" @ref="voiceWaveRef" aria-hidden="true"></span>
                                 </div>
-                                <button type="button" class="v6-send on" title="Send voice message" aria-label="Send voice message" @onclick="StopAndSendVoiceRecord">
+                                <button type="button" class="v6-send on mi-rec-stop" title="Send voice message" aria-label="Send voice message" @onclick="StopAndSendVoiceRecord">
                                     <i data-lucide="arrow-up"></i>
                                 </button>
                             }
@@ -939,9 +944,10 @@
                                             @onmousedown:preventDefault @onclick="ToggleEmojiPicker" @onclick:stopPropagation>
                                         <i data-lucide="smile"></i>
                                     </button>
-                                    @if (hasDraft)
+                                    @if (hasDraft || uploading || sendFlying)
                                     {
-                                        <button type="button" class="v6-send on" title="Send" aria-label="Send message" disabled="@uploading" @onclick="SendMessage">
+                                        @* Micro #15: a ring spins while uploads are pending; the arrow flies out on send. *@
+                                        <button type="button" @ref="sendBtnRef" class="v6-send on @(uploading ? "mi-send-busy" : "") @(sendFlying ? "mi-send-fly" : "")" title="@(uploading ? "Uploading…" : "Send")" aria-label="@(uploading ? "Uploading attachments" : "Send message")" disabled="@uploading" @onclick="SendMessage">
                                             <i data-lucide="arrow-up"></i>
                                         </button>
                                     }
@@ -1696,7 +1702,7 @@
                                     <span class="cgd-room">@c.RoomLabel</span>
                                     <span class="cgd-when">@FormatTime(c.When)</span>
                                 </div>
-                                <div class="cgd-text">@c.Text</div>
+                                <div class="cgd-text">@SearchHighlight.Mark(c.Text, globalDrawerView == GlobalDrawerView.Search ? globalSearchQuery : null)</div>
                             </div>
                             @if (c.ActionLabel is not null)
                             {
