@@ -5,7 +5,7 @@ public sealed record Toast(
     string? Title = null, string? Icon = null, string? TargetUrl = null,
     bool IsExiting = false, string? NotificationId = null,
     Func<Task>? Undo = null, string? UndoLabel = null,
-    bool IsPaused = false)
+    bool IsPaused = false, int UndoMs = 0)
 {
     /// Incoming notifications follow the user's notification preferences; action feedback always shows.
     public bool IsIncoming => !string.IsNullOrEmpty(NotificationId);
@@ -59,7 +59,7 @@ public sealed class ToastService
     /// clicks Undo before it disappears. Returns the toast id.
     public Guid ShowUndo(string message, Func<Task> undo, string undoLabel = "Undo", int ms = 5000)
     {
-        var t = new Toast(Guid.NewGuid(), message, ToastKind.Info, DateTime.UtcNow, Undo: undo, UndoLabel: undoLabel);
+        var t = new Toast(Guid.NewGuid(), message, ToastKind.Info, DateTime.UtcNow, Undo: undo, UndoLabel: undoLabel, UndoMs: ms);
         Add(t, TimeSpan.FromMilliseconds(ms));
         return t.Id;
     }

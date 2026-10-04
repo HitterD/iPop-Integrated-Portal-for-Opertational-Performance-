@@ -1,0 +1,213 @@
+/* App-wide micro-interactions (approved demo docs/mockups/ipop-apple/micro-interactions.html).
+   Loaded after every module stylesheet so it can add motion to shared controls without editing
+   each module. Subtle (macOS) for controls, expressive (spring) only for delight moments.
+   core/motion.css turns all of this off under prefers-reduced-motion; js/micro.js checks too. */
+
+/* ── Shared keyframes ── */
+@keyframes mi-pop { 0% { transform: scale(1); } 30% { transform: scale(.72); } 65% { transform: scale(1.28); } 100% { transform: scale(1); } }
+@keyframes mi-bump { 0% { transform: scale(1); } 35% { transform: scale(1.32); } 100% { transform: scale(1); } }
+@keyframes mi-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mi-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes mi-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes mi-dialog-in { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes mi-dialog-out { to { opacity: 0; transform: scale(.97); } }
+@keyframes mi-pop-in { from { opacity: 0; transform: scale(.95) translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes mi-shake { 20% { transform: translateX(-5px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+@keyframes mi-check { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes mi-row-out {
+  0% { opacity: 1; transform: none; }
+  40% { opacity: 0; transform: translateX(24px); }
+  100% { opacity: 0; transform: translateX(24px); max-height: 0; padding-top: 0; padding-bottom: 0; margin-top: 0; margin-bottom: 0; }
+}
+@keyframes mi-row-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes mi-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes mi-saved { from { background-color: var(--accent-soft); } }
+@keyframes mi-ping { from { opacity: .9; transform: scale(.6); } to { opacity: 0; transform: scale(2.3); } }
+@keyframes mi-draw { to { stroke-dashoffset: 0; } }
+@keyframes mi-land {
+  0% { transform: translateY(-10px) scale(1.04); box-shadow: 0 12px 24px -10px rgba(0,0,0,.3); }
+  60% { transform: translateY(2px) scale(.99); }
+  100% { transform: none; }
+}
+@keyframes mi-hover-ic { from { transform: translateY(0); } to { transform: translateY(-6px); } }
+@keyframes mi-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* Utility classes the C# side or micro.js can toggle. */
+.mi-pop, .mi-pop > svg.lucide { animation: mi-pop .45s var(--ease-spring); }
+.mi-bump { animation: mi-bump .42s var(--ease-spring); }
+.mi-shake { animation: mi-shake .4s; }
+.mi-rise { animation: mi-rise .26s var(--ease-out) backwards; }
+.mi-saved { animation: mi-saved .9s var(--ease-smooth); }
+.mi-leaving { animation: mi-row-out .3s var(--ease-out) forwards; overflow: hidden; pointer-events: none; }
+.mi-returning { animation: mi-row-in .32s var(--ease-spring); }
+.mi-land { animation: mi-land .5s var(--ease-spring); }
+
+/* ── 1. Button press: every button kind dips while pressed ── */
+:where(.btn-primary, .ghost-btn, .icon-btn, .cal-btn, .cal-icon, .ui-button, .comp-btn, .cm-btn, .nm-btn, .nc-btn2,
+       .org-act, .theme-btn, .bell-btn, .collapse-btn, .modal-x, .drawer-close, .toast-action, .seg-btn, .cal-seg-item,
+       .nm-tab, .tree-node, .dc-ic, .ra, .act, .mrte-btn, .fx-btn, .adm-btn, .btn) {
+  transition-property: background-color, border-color, color, box-shadow, opacity, transform;
+  transition-duration: var(--dur-fast);
+  transition-timing-function: var(--ease-out);
+}
+:where(.btn-primary, .ghost-btn, .icon-btn, .cal-btn, .cal-icon, .ui-button, .comp-btn, .cm-btn, .nm-btn, .nc-btn2,
+       .org-act, .theme-btn, .bell-btn, .collapse-btn, .modal-x, .drawer-close, .toast-action, .dc-ic, .ra, .act,
+       .mrte-btn, .fx-btn, .adm-btn, .btn):not(:disabled):active {
+  transform: scale(.96);
+  transition-duration: 60ms;
+}
+
+/* ── 2. Badges: still, with a single bump when the count changes (micro.js adds .mi-bump) ── */
+.nav-item .badge, .nav-count, .bell-btn .badge, .nm-badge, .tab-badge, .seg-badge { animation: none; }
+
+/* ── 3. Toggles: checkbox tick grows in; pressed checkboxes dip ── */
+.v6-cb { transition: background-color var(--dur-fast), border-color var(--dur-fast), transform var(--dur-fast) var(--ease-out); }
+.v6-cb:active { transform: scale(.88); }
+.v6-cb.on > svg.lucide, .v6-cb[aria-checked="true"] > svg.lucide { animation: mi-check .28s var(--ease-out); }
+
+/* ── 4. Dialogs: Confirm gets an entrance; closing plays an exit (Modal/Confirm keep markup for ~180ms) ── */
+.confirm-backdrop { animation: mi-fade .2s var(--ease-out); }
+.confirm-card { animation: mi-dialog-in .26s var(--ease-out); }
+.mi-closing.modal-backdrop, .mi-closing.confirm-backdrop, .mi-closing .confirm-backdrop { animation: mi-fade-out .18s ease-in forwards; pointer-events: none; }
+.mi-closing .modal-card, .mi-closing .confirm-card { animation: mi-dialog-out .18s ease-in forwards; }
+.mi-closing.confirm-center { pointer-events: none; }
+
+/* ── 5. Sliding indicator for segmented controls and tabs (micro.js draws .mi-ind) ── */
+.mi-slider { position: relative; isolation: isolate; }
+.mi-slider > .mi-ind {
+  position: absolute; z-index: -1; pointer-events: none; border-radius: 8px;
+  background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.12);
+  transition: left .28s var(--ease-out), width .28s var(--ease-out), top .28s var(--ease-out), height .28s var(--ease-out);
+}
+[data-theme="dark"] .mi-slider > .mi-ind { background: rgba(255,255,255,.12); box-shadow: none; }
+/* While the indicator is drawn, the buttons' own active background steps aside. */
+.mi-slider.mi-live > .active, .mi-slider.mi-live > .on, .mi-slider.mi-live > [aria-selected="true"] { background: transparent !important; box-shadow: none !important; }
+.mi-slider.mi-pill > .mi-ind { border-radius: 999px; background: var(--ink); box-shadow: none; }
+.mi-slider.mi-pill.mi-live > .on { color: var(--surface); }
+.mi-slider.mi-line > .mi-ind { top: auto !important; height: 2px !important; bottom: -1px; border-radius: 2px; background: var(--accent); box-shadow: none; }
+
+/* ── 6. Dropdowns / pickers grow from their trigger ── */
+.app-select-pop.on { animation: mi-pop-in .18s var(--ease-out); transform-origin: top left; }
+.member-picker-pop, .dir-sort-menu, .reader-menu, .me-menu, .cal-other-menu, .ctx-menu { animation: mi-pop-in .18s var(--ease-out); transform-origin: top left; }
+
+/* ── 21. Sidebar: the active pill glides between modules (micro.js) ── */
+.sidebar .nav-glide {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 0; pointer-events: none; border-radius: 10px; margin: 0;
+  background: var(--v6-active-bg, var(--accent-soft));
+  transition: transform .3s var(--ease-out), height .3s var(--ease-out), opacity .2s;
+}
+.sidebar.mi-glide .nav-item { position: relative; z-index: 1; }
+.sidebar.mi-glide .nav-item.active, .sidebar.mi-glide .nav-item.active:hover { background: transparent; }
+.nav-item .lucide { transition: transform .3s var(--ease-spring), color var(--dur-fast); }
+.nav-item.active .lucide { transform: scale(1.12); }
+
+/* ── 22. Page content rises in on module switch (micro.js keys it to navigation) ── */
+.mi-page-enter { animation: mi-rise .26s var(--ease-out); }
+
+/* ── 24. Clickable cards lift under the pointer ── */
+:where(.dash-card, .widget, .nh-card, .nh-mini, .dir-card, .fx-card, .proj-card, .note-card, .lift) {
+  transition: transform .2s var(--ease-out), box-shadow .2s var(--ease-out);
+}
+:where(.dash-card, .widget, .nh-card, .nh-mini, .dir-card, .fx-card, .proj-card, .note-card, .lift):hover { transform: translateY(-2px); }
+:where(.dash-card, .widget, .nh-card, .nh-mini, .dir-card, .fx-card, .proj-card, .note-card, .lift):active { transform: translateY(-1px) scale(.99); }
+
+/* ── 25. Tooltips for icon-only buttons (micro.js mirrors title → data-mi-tip) ── */
+.mi-tip-host { position: fixed; z-index: 10050; pointer-events: none; padding: 5px 8px; border-radius: 7px;
+  background: var(--ink); color: var(--surface); font-size: 11.5px; line-height: 1.3; white-space: nowrap; max-width: 280px;
+  overflow: hidden; text-overflow: ellipsis; opacity: 0; transform: translateY(4px) scale(.96);
+  transition: opacity .15s, transform .15s var(--ease-out); }
+.mi-tip-host.on { opacity: 1; transform: none; }
+
+/* ── 26. Theme toggle: sun spins out as the moon rises ── */
+.theme-btn.mi-theme { position: relative; }
+.theme-btn.mi-theme > svg.lucide { transition: transform .45s var(--ease-spring), opacity .3s; }
+.theme-btn.mi-theme.mi-spin > svg.lucide { animation: mi-theme-swap .45s var(--ease-spring); }
+@keyframes mi-theme-swap { 0% { transform: rotate(-90deg) scale(.4); opacity: 0; } 100% { transform: none; opacity: 1; } }
+
+/* ── 27/28. Undo toast: a line drains for the undo window ── */
+.toast.has-undo { overflow: hidden; }
+.toast.has-undo::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--toast-green, var(--accent));
+  transform-origin: left; animation: mi-drain var(--mi-undo-ms, 5000ms) linear forwards; }
+.toast.has-undo.paused::after { animation-play-state: paused; }
+
+/* ── 29. Presence: a single ripple when someone comes online (micro.js adds .mi-online) ── */
+.mi-online { position: relative; }
+.mi-online::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; border: 2px solid #34c759; pointer-events: none; animation: mi-ping .9s var(--ease-out) forwards; }
+
+/* ── 30. Unread → read fades instead of snapping ── */
+:where(.notif-row, .nrow, .mail-row, .news-row, .nm-row, .room-row, .room-item) { transition: color .35s, background-color .35s, font-weight .35s; }
+:where(.udot, .unread-dot, .nh-udot) { transition: transform .25s var(--ease-out), opacity .25s; }
+
+/* ── 32. Inline edit saved ── */
+.mi-saved-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--accent); animation: mi-fade .2s; }
+
+/* ── 34. Progress fills smoothly ── */
+:where(.ack-progress-fill, .progress-fill, .upload-progress-fill, .pf-fill, .bar-fill) { transition: width .7s var(--ease-out); }
+
+/* ── 12. Drop files from Windows: a clear target appears over the drop zone ── */
+.mi-drop-zone { position: relative; }
+.mi-drop-zone > .mi-drop-ov {
+  position: absolute; inset: 6px; z-index: 40; border-radius: 14px; border: 2px dashed var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 88%, transparent); display: grid; place-items: center; text-align: center;
+  opacity: 0; pointer-events: none; transition: opacity .16s var(--ease-out);
+}
+.mi-drop-zone.mi-drag-over > .mi-drop-ov { opacity: 1; }
+.mi-drop-ov .mi-drop-ic { width: 52px; height: 52px; border-radius: 16px; background: var(--accent); color: #fff; display: grid; place-items: center; margin: 0 auto 8px; }
+.mi-drop-ov .mi-drop-ic svg { width: 26px; height: 26px; }
+.mi-drag-over > .mi-drop-ov .mi-drop-ic { animation: mi-hover-ic 1.1s var(--ease-smooth) infinite alternate; }
+.mi-drop-ov b { display: block; color: var(--ink); font-size: 14px; }
+.mi-drop-ov small { color: var(--ink-2); font-size: 12px; }
+
+/* ── 13. Upload chips enter with a spring; failures shake ── */
+:where(.pending-item, .composer-att-chip, .att-chip, .file-chip.uploading, .upload-chip) { animation: mi-rise .3s var(--ease-spring); }
+:where(.pending-item.error, .composer-att-chip.error, .att-chip.error, .upload-chip.error) { animation: mi-shake .45s; }
+
+/* ── 14. Pasting an image: shimmering placeholder ── */
+.mi-paste-ph { display: inline-grid; place-items: center; width: 220px; max-width: 100%; height: 124px; margin: 6px 0; border-radius: 10px;
+  background: linear-gradient(100deg, var(--fill) 30%, var(--tray) 50%, var(--fill) 70%); background-size: 300% 100%;
+  animation: mi-shimmer 1.1s linear infinite; color: var(--ink-3); font-size: 11.5px; }
+img.mi-revealed { animation: mi-reveal .35s var(--ease-out); }
+@keyframes mi-reveal { from { opacity: 0; filter: blur(8px); transform: scale(.98); } to { opacity: 1; filter: none; transform: none; } }
+
+/* ── 16. Copy feedback ── */
+.mi-copied { color: var(--accent) !important; }
+.mi-copied > svg.lucide { animation: mi-pop .4s var(--ease-spring); }
+
+/* ── 17. Skeleton shimmer everywhere (some modules had static skeletons) ── */
+.skel {
+  background: linear-gradient(100deg, var(--fill) 30%, var(--tray) 50%, var(--fill) 70%);
+  background-size: 300% 100%; animation: mi-shimmer 1.1s linear infinite;
+}
+
+/* ── 19. Success check ── */
+.mi-check-draw { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; animation: mi-pop .45s var(--ease-spring); }
+.mi-check-draw svg { width: 14px; height: 14px; stroke-width: 3; stroke-dasharray: 30; stroke-dashoffset: 30; animation: mi-draw .4s .15s var(--ease-out) forwards; }
+
+/* ── 20. Invalid input nudges once ── */
+:where(input, textarea, select, .app-select-trigger, .dp-field)[aria-invalid="true"],
+:where(.field, .form-field, .nc-field).invalid :where(input, textarea) { animation: mi-shake .4s; }
+
+/* ── 40. Lightbox opened from a thumbnail (micro.js animates the image) ── */
+.mi-zooming { will-change: transform; }
+
+/* ── 41. Incoming call ripples ── */
+.mi-ringing { position: relative; }
+.mi-ringing::before, .mi-ringing::after { content: ''; position: absolute; inset: 0; border-radius: inherit; border: 2px solid currentColor; opacity: 0; pointer-events: none;
+  animation: mi-ripple 1.6s var(--ease-out) infinite; }
+.mi-ringing::after { animation-delay: .55s; }
+@keyframes mi-ripple { from { opacity: .7; transform: scale(1); } to { opacity: 0; transform: scale(1.9); } }
+
+/* ── 43. Emoji picker cells grow ── */
+:where(.emoji-picker, .ep-grid, .emoji-grid) button { transition: transform .2s var(--ease-spring); }
+:where(.emoji-picker, .ep-grid, .emoji-grid) button:hover { transform: scale(1.3); }
+
+/* ── 44. Character counter ── */
+.mi-counter { font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--ink-3); transition: color .2s; }
+.mi-counter.near { color: #c27a00; }
+.mi-counter.full { color: var(--danger); font-weight: 700; animation: mi-shake .35s; }
+
+/* JS-driven motion never runs when the OS asks for less; CSS is already neutralised by motion.css. */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar .nav-glide, .mi-slider > .mi-ind { transition: none !important; }
+  .mi-drag-over > .mi-drop-ov .mi-drop-ic { animation: none !important; }
+}

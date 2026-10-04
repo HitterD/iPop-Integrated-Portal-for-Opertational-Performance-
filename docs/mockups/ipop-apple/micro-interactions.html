@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>iPop — Micro-interactions (demo)</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+:root{--bg:#f3f3f1;--surface:#fff;--fill:#f0f0ee;--tray:#f6f6f4;--ink:#1c1b19;--ink-2:#5d5a54;--ink-3:#8f8c85;--line:#e6e4df;--line-soft:#eeece8;--accent:#2e9d6b;--accent-soft:#e7f4ed;--danger:#d93a2b;--warn:#e0a21f;--info:#2563eb;
+ --ease-out:cubic-bezier(.16,1,.3,1);--ease-spring:cubic-bezier(.34,1.56,.64,1);--ease-smooth:cubic-bezier(.32,.72,0,1);--dur-fast:150ms;--dur-normal:250ms}
+[data-theme=dark]{--bg:#131211;--surface:#1c1b19;--fill:#262522;--tray:#232220;--ink:#f2f0ec;--ink-2:#b5b1a9;--ink-3:#85817a;--line:#33312d;--line-soft:#2c2a27;--accent:#4cd787;--accent-soft:#1d3428}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px -apple-system,"SF Pro Text","Segoe UI",system-ui,sans-serif}
+svg.lucide{width:16px;height:16px;flex:none}
+.nav{position:sticky;top:0;z-index:50;display:flex;gap:8px;align-items:center;padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--line)}
+.nav b{margin-right:10px}.nav .sp{flex:1}.nav label{display:flex;gap:6px;align-items:center;font-size:12.5px;color:var(--ink-2)}
+main{max-width:1180px;margin:0 auto;padding:24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:18px}
+.card{background:var(--surface);border:1px solid var(--line-soft);border-radius:16px;padding:18px;display:grid;gap:12px;align-content:start}
+.card h3{margin:0;font-size:14px;display:flex;gap:8px;align-items:center}.card h3 .n{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:7px;background:var(--accent-soft);color:var(--accent);font-size:11.5px}
+.card p{margin:0;color:var(--ink-3);font-size:12.5px;line-height:1.45}
+.tag{font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:6px;background:var(--fill);color:var(--ink-2);justify-self:start}.tag.x{background:#fdf0e3;color:#c26a15}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.demo{padding:14px;border-radius:12px;background:var(--tray);display:flex;gap:10px;align-items:center;flex-wrap:wrap;min-height:64px}
+
+/* ===== 1. press ===== */
+.btn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-size:13px;cursor:pointer;
+ transition:transform var(--dur-fast) var(--ease-out),background var(--dur-fast),box-shadow var(--dur-fast)}
+.btn:hover{background:var(--fill)}.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff}.btn.pri:hover{filter:brightness(1.05)}
+.ibtn{width:34px;padding:0;justify-content:center}
+.motion .btn:active{transform:scale(.96);transition-duration:60ms}
+
+/* ===== 2. badge bump ===== */
+.navitem{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:var(--surface);min-width:170px}
+.badge{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:999px;background:var(--danger);color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center}
+.badge.old{animation:oldpulse 1.6s infinite}
+@keyframes oldpulse{0%,100%{opacity:1}50%{opacity:.4}}
+.motion .badge.bump{animation:bump .42s var(--ease-spring)}
+@keyframes bump{0%{transform:scale(1)}35%{transform:scale(1.32)}100%{transform:scale(1)}}
+
+/* ===== 3. toggles pop ===== */
+.star,.like,.react{border:0;background:none;cursor:pointer;color:var(--ink-3);display:inline-flex;align-items:center;gap:6px;font:inherit;padding:6px 10px;border-radius:999px}
+.star.on{color:#f5b301}.star.on svg{fill:currentColor}
+.like{background:var(--fill)}.like.on{background:var(--accent-soft);color:var(--accent);font-weight:600}.like.on svg{fill:currentColor}
+.react{background:var(--fill);font-size:13px}.react.on{background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent);color:var(--ink)}
+.motion .pop svg,.motion .pop .em{animation:pop .45s var(--ease-spring)}
+.motion .pop .cnt{display:inline-block;animation:countup .3s var(--ease-out)}
+@keyframes pop{0%{transform:scale(1)}30%{transform:scale(.7)}65%{transform:scale(1.3)}100%{transform:scale(1)}}
+@keyframes countup{from{transform:translateY(60%);opacity:0}to{transform:none;opacity:1}}
+.cb{width:20px;height:20px;border-radius:6px;border:1.5px solid var(--line);background:var(--surface);display:grid;place-items:center;cursor:pointer;padding:0;color:#fff}
+.cb.on{background:var(--accent);border-color:var(--accent)}
+.cb svg{width:13px;height:13px;stroke-width:3;opacity:0}.cb.on svg{opacity:1}
+.motion .cb.on svg{animation:check .28s var(--ease-out)}
+@keyframes check{from{transform:scale(.3);opacity:0}to{transform:scale(1);opacity:1}}
+.motion .cb{transition:background var(--dur-fast),border-color var(--dur-fast),transform var(--dur-fast) var(--ease-out)}.motion .cb:active{transform:scale(.88)}
+
+/* ===== 4. dialog in/out ===== */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.28);display:none;place-items:center;z-index:100}
+.scrim.show{display:grid}
+.dlg{width:360px;background:var(--surface);border-radius:16px;padding:20px;box-shadow:0 24px 60px -18px rgba(0,0,0,.35);display:grid;gap:10px}
+.dlg h4{margin:0;font-size:16px}.dlg p{margin:0;color:var(--ink-2);font-size:13px}.dlg .row{justify-content:flex-end}
+.motion .scrim.show{animation:fade var(--dur-normal) var(--ease-out)}
+.motion .scrim.show .dlg{animation:dlgin .26s var(--ease-out)}
+.motion .scrim.leaving{animation:fade .18s ease-in reverse forwards}
+.motion .scrim.leaving .dlg{animation:dlgout .18s ease-in forwards}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes dlgin{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:none}}
+@keyframes dlgout{to{opacity:0;transform:scale(.97)}}
+
+/* ===== 5. segmented ===== */
+.seg{position:relative;display:inline-flex;background:var(--fill);border-radius:10px;padding:3px;gap:2px}
+.seg button{position:relative;z-index:1;border:0;background:none;color:var(--ink-2);padding:6px 14px;border-radius:8px;font:inherit;font-size:13px;cursor:pointer}
+.seg button.on{color:var(--ink);font-weight:600}
+.seg .ind{position:absolute;top:3px;bottom:3px;border-radius:8px;background:var(--surface);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.motion .seg .ind{transition:left .28s var(--ease-out),width .28s var(--ease-out)}
+.tabs{position:relative;display:flex;gap:18px;border-bottom:1px solid var(--line)}
+.tabs button{border:0;background:none;padding:8px 0;font:inherit;font-size:13px;color:var(--ink-2);cursor:pointer}.tabs button.on{color:var(--ink);font-weight:600}
+.tabs .ul{position:absolute;bottom:-1px;height:2px;border-radius:2px;background:var(--accent)}
+.motion .tabs .ul{transition:left .28s var(--ease-out),width .28s var(--ease-out)}
+
+/* ===== 6. popover ===== */
+.sel{position:relative}
+.pop-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:200px;background:var(--surface);border:1px solid var(--line-soft);border-radius:12px;padding:5px;box-shadow:0 14px 34px -14px rgba(0,0,0,.3);display:none;z-index:5;transform-origin:top left}
+.pop-menu.show{display:block}
+.motion .pop-menu.show{animation:popin .18s var(--ease-out)}
+@keyframes popin{from{opacity:0;transform:scale(.95) translateY(-4px)}to{opacity:1;transform:none}}
+.pop-menu div{padding:7px 10px;border-radius:8px;font-size:13px}.pop-menu div:hover{background:var(--fill)}
+
+/* ===== 7. kanban landing ===== */
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:100%}
+.col{background:var(--surface);border-radius:10px;padding:8px;min-height:120px;display:grid;gap:6px;align-content:start}
+.col h5{margin:0 0 4px;font-size:11px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
+.task{background:var(--tray);border:1px solid var(--line-soft);border-radius:9px;padding:8px 10px;font-size:12.5px}
+.motion .task.landed{animation:land .5s var(--ease-spring)}
+@keyframes land{0%{transform:translateY(-10px) scale(1.04);box-shadow:0 12px 24px -10px rgba(0,0,0,.3)}60%{transform:translateY(2px) scale(.99)}100%{transform:none;box-shadow:none}}
+
+/* ===== 8. drag feedback ===== */
+.tree{width:100%;display:grid;gap:3px}
+.tnode{display:flex;gap:8px;align-items:center;padding:7px 10px;border-radius:8px;background:var(--surface);font-size:13px;cursor:grab;user-select:none}
+.tnode.dragging{opacity:.45}
+.motion .tnode.dragging{transform:scale(.98);transition:transform var(--dur-fast)}
+.tnode.over{box-shadow:inset 0 0 0 2px var(--accent);background:var(--accent-soft)}
+.motion .tnode.over{animation:breathe 1s var(--ease-smooth) infinite alternate}
+@keyframes breathe{from{box-shadow:inset 0 0 0 2px var(--accent)}to{box-shadow:inset 0 0 0 2px var(--accent),0 0 0 4px var(--accent-soft)}}
+
+/* ===== 9. row exit ===== */
+.list{width:100%;display:grid;background:var(--surface);border-radius:10px;overflow:hidden}
+.mrow{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line-soft);font-size:13px;overflow:hidden}
+.mrow .sp{flex:1}
+.motion .mrow.leaving{animation:rowout .3s var(--ease-out) forwards}
+@keyframes rowout{0%{opacity:1;transform:none;max-height:44px}40%{opacity:0;transform:translateX(24px);max-height:44px}100%{opacity:0;transform:translateX(24px);max-height:0;padding-top:0;padding-bottom:0}}
+
+/* ===== 10. calendar pop ===== */
+.grid{position:relative;width:100%;height:120px;background:var(--surface);border-radius:10px;background-image:linear-gradient(var(--line-soft) 1px,transparent 1px);background-size:100% 30px}
+.ev{position:absolute;left:12px;right:12px;padding:6px 8px;border-radius:7px;background:color-mix(in srgb,var(--info) 16%,var(--surface));box-shadow:inset 3px 0 0 var(--info);font-size:12px}
+.motion .ev.new{animation:evpop .38s var(--ease-spring);transform-origin:left center}
+@keyframes evpop{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:none}}
+
+.hint{grid-column:1/-1;color:var(--ink-3);font-size:12.5px;text-align:center}
+.sec{grid-column:1/-1;margin:14px 0 -4px;font-size:13px;font-weight:700;color:var(--ink-2);text-transform:uppercase;letter-spacing:.05em}
+
+/* ===== 12. window-wide drop overlay ===== */
+.dropwin{position:relative;width:100%;height:170px;border-radius:12px;background:var(--surface);overflow:hidden;display:grid;place-items:center;color:var(--ink-3);font-size:12.5px}
+.dropov{position:absolute;inset:8px;border-radius:12px;border:2px dashed var(--accent);background:color-mix(in srgb,var(--accent-soft) 85%,transparent);display:grid;place-items:center;text-align:center;opacity:0;pointer-events:none}
+.dropov .ic{width:52px;height:52px;border-radius:16px;background:var(--accent);color:#fff;display:grid;place-items:center;margin:0 auto 8px}
+.dropov .ic svg{width:26px;height:26px}.dropov b{display:block;color:var(--ink);font-size:14px}.dropov small{color:var(--ink-2)}
+.dropwin.over .dropov{opacity:1}
+.motion .dropov{transition:opacity .16s var(--ease-out)}
+.motion .dropwin.over .dropov .ic{animation:hover-ic 1.1s var(--ease-smooth) infinite alternate}
+@keyframes hover-ic{from{transform:translateY(0)}to{transform:translateY(-6px)}}
+.motion .dropwin.landed .dropov{opacity:0;transition:opacity .25s}
+.motion .dropwin.landed .dropov .ic{animation:suck .3s ease-in forwards}
+@keyframes suck{to{transform:scale(.4) translateY(40px);opacity:0}}
+.fly{position:absolute;width:46px;height:56px;border-radius:7px;background:var(--surface);box-shadow:0 8px 20px -6px rgba(0,0,0,.35);display:grid;place-items:center;font-size:10px;font-weight:700;color:#fff}
+.motion .fly{animation:fly .55s var(--ease-out) forwards}
+@keyframes fly{from{transform:translate(0,0) rotate(-8deg) scale(1)}to{transform:translate(var(--dx),var(--dy)) rotate(0) scale(.6);opacity:.0}}
+
+/* ===== 13. upload chips with progress ===== */
+.chips{display:flex;gap:8px;flex-wrap:wrap;width:100%}
+.chip{position:relative;display:flex;align-items:center;gap:8px;padding:8px 10px 10px;border-radius:12px;background:var(--surface);border:1px solid var(--line-soft);min-width:180px;overflow:hidden;font-size:12.5px}
+.chip .th{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;color:#fff;font-size:9.5px;font-weight:700;flex:none;background-size:cover}
+.chip .nm{display:grid;line-height:1.25;min-width:0}.chip .nm small{color:var(--ink-3);font-size:11px}
+.chip .bar{position:absolute;left:0;bottom:0;height:3px;background:var(--accent);width:0}
+.chip.done .bar{opacity:0;transition:opacity .4s .2s}
+.chip .ok{margin-left:auto;color:var(--accent);opacity:0}
+.motion .chip{animation:chipin .3s var(--ease-spring)}
+@keyframes chipin{from{opacity:0;transform:translateY(8px) scale(.94)}to{opacity:1;transform:none}}
+.motion .chip.done .ok{animation:pop .45s var(--ease-spring) forwards}.chip.done .ok{opacity:1}
+.chip.err{border-color:color-mix(in srgb,var(--danger) 40%,transparent)}.chip.err .bar{background:var(--danger)}
+.motion .chip.err{animation:shake .45s}
+@keyframes shake{20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(2px)}}
+.chip .retry{margin-left:auto;font-size:11.5px;color:var(--danger);font-weight:600;border:0;background:none;cursor:pointer}
+
+/* ===== 14. paste image placeholder ===== */
+.editor{width:100%;min-height:150px;background:var(--surface);border-radius:12px;padding:12px;font-size:13px;line-height:1.5;color:var(--ink-2)}
+.ph{margin-top:8px;width:220px;height:124px;border-radius:10px;background:linear-gradient(100deg,var(--fill) 30%,var(--tray) 50%,var(--fill) 70%);background-size:300% 100%;display:grid;place-items:center;color:var(--ink-3);font-size:11.5px}
+.motion .ph{animation:shimmer2 1.1s linear infinite}
+@keyframes shimmer2{from{background-position:100% 0}to{background-position:0 0}}
+.pimg{margin-top:8px;width:220px;height:124px;border-radius:10px;background:linear-gradient(135deg,#9fd9b9,#2e9d6b 60%,#0f3d2e);display:block}
+.motion .pimg{animation:reveal .35s var(--ease-out)}
+@keyframes reveal{from{opacity:0;filter:blur(8px);transform:scale(.98)}to{opacity:1;filter:none;transform:none}}
+.toastx{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 14px;border-radius:12px;font-size:13px;display:flex;gap:8px;align-items:center;z-index:120;box-shadow:0 14px 34px -10px rgba(0,0,0,.4)}
+.motion .toastx{animation:tin .3s var(--ease-spring)}
+@keyframes tin{from{opacity:0;transform:translate(-50%,14px) scale(.96)}to{opacity:1;transform:translate(-50%,0)}}
+
+/* ===== 15. send button morph ===== */
+.sendbtn{width:40px;height:40px;border-radius:50%;border:0;background:var(--accent);color:#fff;display:grid;place-items:center;cursor:pointer;position:relative}
+.sendbtn svg{width:18px;height:18px}
+.ring{position:absolute;inset:-3px;border-radius:50%;border:3px solid transparent;border-top-color:var(--accent);opacity:0}
+.sendbtn.busy{background:var(--fill);color:var(--accent)}.sendbtn.busy .ring{opacity:1}
+.motion .sendbtn.busy .ring{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.motion .sendbtn.sent svg{animation:sendfly .45s var(--ease-out)}
+@keyframes sendfly{0%{transform:none}45%{transform:translate(14px,-14px);opacity:0}46%{transform:translate(-10px,10px);opacity:0}100%{transform:none;opacity:1}}
+
+/* ===== 16. copy feedback ===== */
+.copyb{display:inline-flex;align-items:center;gap:6px}
+.copyb .a,.copyb .b{display:inline-flex}.copyb .b{display:none;color:var(--accent)}
+.copyb.ok .a{display:none}.copyb.ok .b{display:inline-flex}
+.motion .copyb.ok .b svg{animation:pop .4s var(--ease-spring)}
+
+/* ===== 17. pull/refresh + skeleton to content ===== */
+.refresh{width:100%;background:var(--surface);border-radius:10px;overflow:hidden}
+.rhead{display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;color:var(--ink-3);border-bottom:1px solid var(--line-soft)}
+.rhead svg{width:14px;height:14px}
+.motion .rhead.spin svg{animation:spin .7s linear infinite}
+.sk{height:14px;border-radius:6px;margin:10px 12px;background:linear-gradient(100deg,var(--fill) 30%,var(--tray) 50%,var(--fill) 70%);background-size:300% 100%}
+.motion .sk{animation:shimmer2 1.1s linear infinite}
+.item{padding:9px 12px;font-size:13px;border-bottom:1px solid var(--line-soft)}
+.motion .item{animation:itemin .3s var(--ease-out) backwards}
+.motion .item:nth-child(3){animation-delay:.04s}.motion .item:nth-child(4){animation-delay:.08s}
+@keyframes itemin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* ===== 18. typing / sending states ===== */
+.bub{max-width:240px;padding:8px 12px;border-radius:16px 16px 4px 16px;background:var(--accent);color:#fff;font-size:13px;justify-self:end}
+.bub.pending{opacity:.65}
+.motion .bub.new{animation:bubin .32s var(--ease-spring);transform-origin:bottom right}
+@keyframes bubin{from{opacity:0;transform:scale(.8) translateY(8px)}to{opacity:1;transform:none}}
+.tick{font-size:10.5px;color:var(--ink-3);justify-self:end;display:flex;gap:4px;align-items:center}
+.tick svg{width:12px;height:12px}
+.motion .tick.read svg{animation:pop .4s var(--ease-spring);color:var(--info)}
+.typing{display:inline-flex;gap:4px;padding:10px 12px;border-radius:16px;background:var(--surface);justify-self:start}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--ink-3)}
+.motion .typing i{animation:dot 1.1s infinite}.motion .typing i:nth-child(2){animation-delay:.15s}.motion .typing i:nth-child(3){animation-delay:.3s}
+@keyframes dot{0%,60%,100%{transform:none;opacity:.5}30%{transform:translateY(-4px);opacity:1}}
+
+/* ===== 19. success check (save/send) ===== */
+.okwrap{display:flex;gap:12px;align-items:center}
+.okc{width:44px;height:44px;border-radius:50%;background:var(--accent);display:grid;place-items:center;opacity:0}
+.okc svg{width:24px;height:24px;color:#fff;stroke-width:3;stroke-dasharray:30;stroke-dashoffset:30}
+.okc.show{opacity:1}
+.motion .okc.show{animation:pop .45s var(--ease-spring)}
+.motion .okc.show svg{animation:draw .4s .15s var(--ease-out) forwards}.okc.show svg{stroke-dashoffset:0}
+@keyframes draw{to{stroke-dashoffset:0}}
+
+/* ===== 20. error shake on invalid ===== */
+.field{display:grid;gap:4px;width:100%}.field input{height:36px;border-radius:10px;border:1px solid var(--line);padding:0 12px;font:inherit;background:var(--surface);color:var(--ink)}
+.field.err input{border-color:var(--danger);box-shadow:0 0 0 3px color-mix(in srgb,var(--danger) 15%,transparent)}
+.field small{color:var(--danger);font-size:11.5px;min-height:15px}
+.motion .field.err input{animation:shake .4s}
+
+/* ===== 21 sidebar glide ===== */
+.side{position:relative;display:grid;gap:2px;width:200px;background:var(--surface);border-radius:12px;padding:6px}
+.side button{position:relative;z-index:1;display:flex;gap:10px;align-items:center;border:0;background:none;padding:8px 10px;border-radius:9px;font:inherit;font-size:13px;color:var(--ink-2);cursor:pointer;text-align:left}
+.side button.on{color:var(--accent);font-weight:600}
+.side .pill{position:absolute;left:6px;right:6px;border-radius:9px;background:var(--accent-soft)}
+.motion .side .pill{transition:top .3s var(--ease-out),height .3s var(--ease-out)}
+.motion .side button svg{transition:transform .3s var(--ease-spring)}
+.motion .side button.on svg{transform:scale(1.14)}
+/* ===== 22 module switch ===== */
+.stagebox{width:100%;min-height:96px;background:var(--surface);border-radius:10px;padding:12px}
+.motion .stagebox.enter{animation:pagein .26s var(--ease-out)}
+@keyframes pagein{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+/* ===== 23 accordion ===== */
+.acc{width:100%;background:var(--surface);border-radius:10px;overflow:hidden;margin-bottom:6px}
+.acc-h{width:100%;display:flex;align-items:center;gap:8px;padding:10px 12px;border:0;background:none;font:inherit;font-size:13px;cursor:pointer;color:var(--ink);text-align:left}
+.acc-h .ct{margin-left:auto;font-size:11.5px;color:var(--ink-3)}
+.acc.open .acc-h .chev{transform:rotate(90deg)}
+.motion .acc-h .chev{transition:transform .25s var(--ease-out)}
+.acc-b{display:grid;grid-template-rows:0fr}
+.motion .acc-b{transition:grid-template-rows .3s var(--ease-out)}
+.acc.open .acc-b{grid-template-rows:1fr}
+.acc-b>div{overflow:hidden}
+.acc-b p{padding:3px 12px 3px 36px;margin:0;font-size:12.5px;color:var(--ink-2)}.acc-b p:last-child{padding-bottom:10px}
+/* ===== 24 hover lift ===== */
+.lift{flex:1;min-width:110px;background:var(--surface);border-radius:12px;padding:12px;border:1px solid var(--line-soft);font-size:12px;color:var(--ink-3);cursor:pointer}
+.lift b{display:block;font-size:13.5px;margin:6px 0 2px;color:var(--ink)}
+.motion .lift{transition:transform .2s var(--ease-out),box-shadow .2s var(--ease-out)}
+.motion .lift:hover{transform:translateY(-3px);box-shadow:0 12px 26px -14px rgba(0,0,0,.3)}
+.motion .lift:active{transform:translateY(-1px) scale(.99)}
+/* ===== 25 tooltip ===== */
+.tip{position:relative}
+.tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%) translateY(4px) scale(.96);background:var(--ink);color:var(--surface);font-size:11.5px;padding:5px 8px;border-radius:7px;white-space:nowrap;opacity:0;pointer-events:none;z-index:3}
+.tip:hover::after,.tip:focus-visible::after{opacity:1;transform:translateX(-50%)}
+.motion .tip::after{transition:opacity .15s,transform .15s var(--ease-out)}
+.motion .tip:hover::after{transition-delay:.35s}
+/* ===== 26 theme toggle ===== */
+.tt{position:relative;width:46px;height:46px;border-radius:13px;border:1px solid var(--line);background:var(--surface);cursor:pointer;color:var(--ink)}
+.tt svg{position:absolute;inset:0;margin:auto;width:21px;height:21px}
+.tt .moon{opacity:0;transform:rotate(-90deg) scale(.5)}
+[data-theme=dark] .tt .sun{opacity:0;transform:rotate(90deg) scale(.5)}
+[data-theme=dark] .tt .moon{opacity:1;transform:none}
+.motion .tt svg{transition:opacity .3s,transform .45s var(--ease-spring)}
+/* ===== 27 undo snackbar ===== */
+.undobox{position:relative;width:100%;min-height:190px;padding-bottom:54px}
+.snack{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);background:var(--ink);color:var(--surface);border-radius:12px;padding:9px 12px;font-size:12.5px;display:flex;gap:14px;align-items:center;overflow:hidden;white-space:nowrap;max-width:96%}
+.snack span:first-child{overflow:hidden;text-overflow:ellipsis}
+.snack button{border:0;background:none;color:#7fe0aa;font-weight:700;cursor:pointer;font:inherit;font-size:12.5px;padding:0}
+.snack .t{position:absolute;left:0;bottom:0;height:3px;background:#7fe0aa;width:100%}
+.motion .snack{animation:tin .3s var(--ease-spring)}
+.motion .snack .t{animation:drain 5s linear forwards}
+@keyframes drain{to{width:0}}
+.motion .mrow.back{animation:rowback .32s var(--ease-spring)}
+@keyframes rowback{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+/* ===== 28 toast stack ===== */
+.tstack{position:relative;width:100%;height:150px;background:var(--surface);border-radius:10px;overflow:hidden}
+.tcol{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.ts{background:var(--ink);color:var(--surface);padding:8px 12px;border-radius:10px;font-size:12.5px;display:flex;gap:8px;align-items:center;cursor:pointer;box-shadow:0 10px 24px -12px rgba(0,0,0,.4)}
+.ts svg{color:#7fe0aa}
+.motion .ts{animation:tsin .32s var(--ease-spring)}
+@keyframes tsin{from{opacity:0;transform:translateX(30px) scale(.95)}to{opacity:1;transform:none}}
+.motion .ts.out{animation:tsout .25s ease-in forwards}
+@keyframes tsout{to{opacity:0;transform:translateX(40px)}}
+/* ===== 29 presence ===== */
+.pav{position:relative;width:46px;height:46px;border-radius:14px;background:#7c5cc4;color:#fff;display:grid;place-items:center;font-weight:700}
+.pdot{position:absolute;right:-3px;bottom:-3px;width:15px;height:15px;border-radius:50%;border:3px solid var(--tray);background:#a3a09a}
+.pdot.on{background:#34c759}
+.pdot::after{content:'';position:absolute;inset:-3px;border-radius:50%;border:2px solid #34c759;opacity:0}
+.motion .pdot{transition:background .25s}
+.motion .pdot.on::after{animation:ping .9s var(--ease-out)}
+@keyframes ping{from{opacity:.9;transform:scale(.6)}to{opacity:0;transform:scale(2.3)}}
+/* ===== 30 unread → read ===== */
+.nlist{width:100%;border-radius:10px;overflow:hidden}
+.nrow{display:flex;gap:10px;align-items:center;padding:10px 12px;background:var(--surface);border-bottom:1px solid var(--line-soft);font-size:13px;cursor:pointer;color:var(--ink-3)}
+.nrow .ud{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none;transform:scale(0);opacity:0}
+.nrow.unread{color:var(--ink);font-weight:600}.nrow.unread .ud{transform:none;opacity:1}
+.motion .nrow{transition:color .35s}.motion .nrow .ud{transition:transform .25s var(--ease-out),opacity .25s}
+/* ===== 31 fly to bell ===== */
+.bellbox{position:relative;width:100%;height:110px;background:var(--surface);border-radius:10px}
+.bell{position:absolute;right:14px;top:12px;width:40px;height:40px;border-radius:12px;background:var(--tray);display:grid;place-items:center}
+.bell .badge{position:absolute;top:-6px;right:-6px;margin:0}
+.motion .bell.ring svg{animation:ring .7s var(--ease-out);transform-origin:top center}
+@keyframes ring{0%,100%{transform:rotate(0)}20%{transform:rotate(18deg)}40%{transform:rotate(-14deg)}60%{transform:rotate(9deg)}80%{transform:rotate(-4deg)}}
+.dotfly{position:absolute;left:18px;top:70px;width:14px;height:14px;border-radius:50%;background:var(--danger)}
+.bellbox .src{position:absolute;left:12px;bottom:12px;font-size:12px;color:var(--ink-3)}
+/* ===== 32 inline save ===== */
+.inl{display:flex;gap:8px;align-items:center;width:100%}
+.inl input{flex:1;height:36px;border:1px solid transparent;border-radius:8px;padding:0 10px;font:inherit;background:var(--surface);color:var(--ink)}
+.inl input:hover{border-color:var(--line)}.inl input:focus{outline:none;border-color:var(--accent)}
+.motion .inl input{transition:background .9s var(--ease-smooth),border-color .15s}
+.inl input.saved{background:var(--accent-soft);transition:none}
+.inl .sv{font-size:12px;color:var(--accent);display:inline-flex;gap:4px;align-items:center;opacity:0;white-space:nowrap}
+.inl .sv.show{opacity:1}
+.motion .inl .sv{transition:opacity .2s}
+/* ===== 33 count-up ===== */
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%}
+.kpi{background:var(--surface);border-radius:10px;padding:10px}
+.kpi b{display:block;font-size:22px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.kpi small{color:var(--ink-3);font-size:11.5px}
+/* ===== 34 progress ring ===== */
+.ring2{position:relative;width:88px;height:88px;flex:none}
+.ring2 svg{width:88px;height:88px;transform:rotate(-90deg)}
+.ring2 circle{fill:none;stroke-width:8}
+.ring2 .bg{stroke:var(--fill)}.ring2 .fg{stroke:var(--accent);stroke-linecap:round;stroke-dasharray:226.2;stroke-dashoffset:226.2}
+.motion .ring2 .fg{transition:stroke-dashoffset .7s var(--ease-out)}
+.ring2 .lbl{position:absolute;inset:0;display:grid;place-items:center;font-weight:700;font-size:16px;font-variant-numeric:tabular-nums}
+/* ===== 35 reorder ===== */
+.wgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;width:100%}
+.wg{background:var(--surface);border-radius:10px;padding:12px;font-size:12.5px;display:flex;gap:8px;align-items:center;cursor:pointer}
+.wg svg{color:var(--accent)}
+/* ===== 36 favorite → favorites ===== */
+.favdemo{display:grid;grid-template-columns:1fr 128px;gap:10px;width:100%}
+.plist{display:grid;gap:4px}
+.prow{display:flex;gap:8px;align-items:center;background:var(--surface);border-radius:9px;padding:5px 6px 5px 8px;font-size:12.5px}
+.av2{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;color:#fff;font-size:10px;font-weight:700;flex:none}
+.prow .star{margin-left:auto;padding:4px}
+.favbox{background:var(--surface);border-radius:10px;padding:8px;display:flex;flex-wrap:wrap;gap:4px;align-content:flex-start}
+.favbox h6{width:100%;margin:0 0 4px;font-size:10.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em}
+.motion .favbox .av2.new{animation:pop .45s var(--ease-spring)}
+/* ===== 37 task complete ===== */
+.tasks{width:100%;display:grid;gap:4px}
+.tk{display:flex;gap:10px;align-items:center;background:var(--surface);border-radius:9px;padding:8px 10px;font-size:13px;cursor:pointer;border:0;font-family:inherit;color:var(--ink);text-align:left}
+.tk .c{width:20px;height:20px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;color:#fff;flex:none}
+.tk .c svg{width:12px;height:12px;stroke-width:3;opacity:0}
+.tk.done .c{background:var(--accent);border-color:var(--accent)}.tk.done .c svg{opacity:1}
+.tk .tx{position:relative}
+.tk .tx::after{content:'';position:absolute;left:0;top:52%;height:1.5px;width:0;background:var(--ink-3)}
+.tk.done{opacity:.65}.tk.done .tx{color:var(--ink-3)}.tk.done .tx::after{width:100%}
+.motion .tk .tx::after{transition:width .3s var(--ease-out)}
+.motion .tk{transition:opacity .3s}
+.motion .tk.done .c{animation:pop .4s var(--ease-spring)}
+/* ===== 38 search highlight ===== */
+:root{--mark:#ffe58f}[data-theme=dark]{--mark:#6b5a14}
+.srch{position:relative;width:100%}
+.srch input{width:100%;height:36px;border-radius:10px;border:1px solid var(--line);padding:0 36px;font:inherit;background:var(--surface);color:var(--ink)}
+.srch .si{position:absolute;left:11px;top:10px;color:var(--ink-3)}
+.srch .x{position:absolute;right:8px;top:7px;border:0;background:var(--fill);width:22px;height:22px;border-radius:50%;display:grid;place-items:center;cursor:pointer;color:var(--ink-2);opacity:0;transform:scale(.5) rotate(-90deg);pointer-events:none;padding:0}
+.srch .x svg{width:13px;height:13px}
+.srch.has .x{opacity:1;transform:none;pointer-events:auto}
+.motion .srch .x{transition:opacity .2s,transform .3s var(--ease-spring)}
+.sres{width:100%;display:grid;gap:2px;margin-top:6px}
+.sres div{padding:7px 10px;border-radius:8px;background:var(--surface);font-size:13px}
+mark{background:var(--mark);color:inherit;border-radius:3px;padding:0 1px}
+.motion mark{animation:markin .45s var(--ease-out)}
+@keyframes markin{from{background:transparent}}
+/* ===== 39 swipe ===== */
+.swl{width:100%}
+.sw{position:relative;height:46px;border-radius:10px;overflow:hidden;margin-bottom:6px;background:var(--fill);touch-action:pan-y}
+.sw[data-dir=r]{background:var(--accent)}.sw[data-dir=l]{background:var(--danger)}
+.sw .lab{position:absolute;top:0;bottom:0;display:flex;align-items:center;gap:6px;color:#fff;font-size:12.5px;font-weight:600;padding:0 16px;opacity:0}
+.sw .lab.l{left:0}.sw .lab.r{right:0}
+.sw[data-dir=r] .lab.l,.sw[data-dir=l] .lab.r{opacity:1}
+.sw .top{position:absolute;inset:0;background:var(--surface);display:flex;align-items:center;gap:10px;padding:0 12px;font-size:13px;cursor:grab;user-select:none}
+.sw .top.back{transition:transform .35s var(--ease-spring)}
+.sw.gone{height:0;margin:0}
+.motion .sw{transition:height .25s var(--ease-out),margin .25s}
+/* ===== 40 image zoom ===== */
+.thumbs{display:flex;gap:8px}
+.thumb{width:86px;height:62px;border-radius:9px;cursor:zoom-in;border:0;padding:0}
+.lb{position:fixed;inset:0;z-index:130;display:none;place-items:center;background:rgba(0,0,0,.72);cursor:zoom-out}
+.lb.on{display:grid}
+.motion .lb.on{animation:fade .25s}
+.lb.closing{background:rgba(0,0,0,0)}
+.motion .lb.closing{transition:background .26s}
+.lb .big{width:min(640px,80vw);aspect-ratio:7/5;border-radius:14px;transform-origin:top left;box-shadow:0 30px 80px -20px rgba(0,0,0,.6)}
+/* ===== 41 incoming call ===== */
+.call{display:flex;gap:12px;align-items:center;background:var(--surface);border-radius:12px;padding:12px;width:100%}
+.call .cav{position:relative;width:48px;height:48px;border-radius:50%;background:#2563eb;color:#fff;display:grid;place-items:center;font-weight:700;flex:none}
+.call .cav::before,.call .cav::after{content:'';position:absolute;inset:0;border-radius:50%;border:2px solid #2563eb;opacity:0}
+.motion .call.ringing .cav::before{animation:ripple 1.6s var(--ease-out) infinite}
+.motion .call.ringing .cav::after{animation:ripple 1.6s .55s var(--ease-out) infinite}
+@keyframes ripple{from{opacity:.7;transform:scale(1)}to{opacity:0;transform:scale(1.9)}}
+.call .who b{display:block;font-size:13.5px}.call .st{font-size:12px;color:var(--ink-3)}
+.call .acts{margin-left:auto;display:flex;gap:8px}
+.cbtn{width:40px;height:40px;border-radius:50%;border:0;color:#fff;display:grid;place-items:center;cursor:pointer}
+.cbtn.ans{background:#34c759}.cbtn.dec{background:var(--danger)}
+.motion .call.ringing .cbtn.ans svg{animation:wiggle 1.2s infinite}
+@keyframes wiggle{0%,60%,100%{transform:rotate(0)}10%,30%{transform:rotate(-14deg)}20%,40%{transform:rotate(14deg)}}
+/* ===== 42 voice note ===== */
+.rec{display:flex;gap:10px;align-items:center;width:100%;background:var(--surface);border-radius:999px;padding:6px 6px 6px 14px}
+.rec .wave{flex:1;display:flex;gap:3px;align-items:center;height:28px;overflow:hidden}
+.rec .wave i{display:block;flex:none;width:3px;border-radius:2px;background:var(--accent);height:4px}
+.rec.on .wave i{background:var(--danger)}
+.motion .rec .wave i{transition:height .12s}
+.rec .tm{font-size:12px;font-variant-numeric:tabular-nums;color:var(--ink-2);width:30px}
+.mic{width:38px;height:38px;border-radius:50%;border:0;background:var(--accent);color:#fff;display:grid;place-items:center;cursor:pointer;flex:none}
+.mic.on{background:var(--danger)}
+.motion .mic.on{animation:breathe2 1.2s ease-in-out infinite}
+@keyframes breathe2{50%{box-shadow:0 0 0 7px color-mix(in srgb,var(--danger) 22%,transparent)}}
+/* ===== 43 emoji picker ===== */
+.emo{display:grid;grid-template-columns:repeat(8,1fr);gap:2px;background:var(--surface);border-radius:12px;padding:6px;width:100%}
+.emo button{border:0;background:none;font-size:20px;padding:4px;border-radius:8px;cursor:pointer;line-height:1}
+.emo button:hover{background:var(--fill)}
+.motion .emo button{transition:transform .2s var(--ease-spring)}
+.motion .emo button:hover{transform:scale(1.35)}
+.einp{width:100%;min-height:38px;border-radius:10px;background:var(--surface);padding:8px 10px;font-size:16px;color:var(--ink-3)}
+.einp span{display:inline-block}
+.motion .einp span.new{animation:pop .4s var(--ease-spring)}
+/* ===== 44 character counter ===== */
+.cc{width:100%;display:grid;gap:4px}
+.cc textarea{width:100%;height:68px;border-radius:10px;border:1px solid var(--line);padding:8px 10px;font:inherit;font-size:13px;resize:none;background:var(--surface);color:var(--ink)}
+.cc .cnt2{justify-self:end;font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;opacity:0}
+.cc.near .cnt2{opacity:1;color:#c27a00}
+.cc.full .cnt2{color:var(--danger);font-weight:700}
+.cc.full textarea{border-color:color-mix(in srgb,var(--danger) 50%,var(--line))}
+.motion .cc .cnt2{transition:opacity .2s,color .2s}
+.motion .cc.full .cnt2{animation:shake .35s}
+</style>
+</head>
+<body class="motion">
+<div class="nav"><b>iPop · Micro-interactions</b><span style="color:var(--ink-3);font-size:12.5px">Click anything below. Turn motion off to compare.</span><span class="sp"></span>
+ <label><input type="checkbox" id="motion" checked> Motion</label><button class="btn" id="theme">Dark mode</button></div>
+<main>
+
+<section class="card"><h3><span class="n">1</span>Button press</h3><span class="tag">Subtle · every module</span>
+<p>Buttons dip slightly while pressed, so a click always feels received.</p>
+<div class="demo"><button class="btn pri"><i data-lucide="square-pen"></i>New post</button><button class="btn"><i data-lucide="download"></i>Export</button><button class="btn ibtn" aria-label="Settings"><i data-lucide="settings-2"></i></button></div></section>
+
+<section class="card"><h3><span class="n">2</span>Badge count</h3><span class="tag">Subtle · sidebar, bell, tabs</span>
+<p>Before: the badge blinks forever. After: it stays still and bumps once when the number changes.</p>
+<div class="demo" style="display:grid;gap:8px"><div class="navitem"><i data-lucide="message-circle"></i>Chat <span class="badge old">3</span><small style="color:var(--ink-3);font-size:11px">before</small></div>
+<div class="navitem"><i data-lucide="message-circle"></i>Chat <span class="badge" id="b2">3</span></div>
+<button class="btn" id="newmsg">Simulate new message</button></div></section>
+
+<section class="card"><h3><span class="n">3</span>Toggles that pop</h3><span class="tag x">Expressive · delight</span>
+<p>Favorite, Like, chat reaction and checkboxes give a small spring when turned on.</p>
+<div class="demo"><button class="star" data-t><i data-lucide="star"></i>Favorite</button><button class="like" data-t data-c="12"><i data-lucide="thumbs-up"></i>Like · <span class="cnt">12</span></button><button class="react" data-t data-c="4"><span class="em">👍</span><span class="cnt">4</span></button><button class="cb" data-t aria-label="Select"><i data-lucide="check"></i></button></div></section>
+
+<section class="card"><h3><span class="n">4</span>Dialogs in & out</h3><span class="tag">Subtle · Modal, Confirm, drawers</span>
+<p>Dialogs rise in and fade away when closed instead of vanishing. Confirm currently has no motion at all.</p>
+<div class="demo"><button class="btn danger-btn" id="opendlg"><i data-lucide="trash-2"></i>Delete post…</button></div></section>
+
+<section class="card"><h3><span class="n">5</span>Sliding selection</h3><span class="tag">Subtle · segments, tabs</span>
+<p>The highlight glides to the new choice, like iOS segmented controls.</p>
+<div class="demo" style="display:grid;gap:14px"><div class="seg" data-seg><span class="ind"></span><button class="on">Day</button><button>Week</button><button>Month</button><button>Agenda</button></div>
+<div class="tabs" data-tabs><span class="ul"></span><button class="on">For you</button><button>Unread</button><button>To acknowledge</button><button>Saved</button></div></div></section>
+
+<section class="card"><h3><span class="n">6</span>Dropdowns grow from the trigger</h3><span class="tag">Subtle · AppSelect, people picker</span>
+<p>Menus scale out from the button you clicked rather than appearing out of nowhere.</p>
+<div class="demo"><div class="sel"><button class="btn" id="selbtn"><i data-lucide="arrow-up-down"></i>Name A–Z<i data-lucide="chevron-down"></i></button>
+<div class="pop-menu" id="menu"><div>Name A–Z</div><div>Name Z–A</div><div>Online first</div></div></div></div></section>
+
+<section class="card"><h3><span class="n">7</span>Kanban card lands</h3><span class="tag x">Expressive · Projects</span>
+<p>A moved card settles into its column with a small bounce. This existed before and was accidentally switched off.</p>
+<div class="demo"><div class="cols"><div class="col" id="todo"><h5>To do</h5><div class="task">Review vendor quote</div><div class="task">Prepare budget slides</div></div><div class="col" id="done"><h5>Done</h5></div></div>
+<button class="btn" id="move">Move card</button></div></section>
+
+<section class="card"><h3><span class="n">8</span>Drag feedback</h3><span class="tag">Subtle · Notes sidebar</span>
+<p>Drag one page onto another: the dragged row dims, the target gently highlights.</p>
+<div class="demo"><div class="tree" id="tree"><div class="tnode" draggable="true"><i data-lucide="file-text"></i>Meeting notes</div><div class="tnode" draggable="true"><i data-lucide="folder"></i>Projects</div><div class="tnode" draggable="true"><i data-lucide="file-text"></i>Ideas</div></div></div></section>
+
+<section class="card"><h3><span class="n">9</span>Rows slide out</h3><span class="tag">Subtle · Mail, Notifications</span>
+<p>Archived or read items slide away and the list closes the gap smoothly.</p>
+<div class="demo"><div class="list" id="list"></div></div></section>
+
+<section class="card"><h3><span class="n">10</span>New calendar event</h3><span class="tag">Subtle · Calendar</span>
+<p>A freshly saved event pops onto the grid so you can see where it landed.</p>
+<div class="demo" style="display:grid;gap:10px"><div class="grid" id="grid"></div><button class="btn pri" id="addev"><i data-lucide="plus"></i>Save event</button></div></section>
+
+<section class="card"><h3><span class="n">11</span>Chat reaction</h3><span class="tag x">Expressive · Chat</span>
+<p>Adding a reaction pops the emoji and rolls the count up.</p>
+<div class="demo"><div style="background:var(--surface);border-radius:14px;padding:10px 12px;display:grid;gap:8px;max-width:260px"><span style="font-size:13px">Rapat dipindah ke jam 2 ya 🙏</span>
+<div class="row"><button class="react on" data-t data-c="2"><span class="em">👍</span><span class="cnt">2</span></button><button class="react" data-t data-c="0"><span class="em">❤️</span><span class="cnt">0</span></button></div></div></div></section>
+
+<div class="sec">Files, clipboard & sending</div>
+
+<section class="card"><h3><span class="n">12</span>Drop files from Windows</h3><span class="tag">Subtle · Chat, Mail, Projects, Notes, Files</span>
+<p>Drag any file from Explorer or the desktop over iPop: a clear drop target appears, and released files fly into the composer. <b>Try it with a real file.</b></p>
+<div class="demo"><div class="dropwin" id="dropwin">Drag a file from Windows here<div class="dropov"><div><div class="ic"><i data-lucide="upload"></i></div><b>Drop to attach</b><small>Images, PDF, Office — up to 50 MB</small></div></div></div>
+<button class="btn" id="fakedrop"><i data-lucide="file-plus"></i>Simulate drop</button></div></section>
+
+<section class="card"><h3><span class="n">13</span>Upload progress</h3><span class="tag">Subtle · every attachment</span>
+<p>Each file becomes a chip with a thumbnail and a filling progress line; a tick pops when done, a failed one shakes and offers Retry.</p>
+<div class="demo" style="display:grid;gap:10px"><div class="chips" id="chips"></div><div class="row"><button class="btn" id="upok"><i data-lucide="upload"></i>Upload 2 files</button><button class="btn" id="upfail">Simulate failure</button></div></div></section>
+
+<section class="card"><h3><span class="n">14</span>Paste a screenshot (Ctrl+V)</h3><span class="tag">Subtle · Chat, Mail, Notes, News</span>
+<p>Pasting from the clipboard shows a shimmering placeholder where the image will go, then the picture fades in. <b>Try Ctrl+V with a screenshot</b> inside the box.</p>
+<div class="demo"><div class="editor" id="editor" contenteditable="true">Hi team, here is the error I get when opening the report:</div>
+<button class="btn" id="fakepaste"><i data-lucide="clipboard-paste"></i>Simulate paste</button></div></section>
+
+<section class="card"><h3><span class="n">15</span>Send button states</h3><span class="tag x">Expressive · Chat, Mail</span>
+<p>While attachments upload the send button shows a ring; when sent, the arrow flies out and returns.</p>
+<div class="demo"><button class="sendbtn" id="send"><span class="ring"></span><i data-lucide="send"></i></button><span style="font-size:12.5px;color:var(--ink-3)" id="sendtxt">Click to send</span></div></section>
+
+<section class="card"><h3><span class="n">16</span>Copy feedback</h3><span class="tag">Subtle · copy link, copy text, ext.</span>
+<p>Copy buttons swap to a green tick for a moment, so you know it worked without a toast.</p>
+<div class="demo"><button class="btn copyb" id="copy"><span class="a"><i data-lucide="link"></i>Copy link</span><span class="b"><i data-lucide="check"></i>Copied</span></button></div></section>
+
+<section class="card"><h3><span class="n">17</span>Loading → content</h3><span class="tag">Subtle · lists, refresh</span>
+<p>Skeletons shimmer while loading; real rows then slide in gently (first few only, never the whole list).</p>
+<div class="demo"><div class="refresh" id="refresh"></div><button class="btn" id="reload"><i data-lucide="refresh-cw"></i>Refresh</button></div></section>
+
+<section class="card"><h3><span class="n">18</span>Message states</h3><span class="tag x">Expressive · Chat</span>
+<p>Typing dots, a bubble that pops in while “sending”, then sent → read ticks.</p>
+<div class="demo" style="display:grid;gap:6px;width:100%" id="chat"><span class="typing"><i></i><i></i><i></i></span></div>
+<button class="btn" id="sendmsg"><i data-lucide="send"></i>Send message</button></section>
+
+<section class="card"><h3><span class="n">19</span>Success check</h3><span class="tag x">Expressive · save, send, acknowledge</span>
+<p>Important completions (memo acknowledged, profile saved, mail sent) draw a check mark.</p>
+<div class="demo okwrap"><span class="okc" id="okc"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span><button class="btn pri" id="ack"><i data-lucide="check"></i>I've read it</button></div></section>
+
+<section class="card"><h3><span class="n">20</span>Invalid input</h3><span class="tag">Subtle · forms</span>
+<p>A wrong value nudges the field sideways once and shows the reason underneath.</p>
+<div class="demo" style="display:grid;gap:8px"><div class="field" id="fld"><input placeholder="Email" value="rina@santos"><small></small></div><button class="btn" id="validate">Save</button></div></section>
+
+<div class="sec">Navigation & layout</div>
+
+<section class="card"><h3><span class="n">21</span>Sidebar selection glides</h3><span class="tag">Subtle · main menu, Settings, Admin</span>
+<p>The active highlight slides to the module you pick, and its icon grows a touch.</p>
+<div class="demo"><div class="side" id="side"><span class="pill"></span><button class="on"><i data-lucide="layout-dashboard"></i>Dashboard</button><button><i data-lucide="message-circle"></i>Chat</button><button><i data-lucide="mail"></i>Mail</button><button><i data-lucide="calendar"></i>Calendar</button></div></div></section>
+
+<section class="card"><h3><span class="n">22</span>Switching modules</h3><span class="tag">Subtle · every page change</span>
+<p>New page content rises in softly instead of snapping, so moving between modules feels connected.</p>
+<div class="demo" style="display:grid;gap:10px"><div class="seg" data-pages><span class="ind"></span><button class="on" data-page="Chat">Chat</button><button data-page="Mail">Mail</button><button data-page="News">News</button></div><div class="stagebox" id="stagebox"></div></div></section>
+
+<section class="card"><h3><span class="n">23</span>Expand & collapse</h3><span class="tag">Subtle · Directory tree, Notes, Admin, settings</span>
+<p>Sections open with a smooth height change; the chevron turns instead of flipping.</p>
+<div class="demo" style="display:grid;width:100%"><div class="acc open"><button class="acc-h"><i class="chev" data-lucide="chevron-right"></i><i data-lucide="network"></i>DAFT<span class="ct">76</span></button><div class="acc-b"><div><p>Finance, Tax &amp; Accounting</p><p>Financial Management</p><p>Secretary</p></div></div></div>
+<div class="acc"><button class="acc-h"><i class="chev" data-lucide="chevron-right"></i><i data-lucide="network"></i>Human Capital<span class="ct">42</span></button><div class="acc-b"><div><p>Recruitment</p><p>Payroll</p></div></div></div></div></section>
+
+<section class="card"><h3><span class="n">24</span>Card hover lift</h3><span class="tag">Subtle · Dashboard widgets, News cards, Files</span>
+<p>Clickable cards lift slightly under the pointer, so you know they open something.</p>
+<div class="demo"><div class="lift"><i data-lucide="newspaper"></i><b>News</b>2 to acknowledge</div><div class="lift"><i data-lucide="calendar"></i><b>Today</b>3 meetings</div><div class="lift"><i data-lucide="folder"></i><b>Files</b>Recent</div></div></section>
+
+<section class="card"><h3><span class="n">25</span>Tooltips</h3><span class="tag">Subtle · icon-only buttons</span>
+<p>Icon buttons explain themselves after a short hover pause — never instantly, so they don't flicker while you move.</p>
+<div class="demo"><button class="btn ibtn tip" data-tip="Print"><i data-lucide="printer"></i></button><button class="btn ibtn tip" data-tip="Copy link"><i data-lucide="link"></i></button><button class="btn ibtn tip" data-tip="Mark as unread"><i data-lucide="mail"></i></button><button class="btn ibtn tip" data-tip="More actions"><i data-lucide="ellipsis"></i></button></div></section>
+
+<section class="card"><h3><span class="n">26</span>Light / dark toggle</h3><span class="tag x">Expressive · top bar</span>
+<p>The sun spins away as the moon rises. Click it — it really switches this page.</p>
+<div class="demo"><button class="tt" id="tt" aria-label="Toggle theme"><i class="sun" data-lucide="sun"></i><i class="moon" data-lucide="moon"></i></button></div></section>
+
+<div class="sec">Feedback & status</div>
+
+<section class="card"><h3><span class="n">27</span>Undo after an action</h3><span class="tag">Subtle · archive, delete, move</span>
+<p>Archive a row: a bar at the bottom offers Undo while a line drains for 5 seconds. Undo puts the row back where it was.</p>
+<div class="demo"><div class="undobox" id="undobox"><div class="list" id="undolist"></div></div></div></section>
+
+<section class="card"><h3><span class="n">28</span>Toast stack</h3><span class="tag">Subtle · confirmations</span>
+<p>Several confirmations stack neatly (max 3), slide away by themselves or when clicked.</p>
+<div class="demo" style="display:grid;gap:10px"><div class="tstack"><div class="tcol" id="tcol"></div></div><button class="btn" id="addtoast"><i data-lucide="bell-plus"></i>Show toast</button></div></section>
+
+<section class="card"><h3><span class="n">29</span>Someone comes online</h3><span class="tag">Subtle · Chat, Directory</span>
+<p>When a colleague goes online, their dot turns green with a single ripple — no constant blinking.</p>
+<div class="demo"><div class="pav">RA<span class="pdot" id="pdot"></span></div><div><b style="font-size:13.5px">Rina Aulia</b><div id="ptx" style="font-size:12px;color:var(--ink-3)">Offline 5 min ago</div></div><button class="btn" id="pres" style="margin-left:auto">Toggle status</button></div></section>
+
+<section class="card"><h3><span class="n">30</span>Unread → read</h3><span class="tag">Subtle · Notifications, Mail, News</span>
+<p>Opening an item fades the bold text and shrinks its unread dot instead of switching abruptly.</p>
+<div class="demo" style="display:grid;gap:8px"><div class="nlist"><div class="nrow unread"><span class="ud"></span>Budget review moved to Thursday</div><div class="nrow unread"><span class="ud"></span>New memo: Overtime policy 2026</div><div class="nrow unread"><span class="ud"></span>Rina mentioned you in ICT</div></div><button class="btn" id="readall"><i data-lucide="check-check"></i>Mark all read</button></div></section>
+
+<section class="card"><h3><span class="n">31</span>Notification flies to the bell</h3><span class="tag x">Expressive · top bar</span>
+<p>A new notification arcs into the bell, the bell rings once and the count bumps.</p>
+<div class="demo" style="display:grid;gap:10px"><div class="bellbox" id="bellbox"><span class="bell" id="bell"><i data-lucide="bell"></i><span class="badge" id="bbadge">2</span></span><span class="src">New mail arrives here →</span></div><button class="btn" id="notify"><i data-lucide="mail-plus"></i>Receive notification</button></div></section>
+
+<section class="card"><h3><span class="n">32</span>Inline edit saved</h3><span class="tag">Subtle · Directory Ext., Projects fields, Admin</span>
+<p>Edit the field and press Enter: it flashes green and a small “Saved” appears, then fades.</p>
+<div class="demo"><div class="inl"><input id="inlin" value="Ext. 1107" aria-label="Extension"><span class="sv" id="inlsv"><i data-lucide="check"></i>Saved</span></div></div></section>
+
+<div class="sec">Data & lists</div>
+
+<section class="card"><h3><span class="n">33</span>Numbers count up</h3><span class="tag">Subtle · Dashboard, Admin stats</span>
+<p>Key numbers roll up to their value when a page opens or refreshes.</p>
+<div class="demo" style="display:grid;gap:10px"><div class="kpis"><div class="kpi"><b data-to="4882">0</b><small>People</small></div><div class="kpi"><b data-to="128">0</b><small>Unread mail</small></div><div class="kpi"><b data-to="37">0</b><small>Open tasks</small></div></div><button class="btn" id="kpibtn"><i data-lucide="refresh-cw"></i>Replay</button></div></section>
+
+<section class="card"><h3><span class="n">34</span>Progress ring</h3><span class="tag">Subtle · memo acknowledgement, uploads, projects</span>
+<p>Progress fills smoothly and its percentage counts with it.</p>
+<div class="demo"><div class="ring2"><svg viewBox="0 0 88 88"><circle class="bg" cx="44" cy="44" r="36"/><circle class="fg" id="fg" cx="44" cy="44" r="36"/></svg><span class="lbl"><span><span id="rlab">0</span>%</span></span></div>
+<div style="display:grid;gap:6px"><span id="rtx" style="font-size:12.5px;color:var(--ink-2)">86 of 140 colleagues</span><button class="btn" id="ackmore"><i data-lucide="plus"></i>12 acknowledged</button></div></div></section>
+
+<section class="card"><h3><span class="n">35</span>Smooth reorder</h3><span class="tag">Subtle · Dashboard widgets, pinned items</span>
+<p>When order changes, items glide to their new places instead of jumping. Click a widget to move it first.</p>
+<div class="demo" style="display:grid;gap:10px"><div class="wgrid" id="wgrid"><div class="wg"><i data-lucide="message-circle"></i>Chat</div><div class="wg"><i data-lucide="mail"></i>Mail</div><div class="wg"><i data-lucide="calendar"></i>Today</div><div class="wg"><i data-lucide="kanban"></i>Tasks</div></div><button class="btn" id="shuffle"><i data-lucide="shuffle"></i>Rotate order</button></div></section>
+
+<section class="card"><h3><span class="n">36</span>Favorite flies to Favorites</h3><span class="tag x">Expressive · Directory</span>
+<p>Starring a colleague sends their avatar into the Favorites panel, so you see where they went.</p>
+<div class="demo"><div class="favdemo"><div class="plist" id="plist">
+<div class="prow" data-n="ra"><span class="av2" style="background:#7c5cc4">RA</span>Rina Aulia<button class="star" aria-label="Favorite"><i data-lucide="star"></i></button></div>
+<div class="prow" data-n="bs"><span class="av2" style="background:#2563eb">BS</span>Budi Santoso<button class="star" aria-label="Favorite"><i data-lucide="star"></i></button></div>
+<div class="prow" data-n="ds"><span class="av2" style="background:#c26a15">DS</span>Dewi Sartika<button class="star" aria-label="Favorite"><i data-lucide="star"></i></button></div></div>
+<div class="favbox" id="favbox"><h6>Favorites</h6></div></div></div></section>
+
+<section class="card"><h3><span class="n">37</span>Task completed</h3><span class="tag x">Expressive · Projects, checklists</span>
+<p>Ticking a task pops the circle, strikes through the text, then the task slides to the bottom.</p>
+<div class="demo"><div class="tasks" id="tasks"><button class="tk"><span class="c"><i data-lucide="check"></i></span><span class="tx">Send budget draft</span></button><button class="tk"><span class="c"><i data-lucide="check"></i></span><span class="tx">Book meeting room</span></button><button class="tk"><span class="c"><i data-lucide="check"></i></span><span class="tx">Review vendor quote</span></button></div></div></section>
+
+<section class="card"><h3><span class="n">38</span>Search highlights matches</h3><span class="tag">Subtle · Directory, Chat, Mail, Files</span>
+<p>Matching letters light up as you type; the clear button spins in when there is text.</p>
+<div class="demo" style="display:grid"><div class="srch" id="srch"><i class="si" data-lucide="search"></i><input placeholder="Search people" value="rin" aria-label="Search people"><button class="x" aria-label="Clear"><i data-lucide="x"></i></button></div><div class="sres" id="sres"></div></div></section>
+
+<div class="sec">Mobile, calls & media</div>
+
+<section class="card"><h3><span class="n">39</span>Swipe actions</h3><span class="tag">Subtle · phone: Mail, Notifications, Chat list</span>
+<p>Drag a row sideways (mouse works too): right archives, left deletes. A short drag springs back.</p>
+<div class="demo"><div class="swl"><div class="sw"><span class="lab l"><i data-lucide="archive"></i>Archive</span><span class="lab r">Delete<i data-lucide="trash-2"></i></span><div class="top"><i data-lucide="mail"></i>Weekly report — Finance</div></div>
+<div class="sw"><span class="lab l"><i data-lucide="archive"></i>Archive</span><span class="lab r">Delete<i data-lucide="trash-2"></i></span><div class="top"><i data-lucide="mail"></i>Vendor visit moved</div></div></div></div></section>
+
+<section class="card"><h3><span class="n">40</span>Photo opens from its thumbnail</h3><span class="tag">Subtle · Chat images, News, Files preview</span>
+<p>A photo grows out of the thumbnail you clicked and shrinks back into it when closed.</p>
+<div class="demo"><div class="thumbs"><button class="thumb" style="background:linear-gradient(135deg,#9fd9b9,#2e9d6b 60%,#0f3d2e)" aria-label="Open photo"></button><button class="thumb" style="background:linear-gradient(135deg,#d7e8f7,#5b8fd6)" aria-label="Open photo"></button><button class="thumb" style="background:linear-gradient(135deg,#f6d9b8,#e08e45)" aria-label="Open photo"></button></div></div></section>
+
+<section class="card"><h3><span class="n">41</span>Incoming call</h3><span class="tag x">Expressive · Calls</span>
+<p>Ripples spread from the caller while it rings and the answer button wiggles; they stop the moment you answer or decline.</p>
+<div class="demo" style="display:grid;gap:10px"><div class="call" id="call"><span class="cav">BS</span><span class="who"><b>Budi Santoso</b><span class="st" id="cst"></span></span><span class="acts"><button class="cbtn dec" id="dec" aria-label="Decline"><i data-lucide="phone-off"></i></button><button class="cbtn ans" id="ans" aria-label="Answer"><i data-lucide="phone"></i></button></span></div><button class="btn" id="ringagain"><i data-lucide="phone-incoming"></i>Ring again</button></div></section>
+
+<section class="card"><h3><span class="n">42</span>Voice note recording</h3><span class="tag x">Expressive · Chat</span>
+<p>While recording, the waveform follows your voice and the stop button breathes so you never forget it's on.</p>
+<div class="demo"><div class="rec" id="rec"><span class="tm">0:00</span><span class="wave"></span><button class="mic" id="mic" aria-label="Record"><i data-lucide="mic"></i></button></div></div></section>
+
+<section class="card"><h3><span class="n">43</span>Emoji picker</h3><span class="tag x">Expressive · Chat, Mail</span>
+<p>Emoji grow under the pointer; a picked one pops into the message.</p>
+<div class="demo" style="display:grid;gap:8px"><div class="einp" id="einp">Tap an emoji…</div><div class="emo" id="emo"></div></div></section>
+
+<section class="card"><h3><span class="n">44</span>Character limit</h3><span class="tag">Subtle · status, titles, comments</span>
+<p>The counter appears near the limit, turns red at it, and nudges if you keep typing.</p>
+<div class="demo"><div class="cc" id="cc"><textarea maxlength="120" aria-label="Status">Working from Sepanjang plant today, reach me on Ext. 1107 or chat. Back in the office</textarea><span class="cnt2"></span></div></div></section>
+
+<div class="hint">Rules: 120–350 ms. Things only loop while a state lasts (typing, ringing, recording, dragging). “Reduce motion” in Windows/macOS turns all of it off.</div>
+</main>
+
+<div class="scrim" id="scrim"><div class="dlg"><h4>Delete this post?</h4><p>It will be removed for everyone. This can't be undone.</p><div class="row"><button class="btn" data-close>Cancel</button><button class="btn pri" style="background:var(--danger);border-color:var(--danger)" data-close>Delete</button></div></div></div>
+
+<script>
+lucide.createIcons();
+const body=document.body;
+document.getElementById('motion').onchange=e=>body.classList.toggle('motion',e.target.checked);
+document.getElementById('theme').onclick=e=>{const d=document.documentElement;const on=d.dataset.theme!=='dark';d.dataset.theme=on?'dark':'';e.target.textContent=on?'Light mode':'Dark mode'};
+const replay=(el,cls)=>{el.classList.remove(cls);void el.offsetWidth;el.classList.add(cls)};
+// 2
+const b2=document.getElementById('b2');document.getElementById('newmsg').onclick=()=>{b2.textContent=+b2.textContent+1;replay(b2,'bump')};
+// 3 + 11
+document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{const on=!b.classList.contains('on');b.classList.toggle('on',on);
+ const c=b.querySelector('.cnt');if(c){const n=+b.dataset.c+(on?1:0)-(b.dataset.base?0:0);b.dataset.c=on?+b.dataset.c+1:+b.dataset.c-1;c.textContent=b.dataset.c}
+ b.classList.remove('pop');if(on){void b.offsetWidth;b.classList.add('pop')}});
+// 4
+const scrim=document.getElementById('scrim');document.getElementById('opendlg').onclick=()=>{scrim.classList.remove('leaving');scrim.classList.add('show')};
+scrim.querySelectorAll('[data-close]').forEach(x=>x.onclick=close);scrim.onclick=e=>{if(e.target===scrim)close()};
+function close(){if(!body.classList.contains('motion')){scrim.classList.remove('show');return}scrim.classList.add('leaving');setTimeout(()=>scrim.classList.remove('show','leaving'),180)}
+// 5
+function slider(root,ind,sel){const place=()=>{const on=root.querySelector('button.on');ind.style.left=on.offsetLeft+'px';ind.style.width=on.offsetWidth+'px'};
+ root.querySelectorAll('button').forEach(b=>b.onclick=()=>{root.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));place()});place()}
+slider(document.querySelector('[data-seg]'),document.querySelector('[data-seg] .ind'));slider(document.querySelector('[data-tabs]'),document.querySelector('[data-tabs] .ul'));
+// 6
+const menu=document.getElementById('menu');document.getElementById('selbtn').onclick=e=>{e.stopPropagation();menu.classList.toggle('show')};document.addEventListener('click',()=>menu.classList.remove('show'));
+// 7
+document.getElementById('move').onclick=()=>{const t=document.querySelector('#todo .task');const from=document.getElementById('todo'),to=document.getElementById('done');
+ if(!t){to.querySelectorAll('.task').forEach(x=>{from.appendChild(x);x.classList.remove('landed')});return}to.appendChild(t);replay(t,'landed')};
+// 8
+let dragged;document.querySelectorAll('.tnode').forEach(n=>{n.ondragstart=()=>{dragged=n;n.classList.add('dragging')};n.ondragend=()=>{n.classList.remove('dragging');document.querySelectorAll('.tnode').forEach(x=>x.classList.remove('over'))};
+ n.ondragover=e=>{e.preventDefault();if(n!==dragged)n.classList.add('over')};n.ondragleave=()=>n.classList.remove('over');n.ondrop=e=>{e.preventDefault();n.classList.remove('over')}});
+// 9
+const list=document.getElementById('list');function fill(){list.innerHTML='';['Budget review — Finance','Vendor visit moved','Weekly report','Server maintenance'].forEach(s=>{const r=document.createElement('div');r.className='mrow';r.innerHTML=`<i data-lucide="mail"></i><span>${s}</span><span class="sp"></span><button class="btn ibtn" aria-label="Archive"><i data-lucide="archive"></i></button>`;
+ r.querySelector('button').onclick=()=>{if(!body.classList.contains('motion')){r.remove();if(!list.children.length)fill();return}r.classList.add('leaving');setTimeout(()=>{r.remove();if(!list.children.length)fill()},300)};list.appendChild(r)});lucide.createIcons()}fill();
+// 10
+const motionOn=()=>body.classList.contains('motion');
+// 12 drop overlay (real files + simulate)
+const dw=document.getElementById('dropwin');let depth=0;
+const isFiles=e=>e.dataTransfer&&Array.from(e.dataTransfer.types||[]).includes('Files');
+dw.addEventListener('dragenter',e=>{if(!isFiles(e))return;depth++;dw.classList.remove('landed');dw.classList.add('over')});
+dw.addEventListener('dragover',e=>{if(isFiles(e))e.preventDefault()});
+dw.addEventListener('dragleave',()=>{if(--depth<=0){depth=0;dw.classList.remove('over')}});
+dw.addEventListener('drop',e=>{e.preventDefault();depth=0;land([...e.dataTransfer.files].map(f=>f.name))});
+function land(names){dw.classList.add('landed');setTimeout(()=>dw.classList.remove('over','landed'),300);upload(names.length?names:['Report Q3.pdf'],false)}
+document.getElementById('fakedrop').onclick=()=>{dw.classList.add('over');setTimeout(()=>land(['Report Q3.pdf','Photo site.jpg']),700)};
+// 13 upload chips
+const chips=document.getElementById('chips');
+const kind=n=>/\.(png|jpe?g|gif|webp)$/i.test(n)?['IMG','linear-gradient(135deg,#9fd9b9,#2e9d6b)']:/\.pdf$/i.test(n)?['PDF','#d93a2b']:/\.xlsx?$/i.test(n)?['XLS','#1f7a46']:['DOC','#2563eb'];
+function upload(names,fail){names.forEach((n,i)=>{const [t,bg]=kind(n);const c=document.createElement('div');c.className='chip';
+ c.innerHTML=`<span class="th" style="background:${bg}">${t}</span><span class="nm"><span>${n}</span><small>Uploading…</small></span><i class="ok" data-lucide="check-circle-2"></i><span class="bar"></span>`;chips.appendChild(c);lucide.createIcons();
+ const bar=c.querySelector('.bar'),sm=c.querySelector('small');let p=0;const step=()=>{p+=8+Math.random()*16;
+  if(fail&&p>55){c.classList.add('err');bar.style.width='58%';sm.textContent='Upload failed';c.querySelector('.ok').remove();const r=document.createElement('button');r.className='retry';r.textContent='Retry';r.onclick=()=>{c.remove();upload([n],false)};c.insertBefore(r,bar);return}
+  bar.style.width=Math.min(p,100)+'%';sm.textContent=Math.min(99,Math.round(p))+'%';if(p<100)setTimeout(step,motionOn()?140:0);else{c.classList.add('done');sm.textContent=(1+i*1.4).toFixed(1)+' MB'}};setTimeout(step,200+i*120)});
+ while(chips.children.length>6)chips.firstChild.remove()}
+document.getElementById('upok').onclick=()=>upload(['Kebijakan Lembur.pdf','Foto lokasi.jpg'],false);
+document.getElementById('upfail').onclick=()=>upload(['Data karyawan.xlsx'],true);
+// 14 paste
+const ed=document.getElementById('editor');
+function pasteImg(url){const ph=document.createElement('div');ph.className='ph';ph.textContent='Adding image…';ed.appendChild(ph);
+ setTimeout(()=>{const im=url?Object.assign(document.createElement('img'),{src:url,className:'pimg'}):Object.assign(document.createElement('span'),{className:'pimg'});if(url)im.style.objectFit='cover';ph.replaceWith(im);toast('Image added')},motionOn()?900:0)}
+ed.addEventListener('paste',e=>{const it=[...(e.clipboardData?.items||[])].find(i=>i.kind==='file'&&i.type.startsWith('image/'));if(!it)return;e.preventDefault();pasteImg(URL.createObjectURL(it.getAsFile()))});
+document.getElementById('fakepaste').onclick=()=>pasteImg(null);
+function toast(t){const x=document.createElement('div');x.className='toastx';x.innerHTML=`<i data-lucide="check"></i>${t}`;document.body.appendChild(x);lucide.createIcons();setTimeout(()=>x.remove(),1600)}
+// 15 send
+const sb=document.getElementById('send'),st=document.getElementById('sendtxt');sb.onclick=()=>{if(sb.classList.contains('busy'))return;sb.classList.add('busy');st.textContent='Waiting for 1 upload…';
+ setTimeout(()=>{sb.classList.remove('busy');replay(sb,'sent');st.textContent='Sent';setTimeout(()=>st.textContent='Click to send',1200)},motionOn()?1300:0)};
+// 16 copy
+const cp=document.getElementById('copy');cp.onclick=()=>{navigator.clipboard?.writeText('https://ipop.santos.co.id/news/123').catch(()=>{});cp.classList.add('ok');setTimeout(()=>cp.classList.remove('ok'),1500)};
+// 17 refresh
+const rf=document.getElementById('refresh');function load(){rf.innerHTML='<div class="rhead spin"><i data-lucide="refresh-cw"></i>Updating…</div><div class="sk"></div><div class="sk" style="width:70%"></div><div class="sk" style="width:85%"></div>';lucide.createIcons();
+ setTimeout(()=>{rf.innerHTML='<div class="rhead"><i data-lucide="check"></i>Updated just now</div>'+['Budget review — Finance','Vendor visit moved to Thu','Weekly report'].map(s=>`<div class="item">${s}</div>`).join('');lucide.createIcons()},motionOn()?900:0)}
+document.getElementById('reload').onclick=load;load();
+// 18 message states
+const ch=document.getElementById('chat');document.getElementById('sendmsg').onclick=()=>{const b=document.createElement('div');b.className='bub pending new';b.textContent='Siap, saya kirim laporannya sore ini 👍';
+ const t=document.createElement('div');t.className='tick';t.innerHTML='<i data-lucide="clock-3"></i>Sending';ch.insertBefore(b,ch.lastElementChild);ch.insertBefore(t,ch.lastElementChild);lucide.createIcons();
+ setTimeout(()=>{b.classList.remove('pending');t.innerHTML='<i data-lucide="check"></i>Sent';lucide.createIcons()},600);
+ setTimeout(()=>{t.classList.add('read');t.innerHTML='<i data-lucide="check-check"></i>Read';lucide.createIcons()},1600);
+ while(ch.children.length>7)ch.firstChild.remove()};
+// 19 success
+const ok=document.getElementById('okc');document.getElementById('ack').onclick=()=>{ok.classList.remove('show');void ok.offsetWidth;ok.classList.add('show')};
+// 20 invalid
+const fl=document.getElementById('fld');document.getElementById('validate').onclick=()=>{const v=fl.querySelector('input').value;const bad=!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v);
+ fl.classList.remove('err');void fl.offsetWidth;fl.classList.toggle('err',bad);fl.querySelector('small').textContent=bad?'Enter a full email, e.g. rina@santos.co.id':'';if(!bad)toast('Saved')};
+// ---------- 21–44 ----------
+const $=id=>document.getElementById(id);
+const ease='cubic-bezier(.16,1,.3,1)';
+// 21 sidebar glide
+(()=>{const s=$('side'),pill=s.querySelector('.pill');const place=()=>{const on=s.querySelector('button.on');pill.style.top=on.offsetTop+'px';pill.style.height=on.offsetHeight+'px'};
+ s.querySelectorAll('button').forEach(b=>b.onclick=()=>{s.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));place()});place()})();
+// 22 module switch
+const pages={Chat:['message-circle','3 unread conversations','Rina: Siap, laporannya sore ini 👍'],Mail:['mail','12 new messages','Finance — Budget review Q4'],News:['newspaper','2 memos to acknowledge','Overtime policy 2026']};
+const sbx=$('stagebox');function showPage(k){const [ic,a,b]=pages[k];sbx.innerHTML=`<div class="row" style="gap:8px"><i data-lucide="${ic}"></i><b>${k}</b></div><p style="margin:8px 0 4px;color:var(--ink-2);font-size:13px">${a}</p><div style="font-size:12.5px;color:var(--ink-3)">${b}</div>`;lucide.createIcons();replay(sbx,'enter')}
+slider(document.querySelector('[data-pages]'),document.querySelector('[data-pages] .ind'));
+document.querySelectorAll('[data-page]').forEach(b=>b.addEventListener('click',()=>showPage(b.dataset.page)));showPage('Chat');
+// 23 accordion
+document.querySelectorAll('.acc-h').forEach(h=>h.onclick=()=>h.parentElement.classList.toggle('open'));
+// 26 theme toggle
+$('tt').onclick=()=>$('theme').click();
+// 27 undo snackbar
+const ul=$('undolist'),ub=$('undobox');let snackTimer;
+function mkRow(s){const r=document.createElement('div');r.className='mrow';r.innerHTML=`<i data-lucide="mail"></i><span>${s}</span><span class="sp"></span><button class="btn ibtn" aria-label="Archive"><i data-lucide="archive"></i></button>`;r.querySelector('button').onclick=()=>archiveRow(r,s);return r}
+function undoRows(){ul.innerHTML='';['Vendor visit moved','Weekly report','Server maintenance'].forEach(s=>ul.appendChild(mkRow(s)));lucide.createIcons()}
+function archiveRow(r,s){const idx=[...ul.children].indexOf(r);const go=()=>{r.remove();snack(s,idx)};if(!motionOn())return go();r.classList.add('leaving');setTimeout(go,300)}
+function snack(s,idx){ub.querySelector('.snack')?.remove();clearTimeout(snackTimer);const k=document.createElement('div');k.className='snack';k.innerHTML=`<span>Archived “${s}”</span><button>Undo</button><span class="t"></span>`;
+ k.querySelector('button').onclick=()=>{k.remove();clearTimeout(snackTimer);const r=mkRow(s);r.classList.add('back');ul.insertBefore(r,ul.children[idx]||null);lucide.createIcons()};
+ ub.appendChild(k);snackTimer=setTimeout(()=>{k.remove();if(!ul.children.length)undoRows()},5000)}
+undoRows();
+// 28 toast stack
+const tcol=$('tcol');let tn=0;const tmsgs=['Message sent','Saved to Favorites','Link copied','Event created','Memo acknowledged'];
+function dismissToast(t){if(!t.isConnected||t.classList.contains('out'))return;if(!motionOn()){t.remove();return}t.classList.add('out');setTimeout(()=>t.remove(),250)}
+$('addtoast').onclick=()=>{const t=document.createElement('div');t.className='ts';t.innerHTML=`<i data-lucide="check-circle-2"></i>${tmsgs[tn++%tmsgs.length]}`;t.onclick=()=>dismissToast(t);tcol.appendChild(t);lucide.createIcons();
+ const live=[...tcol.children].filter(x=>!x.classList.contains('out'));if(live.length>3)dismissToast(live[0]);setTimeout(()=>dismissToast(t),3500)};
+// 29 presence
+$('pres').onclick=()=>{const d=$('pdot');d.classList.toggle('on');$('ptx').textContent=d.classList.contains('on')?'Online':'Offline just now'};
+// 30 unread → read
+document.querySelectorAll('.nrow').forEach(r=>r.onclick=()=>r.classList.toggle('unread'));
+$('readall').onclick=()=>{const rows=[...document.querySelectorAll('.nrow')];const any=rows.some(r=>r.classList.contains('unread'));rows.forEach((r,i)=>setTimeout(()=>r.classList.toggle('unread',!any),motionOn()?i*70:0))};
+// 31 fly to bell
+const bellbox=$('bellbox'),bell=$('bell'),bbadge=$('bbadge');
+$('notify').onclick=()=>{const done=()=>{bbadge.textContent=+bbadge.textContent+1;replay(bbadge,'bump');if(motionOn())replay(bell,'ring')};if(!motionOn())return done();
+ const dot=document.createElement('span');dot.className='dotfly';bellbox.appendChild(dot);const br=bell.getBoundingClientRect(),r=bellbox.getBoundingClientRect();const tx=br.left-r.left+13-18,ty=br.top-r.top+13-70;
+ dot.animate([{transform:'translate(0,0) scale(1)'},{transform:`translate(${tx*.5}px,${ty-34}px) scale(1.25)`,offset:.5},{transform:`translate(${tx}px,${ty}px) scale(.35)`,opacity:.5}],{duration:650,easing:ease}).onfinish=()=>{dot.remove();done()}};
+// 32 inline save
+const inl=$('inlin'),insv=$('inlsv');let inlT;
+inl.onkeydown=e=>{if(e.key==='Enter')inl.blur()};
+inl.onchange=()=>{inl.classList.add('saved');insv.classList.add('show');clearTimeout(inlT);setTimeout(()=>inl.classList.remove('saved'),140);inlT=setTimeout(()=>insv.classList.remove('show'),1700)};
+// 33 count-up
+function countTo(el,to,dur=750){const from=+(el.dataset.v||0);el.dataset.v=to;if(!motionOn()){el.textContent=to.toLocaleString('en-US');return}const t0=performance.now();
+ const f=t=>{const k=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-k,3);el.textContent=Math.round(from+(to-from)*e).toLocaleString('en-US');if(k<1)requestAnimationFrame(f)};requestAnimationFrame(f)}
+const kpis=[...document.querySelectorAll('.kpi b')];const runK=()=>kpis.forEach(k=>{k.dataset.v=0;countTo(k,+k.dataset.to)});$('kpibtn').onclick=runK;runK();
+// 34 progress ring
+let acked=86;const fg=$('fg'),rlab=$('rlab'),rtx=$('rtx');
+function updRing(){const p=acked/140;fg.style.strokeDashoffset=(226.2*(1-p)).toFixed(1);countTo(rlab,Math.round(p*100),650);rtx.textContent=`${acked} of 140 colleagues`}
+$('ackmore').onclick=()=>{acked=acked>=140?30:Math.min(140,acked+12);updRing()};setTimeout(updRing,250);
+// 35 FLIP reorder
+function flip(container,mutate){const els=[...container.children];const first=new Map(els.map(e=>[e,e.getBoundingClientRect()]));mutate();if(!motionOn())return;
+ els.forEach(e=>{const a=first.get(e),b=e.getBoundingClientRect();const dx=a.left-b.left,dy=a.top-b.top;if(dx||dy)e.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}],{duration:380,easing:ease})})}
+const wgrid=$('wgrid');$('shuffle').onclick=()=>flip(wgrid,()=>{const a=[...wgrid.children];a.push(a.shift());a.forEach(x=>wgrid.appendChild(x))});
+wgrid.querySelectorAll('.wg').forEach(w=>w.onclick=()=>flip(wgrid,()=>wgrid.prepend(w)));
+// 36 favorite flies to favorites
+const favbox=$('favbox');
+document.querySelectorAll('#plist .star').forEach(s=>s.onclick=()=>{const row=s.closest('.prow'),av=row.querySelector('.av2'),key=row.dataset.n;const on=!s.classList.contains('on');s.classList.toggle('on',on);s.classList.remove('pop');
+ if(!on){favbox.querySelector(`[data-n="${key}"]`)?.remove();return}void s.offsetWidth;s.classList.add('pop');
+ const add=()=>{const c=av.cloneNode(true);c.dataset.n=key;c.classList.add('new');favbox.appendChild(c)};if(!motionOn())return add();
+ const a=av.getBoundingClientRect(),fb=favbox.getBoundingClientRect();const n=favbox.querySelectorAll('.av2').length;const tx=fb.left+8+(n%3)*32-a.left,ty=fb.top+26+Math.floor(n/3)*32-a.top;
+ const ghost=av.cloneNode(true);Object.assign(ghost.style,{position:'fixed',left:a.left+'px',top:a.top+'px',margin:'0',zIndex:140});document.body.appendChild(ghost);
+ ghost.animate([{transform:'none'},{transform:`translate(${tx*.5}px,${ty-40}px) scale(1.2)`,offset:.5},{transform:`translate(${tx}px,${ty}px) scale(1)`}],{duration:620,easing:ease}).onfinish=()=>{ghost.remove();add()}});
+// 37 task completed
+const tasks=$('tasks');tasks.querySelectorAll('.tk').forEach(t=>t.onclick=()=>{t.classList.toggle('done');setTimeout(()=>flip(tasks,()=>{[...tasks.children].filter(x=>x.classList.contains('done')).forEach(x=>tasks.appendChild(x))}),motionOn()?480:0)});
+// 38 search highlight
+const people=['Rina Aulia','Budi Santoso','Rinaldi Pratama','Dewi Sartika','Arini Putri','Hendra Wijaya'];const srch=$('srch'),sin=srch.querySelector('input'),sres=$('sres');
+function renderSearch(){const q=sin.value.trim();srch.classList.toggle('has',!!q);const re=q?new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'ig'):null;const hits=people.filter(n=>!q||n.toLowerCase().includes(q.toLowerCase()));
+ sres.innerHTML=hits.length?hits.slice(0,4).map(n=>`<div>${re?n.replace(re,m=>`<mark>${m}</mark>`):n}</div>`).join(''):`<div style="color:var(--ink-3)">No one matches “${q.replace(/[<&]/g,c=>c==='<'?'&lt;':'&amp;')}”</div>`}
+sin.oninput=renderSearch;srch.querySelector('.x').onclick=()=>{sin.value='';renderSearch();sin.focus()};renderSearch();
+// 39 swipe actions
+document.querySelectorAll('.sw').forEach(sw=>{const top=sw.querySelector('.top');let x0=null,dx=0;
+ const reset=()=>{sw.classList.remove('gone');top.classList.remove('back');top.style.transform='';sw.dataset.dir=''};
+ top.onpointerdown=e=>{x0=e.clientX;dx=0;top.classList.remove('back');top.setPointerCapture(e.pointerId)};
+ top.onpointermove=e=>{if(x0===null)return;dx=e.clientX-x0;top.style.transform=`translateX(${dx}px)`;sw.dataset.dir=dx>0?'r':dx<0?'l':''};
+ top.onpointerup=top.onpointercancel=()=>{if(x0===null)return;x0=null;const w=sw.offsetWidth;
+  if(Math.abs(dx)>w*.35){if(motionOn()){top.classList.add('back');top.style.transform=`translateX(${dx>0?w:-w}px)`;setTimeout(()=>sw.classList.add('gone'),250)}else sw.classList.add('gone');setTimeout(reset,1800)}
+  else{top.classList.add('back');top.style.transform='';setTimeout(()=>{sw.dataset.dir=''},350)}}});
+// 40 photo zoom
+const lb=document.createElement('div');lb.className='lb';lb.innerHTML='<div class="big"></div>';document.body.appendChild(lb);const big=lb.querySelector('.big');let thumbSrc=null;
+const thumbBox=()=>{const a=thumbSrc.getBoundingClientRect(),b=big.getBoundingClientRect();return `translate(${a.left-b.left}px,${a.top-b.top}px) scale(${a.width/b.width},${a.height/b.height})`};
+document.querySelectorAll('.thumb').forEach(t=>t.onclick=()=>{thumbSrc=t;big.style.background=t.style.background;lb.classList.remove('closing');lb.classList.add('on');if(motionOn())big.animate([{transform:thumbBox(),borderRadius:'30px'},{transform:'none',borderRadius:'14px'}],{duration:340,easing:ease})});
+lb.onclick=()=>{if(!motionOn()||!thumbSrc){lb.classList.remove('on');return}lb.classList.add('closing');big.animate([{transform:'none'},{transform:thumbBox()}],{duration:260,easing:'ease-in',fill:'forwards'}).onfinish=a=>{lb.classList.remove('on','closing');a.target.cancel()}};
+// 41 incoming call
+const call=$('call'),cst=$('cst'),acts=call.querySelector('.acts');let ctimer;
+function startRing(){clearInterval(ctimer);call.classList.add('ringing');cst.textContent='Incoming voice call…';acts.style.display=''}
+$('ans').onclick=()=>{call.classList.remove('ringing');acts.style.display='none';let s=0;cst.textContent='Connected · 0:00';ctimer=setInterval(()=>{s++;cst.textContent=`Connected · ${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`},1000)};
+$('dec').onclick=()=>{call.classList.remove('ringing');acts.style.display='none';cst.textContent='Declined'};
+$('ringagain').onclick=startRing;startRing();
+// 42 voice note
+const rec=$('rec'),mic=$('mic'),wave=rec.querySelector('.wave'),rtm=rec.querySelector('.tm');for(let i=0;i<34;i++)wave.appendChild(document.createElement('i'));let rt,rs=0;
+mic.onclick=()=>{const on=!mic.classList.contains('on');mic.classList.toggle('on',on);rec.classList.toggle('on',on);mic.innerHTML=`<i data-lucide="${on?'square':'mic'}"></i>`;lucide.createIcons();clearInterval(rt);
+ if(on){rs=0;rt=setInterval(()=>{rs+=.12;rtm.textContent='0:'+String(Math.floor(rs)).padStart(2,'0');[...wave.children].forEach(b=>b.style.height=(4+Math.random()*22).toFixed(0)+'px')},120)}
+ else{[...wave.children].forEach(b=>b.style.height='4px');rtm.textContent='0:00'}};
+// 43 emoji picker
+const einp=$('einp');['😀','😂','😍','👍','🙏','🎉','🔥','❤️','😮','😢','👏','✅','💡','☕','📌','🚀'].forEach(e=>{const b=document.createElement('button');b.textContent=e;b.setAttribute('aria-label',e);
+ b.onclick=()=>{if(!einp.querySelector('span'))einp.textContent='';const s=document.createElement('span');s.textContent=e;s.className='new';einp.appendChild(s);if(einp.children.length>14)einp.firstElementChild.remove()};$('emo').appendChild(b)});
+// 44 character limit
+const cc=$('cc'),cta=cc.querySelector('textarea'),ccnt=cc.querySelector('.cnt2'),CMAX=120;
+function updCount(){const n=cta.value.length;ccnt.textContent=`${n} / ${CMAX}`;cc.classList.toggle('near',n>=CMAX*.8);cc.classList.toggle('full',n>=CMAX)}
+cta.oninput=updCount;cta.addEventListener('beforeinput',e=>{if(cta.value.length>=CMAX&&(e.inputType||'').startsWith('insert'))replay(cc,'full')});updCount();
+lucide.createIcons();
+let evs=0;document.getElementById('addev').onclick=()=>{const g=document.getElementById('grid');if(evs>=3){g.innerHTML='';evs=0}const e=document.createElement('div');e.className='ev new';e.style.top=(6+evs*36)+'px';e.textContent=['Budget review','Vendor visit','1:1 with Rina'][evs++];g.appendChild(e)};
+</script>
+</body></html>

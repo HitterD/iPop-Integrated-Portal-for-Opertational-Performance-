@@ -1,9 +1,9 @@
 @implements IDisposable
 @inject OverlayStack Overlays
 
-@if (IsOpen)
+@if (IsOpen || closing)
 {
-    <div class="modal-backdrop" @onclick="OnBackdrop">
+    <div class="modal-backdrop @(closing ? "mi-closing" : "")" @onclick="OnBackdrop">
         <div class="modal-card @(Wide ? "wide" : "")" role="dialog" aria-modal="true" @onclick:stopPropagation>
             <div class="modal-head">
                 <div>
@@ -33,6 +33,10 @@
     [Parameter] public RenderFragment? Footer { get; set; }
 
     private IDisposable? _registration;
+    // Exit animation: the markup stays for ExitMs after IsOpen turns false (see core/micro.css).
+    private const int ExitMs = 180;
+    private bool closing, wasOpen;
+    private CancellationTokenSource? _exitCts;
 
     private async Task Close() => await IsOpenChanged.InvokeAsync(false);
     private async Task OnBackdrop() { if (CloseOnBackdrop) await Close(); }
@@ -42,7 +46,21 @@
         if (IsOpen && _registration is null)
             _registration = Overlays.Push(() => CloseOnEscape ? Close() : Task.CompletedTask);
         else if (!IsOpen) { _registration?.Dispose(); _registration = null; }
+
+        if (IsOpen) { _exitCts?.Cancel(); closing = false; }
+        else if (wasOpen) _ = PlayExitAsync();
+        wasOpen = IsOpen;
     }
 
-    public void Dispose() => _registration?.Dispose();
+    private async Task PlayExitAsync()
+    {
+        _exitCts?.Cancel();
+        var cts = _exitCts = new CancellationTokenSource();
+        closing = true;
+        try { await Task.Delay(ExitMs, cts.Token); } catch (TaskCanceledException) { return; }
+        closing = false;
+        StateHasChanged();
+    }
+
+    public void Dispose() { _registration?.Dispose(); _exitCts?.Cancel(); }
 }

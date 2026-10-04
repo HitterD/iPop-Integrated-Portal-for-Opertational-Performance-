@@ -18,7 +18,8 @@
         var kind = toast.Kind.ToString().ToLowerInvariant();
         var title = toast.Title;
         <div @key="toast.Id"
-             class="toast @kind @(clickable ? "clickable" : "") @(toast.IsExiting ? "exiting" : "") @(toast.IsPaused ? "paused" : "")"
+             class="toast @kind @(clickable ? "clickable" : "") @(toast.IsExiting ? "exiting" : "") @(toast.IsPaused ? "paused" : "") @(toast.Undo is not null ? "has-undo" : "")"
+             style="@(toast.Undo is not null ? $"--mi-undo-ms:{toast.UndoMs}ms" : null)"
              role="@(toast.Kind is ToastKind.Error or ToastKind.Warning ? "alert" : "status")"
              tabindex="-1"
              @onmouseenter="() => Toasts.Pause(toast.Id)"
