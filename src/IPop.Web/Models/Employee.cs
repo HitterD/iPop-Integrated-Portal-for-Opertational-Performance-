@@ -17,7 +17,9 @@ public record Employee(
     string? PhotoPath = null,
     string? ManagerNik = null,
     string? Section = null,
-    DateTime? LastSeenAt = null)
+    DateTime? LastSeenAt = null,
+    string? UnitKey = null,
+    string? UnitName = null)
 {
     /// "Department › Section" for the Directory list; "—" when neither is known.
     public string Placement => string.IsNullOrEmpty(Section) ? Department : $"{Department} › {Section}";

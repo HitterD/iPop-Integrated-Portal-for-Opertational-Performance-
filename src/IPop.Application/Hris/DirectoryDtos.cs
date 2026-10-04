@@ -14,7 +14,10 @@ public record DirectoryEmployee(
     /// Division name ("Section"), shown as "Department › Section" in the Directory list.
     string? Section = null,
     /// Last heartbeat (UTC), for "Last seen …" while offline. Shown to everyone by policy.
-    DateTime? LastSeenAt = null);
+    DateTime? LastSeenAt = null,
+    /// Stable actual placement identity; labels alone are not unique across units.
+    string? UnitKey = null,
+    string? UnitName = null);
 
 public record DirectoryDepartment(string Code, string Name, string? ParentCode, int DirectMembers);
 public record DirectorySite(string Code, string Name);

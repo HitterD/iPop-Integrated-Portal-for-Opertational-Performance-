@@ -348,6 +348,160 @@ public class DirectoryReadEndpointsTests
         Assert.All(anon.Items, e => Assert.False(e.IsFavorite));
     }
 
+    [Fact]
+    public async Task Favorites_FilterBeforeCountAndPaging_AndStayOwnerScoped()
+    {
+        using var t = new TestDb();
+        var caller = t.AddUser("CALLER");
+        var other = t.AddUser("OTHER");
+        var users = Enumerable.Range(0, 2501).Select(i => new User
+        {
+            Id = Guid.NewGuid(), Nik = $"P{i:D4}", Name = $"Person {i:D4}",
+            Email = $"p{i}@test.invalid", IsActive = true
+        }).ToArray();
+        t.Db.Users.AddRange(users);
+        t.Db.UserFavoriteContacts.AddRange(
+            new UserFavoriteContact { Id = Guid.NewGuid(), UserId = caller.Id, ContactNik = users[^1].Nik },
+            new UserFavoriteContact { Id = Guid.NewGuid(), UserId = other.Id, ContactNik = users[0].Nik });
+        await t.Db.SaveChangesAsync();
+
+        var result = await DirectoryEndpoints.EmployeesCore(null, null, null, null, null, null, null, null,
+            1, 120, caller.Nik, t.Db, default, favorites: true);
+        Assert.Equal(1, result.Total);
+        Assert.Equal(users[^1].Nik, Assert.Single(result.Items).Nik);
+        Assert.True(result.Items[0].IsFavorite);
+        var otherResult = await DirectoryEndpoints.EmployeesCore(null, null, null, null, null, null, null, null,
+            1, 120, other.Nik, t.Db, default, favorites: true);
+        Assert.Equal(users[0].Nik, Assert.Single(otherResult.Items).Nik);
+        var anon = await DirectoryEndpoints.EmployeesCore(null, null, null, null, null, null, null, null,
+            1, 120, null, t.Db, default, favorites: true);
+        Assert.Equal(0, anon.Total);
+
+        // This exact unbounded core is used by the CSV handler, not a page with a hidden cap.
+        var exported = await DirectoryEndpoints.FilteredEmployeesCore(null, null, null, null, null, null,
+            "name", true, caller.Nik, t.Db, default);
+        Assert.Equal(2503, exported.Length);
+        var page = await DirectoryEndpoints.EmployeesCore(null, null, null, null, null, null, "name", true,
+            2, 120, caller.Nik, t.Db, default);
+        Assert.Equal(exported.Skip(120).Take(120), page.Items);
+        var favoriteExport = await DirectoryEndpoints.FilteredEmployeesCore(null, null, null, null, null, null,
+            "name", true, caller.Nik, t.Db, default, favorites: true);
+        Assert.Equal(result.Items, favoriteExport);
+    }
+
+    [Fact]
+    public async Task SiteScope_UsesDivisionFallback_ButDirectPlacementWins()
+    {
+        using var t = new TestDb();
+        var (dept, site, div) = SeedDivision(t);
+        var child = new Department { Id = Guid.NewGuid(), Code = "CHILD", Name = "Child", ParentId = dept.Id };
+        var otherSite = new Site { Id = Guid.NewGuid(), Code = "S2", Name = "Other" };
+        t.Db.Departments.Add(child);
+        t.Db.Sites.Add(otherSite);
+        var fallback = t.AddUser("FALLBACK"); fallback.DivisionId = div.Id;
+        var direct = t.AddUser("DIRECT"); direct.DepartmentId = child.Id; direct.SiteId = site.Id;
+        var elsewhere = t.AddUser("ELSEWHERE"); elsewhere.DivisionId = div.Id; elsewhere.SiteId = otherSite.Id;
+        await t.Db.SaveChangesAsync();
+
+        var result = await DirectoryEndpoints.EmployeesCore(null, dept.Code, site.Code, null, null, null,
+            null, null, 1, 120, null, t.Db, default);
+        Assert.Equal(2, result.Total);
+        Assert.All(result.Items, e => Assert.Equal(site.Code, e.SiteCode));
+        Assert.Equal(site.Name, result.Items.Single(e => e.Nik == fallback.Nik).Site);
+        Assert.DoesNotContain(result.Items, e => e.Nik == elsewhere.Nik);
+    }
+
+    [Fact]
+    public async Task StatusSort_UsesExplicitRanks_NameAndStableIdTies()
+    {
+        using var t = new TestDb();
+        var now = DateTime.UtcNow;
+        var on1 = t.AddUser("ON1"); on1.Name = "Same"; on1.PresenceLastSeenAt = now;
+        var on2 = t.AddUser("ON2"); on2.Name = "Same"; on2.PresenceLastSeenAt = now;
+        var busy = t.AddUser("BUSY"); busy.PresenceLastSeenAt = now; busy.PresenceManualStatus = "busy";
+        var away = t.AddUser("AWAY"); away.PresenceLastSeenAt = now; away.PresenceIsIdle = true;
+        t.AddUser("OFF");
+        await t.Db.SaveChangesAsync();
+        var asc = await DirectoryEndpoints.FilteredEmployeesCore(null, null, null, null, null, null,
+            "status", false, null, t.Db, default);
+        Assert.Equal(new[] { "on", "on", "busy", "away", "off" }, asc.Select(e => e.Status));
+        Assert.Equal(new[] { on1.Id, on2.Id }.OrderBy(id => id), asc.Take(2).Select(e => e.UserId!.Value));
+        var desc = await DirectoryEndpoints.FilteredEmployeesCore(null, null, null, null, null, null,
+            "status", true, null, t.Db, default);
+        Assert.Equal(new[] { "off", "away", "busy", "on", "on" }, desc.Select(e => e.Status));
+        var filtered = await DirectoryEndpoints.EmployeesCore(null, null, null, null, "on", null,
+            "status", false, 1, 1, null, t.Db, default);
+        Assert.Equal(2, filtered.Total);
+        Assert.Equal(asc[0], Assert.Single(filtered.Items));
+    }
+
+    [Fact]
+    public async Task GroupPaging_DuplicateLabelsRemainSeparate_AndMatchExportOrdering()
+    {
+        using var t = new TestDb();
+        var (dept, site, div) = SeedDivision(t);
+        div.Name = "Same unit";
+        var second = new Division { Id = Guid.NewGuid(), Code = "DV2", Name = div.Name,
+            DepartmentId = dept.Id, SiteId = site.Id, IsActive = true };
+        t.Db.Divisions.Add(second);
+        var users = Enumerable.Range(0, 125).Select(i => new User
+        {
+            Id = Guid.NewGuid(), Nik = $"G{i:D3}", Name = $"Person {124 - i:D3}",
+            Email = $"g{i}@test.invalid", IsActive = true, DivisionId = i < 122 ? div.Id : second.Id
+        }).ToArray();
+        t.Db.Users.AddRange(users);
+        await t.Db.SaveChangesAsync();
+        var full = await DirectoryEndpoints.FilteredEmployeesCore(null, dept.Code, site.Code, null, null, null,
+            "name", false, null, t.Db, default, grouped: true);
+        var first = await DirectoryEndpoints.EmployeesCore(null, dept.Code, site.Code, null, null, null,
+            "name", false, 1, 120, null, t.Db, default, grouped: true);
+        var next = await DirectoryEndpoints.EmployeesCore(null, dept.Code, site.Code, null, null, null,
+            "name", false, 2, 120, null, t.Db, default, grouped: true);
+        Assert.Equal(125, first.Total);
+        Assert.Equal(120, first.Items.Length);
+        Assert.Equal(full, first.Items.Concat(next.Items));
+        Assert.Equal(125, full.Select(e => e.UserId).Distinct().Count());
+        Assert.Equal(2, full.Select(e => e.UnitKey).Distinct().Count());
+        Assert.All(full, e => Assert.Equal("Same unit", e.UnitName));
+        Assert.All(full.GroupBy(e => e.UnitKey), g =>
+            Assert.Equal(g.Select(e => e.Name).OrderBy(n => n), g.Select(e => e.Name)));
+        Assert.Equal(full.Select(e => e.UnitKey).OrderBy(key => key), full.Select(e => e.UnitKey));
+    }
+
+    [Fact]
+    public async Task ExportCore_CombinesScopeDivisionManagerPresenceFavoritesAndSortLikePaging()
+    {
+        using var t = new TestDb();
+        var (dept, site, div) = SeedDivision(t);
+        var caller = t.AddUser("CALLER");
+        var matching = t.AddUser("MATCH"); matching.DivisionId = div.Id;
+        matching.ManagerNik = caller.Nik; matching.PresenceLastSeenAt = DateTime.UtcNow;
+        var wrongManager = t.AddUser("WRONG"); wrongManager.DivisionId = div.Id;
+        wrongManager.PresenceLastSeenAt = DateTime.UtcNow;
+        t.Db.UserFavoriteContacts.AddRange(new[] { matching, wrongManager }.Select(u =>
+            new UserFavoriteContact { Id = Guid.NewGuid(), UserId = caller.Id, ContactNik = u.Nik }));
+        await t.Db.SaveChangesAsync();
+        var full = await DirectoryEndpoints.FilteredEmployeesCore(null, dept.Code, site.Code, div.Code,
+            "on", caller.Nik, "status", true, caller.Nik, t.Db, default, favorites: true, grouped: true);
+        var page = await DirectoryEndpoints.EmployeesCore(null, dept.Code, site.Code, div.Code,
+            "on", caller.Nik, "status", true, 1, 120, caller.Nik, t.Db, default, favorites: true, grouped: true);
+        Assert.Equal(matching.Id, Assert.Single(full).UserId);
+        Assert.Equal(full, page.Items);
+        Assert.Equal(full.Length, page.Total);
+    }
+
+    [Theory]
+    [InlineData("=SUM(A1)", "'=SUM(A1)")]
+    [InlineData("+1", "'+1")]
+    [InlineData("-1", "'-1")]
+    [InlineData("@cmd", "'@cmd")]
+    [InlineData("\tcmd", "'\tcmd")]
+    [InlineData("a;b", "\"a;b\"")]
+    [InlineData("a\"b", "\"a\"\"b\"")]
+    [InlineData("a\nb", "\"a\nb\"")]
+    public void CsvFields_PreserveEscapingAndFormulaProtection(string value, string expected)
+        => Assert.Equal(expected, DirectoryEndpoints.CsvField(value));
+
     // --- Authorization (real application mechanisms, not IsInRole stubs) ---
 
     [Fact]

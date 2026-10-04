@@ -47,7 +47,7 @@
             <button type="button" class="seg-btn @(isGridView ? "active" : "")" title="Grid view" aria-label="Grid view" @onclick="() => isGridView = true"><i data-lucide="layout-grid"></i></button>
         </div>
         <div class="dir-sort">
-            <button type="button" class="ghost-btn" @onclick="() => sortOpen = !sortOpen" @onclick:stopPropagation="true" aria-haspopup="menu" aria-expanded="@(sortOpen ? "true" : "false")">
+            <button type="button" class="ghost-btn" @onclick="() => sortOpen = !sortOpen" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true" aria-haspopup="menu" aria-expanded="@(sortOpen ? "true" : "false")">
                 <i data-lucide="arrow-up-down"></i>@SortLabel(selectedSort)<i data-lucide="chevron-down" class="chev"></i>
             </button>
             @if (sortOpen)
@@ -74,9 +74,9 @@
 
 <div class="body dir-body @(treeOpen ? "m-tree-open" : "")">
     @* Phone only: the Structure/Favorites column collapses behind this toggle. *@
-    <button type="button" class="m-dir-filter @(selection is not null ? "on" : "")" aria-expanded="@(treeOpen ? "true" : "false")" @onclick="ToggleTree">
+    <button type="button" class="m-dir-filter @(selection is not null ? "on" : "")" aria-label="Departments" aria-expanded="@(treeOpen ? "true" : "false")" @onclick="ToggleTree">
         <i data-lucide="network"></i>
-        <span class="lbl">@(selection?.Name ?? "All people")</span>
+        <span class="lbl">Departments</span>
         <span class="v6-count-pill">@DisplayedPeople.Count</span>
         <i data-lucide="@(treeOpen ? "chevron-up" : "chevron-down")" class="chev"></i>
     </button>
@@ -93,15 +93,13 @@
     }
 
     <div class="cols dir-cols">
-        <div class="col gap-14 dir-side">
+        @if (treeOpen) { <div class="dir-tree-backdrop" @onclick="CloseTree"></div> }
+        <div class="col gap-14 dir-side" id="directory-departments" tabindex="-1" @onkeydown="OnTreeKey">
+        <div class="dir-sheet-head"><strong>Departments</strong><button type="button" aria-label="Close departments" @onclick="CloseTree"><i data-lucide="x"></i></button></div>
         <!-- Structure: Plant ▸ Division ▸ Department (Site ▸ Department ▸ Division entities) -->
         <div class="card dir-structure">
-            <div class="card-head">
-                <div>
-                    <div class="card-title">Structure</div>
-                    <div class="card-meta">@(structureLoading ? "Loading…" : TotalDivisions > 0 ? $"{allPeopleCount:N0} people · {TotalDivisions:N0} departments" : $"{allPeopleCount:N0} people")</div>
-                </div>
-            </div>
+            <div class="card-head"><div class="card-title">Organization</div><button type="button" class="ghost-btn" title="Collapse all" aria-label="Collapse all" @onclick="CollapseAll"><i data-lucide="fold-vertical"></i></button></div>
+            <div class="v6-search dir-tree-search"><i data-lucide="search"></i><input type="search" aria-label="Find a department" placeholder="Find a department…" value="@navigation.Search" @oninput="e => navigation.Search = e.Value?.ToString() ?? string.Empty" /></div>
             @if (structureLoading)
             {
                 <div style="padding:14px">
@@ -120,25 +118,22 @@
                         <span class="lbl">All people</span>
                         <span class="tree-n">@allPeopleCount.ToString("N0")</span>
                     </button>
-                    @foreach (var site in dirStructure.Sites)
+                    @foreach (var node in navigation.Visible())
                     {
-                        var siteSel = IsSelected("site", site.Code);
-                        <button type="button" class="tree-node tree-site-node @(siteSel ? "on" : "")"
-                                aria-pressed="@(siteSel ? "true" : "false")" @onclick='() => SelectNode("site", site.Code, site.Name)'>
-                            <span class="lbl">@site.Name</span>
-                            <span class="tree-n">@site.MemberCount</span>
-                        </button>
-                        @foreach (var dept in site.Departments)
-                        {
-                            @DeptNode(site.Code, dept, 0)
-                        }
-                    }
-                    @if (dirStructure.NoDivisionCount > 0)
-                    {
-                        <div class="tree-foot"><i data-lucide="circle-dashed"></i><span class="lbl">No department</span><span class="tree-n">@dirStructure.NoDivisionCount.ToString("N0")</span></div>
+                        var open = navigation.IsOpen(node);
+                        var hasKids = navigation.HasChildren(node);
+                        <div class="tree-row" style="--lv:@node.Depth" @key="node.Key">
+                            <button type="button" class="tree-twist" disabled="@(!hasKids)" aria-expanded="@(open ? "true" : "false")" aria-label="@(open ? "Collapse" : "Expand") @node.Name" @onclick="() => ToggleNode(node)">
+                                @if (hasKids) { <i data-lucide="@(open ? "chevron-down" : "chevron-right")"></i> }
+                            </button>
+                            <button type="button" class="tree-node @(navigation.SelectedKey == node.Key ? "on" : "")" title="@node.Name" aria-pressed="@(navigation.SelectedKey == node.Key ? "true" : "false")" @onclick="() => SelectOccurrence(node)">
+                                <i data-lucide="@(node.Kind == "site" ? "factory" : node.Kind == "div" ? "users" : node.Depth == 1 ? "network" : "folder-tree")"></i><span class="lbl">@node.Name</span><span class="tree-n">@node.Count</span>
+                            </button>
+                        </div>
                     }
                 </div>
             }
+            <label class="dir-show-empty"><input type="checkbox" checked="@navigation.ShowEmpty" @onchange="SetShowEmpty" /> Show empty</label>
         </div>
 
         @if (FavoritePeople.Count > 0)
@@ -151,13 +146,13 @@
                 <div class="fav-list">
                     @foreach (var p in FavoritePeople)
                     {
-                        <div class="fav-row" @onclick="() => selected = p">
+                        <div class="fav-row" tabindex="0" @onkeydown="e => OnCardKey(e, p)" @onclick="() => selected = p">
                             <div class="av-wrap">
                                 <div class="av" style="@IPop.Web.Models.AvatarPhotos.Style(p.Nik)">@p.Initials</div>
                                 <span class="presence @p.Status"></span>
                             </div>
                             <span class="n">@p.Name</span>
-                            <button type="button" class="act" title="Chat" aria-label="Chat with @p.Name" @onclick="() => OpenChatWith(p.Nik)" @onclick:stopPropagation="true"><i data-lucide="message-circle"></i></button>
+                            <button type="button" class="act" title="Chat" aria-label="Chat with @p.Name" @onclick="() => OpenChatWith(p.Nik)" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true"><i data-lucide="message-circle"></i></button>
                         </div>
                     }
                 </div>
@@ -167,6 +162,7 @@
 
         <!-- People Section -->
         <div class="col gap-14" style="min-width:0">
+            <nav class="dir-breadcrumb" aria-label="Organization path"><button type="button" @onclick="ClearDivisionFilter">All people</button>@foreach (var node in navigation.Path(navigation.Selected)) { <i data-lucide="chevron-right"></i><button type="button" @onclick="() => SelectOccurrence(node)" aria-current="@(node.Key == navigation.SelectedKey ? "page" : null)">@node.Name</button> }</nav>
             <div class="card dir-people">
                 @if (selectedNiks.Count > 0)
                 {
@@ -204,7 +200,7 @@
                             }
                         </div>
                     }
-                    else if (DisplayedPeople.Count == 0 && FavoritePeople.Count == 0)
+                    else if (DisplayedPeople.Count == 0)
                     {
                         <div style="text-align:center;padding:32px;color:var(--ink-3)">@(loadError ?? "No one found.")</div>
                     }
@@ -213,10 +209,11 @@
                         <div class="emp-grid">
                             @foreach (var p in DisplayedPeople)
                             {
+                                @if (selection is not null && IsGroupStart(p)) { <div class="dir-unit-heading">@GroupLabel(p) <span>@GroupLoaded(p) loaded</span></div> }
                                 var isFav = Favorites.IsFavorite(p.Nik);
                                 var isChecked = selectedNiks.Contains(p.Nik);
-                                <div class="dir-card @(isFav ? "fav" : "") @(isChecked ? "checked" : "")" @onclick="() => selected = p">
-                                    <div class="dc-top" @onclick:stopPropagation="true">
+                                <div class="dir-card @(isFav ? "fav" : "") @(isChecked ? "checked" : "")" tabindex="0" @onkeydown="e => OnCardKey(e, p)" @onclick="() => selected = p">
+                                    <div class="dc-top" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
                                         <button type="button" class="v6-cb @(isChecked ? "on" : "")"
                                                 role="checkbox" aria-checked="@(isChecked ? "true" : "false")"
                                                 aria-label="Select @p.Name" @onclick="() => TogglePersonSelection(p.Nik)">
@@ -230,7 +227,7 @@
                                     <span class="dc-name" title="@p.Name">@p.Name</span>
                                     <span class="dc-pos" title="@p.Placement">@p.Placement</span>
                                     <span class="dc-meta">@(p.HasExtension ? $"Ext. {p.Extension}" : p.Site)</span>
-                                    <div class="dc-acts" @onclick:stopPropagation="true">
+                                    <div class="dc-acts" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
                                         <button type="button" class="dc-msg" @onclick="() => OpenChatWith(p.Nik)"><i data-lucide="message-circle"></i>Message</button>
                                         <button type="button" class="dc-ic" title="Call" aria-label="Call @p.Name" @onclick="() => StartCallWith(p.Nik)"><i data-lucide="phone"></i></button>
                                         <button type="button" class="dc-ic" title="Email" aria-label="Email @p.Name" @onclick="() => OpenMailWith(p.Nik)"><i data-lucide="mail"></i></button>
@@ -273,7 +270,7 @@
                                     </tr>
                                 }
                             }
-                            else if (DisplayedPeople.Count == 0 && FavoritePeople.Count == 0)
+                            else if (DisplayedPeople.Count == 0)
                             {
                                 <tr>
                                     <td colspan="6" style="text-align:center;padding:32px;color:var(--ink-3)">@(loadError ?? "No one in this department yet.")</td>
@@ -283,11 +280,12 @@
                             {
                                 @foreach (var p in DisplayedPeople)
                                 {
+                                    @if (selection is not null && IsGroupStart(p)) { <tr class="dir-unit-row"><td colspan="6">@GroupLabel(p) <span>@GroupLoaded(p) loaded</span></td></tr> }
                                     var isFav = Favorites.IsFavorite(p.Nik);
                                     var isSel = (selected?.Nik ?? people.FirstOrDefault()?.Nik) == p.Nik;
                                     var isChecked = selectedNiks.Contains(p.Nik);
-                                    <tr class="@(isSel ? "sel" : "")" @onclick="() => selected = p">
-                                        <td @onclick:stopPropagation="true">
+                                    <tr class="@(isSel ? "sel" : "")" tabindex="0" @onkeydown="e => OnCardKey(e, p)" @onclick="() => selected = p">
+                                        <td @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
                                             <button type="button" class="v6-cb @(isChecked ? "on" : "")"
                                                     role="checkbox" aria-checked="@(isChecked ? "true" : "false")"
                                                     aria-label="Select @p.Name" @onclick="() => TogglePersonSelection(p.Nik)">
@@ -312,15 +310,15 @@
                                         </td>
                                         <td>
                                             <div class="row-acts">
-                                                <button type="button" class="ra" title="Chat" aria-label="Chat with @p.Name" @onclick="() => OpenChatWith(p.Nik)" @onclick:stopPropagation="true">
+                                                <button type="button" class="ra" title="Chat" aria-label="Chat with @p.Name" @onclick="() => OpenChatWith(p.Nik)" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
                                                     <i data-lucide="message-circle"></i>
                                                 </button>
-                                                <button type="button" class="ra" title="Call" aria-label="Call @p.Name" @onclick='() => StartCallWith(p.Nik)' @onclick:stopPropagation="true">
+                                                <button type="button" class="ra" title="Call" aria-label="Call @p.Name" @onclick='() => StartCallWith(p.Nik)' @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
                                                     <i data-lucide="phone"></i>
                                                 </button>
                                                 <button type="button" class="ra fav @(isFav ? "on" : "")"
                                                         title="@(isFav ? "Remove from favorites" : "Add to favorites")"
-                                                        @onclick="() => ToggleFavorite(p.Nik)" @onclick:stopPropagation="true">
+                                                        @onclick="() => ToggleFavorite(p.Nik)" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
                                                     <i data-lucide="star"></i>
                                                 </button>
                                             </div>
@@ -377,7 +375,7 @@
     }
     private int allPeopleCount => (dirStructure?.Sites.Sum(s => s.MemberCount) ?? 0) + (dirStructure?.NoDivisionCount ?? 0);
     private HashSet<string> selectedNiks = [];
-    private IReadOnlyList<Employee> DisplayedPeople => favOnly ? people.Where(p => Favorites.IsFavorite(p.Nik)).ToList() : people;
+    private IReadOnlyList<Employee> DisplayedPeople => people;
 
     private void TogglePersonSelection(string nik)
     {
@@ -392,10 +390,11 @@
             selectedNiks = DisplayedPeople.Select(p => p.Nik).ToHashSet();
     }
 
-    private void ToggleFavOnly()
+    private async Task ToggleFavOnly()
     {
         favOnly = !favOnly;
         selectedNiks.Clear();
+        await Reload(1, replace: true);
     }
 
     private async Task OnSortChanged()
@@ -421,7 +420,7 @@
 
     private async Task BulkFavorite()
     {
-        foreach (var nik in selectedNiks) await Favorites.ToggleAsync(nik);
+        foreach (var nik in selectedNiks.ToArray()) await Favorites.ToggleAsync(nik);
         Toasts.Show($"Updated favorites for {selectedNiks.Count} people.", ToastKind.Success);
         selectedNiks.Clear();
     }
@@ -455,20 +454,14 @@
     private bool structureLoading = true;
     // Tree selection: a Plant (site), a Division/sub-division (department subtree) or a
     // Department (division) — each filters the list through its own employees query param.
-    private sealed record TreeSelection(string Kind, string Code, string Name);
+    private sealed record TreeSelection(string Kind, string Code, string Name, string SiteCode);
     private TreeSelection? selection;
-    private readonly HashSet<string> collapsedDepts = [];
     private bool treeOpen;
     private string? notice;
     private bool noticeIsError;
 
-    // Topbar search: non-empty trimmed query → fetch division matches for tree badges, then
-    // reload the grid with q so only matching cards show. Blank query → restore pre-search state.
+    // People search is independent from the local organization-name search.
     private string? searchQ;
-    private Dictionary<string, int> divMatches = []; // division code → match count
-    private bool IsSearching => searchQ is not null;
-    private int TotalDivisions => dirStructure?.Sites.Sum(s => s.Departments.Sum(CountDivisions)) ?? 0;
-    private static int CountDivisions(DirectoryDepartmentNodeDto d) => d.Divisions.Length + (d.Children ?? []).Sum(CountDivisions);
 
     /// Header tab counts come from the server, not the loaded page: the list is paged, so
     /// counting `people` reported 0 online whenever nobody on the current page was online.
@@ -490,6 +483,7 @@
         Layout.SearchChanged += OnSearchChanged;
         Auth.PresenceChanged += OnPresenceChanged;
         Auth.DirectoryChanged += OnDirectoryChanged;
+        Auth.MeChanged += OnAccountChanged;
         Auth.ConnectionStateChanged += OnConnectionStateChanged;
         Favorites.Changed += OnFavoritesChanged;
     }
@@ -502,29 +496,25 @@
     private void OnFavoritesChanged() => _ = InvokeAsync(async () =>
     {
         await LoadFavoritesAsync();
+        if (favOnly) await Reload(1, replace: true);
         StateHasChanged();
     });
 
     private async Task LoadFavoritesAsync()
     {
         await Favorites.EnsureLoadedAsync();
-        if (Favorites.All.Count == 0) { favoritePeople = []; return; }
-        var wanted = Favorites.All.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var generation = ++favoriteGeneration;
+        var account = Auth.Me?.Nik;
         var loaded = new List<Employee>();
-        var p = 1;
-        while (wanted.Count > 0 && p <= 20)
+        for (var p = 1; ; p++)
         {
-            var result = await Auth.GetAsync<DirectoryPageDto>($"/api/directory/employees?page={p}&pageSize=120");
-            if (result is null || result.Items.Length == 0) break;
-            foreach (var d in result.Items)
-            {
-                if (!wanted.Remove(d.Nik)) continue;
-                loaded.Add(Map(d));
-            }
-            if (wanted.Count == 0 || result.Items.Length < 120) break;
-            p++;
+            var result = await Auth.GetAsync<DirectoryPageDto>($"/api/directory/employees?favorites=true&page={p}&pageSize=120");
+            if (generation != favoriteGeneration || account != Auth.Me?.Nik) return;
+            if (result is null) return;
+            loaded.AddRange(result.Items.Select(Map));
+            if (loaded.Count >= result.Total || result.Items.Length == 0) break;
         }
-        favoritePeople = loaded.OrderBy(e => e.Name).ToList();
+        favoritePeople = loaded.DistinctBy(p => p.Nik).ToList();
     }
 
     private async Task Unfavorite(string nik) => await Favorites.ToggleAsync(nik);
@@ -543,9 +533,7 @@
             // Ekspor server-side: filter yang sama (divisi + kata kunci + kehadiran)
             // berlaku untuk SELURUH himpunan hasil, bukan satu halaman yang terlihat.
             // Diunduh via fetch ber-Bearer (window.open tak membawa header auth).
-            var url = $"/api/directory/employees/export.csv?{SelectionParam}"
-                + (searchQ is null ? "" : $"&q={Uri.EscapeDataString(searchQ)}")
-                + (string.IsNullOrEmpty(presenceFilter) ? "" : $"&presence={presenceFilter}");
+            var url = $"/api/directory/employees/export.csv?{QueryParameters}";
             var res = await Auth.SendAsync(HttpMethod.Get, url);
             if (!res.IsSuccessStatusCode)
             {
@@ -556,7 +544,7 @@
             var bytes = await res.Content.ReadAsByteArrayAsync();
             var stamp = DateTime.Now.ToString("yyyyMMdd-HHmm");
             await JS.InvokeVoidAsync("ipop.download", Convert.ToBase64String(bytes), $"directory-{stamp}.csv");
-            notice = "Directory CSV file downloaded.";
+            notice = $"Downloaded CSV for the current scope ({total:N0} matching people).";
             noticeIsError = false;
         }
         catch (Exception ex)
@@ -574,6 +562,7 @@
     protected override async Task OnInitializedAsync()
     {
         await LoadStructure();
+        await RestoreNavigation();
         _ = LoadFavoritesAsync();
         await Reload(1, replace: true);
         await SelectFromQuery();
@@ -603,80 +592,23 @@
         structureLoading = true;
         dirStructure = await Auth.GetAsync<DirectoryStructureNodeDto>("/api/directory/structure");
         structureLoading = false;
+        if (dirStructure is not null) { navigation.Load(dirStructure); SyncSelection(); }
         if (dirStructure is not null) Layout.SetSubtitle($"{allPeopleCount:N0} people · {PresenceCounts.Online:N0} online");
         StateHasChanged();
     }
 
-    private bool IsSelected(string kind, string code) => selection?.Kind == kind && selection.Code == code;
-
     private string SelectionParam => selection switch
     {
-        { Kind: "site" } s => $"siteCode={Uri.EscapeDataString(s.Code)}",
-        { Kind: "dept" } s => $"departmentCode={Uri.EscapeDataString(s.Code)}",
-        { } s => $"divisionCode={Uri.EscapeDataString(s.Code)}",
+        { Kind: "site" } s => $"siteCode={Uri.EscapeDataString(s.SiteCode)}",
+        { Kind: "dept" } s => $"siteCode={Uri.EscapeDataString(s.SiteCode)}&departmentCode={Uri.EscapeDataString(s.Code)}",
+        { } s => $"siteCode={Uri.EscapeDataString(s.SiteCode)}&divisionCode={Uri.EscapeDataString(s.Code)}",
         null => "divisionCode=",
     };
-
-    // Clicking the selected node again clears the filter (same toggle the division rows had).
-    private async Task SelectNode(string kind, string code, string name)
-    {
-        selection = IsSelected(kind, code) ? null : new TreeSelection(kind, code, name);
-        treeOpen = false;
-        await Reload(1, replace: true);
-    }
-
-    private Task SelectDivision(DirectoryDivisionNodeDto d) => SelectNode("div", d.Code, d.Name);
-
-    private void ToggleCollapse(string key)
-    {
-        if (!collapsedDepts.Remove(key)) collapsedDepts.Add(key);
-    }
-
-    // One department row plus, unless collapsed, its divisions and sub-departments one level in.
-    private RenderFragment DeptNode(string siteCode, DirectoryDepartmentNodeDto dept, int level) => __builder =>
-    {
-        var key = $"{siteCode}/{dept.Code}";
-        var open = !collapsedDepts.Contains(key);
-        var hasKids = dept.Divisions.Length > 0 || (dept.Children?.Length ?? 0) > 0;
-        var sel = IsSelected("dept", dept.Code);
-        <div class="tree-row" style="--lv:@level">
-            <button type="button" class="tree-twist" disabled="@(!hasKids)" aria-expanded="@(open ? "true" : "false")"
-                    aria-label="@(open ? "Collapse" : "Expand") @dept.Name" @onclick="() => ToggleCollapse(key)">
-                @if (hasKids) { <i data-lucide="@(open ? "chevron-down" : "chevron-right")"></i> }
-            </button>
-            <button type="button" class="tree-node tree-dept @(sel ? "on" : "")" aria-pressed="@(sel ? "true" : "false")"
-                    @onclick='() => SelectNode("dept", dept.Code, dept.Name)'>
-                <span class="lbl">@dept.Name</span>
-                <span class="tree-n">@dept.MemberCount</span>
-            </button>
-        </div>
-        @if (open)
-        {
-            @foreach (var div in dept.Divisions)
-            {
-                var isSel = IsSelected("div", div.Code);
-                <button type="button" class="tree-node tree-div @(isSel ? "on" : "")" style="--lv:@(level + 1)"
-                        aria-pressed="@(isSel ? "true" : "false")" @onclick="() => SelectDivision(div)">
-                    <span class="lbl">@div.Name</span>
-                    <span class="tree-n">@div.MemberCount</span>
-                </button>
-            }
-            @foreach (var child in dept.Children ?? [])
-            {
-                @DeptNode(siteCode, child, level + 1)
-            }
-        }
-    };
-
     private async Task ClearDivisionFilter()
     {
-        selection = null;
-        treeOpen = false;
-        await Reload(1, replace: true);
+        navigation.SelectedKey = null; selection = null;
+        await CloseTree(); await SaveNavigation(); await Reload(1, replace: true);
     }
-
-    private int? divHitCount(DirectoryDivisionNodeDto div)
-        => IsSearching && divMatches.TryGetValue(div.Code, out var n) ? n : null;
 
     // ipop-35: void handler + InvokeAsync so an exception inside the await surfaces via
     // the module notice instead of vanishing as an async-void unhandled error.
@@ -684,18 +616,7 @@
     {
         try
         {
-            var q = Layout.SearchQuery?.Trim();
-            if (string.IsNullOrEmpty(q))
-            {
-                searchQ = null;
-                divMatches = [];
-                await Reload(page, replace: true);
-                return;
-            }
-            searchQ = q;
-            var matches = await Auth.GetAsync<DirectoryDivisionMatchDto[]>($"/api/directory/divisions?q={Uri.EscapeDataString(q)}");
-            if (searchQ != q) return; // superseded by a newer keystroke or a clear
-            divMatches = matches?.ToDictionary(m => m.Code, m => m.MatchCount) ?? [];
+            searchQ = string.IsNullOrWhiteSpace(Layout.SearchQuery) ? null : Layout.SearchQuery.Trim();
             await Reload(1, replace: true);
         }
         catch (Exception ex)
@@ -706,7 +627,7 @@
         }
     });
 
-    private void ToggleTree() => treeOpen = !treeOpen;
+
     private void DismissNotice() => notice = null;
 
     // Filter kehadiran — diteruskan ke endpoint employees (presence=on|busy|away|off).
@@ -746,26 +667,21 @@
         }
     }
 
-    private static Employee Map(DirectoryEmployeeDto d) => new(d.Name, d.Position ?? "—", d.Nik, d.Extension ?? "—", d.Location ?? "—", d.Department ?? "—", d.DepartmentCode, d.Site ?? "—", d.SiteCode, d.Manager ?? "—", d.Email, d.Status, AvatarPalette.For(d.Nik), d.PhotoPath, d.ManagerNik, d.Section, d.LastSeenAt);
+    private static Employee Map(DirectoryEmployeeDto d) => new(d.Name, d.Position ?? "—", d.Nik, d.Extension ?? "—", d.Location ?? "—", d.Department ?? "—", d.DepartmentCode, d.Site ?? "—", d.SiteCode, d.Manager ?? "—", d.Email, d.Status, AvatarPalette.For(d.Nik), d.PhotoPath, d.ManagerNik, d.Section, d.LastSeenAt, d.UnitKey, d.UnitName);
 
     private async Task Reload(int requestedPage, bool replace)
     {
-        var qAtStart = searchQ;
+        var generation = ++requestGeneration;
+        var account = Auth.Me?.Nik;
+        var query = QueryParameters;
         loading = true;
-        var q = searchQ is null ? "" : $"&q={Uri.EscapeDataString(searchQ)}";
-        var presence = string.IsNullOrEmpty(presenceFilter) ? "" : $"&presence={presenceFilter}";
-        var sortParts = selectedSort.Split('-');
-        var sort = sortParts[0];
-        var desc = sortParts.Length > 1 && sortParts[1] == "desc";
-        var sortParam = $"&sort={sort}&desc={desc}";
-        var url = $"/api/directory/employees?page={requestedPage}&pageSize={PageSize}&{SelectionParam}{q}{presence}{sortParam}";
-        var result = await Auth.GetAsync<DirectoryPageDto>(url);
-        if (qAtStart != searchQ) return; // superseded by a keystroke or clear
+        var result = await Auth.GetAsync<DirectoryPageDto>($"/api/directory/employees?page={requestedPage}&pageSize={PageSize}&{query}");
+        if (disposed || generation != requestGeneration || account != Auth.Me?.Nik || query != QueryParameters) return;
         loading = false;
         if (result is null) { loadError = "Could not load the directory."; return; }
         total = result.Total; page = result.Page;
         var mapped = result.Items.Select(Map).ToList();
-        if (replace) people = mapped; else people.AddRange(mapped);
+        if (replace) people = mapped; else people = people.Concat(mapped).DistinctBy(p => p.Nik).ToList();
         selected = selected is null ? null : people.FirstOrDefault(p => p.Nik == selected.Nik);
         loadError = null;
         StateHasChanged();
@@ -808,9 +724,10 @@
             if (fresh is not null)
             {
                 dirStructure = fresh;
+                navigation.Load(fresh); SyncSelection();
                 Layout.SetSubtitle($"{allPeopleCount:N0} people · {PresenceCounts.Online:N0} online");
             }
-            if (!string.IsNullOrEmpty(presenceFilter)) await Reload(1, replace: true);
+            if (!string.IsNullOrEmpty(presenceFilter) || selectedSort == "status-asc") await Reload(1, replace: true);
             else StateHasChanged();
         });
     }
@@ -821,6 +738,7 @@
     {
         await JS.InvokeVoidAsync("ipop.icons");
         await SyncMobileDetailAsync();
+        await SyncDepartmentSheet();
     }
 
     // ── Phone layout (<= 767px): the profile sheet is a full-screen detail; phone Back closes it.
@@ -854,5 +772,5 @@
         StateHasChanged();
     });
 
-    public void Dispose() { _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail").AsTask().ContinueWith(_ => { }); _selfRef?.Dispose(); Nav.LocationChanged -= OnLocationChanged; Layout.SearchChanged -= OnSearchChanged; Auth.PresenceChanged -= OnPresenceChanged; _presenceRefresh?.Cancel(); Auth.DirectoryChanged -= OnDirectoryChanged; Auth.ConnectionStateChanged -= OnConnectionStateChanged; Favorites.Changed -= OnFavoritesChanged; }
+    public void Dispose() { disposed = true; requestGeneration++; favoriteGeneration++; _ = JS.InvokeVoidAsync("ipop.mobile.clearDetail").AsTask().ContinueWith(_ => { }); _selfRef?.Dispose(); Nav.LocationChanged -= OnLocationChanged; Layout.SearchChanged -= OnSearchChanged; Auth.PresenceChanged -= OnPresenceChanged; _presenceRefresh?.Cancel(); Auth.DirectoryChanged -= OnDirectoryChanged; Auth.MeChanged -= OnAccountChanged; _ = CleanupSheet(); Auth.ConnectionStateChanged -= OnConnectionStateChanged; Favorites.Changed -= OnFavoritesChanged; }
 }

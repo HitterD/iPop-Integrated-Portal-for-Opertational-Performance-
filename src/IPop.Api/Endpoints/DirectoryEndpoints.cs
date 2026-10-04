@@ -133,25 +133,29 @@ public static class DirectoryEndpoints
         // SAMA dengan filter halaman (q/divisionCode/presence/dst). Server-side agar
         // seluruh hasil (bukan satu halaman) ikut serta dan ada jejak audit.
         app.MapGet("/api/directory/employees/export.csv", async (HttpContext http, string? q, string? departmentCode,
-            string? siteCode, string? divisionCode, string? presence, string? manager, IPopDbContext db, CancellationToken ct) =>
+            string? siteCode, string? divisionCode, string? presence, string? manager, string? sort, bool? desc,
+            bool? favorites, bool? grouped, IPopDbContext db, CancellationToken ct) =>
         {
             var callerNik = http.User.FindFirst("nik")?.Value;
             if (string.IsNullOrEmpty(callerNik)) return Results.Unauthorized();
 
-            var page = await EmployeesCore(q, departmentCode, siteCode, divisionCode, presence, manager, "name", false,
-                1, 2000, callerNik, db, ct);
+            var items = await FilteredEmployeesCore(q, departmentCode, siteCode, divisionCode, presence, manager,
+                sort, desc, callerNik, db, ct, favorites, grouped);
 
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("Name;Department;Section;Site;Email;Extension;Location;Status");
-            foreach (var e in page.Items)
+            foreach (var e in items)
+            {
+                ct.ThrowIfCancellationRequested();
                 sb.AppendLine(string.Join(';', CsvField(e.Name),
                     CsvField(e.Department), CsvField(e.Section), CsvField(e.Site), CsvField(e.Email), CsvField(e.Extension),
                     CsvField(e.Location), CsvField(e.Status)));
+            }
 
             db.AuditLogs.Add(new IPop.Core.Entities.AuditLog
             {
                 ActorNik = callerNik, Action = "directory.export_csv", Entity = "Directory",
-                EntityId = $"q={q ?? ""};div={divisionCode ?? ""};presence={presence ?? ""};n={page.Items.Length}",
+                EntityId = $"q={q ?? ""};div={divisionCode ?? ""};presence={presence ?? ""};n={items.Length}",
                 IpAddress = http.Connection.RemoteIpAddress?.ToString(), CreatedAt = DateTime.UtcNow
             });
             await db.SaveChangesAsync(ct);
@@ -165,9 +169,9 @@ public static class DirectoryEndpoints
         // filter, sort, and paging. Same ILIKE-escape pattern as /divisions and /member-search.
         app.MapGet("/api/directory/employees", async (HttpContext http, string? q, string? departmentCode,
             string? siteCode, string? divisionCode, string? presence, string? manager, string? sort, bool? desc, int? page,
-            int? pageSize, IPopDbContext db, CancellationToken ct) =>
+            int? pageSize, bool? favorites, bool? grouped, IPopDbContext db, CancellationToken ct) =>
             Results.Ok(await EmployeesCore(q, departmentCode, siteCode, divisionCode, presence, manager, sort, desc,
-                page, pageSize, http.User.FindFirst("nik")?.Value, db, ct))
+                page, pageSize, http.User.FindFirst("nik")?.Value, db, ct, favorites, grouped))
         ).RequireAuthorization().RequirePermission("directory.read");
 
         // Structure tree: Site ▸ Department ▸ Division with live member counts, for the
@@ -246,11 +250,23 @@ public static class DirectoryEndpoints
     // filter (applied in-memory since ComputeStatus isn't translatable), sort, and paging.
     internal static async Task<DirectoryPage> EmployeesCore(string? q, string? departmentCode, string? siteCode,
         string? divisionCode, string? presence, string? manager, string? sort, bool? desc, int? page, int? pageSize,
-        string? callerNik, IPopDbContext db, CancellationToken ct)
+        string? callerNik, IPopDbContext db, CancellationToken ct, bool? favorites = null, bool? grouped = null)
     {
         var p = Math.Max(1, page ?? 1);
         var size = Math.Clamp(pageSize ?? 120, 1, 5000);
+        var items = await FilteredEmployeesCore(q, departmentCode, siteCode, divisionCode, presence, manager,
+            sort, desc, callerNik, db, ct, favorites, grouped);
+        return new DirectoryPage(items.Length, p, size,
+            items.Skip((int)Math.Min((long)(p - 1) * size, int.MaxValue)).Take(size).ToArray());
+    }
+
+    // The complete matching/ordered set is shared by paging and export. Never cap exports here.
+    internal static async Task<DirectoryEmployee[]> FilteredEmployeesCore(string? q, string? departmentCode,
+        string? siteCode, string? divisionCode, string? presence, string? manager, string? sort, bool? desc,
+        string? callerNik, IPopDbContext db, CancellationToken ct, bool? favorites = null, bool? grouped = null)
+    {
         var query = db.Users.Include(u => u.Department).Include(u => u.Site)
+            .Include(u => u.Division).ThenInclude(d => d!.Site)
             .Include(u => u.Division).ThenInclude(d => d!.Department)
             .AsNoTracking().Where(u => u.IsActive);
         if (!string.IsNullOrWhiteSpace(q))
@@ -274,12 +290,20 @@ public static class DirectoryEndpoints
         }
         var siteCodes = SplitCodes(siteCode);
         if (siteCodes.Count > 0)
-            query = query.Where(u => u.Site != null && siteCodes.Contains(u.Site.Code));
+            query = query.Where(u => (u.SiteId != null && u.Site != null && siteCodes.Contains(u.Site.Code))
+                || (u.SiteId == null && u.Division != null && u.Division.Site != null
+                    && siteCodes.Contains(u.Division.Site.Code)));
         if (!string.IsNullOrWhiteSpace(divisionCode))
             query = query.Where(u => u.Division != null && u.Division.Code == divisionCode.Trim());
         // Bawahan langsung: hanya pegawai dengan ManagerNik = NIK ini (kartu profil).
         if (!string.IsNullOrWhiteSpace(manager))
             query = query.Where(u => u.ManagerNik == manager.Trim());
+
+        // Correlated owner predicate must run before both count and paging. No caller means
+        // no favorites, rather than accidentally exposing another account's private contacts.
+        if (favorites == true)
+            query = query.Where(u => callerNik != null && db.UserFavoriteContacts
+                .Any(f => f.User.Nik == callerNik && f.ContactNik == u.Nik));
 
         var now = DateTime.UtcNow;
         var rows = await query.Select(u => new
@@ -291,31 +315,49 @@ public static class DirectoryEndpoints
         var names = rows.ToDictionary(x => x.User.Nik, x => x.User.Name);
         var ordered = (sort?.ToLowerInvariant()) switch
         {
-            "status" => desc == true ? rows.OrderByDescending(x => x.Status).ThenBy(x => x.User.Nik) : rows.OrderBy(x => x.Status).ThenBy(x => x.User.Nik),
-            _ => desc == true ? rows.OrderByDescending(x => x.User.Name).ThenBy(x => x.User.Nik) : rows.OrderBy(x => x.User.Name).ThenBy(x => x.User.Nik),
+            "status" => desc == true
+                ? rows.OrderByDescending(x => PresenceRank(x.Status)).ThenBy(x => x.User.Name).ThenBy(x => x.User.Id)
+                : rows.OrderBy(x => PresenceRank(x.Status)).ThenBy(x => x.User.Name).ThenBy(x => x.User.Id),
+            _ => desc == true
+                ? rows.OrderByDescending(x => x.User.Name).ThenBy(x => x.User.Id)
+                : rows.OrderBy(x => x.User.Name).ThenBy(x => x.User.Id),
         };
-        var total = ordered.Count();
-        // Flag favorit per pemanggil (Kontak Prioritas) — satu query per halaman.
-        var pageNiks = ordered.Skip((p - 1) * size).Take(size).Select(x => x.User.Nik).ToList();
-        var favNiks = callerNik is null || pageNiks.Count == 0
+        // Stable grouping precedes person sort; LINQ's stable ordering retains the chosen
+        // person order within each actual unit, even when its label matches another unit.
+        if (grouped == true && (deptCodes.Count > 0 || siteCodes.Count > 0))
+            ordered = ordered.OrderBy(x => UnitName(x.User)).ThenBy(x => UnitKey(x.User));
+        var favNiks = callerNik is null
             ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             : (await db.UserFavoriteContacts.AsNoTracking()
-                .Where(f => f.User.Nik == callerNik && pageNiks.Contains(f.ContactNik))
+                .Where(f => f.User.Nik == callerNik)
                 .Select(f => f.ContactNik).ToListAsync(ct)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         // HRIS leaves DepartmentId empty for many users; fall back to their Division's Department,
         // then to the Division itself so the column is never a bare dash when we know something.
-        var items = ordered.Skip((p - 1) * size).Take(size).Select(x => new DirectoryEmployee(
+        ct.ThrowIfCancellationRequested();
+        return ordered.Select(x => new DirectoryEmployee(
             x.User.Nik, x.User.Name, null,
             x.User.Department?.Name ?? x.User.Division?.Department?.Name ?? x.User.Division?.Name,
             x.User.Department?.Code ?? x.User.Division?.Department?.Code,
-            x.User.Site?.Name, x.User.Site?.Code,
+            (x.User.SiteId is not null ? x.User.Site : x.User.Division?.Site)?.Name,
+            (x.User.SiteId is not null ? x.User.Site : x.User.Division?.Site)?.Code,
             x.User.ManagerNik is not null && names.TryGetValue(x.User.ManagerNik, out var managerName) ? managerName : null,
             x.User.Email, x.User.Extension, x.User.Location, x.Status, null, x.User.PhotoPath,
             favNiks.Contains(x.User.Nik), x.User.ManagerNik, x.User.Id,
             x.User.Division is { } dv && (x.User.Department is not null || dv.Department is not null) ? dv.Name : null,
-            PresenceStatus.LastSeen(x.User.PresenceLastBeatAt, x.User.PresenceLastSeenAt))).ToArray();
-        return new DirectoryPage(total, p, size, items);
+            PresenceStatus.LastSeen(x.User.PresenceLastBeatAt, x.User.PresenceLastSeenAt),
+            UnitKey(x.User), UnitName(x.User))).ToArray();
     }
+
+    private static int PresenceRank(string status) => status switch
+    {
+        "on" => 0, "busy" => 1, "away" => 2, _ => 3
+    };
+
+    private static string? UnitKey(Core.Entities.User user) => user.DivisionId is Guid divisionId
+        ? $"division:{divisionId:D}"
+        : user.DepartmentId is Guid departmentId ? $"department:{departmentId:D}" : null;
+
+    private static string? UnitName(Core.Entities.User user) => user.Division?.Name ?? user.Department?.Name;
 
     // Full /api/directory/structure query: Site ▸ Department (nested via ParentId, any depth) ▸
     // Division. Every active Site is listed, even with nothing under it yet, so a freshly created
