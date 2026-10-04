@@ -6,26 +6,29 @@
 @inject OverlayStack Overlays
 @inject IJSRuntime JS
 
-@if (Palette.IsOpen)
+@if (Palette.IsOpen || closing)
 {
-    <div class="cp-backdrop" @onclick="Palette.Close">
+    <div class="cp-backdrop @(closing ? "mi-closing" : "")" @onclick="Palette.Close">
         <div class="cp-card" role="dialog" aria-modal="true" aria-label="Search iPop" @onclick:stopPropagation>
-            <div class="cp-input">
+            <div class="cp-input @(loading ? "cp-searching" : "")">
                 <i data-lucide="search"></i>
                 <input @ref="inputRef" placeholder="Search people, projects, tasks, news, mail…"
                        @oninput="OnInput" @onkeydown="OnKeyDown" aria-label="Search" />
+                @if (loading) { <span class="cp-spin" aria-hidden="true"></span> }
                 <span class="cp-hint">ESC</span>
             </div>
             @if (results.Count > 0)
             {
-                <div class="cp-results">
+                <div class="cp-results" @key="resultsVersion">
+                    <span class="cp-sel" aria-hidden="true"></span>
                     @foreach (var g in results.GroupBy(x => x.Group))
                     {
                         <div class="cp-group">@g.Key</div>
                         @foreach (var r in g)
                         {
                             var idx = results.IndexOf(r);
-                            <button type="button" class="cp-row @(activeIdx == idx ? "active" : "")" @onmousemove="() => activeIdx = idx" @onclick="() => Go(r)">
+                            <button type="button" class="cp-row @(activeIdx == idx ? "active" : "") @(pickedIdx == idx ? "cp-picked" : "")" style="--i:@Math.Min(idx, 8)"
+                                    @onmousemove="() => activeIdx = idx" @onclick="() => Go(r)">
                                 @if (!string.IsNullOrEmpty(r.AvatarColor) && !string.IsNullOrEmpty(r.Initials))
                                 {
                                     <span class="avatar" style="background:@r.AvatarColor">@r.Initials</span>
@@ -37,10 +40,10 @@
                                     </span>
                                 }
                                 <span class="txt">
-                                    <span class="n">@r.Title</span>
+                                    <span class="n">@IPop.Web.Components.Chat.SearchHighlight.Mark(r.Title, query)</span>
                                     @if (!string.IsNullOrEmpty(r.Subtitle))
                                     {
-                                        <span class="s">@r.Subtitle</span>
+                                        <span class="s">@IPop.Web.Components.Chat.SearchHighlight.Mark(r.Subtitle, query)</span>
                                     }
                                 </span>
                                 <span class="cp-kind">@r.Group</span>
@@ -53,7 +56,7 @@
             {
                 if (historyList.Count > 0)
                 {
-                    <div class="cp-results">
+                    <div class="cp-results @(clearingHistory ? "cp-clearing" : "")">
                         <div class="cp-group" style="display:flex;align-items:center;justify-content:space-between">
                             <span>Recent searches</span>
                             <button type="button" style="border:none;background:transparent;color:var(--accent-ink);font-size:11px;font-weight:600;cursor:pointer;padding:0" @onclick="ClearAllHistory">Clear all</button>
@@ -61,7 +64,7 @@
                         @foreach (var h in historyList)
                         {
                             var item = h;
-                            <div class="cp-row" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" @onclick="() => SelectHistory(item.Query)">
+                            <div @key="item.Id" class="cp-row @(leavingHistory == item.Id ? "mi-leaving" : "")" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" @onclick="() => SelectHistory(item.Query)">
                                 <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
                                     <span class="avatar" style="background:var(--tray);color:var(--ink-3);width:28px;height:28px">
                                         <i data-lucide="history" style="width:14px;height:14px"></i>
@@ -85,7 +88,7 @@
             }
             else if (query.Trim().Length >= 2 && !loading)
             {
-                <div class="cp-empty">No results for "@query".</div>
+                <div class="cp-empty cp-none" @key="query"><i data-lucide="search-x"></i><span>No results for "@query".</span></div>
             }
             else if (query.Trim().Length < 2)
             {
@@ -104,6 +107,11 @@
     private CancellationTokenSource? cts;
     private IDisposable? _reg;
     private List<SearchHistoryItemDto> historyList = [];
+    // Micro-interactions: exit animation, staggered results, picked flash, history row exit.
+    private bool closing, clearingHistory;
+    private int pickedIdx = -1, resultsVersion;
+    private Guid? leavingHistory;
+    private CancellationTokenSource? _exitCts;
 
     protected override void OnInitialized()
     {
@@ -120,10 +128,20 @@
     {
         if (Palette.IsOpen)
         {
+            _exitCts?.Cancel(); closing = false;
             query = "";
             results = [];
-            activeIdx = 0;
+            activeIdx = 0; pickedIdx = -1;
             await LoadHistoryAsync();
+        }
+        else
+        {
+            // Keep the card for its exit animation (core/micro.css .mi-closing).
+            var exit = _exitCts = new CancellationTokenSource();
+            closing = true;
+            StateHasChanged();
+            try { await Task.Delay(180, exit.Token); } catch (TaskCanceledException) { return; }
+            closing = false;
         }
         StateHasChanged();
         if (Palette.IsOpen) { await Task.Yield(); await JS.InvokeVoidAsync("ipop.focus", inputRef); await JS.InvokeVoidAsync("ipop.icons"); }
@@ -158,6 +176,10 @@
 
     private async Task DeleteHistoryItem(Guid id)
     {
+        leavingHistory = id;
+        StateHasChanged();
+        await Task.Delay(260);
+        leavingHistory = null;
         historyList.RemoveAll(x => x.Id == id);
         try
         {
@@ -169,6 +191,10 @@
 
     private async Task ClearAllHistory()
     {
+        clearingHistory = true;
+        StateHasChanged();
+        await Task.Delay(220);
+        clearingHistory = false;
         historyList.Clear();
         try
         {
@@ -190,7 +216,7 @@
         StateHasChanged();
         var res = await Auth.GetAsync<List<SearchResultItemDto>>($"/api/search?q={Uri.EscapeDataString(q)}");
         results = res ?? [];
-        activeIdx = 0;
+        activeIdx = 0; resultsVersion++;
         loading = false;
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
@@ -212,7 +238,7 @@
         var res = await Auth.GetAsync<List<SearchResultItemDto>>($"/api/search?q={Uri.EscapeDataString(q)}");
         if (token.IsCancellationRequested) return;
         results = res ?? [];
-        activeIdx = 0; loading = false;
+        activeIdx = 0; loading = false; resultsVersion++;
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
     }
@@ -223,6 +249,10 @@
         {
             _ = RecordHistoryAsync(query);
         }
+        // A short flash on the chosen row confirms the pick before the page changes.
+        pickedIdx = results.IndexOf(r);
+        StateHasChanged();
+        await Task.Delay(140);
         Palette.Close();
         Nav.NavigateTo(r.Url);
     }
@@ -249,6 +279,7 @@
         Palette.Changed -= OnPaletteChanged;
         _reg?.Dispose();
         cts?.Dispose();
+        _exitCts?.Cancel();
     }
 
     public record SearchResultItemDto(string Group, string Title, string? Subtitle, string Url, string Icon, string? AvatarColor = null, string? Initials = null);

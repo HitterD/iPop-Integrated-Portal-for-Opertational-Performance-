@@ -277,12 +277,26 @@ window.ipopMicro = (() => {
     ], { duration: 320, easing: ease });
   }
 
+  // ── Global search: the active result glides between rows (Spotlight) ──
+  function placePaletteSel() {
+    const box = document.querySelector('.cp-results');
+    if (!box) return;
+    const sel = box.querySelector(':scope > .cp-sel'), on = box.querySelector('.cp-row.active');
+    if (!sel) return;
+    if (!on) { sel.style.opacity = '0'; box.classList.remove('mi-live'); return; }
+    sel.style.top = on.offsetTop + 'px';
+    sel.style.height = on.offsetHeight + 'px';
+    sel.style.opacity = '1';
+    box.classList.add('mi-live');
+  }
+
   // ── Observe renders (debounced to one frame) ──
   let queued = false;
   function tick() {
     queued = false;
     scanSliders();
     placeGlide();
+    placePaletteSel();
     scanBadges();
     scanPresence();
     onNavigated();

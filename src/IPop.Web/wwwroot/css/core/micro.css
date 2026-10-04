@@ -206,6 +206,41 @@ img.mi-revealed { animation: mi-reveal .35s var(--ease-out); }
 .mi-counter.near { color: #c27a00; }
 .mi-counter.full { color: var(--danger); font-weight: 700; animation: mi-shake .35s; }
 
+/* ── Global search (CommandPalette + topbar trigger) ── */
+.search-trigger { transition: background .2s var(--ease-out), color .2s, border-color .2s, box-shadow .2s, transform var(--dur-fast) var(--ease-out); }
+.search-trigger:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
+.search-trigger:hover .lucide { transform: rotate(-12deg) scale(1.08); }
+.search-trigger .lucide { transition: transform .3s var(--ease-spring); }
+.search-trigger:hover kbd { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.search-trigger kbd { transition: color .2s, border-color .2s; }
+.search-trigger:active { transform: scale(.98); transition-duration: 60ms; }
+/* Opens out of the search box at the top, not from the middle of the screen. */
+.cp-card { transform-origin: top center; animation: mi-cp-in .24s var(--ease-out); }
+@keyframes mi-cp-in { from { opacity: 0; transform: translateY(-10px) scale(.97); } to { opacity: 1; transform: none; } }
+.mi-closing.cp-backdrop { animation: mi-fade-out .18s ease-in forwards; pointer-events: none; }
+.mi-closing .cp-card { animation: mi-cp-out .18s ease-in forwards; }
+@keyframes mi-cp-out { to { opacity: 0; transform: translateY(-8px) scale(.97); } }
+/* Searching: the magnifier breathes and a small spinner sits by ESC. */
+.cp-input.cp-searching > .lucide { animation: mi-cp-breathe .9s var(--ease-smooth) infinite alternate; color: var(--accent); }
+@keyframes mi-cp-breathe { from { transform: scale(1); } to { transform: scale(1.14); } }
+.cp-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: spin .7s linear infinite; flex-shrink: 0; }
+/* Results rise in; only the first rows stagger so long lists stay snappy. */
+.cp-results { position: relative; isolation: isolate; }
+.cp-results .cp-row { animation: mi-rise .22s var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 22ms); }
+.cp-results .cp-group { animation: mi-fade .2s var(--ease-out) backwards; }
+/* The active row glides like Spotlight (js/micro.js positions .cp-sel). */
+.cp-results .cp-sel { position: absolute; left: 6px; right: 6px; z-index: -1; border-radius: 9px; background: var(--tray); opacity: 0; pointer-events: none;
+  transition: top .2s var(--ease-out), height .2s var(--ease-out), opacity .15s; }
+.cp-results.mi-live .cp-row.active { background: transparent; }
+.cp-row.cp-picked { animation: mi-cp-pick .2s var(--ease-out); }
+@keyframes mi-cp-pick { 40% { background: var(--accent-soft); transform: scale(.985); } }
+.cp-row mark.mi-hl, .cp-row .mi-hl { background: color-mix(in srgb, #ffd43b 55%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+[data-theme="dark"] .cp-row .mi-hl { background: color-mix(in srgb, #fab005 38%, transparent); }
+/* Nothing found: the icon shakes once. */
+.cp-empty.cp-none { display: grid; justify-items: center; gap: 8px; }
+.cp-empty.cp-none .lucide { width: 26px; height: 26px; color: var(--ink-3); animation: mi-shake .5s .05s; }
+.cp-results.cp-clearing .cp-row { animation: mi-fade-out .2s ease-in forwards; }
+
 /* JS-driven motion never runs when the OS asks for less; CSS is already neutralised by motion.css. */
 @media (prefers-reduced-motion: reduce) {
   .sidebar .nav-glide, .mi-slider > .mi-ind { transition: none !important; }
