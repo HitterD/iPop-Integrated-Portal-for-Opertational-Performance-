@@ -933,21 +933,42 @@ window.ipop = {
     const onDragLeave = e => {
       if (!el.contains(e.relatedTarget)) el.classList.remove("drag-over");
     };
+    // Capture phase: the rich-text editor (Jodit) handles drops on its body itself and, with no
+    // upload URL, swallows anything that isn't an image ("Need URL for AJAX request"). Take the drop
+    // first: images dropped onto the message body stay inline as before, everything else (and images
+    // dropped outside the body) becomes an attachment through the same InputFile path as the picker.
+    const isImage = f => /^image\//.test(f.type || "");
     const onDrop = e => {
       const files = e.dataTransfer && e.dataTransfer.files;
       if (!files || files.length === 0) return;
+      el.classList.remove("drag-over", "mi-drag-over");
+      const inBody = e.target && e.target.closest && e.target.closest(".jodit-wysiwyg, [contenteditable='true']");
+      const list = Array.from(files);
+      if (inBody && list.every(isImage)) return; // the editor inserts these inline
       e.preventDefault();
-      el.classList.remove("drag-over");
+      e.stopPropagation();
+      const attach = inBody ? list.filter(f => !isImage(f)) : list;
+      const inline = inBody ? list.filter(isImage) : [];
       try {
         const dt = new DataTransfer();
-        Array.from(files).slice(0, 5).forEach(f => dt.items.add(f));
-        input.files = dt.files;
-        input.dispatchEvent(new Event("change", { bubbles: true }));
+        attach.slice(0, 5).forEach(f => dt.items.add(f));
+        if (dt.files.length) {
+          input.files = dt.files;
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        }
       } catch { /* DataTransfer ctor not supported — ignore */ }
+      // Mixed drop on the body: hand the images back to the editor as a paste so they stay inline.
+      if (inline.length && inBody) {
+        try {
+          const dt = new DataTransfer();
+          inline.forEach(f => dt.items.add(f));
+          inBody.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+        } catch { /* older browsers: images in a mixed drop are skipped */ }
+      }
     };
-    el.addEventListener("dragover", onDragOver);
+    el.addEventListener("dragover", onDragOver, true);
     el.addEventListener("dragleave", onDragLeave);
-    el.addEventListener("drop", onDrop);
+    el.addEventListener("drop", onDrop, true);
     el._ipopMailDrop = { onDragOver, onDragLeave, onDrop };
     window.ipopMicro && ipopMicro.registerDrop(el, "Drop to attach", "Images, PDF, Office files");
   },
@@ -971,9 +992,9 @@ window.ipop = {
   mailUnbindDropZone(el) {
     if (!el || !el._ipopMailDrop) return;
     const h = el._ipopMailDrop;
-    el.removeEventListener("dragover", h.onDragOver);
+    el.removeEventListener("dragover", h.onDragOver, true);
     el.removeEventListener("dragleave", h.onDragLeave);
-    el.removeEventListener("drop", h.onDrop);
+    el.removeEventListener("drop", h.onDrop, true);
     el.classList.remove("drag-over");
     delete el._ipopMailDrop;
   },
