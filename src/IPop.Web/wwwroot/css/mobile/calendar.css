@@ -88,7 +88,14 @@
   .cal-rail-title.cal-others-head { display: flex; order: 9; gap: 4px; margin: 0; }
   .cal-others-head > span { display: none; }
   .cal-others-head .cal-icon.sm { width: 36px; height: 36px; border: 1px solid var(--line-soft); border-radius: 999px; background: var(--surface); }
-  .cal-others-empty { white-space: nowrap; min-height: 36px; }
+  .cal-others-empty { white-space: nowrap; min-height: 36px; padding: 3px 12px 3px 4px; border-radius: 999px; }
+  .cal-others-empty small { display: none; }
+  .cal-others-empty-ic { width: 28px; height: 28px; }
+  .cal-intro { display: none; }
+  .cal-share-btn span { display: none; }
+  .cal-share-btn { width: 40px; padding: 0; justify-content: center; }
+  .cal-preview-row { grid-template-columns: 44px minmax(0, 1fr); }
+  .cal-preview-mine { grid-column: 2; }
   .cal-other { flex: none; }
   .cal-others-add { flex: none; width: 240px; }
 

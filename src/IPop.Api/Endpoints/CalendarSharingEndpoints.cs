@@ -1,3 +1,4 @@
+using IPop.Application.Notifications;
 using IPop.Core.Entities;
 using IPop.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -23,14 +24,39 @@ public static class CalendarSharingEndpoints
             return Results.Ok(await LoadSettingsAsync(db, me.Value, ct));
         });
 
-        g.MapPut("/settings", async (SettingsDto req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        g.MapPut("/settings", async (SaveSettingsRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
         {
             var me = await GetUserIdAsync(http, db, ct);
             if (me is null) return Results.Unauthorized();
             if (!CalendarVisibility.IsDefault(req.DefaultVisibility))
                 return Results.Json(new { code = "invalid_visibility", message = "Default must be public, busy or hidden." }, statusCode: 422);
-            await SaveSettingsAsync(db, me.Value, req, ct);
+            await SaveSettingsAsync(db, me.Value, new SettingsDto(req.DefaultVisibility, req.NotifyDelegateChanges), ct);
+            if (req.ApplyToUpcoming) await ApplyToUpcomingAsync(db, me.Value, req.DefaultVisibility, DateTime.UtcNow, ct);
             return Results.Ok(await LoadSettingsAsync(db, me.Value, ct));
+        });
+
+        // GET /api/calendar/preview?as=colleague|delegate&hidden=&from=&to= — my own calendar as someone else
+        // would see it (hidden = the draft "Hide my calendar details" choice, so the dialog previews before saving).
+        g.MapGet("/preview", async (string? @as, bool? hidden, DateTime? from, DateTime? to, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var me = await GetUserIdAsync(http, db, ct);
+            if (me is null) return Results.Unauthorized();
+            if (!TryRange(from, to, out var f, out var t)) return BadRange();
+            return Results.Ok(await BuildPreviewAsync(db, me.Value, @as == "delegate", hidden, f, t, ct));
+        });
+
+        // POST /api/calendar/people/{nik}/ask — ask a colleague to share their calendar details (once a day per person).
+        g.MapPost("/people/{nik}/ask", async (string nik, HttpContext http, IPopDbContext db, INotificationGatewayService? notifs, CancellationToken ct) =>
+        {
+            var me = await GetUserIdAsync(http, db, ct);
+            if (me is null) return Results.Unauthorized();
+            return await AskForDetailsAsync(db, notifs, MeetingEndpoints.NotifyLog(http), me.Value, nik, DateTime.UtcNow, ct) switch
+            {
+                AskResult.Sent => Results.Ok(new { sent = true }),
+                AskResult.AlreadyAsked => Results.Ok(new { sent = false }),
+                AskResult.Self => Results.Json(new { code = "self", message = "That's your own calendar." }, statusCode: 422),
+                _ => Results.NotFound(),
+            };
         });
 
         g.MapGet("/others", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
@@ -217,13 +243,83 @@ public static class CalendarSharingEndpoints
             .Select(b =>
             {
                 var invited = b.MeetingId is { } mid && invitedTo.Contains(mid);
-                var visibility = hiding.Contains(b.OwnerId) && b.Visibility == CalendarVisibility.Public ? CalendarVisibility.Busy : b.Visibility;
-                var details = b.OwnerId == viewerId || invited || visibility == CalendarVisibility.Public
-                    || (managed.Contains(b.OwnerId) && b.Visibility != CalendarVisibility.Private);
+                var (visibility, details) = Shown(b, hiding.Contains(b.OwnerId), invited, managed.Contains(b.OwnerId), b.OwnerId == viewerId);
                 return new PersonBusyItem(nikOf[b.OwnerId], b.Id, b.StartAt, b.EndAt, b.AllDay, b.Tentative, visibility,
                     details ? b.Title : null, details ? b.Location : null, invited ? b.MeetingId : null);
             })
             .OrderBy(b => b.StartAt).ThenBy(b => b.Nik).ToList();
+    }
+
+    /// The one visibility rule: "Hide my calendar details" turns Public into Busy; details show to the owner,
+    /// invited people, Public blocks, and delegates (anything but Private).
+    internal static (string Visibility, bool Details) Shown(Block b, bool hidden, bool invited, bool delegateOfOwner, bool self)
+    {
+        var visibility = hidden && b.Visibility == CalendarVisibility.Public ? CalendarVisibility.Busy : b.Visibility;
+        var details = self || invited || visibility == CalendarVisibility.Public
+            || (delegateOfOwner && b.Visibility != CalendarVisibility.Private);
+        return (visibility, details);
+    }
+
+    /// My calendar as a colleague (not invited) or as one of my delegates would see it. YourTitle is mine;
+    /// TheySee is null when they only get a Busy block.
+    public record PreviewItem(string Id, DateTime StartAt, DateTime EndAt, bool AllDay, bool Tentative, string Visibility,
+        string YourTitle, string? TheySee);
+
+    public static async Task<List<PreviewItem>> BuildPreviewAsync(IPopDbContext db, Guid ownerId, bool asDelegate, bool? hidden,
+        DateTime from, DateTime to, CancellationToken ct)
+    {
+        var hide = hidden ?? (await LoadSettingsAsync(db, ownerId, ct)).DefaultVisibility == CalendarVisibility.Hidden;
+        var blocks = await LoadBlocksAsync(db, [ownerId], from, to, ct);
+        return blocks
+            .Select(b =>
+            {
+                var (visibility, details) = Shown(b, hide, invited: false, delegateOfOwner: asDelegate, self: false);
+                return new PreviewItem(b.Id, b.StartAt, b.EndAt, b.AllDay, b.Tentative, visibility, b.Title, details ? b.Title : null);
+            })
+            .OrderBy(i => i.StartAt).ToList();
+    }
+
+    /// "Titles and locations" / "Busy only" chosen again for the events already on my calendar: my upcoming
+    /// personal events and the meetings I organize. Private stays Private.
+    public static async Task<int> ApplyToUpcomingAsync(IPopDbContext db, Guid ownerId, string defaultVisibility, DateTime now, CancellationToken ct)
+    {
+        var level = defaultVisibility == CalendarVisibility.Public ? CalendarVisibility.Public : CalendarVisibility.Busy;
+        var events = await db.CalendarEvents
+            .Where(e => e.OwnerId == ownerId && e.EndAt > now && e.Visibility != CalendarVisibility.Private && e.Visibility != level)
+            .ToListAsync(ct);
+        var meetingIds = events.Where(e => e.MeetingId != null).Select(e => e.MeetingId!.Value).ToList();
+        var meetings = await db.Meetings
+            .Where(m => m.OrganizerId == ownerId && m.EndAt > now && m.Visibility != CalendarVisibility.Private && m.Visibility != level)
+            .ToListAsync(ct);
+        foreach (var e in events) e.Visibility = level;
+        foreach (var m in meetings) m.Visibility = level;
+        await db.SaveChangesAsync(ct);
+        return events.Count(e => e.MeetingId == null) + meetings.Count;
+    }
+
+    public enum AskResult { Sent, AlreadyAsked, NotFound, Self }
+
+    /// Sends the owner one low-priority notification ("X would like to see your calendar details") that opens
+    /// the sharing dialog. One request per person per day; the audit row doubles as the throttle.
+    public static async Task<AskResult> AskForDetailsAsync(IPopDbContext db, INotificationGatewayService? notifs, ILogger? log,
+        Guid askerId, string? ownerNik, DateTime now, CancellationToken ct)
+    {
+        var owner = await db.Users.AsNoTracking().Where(u => u.Nik == ownerNik && u.IsActive).Select(u => new { u.Id, u.Nik }).FirstOrDefaultAsync(ct);
+        if (owner is null) return AskResult.NotFound;
+        if (owner.Id == askerId) return AskResult.Self;
+        var asker = await db.Users.AsNoTracking().Where(u => u.Id == askerId).Select(u => new { u.Nik, u.Name }).FirstAsync(ct);
+        var since = now.AddDays(-1);
+        if (await db.AuditLogs.AnyAsync(a => a.Action == "calendar.share.ask" && a.ActorNik == asker.Nik && a.EntityId == owner.Nik && a.CreatedAt > since, ct))
+            return AskResult.AlreadyAsked;
+        db.AuditLogs.Add(new AuditLog
+        {
+            ActorNik = asker.Nik, Action = "calendar.share.ask", Entity = "CalendarSettings", EntityId = owner.Nik, CreatedAt = now,
+        });
+        await db.SaveChangesAsync(ct);
+        await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "calendar.share.ask", $"{asker.Name} asked to see your calendar",
+            $"{asker.Name} would like to see what's on your calendar, not just when you're busy. You choose what colleagues see.",
+            [owner.Id], "low", "/calendar?share=1");
+        return AskResult.Sent;
     }
 
     // ── Find a time ──
@@ -316,6 +412,7 @@ public static class CalendarSharingEndpoints
     }
 
     public record SettingsDto(string DefaultVisibility, bool NotifyDelegateChanges);
+    public record SaveSettingsRequest(string DefaultVisibility, bool NotifyDelegateChanges, bool ApplyToUpcoming = false);
     public record AddOtherRequest(string? Nik);
     public record UpdateOtherRequest(string? Color, bool? IsVisible);
     public record OtherCalendarDto(string Nik, string Name, string? Department, string Color, bool IsVisible);

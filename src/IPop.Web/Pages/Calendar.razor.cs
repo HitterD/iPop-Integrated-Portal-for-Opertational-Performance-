@@ -72,8 +72,9 @@ public partial class Calendar
         if (DateTime.TryParseExact(DateQuery, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) anchor = d.Date;
         miniMonth = new(anchor.Year, anchor.Month, 1);
         await LoadPrefsAsync();
-        await Task.WhenAll(LoadSharingAsync(), LoadManagedAsync());
+        await Task.WhenAll(LoadSharingAsync(), LoadManagedAsync(), LoadIntroAsync());
         await LoadAsync();
+        if (ShareQuery == 1) await OpenShareAsync();
         // Now line and "Awaiting reply" drift with the clock; refresh every minute.
         nowTimer = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
         _ = ChatSvc.GroupRooms.Count == 0 ? ChatSvc.LoadRoomsAsync() : Task.CompletedTask;

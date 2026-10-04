@@ -25,11 +25,11 @@ public partial class Calendar
         ("busy", "Busy only", "clock", "Others see a Busy block"),
         ("private", "Private", "lock", "A Busy block, even for delegates"),
     ];
-    private static readonly (string Key, string Label, string Hint)[] DefaultOptions =
+    private static readonly (string Key, string Label, string Icon, string Hint)[] DefaultOptions =
     [
-        ("public", "Titles and locations", "New events are Public: everyone sees what and where."),
-        ("busy", "Busy only", "New events show as Busy blocks. You can make single events Public."),
-        ("hidden", "Hide my calendar details", "Everything shows as Busy to others, even Public events. Invited people still see the meeting."),
+        ("public", "Titles and locations", "globe", "Colleagues see what you're doing and where."),
+        ("busy", "Busy only", "clock", "Colleagues see when you're busy. Your delegates see details."),
+        ("hidden", "Only when I'm busy", "eye-off", "Every event shows as Busy, even ones you made Public."),
     ];
     private const int FatFromHour = 7, FatHours = 12;
 
@@ -205,11 +205,12 @@ public partial class Calendar
         try
         {
             var res = await Auth.SendAsync(HttpMethod.Put, "/api/calendar/settings",
-                new { defaultVisibility = draftDefault, notifyDelegateChanges = draftNotify });
+                new { defaultVisibility = draftDefault, notifyDelegateChanges = draftNotify, applyToUpcoming = applyToUpcoming && ApplyOffered });
             if (!res.IsSuccessStatusCode) { Toasts.Show(await ErrorAsync(res), ToastKind.Error); return; }
             sharing = await res.Content.ReadFromJsonAsync<SharingSettings>() ?? sharing;
             settingsOpen = false;
-            Toasts.Show("Sharing settings saved.", ToastKind.Success);
+            Toasts.Show(applyToUpcoming && ApplyOffered ? "Saved. Your upcoming events were updated too." : "Sharing settings saved.", ToastKind.Success);
+            if (applyToUpcoming) await LoadAsync();
         }
         finally { savingSettings = false; }
     }
