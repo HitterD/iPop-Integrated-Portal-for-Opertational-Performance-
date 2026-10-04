@@ -424,38 +424,48 @@
         else if (editing)
         {
             <div class="cal-drawer-body cal-form">
-                <input class="cal-title-input" placeholder="Add title" @bind="form.Title" @bind:event="oninput" maxlength="200" aria-label="Title" />
-                <label class="cal-toggle"><input type="checkbox" @bind="form.AllDay" /> All day</label>
-                <div class="cal-when">
-                    <label>Start<AppDatePicker @bind-Value="form.StartDate" AriaLabel="Start date" />@if (!form.AllDay) { <AppTimePicker @bind-Value="form.StartTime" AriaLabel="Start time" /> }</label>
-                    <label>End<AppDatePicker @bind-Value="form.EndDate" AriaLabel="End date" />@if (!form.AllDay) { <AppTimePicker @bind-Value="form.EndTime" AriaLabel="End time" /> }</label>
-                </div>
-                <div class="cal-field">
-                    <span>Who can see details</span>
-                    <div class="cal-vis" role="radiogroup" aria-label="Who can see details">
-                        @foreach (var v in VisibilityOptions)
-                        {
-                            var vk = v.Key;
-                            <button type="button" role="radio" aria-checked="@(form.Visibility == vk ? "true" : "false")" class="cal-vis-card @(form.Visibility == vk ? "on" : "")"
-                                    title="@v.Hint" @onclick="() => form.Visibility = vk">
-                                <i data-lucide="@v.Icon"></i><b>@v.Label</b><small>@v.Hint</small>
-                            </button>
-                        }
+                <input class="cal-title-input" placeholder="Event title" @bind="form.Title" @bind:event="oninput" maxlength="200" aria-label="Title" />
+
+                @* ── When ── *@
+                <div class="cal-group">
+                    <label class="cal-row cal-switch-row">
+                        <i data-lucide="sun"></i><span class="cal-row-label">All day</span>
+                        <input type="checkbox" class="cal-switch" role="switch" @bind="form.AllDay" />
+                    </label>
+                    <div class="cal-row">
+                        <i data-lucide="clock"></i><span class="cal-row-label">Starts</span>
+                        <div class="cal-row-ctl"><AppDatePicker @bind-Value="form.StartDate" AriaLabel="Start date" Compact="true" />@if (!form.AllDay) { <AppTimePicker @bind-Value="form.StartTime" AriaLabel="Start time" /> }</div>
+                    </div>
+                    <div class="cal-row">
+                        <i data-lucide="clock-4"></i><span class="cal-row-label">Ends</span>
+                        <div class="cal-row-ctl"><AppDatePicker @bind-Value="form.EndDate" AriaLabel="End date" Compact="true" />@if (!form.AllDay) { <AppTimePicker @bind-Value="form.EndTime" AriaLabel="End time" /> }</div>
+                    </div>
+                    <div class="cal-row">
+                        <i data-lucide="bell"></i><span class="cal-row-label">Alert</span>
+                        <div class="cal-row-ctl"><AppSelect Label="Reminder" Block="true" Value="@form.Reminder.ToString()" ValueChanged='v => form.Reminder = int.TryParse(v, out var m) ? m : 0' Options="ReminderSelect" /></div>
                     </div>
                 </div>
-                <label>Location<input placeholder="Room, address…" @bind="form.Location" maxlength="300" /></label>
-                <label>Meeting link<input placeholder="https://" @bind="form.Link" maxlength="1000" /></label>
-                <label>Reminder
-                    <select @bind="form.Reminder">
-                        @foreach (var (min, label) in ReminderOptions) { <option value="@min">@label</option> }
-                    </select>
-                </label>
-                <label>Chat group
-                    <select @bind="form.RoomIdText" disabled="@(form.Id is not null && form.MeetingId is not null)">
-                        <option value="">None — personal or invite people</option>
-                        @foreach (var r in ChatSvc.GroupRooms) { <option value="@r.Id">@r.Name</option> }
-                    </select>
-                </label>
+
+                @* ── Who ── *@
+                <div class="cal-group">
+                    <div class="cal-row">
+                        <i data-lucide="users"></i><span class="cal-row-label">Chat group</span>
+                        <div class="cal-row-ctl"><AppSelect Label="Chat group" Block="true" Value="@form.RoomIdText" ValueChanged='v => form.RoomIdText = v ?? ""' Options="ChatGroupSelect"
+                                                             Disabled="@(form.Id is not null && form.MeetingId is not null)" /></div>
+                    </div>
+                    <div class="cal-row cal-row-stack">
+                        <div class="cal-row-head"><i data-lucide="eye"></i><span class="cal-row-label">Who can see details</span></div>
+                        <div class="cal-seg cal-vis-seg" role="radiogroup" aria-label="Who can see details">
+                            @foreach (var v in VisibilityOptions)
+                            {
+                                var vk = v.Key;
+                                <button type="button" role="radio" aria-checked="@(form.Visibility == vk ? "true" : "false")" class="cal-seg-item @(form.Visibility == vk ? "on" : "")"
+                                        title="@v.Hint" @onclick="() => form.Visibility = vk"><i data-lucide="@v.Icon"></i> @v.Label</button>
+                            }
+                        </div>
+                        <small class="cal-hint">@VisibilityOptions.First(v => v.Key == form.Visibility).Hint.</small>
+                    </div>
+                </div>
                 @if (string.IsNullOrEmpty(form.RoomIdText))
                 {
                     <div class="cal-field">
@@ -535,7 +545,12 @@
                 {
                     <small class="cal-hint">All group members are invited; the meeting appears in the group chat.</small>
                 }
-                <label>Notes<textarea rows="4" @bind="form.Notes" maxlength="4000" placeholder="Agenda, details…"></textarea></label>
+                @* ── Details ── *@
+                <div class="cal-group">
+                    <label class="cal-row"><i data-lucide="map-pin"></i><input class="cal-row-input" placeholder="Location" aria-label="Location" @bind="form.Location" maxlength="300" /></label>
+                    <label class="cal-row"><i data-lucide="video"></i><input class="cal-row-input" placeholder="Meeting link (https://…)" aria-label="Meeting link" @bind="form.Link" maxlength="1000" /></label>
+                    <label class="cal-row cal-row-top"><i data-lucide="align-left"></i><textarea class="cal-row-input" rows="3" @bind="form.Notes" maxlength="4000" placeholder="Notes, agenda…" aria-label="Notes"></textarea></label>
+                </div>
                 @if (formError is not null) { <div class="cal-form-error" role="alert">@formError</div> }
             </div>
             <footer class="cal-drawer-foot">

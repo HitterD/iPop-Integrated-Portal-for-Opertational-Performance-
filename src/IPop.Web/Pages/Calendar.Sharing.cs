@@ -21,9 +21,9 @@ public partial class Calendar
     private static readonly string[] OtherPalette = ["a", "b", "c", "d", "e", "f", "g", "h"];
     private static readonly (string Key, string Label, string Icon, string Hint)[] VisibilityOptions =
     [
-        ("public", "Public", "globe", "Everyone sees the title and location"),
-        ("busy", "Busy only", "clock", "Others see a Busy block"),
-        ("private", "Private", "lock", "A Busy block, even for delegates"),
+        ("public", "Public", "globe", "Colleagues see the title and location"),
+        ("busy", "Busy only", "clock", "Colleagues see Busy; your delegates see details"),
+        ("private", "Private", "lock", "Everyone sees Busy, your delegates too"),
     ];
     private static readonly (string Key, string Label, string Icon, string Hint)[] DefaultOptions =
     [

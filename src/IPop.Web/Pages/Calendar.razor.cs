@@ -2,6 +2,7 @@
 // _Imports.razor only reaches .razor files, so usings are restated here.
 using System.Globalization;
 using System.Net.Http.Json;
+using IPop.Web.Components;
 using IPop.Web.Services;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -43,6 +44,14 @@ public partial class Calendar
     ];
     private static readonly (string, string)[] Views = [("day", "Day"), ("week", "Week"), ("month", "Month"), ("agenda", "Agenda")];
     private static readonly (string, string)[] RsvpOptions = [("accept", "Yes"), ("maybe", "Maybe"), ("decline", "No")];
+    // Built on first use: a static initializer here would run before ReminderOptions below is set.
+    private static List<AppOption>? reminderSelect;
+    private static List<AppOption> ReminderSelect => reminderSelect ??= ReminderOptions.Select(r => new AppOption(r.Item1.ToString(), r.Item2)).ToList();
+
+    private List<AppOption> ChatGroupSelect =>
+        [new("", "None", "Just you, or invite people below", "user"),
+         .. ChatSvc.GroupRooms.Select(r => new AppOption(r.Id.ToString(), r.Name ?? "Group", "Everyone in the group is invited", "message-circle"))];
+
     private static readonly (int, string)[] ReminderOptions =
         [(0, "None"), (5, "5 minutes before"), (10, "10 minutes before"), (15, "15 minutes before"), (30, "30 minutes before"),
          (60, "1 hour before"), (120, "2 hours before"), (1440, "1 day before")];

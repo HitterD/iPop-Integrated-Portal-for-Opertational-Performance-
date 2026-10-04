@@ -439,6 +439,12 @@ window.ipop = {
   // transform (rise fill) would otherwise clip or trap the popup.
   positionSelect(trigger, pop) {
     const wrap = pop.closest(".app-select");
+    // Sit above the overlay holding the trigger (calendar drawer 901, modals ...), like positionPopup.
+    let z = 100;
+    for (let el = trigger.parentElement; el && el !== document.body; el = el.parentElement) {
+      const v = parseInt(getComputedStyle(el).zIndex, 10);
+      if (!isNaN(v)) z = Math.max(z, v + 10);
+    }
     if (!window.ipop._selectPop) {
       pop._selectHost = wrap || pop.parentElement;
       document.body.appendChild(pop);
@@ -448,10 +454,19 @@ window.ipop = {
       const tr = trigger.getBoundingClientRect();
       pop.style.position = "fixed";
       pop.style.left = tr.left + "px";
-      pop.style.top = (tr.bottom + 6) + "px";
       pop.style.minWidth = tr.width + "px";
-      pop.style.maxWidth = Math.min(320, window.innerWidth - 16) + "px";
-      pop.style.zIndex = "100";
+      pop.style.maxWidth = Math.max(tr.width, Math.min(360, window.innerWidth - 16)) + "px";
+      pop.style.zIndex = String(z);
+      // Open upwards when the list would run off the bottom and there is more room above.
+      const below = window.innerHeight - tr.bottom - 12, above = tr.top - 12;
+      const ph = Math.min(pop.scrollHeight, 300);
+      if (ph > below && above > below) {
+        pop.style.maxHeight = Math.min(300, above) + "px";
+        pop.style.top = Math.max(8, tr.top - 6 - Math.min(ph, above)) + "px";
+      } else {
+        pop.style.maxHeight = Math.max(120, Math.min(300, below)) + "px";
+        pop.style.top = (tr.bottom + 6) + "px";
+      }
       // flip left if it would overflow the right edge
       const pw = pop.offsetWidth;
       if (tr.left + pw > window.innerWidth - 8) {
@@ -472,6 +487,11 @@ window.ipop = {
       window.ipop.closeSelect();
     };
     document.addEventListener("mousedown", window.ipop._selectOutside);
+    return true;
+  },
+  scrollSelectOpt(pop, idx) {
+    const el = pop && pop.children[idx];
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
     return true;
   },
   closeSelect() {

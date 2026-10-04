@@ -15,8 +15,10 @@
 .src-projects { --src: var(--src-projects); } .src-mail { --src: var(--src-mail); } .src-news { --src: var(--src-news); }
 
 /* ── Rail ── */
-.cal-rail { display: flex; flex-direction: column; gap: 18px; overflow-y: auto; min-height: 0; }
-.cal-create { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; border: 0; border-radius: 12px;
+.cal-rail { display: flex; flex-direction: column; gap: 18px; overflow-y: auto; min-height: 0; padding-right: 2px; }
+/* The rail scrolls; its blocks keep their size instead of being squeezed on short windows. */
+.cal-rail > * { flex: none; }
+.cal-create { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; min-height: 40px; border: 0; border-radius: 12px;
   background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
 .cal-create:hover { filter: brightness(1.06); }
 .cal-rail-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .6px; color: var(--ink-3); margin: 0 0 6px; }
@@ -398,6 +400,43 @@ body:has(.cal-drawer) .confirm-center { z-index: 911; }
 .cal-dlg-levels dt { font-weight: 600; color: var(--ink-2); }
 .cal-dlg-levels dd { margin: 0; color: var(--ink-3); }
 .adm-cal-dlg { padding: 10px; }
+
+/* ── Event form: Apple Calendar-style grouped rows ── */
+.cal-form { gap: 14px; }
+.cal-group { display: grid; border-radius: 12px; background: var(--fill); overflow: visible; }
+.cal-row { position: relative; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 12px; box-sizing: border-box;
+  font-size: 13.5px; font-weight: 400; color: var(--ink); }
+.cal-row + .cal-row::before { content: ""; position: absolute; top: 0; left: 40px; right: 0; border-top: 1px solid var(--line-soft); }
+.cal-form label.cal-row { display: flex; gap: 10px; font-size: 13.5px; font-weight: 400; color: var(--ink); }
+.cal-row > svg.lucide, .cal-row > i[data-lucide], .cal-row-head > svg.lucide { width: 17px !important; height: 17px !important; color: var(--ink-3); flex: none; }
+.cal-row-label { flex: none; min-width: 78px; }
+.cal-row-ctl { flex: 1; min-width: 0; display: flex; justify-content: flex-end; align-items: center; gap: 6px; }
+.cal-row-ctl .app-select.block { max-width: 240px; margin-left: auto; }
+.cal-row-ctl .dp-date { width: 148px; }
+.cal-row-ctl .dp-time { width: 92px; }
+.cal-row-ctl .dp { --dp-h: 32px; }
+.cal-drawer-body { overflow-x: hidden; }
+.cal-row-ctl .app-select.block .app-select-trigger { min-height: 32px; padding: 5px 10px; background: var(--surface); }
+.cal-form .cal-row input.cal-row-input, .cal-form .cal-row textarea.cal-row-input { flex: 1; border: 0; background: none; padding: 6px 0; border-radius: 0; font-size: 13.5px; }
+.cal-form .cal-row input.cal-row-input:focus, .cal-form .cal-row textarea.cal-row-input:focus { outline: 0; }
+.cal-row:focus-within:has(.cal-row-input) { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 12px; }
+.cal-row-top { align-items: flex-start; }
+.cal-row-top > svg.lucide { margin-top: 8px; }
+.cal-row-stack { display: grid; gap: 8px; padding: 10px 12px; }
+.cal-row-head { display: flex; align-items: center; gap: 10px; }
+.cal-vis-seg { display: flex; }
+.cal-vis-seg .cal-seg-item { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 6px; }
+.cal-vis-seg .cal-seg-item svg.lucide { width: 14px !important; height: 14px !important; }
+.cal-row-stack .cal-hint { margin: 0; }
+/* iOS switch */
+.cal-switch { appearance: none; -webkit-appearance: none; flex: none; margin-left: auto; width: 42px !important; height: 26px; border-radius: 999px;
+  background: var(--line); position: relative; cursor: pointer; transition: background .2s; border: 0 !important; padding: 0 !important; }
+.cal-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .2s; }
+.cal-switch:checked { background: #34c759; }
+.cal-switch:checked::after { transform: translateX(16px); }
+.cal-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.cal-switch-row { cursor: pointer; }
 
 /* ── Responsive ── */
 @media (max-width: 1100px) {

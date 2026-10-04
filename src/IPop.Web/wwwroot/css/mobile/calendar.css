@@ -77,6 +77,11 @@
   .cal-form .member-picker-input input { padding-left: 36px; }
   .cal-drawer input, .cal-drawer select, .cal-drawer textarea { font-size: 16px; }
   .cal-when label { grid-template-columns: 40px minmax(0, 1fr) auto; }
+  .cal-row { flex-wrap: wrap; }
+  .cal-row-ctl { flex: 1 1 100%; justify-content: flex-start; padding-left: 27px; }
+  .cal-row-ctl .app-select.block { max-width: none; margin-left: 0; }
+  .cal-switch-row, label.cal-row { flex-wrap: nowrap; }
+  .cal-vis-seg .cal-seg-item { min-height: 36px; }
   .cal-when input[type="time"] { width: 96px; }
   .cal-rsvp { flex-wrap: wrap; }
   .cal-rsvp > span { flex-basis: 100%; }

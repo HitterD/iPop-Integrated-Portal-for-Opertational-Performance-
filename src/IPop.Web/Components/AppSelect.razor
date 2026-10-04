@@ -3,11 +3,12 @@
 @using Microsoft.AspNetCore.Components.Web
 @inject IJSRuntime JS
 
-<div class="app-select @CssClass @(open ? "open" : "")" style="@Style" @ref="wrap">
-    <button type="button" class="app-select-trigger" @ref="trigger"
+<div class="app-select @CssClass @(Block ? "block" : "") @(open ? "open" : "") @(Disabled ? "disabled" : "")" style="@Style" @ref="wrap">
+    <button type="button" class="app-select-trigger" @ref="trigger" disabled="@Disabled"
             aria-haspopup="listbox" aria-expanded="@(open ? "true" : "false")" aria-label="@(Label ?? "Select")"
             @onclick="Toggle" @onkeydown="OnKeyDown" @onblur="OnBlur">
-        <span class="app-select-label">@selectedLabel</span>
+        @if (SelectedOption?.Icon is { } sic) { <i class="app-select-ic" data-lucide="@sic"></i> }
+        <span class="app-select-label @(SelectedOption is null && Placeholder is not null ? "ph" : "")">@selectedLabel</span>
         <i class="chev" data-lucide="@(open ? "chevron-up" : "chevron-down")"></i>
     </button>
     <div class="app-select-pop @(open ? "on" : "")" role="listbox" aria-activedescendant="@activeId" @ref="popRef">
@@ -15,11 +16,13 @@
         {
             var idx = i;
             var o = Options[i];
-            <button type="button" class="app-select-opt @(o.Value == Value ? "sel" : "")"
-                    role="option" aria-selected="@(o.Value == Value ? "true" : "false")"
+            <button type="button" class="app-select-opt @(o.Value == Value ? "sel" : "") @(activeIdx == idx && open ? "active" : "")"
+                    role="option" aria-selected="@(o.Value == Value ? "true" : "false")" aria-disabled="@(o.Disabled ? "true" : "false")" disabled="@o.Disabled"
                     id="@($"{effectiveId}-opt-{idx}")"
                     @onmousedown="() => Pick(o)" @onmousemove="() => activeIdx = idx">
-                <span>@o.Label</span>
+                @if (o.Icon is not null) { <i class="app-select-ic" data-lucide="@o.Icon"></i> }
+                @if (o.Hint is null) { <span>@o.Label</span> }
+                else { <span class="app-select-two"><span>@o.Label</span><small>@o.Hint</small></span> }
                 @if (o.Value == Value) { <i data-lucide="check" class="tick"></i> }
             </button>
         }
@@ -34,6 +37,11 @@
     [Parameter] public string? Id { get; set; }
     [Parameter] public string CssClass { get; set; } = "";
     [Parameter] public string Style { get; set; } = "";
+    /// Stretch to the container width (form fields) instead of hugging the label (toolbars).
+    [Parameter] public bool Block { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    /// Shown when Value matches no option; without it the first option's label is shown.
+    [Parameter] public string? Placeholder { get; set; }
 
     private ElementReference wrap;
     private ElementReference trigger;
@@ -43,8 +51,9 @@
 
     private string effectiveId => string.IsNullOrEmpty(Id) ? "aselect" : Id!;
     private string activeId => $"{effectiveId}-opt-{activeIdx}";
+    private AppOption? SelectedOption => Options.FirstOrDefault(o => o.Value == Value);
     private string selectedLabel =>
-        Options.FirstOrDefault(o => o.Value == Value)?.Label ?? (Options.Count > 0 ? Options[0].Label : "");
+        SelectedOption?.Label ?? Placeholder ?? (Options.Count > 0 ? Options[0].Label : "");
 
     protected override void OnAfterRender(bool firstRender)
     {
@@ -53,6 +62,7 @@
 
     private async Task Toggle()
     {
+        if (Disabled) return;
         if (open) { await Close(); return; }
         open = true;
         activeIdx = Math.Max(0, Options.FindIndex(o => o.Value == Value));
@@ -80,6 +90,7 @@
 
     private async Task Pick(AppOption o)
     {
+        if (o.Disabled) return;
         if (Value != o.Value) await ValueChanged.InvokeAsync(o.Value);
         open = false;
         StateHasChanged();
@@ -91,6 +102,11 @@
     {
         switch (e.Key)
         {
+            case "Enter" or " " when Disabled:
+                return;
+            case "Enter" or " " when open && activeIdx >= 0 && activeIdx < Options.Count:
+                await Pick(Options[activeIdx]);
+                return;
             case "Enter" or " ":
                 if (open) { await Close(); return; }
                 open = true; activeIdx = Math.Max(0, Options.FindIndex(o => o.Value == Value));
@@ -99,10 +115,10 @@
                 await Close();
                 return;
             case "ArrowDown" when open:
-                activeIdx = (activeIdx + 1) % Options.Count;
+                activeIdx = Step(1);
                 break;
             case "ArrowUp" when open:
-                activeIdx = (activeIdx - 1 + Options.Count) % Options.Count;
+                activeIdx = Step(-1);
                 break;
             case "Home" when open:
                 activeIdx = 0;
@@ -112,8 +128,20 @@
                 break;
             default: return;
         }
+        if (open) await JS.InvokeVoidAsync("ipop.scrollSelectOpt", popRef, activeIdx);
         StateHasChanged();
         await JS.InvokeVoidAsync("ipop.icons");
         if (open) { await Task.Delay(30); await JS.InvokeVoidAsync("ipop.positionSelect", trigger, popRef); }
+    }
+
+    /// Next enabled option in a direction, wrapping around.
+    private int Step(int dir)
+    {
+        for (var n = 1; n <= Options.Count; n++)
+        {
+            var i = ((activeIdx + dir * n) % Options.Count + Options.Count) % Options.Count;
+            if (!Options[i].Disabled) return i;
+        }
+        return activeIdx;
     }
 }
