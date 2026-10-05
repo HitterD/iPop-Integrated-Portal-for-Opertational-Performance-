@@ -18,6 +18,7 @@ public static class NotificationModules
     public static readonly NotificationModule Project = new("project", "Projects", "kanban");
     public static readonly NotificationModule Notes = new("notes", "Notes", "notebook-pen");
     public static readonly NotificationModule Files = new("files", "Files", "folder");
+    public static readonly NotificationModule Tickets = new("tickets", "Tickets", "life-buoy");
     public static readonly NotificationModule Admin = new("admin", "Administration", "shield-check");
     public static readonly NotificationModule System = new("system", "System", "bell");
 
@@ -32,6 +33,7 @@ public static class NotificationModules
         if (e.Contains("mention") || t.Contains("menyebut") || t.Contains("mentioned"))
             return path.StartsWith("/notes") ? Notes : Mention;
         if (path.StartsWith("/notes")) return Notes;
+        if (path.StartsWith("/tickets") || e.StartsWith("ticket")) return Tickets;
         if (path.StartsWith("/calls") || path.StartsWith("/meeting")) return Meeting;
         if (path.StartsWith("/calendar")) return Calendar;
         if (path.StartsWith("/files")) return Files;

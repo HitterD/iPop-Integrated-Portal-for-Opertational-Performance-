@@ -1,0 +1,83 @@
+@using IPop.Application.Tickets
+@using IPop.Web.Services
+@implements IDisposable
+@inject AuthState Auth
+@inject TicketApi Api
+@inject PageCache Cache
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@* Dashboard "My tickets" (docs/mockups/ipop-apple/tickets.html, tab 6): open + please-confirm counts, top 3 open. *@
+<section class="dw-card m-tickets tkw">
+    <header class="dw-ch">
+        <span class="ic"><i data-lucide="life-buoy"></i></span><h3>My tickets</h3>
+        <a class="add" href="/tickets/new" title="New ticket" aria-label="New ticket"><i data-lucide="plus"></i></a>
+    </header>
+    @if (list is null)
+    {
+        <div class="sk" style="height:150px"></div>
+    }
+    else
+    {
+        var open = list.Tickets.Where(t => TicketStatus.IsOpen(t.Status)).ToList();
+        var confirm = open.Count(t => t.Status == TicketStatus.Resolved);
+        <div class="tkw-n">
+            <a href="/tickets"><b data-count="@open.Count" @key="@($"o{open.Count}")"></b><span>Open</span></a>
+            <a href="/tickets" class="w"><b data-count="@confirm" @key="@($"c{confirm}")"></b><span>Please confirm</span></a>
+        </div>
+        @foreach (var t in Top(open))
+        {
+            <a class="li" href="/tickets/@t.Id" @key="t.Id">
+                <span class="tk-pill @TicketUi.Status(t.Status).Css">@TicketUi.WidgetLabel(t.Status)</span>
+                <span class="tx"><b>@t.Title</b></span>
+                <i data-lucide="chevron-right" class="chev"></i>
+            </a>
+        }
+        @if (open.Count == 0)
+        {
+            <div class="dw-none">No open tickets. <a href="/tickets/new" style="color:var(--m);font-weight:600">New ticket</a></div>
+        }
+    }
+</section>
+
+@code {
+    private TicketListDto? list;
+    private IDisposable? sub;
+    private bool counted, disposed;
+
+    /// "Needs you" first, then the rest, newest first.
+    private static IEnumerable<TicketListItemDto> Top(List<TicketListItemDto> open) =>
+        open.OrderBy(t => t.Status == TicketStatus.Resolved ? 0 : TicketUi.IsPending(t.Status) ? 2 : 1)
+            .ThenByDescending(t => t.UpdatedAt).Take(3);
+
+    protected override async Task OnInitializedAsync()
+    {
+        list = Cache.Peek<TicketListDto>(IPop.Web.Pages.Tickets.CacheKey);
+        sub = Auth.On<object?>(TicketEvents.Changed, _ => _ = InvokeAsync(LoadAsync));
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        var r = await Api.ListAsync(openOnly: true);
+        if (disposed || r.Value is not { } fresh) return;
+        // Open-only answer: keep closed rows from the full cached list out of the counts.
+        list = fresh;
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (list is null || disposed) return;
+        try
+        {
+            await JS.InvokeVoidAsync("ipop.icons");
+            await JS.InvokeVoidAsync("ipopTickets.countWidget", !counted);
+            counted = true;
+        }
+        catch (JSDisconnectedException) { }
+        catch (InvalidOperationException) { }
+    }
+
+    public void Dispose() { disposed = true; sub?.Dispose(); }
+}

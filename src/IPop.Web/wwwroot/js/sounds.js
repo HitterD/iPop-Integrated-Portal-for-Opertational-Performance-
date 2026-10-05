@@ -4,14 +4,14 @@
 // Decoded once through WebAudio so a sound plays instantly and the volume applies to every sound.
 (function () {
     const KEY = 'notification-sounds';
-    const MODULES = ['dm', 'group', 'mention', 'mail', 'meeting', 'project', 'announce', 'notes', 'system'];
+    const MODULES = ['dm', 'group', 'mention', 'mail', 'meeting', 'project', 'announce', 'notes', 'tickets', 'system'];
     // Same melody, louder: meeting reminder, mandatory memo / condolence. Only used while the module
     // keeps its default sound — a sound the user picked plays as picked.
     const URGENT = { meeting: 'meeting-urgent', announce: 'announce-firm' };
     const CHOICES = [
         ['dm', 'Bubble'], ['group', 'Pebble'], ['mention', 'Spark'], ['mail', 'Envelope'], ['meeting', 'Doorbell'],
         ['meeting-urgent', 'Doorbell (loud)'], ['project', 'Tasker'], ['announce', 'Herald'], ['announce-firm', 'Herald (firm)'],
-        ['notes', 'Paper'], ['system', 'Ping'], ['x-glass', 'Crystal'], ['x-drop', 'Drop'], ['x-harp', 'Harp'],
+        ['notes', 'Paper'], ['tickets', 'Lifeline'], ['system', 'Ping'], ['x-glass', 'Crystal'], ['x-drop', 'Drop'], ['x-harp', 'Harp'],
     ];
     const FILES = new Set([...CHOICES.map(c => c[0]), 'tick', 'ringtone', 'ringback', 'hangup']);
 
@@ -90,7 +90,7 @@
     window.ipopSound = {
         modules: MODULES,
         choices: CHOICES,
-        /// The sound for a module (dm, group, mention, mail, meeting, project, announce, notes, system).
+        /// The sound for a module (dm, group, mention, mail, meeting, project, announce, notes, tickets, system).
         playFor(module, urgent) {
             // Hidden tab with push active: the service worker's Windows toast owns the alert sound.
             if (document.visibilityState === 'hidden' && window.ipopPushBackgroundHandoff) return;

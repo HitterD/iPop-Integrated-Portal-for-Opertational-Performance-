@@ -192,8 +192,8 @@
         </section>
     </div>
 
-    @* 5 · Notes / news / team *@
-    <div class="dw-r3">
+    @* 5 · Notes / tickets / news / team *@
+    <div class="dw-r3 tk-four">
         <section class="dw-card m-notes">
             <header class="dw-ch"><span class="ic"><i data-lucide="notebook-pen"></i></span><h3>Recent notes</h3><a class="more" href="/notes">Open Notes <i data-lucide="chevron-right"></i></a></header>
             @if (data is not null)
@@ -209,6 +209,8 @@
                 @if (data.Notes.Count == 0) { <div class="dw-none">No notes yet. <a href="/notes" style="color:var(--m);font-weight:600">Start one</a></div> }
             }
         </section>
+
+        <IPop.Web.Components.Tickets.TicketsWidget />
 
         <section class="dw-card m-news">
             <header class="dw-ch"><span class="ic"><i data-lucide="newspaper"></i></span><h3>Latest news</h3><a class="more" href="/news">News &amp; Memos <i data-lucide="chevron-right"></i></a></header>

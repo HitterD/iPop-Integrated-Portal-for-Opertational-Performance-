@@ -229,6 +229,7 @@ public class NotificationState : IDisposable
         if (e.StartsWith("news.") || e.StartsWith("memo."))
             return ("announce", e is "memo.mandatory" or "news.condolence" || (high && e.StartsWith("memo.")));
         if (e.StartsWith("note.")) return ("notes", false);
+        if (e.StartsWith("ticket.")) return ("tickets", false);
         return ("system", false);
     }
 
