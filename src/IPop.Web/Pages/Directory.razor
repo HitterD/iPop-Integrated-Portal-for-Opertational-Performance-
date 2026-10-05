@@ -322,6 +322,9 @@
                                                 <a class="ra" href="@PLinks.Calendar(p.Nik)" title="Calendar" aria-label="View @p.Name's calendar" @onclick:stopPropagation="true">
                                                     <i data-lucide="calendar-search"></i>
                                                 </a>
+                                                <a class="ra" href="@CalLinks.NewMeeting(niks: [p.Nik], from: $"Meeting with {p.Name}")" title="Invite to meeting" aria-label="Invite @p.Name to a meeting" @onclick:stopPropagation="true">
+                                                    <i data-lucide="calendar-plus"></i>
+                                                </a>
                                                 <button type="button" class="ra fav @(isFav ? "on" : "")" data-fav-nik="@p.Nik"
                                                         title="@(isFav ? "Remove from favorites" : "Add to favorites")"
                                                         @onclick="() => ToggleFavorite(p.Nik)" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">

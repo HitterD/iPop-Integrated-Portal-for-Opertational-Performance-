@@ -662,7 +662,11 @@
                             <button type="button" role="radio" aria-checked='@(!form.Online ? "true" : "false")' class="cal-seg-item @(!form.Online ? "on" : "")" @onclick="() => form.Online = false">Room</button>
                         </div>
                     </div>
-                    @if (form.Online)
+                    @if (form.Online && !(form.People.Count > 0 || form.RoomIdText != ""))
+                    {
+                        <div class="cal-row cal-online-hint"><i data-lucide="video"></i><span>Invite people or a group to get an iPop Meeting link. Without anyone it stays a normal event.</span></div>
+                    }
+                    else if (form.Online)
                     {
                         <div class="cal-row cal-online-hint"><i data-lucide="video"></i><span>iPop Meeting · a join link is available after inviting people or a group.</span></div>
                     }

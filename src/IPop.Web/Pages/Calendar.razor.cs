@@ -98,6 +98,10 @@ public partial class Calendar
         nowTimer = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
         _ = ChatSvc.GroupRooms.Count == 0 ? ChatSvc.LoadRoomsAsync() : Task.CompletedTask;
         calendarSub = Auth.On(IPop.Application.Realtime.RealtimeEvents.CalendarChanged, OnCalendarChanged);
+        // The first address is applied here, once the calendar is loaded; later ones in OnParametersSetAsync.
+        lastCalendarAddress = Nav.Uri + "|" + PersonNik; lastPersonNik = PersonNik;
+        initialized = true;
+        await ApplyAddressQueryAsync();
     }
 
     /// "Invite to meeting" from a person's calendar: the form opens on the main calendar.
@@ -105,17 +109,21 @@ public partial class Calendar
 
     private string? lastPersonNik;
 
+    /// Online only means something with someone to meet; a private block stays a plain event.
+    private bool OnlineMeeting => form.Online && (form.People.Count > 0 || form.RoomIdText != "");
+
     private string? lastCalendarAddress;
     private string? mobilePersonAddress;
 
     protected override async Task OnParametersSetAsync()
     {
         // Query navigation reuses this component too, not just person navigation.
-        if (lastCalendarAddress == Nav.Uri) return;
-        lastCalendarAddress = Nav.Uri;
+        // Blazor can call this with the new address before the route parameter catches up; key on both.
+        var address = Nav.Uri + "|" + PersonNik;
+        if (!initialized || lastCalendarAddress == address) return;
+        lastCalendarAddress = address;
         var personChanged = PersonNik != lastPersonNik;
         lastPersonNik = PersonNik;
-        if (loadedFrom == default) return;
         if (personChanged)
         {
             mobilePersonAddress = null;
@@ -130,6 +138,14 @@ public partial class Calendar
         var managerChanged = managing != nextManaging;
         managing = nextManaging;
         if (personChanged || dateChanged || managerChanged) await LoadAsync();
+        await ApplyAddressQueryAsync();
+    }
+
+    private bool initialized;
+
+    /// Opens whatever the address asks for: an event, a person to invite, or a prefilled new meeting.
+    private async Task ApplyAddressQueryAsync()
+    {
         await OpenFromQueryAsync();
         if (!PersonMode && pendingInvite is { } pi)
         {
@@ -727,7 +743,7 @@ public partial class Calendar
         var body = new
         {
             title = form.Title, startAt = start, endAt = end, allDay = form.AllDay,
-            location = form.Online ? CallsSchedule.OnlineLocation : form.Location, link = form.Online ? null : form.Link, notes = form.Notes,
+            location = OnlineMeeting ? CallsSchedule.OnlineLocation : form.Location, link = OnlineMeeting ? null : form.Link, notes = form.Notes,
             reminderMinutes = form.Reminder > 0 ? form.Reminder : (int?)null,
             roomId, visibility = form.Visibility,
             // Managing someone's calendar: a new event belongs to them (the API records me as "on behalf").
