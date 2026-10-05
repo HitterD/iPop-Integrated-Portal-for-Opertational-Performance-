@@ -1,0 +1,430 @@
+@using System.Net.Http.Json
+@using IPop.Web.Services
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject ConfirmService Confirm
+@inject IJSRuntime JS
+
+@* ⚙ Calendar settings — one scrolling page, no tabs (approved mockup docs/mockups/ipop-apple/calendar-access.html §2):
+   who can see my calendar (fixed "Everyone · See when I'm busy" row + people / departments / chat groups, one level
+   each), a preview through someone else's eyes, and notifications. Every change saves at once. *@
+
+@if (Open)
+{
+    <div class="cs-scrim" @onclick="CloseAsync"></div>
+    <aside class="cs-sheet" role="dialog" aria-modal="true" aria-label="Calendar settings" @onkeydown="OnKey">
+        <header class="cs-head">
+            <h2><i data-lucide="settings"></i> Calendar settings</h2>
+            <button type="button" class="cal-icon" title="Close" aria-label="Close" @onclick="CloseAsync"><i data-lucide="x"></i></button>
+        </header>
+        <div class="cs-body">
+            <section class="cs-sec">
+                <h3><i data-lucide="eye"></i> Who can see my calendar</h3>
+                <p>Everyone can see <b>when</b> you're busy, so they can plan meetings. Only people you add below see more.</p>
+                <div class="cs-group">
+                    <div class="cs-row fixed">
+                        <span class="cs-gi"><i data-lucide="building-2"></i></span>
+                        <span class="cs-t"><b>Everyone at SJA</b><small>Grey "Busy" blocks — no titles, places or people</small></span>
+                        <span class="cs-lvl static"><i data-lucide="lock"></i> See when I'm busy</span>
+                    </div>
+                    @if (rows is null)
+                    {
+                        <div class="cs-row"><span class="cs-t"><small>Loading…</small></span></div>
+                    }
+                    else
+                    {
+                        @foreach (var r in rows)
+                        {
+                            var row = r;
+                            <div class="cs-row @(row.Key == flashKey ? "new" : "") @(row.Key == leavingKey ? "leaving" : "")" @key="row.Key">
+                                @if (row.Kind == "person")
+                                {
+                                    <PersonAvatar Nik="@row.Nik" Name="@row.Name" Size="30" Decorative="true" />
+                                }
+                                else
+                                {
+                                    <span class="cs-gi @(row.Kind)"><i data-lucide="@(row.Kind == "department" ? "users" : "message-circle")"></i></span>
+                                }
+                                <span class="cs-t"><b>@row.Name</b><small>@row.Sub</small></span>
+                                <button type="button" class="cs-lvl @(ladderFor == row.Key ? "on" : "")" disabled="@busy" aria-haspopup="listbox"
+                                        aria-expanded="@(ladderFor == row.Key ? "true" : "false")" @onclick="() => ToggleLadder(row.Key)">
+                                    @LevelLabel(row.Level) <i data-lucide="chevron-down"></i>
+                                </button>
+                                <button type="button" class="cal-icon sm" title="Remove" aria-label="Remove @row.Name" disabled="@busy" @onclick="() => RemoveAsync(row)"><i data-lucide="x"></i></button>
+                                @if (ladderFor == row.Key)
+                                {
+                                    <div class="cs-ladder" role="listbox" aria-label="Access for @row.Name">
+                                        <div class="o dim"><span class="ic"><i data-lucide="clock"></i></span><span><b>See when I'm busy</b><small>A grey "Busy" block. No titles, places or people. Everyone has this.</small></span></div>
+                                        @foreach (var l in Levels.Where(l => row.Kind == "person" || l.Group))
+                                        {
+                                            var lv = l;
+                                            @if (lv.Key == "edit") { <div class="div">Can make changes</div> }
+                                            <button type="button" role="option" aria-selected="@(row.Level == lv.Key ? "true" : "false")" class="o @(row.Level == lv.Key ? "on" : "")" @onclick="() => SetLevelAsync(row, lv.Key)">
+                                                <span class="ic"><i data-lucide="@lv.Icon"></i></span>
+                                                <span><b>@lv.Label</b><small>@lv.Hint</small></span>
+                                                @if (row.Level == lv.Key) { <i data-lucide="check" class="ck"></i> }
+                                            </button>
+                                        }
+                                        @if (row.Kind != "person") { <div class="note">Groups can see titles or details, never change your calendar.</div> }
+                                        <div class="div"></div>
+                                        <button type="button" class="o rm" @onclick="() => RemoveAsync(row)"><span class="ic"><i data-lucide="user-minus"></i></span><b>Remove — back to busy times only</b></button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                    @if (adding)
+                    {
+                        <div class="cs-add mi-rise">
+                            <div class="cs-add-kinds" role="radiogroup" aria-label="Share with">
+                                <button type="button" role="radio" aria-checked="@(addKind == "person" ? "true" : "false")" class="@(addKind == "person" ? "on" : "")" @onclick='() => SetAddKind("person")'><i data-lucide="user"></i> Person</button>
+                                <button type="button" role="radio" aria-checked="@(addKind == "group" ? "true" : "false")" class="@(addKind == "group" ? "on" : "")" @onclick='() => SetAddKind("group")'><i data-lucide="users"></i> Department or chat group</button>
+                            </div>
+                            @if (addKind == "person")
+                            {
+                                <PeoplePicker Placeholder="Search a name" ValueChanged="AddPersonAsync" />
+                            }
+                            else
+                            {
+                                <label class="cs-search"><i data-lucide="search"></i><input @ref="groupInput" placeholder="Search a department or chat group" value="@groupQ" @oninput="OnGroupInput" aria-label="Search a department or chat group" /></label>
+                                <div class="cs-targets">
+                                    @foreach (var tgt in targets)
+                                    {
+                                        var tg = tgt;
+                                        <button type="button" class="cs-target" @onclick="() => AddGroupAsync(tg)">
+                                            <span class="cs-gi @tg.Kind"><i data-lucide="@(tg.Kind == "department" ? "users" : "message-circle")"></i></span>
+                                            <span class="cs-t"><b>@tg.Name</b><small>@(tg.Kind == "department" ? "Department" : "Chat group") · @tg.Members people</small></span>
+                                        </button>
+                                    }
+                                    @if (targets.Count == 0) { <div class="cs-empty">@(groupQ.Length > 0 ? "No match." : "Type to search.")</div> }
+                                </div>
+                            }
+                            <div class="cs-add-foot"><span>They'll get <b>See event titles</b>. You can change it after.</span><button type="button" class="cal-btn ghost" @onclick="() => adding = false">Cancel</button></div>
+                        </div>
+                    }
+                    else
+                    {
+                        <button type="button" class="cs-addrow" @onclick="StartAdd"><i data-lucide="user-plus"></i> Share with a person, department or chat group…</button>
+                    }
+                </div>
+            </section>
+
+            <section class="cs-sec">
+                <h3><i data-lucide="scan-eye"></i> Preview</h3>
+                <p>How this week looks to</p>
+                <div class="cal-seg sm cs-pv-seg" role="group" aria-label="Preview as">
+                    <button type="button" class="cal-seg-item @(previewLevel is null ? "on" : "")" aria-pressed="@(previewLevel is null ? "true" : "false")" @onclick="() => SetPreviewAsync(null)">Everyone</button>
+                    @foreach (var l in PreviewLevels)
+                    {
+                        var pl = l;
+                        <button type="button" class="cal-seg-item @(previewLevel == pl.Key ? "on" : "")" aria-pressed="@(previewLevel == pl.Key ? "true" : "false")" @onclick="() => SetPreviewAsync(pl.Key)">@pl.Short</button>
+                    }
+                </div>
+                <div class="cs-pv" @key="previewLevel">
+                    @if (preview is null) { <div class="cs-empty">Loading your week…</div> }
+                    else if (!PreviewDays.Any()) { <div class="cs-empty">Nothing on your calendar for the rest of this week.</div> }
+                    else
+                    {
+                        @foreach (var day in PreviewDays)
+                        {
+                            <div class="cs-pv-day">@(day.Key == DateTime.Today ? "Today" : day.Key.ToString("dddd d MMM"))</div>
+                            @foreach (var pi in day)
+                            {
+                                <div class="cs-pv-row" @key="pi.Id">
+                                    <span class="cs-pv-time">@(pi.AllDay ? "All day" : pi.Start.ToString("HH:mm"))</span>
+                                    <span class="cs-pv-block @(pi.TheySee is null ? "busy" : "open") @(pi.Tentative ? "tentative" : "")">@(pi.TheySee ?? "Busy")</span>
+                                    <span class="cs-pv-mine" title="Your event">@(pi.Visibility == "private" ? "🔒 " : "")@pi.YourTitle</span>
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+                <small class="cs-hint">People you invite always see the meeting. Private events show as Busy to everyone, except someone who acts on your behalf.</small>
+            </section>
+
+            <section class="cs-sec">
+                <h3><i data-lucide="bell"></i> Notifications</h3>
+                <div class="cs-group">
+                    <div class="cs-row">
+                        <span class="cs-t"><b>Someone asks to see more</b><small>You can allow it straight from the notification</small></span>
+                        <button type="button" role="switch" aria-checked="@(notifyAsk ? "true" : "false")" aria-label="Someone asks to see more" class="cs-switch @(notifyAsk ? "on" : "")" @onclick="() => SaveNotifyAsync(ask: !notifyAsk)"></button>
+                    </div>
+                    <div class="cs-row">
+                        <span class="cs-t"><b>Someone changes my calendar for me</b><small>Edits are always labelled "on behalf of you"</small></span>
+                        <button type="button" role="switch" aria-checked="@(notifyChange ? "true" : "false")" aria-label="Someone changes my calendar for me" class="cs-switch @(notifyChange ? "on" : "")" @onclick="() => SaveNotifyAsync(change: !notifyChange)"></button>
+                    </div>
+                </div>
+            </section>
+        </div>
+        <footer class="cs-foot">
+            <span class="cs-saved @(savedPulse ? "on" : "")">@(busy ? "Saving…" : "Changes save automatically")</span>
+            <button type="button" class="cal-btn primary" @onclick="CloseAsync">Done</button>
+        </footer>
+    </aside>
+}
+
+@code {
+    public record DelegateRow(string Nik, string Name, string? Department, string Level, string? GrantedBy, DateTime CreatedAt);
+    public record GroupRow(Guid Id, string Kind, Guid TargetId, string Name, int Members, string Level);
+    public record Target(string Kind, Guid Id, string Name, int Members);
+    public record SettingsDto(bool NotifyDelegateChanges, bool NotifyShareRequests, bool SharingIntroSeen);
+    public record PreviewItem(string Id, DateTime StartAt, DateTime EndAt, bool AllDay, bool Tentative, string Visibility, string YourTitle, string? TheySee)
+    {
+        public DateTime Start => AllDay ? StartAt.Date : StartAt.ToLocalTime();
+        public DateTime End => AllDay ? EndAt.Date : EndAt.ToLocalTime();
+    }
+    private sealed record Row(string Key, string Kind, string? Nik, Guid? GroupId, string Name, string Sub, string Level);
+    public sealed record LevelDef(string Key, string Label, string Short, string Icon, string Hint, bool Group);
+
+    public static readonly LevelDef[] Levels =
+    [
+        new("titles", "See event titles", "Titles", "text", "What and where, e.g. \"Vendor meeting · Room 2\".", true),
+        new("view", "See all details", "All details", "file-text", "Also the description, attendees and attachments.", true),
+        new("edit", "Edit my events", "Editor", "pencil", "Add, move and change events in your calendar.", false),
+        new("full", "Act on my behalf", "Assistant", "user-cog", "Like an assistant: also gets your invites and can accept or decline for you.", false),
+    ];
+    private static IEnumerable<LevelDef> PreviewLevels => Levels.Where(l => l.Key is "titles" or "full");
+    public static string LevelLabel(string? key) => Levels.FirstOrDefault(l => l.Key == key)?.Label ?? "See when I'm busy";
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    /// Fired after any change to who can see the calendar (the page refreshes its list labels).
+    [Parameter] public EventCallback Changed { get; set; }
+    /// Open straight into "Share with…" for this person at this level (from an Allow link).
+    [Parameter] public (string Nik, string Name)? AllowFor { get; set; }
+
+    private List<Row>? rows;
+    private bool busy, adding, savedPulse, notifyAsk = true, notifyChange = true, wasOpen;
+    private string? ladderFor, flashKey, leavingKey, previewLevel;
+    private string addKind = "person", groupQ = "";
+    private List<Target> targets = [];
+    private List<PreviewItem>? preview;
+    private ElementReference groupInput;
+    private CancellationTokenSource? searchCts, previewCts;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Open && !wasOpen)
+        {
+            wasOpen = true;
+            adding = false; ladderFor = null; previewLevel = null;
+            await Task.WhenAll(LoadRowsAsync(), LoadSettingsAsync(), LoadPreviewAsync());
+            if (AllowFor is { } a) await AllowAsync(a.Nik, a.Name);
+        }
+        else if (!Open) wasOpen = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Open) await JS.InvokeVoidAsync("ipop.icons");
+    }
+
+    private async Task LoadRowsAsync()
+    {
+        try
+        {
+            var people = Auth.GetAsync<List<DelegateRow>>("/api/calendar/delegates");
+            var groupsTask = Auth.GetAsync<List<GroupRow>>("/api/calendar/group-shares");
+            var groups = await groupsTask ?? [];
+            groupTargets.Clear();
+            foreach (var gr in groups) groupTargets["g:" + gr.Id] = gr.TargetId;
+            rows = [
+                .. (await people ?? []).Select(p => new Row("p:" + p.Nik, "person", p.Nik, null, p.Name,
+                    (p.Department ?? "") + (p.GrantedBy is not null ? $"{(p.Department is null ? "" : " · ")}Set by {p.GrantedBy}" : "") is { Length: > 0 } s ? s : Hint(p.Level), p.Level)),
+                .. groups.Select(g => new Row("g:" + g.Id, g.Kind, null, g.Id, g.Name,
+                    $"{g.Members} people · new members included", g.Level)),
+            ];
+        }
+        catch { rows = []; Toasts.Show("Could not load who can see your calendar.", ToastKind.Error); }
+    }
+
+    private static string Hint(string level) => level == "full" ? "Assistant · gets your invites" : Levels.FirstOrDefault(l => l.Key == level)?.Hint ?? "";
+
+    private async Task LoadSettingsAsync()
+    {
+        var s = await Auth.GetAsync<SettingsDto>("/api/calendar/settings");
+        if (s is not null) { notifyAsk = s.NotifyShareRequests; notifyChange = s.NotifyDelegateChanges; }
+    }
+
+    private void ToggleLadder(string key) => ladderFor = ladderFor == key ? null : key;
+
+    private async Task SetLevelAsync(Row row, string level)
+    {
+        ladderFor = null;
+        if (row.Level == level) return;
+        var ok = row.Kind == "person"
+            ? await SendAsync(HttpMethod.Put, $"/api/calendar/delegates/{Uri.EscapeDataString(row.Nik!)}", new { level })
+            : await SendAsync(HttpMethod.Put, "/api/calendar/group-shares", GroupBody(row, level));
+        if (!ok) return;
+        await AfterChangeAsync(row.Key, $"{row.Name} can now {LevelLabel(level).ToLowerInvariant()}.");
+    }
+
+    private object GroupBody(Row row, string level)
+    {
+        return new { departmentId = row.Kind == "department" ? groupTargets.GetValueOrDefault(row.Key) : (Guid?)null,
+                     roomId = row.Kind == "room" ? groupTargets.GetValueOrDefault(row.Key) : (Guid?)null, level };
+    }
+
+    private readonly Dictionary<string, Guid> groupTargets = [];
+
+    private async Task RemoveAsync(Row row)
+    {
+        ladderFor = null;
+        if (!await Confirm.AskAsync($"Stop sharing with {row.Name}?", row.Kind == "person"
+                ? $"{row.Name} will see only when you're busy, like everyone else."
+                : "Its members will see only when you're busy, like everyone else.", "Stop sharing", danger: true)) return;
+        leavingKey = row.Key;
+        StateHasChanged();
+        await Task.Delay(220);
+        var ok = row.Kind == "person"
+            ? await SendAsync(HttpMethod.Delete, $"/api/calendar/delegates/{Uri.EscapeDataString(row.Nik!)}", null)
+            : await SendAsync(HttpMethod.Delete, $"/api/calendar/group-shares/{row.GroupId}", null);
+        leavingKey = null;
+        if (ok) await AfterChangeAsync(null, $"Stopped sharing with {row.Name}.");
+    }
+
+    private void StartAdd() { adding = true; addKind = "person"; groupQ = ""; targets = []; }
+
+    private async Task SetAddKind(string k)
+    {
+        addKind = k;
+        if (k == "group") { await SearchTargetsAsync(); StateHasChanged(); try { await Task.Delay(30); await groupInput.FocusAsync(); } catch { } }
+    }
+
+    private async Task AddPersonAsync(MemberSearchRow p)
+    {
+        if (p.Nik == Auth.Me?.Nik) { Toasts.Show("That's your own calendar.", ToastKind.Info); return; }
+        var existing = rows?.FirstOrDefault(r => r.Nik == p.Nik);
+        if (existing is not null) { adding = false; flashKey = existing.Key; ladderFor = existing.Key; return; }
+        if (await SendAsync(HttpMethod.Put, $"/api/calendar/delegates/{Uri.EscapeDataString(p.Nik)}", new { level = "titles" }))
+        {
+            adding = false;
+            await AfterChangeAsync("p:" + p.Nik, $"{p.Name} can now see your event titles. They've been notified.");
+        }
+    }
+
+    private async Task OnGroupInput(ChangeEventArgs e)
+    {
+        groupQ = e.Value?.ToString() ?? "";
+        searchCts?.Cancel();
+        var cts = searchCts = new CancellationTokenSource();
+        try { await Task.Delay(200, cts.Token); } catch (OperationCanceledException) { return; }
+        await SearchTargetsAsync();
+    }
+
+    private async Task SearchTargetsAsync()
+    {
+        targets = await Auth.GetAsync<List<Target>>($"/api/calendar/share-targets?q={Uri.EscapeDataString(groupQ)}") ?? [];
+        var have = rows?.Where(r => r.Kind != "person").Select(r => groupTargets.GetValueOrDefault(r.Key)).ToHashSet() ?? [];
+        targets = targets.Where(t => !have.Contains(t.Id)).ToList();
+    }
+
+    private async Task AddGroupAsync(Target t)
+    {
+        var body = new { departmentId = t.Kind == "department" ? t.Id : (Guid?)null, roomId = t.Kind == "room" ? t.Id : (Guid?)null, level = "titles" };
+        if (!await SendAsync(HttpMethod.Put, "/api/calendar/group-shares", body)) return;
+        adding = false;
+        await AfterChangeAsync(null, $"Everyone in {t.Name} can now see your event titles.", t.Id);
+    }
+
+    /// Allow link from a request notification: add them at See event titles (or flash them if already there).
+    public async Task AllowAsync(string nik, string name)
+    {
+        var existing = rows?.FirstOrDefault(r => r.Nik == nik);
+        if (existing is not null && existing.Level != "titles" && Levels.ToList().FindIndex(l => l.Key == existing.Level) > 0)
+        {
+            flashKey = existing.Key;
+            Toasts.Show($"{name} can already {LevelLabel(existing.Level).ToLowerInvariant()}.", ToastKind.Info);
+            return;
+        }
+        if (await SendAsync(HttpMethod.Put, $"/api/calendar/delegates/{Uri.EscapeDataString(nik)}", new { level = "titles" }))
+        {
+            await AfterChangeAsync("p:" + nik, $"Allowed — {name} can now see your event titles.");
+            ladderFor = "p:" + nik;
+        }
+    }
+
+    private async Task AfterChangeAsync(string? flash, string toast, Guid? newGroupTarget = null)
+    {
+        var before = rows?.Select(r => r.Key).ToHashSet() ?? [];
+        await LoadRowsAsync();
+        if (newGroupTarget is { } gt) flash = groupTargets.FirstOrDefault(kv => kv.Value == gt).Key;
+        flashKey = flash ?? rows?.FirstOrDefault(r => !before.Contains(r.Key))?.Key;
+        Toasts.Show(toast, ToastKind.Success);
+        await PulseSavedAsync();
+        await Changed.InvokeAsync();
+        await LoadPreviewAsync();
+    }
+
+    private async Task SaveNotifyAsync(bool? ask = null, bool? change = null)
+    {
+        if (ask is { } a) notifyAsk = a;
+        if (change is { } c) notifyChange = c;
+        await SendAsync(HttpMethod.Put, "/api/calendar/settings", new { notifyShareRequests = notifyAsk, notifyDelegateChanges = notifyChange });
+        await PulseSavedAsync();
+    }
+
+    private async Task PulseSavedAsync()
+    {
+        savedPulse = true; StateHasChanged();
+        await Task.Delay(900);
+        savedPulse = false;
+    }
+
+    private async Task SetPreviewAsync(string? level) { previewLevel = level; await LoadPreviewAsync(); }
+
+    private async Task LoadPreviewAsync()
+    {
+        previewCts?.Cancel();
+        var cts = previewCts = new CancellationTokenSource();
+        var today = DateTime.Today;
+        var from = today.AddDays(-(((int)today.DayOfWeek + 6) % 7)); var to = from.AddDays(7);
+        try
+        {
+            var url = $"/api/calendar/preview?level={previewLevel}&from={Uri.EscapeDataString(from.ToUniversalTime().ToString("o"))}&to={Uri.EscapeDataString(to.ToUniversalTime().ToString("o"))}";
+            var res = await Auth.GetAsync<List<PreviewItem>>(url, cts.Token);
+            if (!cts.IsCancellationRequested) preview = res ?? [];
+        }
+        catch (OperationCanceledException) { }
+        catch { if (!cts.IsCancellationRequested) preview = []; }
+        if (!cts.IsCancellationRequested) StateHasChanged();
+    }
+
+    private IEnumerable<IGrouping<DateTime, PreviewItem>> PreviewDays =>
+        (preview ?? []).Where(i => i.End > DateTime.Now.Date).GroupBy(i => i.Start.Date).OrderBy(g => g.Key).Take(4);
+
+    private async Task<bool> SendAsync(HttpMethod method, string url, object? body)
+    {
+        busy = true;
+        try
+        {
+            using var res = await Auth.SendAsync(method, url, body);
+            if (res.IsSuccessStatusCode) return true;
+            Toasts.Show(await ErrorAsync(res), ToastKind.Error);
+            return false;
+        }
+        catch { Toasts.Show("Couldn't save. Try again.", ToastKind.Error); return false; }
+        finally { busy = false; }
+    }
+
+    private static async Task<string> ErrorAsync(HttpResponseMessage res)
+    {
+        try
+        {
+            var b = await res.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+            if (b?.GetValueOrDefault("message")?.ToString() is { Length: > 0 } m) return m;
+        }
+        catch { }
+        return $"Request failed ({(int)res.StatusCode}).";
+    }
+
+    private void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key != "Escape") return;
+        if (ladderFor is not null) ladderFor = null;
+        else if (adding) adding = false;
+        else _ = CloseAsync();
+    }
+
+    private async Task CloseAsync() => await OpenChanged.InvokeAsync(false);
+}

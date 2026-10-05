@@ -11,7 +11,6 @@ public partial class Calendar
 
     private List<ManagedCalendar> managed = [];
     private ManagedCalendar? managing;
-    private bool draftNotify = true;
 
     private bool CanCreate => managing is null || managing.Level is "edit" or "full";
 
@@ -29,6 +28,7 @@ public partial class Calendar
 
     private async Task ManageAsync(ManagedCalendar? m)
     {
+        if (PersonMode) { Nav.NavigateTo(m is null ? "/calendar" : $"/calendar?manage={PLinks.Token(m.Nik)}"); return; }
         if (managing?.Nik == m?.Nik) return;
         managing = m;
         CloseDrawer();
@@ -36,10 +36,7 @@ public partial class Calendar
         await LoadAsync();
     }
 
-    private static string LevelLabel(string level) => level switch
-    {
-        "full" => "Full delegate", "edit" => "Can edit", _ => "View all details",
-    };
+    private static string LevelLabel(string level) => level == "full" ? "You act on their behalf" : "You can edit their events";
 
     // ── Drawer: on-behalf labels and answering for the owner ──
 

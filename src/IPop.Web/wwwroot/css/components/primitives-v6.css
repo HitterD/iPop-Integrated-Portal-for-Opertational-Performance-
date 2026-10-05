@@ -87,6 +87,15 @@
   .cp-row .n { font-size: 13px; font-weight: 600; }
   .cp-row .s { font-size: 11.5px; color: var(--ink-3); }
   .cp-kind { margin-left: auto; font-size: 10.5px; color: var(--ink-3); flex-shrink: 0; }
+  /* People: free/busy hint and a Calendar jump (Tab) — calendar access v2 */
+  .cp-free.free { color: #248a3d; }
+  :root[data-theme="dark"] .cp-free.free { color: #4cd787; }
+  .cp-cal { margin-left: auto; flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 7px;
+    border: 1px solid var(--line); font-size: 11px; color: var(--ink-2); background: var(--surface);
+    transition: border-color .15s var(--ease), color .15s, background-color .15s, transform .15s var(--ease); }
+  .cp-cal svg.lucide, .cp-cal i { width: 12px !important; height: 12px !important; }
+  .cp-cal:hover, .cp-cal.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .cp-cal.on { transform: scale(1.04); }
   .cp-empty { padding: 22px 18px; color: var(--ink-3); font-size: 12.5px; text-align: center; }
 
   /* ============ PEOPLE PICKER (multi-select extras) ============ */

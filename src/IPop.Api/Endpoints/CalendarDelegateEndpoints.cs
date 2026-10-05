@@ -226,7 +226,6 @@ public static class CalendarDelegateEndpoints
         if (notifs is null) return;
         var names = await db.Users.AsNoTracking().Where(u => u.Id == actorId || u.Id == ownerId || u.Id == delegateId)
             .ToDictionaryAsync(u => u.Id, u => u.Name, ct);
-        var ownerNik = await db.Users.AsNoTracking().Where(u => u.Id == ownerId).Select(u => u.Nik).FirstOrDefaultAsync(ct);
         var owner = names.GetValueOrDefault(ownerId) ?? "Someone";
         var dlg = names.GetValueOrDefault(delegateId) ?? "Someone";
         var by = actorId == ownerId || actorId == delegateId ? "" : $" Set by {names.GetValueOrDefault(actorId) ?? "an admin"}.";
@@ -239,7 +238,7 @@ public static class CalendarDelegateEndpoints
                 _ => ($"{owner} shared their calendar with you", $"You can now {LevelText(level)} {owner}'s calendar ({LevelLabel(level)}).{by}"),
             };
             await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "calendar.delegate", title, body, [delegateId], "normal",
-                what == "revoked" ? "/calendar" : $"/calendar/person/{Uri.EscapeDataString(ownerNik ?? "")}");
+                what == "revoked" ? "/calendar" : $"/calendar/person/{ownerId}");
         }
         if (ownerId != actorId)
         {

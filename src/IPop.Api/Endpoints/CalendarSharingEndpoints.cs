@@ -293,9 +293,11 @@ public static class CalendarSharingEndpoints
     public record PersonDto(string Nik, string Name, string? Department, string? Site, string? Access, string AccessLabel,
         bool Following, bool Self, DateTime? NowBusyUntil, DateTime? NextBusyAt);
 
-    public static async Task<PersonDto?> LoadPersonAsync(IPopDbContext db, Guid viewerId, string nik, CancellationToken ct)
+    /// <paramref name="key"/> is a NIK or a user id (links in notifications use the id, keeping NIKs out of URLs).
+    public static async Task<PersonDto?> LoadPersonAsync(IPopDbContext db, Guid viewerId, string key, CancellationToken ct)
     {
-        var u = await db.Users.AsNoTracking().Where(x => x.Nik == nik && x.IsActive)
+        var id = Guid.TryParse(key, out var g) ? g : (Guid?)null;
+        var u = await db.Users.AsNoTracking().Where(x => (id != null ? x.Id == id : x.Nik == key) && x.IsActive)
             .Select(x => new { x.Id, x.Nik, x.Name, Dept = x.Department != null ? x.Department.Name : null, Site = x.Site != null ? x.Site.Name : null })
             .FirstOrDefaultAsync(ct);
         if (u is null) return null;
@@ -320,7 +322,7 @@ public static class CalendarSharingEndpoints
         var owner = await db.Users.AsNoTracking().Where(u => u.Nik == ownerNik && u.IsActive).Select(u => new { u.Id, u.Nik }).FirstOrDefaultAsync(ct);
         if (owner is null) return AskResult.NotFound;
         if (owner.Id == askerId) return AskResult.Self;
-        var asker = await db.Users.AsNoTracking().Where(u => u.Id == askerId).Select(u => new { u.Nik, u.Name }).FirstAsync(ct);
+        var asker = await db.Users.AsNoTracking().Where(u => u.Id == askerId).Select(u => new { u.Id, u.Nik, u.Name }).FirstAsync(ct);
         var since = now.AddDays(-1);
         if (await db.AuditLogs.AnyAsync(a => a.Action == "calendar.share.ask" && a.ActorNik == asker.Nik && a.EntityId == owner.Nik && a.CreatedAt > since, ct))
             return AskResult.AlreadyAsked;
@@ -334,7 +336,7 @@ public static class CalendarSharingEndpoints
         if (notify)
             await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "calendar.share.ask", $"{asker.Name} asks to see your calendar titles",
                 "So they can plan meetings with you. Open it to allow — you can change or remove it any time in Calendar settings.",
-                [owner.Id], "normal", $"/calendar?allow={Uri.EscapeDataString(asker.Nik)}");
+                [owner.Id], "normal", $"/calendar?allow={asker.Id}");
         return AskResult.Sent;
     }
 

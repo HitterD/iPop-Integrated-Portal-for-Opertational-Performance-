@@ -51,6 +51,25 @@ public static class CalendarGroupShareEndpoints
             return Results.Ok(await ListAsync(db, me.Value, ct));
         });
 
+        // GET /api/calendar/share-targets?q= — departments (and my chat groups) to share with, by name.
+        g.MapGet("/share-targets", async (string? q, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var me = await GetUserIdAsync(http, db, ct);
+            if (me is null) return Results.Unauthorized();
+            var term = (q ?? "").Trim().ToLower();
+            var depts = await db.Departments.AsNoTracking()
+                .Where(d => d.IsActive && (term == "" || d.Name.ToLower().Contains(term)))
+                .OrderBy(d => d.Name).Take(8)
+                .Select(d => new ShareTargetDto("department", d.Id, d.Name, db.Users.Count(u => u.DepartmentId == d.Id && u.IsActive)))
+                .ToListAsync(ct);
+            var rooms = await db.ChatRoomMembers.AsNoTracking()
+                .Where(m => m.UserId == me && m.LeftAt == null && m.Room.Type == "group" && (term == "" || (m.Room.Name ?? "").ToLower().Contains(term)))
+                .OrderBy(m => m.Room.Name).Take(8)
+                .Select(m => new ShareTargetDto("room", m.RoomId, m.Room.Name ?? "Chat group", db.ChatRoomMembers.Count(x => x.RoomId == m.RoomId && x.LeftAt == null)))
+                .ToListAsync(ct);
+            return Results.Ok(depts.Concat(rooms).Where(x => x.Members > 0).ToList());
+        });
+
         // GET /api/calendar/followers — people who follow my calendar but get no titles from me.
         g.MapGet("/followers", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
         {
@@ -64,6 +83,7 @@ public static class CalendarGroupShareEndpoints
     public record GroupShareDto(Guid Id, string Kind, Guid TargetId, string Name, int Members, string Level);
     public record SetGroupShareRequest(Guid? DepartmentId, Guid? RoomId, string? Level);
     public record FollowerDto(string Nik, string Name, string? Department);
+    public record ShareTargetDto(string Kind, Guid Id, string Name, int Members);
     public enum SetResult { Ok, NotFound, NotMember, TooMany, InvalidLevel }
 
     public static async Task<List<GroupShareDto>> ListAsync(IPopDbContext db, Guid ownerId, CancellationToken ct)

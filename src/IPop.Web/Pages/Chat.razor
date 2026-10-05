@@ -419,6 +419,9 @@
                             <button type="button" class="header-icon-btn" title="Call" aria-label="Start call" @onclick="() => StartCallWith(dmMember.Nik)">
                                 <i data-lucide="phone"></i>
                             </button>
+                            <a class="header-icon-btn" href="@PLinks.Calendar(dmMember.Nik)" title="View calendar" aria-label="View @dmMember.Name's calendar">
+                                <i data-lucide="calendar-search"></i>
+                            </a>
                         }
                     }
                     @{

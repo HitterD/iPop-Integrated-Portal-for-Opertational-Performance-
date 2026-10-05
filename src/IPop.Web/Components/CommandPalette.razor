@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject AuthState Auth
 @inject NavigationManager Nav
+@inject IPop.Web.Services.PeopleLinks PLinks
 @inject CommandPaletteState Palette
 @inject OverlayStack Overlays
 @inject IJSRuntime JS
@@ -13,7 +14,7 @@
             <div class="cp-input @(loading ? "cp-searching" : "")">
                 <i data-lucide="search"></i>
                 <input @ref="inputRef" placeholder="Search people, projects, tasks, news, mail…"
-                       @oninput="OnInput" @onkeydown="OnKeyDown" aria-label="Search" />
+                       @oninput="OnInput" @onkeydown="OnKeyDown" @onkeydown:preventDefault="tabTrap" aria-label="Search" />
                 @if (loading) { <span class="cp-spin" aria-hidden="true"></span> }
                 <span class="cp-hint">ESC</span>
             </div>
@@ -43,10 +44,17 @@
                                     <span class="n">@IPop.Web.Components.Chat.SearchHighlight.Mark(r.Title, query)</span>
                                     @if (!string.IsNullOrEmpty(r.Subtitle))
                                     {
-                                        <span class="s">@IPop.Web.Components.Chat.SearchHighlight.Mark(r.Subtitle, query)</span>
+                                        <span class="s">@IPop.Web.Components.Chat.SearchHighlight.Mark(r.Subtitle, query)@if (StatusText(r.Status) is { } st) { <span class="cp-free @(r.Status == "free" ? "free" : "busy")"> · @st</span> }</span>
                                     }
                                 </span>
-                                <span class="cp-kind">@r.Group</span>
+                                @if (r.Nik is not null)
+                                {
+                                    <span class="cp-cal @(activeIdx == idx && calFocus ? "on" : "")" role="link" title="View calendar (Tab)" @onclick="() => GoCalendar(r)" @onclick:stopPropagation="true"><i data-lucide="calendar-search"></i>Calendar</span>
+                                }
+                                else
+                                {
+                                    <span class="cp-kind">@r.Group</span>
+                                }
                             </button>
                         }
                     }
@@ -257,18 +265,48 @@
         Nav.NavigateTo(r.Url);
     }
 
+    /// Tab on a person flips Enter between their profile and their calendar.
+    private bool calFocus;
+    /// Only swallow Tab while a person row is active, so Tab still leaves the box otherwise.
+    private bool tabTrap => results.Count > 0 && results[Math.Clamp(activeIdx, 0, results.Count - 1)].Nik is not null;
+
+    private static string? StatusText(string? status)
+    {
+        if (status == "free") return "Free now";
+        if (status?.StartsWith("busy:") == true && DateTime.TryParse(status[5..], null, System.Globalization.DateTimeStyles.RoundtripKind, out var until))
+            return $"In a meeting until {until.ToLocalTime():HH:mm}";
+        return null;
+    }
+
+    private async Task GoCalendar(SearchResultItemDto r)
+    {
+        if (!string.IsNullOrWhiteSpace(query)) _ = RecordHistoryAsync(query);
+        pickedIdx = results.IndexOf(r);
+        StateHasChanged();
+        await Task.Delay(140);
+        Palette.Close();
+        Nav.NavigateTo(PLinks.Calendar(r.Nik!));
+    }
+
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
         switch (e.Key)
         {
-            case "ArrowDown": if (results.Count > 0) { activeIdx = (activeIdx + 1) % results.Count; StateHasChanged(); } break;
-            case "ArrowUp": if (results.Count > 0) { activeIdx = (activeIdx - 1 + results.Count) % results.Count; StateHasChanged(); } break;
+            case "ArrowDown": if (results.Count > 0) { activeIdx = (activeIdx + 1) % results.Count; calFocus = false; StateHasChanged(); } break;
+            case "ArrowUp": if (results.Count > 0) { activeIdx = (activeIdx - 1 + results.Count) % results.Count; calFocus = false; StateHasChanged(); } break;
+            case "Tab":
+                if (results.Count > 0 && results[Math.Clamp(activeIdx, 0, results.Count - 1)].Nik is not null) { calFocus = !calFocus; StateHasChanged(); }
+                break;
             case "Enter":
                 if (!string.IsNullOrWhiteSpace(query))
                 {
                     _ = RecordHistoryAsync(query);
                 }
-                if (results.Count > 0) await Go(results[Math.Clamp(activeIdx, 0, results.Count - 1)]);
+                if (results.Count > 0)
+                {
+                    var pick = results[Math.Clamp(activeIdx, 0, results.Count - 1)];
+                    if (calFocus && pick.Nik is not null) await GoCalendar(pick); else await Go(pick);
+                }
                 break;
             case "Escape": Palette.Close(); break;
         }
@@ -282,6 +320,7 @@
         _exitCts?.Cancel();
     }
 
-    public record SearchResultItemDto(string Group, string Title, string? Subtitle, string Url, string Icon, string? AvatarColor = null, string? Initials = null);
+    public record SearchResultItemDto(string Group, string Title, string? Subtitle, string Url, string Icon, string? AvatarColor = null, string? Initials = null,
+        string? Nik = null, string? Status = null);
     public record SearchHistoryItemDto(Guid Id, string Query, DateTime SearchedAt);
 }

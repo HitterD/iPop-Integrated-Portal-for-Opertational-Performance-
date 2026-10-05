@@ -190,7 +190,7 @@
                         <button type="button" class="adm-list-row link @(sel.IsActive ? "danger" : "")" disabled="@busy" @onclick="() => ToggleActive(sel)"><span><i data-lucide="@(sel.IsActive ? "user-x" : "user-check")"></i> @(sel.IsActive ? "Deactivate" : "Activate")</span></button>
                     </div>
 
-                    <div class="adm-group-label">Calendar delegates</div>
+                    <div class="adm-group-label">Calendar shared with</div>
                     <div class="adm-list adm-cal-dlg">
                         <CalendarDelegatesEditor BaseUrl="@($"/api/admin/users/{Uri.EscapeDataString(sel.Nik)}/calendar-delegates")" IsAdmin="true" />
                     </div>

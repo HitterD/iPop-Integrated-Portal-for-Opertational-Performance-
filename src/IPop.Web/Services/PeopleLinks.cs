@@ -36,6 +36,9 @@ public sealed class PeopleLinks
     public string Chat(string nik) => $"/chat?p={Token(nik)}";
     public string Mail(string nik) => $"/mail?to={Token(nik)}&compose=1";
     public string Profile(string nik) => $"/directory/person/{Token(nik)}";
+    public string Calendar(string nik) => $"/calendar/person/{Token(nik)}";
+    /// Calendar → New meeting with this person.
+    public string Invite(string nik) => $"/calendar?invite={Token(nik)}";
 
     private readonly Dictionary<string, string> _names = new(StringComparer.OrdinalIgnoreCase);
 

@@ -5,9 +5,10 @@
 @inject ConfirmService Confirm
 @inject IJSRuntime JS
 
-@* Calendar delegates of one owner. Used by the owner (Calendar → Sharing settings, BaseUrl
-   /api/calendar/delegates) and by admins (Admin → People, /api/admin/users/{nik}/calendar-delegates).
-   Every change saves at once; the API notifies both people and writes the audit log. *@
+@* People one owner shares their calendar with, on the access ladder. Used by admins (Admin → People,
+   /api/admin/users/{nik}/calendar-delegates) to set this up on someone's behalf, e.g. a director's
+   assistant; owners use Calendar → ⚙ settings. Every change saves at once; the API notifies both people
+   and writes the audit log. *@
 
 <div class="cal-dlg">
     @if (rows is null)
@@ -18,7 +19,7 @@
     {
         @if (rows.Count == 0)
         {
-            <div class="cal-dlg-empty">No delegates yet. @(IsAdmin ? "Nobody else can manage this calendar." : "Only you can manage your calendar.")</div>
+            <div class="cal-dlg-empty">Not shared with anyone. Everyone only sees when @(IsAdmin ? "this person is" : "you're") busy.</div>
         }
         @foreach (var r in rows)
         {
@@ -39,13 +40,13 @@
             <div class="cal-dlg-add">
                 <AppSelect CssClass="cal-dlg-level" Label="Access level" Value="@newLevel" Options="@LevelOptions"
                            ValueChanged="v => newLevel = v ?? newLevel" />
-                <PeoplePicker Placeholder="Add a delegate" ValueChanged="AddAsync" />
+                <PeoplePicker Placeholder="Share with…" ValueChanged="AddAsync" />
                 <button type="button" class="cal-icon sm" title="Cancel" aria-label="Cancel" @onclick="() => adding = false"><i data-lucide="x"></i></button>
             </div>
         }
-        else if (rows.Count < 10)
+        else if (rows.Count < 50)
         {
-            <button type="button" class="cal-btn cal-dlg-addbtn" @onclick="() => adding = true"><i data-lucide="user-plus"></i> Add delegate</button>
+            <button type="button" class="cal-btn cal-dlg-addbtn" @onclick="() => adding = true"><i data-lucide="user-plus"></i> Share with someone</button>
         }
     }
 </div>
@@ -55,11 +56,7 @@
 
     // Each level's hint shows inside the dropdown, so the picker explains itself (no separate legend).
     private static List<AppOption> LevelOptions =>
-    [
-        new("view", "View all details", "Sees Busy only events in full. Can't change anything."),
-        new("edit", "Can edit", "Also creates, changes and cancels events and meetings on this calendar."),
-        new("full", "Full delegate", "Also gets the meeting invites and can accept or decline them."),
-    ];
+        CalendarSettingsSheet.Levels.Select(l => new AppOption(l.Key, l.Label, l.Hint, l.Icon)).ToList();
 
     /// "/api/calendar/delegates" or "/api/admin/users/{nik}/calendar-delegates".
     [Parameter, EditorRequired] public string BaseUrl { get; set; } = "";
@@ -67,7 +64,7 @@
 
     private List<DelegateRow>? rows;
     private bool adding, busy;
-    private string newLevel = "edit";
+    private string newLevel = "full";
     private string loadedUrl = "";
 
     protected override async Task OnParametersSetAsync()
@@ -93,21 +90,21 @@
             if (!res.IsSuccessStatusCode) { Toasts.Show(await ErrorAsync(res), ToastKind.Error); return; }
             rows = await res.Content.ReadFromJsonAsync<List<DelegateRow>>() ?? rows;
             if (added) adding = false;
-            Toasts.Show(added ? "Delegate added. They've been notified." : "Access updated.", ToastKind.Success);
+            Toasts.Show(added ? "Shared. They've been notified." : "Access updated.", ToastKind.Success);
         }
         finally { busy = false; }
     }
 
     private async Task RemoveAsync(DelegateRow row)
     {
-        if (!await Confirm.AskAsync("Remove delegate?", $"{row.Name} will no longer see or manage this calendar.", "Remove", danger: true)) return;
+        if (!await Confirm.AskAsync($"Stop sharing with {row.Name}?", $"{row.Name} will see only busy times, like everyone else.", "Stop sharing", danger: true)) return;
         busy = true;
         try
         {
             var res = await Auth.SendAsync(HttpMethod.Delete, $"{BaseUrl}/{Uri.EscapeDataString(row.Nik)}");
             if (!res.IsSuccessStatusCode) { Toasts.Show(await ErrorAsync(res), ToastKind.Error); return; }
             rows = await res.Content.ReadFromJsonAsync<List<DelegateRow>>() ?? rows;
-            Toasts.Show("Delegate removed.", ToastKind.Success);
+            Toasts.Show("Stopped sharing.", ToastKind.Success);
         }
         finally { busy = false; }
     }

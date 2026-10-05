@@ -1,4 +1,5 @@
 @page "/calendar"
+@page "/calendar/person/{PersonNik}"
 @using IPop.Web.Services
 @implements IDisposable
 @inject AuthState Auth
@@ -8,6 +9,7 @@
 @inject ToastService Toasts
 @inject ConfirmService Confirm
 @inject IJSRuntime JS
+@inject PeopleLinks PLinks
 
 @* Unified calendar: one feed (GET /api/calendar/feed) from personal events, meetings, chat
    groups, projects (my tasks, milestones, off days), scheduled mail and news. Clicking an item
@@ -56,40 +58,31 @@
             }
         </div>
 
-        @if (showIntro)
+        @if (showIntro && !PersonMode)
         {
-            <div class="cal-intro" role="note">
-                <span class="cal-intro-ic"><i data-lucide="users"></i></span>
-                <b>Your calendar is shared</b>
-                <p>@ShareSummary. You choose what they see.</p>
+            <div class="cal-intro mi-rise" role="note">
+                <span class="cal-intro-ic"><i data-lucide="shield-check"></i></span>
+                <b>Your calendar now shows only busy times</b>
+                <p>To protect important schedules, people no longer see your event titles unless you share them.@if (introFollowers.Count > 0) { <text> <b>@introFollowers.Count @(introFollowers.Count == 1 ? "person follows" : "people follow")</b> your calendar.</text> }</p>
+                @if (introFollowers.Count > 0)
+                {
+                    <div class="cal-intro-faces">
+                        @foreach (var f in introFollowers.Take(5)) { <PersonAvatar Nik="@f.Nik" Name="@f.Name" Size="22" Decorative="true" /> }
+                        @if (introFollowers.Count > 5) { <span class="more">+@(introFollowers.Count - 5)</span> }
+                    </div>
+                }
                 <div class="cal-intro-actions">
-                    <button class="cal-btn primary" @onclick='() => OpenShareAsync()'>Choose</button>
-                    <button class="cal-btn ghost" @onclick="DismissIntroAsync">Got it</button>
+                    @if (introFollowers.Count > 0)
+                    {
+                        <button class="cal-btn primary" disabled="@introBusy" @onclick="IntroShareTitlesAsync">@(introBusy ? "Sharing…" : "Let them see titles")</button>
+                    }
+                    <button class="cal-btn" @onclick="IntroChooseAsync">Choose people…</button>
+                    <button class="cal-btn ghost" @onclick="DismissIntroAsync">Keep busy only</button>
                 </div>
             </div>
         }
 
-
-        @if (managed.Count > 0)
-        {
-            <div class="cal-managed">
-                <div class="cal-rail-title">Calendars I manage</div>
-                <button class="cal-managed-row @(managing is null ? "on" : "")" aria-pressed="@(managing is null ? "true" : "false")" @onclick="() => ManageAsync(null)">
-                    <PersonAvatar Nik="@(Auth.Me?.Nik ?? "")" Name="@(Auth.Me?.Name ?? "Me")" Size="22" Decorative="true" />
-                    <span class="cal-managed-name">My calendar</span>
-                </button>
-                @foreach (var m in managed)
-                {
-                    var mc = m;
-                    <button class="cal-managed-row @(managing?.Nik == mc.Nik ? "on" : "")" aria-pressed="@(managing?.Nik == mc.Nik ? "true" : "false")" @onclick="() => ManageAsync(mc)">
-                        <PersonAvatar Nik="@mc.Nik" Name="@mc.Name" Size="22" Decorative="true" />
-                        <span class="cal-managed-name">@mc.Name<small>@LevelLabel(mc.Level)</small></span>
-                    </button>
-                }
-            </div>
-        }
-
-        @if (UpcomingPending.Count > 0)
+        @if (UpcomingPending.Count > 0 && !PersonMode)
         {
             <div class="cal-invites">
                 <div class="cal-rail-title">@(managing is null ? "Awaiting your reply" : $"Awaiting {managing.Name}'s reply")</div>
@@ -104,28 +97,55 @@
             </div>
         }
         </div>
-        <div class="cal-others">
-            <div class="cal-rail-title cal-others-head">
-                <span>Colleagues</span>
 
+        @* One "Calendars" list: me, calendars I manage, calendars I follow (mockup §1). *@
+        <div class="cal-others cal-list">
+            <div class="cal-rail-title cal-others-head">
+                <span>Calendars</span>
+                <button type="button" class="cal-icon sm" title="Layout" aria-label="Calendars options" aria-expanded="@(listMenu ? "true" : "false")" @onclick="() => listMenu = !listMenu"><i data-lucide="more-horizontal"></i></button>
+                @if (listMenu)
+                {
+                    <div class="cal-other-menu cal-list-menu" role="menu" aria-label="Calendars options">
+                        <div class="cal-menu-cap">Day view with other calendars</div>
+                        <button role="menuitemradio" aria-checked="@(!sideBySide ? "true" : "false")" class="@(!sideBySide ? "on" : "")" @onclick="() => SetSideBySideAsync(false)"><i data-lucide="layers"></i> Overlay @if (!sideBySide) { <i data-lucide="check" class="ck"></i> }</button>
+                        <button role="menuitemradio" aria-checked="@(sideBySide ? "true" : "false")" class="@(sideBySide ? "on" : "")" @onclick="() => SetSideBySideAsync(true)"><i data-lucide="columns-3"></i> Side by side @if (sideBySide) { <i data-lucide="check" class="ck"></i> }</button>
+                        <hr />
+                        <button role="menuitem" @onclick="() => { listMenu = false; OpenSettings(); }"><i data-lucide="settings"></i> Calendar settings</button>
+                    </div>
+                }
             </div>
-            <button type="button" class="cal-btn cal-add-colleagues" @onclick="OpenColleaguesAsync"><i data-lucide="plus"></i> Add colleagues</button>
+            <button type="button" class="cal-list-row me @(managing is null && !PersonMode ? "cur" : "")" @onclick="() => ManageAsync(null)">
+                <span class="cal-check me" aria-hidden="true"><i data-lucide="check"></i></span>
+                <span class="cal-source-name">My calendar</span>
+            </button>
+            @foreach (var m in managed)
+            {
+                var mc = m;
+                <button type="button" class="cal-list-row @(managing?.Nik == mc.Nik ? "cur" : "")" aria-pressed="@(managing?.Nik == mc.Nik ? "true" : "false")" @onclick="() => ManageAsync(mc)">
+                    <PersonAvatar Nik="@mc.Nik" Name="@mc.Name" Size="20" Class="cal-other-av" Decorative="true" />
+                    <span class="cal-source-name">@mc.Name<small>@LevelLabel(mc.Level)</small></span>
+                    <span class="cal-pill">Manage</span>
+                </button>
+            }
             @foreach (var o in others)
             {
                 var oc = o;
-                <div class="cal-other oc-@oc.Color">
+                <div class="cal-other oc-@oc.Color @(otherMenu == oc.Nik ? "menu-on" : "")" @key="oc.Nik">
                     <div class="cal-other-row">
                     <label class="cal-source">
                         <input type="checkbox" aria-label="Show @oc.Name calendar" checked="@oc.IsVisible" @onchange="() => ToggleOtherAsync(oc)" />
                         <span class="cal-check" aria-hidden="true">@if (oc.IsVisible) { <i data-lucide="check"></i> }</span>
-                        <PersonAvatar Nik="@oc.Nik" Name="@oc.Name" Size="20" Class="cal-other-av" Decorative="true" />
-                        <span class="cal-source-name" title="@(oc.Department is null ? oc.Name : $"{oc.Name} · {oc.Department}")">@oc.Name</span>
+                        <span class="cal-source-name" title="@(oc.Department is null ? oc.Name : $"{oc.Name} · {oc.Department}")">@oc.Name<small>@AccessShort(oc.Access)</small></span>
                     </label>
                     <button class="cal-icon sm cal-other-more" title="Options" aria-label="Options for @oc.Name" aria-expanded="@(otherMenu == oc.Nik ? "true" : "false")" @onclick="() => otherMenu = otherMenu == oc.Nik ? null : oc.Nik"><i data-lucide="more-horizontal"></i></button>
                     </div>
                     @if (otherMenu == oc.Nik)
                     {
                         <div class="cal-other-menu" role="menu" aria-label="Calendar options for @oc.Name">
+                            <a role="menuitem" href="@PLinks.Calendar(oc.Nik)"><i data-lucide="calendar-search"></i> View calendar</a>
+                            <button role="menuitem" @onclick="() => MeetWithAsync(oc.Nik, oc.Name)"><i data-lucide="calendar-plus"></i> Invite to meeting</button>
+                            <a role="menuitem" href="@PLinks.Chat(oc.Nik)"><i data-lucide="message-circle"></i> Chat</a>
+                            <div class="cal-menu-cap">Colour</div>
                             <div class="cal-swatches">
                                 @foreach (var c in OtherPalette)
                                 {
@@ -133,19 +153,37 @@
                                     <button class="cal-swatch oc-@cc @(oc.Color == cc ? "on" : "")" title="Colour" aria-label="Colour @cc" @onclick="() => SetOtherColorAsync(oc, cc)"></button>
                                 }
                             </div>
-                            <button role="menuitem" @onclick="() => MeetWithAsync(oc.Nik, oc.Name)"><i data-lucide="calendar-plus"></i> New meeting with @oc.Name</button>
-                            <a role="menuitem" href="/chat?nik=@Uri.EscapeDataString(oc.Nik)"><i data-lucide="message-circle"></i> Chat</a>
-                            <button role="menuitem" class="danger" @onclick="() => RemoveOtherAsync(oc)"><i data-lucide="trash-2"></i> Remove from list</button>
+                            <button role="menuitem" class="danger" @onclick="() => RemoveOtherAsync(oc)"><i data-lucide="eye-off"></i> Stop following</button>
                         </div>
                     }
                 </div>
             }
+            <button type="button" class="cal-btn cal-add-colleagues" @onclick="OpenColleaguesAsync"><i data-lucide="plus"></i> Add calendar</button>
         </div>
 
     </aside>
 
     <section class="cal-main">
-        @if (managing is not null)
+        @if (PersonMode && person is not null)
+        {
+            var pp = person;
+            <div class="cal-who mi-rise" role="region" aria-label="@pp.Name's calendar">
+                <a class="cal-icon" href="/calendar" title="Back to my calendar" aria-label="Back to my calendar"><i data-lucide="arrow-left"></i></a>
+                <PersonAvatar Nik="@pp.Nik" Name="@pp.Name" Size="44" Class="cal-who-av" Viewable="true" />
+                <div class="cal-who-t">
+                    <b>@pp.Name</b>
+                    <span>@(pp.Department ?? pp.Site ?? "")@(pp.Department is not null || pp.Site is not null ? " · " : "")<span class="cal-acc"><i data-lucide="@PersonAccessIcon"></i>@PersonPronounBusy</span></span>
+                    <small class="cal-who-free">@FreeLine(pp)</small>
+                </div>
+                <span class="cal-who-sp"></span>
+                <a class="cal-btn" href="@PLinks.Chat(pp.Nik)"><i data-lucide="message-circle"></i><span>Chat</span></a>
+                <button class="cal-btn cal-follow @(pp.Following ? "on" : "") @(followPop ? "mi-pop" : "")" aria-pressed="@(pp.Following ? "true" : "false")" @onclick="FollowPersonAsync" @onanimationend="() => followPop = false">
+                    <i data-lucide="@(pp.Following ? "check" : "eye")"></i><span>@(pp.Following ? "Following" : "Follow")</span>
+                </button>
+                <button class="cal-btn primary" @onclick="() => MeetWithAsync(pp.Nik, pp.Name)"><i data-lucide="calendar-plus"></i><span>Invite to meeting</span></button>
+            </div>
+        }
+        @if (managing is not null && !PersonMode)
         {
             <div class="cal-onbehalf" role="status">
                 <i data-lucide="user-cog"></i>
@@ -161,21 +199,19 @@
             </div>
             <h2 class="cal-range">@RangeLabel</h2>
             @if (loadingFeed) { <i data-lucide="loader-circle" class="cal-spin"></i> }
-            <button class="cal-btn cal-share-btn" title="@ShareSummary" @onclick='() => OpenShareAsync()'><i data-lucide="users"></i><span>Share</span></button>
-            @if (view == "day" && VisibleOthers.Count > 0)
+            @if (PersonMode)
             {
-                <div class="cal-seg" role="group" aria-label="Other calendars layout">
-                    <button class="cal-seg-item @(!sideBySide ? "on" : "")" aria-pressed="@(!sideBySide ? "true" : "false")" @onclick="() => SetSideBySideAsync(false)">Overlay</button>
-                    <button class="cal-seg-item @(sideBySide ? "on" : "")" aria-pressed="@(sideBySide ? "true" : "false")" @onclick="() => SetSideBySideAsync(true)">Side by side</button>
-                </div>
+                <label class="cal-mine-toggle"><button type="button" role="switch" aria-checked="@(showMineBehind ? "true" : "false")" class="cs-switch sm @(showMineBehind ? "on" : "")" @onclick="() => showMineBehind = !showMineBehind" aria-label="Show my calendar too"></button> Show my calendar too</label>
             }
             <div class="cal-seg" role="tablist" aria-label="View">
                 @foreach (var (key, label) in Views)
                 {
                     var k = key;
+                    if (PersonMode && k is "agenda") continue;
                     <button role="tab" aria-selected="@(view == k ? "true" : "false")" class="cal-seg-item @(view == k ? "on" : "")" @onclick="() => SetViewAsync(k)">@label</button>
                 }
             </div>
+            <button class="cal-icon cal-gear" title="Calendar settings" aria-label="Calendar settings" @onclick="() => OpenSettings()"><i data-lucide="settings"></i></button>
         </header>
 
         @if (loadError)
@@ -241,6 +277,11 @@
                                     if (col.Person is { } who)
                                     {
                                         <div class="cal-slot" @onclick="() => MeetWithAsync(who.Nik, who.Name, dd.AddHours(hh))" title="New meeting with @who.Name at @($"{hh:00}:00")"></div>
+                                        continue;
+                                    }
+                                    if (PersonMode && person is { } pw)
+                                    {
+                                        <div class="cal-slot invite" data-label="Meeting with @(pw.Name.Split(' ')[0]) · @($"{hh:00}:00")" @onclick="() => MeetWithAsync(pw.Nik, pw.Name, dd.AddHours(hh))" title="Invite @pw.Name at @($"{hh:00}:00")"></div>
                                         continue;
                                     }
                                     <div class="cal-slot" @onclick="() => OpenCreate(dd.AddHours(hh))" title="New event at @($"{hh:00}:00")"></div>
@@ -449,8 +490,8 @@
                                                              Disabled="@(form.Id is not null && form.MeetingId is not null)" /></div>
                     </div>
                     <div class="cal-row cal-row-stack">
-                        <div class="cal-row-head"><i data-lucide="eye"></i><span class="cal-row-label">Who can see details</span></div>
-                        <div class="cal-seg cal-vis-seg" role="radiogroup" aria-label="Who can see details">
+                        <div class="cal-row-head"><i data-lucide="eye"></i><span class="cal-row-label">Who can see it</span></div>
+                        <div class="cal-seg cal-vis-seg" role="radiogroup" aria-label="Who can see it">
                             @foreach (var v in VisibilityOptions)
                             {
                                 var vk = v.Key;
@@ -458,7 +499,7 @@
                                         title="@v.Hint" @onclick="() => form.Visibility = vk"><i data-lucide="@v.Icon"></i> @v.Label</button>
                             }
                         </div>
-                        <small class="cal-hint">@VisibilityOptions.First(v => v.Key == form.Visibility).Hint.</small>
+                        <small class="cal-hint" @key="form.Visibility">@((VisibilityOptions.FirstOrDefault(v => v.Key == form.Visibility) is { Key: not null } vo ? vo : VisibilityOptions[0]).Hint). People you invite always see the meeting.</small>
                     </div>
                 </div>
                 @if (string.IsNullOrEmpty(form.RoomIdText))
@@ -586,98 +627,12 @@
         <div class="cal-pop-actions">
             @if (PopMine is not null) { <button class="cal-btn" @onclick="OpenPopMineAsync"><i data-lucide="calendar"></i> Open</button> }
             <button class="cal-btn primary" @onclick="() => MeetWithAsync(po.OwnerNik!, OtherName(po.OwnerNik))"><i data-lucide="calendar-plus"></i> Meet another time</button>
-            <a class="cal-btn" href="/chat?nik=@Uri.EscapeDataString(po.OwnerNik!)"><i data-lucide="message-circle"></i> Chat</a>
+            <a class="cal-btn" href="@PLinks.Chat(po.OwnerNik!)"><i data-lucide="message-circle"></i> Chat</a>
         </div>
     </div>
 }
 
-<Modal IsOpen="settingsOpen" IsOpenChanged="v => settingsOpen = v" Title="Share your calendar" Subtitle="Everyone at the company can see when you're free or busy.">
-    <ChildContent>
-        <div class="cal-share">
-            <div class="cal-seg cal-share-tabs" role="tablist" aria-label="Sharing">
-                @foreach (var (key, label, icon) in ShareTabs)
-                {
-                    var tk = key;
-                    <button role="tab" aria-selected="@(shareTab == tk ? "true" : "false")" class="cal-seg-item @(shareTab == tk ? "on" : "")" @onclick="() => shareTab = tk"><i data-lucide="@icon"></i> @label</button>
-                }
-            </div>
-
-            @if (shareTab == "who")
-            {
-                <div class="cal-rail-title">What colleagues see</div>
-                <div class="cal-share-group" role="radiogroup" aria-label="What colleagues see">
-                    @foreach (var o in DefaultOptions)
-                    {
-                        var ok = o.Key;
-                        <label class="cal-share-opt @(draftDefault == ok ? "on" : "")">
-                            <input type="radio" name="cal-share-default" checked="@(draftDefault == ok)" @onchange="() => SetDraftDefaultAsync(ok)" />
-                            <span class="cal-share-ic"><i data-lucide="@o.Icon"></i></span>
-                            <span><b>@o.Label</b><small>@o.Hint</small></span>
-                            @if (draftDefault == ok) { <i data-lucide="check" class="cal-share-check"></i> }
-                        </label>
-                    }
-                </div>
-                @if (ApplyOffered)
-                {
-                    <label class="cal-share-apply">
-                        <input type="checkbox" checked="@applyToUpcoming" @onchange="e => applyToUpcoming = e.Value is true" />
-                        <span>Also change my upcoming events<small>Events you made Private stay Private.</small></span>
-                    </label>
-                }
-
-                <div class="cal-preview">
-                    <div class="cal-preview-head">
-                        <span>Preview</span>
-                        <div class="cal-seg sm" role="group" aria-label="Preview as">
-                            <button class="cal-seg-item @(previewAs == "colleague" ? "on" : "")" aria-pressed="@(previewAs == "colleague" ? "true" : "false")" @onclick='() => SetPreviewAsAsync("colleague")'>A colleague</button>
-                            <button class="cal-seg-item @(previewAs == "delegate" ? "on" : "")" aria-pressed="@(previewAs == "delegate" ? "true" : "false")" @onclick='() => SetPreviewAsAsync("delegate")'>A delegate</button>
-                        </div>
-                    </div>
-                    @if (preview is null)
-                    {
-                        <div class="cal-preview-empty">Loading your week…</div>
-                    }
-                    else if (!PreviewDays.Any())
-                    {
-                        <div class="cal-preview-empty">Nothing on your calendar for the rest of this week.</div>
-                    }
-                    else
-                    {
-                        @foreach (var day in PreviewDays)
-                        {
-                            <div class="cal-preview-day">@(day.Key == DateTime.Today ? "Today" : day.Key.ToString("dddd d MMM"))</div>
-                            @foreach (var pi in day)
-                            {
-                                <div class="cal-preview-row" @key="pi.Id">
-                                    <span class="cal-preview-time">@(pi.AllDay ? "All day" : pi.Start.ToString("HH:mm"))</span>
-                                    <span class="cal-preview-block @(pi.TheySee is null ? "busy" : "open") @(pi.Tentative ? "tentative" : "")">@(pi.TheySee ?? "Busy")</span>
-                                    <span class="cal-preview-mine" title="Your event">@pi.YourTitle</span>
-                                </div>
-                            }
-                        }
-                    }
-                    <small class="cal-hint">People you invite always see the meeting. Private events show as Busy to everyone, delegates too.</small>
-                </div>
-            }
-            else
-            {
-                <p class="cal-share-lead">A delegate can look after your calendar, like an assistant. Anyone can be one.</p>
-                @if (settingsOpen)
-                {
-                    <CalendarDelegatesEditor BaseUrl="/api/calendar/delegates" />
-                }
-                <label class="cal-share-apply">
-                    <input type="checkbox" checked="@draftNotify" @onchange="e => draftNotify = e.Value is true" />
-                    <span>Notify me when a delegate changes my calendar<small>Each change is always labelled "on behalf of you", even with this off.</small></span>
-                </label>
-            }
-        </div>
-    </ChildContent>
-    <Footer>
-        <button class="cal-btn" @onclick="() => settingsOpen = false">Cancel</button>
-        <button class="cal-btn primary" disabled="@savingSettings" @onclick="SaveSettingsAsync">@(savingSettings ? "Saving…" : "Done")</button>
-    </Footer>
-</Modal>
+<CalendarSettingsSheet Open="settingsOpen" OpenChanged="v => settingsOpen = v" Changed="OnSettingsChangedAsync" AllowFor="allowFor" />
 
 @* Outside the drawer form so its .cal-form label/input rules never reach the dialog. *@
 <AddressBookDialog @ref="addressBook" />

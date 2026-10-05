@@ -10,10 +10,11 @@ namespace IPop.Web.Pages;
 public partial class Calendar
 {
     // ── Client-side mirrors of CalendarSharingEndpoints records ──
-    public record OtherCalendar(string Nik, string Name, string? Department, string Color, bool IsVisible);
+    /// Access = what I may see of their calendar (null = busy times only).
+    public record OtherCalendar(string Nik, string Name, string? Department, string Color, bool IsVisible, string? Access = null);
     public record PersonBusy(string Nik, string Id, DateTime StartAt, DateTime EndAt, bool AllDay, bool Tentative,
         string Visibility, string? Title, string? Location, Guid? MeetingId);
-    public record SharingSettings(string DefaultVisibility, bool NotifyDelegateChanges);
+    public record SharingSettings(bool NotifyDelegateChanges, bool NotifyShareRequests, bool SharingIntroSeen);
     public record FreeBusyBlock(DateTime StartAt, DateTime EndAt, bool Tentative);
     public record FreeBusyLane(string Nik, string Name, List<FreeBusyBlock> Blocks);
     public record FreeBusy(List<FreeBusyLane> Lanes, List<DateTime> Suggestions);
@@ -21,23 +22,14 @@ public partial class Calendar
     private static readonly string[] OtherPalette = ["a", "b", "c", "d", "e", "f", "g", "h"];
     private static readonly (string Key, string Label, string Icon, string Hint)[] VisibilityOptions =
     [
-        ("public", "Public", "globe", "Colleagues see the title and location"),
-        ("busy", "Busy only", "clock", "Colleagues see Busy; your delegates see details"),
-        ("private", "Private", "lock", "Everyone sees Busy, your delegates too"),
-    ];
-    private static readonly (string Key, string Label, string Icon, string Hint)[] DefaultOptions =
-    [
-        ("public", "Titles and locations", "globe", "Colleagues see what you're doing and where."),
-        ("busy", "Busy only", "clock", "Colleagues see when you're busy. Your delegates see details."),
-        ("hidden", "Only when I'm busy", "eye-off", "Every event shows as Busy, even ones you made Public."),
+        ("busy", "Normal", "eye", "Everyone sees Busy. People you share with see it as you allowed"),
+        ("private", "Private", "lock", "Busy for everyone, even people you share with — except your assistant"),
     ];
     private const int FatFromHour = 7, FatHours = 12;
 
     private List<OtherCalendar> others = [];
     private List<FeedItem> otherItems = [];
-    private SharingSettings sharing = new("busy", true);
-    private bool sideBySide, settingsOpen, savingSettings;
-    private string draftDefault = "busy";
+    private bool sideBySide, listMenu;
     private string? otherMenu;
     private CancellationTokenSource? peopleCts;
 
@@ -45,7 +37,7 @@ public partial class Calendar
     private sealed record GridCol(DateTime Day, bool Split, OtherCalendar? Person);
 
     private List<OtherCalendar> VisibleOthers => others.Where(o => o.IsVisible).ToList();
-    private bool SideBySideActive => view == "day" && sideBySide && VisibleOthers.Count > 0;
+    private bool SideBySideActive => !PersonMode && view == "day" && sideBySide && VisibleOthers.Count > 0;
 
     private List<GridCol> GridColumns(List<DateTime> days) => SideBySideActive
         ? [new GridCol(days[0], true, null), .. VisibleOthers.Select(o => new GridCol(days[0], true, o))]
@@ -60,6 +52,7 @@ public partial class Calendar
     {
         get
         {
+            if (PersonMode) return PersonItems;
             var shown = VisibleOthers.Select(o => o.Nik).ToHashSet();
             var split = SideBySideActive;
             var mine = split ? [] : items.Where(i => i.MeetingId is not null).Select(i => i.MeetingId!.Value).ToHashSet();
@@ -67,12 +60,12 @@ public partial class Calendar
         }
     }
 
-    private string ColorOf(string? nik) => others.FirstOrDefault(o => o.Nik == nik)?.Color ?? "a";
+    private string ColorOf(string? nik) => others.FirstOrDefault(o => o.Nik == nik)?.Color ?? (PersonMode ? "p" : "a");
 
-    private string OtherClass(FeedItem i) => i.OwnerNik is null ? ""
-        : $"oc-{ColorOf(i.OwnerNik)} busy{(i.Kind == "busy-tentative" ? " tentative" : "")}{(i.Visibility == "public" ? " has-title" : "")}";
+    private string OtherClass(FeedItem i) => i.OwnerNik is null ? (PersonMode ? "mine-behind" : "")
+        : $"oc-{ColorOf(i.OwnerNik)} busy{(i.Kind == "busy-tentative" ? " tentative" : "")}{(i.Title is not ("Busy" or "Tentative") ? " has-title" : "")}";
 
-    private string OtherName(string? nik) => others.FirstOrDefault(o => o.Nik == nik)?.Name ?? nik ?? "";
+    private string OtherName(string? nik) => others.FirstOrDefault(o => o.Nik == nik)?.Name ?? (person?.Nik == nik ? person?.Name : null) ?? nik ?? "";
 
     // ── Loading ──
 
@@ -80,10 +73,7 @@ public partial class Calendar
     {
         try
         {
-            var o = Auth.GetAsync<List<OtherCalendar>>("/api/calendar/others");
-            var s = Auth.GetAsync<SharingSettings>("/api/calendar/settings");
-            others = await o ?? [];
-            sharing = await s ?? sharing;
+            others = await Auth.GetAsync<List<OtherCalendar>>("/api/calendar/others") ?? [];
         }
         catch { /* sharing is additive: the own calendar still works without it */ }
     }
@@ -92,7 +82,7 @@ public partial class Calendar
     {
         peopleCts?.Cancel();
         var cts = peopleCts = new CancellationTokenSource();
-        var niks = VisibleOthers.Select(o => o.Nik).ToList();
+        var niks = PersonMode && person is not null ? [person.Nik] : VisibleOthers.Select(o => o.Nik).ToList();
         if (niks.Count == 0 || loadedFrom == default) { otherItems = []; return; }
         try
         {
@@ -117,9 +107,9 @@ public partial class Calendar
     {
         if (addressBook is null) return;
         var remaining = Math.Max(0, 20 - others.Count);
-        if (remaining == 0) { Toasts.Show("You can add up to 20 colleague calendars.", ToastKind.Info); return; }
+        if (remaining == 0) { Toasts.Show("You can follow up to 20 calendars.", ToastKind.Info); return; }
         var existing = others.Select(o => o.Nik).Append(Auth.Me?.Nik ?? "");
-        var selected = await addressBook.PickAsync("Add colleagues", existing, remaining, "Add calendars");
+        var selected = await addressBook.PickAsync("Add calendar", existing, remaining, "Follow");
         foreach (var person in selected) await AddOtherAsync(person);
     }
 
@@ -164,8 +154,15 @@ public partial class Calendar
     private async Task SetSideBySideAsync(bool on)
     {
         sideBySide = on;
+        listMenu = false;
         await SavePrefsAsync();
     }
+
+    /// The short line under a followed calendar's name.
+    private static string AccessShort(string? access) => access switch
+    {
+        "titles" => "Titles", "view" => "All details", "edit" => "You can edit", "full" => "You act for them", _ => "Busy times only",
+    };
 
     // ── Busy popover ──
 
@@ -190,6 +187,7 @@ public partial class Calendar
     private async Task MeetWithAsync(string nik, string name, DateTime? start = null)
     {
         pop = null; otherMenu = null;
+        if (PersonMode) { pendingInvite = (nik, name, start); Nav.NavigateTo("/calendar"); return; }
         OpenCreate(start ?? DefaultStart());
         AddPerson(new MemberSearchRow(nik, name, null, null));
         await Task.CompletedTask;
@@ -197,39 +195,13 @@ public partial class Calendar
 
     private static string VisLabel(string? v) => v switch
     {
-        "public" => "Public — everyone sees the title and location",
-        "private" => "Private — others see Busy, even delegates",
-        _ => "Busy only — others see a Busy block",
+        "private" => "Private — Busy for everyone, except your assistant",
+        _ => "Normal — people you share with see it as you allowed",
     };
 
-    private static string VisIcon(string? v) => v switch { "public" => "globe", "private" => "lock", _ => "clock" };
+    private static string VisIcon(string? v) => v == "private" ? "lock" : "eye";
 
-    // ── Sharing settings ──
-
-    private void OpenSettings()
-    {
-        draftDefault = sharing.DefaultVisibility;
-        draftNotify = sharing.NotifyDelegateChanges;
-        settingsOpen = true;
-    }
-
-    private async Task SaveSettingsAsync()
-    {
-        savingSettings = true;
-        try
-        {
-            var res = await Auth.SendAsync(HttpMethod.Put, "/api/calendar/settings",
-                new { defaultVisibility = draftDefault, notifyDelegateChanges = draftNotify, applyToUpcoming = applyToUpcoming && ApplyOffered });
-            if (!res.IsSuccessStatusCode) { Toasts.Show(await ErrorAsync(res), ToastKind.Error); return; }
-            sharing = await res.Content.ReadFromJsonAsync<SharingSettings>() ?? sharing;
-            settingsOpen = false;
-            Toasts.Show(applyToUpcoming && ApplyOffered ? "Saved. Your upcoming events were updated too." : "Sharing settings saved.", ToastKind.Success);
-            if (applyToUpcoming) await LoadAsync();
-        }
-        finally { savingSettings = false; }
-    }
-
-    private string DefaultFormVisibility => sharing.DefaultVisibility == "public" ? "public" : "busy";
+    private const string DefaultFormVisibility = "busy";
 
     // ── Find a time ──
 

@@ -484,3 +484,163 @@ body:has(.cal-drawer) .confirm-center { z-index: 911; }
 .cal-colleague-result:hover { background: var(--fill); }
 .cal-colleague-name { flex: 1; min-width: 0; overflow-wrap: anywhere; color: var(--ink); font-size: 13.5px; }
 .cal-colleague-result .cal-btn { flex: none; }
+
+/* ── Calendar access v2 (approved mockup docs/mockups/ipop-apple/calendar-access.html) ── */
+/* One "Calendars" list (§1) */
+.cal-list { position: relative; }
+.cal-list .cal-others-head { position: relative; }
+.cal-list-row { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; padding: 6px 8px; border-radius: 9px; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; text-align: left;
+  transition: background-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out); }
+.cal-list-row:hover { background: var(--fill); }
+.cal-list-row.cur { background: var(--surface); box-shadow: 0 0 0 1px var(--line-soft), 0 1px 2px rgba(0,0,0,.05); font-weight: 600; }
+.cal-check.me { --src: var(--accent); background: var(--src); }
+.cal-list .cal-source-name small, .cal-list-row .cal-source-name small { display: block; font-size: 11px; color: var(--ink-3); font-weight: 400; line-height: 1.25; }
+.cal-pill { flex: none; font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 6px; background: color-mix(in srgb, #0a84ff 12%, transparent); color: #0a64d6; }
+:root[data-theme="dark"] .cal-pill { color: #64b5ff; }
+.cal-other.menu-on .cal-other-more { opacity: 1; }
+.cal-other-menu { animation: mi-pop-in .18s var(--ease-out); transform-origin: top right; }
+.cal-list-menu { left: auto; right: 0; top: 22px; }
+.cal-list-menu .ck { margin-left: auto; color: var(--accent); }
+.cal-list-menu button.on { font-weight: 600; }
+.cal-list-menu hr { border: 0; border-top: 1px solid var(--line-soft); margin: 4px 0; }
+.cal-menu-cap { font-size: 11px; color: var(--ink-3); padding: 6px 8px 2px; font-weight: 600; }
+.cal-swatches { border-bottom: 0; margin-bottom: 0; }
+.cal-swatch { transition: transform .2s var(--ease-spring), box-shadow .2s; }
+.cal-swatch:hover { transform: scale(1.15); }
+.cal-swatch.on { animation: mi-pop .4s var(--ease-spring); }
+.cal-gear svg.lucide { transition: transform .45s var(--ease-spring); }
+.cal-gear:hover svg.lucide { transform: rotate(60deg); }
+
+/* One-time card (§7) */
+.cal-intro-faces { display: flex; margin: 4px 0 2px; }
+.cal-intro-faces > * { margin-right: -6px; box-shadow: 0 0 0 2px var(--accent-soft); border-radius: 7px; }
+.cal-intro-faces .more { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; background: var(--surface); font-size: 10px; font-weight: 600; color: var(--ink-2); }
+.cal-intro-actions { flex-wrap: wrap; }
+
+/* Someone's calendar (§4) */
+.cal-who { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); background: color-mix(in srgb, var(--fill) 45%, var(--surface)); flex-wrap: wrap; }
+.cal-who-av { width: 44px; height: 44px; border-radius: 12px; }
+.cal-who-t { display: grid; gap: 1px; min-width: 0; }
+.cal-who-t b { font-size: 15px; color: var(--ink); }
+.cal-who-t > span { font-size: 12.5px; color: var(--ink-2); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.cal-who-free { font-size: 11.5px; color: var(--ink-3); }
+.cal-who-sp { flex: 1; }
+.cal-acc { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 7px; background: var(--fill); color: var(--ink-2); font-size: 11.5px; font-weight: 600; }
+.cal-acc svg.lucide { width: 12px !important; height: 12px !important; }
+.cal-follow.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--accent-soft); }
+.cal-mine-toggle { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-2); margin-left: auto; }
+.cal-event.mine-behind, .cal-chip.mine-behind { opacity: .35; pointer-events: none; }
+.oc-p { --src: var(--ink-3); }
+/* Clicking an empty hour on someone's calendar invites them then — the hour shows a green ghost on hover. */
+.cal-slot.invite { position: relative; }
+.cal-slot.invite:hover { background: none; }
+.cal-slot.invite:hover::after { content: attr(data-label); position: absolute; inset: 2px 3px; border-radius: 7px; border: 1.5px dashed var(--accent); background: var(--accent-soft);
+  color: var(--accent); font-size: 11.5px; font-weight: 600; padding: 4px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; animation: mi-pop-in .16s var(--ease-out); pointer-events: none; z-index: 1; }
+
+/* ⚙ Calendar settings sheet (§2, §3) — one scrolling page, no tabs */
+.cs-scrim { position: fixed; inset: 0; z-index: 1040; background: rgba(0,0,0,.22); animation: mi-fade .2s var(--ease-out); }
+:root[data-theme="dark"] .cs-scrim { background: rgba(0,0,0,.5); }
+.cs-sheet { position: fixed; top: 0; right: 0; bottom: 0; z-index: 1041; width: min(560px, 100vw); display: flex; flex-direction: column; background: var(--surface);
+  box-shadow: -18px 0 50px -20px rgba(0,0,0,.35); animation: cs-in .3s var(--ease-out); font-size: 13px; color: var(--ink); }
+@keyframes cs-in { from { transform: translateX(28px); opacity: 0; } }
+.cs-sheet svg.lucide { width: 16px; height: 16px; flex: none; }
+.cs-head { display: flex; align-items: center; gap: 10px; padding: 18px 22px 8px; }
+.cs-head h2 { margin: 0; flex: 1; font-size: 18px; display: flex; align-items: center; gap: 9px; }
+.cs-head h2 svg.lucide { width: 19px; height: 19px; color: var(--ink-2); }
+.cs-body { flex: 1; overflow: auto; padding: 4px 22px 22px; }
+.cs-foot { display: flex; align-items: center; gap: 10px; padding: 12px 22px; border-top: 1px solid var(--line-soft); background: color-mix(in srgb, var(--fill) 40%, var(--surface)); }
+.cs-saved { margin-right: auto; font-size: 12px; color: var(--ink-3); transition: color .3s; }
+.cs-saved.on { color: var(--accent); }
+.cs-sec { margin-top: 18px; animation: mi-rise .3s var(--ease-out) backwards; }
+.cs-sec:nth-child(2) { animation-delay: .05s; } .cs-sec:nth-child(3) { animation-delay: .1s; }
+.cs-sec:first-child { margin-top: 4px; }
+.cs-sec > h3 { margin: 0 0 3px; font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
+.cs-sec > p { margin: 0 0 9px; color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+.cs-group { border: 1px solid var(--line-soft); border-radius: 13px; background: var(--surface); }
+.cs-group > :first-child { border-top-left-radius: 13px; border-top-right-radius: 13px; }
+.cs-row { position: relative; display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-top: 1px solid var(--line-soft); min-height: 52px; transition: background-color .6s var(--ease-out); }
+.cs-group > .cs-row:first-child { border-top: 0; }
+.cs-row.fixed { background: color-mix(in srgb, var(--fill) 50%, var(--surface)); }
+.cs-row.new { animation: cs-row-in .38s var(--ease-spring); background: var(--accent-soft); }
+@keyframes cs-row-in { from { opacity: 0; transform: translateY(-6px); } }
+.cs-row.leaving { animation: mi-row-out .25s var(--ease-out) forwards; overflow: hidden; pointer-events: none; }
+.cs-t { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.cs-t b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-t small { color: var(--ink-3); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-gi { flex: none; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--fill); color: var(--ink-2); }
+.cs-gi.department { background: color-mix(in srgb, #0a84ff 12%, transparent); color: #0a84ff; }
+.cs-gi.room { background: color-mix(in srgb, var(--src-chat, #2e7d5b) 14%, transparent); color: var(--src-chat, #2e7d5b); }
+.cs-lvl { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); font: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; white-space: nowrap;
+  transition: border-color .2s var(--ease-out), box-shadow .2s var(--ease-out), transform var(--dur-fast) var(--ease-out); }
+.cs-lvl svg.lucide { width: 14px; height: 14px; transition: transform .2s var(--ease-out); }
+.cs-lvl:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
+.cs-lvl:active:not(:disabled) { transform: scale(.97); }
+.cs-lvl.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.cs-lvl.on svg.lucide { transform: rotate(180deg); }
+.cs-lvl.static { border-color: transparent; background: var(--fill); color: var(--ink-2); cursor: default; }
+.cs-ladder { position: absolute; right: 44px; top: calc(100% - 6px); z-index: 5; width: 330px; max-width: calc(100vw - 40px); padding: 6px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: 14px;
+  box-shadow: 0 16px 40px -12px rgba(0,0,0,.28); animation: mi-pop-in .18s var(--ease-out); transform-origin: top right; }
+.cs-ladder .o { display: flex; gap: 10px; width: 100%; padding: 9px 10px; border: 0; background: none; border-radius: 10px; font: inherit; color: var(--ink); text-align: left; cursor: pointer; align-items: flex-start; }
+.cs-ladder .o:hover, .cs-ladder .o.on { background: var(--fill); }
+.cs-ladder .o.dim { opacity: .55; cursor: default; }
+.cs-ladder .o.dim:hover { background: none; }
+.cs-ladder .o .ic { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--fill); color: var(--ink-2); flex: none; transition: background-color .2s, color .2s; }
+.cs-ladder .o.on .ic { background: var(--accent); color: #fff; animation: mi-pop .4s var(--ease-spring); }
+.cs-ladder .o > span:not(.ic) { display: grid; gap: 1px; flex: 1; }
+.cs-ladder .o b { font-size: 13px; }
+.cs-ladder .o small { color: var(--ink-2); font-size: 11.8px; line-height: 1.4; }
+.cs-ladder .ck { margin-left: auto; color: var(--accent); align-self: center; }
+.cs-ladder .div { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; color: var(--ink-3); padding: 8px 10px 3px; text-transform: uppercase; }
+.cs-ladder .note { font-size: 11.5px; color: var(--ink-3); padding: 4px 10px 2px; }
+.cs-ladder .o.rm { color: var(--danger); align-items: center; }
+.cs-ladder .o.rm .ic { background: none; color: var(--danger); }
+.cs-addrow { display: flex; align-items: center; gap: 9px; width: 100%; padding: 11px 12px; border: 0; border-top: 1px solid var(--line-soft); background: none; border-bottom-left-radius: 13px; border-bottom-right-radius: 13px;
+  color: var(--accent); font: inherit; font-weight: 600; font-size: 13px; cursor: pointer; text-align: left; }
+.cs-addrow:hover { background: var(--accent-soft); }
+.cs-addrow svg.lucide { transition: transform .3s var(--ease-spring); }
+.cs-addrow:hover svg.lucide { transform: scale(1.15); }
+.cs-add { display: grid; gap: 10px; padding: 12px; border-top: 1px solid var(--line-soft); background: color-mix(in srgb, var(--fill) 35%, var(--surface)); border-bottom-left-radius: 13px; border-bottom-right-radius: 13px; }
+.cs-add-kinds { display: inline-flex; padding: 3px; gap: 2px; background: var(--fill); border-radius: 10px; justify-self: start; }
+.cs-add-kinds button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 5px 11px; border-radius: 8px; font: inherit; font-size: 12.5px; color: var(--ink-2); cursor: pointer; transition: background-color .2s, color .2s; }
+.cs-add-kinds button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.cs-search { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink-3); }
+.cs-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.cs-search input { flex: 1; border: 0; outline: 0; background: none; font: inherit; color: var(--ink); }
+.cs-targets { display: grid; gap: 2px; max-height: 220px; overflow: auto; }
+.cs-target { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border: 0; background: none; border-radius: 9px; font: inherit; color: var(--ink); text-align: left; cursor: pointer; animation: mi-rise .2s var(--ease-out) backwards; }
+.cs-target:hover { background: var(--fill); }
+.cs-add-foot { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-3); }
+.cs-add-foot span { flex: 1; }
+.cs-empty { padding: 8px; color: var(--ink-3); font-size: 12.5px; }
+.cs-hint { display: block; margin-top: 8px; color: var(--ink-3); font-size: 12px; line-height: 1.45; }
+.cs-pv-seg { margin-bottom: 10px; }
+.cs-pv { border: 1px solid var(--line-soft); border-radius: 12px; padding: 8px 10px; background: color-mix(in srgb, var(--fill) 35%, var(--surface)); animation: mi-fade .25s var(--ease-out); }
+.cs-pv-day { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; margin: 8px 2px 4px; }
+.cs-pv-day:first-child { margin-top: 2px; }
+.cs-pv-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; padding: 3px 0; font-size: 12.5px; }
+.cs-pv-time { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.cs-pv-block { border-radius: 7px; padding: 4px 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-left: 3px solid var(--accent); background: var(--accent-soft); color: var(--ink); }
+.cs-pv-block.busy { border-color: var(--ink-3); background: var(--fill); color: var(--ink-2); background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(127,127,127,.12) 6px 12px); }
+.cs-pv-block.tentative { border-style: dashed; }
+.cs-pv-mine { color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
+.cs-switch { position: relative; width: 38px; height: 22px; flex: none; border: 0; border-radius: 999px; background: var(--line); cursor: pointer; padding: 0; transition: background-color .2s var(--ease-out); }
+.cs-switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); transition: transform .25s var(--ease-spring); }
+.cs-switch.on { background: var(--accent); }
+.cs-switch.on::after { transform: translateX(16px); }
+.cs-switch.sm { width: 32px; height: 19px; }
+.cs-switch.sm::after { width: 15px; height: 15px; }
+.cs-switch.sm.on::after { transform: translateX(13px); }
+.cs-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 760px) {
+  .cs-sheet { width: 100vw; top: auto; height: 92vh; border-radius: 18px 18px 0 0; animation: cs-up .3s var(--ease-out); }
+  @keyframes cs-up { from { transform: translateY(40px); opacity: 0; } }
+  .cs-ladder { position: fixed; left: 8px; right: 8px; bottom: 8px; top: auto; width: auto; }
+  .cal-who { gap: 8px; }
+  .cal-who .cal-btn span { display: none; }
+  .cal-mine-toggle { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-sheet, .cs-scrim, .cs-sec, .cs-row.new, .cs-ladder, .cs-pv, .cs-target, .cal-other-menu, .cal-slot.invite:hover::after, .cs-ladder .o.on .ic, .cal-swatch.on { animation: none; }
+  .cs-switch::after, .cal-gear svg.lucide, .cs-lvl svg.lucide { transition: none; }
+}

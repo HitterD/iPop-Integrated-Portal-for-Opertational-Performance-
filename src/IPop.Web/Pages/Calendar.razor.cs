@@ -15,6 +15,8 @@ public partial class Calendar
     [CascadingParameter] public IPop.Web.Layout.MainLayout Layout { get; set; } = default!;
     [SupplyParameterFromQuery(Name = "date")] public string? DateQuery { get; set; }
     [SupplyParameterFromQuery(Name = "event")] public Guid? EventQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "manage")] public string? ManageQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "invite")] public string? InviteQuery { get; set; }
 
     // ── Client-side mirrors of the API records (Web does not reference IPop.Api) ──
     public record FeedItem(string Id, string Source, string Kind, string Title, DateTime StartAt, DateTime EndAt, bool AllDay,
@@ -87,14 +89,39 @@ public partial class Calendar
         if (DateTime.TryParseExact(DateQuery, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)) anchor = d.Date;
         miniMonth = new(anchor.Year, anchor.Month, 1);
         await LoadPrefsAsync();
-        await Task.WhenAll(LoadSharingAsync(), LoadManagedAsync(), LoadIntroAsync());
+        await Task.WhenAll(LoadSharingAsync(), LoadManagedAsync(), LoadIntroAsync(), LoadPersonAsync());
+        if (PLinks.Nik(ManageQuery) is { } mq && managed.FirstOrDefault(m => m.Nik == mq) is { } mc) managing = mc;
         await LoadAsync();
-        if (ShareQuery == 1) await OpenShareAsync();
+        await OpenFromQueryAsync();
+        if (pendingInvite is { } pi) { pendingInvite = null; await MeetWithAsync(pi.Nik, pi.Name, pi.Start); }
+        else if (PLinks.Nik(InviteQuery) is { } inviteNik)
+        {
+            var who = await Auth.GetAsync<PersonInfo>($"/api/calendar/person/{Uri.EscapeDataString(inviteNik)}");
+            if (who is not null && !who.Self) await MeetWithAsync(who.Nik, who.Name);
+        }
         // Now line and "Awaiting reply" drift with the clock; refresh every minute.
         nowTimer = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
         _ = ChatSvc.GroupRooms.Count == 0 ? ChatSvc.LoadRoomsAsync() : Task.CompletedTask;
         if (EventQuery is { } eid) await OpenEventAsync(eid);
         calendarSub = Auth.On(IPop.Application.Realtime.RealtimeEvents.CalendarChanged, OnCalendarChanged);
+    }
+
+    /// "Invite to meeting" from a person's calendar: the form opens on the main calendar.
+    private static (string Nik, string Name, DateTime? Start)? pendingInvite;
+
+    private string? lastPersonNik;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // /calendar ↔ /calendar/person/{nik} reuse this component; react only to a real switch.
+        if (PersonNik == lastPersonNik) return;
+        var first = lastPersonNik is null && !PersonMode;
+        lastPersonNik = PersonNik;
+        if (first || loadedFrom == default) return;
+        CloseDrawer(); pop = null; otherItems = [];
+        if (!PersonMode) Layout.SetHeader("Calendar", "Everything scheduled across iPop");
+        await LoadPersonAsync();
+        await LoadAsync();
     }
 
     // ── Live refresh (calendarChanged) ──
@@ -337,7 +364,10 @@ public partial class Calendar
 
     // ── Item queries ──
 
-    private IEnumerable<FeedItem> Visible => items.Where(i => !hidden.Contains(i.Source));
+    /// On someone's calendar page my own items only show (faintly) when "Show my calendar too" is on.
+    private IEnumerable<FeedItem> Visible => PersonMode
+        ? (showMineBehind ? items.Where(i => i.Source is "personal" or "meetings" or "chat") : [])
+        : items.Where(i => !hidden.Contains(i.Source));
 
     private static bool IsAllDayLike(FeedItem i) => i.AllDay || (i.End - i.Start).TotalHours >= 24;
 
@@ -602,7 +632,7 @@ public partial class Calendar
             Location = detail.Location, Link = detail.Link, Notes = detail.Notes, Reminder = detail.ReminderMinutes ?? 0,
             RoomIdText = detail.RoomId?.ToString() ?? "",
             People = detail.Attendees.Where(a => a.Nik != (detail.OwnerNik ?? Auth.Me?.Nik)).Select(a => new MemberSearchRow(a.Nik, a.Name, null, null)).ToList(),
-            Visibility = detail.Visibility,
+            Visibility = detail.Visibility == "private" ? "private" : "busy",
         };
         formError = null;
         editing = true;

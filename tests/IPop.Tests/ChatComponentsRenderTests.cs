@@ -130,7 +130,9 @@ public class ChatComponentsRenderTests
         Assert.DoesNotContain("Employee ID", cut.Markup);
         Assert.DoesNotContain(person.Nik, cut.Markup);
         Assert.DoesNotContain(person.Position, cut.Markup);
-        Assert.Equal(3, cut.FindAll(".hero-btn").Count);
+        // Message, Mail, Call and Calendar (calendar access v2); the calendar link carries a token, never the NIK.
+        Assert.Equal(4, cut.FindAll(".hero-btn").Count);
+        Assert.StartsWith("/calendar/person/p", cut.Find("a.hero-btn").GetAttribute("href"));
         Assert.DoesNotContain("View full profile", cut.Markup);
     }
 

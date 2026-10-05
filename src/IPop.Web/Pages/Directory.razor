@@ -231,6 +231,7 @@
                                         <button type="button" class="dc-msg" @onclick="() => OpenChatWith(p.Nik)"><i data-lucide="message-circle"></i>Message</button>
                                         <button type="button" class="dc-ic" title="Call" aria-label="Call @p.Name" @onclick="() => StartCallWith(p.Nik)"><i data-lucide="phone"></i></button>
                                         <button type="button" class="dc-ic" title="Email" aria-label="Email @p.Name" @onclick="() => OpenMailWith(p.Nik)"><i data-lucide="mail"></i></button>
+                                        <a class="dc-ic" href="@PLinks.Calendar(p.Nik)" title="Calendar" aria-label="View @p.Name's calendar"><i data-lucide="calendar-search"></i></a>
                                     </div>
                                 </div>
                             }
@@ -316,6 +317,9 @@
                                                 <button type="button" class="ra" title="Call" aria-label="Call @p.Name" @onclick='() => StartCallWith(p.Nik)' @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">
                                                     <i data-lucide="phone"></i>
                                                 </button>
+                                                <a class="ra" href="@PLinks.Calendar(p.Nik)" title="Calendar" aria-label="View @p.Name's calendar" @onclick:stopPropagation="true">
+                                                    <i data-lucide="calendar-search"></i>
+                                                </a>
                                                 <button type="button" class="ra fav @(isFav ? "on" : "")" data-fav-nik="@p.Nik"
                                                         title="@(isFav ? "Remove from favorites" : "Add to favorites")"
                                                         @onclick="() => ToggleFavorite(p.Nik)" @onclick:stopPropagation="true" @onkeydown:stopPropagation="true">

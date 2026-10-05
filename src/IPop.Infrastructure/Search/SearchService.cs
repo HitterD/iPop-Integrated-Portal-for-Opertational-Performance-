@@ -18,6 +18,17 @@ public class SearchService(IPopDbContext db) : ISearchService
             .Take(5)
             .ToListAsync(ct);
 
+        // Busy right now (personal events or meetings they didn't decline), for the "Free now" hint.
+        var ids = users.Select(u => u.Id).ToList();
+        var nowUtc = DateTime.UtcNow;
+        var busyEvents = await db.CalendarEvents.AsNoTracking()
+            .Where(e => ids.Contains(e.OwnerId) && e.MeetingId == null && !e.AllDay && e.StartAt <= nowUtc && e.EndAt > nowUtc)
+            .Select(e => new { UserId = e.OwnerId, e.EndAt }).ToListAsync(ct);
+        var busyMeetings = await db.MeetingAttendees.AsNoTracking()
+            .Where(a => ids.Contains(a.UserId) && a.RsvpStatus != "decline" && a.Meeting.Status != "cancelled" && a.Meeting.StartAt <= nowUtc && a.Meeting.EndAt > nowUtc)
+            .Select(a => new { a.UserId, a.Meeting.EndAt }).ToListAsync(ct);
+        var busyUntil = busyEvents.Concat(busyMeetings).GroupBy(b => b.UserId).ToDictionary(g => g.Key, g => g.Max(b => b.EndAt));
+
         foreach (var u in users)
         {
             var initials = string.Concat(u.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w[0])).ToUpperInvariant();
@@ -29,7 +40,9 @@ public class SearchService(IPopDbContext db) : ISearchService
                 Url: $"/directory/person/{u.Id}",
                 Icon: "user",
                 AvatarColor: AvatarColorFor(u.Nik),
-                Initials: initials));
+                Initials: initials,
+                Nik: u.Nik,
+                Status: busyUntil.TryGetValue(u.Id, out var until) ? $"busy:{until:o}" : "free"));
         }
 
         // 2. Projects & Tasks
