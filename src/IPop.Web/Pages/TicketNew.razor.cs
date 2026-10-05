@@ -100,17 +100,32 @@ public partial class TicketNew
         await LoadModulesAsync();
     }
 
+    private const string ModulesKey = "tickets:modules";
+
+    /// Cached-first: the queues from the last visit draw at once, then iDesk's answer replaces them.
+    /// They change rarely, so a returning user never waits on the round trip to iDesk.
     private async Task LoadModulesAsync()
     {
         modulesFailed = false;
+        if (modules is null && Cache.Peek<List<TicketModuleDto>>(ModulesKey) is { Count: > 0 } cached)
+        {
+            UseModules(cached);
+            StateHasChanged();
+        }
         var r = await Api.GetModulesAsync();
         if (r.Value is { Count: > 0 } m)
         {
-            modules = m;
-            if (Module is null) s.Module = modules.FirstOrDefault(x => x.Slug == "it-support")?.Slug ?? modules[0].Slug;
-            FixCategory();
+            Cache.Put(ModulesKey, m, persist: true);
+            UseModules(m);
         }
-        else modulesFailed = true;
+        else if (modules is null) modulesFailed = true;
+    }
+
+    private void UseModules(List<TicketModuleDto> m)
+    {
+        modules = m;
+        if (Module is null) s.Module = modules.FirstOrDefault(x => x.Slug == "it-support")?.Slug ?? modules[0].Slug;
+        FixCategory();
     }
 
     /// A single-category queue always files under its fixed category; a stale draft category is dropped.

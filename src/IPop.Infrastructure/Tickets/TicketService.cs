@@ -80,8 +80,11 @@ public sealed class TicketService(
         var state = await db.TicketUserStates.FirstOrDefaultAsync(s => s.UserId == userId, ct);
         if (state is null) db.TicketUserStates.Add(state = new TicketUserState { UserId = userId });
 
-        await GetModulesAsync(ct);   // warms ModuleName for new rows; cheap when cached
-        var r = await idesk.ListByNikAsync(nik, "all", ct);
+        // Both go to iDesk; side by side so a cold module cache doesn't add a second round trip.
+        var warm = GetModulesAsync(ct);   // ModuleName for new rows
+        var list = idesk.ListByNikAsync(nik, "all", ct);
+        await Task.WhenAll(warm, list);
+        var r = await list;
         var changed = false;
         switch (r.Outcome)
         {

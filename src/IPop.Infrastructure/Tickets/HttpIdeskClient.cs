@@ -80,12 +80,14 @@ public sealed class HttpIdeskClient : IIdeskClient
         _logger = logger;
         _http.Timeout = Timeout.InfiniteTimeSpan;   // Polly owns the per-attempt timeout
 
-        // GETs retry on transport errors, timeouts and 5xx. POST /tickets is idempotent too, but a
+        // GETs retry once on transport errors and timeouts. POST /tickets is idempotent too, but a
         // large upload that timed out once is better left to the outbox than resent while the
         // user waits, so it only retries a connection that failed outright.
-        _reads = Pipeline(2, new PredicateBuilder<HttpResponseMessage>()
+        // Only 502/504 (a proxy that lost the backend for a moment) are worth a second try: iDesk's
+        // own 503 means "integration not configured" and comes back the same, just a second later.
+        _reads = Pipeline(1, new PredicateBuilder<HttpResponseMessage>()
             .Handle<HttpRequestException>().Handle<TimeoutRejectedException>()
-            .HandleResult(r => (int)r.StatusCode >= 500));
+            .HandleResult(r => r.StatusCode is HttpStatusCode.BadGateway or HttpStatusCode.GatewayTimeout));
         _writes = Pipeline(1, new PredicateBuilder<HttpResponseMessage>().Handle<HttpRequestException>());
     }
 
@@ -94,7 +96,7 @@ public sealed class HttpIdeskClient : IIdeskClient
             .AddRetry(new RetryStrategyOptions<HttpResponseMessage>
             {
                 MaxRetryAttempts = retries,
-                Delay = TimeSpan.FromSeconds(1),
+                Delay = TimeSpan.FromMilliseconds(300),
                 ShouldHandle = handle,
             })
             .AddTimeout(CallTimeout)
