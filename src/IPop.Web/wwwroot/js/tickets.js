@@ -73,6 +73,16 @@ window.ipopTickets = (() => {
     setTimeout(() => { const el = $(sel); if (el) el.focus({ preventScroll: true }); }, reduced() ? 0 : (delay || 0));
   }
 
+  /// After a quick template fills the description: focus it with the caret after the text, where
+  /// the template leaves a blank to complete ("Area/Lantai: ").
+  function caretEnd(sel) {
+    requestAnimationFrame(() => {
+      const el = $(sel); if (!el) return;
+      el.focus({ preventScroll: true });
+      const n = el.value.length; el.setSelectionRange(n, n);
+    });
+  }
+
   function scrollTop(sel) {
     const el = $(sel);
     if (el) el.scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' });
@@ -105,5 +115,5 @@ window.ipopTickets = (() => {
     });
   }
 
-  return { replay, stagger, glide, flipFirst, flipPlay, focusError, focus, scrollTop, leave, countWidget, reduced };
+  return { replay, stagger, glide, flipFirst, flipPlay, focusError, focus, caretEnd, scrollTop, leave, countWidget, reduced };
 })();

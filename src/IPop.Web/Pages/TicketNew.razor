@@ -66,6 +66,24 @@
                 }
             </div>
 
+            @if (TicketUi.Templates(s.Module) is { Count: > 0 } quick)
+            {
+                <div class="fs-t tk-tpl-h"><i data-lucide="zap"></i>Quick templates</div>
+                <div class="tk-tpls" role="group" aria-label="Quick templates" @key="@("tpl-" + s.Module)">
+                    @for (var i = 0; i < quick.Count; i++)
+                    {
+                        var q = quick[i];
+                        var on = template == q.Label;
+                        <button type="button" class="tk-tpl @(on ? "on" : "") @(popTemplate == q.Label ? "mi-pop-s" : "") @(catStagger ? "mi-rise" : "")"
+                                style="@(catStagger ? $"animation-delay:{i * 30}ms" : "")" aria-pressed="@(on ? "true" : "false")"
+                                title="@q.Subject" @onclick="() => PickTemplate(q)">
+                            @if (on) { <span class="dot" style="background:@TicketUi.PriorityColor(q.Priority)"></span> }
+                            @q.Label
+                        </button>
+                    }
+                </div>
+            }
+
             <div class="fs-t">What's it about?</div>
             <div class="tk-card @(Err("category"))" data-k="category">
                 <div class="f">
@@ -167,9 +185,11 @@
                 <div class="f row2">
                     <div class="@(Err("device"))" data-k="device"><label class="l" for="tk-dev">Device <span class="opt">(optional)</span></label>
                         <input id="tk-dev" class="inp" maxlength="100" placeholder="e.g. Laptop" value="@s.Device" @oninput='e => OnText(e, v => s.Device = v, "device")' />
+                        <div class="tk-sugg">@foreach (var d in TicketUi.DeviceOptions) { <button type="button" class="@(s.Device == d ? "on" : "")" aria-pressed="@(s.Device == d ? "true" : "false")" @onclick="() => PickDevice(d)">@d</button> }</div>
                         @if (errKey == "device") { <div class="ferr">@errMsg</div> }</div>
                     <div class="@(Err("software"))" data-k="software"><label class="l" for="tk-sw">Software <span class="opt">(optional)</span></label>
-                        <input id="tk-sw" class="inp" maxlength="100" placeholder="e.g. Outlook" value="@s.Software" @oninput='e => OnText(e, v => s.Software = v, "software")' />
+                        <input id="tk-sw" class="inp" maxlength="100" placeholder="e.g. Office 365" value="@s.Software" @oninput='e => OnText(e, v => s.Software = v, "software")' />
+                        <div class="tk-sugg">@foreach (var w in TicketUi.SoftwareOptions) { <button type="button" class="@(s.Software == w ? "on" : "")" aria-pressed="@(s.Software == w ? "true" : "false")" @onclick="() => PickSoftware(w)">@w</button> }</div>
                         @if (errKey == "software") { <div class="ferr">@errMsg</div> }</div>
                 </div>
             </div>

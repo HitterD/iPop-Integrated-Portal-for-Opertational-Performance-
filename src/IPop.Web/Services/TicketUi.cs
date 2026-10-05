@@ -106,6 +106,49 @@ public static class TicketUi
     public static readonly (string Name, string Icon)[] HardwareTypes =
         [("PC", "monitor"), ("IP-Phone", "phone"), ("Printer", "printer"), ("Other", "more-horizontal")];
 
+    /// One-tap starters copied from iDesk's own create page (BentoCreateTicketPage.tsx) so a ticket
+    /// filed from iPop reads like one filed in iDesk. Category is only set for IT Support.
+    public sealed record QuickTemplate(string Label, string? Category, string Priority, string Subject, string Description);
+
+    public static IReadOnlyList<QuickTemplate> Templates(string? module) => module switch
+    {
+        "it-support" =>
+        [
+            new("Email Issue", "SOFTWARE", "HIGH", "Email tidak bisa diakses", "Tidak dapat mengirim atau menerima email. Error message: "),
+            new("Printer Fault", "HARDWARE", "MEDIUM", "Printer rusak / tidak merespon", "Printer tidak merespon saat print. Sudah direstart. Model printer: "),
+            new("Slow System", "HARDWARE", "LOW", "Komputer lemot", "PC/Laptop sangat lambat saat membuka aplikasi. Area timbul keluhan: "),
+            new("No Network", "NETWORK", "HIGH", "Koneksi internet bermasalah", "Tidak ada koneksi WiFi maupun LAN. Area/Lantai: "),
+            new("Software Error", "SOFTWARE", "CRITICAL", "Error sistem saat input data", "Proses berhenti karena error. Nama sistem: "),
+            new("Login Issue", "GENERAL", "MEDIUM", "Password terkunci", "Gagal login berkali-kali. Mohon dibantu reset. Username: "),
+        ],
+        "oracle-k2" =>
+        [
+            new("Login Issue", null, "MEDIUM", "Lupa Password / Gagal Login Oracle", "Gagal login ke portal Oracle. Error message: "),
+            new("Role Update", null, "MEDIUM", "Penambahan Role K2", "Mohon tambahkan role [Nama Role] untuk user [Nama User] di K2."),
+            new("System Error", null, "HIGH", "Error Transaksi Oracle", "Terdapat error saat proses transaksi modul [Nama Modul]. Error detail: "),
+        ],
+        "web-developer" =>
+        [
+            new("UI Bug", null, "HIGH", "Bug Tampilan / Antarmuka Web", "Terdapat kendala tampilan pada halaman [Nama Halaman]. Detail isu: "),
+            new("API Error", null, "HIGH", "Error Integrasi API / Backend", "Gagal memuat data dari endpoint API [Nama Endpoint]. Pesan error: "),
+            new("Fitur Baru", null, "MEDIUM", "Permintaan Fitur Baru Web", "Kebutuhan fitur baru pada modul [Nama Modul]. Rincian kebutuhan: "),
+            new("Slow Web", null, "MEDIUM", "Loading Website Lambat / Timeout", "Akses ke web portal mengalami lag/timeout pada bagian [Bagian Web]."),
+        ],
+        "mobile-developer" =>
+        [
+            new("App Crash", null, "CRITICAL", "Aplikasi Mobile Force Close / Crash", "Aplikasi mobile mengalami crash saat membuka [Menu/Fitur]. Perangkat & OS: "),
+            new("Release Issue", null, "HIGH", "Kendala Rilis / Update APK", "Gagal melakukan instalasi atau update APK versi [Nomor Versi]."),
+            new("Sync Error", null, "HIGH", "Gagal Sinkronisasi Data Mobile", "Data pada aplikasi mobile tidak tersinkron ke server pada modul [Nama Modul]."),
+            new("Push Notif", null, "MEDIUM", "Push Notification Tidak Masuk", "Notifikasi tidak muncul pada device pengguna saat trigger [Nama Event]."),
+        ],
+        _ => [],
+    };
+
+    /// Suggestions for the optional Device / Software fields: iDesk's DEVICE and SOFTWARE ticket
+    /// attributes. Free text is still allowed (iDesk takes any value up to 100 chars).
+    public static readonly string[] DeviceOptions = ["Laptop", "Desktop", "Mobile"];
+    public static readonly string[] SoftwareOptions = ["Windows", "MacOS", "Office 365"];
+
     /// HARDWARE_INSTALLATION → "Hardware installation".
     public static string Humanize(string? code)
     {

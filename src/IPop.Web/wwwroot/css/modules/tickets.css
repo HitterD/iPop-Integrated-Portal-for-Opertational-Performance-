@@ -320,3 +320,20 @@
   .tk-selind, .tk-steps .fill, .tk-collapse { transition: none !important; }
   .tk-sheet .okmark circle, .tk-sheet .okmark path { stroke-dashoffset: 0; animation: none; }
 }
+
+/* Quick templates (same set as iDesk's create page) and Device / Software suggestions */
+.tk-form .tk-tpl-h { display: flex; align-items: center; gap: 6px; }
+.tk-form .tk-tpl-h .lucide { width: 13px; height: 13px; color: var(--warn); }
+.tk-tpls { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 4px; }
+.tk-tpl { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 13px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink-2);
+  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; box-shadow: 0 1px 1px rgba(0,0,0,.03);
+  transition: color .15s, border-color .2s, background-color .15s, box-shadow .2s, transform .12s var(--ease-out); }
+.tk-tpl:hover { color: var(--ink); border-color: color-mix(in srgb, var(--warn) 45%, var(--line-2)); }
+.tk-tpl:active { transform: scale(.96); }
+.tk-tpl.on { color: var(--warn); background: var(--warn-soft); border-color: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent); }
+.tk-tpl .dot { width: 6px; height: 6px; border-radius: 50%; }
+.tk-sugg { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.tk-sugg button { height: 24px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line-2); background: none; color: var(--ink-3); font: inherit; font-size: 11.5px; cursor: pointer;
+  transition: color .15s, background-color .15s, border-color .15s; }
+.tk-sugg button:hover { color: var(--ink); background: var(--surface-3); }
+.tk-sugg button.on { color: var(--surface); background: var(--ink); border-color: var(--ink); }

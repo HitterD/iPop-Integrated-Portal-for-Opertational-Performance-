@@ -10,6 +10,35 @@ namespace IPop.Tests;
 /// Web side of ICT tickets: wording, sections, SLA, error mapping, module/sound routing, status pill.
 public class TicketWebUiTests
 {
+    [Theory]
+    [InlineData("it-support", 6)]
+    [InlineData("oracle-k2", 3)]
+    [InlineData("web-developer", 4)]
+    [InlineData("mobile-developer", 4)]
+    [InlineData("unknown-queue", 0)]
+    public void Quick_templates_match_idesk_per_queue(string module, int count)
+    {
+        var list = TicketUi.Templates(module);
+        Assert.Equal(count, list.Count);
+        foreach (var q in list)
+        {
+            // Everything a template sets must pass iDesk's own validation.
+            Assert.InRange(q.Subject.Length, 5, 200);
+            Assert.InRange(q.Description.Length, 3, 5000);
+            Assert.Contains(q.Priority, TicketUi.Priorities);
+            if (module != "it-support") Assert.Null(q.Category);
+        }
+        Assert.Equal(list.Count, list.Select(q => q.Label).Distinct().Count());
+    }
+
+    [Fact]
+    public void No_network_template_is_the_idesk_one()
+    {
+        var q = Assert.Single(TicketUi.Templates("it-support"), x => x.Label == "No Network");
+        Assert.Equal(("NETWORK", "HIGH", "Koneksi internet bermasalah", "Tidak ada koneksi WiFi maupun LAN. Area/Lantai: "),
+            (q.Category, q.Priority, q.Subject, q.Description));
+    }
+
     private static TicketDetailDto Detail(string status, DateTime? sla = null, DateTime? resolvedAt = null,
         IReadOnlyList<TicketEventDto>? events = null, string origin = "IPOP") => new(
         Guid.NewGuid(), "041026-NET-0003", "IPOP-ICT-2026-000042", origin, status, "HIGH", "it-support", "IT Support Tickets",

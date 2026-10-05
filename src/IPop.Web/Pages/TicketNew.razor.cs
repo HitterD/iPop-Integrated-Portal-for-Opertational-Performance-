@@ -23,6 +23,7 @@ public partial class TicketNew
     [Inject] private ToastService Toasts { get; set; } = default!;
     [Inject] private NavigationManager Nav { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private ConfirmService Confirm { get; set; } = default!;
 
     private const string DraftKey = "tickets.draft";
     private static readonly CultureInfo En = CultureInfo.GetCultureInfo("en-GB");
@@ -60,7 +61,9 @@ public partial class TicketNew
     private string? errKey, errMsg;
     private (string Title, string Body)? formError;
     private bool notRegistered, nrFlash, submitting, dropFull, catStagger, disposed;
-    private string? popModule, popDay, shakeDay, popSlot;
+    private string? popModule, popDay, shakeDay, popSlot, popTemplate;
+    /// The quick template last applied, and its text, so switching templates over an untouched one needs no confirm.
+    private string? template, lastTemplateTitle, lastTemplateDescription;
     private CreateTicketResultDto? sheet;
     private bool sheetClosing;
     private string? focusErrorSel;
@@ -190,6 +193,7 @@ public partial class TicketNew
         s.Category = m.DefaultCategory;
         FixCategory();
         popModule = m.Slug;
+        template = null;
         catStagger = true;
         ClearErr("category"); ClearErr("module");
         Dirty();
@@ -202,6 +206,34 @@ public partial class TicketNew
         ClearErr("category");
         Dirty();
     }
+
+    /// Same as iDesk: a template fills title, description, priority (and category for IT Support);
+    /// tapping the selected one again only clears the highlight. The caret lands at the end of the
+    /// description, where every template leaves a blank to complete ("Area/Lantai: ").
+    private async Task PickTemplate(TicketUi.QuickTemplate t)
+    {
+        if (template == t.Label) { template = null; return; }
+        if (s.Title.Length > 0 && s.Title != lastTemplateTitle || s.Description.Length > 0 && s.Description != lastTemplateDescription)
+        {
+            if (!await Confirm.AskAsync("Replace what you've written?", "The template overwrites the title and description.", "Replace", danger: false))
+                return;
+        }
+        template = t.Label;
+        lastTemplateTitle = t.Subject;
+        lastTemplateDescription = t.Description;
+        s.Title = t.Subject;
+        s.Description = t.Description;
+        s.Priority = t.Priority;
+        if (t.Category is { } c && Module is { } m && m.Categories.Contains(c)) s.Category = c;
+        errKey = null; errMsg = null; formError = null;
+        popTemplate = t.Label;
+        Dirty();
+        _ = ResetAfter(450, () => popTemplate = null);
+        try { await JS.InvokeVoidAsync("ipopTickets.caretEnd", "#tk-desc"); } catch (JSException) { } catch (InvalidOperationException) { }
+    }
+
+    private void PickDevice(string v) { s.Device = s.Device == v ? "" : v; ClearErr("device"); Dirty(); }
+    private void PickSoftware(string v) { s.Software = s.Software == v ? "" : v; ClearErr("software"); Dirty(); }
 
     private void PickHardware(string name) { s.HardwareType = name; ClearErr("hardwareType"); Dirty(); }
 
