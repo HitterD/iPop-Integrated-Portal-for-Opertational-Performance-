@@ -271,14 +271,16 @@ public static class CalendarDelegateEndpoints
         return (owner.Id, me, null);
     }
 
-    /// For an existing event: the owner when I'm their edit/full delegate and the event isn't Private;
+    /// For an existing event: the owner when I'm their edit/full delegate and the event isn't Private (full assistants also manage Private);
     /// otherwise me (the save then fails its own owner/organizer check).
     public static async Task<(Guid OwnerId, Guid? ActedBy)> ActorForEventAsync(IPopDbContext db, Guid eventId, Guid me, CancellationToken ct)
     {
         var ev = await db.CalendarEvents.AsNoTracking().Where(e => e.Id == eventId)
             .Select(e => new { e.OwnerId, Visibility = e.Meeting != null ? e.Meeting.Visibility : e.Visibility }).FirstOrDefaultAsync(ct);
-        if (ev is null || ev.OwnerId == me || ev.Visibility == CalendarVisibility.Private) return (me, null);
-        return DelegateLevel.CanEdit(await LevelAsync(db, ev.OwnerId, me, ct)) ? (ev.OwnerId, me) : (me, null);
+        if (ev is null || ev.OwnerId == me) return (me, null);
+        var level = await LevelAsync(db, ev.OwnerId, me, ct);
+        return DelegateLevel.CanEdit(level) && (ev.Visibility != CalendarVisibility.Private || level == DelegateLevel.Full)
+            ? (ev.OwnerId, me) : (me, null);
     }
 
     /// "Mia added "Budget review" to your calendar." — unless the owner turned these off.

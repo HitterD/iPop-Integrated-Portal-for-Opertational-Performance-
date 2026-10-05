@@ -2,6 +2,7 @@
 @using IPop.Web.Services
 @inject AuthState Auth
 @inject ToastService Toasts
+@inject NavigationManager Nav
 
 @* Meeting RSVP panel: displayed in the reading pane for messages carrying a meeting invitation.
    Accept/Maybe/Decline buttons + note; calls RSVP endpoint or host callback. *@
@@ -26,6 +27,7 @@
         <button type="button" class="rsvp-btn decline @(CurrentResponse == "decline" ? "on" : "")" @onclick='() => Respond("decline")' disabled="@responding">
             <i data-lucide="x"></i> Decline
         </button>
+        <button type="button" class="rsvp-btn" @onclick="OpenCalendarAsync"><i data-lucide="calendar"></i>Open in Calendar</button>
     </div>
 
     <textarea class="rsvp-note" placeholder="Note for organizer (optional)…" @bind="note" rows="2"></textarea>
@@ -57,6 +59,15 @@
 
     public sealed record MeetingModel(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string? Location, string? Link);
     public sealed record AttendeeModel(string Name, string Response);
+
+    private sealed record CalendarEventRef(Guid EventId, DateTime StartAt);
+
+    private async Task OpenCalendarAsync()
+    {
+        var e = await Auth.GetAsync<CalendarEventRef>($"/api/calendar/meetings/{Meeting.Id}/event");
+        if (e is null) { Toasts.Show("This meeting is no longer available.", ToastKind.Info); return; }
+        Nav.NavigateTo(CalendarLinks.Event(e.EventId, e.StartAt));
+    }
 
     private async Task Respond(string response)
     {

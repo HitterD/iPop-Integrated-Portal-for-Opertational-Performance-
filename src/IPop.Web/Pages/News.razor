@@ -9,6 +9,7 @@
 @inject NavigationManager Nav
 @inject BadgeState Badges
 @inject IPop.Web.Services.PageCache Cache
+@inject IPop.Web.Services.CalendarLinks CalLinks
 
 <PageTitle>News & Memos — IPop</PageTitle>
 
@@ -174,6 +175,7 @@
                 <NewsDetailDrawer Inline="true" Detail="@detail" Audits="@audits"
                                   AckBusy="@ackBusy" DetailError="@detailError"
                                   OnClose="CloseDetail" OnCopyLink="CopyLink" OnEdit="OpenEdit"
+                                  OnSchedule="ScheduleNewsFollowup"
                                   OnPublish="Publish" OnUnpublish="Unpublish" OnTogglePin="TogglePin"
                                   OnToggleSave="ToggleSave" OnMarkUnread="MarkUnread"
                                   OnAcknowledge="Acknowledge" OnRemindAck="RemindAck"
@@ -689,6 +691,11 @@
             Toasts.Show($"Reminder sent to {pending} {(pending == 1 ? "employee" : "employees")}.", ToastKind.Success);
         }
         else Toasts.Show("Unable to send the reminder.", ToastKind.Error);
+    }
+
+    private void ScheduleNewsFollowup()
+    {
+        if (detail is not null) Nav.NavigateTo(CalLinks.NewMeeting(detail.Title, notes: Nav.ToAbsoluteUri($"/news/{detail.Id}").ToString(), from: $"From news “{detail.Title}”"));
     }
 
     private async Task CopyLink()

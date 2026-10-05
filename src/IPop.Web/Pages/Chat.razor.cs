@@ -334,12 +334,8 @@ public partial class Chat
     private sealed record RoomEventRow(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string Type, Guid? MeetingId, Guid? RoomId);
     private List<RoomEventRow> roomEvents = [];
     private bool roomEventsLoading;
-    private bool roomEventFormOpen;
-    private bool roomEventSaving;
-    private string roomEventTitle = "";
-    private DateTime roomEventStart = DateTime.Now.Date.AddDays(1).AddHours(9);
 
-    private void ToggleRoomEventForm() => roomEventFormOpen = !roomEventFormOpen;
+    private void ToggleRoomEventForm() => Nav.NavigateTo(MeetingFromRoom());
 
     private async Task LoadRoomEventsAsync()
     {
@@ -355,36 +351,7 @@ public partial class Chat
         StateHasChanged();
     }
 
-    private async Task SaveRoomEvent()
-    {
-        if (ChatSvc.ActiveRoomId is null || string.IsNullOrWhiteSpace(roomEventTitle) || roomEventSaving) return;
-        roomEventSaving = true;
-        StateHasChanged();
-        try
-        {
-            var res = await Auth.SendAsync(HttpMethod.Post, "/api/meetings/calendar", new
-            {
-                title = roomEventTitle.Trim(),
-                startAt = roomEventStart.ToUniversalTime(),
-                endAt = roomEventStart.AddHours(1).ToUniversalTime(),
-                type = "rapat",
-                roomId = ChatSvc.ActiveRoomId.Value,
-            });
-            if (res.IsSuccessStatusCode)
-            {
-                roomEventTitle = "";
-                roomEventFormOpen = false;
-                Toasts.Show("Room event saved.", ToastKind.Success);
-                await LoadRoomEventsAsync();
-            }
-            else
-            {
-                Toasts.Show("Failed to save event.", ToastKind.Error);
-            }
-        }
-        catch { Toasts.Show("Failed to save event.", ToastKind.Error); }
-        finally { roomEventSaving = false; StateHasChanged(); }
-    }
+
 
     private void OpenRoomEventDetail(RoomEventRow ev)
     {
@@ -601,7 +568,6 @@ public partial class Chat
         if (pollModalOpen) { pollModalOpen = false; return true; }
         if (forwardOpen) { forwardOpen = false; return true; }
         if (roomEventModalOpen) { roomEventModalOpen = false; return true; }
-        if (roomEventFormOpen) { roomEventFormOpen = false; return true; }
         if (addMemberOpen) { addMemberOpen = false; return true; }
         // New chat panel: Escape walks back one step (Details → Members → New chat → closed).
         if (newChatOpen)

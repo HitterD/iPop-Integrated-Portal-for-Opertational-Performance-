@@ -308,7 +308,7 @@
     private record KpisDto(int MailUnread, int MailInbox, int ChatUnread, int ChatRooms, int OpenTasks, int OverdueTasks,
         DateTime? NextMeetingAt, string? NextMeetingTitle, Guid? NextMeetingId, int AckPending, int MissedCalls);
     private record AgendaDto(string Kind, Guid Id, string Title, string Sub, DateTime? StartAt, DateTime? EndAt,
-        bool Ended, bool Overdue, string Url, string? RoomName);
+        bool Ended, bool Overdue, string Url, string? RoomName, bool AllDay = false, string? Source = null);
     private record AttentionDto(string Kind, string Title, string Sub, string Cta, string Url, string? PeerNik);
     private record TaskDto(Guid Id, Guid ProjectId, string Title, string ProjectName, DateTime? DueDate, bool Overdue);
     private record ProjectDto(Guid Id, string Name, string Status, int Done, int Total, int Progress);
@@ -422,8 +422,7 @@
     private static DateTime Local(DateTime utc) => DateTime.SpecifyKind(utc, DateTimeKind.Utc).ToLocalTime();
 
     private static string AgendaTime(AgendaDto a) =>
-        a.Kind == "task" ? (a.Overdue ? "Overdue" : "Today")
-        : a.Kind == "holiday" ? "All day"
+        a.AllDay ? (a.Overdue ? "Overdue" : "All day")
         : a.StartAt is { } s ? Local(s).ToString("HH:mm") : "";
 
     private static string AgendaSub(AgendaDto a) =>
@@ -431,12 +430,10 @@
             ? $"{Local(s):HH:mm} – {Local(e):HH:mm} · {a.Sub}"
             : a.Sub;
 
-    private static string AgendaModule(AgendaDto a) => a.Kind switch
+    private static string AgendaModule(AgendaDto a) => a.Source switch
     {
-        "meeting" => "m-meeting",
-        "event" or "holiday" => "m-calendar",
-        "ticket" => "m-tickets",
-        _ => "m-project",
+        "mail" => "m-mail", "news" => "m-news", "tickets" => "m-tickets", "projects" => "m-project",
+        "chat" => "m-chat", _ => a.Kind == "meeting" ? "m-meeting" : "m-calendar",
     };
 
     // The hero card: the meeting in progress or the next one to start today.

@@ -50,6 +50,7 @@
                                 @if (r.Nik is not null)
                                 {
                                     <span class="cp-cal @(activeIdx == idx && calFocus ? "on" : "")" role="link" title="View calendar (Tab)" @onclick="() => GoCalendar(r)" @onclick:stopPropagation="true"><i data-lucide="calendar-search"></i>Calendar</span>
+                                    <span class="cp-cal" role="link" title="Invite to meeting" @onclick="() => GoInvite(r)" @onclick:stopPropagation="true"><i data-lucide="calendar-plus"></i>Invite</span>
                                 }
                                 else
                                 {
@@ -277,6 +278,8 @@
             return $"In a meeting until {until.ToLocalTime():HH:mm}";
         return null;
     }
+
+    private void GoInvite(SearchResultItemDto r) { Palette.Close(); Nav.NavigateTo(PLinks.Invite(r.Nik!)); }
 
     private async Task GoCalendar(SearchResultItemDto r)
     {

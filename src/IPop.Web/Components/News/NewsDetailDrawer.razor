@@ -50,6 +50,7 @@
                             @if (isPublished)
                             {
                                 <button type="button" role="menuitem" @onclick="() => Run(OnMarkUnread)"><i data-lucide="mail"></i>Mark as unread</button>
+                                @if (OnSchedule.HasDelegate) { <button type="button" role="menuitem" @onclick="() => Run(OnSchedule)"><i data-lucide="calendar-plus"></i>Schedule follow-up</button> }
                             }
                             @if (Detail.CanEdit)
                             {
@@ -357,6 +358,7 @@
 
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback OnCopyLink { get; set; }
+    [Parameter] public EventCallback OnSchedule { get; set; }
     [Parameter] public EventCallback OnEdit { get; set; }
     [Parameter] public EventCallback OnPublish { get; set; }
     [Parameter] public EventCallback OnUnpublish { get; set; }

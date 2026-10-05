@@ -1,4 +1,5 @@
 using IPop.Core.Entities;
+using IPop.Api.Endpoints;
 using IPop.Infrastructure.Search;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -201,5 +202,93 @@ public class DashboardAndSearchTests
         Assert.Equal(7, op.CompletedFiles);
         Assert.Equal(0, dto.Kpis.MissedCalls);
         Assert.False(dto.IsAdmin);
+    }
+
+    [Fact]
+    public async Task Dashboard_agenda_uses_calendar_sources_without_task_cap_and_respects_local_dates()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("DASH_FEED");
+        me.TimeZoneId = "Asia/Jakarta";
+        var day = DateTime.UtcNow.AddHours(7).Date;
+        var from = DateTime.SpecifyKind(day.AddHours(-7), DateTimeKind.Utc);
+        var project = t.AddProject("Agenda project", me.Id);
+        for (var i = 0; i < 4; i++)
+        {
+            var task = new ProjectTask { Id = Guid.NewGuid(), ProjectId = project.Id,
+                GroupId = t.Db.ProjectGroups.Single(g => g.ProjectId == project.Id).Id,
+                Title = $"Due task {i}", Status = "todo", DueDate = i == 0 ? day : from.AddHours(10 + i), CreatedById = me.Id };
+            t.Db.ProjectTasks.Add(task);
+            t.Db.ProjectTaskAssignees.Add(new ProjectTaskAssignee { TaskId = task.Id, UserId = me.Id });
+        }
+        t.Db.ProjectMilestones.Add(new ProjectMilestone { Id = Guid.NewGuid(), ProjectId = project.Id, Title = "Launch", DueDate = day });
+        t.Db.WorkCalendarEntries.Add(new WorkCalendarEntry { Id = Guid.NewGuid(), ProjectId = project.Id,
+            Date = day, Kind = "off", Title = "Team off", CreatedById = me.Id });
+        t.Db.CompanyHolidays.AddRange(
+            new CompanyHoliday { Id = Guid.NewGuid(), Date = day, Title = "Today holiday" },
+            new CompanyHoliday { Id = Guid.NewGuid(), Date = day.AddDays(-1), Title = "Yesterday holiday" },
+            new CompanyHoliday { Id = Guid.NewGuid(), Date = day.AddDays(1), Title = "Tomorrow holiday" });
+        t.Db.Mails.Add(new Mail { Id = Guid.NewGuid(), SenderId = me.Id, Subject = "Send report", Body = "x",
+            Status = "scheduled", ScheduledAt = from.AddHours(8) });
+        t.Db.NewsPosts.Add(new NewsPost { Id = Guid.NewGuid(), AuthorId = me.Id, Title = "Read memo", Body = "x", Type = "memo",
+            Status = "published", PublishedAt = from.AddHours(1), RequiresAcknowledgement = true, AckDueAt = from.AddHours(12) });
+        t.Db.Tickets.Add(new Ticket { Id = Guid.NewGuid(), UserId = me.Id, Provider = "idesk", Origin = "IPOP", Status = "IN_PROGRESS",
+            Priority = "HIGH", Module = "ict", ModuleName = "ICT", Category = "Printer", Title = "Fix printer", SlaTarget = from.AddHours(14) });
+        await t.Db.SaveChangesAsync();
+
+        var dto = (await new IPop.Infrastructure.Dashboard.DashboardService(t.Db, permissions: new FeedPermissions()).GetAsync(me.Id))!;
+        var feed = await CalendarEndpoints.BuildFeedAsync(t.Db, me.Id, from, from.AddDays(1), CalendarEndpoints.FeedAccess.All, default);
+        var expected = feed.Where(i => i.AllDay ? i.StartAt.Date <= day && i.EndAt.Date > day : i.StartAt < from.AddDays(1) && i.EndAt > from);
+        Assert.Equal(expected.Select(i => i.Title).Order(), dto.Agenda.Select(i => i.Title).Order());
+        Assert.Equal(4, dto.Agenda.Count(i => i.Kind == "task"));
+        Assert.Contains(dto.Agenda, i => i.Kind == "milestone" && i.AllDay);
+        Assert.Contains(dto.Agenda, i => i.Kind == "off" && i.Source == "projects");
+        Assert.Contains(dto.Agenda, i => i.Kind == "scheduled-mail" && i.Source == "mail");
+        Assert.Contains(dto.Agenda, i => i.Kind == "ack-due" && i.Source == "news");
+        Assert.Contains(dto.Agenda, i => i.Kind == "memo");
+        Assert.DoesNotContain(dto.Agenda, i => i.Title is "Yesterday holiday" or "Tomorrow holiday");
+        var timed = Assert.Single(dto.Agenda, i => i.Title == "Due task 1");
+        Assert.Equal(from.AddHours(11).AddMinutes(-30), timed.StartAt);
+        Assert.Equal(from.AddHours(11), timed.EndAt);
+        Assert.False(timed.AllDay);
+        var dateOnly = Assert.Single(dto.Agenda, i => i.Title == "Due task 0");
+        Assert.True(dateOnly.AllDay);
+        Assert.Null(dateOnly.StartAt);
+        var ticket = Assert.Single(dto.Agenda, i => i.Kind == "ticket");
+        Assert.Equal(from.AddHours(14).AddMinutes(-30), ticket.StartAt);
+
+        var denied = (await new IPop.Infrastructure.Dashboard.DashboardService(t.Db, permissions: new FeedPermissions(false)).GetAsync(me.Id))!;
+        Assert.DoesNotContain(denied.Agenda, i => i.Source is "projects" or "mail" or "news" or "tickets");
+        Assert.Contains(denied.Agenda, i => i.Kind == "holiday");
+        var noTickets = await CalendarEndpoints.BuildFeedAsync(t.Db, me.Id, from, from.AddDays(1),
+            CalendarEndpoints.FeedAccess.All with { Tickets = false }, default);
+        Assert.DoesNotContain(noTickets, i => i.Source == "tickets");
+    }
+
+    [Fact]
+    public async Task Feed_access_evaluates_tickets_read_and_dashboard_defaults_to_denied()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("DASH_DENIED");
+        me.TimeZoneId = "UTC";
+        t.Db.Tickets.Add(new Ticket { Id = Guid.NewGuid(), UserId = me.Id, Provider = "idesk", Origin = "IPOP", Status = "OPEN",
+            Priority = "HIGH", Module = "ict", ModuleName = "ICT", Category = "Printer", Title = "Private ticket", SlaTarget = DateTime.UtcNow });
+        await t.Db.SaveChangesAsync();
+        var permissions = new FeedPermissions();
+        var access = await CalendarEndpoints.FeedAccess.ForAsync(permissions, me.Id, default);
+        Assert.True(access.Tickets);
+        Assert.Contains("tickets.read", permissions.Checked);
+        var dto = (await new IPop.Infrastructure.Dashboard.DashboardService(t.Db).GetAsync(me.Id))!;
+        Assert.DoesNotContain(dto.Agenda, i => i.Source == "tickets");
+    }
+
+    private sealed class FeedPermissions(bool allowed = true) : IPop.Application.Rbac.IPermissionEvaluator
+    {
+        public List<string> Checked { get; } = [];
+        public Task<bool> IsAllowedAsync(Guid userId, string permissionCode, string? departmentCode, CancellationToken ct = default)
+        {
+            Checked.Add(permissionCode);
+            return Task.FromResult(allowed);
+        }
     }
 }

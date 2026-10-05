@@ -14,20 +14,27 @@ public sealed record CalendarRecurrence(string Freq, IReadOnlyList<int> Days, Da
     {
         if (string.IsNullOrWhiteSpace(rule)) return null;
         string? freq = null; List<int> days = []; DateOnly? until = null; int? count = null;
-        foreach (var part in rule.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (var part in rule.Split(';', StringSplitOptions.TrimEntries))
         {
             var kv = part.Split(':', 2);
             switch (kv[0])
             {
-                case "D": freq = "D"; break;
-                case "M": freq = "M"; break;
-                case "W":
+                case "D" or "M" when kv.Length == 1 && freq is null: freq = kv[0]; break;
+                case "W" when freq is null:
                     freq = "W";
                     if (kv.Length > 1)
-                        days = kv[1].Split(',').Select(d => int.TryParse(d, out var n) ? n : 0).Where(n => n is >= 1 and <= 7).Distinct().Order().ToList();
+                    {
+                        foreach (var day in kv[1].Split(','))
+                        {
+                            if (!int.TryParse(day, out var n) || n is < 1 or > 7) return null;
+                            days.Add(n);
+                        }
+                        days = days.Distinct().Order().ToList();
+                    }
                     break;
-                case "U" when kv.Length > 1 && DateOnly.TryParseExact(kv[1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var u): until = u; break;
-                case "C" when kv.Length > 1 && int.TryParse(kv[1], out var c) && c > 0: count = Math.Min(c, MaxOccurrences); break;
+                case "U" when until is null && count is null && kv.Length == 2 && DateOnly.TryParseExact(kv[1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var u): until = u; break;
+                case "C" when until is null && count is null && kv.Length == 2 && int.TryParse(kv[1], out var c) && c is > 0 and <= MaxOccurrences: count = c; break;
+                default: return null;
             }
         }
         return freq is null ? null : new CalendarRecurrence(freq, days, until, count);
@@ -39,7 +46,7 @@ public sealed record CalendarRecurrence(string Freq, IReadOnlyList<int> Days, Da
         return head + (Until is { } u ? $";U:{u:yyyy-MM-dd}" : Count is { } c ? $";C:{c}" : "");
     }
 
-    /// Start times of every occurrence, the first one included. <paramref name="first"/> is UTC; the weekday
+    /// Start times of matching occurrences on or after the requested start. <paramref name="first"/> is UTC; the weekday
     /// and date arithmetic happens in <paramref name="tz"/> so 09:00 stays 09:00 local.
     public List<DateTime> Expand(DateTime first, TimeZoneInfo tz)
     {
@@ -49,28 +56,33 @@ public sealed record CalendarRecurrence(string Freq, IReadOnlyList<int> Days, Da
         var max = Math.Min(Count ?? MaxOccurrences, MaxOccurrences);
         var days = Freq == "W" ? (Days.Count > 0 ? Days : [IsoDay(local.DayOfWeek)]) : [];
         var result = new List<DateTime>();
-        void Add(DateTime l) => result.Add(TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(l, DateTimeKind.Unspecified), tz));
-
-        Add(local);
-        for (var step = 1; result.Count < max; step++)
+        for (var step = 0; result.Count < max && step <= 800; step++)
         {
             DateTime next;
             if (Freq == "D") next = local.AddDays(step);
             else if (Freq == "M")
             {
-                var m = local.AddMonths(step);
-                if (m.Day != local.Day) continue; // 31st in a 30-day month: skip, don't drift
-                next = m;
+                next = local.AddMonths(step);
+                if (next > limit) break;
+                if (next.Day != local.Day) continue; // Skip short months, never drift.
             }
-            else
-            {
-                next = local.AddDays(step);
-                if (!days.Contains(IsoDay(next.DayOfWeek))) { if (step > 400) break; continue; }
-            }
-            if (next > limit || step > 800) break;
-            Add(next);
+            else next = local.AddDays(step);
+            if (next > limit) break;
+            if (Freq == "W" && !days.Contains(IsoDay(next.DayOfWeek))) continue;
+            if (TryLocalToUtc(next, tz, out var utc)) result.Add(utc);
         }
         return result;
+    }
+
+    /// Invalid spring-forward wall times are skipped. Ambiguous fall-back times use the
+    /// standard-time offset, matching TimeZoneInfo.ConvertTimeToUtc's deterministic policy.
+    internal static bool TryLocalToUtc(DateTime local, TimeZoneInfo tz, out DateTime utc)
+    {
+        local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
+        utc = default;
+        if (tz.IsInvalidTime(local)) return false;
+        utc = TimeZoneInfo.ConvertTimeToUtc(local, tz);
+        return true;
     }
 
     /// "Every Mon and Thu, until 31 Dec" — shown on the form and in details.

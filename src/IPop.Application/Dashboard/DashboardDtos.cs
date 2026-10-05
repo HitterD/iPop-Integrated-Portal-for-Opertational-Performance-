@@ -25,9 +25,9 @@ public record DashboardKpis(
     int AckPending,
     int MissedCalls);
 
-/// Kind: "meeting" | "event" | "task". StartAt is UTC for meetings, the due date for tasks.
+/// Kind follows the calendar feed; timed bounds are UTC, date-only entries set AllDay.
 public record DashboardAgendaItem(string Kind, Guid Id, string Title, string Sub, DateTime? StartAt, DateTime? EndAt,
-    bool Ended, bool Overdue, string Url, string? RoomName);
+    bool Ended, bool Overdue, string Url, string? RoomName, bool AllDay = false, string? Source = null);
 
 /// Kind: "ack" | "missed-call" | "mention" | "note" | "overdue".
 public record DashboardAttentionItem(string Kind, string Title, string Sub, string Cta, string Url, string? PeerNik = null);

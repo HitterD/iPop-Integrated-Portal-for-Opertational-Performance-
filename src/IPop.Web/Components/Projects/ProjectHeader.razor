@@ -1,4 +1,6 @@
 @using IPop.Application.Projects
+@inject IPop.Web.Services.CalendarLinks CalLinks
+@inject NavigationManager Nav
 
 <div class="proj-canvas-head">
     <div class="proj-title-box">
@@ -40,6 +42,8 @@
         <button type="button" class="icon-btn proj-hbtn pm-fold" @onclick="OnOpenChatRoom" title="Open project chat" aria-label="Open project chat">
             <i data-lucide="message-circle"></i>
         </button>
+
+        <button type="button" class="icon-btn proj-hbtn" title="Meeting with project members" aria-label="Meeting with project members" @onclick="ScheduleTeam"><i data-lucide="calendar-plus"></i></button>
 
         @* Edit Project Button *@
         <button type="button" class="icon-btn proj-hbtn pm-fold" @onclick="OnOpenEditModal" title="Edit project" aria-label="Edit project">
@@ -87,6 +91,8 @@
     [Parameter] public EventCallback OnBack { get; set; }
 
     private bool showMore;
+
+    private void ScheduleTeam() => Nav.NavigateTo(CalLinks.NewMeeting($"{Project.Name} meeting", Members.Select(m => m.Nik), from: $"From project {Project.Name}"));
 
     private static List<AppOption>? statusOptions;
     private static List<AppOption> StatusOptions => statusOptions ??= [new("planning", "Planning"), new("active", "Active"), new("on_hold", "On hold"), new("completed", "Completed")];
