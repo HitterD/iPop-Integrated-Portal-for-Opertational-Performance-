@@ -59,6 +59,8 @@ public static class DevSeed
             ("projects.admin", "Administer and delete projects"),
             ("notes.read", "Open notes pages shared with you and your own"),
             ("notes.write", "Create, edit, and share notes pages"),
+            ("tickets.read", "See your own ICT tickets from iDesk"),
+            ("tickets.create", "File ICT tickets into iDesk"),
             ("admin.users", "Manage user accounts"),
             ("admin.organization", "Manage departments and sites"),
             ("admin.audit", "View audit records"),
@@ -70,7 +72,7 @@ public static class DevSeed
         {
             var permission = new Permission { Id = Guid.NewGuid(), Code = code, Description = description };
             db.Permissions.Add(permission);
-            if (code is "directory.read" or "files.read" or "chat.read" or "chat.send" or "calls.use" or "mail.read" or "mail.send" or "news.read" or "news.write" or "projects.read" or "projects.write" or "projects.admin" or "notes.read" or "notes.write")
+            if (code is "directory.read" or "files.read" or "chat.read" or "chat.send" or "calls.use" or "mail.read" or "mail.send" or "news.read" or "news.write" or "projects.read" or "projects.write" or "projects.admin" or "notes.read" or "notes.write" or "tickets.read" or "tickets.create")
                 db.RolePermissions.Add(new RolePermission { RoleId = (await db.Roles.SingleAsync(r => r.Name == "Employee", ct)).Id, PermissionId = permission.Id });
             db.RolePermissions.Add(new RolePermission { RoleId = admin.Id, PermissionId = permission.Id });
         }

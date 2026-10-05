@@ -147,6 +147,10 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<EmailOutboxMessage> EmailOutbox => Set<EmailOutboxMessage>();
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
     public DbSet<SearchHistory> SearchHistories => Set<SearchHistory>();
+    public DbSet<Ticket> Tickets => Set<Ticket>();
+    public DbSet<TicketEvent> TicketEvents => Set<TicketEvent>();
+    public DbSet<TicketUserState> TicketUserStates => Set<TicketUserState>();
+    public DbSet<TicketRefCounter> TicketRefCounters => Set<TicketRefCounter>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -1142,6 +1146,56 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasIndex(x => new { x.UserId, x.SearchedAt });
             e.Property(x => x.Query).HasMaxLength(200);
             e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<Ticket>(e =>
+        {
+            e.Property(x => x.Provider).HasMaxLength(16);
+            e.Property(x => x.Origin).HasMaxLength(8);
+            e.Property(x => x.ExternalRef).HasMaxLength(100);
+            e.Property(x => x.IdeskTicketId).HasMaxLength(64);
+            e.Property(x => x.TicketNumber).HasMaxLength(64);
+            e.Property(x => x.Status).HasMaxLength(32);
+            e.Property(x => x.Priority).HasMaxLength(16);
+            e.Property(x => x.Module).HasMaxLength(64);
+            e.Property(x => x.ModuleName).HasMaxLength(200);
+            e.Property(x => x.Category).HasMaxLength(64);
+            e.Property(x => x.Title).HasMaxLength(200);
+            e.Property(x => x.Description).HasMaxLength(5000);
+            e.Property(x => x.Device).HasMaxLength(100);
+            e.Property(x => x.Software).HasMaxLength(100);
+            e.Property(x => x.CriticalReason).HasMaxLength(500);
+            e.Property(x => x.HardwareType).HasMaxLength(100);
+            e.Property(x => x.ScheduledDate).HasMaxLength(10);
+            e.Property(x => x.ScheduledTime).HasMaxLength(5);
+            e.Property(x => x.AssigneeName).HasMaxLength(200);
+            e.Property(x => x.Url).HasMaxLength(500);
+            e.Property(x => x.LastError).HasMaxLength(1000);
+            e.HasIndex(x => x.ExternalRef).IsUnique();
+            e.HasIndex(x => x.IdeskTicketId).IsUnique();
+            e.HasIndex(x => new { x.UserId, x.RemovedAt });
+            e.HasIndex(x => new { x.Status, x.NextAttemptAt });
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<TicketEvent>(e =>
+        {
+            e.Property(x => x.Kind).HasMaxLength(32);
+            e.Property(x => x.FromStatus).HasMaxLength(32);
+            e.Property(x => x.ToStatus).HasMaxLength(32);
+            e.Property(x => x.Assignee).HasMaxLength(200);
+            e.Property(x => x.WebhookEventId).HasMaxLength(100);
+            e.HasIndex(x => new { x.TicketId, x.OccurredAt });
+            e.HasIndex(x => x.WebhookEventId).IsUnique();
+            e.HasOne<Ticket>().WithMany().HasForeignKey(x => x.TicketId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<TicketUserState>(e =>
+        {
+            e.HasKey(x => x.UserId);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<TicketRefCounter>(e =>
+        {
+            e.HasKey(x => x.Year);
+            e.Property(x => x.Year).ValueGeneratedNever();
         });
     }
 }
