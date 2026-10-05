@@ -26,6 +26,10 @@ window.ipopMicro = (() => {
     ['.adm-seg', 'button', '.on, [aria-checked="true"]', ''],
     ['.nt-seg', 'button', '.on, .active', ''],
     ['.td-seg', 'button', '.on, .active', ''],
+    // Tickets (docs/mockups/ipop-apple/tickets.html): Open/All, priority, category and hardware chips.
+    ['.tk-seg', 'button', '.on', ''],
+    ['.tk-prio', 'button', '.on', ''],
+    ['.tk-chips', '.chip', '.on', 'mi-pill'],
   ];
   function placeSlider(root, itemSel, onSel) {
     let ind = root.querySelector(':scope > .mi-ind');

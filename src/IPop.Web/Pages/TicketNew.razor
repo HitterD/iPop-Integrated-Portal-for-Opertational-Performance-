@@ -1,0 +1,262 @@
+@page "/tickets/new"
+@implements IDisposable
+@using IPop.Application.Tickets
+
+<PageTitle>New ICT ticket — IPop</PageTitle>
+
+<div class="tk-formwrap" id="tk-form" data-attach-scope>
+    <div class="tk-form-h">
+        <a class="tk-btn ghost sm" href="/tickets"><i data-lucide="chevron-left"></i>Tickets</a>
+        <span class="sp"></span>
+        <span class="tk-saved" aria-live="polite">
+            @if (saveState == "saving") { <span class="tk-spin"></span><span>Saving…</span> }
+            else if (saveState == "saved") { <i data-lucide="check" class="mi-pop" @key="savedTick"></i><span>Draft saved</span> }
+        </span>
+    </div>
+
+    <div class="tk-form @(fadeKey > 0 ? "mi-fade-in" : "")" @key="fadeKey">
+        <div class="tk-collapse @(notRegistered ? "open" : "")">
+            <div>
+                <div class="tk-callout tk-nr @(nrFlash ? "flash" : "")" style="margin-top:4px">
+                    <i data-lucide="user-x"></i>
+                    <div>
+                        <b>Your iDesk account isn't set up yet</b>
+                        <p>ICT tickets are tracked in iDesk. Contact ICT to create your iDesk account so you can submit tickets and follow their progress. Your draft is saved — submit again once your account is ready.</p>
+                        @* TODO(tickets): the ICT contact (chat partner / extension) is still pending from the user; /chat until then. *@
+                        <div class="acts"><a class="tk-btn pri sm" href="/chat"><i data-lucide="message-circle"></i>Contact ICT</a></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h1>New ICT ticket</h1>
+        <p class="lead">Tell ICT what's wrong. You'll get a notification as it moves along.</p>
+
+        @if (formError is not null)
+        {
+            <div class="tk-callout err mi-rise"><i data-lucide="alert-triangle"></i><div><b>@formError.Value.Title</b><p style="margin:0">@formError.Value.Body</p></div></div>
+        }
+
+        <div class="fs-t">Where should it go?</div>
+        @if (modules is null)
+        {
+            @if (modulesFailed)
+            {
+                <div class="tk-callout mute"><i data-lucide="cloud-off"></i><div><b>Can't load the ICT queues</b>
+                    <p>iDesk isn't answering right now. Your draft is kept.</p>
+                    <button type="button" class="tk-btn sm" @onclick="LoadModulesAsync"><i data-lucide="rotate-cw"></i>Try again</button></div></div>
+            }
+            else
+            {
+                <div class="tk-modg">@for (var i = 0; i < 4; i++) { <div class="skel" style="height:96px;border-radius:12px"></div> }</div>
+            }
+        }
+        else
+        {
+            <div class="tk-modg" role="radiogroup" aria-label="Queue" data-k="module">
+                @foreach (var m in modules)
+                {
+                    var look = TicketUi.Module(m.Slug);
+                    var on = m.Slug == s.Module;
+                    <button type="button" class="tk-mod @(on ? "on" : "")" role="radio" aria-checked="@(on ? "true" : "false")"
+                            style="--tk-mod:@look.Color" @onclick="() => PickModule(m)">
+                        <span class="ic @(on && popModule == m.Slug ? "mi-pop" : "")" style="background:@look.Color"><i data-lucide="@look.Icon"></i></span>
+                        <b>@TicketUi.ModuleName(m)</b><span>@(string.IsNullOrEmpty(look.Blurb) ? m.Description : look.Blurb)</span>
+                    </button>
+                }
+            </div>
+
+            <div class="fs-t">What's it about?</div>
+            <div class="tk-card @(Err("category"))" data-k="category">
+                <div class="f">
+                    @if (Module is { } mod && mod.Categories.Count > 1)
+                    {
+                        <div class="tk-chips" role="radiogroup" aria-label="Category" @key="@("cats-" + mod.Slug)">
+                            @for (var i = 0; i < mod.Categories.Count; i++)
+                            {
+                                var c = mod.Categories[i];
+                                var on = c == s.Category;
+                                <button type="button" class="chip @(on ? "on" : "") @(catStagger ? "mi-rise" : "")" style="@(catStagger ? $"animation-delay:{i * 35}ms" : "")"
+                                        role="radio" aria-checked="@(on ? "true" : "false")" @onclick="() => PickCategory(c)">
+                                    <i data-lucide="@TicketUi.CategoryIcon(c)"></i>@TicketUi.CategoryLabel(c)
+                                </button>
+                            }
+                        </div>
+                    }
+                    else if (Module is { } single)
+                    {
+                        var c = single.Categories.FirstOrDefault() ?? single.DefaultCategory;
+                        <div class="tk-fixed-cat @(catStagger ? "mi-rise" : "")" @key="@("fix-" + single.Slug)">
+                            <i data-lucide="lock"></i><b>@TicketUi.CategoryLabel(c)</b><span>— set by this queue</span>
+                        </div>
+                    }
+                    @if (errKey == "category") { <div class="ferr">@errMsg</div> }
+                </div>
+            </div>
+
+            <div class="tk-collapse @(IsInstall ? "open" : "")">
+                <div>
+                    <div class="fs-t">Installation</div>
+                    <div class="tk-card">
+                        <div class="f @(Err("hardwareType"))" data-k="hardwareType">
+                            <label class="l">What should be installed? <em>*</em></label>
+                            <div class="tk-chips" role="radiogroup" aria-label="What should be installed">
+                                @foreach (var (name, icon) in TicketUi.HardwareTypes)
+                                {
+                                    var on = s.HardwareType == name;
+                                    <button type="button" class="chip @(on ? "on" : "")" role="radio" aria-checked="@(on ? "true" : "false")" @onclick="() => PickHardware(name)">
+                                        <i data-lucide="@icon"></i>@name
+                                    </button>
+                                }
+                            </div>
+                            @if (errKey == "hardwareType") { <div class="ferr">@errMsg</div> }
+                        </div>
+                        <div class="f row2" style="align-items:start">
+                            <div class="@(Err("scheduledDate"))" data-k="scheduledDate">
+                                <label class="l">Date <em>*</em></label>
+                                <div class="tk-calh">
+                                    <b>@calMonth.ToString("MMMM yyyy", En)</b>
+                                    <span>
+                                        <button type="button" class="tk-btn ghost sm" title="Previous month" aria-label="Previous month" disabled="@(calMonth <= FirstMonth)" @onclick="() => MoveMonth(-1)"><i data-lucide="chevron-left"></i></button>
+                                        <button type="button" class="tk-btn ghost sm" title="Next month" aria-label="Next month" @onclick="() => MoveMonth(1)"><i data-lucide="chevron-right"></i></button>
+                                    </span>
+                                </div>
+                                <div class="tk-calvp">
+                                    <div class="tk-cal @(calDir > 0 ? "from-r" : calDir < 0 ? "from-l" : "")" @key="calMonth">
+                                        @foreach (var h in new[] { "M", "T", "W", "T", "F", "S", "S" }) { <span class="h">@h</span> }
+                                        @for (var i = 0; i < ((int)calMonth.DayOfWeek + 6) % 7; i++) { <span></span> }
+                                        @for (var d = 1; d <= DateTime.DaysInMonth(calMonth.Year, calMonth.Month); d++)
+                                        {
+                                            var day = new DateOnly(calMonth.Year, calMonth.Month, d);
+                                            var off = IsOffDay(day);
+                                            var iso = day.ToString("yyyy-MM-dd");
+                                            var selDay = s.ScheduledDate == iso;
+                                            <button type="button" class="@(off ? "x" : "") @(day == Today ? "t" : "") @(selDay ? "s" : "") @(shakeDay == iso ? "mi-shake" : "") @(popDay == iso ? "mi-pop" : "")"
+                                                    aria-disabled="@(off ? "true" : "false")" aria-pressed="@(selDay ? "true" : "false")"
+                                                    aria-label="@day.ToString("dddd d MMMM", En)" @onclick="() => PickDay(day)">@d</button>
+                                        }
+                                    </div>
+                                </div>
+                                @if (errKey == "scheduledDate") { <div class="ferr">@errMsg</div> }
+                            </div>
+                            <div class="@(Err("scheduledTime"))" data-k="scheduledTime">
+                                <label class="l">Time <em>*</em></label>
+                                <div class="slots-l">Morning</div>
+                                <div class="tk-slots">@foreach (var t in TicketAttachmentRules.HardwareSlots.Where(x => string.CompareOrdinal(x, "12:00") < 0)) { @Slot(t) }</div>
+                                <div class="slots-l">Afternoon</div>
+                                <div class="tk-slots">@foreach (var t in TicketAttachmentRules.HardwareSlots.Where(x => string.CompareOrdinal(x, "12:00") >= 0)) { @Slot(t) }</div>
+                                <div class="hint"><span class="hl" @key="ScheduleSummary">@(errKey == "scheduledTime" ? errMsg : ScheduleSummary)</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="fs-t">Details</div>
+            <div class="tk-card">
+                <div class="f @(Err("title"))" data-k="title">
+                    <label class="l" for="tk-title">Title <em>*</em></label>
+                    <input id="tk-title" class="inp" maxlength="200" placeholder="e.g. Wifi lantai 2 mati" value="@s.Title" @oninput='e => OnText(e, v => s.Title = v, "title")' />
+                    <div class="hint"><span class="hl">@(errKey == "title" ? errMsg : "A short summary ICT will see first")</span><span class="cnt @(s.Title.Length > 180 ? "warn" : "")">@s.Title.Length / 200</span></div>
+                </div>
+                <div class="f @(Err("description"))" data-k="description">
+                    <label class="l" for="tk-desc">Description <em>*</em></label>
+                    <textarea id="tk-desc" class="inp ta" maxlength="5000" placeholder="What happened, since when, what you've tried" value="@s.Description" @oninput='e => OnText(e, v => s.Description = v, "description")'></textarea>
+                    <div class="hint"><span class="hl">@(errKey == "description" ? errMsg : "What happened, since when, what you've tried")</span><span class="cnt @(s.Description.Length > 4500 ? "warn" : "")">@s.Description.Length / 5000</span></div>
+                </div>
+                <div class="f row2">
+                    <div class="@(Err("device"))" data-k="device"><label class="l" for="tk-dev">Device <span class="opt">(optional)</span></label>
+                        <input id="tk-dev" class="inp" maxlength="100" placeholder="e.g. Laptop" value="@s.Device" @oninput='e => OnText(e, v => s.Device = v, "device")' />
+                        @if (errKey == "device") { <div class="ferr">@errMsg</div> }</div>
+                    <div class="@(Err("software"))" data-k="software"><label class="l" for="tk-sw">Software <span class="opt">(optional)</span></label>
+                        <input id="tk-sw" class="inp" maxlength="100" placeholder="e.g. Outlook" value="@s.Software" @oninput='e => OnText(e, v => s.Software = v, "software")' />
+                        @if (errKey == "software") { <div class="ferr">@errMsg</div> }</div>
+                </div>
+            </div>
+
+            <div class="fs-t">Priority</div>
+            <div class="tk-card"><div class="f @(Err("priority"))" data-k="priority">
+                <div class="tk-prio" role="radiogroup" aria-label="Priority">
+                    @foreach (var p in Priorities)
+                    {
+                        var on = p == s.Priority;
+                        <button type="button" class="@(on ? "on" : "")" role="radio" aria-checked="@(on ? "true" : "false")" @onclick="() => PickPriority(p)">
+                            <i style="background:@TicketUi.PriorityColor(p)"></i>@TicketUi.PriorityLabel(p)
+                        </button>
+                    }
+                </div>
+                <div class="tk-collapse @(s.Priority == "CRITICAL" ? "open" : "")">
+                    <div>
+                        <div class="tk-crit @(Err("criticalReason"))" data-k="criticalReason">
+                            <label class="l" for="tk-reason"><i data-lucide="siren"></i>Why is this critical? <em>*</em></label>
+                            <input id="tk-reason" class="inp" maxlength="500" placeholder="e.g. The whole floor can't work" value="@s.CriticalReason" @oninput='e => OnText(e, v => s.CriticalReason = v, "criticalReason")' />
+                            <div class="hint"><span class="hl">@(errKey == "criticalReason" ? errMsg : "Critical tickets page the on-call team. Use it only when work has stopped.")</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div></div>
+
+            <div class="fs-t">Attachments</div>
+            <div class="tk-card"><div class="f">
+                <label class="tk-drop @(errKey == "attachments" || dropFull ? "err" : "")" data-k="attachments" data-attach-zone data-attach-default
+                       data-attach-title="Drop to attach" data-attach-hint="Up to 5 files, 10 MB each">
+                    <i data-lucide="paperclip"></i>Drop files here or <b>browse</b><br />
+                    <span class="dh">@(dropFull ? "You can attach up to 5 files" : errKey == "attachments" ? errMsg : "Up to 5 files, 10 MB each · images, PDF, Word, Excel, TXT, CSV")</span>
+                    <InputFile OnChange="OnFilesAsync" multiple class="tk-file" />
+                </label>
+                <div class="tk-atts">
+                    @foreach (var f in files)
+                    {
+                        <div class="att @(f.Ok ? "" : "bad")" data-fid="@f.Id" @key="f.Id">
+                            <span class="ic"><i data-lucide="@TicketUi.FileIcon(f.Name, f.Ok)"></i></span>
+                            <span class="nm">@f.Name<small>@(f.Ok ? TicketUi.FileSize(f.Size) : f.Error)</small></span>
+                            <button type="button" class="tk-btn ghost sm" title="Remove" aria-label="@($"Remove {f.Name}")" @onclick="() => RemoveFileAsync(f)"><i data-lucide="x"></i></button>
+                        </div>
+                    }
+                </div>
+            </div></div>
+
+            <div class="tk-submitbar">
+                <small>Filed as <b>@MyName</b> · from your iPop account</small>
+                <span class="sp"></span>
+                <button type="button" class="tk-btn" @onclick="DiscardDraftAsync" disabled="@submitting">Discard draft</button>
+                <button type="button" class="tk-btn pri" @onclick="SubmitAsync" disabled="@submitting">
+                    @if (submitting) { <span class="tk-spin"></span><span>Sending…</span> } else { <i data-lucide="send"></i><span>Submit ticket</span> }
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (sheet is { } done)
+    {
+        <div class="tk-scrim @(sheetClosing ? "closing" : "")" @onclick="() => CloseSheetAsync(null)">
+            <div class="tk-sheet" role="dialog" aria-modal="true" aria-labelledby="tk-sheet-h" @onclick:stopPropagation>
+                <svg class="okmark" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="23" /><path d="M15 27 l7 7 l15 -16" /></svg>
+                @if (done.Queued)
+                {
+                    <h3 id="tk-sheet-h">Ticket saved</h3>
+                    <p>We'll send it as soon as iDesk answers. You'll get a notification when it's in.</p>
+                    <div class="num">@done.Ticket.ExternalRef</div>
+                }
+                else
+                {
+                    <h3 id="tk-sheet-h">Ticket sent to ICT</h3>
+                    <p>You'll get a notification when someone picks it up.</p>
+                    <div class="num">@TicketUi.Number(done.Ticket)</div>
+                }
+                <div class="acts">
+                    <button type="button" class="tk-btn" @onclick="() => CloseSheetAsync(null)">New ticket</button>
+                    <button type="button" class="tk-btn pri" @onclick="() => CloseSheetAsync(done.Ticket.Id)">View ticket</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private RenderFragment Slot(string t) => __builder =>
+    {
+        var on = s.ScheduledTime == t;
+        <button type="button" class="tk-slot @(on ? "on" : "") @(popSlot == t ? "mi-pop-s" : "")" aria-pressed="@(on ? "true" : "false")" @onclick="() => PickSlot(t)">@t</button>
+    };
+}

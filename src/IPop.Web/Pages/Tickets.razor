@@ -1,0 +1,267 @@
+@page "/tickets"
+@page "/tickets/{Id:guid}"
+@implements IDisposable
+@using IPop.Application.Tickets
+@using IPop.Web.Components.Tickets
+
+<PageTitle>@(detail is { } dt && dt.Id == Id ? $"{dt.Title} - Tickets" : "Tickets") — IPop</PageTitle>
+
+<div class="tk-page @(Id is not null ? "tk-has-sel" : "")">
+    @* ── List ─────────────────────────────────────────────────────────── *@
+    <section class="tk-lst" aria-label="My tickets">
+        <div class="tk-lst-h">
+            <div class="tk-row">
+                <h1>Tickets</h1>
+                <a class="tk-btn pri sm" href="/tickets/new"><i data-lucide="plus"></i>New ticket</a>
+            </div>
+            <button type="button" class="tk-sync" @onclick="ResyncAsync" disabled="@syncing"
+                    title="Sync with iDesk" aria-label="@SyncText">
+                <i data-lucide="@(Offline && !syncing ? "cloud-off" : "refresh-cw")"></i><span @key="SyncText" class="tk-fade">@SyncText</span>
+            </button>
+            <div class="tk-seg" role="tablist" aria-label="Show">
+                <button type="button" role="tab" class="@(showAll ? "" : "on")" aria-selected="@(showAll ? "false" : "true")" @onclick="() => SetFilter(false)">Open <small>@OpenCount</small></button>
+                <button type="button" role="tab" class="@(showAll ? "on" : "")" aria-selected="@(showAll ? "true" : "false")" @onclick="() => SetFilter(true)">All <small>@AllCount</small></button>
+            </div>
+            <label class="tk-search">
+                <i data-lucide="search"></i>
+                <input placeholder="Search number or title" aria-label="Search number or title" value="@q" @oninput="OnSearch" />
+                @if (q.Length > 0)
+                {
+                    <button type="button" class="tk-x" title="Clear search" aria-label="Clear search" @onclick="ClearSearch"><i data-lucide="x"></i></button>
+                }
+            </label>
+        </div>
+
+        <div class="tk-lst-b" id="tk-rows">
+            <span class="tk-selind" aria-hidden="true"></span>
+            @if (NotRegistered)
+            {
+                <div class="tk-callout tk-nr">
+                    <i data-lucide="user-x"></i>
+                    <div>
+                        <b>Your iDesk account isn't set up yet</b>
+                        <p>ICT tickets are tracked in iDesk. Contact ICT to create your iDesk account so you can submit tickets and follow their progress.</p>
+                        @* TODO(tickets): the ICT contact (chat partner / extension) is still pending from the user; /chat until then. *@
+                        <div class="acts"><a class="tk-btn pri sm" href="/chat"><i data-lucide="message-circle"></i>Contact ICT</a></div>
+                    </div>
+                </div>
+            }
+            @if (list is null)
+            {
+                @for (var i = 0; i < 5; i++) { <div class="tk-sk skel"></div> }
+            }
+            else if (Visible.Count == 0)
+            {
+                <div class="tk-lst-empty">@(q.Length > 0 ? $"Nothing matches “{q}”" : showAll ? "No tickets yet" : "No open tickets")</div>
+            }
+            else
+            {
+                @foreach (var (name, statuses) in TicketUi.Sections)
+                {
+                    var items = Visible.Where(t => statuses.Contains(t.Status)).ToList();
+                    if (items.Count == 0) continue;
+                    <div class="tk-sec" @key="@("sec-" + name)">@name</div>
+                    @foreach (var t in items)
+                    {
+                        var m = TicketUi.Status(t.Status);
+                        var sel = t.Id == Id;
+                        <div class="tk @(sel ? "sel" : "") @(freshRows.Contains(t.Id) ? "fresh" : "")" data-id="@t.Id" @key="t.Id"
+                             role="button" tabindex="0" aria-current="@(sel ? "true" : "false")"
+                             @onclick="() => Select(t.Id)" @onkeydown="e => OnRowKey(e, t.Id)">
+                            <span class="dot" style="background:@m.Dot"></span>
+                            <span class="t1">@TicketUi.Highlight(t.Title, q)</span>
+                            <time>@TicketUi.ListTime(t.UpdatedAt)</time>
+                            <div class="t2">
+                                <StatusPill Status="@t.Status" Pop="@changedPills.Contains(t.Id)" />
+                                <span class="m">@TicketUi.Highlight(TicketUi.Number(t), q)</span>
+                                <span class="sp"></span>
+                                @if (TicketUi.IsHot(t.Priority)) { <span class="tk-pill hot">@TicketUi.PriorityLabel(t.Priority)</span> }
+                                @if (t.Origin == "IDESK") { <span class="src-tag">iDesk</span> }
+                            </div>
+                        </div>
+                    }
+                }
+            }
+        </div>
+    </section>
+
+    @* ── Detail ───────────────────────────────────────────────────────── *@
+    <section class="tk-det" aria-label="Ticket detail" id="tk-det">
+        @if (Id is null || (detailMissing && detail is null))
+        {
+            <div class="tk-empty">
+                @if (list is not null && list.Tickets.Count(t => TicketStatus.IsOpen(t.Status)) == 0 && Id is null)
+                {
+                    <div>
+                        <div class="big mi-pop"><i data-lucide="life-buoy"></i></div>
+                        <h3>No open tickets</h3>
+                        <p>When something on your PC, network or apps isn't working, ICT can help.</p>
+                        <a class="tk-btn pri" href="/tickets/new"><i data-lucide="plus"></i>New ticket</a>
+                    </div>
+                }
+                else if (detailMissing)
+                {
+                    <div><div class="big"><i data-lucide="search-x"></i></div><h3>This ticket isn't here anymore</h3><p>It may have been removed in iDesk.</p></div>
+                }
+                else
+                {
+                    <div><div class="big"><i data-lucide="mouse-pointer-click"></i></div><h3>Select a ticket</h3></div>
+                }
+            </div>
+        }
+        else if (detail is null || detail.Id != Id)
+        {
+            <div class="tk-det-b"><div class="skel" style="height:14px;width:200px;border-radius:6px"></div><div class="skel" style="height:28px;width:70%;margin:12px 0 20px;border-radius:8px"></div><div class="skel" style="height:160px;border-radius:14px"></div></div>
+        }
+        else
+        {
+            var t = detail;
+            var pending = TicketUi.IsPending(t.Status);
+            var cur = TicketUi.CurrentStep(t.Status);
+            <div class="tk-det-h">
+                <button type="button" class="tk-btn ghost sm tk-back" @onclick="BackToList"><i data-lucide="chevron-left"></i>Tickets</button>
+                <StatusPill Status="@t.Status" Long="true" Pop="@changedPills.Contains(t.Id)" />
+                <span class="sp"></span>
+                @if (!string.IsNullOrEmpty(t.TicketNumber))
+                {
+                    <button type="button" class="tk-btn ghost sm" aria-label="Copy number" @onclick="CopyNumber"><i data-lucide="copy"></i><span>@(copied ? "Copied" : "Copy number")</span></button>
+                }
+                @if (pending || string.IsNullOrEmpty(t.Url))
+                {
+                    <button type="button" class="tk-btn sm" disabled><i data-lucide="external-link"></i>Open in iDesk</button>
+                }
+                else
+                {
+                    <a class="tk-btn sm" href="@t.Url" target="_blank" rel="noopener noreferrer"><i data-lucide="external-link"></i>Open in iDesk</a>
+                }
+            </div>
+            <div class="tk-det-b mi-rise" @key="t.Id">
+                <div class="crumb">@TicketUi.Number(t) · @t.ModuleName · @TicketUi.CategoryLabel(t.Category)@(t.Origin == "IDESK" ? " · filed in iDesk" : "")</div>
+                <h2>@t.Title</h2>
+
+                @switch (t.Status)
+                {
+                    case TicketStatus.Resolved:
+                        <div class="tk-callout @(grownCallout == t.Id ? "grow" : "")" @key="@("res" + t.Id)">
+                            <i data-lucide="hand"></i>
+                            <div>
+                                <b>ICT marked this as resolved</b>
+                                <p>Check that it works, then confirm in iDesk to close the ticket — or reopen it there if it's still broken.</p>
+                                @if (!string.IsNullOrEmpty(t.Url))
+                                {
+                                    <a class="tk-btn pri sm" href="@t.Url" target="_blank" rel="noopener noreferrer"><i data-lucide="external-link"></i>Confirm in iDesk</a>
+                                }
+                            </div>
+                        </div>
+                        break;
+                    case TicketStatus.Failed:
+                        <div class="tk-callout err" id="tk-failed">
+                            <i data-lucide="alert-triangle"></i>
+                            <div>
+                                <b>iDesk didn't accept this ticket yet</b>
+                                <p>@(retryNote ?? "We kept trying for 24 hours while iDesk was unreachable. Nothing was lost — try again, or discard it.")</p>
+                                <div class="acts">
+                                    <button type="button" class="tk-btn pri sm" disabled="@retrying" @onclick="RetryAsync">
+                                        @if (retrying) { <span class="tk-spin"></span><span>Trying…</span> } else { <i data-lucide="rotate-cw"></i><span>Try again</span> }
+                                    </button>
+                                    <a class="tk-btn sm" href="@($"/tickets/new?from={t.Id}")">Edit</a>
+                                    <button type="button" class="tk-btn ghost sm" disabled="@retrying" @onclick="DiscardAsync">Discard</button>
+                                </div>
+                            </div>
+                        </div>
+                        break;
+                    case TicketStatus.Sending:
+                        <div class="tk-callout info">
+                            <span class="tk-spin"></span>
+                            <div>
+                                <b>Sending to iDesk…</b>
+                                <p style="margin:0">iDesk is slow to answer. iPop keeps trying with the same reference, so the ticket can never be filed twice.</p>
+                            </div>
+                        </div>
+                        break;
+                    case TicketStatus.Cancelled:
+                        <div class="tk-callout mute">
+                            <i data-lucide="circle-slash"></i>
+                            <div><b>Cancelled in iDesk</b><p style="margin:0">Nothing more will happen on this ticket.</p></div>
+                        </div>
+                        break;
+                }
+
+                @if (cur is { } c)
+                {
+                    var labels = TicketUi.StepLabels(t.Status);
+                    var stamps = TicketUi.StepStamps(t);
+                    <div class="tk-steps">
+                        <span class="track"><span class="fill" style="width:@TicketUi.FillWidth(c)"></span></span>
+                        @for (var i = 0; i < 4; i++)
+                        {
+                            var cls = i < c ? "done" : i == c ? "cur" : "";
+                            <div class="st @cls"><i></i>@labels[i]<small>@(string.IsNullOrEmpty(stamps[i]) ? " " : stamps[i])</small></div>
+                        }
+                    </div>
+                }
+
+                <div class="tk-grp">
+                    @if (pending)
+                    {
+                        <div class="r"><span>Reference</span><span class="v mono">@t.ExternalRef</span></div>
+                    }
+                    else
+                    {
+                        <div class="r"><span>Assigned to</span>
+                            @if (t.Assignee is { } a && !string.IsNullOrWhiteSpace(a.Name))
+                            {
+                                <span class="v"><span class="av" style="background:@AvatarPalette.For(a.Name)">@TicketUi.Initials(a.Name)</span>@a.Name</span>
+                            }
+                            else
+                            {
+                                <span class="v muted">Not assigned yet</span>
+                            }
+                        </div>
+                    }
+                    <div class="r"><span>Priority</span><span class="v"><i class="pd" style="background:@TicketUi.PriorityColor(t.Priority)"></i>@TicketUi.PriorityLabel(t.Priority)</span></div>
+                    @if (!string.IsNullOrEmpty(t.CriticalReason))
+                    {
+                        <div class="r"><span>Why critical</span><span class="v">@t.CriticalReason</span></div>
+                    }
+                    @if (!pending && t.SlaTarget is { } due && TicketUi.Sla(t) is { } sla)
+                    {
+                        <div class="r"><span>Target</span><span class="v"><span class="sla-@sla.Css">@sla.Label</span> · due @TicketUi.Due(due)</span></div>
+                    }
+                    @if (!string.IsNullOrEmpty(t.HardwareType))
+                    {
+                        <div class="r"><span>Installation</span><span class="v">@t.HardwareType · @TicketUi.ScheduleLabel(t.ScheduledDate, t.ScheduledTime)</span></div>
+                    }
+                    @if (!string.IsNullOrEmpty(t.Device)) { <div class="r"><span>Device</span><span class="v">@t.Device</span></div> }
+                    @if (!string.IsNullOrEmpty(t.Software)) { <div class="r"><span>Software</span><span class="v">@t.Software</span></div> }
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(t.Description))
+                {
+                    <h4 class="tk-h">Description</h4>
+                    <p class="tk-desc">@t.Description</p>
+                }
+                @if (t.Attachments.Count > 0)
+                {
+                    <div class="tk-files">
+                        @foreach (var f in t.Attachments)
+                        {
+                            <div class="fchip"><span class="ic"><i data-lucide="@TicketUi.FileIcon(f.FileName)"></i></span><div>@f.FileName<small>@TicketUi.FileSize(f.Size)</small></div></div>
+                        }
+                    </div>
+                }
+
+                <h4 class="tk-h">Activity</h4>
+                <div class="tk-tl">
+                    @foreach (var ev in TicketUi.Activity(t))
+                    {
+                        <div class="ev @ev.Css @(freshEvents.Contains(ev.Key) ? "fresh" : "")" @key="ev.Key">
+                            <span class="b"><i data-lucide="@ev.Icon"></i></span>@ev.Text<small>@ev.Sub</small>
+                        </div>
+                    }
+                </div>
+                <div class="tk-foot"><i data-lucide="message-square"></i>Chat with ICT, add files and reopen the ticket in iDesk.</div>
+            </div>
+        }
+    </section>
+</div>

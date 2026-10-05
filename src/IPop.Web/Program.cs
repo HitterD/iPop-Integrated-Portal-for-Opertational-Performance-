@@ -44,6 +44,7 @@ builder.Services.AddScoped<IPop.Web.Services.NotificationSettingsState>();
 builder.Services.AddScoped<IPop.Web.Services.BadgeState>();
 builder.Services.AddScoped<IPop.Web.Services.TimerState>();
 builder.Services.AddScoped<IPop.Web.Services.MailService>();
+builder.Services.AddScoped<IPop.Web.Services.TicketApi>();
 builder.Services.AddScoped<IPop.Web.Services.MailComposerHost>();
 builder.Services.AddScoped<IPop.Web.Services.LinkPreviewService>();
 builder.Services.AddScoped<IPop.Web.Services.NotificationState>(sp =>

@@ -1,0 +1,14 @@
+@using IPop.Web.Services
+@* Ticket status pill (docs/mockups/ipop-apple/tickets.html). Pop replays the spring once when the status just changed. *@
+@{ var m = TicketUi.Status(Status); }
+<span class="tk-pill @m.Css @(Pop ? "mi-pop-s" : "")" @key="@(Status + (Pop ? "!" : ""))">
+    @if (m.Spin) { <span class="tk-spin"></span> }
+    else if (m.Icon is { } ic) { <i data-lucide="@ic"></i> }
+    @(Long ? m.Long : m.Short)
+</span>
+
+@code {
+    [Parameter, EditorRequired] public string Status { get; set; } = "";
+    [Parameter] public bool Long { get; set; }
+    [Parameter] public bool Pop { get; set; }
+}
