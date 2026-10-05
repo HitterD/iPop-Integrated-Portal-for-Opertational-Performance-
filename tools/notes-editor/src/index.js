@@ -22,6 +22,7 @@ import { BlockBackground, Callout, NoteWidget, SubPage, NoteFile, CommentHighlig
 import { SlashMenu, mentionSuggestion, createToolbar, createHandle, createBlockMenu } from './menus.js';
 import { NoteImage, NoteGallery, NoteBookmark, NoteEmbed, RichTaskItem, TodoExtras, tableExtensions, taskItemAt, todoInsertPos, createRichUi, closeLightboxes } from './rich.js';
 import { TEMPLATES, GUIDE_COMMENT_TEXT } from './templates.js';
+import { importer, exportPages } from './transfer.js';
 
 const FIELD = 'default';
 const SNAPSHOT_AFTER_UPDATES = 40;
@@ -526,6 +527,26 @@ export function hotkeys(net) {
   };
   window.addEventListener('keydown', onKey, true);
   return { dispose: () => window.removeEventListener('keydown', onKey, true) };
+}
+
+/// Import / export (transfer.js). opts: { apiBase, dotnet } — dotnet provides GetToken() and the
+/// OnImport*/OnExportProgress callbacks.
+function apiFor(opts) {
+  const apiBase = (opts.apiBase || '').replace(/\/$/, '');
+  return async (path, init = {}) => {
+    const headers = { ...(init.headers || {}), Authorization: `Bearer ${await opts.dotnet.invokeMethodAsync('GetToken')}` };
+    if (init.json !== undefined) { headers['Content-Type'] = 'application/json'; init = { ...init, body: JSON.stringify(init.json) }; }
+    return fetch(apiBase + path, { ...init, headers });
+  };
+}
+export function transfer(opts) {
+  const api = apiFor(opts);
+  return {
+    importer: () => importer({ api, net: opts.dotnet, extensions: baseExtensions({}, { collab: false }) }),
+    exportPages: o => exportPages(api, opts.dotnet, o),
+    // Result numbers count up (micro-interaction #33); ipopMicro skips it under reduced motion.
+    countUp: sel => document.querySelectorAll(sel).forEach(e => window.ipopMicro?.countUp(e, +e.dataset.countUp, 600)),
+  };
 }
 
 export function copyText(text) { return navigator.clipboard?.writeText(text).then(() => true, () => false) ?? false; }

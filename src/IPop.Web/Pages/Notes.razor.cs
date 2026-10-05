@@ -22,7 +22,7 @@ public partial class Notes
 {
     [Parameter] public Guid? Id { get; set; }
 
-    private const string EditorModule = "./js/notes/notes-editor.js?v=20261003-enrich1";
+    private const string EditorModule = "./js/notes/notes-editor.js?v=20261005-transfer1";
 
     private enum View { Home, Page, New, Trash }
     private enum Pop { None, More, Style, Emoji, Share, History }
@@ -112,6 +112,7 @@ public partial class Notes
             module = await JS.InvokeAsync<IJSObjectReference>("import", EditorModule);
             hotkeys = await module.InvokeAsync<IJSObjectReference>("hotkeys", selfRef);
             await SidebarFirstRenderAsync();
+            await ImportFirstRenderAsync();
             if (note is not null) mountPending = true;
         }
         await JS.InvokeVoidAsync("ipop.icons");
@@ -124,6 +125,7 @@ public partial class Notes
         if (focusDraft) { focusDraft = false; try { await draftRef.FocusAsync(); } catch (JSException) { } }
         if (focusSearch) { focusSearch = false; await searchRef.FocusAsync(); }
         await SidebarAfterRenderAsync();
+        await ImportAfterRenderAsync();
     }
 
     public async ValueTask DisposeAsync()
@@ -137,6 +139,7 @@ public partial class Notes
             await UnmountAsync();
             await DestroyPreviewAsync();
             await DisposeSidebarAsync();
+            await DisposeTransferAsync();
             if (hotkeys is not null) { await hotkeys.InvokeVoidAsync("dispose"); await hotkeys.DisposeAsync(); }
             if (module is not null) await module.DisposeAsync();
         }

@@ -9,7 +9,8 @@
     "build": "esbuild src/index.js --bundle --format=esm --minify --target=es2020 --outfile=../../src/IPop.Web/wwwroot/js/notes/notes-editor.js"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "happy-dom": "^20.14.5"
   },
   "dependencies": {
     "@microsoft/signalr": "^10.0.11",
@@ -27,6 +28,8 @@
     "@tiptap/pm": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
     "@tiptap/suggestion": "^3.31.3",
+    "fflate": "^0.8.3",
+    "marked": "^18.0.14",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.33"
   }
