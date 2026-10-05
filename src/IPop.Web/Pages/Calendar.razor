@@ -403,6 +403,13 @@
                 <div class="cal-detail-row"><i data-lucide="clock"></i><span>@DetailWhen(detail)</span></div>
                 @if (detail.RecurrenceText is { } rt) { <div class="cal-detail-row"><i data-lucide="repeat"></i><span>@rt</span></div> }
                 @if (detail.MeetingStatus is "cancelled") { <div class="cal-detail-row warn"><i data-lucide="ban"></i><span>This meeting was cancelled.</span></div> }
+                @if (detail.MeetingId is not null && CallsSchedule.IsOnline(detail.Location) && detail.MeetingStatus != "cancelled")
+                {
+                    <div class="cal-detail-row"><i data-lucide="video"></i>
+                        @if (CanJoinDetail) { <a class="cal-btn primary" href="@DetailJoinUrl">Join meeting</a> }
+                        else { <span>@(DateTime.UtcNow >= detail.EndAt ? "Meeting has ended" : CallsSchedule.JoinTooltip)</span> }
+                    </div>
+                }
                 @if (detail.Location is not null) { <div class="cal-detail-row"><i data-lucide="map-pin"></i><span>@detail.Location</span></div> }
                 @if (detail.Link is not null) { <div class="cal-detail-row"><i data-lucide="video"></i><a href="@detail.Link" target="_blank" rel="noopener">@detail.Link</a></div> }
                 @if (detail.RoomName is not null) { <div class="cal-detail-row"><i data-lucide="users"></i><a href="/chat/@detail.RoomId">@detail.RoomName</a></div> }
@@ -517,6 +524,14 @@
                                             var d = iso;
                                             <button type="button" class="@(repeatDays.Contains(d) ? "on" : "")" aria-pressed="@(repeatDays.Contains(d) ? "true" : "false")" aria-label="@DayNames[d]" @onclick="() => ToggleRepeatDay(d)">@s</button>
                                         }
+                                    </div>
+                                }
+                                @if (repeatFreq == "M")
+                                {
+                                    <div class="cal-repeat-monthly" role="radiogroup" aria-label="Monthly pattern">
+                                        <label><input type="radio" name="cal-rep-month" checked='@(repeatMonthly == "date")' @onchange='() => repeatMonthly = "date"' /> On the @form.StartDate.Day@Ord(form.StartDate.Day)</label>
+                                        <label><input type="radio" name="cal-rep-month" checked='@(repeatMonthly == "weekday")' @onchange='() => repeatMonthly = "weekday"' /> On the @(((form.StartDate.Day - 1) / 7 + 1).ToString() + Ord((form.StartDate.Day - 1) / 7 + 1)) @form.StartDate.ToString("dddd")</label>
+                                        <label><input type="radio" name="cal-rep-month" checked='@(repeatMonthly == "last")' @onchange='() => repeatMonthly = "last"' /> On the last @form.StartDate.ToString("dddd")</label>
                                     </div>
                                 }
                                 @if (repeatFreq != "")
@@ -640,8 +655,22 @@
                 }
                 @* ── Details ── *@
                 <div class="cal-group">
-                    <label class="cal-row"><i data-lucide="map-pin"></i><input class="cal-row-input" placeholder="Location" aria-label="Location" @bind="form.Location" maxlength="300" /></label>
-                    <label class="cal-row"><i data-lucide="video"></i><input class="cal-row-input" placeholder="Meeting link (https://…)" aria-label="Meeting link" @bind="form.Link" maxlength="1000" /></label>
+                    <div class="cal-row">
+                        <i data-lucide="map-pin"></i><span class="cal-row-label">Where</span>
+                        <div class="cal-seg sm" role="radiogroup" aria-label="Meeting location">
+                            <button type="button" role="radio" aria-checked='@(form.Online ? "true" : "false")' class="cal-seg-item @(form.Online ? "on" : "")" @onclick="() => form.Online = true">Online</button>
+                            <button type="button" role="radio" aria-checked='@(!form.Online ? "true" : "false")' class="cal-seg-item @(!form.Online ? "on" : "")" @onclick="() => form.Online = false">Room</button>
+                        </div>
+                    </div>
+                    @if (form.Online)
+                    {
+                        <div class="cal-row cal-online-hint"><i data-lucide="video"></i><span>iPop Meeting · a join link is available after inviting people or a group.</span></div>
+                    }
+                    else
+                    {
+                        <label class="cal-row"><i data-lucide="map-pin"></i><input class="cal-row-input" placeholder="Room or location" aria-label="Location" @bind="form.Location" maxlength="300" /></label>
+                        <label class="cal-row"><i data-lucide="video"></i><input class="cal-row-input" placeholder="External meeting link (optional)" aria-label="Meeting link" @bind="form.Link" maxlength="1000" /></label>
+                    }
                     <label class="cal-row cal-row-top"><i data-lucide="align-left"></i><textarea class="cal-row-input" rows="3" @bind="form.Notes" maxlength="4000" placeholder="Notes, agenda…" aria-label="Notes"></textarea></label>
                 </div>
                 @if (formError is not null) { <div class="cal-form-error" role="alert">@formError</div> }

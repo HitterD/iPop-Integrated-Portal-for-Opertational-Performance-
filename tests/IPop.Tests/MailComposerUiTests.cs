@@ -8,6 +8,50 @@ namespace IPop.Tests;
 
 public class MailComposerUiTests
 {
+    private sealed class RsvpHttp(string body) : HttpMessageHandler
+    {
+        public List<string> Requests { get; } = [];
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            Requests.Add(request.RequestUri!.PathAndQuery);
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            { Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json") });
+        }
+    }
+
+    [Fact]
+    public void Rsvp_ShowsConflictAndExcludesCurrentMeetingFromSelfFreeBusy()
+    {
+        using var ctx = new BunitContext();
+        ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        var handler = new RsvpHttp("""{"lanes":[{"nik":"ME","name":"Me","blocks":[{"startAt":"2026-10-12T09:15:00Z","endAt":"2026-10-12T10:15:00Z","tentative":false}]}],"suggestions":[]}""");
+        var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost/") };
+        ctx.Services.AddSingleton(new AuthState(http, ctx.JSInterop.JSRuntime));
+        ctx.Services.AddSingleton(new ToastService());
+        var id = Guid.NewGuid();
+        var cut = ctx.Render<MeetingRsvpPanel>(p => p.Add(c => c.Meeting,
+            new(id, "Review", new DateTime(2026, 10, 12, 9, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 12, 10, 0, 0, DateTimeKind.Utc), null, null)));
+        cut.WaitForAssertion(() => Assert.Contains("conflicts with another event", cut.Markup));
+        Assert.Contains(handler.Requests, u => u.StartsWith("/api/calendar/freebusy?") && u.Contains($"meeting={id}") && !u.Contains("niks="));
+        Assert.False(cut.Find(".rsvp-btn.accept").HasAttribute("disabled"));
+    }
+
+    [Theory]
+    [InlineData("{\"lanes\":[{\"nik\":\"ME\",\"blocks\":[]}]}" , "No conflicts on your calendar.")]
+    [InlineData("{\"lanes\":[{\"nik\":\"ME\",\"blocks\":[{\"startAt\":\"2026-10-12T10:00:00Z\",\"endAt\":\"2026-10-12T11:00:00Z\"}]}]}", "No conflicts on your calendar.")]
+    [InlineData("not json", "Couldn't check your calendar. You can still respond.")]
+    public void Rsvp_ClearAndUnavailableChecksRemainAdvisory(string body, string expected)
+    {
+        using var ctx = new BunitContext(); ctx.JSInterop.Mode = JSRuntimeMode.Loose;
+        var http = new HttpClient(new RsvpHttp(body)) { BaseAddress = new Uri("http://localhost/") };
+        ctx.Services.AddSingleton(new AuthState(http, ctx.JSInterop.JSRuntime));
+        ctx.Services.AddSingleton(new ToastService());
+        var cut = ctx.Render<MeetingRsvpPanel>(p => p.Add(c => c.Meeting,
+            new(Guid.NewGuid(), "Review", new DateTime(2026, 10, 12, 9, 0, 0, DateTimeKind.Utc), new DateTime(2026, 10, 12, 10, 0, 0, DateTimeKind.Utc), null, null)));
+        cut.WaitForAssertion(() => Assert.Contains(expected, cut.Markup));
+        Assert.False(cut.Find(".rsvp-btn.accept").HasAttribute("disabled"));
+    }
+
     [Theory]
     [InlineData("example.com", "https://example.com")]
     [InlineData("  https://intranet/x  ", "https://intranet/x")]

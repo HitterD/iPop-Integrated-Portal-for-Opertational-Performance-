@@ -701,3 +701,9 @@ body:has(.cs-sheet) .confirm-center { z-index: 1071; }
 @media (prefers-reduced-motion: reduce) {
   .cal-prefill, .cal-repeat-pop, .cal-repeat-sum, .cal-repeat-days button.on, .cal-scope, .cal-scope-backdrop { animation: none; }
 }
+
+/* Calendar everywhere: meeting place and monthly repeat choices. */
+.cal-repeat-monthly{display:flex;flex-direction:column;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.cal-repeat-monthly label{display:flex;align-items:center;gap:8px;font-size:12px}
+.cal-repeat-monthly input{accent-color:var(--accent)}
+.cal-online-hint{font-size:12px;color:var(--muted);line-height:1.5}

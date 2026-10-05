@@ -1300,12 +1300,16 @@
                     _ = MailSvc.DiscardDraftAsync(editingDraftId.Value);
 
                 // Awaited so a failure is visible; the meeting links back through SourceMailId.
+                var meetingCreated = !isMeeting;
                 if (isMeeting && res.MailId.HasValue)
-                    await CreateMeetingAsync(res.MailId.Value);
+                    meetingCreated = await CreateMeetingAsync(res.MailId.Value);
+                else if (isMeeting)
+                    Toasts.Show("Email sent, but meeting creation failed.", ToastKind.Error);
 
-                Toasts.Show(scheduledAt.HasValue
-                    ? $"Email scheduled for {scheduledAt.Value.ToLocalTime():dd MMM yyyy HH:mm}."
-                    : isMeeting ? "Meeting invitation sent." : "Email sent.", ToastKind.Success);
+                if (meetingCreated)
+                    Toasts.Show(scheduledAt.HasValue
+                        ? $"Email scheduled for {scheduledAt.Value.ToLocalTime():dd MMM yyyy HH:mm}."
+                        : isMeeting ? "Meeting invitation sent." : "Email sent.", ToastKind.Success);
 
                 sending = false;
                 dirtySince = null;
@@ -1329,28 +1333,49 @@
         }
     }
 
-    private async Task CreateMeetingAsync(Guid mailId)
+    private async Task<bool> CreateMeetingAsync(Guid mailId)
     {
-        var attendeeNiks = toRows.Concat(ccRows).Select(r => r.Nik).Distinct().ToList();
-        if (attendeeNiks.Count == 0) return;
-
-        var res = await Auth.SendAsync(HttpMethod.Post, "/api/meetings", new
+        try
         {
-            title = string.IsNullOrWhiteSpace(subject) ? "Meeting" : subject,
-            startAt = meetingStart.ToUniversalTime(),
-            endAt = meetingEnd.ToUniversalTime(),
-            timeZone = (string?)null,
-            location = string.IsNullOrWhiteSpace(meetingLocation) ? null : meetingLocation,
-            link = (string?)null,
-            attendeeIds = (IReadOnlyList<Guid>?)null,
-            requiredIds = (IReadOnlyList<Guid>?)null,
-            attendeeNiks,
-            reminderMinutes = meetingReminderMin,
-            roomId = (Guid?)null,
-            sourceMailId = mailId,
-        });
-        if (!res.IsSuccessStatusCode)
-            Toasts.Show("Email sent, but meeting creation failed.", ToastKind.Error);
+            // Resolve current To/Cc group membership, not stale chip counts. Bcc remains private.
+            var attendeeNiks = toRows.Concat(ccRows).Select(r => r.Nik).ToList();
+            foreach (var group in toGroups.Concat(ccGroups).DistinctBy(g => (g.Kind, g.Id)))
+            {
+                var detail = await MailSvc.GetGroupAsync(group.Kind, group.Id);
+                if (detail is null)
+                {
+                    Toasts.Show("Email sent, but meeting creation failed.", ToastKind.Error);
+                    return false;
+                }
+                attendeeNiks.AddRange(detail.Members.Where(m => m.IsActive).Select(m => m.Nik));
+            }
+            attendeeNiks = attendeeNiks.Distinct().ToList();
+
+            using var res = await Auth.SendAsync(HttpMethod.Post, "/api/meetings", new
+            {
+                title = string.IsNullOrWhiteSpace(subject) ? "Meeting" : subject,
+                startAt = meetingStart.ToUniversalTime(),
+                endAt = meetingEnd.ToUniversalTime(),
+                timeZone = (string?)null,
+                location = string.IsNullOrWhiteSpace(meetingLocation) ? null : meetingLocation,
+                link = (string?)null,
+                attendeeIds = (IReadOnlyList<Guid>?)null,
+                requiredIds = (IReadOnlyList<Guid>?)null,
+                attendeeNiks,
+                reminderMinutes = meetingReminderMin,
+                roomId = (Guid?)null,
+                sourceMailId = mailId,
+            });
+            if (!res.IsSuccessStatusCode)
+                Toasts.Show("Email sent, but meeting creation failed.", ToastKind.Error);
+            return res.IsSuccessStatusCode;
+        }
+        catch (Exception ex)
+        {
+            // Mail is already sent: close normally so retry cannot send it a second time.
+            Toasts.Show($"Email sent, but meeting creation failed. {ex.Message}", ToastKind.Error);
+            return false;
+        }
     }
 
     private async Task DiscardDraft()

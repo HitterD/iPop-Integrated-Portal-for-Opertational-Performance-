@@ -24,7 +24,7 @@ public static class MeetingEndpoints
             var (result, meetingId, invited) = await ApplyCreateAsync(db, userId.Value, req, ct);
             switch (result)
             {
-                case CreateResult.InvalidTitle: return Results.Json(new { code = "invalid_title", message = "Meeting title is required." }, statusCode: 422);
+                case CreateResult.InvalidTitle: return Results.Json(new { code = "invalid_title", message = "Meeting title is required (max 200 characters)." }, statusCode: 422);
                 case CreateResult.InvalidRange: return Results.Json(new { code = "invalid_range", message = "End time must be after start time." }, statusCode: 422);
                 case CreateResult.NotRoomMember: return Results.Json(new { code = "forbidden", message = "Not a member of that group." }, statusCode: 403);
             }
@@ -331,8 +331,10 @@ public static class MeetingEndpoints
         IPopDbContext db, Guid userId, CreateMeetingRequest req, CancellationToken ct)
     {
         var title = req.Title?.Trim() ?? "";
-        if (title.Length == 0) return (CreateResult.InvalidTitle, null, []);
-        if (req.EndAt <= req.StartAt) return (CreateResult.InvalidRange, null, []);
+        if (title.Length is 0 or > 200) return (CreateResult.InvalidTitle, null, []);
+        var start = AsUtc(req.StartAt);
+        var end = AsUtc(req.EndAt);
+        if (end <= start) return (CreateResult.InvalidRange, null, []);
         if (req.RoomId is { } roomId
             && !await db.ChatRoomMembers.AnyAsync(m => m.RoomId == roomId && m.UserId == userId && m.LeftAt == null, ct))
             return (CreateResult.NotRoomMember, null, []);
@@ -341,7 +343,7 @@ public static class MeetingEndpoints
         var meeting = new Meeting
         {
             Id = Guid.NewGuid(), Title = title,
-            StartAt = AsUtc(req.StartAt), EndAt = AsUtc(req.EndAt),
+            StartAt = start, EndAt = end,
             TimeZone = req.TimeZone,
             Location = string.IsNullOrWhiteSpace(req.Location) ? null : req.Location.Trim(),
             Link = string.IsNullOrWhiteSpace(req.Link) ? null : req.Link.Trim(),
@@ -353,8 +355,12 @@ public static class MeetingEndpoints
         };
         db.Meetings.Add(meeting);
 
+        // Match Calendar's current group membership; explicit attendees are unioned below.
         // Peserta (organizer selalu ikut sebagai wajib). Terima UserId atau NIK; hanya akun aktif.
         var attendeeIds = new List<Guid>();
+        if (req.RoomId is { } attendeeRoomId)
+            attendeeIds.AddRange(await db.ChatRoomMembers.AsNoTracking()
+                .Where(m => m.RoomId == attendeeRoomId && m.LeftAt == null).Select(m => m.UserId).ToListAsync(ct));
         if (req.AttendeeIds is { Count: > 0 })
             attendeeIds.AddRange(await db.Users.Where(u => req.AttendeeIds.Contains(u.Id) && u.IsActive).Select(u => u.Id).ToListAsync(ct));
         if (req.AttendeeNiks is { Count: > 0 })
@@ -377,11 +383,12 @@ public static class MeetingEndpoints
         {
             Id = Guid.NewGuid(), Title = title, StartAt = meeting.StartAt, EndAt = meeting.EndAt,
             Type = "rapat", OwnerId = userId, RoomId = req.RoomId, MeetingId = meeting.Id, CreatedAt = DateTime.UtcNow,
-            Visibility = meeting.Visibility,
+            Visibility = meeting.Visibility, Location = meeting.Location, Link = meeting.Link,
+            Notes = meeting.Agenda, ReminderMinutes = reminder,
         });
 
         // Pengingat terjadwal per peserta, sesuai pilihan pembuat.
-        if (reminder is { } minutes)
+        if (reminder is { } minutes && meeting.StartAt.AddMinutes(-minutes) > DateTime.UtcNow)
         {
             var sendAt = meeting.StartAt.AddMinutes(-minutes);
             foreach (var uid in attendeeIds)

@@ -17,6 +17,13 @@
         <span class="rsvp-status @CurrentResponse">@StatusLabel(CurrentResponse)</span>
     </div>
 
+    <div class="mc-hint rsvp-check @(hasConflict && !checkingConflicts ? "conflict" : "")" role="status" aria-live="polite">
+        @if (checkingConflicts) { <span>Checking your calendar…</span> }
+        else if (conflictCheckFailed) { <span>Couldn't check your calendar. You can still respond.</span> }
+        else if (hasConflict) { <span>This meeting conflicts with another event on your calendar.</span> }
+        else { <span>No conflicts on your calendar.</span> }
+    </div>
+
     <div class="rsvp-actions">
         <button type="button" class="rsvp-btn accept @(CurrentResponse == "accept" ? "on" : "")" @onclick='() => Respond("accept")' disabled="@responding">
             <i data-lucide="check"></i> Accept
@@ -56,6 +63,39 @@
 
     private bool responding;
     private string note = "";
+
+    private bool checkingConflicts, conflictCheckFailed, hasConflict;
+    private (Guid Id, DateTime Start, DateTime End)? checkedMeeting;
+    private int conflictVersion;
+    private sealed record BusyBlock(DateTime StartAt, DateTime EndAt, bool Tentative);
+    private sealed record BusyLane(string Nik, IReadOnlyList<BusyBlock> Blocks);
+    private sealed record FreeBusy(IReadOnlyList<BusyLane> Lanes);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var key = (Meeting.Id, Meeting.StartAt, Meeting.EndAt);
+        if (checkedMeeting == key) return;
+        checkedMeeting = key;
+        var version = ++conflictVersion;
+        checkingConflicts = true;
+        conflictCheckFailed = hasConflict = false;
+        var start = Meeting.StartAt.ToUniversalTime();
+        var end = Meeting.EndAt.ToUniversalTime();
+        try
+        {
+            // No NIK list: authenticated user's lane only, excluding this invitation itself.
+            var result = await Auth.GetResultAsync<FreeBusy>($"/api/calendar/freebusy?from={Uri.EscapeDataString(start.ToString("O"))}&to={Uri.EscapeDataString(end.ToString("O"))}&meeting={Meeting.Id}");
+            if (version != conflictVersion) return;
+            conflictCheckFailed = result.Value?.Lanes is null;
+            hasConflict = result.Value?.Lanes?.SelectMany(l => l.Blocks)
+                .Any(b => b.StartAt < end && b.EndAt > start) == true;
+        }
+        catch
+        {
+            if (version == conflictVersion) conflictCheckFailed = true;
+        }
+        finally { if (version == conflictVersion) checkingConflicts = false; }
+    }
 
     public sealed record MeetingModel(Guid Id, string Title, DateTime StartAt, DateTime EndAt, string? Location, string? Link);
     public sealed record AttendeeModel(string Name, string Response);

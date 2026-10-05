@@ -2586,3 +2586,9 @@ details.mail-quote details.mail-quote {
 @media (max-width: 640px) {
   .mm-stats-h { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* RSVP: conflict check + Open in Calendar (calendar everywhere) */
+.rsvp-check { display: flex; align-items: center; gap: 6px; margin: 2px 0 8px; animation: mi-fade .2s var(--ease-out, ease); }
+.rsvp-check.conflict { color: #b54708; font-weight: 600; }
+.rsvp-check.conflict::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: #f79009; flex: none; }
+@media (prefers-reduced-motion: reduce) { .rsvp-check { animation: none; } }

@@ -56,7 +56,7 @@ public partial class Calendar
                 : added > 0 ? $"{FromQuery} · {added} {(added == 1 ? "person" : "people")} added" : FromQuery;
         if (form.People.Count > 0 && !form.AllDay) await LoadFreeBusyAsync();
         // Drop the query so a reload doesn't open the form again.
-        Nav.NavigateTo($"/calendar?date={anchor:yyyy-MM-dd}", replace: true);
+        Nav.NavigateTo($"/calendar?date={anchor:yyyy-MM-dd}" + (managing is null ? "" : $"&manage={Uri.EscapeDataString(ManageQuery ?? managing.Nik)}"), replace: true);
     }
 
     private void ClearPrefill()
@@ -69,6 +69,8 @@ public partial class Calendar
 
     private bool repeatOpen;
     private string repeatFreq = "";          // "" = doesn't repeat, D, W, M
+    private string repeatMonthly = "date"; // date | weekday | last
+    private int MonthlyOrdinal => repeatMonthly == "last" ? -1 : (form.StartDate.Day - 1) / 7 + 1;
     private HashSet<int> repeatDays = [];    // ISO 1 = Mon … 7 = Sun
     private string repeatEnd = "never";      // never | until | count
     private DateTime repeatUntil = DateTime.Today.AddMonths(3);
@@ -79,7 +81,7 @@ public partial class Calendar
 
     private void ResetRepeat(string? rule = null)
     {
-        repeatOpen = false; repeatFreq = ""; repeatDays = []; repeatEnd = "never"; repeatCount = 10;
+        repeatOpen = false; repeatFreq = ""; repeatMonthly = "date"; repeatDays = []; repeatEnd = "never"; repeatCount = 10;
         repeatUntil = form.StartDate.AddMonths(3);
         if (string.IsNullOrWhiteSpace(rule)) return;
         foreach (var part in rule.Split(';', StringSplitOptions.RemoveEmptyEntries))
@@ -88,7 +90,10 @@ public partial class Calendar
             switch (kv[0])
             {
                 case "D": repeatFreq = "D"; break;
-                case "M": repeatFreq = "M"; break;
+                case "M":
+                    repeatFreq = "M";
+                    if (kv.Length > 1) repeatMonthly = kv[1].StartsWith("-1,") ? "last" : "weekday";
+                    break;
                 case "W": repeatFreq = "W"; if (kv.Length > 1) repeatDays = kv[1].Split(',').Select(x => int.TryParse(x, out var n) ? n : 0).Where(n => n is >= 1 and <= 7).ToHashSet(); break;
                 case "U" when kv.Length > 1 && DateTime.TryParseExact(kv[1], "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var u): repeatEnd = "until"; repeatUntil = u; break;
                 case "C" when kv.Length > 1 && int.TryParse(kv[1], out var c): repeatEnd = "count"; repeatCount = c; break;
@@ -111,6 +116,7 @@ public partial class Calendar
     private string? RepeatRule => repeatFreq switch
     {
         "" => null,
+        "M" when repeatMonthly != "date" => $"M:{MonthlyOrdinal},{Iso(form.StartDate.DayOfWeek)}" + RepeatEndRule,
         "W" => $"W:{string.Join(',', repeatDays.Order())}" + RepeatEndRule,
         _ => repeatFreq + RepeatEndRule,
     };
@@ -133,6 +139,7 @@ public partial class Calendar
             var what = repeatFreq switch
             {
                 "D" => "Every day",
+                "M" when repeatMonthly != "date" => $"Every month on the {(MonthlyOrdinal == -1 ? "last" : MonthlyOrdinal + Ord(MonthlyOrdinal))} {form.StartDate:dddd}",
                 "M" => $"Every month on the {form.StartDate.Day}{Ord(form.StartDate.Day)}",
                 _ => "Every " + Join(repeatDays.Order().Select(d => DayNames[d]).ToList()),
             };
@@ -157,12 +164,22 @@ public partial class Calendar
             var n = 0;
             for (var d = first; d <= end && n < max; d = d.AddDays(1))
             {
-                var hit = repeatFreq switch { "D" => true, "M" => d.Day == first.Day, _ => repeatDays.Contains(Iso(d.DayOfWeek)) };
+                var hit = repeatFreq switch { "D" => true, "M" => MonthlyHit(d, first), _ => repeatDays.Contains(Iso(d.DayOfWeek)) };
                 if (hit) n++;
             }
             return n;
         }
     }
+
+    private bool MonthlyHit(DateTime day, DateTime first) => repeatMonthly == "date" ? day.Day == first.Day
+        : day.DayOfWeek == first.DayOfWeek && (MonthlyOrdinal == -1
+            ? day.AddDays(7).Month != day.Month : (day.Day - 1) / 7 + 1 == MonthlyOrdinal);
+
+    private bool CanJoinDetail => detail is { MeetingId: not null, MeetingStatus: not "cancelled" }
+        && CallsSchedule.IsOnline(detail.Location)
+        && CallsSchedule.CanJoin(detail.StartAt, detail.EndAt, DateTime.UtcNow);
+
+    private string? DetailJoinUrl => detail?.MeetingId is { } id ? $"/meet/meeting-{id:N}" : null;
 
     private static string Ord(int d) => d is 11 or 12 or 13 ? "th" : (d % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" };
     private static string Join(List<string> n) => n.Count <= 1 ? string.Concat(n) : string.Join(", ", n.Take(n.Count - 1)) + " and " + n[^1];

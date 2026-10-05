@@ -114,6 +114,45 @@ public class MeetingSchedulingTests
     }
 
     [Fact]
+    public async Task Create_RejectsOversizedTitleAndDoesNotQueuePastReminder()
+    {
+        using var t = new TestDb(); var org = t.AddUser("MAIL_RANGE");
+        var start = DateTime.UtcNow.AddMinutes(5);
+        var bad = await MeetingEndpoints.ApplyCreateAsync(t.Db, org.Id, Req(start, 30) with { Title = new string('x', 201) }, default);
+        Assert.Equal(MeetingEndpoints.CreateResult.InvalidTitle, bad.Result);
+        Assert.Empty(t.Db.Meetings.Local);
+        var (result, id, _) = await MeetingEndpoints.ApplyCreateAsync(t.Db, org.Id, Req(start, 30), default);
+        Assert.Equal(MeetingEndpoints.CreateResult.Created, result);
+        await using var v = t.Verify();
+        Assert.Equal(30, (await v.Meetings.SingleAsync(x => x.Id == id)).ReminderMinutes);
+        Assert.Empty(await v.MeetingReminders.Where(x => x.MeetingId == id).ToListAsync());
+    }
+
+    [Fact]
+    public async Task Create_UsesCurrentGroupMembersAndCalendarDetails()
+    {
+        using var t = new TestDb();
+        var org = t.AddUser("MAIL_ORG"); var current = t.AddUser("MAIL_CURRENT");
+        var departed = t.AddUser("MAIL_LEFT"); var explicitGuest = t.AddUser("MAIL_EXTRA");
+        var room = t.AddRoom("group", "Mail team");
+        t.AddMember(room.Id, org.Id); t.AddMember(room.Id, current.Id); t.AddMember(room.Id, departed.Id);
+        (await t.Db.ChatRoomMembers.SingleAsync(x => x.RoomId == room.Id && x.UserId == departed.Id)).LeftAt = DateTime.UtcNow;
+        await t.Db.SaveChangesAsync();
+        var start = DateTime.UtcNow.AddDays(2);
+        var (_, id, invited) = await MeetingEndpoints.ApplyCreateAsync(t.Db, org.Id,
+            Req(start, 15, ["MAIL_EXTRA", "MAIL_CURRENT"], room.Id) with { Location = "  Office  ", Link = " https://example.test " }, default);
+        Assert.Equal(new[] { current.Id, explicitGuest.Id }.OrderBy(x => x), invited.OrderBy(x => x));
+        await using var v = t.Verify();
+        var ev = await v.CalendarEvents.SingleAsync(x => x.MeetingId == id);
+        Assert.Equal("Office", ev.Location);
+        Assert.Equal("https://example.test", ev.Link);
+        Assert.Equal("Demo", ev.Notes);
+        Assert.Equal(15, ev.ReminderMinutes);
+        Assert.Equal((await v.Meetings.SingleAsync(x => x.Id == id)).Visibility, ev.Visibility);
+        Assert.Equal(3, await v.MeetingReminders.CountAsync(x => x.MeetingId == id));
+    }
+
+    [Fact]
     public async Task Cancel_SetsOneStatus_DeletesPendingRemindersAndCalendarRows()
     {
         using var t = new TestDb();

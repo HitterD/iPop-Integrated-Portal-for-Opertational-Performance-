@@ -94,18 +94,9 @@ public partial class Calendar
         await Task.WhenAll(LoadSharingAsync(), LoadManagedAsync(), LoadIntroAsync(), LoadPersonAsync());
         if (PLinks.Nik(ManageQuery) is { } mq && managed.FirstOrDefault(m => m.Nik == mq) is { } mc) managing = mc;
         await LoadAsync();
-        await OpenFromQueryAsync();
-        if (pendingInvite is { } pi) { pendingInvite = null; await MeetWithAsync(pi.Nik, pi.Name, pi.Start); }
-        else if (PLinks.Nik(InviteQuery) is { } inviteNik)
-        {
-            var who = await Auth.GetAsync<PersonInfo>($"/api/calendar/person/{Uri.EscapeDataString(inviteNik)}");
-            if (who is not null && !who.Self) await MeetWithAsync(who.Nik, who.Name);
-        }
         // Now line and "Awaiting reply" drift with the clock; refresh every minute.
         nowTimer = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
         _ = ChatSvc.GroupRooms.Count == 0 ? ChatSvc.LoadRoomsAsync() : Task.CompletedTask;
-        if (EventQuery is { } eid) await OpenEventAsync(eid);
-        else await OpenFromComposeQueryAsync();
         calendarSub = Auth.On(IPop.Application.Realtime.RealtimeEvents.CalendarChanged, OnCalendarChanged);
     }
 
@@ -114,18 +105,43 @@ public partial class Calendar
 
     private string? lastPersonNik;
 
+    private string? lastCalendarAddress;
+    private string? mobilePersonAddress;
+
     protected override async Task OnParametersSetAsync()
     {
-        // /calendar ↔ /calendar/person/{nik} reuse this component; react only to a real switch.
-        if (PersonNik == lastPersonNik) return;
-        var first = lastPersonNik is null && !PersonMode;
+        // Query navigation reuses this component too, not just person navigation.
+        if (lastCalendarAddress == Nav.Uri) return;
+        lastCalendarAddress = Nav.Uri;
+        var personChanged = PersonNik != lastPersonNik;
         lastPersonNik = PersonNik;
-        if (first || loadedFrom == default) return;
-        CloseDrawer(); pop = null; otherItems = []; otherMenu = null; listMenu = false;
-        if (!PersonMode) Layout.SetHeader("Calendar", "Everything scheduled across iPop");
-        await LoadPersonAsync();
-        await LoadAsync();
-        if (!PersonMode && pendingInvite is { } pi) { pendingInvite = null; await MeetWithAsync(pi.Nik, pi.Name, pi.Start); }
+        if (loadedFrom == default) return;
+        if (personChanged)
+        {
+            mobilePersonAddress = null;
+            CloseDrawer(); pop = null; otherItems = []; otherMenu = null; listMenu = false;
+            if (!PersonMode) Layout.SetHeader("Calendar", "Everything scheduled across iPop");
+            await LoadPersonAsync();
+        }
+        var dateChanged = DateTime.TryParseExact(DateQuery, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out var d) && anchor != d.Date;
+        if (dateChanged) { anchor = d.Date; miniMonth = new(anchor.Year, anchor.Month, 1); }
+        var nextManaging = PLinks.Nik(ManageQuery) is { } mq ? managed.FirstOrDefault(m => m.Nik == mq) : null;
+        var managerChanged = managing != nextManaging;
+        managing = nextManaging;
+        if (personChanged || dateChanged || managerChanged) await LoadAsync();
+        await OpenFromQueryAsync();
+        if (!PersonMode && pendingInvite is { } pi)
+        {
+            pendingInvite = null; await MeetWithAsync(pi.Nik, pi.Name, pi.Start);
+        }
+        else if (PLinks.Nik(InviteQuery) is { } inviteNik)
+        {
+            var who = await Auth.GetAsync<PersonInfo>($"/api/calendar/person/{Uri.EscapeDataString(inviteNik)}");
+            if (who is not null && !who.Self) await MeetWithAsync(who.Nik, who.Name);
+        }
+        if (EventQuery is { } eid) await OpenEventAsync(eid);
+        else await OpenFromComposeQueryAsync();
     }
 
     // ── Live refresh (calendarChanged) ──
@@ -179,6 +195,17 @@ public partial class Calendar
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await JS.InvokeVoidAsync("ipop.icons");
+        if (PersonMode && mobilePersonAddress != PersonNik)
+        {
+            mobilePersonAddress = PersonNik;
+            if (await JS.InvokeAsync<bool>("eval", "window.matchMedia('(max-width: 768px)').matches") && view != "day")
+            {
+                // Person calendars start in Day on phones without overwriting my saved preference.
+                view = "day"; scrollPending = true;
+                await LoadAsync();
+                StateHasChanged();
+            }
+        }
         if (scrollPending && view is "day" or "week" && !loadingFeed)
         {
             scrollPending = false;
@@ -592,6 +619,7 @@ public partial class Calendar
         public TimeOnly StartTime { get; set; } = new(9, 0);
         public DateTime EndDate { get; set; } = DateTime.Today;
         public TimeOnly EndTime { get; set; } = new(10, 0);
+        public bool Online { get; set; } = true;
         public string? Location { get; set; }
         public string? Link { get; set; }
         public string? Notes { get; set; }
@@ -636,7 +664,8 @@ public partial class Calendar
         {
             Id = detail.Id, MeetingId = detail.MeetingId, Title = detail.Title, AllDay = detail.AllDay,
             StartDate = s.Date, StartTime = TimeOnly.FromDateTime(s), EndDate = e.Date < s.Date ? s.Date : e.Date, EndTime = TimeOnly.FromDateTime(e),
-            Location = detail.Location, Link = detail.Link, Notes = detail.Notes, Reminder = detail.ReminderMinutes ?? 0,
+            Online = CallsSchedule.IsOnline(detail.Location),
+            Location = CallsSchedule.IsOnline(detail.Location) ? null : detail.Location, Link = detail.Link, Notes = detail.Notes, Reminder = detail.ReminderMinutes ?? 0,
             RoomIdText = detail.RoomId?.ToString() ?? "",
             People = detail.Attendees.Where(a => a.Nik != (detail.OwnerNik ?? Auth.Me?.Nik)).Select(a => new MemberSearchRow(a.Nik, a.Name, null, null)).ToList(),
             Visibility = detail.Visibility == "private" ? "private" : "busy",
@@ -698,7 +727,7 @@ public partial class Calendar
         var body = new
         {
             title = form.Title, startAt = start, endAt = end, allDay = form.AllDay,
-            location = form.Location, link = form.Link, notes = form.Notes,
+            location = form.Online ? CallsSchedule.OnlineLocation : form.Location, link = form.Online ? null : form.Link, notes = form.Notes,
             reminderMinutes = form.Reminder > 0 ? form.Reminder : (int?)null,
             roomId, visibility = form.Visibility,
             // Managing someone's calendar: a new event belongs to them (the API records me as "on behalf").

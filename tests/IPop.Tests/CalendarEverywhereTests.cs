@@ -96,6 +96,28 @@ public class CalendarEverywhereTests
     }
 
     [Fact]
+    public void Monthly_ordinal_rules_round_trip_and_expand_matching_dates()
+    {
+        var firstMonday = CalendarRecurrence.Parse("M:1,1;C:3")!;
+        Assert.Equal("M:1,1;C:3", firstMonday.ToString());
+        Assert.Equal("Every month on the 1st Mon, 3 times", firstMonday.Describe(DateTime.Now));
+        Assert.Equal([Utc(2026, 11, 2, 2), Utc(2026, 12, 7, 2), Utc(2027, 1, 4, 2)],
+            firstMonday.Expand(Utc(2026, 10, 12, 2), Wib));
+        var lastFriday = CalendarRecurrence.Parse("M:-1,5;U:2026-12-31")!;
+        Assert.Equal("M:-1,5;U:2026-12-31", lastFriday.ToString());
+        Assert.StartsWith("Every month on the last Fri", lastFriday.Describe(DateTime.Now));
+        Assert.Equal([Utc(2026, 10, 30, 2), Utc(2026, 11, 27, 2), Utc(2026, 12, 25, 2)],
+            lastFriday.Expand(Utc(2026, 10, 12, 2), Wib));
+        Assert.Equal([Utc(2026, 3, 30, 2), Utc(2026, 6, 29, 2)],
+            CalendarRecurrence.Parse("M:5,1;C:2")!.Expand(Utc(2026, 2, 1, 2), Wib));
+        Assert.Empty(CalendarRecurrence.Parse("M:1,1;U:2026-10-31")!.Expand(Utc(2026, 10, 12, 2), Wib));
+        Assert.Equal([Utc(2026, 10, 5, 2)], CalendarRecurrence.Parse("M:1,1;C:1")!.Expand(Utc(2026, 10, 5, 2), Wib));
+        foreach (var invalid in new[] { "M:0,1", "M:6,1", "M:-2,1", "M:1,0", "M:1,8", "M:1", "M:1,1,1", "M:x,1" })
+            Assert.Null(CalendarRecurrence.Parse(invalid));
+        Assert.Equal("M;C:2", CalendarRecurrence.Parse("M;C:2")!.ToString());
+    }
+
+    [Fact]
     public async Task Invalid_series_rules_do_not_create_a_single_event()
     {
         using var t = new TestDb(); var owner = t.AddUser("RULE");
