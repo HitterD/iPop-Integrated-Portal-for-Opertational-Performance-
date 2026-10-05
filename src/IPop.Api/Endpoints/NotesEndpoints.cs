@@ -83,6 +83,14 @@ public static class NotesEndpoints
             if (r.Success) await PushAsync(rt, http, before.Union(await svc.GetAudienceAsync(id, ct)).ToList(), ct);
             return From(r);
         })).RequirePermission("notes.write");
+        g.MapPost("/import", (ImportNotesRequest req, HttpContext http, INoteService svc, IRealtime rt, CancellationToken ct) => Run(http, async me =>
+        {
+            var r = await svc.ImportAsync(me.Id, req, ct);
+            if (r.Success) await (req.ParentId is { } parent ? ChangedAsync(svc, rt, http, parent, ct) : PushAsync(rt, http, [me.Id], ct));
+            return From(r);
+        })).RequirePermission("notes.write");
+        g.MapPost("/imported", (FindImportedRequest req, HttpContext http, INoteService svc, CancellationToken ct) =>
+            Run(http, async me => Results.Ok(await svc.FindImportedAsync(me.Id, req.Keys ?? [], ct))));
         g.MapPost("/{id:guid}/duplicate", (Guid id, HttpContext http, INoteService svc, IRealtime rt, CancellationToken ct) => Run(http, async me =>
         {
             var r = await svc.DuplicateAsync(me.Id, id, ct);
@@ -262,6 +270,7 @@ public static class NotesEndpoints
         "not_found" => 404,
         "forbidden" or "not_room_member" => 403,
         "version_conflict" or "confirm_audience" => 409,
+        "invalid_import" => 400,
         _ => 422,
     });
 

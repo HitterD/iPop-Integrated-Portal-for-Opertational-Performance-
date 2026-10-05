@@ -247,7 +247,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         var p = await db.NotePages.AsNoTracking().Where(x => x.Id == pageId).Select(x => new
         {
             x.Id, x.ParentId, x.Title, x.Emoji, x.Cover, x.Accent, x.Font, x.FullWidth, x.SmallText, x.IsGuide,
-            x.CreatedAt, x.UpdatedAt, x.UpdatedById, x.TodoDone, x.TodoTotal,
+            x.CreatedAt, x.UpdatedAt, x.UpdatedById, x.TodoDone, x.TodoTotal, x.ImportSource,
             OwnerName = x.Owner.Name, OwnerNik = x.Owner.Nik,
         }).FirstAsync(ct);
 
@@ -280,7 +280,7 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
 
         return new NotePageDto(p.Id, p.ParentId, p.Title, p.Emoji, p.Cover, p.Accent, p.Font, p.FullWidth, p.SmallText,
             p.IsGuide, NoteLevels.Name(access), fav, isShared, p.OwnerName, p.OwnerNik, p.CreatedAt, p.UpdatedAt, updatedBy,
-            p.TodoDone, p.TodoTotal, open, crumbs, children, rooms);
+            p.TodoDone, p.TodoTotal, open, crumbs, children, rooms, p.ImportSource);
     }
 
     /// Group name, or for a DM the other person's name as seen by <paramref name="viewerId"/>.

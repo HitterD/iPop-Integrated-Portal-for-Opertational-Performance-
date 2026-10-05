@@ -37,6 +37,12 @@ public static class NoteStyle
     public static readonly IReadOnlySet<string> Templates = new HashSet<string> { "guide", "meeting", "todo", "brief", "sop", "inspection", "weekly", "incident" };
 }
 
+public static class NoteImport
+{
+    public const int MaxPages = 300;
+    public static readonly IReadOnlySet<string> Sources = new HashSet<string> { "notion", "markdown", "html" };
+}
+
 public record NoteResult<T>(T? Data, string? Error)
 {
     public bool Success => Error is null;
@@ -56,7 +62,9 @@ public record NotePageDto(Guid Id, Guid? ParentId, string Title, string? Emoji, 
     string Font, bool FullWidth, bool SmallText, bool IsGuide, string Access, bool IsFavorite, bool IsShared,
     string OwnerName, string OwnerNik, DateTime CreatedAt, DateTime UpdatedAt, string? UpdatedByName,
     int TodoDone, int TodoTotal, int OpenThreads, IReadOnlyList<NoteCrumbDto> Breadcrumb,
-    IReadOnlyList<NoteCrumbDto> Children, IReadOnlyList<NoteRoomShareDto> Rooms);
+    IReadOnlyList<NoteCrumbDto> Children, IReadOnlyList<NoteRoomShareDto> Rooms,
+    /// "notion" | "markdown" | "html" for pages created by Import (shown as a small badge), else null.
+    string? ImportSource = null);
 
 public record NoteRoomShareDto(Guid RoomId, string Name, string Level);
 
@@ -78,6 +86,21 @@ public record NoteSnapshotRequest(string State, long BaseVersion, IReadOnlyList<
     string? PlainText, int TodoDone, int TodoTotal);
 
 public record NoteSnapshotResultDto(long Version);
+
+/// One page to create in an import. ParentKey refers to an earlier page in the same request (null = put
+/// it under the request's ParentId). Content is written afterwards through the snapshot endpoint.
+public record ImportNotePage(string Key, string? ParentKey, string? Title, string? Emoji, string? Cover, string? ImportKey);
+
+public record ImportNotesRequest(Guid? ParentId, string Source, IReadOnlyList<ImportNotePage> Pages);
+
+public record ImportedNoteDto(string Key, Guid Id);
+
+public record ImportNotesResultDto(IReadOnlyList<ImportedNoteDto> Pages);
+
+public record FindImportedRequest(IReadOnlyList<string> Keys);
+
+/// A live page of the caller's that came from the same source page as something being imported now.
+public record PreviousImportDto(string ImportKey, Guid Id, string Title, DateTime ImportedAt);
 
 public record NoteVersionDto(Guid Id, DateTime CreatedAt, string Title, IReadOnlyList<string> Contributors);
 
@@ -127,6 +150,11 @@ public interface INoteService
     /// Re-parent (owner only, target must be editable) and/or reorder among siblings (edit on the parent).
     Task<NoteResult<bool>> MoveAsync(Guid userId, Guid pageId, MoveNoteRequest req, CancellationToken ct);
     Task<NoteResult<NotePageDto>> DuplicateAsync(Guid userId, Guid pageId, CancellationToken ct);
+    /// Creates the empty pages of an import in one go (tree included), private to the caller unless they
+    /// land under a shared page. Limit: <see cref="NoteImport.MaxPages"/> pages.
+    Task<NoteResult<ImportNotesResultDto>> ImportAsync(Guid userId, ImportNotesRequest req, CancellationToken ct);
+    /// The caller's live pages imported earlier from any of <paramref name="importKeys"/>.
+    Task<IReadOnlyList<PreviousImportDto>> FindImportedAsync(Guid userId, IReadOnlyList<string> importKeys, CancellationToken ct);
     Task<NoteResult<bool>> TrashAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<bool>> RestoreAsync(Guid userId, Guid pageId, CancellationToken ct);
     Task<NoteResult<bool>> PurgeAsync(Guid userId, Guid pageId, CancellationToken ct);

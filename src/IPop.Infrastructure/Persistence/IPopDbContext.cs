@@ -1077,7 +1077,10 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.SeedTemplate).HasMaxLength(16);
             e.Property(x => x.Excerpt).HasMaxLength(300);
             e.Property(x => x.PendingContributors).HasMaxLength(2000);
+            e.Property(x => x.ImportSource).HasMaxLength(16);
+            e.Property(x => x.ImportKey).HasMaxLength(80);
             e.HasIndex(x => new { x.OwnerId, x.DeletedAt });
+            e.HasIndex(x => new { x.OwnerId, x.ImportKey });
             e.HasIndex(x => x.ParentId);
             e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Parent).WithMany().HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.Cascade);
