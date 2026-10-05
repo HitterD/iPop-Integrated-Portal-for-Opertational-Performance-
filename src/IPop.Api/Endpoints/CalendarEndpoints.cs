@@ -514,17 +514,19 @@ public static class CalendarEndpoints
             status = meta?.Status;
             if (meta is not null) { visibility = meta.Visibility; sentById = meta.SentById; }
         }
-        // A delegate of the owner — or of an invitee (the row belongs to the organizer) — sees everything
-        // but Private. Only the owner's edit/full delegates may change it; an invitee's full delegate answers for them.
+        // Someone given "See all details" or more by the owner — or by an invitee (the row belongs to the
+        // organizer) — opens it; Private only for an "Act on my behalf" assistant. Only the owner's
+        // edit/full assistants may change it; an invitee's full assistant answers for them.
         string? delegateLevel = null;
         Guid? delegateFor = null;
-        if (ev.OwnerId != viewerId && visibility != CalendarVisibility.Private)
+        if (ev.OwnerId != viewerId)
         {
-            var principals = people.Select(p => p.UserId).Append(ev.OwnerId).Where(id => id != viewerId).ToList();
-            var rows = await db.CalendarDelegates.AsNoTracking()
-                .Where(d => d.DelegateId == viewerId && principals.Contains(d.OwnerId)).Select(d => new { d.OwnerId, d.Level }).ToListAsync(ct);
-            var pick = rows.FirstOrDefault(r => r.OwnerId == ev.OwnerId) ?? rows.OrderByDescending(r => CalendarDelegateEndpoints.LevelRank(r.Level)).FirstOrDefault();
-            if (pick is not null) { delegateLevel = pick.Level; delegateFor = pick.OwnerId; }
+            var principals = people.Select(p => p.UserId).Append(ev.OwnerId).Where(id => id != viewerId).Distinct().ToList();
+            var levels = await CalendarAccess.LevelsAsync(db, viewerId, principals, ct);
+            var allowed = levels.Where(l => CalendarAccess.Shown(visibility, l.Value, invited: false, self: false).Detail).ToList();
+            var pick = allowed.Where(l => l.Key == ev.OwnerId).Concat(allowed.OrderByDescending(l => DelegateLevel.Rank(l.Value)))
+                .Select(l => (KeyValuePair<Guid, string>?)l).FirstOrDefault();
+            if (pick is { } p2) { delegateLevel = p2.Value; delegateFor = p2.Key; }
         }
         if (ev.OwnerId != viewerId && delegateFor is null && people.All(p => p.UserId != viewerId)) return null;
         if (ev.RoomId is { } rid) roomName = await db.ChatRooms.AsNoTracking().Where(r => r.Id == rid).Select(r => r.Name).FirstOrDefaultAsync(ct);

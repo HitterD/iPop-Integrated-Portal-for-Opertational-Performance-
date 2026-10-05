@@ -289,6 +289,44 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("CalendarEvents");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.CalendarGroupShare", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Level")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RoomId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId");
+
+                    b.HasIndex("RoomId");
+
+                    b.HasIndex("OwnerId", "DepartmentId", "RoomId")
+                        .IsUnique();
+
+                    b.ToTable("CalendarGroupShares");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.CalendarSettings", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -300,6 +338,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(8)");
 
                     b.Property<bool>("NotifyDelegateChanges")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("NotifyShareRequests")
                         .HasColumnType("boolean");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -4846,6 +4887,31 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Meeting");
 
                     b.Navigation("Owner");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.CalendarGroupShare", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.HasOne("IPop.Core.Entities.User", "Owner")
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.ChatRoom", "Room")
+                        .WithMany()
+                        .HasForeignKey("RoomId")
+                        .OnDelete(DeleteBehavior.Cascade);
+
+                    b.Navigation("Department");
+
+                    b.Navigation("Owner");
+
+                    b.Navigation("Room");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.CalendarSettings", b =>

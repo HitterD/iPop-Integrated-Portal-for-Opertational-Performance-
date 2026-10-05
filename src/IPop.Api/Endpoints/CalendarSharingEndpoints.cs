@@ -5,9 +5,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IPop.Api.Endpoints;
 
-/// Calendar sharing: everyone's free/busy is visible to every active employee; titles only for
-/// Public events (unless the owner hides details). Invited people always see the full meeting.
-/// Also the per-account "Other calendars" list, sharing settings and the Find a time assistant.
+/// Calendar sharing: everyone's free/busy is visible to every active employee; titles and details only to
+/// people the owner shares with (<see cref="CalendarAccess"/>). Invited people always see the full meeting.
+/// Also the per-account "Calendars I follow" list, settings, a person's calendar header and Find a time.
 public static class CalendarSharingEndpoints
 {
     public const int MaxOthers = 20;
@@ -28,21 +28,33 @@ public static class CalendarSharingEndpoints
         {
             var me = await GetUserIdAsync(http, db, ct);
             if (me is null) return Results.Unauthorized();
-            if (!CalendarVisibility.IsDefault(req.DefaultVisibility))
-                return Results.Json(new { code = "invalid_visibility", message = "Default must be public, busy or hidden." }, statusCode: 422);
-            await SaveSettingsAsync(db, me.Value, new SettingsDto(req.DefaultVisibility, req.NotifyDelegateChanges), ct);
-            if (req.ApplyToUpcoming) await ApplyToUpcomingAsync(db, me.Value, req.DefaultVisibility, DateTime.UtcNow, ct);
+            var cur = await LoadSettingsAsync(db, me.Value, ct);
+            await SaveSettingsAsync(db, me.Value, cur with
+            {
+                NotifyDelegateChanges = req.NotifyDelegateChanges ?? cur.NotifyDelegateChanges,
+                NotifyShareRequests = req.NotifyShareRequests ?? cur.NotifyShareRequests,
+                SharingIntroSeen = req.SharingIntroSeen == true || cur.SharingIntroSeen,
+            }, ct);
             return Results.Ok(await LoadSettingsAsync(db, me.Value, ct));
         });
 
-        // GET /api/calendar/preview?as=colleague|delegate&hidden=&from=&to= — my own calendar as someone else
-        // would see it (hidden = the draft "Hide my calendar details" choice, so the dialog previews before saving).
-        g.MapGet("/preview", async (string? @as, bool? hidden, DateTime? from, DateTime? to, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        // GET /api/calendar/preview?level=&from=&to= — my own calendar as someone at that access level sees it
+        // (no level = everyone: busy times only).
+        g.MapGet("/preview", async (string? level, DateTime? from, DateTime? to, HttpContext http, IPopDbContext db, CancellationToken ct) =>
         {
             var me = await GetUserIdAsync(http, db, ct);
             if (me is null) return Results.Unauthorized();
             if (!TryRange(from, to, out var f, out var t)) return BadRange();
-            return Results.Ok(await BuildPreviewAsync(db, me.Value, @as == "delegate", hidden, f, t, ct));
+            return Results.Ok(await BuildPreviewAsync(db, me.Value, DelegateLevel.IsValid(level) ? level : null, f, t, ct));
+        });
+
+        // GET /api/calendar/person/{nik} — header of someone's calendar page: who they are and what I may see.
+        g.MapGet("/person/{nik}", async (string nik, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var me = await GetUserIdAsync(http, db, ct);
+            if (me is null) return Results.Unauthorized();
+            var p = await LoadPersonAsync(db, me.Value, nik, ct);
+            return p is null ? Results.NotFound() : Results.Ok(p);
         });
 
         // POST /api/calendar/people/{nik}/ask — ask a colleague to share their calendar details (once a day per person).
@@ -130,28 +142,30 @@ public static class CalendarSharingEndpoints
 
     // ── Settings ──
 
+    /// DefaultVisibility no longer picks anything (events are Normal unless marked Private); the column now
+    /// only remembers that the owner answered the one-time "now shows only busy times" card.
+    private const string IntroSeen = "seen";
+
     public static async Task<SettingsDto> LoadSettingsAsync(IPopDbContext db, Guid userId, CancellationToken ct)
     {
         var s = await db.CalendarSettings.AsNoTracking().FirstOrDefaultAsync(x => x.UserId == userId, ct);
-        return new SettingsDto(s?.DefaultVisibility ?? CalendarVisibility.Busy, s?.NotifyDelegateChanges ?? true);
+        return new SettingsDto(s?.NotifyDelegateChanges ?? true, s?.NotifyShareRequests ?? true, s?.DefaultVisibility == IntroSeen);
     }
 
     public static async Task SaveSettingsAsync(IPopDbContext db, Guid userId, SettingsDto req, CancellationToken ct)
     {
         var s = await db.CalendarSettings.FirstOrDefaultAsync(x => x.UserId == userId, ct);
         if (s is null) { s = new CalendarSettings { UserId = userId }; db.CalendarSettings.Add(s); }
-        s.DefaultVisibility = req.DefaultVisibility;
         s.NotifyDelegateChanges = req.NotifyDelegateChanges;
+        s.NotifyShareRequests = req.NotifyShareRequests;
+        if (req.SharingIntroSeen) s.DefaultVisibility = IntroSeen;
         s.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
     }
 
-    /// Visibility for a new event when the form sends none: the owner's default ("hidden" → busy).
-    public static async Task<string> DefaultEventVisibilityAsync(IPopDbContext db, Guid ownerId, CancellationToken ct)
-    {
-        var d = await db.CalendarSettings.AsNoTracking().Where(x => x.UserId == ownerId).Select(x => x.DefaultVisibility).FirstOrDefaultAsync(ct);
-        return d == CalendarVisibility.Public ? CalendarVisibility.Public : CalendarVisibility.Busy;
-    }
+    /// New events are Normal unless the form says Private.
+    public static Task<string> DefaultEventVisibilityAsync(IPopDbContext db, Guid ownerId, CancellationToken ct) =>
+        Task.FromResult(CalendarVisibility.Busy);
 
     // ── Other calendars list ──
 
@@ -181,13 +195,21 @@ public static class CalendarSharingEndpoints
         return AddOtherResult.Added;
     }
 
-    public static async Task<List<OtherCalendarDto>> ListOthersAsync(IPopDbContext db, Guid userId, CancellationToken ct) =>
-        await db.CalendarSubscriptions.AsNoTracking()
+    /// Followed calendars with what I may see of each (Access null = busy times only).
+    public static async Task<List<OtherCalendarDto>> ListOthersAsync(IPopDbContext db, Guid userId, CancellationToken ct)
+    {
+        var rows = await db.CalendarSubscriptions.AsNoTracking()
             .Where(s => s.UserId == userId && s.TargetUser.IsActive)
             .OrderBy(s => s.CreatedAt)
-            .Select(s => new OtherCalendarDto(s.TargetUser.Nik, s.TargetUser.Name,
-                s.TargetUser.Department != null ? s.TargetUser.Department.Name : null, s.Color, s.IsVisible))
+            .Select(s => new
+            {
+                s.TargetUserId, s.TargetUser.Nik, s.TargetUser.Name,
+                Department = s.TargetUser.Department != null ? s.TargetUser.Department.Name : null, s.Color, s.IsVisible,
+            })
             .ToListAsync(ct);
+        var levels = await CalendarAccess.LevelsAsync(db, userId, rows.Select(r => r.TargetUserId).ToList(), ct);
+        return rows.Select(r => new OtherCalendarDto(r.Nik, r.Name, r.Department, r.Color, r.IsVisible, levels.GetValueOrDefault(r.TargetUserId))).ToList();
+    }
 
     // ── Other people's busy blocks ──
 
@@ -228,79 +250,70 @@ public static class CalendarSharingEndpoints
         var owners = await db.Users.AsNoTracking().Where(u => ownerIds.Contains(u.Id) && u.IsActive).Select(u => new { u.Id, u.Nik }).ToListAsync(ct);
         if (owners.Count == 0) return [];
         var ids = owners.Select(o => o.Id).ToList();
-        var hiding = (await db.CalendarSettings.AsNoTracking()
-            .Where(s => ids.Contains(s.UserId) && s.DefaultVisibility == CalendarVisibility.Hidden).Select(s => s.UserId).ToListAsync(ct)).ToHashSet();
+        var levels = await CalendarAccess.LevelsAsync(db, viewerId, ids, ct);
         var blocks = await LoadBlocksAsync(db, ids, from, to, ct);
         // Meetings the viewer is invited to show in full whatever their visibility.
         var meetingIds = blocks.Where(b => b.MeetingId is not null).Select(b => b.MeetingId!.Value).Distinct().ToList();
         var invitedTo = (await db.MeetingAttendees.AsNoTracking()
             .Where(a => a.UserId == viewerId && meetingIds.Contains(a.MeetingId)).Select(a => a.MeetingId).ToListAsync(ct)).ToHashSet();
-        // Delegates see the details of everything but Private, even when the owner hides details.
-        var managed = (await db.CalendarDelegates.AsNoTracking()
-            .Where(d => d.DelegateId == viewerId && ids.Contains(d.OwnerId)).Select(d => d.OwnerId).ToListAsync(ct)).ToHashSet();
         var nikOf = owners.ToDictionary(o => o.Id, o => o.Nik);
         return blocks
             .Select(b =>
             {
                 var invited = b.MeetingId is { } mid && invitedTo.Contains(mid);
-                var (visibility, details) = Shown(b, hiding.Contains(b.OwnerId), invited, managed.Contains(b.OwnerId), b.OwnerId == viewerId);
+                var (visibility, title, _) = CalendarAccess.Shown(b.Visibility, levels.GetValueOrDefault(b.OwnerId), invited, b.OwnerId == viewerId);
                 return new PersonBusyItem(nikOf[b.OwnerId], b.Id, b.StartAt, b.EndAt, b.AllDay, b.Tentative, visibility,
-                    details ? b.Title : null, details ? b.Location : null, invited ? b.MeetingId : null);
+                    title ? b.Title : null, title ? b.Location : null, invited ? b.MeetingId : null);
             })
             .OrderBy(b => b.StartAt).ThenBy(b => b.Nik).ToList();
     }
 
-    /// The one visibility rule: "Hide my calendar details" turns Public into Busy; details show to the owner,
-    /// invited people, Public blocks, and delegates (anything but Private).
-    internal static (string Visibility, bool Details) Shown(Block b, bool hidden, bool invited, bool delegateOfOwner, bool self)
-    {
-        var visibility = hidden && b.Visibility == CalendarVisibility.Public ? CalendarVisibility.Busy : b.Visibility;
-        var details = self || invited || visibility == CalendarVisibility.Public
-            || (delegateOfOwner && b.Visibility != CalendarVisibility.Private);
-        return (visibility, details);
-    }
-
-    /// My calendar as a colleague (not invited) or as one of my delegates would see it. YourTitle is mine;
-    /// TheySee is null when they only get a Busy block.
+    /// My calendar as someone at <paramref name="level"/> sees it (null = everyone: busy times only).
+    /// YourTitle is mine; TheySee is null when they only get a Busy block.
     public record PreviewItem(string Id, DateTime StartAt, DateTime EndAt, bool AllDay, bool Tentative, string Visibility,
         string YourTitle, string? TheySee);
 
-    public static async Task<List<PreviewItem>> BuildPreviewAsync(IPopDbContext db, Guid ownerId, bool asDelegate, bool? hidden,
+    public static async Task<List<PreviewItem>> BuildPreviewAsync(IPopDbContext db, Guid ownerId, string? level,
         DateTime from, DateTime to, CancellationToken ct)
     {
-        var hide = hidden ?? (await LoadSettingsAsync(db, ownerId, ct)).DefaultVisibility == CalendarVisibility.Hidden;
         var blocks = await LoadBlocksAsync(db, [ownerId], from, to, ct);
         return blocks
             .Select(b =>
             {
-                var (visibility, details) = Shown(b, hide, invited: false, delegateOfOwner: asDelegate, self: false);
-                return new PreviewItem(b.Id, b.StartAt, b.EndAt, b.AllDay, b.Tentative, visibility, b.Title, details ? b.Title : null);
+                var (visibility, title, _) = CalendarAccess.Shown(b.Visibility, level, invited: false, self: false);
+                return new PreviewItem(b.Id, b.StartAt, b.EndAt, b.AllDay, b.Tentative, visibility, b.Title, title ? b.Title : null);
             })
             .OrderBy(i => i.StartAt).ToList();
     }
 
-    /// "Titles and locations" / "Busy only" chosen again for the events already on my calendar: my upcoming
-    /// personal events and the meetings I organize. Private stays Private.
-    public static async Task<int> ApplyToUpcomingAsync(IPopDbContext db, Guid ownerId, string defaultVisibility, DateTime now, CancellationToken ct)
+    // ── A person's calendar page ──
+
+    /// Access = my level (null = busy times only); Following = in my Calendars list. NowBusyUntil / NextBusyAt
+    /// feed the "Free now · busy 14:00" line on person cards.
+    public record PersonDto(string Nik, string Name, string? Department, string? Site, string? Access, string AccessLabel,
+        bool Following, bool Self, DateTime? NowBusyUntil, DateTime? NextBusyAt);
+
+    public static async Task<PersonDto?> LoadPersonAsync(IPopDbContext db, Guid viewerId, string nik, CancellationToken ct)
     {
-        var level = defaultVisibility == CalendarVisibility.Public ? CalendarVisibility.Public : CalendarVisibility.Busy;
-        var events = await db.CalendarEvents
-            .Where(e => e.OwnerId == ownerId && e.EndAt > now && e.Visibility != CalendarVisibility.Private && e.Visibility != level)
-            .ToListAsync(ct);
-        var meetingIds = events.Where(e => e.MeetingId != null).Select(e => e.MeetingId!.Value).ToList();
-        var meetings = await db.Meetings
-            .Where(m => m.OrganizerId == ownerId && m.EndAt > now && m.Visibility != CalendarVisibility.Private && m.Visibility != level)
-            .ToListAsync(ct);
-        foreach (var e in events) e.Visibility = level;
-        foreach (var m in meetings) m.Visibility = level;
-        await db.SaveChangesAsync(ct);
-        return events.Count(e => e.MeetingId == null) + meetings.Count;
+        var u = await db.Users.AsNoTracking().Where(x => x.Nik == nik && x.IsActive)
+            .Select(x => new { x.Id, x.Nik, x.Name, Dept = x.Department != null ? x.Department.Name : null, Site = x.Site != null ? x.Site.Name : null })
+            .FirstOrDefaultAsync(ct);
+        if (u is null) return null;
+        var self = u.Id == viewerId;
+        var level = self ? null : await CalendarAccess.LevelAsync(db, viewerId, u.Id, ct);
+        var following = await db.CalendarSubscriptions.AnyAsync(s => s.UserId == viewerId && s.TargetUserId == u.Id, ct);
+        var now = DateTime.UtcNow;
+        var timed = (await LoadBlocksAsync(db, [u.Id], now.AddHours(-12), now.AddHours(24), ct))
+            .Where(b => !b.AllDay && b.EndAt > now).OrderBy(b => b.StartAt).ToList();
+        var current = timed.Where(b => b.StartAt <= now).Select(b => (DateTime?)b.EndAt).DefaultIfEmpty().Max();
+        var next = timed.Where(b => b.StartAt > now).Select(b => (DateTime?)b.StartAt).FirstOrDefault();
+        return new PersonDto(u.Nik, u.Name, u.Dept, u.Site, level, CalendarAccess.ViewerLabel(level), following, self, current, next);
     }
 
     public enum AskResult { Sent, AlreadyAsked, NotFound, Self }
 
-    /// Sends the owner one low-priority notification ("X would like to see your calendar details") that opens
-    /// the sharing dialog. One request per person per day; the audit row doubles as the throttle.
+    /// Sends the owner one notification ("X asks to see your calendar titles") that opens Allow — unless the
+    /// owner turned these off. One request per person per day; the audit row doubles as the throttle.
     public static async Task<AskResult> AskForDetailsAsync(IPopDbContext db, INotificationGatewayService? notifs, ILogger? log,
         Guid askerId, string? ownerNik, DateTime now, CancellationToken ct)
     {
@@ -316,9 +329,12 @@ public static class CalendarSharingEndpoints
             ActorNik = asker.Nik, Action = "calendar.share.ask", Entity = "CalendarSettings", EntityId = owner.Nik, CreatedAt = now,
         });
         await db.SaveChangesAsync(ct);
-        await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "calendar.share.ask", $"{asker.Name} asked to see your calendar",
-            $"{asker.Name} would like to see what's on your calendar, not just when you're busy. You choose what colleagues see.",
-            [owner.Id], "low", "/calendar?share=1");
+        var notify = await db.CalendarSettings.AsNoTracking().Where(s => s.UserId == owner.Id)
+            .Select(s => (bool?)s.NotifyShareRequests).FirstOrDefaultAsync(ct) ?? true;
+        if (notify)
+            await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "calendar.share.ask", $"{asker.Name} asks to see your calendar titles",
+                "So they can plan meetings with you. Open it to allow — you can change or remove it any time in Calendar settings.",
+                [owner.Id], "normal", $"/calendar?allow={Uri.EscapeDataString(asker.Nik)}");
         return AskResult.Sent;
     }
 
@@ -411,9 +427,11 @@ public static class CalendarSharingEndpoints
         return await db.Users.Where(u => u.Nik == nik).Select(u => (Guid?)u.Id).FirstOrDefaultAsync(ct);
     }
 
-    public record SettingsDto(string DefaultVisibility, bool NotifyDelegateChanges);
-    public record SaveSettingsRequest(string DefaultVisibility, bool NotifyDelegateChanges, bool ApplyToUpcoming = false);
+    /// SharingIntroSeen: the one-time "your calendar now shows only busy times" card was answered.
+    public record SettingsDto(bool NotifyDelegateChanges, bool NotifyShareRequests, bool SharingIntroSeen);
+    public record SaveSettingsRequest(bool? NotifyDelegateChanges, bool? NotifyShareRequests, bool? SharingIntroSeen);
     public record AddOtherRequest(string? Nik);
     public record UpdateOtherRequest(string? Color, bool? IsVisible);
-    public record OtherCalendarDto(string Nik, string Name, string? Department, string Color, bool IsVisible);
+    /// Access = my level on their calendar, null = busy times only.
+    public record OtherCalendarDto(string Nik, string Name, string? Department, string Color, bool IsVisible, string? Access = null);
 }

@@ -6,12 +6,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IPop.Api.Endpoints;
 
-/// Calendar delegates (manager → assistant). The owner grants a level in Calendar settings,
-/// or an admin grants it per user. Every grant/change/revoke notifies both people (except the
-/// one who did it) and writes an audit row. Private events stay a Busy block even for delegates.
+/// Personal calendar grants on the access ladder (See event titles … Act on my behalf). The owner grants a
+/// level in Calendar settings, or an admin grants it per user. Every grant/change/revoke notifies both people
+/// (except the one who did it) and writes an audit row. "Edit my events" and "Act on my behalf" make the
+/// person an assistant who can open the calendar as its owner (Calendars I manage).
 public static class CalendarDelegateEndpoints
 {
-    public const int MaxDelegates = 10;
+    public const int MaxDelegates = 50;
 
     public static IEndpointRouteBuilder MapCalendarDelegates(this IEndpointRouteBuilder app)
     {
@@ -60,7 +61,7 @@ public static class CalendarDelegateEndpoints
             var owner = await db.Users.AsNoTracking().Where(u => u.Nik == nik && u.IsActive).Select(u => (Guid?)u.Id).FirstOrDefaultAsync(ct);
             if (owner is null) return Results.NotFound();
             var level = await LevelAsync(db, owner.Value, me.Value, ct);
-            if (level is null) return Forbidden("You are not a delegate for this calendar.");
+            if (!DelegateLevel.CanEdit(level)) return Forbidden("You can't manage this calendar.");
             var f = AsUtc(from ?? DateTime.UtcNow.Date.AddDays(-7));
             var t = AsUtc(to ?? DateTime.UtcNow.Date.AddDays(42));
             if (t <= f || (t - f).TotalDays > 100) return Results.Json(new { code = "invalid_range", message = "Pick a shorter date range." }, statusCode: 422);
@@ -114,9 +115,10 @@ public static class CalendarDelegateEndpoints
                 d.CreatedAt))
             .ToListAsync(ct);
 
+    /// Calendars I can change for someone (Edit my events / Act on my behalf).
     public static async Task<List<ManagedCalendarDto>> ListManagedAsync(IPopDbContext db, Guid delegateId, CancellationToken ct) =>
         await db.CalendarDelegates.AsNoTracking()
-            .Where(d => d.DelegateId == delegateId && d.Owner.IsActive)
+            .Where(d => d.DelegateId == delegateId && d.Owner.IsActive && (d.Level == DelegateLevel.Edit || d.Level == DelegateLevel.Full))
             .OrderBy(d => d.Owner.Name)
             .Select(d => new ManagedCalendarDto(d.Owner.Nik, d.Owner.Name, d.Owner.Department != null ? d.Owner.Department.Name : null, d.Level))
             .ToListAsync(ct);
@@ -131,14 +133,14 @@ public static class CalendarDelegateEndpoints
         await db.CalendarDelegates.AsNoTracking().Where(d => d.DelegateId == viewerId && d.Owner.IsActive)
             .ToDictionaryAsync(d => d.OwnerId, d => d.Level, ct);
 
-    /// The owner's personal events and meetings (no tasks, mail, news or chat-group events).
-    /// Private items come back as an opaque Busy block that cannot be opened or changed.
+    /// The owner's personal events and meetings (no tasks, mail, news or chat-group events). Private items
+    /// come back as an opaque Busy block for "Edit my events"; an "Act on my behalf" assistant sees them.
     public static async Task<List<CalendarEndpoints.CalendarFeedItem>> BuildManagedFeedAsync(IPopDbContext db, Guid ownerId, string level,
         DateTime from, DateTime to, CancellationToken ct)
     {
         var items = await CalendarEndpoints.BuildFeedAsync(db, ownerId, from, to, new CalendarEndpoints.FeedAccess(false, false, false, false), ct);
         var canEdit = DelegateLevel.CanEdit(level);
-        return items.Select(i => i.Visibility == CalendarVisibility.Private
+        return items.Select(i => i.Visibility == CalendarVisibility.Private && level != DelegateLevel.Full
                 ? i with { Id = $"private:{i.Id}", Title = "Private", Url = null, Subtitle = null, EventId = null, MeetingId = null,
                     CanEdit = false, Location = null, Link = null }
                 : i with { CanEdit = canEdit && i.CanEdit })
@@ -209,17 +211,13 @@ public static class CalendarDelegateEndpoints
 
     public static string LevelText(string? level) => level switch
     {
-        DelegateLevel.Full => "view, edit and answer invites for",
-        DelegateLevel.Edit => "view and edit",
-        _ => "view all details of",
+        DelegateLevel.Full => "act on behalf of",
+        DelegateLevel.Edit => "see and edit the events in",
+        DelegateLevel.View => "see all the details in",
+        _ => "see the event titles in",
     };
 
-    public static string LevelLabel(string? level) => level switch
-    {
-        DelegateLevel.Full => "Full delegate",
-        DelegateLevel.Edit => "Can edit",
-        _ => "View all details",
-    };
+    public static string LevelLabel(string? level) => CalendarAccess.Label(level);
 
     /// Both people hear about it, except whoever made the change.
     private static async Task NotifyGrantAsync(IPopDbContext db, INotificationGatewayService? notifs, ILogger? log,
@@ -228,6 +226,7 @@ public static class CalendarDelegateEndpoints
         if (notifs is null) return;
         var names = await db.Users.AsNoTracking().Where(u => u.Id == actorId || u.Id == ownerId || u.Id == delegateId)
             .ToDictionaryAsync(u => u.Id, u => u.Name, ct);
+        var ownerNik = await db.Users.AsNoTracking().Where(u => u.Id == ownerId).Select(u => u.Nik).FirstOrDefaultAsync(ct);
         var owner = names.GetValueOrDefault(ownerId) ?? "Someone";
         var dlg = names.GetValueOrDefault(delegateId) ?? "Someone";
         var by = actorId == ownerId || actorId == delegateId ? "" : $" Set by {names.GetValueOrDefault(actorId) ?? "an admin"}.";
@@ -235,19 +234,20 @@ public static class CalendarDelegateEndpoints
         {
             var (title, body) = what switch
             {
-                "revoked" => ("Calendar delegate removed", $"You no longer manage {owner}'s calendar.{by}"),
-                "changed" => ("Calendar delegate access changed", $"You can now {LevelText(level)} {owner}'s calendar ({LevelLabel(level)}).{by}"),
-                _ => ($"You're a delegate for {owner}", $"You can now {LevelText(level)} {owner}'s calendar ({LevelLabel(level)}).{by}"),
+                "revoked" => ($"{owner} stopped sharing their calendar", $"You can see when {owner} is busy, like everyone else.{by}"),
+                "changed" => ($"{owner} changed your calendar access", $"You can now {LevelText(level)} {owner}'s calendar ({LevelLabel(level)}).{by}"),
+                _ => ($"{owner} shared their calendar with you", $"You can now {LevelText(level)} {owner}'s calendar ({LevelLabel(level)}).{by}"),
             };
-            await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "calendar.delegate", title, body, [delegateId], "normal", "/calendar");
+            await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "calendar.delegate", title, body, [delegateId], "normal",
+                what == "revoked" ? "/calendar" : $"/calendar/person/{Uri.EscapeDataString(ownerNik ?? "")}");
         }
         if (ownerId != actorId)
         {
             var (title, body) = what switch
             {
-                "revoked" => ("Calendar delegate removed", $"{dlg} no longer manages your calendar.{by}"),
-                "changed" => ("Calendar delegate access changed", $"{dlg} can now {LevelText(level)} your calendar ({LevelLabel(level)}).{by}"),
-                _ => ($"{dlg} is now your calendar delegate", $"{dlg} can {LevelText(level)} your calendar ({LevelLabel(level)}).{by}"),
+                "revoked" => ($"{dlg} no longer has access to your calendar", $"{dlg} now sees only when you're busy.{by}"),
+                "changed" => ($"{dlg}'s access to your calendar changed", $"{dlg} can now {LevelText(level)} your calendar ({LevelLabel(level)}).{by}"),
+                _ => ($"Your calendar is shared with {dlg}", $"{dlg} can {LevelText(level)} your calendar ({LevelLabel(level)}).{by}"),
             };
             await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "calendar.delegate", title, body, [ownerId], "normal", "/calendar");
         }
@@ -319,9 +319,9 @@ public static class CalendarDelegateEndpoints
     private static IResult GrantError(GrantResult r) => r switch
     {
         GrantResult.NotFound => Results.Json(new { code = "not_found", message = "That person was not found." }, statusCode: 404),
-        GrantResult.Self => Results.Json(new { code = "self", message = "You can't be your own delegate." }, statusCode: 422),
-        GrantResult.TooMany => Results.Json(new { code = "too_many", message = $"A calendar can have up to {MaxDelegates} delegates." }, statusCode: 422),
-        _ => Results.Json(new { code = "invalid_level", message = "Level must be view, edit or full." }, statusCode: 422),
+        GrantResult.Self => Results.Json(new { code = "self", message = "That's your own calendar." }, statusCode: 422),
+        GrantResult.TooMany => Results.Json(new { code = "too_many", message = $"You can share with up to {MaxDelegates} people. Share with a department or chat group instead." }, statusCode: 422),
+        _ => Results.Json(new { code = "invalid_level", message = "Pick an access level." }, statusCode: 422),
     };
 
     private static DateTime AsUtc(DateTime dt) => dt.Kind switch

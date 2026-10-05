@@ -7,8 +7,8 @@ using static IPop.Api.Endpoints.CalendarSharingEndpoints;
 
 namespace IPop.Tests;
 
-/// Calendar sharing stage 1: other people see busy blocks, titles only for Public events,
-/// invitees always see the meeting, and Find a time suggests slots free for everyone.
+/// Calendar access: everyone sees busy blocks, titles only by the owner's grant (person, department or
+/// chat group), invitees always see the meeting, and Find a time suggests slots free for everyone.
 public class CalendarSharingTests
 {
     private static DateTime Day(int offset) => DateTime.SpecifyKind(DateTime.UtcNow.Date.AddDays(offset), DateTimeKind.Utc);
@@ -24,25 +24,16 @@ public class CalendarSharingTests
     }
 
     [Fact]
-    public async Task New_events_default_to_busy_and_follow_the_owner_default()
+    public async Task New_events_are_normal_unless_private()
     {
         using var t = new TestDb();
         var me = t.AddUser("S1");
-        var a = await Event(t, me.Id, "A", Day(2).AddHours(3));
-        Assert.Equal(CalendarVisibility.Busy, a.Visibility);
-
-        await SaveSettingsAsync(t.Db, me.Id, new SettingsDto(CalendarVisibility.Public, true), default);
-        var b = await Event(t, me.Id, "B", Day(2).AddHours(5));
-        Assert.Equal(CalendarVisibility.Public, b.Visibility);
-
-        // "Hide details" still creates Busy only events; an explicit choice wins.
-        await SaveSettingsAsync(t.Db, me.Id, new SettingsDto(CalendarVisibility.Hidden, true), default);
-        Assert.Equal(CalendarVisibility.Busy, (await Event(t, me.Id, "C", Day(3).AddHours(3))).Visibility);
+        Assert.Equal(CalendarVisibility.Busy, (await Event(t, me.Id, "A", Day(2).AddHours(3))).Visibility);
         Assert.Equal(CalendarVisibility.Private, (await Event(t, me.Id, "D", Day(3).AddHours(5), visibility: "private")).Visibility);
     }
 
     [Fact]
-    public async Task Others_see_titles_only_for_public_events()
+    public async Task Everyone_sees_only_busy_times_without_a_grant_even_for_legacy_public_events()
     {
         using var t = new TestDb();
         var owner = t.AddUser("S1"); var viewer = t.AddUser("S2");
@@ -52,25 +43,115 @@ public class CalendarSharingTests
 
         var items = await BuildPeopleAsync(t.Db, viewer.Id, [owner.Id], Day(1), Day(4), default);
         Assert.Equal(3, items.Count);
-        Assert.All(items, i => Assert.Equal("S1", i.Nik));
-        Assert.Equal("Open day", items.Single(i => i.Visibility == "public").Title);
-        Assert.Equal("Room 2", items.Single(i => i.Visibility == "public").Location);
-        Assert.Null(items.Single(i => i.Visibility == "busy").Title);
-        Assert.Null(items.Single(i => i.Visibility == "private").Title);
-        Assert.Null(items.Single(i => i.Visibility == "private").Location);
+        Assert.All(items, i => { Assert.Equal("S1", i.Nik); Assert.Null(i.Title); Assert.Null(i.Location); });
+        Assert.Equal(["busy", "busy", "private"], items.Select(i => i.Visibility));
     }
 
     [Fact]
-    public async Task Hide_details_turns_public_into_busy_for_others()
+    public async Task Titles_level_shows_title_and_place_but_not_private_or_detail()
     {
         using var t = new TestDb();
         var owner = t.AddUser("S1"); var viewer = t.AddUser("S2");
-        await Event(t, owner.Id, "Open day", Day(2).AddHours(2), visibility: "public");
-        await SaveSettingsAsync(t.Db, owner.Id, new SettingsDto(CalendarVisibility.Hidden, true), default);
+        var board = await Event(t, owner.Id, "Board prep", Day(2).AddHours(4));
+        await Event(t, owner.Id, "Doctor", Day(2).AddHours(6), visibility: "private");
+        await CalendarDelegateEndpoints.GrantAsync(t.Db, null, null, owner.Id, "S2", DelegateLevel.Titles, owner.Id, default);
 
-        var item = Assert.Single(await BuildPeopleAsync(t.Db, viewer.Id, [owner.Id], Day(1), Day(4), default));
-        Assert.Null(item.Title);
-        Assert.Equal(CalendarVisibility.Busy, item.Visibility);
+        var items = await BuildPeopleAsync(t.Db, viewer.Id, [owner.Id], Day(1), Day(4), default);
+        Assert.Equal("Board prep", items[0].Title);
+        Assert.Equal("Room 2", items[0].Location);
+        Assert.Null(items[1].Title);
+        // Titles is not enough to open the full event, and it's not a calendar they manage.
+        Assert.Null(await LoadDetailAsync(t.Db, board.Id, viewer.Id, default));
+        Assert.Empty(await CalendarDelegateEndpoints.ListManagedAsync(t.Db, viewer.Id, default));
+        Assert.Equal(DelegateLevel.Titles, Assert.Single(await ListOthersAfterFollowAsync(t, viewer.Id, "S1")).Access);
+    }
+
+    private static async Task<List<OtherCalendarDto>> ListOthersAfterFollowAsync(TestDb t, Guid viewerId, string nik)
+    {
+        Assert.Equal(AddOtherResult.Added, await AddOtherAsync(t.Db, viewerId, nik, default));
+        return await ListOthersAsync(t.Db, viewerId, default);
+    }
+
+    [Fact]
+    public async Task Department_and_chat_group_shares_follow_membership_and_highest_level_wins()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("S1"); var member = t.AddUser("S2"); var outsider = t.AddUser("S3");
+        var dept = new Department { Id = Guid.NewGuid(), Code = "ICT", Name = "ICT" };
+        t.Db.Departments.Add(dept);
+        member.DepartmentId = dept.Id;
+        await t.Db.SaveChangesAsync();
+        var ev = await Event(t, owner.Id, "Infra review", Day(2).AddHours(3));
+
+        Assert.Equal(CalendarGroupShareEndpoints.SetResult.InvalidLevel, await CalendarGroupShareEndpoints.SetAsync(t.Db, owner.Id,
+            new CalendarGroupShareEndpoints.SetGroupShareRequest(dept.Id, null, DelegateLevel.Edit), default));
+        Assert.Equal(CalendarGroupShareEndpoints.SetResult.Ok, await CalendarGroupShareEndpoints.SetAsync(t.Db, owner.Id,
+            new CalendarGroupShareEndpoints.SetGroupShareRequest(dept.Id, null, DelegateLevel.Titles), default));
+        Assert.Equal("Infra review", Assert.Single(await BuildPeopleAsync(t.Db, member.Id, [owner.Id], Day(1), Day(4), default)).Title);
+        Assert.Null(Assert.Single(await BuildPeopleAsync(t.Db, outsider.Id, [owner.Id], Day(1), Day(4), default)).Title);
+
+        // A chat group the owner is in, at "See all details": members can open the event; leaving removes it.
+        var room = t.AddRoom("group", "Infra");
+        t.AddMember(room.Id, owner.Id);
+        var m = t.AddMember(room.Id, outsider.Id);
+        Assert.Equal(CalendarGroupShareEndpoints.SetResult.Ok, await CalendarGroupShareEndpoints.SetAsync(t.Db, owner.Id,
+            new CalendarGroupShareEndpoints.SetGroupShareRequest(null, room.Id, DelegateLevel.View), default));
+        Assert.NotNull(await LoadDetailAsync(t.Db, ev.Id, outsider.Id, default));
+        m.LeftAt = DateTime.UtcNow;
+        await t.Db.SaveChangesAsync();
+        Assert.Null(await LoadDetailAsync(t.Db, ev.Id, outsider.Id, default));
+
+        // Personal grant above the department level wins.
+        await CalendarDelegateEndpoints.GrantAsync(t.Db, null, null, owner.Id, "S2", DelegateLevel.View, owner.Id, default);
+        Assert.Equal(DelegateLevel.View, await CalendarAccess.LevelAsync(t.Db, member.Id, owner.Id, default));
+        Assert.Equal(2, (await CalendarGroupShareEndpoints.ListAsync(t.Db, owner.Id, default)).Count);
+    }
+
+    [Fact]
+    public async Task Chat_group_share_needs_the_owner_to_be_a_member()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("S1");
+        var room = t.AddRoom("group", "Elsewhere");
+        Assert.Equal(CalendarGroupShareEndpoints.SetResult.NotMember, await CalendarGroupShareEndpoints.SetAsync(t.Db, owner.Id,
+            new CalendarGroupShareEndpoints.SetGroupShareRequest(null, room.Id, DelegateLevel.Titles), default));
+    }
+
+    [Fact]
+    public async Task Person_page_says_what_I_can_see_and_whether_they_are_free()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("S1"); var viewer = t.AddUser("S2");
+        var now = DateTime.UtcNow;
+        await Event(t, owner.Id, "Now", now.AddMinutes(-30));
+        var p = await LoadPersonAsync(t.Db, viewer.Id, "S1", default);
+        Assert.NotNull(p);
+        Assert.Null(p!.Access);
+        Assert.Equal("You can see when they're busy", p.AccessLabel);
+        Assert.False(p.Following);
+        Assert.NotNull(p.NowBusyUntil);
+        Assert.Null(await LoadPersonAsync(t.Db, viewer.Id, "NOPE", default));
+
+        await CalendarDelegateEndpoints.GrantAsync(t.Db, null, null, owner.Id, "S2", DelegateLevel.Titles, owner.Id, default);
+        await AddOtherAsync(t.Db, viewer.Id, "S1", default);
+        p = await LoadPersonAsync(t.Db, viewer.Id, "S1", default);
+        Assert.Equal(DelegateLevel.Titles, p!.Access);
+        Assert.True(p.Following);
+    }
+
+    [Fact]
+    public async Task Followers_without_access_are_offered_titles_once()
+    {
+        using var t = new TestDb();
+        var owner = t.AddUser("S1"); var a = t.AddUser("S2"); var b = t.AddUser("S3");
+        await AddOtherAsync(t.Db, a.Id, "S1", default);
+        await AddOtherAsync(t.Db, b.Id, "S1", default);
+        await CalendarDelegateEndpoints.GrantAsync(t.Db, null, null, owner.Id, "S3", DelegateLevel.View, owner.Id, default);
+        Assert.Equal(["S2"], (await CalendarGroupShareEndpoints.FollowersWithoutAccessAsync(t.Db, owner.Id, default)).Select(f => f.Nik));
+
+        Assert.False((await LoadSettingsAsync(t.Db, owner.Id, default)).SharingIntroSeen);
+        await SaveSettingsAsync(t.Db, owner.Id, new SettingsDto(true, true, true), default);
+        Assert.True((await LoadSettingsAsync(t.Db, owner.Id, default)).SharingIntroSeen);
     }
 
     [Fact]

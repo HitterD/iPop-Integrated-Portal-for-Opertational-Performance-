@@ -96,7 +96,6 @@ public class CalendarDelegateTests
         var boss = t.AddUser("B1"); var pa = t.AddUser("P1"); var other = t.AddUser("O1");
         await Event(t, boss.Id, "Board prep", Day(2).AddHours(2), "busy");
         await Event(t, boss.Id, "Doctor", Day(2).AddHours(4), "private");
-        await SaveSettingsAsync(t.Db, boss.Id, new SettingsDto(CalendarVisibility.Hidden, true), default);
         await GrantAsync(t.Db, null, null, boss.Id, "P1", DelegateLevel.View, boss.Id, default);
 
         var seen = await BuildPeopleAsync(t.Db, pa.Id, [boss.Id], Day(1), Day(4), default);
@@ -104,10 +103,12 @@ public class CalendarDelegateTests
         Assert.Null(seen.Single(i => i.Visibility == "private").Title);
         Assert.All(await BuildPeopleAsync(t.Db, other.Id, [boss.Id], Day(1), Day(4), default), i => Assert.Null(i.Title));
 
-        var feed = await BuildManagedFeedAsync(t.Db, boss.Id, DelegateLevel.View, Day(1), Day(4), default);
+        var feed = await BuildManagedFeedAsync(t.Db, boss.Id, DelegateLevel.Edit, Day(1), Day(4), default);
         Assert.Equal(["Board prep", "Private"], feed.Select(f => f.Title));
-        Assert.All(feed, f => Assert.False(f.CanEdit));
         Assert.Null(feed.Single(f => f.Title == "Private").EventId);
+        // Only an Act-on-my-behalf assistant sees inside Private events.
+        var full = await BuildManagedFeedAsync(t.Db, boss.Id, DelegateLevel.Full, Day(1), Day(4), default);
+        Assert.Equal(["Board prep", "Doctor"], full.Select(f => f.Title));
     }
 
     [Fact]
@@ -211,7 +212,7 @@ public class CalendarDelegateTests
         await NotifyOwnerOfChangeAsync(t.Db, gw, null, boss.Id, pa.Id, "added", "Lunch", default);
         Assert.Equal([boss.Id], Assert.Single(gw.Sent).To);
 
-        await SaveSettingsAsync(t.Db, boss.Id, new SettingsDto(CalendarVisibility.Busy, false), default);
+        await SaveSettingsAsync(t.Db, boss.Id, new SettingsDto(false, true, false), default);
         await NotifyOwnerOfChangeAsync(t.Db, gw, null, boss.Id, pa.Id, "added", "Lunch 2", default);
         Assert.Single(gw.Sent);
     }
