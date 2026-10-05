@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>iPop — Toast redesign mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Figtree", "Segoe UI", system-ui, sans-serif; background: #e7e5e4; color: #1c1917; }
+  h1 { font-size: 20px; margin: 28px 32px 4px; }
+  .lead { margin: 0 32px 20px; color: #57534e; font-size: 13.5px; max-width: 900px; line-height: 1.5; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .pane { padding: 28px 32px 36px; display: flex; flex-direction: column; gap: 14px; position: relative; }
+  .pane h2 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); }
+  .pane h3 { margin: 10px 0 0; font-size: 12px; font-weight: 600; color: var(--ink-3); }
+  .stack { width: 372px; display: flex; flex-direction: column; gap: 10px; }
+  .lucide { width: 16px; height: 16px; }
+
+  /* ---- page tokens (subset of core/tokens.css) ---- */
+  .light { --surface: #fff; --ink: #1c1917; --ink-2: #44403c; --ink-3: #78716c;
+    background: linear-gradient(135deg, #f5f5f4 0%, #fafaf9 40%, #eef2ff 100%); }
+  .dark { --surface: #1c1917; --ink: #fafaf9; --ink-2: #e7e5e4; --ink-3: #a8a29e;
+    background: linear-gradient(135deg, #0c0a09 0%, #1c1917 60%, #172033 100%); }
+  :root { --ease-out: cubic-bezier(0.16, 1, 0.3, 1); }
+
+  /* =================================================================
+     SHARED TOAST MATERIAL — the proposed tokens (overlays.css)
+     ================================================================= */
+  .light {
+    --toast-bg: rgba(255, 255, 255, 0.82);
+    --toast-border: rgba(0, 0, 0, 0.07);
+    --toast-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.04), 0 10px 30px -8px rgba(0, 0, 0, 0.2), 0 2px 8px -2px rgba(0, 0, 0, 0.08);
+    --toast-shadow-hover: 0 0 0 0.5px rgba(0, 0, 0, 0.05), 0 14px 34px -8px rgba(0, 0, 0, 0.24), 0 3px 10px -2px rgba(0, 0, 0, 0.1);
+    --toast-timer: rgba(0, 0, 0, 0.18);
+    --toast-green: #34c759; --toast-red: #ff3b30; --toast-blue: #007aff; --toast-orange: #ff9500;
+  }
+  .dark {
+    --toast-bg: rgba(40, 38, 36, 0.78);
+    --toast-border: rgba(255, 255, 255, 0.1);
+    --toast-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.5), 0 14px 36px -8px rgba(0, 0, 0, 0.6);
+    --toast-shadow-hover: 0 0 0 0.5px rgba(0, 0, 0, 0.5), 0 18px 40px -8px rgba(0, 0, 0, 0.7);
+    --toast-timer: rgba(255, 255, 255, 0.22);
+    --toast-green: #30d158; --toast-red: #ff453a; --toast-blue: #0a84ff; --toast-orange: #ff9f0a;
+  }
+  .t-material {
+    background: var(--toast-bg);
+    -webkit-backdrop-filter: blur(28px) saturate(180%); backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid var(--toast-border);
+    box-shadow: var(--toast-shadow);
+  }
+
+  /* macOS close (shared) */
+  .t-close {
+    position: absolute; top: -7px; left: -7px; width: 20px; height: 20px; padding: 0;
+    display: flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer;
+    background: rgba(250, 250, 250, 0.95); color: var(--ink-2);
+    border: 0.5px solid rgba(0, 0, 0, 0.14); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+    opacity: 0; transform: scale(0.85); transition: opacity .16s, transform .16s;
+  }
+  .dark .t-close { background: rgba(60, 58, 56, 0.96); border-color: rgba(255, 255, 255, 0.16); }
+  .t-close .lucide { width: 11px; height: 11px; stroke-width: 2.6; }
+  .hov .t-close, .t-card:hover .t-close { opacity: 1; transform: scale(1); }
+
+  /* hover-only neutral timer (shared) */
+  .t-timer { position: absolute; left: 14px; right: 14px; bottom: 5px; height: 2px; border-radius: 2px; overflow: hidden; opacity: 0; transition: opacity .18s; }
+  .t-timer::after { content: ""; position: absolute; inset: 0; background: var(--toast-timer); transform-origin: left; transform: scaleX(.62); }
+  .hov .t-timer, .t-card:hover .t-timer { opacity: 1; }
+
+  .t-card { position: relative; transition: transform .22s var(--ease-out), box-shadow .22s var(--ease-out); cursor: pointer; }
+  .t-card.hov, .t-card:hover { transform: translateY(-2px); box-shadow: var(--toast-shadow-hover); }
+
+  /* ---------------- NEW notification banner ---------------- */
+  .nb { display: flex; align-items: flex-start; gap: 12px; padding: 13px 14px 14px 13px; border-radius: 16px; }
+  .nb-ic {
+    width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0; display: grid; place-items: center; color: #fff;
+    background: linear-gradient(145deg, color-mix(in srgb, var(--m) 78%, #fff), var(--m));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.3), 0 1px 2px rgba(0,0,0,.12);
+  }
+  .nb-ic .lucide { width: 19px; height: 19px; stroke-width: 2.2; }
+  .nb-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .nb-head { display: flex; align-items: center; gap: 8px; }
+  .nb-mod {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: color-mix(in srgb, var(--m) 88%, #000); background: color-mix(in srgb, var(--m) 12%, transparent);
+    padding: 2px 8px; border-radius: 99px; white-space: nowrap;
+  }
+  .dark .nb-mod { color: color-mix(in srgb, var(--m) 60%, #fff); background: color-mix(in srgb, var(--m) 22%, transparent); }
+  .nb-mod::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--m); }
+  .nb-high .nb-mod { --m: var(--toast-red) !important; }
+  .nb-high .nb-mod::after { content: "Important"; padding-left: 6px; border-left: 1px solid currentColor; opacity: .9; }
+  .nb-time { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--ink-3); white-space: nowrap; }
+  .nb-title { font-size: 13.5px; font-weight: 700; color: var(--ink); line-height: 1.35; }
+  .nb-desc { font-size: 12.5px; color: var(--ink-2); line-height: 1.45; }
+  /* "Open" swaps in over the timestamp on hover so it never reserves a blank line. */
+  .nb-end { margin-left: auto; display: grid; justify-items: end; }
+  .nb-end > * { grid-area: 1 / 1; transition: opacity .18s, transform .18s; }
+  .nb-open { display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; font-weight: 600; color: var(--ink-2); white-space: nowrap; opacity: 0; transform: translateX(-3px); }
+  .nb-open .lucide { width: 13px; height: 13px; }
+  .hov .nb-open, .t-card:hover .nb-open { opacity: 1; transform: none; }
+  .hov .nb-time, .t-card:hover .nb-time { opacity: 0; }
+
+  .m-tickets { --m: #0a84ff; } .m-mail { --m: #2563eb; } .m-chat { --m: #16a34a; } .m-news { --m: #ea580c; } .m-calendar { --m: #e11d48; }
+
+  /* ---------------- action toast (unchanged except timer) ---------------- */
+  .toast { display: flex; align-items: flex-start; gap: 11px; padding: 12px 14px 12px 12px; border-radius: 16px; color: var(--ink); font-size: 13px; line-height: 1.35; }
+  .toast-icon { width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0; margin-top: 1px; display: flex; align-items: center; justify-content: center; color: #fff; background: var(--toast-blue); }
+  .toast.success .toast-icon { background: var(--toast-green); }
+  .toast.error .toast-icon { background: var(--toast-red); }
+  .toast.warning .toast-icon { background: var(--toast-orange); }
+  .toast-icon .lucide { width: 15px; height: 15px; stroke-width: 2.6; }
+  .toast-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-top: 3px; }
+  .toast-title { font-size: 13px; font-weight: 600; }
+  .toast-msg { font-size: 12.5px; color: var(--ink-2); }
+  .toast-action { padding: 5px 11px; border-radius: 999px; border: none; background: rgba(0,0,0,.06); color: var(--toast-blue); font: inherit; font-size: 12.5px; font-weight: 600; align-self: center; }
+  .dark .toast-action { background: rgba(255,255,255,.1); }
+
+  /* ---------------- call toast (pill keeps shape, shared material) ---------------- */
+  .callx-toast { display: inline-flex; align-items: center; gap: 10px; padding: 8px 8px 8px 16px; border-radius: 999px; font-size: 13px; color: var(--ink); align-self: flex-start; }
+  .callx-toast > .lucide { color: var(--toast-red); }
+  .callx-toast button { border: 0; border-radius: 999px; padding: 6px 12px; font: inherit; font-weight: 600; font-size: 12.5px; background: rgba(0,0,0,.06); color: var(--ink); }
+  .dark .callx-toast button { background: rgba(255,255,255,.1); }
+
+  /* =================================================================
+     BEFORE — current notif-toast.css, for comparison
+     ================================================================= */
+  .old { position: relative; display: flex; gap: 12px; padding: 14px 14px 16px 18px; border-radius: 18px; overflow: hidden;
+    background: linear-gradient(115deg, color-mix(in srgb, var(--m) 9%, transparent) 0%, transparent 55%), rgba(255,255,255,.9);
+    border: 1px solid color-mix(in srgb, var(--m) 18%, rgba(0,0,0,.06));
+    box-shadow: 0 18px 40px -12px color-mix(in srgb, var(--m) 28%, rgba(0,0,0,.25)), 0 4px 12px -4px rgba(0,0,0,.1); }
+  .dark .old { background: linear-gradient(115deg, color-mix(in srgb, var(--m) 20%, transparent) 0%, transparent 60%), rgba(28,27,25,.92);
+    border-color: color-mix(in srgb, var(--m) 30%, rgba(255,255,255,.08)); box-shadow: 0 20px 44px -12px rgba(0,0,0,.6); }
+  .old .nb-time { margin-left: auto; }
+  .old .rail { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: linear-gradient(180deg, var(--m), color-mix(in srgb, var(--m) 55%, #fff)); }
+  .old .tm { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: color-mix(in srgb, var(--m) 12%, transparent); }
+  .old .tm::after { content: ""; position: absolute; inset: 0 40% 0 0; background: var(--m); opacity: .75; }
+  .old .nb-ic { width: 40px; height: 40px; border-radius: 12px; box-shadow: 0 6px 14px -4px color-mix(in srgb, var(--m) 60%, transparent), inset 0 1px 0 rgba(255,255,255,.35); }
+  .label-before { font-size: 11px; font-weight: 700; color: var(--toast-red); letter-spacing: .05em; }
+</style>
+</head>
+<body>
+<h1>Toast redesign — all toasts share one neutral material</h1>
+<p class="lead">
+  One set of tokens (<code>--toast-bg / --toast-border / --toast-shadow</code>) for notif banners, action toasts and the call pill.
+  Module colour lives only in the icon tile and the badge. No rail, no coloured border, no coloured glow, no tint.
+  Timer is a 2px grey line visible only on hover. Cards marked <b>hover</b> are shown in their hovered state (close button, “Open →” in place of the time, timer).
+</p>
+
+<div class="row" id="rows"></div>
+
+<template id="pane">
+  <div class="pane">
+    <h2 class="pane-title"></h2>
+
+    <h3>Before (current notif banner)</h3>
+    <div class="stack">
+      <div class="old m-tickets">
+        <span class="rail"></span>
+        <div class="nb-ic"><i data-lucide="life-buoy"></i></div>
+        <div class="nb-main">
+          <div class="nb-head"><span class="nb-mod">Tickets</span><span class="nb-time">Just now</span></div>
+          <div class="nb-title">Ticket status: In progress</div>
+          <div class="nb-desc">Email tidak bisa diakses</div>
+        </div>
+        <span class="tm"></span>
+      </div>
+    </div>
+
+    <h3>After — notification banners</h3>
+    <div class="stack">
+      <div class="t-card t-material nb m-tickets">
+        <div class="nb-ic"><i data-lucide="life-buoy"></i></div>
+        <div class="nb-main">
+          <div class="nb-head"><span class="nb-mod">Tickets</span><span class="nb-end"><span class="nb-time">Just now</span><span class="nb-open">Open <i data-lucide="arrow-right"></i></span></span></div>
+          <div class="nb-title">Ticket status: In progress</div>
+          <div class="nb-desc">Email tidak bisa diakses</div>
+        </div>
+        <button class="t-close"><i data-lucide="x"></i></button>
+      </div>
+
+      <div class="t-card t-material nb m-mail hov">
+        <div class="nb-ic"><i data-lucide="mail"></i></div>
+        <div class="nb-main">
+          <div class="nb-head"><span class="nb-mod">Mail</span><span class="nb-end"><span class="nb-time">2m ago</span><span class="nb-open">Open <i data-lucide="arrow-right"></i></span></span></div>
+          <div class="nb-title">Rina Kusuma — Laporan bulanan September</div>
+          <div class="nb-desc">Pak, berikut terlampir laporan bulanan untuk dicek sebelum rapat besok pagi…</div>
+        </div>
+        <button class="t-close"><i data-lucide="x"></i></button>
+        <span class="t-timer"></span>
+      </div>
+
+      <div class="t-card t-material nb m-news nb-high">
+        <div class="nb-ic"><i data-lucide="newspaper"></i></div>
+        <div class="nb-main">
+          <div class="nb-head"><span class="nb-mod">News</span><span class="nb-end"><span class="nb-time">Just now</span><span class="nb-open">Open <i data-lucide="arrow-right"></i></span></span></div>
+          <div class="nb-title">Pemadaman listrik terjadwal Sabtu 08.00–12.00</div>
+          <div class="nb-desc">Seluruh area kantor Sepanjang. Simpan pekerjaan sebelum Jumat sore.</div>
+        </div>
+        <button class="t-close"><i data-lucide="x"></i></button>
+      </div>
+    </div>
+
+    <h3>After — action toasts</h3>
+    <div class="stack">
+      <div class="t-card t-material toast success">
+        <span class="toast-icon"><i data-lucide="check"></i></span>
+        <span class="toast-body"><span class="toast-title">Changes saved</span></span>
+        <button class="t-close"><i data-lucide="x"></i></button>
+      </div>
+      <div class="t-card t-material toast success hov">
+        <span class="toast-icon"><i data-lucide="trash-2"></i></span>
+        <span class="toast-body"><span class="toast-title">Conversation deleted</span></span>
+        <button class="toast-action">Undo</button>
+        <button class="t-close"><i data-lucide="x"></i></button>
+        <span class="t-timer"></span>
+      </div>
+      <div class="t-card t-material toast error">
+        <span class="toast-icon"><i data-lucide="x"></i></span>
+        <span class="toast-body"><span class="toast-title">Couldn't upload file</span><span class="toast-msg">The file is larger than 50 MB.</span></span>
+        <button class="t-close"><i data-lucide="x"></i></button>
+      </div>
+      <div class="t-card t-material toast warning">
+        <span class="toast-icon"><i data-lucide="alert-triangle"></i></span>
+        <span class="toast-body"><span class="toast-title">You're offline</span><span class="toast-msg">Messages will send when you reconnect.</span></span>
+        <button class="t-close"><i data-lucide="x"></i></button>
+      </div>
+    </div>
+
+    <h3>After — call toast (pill, bottom-centre in app)</h3>
+    <div class="callx-toast t-material">
+      <i data-lucide="mic-off"></i> Microphone not found
+      <button>Test devices</button>
+    </div>
+  </div>
+</template>
+
+<script>
+  const rows = document.getElementById('rows');
+  const tpl = document.getElementById('pane');
+  for (const [cls, title] of [['light', 'Light'], ['dark', 'Dark']]) {
+    const node = tpl.content.firstElementChild.cloneNode(true);
+    node.classList.add(cls);
+    node.querySelector('.pane-title').textContent = title;
+    rows.appendChild(node);
+  }
+  lucide.createIcons();
+</script>
+</body>
+</html>

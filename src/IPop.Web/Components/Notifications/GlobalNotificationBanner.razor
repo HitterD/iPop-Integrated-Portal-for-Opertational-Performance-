@@ -17,19 +17,20 @@
              @onmouseenter="() => Notifs.PauseBanner(b.Id)"
              @onmouseleave="() => Notifs.ResumeBanner(b.Id)"
              @onclick="() => HandleClick(b)">
-            <span class="nb-rail"></span>
             <div class="nb-ic"><i data-lucide="@mod.Icon"></i></div>
             <div class="nb-main">
                 <div class="nb-head">
                     <span class="nb-mod">@mod.Label</span>
-                    <span class="nb-time">@timeLabel</span>
+                    <span class="nb-end">
+                        <span class="nb-time">@timeLabel</span>
+                        <span class="nb-open" aria-hidden="true">Open <i data-lucide="arrow-right"></i></span>
+                    </span>
                 </div>
                 <div class="nb-title">@item.Title</div>
                 @if (Notifs.CurrentShowPreview && !string.IsNullOrWhiteSpace(item.Body))
                 {
                     <div class="nb-desc">@item.Body</div>
                 }
-                <span class="nb-open">Open in @mod.Label <i data-lucide="arrow-right"></i></span>
             </div>
             <button type="button" class="apple-banner-close" title="Close" aria-label="Close notification" @onclick="() => Notifs.DismissBanner(b.Id)" @onclick:stopPropagation>
                 <i data-lucide="x"></i>

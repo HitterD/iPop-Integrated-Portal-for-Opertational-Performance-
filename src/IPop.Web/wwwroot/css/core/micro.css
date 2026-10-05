@@ -124,11 +124,11 @@
 .theme-btn.mi-theme.mi-spin > svg.lucide { animation: mi-theme-swap .45s var(--ease-spring); }
 @keyframes mi-theme-swap { 0% { transform: rotate(-90deg) scale(.4); opacity: 0; } 100% { transform: none; opacity: 1; } }
 
-/* ── 27/28. Undo toast: a line drains for the undo window ── */
-.toast.has-undo { overflow: hidden; }
-.toast.has-undo::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--toast-green, var(--accent));
+/* ── 27/28. Undo toast: a hairline drains for the undo window, shown only while hovered/focused ── */
+.toast.has-undo::after { content: ''; position: absolute; left: 14px; right: 14px; bottom: 5px; height: 2px; border-radius: 2px;
+  background: var(--toast-timer); opacity: 0; transition: opacity .18s;
   transform-origin: left; animation: mi-drain var(--mi-undo-ms, 5000ms) linear forwards; }
-.toast.has-undo.paused::after { animation-play-state: paused; }
+.toast.has-undo.paused::after { animation-play-state: paused; opacity: 1; }
 
 /* ── 29. Presence: a single ripple when someone comes online (micro.js adds .mi-online) ── */
 .mi-online { position: relative; }
