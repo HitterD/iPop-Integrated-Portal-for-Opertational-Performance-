@@ -10,7 +10,7 @@ namespace IPop.Api.Endpoints;
 /// Kalender terpadu: satu feed dari semua modul (event pribadi, rapat, event ruang chat,
 /// tugas & milestone & hari libur proyek, email terjadwal, berita/memo) plus CRUD event.
 /// Setiap sumber dibatasi hak akses pemanggil — tidak ada data milik orang lain yang bocor.
-public static class CalendarEndpoints
+public static partial class CalendarEndpoints
 {
     public static IEndpointRouteBuilder MapCalendar(this IEndpointRouteBuilder app)
     {
@@ -45,7 +45,7 @@ public static class CalendarEndpoints
             // ownerNik = a delegate creating on someone else's calendar (they become the owner/organizer).
             var (ownerId, actedBy, denied) = await CalendarDelegateEndpoints.ResolveOwnerAsync(db, userId.Value, req.OwnerNik, DelegateLevel.Edit, ct);
             if (denied is not null) return denied;
-            var (result, ev, invited) = await CreateEventAsync(db, ownerId, req, ct, actedBy);
+            var (result, ev, invited) = await CreateSeriesAsync(db, ownerId, req, ct, actedBy);
             if (result != SaveResult.Ok) return Error(result);
             var log = MeetingEndpoints.NotifyLog(http);
             await NotifyChangedAsync(db, realtime, ev!.MeetingId, [ownerId, userId.Value], ct);
@@ -54,11 +54,20 @@ public static class CalendarEndpoints
             return Results.Ok(await LoadDetailAsync(db, ev!.Id, userId.Value, ct));
         });
 
-        g.MapPut("/events/{id:guid}", async (Guid id, SaveEventRequest req, HttpContext http, IPopDbContext db,
+        // PUT /api/calendar/events/{id}?scope=this|following|all — "following"/"all" apply to a repeating series.
+        g.MapPut("/events/{id:guid}", async (Guid id, string? scope, SaveEventRequest req, HttpContext http, IPopDbContext db,
             INotificationGatewayService? notifs, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
+            if (scope is "following" or "all")
+            {
+                var (sOwner, sActed) = await CalendarDelegateEndpoints.ActorForEventAsync(db, id, userId.Value, ct);
+                var (sr, firstId, touched) = await UpdateSeriesAsync(db, id, sOwner, req, scope, ct, sActed);
+                if (sr != SaveResult.Ok) return Error(sr);
+                await MeetingEndpoints.NotifyCalendarChangedAsync(db, realtime, touched.Append(sOwner).Append(userId.Value), ct);
+                return Results.Ok(await LoadDetailAsync(db, firstId, userId.Value, ct));
+            }
             // Attendees an edit removes must also drop the event from their calendar.
             var beforeMeeting = await db.CalendarEvents.AsNoTracking().Where(e => e.Id == id).Select(e => e.MeetingId).FirstOrDefaultAsync(ct);
             var before = beforeMeeting is { } bm
@@ -74,11 +83,22 @@ public static class CalendarEndpoints
             return Results.Ok(await LoadDetailAsync(db, id, userId.Value, ct));
         });
 
-        g.MapDelete("/events/{id:guid}", async (Guid id, HttpContext http, IPopDbContext db,
+        g.MapDelete("/events/{id:guid}", async (Guid id, string? scope, HttpContext http, IPopDbContext db,
             INotificationGatewayService? notifs, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
+            if (scope is "following" or "all")
+            {
+                var (sOwner, _) = await CalendarDelegateEndpoints.ActorForEventAsync(db, id, userId.Value, ct);
+                var (sr, sTitle, sPeople, count) = await DeleteSeriesAsync(db, id, sOwner, scope, ct);
+                if (sr != SaveResult.Ok) return Error(sr);
+                await MeetingEndpoints.NotifyCalendarChangedAsync(db, realtime, sPeople.Append(sOwner).Append(userId.Value), ct);
+                await MeetingEndpoints.PublishBestEffortAsync(notifs, MeetingEndpoints.NotifyLog(http), "meeting.cancelled",
+                    $"Meetings cancelled: {sTitle}", $"{count} upcoming \"{sTitle}\" meetings have been cancelled.",
+                    sPeople.Where(a => a != userId.Value).ToList(), "high", "/calendar");
+                return Results.NoContent();
+            }
             var meetingId = await db.CalendarEvents.AsNoTracking().Where(e => e.Id == id).Select(e => e.MeetingId).FirstOrDefaultAsync(ct);
             var (ownerId, actedBy) = await CalendarDelegateEndpoints.ActorForEventAsync(db, id, userId.Value, ct);
             var (result, title, attendees) = await DeleteEventAsync(db, id, ownerId, ct);
@@ -134,7 +154,7 @@ public static class CalendarEndpoints
         // 2) Rapat yang saya ikuti/selenggarakan (termasuk event ruang chat), kecuali dibatalkan.
         var meetings = await db.Meetings.AsNoTracking()
             .Where(m => m.Status != MeetingStatus.Cancelled && m.StartAt < to && m.EndAt > from
-                && (m.OrganizerId == userId || m.Attendees.Any(a => a.UserId == userId)))
+                && (m.OrganizerId == userId || m.Attendees.Any(a => a.UserId == userId && a.RsvpStatus != "decline")))
             .Select(m => new
             {
                 m.Id, m.Title, m.StartAt, m.EndAt, m.Location, m.Link, m.RoomId, m.OrganizerId, m.Visibility,
@@ -151,7 +171,7 @@ public static class CalendarEndpoints
             if (isRoom && !access.Chat) continue;
             items.Add(new CalendarFeedItem(
                 $"meeting:{m.Id}", isRoom ? "chat" : "meetings", "meeting", m.Title, m.StartAt, m.EndAt, m.AllDay,
-                isRoom ? $"/chat/{m.RoomId}" : $"/calls?tab=scheduled&meeting={m.Id}",
+                m.EventId is null ? (isRoom ? $"/chat/{m.RoomId}" : $"/calls?tab=scheduled&meeting={m.Id}") : null,
                 isRoom ? m.RoomName : $"Organizer: {m.OrganizerName}",
                 m.EventId, m.Id, m.Rsvp ?? (m.OrganizerId == userId ? "accept" : null), m.OrganizerId == userId, m.Location, m.Link, m.Visibility));
         }
@@ -169,9 +189,12 @@ public static class CalendarEndpoints
                 .Select(x => new { x.Id, x.Title, x.DueDate, x.ProjectId, ProjectName = x.Project.Name, x.Priority, x.Status })
                 .ToListAsync(ct);
             var today = DateTime.UtcNow.Date;
+            // A due date with a time of day shows at that time (30 min); a plain date stays all-day.
             items.AddRange(tasks.Select(x => new CalendarFeedItem(
                 $"task:{x.Id}", "projects", x.DueDate!.Value.Date < today ? "task-overdue" : "task", x.Title,
-                x.DueDate!.Value.Date, x.DueDate!.Value.Date.AddDays(1), true,
+                x.DueDate!.Value.TimeOfDay == TimeSpan.Zero ? x.DueDate!.Value.Date : x.DueDate!.Value.AddMinutes(-30),
+                x.DueDate!.Value.TimeOfDay == TimeSpan.Zero ? x.DueDate!.Value.Date.AddDays(1) : x.DueDate!.Value,
+                x.DueDate!.Value.TimeOfDay == TimeSpan.Zero,
                 $"/projects/{x.ProjectId}?task={x.Id}", $"{x.ProjectName} · due", null, null, null, false, null, null)));
 
             var milestones = await db.ProjectMilestones.AsNoTracking()
@@ -236,6 +259,24 @@ public static class CalendarEndpoints
                 $"ack:{p.Id}", "news", "ack-due", $"Confirm read: {p.Title}", p.AckDueAt!.Value, p.AckDueAt!.Value.AddMinutes(15), false,
                 $"/news/{p.Id}", "Acknowledgement due", null, null, null, false, null, null)));
         }
+
+        // 6) National and company holidays — everyone sees them.
+        var holidays = await db.CompanyHolidays.AsNoTracking()
+            .Where(h => h.Date >= dayFrom && h.Date < dayTo).ToListAsync(ct);
+        items.AddRange(holidays.Select(h => new CalendarFeedItem(
+            $"holiday:{h.Id}", "holidays", h.Kind == "company" ? "company-holiday" : "holiday", h.Title,
+            h.Date.Date, h.Date.Date.AddDays(1), true, null, h.Kind == "company" ? "Company holiday" : "National holiday",
+            null, null, null, false, null, null)));
+
+        // 7) My open iDesk tickets with a target date (SLA) or a scheduled visit.
+        var tickets = await db.Tickets.AsNoTracking()
+            .Where(x => x.UserId == userId && x.RemovedAt == null && x.Status != "CLOSED" && x.Status != "CANCELLED" && x.Status != "RESOLVED"
+                && x.SlaTarget != null && x.SlaTarget >= from && x.SlaTarget < to)
+            .Select(x => new { x.Id, x.Title, x.TicketNumber, x.SlaTarget })
+            .ToListAsync(ct);
+        items.AddRange(tickets.Select(x => new CalendarFeedItem(
+            $"ticket:{x.Id}", "tickets", "ticket-due", x.Title, x.SlaTarget!.Value.AddMinutes(-30), x.SlaTarget!.Value, false,
+            $"/tickets/{x.Id}", x.TicketNumber is null ? "Ticket due" : $"Ticket {x.TicketNumber} due", null, null, null, false, null, null)));
 
         return items.OrderBy(i => i.StartAt).ThenBy(i => i.Title).ToList();
     }
@@ -491,7 +532,7 @@ public static class CalendarEndpoints
         var who = sender is null ? organizer : $"{organizer} (sent by {sender} on their behalf)";
         await MeetingEndpoints.PublishBestEffortAsync(notifs, log, "meeting.invited", $"Meeting invite: {ev.Title}",
             $"{who} invited you to \"{ev.Title}\" on {ev.StartAt.ToLocalTime():dd MMM, HH:mm}.",
-            invited.Where(i => i != sentBy).ToList(), "normal", "/calendar");
+            invited.Where(i => i != sentBy).ToList(), "normal", $"/calendar?event={ev.Id}&date={ev.StartAt.ToLocalTime():yyyy-MM-dd}");
         await CalendarDelegateEndpoints.ForwardInvitesAsync(db, notifs, log, invited, ev.Title, ev.StartAt, organizer, sentBy, ct);
     }
 
@@ -537,7 +578,8 @@ public static class CalendarEndpoints
         return new CalendarEventDetailDto(ev.Id, ev.Title, ev.StartAt, ev.EndAt, ev.AllDay, ev.Location, ev.Link, ev.Notes,
             ev.ReminderMinutes, ev.RoomId, roomName, ev.MeetingId, status, NameOf(ev.OwnerId) ?? "", canEdit, people, visibility,
             names.GetValueOrDefault(ev.OwnerId)?.Nik, NameOf(ev.CreatedById), NameOf(sentById), NameOf(ev.UpdatedById), delegateLevel,
-            delegateFor is { } df ? names.GetValueOrDefault(df)?.Nik : null, NameOf(delegateFor));
+            delegateFor is { } df ? names.GetValueOrDefault(df)?.Nik : null, NameOf(delegateFor),
+            ev.SeriesId, ev.Recurrence, CalendarRecurrence.Parse(ev.Recurrence)?.Describe(ev.StartAt.ToLocalTime()));
     }
 
     private static DateTime AsUtc(DateTime dt) => dt.Kind switch
@@ -562,7 +604,7 @@ public static class CalendarEndpoints
     public record SaveEventRequest(string? Title, DateTime StartAt, DateTime EndAt, bool AllDay = false, string? Location = null,
         string? Link = null, string? Notes = null, int? ReminderMinutes = null, IReadOnlyList<Guid>? AttendeeIds = null,
         Guid? RoomId = null, string? Type = null, IReadOnlyList<string>? AttendeeNiks = null, string? Visibility = null,
-        string? OwnerNik = null)
+        string? OwnerNik = null, string? Recurrence = null)
     {
         public bool HasAttendees => AttendeeIds is { Count: > 0 } || AttendeeNiks is { Count: > 0 };
     }
@@ -572,5 +614,5 @@ public static class CalendarEndpoints
         string? Link, string? Notes, int? ReminderMinutes, Guid? RoomId, string? RoomName, Guid? MeetingId, string? MeetingStatus,
         string OwnerName, bool CanEdit, IReadOnlyList<CalendarPersonDto> Attendees, string Visibility = CalendarVisibility.Busy,
         string? OwnerNik = null, string? CreatedBy = null, string? SentBy = null, string? UpdatedBy = null, string? DelegateLevel = null,
-        string? DelegateForNik = null, string? DelegateForName = null);
+        string? DelegateForNik = null, string? DelegateForName = null, Guid? SeriesId = null, string? Recurrence = null, string? RecurrenceText = null);
 }

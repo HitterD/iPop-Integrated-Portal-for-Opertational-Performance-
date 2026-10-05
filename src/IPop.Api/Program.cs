@@ -395,6 +395,7 @@ app.MapCalendar();
 app.MapCalendarSharing();
 app.MapCalendarDelegates();
 app.MapCalendarGroupShares();
+app.MapCalendarHolidays();
 app.MapNews();
 app.MapNewsComposer();
 app.MapNewsComposerMedia();

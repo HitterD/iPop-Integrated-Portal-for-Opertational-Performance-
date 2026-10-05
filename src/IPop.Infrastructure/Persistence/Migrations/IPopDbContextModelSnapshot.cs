@@ -244,6 +244,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Recurrence")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
                     b.Property<int?>("ReminderMinutes")
                         .HasColumnType("integer");
 
@@ -251,6 +255,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("RoomId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("SeriesId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("StartAt")
@@ -283,6 +290,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("OwnerId");
 
                     b.HasIndex("RoomId");
+
+                    b.HasIndex("SeriesId");
 
                     b.HasIndex("StartAt");
 
@@ -1006,6 +1015,38 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("IsOfficial");
 
                     b.ToTable("ChatStickers");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.CompanyHoliday", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Date");
+
+                    b.ToTable("CompanyHolidays");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.Department", b =>

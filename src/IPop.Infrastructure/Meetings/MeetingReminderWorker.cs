@@ -110,7 +110,11 @@ public sealed class MeetingReminderWorker(IServiceScopeFactory scopeFactory, ILo
                 message: $"Meeting \"{row.Meeting.Title}\" starts at {row.Meeting.StartAt.ToLocalTime():dd MMM yyyy HH:mm}.",
                 target: new NotificationTarget(UserId: row.UserId),
                 priority: "high",
-                targetUrl: $"/calls?tab=scheduled&meeting={row.Meeting.Id}",
+                // Open the meeting itself on the person's calendar (their own row when they have one).
+                targetUrl: await db.CalendarEvents.AsNoTracking().Where(e => e.MeetingId == row.Meeting.Id)
+                        .OrderBy(e => e.OwnerId == row.UserId ? 0 : 1).Select(e => (Guid?)e.Id).FirstOrDefaultAsync(ct) is { } evId
+                    ? $"/calendar?event={evId}&date={row.Meeting.StartAt.ToLocalTime():yyyy-MM-dd}"
+                    : $"/calls?tab=scheduled&meeting={row.Meeting.Id}",
                 ct: ct);
 
             if (result.Success)

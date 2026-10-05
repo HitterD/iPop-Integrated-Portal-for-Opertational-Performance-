@@ -116,8 +116,9 @@ public static class MeetingEndpoints
             if (req.RoomId is { } roomId)
             {
                 // Event ruang: peserta = anggota ruang (otomatis).
+                // Current members only: people who left the group are not invited.
                 var memberIds = await db.ChatRoomMembers.AsNoTracking()
-                    .Where(m => m.RoomId == roomId).Select(m => m.UserId).ToListAsync(ct);
+                    .Where(m => m.RoomId == roomId && m.LeftAt == null).Select(m => m.UserId).ToListAsync(ct);
                 if (!memberIds.Contains(userId.Value))
                     return Results.Json(new { code = "forbidden", message = "Not a room member." }, statusCode: 403);
 

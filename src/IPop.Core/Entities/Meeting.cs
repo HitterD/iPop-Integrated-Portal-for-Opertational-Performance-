@@ -85,10 +85,26 @@ public class CalendarEvent
     public Guid? CreatedById { get; set; }
     /// The delegate who last changed it on the owner's behalf; null = the owner.
     public Guid? UpdatedById { get; set; }
+    /// Repeating events: every occurrence is its own row (own meeting, RSVP and reminders) sharing one
+    /// SeriesId; <see cref="Recurrence"/> keeps the rule (e.g. "W:1,4;U:2026-12-31") for the form.
+    public Guid? SeriesId { get; set; }
+    public string? Recurrence { get; set; }
     public DateTime CreatedAt { get; set; }
 
     public User Owner { get; set; } = default!;
     public Meeting? Meeting { get; set; }
+}
+
+/// A national or company holiday, set by admins: shown on everyone's calendar and avoided by Find a time.
+public class CompanyHoliday
+{
+    public Guid Id { get; set; }
+    public DateTime Date { get; set; }
+    public required string Title { get; set; }
+    /// "national" | "company" (collective leave, company anniversary, …).
+    public string Kind { get; set; } = "national";
+    public Guid? CreatedById { get; set; }
+    public DateTime CreatedAt { get; set; }
 }
 
 /// Pengingat terjadwal untuk rapat/event — diproses worker, dikirim via notifikasi.

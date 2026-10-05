@@ -358,6 +358,13 @@ public static class CalendarSharingEndpoints
                 .Select(b => new FreeBusyBlock(b.StartAt, b.EndAt, b.Tentative)).OrderBy(b => b.StartAt).ToList()))
             .ToList();
         var busy = blocks.Where(b => !b.AllDay).Select(b => (b.StartAt, b.EndAt)).ToList();
+        // Holidays block the whole local day for everyone.
+        var holidays = await db.CompanyHolidays.AsNoTracking().Where(h => h.Date >= from.Date.AddDays(-1) && h.Date < to.Date.AddDays(1)).Select(h => h.Date).ToListAsync(ct);
+        foreach (var d in holidays)
+        {
+            var dayStart = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(d.Date, DateTimeKind.Unspecified), tz);
+            busy.Add((dayStart, dayStart.AddDays(1)));
+        }
         return new FreeBusyDto(lanes, SuggestSlots(busy, from, to, minutes, tz, nowUtc));
     }
 
