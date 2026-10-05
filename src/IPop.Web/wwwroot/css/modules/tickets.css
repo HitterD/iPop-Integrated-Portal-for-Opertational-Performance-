@@ -4,6 +4,9 @@
 
 :root { --tk-mod: #0a84ff; --tk-violet: #7c4dd6; --tk-violet-soft: #f2ecfd; --tk-hot: #e8743b; }
 [data-theme="dark"] { --tk-mod: #409cff; --tk-violet: #b69cff; --tk-violet-soft: rgba(182, 156, 255, .14); }
+/* shell/v6.css sets a light --info / --info-soft on :root and never darkens them, so the blue pill,
+   callout and file chips glowed in dark mode. Scoped to Tickets so other modules are untouched. */
+[data-theme="dark"] :is(.tk-page, .tk-formwrap, .tkw, .tk-sheet) { --info: #409cff; --info-soft: rgba(64, 156, 255, .16); }
 
 @keyframes tk-spin-once { to { transform: rotate(360deg); } }
 @keyframes tk-pop-s { 0% { transform: scale(.85); } 60% { transform: scale(1.08); } 100% { transform: scale(1); } }
@@ -17,6 +20,10 @@
 
 /* ── shared bits ── */
 .tk-page, .tk-formwrap, .tkw { font-size: 13.5px; color: var(--ink); -webkit-font-smoothing: antialiased; }
+/* Radzen's default.css colours every h1–h6 with --rz-text-title-color, which stays dark in dark mode;
+   ticket headings follow the app ink instead. */
+:is(.tk-page, .tk-formwrap, .tkw, .tk-sheet) :is(h1, h2, h3, h4, h5, h6) { color: var(--ink); }
+:is(.tk-page, .tk-formwrap, .tkw) .tk-h { color: var(--ink-2); }
 :where(.tk-page, .tk-formwrap) .lucide { width: 16px; height: 16px; stroke-width: 1.9; flex: none; }
 .tk-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 10px;
