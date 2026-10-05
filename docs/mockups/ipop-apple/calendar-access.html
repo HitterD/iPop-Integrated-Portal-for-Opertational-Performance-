@@ -44,6 +44,7 @@
 
   /* calendar shell */
   .cal { width: 1120px; height: 690px; display: grid; grid-template-columns: 252px 1fr; }
+  .cal > .menu { grid-column: 1; grid-row: 1; }
   .side { border-right: 1px solid var(--line); background: var(--surface-2); padding: 14px 12px; overflow: auto; position: relative; }
   .mini { font-size: 11px; color: var(--ink-3); display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; margin: 0 4px 6px; }
   .mini b { color: var(--ink); font-size: 12.5px; grid-column: 1 / -1; text-align: left; margin-bottom: 4px; }
@@ -145,7 +146,7 @@
   .ladder .o:hover, .ladder .o.on { background: var(--surface-3); }
   .ladder .o .ic { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--surface-3); color: var(--ink-2); flex: none; }
   .ladder .o.on .ic { background: var(--accent); color: #fff; }
-  .ladder .o b { display: block; font-size: 13px; }
+  .ladder .o > div > b { display: block; font-size: 13px; }
   .ladder .o small { color: var(--ink-2); font-size: 11.8px; line-height: 1.4; display: block; }
   .ladder .o .ck { margin-left: auto; color: var(--accent); align-self: center; }
   .ladder .div { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; color: var(--ink-3); padding: 8px 10px 3px; text-transform: uppercase; }
@@ -252,9 +253,8 @@
       <div class="src hot"><span class="chk" style="background:var(--p-b)"><i data-lucide="check"></i></span><span class="nm">Rina Kartika<small>Busy times only</small></span><span class="more"><i data-lucide="more-horizontal"></i></span></div>
       <div class="src"><span class="chk off" style="background:var(--p-c)"></span><span class="nm">Budi Santoso<small>Busy times only</small></span><span class="more"><i data-lucide="more-horizontal"></i></span></div>
       <button class="addp"><i data-lucide="plus"></i> Add calendar</button>
-
-</div>
-      <div class="menu" style="left:150px;top:252px">
+    </aside>
+      <div class="menu" style="left:200px;top:352px">
         <div class="mi hi"><i data-lucide="calendar-search"></i> View calendar</div>
         <div class="mi"><i data-lucide="calendar-plus"></i> Invite to meeting</div>
         <div class="mi"><i data-lucide="message-circle"></i> Chat</div>
@@ -263,7 +263,7 @@
         <div class="sw"><i style="background:var(--p-a)"></i><i style="background:var(--p-b);box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--p-b)"></i><i style="background:var(--p-c)"></i><i style="background:var(--p-d)"></i><i style="background:var(--p-me)"></i></div>
         <hr>
         <div class="mi danger"><i data-lucide="eye-off"></i> Stop following</div>
-          </aside>
+      </div>
     <div class="main">
       <div class="tb">
         <button class="btn">Today</button><button class="btn ic"><i data-lucide="chevron-left"></i></button><button class="btn ic"><i data-lucide="chevron-right"></i></button>
@@ -351,7 +351,7 @@
       <div class="grow"><span class="av" style="background:var(--p-a)">AA</span><div class="t"><b>Adrio Andhika</b><small>ICT</small></div><span class="lvl on">See event titles <i data-lucide="chevron-down"></i></span><span class="x"><i data-lucide="x"></i></span></div>
     </div>
     <div class="ladder" style="left:200px;top:80px">
-      <div class="o" style="opacity:.55"><span class="ic"><i data-lucide="clock"></i></span><div><b>See when I'm busy</b><small>A grey <b>Busy</b> block. No titles, places or people. Everyone has this.</small></div></div>
+      <div class="o" style="opacity:.55"><span class="ic"><i data-lucide="clock"></i></span><div><b>See when I'm busy</b><small>A grey "Busy" block. No titles, places or people. Everyone has this.</small></div></div>
       <div class="o on"><span class="ic"><i data-lucide="text"></i></span><div><b>See event titles</b><small>What and where, e.g. "Vendor meeting · Room 2".</small></div><span class="ck"><i data-lucide="check"></i></span></div>
       <div class="o"><span class="ic"><i data-lucide="file-text"></i></span><div><b>See all details</b><small>Also the description, attendees and attachments.</small></div></div>
       <div class="div">Can make changes</div>
