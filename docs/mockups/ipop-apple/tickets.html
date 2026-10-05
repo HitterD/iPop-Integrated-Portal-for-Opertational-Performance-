@@ -3,13 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>iPop — ICT Tickets via iDesk (mockup)</title>
+<title>iPop — ICT Tickets via iDesk (interactive mockup)</title>
 <style>
   :root { --canvas:#e9e7e2; --surface:#fff; --surface-2:#faf9f7; --surface-3:#f4f2ef; --line:#edebe7; --line-2:#e2dfd9;
     --ink:#191816; --ink-2:#5d5a54; --ink-3:#8f8c85; --accent:#2e9d6b; --accent-soft:#e7f4ed; --danger:#c2442e; --danger-soft:#fbeeea;
     --warn:#a8760c; --warn-soft:#fdf6e7; --info:#2563eb; --info-soft:#eef4ff; --violet:#7c4dd6; --violet-soft:#f2ecfd;
     --sh-pop:0 16px 40px -12px rgba(25,24,22,.22); --sh-card:0 1px 2px rgba(25,24,22,.05), 0 4px 14px -6px rgba(25,24,22,.08);
-    --mod:#0a84ff; }
+    --mod:#0a84ff;
+    /* same tokens as src/IPop.Web/wwwroot/css/core/tokens.css */
+    --ease-out:cubic-bezier(0.16,1,0.3,1); --ease-spring:cubic-bezier(0.34,1.56,0.64,1); --ease-smooth:cubic-bezier(0.32,0.72,0,1); }
   [data-theme="dark"] { --canvas:#131211; --surface:#1c1b19; --surface-2:#232220; --surface-3:#201f1d; --line:#2c2a27; --line-2:#36342f;
     --ink:#f2f0ec; --ink-2:#b5b1a9; --ink-3:#85817a; --accent:#4cd787; --accent-soft:#1d3428; --danger:#ff7a63; --danger-soft:#3a1f1a;
     --warn:#e0b44a; --warn-soft:#3a2f17; --info:#7aa7ff; --info-soft:#1a2540; --violet:#b69cff; --violet-soft:#2a2240;
@@ -19,28 +21,85 @@
 <style>
   * { box-sizing: border-box; }
   body { background: var(--canvas); color: var(--ink); font-family: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif; margin: 0; font-size: 13.5px; -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; }
   svg.lucide { width: 16px; height: 16px; stroke-width: 1.9; }
   .mk-nav { position: sticky; top: 0; z-index: 50; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 10px 18px; background: var(--surface); border-bottom: 1px solid var(--line); }
   .mk-nav b { margin-right: 8px; font-size: 14px; }
-  .mk-nav button { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .mk-nav button { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; }
   .mk-nav button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
   .mk-nav .sp { flex: 1; }
   .stage { display: none; padding: 28px; justify-content: center; align-items: flex-start; }
   .stage.on { display: flex; }
   .note { width: 290px; flex: none; margin-left: 24px; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
   .note h3 { font-size: 14px; color: var(--ink); margin: 0 0 6px; }
+  .note ul { padding-left: 18px; }
   .note li { margin-bottom: 6px; }
   .note .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); margin-bottom: 8px; }
+  .play { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 14px; padding: 10px; border-radius: 12px; background: var(--surface); border: 1px dashed var(--line-2); }
+  .play > b { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); }
+  .play .btn { justify-content: flex-start; }
 
-  .win { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh-pop); overflow: hidden; }
-  .btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .win { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh-pop); overflow: hidden; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font-size: 13px; cursor: pointer; white-space: nowrap;
+    transition: transform .12s var(--ease-out), background-color .2s, border-color .2s, box-shadow .2s, filter .2s; }
+  .btn:hover { background: var(--surface-3); }
+  .btn:active { transform: scale(.96); }
+  .btn:disabled { cursor: default; opacity: .75; }
   .btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn.pri:hover { filter: brightness(1.06); }
   .btn.ghost { border-color: transparent; background: none; color: var(--ink-2); }
+  .btn.ghost:hover { background: var(--surface-3); color: var(--ink); }
   .btn.sm { height: 28px; padding: 0 10px; font-size: 12.5px; border-radius: 8px; }
+  .spin { width: 13px; height: 13px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; display: inline-block; animation: spin .7s linear infinite; flex: none; }
+
+  /* ── motion primitives (mirrors css/core/micro.css) ── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes mi-pop { 0% { transform: scale(1); } 30% { transform: scale(.72); } 65% { transform: scale(1.28); } 100% { transform: scale(1); } }
+  @keyframes mi-pop-s { 0% { transform: scale(.85); } 60% { transform: scale(1.08); } 100% { transform: scale(1); } }
+  @keyframes mi-bump { 0% { transform: scale(1); } 35% { transform: scale(1.32); } 100% { transform: scale(1); } }
+  @keyframes mi-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes mi-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes mi-dialog-in { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
+  @keyframes mi-dialog-out { to { opacity: 0; transform: scale(.97); } }
+  @keyframes mi-shake { 20% { transform: translateX(-5px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+  @keyframes mi-saved { from { background-color: var(--accent-soft); } }
+  @keyframes mi-warn-flash { from { box-shadow: 0 0 0 4px color-mix(in srgb, var(--warn) 45%, transparent); } }
+  @keyframes mi-draw { to { stroke-dashoffset: 0; } }
+  @keyframes mi-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+  @keyframes spin-once { to { transform: rotate(360deg); } }
+  @keyframes from-r { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+  @keyframes from-l { from { opacity: 0; transform: translateX(-18px); } to { opacity: 1; transform: none; } }
+  @keyframes t-in { from { opacity: 0; transform: translateX(28px) scale(.96); } to { opacity: 1; transform: none; } }
+  @keyframes t-out { to { opacity: 0; transform: translateX(28px); } }
+  @keyframes hover-ic { from { transform: translateY(0); } to { transform: translateY(-6px); } }
+  .mi-pop, .mi-pop > svg { animation: mi-pop .45s var(--ease-spring); }
+  .mi-pop-s { animation: mi-pop-s .38s var(--ease-spring); }
+  .mi-bump { animation: mi-bump .42s var(--ease-spring); }
+  .mi-shake { animation: mi-shake .4s; }
+  .mi-rise { animation: mi-rise .26s var(--ease-out) backwards; }
+  .mi-fade { animation: mi-fade .22s var(--ease-out); }
+  .flash { animation: mi-warn-flash 1.2s var(--ease-smooth); }
+  .from-r { animation: from-r .22s var(--ease-out); } .from-l { animation: from-l .22s var(--ease-out); }
+  .spin1 { animation: spin-once .8s var(--ease-smooth); }
+  .leaving { height: 0 !important; opacity: 0; margin-top: 0 !important; margin-bottom: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; transform: translateX(16px);
+    transition: all .25s var(--ease-out); overflow: hidden; }
+  .collapse { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .3s var(--ease-smooth), opacity .2s var(--ease-out); }
+  .collapse > div { overflow: hidden; min-height: 0; }
+  .collapse.open { grid-template-rows: 1fr; opacity: 1; }
+  /* sliding indicator for segmented controls and chip groups (micro.js SLIDERS) */
+  [data-slide] { position: relative; isolation: isolate; }
+  [data-slide] > .mi-ind { position: absolute; z-index: -1; pointer-events: none; border-radius: 8px; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.08);
+    transition: left .32s var(--ease-smooth), top .32s var(--ease-smooth), width .32s var(--ease-smooth), height .32s var(--ease-smooth), opacity .2s; }
+  [data-theme="dark"] [data-slide] > .mi-ind { background: rgba(255,255,255,.12); box-shadow: none; }
+  [data-slide].live > .on { background: transparent !important; box-shadow: none !important; }
+  [data-slide="pill"] > .mi-ind, [data-theme="dark"] [data-slide="pill"] > .mi-ind { border-radius: 999px; background: var(--ink); }
+  [data-slide="pill"].live > .on { border-color: transparent !important; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; } }
+
   .seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-3); border-radius: 10px; }
-  .seg button { border: 0; background: none; padding: 5px 12px; border-radius: 8px; font: inherit; font-size: 12.5px; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
+  .seg button { border: 0; background: none; padding: 5px 12px; border-radius: 8px; font-size: 12.5px; color: var(--ink-2); cursor: pointer; white-space: nowrap; transition: color .2s; }
   .seg button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
-  .seg button small { color: var(--ink-3); font-weight: 500; margin-left: 3px; }
+  .seg button small { color: var(--ink-3); font-weight: 500; margin-left: 3px; font-variant-numeric: tabular-nums; }
 
   /* app shell */
   .app { width: 1180px; height: 740px; display: grid; grid-template-columns: 210px 1fr; }
@@ -48,37 +107,51 @@
   .rail .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; padding: 2px 8px 12px; }
   .rail .brand i { width: 24px; height: 24px; border-radius: 7px; background: linear-gradient(135deg,#34c77b,#1f8a5b); display: inline-block; }
   .rail h6 { margin: 12px 8px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
-  .ni { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 8px; border-radius: 8px; color: var(--ink-2); font-size: 13px; }
+  .ni { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 8px; border-radius: 8px; color: var(--ink-2); font-size: 13px; transition: background-color .15s; }
+  .ni:hover { background: var(--surface-3); }
   .ni.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: var(--sh-card); }
   .ni.on svg { color: var(--mod); }
   .ni .bd { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--warn); color: #fff; font-size: 10.5px; font-weight: 700; display: grid; place-items: center; }
+  .ni .bd[hidden] { display: none; }
 
-  /* list + detail (Mail-style split) */
+  /* list + detail */
   .split { display: grid; grid-template-columns: 380px 1fr; min-width: 0; height: 100%; }
-  .lst { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; }
+  .lst { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .lst-h { padding: 16px 16px 10px; }
   .lst-h .row { display: flex; align-items: center; gap: 8px; }
   .lst-h h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.01em; flex: 1; }
-  .lst-h .sub { color: var(--ink-3); font-size: 12px; margin: 2px 0 12px; display: flex; align-items: center; gap: 6px; }
-  .lst-h .sub svg { width: 12px; height: 12px; }
-  .search { display: flex; align-items: center; gap: 7px; height: 32px; padding: 0 10px; background: var(--surface-3); border-radius: 9px; color: var(--ink-3); margin-top: 10px; font-size: 13px; }
-  .search svg { width: 14px; height: 14px; }
-  .lst-b { overflow: auto; flex: 1; padding: 4px 8px 12px; }
+  .sync { border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink-3); font-size: 12px; margin: 2px 0 12px; display: flex; align-items: center; gap: 6px; transition: color .15s; }
+  .sync:hover { color: var(--ink-2); }
+  .sync svg { width: 12px; height: 12px; }
+  .search { display: flex; align-items: center; gap: 7px; height: 32px; padding: 0 10px; background: var(--surface-3); border-radius: 9px; color: var(--ink-3); margin-top: 10px; transition: box-shadow .2s; }
+  .search:focus-within { box-shadow: 0 0 0 3px color-mix(in srgb, var(--mod) 25%, transparent); }
+  .search svg { width: 14px; height: 14px; flex: none; }
+  .search input { border: 0; background: none; outline: none; flex: 1; font: inherit; font-size: 13px; color: var(--ink); min-width: 0; }
+  .lst-b { position: relative; overflow: auto; flex: 1; padding: 4px 8px 12px; }
+  .sel-ind { position: absolute; left: 8px; right: 8px; top: 0; height: 0; border-radius: 11px; background: var(--mod); opacity: 0; z-index: 0; pointer-events: none;
+    transition: top .38s var(--ease-smooth), height .38s var(--ease-smooth), opacity .2s; }
   .sec { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; margin: 12px 8px 4px; }
-  .tk { position: relative; display: grid; grid-template-columns: 10px 1fr auto; gap: 4px 10px; padding: 10px 10px 10px 8px; border-radius: 11px; cursor: default; }
-  .tk + .tk::before { content: ""; position: absolute; left: 26px; right: 10px; top: 0; border-top: 1px solid var(--line); }
-  .tk.sel { background: var(--mod); color: #fff; }
-  .tk.sel::before, .tk.sel + .tk::before { display: none; }
+  .tk { position: relative; z-index: 1; display: grid; grid-template-columns: 10px 1fr auto; gap: 4px 10px; padding: 10px 10px 10px 8px; border-radius: 11px; cursor: pointer; transition: background-color .15s, color .2s; }
+  .tk:not(.sel):hover { background: var(--surface-3); }
+  .tk + .tk::before { content: ""; position: absolute; left: 26px; right: 10px; top: 0; border-top: 1px solid var(--line); transition: opacity .2s; }
+  .tk.sel::before, .tk.sel + .tk::before, .tk:hover::before, .tk:hover + .tk::before { opacity: 0; }
+  .tk.sel { color: #fff; }
   .tk.sel .m, .tk.sel .t2, .tk.sel time { color: rgba(255,255,255,.82) !important; }
-  .tk.sel .pill { background: rgba(255,255,255,.22) !important; color: #fff !important; }
-  .tk .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; }
+  .tk.sel .pill, .tk.sel .src-tag { background: rgba(255,255,255,.22) !important; color: #fff !important; border-color: transparent; }
+  .tk.sel .dot { background: #fff !important; }
+  .tk.fresh { animation: mi-rise .35s var(--ease-spring); }
+  .tk .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; transition: background-color .3s; }
   .tk .t1 { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tk time { font-size: 12px; color: var(--ink-3); }
   .tk .t2 { grid-column: 2 / 4; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); }
   .tk .m { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 11.5px; color: var(--ink-3); }
   .tk .t2 .sp { flex: 1; }
+  mark { background: color-mix(in srgb, var(--warn) 32%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+  .tk.sel mark { background: rgba(255,255,255,.3); }
+  .lst-empty { text-align: center; color: var(--ink-3); padding: 40px 20px; font-size: 13px; }
   .pill { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
   .pill svg { width: 12px; height: 12px; }
+  .pill .spin { width: 10px; height: 10px; border-width: 1.6px; }
   .s-open { background: var(--surface-3); color: var(--ink-2); }
   .s-prog { background: var(--info-soft); color: var(--info); }
   .s-vend { background: var(--violet-soft); color: var(--violet); }
@@ -92,23 +165,26 @@
   .det { overflow: auto; min-width: 0; }
   .det-h { position: sticky; top: 0; background: color-mix(in srgb, var(--surface) 85%, transparent); backdrop-filter: blur(20px); display: flex; align-items: center; gap: 8px; padding: 12px 22px; border-bottom: 1px solid var(--line); z-index: 2; }
   .det-h .sp { flex: 1; }
+  .det-h .mi-copied { color: var(--accent); }
   .det-b { padding: 22px 28px 40px; max-width: 720px; }
-  .crumb { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 8px; }
+  .crumb { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; color: var(--ink-3); }
   .det-b h2 { font-size: 24px; font-weight: 700; letter-spacing: -.015em; margin: 6px 0 14px; line-height: 1.2; }
   .callout { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 14px; background: var(--warn-soft); color: var(--ink); margin-bottom: 18px; }
-  .callout > svg { color: var(--warn); width: 20px; height: 20px; flex: none; margin-top: 1px; }
+  .callout > svg, .callout > .spin { color: var(--warn); width: 20px; height: 20px; flex: none; margin-top: 1px; }
   .callout b { display: block; margin-bottom: 2px; }
   .callout p { margin: 0 0 10px; color: var(--ink-2); font-size: 13px; }
-  .callout.info { background: var(--info-soft); } .callout.info > svg { color: var(--info); }
+  .callout .acts { display: flex; gap: 8px; }
+  .callout.grow { animation: mi-dialog-in .32s var(--ease-out), mi-warn-flash 1.4s var(--ease-smooth) .1s; }
+  .callout.info { background: var(--info-soft); } .callout.info > svg, .callout.info > .spin { color: var(--info); }
   .callout.err { background: var(--danger-soft); } .callout.err > svg { color: var(--danger); }
+  .callout.mute { background: var(--surface-3); } .callout.mute > svg { color: var(--ink-3); }
+  .callout.info > .spin { width: 18px; height: 18px; }
 
-  /* progress stepper */
-  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin: 4px 0 22px; }
+  .steps { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); margin: 4px 0 22px; }
+  .steps .track { position: absolute; top: 6px; left: 0; right: 0; height: 3px; border-radius: 3px; background: var(--line-2); }
+  .steps .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--accent); width: 0; transition: width .7s var(--ease-smooth); }
   .st { position: relative; padding-top: 22px; font-size: 12px; color: var(--ink-3); }
-  .st::before { content: ""; position: absolute; top: 6px; left: 0; right: 0; height: 3px; background: var(--line-2); }
-  .st:first-child::before { left: 7px; border-radius: 3px 0 0 3px; } .st:last-child::before { right: 0; border-radius: 0 3px 3px 0; }
   .st i { position: absolute; top: 0; left: 0; width: 15px; height: 15px; border-radius: 50%; background: var(--surface); border: 3px solid var(--line-2); z-index: 1; }
-  .st.done::before, .st.cur::before { background: var(--accent); }
   .st.done i { background: var(--accent); border-color: var(--accent); }
   .st.cur i { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
   .st.done, .st.cur { color: var(--ink); } .st.cur { font-weight: 600; }
@@ -119,114 +195,184 @@
   .grp .r + .r { border-top: 1px solid var(--line); }
   .grp .r > span:first-child { color: var(--ink-3); }
   .grp .r .v { display: flex; align-items: center; gap: 8px; }
+  .grp .r .v.mono { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12.5px; }
+  .grp .muted { color: var(--ink-3); }
+  .grp .pd { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
   .av { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; color: #fff; font-size: 10px; font-weight: 600; flex: none; }
   .sla-ok { color: var(--accent); font-weight: 600; } .sla-warn { color: var(--warn); font-weight: 600; }
   h4.h { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: var(--ink-2); }
   .desc { font-size: 13.5px; line-height: 1.55; margin: 0 0 18px; white-space: pre-line; }
   .files { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
-  .fchip { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 6px; border: 1px solid var(--line); border-radius: 10px; font-size: 12.5px; background: var(--surface); }
+  .fchip { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 6px; border: 1px solid var(--line); border-radius: 10px; font-size: 12.5px; background: var(--surface); transition: transform .2s var(--ease-out), box-shadow .2s; }
+  .fchip:hover { transform: translateY(-1px); box-shadow: var(--sh-card); }
   .fchip .ic { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; background: var(--info-soft); color: var(--info); }
   .fchip small { display: block; color: var(--ink-3); font-size: 11px; }
   .tl { position: relative; padding-left: 26px; }
   .tl::before { content: ""; position: absolute; left: 8px; top: 6px; bottom: 6px; width: 2px; background: var(--line); }
-  .ev { position: relative; padding: 0 0 14px; font-size: 13px; }
-  .ev .b { position: absolute; left: -26px; top: 0; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); border: 2px solid var(--line-2); }
+  .ev { position: relative; padding: 4px 8px 10px; margin: 0 -8px 4px; border-radius: 8px; font-size: 13px; }
+  .ev .b { position: absolute; left: -18px; top: 4px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); border: 2px solid var(--line-2); }
   .ev .b svg { width: 10px; height: 10px; stroke-width: 3; }
   .ev small { display: block; color: var(--ink-3); font-size: 11.5px; margin-top: 1px; }
   .ev.hot .b { border-color: var(--warn); color: var(--warn); }
   .ev.ok .b { border-color: var(--accent); color: var(--accent); }
   .ev.inf .b { border-color: var(--info); color: var(--info); }
+  .ev.fresh { animation: mi-rise .32s var(--ease-out), mi-saved 1.6s var(--ease-smooth) .1s; }
   .foot { margin-top: 18px; font-size: 12px; color: var(--ink-3); display: flex; gap: 6px; align-items: center; }
   .foot svg { width: 13px; height: 13px; }
 
   /* form */
-  .formwrap { overflow: auto; height: 100%; background: var(--surface-2); }
+  .formwrap { overflow: auto; height: 100%; background: var(--surface-2); scroll-behavior: smooth; }
   .form-h { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 8px; padding: 12px 24px; background: color-mix(in srgb, var(--surface-2) 85%, transparent); backdrop-filter: blur(20px); border-bottom: 1px solid var(--line); }
-  .form-h .t { font-weight: 600; font-size: 14px; } .form-h .sp { flex: 1; }
-  .form-h .saved { font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 5px; }
-  .form-h .saved svg { width: 13px; height: 13px; }
+  .form-h .sp { flex: 1; }
+  .saved { font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 5px; min-width: 96px; justify-content: flex-end; }
+  .saved svg { width: 13px; height: 13px; color: var(--accent); }
+  .saved .spin { width: 11px; height: 11px; border-width: 1.6px; }
   .form { max-width: 680px; margin: 0 auto; padding: 24px 0 60px; }
   .form h1 { font-size: 26px; font-weight: 700; letter-spacing: -.015em; margin: 0 0 4px; }
   .form .lead { color: var(--ink-2); margin: 0 0 22px; }
   .fs-t { font-size: 12px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; margin: 22px 4px 8px; }
-  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-card); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-card); transition: border-color .2s, box-shadow .2s; }
+  .card.err { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
   .card .f { padding: 12px 16px; }
   .card .f + .f { border-top: 1px solid var(--line); }
-  .card label.l { display: block; font-size: 12.5px; color: var(--ink-2); margin-bottom: 6px; font-weight: 500; }
-  .card label.l em { color: var(--danger); font-style: normal; }
-  .inp { width: 100%; height: 36px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font: inherit; font-size: 13.5px; }
-  .inp.ta { height: 110px; padding: 10px 12px; resize: none; line-height: 1.5; }
-  .inp:focus, .inp.fo { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-  .hint { font-size: 11.5px; color: var(--ink-3); margin-top: 5px; display: flex; justify-content: space-between; }
+  label.l { display: block; font-size: 12.5px; color: var(--ink-2); margin-bottom: 6px; font-weight: 500; }
+  label.l em { color: var(--danger); font-style: normal; }
+  label.l .opt { color: var(--ink-3); font-weight: 400; }
+  .inp { width: 100%; height: 36px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font: inherit; font-size: 13.5px; transition: border-color .2s, box-shadow .2s; }
+  .inp.ta { height: 110px; padding: 10px 12px; resize: none; line-height: 1.5; display: block; }
+  .inp:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .err .inp, .err.inp { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft); }
+  .hint { font-size: 11.5px; color: var(--ink-3); margin-top: 5px; display: flex; justify-content: space-between; gap: 10px; min-height: 16px; }
+  .hint .cnt { font-variant-numeric: tabular-nums; transition: color .2s; }
+  .hint .cnt.warn { color: var(--warn); font-weight: 600; }
+  .err .hl, .ferr { color: var(--danger); }
+  .ferr { font-size: 11.5px; margin-top: 6px; }
+  .ferr:empty { display: none; }
   .modg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-  .mod { padding: 12px; border: 1.5px solid var(--line-2); border-radius: 12px; background: var(--surface); font-size: 12.5px; }
+  .mod { text-align: left; padding: 12px; border: 1.5px solid var(--line-2); border-radius: 12px; background: var(--surface); font-size: 12.5px; cursor: pointer;
+    transition: border-color .2s, box-shadow .25s, transform .2s var(--ease-out); }
+  .mod:hover { transform: translateY(-2px); box-shadow: var(--sh-card); }
+  .mod:active { transform: scale(.97); }
   .mod .ic { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: #fff; margin-bottom: 8px; }
   .mod b { display: block; font-size: 13px; margin-bottom: 1px; }
   .mod span { color: var(--ink-3); font-size: 11.5px; }
   .mod.on { border-color: var(--mod); box-shadow: 0 0 0 3px color-mix(in srgb, var(--mod) 18%, transparent); }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-  .chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); font-size: 13px; }
-  .chip svg { width: 14px; height: 14px; color: var(--ink-3); }
+  .chips[hidden] { display: none; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); font-size: 13px; cursor: pointer; transition: color .2s, border-color .2s, background-color .15s; }
+  .chip:not(.on):hover { background: var(--surface-3); }
+  .chip:active { transform: scale(.96); }
+  .chip svg { width: 14px; height: 14px; color: var(--ink-3); transition: color .2s; }
   .chip.on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
   .chip.on svg { color: var(--surface); }
-  .prio { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; background: var(--surface-3); padding: 3px; border-radius: 10px; }
-  .prio button { border: 0; background: none; height: 30px; border-radius: 8px; font: inherit; font-size: 13px; color: var(--ink-2); display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .fixed-cat { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-2); }
+  .fixed-cat[hidden] { display: none; }
+  .fixed-cat svg { width: 14px; height: 14px; color: var(--ink-3); }
+  .prio { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--surface-3); padding: 3px; border-radius: 10px; }
+  .prio button { border: 0; background: none; height: 30px; border-radius: 8px; font-size: 13px; color: var(--ink-2); display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: color .2s; }
   .prio button i { width: 7px; height: 7px; border-radius: 50%; }
   .prio button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .drop { border: 1.5px dashed var(--line-2); border-radius: 12px; padding: 16px; text-align: center; color: var(--ink-3); font-size: 12.5px; }
-  .drop svg { width: 22px; height: 22px; display: block; margin: 0 auto 6px; color: var(--ink-3); }
+  .drop { position: relative; border: 1.5px dashed var(--line-2); border-radius: 12px; padding: 16px; text-align: center; color: var(--ink-3); font-size: 12.5px; cursor: pointer; transition: border-color .2s, background-color .2s; }
+  .drop:hover { border-color: var(--accent); }
+  .drop > svg { width: 22px; height: 22px; display: block; margin: 0 auto 6px; color: var(--ink-3); }
   .drop b { color: var(--accent); }
-  .att { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); margin-top: 8px; font-size: 12.5px; }
+  .drop .dh { transition: color .2s; }
+  .drop.err .dh { color: var(--danger); }
+  .drop-ov { position: absolute; inset: -1.5px; border-radius: 12px; background: color-mix(in srgb, var(--accent-soft) 92%, transparent); border: 2px solid var(--accent); display: grid; place-content: center; opacity: 0; pointer-events: none; transition: opacity .18s var(--ease-out); }
+  .drop-ov .ic { width: 40px; height: 40px; border-radius: 12px; background: var(--accent); color: #fff; display: grid; place-items: center; margin: 0 auto 6px; }
+  .drop-ov b { color: var(--ink); display: block; }
+  .drop.over .drop-ov { opacity: 1; }
+  .drop.over .drop-ov .ic { animation: hover-ic 1.1s var(--ease-smooth) infinite alternate; }
+  .att { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); margin-top: 8px; font-size: 12.5px; animation: mi-rise .3s var(--ease-spring); }
   .att .ic { width: 30px; height: 30px; border-radius: 7px; display: grid; place-items: center; background: var(--info-soft); color: var(--info); flex: none; }
-  .att .nm { flex: 1; } .att small { display: block; color: var(--ink-3); font-size: 11px; }
-  .att.bad { background: var(--danger-soft); } .att.bad .ic { background: transparent; color: var(--danger); } .att.bad small { color: var(--danger); }
-  .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-  .slot { height: 34px; border-radius: 9px; border: 1px solid var(--line-2); display: grid; place-items: center; font-size: 13px; font-variant-numeric: tabular-nums; background: var(--surface); }
-  .slot.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-  .slot.off { color: var(--ink-3); background: var(--surface-3); text-decoration: line-through; }
-  .slots-l { font-size: 11px; color: var(--ink-3); margin: 8px 0 5px; }
+  .att .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .att small { display: block; color: var(--ink-3); font-size: 11px; }
+  .att.bad { background: var(--danger-soft); animation: mi-rise .3s var(--ease-spring), mi-shake .4s .3s; }
+  .att.bad .ic { background: transparent; color: var(--danger); } .att.bad small { color: var(--danger); }
+  .calh { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; font-weight: 600; font-size: 13px; }
+  .calh span { display: flex; gap: 2px; }
+  .calvp { overflow: hidden; }
   .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; font-size: 12px; text-align: center; }
-  .cal span { height: 28px; display: grid; place-items: center; border-radius: 8px; }
+  .cal > * { height: 28px; display: grid; place-items: center; border-radius: 8px; border: 0; background: none; font-size: 12px; padding: 0; }
+  .cal button { cursor: pointer; transition: background-color .15s, color .15s; }
+  .cal button:not(.x):not(.s):hover { background: var(--surface-3); }
   .cal .h { color: var(--ink-3); font-size: 10.5px; font-weight: 600; }
-  .cal .x { color: var(--line-2); } .cal .t { color: var(--accent); font-weight: 700; }
+  .cal .x { color: var(--line-2); cursor: not-allowed; } .cal .t { color: var(--accent); font-weight: 700; }
   .cal .s { background: var(--accent); color: #fff; font-weight: 700; }
+  .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .slot { height: 34px; border-radius: 9px; border: 1px solid var(--line-2); font-size: 13px; font-variant-numeric: tabular-nums; background: var(--surface); cursor: pointer; transition: background-color .2s, color .2s, border-color .2s; }
+  .slot:not(.on):hover { background: var(--surface-3); }
+  .slot.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .slots-l { font-size: 11px; color: var(--ink-3); margin: 8px 0 5px; }
   .crit { border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent); background: var(--danger-soft); border-radius: 12px; padding: 12px 14px; margin-top: 10px; }
-  .crit label { color: var(--danger) !important; display: flex !important; align-items: center; gap: 6px; }
+  .crit label.l { color: var(--danger); display: flex; align-items: center; gap: 6px; }
   .submitbar { display: flex; align-items: center; gap: 10px; margin-top: 24px; }
   .submitbar .sp { flex: 1; }
   .submitbar small { color: var(--ink-3); font-size: 12px; }
 
-  /* sheet / toast / widget */
-  .scrim { position: absolute; inset: 0; background: rgba(25,24,22,.25); display: grid; place-items: center; }
+  /* sheet */
+  .scrim { position: absolute; inset: 0 0 0 210px; background: rgba(25,24,22,.25); display: none; place-items: center; z-index: 10; }
+  .scrim.on { display: grid; animation: mi-fade .2s var(--ease-out); }
+  .scrim.on .sheet { animation: mi-dialog-in .3s var(--ease-out); }
+  .scrim.closing { animation: mi-fade .2s reverse forwards; }
+  .scrim.closing .sheet { animation: mi-dialog-out .2s forwards; }
   .sheet { width: 400px; background: var(--surface); border-radius: 18px; box-shadow: var(--sh-pop); padding: 26px 24px 20px; text-align: center; }
-  .sheet .big { width: 56px; height: 56px; border-radius: 16px; margin: 0 auto 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
-  .sheet .big svg { width: 28px; height: 28px; }
+  .okmark { width: 58px; height: 58px; display: block; margin: 0 auto 12px; }
+  .okmark circle { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 145; stroke-dashoffset: 145; animation: mi-draw .45s var(--ease-out) .1s forwards; }
+  .okmark path { fill: none; stroke: var(--accent); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 36; stroke-dashoffset: 36; animation: mi-draw .3s var(--ease-out) .45s forwards; }
   .sheet h3 { margin: 0 0 6px; font-size: 17px; }
   .sheet p { margin: 0 0 6px; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
-  .sheet .num { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 15px; font-weight: 600; background: var(--surface-3); padding: 8px; border-radius: 10px; margin: 12px 0 16px; }
+  .sheet .num { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 15px; font-weight: 600; background: var(--surface-3); padding: 8px; border-radius: 10px; margin: 12px 0 16px; animation: mi-rise .3s var(--ease-out) .55s backwards; }
   .sheet .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .toast { width: 360px; background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(24px); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--sh-pop); padding: 12px 14px; display: flex; gap: 11px; font-size: 13px; }
+
+  /* toasts + snackbar */
+  #toasts { position: fixed; top: 64px; right: 20px; z-index: 100; display: flex; flex-direction: column; gap: 10px; }
+  .toast { width: 360px; background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(24px); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--sh-pop); padding: 12px 14px; display: flex; gap: 11px; font-size: 13px; cursor: pointer; transition: transform .2s var(--ease-out); }
+  .toast:hover { transform: translateY(-1px); }
   .toast .ai { width: 34px; height: 34px; border-radius: 9px; background: var(--mod); color: #fff; display: grid; place-items: center; flex: none; }
   .toast b { display: block; } .toast span { color: var(--ink-2); font-size: 12.5px; }
   .toast small { margin-left: auto; color: var(--ink-3); font-size: 11px; }
-  .wdg { width: 340px; background: var(--surface); border-radius: 22px; box-shadow: var(--sh-card); border: 1px solid var(--line); padding: 16px; }
+  .tin { animation: t-in .42s var(--ease-spring) backwards; }
+  .tout { animation: t-out .25s var(--ease-out) forwards; }
+  #snack { position: fixed; left: 50%; bottom: 24px; z-index: 100; transform: translate(-50%, 140%); opacity: 0; display: flex; align-items: center; gap: 14px; padding: 10px 10px 10px 16px; border-radius: 14px;
+    background: var(--ink); color: var(--surface); box-shadow: var(--sh-pop); font-size: 13px; overflow: hidden; transition: transform .35s var(--ease-spring), opacity .2s; }
+  #snack.on { transform: translate(-50%, 0); opacity: 1; }
+  #snack button { border: 0; background: rgba(255,255,255,.14); color: inherit; font-weight: 600; height: 28px; padding: 0 12px; border-radius: 8px; cursor: pointer; }
+  [data-theme="dark"] #snack button { background: rgba(0,0,0,.12); }
+  #snack i.drain { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent); transform-origin: left; }
+  #snack.on i.drain { animation: mi-drain 5s linear forwards; }
+
+  /* widget + empty */
+  .wdg { width: 340px; background: var(--surface); border-radius: 22px; box-shadow: var(--sh-card); border: 1px solid var(--line); padding: 16px; transition: transform .25s var(--ease-out), box-shadow .25s; }
+  .wdg:hover { transform: translateY(-2px); box-shadow: var(--sh-pop); }
   .wdg-h { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
   .wdg-h .ai { width: 26px; height: 26px; border-radius: 8px; background: var(--mod); color: #fff; display: grid; place-items: center; }
   .wdg-h .ai svg { width: 14px; height: 14px; }
   .wdg-h b { flex: 1; font-size: 14px; }
   .wdg-n { display: flex; gap: 10px; margin-bottom: 12px; }
   .wdg-n div { flex: 1; background: var(--surface-3); border-radius: 12px; padding: 9px 11px; }
-  .wdg-n b { font-size: 22px; font-weight: 700; display: block; line-height: 1.1; }
+  .wdg-n b { font-size: 22px; font-weight: 700; display: block; line-height: 1.1; font-variant-numeric: tabular-nums; }
   .wdg-n span { font-size: 11.5px; color: var(--ink-3); }
   .wdg-n .w b { color: var(--warn); }
-  .wr { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
+  .wr { display: flex; align-items: center; gap: 8px; padding: 7px 6px; margin: 0 -6px; border-top: 1px solid var(--line); font-size: 12.5px; border-radius: 8px; cursor: pointer; transition: background-color .15s; }
+  .wr:hover { background: var(--surface-3); }
   .wr .nm { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .wr > svg { width: 14px; height: 14px; color: var(--ink-3); opacity: 0; transform: translateX(-4px); transition: opacity .15s, transform .2s var(--ease-out); }
+  .wr:hover > svg { opacity: 1; transform: none; }
   .empty { display: grid; place-items: center; text-align: center; height: 100%; color: var(--ink-2); padding: 40px; }
   .empty .big { width: 64px; height: 64px; border-radius: 18px; background: color-mix(in srgb, var(--mod) 14%, transparent); color: var(--mod); display: grid; place-items: center; margin: 0 auto 14px; }
   .empty .big svg { width: 30px; height: 30px; }
   .empty h3 { margin: 0 0 6px; color: var(--ink); font-size: 17px; }
   .empty p { margin: 0 0 16px; max-width: 320px; font-size: 13px; line-height: 1.5; }
+
+  /* spec table */
+  .spec { width: 1180px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh-card); overflow: hidden; }
+  .spec table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .spec th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); padding: 12px 14px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+  .spec td { padding: 9px 14px; border-top: 1px solid var(--line); vertical-align: top; line-height: 1.45; }
+  .spec td:first-child { font-weight: 600; white-space: nowrap; }
+  .spec code { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 11.5px; background: var(--surface-3); padding: 1px 5px; border-radius: 5px; }
+  .spec .new { color: var(--accent); font-weight: 600; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -238,338 +384,798 @@
   <button data-s="s4">4 · Sent / Sending / Failed</button>
   <button data-s="s5">5 · Not in iDesk</button>
   <button data-s="s6">6 · Dashboard, push, empty</button>
+  <button data-s="s7">7 · Motion spec</button>
   <span class="sp"></span>
   <button id="theme">Light / dark</button>
 </nav>
+<div id="toasts"></div>
+<div id="snack"><span class="tx"></span><button>Undo</button><i class="drain"></i></div>
 
-<!-- ============ 1. list + detail ============ -->
+<!-- 1 -->
 <section class="stage on" id="s1">
-  <div class="win app">
-    <div class="rail" data-rail></div>
-    <div class="split">
-      <div class="lst">
-        <div class="lst-h">
-          <div class="row"><h1>Tickets</h1><button class="btn pri sm"><i data-lucide="plus"></i>New ticket</button></div>
-          <div class="sub"><i data-lucide="refresh-cw"></i>ICT · synced with iDesk just now</div>
-          <div class="seg"><button class="on">Open <small>4</small></button><button>All <small>11</small></button></div>
-          <div class="search"><i data-lucide="search"></i>Search number or title</div>
-        </div>
-        <div class="lst-b">
-          <div class="sec">Needs you</div>
-          <div class="tk sel"><span class="dot" style="background:#fff"></span><span class="t1">Printer lantai 3 tidak bisa scan ke email</span><time>09:42</time>
-            <div class="t2"><span class="pill s-res"><i data-lucide="hand"></i>Please confirm</span><span class="m">031026-HW-0014</span></div></div>
-          <div class="sec">In progress</div>
-          <div class="tk"><span class="dot" style="background:var(--info)"></span><span class="t1">Wifi lantai 2 mati</span><time>Yesterday</time>
-            <div class="t2"><span class="pill s-prog">In progress</span><span class="m">041026-NET-0003</span><span class="sp"></span><span class="pill" style="background:var(--danger-soft);color:var(--danger)">High</span></div></div>
-          <div class="tk"><span class="dot" style="background:var(--violet)"></span><span class="t1">Lisensi AutoCAD habis</span><time>2 Oct</time>
-            <div class="t2"><span class="pill s-vend">Waiting on vendor</span><span class="m">021026-SW-0021</span><span class="sp"></span><span class="src-tag">iDesk</span></div></div>
-          <div class="tk"><span class="dot" style="background:var(--ink-3)"></span><span class="t1">Akses Oracle K2 modul Purchasing</span><time>1 Oct</time>
-            <div class="t2"><span class="pill s-open">Open</span><span class="m">011026-ORA-0007</span></div></div>
-        </div>
-      </div>
-      <div class="det">
-        <div class="det-h">
-          <span class="pill s-res"><i data-lucide="hand"></i>Resolved — please confirm</span>
-          <span class="sp"></span>
-          <button class="btn sm ghost"><i data-lucide="copy"></i>Copy number</button>
-          <button class="btn sm"><i data-lucide="external-link"></i>Open in iDesk</button>
-        </div>
-        <div class="det-b">
-          <div class="crumb">031026-HW-0014 · IT Support · Hardware</div>
-          <h2>Printer lantai 3 tidak bisa scan ke email</h2>
-          <div class="callout">
-            <i data-lucide="hand"></i>
-            <div><b>ICT marked this as resolved</b>
-              <p>Check that it works, then confirm in iDesk to close the ticket — or reopen it there if it's still broken.</p>
-              <button class="btn pri sm"><i data-lucide="external-link"></i>Confirm in iDesk</button></div>
-          </div>
-          <div class="steps">
-            <div class="st done"><i></i>Submitted<small>3 Oct, 08:12</small></div>
-            <div class="st done"><i></i>In progress<small>3 Oct, 09:05</small></div>
-            <div class="st cur"><i></i>Resolved<small>Today, 09:42</small></div>
-            <div class="st"><i></i>Closed<small>after you confirm</small></div>
-          </div>
-          <div class="grp">
-            <div class="r"><span>Assigned to</span><span class="v"><span class="av" style="background:#2563eb">RA</span>Rizky Aditya</span></div>
-            <div class="r"><span>Priority</span><span class="v"><i style="width:8px;height:8px;border-radius:50%;background:var(--warn);display:inline-block"></i>Medium</span></div>
-            <div class="r"><span>Target</span><span class="v"><span class="sla-ok">Met</span> · due Fri 3 Oct, 17:00</span></div>
-            <div class="r"><span>Device</span><span class="v">Printer Canon iR-ADV C5535</span></div>
-          </div>
-          <h4 class="h">Description</h4>
-          <p class="desc">Scan to email error "Send failed" sejak kemarin sore. Copy dan print masih normal.
-Sudah coba restart printer.</p>
-          <div class="files"><div class="fchip"><span class="ic"><i data-lucide="image"></i></span><div>error-panel.jpg<small>1.2 MB</small></div></div></div>
-          <h4 class="h">Activity</h4>
-          <div class="tl">
-            <div class="ev hot"><span class="b"><i data-lucide="check"></i></span>Marked <b>resolved</b> by Rizky Aditya<small>Today, 09:42</small></div>
-            <div class="ev inf"><span class="b"><i data-lucide="play"></i></span>Status changed to <b>In progress</b><small>3 Oct, 09:05</small></div>
-            <div class="ev inf"><span class="b"><i data-lucide="user"></i></span>Assigned to <b>Rizky Aditya</b><small>3 Oct, 08:30</small></div>
-            <div class="ev ok"><span class="b"><i data-lucide="send"></i></span>Submitted from iPop<small>3 Oct, 08:12 · IPOP-ICT-2026-000041</small></div>
-          </div>
-          <div class="foot"><i data-lucide="message-square"></i>Chat with ICT, add files and reopen the ticket in iDesk.</div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="note"><span class="tag">List + detail</span><h3>Mail-style split</h3><ul>
-    <li><b>Needs you</b> floats RESOLVED tickets to the top — that's also the nav badge count.</li>
-    <li>Tickets filed directly in iDesk show a small <span class="src-tag">iDesk</span> tag; otherwise identical.</li>
-    <li>Status pill colours: Open grey · In progress blue · Waiting on vendor violet · Resolved amber · Closed green · Cancelled muted.</li>
-    <li>Detail is read-only: 4-step progress, SLA, assignee, description, files sent at creation, and an activity timeline built from webhooks.</li>
-    <li>Everything else (chat, more files, reopen) → <b>Open in iDesk</b>.</li>
-    <li>"All" tab adds Closed / Cancelled grouped by month.</li></ul></div>
+  <div class="win app" id="b1"><div class="rail" data-rail></div><div class="split"></div></div>
+  <div class="note">
+    <div class="play"><b>Try it</b>
+      <button class="btn sm" id="simResolve"><i data-lucide="play"></i>ICT resolves "Wifi lantai 2 mati"</button>
+      <button class="btn sm" id="simPick"><i data-lucide="play"></i>ICT picks up the Oracle ticket</button>
+      <button class="btn sm ghost" id="simReset"><i data-lucide="rotate-ccw"></i>Reset</button></div>
+    <span class="tag">List + detail</span><h3>Mail-style split</h3><ul>
+    <li>Click rows: the blue highlight <b>glides</b>; the detail rises in.</li>
+    <li>Webhook arrives → toast slides in, row <b>moves</b> to its new section, pill pops, the progress bar fills, the new activity row flashes, nav badge bumps.</li>
+    <li>Open / All slides; search highlights matches as you type.</li>
+    <li>Click the "synced" line to resync; Copy number ticks.</li></ul></div>
 </section>
 
-<!-- ============ 2. new ticket ============ -->
+<!-- 2 -->
 <section class="stage" id="s2">
-  <div class="win app">
-    <div class="rail" data-rail></div>
-    <div class="formwrap">
-      <div class="form-h"><button class="btn sm ghost"><i data-lucide="chevron-left"></i>Tickets</button><span class="sp"></span>
-        <span class="saved"><i data-lucide="check"></i>Draft saved</span></div>
-      <div class="form">
-        <h1>New ICT ticket</h1>
-        <p class="lead">Tell ICT what's wrong. You'll get a notification as it moves along.</p>
-
-        <div class="fs-t">Where should it go?</div>
-        <div class="modg">
-          <div class="mod on"><span class="ic" style="background:#0a84ff"><i data-lucide="life-buoy"></i></span><b>IT Support</b><span>PC, network, printer, apps</span></div>
-          <div class="mod"><span class="ic" style="background:#c2442e"><i data-lucide="database"></i></span><b>Oracle K2</b><span>Access & requests</span></div>
-          <div class="mod"><span class="ic" style="background:#7c4dd6"><i data-lucide="globe"></i></span><b>Web Developer</b><span>Websites & web apps</span></div>
-          <div class="mod"><span class="ic" style="background:#2e9d6b"><i data-lucide="smartphone"></i></span><b>Mobile Developer</b><span>Mobile apps</span></div>
-        </div>
-
-        <div class="fs-t">What's it about?</div>
-        <div class="card"><div class="f">
-          <div class="chips">
-            <span class="chip"><i data-lucide="circle-help"></i>General</span>
-            <span class="chip"><i data-lucide="monitor"></i>Hardware</span>
-            <span class="chip"><i data-lucide="app-window"></i>Software</span>
-            <span class="chip on"><i data-lucide="wifi"></i>Network</span>
-            <span class="chip"><i data-lucide="package-plus"></i>Hardware installation</span>
-          </div></div></div>
-
-        <div class="fs-t">Details</div>
-        <div class="card">
-          <div class="f"><label class="l">Title <em>*</em></label><input class="inp fo" value="Wifi lantai 2 mati"><div class="hint"><span>A short summary ICT will see first</span><span>18 / 200</span></div></div>
-          <div class="f"><label class="l">Description <em>*</em></label><textarea class="inp ta">Tidak bisa konek sejak pagi, sudah restart laptop. Teman satu ruangan juga sama.</textarea><div class="hint"><span>What happened, since when, what you've tried</span><span>82 / 5000</span></div></div>
-          <div class="f row2">
-            <div><label class="l">Device <span style="color:var(--ink-3)">(optional)</span></label><input class="inp" value="Laptop"></div>
-            <div><label class="l">Software <span style="color:var(--ink-3)">(optional)</span></label><input class="inp" placeholder="e.g. Outlook"></div>
-          </div>
-        </div>
-
-        <div class="fs-t">Priority</div>
-        <div class="card"><div class="f">
-          <div class="prio">
-            <button><i style="background:var(--ink-3)"></i>Low</button>
-            <button><i style="background:var(--warn)"></i>Medium</button>
-            <button><i style="background:#e8743b"></i>High</button>
-            <button class="on"><i style="background:var(--danger)"></i>Critical</button>
-          </div>
-          <div class="crit"><label class="l"><i data-lucide="siren"></i>Why is this critical? <em>*</em></label>
-            <input class="inp" value="Seluruh lantai 2 (±40 orang) tidak bisa kerja"><div class="hint"><span>Critical tickets page the on-call team. Use it only when work has stopped.</span></div></div>
-        </div></div>
-
-        <div class="fs-t">Attachments</div>
-        <div class="card"><div class="f">
-          <div class="drop"><i data-lucide="paperclip"></i>Drop files here or <b>browse</b><br>Up to 5 files, 10 MB each · images, PDF, Word, Excel, TXT, CSV</div>
-          <div class="att"><span class="ic"><i data-lucide="image"></i></span><span class="nm">screenshot.png<small>842 KB</small></span><button class="btn sm ghost"><i data-lucide="x"></i></button></div>
-          <div class="att bad"><span class="ic"><i data-lucide="file-x"></i></span><span class="nm">rekaman.mp4<small>iDesk doesn't accept this file type</small></span><button class="btn sm ghost"><i data-lucide="x"></i></button></div>
-        </div></div>
-
-        <div class="submitbar"><small>Filed as <b>Bagastyo</b> · NIK from your iPop account</small><span class="sp"></span>
-          <button class="btn">Discard draft</button><button class="btn pri"><i data-lucide="send"></i>Submit ticket</button></div>
-      </div>
-    </div>
-  </div>
+  <div class="win app" id="f2"><div class="rail" data-rail></div><div class="formwrap"></div><div class="scrim"></div></div>
   <div class="note"><span class="tag">/tickets/new</span><h3>One calm page</h3><ul>
-    <li>Queue tiles come live from iDesk <code>/modules</code> — a new queue appears without an iPop release.</li>
-    <li>Category chips change with the module; developer modules with one category skip this step.</li>
-    <li>Defaults: IT Support, Medium.</li>
-    <li>Choosing <b>Critical</b> slides in a required reason field.</li>
-    <li>Files are checked here against iDesk's own rules (type and 10 MB) before sending.</li>
-    <li>Draft autosaves per account; leaving and coming back restores it.</li></ul></div>
+    <li>Pick a queue: tile ring + icon pop; categories re-enter staggered. Oracle / developer queues collapse the category step into one fixed line.</li>
+    <li>Priority and category use the sliding indicator. <b>Critical</b> expands the reason field.</li>
+    <li>Counters turn amber near the limit; "Saving… → Draft saved" after you pause.</li>
+    <li>Drop files on the box (or click it): accepted files rise in, rejected ones shake; × collapses them.</li>
+    <li><b>Submit</b> now fails on purpose — the .mp4 is rejected: scroll, red ring, shake. Remove it and submit again → spinner → success sheet with drawn check.</li>
+    <li>"Discard draft" → Undo snackbar.</li></ul></div>
 </section>
 
-<!-- ============ 3. hardware installation ============ -->
+<!-- 3 -->
 <section class="stage" id="s3">
-  <div class="win app">
-    <div class="rail" data-rail></div>
-    <div class="formwrap">
-      <div class="form-h"><button class="btn sm ghost"><i data-lucide="chevron-left"></i>Tickets</button><span class="sp"></span><span class="saved"><i data-lucide="check"></i>Draft saved</span></div>
-      <div class="form">
-        <h1>New ICT ticket</h1>
-        <p class="lead">Tell ICT what's wrong. You'll get a notification as it moves along.</p>
-        <div class="fs-t">What's it about?</div>
-        <div class="card"><div class="f"><div class="chips">
-          <span class="chip"><i data-lucide="circle-help"></i>General</span><span class="chip"><i data-lucide="monitor"></i>Hardware</span>
-          <span class="chip"><i data-lucide="app-window"></i>Software</span><span class="chip"><i data-lucide="wifi"></i>Network</span>
-          <span class="chip on"><i data-lucide="package-plus"></i>Hardware installation</span></div></div></div>
-
-        <div class="fs-t">Installation</div>
-        <div class="card">
-          <div class="f"><label class="l">What should be installed? <em>*</em></label>
-            <div class="chips"><span class="chip on"><i data-lucide="monitor"></i>PC / Laptop</span><span class="chip"><i data-lucide="printer"></i>Printer</span><span class="chip"><i data-lucide="monitor-smartphone"></i>Monitor</span><span class="chip"><i data-lucide="more-horizontal"></i>Other</span></div></div>
-          <div class="f row2" style="align-items:start">
-            <div><label class="l">Date <em>*</em></label>
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-weight:600;font-size:13px">October 2026<span style="display:flex;gap:2px"><button class="btn sm ghost"><i data-lucide="chevron-left"></i></button><button class="btn sm ghost"><i data-lucide="chevron-right"></i></button></span></div>
-              <div class="cal" id="cal"></div></div>
-            <div><label class="l">Time <em>*</em></label>
-              <div class="slots-l">Morning</div>
-              <div class="slots"><span class="slot">08:00</span><span class="slot off">09:00</span><span class="slot on">10:00</span><span class="slot">11:00</span></div>
-              <div class="slots-l">Afternoon</div>
-              <div class="slots"><span class="slot">14:00</span><span class="slot">15:00</span></div>
-              <div class="hint" style="margin-top:12px"><span>Thu 9 Oct, 10:00 · ICT confirms the slot in iDesk</span></div></div>
-          </div>
-        </div>
-        <div class="fs-t">Details</div>
-        <div class="card"><div class="f"><label class="l">Title <em>*</em></label><input class="inp" value="Instalasi PC baru untuk staf Finance"></div></div>
-        <div class="submitbar"><span class="sp"></span><button class="btn">Discard draft</button><button class="btn pri"><i data-lucide="send"></i>Submit ticket</button></div>
-      </div>
-    </div>
-  </div>
+  <div class="win app" id="f3"><div class="rail" data-rail></div><div class="formwrap"></div><div class="scrim"></div></div>
   <div class="note"><span class="tag">Conditional</span><h3>Hardware installation</h3><ul>
-    <li>Only for queues that support it (iDesk flag <code>supportsHardwareInstallation</code>).</li>
-    <li>Weekends and past days are disabled; slots are iDesk's 08:00–11:00 and 14:00–15:00 on the hour.</li>
-    <li>Slot availability is shown only if iDesk exposes it later — for v1 all valid slots are pickable (struck-through slot is illustrative).</li></ul></div>
+    <li>Only for queues with <code>supportsHardwareInstallation</code>; picking the chip expands this card.</li>
+    <li>Month arrows slide the grid; past days and weekends shake instead of selecting.</li>
+    <li>Selected day and slot pop; the summary line updates.</li>
+    <li>Slots are iDesk's 08:00–11:00 and 14:00–15:00 on the hour.</li></ul></div>
 </section>
 
-<!-- ============ 4. submitted states ============ -->
+<!-- 4 -->
 <section class="stage" id="s4">
-  <div class="win app" style="position:relative">
-    <div class="rail" data-rail></div>
-    <div class="split">
-      <div class="lst">
-        <div class="lst-h"><div class="row"><h1>Tickets</h1><button class="btn pri sm"><i data-lucide="plus"></i>New ticket</button></div>
-          <div class="sub"><i data-lucide="cloud-off"></i>iDesk is unreachable · showing saved copy</div>
-          <div class="seg"><button class="on">Open <small>6</small></button><button>All <small>13</small></button></div></div>
-        <div class="lst-b">
-          <div class="sec">Not sent yet</div>
-          <div class="tk"><span class="dot" style="background:var(--ink-3)"></span><span class="t1">Monitor kedip-kedip</span><time>10:05</time>
-            <div class="t2"><span class="pill s-send"><i data-lucide="loader"></i>Sending…</span><span class="m">IPOP-ICT-2026-000044</span></div></div>
-          <div class="tk sel"><span class="dot" style="background:#fff"></span><span class="t1">Email tidak sinkron di HP</span><time>Yesterday</time>
-            <div class="t2"><span class="pill s-fail"><i data-lucide="alert-triangle"></i>Couldn't send</span><span class="m">IPOP-ICT-2026-000043</span></div></div>
-          <div class="sec">In progress</div>
-          <div class="tk"><span class="dot" style="background:var(--info)"></span><span class="t1">Wifi lantai 2 mati</span><time>Yesterday</time>
-            <div class="t2"><span class="pill s-prog">In progress</span><span class="m">041026-NET-0003</span></div></div>
-        </div>
-      </div>
-      <div class="det"><div class="det-b" style="padding-top:28px">
-        <div class="crumb">IPOP-ICT-2026-000043 · IT Support · Software</div>
-        <h2>Email tidak sinkron di HP</h2>
-        <div class="callout err"><i data-lucide="alert-triangle"></i><div><b>iDesk didn't accept this ticket yet</b>
-          <p>We kept trying for 24 hours while iDesk was unreachable. Nothing was lost — try again, or discard it.</p>
-          <div style="display:flex;gap:8px"><button class="btn pri sm"><i data-lucide="rotate-cw"></i>Try again</button><button class="btn sm">Edit</button><button class="btn sm ghost">Discard</button></div></div></div>
-        <div class="callout info"><i data-lucide="info"></i><div><b>"Sending…" tickets</b><p style="margin:0">When iDesk is slow or down, the ticket is kept in iPop and sent automatically as soon as iDesk answers — it can never be filed twice.</p></div></div>
-      </div></div>
-    </div>
-    <div class="scrim" style="left:210px"><div class="sheet">
-      <div class="big"><i data-lucide="check"></i></div>
-      <h3>Ticket sent to ICT</h3>
-      <p>You'll get a notification when someone picks it up.</p>
-      <div class="num">041026-NET-0003</div>
-      <div class="acts"><button class="btn">New ticket</button><button class="btn pri">View ticket</button></div>
-    </div></div>
-  </div>
-  <div class="note"><span class="tag">After submit</span><h3>Sent, sending, failed</h3><ul>
-    <li><b>Sheet</b> (overlay, shown right after Submit) confirms with the iDesk ticket number.</li>
-    <li><b>Sending…</b>: timeout or iDesk down. iPop retries with the same reference, so no duplicates.</li>
-    <li><b>Couldn't send</b>: after ~24 h of retries. Try again / Edit / Discard.</li>
-    <li>Validation errors (bad category, etc.) never reach the list — they stay on the form.</li></ul></div>
+  <div class="win app" id="b4"><div class="rail" data-rail></div><div class="split"></div>
+    <div class="scrim" id="sheet4"></div></div>
+  <div class="note">
+    <div class="play"><b>Try it</b>
+      <button class="btn sm" id="simBack"><i data-lucide="play"></i>iDesk comes back</button>
+      <button class="btn sm" id="simSheet"><i data-lucide="play"></i>Show the success sheet</button>
+      <button class="btn sm ghost" id="simReset4"><i data-lucide="rotate-ccw"></i>Reset</button></div>
+    <span class="tag">After submit</span><h3>Sent, sending, failed</h3><ul>
+    <li><b>Sending…</b>: iDesk timed out; iPop retries with the same reference, so no duplicates. When it lands the row moves to Open and the reference turns into the iDesk number.</li>
+    <li><b>Couldn't send</b>: "Try again" fails once (callout shakes), succeeds the second time.</li>
+    <li>Discard → row collapses + Undo.</li></ul></div>
 </section>
 
-<!-- ============ 5. not registered ============ -->
+<!-- 5 -->
 <section class="stage" id="s5">
-  <div class="win app">
-    <div class="rail" data-rail></div>
-    <div class="formwrap">
-      <div class="form-h"><button class="btn sm ghost"><i data-lucide="chevron-left"></i>Tickets</button><span class="sp"></span><span class="saved"><i data-lucide="check"></i>Draft saved</span></div>
-      <div class="form">
-        <div class="callout" style="margin-top:4px"><i data-lucide="user-x"></i><div>
-          <b>Your iDesk account isn't set up yet</b>
-          <p>ICT tickets are tracked in iDesk. Contact ICT to create your iDesk account so you can submit tickets and follow their progress. Your draft is saved — submit again once your account is ready.</p>
-          <div style="display:flex;gap:8px"><button class="btn pri sm"><i data-lucide="message-circle"></i>Chat with ICT</button><button class="btn sm"><i data-lucide="phone"></i>Call ICT · ext. 1234</button></div></div></div>
-        <h1>New ICT ticket</h1>
-        <p class="lead">Tell ICT what's wrong. You'll get a notification as it moves along.</p>
-        <div class="card"><div class="f"><label class="l">Title <em>*</em></label><input class="inp" value="Laptop tidak bisa booting"></div>
-          <div class="f"><label class="l">Description <em>*</em></label><textarea class="inp ta">Muncul layar biru setelah update semalam.</textarea></div></div>
-        <div class="submitbar"><span class="sp"></span><button class="btn">Discard draft</button><button class="btn pri"><i data-lucide="send"></i>Submit ticket</button></div>
-      </div>
-    </div>
-  </div>
+  <div class="win app" id="f5"><div class="rail" data-rail></div><div class="formwrap"></div><div class="scrim"></div></div>
   <div class="note"><span class="tag">422 from iDesk</span><h3>Not in iDesk</h3><ul>
-    <li>Shown when iDesk says your NIK isn't registered or is inactive.</li>
+    <li>Press <b>Submit</b>: iDesk says the NIK isn't registered → the banner expands with an amber flash, the form keeps everything.</li>
     <li>The same banner sits on top of <b>/tickets</b> until a sync or submit succeeds.</li>
-    <li>"Chat with ICT" opens a chat with the ICT contact; ext. number is a placeholder — which contact/extension should it be?</li>
-    <li>The form keeps everything typed.</li></ul></div>
+    <li>ICT contact / extension is a placeholder until you tell me which.</li></ul></div>
 </section>
 
-<!-- ============ 6. dashboard, push, empty ============ -->
+<!-- 6 -->
 <section class="stage" id="s6">
   <div style="display:flex;gap:24px;align-items:flex-start">
     <div style="display:flex;flex-direction:column;gap:24px">
       <div class="wdg">
-        <div class="wdg-h"><span class="ai"><i data-lucide="life-buoy"></i></span><b>My tickets</b><button class="btn sm ghost"><i data-lucide="plus"></i></button></div>
-        <div class="wdg-n"><div><b>3</b><span>Open</span></div><div class="w"><b>1</b><span>Please confirm</span></div></div>
-        <div class="wr"><span class="pill s-res">Confirm</span><span class="nm">Printer lantai 3 tidak bisa scan</span></div>
-        <div class="wr"><span class="pill s-prog">In progress</span><span class="nm">Wifi lantai 2 mati</span></div>
-        <div class="wr"><span class="pill s-vend">Vendor</span><span class="nm">Lisensi AutoCAD habis</span></div>
+        <div class="wdg-h"><span class="ai"><i data-lucide="life-buoy"></i></span><b>My tickets</b><button class="btn sm ghost" data-go="s2"><i data-lucide="plus"></i></button></div>
+        <div class="wdg-n"><div><b data-count="3">3</b><span>Open</span></div><div class="w"><b data-count="1">1</b><span>Please confirm</span></div></div>
+        <div class="wr" data-open="p"><span class="pill s-res">Confirm</span><span class="nm">Printer lantai 3 tidak bisa scan</span><i data-lucide="chevron-right"></i></div>
+        <div class="wr" data-open="w"><span class="pill s-prog">In progress</span><span class="nm">Wifi lantai 2 mati</span><i data-lucide="chevron-right"></i></div>
+        <div class="wr" data-open="a"><span class="pill s-vend">Vendor</span><span class="nm">Lisensi AutoCAD habis</span><i data-lucide="chevron-right"></i></div>
       </div>
-      <div class="toast"><span class="ai"><i data-lucide="life-buoy"></i></span><div><b>Ticket resolved — please confirm</b><span>Printer lantai 3 tidak bisa scan ke email</span></div><small>now</small></div>
-      <div class="toast"><span class="ai"><i data-lucide="life-buoy"></i></span><div><b>Rizky Aditya picked up your ticket</b><span>Wifi lantai 2 mati</span></div><small>2m</small></div>
+      <div class="toast" data-t6><span class="ai"><i data-lucide="life-buoy"></i></span><div><b>Ticket resolved — please confirm</b><span>Printer lantai 3 tidak bisa scan ke email</span></div><small>now</small></div>
+      <div class="toast" data-t6><span class="ai"><i data-lucide="life-buoy"></i></span><div><b>Rizky Aditya picked up your ticket</b><span>Wifi lantai 2 mati</span></div><small>2m</small></div>
     </div>
     <div class="win" style="width:560px;height:420px"><div class="empty"><div>
-      <div class="big"><i data-lucide="life-buoy"></i></div>
+      <div class="big" id="emptyIc"><i data-lucide="life-buoy"></i></div>
       <h3>No open tickets</h3>
       <p>When something on your PC, network or apps isn't working, ICT can help.</p>
-      <button class="btn pri"><i data-lucide="plus"></i>New ticket</button></div></div></div>
+      <button class="btn pri" data-go="s2"><i data-lucide="plus"></i>New ticket</button></div></div></div>
   </div>
-  <div class="note"><span class="tag">Around the app</span><h3>Widget, notifications, empty</h3><ul>
-    <li>Dashboard widget: open count, "please confirm" count, top 3 open tickets.</li>
-    <li>Push/in-app for: assigned, status change, resolved (please confirm), closed. Not for your own "created".</li>
+  <div class="note">
+    <div class="play"><b>Try it</b><button class="btn sm" id="replay6"><i data-lucide="rotate-ccw"></i>Replay entrance</button></div>
+    <span class="tag">Around the app</span><h3>Widget, notifications, empty</h3><ul>
+    <li>Widget numbers count up, rows stagger in; rows open the ticket.</li>
+    <li>Push / in-app for assigned, status change, resolved (please confirm), closed — not your own "created".</li>
     <li>Own sound slot "Tickets" in notification sound settings.</li>
-    <li>Nav: <b>Tickets</b> in the Workspace group, badge = tickets waiting for your confirmation.</li></ul></div>
+    <li>Nav: <b>Tickets</b> in Workspace; badge = tickets waiting for your confirmation, bumps once when it changes.</li></ul></div>
+</section>
+
+<!-- 7 -->
+<section class="stage" id="s7">
+  <div class="spec"><table>
+    <tr><th>Interaction</th><th>When</th><th>Motion</th><th>Built from (iPop micro layer)</th></tr>
+    <tr><td>Button press</td><td>Any button</td><td>Scale .96, 120 ms</td><td>Global, already in <code>micro.css</code></td></tr>
+    <tr><td>Sliding indicator</td><td>Open/All, priority, category, hardware type</td><td>Indicator glides 320 ms, smooth ease</td><td>Add the Tickets selectors to <code>micro.js</code> SLIDERS</td></tr>
+    <tr><td>List selection</td><td>Click a ticket</td><td>Highlight glides 380 ms; detail rises 260 ms</td><td>Sidebar-glide pattern + <code>.mi-rise</code></td></tr>
+    <tr><td>Live update</td><td>Webhook reaches the open page (SignalR)</td><td>Row moves section (FLIP 450 ms); pill pops; progress fills 700 ms; new activity rises + flashes; badge bumps</td><td><code>ipopMicro.flipPrepare</code>, <code>.mi-pop</code>, <code>.mi-rise</code>, <code>.mi-saved</code>, badge bump</td></tr>
+    <tr><td>Toast</td><td>Webhook, any page</td><td>Spring in from the right; auto-dismiss 5 s; click opens the ticket</td><td>Existing toast stack</td></tr>
+    <tr><td>Resync</td><td>Click the "synced" line / page open</td><td>Icon turns once, text fades; offline → shake</td><td><span class="new">new</span> one-shot spin</td></tr>
+    <tr><td>Copy number</td><td>Detail header</td><td>Icon → check pop, "Copied" 1.6 s</td><td><code>.mi-copied</code></td></tr>
+    <tr><td>Queue tile</td><td>Pick a queue</td><td>Ring + icon pop; categories re-enter staggered 35 ms; single-category queues collapse</td><td><code>.mi-pop</code>, <code>.mi-rise</code></td></tr>
+    <tr><td>Conditional sections</td><td>Critical, Hardware installation, Not-in-iDesk banner</td><td>Height 0→auto 300 ms + fade</td><td><span class="new">new</span> grid-rows collapse helper</td></tr>
+    <tr><td>Counters</td><td>Typing title / description</td><td>Turn amber at 90 % of the limit</td><td>CSS only</td></tr>
+    <tr><td>Draft autosave</td><td>650 ms after typing stops</td><td>"Saving…" → check pop "Draft saved"</td><td><code>.mi-saved-tag</code></td></tr>
+    <tr><td>Attachments</td><td>Drag over / drop / pick / remove</td><td>Drop overlay with lifting icon; chip rises; rejected chip shakes; remove collapses</td><td><code>.mi-drop-zone</code>/<code>.mi-drop-ov</code>, upload chip rise/shake, <code>ipopMicro.leave</code></td></tr>
+    <tr><td>Validation</td><td>Submit with errors</td><td>Scroll to the first error, red ring, shake, message</td><td><code>.mi-shake</code></td></tr>
+    <tr><td>Submit</td><td>Valid submit</td><td>Button keeps its width, spinner "Sending…"; sheet scales in; check draws; number rises</td><td>Confirm dialog-in, <code>.mi-check-draw</code></td></tr>
+    <tr><td>View ticket</td><td>From the sheet</td><td>Lands on the list, new row rises and is selected</td><td><code>.mi-rise</code></td></tr>
+    <tr><td>Calendar</td><td>Month nav / day / blocked day</td><td>Grid slides 220 ms; day pops; blocked day shakes</td><td><span class="new">new</span>, small</td></tr>
+    <tr><td>Retry / discard</td><td>Failed ticket</td><td>Spinner; failure shakes callout; success moves row + toast; discard collapses + Undo with draining bar</td><td><code>.mi-shake</code>, FLIP, undo snackbar</td></tr>
+    <tr><td>Dashboard widget</td><td>Dashboard opens</td><td>Numbers count up, rows stagger</td><td><code>ipopMicro.countUp</code></td></tr>
+    <tr><td>Reduced motion</td><td>OS setting</td><td>Everything static; spinners stay as the only feedback</td><td><code>core/motion.css</code> kill-switch; JS checks <code>reduced()</code></td></tr>
+  </table></div>
 </section>
 
 <script>
-  const rail = `<div class="brand"><i></i>iPop</div>
-    <h6>Workspace</h6>
-    <div class="ni"><i data-lucide="layout-grid"></i>Dashboard</div>
-    <div class="ni"><i data-lucide="users"></i>Directory</div>
-    <div class="ni"><i data-lucide="kanban"></i>Projects</div>
-    <div class="ni"><i data-lucide="notebook-pen"></i>Notes</div>
-    <div class="ni on"><i data-lucide="life-buoy"></i>Tickets<span class="bd">1</span></div>
-    <h6>Communication</h6>
-    <div class="ni"><i data-lucide="message-circle"></i>Chat</div>
-    <div class="ni"><i data-lucide="mail"></i>Mail</div>
-    <div class="ni"><i data-lucide="newspaper"></i>News &amp; Memos</div>
-    <div class="ni"><i data-lucide="phone"></i>Calls</div>
-    <h6>Resources</h6>
-    <div class="ni"><i data-lucide="folder"></i>Files</div>
-    <div class="ni"><i data-lucide="calendar"></i>Calendar</div>`;
-  document.querySelectorAll('[data-rail]').forEach(r => r.innerHTML = rail);
-
-  // October 2026 starts on Thursday; Mon-first grid. Today = 5 (Sun), selected = 9.
-  const cal = document.getElementById('cal');
-  let h = ['M','T','W','T','F','S','S'].map(d => `<span class="h">${d}</span>`).join('');
-  for (let i = 0; i < 3; i++) h += '<span></span>';
-  for (let d = 1; d <= 31; d++) {
-    const dow = (3 + d - 1) % 7; // 0 = Mon
-    const cls = d === 9 ? 's' : (dow >= 5 || d < 6) ? 'x' : '';
-    h += `<span class="${cls}">${d}</span>`;
-  }
-  cal.innerHTML = h;
-
-  lucide.createIcons();
-  document.querySelectorAll('.mk-nav [data-s]').forEach(b => b.onclick = () => {
-    document.querySelectorAll('.mk-nav [data-s]').forEach(x => x.classList.toggle('on', x === b));
-    document.querySelectorAll('.stage').forEach(s => s.classList.toggle('on', s.id === b.dataset.s));
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const RM = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const icons = () => lucide.createIcons();
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const clone = o => JSON.parse(JSON.stringify(o));
+function replay(el, cls) {
+  if (!el || RM()) return;
+  el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+  el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
+}
+function slide(root, instant) {
+  if (!root || !root.offsetParent) return;
+  let ind = root.querySelector(':scope > .mi-ind');
+  const on = [...root.children].find(c => c.classList.contains('on'));
+  if (!on) { if (ind) ind.style.opacity = '0'; root.classList.remove('live'); return; }
+  if (!ind) { ind = document.createElement('span'); ind.className = 'mi-ind'; root.prepend(ind); instant = true; }
+  if (instant) ind.style.transition = 'none';
+  Object.assign(ind.style, { opacity: '1', left: on.offsetLeft + 'px', top: on.offsetTop + 'px', width: on.offsetWidth + 'px', height: on.offsetHeight + 'px' });
+  if (instant) { void ind.offsetWidth; ind.style.transition = ''; }
+  root.classList.add('live');
+}
+const slideAll = (scope, instant) => $$('[data-slide]', scope).forEach(r => slide(r, instant));
+function leave(el) {
+  return new Promise(res => {
+    if (RM()) { el.remove(); return res(); }
+    el.style.height = el.offsetHeight + 'px'; void el.offsetWidth;
+    el.classList.add('leaving'); setTimeout(() => { el.remove(); res(); }, 260);
   });
-  document.getElementById('theme').onclick = () => {
-    const r = document.documentElement;
-    r.dataset.theme = r.dataset.theme === 'dark' ? '' : 'dark';
-  };
+}
+function flip(container, sel, mutate) {
+  const before = new Map($$(sel, container).map(e => [e.dataset.id, e.getBoundingClientRect().top]));
+  mutate();
+  if (RM()) return;
+  for (const e of $$(sel, container)) {
+    const o = before.get(e.dataset.id); if (o == null) continue;
+    const d = o - e.getBoundingClientRect().top; if (Math.abs(d) < 1) continue;
+    e.style.transition = 'none'; e.style.transform = `translateY(${d}px)`;
+    requestAnimationFrame(() => requestAnimationFrame(() => { e.style.transition = 'transform .45s var(--ease-smooth), background-color .15s, color .2s'; e.style.transform = ''; }));
+  }
+}
+function countUp(el, to, ms = 650) {
+  if (RM()) { el.textContent = to; return; }
+  const t0 = performance.now();
+  const step = t => { const p = Math.min(1, (t - t0) / ms); el.textContent = Math.round(to * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(step); };
+  el.textContent = 0; requestAnimationFrame(step);
+}
+function toast({ title, body, onClick }) {
+  const el = document.createElement('div');
+  el.className = 'toast tin';
+  el.innerHTML = `<span class="ai"><i data-lucide="life-buoy"></i></span><div><b>${title}</b><span>${body}</span></div><small>now</small>`;
+  $('#toasts').prepend(el); icons();
+  const dismiss = () => { if (!el.isConnected) return; el.classList.add('tout'); setTimeout(() => el.remove(), 260); };
+  el.onclick = () => { onClick && onClick(); dismiss(); };
+  setTimeout(dismiss, 5000);
+}
+let snackTimer;
+function snack(text, undo) {
+  const s = $('#snack');
+  s.classList.remove('on'); void s.offsetWidth;
+  $('.tx', s).textContent = text; s.classList.add('on');
+  $('button', s).onclick = () => { s.classList.remove('on'); clearTimeout(snackTimer); undo(); };
+  clearTimeout(snackTimer); snackTimer = setTimeout(() => s.classList.remove('on'), 5000);
+}
+const sheetHTML = num => `<div class="sheet">
+  <svg class="okmark" viewBox="0 0 52 52"><circle cx="26" cy="26" r="23"/><path d="M15 27 l7 7 l15 -16"/></svg>
+  <h3>Ticket sent to ICT</h3><p>You'll get a notification when someone picks it up.</p>
+  <div class="num">${num}</div>
+  <div class="acts"><button class="btn" data-act="again">New ticket</button><button class="btn pri" data-act="view">View ticket</button></div></div>`;
+function openSheet(scrim, num) { scrim.innerHTML = sheetHTML(num); scrim.classList.remove('closing'); scrim.classList.add('on'); }
+function closeSheet(scrim) {
+  return new Promise(res => {
+    if (RM()) { scrim.classList.remove('on'); return res(); }
+    scrim.classList.add('closing');
+    setTimeout(() => { scrim.classList.remove('on', 'closing'); res(); }, 200);
+  });
+}
+
+/* ───────── ticket board (list + detail) ───────── */
+const ST = {
+  SENDING: { s: 'Sending…', l: 'Sending…', c: 's-send', dot: 'var(--ink-3)', spin: true },
+  FAILED: { s: "Couldn't send", l: "Couldn't send", c: 's-fail', dot: 'var(--danger)', ic: 'alert-triangle' },
+  TODO: { s: 'Open', l: 'Open', c: 's-open', dot: 'var(--ink-3)' },
+  IN_PROGRESS: { s: 'In progress', l: 'In progress', c: 's-prog', dot: 'var(--info)' },
+  WAITING_VENDOR: { s: 'Waiting on vendor', l: 'Waiting on vendor', c: 's-vend', dot: 'var(--violet)' },
+  RESOLVED: { s: 'Please confirm', l: 'Resolved — please confirm', c: 's-res', dot: 'var(--warn)', ic: 'hand' },
+  CLOSED: { s: 'Closed', l: 'Closed', c: 's-closed', dot: 'var(--accent)', ic: 'check' },
+  CANCELLED: { s: 'Cancelled', l: 'Cancelled', c: 's-cancel', dot: 'var(--ink-3)' },
+};
+const SECTIONS = [['Not sent yet', ['SENDING', 'FAILED']], ['Needs you', ['RESOLVED']], ['Open', ['TODO', 'IN_PROGRESS', 'WAITING_VENDOR']], ['Closed', ['CLOSED', 'CANCELLED']]];
+const OPEN = new Set(['SENDING', 'FAILED', 'TODO', 'IN_PROGRESS', 'WAITING_VENDOR', 'RESOLVED']);
+const PRIO = { Low: 'var(--ink-3)', Medium: 'var(--warn)', High: '#e8743b', Critical: 'var(--danger)' };
+const RA = ['RA', 'Rizky Aditya', '#2563eb'], DS = ['DS', 'Dimas Saputra', '#7c4dd6'];
+
+const SEED1 = [
+  { id: 'p', no: '031026-HW-0014', ref: 'IPOP-ICT-2026-000041', title: 'Printer lantai 3 tidak bisa scan ke email', mod: 'IT Support', cat: 'Hardware', status: 'RESOLVED', prio: 'Medium', time: '09:42',
+    who: RA, sla: ['ok', 'Met', 'due Fri 3 Oct, 17:00'], device: 'Printer Canon iR-ADV C5535',
+    desc: 'Scan to email error "Send failed" sejak kemarin sore. Copy dan print masih normal.\nSudah coba restart printer.', files: [['error-panel.jpg', '1.2 MB']],
+    steps: ['3 Oct, 08:12', '3 Oct, 09:05', 'Today, 09:42', ''],
+    ev: [{ k: 'hot', i: 'check', h: 'Marked <b>resolved</b> by Rizky Aditya', s: 'Today, 09:42' }, { k: 'inf', i: 'play', h: 'Status changed to <b>In progress</b>', s: '3 Oct, 09:05' },
+         { k: 'inf', i: 'user', h: 'Assigned to <b>Rizky Aditya</b>', s: '3 Oct, 08:30' }, { k: 'ok', i: 'send', h: 'Submitted from iPop', s: '3 Oct, 08:12 · IPOP-ICT-2026-000041' }] },
+  { id: 'w', no: '041026-NET-0003', ref: 'IPOP-ICT-2026-000042', title: 'Wifi lantai 2 mati', mod: 'IT Support', cat: 'Network', status: 'IN_PROGRESS', prio: 'High', time: 'Yesterday',
+    who: RA, sla: ['warn', '4 h left', 'due Today, 14:00'], device: 'Laptop', desc: 'Tidak bisa konek sejak pagi, sudah restart laptop. Teman satu ruangan juga sama.', files: [['screenshot.png', '842 KB']],
+    steps: ['Yesterday, 09:31', 'Yesterday, 10:15', '', ''],
+    ev: [{ k: 'inf', i: 'play', h: 'Status changed to <b>In progress</b>', s: 'Yesterday, 10:15' }, { k: 'inf', i: 'user', h: 'Assigned to <b>Rizky Aditya</b>', s: 'Yesterday, 09:50' },
+         { k: 'ok', i: 'send', h: 'Submitted from iPop', s: 'Yesterday, 09:31 · IPOP-ICT-2026-000042' }] },
+  { id: 'a', no: '021026-SW-0021', title: 'Lisensi AutoCAD habis', mod: 'IT Support', cat: 'Software', status: 'WAITING_VENDOR', prio: 'Medium', time: '2 Oct', origin: 'IDESK',
+    who: DS, sla: ['ok', 'On track', 'due Wed 8 Oct, 17:00'], software: 'AutoCAD 2024', desc: 'Lisensi AutoCAD expired, tidak bisa buka file DWG.', files: [],
+    steps: ['2 Oct, 13:20', '2 Oct, 15:02', '', ''],
+    ev: [{ k: 'inf', i: 'truck', h: 'Waiting on <b>vendor</b>', s: '3 Oct, 11:00' }, { k: 'inf', i: 'user', h: 'Assigned to <b>Dimas Saputra</b>', s: '2 Oct, 15:02' }, { k: 'ok', i: 'send', h: 'Filed in iDesk', s: '2 Oct, 13:20' }] },
+  { id: 'o', no: '011026-ORA-0007', ref: 'IPOP-ICT-2026-000039', title: 'Akses Oracle K2 modul Purchasing', mod: 'Oracle K2', cat: 'Oracle request', status: 'TODO', prio: 'Low', time: '1 Oct',
+    who: null, sla: ['ok', 'On track', 'due Tue 7 Oct, 17:00'], desc: 'Mohon akses read-only ke modul Purchasing untuk rekonsiliasi PO.', files: [],
+    steps: ['1 Oct, 16:40', '', '', ''], ev: [{ k: 'ok', i: 'send', h: 'Submitted from iPop', s: '1 Oct, 16:40 · IPOP-ICT-2026-000039' }] },
+  { id: 'c1', no: '250926-HW-0102', ref: 'IPOP-ICT-2026-000031', title: 'Mouse wireless rusak', mod: 'IT Support', cat: 'Hardware', status: 'CLOSED', prio: 'Low', time: '25 Sep',
+    who: RA, sla: ['ok', 'Met', 'due Thu 25 Sep, 17:00'], device: 'Logitech M331', desc: 'Klik kiri kadang tidak terbaca.', files: [],
+    steps: ['25 Sep, 08:00', '25 Sep, 09:10', '25 Sep, 11:30', '25 Sep, 14:02'],
+    ev: [{ k: 'ok', i: 'check-check', h: '<b>Closed</b> — you confirmed', s: '25 Sep, 14:02' }, { k: 'hot', i: 'check', h: 'Marked <b>resolved</b> by Rizky Aditya', s: '25 Sep, 11:30' }, { k: 'ok', i: 'send', h: 'Submitted from iPop', s: '25 Sep, 08:00' }] },
+  { id: 'c2', no: '180926-GEN-0044', title: 'Permintaan akun email untuk magang', mod: 'IT Support', cat: 'General', status: 'CANCELLED', prio: 'Medium', time: '18 Sep', origin: 'IDESK',
+    who: null, sla: ['ok', '—', ''], desc: 'Akun email untuk 2 orang magang divisi Marketing.', files: [], steps: ['', '', '', ''],
+    ev: [{ k: 'inf', i: 'x', h: '<b>Cancelled</b> in iDesk', s: '19 Sep, 10:00' }, { k: 'ok', i: 'send', h: 'Filed in iDesk', s: '18 Sep, 15:12' }] },
+];
+const SEED4 = [
+  { id: 's', ref: 'IPOP-ICT-2026-000044', title: 'Monitor kedip-kedip', mod: 'IT Support', cat: 'Hardware', status: 'SENDING', prio: 'Medium', time: '10:05', device: 'Monitor Dell P2419H',
+    desc: 'Layar berkedip setiap beberapa detik, sudah ganti kabel HDMI.', files: [], steps: ['', '', '', ''], ev: [{ k: 'inf', i: 'loader', h: 'Waiting for iDesk to answer', s: 'Today, 10:05' }] },
+  { id: 'f', ref: 'IPOP-ICT-2026-000043', title: 'Email tidak sinkron di HP', mod: 'IT Support', cat: 'Software', status: 'FAILED', prio: 'Medium', time: 'Yesterday', software: 'Outlook mobile',
+    desc: 'Email di HP berhenti sinkron sejak ganti password.', files: [], steps: ['', '', '', ''], ev: [{ k: 'hot', i: 'alert-triangle', h: 'iDesk unreachable — stopped retrying after 24 h', s: 'Today, 08:30' }] },
+  clone(SEED1[1]),
+];
+
+class Board {
+  constructor(root, seed, opts = {}) {
+    this.root = root; this.seed = seed; this.opts = opts;
+    $('.split', root).innerHTML = `
+      <div class="lst"><div class="lst-h">
+        <div class="row"><h1>Tickets</h1><button class="btn pri sm" data-go="s2"><i data-lucide="plus"></i>New ticket</button></div>
+        <button class="sync" data-act="sync"></button>
+        <div class="seg" data-slide><button class="on" data-f="open">Open <small></small></button><button data-f="all">All <small></small></button></div>
+        <label class="search"><i data-lucide="search"></i><input placeholder="Search number or title"></label></div>
+        <div class="lst-b"><span class="sel-ind"></span><div class="rows"></div></div></div>
+      <div class="det"></div>`;
+    root.addEventListener('click', e => this.click(e));
+    $('.search input', root).addEventListener('input', e => { this.q = e.target.value.trim().toLowerCase(); this.render(); });
+    this.reset();
+  }
+  reset() {
+    this.t = clone(this.seed); this.sel = this.opts.sel || this.t[0].id; this.filter = 'open'; this.q = ''; this.tries = 0;
+    this.offline = !!this.opts.offline;
+    $('.search input', this.root).value = '';
+    $$('[data-f]', this.root).forEach(b => b.classList.toggle('on', b.dataset.f === 'open'));
+    $('.det', this.root).dataset.id = '';
+    this.renderSub(); this.render(); this.renderDetail(); this.glide(true);
+  }
+  get(id) { return this.t.find(t => t.id === id); }
+  hl(s) {
+    s = esc(s); if (!this.q) return s;
+    const i = s.toLowerCase().indexOf(esc(this.q)); if (i < 0) return s;
+    return s.slice(0, i) + '<mark>' + s.slice(i, i + this.q.length) + '</mark>' + s.slice(i + this.q.length);
+  }
+  visible() {
+    return this.t.filter(t => (this.filter === 'all' || OPEN.has(t.status)) &&
+      (!this.q || t.title.toLowerCase().includes(this.q) || (t.no || t.ref || '').toLowerCase().includes(this.q)));
+  }
+  pill(t, long) {
+    const m = ST[t.status];
+    return `<span class="pill ${m.c}${t.changed ? ' mi-pop-s' : ''}">${m.spin ? '<span class="spin"></span>' : m.ic ? `<i data-lucide="${m.ic}"></i>` : ''}${long ? m.l : m.s}</span>`;
+  }
+  row(t) {
+    const hot = t.prio === 'High' || t.prio === 'Critical';
+    return `<div class="tk${t.id === this.sel ? ' sel' : ''}${t.isNew ? ' fresh' : ''}" data-id="${t.id}"><span class="dot" style="background:${ST[t.status].dot}"></span>
+      <span class="t1">${this.hl(t.title)}</span><time>${t.time}</time>
+      <div class="t2">${this.pill(t)}<span class="m">${this.hl(t.no || t.ref)}</span><span class="sp"></span>
+      ${hot ? `<span class="pill" style="background:var(--danger-soft);color:var(--danger)">${t.prio}</span>` : ''}${t.origin === 'IDESK' ? '<span class="src-tag">iDesk</span>' : ''}</div></div>`;
+  }
+  render({ stagger = false } = {}) {
+    const rows = $('.rows', this.root), vis = this.visible();
+    const html = () => {
+      rows.innerHTML = vis.length ? SECTIONS.map(([name, sts]) => {
+        const items = vis.filter(t => sts.includes(t.status));
+        return items.length ? `<div class="sec">${name}</div>` + items.map(t => this.row(t)).join('') : '';
+      }).join('') : `<div class="lst-empty">${this.q ? `Nothing matches “${esc(this.q)}”` : 'No open tickets'}</div>`;
+      icons();
+    };
+    if (stagger) html(); else flip(rows, '.tk', html);
+    if (stagger && !RM()) $$('.tk, .sec', rows).forEach((r, i) => { r.style.animationDelay = i * 25 + 'ms'; replay(r, 'mi-rise'); });
+    const [o, a] = $$('[data-f] small', this.root);
+    o.textContent = this.t.filter(t => OPEN.has(t.status)).length; a.textContent = this.t.length;
+    this.glide();
+    if (this.opts.badge) {
+      const n = this.t.filter(t => t.status === 'RESOLVED').length;
+      for (const bd of $$('.ni .bd')) { if (bd.textContent !== String(n)) { bd.textContent = n; replay(bd, 'mi-bump'); } bd.hidden = !n; }
+    }
+  }
+  glide(instant) {
+    const ind = $('.sel-ind', this.root), r = $(`.tk[data-id="${this.sel}"]`, this.root);
+    if (!r || !r.offsetParent) { ind.style.opacity = '0'; return; }
+    if (instant) ind.style.transition = 'none';
+    Object.assign(ind.style, { opacity: '1', top: r.offsetTop + 'px', height: r.offsetHeight + 'px' });
+    if (instant) { void ind.offsetWidth; ind.style.transition = ''; }
+  }
+  select(id) {
+    if (!this.get(id)) return;
+    if (this.filter !== 'all' && !OPEN.has(this.get(id).status)) { this.filter = 'all'; $$('[data-f]', this.root).forEach(b => b.classList.toggle('on', b.dataset.f === 'all')); slideAll(this.root); }
+    this.sel = id;
+    if (!$(`.tk[data-id="${id}"]`, this.root)) this.render();
+    $$('.tk', this.root).forEach(r => r.classList.toggle('sel', r.dataset.id === id));
+    this.glide(); this.renderDetail();
+  }
+  renderSub() {
+    $('.sync', this.root).innerHTML = this.offline
+      ? '<i data-lucide="cloud-off"></i><span>iDesk is unreachable · showing saved copy</span>'
+      : '<i data-lucide="refresh-cw"></i><span>ICT · synced with iDesk just now</span>';
+    icons();
+  }
+  detailHTML(t) {
+    const m = ST[t.status], pending = t.status === 'SENDING' || t.status === 'FAILED';
+    const cur = { TODO: 0, IN_PROGRESS: 1, WAITING_VENDOR: 1, RESOLVED: 2, CLOSED: 4 }[t.status];
+    const labels = ['Submitted', t.status === 'WAITING_VENDOR' ? 'Waiting on vendor' : 'In progress', 'Resolved', 'Closed'];
+    let call = '';
+    if (t.status === 'RESOLVED') call = `<div class="callout${t.changed ? ' grow' : ''}"><i data-lucide="hand"></i><div><b>ICT marked this as resolved</b>
+      <p>Check that it works, then confirm in iDesk to close the ticket — or reopen it there if it's still broken.</p>
+      <button class="btn pri sm" data-act="idesk"><i data-lucide="external-link"></i>Confirm in iDesk</button></div></div>`;
+    if (t.status === 'FAILED') call = `<div class="callout err"><i data-lucide="alert-triangle"></i><div><b>iDesk didn't accept this ticket yet</b>
+      <p>We kept trying for 24 hours while iDesk was unreachable. Nothing was lost — try again, or discard it.</p>
+      <div class="acts"><button class="btn pri sm" data-act="retry"><i data-lucide="rotate-cw"></i>Try again</button><button class="btn sm" data-go="s2">Edit</button><button class="btn sm ghost" data-act="discard">Discard</button></div></div></div>`;
+    if (t.status === 'SENDING') call = `<div class="callout info"><span class="spin"></span><div><b>Sending to iDesk…</b>
+      <p style="margin:0">iDesk is slow to answer. iPop keeps trying with the same reference, so the ticket can never be filed twice.</p></div></div>`;
+    if (t.status === 'CANCELLED') call = `<div class="callout mute"><i data-lucide="circle-slash"></i><div><b>Cancelled in iDesk</b><p style="margin:0">Nothing more will happen on this ticket.</p></div></div>`;
+    const steps = cur === undefined ? '' : `<div class="steps"><span class="track"><span class="fill" data-w="${cur >= 4 ? '100%' : `calc(${cur * 25}% + 7px)`}"></span></span>
+      ${labels.map((l, i) => `<div class="st ${i < cur ? 'done' : i === cur ? 'cur' : ''}"><i></i>${l}<small>${t.steps[i] || (i === 3 && t.status === 'RESOLVED' ? 'after you confirm' : '&nbsp;')}</small></div>`).join('')}</div>`;
+    const rows = [];
+    if (pending) rows.push(['Reference', `<span class="v mono">${t.ref}</span>`]);
+    else {
+      rows.push(['Assigned to', t.who ? `<span class="v"><span class="av" style="background:${t.who[2]}">${t.who[0]}</span>${t.who[1]}</span>` : '<span class="v muted">Not assigned yet</span>']);
+    }
+    rows.push(['Priority', `<span class="v"><i class="pd" style="background:${PRIO[t.prio]}"></i>${t.prio}</span>`]);
+    if (!pending && t.sla && t.sla[2]) rows.push(['Target', `<span class="v"><span class="sla-${t.sla[0]}">${t.sla[1]}</span> · ${t.sla[2]}</span>`]);
+    if (t.device) rows.push(['Device', `<span class="v">${t.device}</span>`]);
+    if (t.software) rows.push(['Software', `<span class="v">${t.software}</span>`]);
+    return `<div class="det-h">${this.pill(t, true)}<span class="sp"></span>
+        ${t.no ? '<button class="btn sm ghost" data-act="copy"><i data-lucide="copy"></i><span>Copy number</span></button>' : ''}
+        <button class="btn sm" data-act="idesk"${pending ? ' disabled' : ''}><i data-lucide="external-link"></i>Open in iDesk</button></div>
+      <div class="det-b">
+        <div class="crumb">${t.no || t.ref} · ${t.mod} · ${t.cat}${t.origin === 'IDESK' ? ' · filed in iDesk' : ''}</div>
+        <h2>${esc(t.title)}</h2>${call}${steps}
+        <div class="grp">${rows.map(([k, v]) => `<div class="r"><span>${k}</span>${v}</div>`).join('')}</div>
+        <h4 class="h">Description</h4><p class="desc">${esc(t.desc)}</p>
+        ${t.files.length ? `<div class="files">${t.files.map(f => `<div class="fchip"><span class="ic"><i data-lucide="image"></i></span><div>${f[0]}<small>${f[1]}</small></div></div>`).join('')}</div>` : ''}
+        <h4 class="h">Activity</h4>
+        <div class="tl">${t.ev.map(e => `<div class="ev ${e.k}${e.fresh ? ' fresh' : ''}"><span class="b"><i data-lucide="${e.i}"></i></span>${e.h}<small>${e.s}</small></div>`).join('')}</div>
+        <div class="foot"><i data-lucide="message-square"></i>Chat with ICT, add files and reopen the ticket in iDesk.</div></div>`;
+  }
+  renderDetail() {
+    const det = $('.det', this.root), t = this.get(this.sel);
+    if (!t) { det.dataset.id = ''; det.innerHTML = '<div class="empty"><div><div class="big"><i data-lucide="mouse-pointer-click"></i></div><h3>Select a ticket</h3></div></div>'; icons(); return; }
+    const same = det.dataset.id === t.id, old = $('.fill', det)?.style.width;
+    det.innerHTML = this.detailHTML(t); det.dataset.id = t.id; icons();
+    const f = $('.fill', det);
+    if (f) {
+      if (same && old && !RM()) { f.style.transition = 'none'; f.style.width = old; void f.offsetWidth; f.style.transition = ''; requestAnimationFrame(() => requestAnimationFrame(() => f.style.width = f.dataset.w)); }
+      else { f.style.transition = 'none'; f.style.width = f.dataset.w; void f.offsetWidth; f.style.transition = ''; }
+    }
+    if (same && t.changed) replay($('.st.cur i', det), 'mi-pop');
+    if (!same) { det.scrollTop = 0; replay($('.det-b', det), 'mi-rise'); }
+  }
+  update() {
+    this.render(); this.renderDetail();
+    for (const t of this.t) { delete t.changed; delete t.isNew; t.ev.forEach(e => delete e.fresh); }
+  }
+  add(t) {
+    t.isNew = true; t.ev.forEach(e => e.fresh = true);
+    this.t.unshift(t); this.sel = t.id; this.q = ''; $('.search input', this.root).value = '';
+    this.update();
+  }
+  async click(e) {
+    const row = e.target.closest('.tk'); if (row) return this.select(row.dataset.id);
+    const f = e.target.closest('[data-f]');
+    if (f) {
+      if (f.classList.contains('on')) return;
+      this.filter = f.dataset.f; $$('[data-f]', this.root).forEach(b => b.classList.toggle('on', b === f)); slide(f.parentElement);
+      return this.render({ stagger: true });
+    }
+    const act = e.target.closest('[data-act]'); if (!act) return;
+    const a = act.dataset.act;
+    if (a === 'sync') {
+      const svg = $('svg', act), span = $('span', act);
+      replay(svg, 'spin1'); span.textContent = this.offline ? 'Trying iDesk…' : 'Syncing…';
+      await wait(850);
+      span.textContent = this.offline ? 'Still unreachable · showing saved copy' : 'ICT · synced with iDesk just now';
+      replay(span, 'mi-fade'); if (this.offline) replay(act, 'mi-shake');
+    }
+    if (a === 'copy') {
+      try { navigator.clipboard.writeText(this.get(this.sel).no); } catch { }
+      act.classList.add('mi-copied'); act.innerHTML = '<i data-lucide="check"></i><span>Copied</span>'; icons(); replay($('svg', act), 'mi-pop');
+      setTimeout(() => { act.classList.remove('mi-copied'); act.innerHTML = '<i data-lucide="copy"></i><span>Copy number</span>'; icons(); }, 1600);
+    }
+    if (a === 'idesk') replay(act, 'mi-pop-s');
+    if (a === 'retry') {
+      const t = this.get(this.sel);
+      act.disabled = true; act.style.width = act.offsetWidth + 'px'; act.innerHTML = '<span class="spin"></span>Trying…';
+      await wait(1100);
+      if (++this.tries === 1) {
+        act.disabled = false; act.style.width = ''; act.innerHTML = '<i data-lucide="rotate-cw"></i>Try again'; icons();
+        const c = act.closest('.callout'); $('p', c).textContent = "Still can't reach iDesk. The ticket stays here — nothing is lost.";
+        return replay(c, 'mi-shake');
+      }
+      Object.assign(t, { status: 'TODO', no: '051026-SW-0009', time: 'now', changed: true, who: null, sla: ['ok', 'On track', 'due Tue 7 Oct, 17:00'], steps: ['Just now', '', '', ''] });
+      t.ev.unshift({ k: 'ok', i: 'send', h: 'Sent to iDesk', s: 'Just now · ' + t.ref, fresh: true });
+      this.update();
+      toast({ title: 'Ticket sent to ICT', body: `${t.title} · ${t.no}`, onClick: () => this.select(t.id) });
+    }
+    if (a === 'discard') {
+      const i = this.t.findIndex(x => x.id === this.sel), t = this.t[i], r = $(`.tk[data-id="${t.id}"]`, this.root);
+      const sel = this.sel;
+      if (r) await leave(r);
+      this.t.splice(i, 1); this.sel = (this.t[i] || this.t[0] || {}).id; this.update();
+      snack('Ticket discarded', () => { this.t.splice(i, 0, t); this.sel = sel; t.isNew = true; this.update(); });
+    }
+  }
+}
+
+/* ───────── new-ticket form ───────── */
+const MODS = [
+  { slug: 'it-support', name: 'IT Support', d: 'PC, network, printer, apps', c: '#0a84ff', i: 'life-buoy', cats: ['GENERAL', 'HARDWARE', 'SOFTWARE', 'NETWORK', 'HARDWARE_INSTALLATION'], def: null },
+  { slug: 'oracle-k2', name: 'Oracle K2', d: 'Access & requests', c: '#c2442e', i: 'database', cats: ['ORACLE_REQUEST'], def: 'ORACLE_REQUEST' },
+  { slug: 'web-developer', name: 'Web Developer', d: 'Websites & web apps', c: '#7c4dd6', i: 'globe', cats: ['WEB_DEVELOPER'], def: 'WEB_DEVELOPER' },
+  { slug: 'mobile-developer', name: 'Mobile Developer', d: 'Mobile apps', c: '#2e9d6b', i: 'smartphone', cats: ['MOBILE_DEVELOPER'], def: 'MOBILE_DEVELOPER' },
+];
+const CAT = { GENERAL: ['General', 'circle-help', 'GEN'], HARDWARE: ['Hardware', 'monitor', 'HW'], SOFTWARE: ['Software', 'app-window', 'SW'], NETWORK: ['Network', 'wifi', 'NET'],
+  HARDWARE_INSTALLATION: ['Hardware installation', 'package-plus', 'INS'], ORACLE_REQUEST: ['Oracle request', 'database', 'ORA'], WEB_DEVELOPER: ['Web development', 'globe', 'WEB'], MOBILE_DEVELOPER: ['Mobile development', 'smartphone', 'MOB'] };
+const HW = [['PC / Laptop', 'monitor'], ['Printer', 'printer'], ['Monitor', 'monitor-smartphone'], ['Other', 'more-horizontal']];
+const EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv'];
+const TODAY = new Date(2026, 9, 5);
+const BLANK = { mod: 'it-support', cat: null, title: '', desc: '', device: '', software: '', prio: 'Medium', reason: '', files: [], hw: null, date: null, slot: null };
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const fmtDate = s => new Date(s + 'T00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+const fmtSize = b => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+let seq = 45;
+
+class TicketForm {
+  constructor(win, init, opts = {}) {
+    this.win = win; this.wrap = $('.formwrap', win); this.scrim = $('.scrim', win); this.init = init; this.opts = opts;
+    this.s = clone(init); this.cm = new Date(2026, 9, 1);
+    this.wrap.addEventListener('click', e => this.click(e));
+    this.wrap.addEventListener('input', e => this.input(e));
+    this.wrap.addEventListener('change', e => { if (e.target.type === 'file') { this.addFiles(e.target.files); e.target.value = ''; } });
+    this.wrap.addEventListener('dragover', e => { const d = e.target.closest('.drop'); if (d) { e.preventDefault(); d.classList.add('over'); } });
+    this.wrap.addEventListener('dragleave', e => { const d = e.target.closest('.drop'); if (d && !d.contains(e.relatedTarget)) d.classList.remove('over'); });
+    this.wrap.addEventListener('drop', e => { const d = e.target.closest('.drop'); if (d) { e.preventDefault(); d.classList.remove('over'); this.addFiles(e.dataTransfer.files); } });
+    this.scrim.addEventListener('click', e => this.sheetClick(e));
+    this.render();
+  }
+  get m() { return MODS.find(m => m.slug === this.s.mod); }
+  html() {
+    const s = this.s;
+    return `<div class="form-h"><button class="btn sm ghost" data-go="s1"><i data-lucide="chevron-left"></i>Tickets</button><span class="sp"></span><span class="saved"><i data-lucide="check"></i>Draft saved</span></div>
+    <div class="form">
+      ${this.opts.notRegistered ? `<div class="collapse nr"><div><div class="callout" style="margin-top:4px"><i data-lucide="user-x"></i><div>
+        <b>Your iDesk account isn't set up yet</b>
+        <p>ICT tickets are tracked in iDesk. Contact ICT to create your iDesk account so you can submit tickets and follow their progress. Your draft is saved — submit again once your account is ready.</p>
+        <div class="acts"><button class="btn pri sm"><i data-lucide="message-circle"></i>Chat with ICT</button><button class="btn sm"><i data-lucide="phone"></i>Call ICT · ext. 1234</button></div></div></div></div></div>` : ''}
+      <h1>New ICT ticket</h1><p class="lead">Tell ICT what's wrong. You'll get a notification as it moves along.</p>
+      <div class="fs-t">Where should it go?</div>
+      <div class="modg">${MODS.map(m => `<button class="mod${m.slug === s.mod ? ' on' : ''}" data-mod="${m.slug}"><span class="ic" style="background:${m.c}"><i data-lucide="${m.i}"></i></span><b>${m.name}</b><span>${m.d}</span></button>`).join('')}</div>
+      <div class="fs-t">What's it about?</div>
+      <div class="card" data-k="cat"><div class="f"><div class="chips" data-slide="pill"></div><div class="fixed-cat" hidden></div><div class="ferr"></div></div></div>
+      <div class="collapse inst${s.cat === 'HARDWARE_INSTALLATION' ? ' open' : ''}"><div>
+        <div class="fs-t">Installation</div>
+        <div class="card">
+          <div class="f" data-k="hw"><label class="l">What should be installed? <em>*</em></label>
+            <div class="chips" data-slide="pill">${HW.map(([n, i]) => `<button class="chip${s.hw === n ? ' on' : ''}" data-hw="${n}"><i data-lucide="${i}"></i>${n}</button>`).join('')}</div><div class="ferr"></div></div>
+          <div class="f row2" style="align-items:start">
+            <div data-k="date"><label class="l">Date <em>*</em></label>
+              <div class="calh"><b class="mname"></b><span><button class="btn sm ghost" data-cal="-1"><i data-lucide="chevron-left"></i></button><button class="btn sm ghost" data-cal="1"><i data-lucide="chevron-right"></i></button></span></div>
+              <div class="calvp"><div class="cal"></div></div></div>
+            <div data-k="slot"><label class="l">Time <em>*</em></label>
+              <div class="slots-l">Morning</div><div class="slots">${['08:00', '09:00', '10:00', '11:00'].map(t => `<button class="slot${s.slot === t ? ' on' : ''}" data-slot="${t}">${t}</button>`).join('')}</div>
+              <div class="slots-l">Afternoon</div><div class="slots">${['14:00', '15:00'].map(t => `<button class="slot${s.slot === t ? ' on' : ''}" data-slot="${t}">${t}</button>`).join('')}</div>
+              <div class="hint"><span class="hl sum"></span></div></div>
+          </div></div></div></div>
+      <div class="fs-t">Details</div>
+      <div class="card">
+        <div class="f" data-k="title"><label class="l">Title <em>*</em></label><input class="inp" data-in="title" maxlength="200" placeholder="e.g. Wifi lantai 2 mati">
+          <div class="hint"><span class="hl" data-h="A short summary ICT will see first">A short summary ICT will see first</span><span class="cnt" data-max="200"></span></div></div>
+        <div class="f" data-k="desc"><label class="l">Description <em>*</em></label><textarea class="inp ta" data-in="desc" maxlength="5000" placeholder="What happened, since when, what you've tried"></textarea>
+          <div class="hint"><span class="hl" data-h="What happened, since when, what you've tried">What happened, since when, what you've tried</span><span class="cnt" data-max="5000"></span></div></div>
+        <div class="f row2">
+          <div><label class="l">Device <span class="opt">(optional)</span></label><input class="inp" data-in="device" maxlength="100" placeholder="e.g. Laptop"></div>
+          <div><label class="l">Software <span class="opt">(optional)</span></label><input class="inp" data-in="software" maxlength="100" placeholder="e.g. Outlook"></div></div>
+      </div>
+      <div class="fs-t">Priority</div>
+      <div class="card"><div class="f">
+        <div class="prio" data-slide>${Object.keys(PRIO).map(p => `<button data-prio="${p}" class="${p === s.prio ? 'on' : ''}"><i style="background:${PRIO[p]}"></i>${p}</button>`).join('')}</div>
+        <div class="collapse crit-c${s.prio === 'Critical' ? ' open' : ''}"><div><div class="crit" data-k="reason"><label class="l"><i data-lucide="siren"></i>Why is this critical? <em>*</em></label>
+          <input class="inp" data-in="reason" maxlength="500" placeholder="e.g. The whole floor can't work">
+          <div class="hint"><span class="hl" data-h="Critical tickets page the on-call team. Use it only when work has stopped.">Critical tickets page the on-call team. Use it only when work has stopped.</span></div></div></div></div>
+      </div></div>
+      <div class="fs-t">Attachments</div>
+      <div class="card"><div class="f">
+        <div class="drop" data-k="files"><div class="drop-ov"><span class="ic"><i data-lucide="upload"></i></span><b>Drop to attach</b><small>Up to 5 files, 10 MB each</small></div>
+          <i data-lucide="paperclip"></i>Drop files here or <b>browse</b><br><span class="dh">Up to 5 files, 10 MB each · images, PDF, Word, Excel, TXT, CSV</span>
+          <input type="file" multiple hidden></div>
+        <div class="atts"></div></div></div>
+      <div class="submitbar"><small>Filed as <b>Bagastyo</b> · from your iPop account</small><span class="sp"></span>
+        <button class="btn" data-act="discard">Discard draft</button><button class="btn pri" data-act="submit"><i data-lucide="send"></i>Submit ticket</button></div>
+    </div>`;
+  }
+  render() {
+    this.wrap.innerHTML = this.html();
+    for (const el of $$('[data-in]', this.wrap)) el.value = this.s[el.dataset.in] || '';
+    if (this.s.date) this.cm = new Date(this.s.date.slice(0, 7) + '-01T00:00');
+    this.renderCats(false); this.renderCal(0); this.renderAtts(); this.counters(); this.sum(false);
+    icons(); requestAnimationFrame(() => slideAll(this.wrap, true));
+  }
+  renderCats(stagger) {
+    const m = this.m, chips = $('.chips', $('[data-k=cat]', this.wrap)), fixed = $('.fixed-cat', this.wrap);
+    if (m.cats.length > 1) {
+      chips.hidden = false; fixed.hidden = true;
+      chips.innerHTML = m.cats.map(c => `<button class="chip${c === this.s.cat ? ' on' : ''}" data-cat="${c}"><i data-lucide="${CAT[c][1]}"></i>${CAT[c][0]}</button>`).join('');
+      icons();
+      if (stagger && !RM()) [...chips.children].forEach((c, i) => { c.style.animationDelay = i * 35 + 'ms'; replay(c, 'mi-rise'); });
+      requestAnimationFrame(() => slide(chips, true));
+    } else {
+      chips.hidden = true; chips.innerHTML = ''; fixed.hidden = false;
+      fixed.innerHTML = `<i data-lucide="lock"></i><b>${CAT[m.cats[0]][0]}</b><span>— set by this queue</span>`; icons();
+      if (stagger) replay(fixed, 'mi-rise');
+    }
+  }
+  renderCal(dir) {
+    const cal = $('.cal', this.wrap), y = this.cm.getFullYear(), mo = this.cm.getMonth();
+    $('.mname', this.wrap).textContent = this.cm.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    $('[data-cal="-1"]', this.wrap).disabled = y === 2026 && mo === 9;
+    let h = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(d => `<span class="h">${d}</span>`).join('');
+    h += '<span></span>'.repeat((new Date(y, mo, 1).getDay() + 6) % 7);
+    for (let d = 1; d <= new Date(y, mo + 1, 0).getDate(); d++) {
+      const dt = new Date(y, mo, d), dow = dt.getDay(), id = iso(dt);
+      const off = dt < TODAY || dow === 0 || dow === 6;
+      h += `<button class="${off ? 'x' : ''}${+dt === +TODAY ? ' t' : ''}${id === this.s.date ? ' s' : ''}" data-day="${id}"${off ? ' data-off' : ''}>${d}</button>`;
+    }
+    cal.innerHTML = h;
+    if (dir) replay(cal, dir > 0 ? 'from-r' : 'from-l');
+  }
+  sum(anim = true) {
+    const el = $('.sum', this.wrap), s = this.s;
+    el.textContent = s.date && s.slot ? `${fmtDate(s.date)}, ${s.slot} · ICT confirms the slot in iDesk` : s.date ? `${fmtDate(s.date)} · now pick a time` : 'Pick a date and time';
+    if (anim) replay(el, 'mi-fade');
+  }
+  attHTML(f) {
+    const ext = f.name.split('.').pop().toLowerCase();
+    const ic = !f.ok ? 'file-x' : ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext) ? 'image' : ['xls', 'xlsx', 'csv'].includes(ext) ? 'sheet' : 'file-text';
+    return `<div class="att${f.ok ? '' : ' bad'}" data-fid="${f.id}"><span class="ic"><i data-lucide="${ic}"></i></span><span class="nm">${esc(f.name)}<small>${f.ok ? f.size : f.msg}</small></span><button class="btn sm ghost" data-act="rm"><i data-lucide="x"></i></button></div>`;
+  }
+  renderAtts() { $('.atts', this.wrap).innerHTML = this.s.files.map(f => this.attHTML(f)).join(''); icons(); }
+  addFiles(list) {
+    const drop = $('.drop', this.wrap);
+    for (const file of list) {
+      const ext = file.name.split('.').pop().toLowerCase();
+      let msg = !EXT.includes(ext) ? "iDesk doesn't accept this file type" : file.size > 10 * 1048576 ? 'Larger than 10 MB' : null;
+      if (!msg && this.s.files.filter(f => f.ok).length >= 5) {
+        drop.classList.add('err'); $('.dh', drop).textContent = 'You can attach up to 5 files'; replay(drop, 'mi-shake');
+        setTimeout(() => { drop.classList.remove('err'); $('.dh', drop).textContent = 'Up to 5 files, 10 MB each · images, PDF, Word, Excel, TXT, CSV'; }, 2200);
+        continue;
+      }
+      const f = { id: 'f' + Math.random().toString(36).slice(2, 8), name: file.name, size: fmtSize(file.size), ok: !msg, msg };
+      this.s.files.push(f);
+      $('.atts', this.wrap).insertAdjacentHTML('beforeend', this.attHTML(f));
+    }
+    icons(); this.clearErr('files'); this.dirty();
+  }
+  counters() {
+    for (const c of $$('.cnt', this.wrap)) {
+      const inp = $('[data-in]', c.closest('.f')), max = +c.dataset.max, n = inp.value.length;
+      c.textContent = `${n} / ${max}`; c.classList.toggle('warn', n > max * .9);
+    }
+  }
+  dirty() {
+    const el = $('.saved', this.wrap);
+    el.innerHTML = '<span class="spin"></span>Saving…';
+    clearTimeout(this.saveT);
+    this.saveT = setTimeout(() => { el.innerHTML = '<i data-lucide="check"></i>Draft saved'; icons(); replay($('svg', el), 'mi-pop'); }, 650);
+  }
+  clearErr(k) {
+    const el = $(`[data-k="${k}"]`, this.wrap); if (!el) return;
+    el.classList.remove('err');
+    const hl = $('.hl[data-h]', el); if (hl) hl.textContent = hl.dataset.h;
+    const fe = $('.ferr', el); if (fe) fe.textContent = '';
+  }
+  flagErr(k, msg) {
+    const el = $(`[data-k="${k}"]`, this.wrap);
+    el.classList.add('err');
+    const hl = $('.hl', el), fe = $('.ferr', el);
+    if (fe) fe.textContent = msg; else if (hl) hl.textContent = msg;
+    if (k === 'files') { $('.dh', el).textContent = msg; setTimeout(() => this.clearErr('files'), 2500); }
+    el.scrollIntoView({ block: 'center', behavior: RM() ? 'auto' : 'smooth' });
+    setTimeout(() => { replay(el, 'mi-shake'); const i = $('[data-in]', el); if (i) i.focus({ preventScroll: true }); }, RM() ? 0 : 280);
+  }
+  validate() {
+    const s = this.s;
+    if (!s.cat) return ['cat', "Pick what it's about"];
+    if (s.cat === 'HARDWARE_INSTALLATION') {
+      if (!s.hw) return ['hw', 'Pick what should be installed'];
+      if (!s.date) return ['date', 'Pick a date'];
+      if (!s.slot) return ['slot', 'Pick a time'];
+    }
+    if (s.title.trim().length < 5) return ['title', 'At least 5 characters'];
+    if (s.desc.trim().length < 3) return ['desc', 'Tell ICT a little more'];
+    if (s.prio === 'Critical' && s.reason.trim().length < 3) return ['reason', 'Say why this is critical'];
+    if (s.files.some(f => !f.ok)) return ['files', "Remove the files iDesk won't accept"];
+    return null;
+  }
+  async submit(btn) {
+    const bad = this.validate(); if (bad) return this.flagErr(...bad);
+    btn.disabled = true; btn.style.width = btn.offsetWidth + 'px'; btn.innerHTML = '<span class="spin"></span>Sending…';
+    await wait(1100);
+    btn.disabled = false; btn.style.width = ''; btn.innerHTML = '<i data-lucide="send"></i>Submit ticket'; icons();
+    if (this.opts.notRegistered) {
+      const nr = $('.nr', this.wrap); nr.classList.add('open'); this.wrap.scrollTo({ top: 0, behavior: RM() ? 'auto' : 'smooth' });
+      return setTimeout(() => replay($('.callout', nr), 'flash'), 250);
+    }
+    this.num = `051026-${CAT[this.s.cat][2]}-00${seq}`;
+    openSheet(this.scrim, this.num);
+  }
+  async sheetClick(e) {
+    const a = e.target.closest('[data-act]')?.dataset.act; if (!a) return;
+    await closeSheet(this.scrim);
+    const s = this.s, ref = `IPOP-ICT-2026-0000${seq++}`;
+    const t = { id: 'n' + seq, no: this.num, ref, title: s.title, mod: this.m.name, cat: CAT[s.cat][0], status: 'TODO', prio: s.prio, time: 'now', who: null,
+      sla: ['ok', 'On track', 'due Tue 7 Oct, 17:00'], device: s.device, software: s.software, desc: s.desc,
+      files: s.files.filter(f => f.ok).map(f => [f.name, f.size]), steps: ['Just now', '', '', ''], ev: [{ k: 'ok', i: 'send', h: 'Submitted from iPop', s: 'Just now · ' + ref }] };
+    this.s = clone(BLANK); this.render(); replay($('.form', this.wrap), 'mi-fade');
+    if (a === 'view') { go('s1'); B1.add(t); }
+  }
+  async click(e) {
+    const t = e.target;
+    const mod = t.closest('[data-mod]');
+    if (mod) {
+      if (mod.dataset.mod === this.s.mod) return;
+      this.s.mod = mod.dataset.mod; this.s.cat = this.m.def;
+      $$('[data-mod]', this.wrap).forEach(b => b.classList.toggle('on', b === mod)); replay($('.ic', mod), 'mi-pop');
+      this.renderCats(true); $('.inst', this.wrap).classList.remove('open'); this.clearErr('cat'); return this.dirty();
+    }
+    const cat = t.closest('[data-cat]');
+    if (cat) {
+      this.s.cat = cat.dataset.cat; $$('[data-cat]', this.wrap).forEach(b => b.classList.toggle('on', b === cat)); slide(cat.parentElement);
+      const inst = $('.inst', this.wrap); inst.classList.toggle('open', this.s.cat === 'HARDWARE_INSTALLATION');
+      if (this.s.cat === 'HARDWARE_INSTALLATION') requestAnimationFrame(() => slideAll(inst, true));
+      this.clearErr('cat'); return this.dirty();
+    }
+    const hw = t.closest('[data-hw]');
+    if (hw) { this.s.hw = hw.dataset.hw; $$('[data-hw]', this.wrap).forEach(b => b.classList.toggle('on', b === hw)); slide(hw.parentElement); this.clearErr('hw'); return this.dirty(); }
+    const pr = t.closest('[data-prio]');
+    if (pr) {
+      this.s.prio = pr.dataset.prio; $$('[data-prio]', this.wrap).forEach(b => b.classList.toggle('on', b === pr)); slide(pr.parentElement);
+      const c = $('.crit-c', this.wrap), open = this.s.prio === 'Critical'; c.classList.toggle('open', open);
+      if (open) setTimeout(() => $('[data-in=reason]', c).focus({ preventScroll: true }), 300);
+      return this.dirty();
+    }
+    const cn = t.closest('[data-cal]');
+    if (cn) { const d = +cn.dataset.cal; this.cm = new Date(this.cm.getFullYear(), this.cm.getMonth() + d, 1); return this.renderCal(d); }
+    const day = t.closest('[data-day]');
+    if (day) {
+      if (day.hasAttribute('data-off')) return replay(day, 'mi-shake');
+      this.s.date = day.dataset.day; $$('[data-day]', this.wrap).forEach(b => b.classList.toggle('s', b === day)); replay(day, 'mi-pop');
+      this.clearErr('date'); this.sum(); return this.dirty();
+    }
+    const sl = t.closest('[data-slot]');
+    if (sl) { this.s.slot = sl.dataset.slot; $$('[data-slot]', this.wrap).forEach(b => b.classList.toggle('on', b === sl)); replay(sl, 'mi-pop-s'); this.clearErr('slot'); this.sum(); return this.dirty(); }
+    const act = t.closest('[data-act]');
+    if (act?.dataset.act === 'rm') {
+      const row = act.closest('.att'); this.s.files = this.s.files.filter(f => f.id !== row.dataset.fid); await leave(row); return this.dirty();
+    }
+    if (act?.dataset.act === 'submit') return this.submit(act);
+    if (act?.dataset.act === 'discard') {
+      const snap = clone(this.s); this.s = clone(BLANK); this.render(); replay($('.form', this.wrap), 'mi-fade');
+      return snack('Draft discarded', () => { this.s = snap; this.render(); replay($('.form', this.wrap), 'mi-fade'); });
+    }
+    const drop = t.closest('.drop'); if (drop && !t.closest('input')) $('input[type=file]', drop).click();
+  }
+  input(e) {
+    const k = e.target.dataset.in; if (!k) return;
+    this.s[k] = e.target.value; this.counters(); this.clearErr(k); this.dirty();
+  }
+}
+
+/* ───────── wiring ───────── */
+const rail = `<div class="brand"><i></i>iPop</div>
+  <h6>Workspace</h6>
+  <div class="ni"><i data-lucide="layout-grid"></i>Dashboard</div>
+  <div class="ni"><i data-lucide="users"></i>Directory</div>
+  <div class="ni"><i data-lucide="kanban"></i>Projects</div>
+  <div class="ni"><i data-lucide="notebook-pen"></i>Notes</div>
+  <div class="ni on"><i data-lucide="life-buoy"></i>Tickets<span class="bd">1</span></div>
+  <h6>Communication</h6>
+  <div class="ni"><i data-lucide="message-circle"></i>Chat</div>
+  <div class="ni"><i data-lucide="mail"></i>Mail</div>
+  <div class="ni"><i data-lucide="newspaper"></i>News &amp; Memos</div>
+  <div class="ni"><i data-lucide="phone"></i>Calls</div>
+  <h6>Resources</h6>
+  <div class="ni"><i data-lucide="folder"></i>Files</div>
+  <div class="ni"><i data-lucide="calendar"></i>Calendar</div>`;
+$$('[data-rail]').forEach(r => r.innerHTML = rail);
+icons();
+
+const B1 = new Board($('#b1'), SEED1, { badge: true });
+const B4 = new Board($('#b4'), SEED4, { sel: 'f', offline: true });
+new TicketForm($('#f2'), { ...clone(BLANK), cat: 'NETWORK', title: 'Wifi lantai 2 mati', desc: 'Tidak bisa konek sejak pagi, sudah restart laptop. Teman satu ruangan juga sama.', device: 'Laptop',
+  prio: 'Critical', reason: 'Seluruh lantai 2 (±40 orang) tidak bisa kerja',
+  files: [{ id: 'fa', name: 'screenshot.png', size: '842 KB', ok: true }, { id: 'fb', name: 'rekaman.mp4', size: '24 MB', ok: false, msg: "iDesk doesn't accept this file type" }] });
+new TicketForm($('#f3'), { ...clone(BLANK), cat: 'HARDWARE_INSTALLATION', hw: 'PC / Laptop', date: '2026-10-09', slot: '10:00', title: 'Instalasi PC baru untuk staf Finance',
+  desc: 'PC baru untuk staf Finance yang mulai bekerja minggu depan.' });
+new TicketForm($('#f5'), { ...clone(BLANK), cat: 'HARDWARE', title: 'Laptop tidak bisa booting', desc: 'Muncul layar biru setelah update semalam.', device: 'Laptop' }, { notRegistered: true });
+
+const enter = {
+  s1: () => B1.glide(true),
+  s4: () => B4.glide(true),
+  s6: () => {
+    $$('#s6 [data-count]').forEach(el => countUp(el, +el.dataset.count));
+    if (RM()) return;
+    $$('#s6 .wr').forEach((r, i) => { r.style.animationDelay = 120 + i * 50 + 'ms'; replay(r, 'mi-rise'); });
+    $$('#s6 [data-t6]').forEach((t, i) => { t.style.animationDelay = 300 + i * 160 + 'ms'; replay(t, 'tin'); });
+    replay($('#emptyIc'), 'mi-pop');
+  },
+};
+function go(id) {
+  $$('.mk-nav [data-s]').forEach(x => x.classList.toggle('on', x.dataset.s === id));
+  $$('.stage').forEach(s => s.classList.toggle('on', s.id === id));
+  const st = $('#' + id);
+  replay($('.win, .spec', st), 'mi-rise');
+  slideAll(st, true);
+  enter[id]?.();
+  window.scrollTo(0, 0);
+}
+$$('.mk-nav [data-s]').forEach(b => b.onclick = () => go(b.dataset.s));
+document.addEventListener('click', e => {
+  const g = e.target.closest('[data-go]'); if (g) return go(g.dataset.go);
+  const o = e.target.closest('[data-open]'); if (o) { go('s1'); B1.select(o.dataset.open); }
+});
+$('#theme').onclick = () => { const r = document.documentElement; r.dataset.theme = r.dataset.theme === 'dark' ? '' : 'dark'; };
+
+$('#simResolve').onclick = async () => {
+  const t = B1.get('w'); if (!t || t.status !== 'IN_PROGRESS') return;
+  B1.select('w'); await wait(650);
+  Object.assign(t, { status: 'RESOLVED', changed: true, time: 'now' }); t.steps[2] = 'Just now';
+  t.ev.unshift({ k: 'hot', i: 'check', h: 'Marked <b>resolved</b> by Rizky Aditya', s: 'Just now', fresh: true });
+  B1.update();
+  toast({ title: 'Ticket resolved — please confirm', body: t.title, onClick: () => B1.select('w') });
+};
+$('#simPick').onclick = () => {
+  const t = B1.get('o'); if (!t || t.status !== 'TODO') return;
+  Object.assign(t, { status: 'IN_PROGRESS', changed: true, who: DS, time: 'now' }); t.steps[1] = 'Just now';
+  t.ev.unshift({ k: 'inf', i: 'play', h: 'Status changed to <b>In progress</b>', s: 'Just now', fresh: true }, { k: 'inf', i: 'user', h: 'Assigned to <b>Dimas Saputra</b>', s: 'Just now', fresh: true });
+  B1.update();
+  toast({ title: 'Dimas Saputra picked up your ticket', body: t.title, onClick: () => B1.select('o') });
+};
+$('#simReset').onclick = () => B1.reset();
+$('#simBack').onclick = () => {
+  if (!B4.offline) return;
+  B4.offline = false; B4.renderSub(); replay($('.sync', B4.root), 'mi-fade');
+  const t = B4.get('s'); if (!t || t.status !== 'SENDING') return;
+  Object.assign(t, { status: 'TODO', no: '051026-HW-0002', changed: true, time: 'now', who: null, sla: ['ok', 'On track', 'due Tue 7 Oct, 17:00'], steps: ['Just now', '', '', ''] });
+  t.ev.unshift({ k: 'ok', i: 'send', h: 'Sent to iDesk', s: 'Just now · ' + t.ref, fresh: true });
+  B4.update();
+  toast({ title: 'Ticket sent to ICT', body: `${t.title} · ${t.no}`, onClick: () => B4.select('s') });
+};
+const sheet4 = $('#sheet4');
+$('#simSheet').onclick = () => openSheet(sheet4, '051026-HW-0002');
+sheet4.addEventListener('click', e => { if (e.target.closest('[data-act]')) closeSheet(sheet4); });
+$('#simReset4').onclick = () => B4.reset();
+$('#replay6').onclick = () => enter.s6();
 </script>
 </body>
 </html>
