@@ -85,3 +85,13 @@ public sealed class CallsBadgeProvider(IPopDbContext db) : IBadgeProvider
     }
 }
 
+
+/// Tickets iDesk marked RESOLVED: they wait for the requester to confirm in iDesk.
+public sealed class TicketsBadgeProvider(IPopDbContext db) : IBadgeProvider
+{
+    public string Key => IPop.Application.Tickets.TicketEvents.BadgeKey;
+
+    public Task<int> CountAsync(Guid userId, CancellationToken ct) =>
+        db.Tickets.AsNoTracking().CountAsync(t => t.UserId == userId && t.RemovedAt == null
+            && t.Status == IPop.Application.Tickets.TicketStatus.Resolved, ct);
+}

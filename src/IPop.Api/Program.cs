@@ -71,6 +71,10 @@ builder.Services.AddRateLimiter(o =>
     o.AddPolicy(IPop.Api.Endpoints.LinkPreviewEndpoints.ImageRateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
         http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 240, Window = TimeSpan.FromMinutes(1) }));
+    // iDesk webhook is anonymous (HMAC-signed); iDesk itself sends at most 120/min.
+    o.AddPolicy(IPop.Api.Endpoints.TicketEndpoints.WebhookRateLimitPolicy, http => System.Threading.RateLimiting.RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new System.Threading.RateLimiting.FixedWindowRateLimiterOptions { PermitLimit = 120, Window = TimeSpan.FromMinutes(1) }));
 });
 builder.Services.AddScoped<IPermissionEvaluator, PermissionEvaluator>();
 builder.Services.AddSingleton<SynologySessionCache>();
@@ -170,6 +174,7 @@ builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.MailBadgeP
 builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.NotificationBadgeProvider>();
 builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.NewsBadgeProvider>();
 builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.CallsBadgeProvider>();
+builder.Services.AddScoped<IBadgeProvider, IPop.Infrastructure.Badges.TicketsBadgeProvider>();
 builder.Services.AddSingleton<PresenceBroadcaster>();
 builder.Services.AddSingleton<PresenceConnections>();
 builder.Services.AddSingleton<PresenceDevices>();
@@ -245,6 +250,14 @@ builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Infrastructure.News.New
 // Notes module (Notion-like pages, Yjs co-editing over /hubs/notes)
 builder.Services.AddScoped<IPop.Application.Notes.INoteService, IPop.Infrastructure.Notes.NoteService>();
 builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Infrastructure.Notes.NotesAttachmentPolicy>();
+
+// ICT tickets via iDesk (IDesk:ClientSecret >= 32 chars, else fail closed: create 503, webhook 503).
+builder.Services.AddSingleton(IPop.Infrastructure.Tickets.IdeskOptions.Bind(builder.Configuration));
+builder.Services.AddSingleton<IPop.Infrastructure.Tickets.TicketModuleCache>();
+builder.Services.AddHttpClient<IPop.Application.Tickets.IIdeskClient, IPop.Infrastructure.Tickets.HttpIdeskClient>();
+builder.Services.AddScoped<IPop.Application.Tickets.ITicketService, IPop.Infrastructure.Tickets.TicketService>();
+builder.Services.AddHostedService<IPop.Infrastructure.Tickets.TicketOutboxWorker>();
+builder.Services.AddHostedService<IPop.Infrastructure.Tickets.TicketReconcileWorker>();
 
 builder.Services.AddScoped<IHrisSyncService, HrisSyncService>();
 // Adapter by config (spec §4): Production → HttpHrisGateway (Polly), otherwise JSON file.
@@ -386,6 +399,7 @@ app.MapNewsComposer();
 app.MapNewsComposerMedia();
 app.MapNewsVideos();
 app.MapNotes();
+app.MapTickets();
 app.MapNotificationGateway();
 app.MapPush();
 app.MapPresence();
