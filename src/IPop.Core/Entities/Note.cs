@@ -36,6 +36,10 @@ public class NotePage
     public string? PlainText { get; set; }
     public int TodoDone { get; set; }
     public int TodoTotal { get; set; }
+    /// Set on pages created by Import: where the content came from ("notion" | "markdown" | "html"), and a
+    /// stable key for the source page ("notion:<id>" or a file hash) so a second import can warn.
+    public string? ImportSource { get; set; }
+    public string? ImportKey { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
     public Guid? UpdatedById { get; set; }

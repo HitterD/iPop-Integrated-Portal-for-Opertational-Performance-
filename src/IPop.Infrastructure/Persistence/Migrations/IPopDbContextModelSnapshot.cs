@@ -2553,6 +2553,14 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<bool>("FullWidth")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("ImportKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("ImportSource")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<bool>("IsGuide")
                         .HasColumnType("boolean");
 
@@ -2607,6 +2615,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("ParentId");
 
                     b.HasIndex("OwnerId", "DeletedAt");
+
+                    b.HasIndex("OwnerId", "ImportKey");
 
                     b.ToTable("NotePages");
                 });

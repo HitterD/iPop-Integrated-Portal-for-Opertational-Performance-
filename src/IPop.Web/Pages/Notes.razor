@@ -17,6 +17,7 @@
 <div class="notes-page @(sideOpen ? "side-open" : "")">
     @* ── Sidebar ──────────────────────────────────────────────────────────── *@
     <aside class="nt-side" aria-label="Notes" @ref="sideRef">
+        <div class="nt-x-drop" aria-hidden="true"><div><span class="ic"><i data-lucide="file-up"></i></span><b>Drop to import</b><small>Notion export, Markdown or HTML</small></div></div>
         <div class="nt-side-head">
             <h1>Notes</h1>
             <button type="button" class="nt-icon-btn nt-mobile-only" title="Close" @onclick="() => sideOpen = false"><i data-lucide="x"></i></button>
@@ -115,6 +116,9 @@
             }
         </div>
         <div class="nt-side-foot">
+            <button type="button" class="nt-row" title="Export all your pages as Markdown or HTML" @onclick="() => OpenExport(null)">
+                <span class="sico"><i data-lucide="download" class="sm"></i></span><span class="t">Export all</span>
+            </button>
             <button type="button" class="nt-row @(view == View.Trash ? "active" : "")" data-drop="trash" title="Trash — drop a page here to delete it" @onclick="OpenTrash">
                 <span class="sico"><i data-lucide="trash-2" class="sm"></i></span><span class="t">Trash</span>
                 @if (sidebar?.TrashCount > 0) { <span class="nt-count">@sidebar.TrashCount</span> }
@@ -294,6 +298,10 @@
                                 {
                                     <span class="nt-prop"><i data-lucide="square-check"></i>@note.TodoDone/@note.TodoTotal</span>
                                 }
+                                @if (note.ImportSource is { } src)
+                                {
+                                    <span class="nt-prop nt-imported" title="Imported @ShortDate(note.CreatedAt)"><i data-lucide="file-up"></i>Imported from @SourceLabel(src)</span>
+                                }
                             </div>
                             <div @ref="editorRef" @key="note.Id"></div>
                             @if (showTemplates)
@@ -428,6 +436,13 @@
                 }
                 <button type="button" class="mi" @onclick="OpenHistory"><i data-lucide="history" class="sm"></i>Version history</button>
                 <button type="button" class="mi" @onclick="CopyLink"><i data-lucide="link" class="sm"></i>Copy link</button>
+                <hr />
+                @if (CanEdit)
+                {
+                    <button type="button" class="mi" @onclick="() => OpenImport(note.Id)"><i data-lucide="file-up" class="sm"></i>Import here…<span class="ds">as sub-page</span></button>
+                }
+                <button type="button" class="mi" @onclick="() => OpenExport(note.Id)"><i data-lucide="download" class="sm"></i>Export…</button>
+                <button type="button" class="mi" @onclick='() => OpenExport(note.Id, "pdf")'><i data-lucide="printer" class="sm"></i>Print / PDF</button>
                 @if (CanEdit)
                 {
                     <hr />
@@ -664,6 +679,12 @@
             {
                 <button type="button" class="mi" @onclick="() => OpenMoveDialog(m)"><i data-lucide="folder-input" class="sm"></i>Move to…</button>
             }
+            <hr />
+            @if (edit)
+            {
+                <button type="button" class="mi" @onclick="() => OpenImport(m.Id)"><i data-lucide="file-up" class="sm"></i>Import here…</button>
+            }
+            <button type="button" class="mi" @onclick="() => OpenExport(m.Id)"><i data-lucide="download" class="sm"></i>Export…</button>
             @if (edit)
             {
                 <hr />
@@ -683,6 +704,7 @@
         }
         <hr />
         <button type="button" class="mi" @onclick="() => CreateBlank(null)"><span class="nt-mi-emo">📄</span>Blank page</button>
+        <button type="button" class="mi nt-mi-import" @onclick="() => OpenImport(null)"><i data-lucide="file-up" class="sm"></i>Import…<span class="ds">Notion, Markdown, HTML</span></button>
     </div>
 }
 @if (moveFor is { } mv)
@@ -708,6 +730,205 @@
                 </button>
             }
             @if (targets.Count == 0) { <div class="nt-side-empty" style="padding:10px">No pages you can move it into.</div> }
+        </div>
+    </div>
+}
+
+@* ── Import / Export dialogs (Notes.Transfer.cs) ────────────────────────────── *@
+@if (importStep != ImportStep.None)
+{
+    <div class="nt-scrim dim nt-x-scrim" @onclick="CloseImport"></div>
+    <div class="nt-layer nt-x-dlg" role="dialog" aria-modal="true" aria-label="Import pages">
+        @if (importStep == ImportStep.Pick)
+        {
+            var s = importSummary;
+            <div class="nt-x-hd"><b>Import pages</b><button type="button" class="nt-icon-btn" title="Close" @onclick="CloseImport"><i data-lucide="x"></i></button></div>
+            <div class="nt-x-bd">
+                @if (s is null)
+                {
+                    <button type="button" class="nt-x-zone" @ref="importDropRef" @onclick="PickImportFile">
+                        <span class="ic"><i data-lucide="file-up"></i></span>
+                        <span><b>Drop a file here</b> or <u>browse</u></span>
+                        <span class="nt-x-chips"><span>Notion export .zip</span><span>.md</span><span>.html</span></span>
+                        <span class="hint">Up to 100 MB · up to 300 pages per import</span>
+                    </button>
+                }
+                else
+                {
+                    <div class="nt-x-file @(s.Error is not null ? "bad mi-shake" : "") @(analyzing ? "busy" : "")">
+                        <span class="ic"><i data-lucide="@(s.Error is not null ? "file-x" : analyzing ? "loader" : s.FileName?.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) == true ? "file-archive" : "file-text")"></i></span>
+                        <div class="grow">
+                            <div class="t">@s.FileName</div>
+                            <div class="sub">
+                                @if (analyzing) { <span>Reading the file…</span> }
+                                else if (s.Error is not null) { <span>@s.Error</span> }
+                                else { <span>@FileSize(s.Size) · @SourceLabel(s.Source) · @s.Pages page@(s.Pages == 1 ? "" : "s") · @s.Attachments attachment@(s.Attachments == 1 ? "" : "s")</span> }
+                            </div>
+                        </div>
+                        <button type="button" class="nt-icon-btn" title="Choose another file" @onclick="ClearImportFile"><i data-lucide="x"></i></button>
+                    </div>
+                }
+                <div class="nt-x-field">
+                    <div class="fl">Put the imported pages in</div>
+                    <div class="nt-x-opts">
+                        <button type="button" class="nt-x-opt @(importWhere == "root" ? "on" : "")" @onclick="@(() => importWhere = "root")"><span class="rd"></span><span>My pages<span class="s">Top level of your sidebar</span></span></button>
+                        <button type="button" class="nt-x-opt @(importWhere == "inside" ? "on" : "")" disabled="@(ImportTargets().Count == 0)" @onclick="@(() => importWhere = "inside")"><span class="rd"></span><span>Inside a page<span class="s">As sub-pages</span></span></button>
+                    </div>
+                    @if (importWhere == "inside")
+                    {
+                        <div class="nt-x-target mi-rise">
+                            <AppSelect Block="true" Label="Page to import into" Value="@importInsideId?.ToString()" Options="@ImportTargetOptions"
+                                       ValueChanged="v => importInsideId = Guid.TryParse(v, out var g) ? g : importInsideId" />
+                            @if (ImportTargetPage is { IsShared: true } tp)
+                            {
+                                <div class="nt-x-note"><i data-lucide="users" class="sm"></i><span>“@DisplayTitle(tp.Title)” is shared, so the imported pages will be too.</span></div>
+                            }
+                        </div>
+                    }
+                </div>
+                @if (s?.Previous is { Count: > 0 } prev)
+                {
+                    <div class="nt-x-warn mi-rise"><i data-lucide="triangle-alert" class="sm"></i><span>You imported <b>@DisplayTitle(prev[0].Title)</b>@(prev.Count > 1 ? $" and {prev.Count - 1} more" : "") on @ShortDate(prev[0].ImportedAt). Importing again creates a <b>new copy</b> and leaves the existing pages as they are.</span></div>
+                }
+            </div>
+            <div class="nt-x-ft">
+                <span class="l">@(importWhere == "inside" && ImportTargetPage is { IsShared: true } ? "Shared like the page above" : "Imported pages start private to you")</span>
+                <button type="button" class="nt-btn" @onclick="CloseImport">Cancel</button>
+                <button type="button" class="nt-btn primary" disabled="@(analyzing || s is not { Error: null, Pages: > 0 } || (importWhere == "inside" && importInsideId is null))" @onclick="StartImport"><i data-lucide="file-up" class="sm"></i>Import@(s is { Pages: > 1 } ? $" {s.Pages} pages" : "")</button>
+            </div>
+        }
+        else if (importStep == ImportStep.Running && importProgress is { } ip)
+        {
+            var pct = ip.Total == 0 ? 0 : ip.Done * 100 / ip.Total;
+            <div class="nt-x-hd"><b>Importing @ip.Total page@(ip.Total == 1 ? "" : "s")…</b></div>
+            <div class="nt-x-bd">
+                <div class="nt-x-bar" role="progressbar" aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100"><i style="width:@(Math.Max(pct, 3))%"></i></div>
+                <div class="nt-x-sub">@ip.Done of @ip.Total pages@(ip.FilesTotal > 0 ? $" · {ip.FilesDone} of {ip.FilesTotal} attachments uploaded" : "")</div>
+                <ul class="nt-x-rows">
+                    @foreach (var r in ip.Rows)
+                    {
+                        <li @key="r.Key" class="@r.Status" style="--d:@Math.Min(r.Depth, 6)">
+                            <span class="emo">@(r.Emoji ?? "📄")</span><span class="t">@DisplayTitle(r.Title)</span>
+                            <span class="st">
+                                @if (r.Status == "ok")
+                                {
+                                    <span class="mi-check-draw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></span>
+                                    @if (!string.IsNullOrEmpty(r.Detail)) { <span>@r.Detail</span> }
+                                }
+                                else if (r.Status == "run") { <span class="nt-spin-dot"></span><span>@(string.IsNullOrEmpty(r.Detail) ? "Converting…" : r.Detail)</span> }
+                                else if (r.Status == "fail") { <span>✕ Failed, see result</span> }
+                                else { <span>Waiting</span> }
+                            </span>
+                        </li>
+                    }
+                </ul>
+            </div>
+            <div class="nt-x-ft"><span class="l">Keep this tab open until it finishes</span><button type="button" class="nt-btn" @onclick="StopImport">Stop</button></div>
+        }
+        else if (importStep == ImportStep.Done && importResult is { } r)
+        {
+            var ok = r.Failed.Count == 0;
+            var conv = r.Converted.Sum(c => c.Count);
+            <div class="nt-x-hd">
+                @if (ok)
+                {
+                    <span class="mi-check-draw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg></span>
+                }
+                else
+                {
+                    <span class="nt-x-alert mi-pop"><i data-lucide="triangle-alert" class="sm"></i></span>
+                }
+                <b>@(r.Stopped ? "Import stopped" : ok ? "Import finished" : "Import finished with problems")</b>
+                <button type="button" class="nt-icon-btn" title="Close" @onclick="CloseImport"><i data-lucide="x"></i></button>
+            </div>
+            <div class="nt-x-bd">
+                <div class="nt-x-stats">
+                    <div><b data-count-up="@r.Pages">@r.Pages</b><span>page@(r.Pages == 1 ? "" : "s") imported</span></div>
+                    <div><b data-count-up="@r.Attachments">@r.Attachments</b><span>attachment@(r.Attachments == 1 ? "" : "s")</span></div>
+                    <div class="@(ok ? "" : "fail")"><b data-count-up="@r.Failed.Count">@r.Failed.Count</b><span>problem@(r.Failed.Count == 1 ? "" : "s")</span></div>
+                </div>
+                @if (r.Failed.Count > 0)
+                {
+                    <details class="nt-x-grp fail" open>
+                        <summary><i data-lucide="circle-x" class="sm"></i>Problems<span class="c">@r.Failed.Count</span></summary>
+                        <ul>@foreach (var f in r.Failed.Take(50)) { <li><b>@DisplayTitle(f.Title)</b>: @f.Reason</li> }</ul>
+                    </details>
+                }
+                @if (conv > 0)
+                {
+                    <details class="nt-x-grp" open>
+                        <summary><i data-lucide="refresh-cw" class="sm"></i>Converted<span class="c">@conv block@(conv == 1 ? "" : "s")</span></summary>
+                        <ul>@foreach (var c in r.Converted) { <li>@c.Count × @c.Label@if (c.Pages.Count > 0) { <span class="muted"> (@string.Join(", ", c.Pages.Select(DisplayTitle)))</span> }</li> }</ul>
+                    </details>
+                }
+                @if (r.Covers.Count > 0)
+                {
+                    <details class="nt-x-grp">
+                        <summary><i data-lucide="palette" class="sm"></i>Covers<span class="c">@r.Covers.Count</span></summary>
+                        <ul>@foreach (var c in r.Covers) { <li>@c</li> }</ul>
+                    </details>
+                }
+                @if (ok && conv == 0 && !r.Stopped) { <div class="nt-x-sub">Everything came across as it was in @SourceLabel(r.Source).</div> }
+            </div>
+            <div class="nt-x-ft">
+                <button type="button" class="nt-btn ghost l" @onclick="CopyImportReport"><i data-lucide="copy" class="sm"></i>Copy report</button>
+                @if (r.RootId is not null)
+                {
+                    <button type="button" class="nt-btn primary" @onclick="OpenImported">Open “@DisplayTitle(r.RootTitle)”</button>
+                }
+                else
+                {
+                    <button type="button" class="nt-btn" @onclick="CloseImport">Close</button>
+                }
+            </div>
+        }
+    </div>
+}
+@if (exportOpen)
+{
+    <div class="nt-scrim dim nt-x-scrim" @onclick="CloseExport"></div>
+    <div class="nt-layer nt-x-dlg" role="dialog" aria-modal="true" aria-label="Export">
+        <div class="nt-x-hd"><b>Export @(exportAll ? "all pages" : $"“{ExportTitle}”")</b><button type="button" class="nt-icon-btn" title="Close" disabled="@exportBusy" @onclick="CloseExport"><i data-lucide="x"></i></button></div>
+        <div class="nt-x-bd">
+            <div class="nt-x-fmts @(exportAll ? "two" : "")">
+                <button type="button" class="nt-x-fmt @(exportFormat == "md" ? "on" : "")" disabled="@exportBusy" @onclick="@(() => exportFormat = "md")"><i data-lucide="file-code"></i><b>Markdown</b><span>@(exportAll ? "Best for backup / Notion" : ".md, re-importable into Notion or iPop")</span></button>
+                <button type="button" class="nt-x-fmt @(exportFormat == "html" ? "on" : "")" disabled="@exportBusy" @onclick="@(() => exportFormat = "html")"><i data-lucide="globe"></i><b>HTML</b><span>Opens in any browser</span></button>
+                @if (!exportAll)
+                {
+                    <button type="button" class="nt-x-fmt @(exportFormat == "pdf" ? "on" : "")" disabled="@exportBusy" @onclick="@(() => exportFormat = "pdf")"><i data-lucide="printer"></i><b>PDF</b><span>Print-ready via the browser</span></button>
+                }
+            </div>
+            @if (exportAll)
+            {
+                <button type="button" class="nt-x-check" disabled="@exportBusy" @onclick="() => exportShared = !exportShared"><span class="v6-cb @(exportShared ? "on" : "")" role="checkbox" aria-checked="@(exportShared ? "true" : "false")">@if (exportShared) { <i data-lucide="check"></i> }</span><span>Include “Shared with me” <span class="muted">(in its own folder)</span></span></button>
+            }
+            else if (exportPageId is { } eid && CountDescendants(eid) > 0)
+            {
+                <button type="button" class="nt-x-check" disabled="@exportBusy" @onclick="() => exportSub = !exportSub"><span class="v6-cb @(exportSub ? "on" : "")" role="checkbox" aria-checked="@(exportSub ? "true" : "false")">@if (exportSub) { <i data-lucide="check"></i> }</span><span>Include sub-pages <span class="muted">(@CountDescendants(eid))</span></span></button>
+            }
+            @if (exportFormat != "pdf")
+            {
+                <button type="button" class="nt-x-check" disabled="@exportBusy" @onclick="() => exportFiles = !exportFiles"><span class="v6-cb @(exportFiles ? "on" : "")" role="checkbox" aria-checked="@(exportFiles ? "true" : "false")">@if (exportFiles) { <i data-lucide="check"></i> }</span><span>Include images and files</span></button>
+            }
+            <div class="nt-x-sub">
+                @if (exportFormat == "pdf") { <span>Opens the print dialog@(exportSub && ExportPageCount > 1 ? $" with {ExportPageCount} pages, each on a new sheet" : ""). Choose “Save as PDF”.</span> }
+                else { <span>@ExportPageCount page@(ExportPageCount == 1 ? "" : "s") · @(ExportPageCount > 1 || exportFiles ? "downloads as a .zip, one folder per page" : $"downloads as one .{exportFormat} file") · comments and version history aren't included.</span> }
+            </div>
+            @if (exportBusy)
+            {
+                var (d, tot, fd, ft) = exportProgress;
+                var pct = tot + ft == 0 ? 0 : (d + fd) * 100 / (tot + ft);
+                <div class="nt-x-bar mi-rise" role="progressbar" aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100"><i style="width:@(Math.Max(pct, 3))%"></i></div>
+                <div class="nt-x-sub">Preparing… @d of @tot pages@(ft > 0 ? $" · {fd} of {ft} files" : "")</div>
+            }
+        </div>
+        <div class="nt-x-ft">
+            @if (exportAll) { <span class="l">Trash isn't included</span> }
+            <button type="button" class="nt-btn" disabled="@exportBusy" @onclick="CloseExport">Cancel</button>
+            <button type="button" class="nt-btn primary" disabled="@exportBusy" @onclick="RunExport">
+                @if (exportBusy) { <span class="nt-spin-dot light"></span><span>Preparing…</span> }
+                else { <i data-lucide="@(exportFormat == "pdf" ? "printer" : "download")" class="sm"></i><span>@(exportFormat == "pdf" ? "Print / Save as PDF" : "Export")</span> }
+            </button>
         </div>
     </div>
 }

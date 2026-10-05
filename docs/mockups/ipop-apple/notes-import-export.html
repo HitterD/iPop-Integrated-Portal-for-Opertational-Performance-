@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iPop — Notes import / export (mockup)</title>
+<style>
+:root{
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,sans-serif;
+  --bg:#F5F5F7;--surface:#fff;--surface-2:#F5F5F7;--line:rgba(0,0,0,.08);--line-2:rgba(0,0,0,.14);
+  --ink:#1D1D1F;--ink-2:#424245;--ink-3:#86868B;--accent:#34A853;--accent-soft:rgba(52,168,83,.12);
+  --blue:#0A84FF;--blue-soft:rgba(10,132,255,.1);--orange:#FF9500;--orange-soft:rgba(255,149,0,.12);
+  --yellow-soft:rgba(255,204,0,.16);--red:#FF3B30;--red-soft:rgba(255,59,48,.1);
+  --teal:#0F9D9A;--teal-soft:rgba(48,176,199,.16);
+  --pop:0 12px 40px rgba(0,0,0,.14),0 0 0 .5px rgba(0,0,0,.08);
+}
+[data-theme=dark]{
+  --bg:#000;--surface:#1C1C1E;--surface-2:#2C2C2E;--line:rgba(255,255,255,.1);--line-2:rgba(255,255,255,.18);
+  --ink:#F5F5F7;--ink-2:#D1D1D6;--ink-3:#8E8E93;--blue-soft:rgba(64,156,255,.16);--yellow-soft:rgba(255,214,10,.14);
+  --teal:#5AC8D8;--teal-soft:rgba(90,200,216,.16);--red-soft:rgba(255,69,58,.16);
+  --pop:0 12px 40px rgba(0,0,0,.6),0 0 0 .5px rgba(255,255,255,.12);
+}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.5 var(--font);background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+header.top{position:sticky;top:0;z-index:20;display:flex;gap:10px;align-items:center;padding:10px 24px;background:color-mix(in srgb,var(--surface) 85%,transparent);backdrop-filter:blur(20px);border-bottom:1px solid var(--line);flex-wrap:wrap}
+header.top h1{font-size:15px;margin:0 auto 0 0}
+header.top a{color:var(--ink-2);text-decoration:none;font-size:13px;padding:5px 10px;border-radius:8px}
+header.top a:hover{background:var(--surface-2)}
+header.top button{font:inherit;font-size:13px;border:1px solid var(--line-2);background:var(--surface);color:var(--ink);border-radius:8px;padding:5px 10px;cursor:pointer}
+main{max-width:1240px;margin:0 auto;padding:24px}
+section{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;margin:0 0 40px;scroll-margin-top:70px}
+@media(max-width:980px){section{grid-template-columns:1fr}}
+.notes{background:var(--surface);border-radius:14px;padding:18px 20px;box-shadow:0 0 0 .5px var(--line);font-size:13px;color:var(--ink-2);align-self:start;position:sticky;top:70px}
+.notes h3{margin:0 0 8px;font-size:13px;color:var(--ink);display:flex;gap:8px;align-items:center}
+.notes .n{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:7px;background:var(--accent);color:#fff;font-size:12px}
+.notes ul{margin:6px 0 0;padding-left:18px}.notes li{margin:3px 0}
+.notes .q{margin-top:10px;padding:8px 10px;border-radius:9px;background:var(--yellow-soft);color:var(--ink)}
+.small{font-size:12px;color:var(--ink-3)}
+.muted{color:var(--ink-3)}
+
+/* app frame */
+.app{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:520px;background:var(--surface);border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.06),0 0 0 .5px var(--line);overflow:hidden;position:relative}
+@media(max-width:700px){.app{grid-template-columns:1fr}.side{display:none}}
+.side{background:var(--surface-2);border-right:1px solid var(--line);padding:12px 8px;display:flex;flex-direction:column;gap:2px;font-size:13px;position:relative}
+.side .srch{display:flex;gap:6px;align-items:center;padding:6px 8px;border-radius:8px;color:var(--ink-3);background:var(--surface);margin-bottom:6px;box-shadow:0 0 0 .5px var(--line)}
+.side .lbl{font-size:11px;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:.04em;padding:10px 8px 4px}
+.side .row{display:flex;gap:8px;align-items:center;padding:4px 8px;border-radius:7px;color:var(--ink-2);position:relative}
+.side .row.on{background:var(--surface);color:var(--ink);font-weight:500;box-shadow:0 0 0 .5px var(--line)}
+.side .row .dots{margin-left:auto;color:var(--ink-3);opacity:0;padding:0 4px;border-radius:5px}
+.side .row:hover .dots,.side .row.hot .dots{opacity:1}
+.side .row.hot{background:var(--surface)}
+.side .row.child{padding-left:26px}
+.side .row.new{background:var(--accent-soft)}
+.side .new-btn{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:8px;background:var(--accent);color:#fff;font-weight:500;justify-content:space-between}
+.side .new-btn .caret{padding-left:8px;border-left:1px solid rgba(255,255,255,.35)}
+.side .foot{margin-top:auto;border-top:1px solid var(--line);padding-top:6px;display:flex;flex-direction:column;gap:2px}
+.side .foot .row.hi{background:var(--blue-soft);color:var(--blue);font-weight:500}
+.canvas{position:relative;min-width:0}
+.thinhdr{display:flex;align-items:center;gap:8px;padding:10px 18px;border-bottom:1px solid var(--line);font-size:13px;color:var(--ink-3)}
+.thinhdr .sp{margin-left:auto;display:flex;gap:6px}
+.thinhdr .btn{padding:3px 10px;border-radius:7px;border:1px solid var(--line-2);color:var(--ink)}
+.thinhdr .btn.on{background:var(--surface-2)}
+.doc{padding:0 56px 40px}
+@media(max-width:600px){.doc{padding:0 18px 30px}}
+.cover{height:110px;margin:0 -56px;background:linear-gradient(120deg,#5EE7DF 0%,#B490CA 100%)}
+.cover.teal{background:linear-gradient(120deg,#43C6AC,#191654)}
+.emoji{font-size:44px;line-height:1;margin:-26px 0 6px}
+.doc h2{font:700 30px/1.2 var(--font);letter-spacing:-.02em;margin:0 0 4px}
+.doc .h1{font:600 21px/1.3 var(--font);margin:20px 0 4px}
+.doc ol,.doc ul{margin:2px 0;padding-left:26px}
+.doc li{margin:1px 0}
+.hl-teal{color:var(--teal)}
+.bg-teal{background:var(--teal-soft);border-radius:3px;padding:0 2px}
+.bg-red{background:var(--red-soft);border-radius:3px;padding:0 2px}
+.secret{filter:blur(4px)}
+.toggle{margin:4px 0}
+.toggle .sum{display:flex;gap:6px;align-items:center}
+.toggle .sum::before{content:"▸";color:var(--ink-3);font-size:12px;transform:rotate(90deg)}
+.toggle .tb{padding-left:20px}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;background:var(--blue-soft);color:var(--blue);font-size:12px;margin:0 0 10px}
+
+/* popovers / dialogs */
+.menu{position:absolute;width:236px;background:var(--surface);border-radius:12px;box-shadow:var(--pop);padding:6px;font-size:13px;z-index:5}
+.menu .mi{display:flex;gap:10px;align-items:center;padding:6px 8px;border-radius:7px;color:var(--ink)}
+.menu .mi:hover,.menu .mi.hi{background:var(--surface-2)}
+.menu .mi.blue{background:var(--blue-soft);color:var(--blue);font-weight:500}
+.menu .mi kbd{margin-left:auto;font:11px var(--font);color:var(--ink-3)}
+.menu .mi .d{margin-left:auto;font-size:11px;color:var(--ink-3)}
+.menu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+.menu .cap{font-size:11px;color:var(--ink-3);padding:4px 8px 2px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.28);display:grid;place-items:center;z-index:6;padding:16px}
+[data-theme=dark] .scrim{background:rgba(0,0,0,.55)}
+.dlg{width:min(520px,100%);background:var(--surface);border-radius:16px;box-shadow:var(--pop);overflow:hidden}
+.dlg .hd{display:flex;align-items:center;gap:10px;padding:16px 20px 6px}
+.dlg .hd b{font-size:16px}
+.dlg .hd .x{margin-left:auto;color:var(--ink-3);width:26px;height:26px;display:grid;place-items:center;border-radius:7px;background:var(--surface-2)}
+.dlg .bd{padding:8px 20px 14px}
+.dlg .ft{display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:12px 20px;border-top:1px solid var(--line);background:color-mix(in srgb,var(--surface-2) 50%,var(--surface))}
+.dlg .ft .l{margin-right:auto}
+.b{font:inherit;font-size:13px;border-radius:8px;padding:6px 14px;border:1px solid var(--line-2);background:var(--surface);color:var(--ink)}
+.b.pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
+.b.pri[disabled]{opacity:.45}
+.drop{border:1.5px dashed var(--line-2);border-radius:12px;padding:22px 16px;text-align:center;color:var(--ink-2);background:var(--surface-2)}
+.drop.over{border-color:var(--blue);background:var(--blue-soft);color:var(--blue)}
+.drop .big{font-size:28px}
+.drop b{color:var(--ink)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:8px}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:999px;background:var(--surface);font-size:12px;color:var(--ink-2);box-shadow:0 0 0 .5px var(--line-2)}
+.fsel{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:10px;background:var(--surface-2);margin-top:10px}
+.fsel .ic{width:34px;height:34px;border-radius:8px;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center;font-size:16px}
+.fsel .t{font-weight:600;font-size:13px;word-break:break-all}
+.fsel .x{margin-left:auto;color:var(--ink-3)}
+.field{margin-top:14px}
+.field .fl{font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:6px}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.opt{flex:1;min-width:140px;border:1px solid var(--line-2);border-radius:10px;padding:8px 12px;display:flex;gap:9px;align-items:flex-start;font-size:13px}
+.opt.on{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.opt .rd{flex:none;width:16px;height:16px;border-radius:50%;border:1.6px solid var(--line-2);margin-top:2px}
+.opt.on .rd{border:5px solid var(--accent)}
+.opt .s{display:block;font-size:12px;color:var(--ink-3)}
+.sel{display:flex;align-items:center;gap:8px;border:1px solid var(--line-2);border-radius:8px;padding:6px 10px;font-size:13px;margin-top:6px}
+.sel .c{margin-left:auto;color:var(--ink-3)}
+.warn{display:flex;gap:8px;padding:9px 12px;border-radius:10px;background:var(--orange-soft);color:var(--ink);font-size:12.5px;margin-top:12px}
+.check{display:flex;gap:9px;align-items:center;margin-top:10px;font-size:13px}
+.cbx{width:16px;height:16px;border-radius:4px;border:1.6px solid var(--line-2);display:grid;place-items:center;font-size:11px}
+.cbx.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* progress */
+.pbar{height:6px;border-radius:9px;background:var(--surface-2);overflow:hidden;margin:8px 0 4px}
+.pbar i{display:block;height:100%;background:var(--accent);border-radius:9px}
+.plist{margin:10px 0 0;padding:0;list-style:none;max-height:180px;overflow:auto;font-size:13px}
+.plist li{display:flex;gap:8px;align-items:center;padding:4px 2px;border-bottom:1px solid var(--line)}
+.plist li .st{margin-left:auto;font-size:12px;color:var(--ink-3)}
+.plist li.ok .st{color:var(--accent)}
+.plist li.run .st{color:var(--blue)}
+.plist li.fail .st{color:var(--red)}
+.plist li.ind{padding-left:20px}
+
+/* summary */
+.stat{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:6px 0 12px}
+.stat div{background:var(--surface-2);border-radius:10px;padding:8px 10px}
+.stat b{display:block;font-size:20px;line-height:1.2}
+.stat span{font-size:12px;color:var(--ink-3)}
+.stat .fail b{color:var(--red)}
+.grp{margin-top:8px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.grp .gh{display:flex;gap:8px;align-items:center;padding:7px 12px;font-size:13px;font-weight:600;background:var(--surface-2)}
+.grp .gh .c{margin-left:auto;font-weight:400;color:var(--ink-3);font-size:12px}
+.grp ul{margin:0;padding:6px 12px 8px 30px;font-size:12.5px;color:var(--ink-2)}
+.grp ul li{margin:2px 0}
+.toast{position:absolute;right:16px;bottom:16px;display:flex;gap:10px;align-items:center;background:var(--ink);color:var(--surface);border-radius:12px;padding:9px 14px;font-size:13px;box-shadow:var(--pop);z-index:7}
+.toast a{color:#64D2FF;text-decoration:none;font-weight:600}
+
+/* export */
+.fmts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.fmt{border:1px solid var(--line-2);border-radius:12px;padding:10px 12px;font-size:13px}
+.fmt.on{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.fmt .e{font-size:20px}
+.fmt b{display:block;margin:2px 0 1px}
+.fmt .s{font-size:12px;color:var(--ink-3)}
+.tree{font:12.5px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;background:var(--surface-2);border-radius:10px;padding:10px 12px;color:var(--ink-2);margin-top:10px;white-space:pre;overflow:auto}
+.tree b{color:var(--ink)}
+.stage{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+.mini{flex:1;min-width:280px}
+.mini .lab{font-size:12px;color:var(--ink-3);margin:0 0 6px}
+.print{background:#fff;color:#1d1d1f;border-radius:6px;box-shadow:0 2px 10px rgba(0,0,0,.18);padding:22px 26px;font-size:11px;aspect-ratio:1/1.414;max-width:260px;overflow:hidden}
+.print h4{margin:0 0 6px;font-size:16px}
+.print .h{font-weight:600;font-size:12px;margin:8px 0 2px}
+.print .pb{border-top:1px dashed #bbb;margin:10px 0;text-align:center;font-size:9px;color:#999}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>📝 Notes: import / export mockup</h1>
+  <a href="#entry">1 Entry points</a><a href="#import">2 Import dialog</a><a href="#progress">3 Progress</a><a href="#summary">4 Result</a><a href="#export">5 Export</a><a href="#all">6 Export all</a>
+  <button onclick="document.documentElement.dataset.theme=document.documentElement.dataset.theme==='dark'?'light':'dark'">◐ Theme</button>
+</header>
+<main>
+
+<!-- ═════════ 1 ═════════ -->
+<section id="entry">
+  <div class="app" style="min-height:600px">
+    <aside class="side">
+      <div class="srch">🔍 Search <span style="margin-left:auto;font-size:11px">Ctrl K</span></div>
+      <div class="new-btn">＋ New page <span class="caret">▾</span></div>
+      <div class="menu" style="left:8px;top:84px">
+        <div class="cap">Templates</div>
+        <div class="mi">📅 Meeting notes</div>
+        <div class="mi">📖 SOP</div>
+        <div class="mi">🔍 Inspection checklist</div>
+        <div class="mi">📊 Weekly report</div>
+        <hr>
+        <div class="mi">📄 Blank page</div>
+        <div class="mi blue">⬆ Import… <span class="d">Notion, Markdown, HTML</span></div>
+      </div>
+      <div style="height:240px"></div>
+      <div class="lbl">My pages</div>
+      <div class="row">📘 ICT Handbook <span class="dots">⋯</span></div>
+      <div class="row child">💻 Setup PC baru <span class="dots">⋯</span></div>
+      <div class="row">📅 Weekly ICT sync <span class="dots">⋯</span></div>
+      <div class="foot">
+        <div class="row">⬇ Export all pages</div>
+        <div class="row">🗑 Trash</div>
+      </div>
+    </aside>
+    <div class="canvas">
+      <div class="thinhdr">My pages › <b style="color:var(--ink)">ICT Handbook</b>
+        <div class="sp"><span class="btn">Share</span><span class="btn on">⋯</span></div></div>
+      <div class="menu" style="right:14px;top:44px">
+        <div class="mi">⭐ Add to favorites</div>
+        <div class="mi">🔗 Copy link</div>
+        <div class="mi">📑 Duplicate</div>
+        <div class="mi">↪ Move to…</div>
+        <hr>
+        <div class="mi">⬆ Import here… <span class="d">as sub-page</span></div>
+        <div class="mi blue">⬇ Export…</div>
+        <div class="mi">🖨 Print / PDF <kbd>Ctrl P</kbd></div>
+        <hr>
+        <div class="mi">🕘 Version history</div>
+        <div class="mi" style="color:var(--red)">🗑 Move to trash</div>
+      </div>
+      <div class="doc"><div class="cover"></div><div class="emoji">📘</div><h2>ICT Handbook</h2>
+        <p class="muted">Panduan kerja tim ICT.</p></div>
+    </div>
+    <div class="menu" style="left:200px;top:330px;width:220px">
+      <div class="mi">✎ Rename</div>
+      <div class="mi">＋ Add sub-page</div>
+      <div class="mi">📑 Duplicate</div>
+      <div class="mi">↪ Move to…</div>
+      <hr>
+      <div class="mi blue">⬆ Import here…</div>
+      <div class="mi">⬇ Export…</div>
+      <hr>
+      <div class="mi" style="color:var(--red)">🗑 Move to trash</div>
+    </div>
+  </div>
+  <aside class="notes">
+    <h3><span class="n">1</span>Where the menus live</h3>
+    <ul>
+      <li><b>New page ▾ → Import…</b>: imports into <b>My pages</b> (root).</li>
+      <li><b>Row ⋯ → Import here…</b> and <b>page ⋯ → Import here…</b>: the imported pages become sub-pages of that page.</li>
+      <li><b>Export…</b> in the page ⋯ menu and the sidebar row ⋯ menu.</li>
+      <li><b>Print / PDF</b> is a shortcut for Export → PDF on this page only.</li>
+      <li><b>Export all pages</b> in the sidebar footer, next to Trash.</li>
+      <li>Import only shows to users with <code>notes.write</code>. Export shows on any page you can open (Can view or above).</li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ═════════ 2 ═════════ -->
+<section id="import">
+  <div class="app" style="min-height:560px">
+    <aside class="side"><div class="new-btn">＋ New page <span class="caret">▾</span></div>
+      <div class="lbl">My pages</div><div class="row">📘 ICT Handbook</div><div class="row child">💻 Setup PC baru</div>
+      <div class="foot"><div class="row">⬇ Export all pages</div><div class="row">🗑 Trash</div></div></aside>
+    <div class="canvas"><div class="thinhdr">My pages › ICT Handbook</div></div>
+    <div class="scrim">
+      <div class="dlg">
+        <div class="hd"><b>Import pages</b><span class="x">✕</span></div>
+        <div class="bd">
+          <div class="drop over">
+            <div class="big">⬆</div>
+            <div><b>Drop a file here</b> or <u>browse</u></div>
+            <div class="chips"><span class="chip">Notion export .zip</span><span class="chip">.md</span><span class="chip">.html</span></div>
+            <div class="small" style="margin-top:6px">Up to 100 MB · up to 300 pages per import</div>
+          </div>
+          <div class="fsel"><div class="ic">🗜</div><div><div class="t">9abb7ad1…_ExportBlock-ccceb1b9….zip</div><div class="small">23 KB · Notion export (HTML) · 1 page · 0 attachments</div></div><span class="x">✕</span></div>
+          <div class="field">
+            <div class="fl">Put the imported pages in</div>
+            <div class="seg">
+              <div class="opt"><span class="rd"></span><span>My pages<span class="s">Top level of your sidebar</span></span></div>
+              <div class="opt on"><span class="rd"></span><span>Inside a page<span class="s">As sub-pages</span></span></div>
+            </div>
+            <div class="sel">📘 ICT Handbook <span class="c">▾</span></div>
+            <div class="small" style="margin-top:4px">ICT Handbook is shared with <b>ICT Team</b>, so the imported pages will be too.</div>
+          </div>
+          <div class="warn">⚠️ <span>You imported <b>Install Aplikasi Standard SJA</b> from Notion on Oct 3. Importing again creates a <b>new copy</b> and leaves the existing page as it is.</span></div>
+        </div>
+        <div class="ft"><span class="small l">Imported pages start private to you</span><span class="b">Cancel</span><span class="b pri">Import</span></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <h3><span class="n">2</span>Import dialog</h3>
+    <ul>
+      <li>You can drop a file onto the dialog, or drop it straight onto the sidebar to open the dialog already filled in.</li>
+      <li>The file is read <b>in the browser</b>, so the summary (format, number of pages and attachments) appears before you press Import.</li>
+      <li><b>Destination</b>: defaults to My pages. When opened from "Import here…" it defaults to <i>Inside a page</i> with that page selected.</li>
+      <li>Under a shared page, the imported pages inherit its sharing, following the existing rule. Otherwise they are private.</li>
+      <li>Importing the same file again always makes a new copy. A warning shows if it was imported before.</li>
+      <li>A zip over 100 MB or over 300 pages is refused with a clear message, before anything is uploaded.</li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ═════════ 3 ═════════ -->
+<section id="progress">
+  <div class="app" style="min-height:460px">
+    <aside class="side"><div class="new-btn">＋ New page <span class="caret">▾</span></div>
+      <div class="lbl">My pages</div><div class="row">📘 ICT Handbook</div><div class="row child">💻 Setup PC baru</div>
+      <div class="row child new">🗂 SJA ICT Wiki <span class="small" style="margin-left:auto">importing…</span></div></aside>
+    <div class="canvas"><div class="thinhdr">My pages › ICT Handbook</div></div>
+    <div class="scrim">
+      <div class="dlg">
+        <div class="hd"><b>Importing 42 pages…</b></div>
+        <div class="bd">
+          <div class="pbar"><i style="width:62%"></i></div>
+          <div class="small">26 of 42 pages · 61 of 88 attachments uploaded</div>
+          <ul class="plist">
+            <li class="ok">🗂 SJA ICT Wiki <span class="st">✓ Done</span></li>
+            <li class="ok ind">💻 Install Aplikasi Standard SJA <span class="st">✓ Done</span></li>
+            <li class="ok ind">🖨 Printer &amp; scanner <span class="st">✓ 6 images</span></li>
+            <li class="fail ind">📦 Asset inventory <span class="st">✕ Failed, see result</span></li>
+            <li class="run ind">🌐 Network map <span class="st">Uploading 3 / 9…</span></li>
+            <li class="ind">🔐 VPN setup <span class="st">Waiting</span></li>
+            <li class="ind">📧 Mail troubleshooting <span class="st">Waiting</span></li>
+          </ul>
+        </div>
+        <div class="ft"><span class="small l">Keep this tab open until it finishes</span><span class="b">Stop</span></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <h3><span class="n">3</span>Progress</h3>
+    <ul>
+      <li>One row per page, in tree order. Attachments upload to the NAS <code>notes</code> area, the same storage editor uploads use.</li>
+      <li>If one page fails, the others carry on. Failures are listed in the result.</li>
+      <li><b>Stop</b> keeps the pages already imported and skips the rest.</li>
+      <li>A multi-page zip gets one top-level page named after the export (here "SJA ICT Wiki"), so it lands as one tidy branch in the tree.</li>
+    </ul>
+  </aside>
+</section>
+
+<!-- ═════════ 4 ═════════ -->
+<section id="summary">
+  <div class="stage" style="flex:1;min-width:0">
+    <div class="app mini" style="grid-template-columns:1fr;min-height:0">
+      <div class="canvas" style="min-height:520px">
+        <div class="thinhdr">ICT Handbook › <b style="color:var(--ink)">Install Aplikasi Standard SJA</b></div>
+        <div class="doc">
+          <div class="cover teal"></div><div class="emoji">💻</div>
+          <h2>Install Aplikasi Standard SJA</h2>
+          <span class="badge">⬆ Imported from Notion · Oct 5</span>
+          <div class="h1">Update Windows</div>
+          <ol><li>Nyalakan Netframework 3.5 dan lakukan Proses Update</li><li></li></ol>
+          <p style="margin:2px 0">🆕</p>
+          <div class="h1">Aplikasi by Ninite</div>
+          <ol><li>Chrome</li><li>Firefox</li><li>Foxit</li><li>VLC</li></ol>
+          <div class="h1">Oracle</div>
+          <ol start="6"><li>install jre-8u172</li><li>buka configure java → security, pada site list tambahkan
+            <ul><li>appsprod.santos.co.id:8000</li><li>appsdev1.santos.co.id:8000</li></ul></li>
+            <li>masuk tab advance, pastikan JNLP/Mime Association pada posisi <span class="bg-teal">Always Allow</span></li></ol>
+          <div class="toggle"><div class="sum">Regedit policy</div><div class="tb">• Chrome_Machine<br>• Chrome_user</div></div>
+          <div class="h1">Kaspersky</div>
+          <ol><li>… pastikan server mengarah pada <span class="hl-teal">192.168.2.9</span></li></ol>
+          <div class="h1">Ultra VNC</div>
+          <ol start="2"><li>Rubah Password menjadi <span class="bg-red"><span class="secret">xxxxxxxx</span></span></li></ol>
+        </div>
+      </div>
+      <div class="toast">✓ 1 page imported <a href="#">Open</a></div>
+    </div>
+    <div class="mini" style="max-width:440px">
+      <div class="lab">Result for a bigger zip</div>
+      <div class="dlg" style="width:100%">
+        <div class="hd"><b>Import finished</b><span class="x">✕</span></div>
+        <div class="bd">
+          <div class="stat"><div><b>41</b><span>pages imported</span></div><div><b>88</b><span>attachments</span></div><div class="fail"><b>1</b><span>failed</span></div></div>
+          <div class="grp"><div class="gh">✕ Failed <span class="c">1</span></div>
+            <ul><li><b>Asset inventory</b>: the attachment <i>scan-2019.tif</i> is larger than the per-file upload limit. The rest of the page imported without it.</li></ul></div>
+          <div class="grp"><div class="gh">↻ Converted <span class="c">7 blocks</span></div>
+            <ul><li>2 Notion databases → plain tables (<i>Asset inventory</i>, <i>Vendor list</i>)</li>
+              <li>1 equation → code block</li>
+              <li>3 column layouts → stacked top to bottom</li>
+              <li>1 Google Maps embed → bookmark card</li></ul></div>
+          <div class="grp"><div class="gh">🎨 Covers <span class="c">4</span></div>
+            <ul><li>Notion gradients → nearest iPop cover (e.g. <i>gradients_11</i> → Teal)</li><li>1 photo cover → image at the top of the page</li></ul></div>
+        </div>
+        <div class="ft"><span class="b l">Copy report</span><span class="b pri">Open “SJA ICT Wiki”</span></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <h3><span class="n">4</span>Imported page + result</h3>
+    <ul>
+      <li>Your sample file, as it would look after import. Headings, numbered/bulleted lists (with nesting), toggles, the <span class="bg-teal">teal</span> and <span class="bg-red">red</span> highlights, the 💻 icon and the cover are all kept.</li>
+      <li>Empty list items and stray lines (the "🆕") are kept as they are, so the import doesn't decide for you.</li>
+      <li>A small <b>Imported from Notion</b> badge shows under the title. It is page info, not a block, so nobody can edit or delete it by accident.</li>
+      <li>Links between Notion pages point to the new iPop pages. Links to pages outside the zip stay as normal links.</li>
+      <li>The result lists only what changed or failed. Pages imported cleanly aren't listed.</li>
+    </ul>
+    <div class="q">⚠️ Your sample page contains real passwords (admin, VNC). They are blurred here. After import they are readable by everyone the page is shared with, the same as in Notion.</div>
+  </aside>
+</section>
+
+<!-- ═════════ 5 ═════════ -->
+<section id="export">
+  <div class="app" style="min-height:560px">
+    <aside class="side"><div class="new-btn">＋ New page <span class="caret">▾</span></div>
+      <div class="lbl">My pages</div><div class="row on">🗂 SJA ICT Wiki</div><div class="row child">💻 Install Aplikasi…</div><div class="row child">🖨 Printer &amp; scanner</div></aside>
+    <div class="canvas"><div class="thinhdr">My pages › SJA ICT Wiki</div></div>
+    <div class="scrim">
+      <div class="dlg">
+        <div class="hd"><b>Export “SJA ICT Wiki”</b><span class="x">✕</span></div>
+        <div class="bd">
+          <div class="fmts">
+            <div class="fmt on"><div class="e">Ⓜ️</div><b>Markdown</b><span class="s">.md, re-importable into Notion or iPop</span></div>
+            <div class="fmt"><div class="e">🌐</div><b>HTML</b><span class="s">Opens in any browser</span></div>
+            <div class="fmt"><div class="e">📄</div><b>PDF</b><span class="s">Print-ready via the browser</span></div>
+          </div>
+          <div class="check"><span class="cbx on">✓</span> Include sub-pages <span class="small">(41 pages)</span></div>
+          <div class="check"><span class="cbx on">✓</span> Include images and files <span class="small">(88 · 46 MB)</span></div>
+          <div class="tree"><b>SJA ICT Wiki.zip</b>
+├─ SJA ICT Wiki.md
+├─ SJA ICT Wiki/
+│  ├─ Install Aplikasi Standard SJA.md
+│  ├─ Printer &amp; scanner.md
+│  ├─ Printer &amp; scanner/
+│  │  └─ attachments/ (6 images)
+│  └─ …
+└─ README.txt  (exported from iPop · date · by)</div>
+          <div class="small" style="margin-top:8px">Comments and version history are not exported. @mentions become “@Name”.</div>
+        </div>
+        <div class="ft"><span class="b">Cancel</span><span class="b pri">Export .zip</span></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <h3><span class="n">5</span>Export one page</h3>
+    <ul>
+      <li><b>Markdown / HTML</b>: a single page with no attachments downloads as one file. Anything with sub-pages or attachments becomes a zip, with one folder per page like Notion.</li>
+      <li>Highlights, toggles, callouts and to-dos in Markdown use the same notation as Notion's export, so the zip imports back into Notion or iPop.</li>
+      <li><b>PDF</b> opens a print preview (browser print). With sub-pages ticked, they follow on new sheets in tree order. Images are embedded.</li>
+      <li>Export runs in the browser and only includes pages you can open (Can view or above).</li>
+    </ul>
+    <div style="margin-top:12px"><div class="small" style="margin-bottom:6px">PDF preview (A4)</div>
+      <div class="print"><h4>💻 Install Aplikasi Standard SJA</h4><div class="h">Update Windows</div>1. Nyalakan Netframework 3.5…<div class="h">Aplikasi by Ninite</div>1. Chrome 2. Firefox 3. Foxit 4. VLC<div class="pb">— next page —</div><div class="h">🖨 Printer &amp; scanner</div>…</div></div>
+  </aside>
+</section>
+
+<!-- ═════════ 6 ═════════ -->
+<section id="all">
+  <div class="app" style="min-height:480px">
+    <aside class="side"><div class="new-btn">＋ New page <span class="caret">▾</span></div>
+      <div class="lbl">My pages</div><div class="row">🗂 SJA ICT Wiki</div><div class="row">📘 ICT Handbook</div>
+      <div class="foot"><div class="row hi">⬇ Export all pages</div><div class="row">🗑 Trash</div></div></aside>
+    <div class="canvas"><div class="thinhdr">My pages</div></div>
+    <div class="scrim">
+      <div class="dlg">
+        <div class="hd"><b>Export all pages</b><span class="x">✕</span></div>
+        <div class="bd">
+          <div class="fl" style="font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:6px">Format</div>
+          <div class="seg">
+            <div class="opt on"><span class="rd"></span><span>Markdown<span class="s">Best for backup / Notion</span></span></div>
+            <div class="opt"><span class="rd"></span><span>HTML<span class="s">Readable offline</span></span></div>
+          </div>
+          <div class="field"><div class="fl">Include</div>
+            <div class="check" style="margin-top:0"><span class="cbx on">✓</span> My pages <span class="small">(58 pages)</span></div>
+            <div class="check"><span class="cbx">　</span> Shared with me <span class="small">(23 pages, read-only copies)</span></div>
+            <div class="check"><span class="cbx on">✓</span> Images and files <span class="small">(212 · 180 MB)</span></div>
+          </div>
+          <div class="pbar" style="margin-top:16px"><i style="width:35%"></i></div>
+          <div class="small">Preparing… 20 of 58 pages · 74 of 212 files</div>
+        </div>
+        <div class="ft"><span class="small l">Trash isn't included</span><span class="b">Cancel</span><span class="b pri" disabled>Preparing…</span></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    <h3><span class="n">6</span>Export all</h3>
+    <ul>
+      <li>A full backup: one zip with your whole tree, each top-level page as its own folder.</li>
+      <li><b>Shared with me</b> is off by default and goes into a separate <code>Shared with me/</code> folder when ticked.</li>
+      <li>No PDF option here: a whole-workspace print isn't useful.</li>
+      <li>The zip is built in the browser and streamed to disk, so large exports don't need server space.</li>
+    </ul>
+  </aside>
+</section>
+
+</main>
+</body>
+</html>
