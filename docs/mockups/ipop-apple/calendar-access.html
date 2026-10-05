@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iPop — Calendar access, Bitrix-style (mockup)</title>
+<style>
+  :root { --canvas:#e9e7e2; --surface:#fff; --surface-2:#faf9f7; --surface-3:#f4f2ef; --line:#edebe7; --line-2:#e2dfd9;
+    --ink:#191816; --ink-2:#5d5a54; --ink-3:#8f8c85; --accent:#2e9d6b; --accent-soft:#e7f4ed; --danger:#c2442e;
+    --warn:#a8760c; --warn-soft:#fdf6e7; --info:#2563eb; --info-soft:#eef4ff; --sh-pop:0 16px 40px -12px rgba(25,24,22,.22);
+    --p-me:#2e9d6b; --p-a:#2563eb; --p-b:#b5528c; --p-c:#c27b1c; --p-d:#7c5cd6; }
+  [data-theme="dark"] { --canvas:#131211; --surface:#1c1b19; --surface-2:#232220; --surface-3:#201f1d; --line:#2c2a27; --line-2:#36342f;
+    --ink:#f2f0ec; --ink-2:#b5b1a9; --ink-3:#85817a; --accent:#4cd787; --accent-soft:#1d3428; --warn-soft:#3a2f17; --info-soft:#1a2540;
+    --sh-pop:0 16px 40px -12px rgba(0,0,0,.6); --p-me:#4cd787; --p-a:#7aa7ff; --p-b:#e48bc0; --p-c:#e0b44a; --p-d:#a991f0; }
+</style>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { background: var(--canvas); color: var(--ink); font-family: -apple-system, "Segoe UI", system-ui, sans-serif; margin: 0; font-size: 13.5px; }
+  svg.lucide { width: 16px; height: 16px; }
+  .mk-nav { position: sticky; top: 0; z-index: 50; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 10px 18px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .mk-nav b { margin-right: 8px; font-size: 14px; }
+  .mk-nav button { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .mk-nav button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .mk-nav .sp { flex: 1; }
+  .stage { display: none; padding: 28px; justify-content: center; align-items: flex-start; gap: 24px; flex-wrap: wrap; }
+  .stage.on { display: flex; }
+  .note { width: 310px; flex: none; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+  .note h3 { font-size: 14px; color: var(--ink); margin: 0 0 6px; }
+  .note li { margin-bottom: 6px; }
+  .note .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); margin-bottom: 8px; }
+  .note .was { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--ink); font-size: 12.5px; }
+
+  .win { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh-pop); overflow: hidden; position: relative; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.ghost { border-color: transparent; background: none; }
+  .btn.ic { width: 32px; padding: 0; justify-content: center; }
+  .seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-3); border-radius: 10px; }
+  .seg button { border: 0; background: none; padding: 5px 12px; border-radius: 8px; font: inherit; font-size: 12.5px; color: var(--ink-2); }
+  .seg button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .av { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; color: #fff; font-size: 10.5px; font-weight: 600; flex: none; }
+  .av.lg { width: 44px; height: 44px; border-radius: 12px; font-size: 15px; }
+
+  /* calendar shell */
+  .cal { width: 1120px; height: 690px; display: grid; grid-template-columns: 252px 1fr; }
+  .side { border-right: 1px solid var(--line); background: var(--surface-2); padding: 14px 12px; overflow: auto; position: relative; }
+  .mini { font-size: 11px; color: var(--ink-3); display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; margin: 0 4px 6px; }
+  .mini b { color: var(--ink); font-size: 12.5px; grid-column: 1 / -1; text-align: left; margin-bottom: 4px; }
+  .mini span { padding: 3px 0; border-radius: 6px; }
+  .mini span.t { background: var(--accent); color: #fff; font-weight: 600; }
+  .side h4 { margin: 16px 6px 6px; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); display: flex; align-items: center; justify-content: space-between; }
+  .side h4 button { border: 0; background: none; color: var(--ink-3); padding: 2px; border-radius: 6px; display: grid; }
+  .src { display: flex; align-items: center; gap: 8px; padding: 6px 6px; border-radius: 9px; font-size: 13px; position: relative; }
+  .src:hover, .src.hot { background: var(--surface-3); }
+  .src.cur { background: var(--surface); box-shadow: 0 0 0 1px var(--line-2); font-weight: 600; }
+  .chk { width: 15px; height: 15px; border-radius: 4px; flex: none; display: grid; place-items: center; }
+  .chk svg { width: 11px; height: 11px; color: #fff; stroke-width: 3; }
+  .chk.off { background: transparent !important; box-shadow: inset 0 0 0 1.5px var(--line-2); }
+  .src .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .src small { display: block; color: var(--ink-3); font-size: 11px; font-weight: 400; }
+  .pill { font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 6px; background: var(--info-soft); color: var(--info); flex: none; }
+  .src .more { color: var(--ink-3); opacity: 0; display: grid; }
+  .src:hover .more, .src.hot .more { opacity: 1; }
+  .addp { display: flex; align-items: center; gap: 8px; margin: 6px 0; height: 32px; padding: 0 9px; border: 1px dashed var(--line-2); border-radius: 9px; color: var(--ink-2); font-size: 12.5px; background: var(--surface); width: 100%; font: inherit; }
+  .main { display: flex; flex-direction: column; min-width: 0; position: relative; }
+  .tb { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .tb h2 { margin: 0 8px 0 4px; font-size: 17px; font-weight: 600; white-space: nowrap; }
+  .tb .sp { flex: 1; }
+  .who-bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+  .who-bar .t b { font-size: 15px; display: block; }
+  .who-bar .t span { color: var(--ink-2); font-size: 12.5px; display: inline-flex; gap: 5px; align-items: center; }
+  .who-bar .sp { flex: 1; }
+  .acc { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 7px; background: var(--surface-3); color: var(--ink-2); font-size: 11.5px; font-weight: 600; }
+
+  .grid { flex: 1; display: grid; grid-template-rows: auto 1fr; overflow: hidden; position: relative; }
+  .gh { display: grid; border-bottom: 1px solid var(--line); }
+  .gh div { padding: 8px 6px; font-size: 12px; color: var(--ink-2); text-align: center; border-left: 1px solid var(--line); }
+  .gh div b { display: block; font-size: 17px; color: var(--ink); font-weight: 600; }
+  .gh div.today b { color: var(--accent); }
+  .body { position: relative; overflow: hidden; display: grid; }
+  .hours { position: relative; }
+  .hours span { position: absolute; right: 6px; font-size: 10.5px; color: var(--ink-3); transform: translateY(-6px); }
+  .col { position: relative; border-left: 1px solid var(--line); background-image: linear-gradient(var(--line) 1px, transparent 1px); background-size: 100% 52px; }
+  .ev { position: absolute; border-radius: 7px; padding: 4px 6px; font-size: 11.5px; line-height: 1.25; overflow: hidden; border-left: 3px solid; }
+  .ev b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ev span { opacity: .8; font-size: 10.5px; }
+  .ev .ico { position: absolute; right: 4px; top: 4px; }
+  .ev .ico svg { width: 12px; height: 12px; }
+  .ev.busy { background-color: var(--surface-3) !important; border-color: var(--ink-3) !important; color: var(--ink-2); background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(127,127,127,.12) 6px 12px) !important; }
+  .ev.tent { border-style: dashed; border-width: 1.5px 1.5px 1.5px 3px; background: transparent !important; }
+  .ev.sel { box-shadow: 0 0 0 2px var(--accent); }
+  .ghost-slot { position: absolute; border-radius: 7px; border: 1.5px dashed var(--accent); background: var(--accent-soft); color: var(--accent); font-size: 11.5px; font-weight: 600; padding: 4px 6px; display: flex; gap: 5px; align-items: flex-start; }
+  .now { position: absolute; left: 0; right: 0; height: 2px; background: var(--danger); z-index: 3; }
+  .now::before { content: ""; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+
+  .pop { position: absolute; width: 300px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-pop); padding: 14px; z-index: 10; font-size: 13px; }
+  .pop h5 { margin: 0 0 6px; font-size: 15px; display: flex; gap: 8px; align-items: center; }
+  .pop .r { display: flex; gap: 8px; align-items: center; color: var(--ink-2); margin: 6px 0; }
+  .pop .hint { margin-top: 10px; padding: 8px 10px; border-radius: 9px; background: var(--surface-3); color: var(--ink-2); font-size: 12px; line-height: 1.45; }
+  .pop .acts { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+  .menu { position: absolute; width: 220px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--sh-pop); padding: 5px; z-index: 12; }
+  .menu .mi { display: flex; align-items: center; gap: 9px; padding: 7px 9px; border-radius: 8px; font-size: 13px; }
+  .menu .mi:hover, .menu .mi.hi { background: var(--surface-3); }
+  .menu .mi.danger { color: var(--danger); }
+  .menu .mi small { margin-left: auto; color: var(--ink-3); font-size: 11px; }
+  .menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+  .menu .sw { display: flex; gap: 6px; padding: 6px 9px; }
+  .menu .sw i { width: 16px; height: 16px; border-radius: 50%; display: block; }
+  .menu .cap { font-size: 11px; color: var(--ink-3); padding: 6px 9px 2px; font-weight: 600; }
+
+  /* settings sheet */
+  .sheet { width: 600px; max-height: 760px; display: flex; flex-direction: column; }
+  .sh-h { display: flex; align-items: center; gap: 10px; padding: 18px 22px 8px; }
+  .sh-h h2 { margin: 0; font-size: 18px; flex: 1; display: flex; gap: 9px; align-items: center; }
+  .sh-h h2 svg { color: var(--ink-2); width: 19px; height: 19px; }
+  .sh-b { padding: 4px 22px 18px; overflow: auto; }
+  .sh-f { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 22px; border-top: 1px solid var(--line); background: var(--surface-2); }
+  .sec { margin-top: 18px; }
+  .sec > h3 { margin: 0 0 3px; font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
+  .sec > p { margin: 0 0 9px; color: var(--ink-2); font-size: 12.5px; }
+  .group { border: 1px solid var(--line); border-radius: 13px; overflow: hidden; background: var(--surface); }
+  .grow { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-top: 1px solid var(--line); min-height: 52px; }
+  .grow:first-child { border-top: 0; }
+  .grow .t { flex: 1; min-width: 0; }
+  .grow .t b { display: block; font-size: 13px; font-weight: 600; }
+  .grow .t small { color: var(--ink-3); font-size: 11.5px; }
+  .grow.fixed { background: var(--surface-2); }
+  .grow .gi { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex: none; background: var(--surface-3); color: var(--ink-2); }
+  .grow .x { color: var(--ink-3); display: grid; padding: 4px; border-radius: 7px; }
+  .grow.new { animation: rowin .35s cubic-bezier(.34,1.56,.64,1); background: var(--accent-soft); }
+  @keyframes rowin { from { opacity: 0; transform: translateY(-6px); } }
+  .lvl { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--surface); font-size: 12.5px; white-space: nowrap; }
+  .lvl.static { border-color: transparent; background: var(--surface-3); color: var(--ink-2); }
+  .lvl.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .addrow { display: flex; align-items: center; gap: 9px; padding: 11px 12px; border-top: 1px solid var(--line); color: var(--accent); font-weight: 600; font-size: 13px; }
+  .switch { width: 38px; height: 22px; border-radius: 999px; background: var(--line-2); position: relative; flex: none; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.2); transition: left .2s; }
+  .switch.on { background: var(--accent); }
+  .switch.on::after { left: 18px; }
+
+  /* level dropdown */
+  .ladder { position: absolute; width: 330px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-pop); padding: 6px; z-index: 20; }
+  .ladder .o { display: flex; gap: 10px; padding: 9px 10px; border-radius: 10px; }
+  .ladder .o:hover, .ladder .o.on { background: var(--surface-3); }
+  .ladder .o .ic { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--surface-3); color: var(--ink-2); flex: none; }
+  .ladder .o.on .ic { background: var(--accent); color: #fff; }
+  .ladder .o b { display: block; font-size: 13px; }
+  .ladder .o small { color: var(--ink-2); font-size: 11.8px; line-height: 1.4; display: block; }
+  .ladder .o .ck { margin-left: auto; color: var(--accent); align-self: center; }
+  .ladder .div { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; color: var(--ink-3); padding: 8px 10px 3px; text-transform: uppercase; }
+  .ladder .o.rm { color: var(--danger); align-items: center; }
+
+  /* preview */
+  .pv { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pv .box { border: 1px solid var(--line); border-radius: 12px; padding: 10px; background: var(--surface-2); }
+  .pv .box h6 { margin: 0 0 8px; font-size: 11.5px; color: var(--ink-3); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .pv .e { border-radius: 7px; padding: 6px 8px; font-size: 12px; border-left: 3px solid var(--p-me); background: var(--accent-soft); margin-bottom: 6px; }
+  .pv .e.busy { border-color: var(--ink-3); background: var(--surface-3); background-image: repeating-linear-gradient(135deg, transparent 0 6px, rgba(127,127,127,.12) 6px 12px); color: var(--ink-2); }
+  .pv .e b { display: block; }
+  .pv .e span { color: var(--ink-2); font-size: 11px; }
+
+  /* cards */
+  .card { width: 560px; padding: 18px 20px; display: flex; gap: 14px; }
+  .card .ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--info-soft); color: var(--info); flex: none; }
+  .card h4 { margin: 0 0 4px; font-size: 15px; }
+  .card p { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
+  .faces { display: flex; margin: 10px 0 2px; }
+  .faces .av { width: 24px; height: 24px; border-radius: 7px; border: 2px solid var(--surface); margin-right: -6px; font-size: 9px; }
+  .card .acts { display: flex; gap: 8px; margin-top: 14px; }
+
+  /* person card (directory/contact) */
+  .pcard { width: 360px; padding: 20px; text-align: center; }
+  .pcard .av { width: 64px; height: 64px; border-radius: 18px; font-size: 22px; margin: 0 auto 10px; }
+  .pcard h4 { margin: 0; font-size: 17px; }
+  .pcard p { margin: 2px 0 14px; color: var(--ink-2); font-size: 12.5px; }
+  .hero { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .hero a { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 10px 4px; border-radius: 12px; background: var(--surface-3); color: var(--ink); font-size: 12px; text-decoration: none; }
+  .hero a svg { width: 18px; height: 18px; color: var(--accent); }
+  .hero a.new { box-shadow: 0 0 0 2px var(--accent); background: var(--accent-soft); }
+  .slots { margin-top: 14px; text-align: left; border-top: 1px solid var(--line); padding-top: 12px; }
+  .slots b { font-size: 12px; color: var(--ink-2); font-weight: 600; }
+  .slots .bar { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; margin: 7px 0 4px; }
+  .slots .bar i { height: 14px; border-radius: 3px; background: var(--accent-soft); }
+  .slots .bar i.b { background: var(--ink-3); opacity: .5; }
+  .slots .bar i.n { box-shadow: inset 0 0 0 1.5px var(--danger); }
+  .slots small { font-size: 11px; color: var(--ink-3); display: flex; justify-content: space-between; }
+
+  /* palette */
+  .pal { width: 520px; }
+  .pal .q { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); font-size: 15px; }
+  .pal .res { padding: 6px; }
+  .pal .it { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; }
+  .pal .it.on { background: var(--surface-3); }
+  .pal .it .t { flex: 1; }
+  .pal .it .t small { display: block; color: var(--ink-3); font-size: 11.5px; }
+  .pal .kb { display: flex; gap: 4px; }
+  .pal .kb span { font-size: 11px; padding: 2px 7px; border-radius: 6px; border: 1px solid var(--line-2); color: var(--ink-2); background: var(--surface); white-space: nowrap; }
+  .pal .kb span.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+
+  /* notification */
+  .ntf { width: 400px; padding: 14px; display: flex; gap: 12px; }
+  .ntf .t { flex: 1; }
+  .ntf .t b { font-size: 13.5px; }
+  .ntf .t p { margin: 3px 0 10px; color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+  .ntf .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ntf .btn { height: 28px; font-size: 12.5px; }
+  .toast { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 10px; align-items: center; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--sh-pop); border-radius: 12px; padding: 10px 14px; font-size: 13px; z-index: 30; }
+  .toast .ok { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: #fff; display: grid; place-items: center; }
+  .toast .ok svg { width: 12px; height: 12px; stroke-width: 3; }
+  .toast a { color: var(--accent); font-weight: 600; text-decoration: none; }
+
+  /* phone */
+  .phone { width: 380px; height: 760px; border-radius: 36px; border: 10px solid #111; overflow: hidden; display: flex; flex-direction: column; background: var(--surface); }
+  .phone .hd { padding: 12px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; }
+  .phone .days { display: flex; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  .phone .days span { flex: 1; text-align: center; padding: 5px 0; border-radius: 9px; font-size: 11px; color: var(--ink-2); }
+  .phone .days span b { display: block; font-size: 15px; color: var(--ink); }
+  .phone .days span.on { background: var(--accent); color: #fff; }
+  .phone .days span.on b { color: #fff; }
+  .phone .bd { flex: 1; position: relative; display: grid; grid-template-columns: 44px 1fr; overflow: hidden; }
+  .phone .ft { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--line); }
+  .phone .ft .btn { flex: 1; justify-content: center; }
+</style>
+</head>
+<body>
+<div class="mk-nav">
+  <b>Calendar access</b>
+  <button data-s="s1" class="on">1 · Calendar + rail</button>
+  <button data-s="s2">2 · Settings (one page)</button>
+  <button data-s="s3">3 · Access levels</button>
+  <button data-s="s4">4 · View someone's calendar</button>
+  <button data-s="s5">5 · Entry points</button>
+  <button data-s="s6">6 · Ask → Allow</button>
+  <button data-s="s7">7 · First-run card + event form</button>
+  <button data-s="s8">8 · Mobile</button>
+  <span class="sp"></span>
+  <button id="theme">◐ Dark</button>
+</div>
+
+<!-- ═════ 1 · calendar + one rail list ═════ -->
+<section class="stage on" id="s1">
+  <div class="win cal">
+    <aside class="side">
+      <div class="mini"><b>October 2026</b><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+        <span></span><span></span><span>1</span><span>2</span><span>3</span><span>4</span><span class="t">5</span>
+        <span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span></div>
+      <h4>Calendars <button title="Layout"><i data-lucide="more-horizontal"></i></button></h4>
+      <div class="src cur"><span class="chk" style="background:var(--p-me)"><i data-lucide="check"></i></span><span class="nm">My calendar</span></div>
+      <div class="src"><span class="chk" style="background:var(--p-d)"><i data-lucide="check"></i></span><span class="nm">Pak Hendra<small>You manage this calendar</small></span><span class="pill">Manage</span></div>
+      <div class="src"><span class="chk" style="background:var(--p-a)"><i data-lucide="check"></i></span><span class="nm">Adrio Andhika<small>Titles</small></span><span class="more"><i data-lucide="more-horizontal"></i></span></div>
+      <div class="src hot"><span class="chk" style="background:var(--p-b)"><i data-lucide="check"></i></span><span class="nm">Rina Kartika<small>Busy times only</small></span><span class="more"><i data-lucide="more-horizontal"></i></span></div>
+      <div class="src"><span class="chk off" style="background:var(--p-c)"></span><span class="nm">Budi Santoso<small>Busy times only</small></span><span class="more"><i data-lucide="more-horizontal"></i></span></div>
+      <button class="addp"><i data-lucide="plus"></i> Add calendar</button>
+
+</div>
+      <div class="menu" style="left:150px;top:252px">
+        <div class="mi hi"><i data-lucide="calendar-search"></i> View calendar</div>
+        <div class="mi"><i data-lucide="calendar-plus"></i> Invite to meeting</div>
+        <div class="mi"><i data-lucide="message-circle"></i> Chat</div>
+        <hr>
+        <div class="cap">Colour</div>
+        <div class="sw"><i style="background:var(--p-a)"></i><i style="background:var(--p-b);box-shadow:0 0 0 2px var(--surface),0 0 0 3.5px var(--p-b)"></i><i style="background:var(--p-c)"></i><i style="background:var(--p-d)"></i><i style="background:var(--p-me)"></i></div>
+        <hr>
+        <div class="mi danger"><i data-lucide="eye-off"></i> Stop following</div>
+          </aside>
+    <div class="main">
+      <div class="tb">
+        <button class="btn">Today</button><button class="btn ic"><i data-lucide="chevron-left"></i></button><button class="btn ic"><i data-lucide="chevron-right"></i></button>
+        <h2>5 – 9 October 2026</h2><span class="sp"></span>
+        <div class="seg"><button>Day</button><button class="on">Week</button><button>Month</button></div>
+        <button class="btn ic" title="Calendar settings"><i data-lucide="settings"></i></button>
+        <button class="btn pri"><i data-lucide="plus"></i> New</button>
+      </div>
+      <div class="grid" id="g1"></div>
+    </div>
+  </div>
+  <div class="note">
+    <span class="tag">Was 5 places · now 1 list</span>
+    <h3>One "Calendars" list</h3>
+    <ul>
+      <li><b>My calendar</b> on top. Calendars you <b>manage</b> (you're their assistant) carry a <b>Manage</b> pill — click to switch to it.</li>
+      <li>People you <b>follow</b> show what you're allowed to see under their name: <i>Busy times only</i> or <i>Titles</i>.</li>
+      <li><b>+ Add calendar</b> = search anyone and follow them. No permission needed — following only shows what the owner allows.</li>
+      <li>Row ⋯: View calendar, Invite to meeting, Chat, Colour, Stop following.</li>
+      <li>"Overlay / Side by side" moved into the ⋯ next to <b>Calendars</b>.</li>
+      <li>The toolbar <b>Share</b> button is gone; <b>⚙</b> opens the one settings page.</li>
+    </ul>
+    <div class="was">Removed: "Colleagues" section, "My calendar / Managed" switcher, Share dialog tabs, toolbar Overlay/Side-by-side.</div>
+  </div>
+</section>
+
+<!-- ═════ 2 · settings, one scrolling page ═════ -->
+<section class="stage" id="s2">
+  <div class="win sheet">
+    <div class="sh-h"><h2><i data-lucide="settings"></i> Calendar settings</h2><button class="btn ic ghost"><i data-lucide="x"></i></button></div>
+    <div class="sh-b">
+      <div class="sec" style="margin-top:4px">
+        <h3><i data-lucide="eye"></i> Who can see my calendar</h3>
+        <p>Everyone can see <b>when</b> you're busy, so they can plan meetings. Only people you add below see more.</p>
+        <div class="group">
+          <div class="grow fixed"><span class="gi"><i data-lucide="building-2"></i></span><div class="t"><b>Everyone at SJA</b><small>Grey "Busy" blocks — no titles, places or people</small></div><span class="lvl static"><i data-lucide="lock"></i> See when I'm busy</span></div>
+          <div class="grow"><span class="av" style="background:var(--p-d)">AS</span><div class="t"><b>Ayu Safitri</b><small>Assistant · gets your invites</small></div><span class="lvl">Act on my behalf <i data-lucide="chevron-down"></i></span><span class="x"><i data-lucide="x"></i></span></div>
+          <div class="grow"><span class="gi" style="background:var(--info-soft);color:var(--info)"><i data-lucide="users"></i></span><div class="t"><b>ICT Department</b><small>14 people · new members included</small></div><span class="lvl on">See event titles <i data-lucide="chevron-down"></i></span><span class="x"><i data-lucide="x"></i></span></div>
+          <div class="grow new"><span class="av" style="background:var(--p-a)">AA</span><div class="t"><b>Adrio Andhika</b><small>Added just now</small></div><span class="lvl">See all details <i data-lucide="chevron-down"></i></span><span class="x"><i data-lucide="x"></i></span></div>
+          <div class="addrow"><i data-lucide="user-plus"></i> Share with a person, department or chat group…</div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <h3><i data-lucide="scan-eye"></i> Preview</h3>
+        <p>How Wednesday looks to</p>
+        <div class="seg" style="margin-bottom:10px"><button class="on">Everyone</button><button>ICT Department</button><button>Ayu Safitri</button></div>
+        <div class="pv">
+          <div class="box"><h6><i data-lucide="user"></i> You</h6>
+            <div class="e"><b>Vendor meeting</b><span>10:00 · Room 2</span></div>
+            <div class="e" style="border-color:var(--danger);background:var(--surface-3)"><b>🔒 Doctor appointment</b><span>14:00 · Private</span></div></div>
+          <div class="box"><h6><i data-lucide="building-2"></i> Everyone at SJA</h6>
+            <div class="e busy"><b>Busy</b><span>10:00 – 11:00</span></div>
+            <div class="e busy"><b>Busy</b><span>14:00 – 15:00</span></div></div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <h3><i data-lucide="bell"></i> Notifications</h3>
+        <div class="group">
+          <div class="grow"><div class="t"><b>Someone asks to see more</b><small>You can allow it straight from the notification</small></div><span class="switch on"></span></div>
+          <div class="grow"><div class="t"><b>Someone changes my calendar for me</b><small>Edits are always labelled "on behalf of you"</small></div><span class="switch on"></span></div>
+        </div>
+      </div>
+    </div>
+    <div class="sh-f"><span style="margin-right:auto;color:var(--ink-3);font-size:12px;align-self:center">Changes save automatically</span><button class="btn pri">Done</button></div>
+  </div>
+  <div class="note">
+    <span class="tag">No tabs</span>
+    <h3>One page, read top to bottom</h3>
+    <ul>
+      <li>The first row is <b>fixed</b>: everyone always sees when you're busy — that's what makes meetings easy to plan.</li>
+      <li>Every other row is a person, a <b>department</b> or a <b>chat group</b> with one level dropdown. Groups follow membership, like Notes sharing.</li>
+      <li>Assistants are just the top level (<i>Act on my behalf</i>) — no separate "Delegates" tab.</li>
+      <li><b>Preview</b> shows the same day through someone else's eyes.</li>
+      <li>Saves as you go; <b>Done</b> just closes. A new row slides in green.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═════ 3 · access ladder ═════ -->
+<section class="stage" id="s3">
+  <div class="win" style="width:560px;height:540px;padding:22px;background:var(--surface-2)">
+    <div class="group" style="width:100%">
+      <div class="grow"><span class="av" style="background:var(--p-a)">AA</span><div class="t"><b>Adrio Andhika</b><small>ICT</small></div><span class="lvl on">See event titles <i data-lucide="chevron-down"></i></span><span class="x"><i data-lucide="x"></i></span></div>
+    </div>
+    <div class="ladder" style="left:200px;top:80px">
+      <div class="o" style="opacity:.55"><span class="ic"><i data-lucide="clock"></i></span><div><b>See when I'm busy</b><small>A grey <b>Busy</b> block. No titles, places or people. Everyone has this.</small></div></div>
+      <div class="o on"><span class="ic"><i data-lucide="text"></i></span><div><b>See event titles</b><small>What and where, e.g. "Vendor meeting · Room 2".</small></div><span class="ck"><i data-lucide="check"></i></span></div>
+      <div class="o"><span class="ic"><i data-lucide="file-text"></i></span><div><b>See all details</b><small>Also the description, attendees and attachments.</small></div></div>
+      <div class="div">Can make changes</div>
+      <div class="o"><span class="ic"><i data-lucide="pencil"></i></span><div><b>Edit my events</b><small>Add, move and change events in your calendar.</small></div></div>
+      <div class="o"><span class="ic"><i data-lucide="user-cog"></i></span><div><b>Act on my behalf</b><small>Like an assistant: also gets your invites and can accept or decline for you.</small></div></div>
+      <div class="div"></div>
+      <div class="o rm"><span class="ic" style="background:none;color:var(--danger)"><i data-lucide="user-minus"></i></span><b>Remove — back to busy times only</b></div>
+    </div>
+  </div>
+  <div class="note">
+    <span class="tag">One ladder</span>
+    <h3>Five levels, each says what it does</h3>
+    <ul>
+      <li>Every level includes the ones above it, so there's nothing to combine.</li>
+      <li>The two "can make changes" levels replace the old Delegates tab (view / edit / full).</li>
+      <li><b>Private</b> events stay "Busy" for everyone — only <i>Act on my behalf</i> sees inside.</li>
+      <li>Same dropdown in Settings, in the "Allow" step of a request, and for admins granting on someone's behalf.</li>
+    </ul>
+    <div class="was">Old names → new: Titles and locations / Busy only / Only when I'm busy are gone (everyone now sees busy times only). View all details → See all details · Can edit → Edit my events · Full delegate → Act on my behalf.</div>
+  </div>
+</section>
+
+<!-- ═════ 4 · view someone's calendar ═════ -->
+<section class="stage" id="s4">
+  <div class="win cal">
+    <aside class="side">
+      <div class="mini"><b>October 2026</b><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+        <span></span><span></span><span>1</span><span>2</span><span>3</span><span>4</span><span class="t">5</span>
+        <span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span></div>
+      <h4>Calendars</h4>
+      <div class="src"><span class="chk" style="background:var(--p-me)"><i data-lucide="check"></i></span><span class="nm">My calendar</span></div>
+      <div class="src"><span class="chk" style="background:var(--p-a)"><i data-lucide="check"></i></span><span class="nm">Adrio Andhika<small>Titles</small></span></div>
+      <button class="addp"><i data-lucide="plus"></i> Add calendar</button>
+    </aside>
+    <div class="main">
+      <div class="who-bar">
+        <button class="btn ic ghost" title="Back to my calendar"><i data-lucide="arrow-left"></i></button>
+        <span class="av lg" style="background:var(--p-b)">RK</span>
+        <div class="t"><b>Rina Kartika</b><span>Procurement · <span class="acc"><i data-lucide="clock"></i> You can see when she's busy</span></span></div>
+        <span class="sp"></span>
+        <button class="btn"><i data-lucide="message-circle"></i> Chat</button>
+        <button class="btn"><i data-lucide="eye"></i> Follow</button>
+        <button class="btn pri"><i data-lucide="calendar-plus"></i> Invite to meeting</button>
+      </div>
+      <div class="tb" style="padding:8px 16px">
+        <button class="btn">This week</button><button class="btn ic"><i data-lucide="chevron-left"></i></button><button class="btn ic"><i data-lucide="chevron-right"></i></button>
+        <h2 style="font-size:15px">5 – 9 October</h2><span class="sp"></span>
+        <label style="display:flex;gap:7px;align-items:center;font-size:12.5px;color:var(--ink-2)"><span class="switch on" style="transform:scale(.8)"></span> Show my calendar too</label>
+      </div>
+      <div class="grid" id="g4"></div>
+    </div>
+  </div>
+  <div class="note">
+    <span class="tag">Bitrix-style</span>
+    <h3>Peek at anyone, no adding needed</h3>
+    <ul>
+      <li>Opens from a person's card, the chat header or search — address <code>/calendar/person/…</code>.</li>
+      <li>Header says <b>exactly what you can see</b>. Busy = grey striped, not yet answered = dashed.</li>
+      <li><b>Show my calendar too</b> lays your own events faintly behind, to spot a shared gap fast.</li>
+      <li><b>Click an empty slot</b> → new meeting with her at that time (the dashed green block).</li>
+      <li><b>Click a busy block</b> → popover with <i>Ask to see details</i> or <i>Meet another time</i>.</li>
+      <li><b>Follow</b> adds her to your Calendars list; it doesn't need her approval and shows nothing extra.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═════ 5 · entry points ═════ -->
+<section class="stage" id="s5">
+  <div class="win pcard">
+    <span class="av" style="background:var(--p-b)">RK</span>
+    <h4>Rina Kartika</h4><p>Procurement · SJA Sepanjang</p>
+    <div class="hero">
+      <a href="#"><i data-lucide="message-circle"></i>Message</a>
+      <a href="#"><i data-lucide="mail"></i>Mail</a>
+      <a href="#"><i data-lucide="phone"></i>Call</a>
+      <a href="#" class="new"><i data-lucide="calendar-search"></i>Calendar</a>
+    </div>
+    <div class="slots"><b>Today</b>
+      <div class="bar"><i></i><i class="b"></i><i class="b"></i><i></i><i class="n"></i><i></i><i class="b"></i><i></i><i></i><i></i></div>
+      <small><span>08</span><span>Free now · busy 14:00–15:00</span><span>17</span></small></div>
+  </div>
+  <div class="win pal">
+    <div class="q"><i data-lucide="search"></i> rina</div>
+    <div class="res">
+      <div class="it on"><span class="av" style="background:var(--p-b)">RK</span><div class="t">Rina Kartika<small>Procurement · Free now</small></div>
+        <div class="kb"><span>Chat</span><span class="on">Calendar</span></div></div>
+      <div class="it"><span class="av" style="background:var(--p-c)">RW</span><div class="t">Rina Wulandari<small>Finance · In a meeting until 11:00</small></div>
+        <div class="kb"><span>Chat</span><span>Calendar</span></div></div>
+    </div>
+  </div>
+  <div class="win" style="width:520px">
+    <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)">
+      <span class="av" style="background:var(--p-b)">RK</span><div style="flex:1"><b>Rina Kartika</b><div style="font-size:12px;color:var(--ink-3)">Free now · busy 14:00</div></div>
+      <button class="btn ic ghost" title="Call"><i data-lucide="phone"></i></button>
+      <button class="btn ic ghost" title="View calendar" style="box-shadow:0 0 0 2px var(--accent);background:var(--accent-soft);color:var(--accent)"><i data-lucide="calendar-search"></i></button>
+      <button class="btn ic ghost"><i data-lucide="more-horizontal"></i></button>
+    </div>
+    <div style="padding:16px;color:var(--ink-3);font-size:12.5px">Chat with Rina · header button opens her calendar</div>
+  </div>
+  <div class="note">
+    <span class="tag">Where to find it</span>
+    <h3>"Calendar" next to Message / Mail / Call</h3>
+    <ul>
+      <li><b>Person card / profile</b> (Directory, clicking a name anywhere): a 4th button plus a <b>Today</b> strip — free now or busy, at a glance.</li>
+      <li><b>Directory</b> grid cards and list rows get the same calendar icon.</li>
+      <li><b>Search (Ctrl K)</b>: people show <i>Free now / In a meeting until…</i>; Tab jumps to Calendar.</li>
+      <li><b>Chat with one person</b>: calendar icon in the header.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═════ 6 · ask → allow ═════ -->
+<section class="stage" id="s6">
+  <div class="win" style="width:520px;height:420px;background:var(--surface-2)">
+    <div class="col" style="position:absolute;inset:0;background-color:var(--surface)"></div>
+    <div class="ev busy sel" style="left:40px;top:90px;width:180px;height:70px"><b>Busy</b><span>10:00 – 11:00</span></div>
+    <div class="pop" style="left:230px;top:40px">
+      <h5><i data-lucide="clock"></i> Busy</h5>
+      <div class="r"><i data-lucide="calendar"></i> Wed 7 Oct · 10:00 – 11:00</div>
+      <div class="hint">Rina only shares <b>when</b> she's busy. Ask her if you need to see what it is.</div>
+      <div class="acts"><button class="btn pri"><i data-lucide="send"></i> Ask to see details</button><button class="btn"><i data-lucide="calendar-clock"></i> Meet another time</button></div>
+    </div>
+    <div class="toast"><span class="ok"><i data-lucide="check"></i></span> Request sent to Rina</div>
+  </div>
+  <div class="win ntf">
+    <span class="av" style="background:var(--p-a)">AA</span>
+    <div class="t"><b>Adrio Andhika asks to see your calendar titles</b>
+      <p>So he can plan meetings with you. You can change or remove this any time in Calendar settings.</p>
+      <div class="acts"><button class="btn pri"><i data-lucide="check"></i> Allow titles</button><button class="btn">Choose level… <i data-lucide="chevron-down"></i></button><button class="btn ghost">Ignore</button></div></div>
+  </div>
+  <div class="win ntf">
+    <span class="av" style="background:var(--p-b)">RK</span>
+    <div class="t"><b>Rina Kartika shared her calendar with you</b>
+      <p>You can now see <b>event titles</b>. She's in your Calendars list.</p>
+      <div class="acts"><button class="btn"><i data-lucide="calendar-search"></i> View calendar</button></div></div>
+  </div>
+  <div class="note">
+    <span class="tag">One click each side</span>
+    <h3>Ask → Allow</h3>
+    <ul>
+      <li>Clicking someone's <b>Busy</b> block explains why it's grey, and offers <b>Ask to see details</b> (max once a day per person).</li>
+      <li>The owner gets a notification with <b>Allow titles</b> right in it — or picks a different level, or ignores it. Nobody is told about an ignore.</li>
+      <li>The asker is told when access is given (and when it's removed), and the calendar is added to their list.</li>
+      <li>Nobody is notified when someone just <i>looks</i> — they only see busy times.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═════ 7 · first-run card + event form ═════ -->
+<section class="stage" id="s7">
+  <div style="display:flex;flex-direction:column;gap:18px">
+    <div class="win card">
+      <span class="ic"><i data-lucide="shield-check"></i></span>
+      <div><h4>Your calendar now shows only busy times</h4>
+        <p>To protect important schedules, colleagues no longer see your event titles unless you share them.
+           <b>6 people</b> follow your calendar.</p>
+        <div class="faces"><span class="av" style="background:var(--p-a)">AA</span><span class="av" style="background:var(--p-b)">RK</span><span class="av" style="background:var(--p-c)">BS</span><span class="av" style="background:var(--p-d)">AS</span><span class="av" style="background:var(--p-me)">+2</span></div>
+        <div class="acts"><button class="btn pri">Let them see titles</button><button class="btn">Choose people…</button><button class="btn ghost">Keep busy only</button></div></div>
+    </div>
+    <div class="win" style="width:560px;padding:16px 18px">
+      <div style="font-weight:600;margin-bottom:10px">New event · <span style="color:var(--ink-3);font-weight:400">who can see it</span></div>
+      <div class="group">
+        <div class="grow"><span class="gi"><i data-lucide="eye"></i></span><div class="t"><b>Normal</b><small>Everyone sees Busy. People you share with see it as you allowed.</small></div><span style="color:var(--accent)"><i data-lucide="check"></i></span></div>
+        <div class="grow"><span class="gi"><i data-lucide="lock"></i></span><div class="t"><b>Private</b><small>Busy for everyone, even people you share with — except your assistant.</small></div></div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--ink-3)">People you invite always see the meeting.</div>
+    </div>
+  </div>
+  <div class="note">
+    <span class="tag">After the update</span>
+    <h3>Nobody is surprised</h3>
+    <ul>
+      <li>Shown once to each owner whose events used to be visible. <b>Let them see titles</b> shares titles with everyone who already follows them, in one step.</li>
+      <li><b>Keep busy only</b> closes it; Settings is always one ⚙ away.</li>
+      <li>Assistants and editors keep their access (old delegates move to the matching level automatically).</li>
+      <li>Per event there are only two choices: <b>Normal</b> and <b>Private</b>.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═════ 8 · mobile ═════ -->
+<section class="stage" id="s8">
+  <div class="phone">
+    <div class="hd"><i data-lucide="arrow-left"></i><span class="av" style="background:var(--p-b)">RK</span><div style="flex:1"><b>Rina Kartika</b><div style="font-size:11.5px;color:var(--ink-3)">Busy times only</div></div><i data-lucide="message-circle"></i></div>
+    <div class="days"><span><b>5</b>Mon</span><span><b>6</b>Tue</span><span class="on"><b>7</b>Wed</span><span><b>8</b>Thu</span><span><b>9</b>Fri</span></div>
+    <div class="bd" id="g8"></div>
+    <div class="ft"><button class="btn"><i data-lucide="eye"></i> Follow</button><button class="btn pri"><i data-lucide="calendar-plus"></i> Invite</button></div>
+  </div>
+  <div class="phone">
+    <div class="hd"><b style="flex:1;font-size:16px">Calendar settings</b><i data-lucide="x"></i></div>
+    <div style="padding:12px;overflow:auto">
+      <div style="font-weight:600;font-size:13px;margin:4px 2px 6px">Who can see my calendar</div>
+      <div class="group">
+        <div class="grow fixed"><div class="t"><b>Everyone at SJA</b><small>See when I'm busy</small></div><i data-lucide="lock" style="color:var(--ink-3)"></i></div>
+        <div class="grow"><span class="av" style="background:var(--p-d)">AS</span><div class="t"><b>Ayu Safitri</b><small>Act on my behalf</small></div><i data-lucide="chevron-right" style="color:var(--ink-3)"></i></div>
+        <div class="grow"><span class="gi"><i data-lucide="users"></i></span><div class="t"><b>ICT Department</b><small>See event titles</small></div><i data-lucide="chevron-right" style="color:var(--ink-3)"></i></div>
+        <div class="addrow"><i data-lucide="user-plus"></i> Share with…</div>
+      </div>
+      <div style="font-weight:600;font-size:13px;margin:16px 2px 6px">Notifications</div>
+      <div class="group">
+        <div class="grow"><div class="t"><b>Someone asks to see more</b></div><span class="switch on"></span></div>
+        <div class="grow"><div class="t"><b>Someone changes my calendar</b></div><span class="switch on"></span></div>
+      </div>
+    </div>
+  </div>
+  <div class="note">
+    <span class="tag">Phone</span>
+    <h3>Same two places</h3>
+    <ul>
+      <li>Someone's calendar is one day at a time with a day strip; Follow and Invite stay at the bottom within thumb reach.</li>
+      <li>Settings is the same single list; tapping a row opens the level list as a bottom sheet.</li>
+    </ul>
+  </div>
+</section>
+
+<script>
+const H0 = 8, HPX = 52;
+function grid(el, cols, evs, opt = {}) {
+  const head = `<div class="gh" style="grid-template-columns:52px repeat(${cols.length},1fr)"><div style="border:0"></div>${cols.map(c => `<div class="${c.today ? 'today' : ''}">${c.l}<b>${c.d}</b></div>`).join('')}</div>`;
+  const hours = Array.from({ length: 10 }, (_, i) => `<span style="top:${i * HPX}px">${String(H0 + i).padStart(2, '0')}:00</span>`).join('');
+  const colsHtml = cols.map((c, ci) => `<div class="col">${evs.filter(e => e.c === ci).map(e => `<div class="ev ${e.k || ''}" style="top:${(e.s - H0) * HPX + 2}px;height:${(e.e - e.s) * HPX - 4}px;left:${e.l || 3}px;right:${e.r || 3}px;background:${e.bg || 'var(--accent-soft)'};border-color:${e.bc || 'var(--p-me)'};${e.o ? 'opacity:' + e.o : ''}"><b>${e.t}</b><span>${e.sub || ''}</span>${e.i ? `<span class="ico"><i data-lucide="${e.i}"></i></span>` : ''}</div>`).join('')}${(opt.extra || []).filter(x => x.c === ci).map(x => x.h).join('')}</div>`).join('');
+  el.innerHTML = head + `<div class="body" style="grid-template-columns:52px repeat(${cols.length},1fr)"><div class="hours">${hours}</div>${colsHtml}${opt.now ? `<div class="now" style="top:${(opt.now - H0) * HPX}px;left:52px"></div>` : ''}</div>`;
+}
+const week = [{ l: 'Mon', d: 5, today: true }, { l: 'Tue', d: 6 }, { l: 'Wed', d: 7 }, { l: 'Thu', d: 8 }, { l: 'Fri', d: 9 }];
+const A = 'var(--p-a)', B = 'var(--p-b)', D = 'var(--p-d)';
+grid(document.getElementById('g1'), week, [
+  { c: 0, s: 9, e: 10, t: 'Daily stand-up', sub: '09:00 · Teams room' },
+  { c: 0, s: 10.5, e: 12, t: 'Busy', sub: 'Rina', k: 'busy', l: 50 },
+  { c: 0, s: 13, e: 14, t: 'Infra review', sub: 'Adrio · Room 3', bg: 'var(--info-soft)', bc: A },
+  { c: 1, s: 9, e: 11, t: 'Board prep', sub: 'Pak Hendra', bg: 'rgba(124,92,214,.12)', bc: D },
+  { c: 1, s: 14, e: 15.5, t: 'Vendor meeting', sub: '14:00 · Room 2' },
+  { c: 2, s: 10, e: 11, t: 'Busy', sub: 'Rina', k: 'busy' },
+  { c: 2, s: 11, e: 12, t: 'Busy', sub: 'not answered yet', k: 'busy tent', bc: B },
+  { c: 3, s: 13.5, e: 15, t: 'Network upgrade', sub: 'Adrio', bg: 'var(--info-soft)', bc: A },
+  { c: 4, s: 9.5, e: 10.5, t: '🔒 Doctor', sub: 'Private', bg: 'var(--surface-3)', bc: 'var(--danger)' },
+], { now: 11.2 });
+grid(document.getElementById('g4'), week, [
+  { c: 0, s: 10.5, e: 12, t: 'Busy', sub: '10:30 – 12:00', k: 'busy' },
+  { c: 0, s: 9, e: 10, t: 'Daily stand-up', sub: 'you', o: .35 },
+  { c: 1, s: 9, e: 10, t: 'Busy', sub: '09:00 – 10:00', k: 'busy' },
+  { c: 1, s: 14, e: 15.5, t: 'Vendor meeting', sub: 'you', o: .35 },
+  { c: 2, s: 10, e: 11, t: 'Busy', sub: '10:00 – 11:00', k: 'busy' },
+  { c: 2, s: 11, e: 12, t: 'Busy', sub: 'not answered yet', k: 'busy tent' },
+  { c: 3, s: 8, e: 17, t: 'Out of office', sub: 'all day', k: 'busy' },
+  { c: 4, s: 13, e: 14.5, t: 'Busy', sub: '13:00 – 14:30', k: 'busy' },
+], { now: 11.2, extra: [{ c: 2, h: `<div class="ghost-slot" style="top:${(13 - H0) * HPX + 2}px;height:${HPX - 4}px;left:3px;right:3px"><i data-lucide="calendar-plus" style="width:13px;height:13px"></i>Meeting with Rina · 13:00</div>` }] });
+const g8 = document.getElementById('g8');
+g8.innerHTML = `<div class="hours">${Array.from({ length: 10 }, (_, i) => `<span style="top:${i * HPX}px">${String(H0 + i).padStart(2, '0')}</span>`).join('')}</div><div class="col">
+  <div class="ev busy" style="top:${2 * HPX + 2}px;height:${HPX - 4}px;left:4px;right:4px"><b>Busy</b><span>10:00 – 11:00</span></div>
+  <div class="ev busy tent" style="top:${3 * HPX + 2}px;height:${HPX - 4}px;left:4px;right:4px"><b>Busy</b><span>not answered yet</span></div>
+  <div class="ghost-slot" style="top:${5 * HPX + 2}px;height:${HPX - 4}px;left:4px;right:4px">+ Meeting 13:00</div></div>`;
+
+document.querySelectorAll('.mk-nav [data-s]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.mk-nav [data-s]').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.stage').forEach(s => s.classList.toggle('on', s.id === b.dataset.s));
+});
+document.getElementById('theme').onclick = () => { const d = document.documentElement; d.dataset.theme = d.dataset.theme === 'dark' ? '' : 'dark'; };
+lucide.createIcons();
+</script>
+</body>
+</html>
