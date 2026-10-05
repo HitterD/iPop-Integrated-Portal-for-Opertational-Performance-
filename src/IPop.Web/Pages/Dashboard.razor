@@ -24,7 +24,7 @@
             <a class="m-chat" href="/chat?new=dm"><span class="ic"><i data-lucide="message-circle-plus"></i></span>New chat</a>
             <a class="m-mail" href="/mail?compose=1"><span class="ic"><i data-lucide="pen-line"></i></span>Compose</a>
             <a class="m-project" href="/projects?newTask=1"><span class="ic"><i data-lucide="list-plus"></i></span>New task</a>
-            <a class="m-meeting" href="/calls?tab=scheduled&amp;new=1"><span class="ic"><i data-lucide="calendar-plus"></i></span>Schedule</a>
+            <a class="m-meeting" href="/calendar?new=1&amp;from=From%20Dashboard"><span class="ic"><i data-lucide="calendar-plus"></i></span>Schedule</a>
             <a class="m-notes" href="/notes"><span class="ic"><i data-lucide="file-plus-2"></i></span>New note</a>
             <a class="m-news" href="/news?new=1"><span class="ic"><i data-lucide="megaphone"></i></span>New post</a>
         </nav>
@@ -78,7 +78,7 @@
                     {
                         <div class="nx">Next up: <b>@nt</b> · @Local(nx).ToString("ddd d MMM, HH:mm")</div>
                     }
-                    <a href="/calls?tab=scheduled&amp;new=1"><i data-lucide="calendar-plus"></i>Schedule</a>
+                    <a href="/calendar?new=1&amp;from=From%20Dashboard"><i data-lucide="calendar-plus"></i>New event</a>
                 </div>
             }
             else
@@ -104,7 +104,7 @@
                             <a class="it @AgendaModule(a) @(a.Ended ? "past" : "")" href="@a.Url">
                                 <span class="tm @(a.Overdue ? "bad" : "")">@AgendaTime(a)</span><span class="bar"></span>
                                 <span class="tx"><b>@a.Title</b><span>@AgendaSub(a)</span></span>
-                                <span class="tag">@(a.Kind switch { "meeting" => "Meeting", "event" => "Event", _ => "Due" })</span>
+                                <span class="tag @(a.Kind is "holiday" ? "hol" : "")">@(a.Kind switch { "meeting" => "Meeting", "event" => "Event", "holiday" => "Holiday", "ticket" => "Ticket", _ => "Due" })</span>
                             </a>
                         }
                     </div>
@@ -423,6 +423,7 @@
 
     private static string AgendaTime(AgendaDto a) =>
         a.Kind == "task" ? (a.Overdue ? "Overdue" : "Today")
+        : a.Kind == "holiday" ? "All day"
         : a.StartAt is { } s ? Local(s).ToString("HH:mm") : "";
 
     private static string AgendaSub(AgendaDto a) =>
@@ -433,7 +434,8 @@
     private static string AgendaModule(AgendaDto a) => a.Kind switch
     {
         "meeting" => "m-meeting",
-        "event" => "m-calendar",
+        "event" or "holiday" => "m-calendar",
+        "ticket" => "m-tickets",
         _ => "m-project",
     };
 

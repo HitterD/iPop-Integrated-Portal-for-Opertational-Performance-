@@ -11,6 +11,7 @@
 @inject ConfirmService Confirm
 @inject BadgeState Badges
 @inject IPop.Web.Services.PeopleLinks PLinks
+@inject IPop.Web.Services.CalendarLinks CalLinks
 
 <PageTitle>Calls — IPop</PageTitle>
 
@@ -26,99 +27,7 @@
         <button type="button" class="btn-primary" @onclick="FocusCallPicker"><i data-lucide="phone"></i>New call</button>
     </div>
 
-    <Modal IsOpen="showSchedule" IsOpenChanged="v => showSchedule = v" Wide="true" CloseOnBackdrop="false"
-           Title="@(editingMeetingId is null ? "Schedule a meeting" : "Edit meeting")"
-           Subtitle="@(editingMeetingId is null ? "Invite people or a group — attendees are notified right away." : "Newly added attendees will be notified.")">
-        <ChildContent>
-            <div class="mtg-form">
-                <label class="mtg-field"><span class="mtg-label">Title</span>
-                    <input class="mtg-input" @bind="formTitle" @bind:event="oninput" maxlength="300" placeholder="e.g. Sprint review" aria-label="Meeting title" /></label>
-                <div class="mtg-grid">
-                    <div class="mtg-field"><span class="mtg-label">Start</span>
-                        <AppDateTimePicker TValue="DateTime" Value="formStart" ValueChanged="OnStartChanged" Min="@(editingMeetingId is null ? DateTime.Now : null)" Class="dp-block" AriaLabel="Start time" /></div>
-                    <div class="mtg-field"><span class="mtg-label">Reminder</span>
-                        <AppSelect Value="@formReminder" ValueChanged="OnReminderChanged" Options="ReminderOptions" Label="Reminder" CssClass="mtg-select" /></div>
-                </div>
-                <div class="mtg-field"><span class="mtg-label">Duration</span>
-                    <div class="mtg-chips" role="group" aria-label="Duration">
-                        @foreach (var minutes in CallsSchedule.DurationChoices)
-                        {
-                            var d = minutes;
-                            <button type="button" class="mtg-chip @(durationChip == d ? "on" : "")" aria-pressed="@(durationChip == d ? "true" : "false")" @onclick="() => PickDuration(d)">@CallsSchedule.DurationLabel(TimeSpan.FromMinutes(d))</button>
-                        }
-                        <button type="button" class="mtg-chip @(durationChip is null ? "on" : "")" aria-pressed="@(durationChip is null ? "true" : "false")" @onclick="PickCustomDuration">Custom</button>
-                    </div>
-                    @if (durationChip is null)
-                    {
-                        <div class="mtg-end"><span class="mtg-label">End</span>
-                            <AppDateTimePicker TValue="DateTime" Value="formEnd" ValueChanged="OnEndChanged" Min="formStart" Class="dp-block" AriaLabel="End time" /></div>
-                    }
-                    else
-                    {
-                        <small class="mtg-hint">Ends at @formEnd.ToString("HH:mm")</small>
-                    }
-                </div>
-                <div class="mtg-field"><span class="mtg-label">Location</span>
-                    <div class="mtg-loc">
-                        <input class="mtg-input" @bind="formLocation" @bind:event="oninput" disabled="@formOnline" placeholder="@(formOnline ? CallsSchedule.OnlineLocation : "Meeting room, building…")" aria-label="Location" />
-                        <button type="button" class="mtg-toggle @(formOnline ? "on" : "")" role="switch" aria-checked="@(formOnline ? "true" : "false")" @onclick="() => formOnline = !formOnline">
-                            <span class="mtg-switch"></span><i data-lucide="video"></i>Online · iPop Meeting
-                        </button>
-                    </div>
-                </div>
-                <label class="mtg-field"><span class="mtg-label">Agenda</span>
-                    <textarea class="mtg-input" rows="3" @bind="formAgenda" maxlength="4000" placeholder="Points to discuss" aria-label="Agenda"></textarea></label>
-                <div class="mtg-field"><span class="mtg-label">Attendees <em>@formInvitees.Count</em></span>
-                    <div class="mtg-invite-tabs" role="tablist">
-                        <button type="button" role="tab" class="@(inviteMode == "people" ? "on" : "")" aria-selected="@(inviteMode == "people" ? "true" : "false")" @onclick='() => inviteMode = "people"'><i data-lucide="user-plus"></i>People</button>
-                        <button type="button" role="tab" class="@(inviteMode == "group" ? "on" : "")" aria-selected="@(inviteMode == "group" ? "true" : "false")" @onclick="OpenGroupInvite"><i data-lucide="users"></i>Invite group</button>
-                    </div>
-                    @if (inviteMode == "people")
-                    {
-                        <PeoplePicker Placeholder="Search name…" ValueChanged="AddInvitee" />
-                    }
-                    else
-                    {
-                        <div class="mtg-groups" role="listbox" aria-label="My groups">
-                            @if (groupsLoading) { <div class="mtg-groups-empty">Loading groups…</div> }
-                            else if (myGroups.Count == 0) { <div class="mtg-groups-empty">You're not in any groups yet.</div> }
-                            @foreach (var grp in myGroups)
-                            {
-                                var g = grp;
-                                <button type="button" role="option" class="mtg-group @(formRoomId == g.Id ? "on" : "")" aria-selected="@(formRoomId == g.Id ? "true" : "false")" disabled="@(expandingGroup is not null)" @onclick="() => InviteGroup(g)">
-                                    <span class="mtg-av" style="background:@(g.AvatarColor ?? AvatarPalette.For(g.Name ?? ""))">@AvatarPhotos.Initials(g.Name)</span>
-                                    <span class="mtg-group-name">@g.Name</span>
-                                    @if (expandingGroup == g.Id) { <i data-lucide="loader-2" class="spin"></i> }
-                                    else if (formRoomId == g.Id) { <i data-lucide="check"></i> }
-                                </button>
-                            }
-                        </div>
-                    }
-                    @if (formRoomName is not null)
-                    {
-                        <div class="mtg-linked"><i data-lucide="users"></i>Linked to group <strong>@formRoomName</strong>
-                            <button type="button" title="Unlink group" aria-label="Unlink group" @onclick="() => { formRoomId = null; formRoomName = null; }"><i data-lucide="x"></i></button></div>
-                    }
-                    @if (formInvitees.Count > 0)
-                    {
-                        <div class="mtg-invitees">
-                            @foreach (var person in formInvitees)
-                            {
-                                var who = person;
-                                <span class="mtg-invitee"><PersonAvatar Nik="@who.Nik" Name="@who.Name" Size="20" Class="mtg-av sm" Decorative="true" />@who.Name
-                                    <button type="button" title="Remove @who.Name" aria-label="Remove @who.Name" @onclick="() => formInvitees.Remove(who)"><i data-lucide="x"></i></button></span>
-                            }
-                        </div>
-                    }
-                </div>
-                @if (!string.IsNullOrEmpty(formError)) { <p class="mtg-error" role="alert"><i data-lucide="alert-circle"></i>@formError</p> }
-            </div>
-        </ChildContent>
-        <Footer>
-            <button type="button" class="btn-sm surface" @onclick="() => showSchedule = false">Cancel</button>
-            <button type="button" class="btn-primary" disabled="@savingMeeting" @onclick="SaveMeeting">@(savingMeeting ? "Saving…" : editingMeetingId is null ? "Schedule" : "Save changes")</button>
-        </Footer>
-    </Modal>
+    @* Scheduling uses the one Calendar meeting form (calendar everywhere); this page lists and joins meetings. *@
 
     @if (CallSvc.NeedsHttps)
     {
@@ -311,6 +220,7 @@
                 }
                 <button type="button" class="btn-sm surface" @onclick="() => CopyMeetingLink(m)"><i data-lucide="link"></i> Copy link</button>
                 <a class="btn-sm surface" href="@PLinks.Chat(m.OrganizerNik)"><i data-lucide="message-circle"></i> Message host</a>
+                <button class="btn-sm surface" @onclick="() => OpenInCalendarAsync(m.Id)"><i data-lucide="calendar"></i> Open in Calendar</button>
                 @if (m.OrganizerNik == Auth.Me?.Nik && !cancelled)
                 {
                     <button class="btn-sm surface" @onclick="() => EditMeeting(m)"><i data-lucide="pencil"></i> Edit</button>
@@ -393,29 +303,10 @@
     private string search = "";
     private string historyFilter = "all";
     private bool showPicker;
-    private bool showSchedule;
-    private bool savingMeeting;
     private bool rsvpBusy;
-    private string? formError;
-    private string formTitle = "";
-    private DateTime formStart = DateTime.Now.AddHours(1);
-    private DateTime formEnd = DateTime.Now.AddHours(2);
-    private string? formLocation;
-    private string? formAgenda;
-    private bool formOnline = true;
-    private int? durationChip = 60;
-    private string formReminder = "15";
-    private Guid? formRoomId;
-    private string? formRoomName;
-    private List<MemberSearchRow> formInvitees = [];
-    private string inviteMode = "people";
-    private List<IPop.Application.Chat.RoomListDto> myGroups = [];
-    private bool groupsLoading, groupsLoaded;
-    private Guid? expandingGroup;
     private System.Threading.Timer? clock;
     private const string MeetingCancelled = "cancelled"; // MeetingStatus.Cancelled on the server
     private static readonly (string Value, string Label)[] RsvpChoices = [("accept", "Yes"), ("maybe", "Maybe"), ("decline", "No")];
-    private Guid? editingMeetingId;
     private MeetingDto? detailMeeting;
     private CallHistoryDto? detailCall;
     private List<MeetingDto> meetings = [];
@@ -455,7 +346,7 @@
     // ── Live refresh (meetingChanged) ──
     // A meeting I organise/attend was created, edited, cancelled or answered. Reload the
     // scheduled list quietly (debounced; bursts collapse) and re-read the open detail when it
-    // is one of the changed meetings. The schedule form (showSchedule) is left untouched.
+    // is one of the changed meetings.
     private IDisposable? meetingSub;
     private CancellationTokenSource? meetingLiveCts;
     private readonly HashSet<Guid> changedMeetings = [];
@@ -519,7 +410,7 @@
             tab = "scheduled";
             await OpenMeeting(id);
         }
-        if (query["new"] == "1") OpenSchedule();
+        if (query["new"] == "1") { OpenSchedule(); return; }
         await HandleCalleeDeeplinkAsync();
     }
 
@@ -814,171 +705,21 @@
         favorites = people;
     }
 
-    private void OpenSchedule()
+    /// Scheduling and editing open the one Calendar meeting form.
+    private void OpenSchedule() => Nav.NavigateTo(CalLinks.NewMeeting(from: "From Calls"));
+
+    private Task EditMeeting(MeetingDto m) => OpenInCalendarAsync(m.Id);
+
+    private async Task OpenInCalendarAsync(Guid meetingId)
     {
-        tab = "scheduled";
-        editingMeetingId = null;
-        formTitle = "";
-        // Next quarter hour, at least 15 minutes out.
-        var now = DateTime.Now.AddMinutes(15);
-        formStart = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0).AddMinutes((now.Minute / 15 + 1) * 15);
-        durationChip = 60;
-        formEnd = formStart.AddMinutes(60);
-        formLocation = null;
-        formOnline = true;
-        formAgenda = null;
-        formReminder = "15";
-        formInvitees = [];
-        formRoomId = null;
-        formRoomName = null;
-        inviteMode = "people";
-        formError = null;
-        showSchedule = true;
+        var r = await Auth.GetAsync<CalEventRef>($"/api/calendar/meetings/{meetingId}/event");
+        Nav.NavigateTo(r is null ? "/calendar" : CalendarLinks.Event(r.EventId, r.StartAt));
     }
 
-    private void EditMeeting(MeetingDto m)
-    {
-        editingMeetingId = m.Id;
-        formTitle = m.Title;
-        formStart = m.StartAt.ToLocalTime();
-        formEnd = m.EndAt.ToLocalTime();
-        durationChip = CallsSchedule.ChipFor(m.EndAt - m.StartAt);
-        formOnline = CallsSchedule.IsOnline(m.Location);
-        formLocation = formOnline ? null : m.Location;
-        formAgenda = m.Agenda;
-        formReminder = m.ReminderMinutes?.ToString() ?? "";
-        formInvitees = m.Attendees.Where(a => a.Nik != Auth.Me?.Nik).Select(a => new MemberSearchRow(a.Nik, a.Name, null, null)).ToList();
-        formRoomId = null;
-        formRoomName = null;
-        inviteMode = "people";
-        formError = null;
-        showSchedule = true;
-    }
-
-    private List<AppOption> ReminderOptions
-    {
-        get
-        {
-            var list = CallsSchedule.ReminderChoices.Select(c => new AppOption(c.Value, c.Label)).ToList();
-            if (!list.Any(o => o.Value == formReminder) && int.TryParse(formReminder, out var custom))
-                list.Add(new AppOption(formReminder, ReminderLabel(custom)));
-            return list;
-        }
-    }
+    private sealed record CalEventRef(Guid EventId, DateTime StartAt);
 
     private static string ReminderLabel(int minutes) =>
         CallsSchedule.ReminderChoices.FirstOrDefault(c => c.Value == minutes.ToString()).Label ?? $"{minutes} minutes before";
-
-    private void OnReminderChanged(string? value) => formReminder = value ?? "";
-
-    private void OnStartChanged(DateTime value)
-    {
-        formStart = value;
-        if (durationChip is { } minutes) formEnd = value.AddMinutes(minutes);
-        else if (formEnd <= value) formEnd = value.AddMinutes(30);
-        formError = null;
-    }
-
-    private void OnEndChanged(DateTime value)
-    {
-        formEnd = value;
-        formError = formEnd <= formStart ? "End time must be after start time." : null;
-    }
-
-    private void PickDuration(int minutes)
-    {
-        durationChip = minutes;
-        formEnd = formStart.AddMinutes(minutes);
-        formError = null;
-    }
-
-    private void PickCustomDuration()
-    {
-        durationChip = null;
-        if (formEnd <= formStart) formEnd = formStart.AddMinutes(60);
-    }
-
-    private void AddInvitee(MemberSearchRow person)
-    {
-        if (person.Nik == Auth.Me?.Nik || formInvitees.Any(p => p.Nik == person.Nik)) return;
-        formInvitees.Add(person);
-    }
-
-    private async Task OpenGroupInvite()
-    {
-        inviteMode = "group";
-        if (groupsLoaded || groupsLoading) return;
-        groupsLoading = true;
-        StateHasChanged();
-        try
-        {
-            var page = await Auth.GetAsync<IPop.Application.Chat.PagedResult<IPop.Application.Chat.RoomListDto>>("/api/chat/rooms?tab=groups&pageSize=50");
-            myGroups = page?.Items.Where(r => !r.IsArchived).OrderBy(r => r.Name).ToList() ?? [];
-            groupsLoaded = true;
-        }
-        catch { myGroups = []; }
-        finally { groupsLoading = false; }
-    }
-
-    /// "Invite group": expand the group to its members and link the meeting to it (RoomId).
-    private async Task InviteGroup(IPop.Application.Chat.RoomListDto group)
-    {
-        expandingGroup = group.Id;
-        try
-        {
-            var room = await Auth.GetAsync<IPop.Application.Chat.ChatRoomDto>($"/api/chat/rooms/{group.Id}");
-            if (room is null) { Toasts.Show("Couldn't load the group members.", ToastKind.Error); return; }
-            var added = 0;
-            foreach (var member in room.Members)
-            {
-                if (member.Nik == Auth.Me?.Nik || formInvitees.Any(p => p.Nik == member.Nik)) continue;
-                formInvitees.Add(new MemberSearchRow(member.Nik, member.Name, null, null));
-                added++;
-            }
-            if (editingMeetingId is null) { formRoomId = group.Id; formRoomName = group.Name; }
-            if (string.IsNullOrWhiteSpace(formTitle)) formTitle = $"{group.Name} meeting";
-            Toasts.Show(added == 0 ? "All group members are already invited." : $"Added {added} {(added == 1 ? "member" : "members")} of {group.Name}.", ToastKind.Success);
-        }
-        catch { Toasts.Show("Couldn't load the group members.", ToastKind.Error); }
-        finally { expandingGroup = null; }
-    }
-
-    private async Task SaveMeeting()
-    {
-        if (savingMeeting) return;
-        var isNew = editingMeetingId is null;
-        formError = CallsSchedule.Validate(formTitle, formStart, formEnd, DateTime.Now, isNew);
-        if (formError is not null) return;
-        savingMeeting = true;
-        try
-        {
-            var body = new
-            {
-                title = formTitle.Trim(), startAt = formStart.ToUniversalTime(), endAt = formEnd.ToUniversalTime(),
-                location = formOnline ? CallsSchedule.OnlineLocation : string.IsNullOrWhiteSpace(formLocation) ? null : formLocation.Trim(),
-                agenda = formAgenda, attendeeNiks = formInvitees.Select(p => p.Nik).Distinct().ToArray(),
-                reminderMinutes = CallsSchedule.ReminderPayload(formReminder, isNew),
-                roomId = isNew ? formRoomId : null, link = (string?)null,
-                timeZone = TimeZoneInfo.Local.Id,
-            };
-            var response = await Auth.SendAsync(isNew ? HttpMethod.Post : HttpMethod.Put,
-                editingMeetingId is { } id ? $"/api/meetings/{id}" : "/api/meetings", body);
-            if (!response.IsSuccessStatusCode)
-            {
-                formError = (int)response.StatusCode == 403
-                    ? "You don't have permission to schedule this meeting."
-                    : "Couldn't save the meeting. Check the form and try again.";
-                return;
-            }
-            var saved = await response.Content.ReadFromJsonAsync<MeetingDto>();
-            showSchedule = false;
-            await LoadMeetings();
-            if (saved is not null) await SelectMeeting(saved.Id);
-            Toasts.Show(isNew ? (formInvitees.Count > 0 ? $"Meeting scheduled · {formInvitees.Count} {(formInvitees.Count == 1 ? "invitation" : "invitations")} sent." : "Meeting scheduled.") : "Meeting updated.", ToastKind.Success);
-        }
-        catch { formError = "Couldn't save the meeting. Try again."; }
-        finally { savingMeeting = false; }
-    }
 
     private void SelectMeetingOnKey(KeyboardEventArgs e, Guid id)
     {

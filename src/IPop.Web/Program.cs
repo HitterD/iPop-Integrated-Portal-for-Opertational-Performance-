@@ -56,6 +56,7 @@ builder.Services.AddScoped<IPop.Web.Services.NotificationState>(sp =>
 builder.Services.AddScoped<IPop.Web.Services.FileState>();
 builder.Services.AddScoped<IPop.Web.Services.FavoriteContacts>();
 builder.Services.AddScoped<IPop.Web.Services.PeopleLinks>();
+builder.Services.AddScoped<IPop.Web.Services.CalendarLinks>();
 builder.Services.AddScoped<IPop.Web.Services.PhotoViewerState>();
 builder.Services.AddScoped<IPop.Web.Services.SessionLockState>();
 // Emoji picker: the Unicode list is a static file under wwwroot (fetched once from the app's own

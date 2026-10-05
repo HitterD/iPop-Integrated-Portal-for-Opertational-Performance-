@@ -401,6 +401,7 @@
             <div class="cal-drawer-body">
                 <div class="cal-detail-title"><span class="cal-dot src-@(detail.RoomId is not null ? "chat" : detail.MeetingId is not null ? "meetings" : "personal")"></span>@detail.Title</div>
                 <div class="cal-detail-row"><i data-lucide="clock"></i><span>@DetailWhen(detail)</span></div>
+                @if (detail.RecurrenceText is { } rt) { <div class="cal-detail-row"><i data-lucide="repeat"></i><span>@rt</span></div> }
                 @if (detail.MeetingStatus is "cancelled") { <div class="cal-detail-row warn"><i data-lucide="ban"></i><span>This meeting was cancelled.</span></div> }
                 @if (detail.Location is not null) { <div class="cal-detail-row"><i data-lucide="map-pin"></i><span>@detail.Location</span></div> }
                 @if (detail.Link is not null) { <div class="cal-detail-row"><i data-lucide="video"></i><a href="@detail.Link" target="_blank" rel="noopener">@detail.Link</a></div> }
@@ -463,6 +464,11 @@
         else if (editing)
         {
             <div class="cal-drawer-body cal-form">
+                @if (prefillSource is not null)
+                {
+                    <div class="cal-prefill" role="status"><i data-lucide="sparkles"></i><span>@prefillSource</span>
+                        <button type="button" class="cal-icon sm" title="Clear what was filled in" aria-label="Clear what was filled in" @onclick="ClearPrefill"><i data-lucide="x"></i></button></div>
+                }
                 <input class="cal-title-input" placeholder="Event title" @bind="form.Title" @bind:event="oninput" maxlength="200" aria-label="Title" />
 
                 @* ── When ── *@
@@ -478,6 +484,54 @@
                     <div class="cal-row">
                         <i data-lucide="clock-4"></i><span class="cal-row-label">Ends</span>
                         <div class="cal-row-ctl"><AppDatePicker @bind-Value="form.EndDate" AriaLabel="End date" Compact="true" />@if (!form.AllDay) { <AppTimePicker @bind-Value="form.EndTime" AriaLabel="End time" /> }</div>
+                    </div>
+                    <div class="cal-row cal-repeat-row">
+                        <i data-lucide="repeat"></i><span class="cal-row-label">Repeat</span>
+                        <div class="cal-row-ctl">
+                            @if (form.Id is not null)
+                            {
+                                <span class="cal-repeat-static">@(detail?.RecurrenceText ?? "Doesn't repeat")</span>
+                            }
+                            else
+                            {
+                                <button type="button" class="cal-repeat-btn @(repeatFreq != "" ? "on" : "")" aria-expanded="@(repeatOpen ? "true" : "false")" @onclick="() => repeatOpen = !repeatOpen">
+                                    <span>@RepeatLabel</span><i data-lucide="chevron-down"></i>
+                                </button>
+                            }
+                        </div>
+                        @if (repeatOpen && form.Id is null)
+                        {
+                            <div class="cal-repeat-pop" role="dialog" aria-label="Repeat">
+                                <div class="cal-seg sm" role="radiogroup" aria-label="How often">
+                                    @foreach (var (k, l) in new[] { ("", "Never"), ("D", "Daily"), ("W", "Weekly"), ("M", "Monthly") })
+                                    {
+                                        var kk = k;
+                                        <button type="button" role="radio" aria-checked="@(repeatFreq == kk ? "true" : "false")" class="cal-seg-item @(repeatFreq == kk ? "on" : "")" @onclick="() => SetRepeatFreq(kk)">@l</button>
+                                    }
+                                </div>
+                                @if (repeatFreq == "W")
+                                {
+                                    <div class="cal-repeat-days" role="group" aria-label="On these days">
+                                        @foreach (var (iso, s) in WeekDays)
+                                        {
+                                            var d = iso;
+                                            <button type="button" class="@(repeatDays.Contains(d) ? "on" : "")" aria-pressed="@(repeatDays.Contains(d) ? "true" : "false")" aria-label="@DayNames[d]" @onclick="() => ToggleRepeatDay(d)">@s</button>
+                                        }
+                                    </div>
+                                }
+                                @if (repeatFreq != "")
+                                {
+                                    <div class="cal-repeat-ends">
+                                        <span class="cal-hint">Ends</span>
+                                        <label><input type="radio" name="cal-rep-end" checked="@(repeatEnd == "never")" @onchange='() => repeatEnd = "never"' /> After a year</label>
+                                        <label><input type="radio" name="cal-rep-end" checked="@(repeatEnd == "until")" @onchange='() => repeatEnd = "until"' /> On <AppDatePicker @bind-Value="repeatUntil" AriaLabel="Repeat until" Compact="true" /></label>
+                                        <label><input type="radio" name="cal-rep-end" checked="@(repeatEnd == "count")" @onchange='() => repeatEnd = "count"' /> After <input class="cal-repeat-count" type="number" min="2" max="100" @bind="repeatCount" @onfocus='() => repeatEnd = "count"' aria-label="Number of times" /> times</label>
+                                    </div>
+                                    <div class="cal-repeat-sum" @key="RepeatLabel + RepeatOccurrences">@RepeatLabel · @RepeatOccurrences @(form.People.Count > 0 || form.RoomIdText != "" ? "meetings" : "events")</div>
+                                }
+                                <div class="cal-repeat-foot"><button type="button" class="cal-btn primary" @onclick="() => repeatOpen = false">Done</button></div>
+                            </div>
+                        }
                     </div>
                     <div class="cal-row">
                         <i data-lucide="bell"></i><span class="cal-row-label">Alert</span>
@@ -636,6 +690,28 @@
 }
 
 <CalendarSettingsSheet Open="settingsOpen" OpenChanged="v => settingsOpen = v" Changed="OnSettingsChangedAsync" AllowFor="allowFor" />
+
+@if (scopeTcs is not null)
+{
+    <div class="cal-scope-backdrop" @onclick="() => AnswerScope(null)"></div>
+    <div class="cal-scope" role="dialog" aria-modal="true" aria-label="@scopeVerb a repeating @(detail?.MeetingId is null ? "event" : "meeting")">
+        <h4>@scopeVerb a repeating @(detail?.MeetingId is null ? "event" : "meeting")</h4>
+        <p>“@detail?.Title” @((detail?.RecurrenceText ?? "repeats").ToLowerInvariant().Replace("every", "repeats every")).</p>
+        @foreach (var (k, t, h) in new[] { ("this", detail?.MeetingId is null ? "This event" : "This meeting", $"Only {detail?.StartAt.ToLocalTime():ddd d MMM}"),
+                                            ("following", "This and following", $"From {detail?.StartAt.ToLocalTime():ddd d MMM} on"),
+                                            ("all", detail?.MeetingId is null ? "All events" : "All meetings", "Every one in the series") })
+        {
+            var kk = k;
+            <button type="button" class="cal-scope-opt @(scopeChoice == kk ? "on" : "")" role="radio" aria-checked="@(scopeChoice == kk ? "true" : "false")" @onclick="() => scopeChoice = kk">
+                <span class="rd"></span><span><b>@t</b><small>@h</small></span>
+            </button>
+        }
+        <div class="cal-scope-foot">
+            <button type="button" class="cal-btn" @onclick="() => AnswerScope(null)">Back</button>
+            <button type="button" class="cal-btn primary @(scopeVerb != "Change" ? "danger" : "")" @onclick="() => AnswerScope(scopeChoice)">@(scopeVerb == "Change" ? "Save" : scopeVerb)</button>
+        </div>
+    </div>
+}
 
 @* Outside the drawer form so its .cal-form label/input rules never reach the dialog. *@
 <AddressBookDialog @ref="addressBook" />

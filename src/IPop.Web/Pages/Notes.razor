@@ -11,6 +11,7 @@
 @inject HttpClient Http
 @inject TutorialState Tutorials
 @inject IPop.Web.Services.PageCache Cache
+@inject IPop.Web.Services.CalendarLinks CalLinks
 
 <PageTitle>@(note is null ? "Notes" : $"{DisplayTitle(note.Title)} - Notes") - IPop</PageTitle>
 
@@ -436,6 +437,7 @@
                 }
                 <button type="button" class="mi" @onclick="OpenHistory"><i data-lucide="history" class="sm"></i>Version history</button>
                 <button type="button" class="mi" @onclick="CopyLink"><i data-lucide="link" class="sm"></i>Copy link</button>
+                <a class="mi" href="@CalLinks.NewMeeting(DisplayTitle(note.Title), notes: Nav.ToAbsoluteUri($"/notes/{note.Id}").ToString(), from: $"From note “{DisplayTitle(note.Title)}”")"><i data-lucide="calendar-plus" class="sm"></i>Schedule follow-up</a>
                 <hr />
                 @if (CanEdit)
                 {

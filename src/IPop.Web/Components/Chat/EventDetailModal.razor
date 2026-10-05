@@ -56,5 +56,10 @@
     public sealed record EventModel(Guid Id, string Title, DateTime StartAt, DateTime? EndAt, string? Location, string? Link, IReadOnlyList<string> Attendees);
 
     private void Close() => IsOpenChanged.InvokeAsync(false);
-    private void OpenInCalendar() { IsOpenChanged.InvokeAsync(false); Nav.NavigateTo("/calendar"); }
+    /// Opens this event on the calendar (its own drawer), not just the calendar page.
+    private void OpenInCalendar()
+    {
+        IsOpenChanged.InvokeAsync(false);
+        Nav.NavigateTo(Event is { } e ? IPop.Web.Services.CalendarLinks.Event(e.Id, e.StartAt) : "/calendar");
+    }
 }

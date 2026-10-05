@@ -32,7 +32,7 @@ public partial class Calendar
         string? Notes, int? ReminderMinutes, Guid? RoomId, string? RoomName, Guid? MeetingId, string? MeetingStatus,
         string OwnerName, bool CanEdit, List<Person> Attendees, string Visibility = "busy",
         string? OwnerNik = null, string? CreatedBy = null, string? SentBy = null, string? UpdatedBy = null, string? DelegateLevel = null,
-        string? DelegateForNik = null, string? DelegateForName = null);
+        string? DelegateForNik = null, string? DelegateForName = null, Guid? SeriesId = null, string? Recurrence = null, string? RecurrenceText = null);
 
     private sealed record SourceDef(string Key, string Label, string Icon);
     private static readonly SourceDef[] Sources =
@@ -43,6 +43,8 @@ public partial class Calendar
         new("projects", "Projects", "kanban"),
         new("mail", "Scheduled mail", "mail"),
         new("news", "News & Memos", "newspaper"),
+        new("tickets", "Tickets", "life-buoy"),
+        new("holidays", "Holidays", "party-popper"),
     ];
     private static readonly (string, string)[] Views = [("day", "Day"), ("week", "Week"), ("month", "Month"), ("agenda", "Agenda")];
     private static readonly (string, string)[] RsvpOptions = [("accept", "Yes"), ("maybe", "Maybe"), ("decline", "No")];
@@ -103,6 +105,7 @@ public partial class Calendar
         nowTimer = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
         _ = ChatSvc.GroupRooms.Count == 0 ? ChatSvc.LoadRoomsAsync() : Task.CompletedTask;
         if (EventQuery is { } eid) await OpenEventAsync(eid);
+        else await OpenFromComposeQueryAsync();
         calendarSub = Auth.On(IPop.Application.Realtime.RealtimeEvents.CalendarChanged, OnCalendarChanged);
     }
 
@@ -470,7 +473,9 @@ public partial class Calendar
         "task-overdue" => "alert-circle",
         "milestone" => "flag",
         "milestone-done" => "flag",
-        "holiday" or "offday" => "palmtree",
+        "holiday" or "offday" => i.Source == "holidays" ? "party-popper" : "palmtree",
+        "company-holiday" => "party-popper",
+        "ticket-due" => "life-buoy",
         "scheduled-mail" => "send",
         "ack-due" => "clipboard-check",
         "news-scheduled" => "clock",
@@ -614,7 +619,8 @@ public partial class Calendar
             Reminder = allDay ? 0 : 15,
             Visibility = DefaultFormVisibility,
         };
-        fat = null;
+        fat = null; prefillSource = null;
+        ResetRepeat();
         if (form.EndDate > form.StartDate && !allDay) { form.EndDate = form.StartDate; form.EndTime = new TimeOnly(23, 59); }
         detail = null; formError = null;
         CancelDrawerExit();
@@ -637,7 +643,8 @@ public partial class Calendar
         };
         formError = null;
         editing = true;
-        fat = null;
+        fat = null; prefillSource = null;
+        ResetRepeat(detail.Recurrence);
         if (form.People.Count > 0 && !form.AllDay) _ = InvokeAsync(async () => { await LoadFreeBusyAsync(); StateHasChanged(); });
     }
 
@@ -698,12 +705,21 @@ public partial class Calendar
             ownerNik = form.Id is null ? managing?.Nik : null,
             // Meeting edits resend the full list (organizer stays); personal events only send when inviting.
             attendeeNiks = roomId is null && (form.MeetingId is not null || form.People.Count > 0) ? form.People.Select(p => p.Nik).ToList() : null,
+            // New events only: a series is created once; later edits change it through the scope question.
+            recurrence = form.Id is null ? RepeatRule : null,
         };
+        var scope = "this";
+        if (form.Id is not null && InSeries)
+        {
+            var picked = await AskScopeAsync("Change");
+            if (picked is null) return;
+            scope = picked;
+        }
         saving = true;
         try
         {
             var res = form.Id is { } id
-                ? await Auth.SendAsync(HttpMethod.Put, $"/api/calendar/events/{id}", body)
+                ? await Auth.SendAsync(HttpMethod.Put, $"/api/calendar/events/{id}?scope={scope}", body)
                 : await Auth.SendAsync(HttpMethod.Post, "/api/calendar/events", body);
             if (!res.IsSuccessStatusCode)
             {
@@ -711,7 +727,10 @@ public partial class Calendar
                 return;
             }
             var saved = await res.Content.ReadFromJsonAsync<EventDetail>();
-            Toasts.Show(form.Id is null ? (saved?.MeetingId is null ? "Event created." : "Meeting created — invitations sent.") : "Event updated.", ToastKind.Success);
+            var repeats = form.Id is null && RepeatRule is not null;
+            Toasts.Show(form.Id is null
+                ? repeats ? $"{RepeatOccurrences} {(saved?.MeetingId is null ? "events" : "meetings")} created · {RepeatLabel}" : saved?.MeetingId is null ? "Event created." : "Meeting created — invitations sent."
+                : scope == "this" ? "Event updated." : scope == "all" ? "All meetings in the series updated." : "This and the following meetings updated.", ToastKind.Success);
             editing = false;
             detail = saved;
             if (saved is null) CloseDrawer();
@@ -727,13 +746,23 @@ public partial class Calendar
     {
         if (detail is null) return;
         var meeting = detail.MeetingId is not null;
-        var ok = await Confirm.AskAsync(meeting ? "Cancel this meeting?" : "Delete this event?",
-            meeting ? "Participants will be notified that it was cancelled." : $"\"{detail.Title}\" will be removed from your calendar.",
-            meeting ? "Cancel meeting" : "Delete");
-        if (!ok) return;
-        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/calendar/events/{detail.Id}");
+        var scope = "this";
+        if (InSeries)
+        {
+            var picked = await AskScopeAsync(meeting ? "Cancel" : "Delete");
+            if (picked is null) return;
+            scope = picked;
+        }
+        else
+        {
+            var ok = await Confirm.AskAsync(meeting ? "Cancel this meeting?" : "Delete this event?",
+                meeting ? "Participants will be notified that it was cancelled." : $"\"{detail.Title}\" will be removed from your calendar.",
+                meeting ? "Cancel meeting" : "Delete");
+            if (!ok) return;
+        }
+        var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/calendar/events/{detail.Id}?scope={scope}");
         if (!res.IsSuccessStatusCode) { Toasts.Show(await ErrorAsync(res), ToastKind.Error); return; }
-        Toasts.Show(meeting ? "Meeting cancelled." : "Event deleted.", ToastKind.Success);
+        Toasts.Show(scope != "this" ? (meeting ? "Meetings cancelled." : "Events deleted.") : meeting ? "Meeting cancelled." : "Event deleted.", ToastKind.Success);
         CloseDrawer();
         await LoadAsync();
     }

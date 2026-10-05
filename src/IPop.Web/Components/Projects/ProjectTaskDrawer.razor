@@ -1,8 +1,10 @@
 @using IPop.Application.Projects
 @using Microsoft.AspNetCore.Components.Forms
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 @inject IPop.Web.Services.AuthState Auth
 @inject IPop.Web.Services.ConfirmService Confirm
+@inject IPop.Web.Services.CalendarLinks CalLinks
 @implements IAsyncDisposable
 
 @if (Task is not null)
@@ -126,6 +128,15 @@
                             @* When overdue, the banner above carries the flag and the Extend button. *@
                             @if (evidence.IsExtended) { <span class="td-date-flag extended" title="@evidence.LatestExtension?.Reason">Extended</span> }
                             @if (!IsOverdue && Task.DueDate.HasValue && Task.Status != "done") { <button type="button" class="td-extend" @onclick="RequestExtension" title="Request a deadline extension"><i data-lucide="calendar-plus"></i>Extend</button> }
+                        </div>
+                        <span class="td-label"><i data-lucide="calendar-clock"></i>Calendar</span>
+                        <div class="td-due-row td-cal-row">
+                            @* Calendar everywhere: a private focus block before the due time, or a meeting with the people on it. *@
+                            <a class="td-cal-btn" href="@BlockTimeLink()" title="Add a private 1-hour block to your calendar to work on this"><i data-lucide="calendar-clock"></i>Block time</a>
+                            @if (Task.Assignees.Count > 0)
+                            {
+                                <a class="td-cal-btn" href="@CalLinks.NewMeeting(Task.Title, Task.Assignees.Select(a => a.Nik), notes: TaskNote(), from: $"From task “{Task.Title}”")"><i data-lucide="users"></i>Meeting with assignees</a>
+                            }
                         </div>
                         <span class="td-label"><i data-lucide="tag"></i>Tags</span>
                         <div class="td-tags">
@@ -987,4 +998,18 @@
         decimal? ActualHours,
         string? Tags
     );
+
+    /// A private 1-hour block an hour before the due time (or tomorrow 09:00 when there's no due date).
+    private string BlockTimeLink()
+    {
+        var due = Task?.DueDate;
+        DateTime start;
+        if (due is { } d && d.TimeOfDay != TimeSpan.Zero) start = d.ToLocalTime().AddHours(-1);
+        else if (due is { } dd) start = dd.Date.AddHours(9);
+        else start = DateTime.Today.AddDays(1).AddHours(9);
+        if (start < DateTime.Now) start = DateTime.Now.Date.AddHours(Math.Min(DateTime.Now.Hour + 1, 23));
+        return CalLinks.NewMeeting($"Work on: {Task?.Title}", start: start, minutes: 60, isPrivate: true, notes: TaskNote(), from: "Focus time for a task");
+    }
+
+    private string TaskNote() => Task is null ? "" : $"Task: {Task.Title}" + Environment.NewLine + Nav.ToAbsoluteUri($"/projects/{Task.ProjectId}?task={Task.Id}");
 }

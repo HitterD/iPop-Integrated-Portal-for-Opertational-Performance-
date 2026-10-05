@@ -8,6 +8,7 @@
 @inject IPop.Web.Services.ToastService Toasts
 @inject IPop.Web.Services.FavoriteContacts Favorites
 @inject IPop.Web.Services.PeopleLinks PLinks
+@inject IPop.Web.Services.CalendarLinks CalLinks
 @using IPop.Web.Services
 
 @* Kartu Profil Pegawai — halaman penuh untuk satu pegawai: identitas, relasi
@@ -81,6 +82,7 @@
                             <button class="btn-sm surface" @onclick="OpenMail"><i data-lucide="mail" style="width:13px;height:13px"></i> Mail</button>
                             <button class="btn-sm surface" @onclick="OpenCall"><i data-lucide="phone" style="width:13px;height:13px"></i> Call</button>
                             <a class="btn-sm surface" href="@PLinks.Calendar(person.Nik)"><i data-lucide="calendar-search" style="width:13px;height:13px"></i> Calendar</a>
+                            <a class="btn-sm surface" href="@CalLinks.NewMeeting(niks: [person.Nik], from: $"Meeting with {person.Name}")"><i data-lucide="calendar-plus" style="width:13px;height:13px"></i> Invite to meeting</a>
                         </div>
                     </div>
                 </div>

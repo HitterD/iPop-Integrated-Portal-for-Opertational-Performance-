@@ -5,6 +5,7 @@
 @inject IPop.Web.Services.ToastService Toasts
 @inject IPop.Web.Services.FavoriteContacts Favorites
 @inject IPop.Web.Services.PeopleLinks PLinks
+@inject IPop.Web.Services.CalendarLinks CalLinks
 
 @if (Person is not null)
 {
@@ -49,6 +50,9 @@
                         <div class="hero-btn-ic"><i data-lucide="calendar-search"></i></div>
                         <span>Calendar</span>
                     </a>
+                </div>
+                <div class="hero-invite">
+                    <a href="@CalLinks.NewMeeting(niks: [Person.Nik], from: $"Meeting with {Person.Name}")"><i data-lucide="calendar-plus"></i>Invite to meeting</a>
                 </div>
             }
         </div>

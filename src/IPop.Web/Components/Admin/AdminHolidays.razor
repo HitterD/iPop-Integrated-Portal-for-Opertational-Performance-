@@ -1,0 +1,115 @@
+@* National and company holidays: they show on everyone's calendar and Find a time never suggests them. *@
+@using System.Net.Http.Json
+@inject AuthState Auth
+@inject ToastService Toasts
+@inject ConfirmService Confirm
+@inject IJSRuntime JS
+
+<p class="adm-summary">
+    @if (list is null) { <span class="skel-inline"></span> }
+    else
+    {
+        <span>@AdminHumanize.Plural(list.Count, "holiday") in @year</span>
+        <span>@(list.FirstOrDefault(h => h.Date.Date >= DateTime.Today) is { } next ? $"Next: {next.Title}, {next.Date:ddd d MMM}" : "No more holidays this year")</span>
+    }
+</p>
+
+<div class="adm-card">
+    <div class="adm-card-head">
+        <span class="adm-card-title">Add a holiday</span>
+    </div>
+    <div class="adm-hol-form">
+        <AppDatePicker @bind-Value="newDate" AriaLabel="Holiday date" Compact="true" />
+        <input class="adm-hol-name" placeholder="e.g. Maulid Nabi Muhammad SAW" maxlength="120" @bind="newTitle" @bind:event="oninput" @onkeydown="OnKey" aria-label="Holiday name" />
+        <div class="cal-seg sm" role="radiogroup" aria-label="Kind">
+            <button type="button" role="radio" aria-checked="@(newKind == "national" ? "true" : "false")" class="cal-seg-item @(newKind == "national" ? "on" : "")" @onclick='() => newKind = "national"'>National</button>
+            <button type="button" role="radio" aria-checked="@(newKind == "company" ? "true" : "false")" class="cal-seg-item @(newKind == "company" ? "on" : "")" @onclick='() => newKind = "company"'>Company</button>
+        </div>
+        <button type="button" class="btn-sm accent" disabled="@(busy || string.IsNullOrWhiteSpace(newTitle))" @onclick="AddAsync"><i data-lucide="plus"></i> Add</button>
+    </div>
+    <small class="adm-hol-hint">Shown on everyone's calendar. Find a time won't suggest meetings on these days.</small>
+</div>
+
+<div class="adm-card">
+    <div class="adm-card-head">
+        <button type="button" class="cal-icon sm" title="Previous year" aria-label="Previous year" @onclick="() => SetYearAsync(year - 1)"><i data-lucide="chevron-left"></i></button>
+        <span class="adm-card-title">@year</span>
+        <button type="button" class="cal-icon sm" title="Next year" aria-label="Next year" @onclick="() => SetYearAsync(year + 1)"><i data-lucide="chevron-right"></i></button>
+    </div>
+    @if (list is { Count: 0 })
+    {
+        <div class="adm-empty">No holidays for @year yet.</div>
+    }
+    else if (list is not null)
+    {
+        <div class="adm-hol-list">
+            @foreach (var h in list)
+            {
+                var hh = h;
+                <div class="adm-hol-row @(hh.Date.Date < DateTime.Today ? "past" : "") @(hh.Id == flash ? "new" : "")" @key="hh.Id">
+                    <span class="adm-hol-date"><small>@hh.Date.ToString("MMM")</small><b>@hh.Date.Day</b></span>
+                    <span class="adm-hol-t"><b>@hh.Title</b><small>@hh.Date.ToString("dddd") · @(hh.Kind == "company" ? "Company" : "National")</small></span>
+                    <button type="button" class="cal-icon sm" title="Remove" aria-label="Remove @hh.Title" @onclick="() => RemoveAsync(hh)"><i data-lucide="trash-2"></i></button>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    public record HolidayDto(Guid Id, DateTime Date, string Title, string Kind);
+
+    private List<HolidayDto>? list;
+    private int year = DateTime.Today.Year;
+    private DateTime newDate = DateTime.Today;
+    private string newTitle = "", newKind = "national";
+    private bool busy;
+    private Guid? flash;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+
+    private async Task LoadAsync() => list = await Auth.GetAsync<List<HolidayDto>>($"/api/calendar/holidays?year={year}") ?? [];
+
+    private async Task SetYearAsync(int y) { year = y; list = null; await LoadAsync(); }
+
+    private async Task OnKey(KeyboardEventArgs e) { if (e.Key == "Enter") await AddAsync(); }
+
+    private async Task AddAsync()
+    {
+        if (busy || string.IsNullOrWhiteSpace(newTitle)) return;
+        busy = true;
+        try
+        {
+            using var res = await Auth.SendAsync(HttpMethod.Post, "/api/admin/calendar/holidays/", new { date = DateTime.SpecifyKind(newDate.Date, DateTimeKind.Utc), title = newTitle.Trim(), kind = newKind });
+            if (!res.IsSuccessStatusCode) { Toasts.Show(await ErrorAsync(res), ToastKind.Error); return; }
+            var before = list?.Select(h => h.Id).ToHashSet() ?? [];
+            year = newDate.Year;
+            list = await res.Content.ReadFromJsonAsync<List<HolidayDto>>() ?? [];
+            flash = list.FirstOrDefault(h => !before.Contains(h.Id))?.Id;
+            Toasts.Show($"“{newTitle.Trim()}” added to everyone's calendar.", ToastKind.Success);
+            newTitle = "";
+        }
+        finally { busy = false; }
+    }
+
+    private async Task RemoveAsync(HolidayDto h)
+    {
+        if (!await Confirm.AskAsync($"Remove {h.Title}?", "It disappears from everyone's calendar.", "Remove", danger: true)) return;
+        using var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/admin/calendar/holidays/{h.Id}");
+        if (!res.IsSuccessStatusCode) { Toasts.Show(await ErrorAsync(res), ToastKind.Error); return; }
+        list = await res.Content.ReadFromJsonAsync<List<HolidayDto>>() ?? [];
+        Toasts.Show("Holiday removed.", ToastKind.Success);
+    }
+
+    private static async Task<string> ErrorAsync(HttpResponseMessage res)
+    {
+        try
+        {
+            var b = await res.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+            if (b?.GetValueOrDefault("message")?.ToString() is { Length: > 0 } m) return m;
+        }
+        catch { }
+        return $"Request failed ({(int)res.StatusCode}).";
+    }
+}

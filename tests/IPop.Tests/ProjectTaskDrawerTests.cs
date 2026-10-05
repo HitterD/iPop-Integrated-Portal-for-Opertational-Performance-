@@ -34,6 +34,8 @@ public class ProjectTaskDrawerTests
         ctx.Services.AddSingleton(http);
         ctx.Services.AddSingleton<ToastService>();
         ctx.Services.AddScoped<OverlayStack>();
+        ctx.Services.AddScoped<IPop.Web.Services.PeopleLinks>();
+        ctx.Services.AddScoped<IPop.Web.Services.CalendarLinks>();
         confirm = new ConfirmService();
         ctx.Services.AddSingleton(confirm);
         return ctx;

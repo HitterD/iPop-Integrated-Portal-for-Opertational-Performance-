@@ -37,6 +37,18 @@ public static partial class CalendarEndpoints
             return dto is null ? Results.NotFound() : Results.Ok(dto);
         });
 
+        // GET /api/calendar/meetings/{meetingId}/event — the calendar row that opens this meeting for me
+        // (my own row, else the organizer's), so Calls, chat cards and reminders can open it on the calendar.
+        g.MapGet("/meetings/{meetingId:guid}/event", async (Guid meetingId, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var id = await db.CalendarEvents.AsNoTracking().Where(e => e.MeetingId == meetingId)
+                .OrderBy(e => e.OwnerId == userId ? 0 : 1).ThenBy(e => e.CreatedAt).Select(e => (Guid?)e.Id).FirstOrDefaultAsync(ct);
+            if (id is null || await LoadDetailAsync(db, id.Value, userId.Value, ct) is not { } d) return Results.NotFound();
+            return Results.Ok(new { eventId = d.Id, startAt = d.StartAt });
+        });
+
         g.MapPost("/events", async (SaveEventRequest req, HttpContext http, IPopDbContext db,
             INotificationGatewayService? notifs, IRealtime realtime, CancellationToken ct) =>
         {

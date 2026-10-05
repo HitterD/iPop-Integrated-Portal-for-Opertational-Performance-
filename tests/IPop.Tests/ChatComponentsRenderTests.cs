@@ -28,6 +28,7 @@ public class ChatComponentsRenderTests
         ctx.Services.AddSingleton(new ToastService());
         ctx.Services.AddScoped<PhotoViewerState>();
         ctx.Services.AddScoped<IPop.Web.Services.PeopleLinks>();
+        ctx.Services.AddScoped<IPop.Web.Services.CalendarLinks>();
         return ctx;
     }
 
@@ -53,6 +54,7 @@ public class ChatComponentsRenderTests
         ctx.Services.AddSingleton(new ToastService());
         ctx.Services.AddSingleton(new ConfirmService());
         ctx.Services.AddScoped<IPop.Web.Services.PeopleLinks>();
+        ctx.Services.AddScoped<IPop.Web.Services.CalendarLinks>();
         ctx.Services.AddSingleton(new FavoriteContacts(ctx.JSInterop.JSRuntime, auth));
         ctx.Services.AddSingleton(new CallState(auth, Http(), ctx.JSInterop.JSRuntime));
         ctx.Services.AddSingleton(Http());

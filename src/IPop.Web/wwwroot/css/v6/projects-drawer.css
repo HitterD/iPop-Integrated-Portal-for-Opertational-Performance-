@@ -214,3 +214,10 @@
 .td-evidence .task-evidence-section[data-attach-zone] { position: relative; border-radius: 12px; }
 .td-evidence .task-evidence-section.mi-attach-took { animation: mi-saved .9s var(--ease-smooth); }
 .td-evidence .evidence-photo-thumb, .td-evidence .td-deliverable { animation: mi-rise .3s var(--ease-spring) backwards; }
+
+/* Calendar everywhere: Block time / Meeting with assignees */
+.td-cal-btn { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--ink-2); font-size: 12px; text-decoration: none; transition: border-color .15s var(--ease-out, ease), color .15s, background-color .15s, transform var(--dur-fast, .15s) var(--ease-out, ease); }
+.td-cal-btn svg.lucide, .td-cal-btn i { width: 13px !important; height: 13px !important; }
+.td-cal-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.td-cal-btn:active { transform: scale(.97); }

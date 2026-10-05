@@ -14,6 +14,7 @@
 @inject IPop.Web.Services.MailService MailSvc
 @inject IPop.Web.Services.MailComposerHost ComposerHost
 @inject IPop.Web.Services.PeopleLinks PLinks
+@inject IPop.Web.Services.CalendarLinks CalLinks
 @inject IPop.Web.Services.PageCache Cache
 
 <PageTitle>Mail — IPop</PageTitle>
@@ -482,6 +483,11 @@
                         <i data-lucide="reply"></i>
                         <span>Quick Reply</span>
                     </button>
+                    @* Calendar everywhere: a meeting with everyone on this mail, the subject as the title. *@
+                    <a class="ghost-btn mail-schedule-btn" title="Schedule a meeting with everyone on this mail"
+                       href="@MeetingFromMail(detail)">
+                        <i data-lucide="calendar-plus"></i><span>Schedule meeting</span>
+                    </a>
                     @if (DetailFolder == "trash")
                     {
                         <button type="button" class="ghost-btn" title="Restore to Inbox" @onclick="RestoreDetail">
@@ -869,6 +875,13 @@
             </div>
         </div>
     </div>
+}
+
+@code {
+    /// Calendar everywhere: the one meeting form with everyone on this mail and its subject as the title.
+    private string MeetingFromMail(MailDetail d) => CalLinks.NewMeeting(
+        System.Text.RegularExpressions.Regex.Replace(d.Subject ?? "", @"^\s*((re|fw|fwd)\s*:\s*)+", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase),
+        d.Recipients.Select(r => r.Nik).Append(d.SenderNik), from: $"From mail “{d.Subject}”");
 }
 
 @code {

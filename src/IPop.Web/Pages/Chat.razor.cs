@@ -1118,4 +1118,25 @@ public partial class Chat
         StateHasChanged();
     }
 
+    /// Calendar everywhere: the one meeting form with this group (or the other person in a DM). Created from a
+    /// message, its first line becomes the title and a long message goes into the notes.
+    private string MeetingFromRoom(string? fromMessage = null)
+    {
+        var room = ChatSvc.ActiveRoom;
+        if (room is null) return CalLinks.NewMeeting();
+        string? title = null;
+        if (!string.IsNullOrWhiteSpace(fromMessage))
+        {
+            var first = fromMessage.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? "";
+            title = first.Length > 120 ? first[..120] : first;
+        }
+        var notes = fromMessage is { Length: > 120 } ? fromMessage : null;
+        if (room.Type == "dm")
+        {
+            var other = room.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik());
+            return CalLinks.NewMeeting(title, other is null ? null : [other.Nik], notes: notes, from: $"From chat with {other?.Name ?? "this person"}");
+        }
+        return CalLinks.NewMeeting(title, roomId: room.Id, notes: notes, from: $"From chat {room.Name ?? "group"}");
+    }
+
 }

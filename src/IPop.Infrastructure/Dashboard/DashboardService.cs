@@ -104,8 +104,20 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
             .Select(m => new { m.Id, m.Title, m.StartAt }).FirstOrDefaultAsync(ct);
         var todays = await myMeetings.Where(m => m.StartAt < dayEndUtc && m.EndAt >= dayStartUtc)
             .OrderBy(m => m.StartAt)
-            .Select(m => new { m.Id, m.Title, m.StartAt, m.EndAt, m.Link, People = m.Attendees.Count + 1 })
+            .Select(m => new
+            {
+                m.Id, m.Title, m.StartAt, m.EndAt, m.Link, People = m.Attendees.Count + 1,
+                // The row that opens it on my calendar (my own, else the organizer's).
+                EventId = db.CalendarEvents.Where(e => e.MeetingId == m.Id).OrderBy(e => e.OwnerId == userId ? 0 : 1).Select(e => (Guid?)e.Id).FirstOrDefault(),
+            })
             .ToListAsync(ct);
+        // Today's holidays and my open tickets due today (the same sources as the calendar feed).
+        var holidaysToday = await db.CompanyHolidays.AsNoTracking().Where(h => h.Date == DateTime.SpecifyKind(localToday, DateTimeKind.Utc))
+            .Select(h => new { h.Id, h.Title, h.Kind }).ToListAsync(ct);
+        var ticketsToday = await db.Tickets.AsNoTracking()
+            .Where(x => x.UserId == userId && x.RemovedAt == null && x.Status != "CLOSED" && x.Status != "CANCELLED" && x.Status != "RESOLVED"
+                && x.SlaTarget != null && x.SlaTarget < dayEndUtc && x.SlaTarget >= dayStartUtc)
+            .Select(x => new { x.Id, x.Title, x.TicketNumber, x.SlaTarget }).ToListAsync(ct);
         // Personal calendar entries (meetings already come from Meetings above).
         var events = await db.CalendarEvents.AsNoTracking()
             .Where(e => e.OwnerId == userId && e.MeetingId == null && e.StartAt < dayEndUtc && e.EndAt > dayStartUtc)
@@ -113,10 +125,15 @@ public sealed class DashboardService(IPopDbContext db, ILiveKitTokenService? liv
             .Select(e => new { e.Id, e.Title, e.StartAt, e.EndAt })
             .ToListAsync(ct);
         var agenda = todays.Select(m => new DashboardAgendaItem("meeting", m.Id, m.Title,
-                $"{m.People} people", m.StartAt, m.EndAt, m.EndAt < now, false, $"/calls?tab=scheduled&meeting={m.Id}",
+                $"{m.People} people", m.StartAt, m.EndAt, m.EndAt < now, false,
+                m.EventId is { } eid ? $"/calendar?event={eid}" : $"/calls?tab=scheduled&meeting={m.Id}",
                 $"meeting-{m.Id:N}"))
             .Concat(events.Select(e => new DashboardAgendaItem("event", e.Id, e.Title, "Calendar",
-                e.StartAt, e.EndAt, e.EndAt < now, false, "/calendar", null)))
+                e.StartAt, e.EndAt, e.EndAt < now, false, $"/calendar?event={e.Id}", null)))
+            .Concat(holidaysToday.Select(h => new DashboardAgendaItem("holiday", h.Id, h.Title, h.Kind == "company" ? "Company holiday" : "National holiday",
+                null, null, false, false, $"/calendar?date={localToday:yyyy-MM-dd}", null)))
+            .Concat(ticketsToday.Select(x => new DashboardAgendaItem("ticket", x.Id, x.Title, x.TicketNumber is null ? "Ticket due" : $"Ticket {x.TicketNumber}",
+                x.SlaTarget, null, x.SlaTarget < now, x.SlaTarget < now, $"/tickets/{x.Id}", null)))
             .OrderBy(a => a.StartAt ?? DateTime.MinValue)
             .Concat(sortedTasks.Where(t => t.DueDate is { } d && d.Date <= localToday).Take(2)
                 .Select(t => new DashboardAgendaItem("task", t.Id, t.Title, t.ProjectName, t.DueDate, null, false,

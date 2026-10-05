@@ -382,9 +382,9 @@
         ]),
     ];
 
-    /// Phone tab bar (<= 767px): four primary modules plus "More", which lists the rest.
-    /// Both lists are drawn from NavGroups so labels, icons and badge keys stay in sync.
-    private static readonly string[] TabHrefs = ["/dashboard", "/chat", "/mail", "/projects"];
+    /// Phone tab bar (<= 767px): five primary modules (Calendar is used by everyone, every day) plus "More",
+    /// which lists the rest. Both lists are drawn from NavGroups so labels, icons and badge keys stay in sync.
+    private static readonly string[] TabHrefs = ["/dashboard", "/chat", "/mail", "/calendar", "/projects"];
     private static readonly NavItem[] TabItems =
         TabHrefs.Select(h => NavGroups.SelectMany(g => g.Items).First(i => i.Href == h)).ToArray();
     private static readonly NavItem[] MoreItems =

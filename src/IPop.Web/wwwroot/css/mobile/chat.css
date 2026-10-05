@@ -163,7 +163,7 @@
   .chat-area .v6-pop { left: 8px !important; right: 8px !important; width: auto !important; max-height: 50dvh; overflow-y: auto; }
   .chat-area .v6-emoji-grid { grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); }
   .chat-area .v6-emoji { font-size: 26px; }
-  .chat-area .v6-plus-menu > button { min-height: 48px; font-size: 15px; }
+  .chat-area .v6-plus-menu > button, .chat-area .v6-plus-menu > a { min-height: 48px; font-size: 15px; }
   .chat-area .v6-pop-x { min-width: 36px; min-height: 36px; }
   .chat-area .picker-stickers { max-width: 100%; }
   .chat-area .mention-popup { margin: 0 8px; max-height: 40dvh; }

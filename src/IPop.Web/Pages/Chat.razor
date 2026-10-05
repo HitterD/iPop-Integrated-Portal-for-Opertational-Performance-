@@ -16,6 +16,7 @@
 @inject IPop.Web.Services.FavoriteContacts Favorites
 @inject IPop.Web.Services.PhotoViewerState PhotoViewer
 @inject IPop.Web.Services.PeopleLinks PLinks
+@inject IPop.Web.Services.CalendarLinks CalLinks
 @using IPop.Application.Chat.Mentions
 @using Microsoft.JSInterop
 @using IPop.Application.Chat
@@ -424,6 +425,9 @@
                             </a>
                         }
                     }
+                    <a class="header-icon-btn" href="@MeetingFromRoom()" title="Schedule meeting" aria-label="@(ChatSvc.ActiveRoom.Type == "dm" ? "Schedule a meeting with this person" : "Schedule a meeting with this group")">
+                        <i data-lucide="calendar-plus"></i>
+                    </a>
                     @{
                         var activeRoomList = ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms).FirstOrDefault(r => r.Id == ChatSvc.ActiveRoom.Id);
                         var isActPinned = activeRoomList?.IsPinned ?? false;
@@ -778,6 +782,9 @@
                                 <button type="button" role="menuitem" @onclick="() => { plusMenuOpen = false; pickerOpen = false; return OpenStickers(); }">
                                     <span class="pm-ic" style="--pm:#FF9F0A"><i data-lucide="sticker"></i></span> Sticker
                                 </button>
+                                <a role="menuitem" href="@MeetingFromRoom()" @onclick="() => plusMenuOpen = false">
+                                    <span class="pm-ic" style="--pm:#2E9D6B"><i data-lucide="calendar-plus"></i></span> Schedule meeting
+                                </a>
                                 @if (ChatSvc.ActiveRoom!.Type == "group")
                                 {
                                     <button type="button" role="menuitem" @onclick="() => { plusMenuOpen = false; _ = OpenMention(); }">
@@ -1808,6 +1815,7 @@
         @if (ctxMsg is not null && !string.IsNullOrEmpty(ctxMsg.Content) && !IsAttachmentPlaceholder(ctxMsg))
         {
             <button @onclick="async () => { var t = ctxMsg.Content; ctxMsgId = null; await CopyMessageText(t); }"><i data-lucide="copy"></i> Copy text</button>
+            <a href="@MeetingFromRoom(ctxMsg.Content)" @onclick="() => ctxMsgId = null"><i data-lucide="calendar-plus"></i> Create event from message</a>
         }
         @if (ctxMsg is not null && ctxMsg.Type == "sticker" && !ctxMsg.IsDeleted && StickerLimits.IsValidKey(ctxMsg.Content))
         {

@@ -88,6 +88,9 @@ else if (Current is not null)
             case "hris":
                 <AdminHrisSync @ref="hrisRef" />
                 break;
+            case "calendar":
+                <AdminHolidays />
+                break;
         }
     </section>
 </div>
@@ -105,7 +108,8 @@ else if (Current is not null)
         new("People", [new("users", "Users", "Accounts, roles and access", "users", "blue")]),
         new("Structure", [new("organization", "Organization", "Plants, divisions and departments", "building-2", "green")]),
         new("Security", [new("security", "Security", "Sessions and audit log", "shield-check", "red")]),
-        new("Communication", [new("announcements", "Announcements", "Launch videos that pop up after login", "clapperboard", "orange")]),
+        new("Communication", [new("announcements", "Announcements", "Launch videos that pop up after login", "clapperboard", "orange"),
+                              new("calendar", "Holidays", "National and company holidays on everyone's calendar", "party-popper", "red")]),
         new("Integrations", [new("hris", "HRIS sync", "Employee data from HRIS", "refresh-cw", "violet")]),
     ];
 

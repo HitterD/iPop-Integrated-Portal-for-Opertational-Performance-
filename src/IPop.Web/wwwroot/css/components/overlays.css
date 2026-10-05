@@ -112,7 +112,7 @@
   animation: ctx-rise 0.14s var(--ease) both;
 }
 @keyframes ctx-rise { from { opacity: 0; transform: translateY(-3px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
-.ctx-menu button {
+.ctx-menu button, .ctx-menu > a {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -126,8 +126,9 @@
   cursor: pointer;
   transition: background 0.14s var(--ease), color 0.14s var(--ease);
 }
-.ctx-menu button:hover { background: var(--tray); }
-.ctx-menu button .lucide { width: 13px; height: 13px; color: var(--ink-2); }
+.ctx-menu button:hover, .ctx-menu > a:hover { background: var(--tray); }
+.ctx-menu button .lucide, .ctx-menu > a .lucide { width: 13px; height: 13px; color: var(--ink-2); }
+.ctx-menu > a { text-decoration: none; box-sizing: border-box; }
 .ctx-menu button.danger { color: var(--danger); }
 .ctx-menu button.danger .lucide { color: var(--danger); }
 .ctx-menu button.danger:hover { background: var(--danger-soft); }

@@ -7,6 +7,7 @@
 @inject IPop.Web.Services.FavoriteContacts Favorites
 @inject ToastService Toasts
 @inject IPop.Web.Services.PeopleLinks PLinks
+@inject IPop.Web.Services.CalendarLinks CalLinks
 
 <PageTitle>Directory — IPop</PageTitle>
 
@@ -232,6 +233,7 @@
                                         <button type="button" class="dc-ic" title="Call" aria-label="Call @p.Name" @onclick="() => StartCallWith(p.Nik)"><i data-lucide="phone"></i></button>
                                         <button type="button" class="dc-ic" title="Email" aria-label="Email @p.Name" @onclick="() => OpenMailWith(p.Nik)"><i data-lucide="mail"></i></button>
                                         <a class="dc-ic" href="@PLinks.Calendar(p.Nik)" title="Calendar" aria-label="View @p.Name's calendar"><i data-lucide="calendar-search"></i></a>
+                                        <a class="dc-ic" href="@CalLinks.NewMeeting(niks: [p.Nik], from: $"Meeting with {p.Name}")" title="Invite to meeting" aria-label="Invite @p.Name to a meeting"><i data-lucide="calendar-plus"></i></a>
                                     </div>
                                 </div>
                             }

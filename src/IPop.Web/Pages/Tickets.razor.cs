@@ -25,6 +25,7 @@ public partial class Tickets
     [Inject] private ConfirmService Confirm { get; set; } = default!;
     [Inject] private NavigationManager Nav { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private CalendarLinks CalLinks { get; set; } = default!;
 
     internal const string CacheKey = "tickets.list";
     private const string RowsSel = "#tk-rows";

@@ -395,3 +395,19 @@
 .adm-num, .adm-facts b[data-mi-count] { font-variant-numeric: tabular-nums; }
 /* #32 a list that saved in place washes accent once (micro.js .mi-saved); keep the rounded corners. */
 .adm-list.mi-saved, .adm-seg.mi-saved { border-radius: 12px; }
+
+/* Admin → Holidays (calendar everywhere) */
+.adm-hol-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 14px 4px; }
+.adm-hol-name { flex: 1; min-width: 200px; height: 34px; border: 1px solid var(--line); border-radius: 9px; padding: 0 10px; background: var(--surface); color: var(--ink); font: inherit; }
+.adm-hol-name:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.adm-hol-hint { display: block; padding: 4px 14px 12px; color: var(--ink-3); font-size: 12px; }
+.adm-hol-list { display: grid; }
+.adm-hol-row { display: flex; align-items: center; gap: 12px; padding: 9px 14px; border-top: 1px solid var(--line-soft); transition: background-color .6s var(--ease-out, ease); }
+.adm-hol-row.past { opacity: .55; }
+.adm-hol-row.new { background: var(--accent-soft); animation: mi-rise .3s var(--ease-out, ease); }
+.adm-hol-date { width: 42px; text-align: center; border-radius: 9px; border: 1px solid var(--line-soft); padding: 3px 0; flex: none; }
+.adm-hol-date small { display: block; font-size: 10px; font-weight: 700; color: #d9480f; text-transform: uppercase; }
+.adm-hol-date b { font-size: 16px; }
+.adm-hol-t { flex: 1; min-width: 0; display: grid; }
+.adm-hol-t b { font-size: 13.5px; }
+.adm-hol-t small { color: var(--ink-3); font-size: 12px; }

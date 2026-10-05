@@ -396,8 +396,8 @@
 .chat-area .v6-pop-x { border: 0; background: transparent; color: var(--ink-3); cursor: pointer; }
 .chat-area .v6-pop-x .lucide { width: 15px; height: 15px; }
 .chat-area .v6-plus-menu { left: 20px; width: 216px; padding: 5px; }
-.chat-area .v6-plus-menu > button { width: 100%; display: flex; align-items: center; gap: 10px; min-height: 37px; padding: 4px 8px; border: 0; border-radius: 7px; background: none; color: var(--ink); text-align: left; font-family: inherit; font-size: 12px; cursor: pointer; }
-.chat-area .v6-plus-menu > button:hover { background: var(--tray); }
+.chat-area .v6-plus-menu > button, .chat-area .v6-plus-menu > a { text-decoration: none; box-sizing: border-box; width: 100%; display: flex; align-items: center; gap: 10px; min-height: 37px; padding: 4px 8px; border: 0; border-radius: 7px; background: none; color: var(--ink); text-align: left; font-family: inherit; font-size: 12px; cursor: pointer; }
+.chat-area .v6-plus-menu > button:hover, .chat-area .v6-plus-menu > a:hover { background: var(--tray); }
 .chat-area .v6-plus-menu > button.danger { color: var(--danger); }
 .chat-area .pm-ic { display: grid; place-items: center; flex: none; width: 25px; height: 25px; border-radius: 7px; background: color-mix(in srgb, var(--pm) 12%, var(--surface)); color: var(--pm); }
 .chat-area .pm-ic .lucide { width: 15px; height: 15px; }

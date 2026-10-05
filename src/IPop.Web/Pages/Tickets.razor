@@ -122,6 +122,10 @@
                 <button type="button" class="tk-btn ghost sm tk-back" @onclick="BackToList"><i data-lucide="chevron-left"></i>Tickets</button>
                 <StatusPill Status="@t.Status" Long="true" Pop="@changedPills.Contains(t.Id)" />
                 <span class="sp"></span>
+                <a class="tk-btn ghost sm" title="Put a follow-up for this ticket on your calendar"
+                   href="@CalLinks.NewMeeting($"Follow up: {t.Title}", start: DateTime.Today.AddDays(1).AddHours(9), minutes: 30,
+                       notes: (t.TicketNumber is null ? "" : $"Ticket {t.TicketNumber}" + Environment.NewLine) + Nav.ToAbsoluteUri($"/tickets/{t.Id}"),
+                       from: $"From ticket “{t.Title}”")"><i data-lucide="calendar-plus"></i><span>Schedule follow-up</span></a>
                 @if (!string.IsNullOrEmpty(t.TicketNumber))
                 {
                     <button type="button" class="tk-btn ghost sm" aria-label="Copy number" @onclick="CopyNumber"><i data-lucide="copy"></i><span>@(copied ? "Copied" : "Copy number")</span></button>
