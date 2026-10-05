@@ -168,7 +168,9 @@ public class CalendarFeedTests
         Assert.Equal([mate.Id], invited);
         var item = Assert.Single(await BuildFeedAsync(t.Db, mate.Id, From, To, FeedAccess.All, default), i => i.Title == "Standup");
         Assert.Equal("chat", item.Source);
-        Assert.Equal($"/chat/{room.Id}", item.Url);
+        // It has a calendar row, so clicking opens the event itself (Url null → drawer), not the chat.
+        Assert.Null(item.Url);
+        Assert.NotNull(item.EventId);
         Assert.DoesNotContain(await BuildFeedAsync(t.Db, mate.Id, From, To, FeedAccess.All with { Chat = false }, default), i => i.Title == "Standup");
     }
 
