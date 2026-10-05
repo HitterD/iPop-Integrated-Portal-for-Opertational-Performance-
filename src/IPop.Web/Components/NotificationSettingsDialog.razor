@@ -1425,7 +1425,7 @@
                 settings.ShowBadge,
                 settings.ShowPreview
             };
-            await JS.InvokeVoidAsync("localStorage.setItem", "notification-preferences", System.Text.Json.JsonSerializer.Serialize(local));
+            await Auth.SetUserSettingAsync("notification-preferences", System.Text.Json.JsonSerializer.Serialize(local));
         }
         catch { }
     }
@@ -1434,7 +1434,7 @@
     {
         try
         {
-            var json = await JS.InvokeAsync<string>("localStorage.getItem", "notification-preferences");
+            var json = await Auth.GetUserSettingAsync("notification-preferences");
             if (!string.IsNullOrEmpty(json))
             {
                 var local = System.Text.Json.JsonSerializer.Deserialize<LocalPreferences>(json);

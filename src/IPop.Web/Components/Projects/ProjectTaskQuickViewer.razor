@@ -1,6 +1,7 @@
 @using IPop.Application.Projects
 @using Microsoft.AspNetCore.Components.Forms
 @inject IJSRuntime JS
+@inject IPop.Web.Services.AuthState Auth
 
 @if (Task is not null)
 {
@@ -281,7 +282,7 @@
             foreach (var item in evidence.FieldPhotos.Concat(evidence.CompletionDeliverables.Where(d => d.Type == "photo")))
             {
                 if (!string.IsNullOrEmpty(item.DataUrl)) continue;
-                try { item.DataUrl = await JS.InvokeAsync<string?>("localStorage.getItem", $"ipop_evidence_{item.Id}"); }
+                try { item.DataUrl = await Auth.GetUserSettingAsync($"ipop_evidence_{item.Id}"); }
                 catch { }
             }
         }
@@ -307,7 +308,7 @@
                 {
                     try
                     {
-                        photo.DataUrl = await JS.InvokeAsync<string?>("localStorage.getItem", $"ipop_evidence_{photo.Id}");
+                        photo.DataUrl = await Auth.GetUserSettingAsync($"ipop_evidence_{photo.Id}");
                     }
                     catch {}
                 }
@@ -318,7 +319,7 @@
                 {
                     try
                     {
-                        item.DataUrl = await JS.InvokeAsync<string?>("localStorage.getItem", $"ipop_evidence_{item.Id}");
+                        item.DataUrl = await Auth.GetUserSettingAsync($"ipop_evidence_{item.Id}");
                     }
                     catch {}
                 }
@@ -376,7 +377,7 @@
                     DataUrl = dataUrl
                 };
                 evidence.FieldPhotos.Add(item);
-                await JS.InvokeVoidAsync("localStorage.setItem", $"ipop_evidence_{item.Id}", dataUrl);
+                await Auth.SetUserSettingAsync($"ipop_evidence_{item.Id}", dataUrl);
             }
             catch {}
         }
@@ -409,7 +410,7 @@
                 evidence.CompletionDeliverables.Add(item);
                 if (!string.IsNullOrEmpty(dataUrl))
                 {
-                    await JS.InvokeVoidAsync("localStorage.setItem", $"ipop_evidence_{item.Id}", dataUrl);
+                    await Auth.SetUserSettingAsync($"ipop_evidence_{item.Id}", dataUrl);
                 }
             }
             catch {}

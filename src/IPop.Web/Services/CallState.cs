@@ -36,6 +36,45 @@ public partial class CallState : IAsyncDisposable
         _auth = auth;
         _http = http;
         _js = js;
+        _auth.SignedOut += () => _ = SignOutResetAsync();
+    }
+
+    /// Sign-out (the call itself was already ended by <see cref="EndForSignOutAsync"/>): silence
+    /// tones and media, forget the call, and drop the hub that still authenticates as the old account.
+    private async Task SignOutResetAsync()
+    {
+        try
+        {
+            await _js.InvokeVoidAsync("ipopAudio.stopAudioTones");
+            await _js.InvokeVoidAsync("ipopAudio.endCall");
+            await _js.InvokeVoidAsync("ipopGroupCall.leave");
+        }
+        catch (JSException) { }
+        try { await _js.InvokeVoidAsync("sessionStorage.removeItem", OwnedCallKey); } catch (JSException) { }
+        Current = null;
+        WebRtcState = null;
+        _webRtcActiveCallId = null;
+        _ownedCallId = null;
+        _peerConnection = null;
+        _peerCallId = null;
+        _elsewhereCallId = null;
+        _groupCalls.Clear();
+        _meetingId = null;
+        _groupMediaCallId = null;
+        await DisconnectAsync();
+    }
+
+    /// Before signing out: hang up (or decline) so the other side isn't left talking to nobody.
+    public async Task EndForSignOutAsync()
+    {
+        if (Current is null) return;
+        try
+        {
+            if (IsIncomingRing) await DeclineCurrentAsync();
+            else if (IsOutgoingRing) await CancelCurrentAsync();
+            else await EndCurrentAsync();
+        }
+        catch { /* best effort: the server's ring/idle timeouts close it otherwise */ }
     }
 
     /// The user's current live call (null = none ringing/active).

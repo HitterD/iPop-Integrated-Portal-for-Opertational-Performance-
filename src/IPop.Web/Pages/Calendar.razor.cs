@@ -177,7 +177,7 @@ public partial class Calendar
     {
         try
         {
-            var json = await JS.InvokeAsync<string?>("localStorage.getItem", PrefsKey);
+            var json = await Auth.GetUserSettingAsync(PrefsKey);
             if (string.IsNullOrEmpty(json)) return;
             var p = System.Text.Json.JsonSerializer.Deserialize<Prefs>(json);
             if (p?.View is "day" or "week" or "month" or "agenda") view = p.View;
@@ -192,7 +192,7 @@ public partial class Calendar
         try
         {
             var json = System.Text.Json.JsonSerializer.Serialize(new Prefs { View = view, Hidden = hidden.ToList(), SideBySide = sideBySide });
-            await JS.InvokeVoidAsync("localStorage.setItem", PrefsKey, json);
+            await Auth.SetUserSettingAsync(PrefsKey, json);
         }
         catch { }
     }

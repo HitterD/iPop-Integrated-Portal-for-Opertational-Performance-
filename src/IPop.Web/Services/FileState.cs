@@ -11,6 +11,28 @@ namespace IPop.Web.Services;
 public class FileState
 {
     private const string StorageKey = "ipop_files_last_seen";
+    private readonly AuthState auth;
+
+    public FileState(AuthState auth)
+    {
+        this.auth = auth;
+        auth.SignedOut += Reset;
+    }
+
+    /// Sign-out: the next account starts from a clean slate (folders, NAS credential, history).
+    private void Reset()
+    {
+        ClearAllCache();
+        CurrentServer = "spj";
+        CurrentPath = "/";
+        BackStack = [];
+        ForwardStack = [];
+        Search = "";
+        TypeFilter = "";
+        SortBy = "name";
+        IsInitialized = false;
+        Credential = null;
+    }
     private static readonly TimeSpan DefaultTtl = TimeSpan.FromMinutes(3);
 
     public string CurrentServer { get; set; } = "spj";
@@ -111,12 +133,13 @@ public class FileState
         ForwardStack.Clear();
     }
 
+    /// Per account: another user on this browser must not land in this user's folder.
     public async Task SaveLastSeenAsync(IJSRuntime js)
     {
         try
         {
             var value = $"{CurrentServer}|{CurrentPath}";
-            await js.InvokeVoidAsync("localStorage.setItem", StorageKey, value);
+            await auth.SetUserSettingAsync(StorageKey, value);
         }
         catch
         {
@@ -128,7 +151,7 @@ public class FileState
     {
         try
         {
-            var saved = await js.InvokeAsync<string?>("localStorage.getItem", StorageKey);
+            var saved = await auth.GetUserSettingAsync(StorageKey);
             if (!string.IsNullOrWhiteSpace(saved))
             {
                 var parts = saved.Split('|', 2);

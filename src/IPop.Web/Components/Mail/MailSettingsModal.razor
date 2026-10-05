@@ -328,7 +328,7 @@
         switch (section)
         {
             case "signature":
-                try { signatureText = await JS.InvokeAsync<string?>("localStorage.getItem", "ipop.mail.signature") ?? ""; } catch { }
+                try { signatureText = await Auth.GetUserSettingAsync("ipop.mail.signature") ?? ""; } catch { }
                 break;
             case "ooo":
                 var o = await Auth.GetAsync<MailAutoReplyDto>("/api/mail/auto-reply");
@@ -377,7 +377,7 @@
         {
             if (section == "signature")
             {
-                await JS.InvokeVoidAsync("localStorage.setItem", "ipop.mail.signature", signatureText.Trim());
+                await Auth.SetUserSettingAsync("ipop.mail.signature", signatureText.Trim());
                 Toasts.Show("Signature saved.", ToastKind.Success);
                 await Close();
             }

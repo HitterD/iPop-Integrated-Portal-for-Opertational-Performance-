@@ -1324,6 +1324,37 @@ public partial class ChatState : IAsyncDisposable
         }
     }
 
+    /// Sign-out: drop the hub (it authenticated as the old account — the server would keep
+    /// delivering that account's rooms and attribute sends to it) and everything it loaded.
+    /// The next ConnectAsync starts fresh for whoever signs in.
+    private async Task SignOutResetAsync()
+    {
+        _roomsReloadCts?.Cancel();
+        await DisposeHubAsync();
+        _connecting = false;
+        DirectRooms = [];
+        GroupRooms = [];
+        ArchivedRooms = [];
+        ArchivedTotal = 0;
+        _archivedPage = 1;
+        _directTotal = _groupTotal = 0;
+        _roomSearch = "";
+        ActiveRoomId = null;
+        ActiveRoom = null;
+        ActiveMessages = [];
+        MessagePage = 1;
+        HasOlderMessages = false;
+        IsLoadingMessages = false;
+        RoomsLoaded = false;
+        _mentionFlags.Clear();
+        _fresh.Clear();
+        Stickers = new([], [], [], []);
+        _stickersLoaded = false;
+        ConnectionChanged?.Invoke();
+        RoomListChanged?.Invoke();
+        StateChanged?.Invoke();
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_presenceSubscribed)

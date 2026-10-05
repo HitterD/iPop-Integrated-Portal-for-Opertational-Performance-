@@ -67,7 +67,32 @@ public class AuthState(HttpClient http, IJSRuntime js)
     public bool IsAdmin => Me?.Roles.Contains("Admin") == true;
 
     public async Task<DirectoryEmployeeDto?> LoadMeAsync()
-        => Me ??= await GetAsync<DirectoryEmployeeDto>("/api/directory/me");
+    {
+        if (Me is not null) return Me;
+        Me = await GetAsync<DirectoryEmployeeDto>("/api/directory/me");
+        await ShareUserAsync();
+        return Me;
+    }
+
+    /// Scripts that keep their own per-account settings (sounds.js) read the NIK from ipopUserStore.
+    private async Task ShareUserAsync()
+    {
+        try { await js.InvokeVoidAsync("ipopUserStore.setUser", Me?.Nik); } catch { /* not loaded (tests) */ }
+    }
+
+    /// localStorage scoped to the signed-in account (js/user-store.js). A value saved before
+    /// per-account keys existed is handed to the first account that reads it, then removed.
+    public async Task<string?> GetUserSettingAsync(string key)
+    {
+        if (Me?.Nik is not { Length: > 0 } nik) return null;
+        try { return await js.InvokeAsync<string?>("ipopUserStore.get", nik, key); } catch { return null; }
+    }
+
+    public async Task SetUserSettingAsync(string key, string value)
+    {
+        if (Me?.Nik is not { Length: > 0 } nik) return;
+        try { await js.InvokeVoidAsync("ipopUserStore.set", nik, key, value); } catch { }
+    }
 
     /// Raised when Me is re-read after a self-service profile edit (email, photo).
     public event Action? MeChanged;
@@ -75,6 +100,7 @@ public class AuthState(HttpClient http, IJSRuntime js)
     public async Task ReloadMeAsync()
     {
         Me = await GetAsync<DirectoryEmployeeDto>("/api/directory/me") ?? Me;
+        await ShareUserAsync();
         MeChanged?.Invoke();
     }
 
@@ -460,26 +486,43 @@ public class AuthState(HttpClient http, IJSRuntime js)
 
     private async Task ClearAsync()
     {
+        // Everything synchronous first: an in-flight request on the old session can end it
+        // (SessionEnded → full reload) at any await below, and the page caches and per-user
+        // state must already be gone by then.
         _heartbeat?.Dispose();
         _heartbeat = null;
         _idle = false;
-        try { await js.InvokeVoidAsync("ipop.presenceStop"); } catch { }
-        _bound.Clear();   // handlers die with the connection; _subscriptions re-bind on next start
-        if (_presence is not null) await _presence.DisposeAsync();
-        _presence = null;
-        await js.InvokeVoidAsync("localStorage.removeItem", RefreshKey);
-        await js.InvokeVoidAsync("sessionStorage.removeItem", RefreshKey);
         _accessToken = null;
         MustChangePassword = false;
         MyStatus = "off";
         Me = null;
+        IsSuspended = false;
         IPop.Web.Models.AvatarPhotos.Clear();
         lock (_lastGoodLock)
         {
             _lastGood.Clear();
             _lastGoodOrder.Clear();
         }
-        SignedOut?.Invoke();
+        // Stored page snapshots (PageCache): wiped here too, because PageCache only hears
+        // SignedOut once a page has created it in this document (e.g. not after a reload on /chat).
+        if (js is IJSInProcessRuntime sync)
+            try { sync.InvokeVoid("ipop.cacheClear", PageCache.StoragePrefix); } catch { }
+        // One by one: a subscriber that throws must not stop the others from dropping this
+        // account's data (an exception used to skip every handler after it).
+        foreach (var handler in SignedOut?.GetInvocationList() ?? [])
+        {
+            try { ((Action)handler)(); }
+            catch (Exception ex) { Console.Error.WriteLine($"[auth] sign-out cleanup failed: {ex.Message}"); }
+        }
+
+        try { await js.InvokeVoidAsync("ipop.presenceStop"); } catch { }
+        _bound.Clear();   // handlers die with the connection; _subscriptions re-bind on next start
+        var presence = _presence;
+        _presence = null;
+        if (presence is not null) await presence.DisposeAsync();
+        await js.InvokeVoidAsync("localStorage.removeItem", RefreshKey);
+        await js.InvokeVoidAsync("sessionStorage.removeItem", RefreshKey);
+        await ShareUserAsync();
         SetConnectionState(DirectoryConnectionState.Connecting);
     }
 

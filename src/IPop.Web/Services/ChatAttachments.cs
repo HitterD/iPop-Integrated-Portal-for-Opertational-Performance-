@@ -28,8 +28,20 @@ public enum AttachmentKind
 /// back a `blob:` URL. This service owns those URLs and keeps them across room switches
 /// (going back to a room shows its images at once), evicting the least recently used
 /// ones once they add up to more than <see cref="BudgetBytes"/>.
-public class ChatAttachments(AuthState auth, HttpClient http, IJSRuntime js)
+public class ChatAttachments
 {
+    private readonly AuthState auth;
+    private readonly HttpClient http;
+    private readonly IJSRuntime js;
+
+    public ChatAttachments(AuthState auth, HttpClient http, IJSRuntime js)
+    {
+        this.auth = auth;
+        this.http = http;
+        this.js = js;
+        auth.SignedOut += ReleaseAll;
+    }
+
     private readonly Dictionary<string, BlobRef> _cache = [];
     // In-flight fetches are shared, not skipped: two bubbles showing the same attachment (or a
     // bubble plus the drawer's media grid) must both await the one request. Returning null to the

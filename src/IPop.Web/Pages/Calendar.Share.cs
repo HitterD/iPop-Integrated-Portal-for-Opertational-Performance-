@@ -39,14 +39,14 @@ public partial class Calendar
 
     private async Task LoadIntroAsync()
     {
-        try { showIntro = await JS.InvokeAsync<string?>("localStorage.getItem", IntroKey) is null; }
+        try { showIntro = await Auth.GetUserSettingAsync(IntroKey) is null; }
         catch { showIntro = false; }
     }
 
     private async Task DismissIntroAsync()
     {
         showIntro = false;
-        try { await JS.InvokeVoidAsync("localStorage.setItem", IntroKey, "1"); } catch { }
+        try { await Auth.SetUserSettingAsync(IntroKey, "1"); } catch { }
     }
 
     private async Task OpenShareAsync(string tab = "who")

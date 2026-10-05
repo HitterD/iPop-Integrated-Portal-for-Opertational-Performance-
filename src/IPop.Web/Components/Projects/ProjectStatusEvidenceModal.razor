@@ -1,6 +1,7 @@
 @using IPop.Application.Projects
 @using Microsoft.AspNetCore.Components.Forms
 @inject IJSRuntime JS
+@inject IPop.Web.Services.AuthState Auth
 
 @if (IsOpen && Task is not null)
 {
@@ -215,7 +216,7 @@
                     DataUrl = dataUrl
                 };
                 evidence.FieldPhotos.Add(item);
-                await JS.InvokeVoidAsync("localStorage.setItem", $"ipop_evidence_{item.Id}", dataUrl);
+                await Auth.SetUserSettingAsync($"ipop_evidence_{item.Id}", dataUrl);
             }
             catch {}
         }
@@ -248,7 +249,7 @@
                 evidence.CompletionDeliverables.Add(item);
                 if (!string.IsNullOrEmpty(dataUrl))
                 {
-                    await JS.InvokeVoidAsync("localStorage.setItem", $"ipop_evidence_{item.Id}", dataUrl);
+                    await Auth.SetUserSettingAsync($"ipop_evidence_{item.Id}", dataUrl);
                 }
             }
             catch {}

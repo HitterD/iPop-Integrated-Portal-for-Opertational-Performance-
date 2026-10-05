@@ -24,7 +24,9 @@
 
     function prefs() {
         let p = {};
-        try { p = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch { }
+        // Per account (js/user-store.js); signed out = defaults.
+        const store = window.ipopUserStore;
+        try { p = JSON.parse((store ? store.getMine(KEY) : localStorage.getItem(KEY)) || '{}') || {}; } catch { }
         const vol = Number.isFinite(p.volume) ? Math.min(100, Math.max(0, p.volume)) : 80;
         return { volume: vol, map: Object.assign({}, p.map) };
     }
@@ -121,7 +123,8 @@
         setPrefs(volume, map) {
             const clean = {};
             for (const m of MODULES) if (map && map[m] !== undefined && map[m] !== m && (map[m] === '' || FILES.has(map[m]))) clean[m] = map[m];
-            localStorage.setItem(KEY, JSON.stringify({ volume: Math.round(volume), map: clean }));
+            const json = JSON.stringify({ volume: Math.round(volume), map: clean });
+            if (window.ipopUserStore) window.ipopUserStore.setMine(KEY, json); else localStorage.setItem(KEY, json);
             if (master) master.gain.value = volume / 100;
         },
     };

@@ -78,6 +78,25 @@ public class NotificationState : IDisposable
         _http = http;
 
         _js = js;
+        _auth.SignedOut += () => _ = SignOutResetAsync();
+    }
+
+    /// Sign-out: the hub still carries the old account's token; drop it with its bell and banners.
+    private async Task SignOutResetAsync()
+    {
+        await DisposeHubAsync();
+        foreach (var b in _activeBanners.ToList())
+        {
+            try { b.Cts.Cancel(); b.Cts.Dispose(); } catch { }
+        }
+        _activeBanners.Clear();
+        _chatBanners.Clear();
+        _recentNotifications.Clear();
+        UnreadCount = 0;
+        _prefs = NotificationPrefs.Empty;
+        BannersChanged?.Invoke();
+        UnreadChanged?.Invoke();
+        NotificationsChanged?.Invoke();
     }
 
     public async Task ConnectAsync()
@@ -259,7 +278,7 @@ public class NotificationState : IDisposable
         {
             try
             {
-                var json = await _js.InvokeAsync<string>("localStorage.getItem", "notification-preferences");
+                var json = await _auth.GetUserSettingAsync("notification-preferences");
                 if (!string.IsNullOrEmpty(json))
                 {
                     var local = System.Text.Json.JsonSerializer.Deserialize<LocalNotifPrefs>(json);

@@ -959,7 +959,7 @@
     private async Task InsertSignature()
     {
         string? customSig = null;
-        try { customSig = await JS.InvokeAsync<string?>("localStorage.getItem", "ipop.mail.signature"); } catch { }
+        try { customSig = await Auth.GetUserSettingAsync("ipop.mail.signature"); } catch { }
         var sigHtml = !string.IsNullOrWhiteSpace(customSig)
             ? $"<p><br></p><p>--<br>{System.Net.WebUtility.HtmlEncode(customSig).Replace("\n", "<br>")}</p>"
             : $"<p><br></p><p>--<br><b>{Enc(Auth.Me?.Name)}</b><br>{Enc(Auth.Me?.Department)}<br>PT Santos Jaya Abadi</p>";

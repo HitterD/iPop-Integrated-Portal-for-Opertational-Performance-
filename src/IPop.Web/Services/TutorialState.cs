@@ -13,6 +13,8 @@ public sealed class TutorialState(AuthState auth, PracticeSandbox sandbox, ChatS
     private const string PracticeKey = "ipop-practice";
     private Dictionary<string, string> _seen = new(StringComparer.OrdinalIgnoreCase);
     private bool _loaded;
+    // Whose tours _seen holds: another account signing in on this tab loads its own.
+    private string? _loadedFor;
 
     public event Action? Changed;
 
@@ -33,10 +35,12 @@ public sealed class TutorialState(AuthState auth, PracticeSandbox sandbox, ChatS
 
     public async Task LoadAsync()
     {
-        if (_loaded) return;
+        var nik = auth.Me?.Nik;
+        if (_loaded && nik == _loadedFor) return;
         var seen = await auth.GetAsync<Dictionary<string, string>>("/api/me/tutorials");
         _seen = new(seen ?? [], StringComparer.OrdinalIgnoreCase);
         _loaded = true;
+        _loadedFor = nik;
         Changed?.Invoke();
     }
 

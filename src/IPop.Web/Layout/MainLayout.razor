@@ -527,7 +527,7 @@
     {
         try
         {
-            var json = await JS.InvokeAsync<string>("localStorage.getItem", "notification-preferences");
+            var json = await Auth.GetUserSettingAsync("notification-preferences");
             if (!string.IsNullOrEmpty(json))
             {
                 var p = System.Text.Json.JsonSerializer.Deserialize<NotificationLocalPrefs>(json);
@@ -681,11 +681,14 @@
     private async Task SignOut()
     {
         meMenuOpen = false;
+        await CallSvc.EndForSignOutAsync();
         await Push.SignOutAsync();
         Badges.Stop(); Badges.Clear();
         Timer.Stop();
         await Auth.SignOutAsync();
-        Nav.NavigateTo("/login", replace: true);
+        // forceLoad, like OnSessionEnded: every service, hub and cache in this tab belongs to the
+        // account that just left. A fresh document is the only way the next one starts clean.
+        Nav.NavigateTo("/login", forceLoad: true, replace: true);
     }
 
     [JSInvokable]
@@ -800,7 +803,7 @@
             // Muat preferensi notifikasi lokal (ShowBadge) dari localStorage.
             try
             {
-                var json = await JS.InvokeAsync<string>("localStorage.getItem", "notification-preferences");
+                var json = await Auth.GetUserSettingAsync("notification-preferences");
                 if (!string.IsNullOrEmpty(json))
                 {
                     var p = System.Text.Json.JsonSerializer.Deserialize<NotificationLocalPrefs>(json);

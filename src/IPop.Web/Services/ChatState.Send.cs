@@ -100,6 +100,7 @@ public partial class ChatState
         _outboxHooked = true;
         RoomGone += ForgetOutboxFor;
         _auth.SignedOut += ClearOutbox;
+        _auth.SignedOut += () => _ = SignOutResetAsync();
     }
 
     /// Sends a message from the open room. The bubble appears immediately; the returned outcome

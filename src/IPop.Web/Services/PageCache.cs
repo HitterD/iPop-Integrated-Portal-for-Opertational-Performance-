@@ -11,7 +11,8 @@ namespace IPop.Web.Services;
 /// Keys are scoped to the signed-in NIK and everything is wiped on sign-out.
 public sealed class PageCache
 {
-    private const string Prefix = "ipop.cache.";
+    public const string StoragePrefix = "ipop.cache.";
+    private const string Prefix = StoragePrefix;
     /// Big payloads stay in memory only; localStorage is ~5 MB for the whole origin.
     private const int MaxPersistChars = 256 * 1024;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);

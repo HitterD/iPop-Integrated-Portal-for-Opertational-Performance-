@@ -376,7 +376,8 @@
             }
             busyPw = false;
             await IsOpenChanged.InvokeAsync(false);
-            Nav.NavigateTo("/login?changed=1", replace: true);
+            // Signed out by the password change: reload so nothing of this session survives.
+            Nav.NavigateTo("/login?changed=1", forceLoad: true, replace: true);
         }
         catch { pwError = "Could not reach the server. Try again."; }
         finally { busyPw = false; }

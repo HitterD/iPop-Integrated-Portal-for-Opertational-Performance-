@@ -1970,7 +1970,7 @@
         {
             try
             {
-                await JS.InvokeVoidAsync("localStorage.setItem", $"ipop_evidence_{extRecord.Id}", attDataUrl);
+                await Auth.SetUserSettingAsync($"ipop_evidence_{extRecord.Id}", attDataUrl);
             }
             catch {}
         }
