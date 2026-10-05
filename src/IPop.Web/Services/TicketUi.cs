@@ -102,8 +102,9 @@ public static class TicketUi
         _ => "tag",
     };
 
+    /// Same names as iDesk's scheduling settings (PC, IP-Phone, Printer), sent verbatim; iDesk accepts custom values too.
     public static readonly (string Name, string Icon)[] HardwareTypes =
-        [("PC / Laptop", "monitor"), ("Printer", "printer"), ("Monitor", "monitor-smartphone"), ("Other", "more-horizontal")];
+        [("PC", "monitor"), ("IP-Phone", "phone"), ("Printer", "printer"), ("Other", "more-horizontal")];
 
     /// HARDWARE_INSTALLATION → "Hardware installation".
     public static string Humanize(string? code)
