@@ -118,10 +118,11 @@ public partial class Calendar
         var first = lastPersonNik is null && !PersonMode;
         lastPersonNik = PersonNik;
         if (first || loadedFrom == default) return;
-        CloseDrawer(); pop = null; otherItems = [];
+        CloseDrawer(); pop = null; otherItems = []; otherMenu = null; listMenu = false;
         if (!PersonMode) Layout.SetHeader("Calendar", "Everything scheduled across iPop");
         await LoadPersonAsync();
         await LoadAsync();
+        if (!PersonMode && pendingInvite is { } pi) { pendingInvite = null; await MeetWithAsync(pi.Nik, pi.Name, pi.Start); }
     }
 
     // ── Live refresh (calendarChanged) ──

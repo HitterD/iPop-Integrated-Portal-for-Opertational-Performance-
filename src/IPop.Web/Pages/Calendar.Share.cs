@@ -9,7 +9,7 @@ namespace IPop.Web.Pages;
 public partial class Calendar
 {
     public record PersonInfo(string Nik, string Name, string? Department, string? Site, string? Access, string AccessLabel,
-        bool Following, bool Self, DateTime? NowBusyUntil, DateTime? NextBusyAt);
+        bool Following, bool Self, DateTime? NowBusyUntil, DateTime? NextBusyAt, Guid Id = default);
     public record Follower(string Nik, string Name, string? Department);
 
     [Microsoft.AspNetCore.Components.Parameter] public string? PersonNik { get; set; }
@@ -38,6 +38,12 @@ public partial class Calendar
         person = await Auth.GetAsync<PersonInfo>($"/api/calendar/person/{Uri.EscapeDataString(PersonKey!)}");
         if (person is null) { Toasts.Show("That person was not found.", ToastKind.Error); Nav.NavigateTo("/calendar"); return; }
         if (person.Self) { Nav.NavigateTo("/calendar"); return; }
+        // Per-tab tokens die on reload; swap the address for the user id (never the NIK) so refresh and sharing work.
+        if (person.Id != Guid.Empty && PersonNik != person.Id.ToString())
+        {
+            loadedPersonNik = person.Id.ToString(); lastPersonNik = loadedPersonNik;
+            Nav.NavigateTo($"/calendar/person/{person.Id}", replace: true);
+        }
         Layout.SetHeader("Calendar", $"{person.Name}'s calendar");
     }
 

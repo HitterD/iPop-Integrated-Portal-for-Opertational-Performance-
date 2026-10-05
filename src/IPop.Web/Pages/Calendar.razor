@@ -42,8 +42,10 @@
             </div>
         </div>
 
+        @if (!PersonMode)
+        {
         <div class="cal-sources">
-            <div class="cal-rail-title">Calendars</div>
+            <div class="cal-rail-title">Show on my calendar</div>
             @foreach (var s in Sources)
             {
                 var src = s;
@@ -57,6 +59,7 @@
                 </label>
             }
         </div>
+        }
 
         @if (showIntro && !PersonMode)
         {

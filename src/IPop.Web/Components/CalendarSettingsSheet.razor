@@ -22,7 +22,7 @@
                 <h3><i data-lucide="eye"></i> Who can see my calendar</h3>
                 <p>Everyone can see <b>when</b> you're busy, so they can plan meetings. Only people you add below see more.</p>
                 <div class="cs-group">
-                    <div class="cs-row fixed">
+                    <div class="cs-row pinned">
                         <span class="cs-gi"><i data-lucide="building-2"></i></span>
                         <span class="cs-t"><b>Everyone at SJA</b><small>Grey "Busy" blocks — no titles, places or people</small></span>
                         <span class="cs-lvl static"><i data-lucide="lock"></i> See when I'm busy</span>
@@ -217,6 +217,8 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (Open) await JS.InvokeVoidAsync("ipop.icons");
+        // Once the add row (and the picker inside it) is gone, drop its portalled list if it was left on <body>.
+        if (!adding) await JS.InvokeVoidAsync("ipop.dropOrphanPopups");
     }
 
     private async Task LoadRowsAsync()
@@ -298,6 +300,8 @@
         if (existing is not null) { adding = false; flashKey = existing.Key; ladderFor = existing.Key; return; }
         if (await SendAsync(HttpMethod.Put, $"/api/calendar/delegates/{Uri.EscapeDataString(p.Nik)}", new { level = "titles" }))
         {
+            // The picker hands its <body> list back after its own render; close the add row only after that.
+            await Task.Delay(120);
             adding = false;
             await AfterChangeAsync("p:" + p.Nik, $"{p.Name} can now see your event titles. They've been notified.");
         }

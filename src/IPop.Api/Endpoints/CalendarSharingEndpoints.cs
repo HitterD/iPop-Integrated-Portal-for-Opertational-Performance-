@@ -290,8 +290,9 @@ public static class CalendarSharingEndpoints
 
     /// Access = my level (null = busy times only); Following = in my Calendars list. NowBusyUntil / NextBusyAt
     /// feed the "Free now · busy 14:00" line on person cards.
+    /// Id lets the page keep a reload-safe address without the NIK (/calendar/person/{id}).
     public record PersonDto(string Nik, string Name, string? Department, string? Site, string? Access, string AccessLabel,
-        bool Following, bool Self, DateTime? NowBusyUntil, DateTime? NextBusyAt);
+        bool Following, bool Self, DateTime? NowBusyUntil, DateTime? NextBusyAt, Guid Id = default);
 
     /// <paramref name="key"/> is a NIK or a user id (links in notifications use the id, keeping NIKs out of URLs).
     public static async Task<PersonDto?> LoadPersonAsync(IPopDbContext db, Guid viewerId, string key, CancellationToken ct)
@@ -309,7 +310,7 @@ public static class CalendarSharingEndpoints
             .Where(b => !b.AllDay && b.EndAt > now).OrderBy(b => b.StartAt).ToList();
         var current = timed.Where(b => b.StartAt <= now).Select(b => (DateTime?)b.EndAt).DefaultIfEmpty().Max();
         var next = timed.Where(b => b.StartAt > now).Select(b => (DateTime?)b.StartAt).FirstOrDefault();
-        return new PersonDto(u.Nik, u.Name, u.Dept, u.Site, level, CalendarAccess.ViewerLabel(level), following, self, current, next);
+        return new PersonDto(u.Nik, u.Name, u.Dept, u.Site, level, CalendarAccess.ViewerLabel(level), following, self, current, next, u.Id);
     }
 
     public enum AskResult { Sent, AlreadyAsked, NotFound, Self }

@@ -573,6 +573,14 @@ window.ipop = {
     window.addEventListener("resize", window.ipop._ppPlace);
     return true;
   },
+  /// People-picker lists whose picker was removed while the list sat on <body>.
+  dropOrphanPopups() {
+    // A list stays on <body> only while a picker is still showing results; with no picker left
+    // to own it (its host closed after a pick), it is stale.
+    if (document.querySelector(".member-picker-input input:focus")) return true;
+    document.querySelectorAll("body > .member-picker-pop").forEach(p => p.remove());
+    return true;
+  },
   closePopup() {
     if (window.ipop._ppPlace) {
       window.removeEventListener("scroll", window.ipop._ppPlace, true);
@@ -581,7 +589,9 @@ window.ipop = {
     }
     const pops = document.querySelectorAll(".member-picker-pop");
     pops.forEach(p => {
-      if (p._ppHost && p._ppHost !== p.parentElement) p._ppHost.appendChild(p);
+      if (!p._ppHost || p._ppHost === p.parentElement) return;
+      // The picker that owned it may already be gone (e.g. its row closed on pick): drop the orphan.
+      if (p._ppHost.isConnected) p._ppHost.appendChild(p); else p.remove();
     });
     return true;
   },

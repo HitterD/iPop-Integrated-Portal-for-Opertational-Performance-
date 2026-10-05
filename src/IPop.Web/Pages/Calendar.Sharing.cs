@@ -187,7 +187,7 @@ public partial class Calendar
     private async Task MeetWithAsync(string nik, string name, DateTime? start = null)
     {
         pop = null; otherMenu = null;
-        if (PersonMode) { pendingInvite = (nik, name, start); Nav.NavigateTo("/calendar"); return; }
+        if (PersonMode) { pendingInvite = (nik, name, start); anchor = (start ?? DateTime.Today).Date; Nav.NavigateTo("/calendar"); return; }
         OpenCreate(start ?? DefaultStart());
         AddPerson(new MemberSearchRow(nik, name, null, null));
         await Task.CompletedTask;
