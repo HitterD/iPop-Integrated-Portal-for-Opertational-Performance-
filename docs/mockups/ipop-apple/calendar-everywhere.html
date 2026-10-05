@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iPop — Calendar everywhere (mockup)</title>
+<style>
+  :root { --canvas:#e9e7e2; --surface:#fff; --surface-2:#faf9f7; --surface-3:#f4f2ef; --line:#edebe7; --line-2:#e2dfd9;
+    --ink:#191816; --ink-2:#5d5a54; --ink-3:#8f8c85; --accent:#2e9d6b; --accent-soft:#e7f4ed; --danger:#c2442e;
+    --warn:#a8760c; --warn-soft:#fdf6e7; --info:#2563eb; --info-soft:#eef4ff; --sh-pop:0 16px 40px -12px rgba(25,24,22,.22);
+    --p-a:#2563eb; --p-b:#b5528c; --p-c:#c27b1c; --p-d:#7c5cd6; --hol:#d9480f; --hol-soft:#fff0e6; }
+  [data-theme="dark"] { --canvas:#131211; --surface:#1c1b19; --surface-2:#232220; --surface-3:#201f1d; --line:#2c2a27; --line-2:#36342f;
+    --ink:#f2f0ec; --ink-2:#b5b1a9; --ink-3:#85817a; --accent:#4cd787; --accent-soft:#1d3428; --warn-soft:#3a2f17; --info-soft:#1a2540;
+    --sh-pop:0 16px 40px -12px rgba(0,0,0,.6); --p-a:#7aa7ff; --p-b:#e48bc0; --p-c:#e0b44a; --p-d:#a991f0; --hol:#ff8a4c; --hol-soft:#3a2416; }
+</style>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { background: var(--canvas); color: var(--ink); font-family: -apple-system, "Segoe UI", system-ui, sans-serif; margin: 0; font-size: 13.5px; }
+  svg.lucide { width: 16px; height: 16px; }
+  .mk-nav { position: sticky; top: 0; z-index: 50; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 10px 18px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .mk-nav b { margin-right: 8px; font-size: 14px; }
+  .mk-nav button { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .mk-nav button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .mk-nav .sp { flex: 1; }
+  .stage { display: none; padding: 28px; justify-content: center; align-items: flex-start; gap: 22px; flex-wrap: wrap; }
+  .stage.on { display: flex; }
+  .note { width: 310px; flex: none; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+  .note h3 { font-size: 14px; color: var(--ink); margin: 0 0 6px; }
+  .note li { margin-bottom: 6px; }
+  .note .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); margin-bottom: 8px; }
+  .note .was { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--warn-soft); color: var(--ink); font-size: 12.5px; }
+  .win { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh-pop); overflow: hidden; position: relative; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; white-space: nowrap; }
+  .btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.ghost { border-color: transparent; background: none; }
+  .btn.sm { height: 26px; font-size: 12px; padding: 0 9px; border-radius: 8px; }
+  .av { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; color: #fff; font-size: 9.5px; font-weight: 600; flex: none; }
+  .seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-3); border-radius: 10px; }
+  .seg button { border: 0; background: none; padding: 5px 11px; border-radius: 8px; font: inherit; font-size: 12.5px; color: var(--ink-2); display: inline-flex; gap: 5px; align-items: center; }
+  .seg button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+  /* drawer */
+  .drawer { width: 460px; height: 760px; display: flex; flex-direction: column; }
+  .dh { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .dh b { flex: 1; font-size: 15px; }
+  .src { display: flex; align-items: center; gap: 8px; margin: 12px 18px 0; padding: 8px 11px; border-radius: 10px; background: var(--info-soft); color: var(--info); font-size: 12.5px; animation: rise .3s ease-out; }
+  .src b { color: var(--ink); font-weight: 600; }
+  .src .x { margin-left: auto; color: var(--ink-3); }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+  .db { flex: 1; overflow: auto; padding: 12px 18px 16px; display: grid; gap: 12px; align-content: start; }
+  .title { font-size: 20px; font-weight: 600; border: 0; outline: 0; background: none; color: var(--ink); padding: 4px 0; font-family: inherit; width: 100%; }
+  .grp { border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-top: 1px solid var(--line); min-height: 42px; }
+  .row:first-child { border-top: 0; }
+  .row > svg.lucide { color: var(--ink-3); flex: none; }
+  .row .lb { width: 70px; color: var(--ink-2); font-size: 12.5px; flex: none; }
+  .row .ct { flex: 1; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line-2); font-size: 12.5px; }
+  .chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .chip.new { animation: pop .35s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes pop { from { transform: scale(.8); opacity: 0; } }
+  .pp { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 2px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line-2); font-size: 12.5px; }
+  .hint { font-size: 12px; color: var(--ink-3); }
+  .fat { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--surface); }
+  .fat h6 { margin: 0 0 8px; display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+  .lane { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; color: var(--ink-2); }
+  .track { position: relative; height: 16px; border-radius: 5px; background: var(--surface-3); }
+  .track i { position: absolute; top: 2px; bottom: 2px; border-radius: 4px; background: var(--ink-3); opacity: .55; }
+  .track i.h { background: var(--hol); opacity: .35; }
+  .track .pro { position: absolute; top: -2px; bottom: -2px; border: 2px solid var(--accent); border-radius: 6px; background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .sugg { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .sugg span { padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line-2); font-size: 11.5px; background: var(--surface); }
+  .sugg span.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  .df { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 18px; border-top: 1px solid var(--line); background: var(--surface-2); }
+
+  /* repeat popover */
+  .rep { position: absolute; width: 330px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-pop); padding: 12px; z-index: 10; animation: rise .2s ease-out; }
+  .rep h6 { margin: 0 0 8px; font-size: 13px; }
+  .days { display: flex; gap: 5px; margin: 10px 0; }
+  .days span { width: 34px; height: 30px; border-radius: 9px; display: grid; place-items: center; border: 1px solid var(--line-2); font-size: 12px; }
+  .days span.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .ends { display: grid; gap: 6px; margin-top: 6px; font-size: 12.5px; }
+  .ends label { display: flex; align-items: center; gap: 8px; }
+  .rd { width: 16px; height: 16px; border-radius: 50%; border: 1.6px solid var(--line-2); }
+  .rd.on { border: 5px solid var(--accent); }
+  .sum { margin-top: 10px; padding: 8px 10px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 600; }
+
+  /* scope dialog */
+  .dlg { width: 380px; padding: 18px; }
+  .dlg h4 { margin: 0 0 4px; font-size: 15px; }
+  .dlg p { margin: 0 0 12px; color: var(--ink-2); font-size: 12.5px; }
+  .opt { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 11px; margin-bottom: 8px; align-items: flex-start; }
+  .opt.on { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .opt b { display: block; font-size: 13px; }
+  .opt small { color: var(--ink-3); font-size: 12px; }
+
+  /* module strips */
+  .mod { width: 520px; }
+  .mod-h { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  .mod-h b { flex: 1; }
+  .ic { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; border: 0; background: none; color: var(--ink-2); position: relative; }
+  .ic.hl { background: var(--accent-soft); color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .menu { position: absolute; width: 230px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--sh-pop); padding: 5px; z-index: 5; }
+  .menu .mi { display: flex; align-items: center; gap: 9px; padding: 7px 9px; border-radius: 8px; font-size: 13px; }
+  .menu .mi.hl { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+  .bubble { max-width: 70%; padding: 8px 11px; border-radius: 14px; background: var(--surface-3); font-size: 13px; margin: 6px 14px; }
+  .evcard { margin: 8px 14px; border: 1px solid var(--line); border-radius: 13px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; background: var(--surface-2); }
+  .evcard .d { width: 42px; text-align: center; border-radius: 9px; background: var(--surface); border: 1px solid var(--line); padding: 3px 0; }
+  .evcard .d small { display: block; font-size: 10px; color: var(--danger); font-weight: 700; }
+  .evcard .d b { font-size: 16px; }
+  .evcard .t { flex: 1; }
+  .evcard .t small { color: var(--ink-3); display: block; }
+
+  /* dashboard */
+  .dash { width: 520px; padding: 16px; }
+  .dash h4 { margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .dash h4 a { margin-left: auto; font-size: 12px; color: var(--accent); text-decoration: none; font-weight: 500; }
+  .it { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; }
+  .it:hover { background: var(--surface-2); }
+  .it .tm { width: 48px; font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .it .bar { width: 3px; align-self: stretch; border-radius: 3px; }
+  .it .tt { flex: 1; }
+  .it .tt small { display: block; color: var(--ink-3); font-size: 11.5px; }
+  .pill { font-size: 10.5px; font-weight: 600; padding: 1px 6px; border-radius: 6px; }
+  .empty { text-align: center; padding: 22px 10px; color: var(--ink-3); }
+  .empty .bi { width: 44px; height: 44px; border-radius: 14px; margin: 0 auto 8px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+
+  /* phone */
+  .phone { width: 360px; height: 640px; border-radius: 34px; border: 10px solid #111; overflow: hidden; display: flex; flex-direction: column; background: var(--surface); }
+  .phone .bd { flex: 1; background: var(--surface-2); }
+  .tabs { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--line); padding: 6px 0 10px; background: var(--surface); }
+  .tabs span { display: grid; justify-items: center; gap: 2px; font-size: 10px; color: var(--ink-3); }
+  .tabs span.on { color: var(--accent); font-weight: 600; }
+  .tabs span.new svg { animation: bob 1.4s ease-in-out infinite alternate; }
+  @keyframes bob { to { transform: translateY(-2px); } }
+</style>
+</head>
+<body>
+<div class="mk-nav">
+  <b>Calendar everywhere</b>
+  <button data-s="s1" class="on">1 · One meeting form</button>
+  <button data-s="s2">2 · Repeat</button>
+  <button data-s="s3">3 · From Chat</button>
+  <button data-s="s4">4 · From Mail &amp; Projects</button>
+  <button data-s="s5">5 · Dashboard + holidays</button>
+  <button data-s="s6">6 · Mobile</button>
+  <span class="sp"></span>
+  <button id="theme">◐ Dark</button>
+</div>
+
+<!-- 1 · one form, prefilled from a source -->
+<section class="stage on" id="s1">
+  <div class="win drawer">
+    <div class="dh"><i data-lucide="calendar-plus"></i><b>New meeting</b><i data-lucide="x"></i></div>
+    <div class="src"><i data-lucide="message-circle"></i><span>From chat <b>ICT Team</b> · 6 members added</span><span class="x"><i data-lucide="x"></i></span></div>
+    <div class="db">
+      <input class="title" value="Server migration check-in">
+      <div class="grp">
+        <div class="row"><i data-lucide="clock"></i><span class="lb">When</span><span class="ct"><span class="chip">Wed 7 Oct</span><span class="chip">13:00</span>→<span class="chip">14:00</span></span></div>
+        <div class="row"><i data-lucide="repeat"></i><span class="lb">Repeat</span><span class="ct"><span class="chip">Doesn't repeat</span></span></div>
+        <div class="row"><i data-lucide="bell"></i><span class="lb">Alert</span><span class="ct"><span class="chip">15 minutes before</span></span></div>
+      </div>
+      <div class="grp">
+        <div class="row"><i data-lucide="users"></i><span class="lb">People</span><span class="ct">
+          <span class="pp"><span class="av" style="background:var(--p-a)">AA</span>Adrio</span><span class="pp"><span class="av" style="background:var(--p-b)">RK</span>Rina</span><span class="pp"><span class="av" style="background:var(--p-c)">BS</span>Budi</span><span class="hint">+3</span></span></div>
+        <div class="row"><i data-lucide="map-pin"></i><span class="lb">Where</span><span class="ct"><span class="seg"><button class="on"><i data-lucide="video"></i>Online</button><button><i data-lucide="building"></i>Room</button></span></span></div>
+        <div class="row"><i data-lucide="eye"></i><span class="lb">Who sees</span><span class="ct"><span class="seg"><button class="on"><i data-lucide="eye"></i>Normal</button><button><i data-lucide="lock"></i>Private</button></span></span></div>
+      </div>
+      <div class="fat"><h6><i data-lucide="calendar-search"></i> Find a time · Wed 7 Oct</h6>
+        <div class="lane"><span>You</span><span class="track"><i style="left:10%;width:15%"></i><span class="pro" style="left:50%;width:10%"></span></span></div>
+        <div class="lane"><span>Adrio</span><span class="track"><i style="left:20%;width:20%"></i><span class="pro" style="left:50%;width:10%"></span></span></div>
+        <div class="lane"><span>Rina</span><span class="track"><i style="left:65%;width:15%"></i><span class="pro" style="left:50%;width:10%"></span></span></div>
+        <div class="sugg"><span>10:00</span><span class="on">13:00</span><span>15:30</span><span>Thu 09:00</span></div></div>
+    </div>
+    <div class="df"><button class="btn">Cancel</button><button class="btn pri"><i data-lucide="send"></i> Send invites</button></div>
+  </div>
+  <div class="note">
+    <span class="tag">One form everywhere</span>
+    <h3>Same form from every module</h3>
+    <ul>
+      <li>Calendar, Calls, Chat, Mail, Projects, Dashboard, Tickets, Notes and people cards all open <b>this</b> form.</li>
+      <li>The blue strip says where it came from and what was filled in (people, title, time). Its × clears the prefill.</li>
+      <li>Every way in gets <b>Find a time</b>, <b>Repeat</b>, <b>Online/Room</b> and <b>Normal/Private</b>.</li>
+      <li>Saved meetings always send invites and reminders the same way; chat members who left are not invited.</li>
+    </ul>
+    <div class="was">Removed: the separate Calls "Schedule" form and the Chat "Room event" form (fixed 1 hour, no invites). Mail's "Meeting invite" toggle stays, but uses the same rules.</div>
+  </div>
+</section>
+
+<!-- 2 · repeat -->
+<section class="stage" id="s2">
+  <div class="win drawer" style="height:600px">
+    <div class="dh"><i data-lucide="calendar-plus"></i><b>New meeting</b><i data-lucide="x"></i></div>
+    <div class="db">
+      <input class="title" value="ICT weekly sync">
+      <div class="grp">
+        <div class="row"><i data-lucide="clock"></i><span class="lb">When</span><span class="ct"><span class="chip">Mon 12 Oct</span><span class="chip">09:00</span>→<span class="chip">09:30</span></span></div>
+        <div class="row"><i data-lucide="repeat"></i><span class="lb">Repeat</span><span class="ct"><span class="chip on">Weekly on Mon, Thu</span></span></div>
+      </div>
+    </div>
+    <div class="rep" style="left:110px;top:170px">
+      <h6>Repeat</h6>
+      <div class="seg"><button>Daily</button><button class="on">Weekly</button><button>Monthly</button></div>
+      <div class="days"><span class="on">M</span><span>T</span><span>W</span><span class="on">T</span><span>F</span><span>S</span><span>S</span></div>
+      <div class="ends"><span class="hint">Ends</span>
+        <label><span class="rd"></span> Never</label>
+        <label><span class="rd on"></span> On <span class="chip">31 Dec 2026</span></label>
+        <label><span class="rd"></span> After <span class="chip">10</span> times</label></div>
+      <div class="sum">Every Mon and Thu, 09:00, until 31 Dec · 23 meetings</div>
+    </div>
+  </div>
+  <div class="win dlg">
+    <h4>Change a repeating meeting</h4>
+    <p>"ICT weekly sync" repeats every Mon and Thu.</p>
+    <div class="opt on"><span class="rd on"></span><span><b>This meeting</b><small>Only Thu 15 Oct changes</small></span></div>
+    <div class="opt"><span class="rd"></span><span><b>This and following</b><small>From Thu 15 Oct on</small></span></div>
+    <div class="opt"><span class="rd"></span><span><b>All meetings</b><small>Every one in the series</small></span></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px"><button class="btn">Cancel</button><button class="btn pri">Save</button></div>
+  </div>
+  <div class="note">
+    <span class="tag">New</span>
+    <h3>Repeating events</h3>
+    <ul>
+      <li><b>Daily</b>, <b>Weekly</b> (pick days) or <b>Monthly</b> (same date, or e.g. "first Monday").</li>
+      <li>Ends never, on a date, or after N times. The green line says it in plain words.</li>
+      <li>Changing or cancelling one asks: <b>this meeting / this and following / all</b>. Invites and reminders follow the choice.</li>
+      <li>Holidays are not skipped automatically — they show on the calendar so you can move or cancel that one.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 3 · chat -->
+<section class="stage" id="s3">
+  <div class="win mod" style="height:520px">
+    <div class="mod-h"><span class="av" style="background:var(--p-a);width:30px;height:30px">IT</span><b>ICT Team<br><small style="color:var(--ink-3);font-weight:400">6 members</small></b>
+      <span class="ic"><i data-lucide="phone"></i></span><span class="ic hl"><i data-lucide="calendar-plus"></i></span><span class="ic"><i data-lucide="more-horizontal"></i></span></div>
+    <div class="bubble">Can we check the server migration this week?</div>
+    <div class="bubble" style="margin-left:auto;background:var(--accent-soft)">Sure, let me set it up</div>
+    <div class="evcard"><span class="d"><small>OCT</small><b>7</b></span><span class="t"><b>Server migration check-in</b><small>Wed 13:00–14:00 · Online · 4 of 6 going</small></span>
+      <span class="seg"><button class="on">Yes</button><button>Maybe</button><button>No</button></span></div>
+    <div class="menu" style="right:60px;top:120px">
+      <div class="mi"><i data-lucide="reply"></i> Reply</div><div class="mi"><i data-lucide="copy"></i> Copy</div>
+      <hr><div class="mi hl"><i data-lucide="calendar-plus"></i> Create event from message</div>
+    </div>
+    <div class="menu" style="left:14px;bottom:14px">
+      <div class="mi"><i data-lucide="image"></i> Photo or file</div><div class="mi"><i data-lucide="bar-chart-3"></i> Poll</div>
+      <div class="mi hl"><i data-lucide="calendar-plus"></i> Schedule meeting</div>
+    </div>
+  </div>
+  <div class="note">
+    <span class="tag">Chat</span>
+    <h3>Three ways in, one form</h3>
+    <ul>
+      <li><b>Header</b> calendar+ icon: meeting with this group (or this person in a DM).</li>
+      <li><b>Composer +</b> → Schedule meeting.</li>
+      <li><b>Right-click a message</b> → Create event from message: its text becomes the title.</li>
+      <li>The meeting card in the chat now has <b>Yes / Maybe / No</b> right in it and opens the event in Calendar.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 4 · mail + projects -->
+<section class="stage" id="s4">
+  <div class="win mod">
+    <div class="mod-h"><b>Re: Budget review Q4</b><span class="btn sm"><i data-lucide="reply"></i> Reply</span><span class="btn sm"><i data-lucide="forward"></i></span>
+      <span class="btn sm" style="border-color:var(--accent);color:var(--accent);background:var(--accent-soft)"><i data-lucide="calendar-plus"></i> Schedule meeting</span></div>
+    <div style="padding:12px 14px;color:var(--ink-2);font-size:12.5px">From Rina Kartika · to you, Adrio, Budi<br><br>Let's finalize the numbers before Friday…</div>
+    <div class="evcard" style="margin-top:0"><span class="d"><small>OCT</small><b>9</b></span><span class="t"><b>Meeting invite: Budget review</b><small>Fri 10:00 · Room 2 · <span style="color:var(--danger)">Clashes with "Vendor call"</span></small></span>
+      <span class="btn sm"><i data-lucide="calendar"></i> Open</span></div>
+  </div>
+  <div class="win mod">
+    <div class="mod-h"><b>Task · Migrate file server</b><span class="pill" style="background:var(--warn-soft);color:var(--warn)">Due Thu 16:00</span></div>
+    <div style="padding:10px 14px;display:flex;gap:8px;flex-wrap:wrap">
+      <span class="btn sm" style="border-color:var(--accent);color:var(--accent);background:var(--accent-soft)"><i data-lucide="calendar-clock"></i> Block time on my calendar</span>
+      <span class="btn sm"><i data-lucide="users"></i> Meeting with assignees</span></div>
+  </div>
+  <div class="note">
+    <span class="tag">Mail · Projects · Tickets · Notes</span>
+    <h3>Schedule from where the work is</h3>
+    <ul>
+      <li><b>Mail</b>: Schedule meeting — everyone on the thread is invited, subject becomes the title. Invites show clashes and open in Calendar.</li>
+      <li><b>Projects</b>: Block time (a private 1-hour block before the due time) or Meeting with assignees / project members.</li>
+      <li><b>Tickets, Notes</b>: Schedule follow-up, linking back to the ticket or page.</li>
+      <li><b>People</b> (card, Directory, Ctrl K): "Invite to meeting" next to "Calendar".</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 5 · dashboard + holidays -->
+<section class="stage" id="s5">
+  <div class="win dash">
+    <h4><i data-lucide="calendar-days"></i> Up next <a href="#">Open calendar</a></h4>
+    <div class="it"><span class="tm">09:00</span><span class="bar" style="background:var(--p-d)"></span><span class="tt"><b>ICT weekly sync</b><small><i data-lucide="repeat" style="width:11px;height:11px"></i> Weekly · Online</small></span><span class="btn sm">Join</span></div>
+    <div class="it"><span class="tm">11:00</span><span class="bar" style="background:#c2410c"></span><span class="tt"><b>Ticket #4821 due</b><small>Printer 3rd floor · iDesk</small></span></div>
+    <div class="it"><span class="tm">16:00</span><span class="bar" style="background:var(--warn)"></span><span class="tt"><b>Migrate file server</b><small>Task due · Infra project</small></span></div>
+    <div class="it"><span class="tm">All day</span><span class="bar" style="background:var(--hol)"></span><span class="tt"><b>Maulid Nabi</b><small>National holiday · tomorrow</small></span><span class="pill" style="background:var(--hol-soft);color:var(--hol)">Holiday</span></div>
+  </div>
+  <div class="win dash">
+    <h4><i data-lucide="calendar-days"></i> Up next</h4>
+    <div class="empty"><div class="bi"><i data-lucide="sun"></i></div><b style="color:var(--ink)">Your day is clear</b><div style="margin:4px 0 12px">Nothing else scheduled today.</div>
+      <span class="btn pri"><i data-lucide="plus"></i> New event</span></div>
+  </div>
+  <div class="note">
+    <span class="tag">Dashboard · Holidays</span>
+    <h3>One source of truth</h3>
+    <ul>
+      <li>Up next uses the same data as Calendar: meetings, events, tasks (at their due time), milestones, tickets, holidays.</li>
+      <li>Each row opens the item itself; meetings starting soon get <b>Join</b>.</li>
+      <li><b>Holidays</b> are set by admins (Admin → Calendar), shown to everyone, and Find a time avoids them.</li>
+      <li>Declined meetings no longer clutter the calendar.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 6 · mobile -->
+<section class="stage" id="s6">
+  <div class="phone">
+    <div style="padding:14px;border-bottom:1px solid var(--line);font-weight:600">Dashboard</div>
+    <div class="bd"></div>
+    <div class="tabs">
+      <span><i data-lucide="layout-grid"></i>Home</span><span><i data-lucide="message-circle"></i>Chat</span><span><i data-lucide="mail"></i>Mail</span>
+      <span class="on new"><i data-lucide="calendar"></i>Calendar</span><span><i data-lucide="kanban"></i>Projects</span>
+    </div>
+  </div>
+  <div class="note">
+    <span class="tag">Phone</span>
+    <h3>Calendar in the tab bar</h3>
+    <ul><li>A fifth tab, so the calendar is one tap away instead of under More.</li></ul>
+  </div>
+</section>
+
+<script>
+document.querySelectorAll('.mk-nav [data-s]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.mk-nav [data-s]').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.stage').forEach(s => s.classList.toggle('on', s.id === b.dataset.s));
+});
+document.getElementById('theme').onclick = () => { const d = document.documentElement; d.dataset.theme = d.dataset.theme === 'dark' ? '' : 'dark'; };
+lucide.createIcons();
+</script>
+</body>
+</html>
