@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iPop — ICT Tickets via iDesk (mockup)</title>
+<style>
+  :root { --canvas:#e9e7e2; --surface:#fff; --surface-2:#faf9f7; --surface-3:#f4f2ef; --line:#edebe7; --line-2:#e2dfd9;
+    --ink:#191816; --ink-2:#5d5a54; --ink-3:#8f8c85; --accent:#2e9d6b; --accent-soft:#e7f4ed; --danger:#c2442e; --danger-soft:#fbeeea;
+    --warn:#a8760c; --warn-soft:#fdf6e7; --info:#2563eb; --info-soft:#eef4ff; --violet:#7c4dd6; --violet-soft:#f2ecfd;
+    --sh-pop:0 16px 40px -12px rgba(25,24,22,.22); --sh-card:0 1px 2px rgba(25,24,22,.05), 0 4px 14px -6px rgba(25,24,22,.08);
+    --mod:#0a84ff; }
+  [data-theme="dark"] { --canvas:#131211; --surface:#1c1b19; --surface-2:#232220; --surface-3:#201f1d; --line:#2c2a27; --line-2:#36342f;
+    --ink:#f2f0ec; --ink-2:#b5b1a9; --ink-3:#85817a; --accent:#4cd787; --accent-soft:#1d3428; --danger:#ff7a63; --danger-soft:#3a1f1a;
+    --warn:#e0b44a; --warn-soft:#3a2f17; --info:#7aa7ff; --info-soft:#1a2540; --violet:#b69cff; --violet-soft:#2a2240;
+    --sh-pop:0 16px 40px -12px rgba(0,0,0,.6); --sh-card:0 1px 2px rgba(0,0,0,.3); --mod:#409cff; }
+</style>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { background: var(--canvas); color: var(--ink); font-family: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif; margin: 0; font-size: 13.5px; -webkit-font-smoothing: antialiased; }
+  svg.lucide { width: 16px; height: 16px; stroke-width: 1.9; }
+  .mk-nav { position: sticky; top: 0; z-index: 50; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 10px 18px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .mk-nav b { margin-right: 8px; font-size: 14px; }
+  .mk-nav button { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12.5px; cursor: pointer; }
+  .mk-nav button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .mk-nav .sp { flex: 1; }
+  .stage { display: none; padding: 28px; justify-content: center; align-items: flex-start; }
+  .stage.on { display: flex; }
+  .note { width: 290px; flex: none; margin-left: 24px; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+  .note h3 { font-size: 14px; color: var(--ink); margin: 0 0 6px; }
+  .note li { margin-bottom: 6px; }
+  .note .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); margin-bottom: 8px; }
+
+  .win { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh-pop); overflow: hidden; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .btn.ghost { border-color: transparent; background: none; color: var(--ink-2); }
+  .btn.sm { height: 28px; padding: 0 10px; font-size: 12.5px; border-radius: 8px; }
+  .seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-3); border-radius: 10px; }
+  .seg button { border: 0; background: none; padding: 5px 12px; border-radius: 8px; font: inherit; font-size: 12.5px; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
+  .seg button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .seg button small { color: var(--ink-3); font-weight: 500; margin-left: 3px; }
+
+  /* app shell */
+  .app { width: 1180px; height: 740px; display: grid; grid-template-columns: 210px 1fr; }
+  .rail { background: var(--surface-2); border-right: 1px solid var(--line); padding: 14px 10px; display: flex; flex-direction: column; gap: 1px; }
+  .rail .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; padding: 2px 8px 12px; }
+  .rail .brand i { width: 24px; height: 24px; border-radius: 7px; background: linear-gradient(135deg,#34c77b,#1f8a5b); display: inline-block; }
+  .rail h6 { margin: 12px 8px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
+  .ni { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 8px; border-radius: 8px; color: var(--ink-2); font-size: 13px; }
+  .ni.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: var(--sh-card); }
+  .ni.on svg { color: var(--mod); }
+  .ni .bd { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--warn); color: #fff; font-size: 10.5px; font-weight: 700; display: grid; place-items: center; }
+
+  /* list + detail (Mail-style split) */
+  .split { display: grid; grid-template-columns: 380px 1fr; min-width: 0; height: 100%; }
+  .lst { border-right: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; }
+  .lst-h { padding: 16px 16px 10px; }
+  .lst-h .row { display: flex; align-items: center; gap: 8px; }
+  .lst-h h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.01em; flex: 1; }
+  .lst-h .sub { color: var(--ink-3); font-size: 12px; margin: 2px 0 12px; display: flex; align-items: center; gap: 6px; }
+  .lst-h .sub svg { width: 12px; height: 12px; }
+  .search { display: flex; align-items: center; gap: 7px; height: 32px; padding: 0 10px; background: var(--surface-3); border-radius: 9px; color: var(--ink-3); margin-top: 10px; font-size: 13px; }
+  .search svg { width: 14px; height: 14px; }
+  .lst-b { overflow: auto; flex: 1; padding: 4px 8px 12px; }
+  .sec { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; margin: 12px 8px 4px; }
+  .tk { position: relative; display: grid; grid-template-columns: 10px 1fr auto; gap: 4px 10px; padding: 10px 10px 10px 8px; border-radius: 11px; cursor: default; }
+  .tk + .tk::before { content: ""; position: absolute; left: 26px; right: 10px; top: 0; border-top: 1px solid var(--line); }
+  .tk.sel { background: var(--mod); color: #fff; }
+  .tk.sel::before, .tk.sel + .tk::before { display: none; }
+  .tk.sel .m, .tk.sel .t2, .tk.sel time { color: rgba(255,255,255,.82) !important; }
+  .tk.sel .pill { background: rgba(255,255,255,.22) !important; color: #fff !important; }
+  .tk .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; }
+  .tk .t1 { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tk time { font-size: 12px; color: var(--ink-3); }
+  .tk .t2 { grid-column: 2 / 4; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-2); }
+  .tk .m { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 11.5px; color: var(--ink-3); }
+  .tk .t2 .sp { flex: 1; }
+  .pill { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+  .pill svg { width: 12px; height: 12px; }
+  .s-open { background: var(--surface-3); color: var(--ink-2); }
+  .s-prog { background: var(--info-soft); color: var(--info); }
+  .s-vend { background: var(--violet-soft); color: var(--violet); }
+  .s-res { background: var(--warn-soft); color: var(--warn); }
+  .s-closed { background: var(--accent-soft); color: var(--accent); }
+  .s-cancel { background: var(--surface-3); color: var(--ink-3); }
+  .s-send { background: var(--surface-3); color: var(--ink-3); }
+  .s-fail { background: var(--danger-soft); color: var(--danger); }
+  .src-tag { font-size: 10.5px; font-weight: 600; color: var(--ink-3); border: 1px solid var(--line-2); border-radius: 5px; padding: 0 5px; }
+
+  .det { overflow: auto; min-width: 0; }
+  .det-h { position: sticky; top: 0; background: color-mix(in srgb, var(--surface) 85%, transparent); backdrop-filter: blur(20px); display: flex; align-items: center; gap: 8px; padding: 12px 22px; border-bottom: 1px solid var(--line); z-index: 2; }
+  .det-h .sp { flex: 1; }
+  .det-b { padding: 22px 28px 40px; max-width: 720px; }
+  .crumb { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 8px; }
+  .det-b h2 { font-size: 24px; font-weight: 700; letter-spacing: -.015em; margin: 6px 0 14px; line-height: 1.2; }
+  .callout { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 14px; background: var(--warn-soft); color: var(--ink); margin-bottom: 18px; }
+  .callout > svg { color: var(--warn); width: 20px; height: 20px; flex: none; margin-top: 1px; }
+  .callout b { display: block; margin-bottom: 2px; }
+  .callout p { margin: 0 0 10px; color: var(--ink-2); font-size: 13px; }
+  .callout.info { background: var(--info-soft); } .callout.info > svg { color: var(--info); }
+  .callout.err { background: var(--danger-soft); } .callout.err > svg { color: var(--danger); }
+
+  /* progress stepper */
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin: 4px 0 22px; }
+  .st { position: relative; padding-top: 22px; font-size: 12px; color: var(--ink-3); }
+  .st::before { content: ""; position: absolute; top: 6px; left: 0; right: 0; height: 3px; background: var(--line-2); }
+  .st:first-child::before { left: 7px; border-radius: 3px 0 0 3px; } .st:last-child::before { right: 0; border-radius: 0 3px 3px 0; }
+  .st i { position: absolute; top: 0; left: 0; width: 15px; height: 15px; border-radius: 50%; background: var(--surface); border: 3px solid var(--line-2); z-index: 1; }
+  .st.done::before, .st.cur::before { background: var(--accent); }
+  .st.done i { background: var(--accent); border-color: var(--accent); }
+  .st.cur i { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  .st.done, .st.cur { color: var(--ink); } .st.cur { font-weight: 600; }
+  .st small { display: block; color: var(--ink-3); font-weight: 400; font-size: 11px; }
+
+  .grp { background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; margin-bottom: 18px; }
+  .grp .r { display: grid; grid-template-columns: 150px 1fr; gap: 10px; padding: 10px 16px; font-size: 13px; align-items: center; }
+  .grp .r + .r { border-top: 1px solid var(--line); }
+  .grp .r > span:first-child { color: var(--ink-3); }
+  .grp .r .v { display: flex; align-items: center; gap: 8px; }
+  .av { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; color: #fff; font-size: 10px; font-weight: 600; flex: none; }
+  .sla-ok { color: var(--accent); font-weight: 600; } .sla-warn { color: var(--warn); font-weight: 600; }
+  h4.h { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: var(--ink-2); }
+  .desc { font-size: 13.5px; line-height: 1.55; margin: 0 0 18px; white-space: pre-line; }
+  .files { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 22px; }
+  .fchip { display: flex; align-items: center; gap: 8px; padding: 6px 10px 6px 6px; border: 1px solid var(--line); border-radius: 10px; font-size: 12.5px; background: var(--surface); }
+  .fchip .ic { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; background: var(--info-soft); color: var(--info); }
+  .fchip small { display: block; color: var(--ink-3); font-size: 11px; }
+  .tl { position: relative; padding-left: 26px; }
+  .tl::before { content: ""; position: absolute; left: 8px; top: 6px; bottom: 6px; width: 2px; background: var(--line); }
+  .ev { position: relative; padding: 0 0 14px; font-size: 13px; }
+  .ev .b { position: absolute; left: -26px; top: 0; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); border: 2px solid var(--line-2); }
+  .ev .b svg { width: 10px; height: 10px; stroke-width: 3; }
+  .ev small { display: block; color: var(--ink-3); font-size: 11.5px; margin-top: 1px; }
+  .ev.hot .b { border-color: var(--warn); color: var(--warn); }
+  .ev.ok .b { border-color: var(--accent); color: var(--accent); }
+  .ev.inf .b { border-color: var(--info); color: var(--info); }
+  .foot { margin-top: 18px; font-size: 12px; color: var(--ink-3); display: flex; gap: 6px; align-items: center; }
+  .foot svg { width: 13px; height: 13px; }
+
+  /* form */
+  .formwrap { overflow: auto; height: 100%; background: var(--surface-2); }
+  .form-h { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 8px; padding: 12px 24px; background: color-mix(in srgb, var(--surface-2) 85%, transparent); backdrop-filter: blur(20px); border-bottom: 1px solid var(--line); }
+  .form-h .t { font-weight: 600; font-size: 14px; } .form-h .sp { flex: 1; }
+  .form-h .saved { font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 5px; }
+  .form-h .saved svg { width: 13px; height: 13px; }
+  .form { max-width: 680px; margin: 0 auto; padding: 24px 0 60px; }
+  .form h1 { font-size: 26px; font-weight: 700; letter-spacing: -.015em; margin: 0 0 4px; }
+  .form .lead { color: var(--ink-2); margin: 0 0 22px; }
+  .fs-t { font-size: 12px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; margin: 22px 4px 8px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--sh-card); }
+  .card .f { padding: 12px 16px; }
+  .card .f + .f { border-top: 1px solid var(--line); }
+  .card label.l { display: block; font-size: 12.5px; color: var(--ink-2); margin-bottom: 6px; font-weight: 500; }
+  .card label.l em { color: var(--danger); font-style: normal; }
+  .inp { width: 100%; height: 36px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font: inherit; font-size: 13.5px; }
+  .inp.ta { height: 110px; padding: 10px 12px; resize: none; line-height: 1.5; }
+  .inp:focus, .inp.fo { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .hint { font-size: 11.5px; color: var(--ink-3); margin-top: 5px; display: flex; justify-content: space-between; }
+  .modg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .mod { padding: 12px; border: 1.5px solid var(--line-2); border-radius: 12px; background: var(--surface); font-size: 12.5px; }
+  .mod .ic { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: #fff; margin-bottom: 8px; }
+  .mod b { display: block; font-size: 13px; margin-bottom: 1px; }
+  .mod span { color: var(--ink-3); font-size: 11.5px; }
+  .mod.on { border-color: var(--mod); box-shadow: 0 0 0 3px color-mix(in srgb, var(--mod) 18%, transparent); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface); font-size: 13px; }
+  .chip svg { width: 14px; height: 14px; color: var(--ink-3); }
+  .chip.on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+  .chip.on svg { color: var(--surface); }
+  .prio { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; background: var(--surface-3); padding: 3px; border-radius: 10px; }
+  .prio button { border: 0; background: none; height: 30px; border-radius: 8px; font: inherit; font-size: 13px; color: var(--ink-2); display: flex; align-items: center; justify-content: center; gap: 6px; }
+  .prio button i { width: 7px; height: 7px; border-radius: 50%; }
+  .prio button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .drop { border: 1.5px dashed var(--line-2); border-radius: 12px; padding: 16px; text-align: center; color: var(--ink-3); font-size: 12.5px; }
+  .drop svg { width: 22px; height: 22px; display: block; margin: 0 auto 6px; color: var(--ink-3); }
+  .drop b { color: var(--accent); }
+  .att { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); margin-top: 8px; font-size: 12.5px; }
+  .att .ic { width: 30px; height: 30px; border-radius: 7px; display: grid; place-items: center; background: var(--info-soft); color: var(--info); flex: none; }
+  .att .nm { flex: 1; } .att small { display: block; color: var(--ink-3); font-size: 11px; }
+  .att.bad { background: var(--danger-soft); } .att.bad .ic { background: transparent; color: var(--danger); } .att.bad small { color: var(--danger); }
+  .slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .slot { height: 34px; border-radius: 9px; border: 1px solid var(--line-2); display: grid; place-items: center; font-size: 13px; font-variant-numeric: tabular-nums; background: var(--surface); }
+  .slot.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .slot.off { color: var(--ink-3); background: var(--surface-3); text-decoration: line-through; }
+  .slots-l { font-size: 11px; color: var(--ink-3); margin: 8px 0 5px; }
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; font-size: 12px; text-align: center; }
+  .cal span { height: 28px; display: grid; place-items: center; border-radius: 8px; }
+  .cal .h { color: var(--ink-3); font-size: 10.5px; font-weight: 600; }
+  .cal .x { color: var(--line-2); } .cal .t { color: var(--accent); font-weight: 700; }
+  .cal .s { background: var(--accent); color: #fff; font-weight: 700; }
+  .crit { border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent); background: var(--danger-soft); border-radius: 12px; padding: 12px 14px; margin-top: 10px; }
+  .crit label { color: var(--danger) !important; display: flex !important; align-items: center; gap: 6px; }
+  .submitbar { display: flex; align-items: center; gap: 10px; margin-top: 24px; }
+  .submitbar .sp { flex: 1; }
+  .submitbar small { color: var(--ink-3); font-size: 12px; }
+
+  /* sheet / toast / widget */
+  .scrim { position: absolute; inset: 0; background: rgba(25,24,22,.25); display: grid; place-items: center; }
+  .sheet { width: 400px; background: var(--surface); border-radius: 18px; box-shadow: var(--sh-pop); padding: 26px 24px 20px; text-align: center; }
+  .sheet .big { width: 56px; height: 56px; border-radius: 16px; margin: 0 auto 14px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+  .sheet .big svg { width: 28px; height: 28px; }
+  .sheet h3 { margin: 0 0 6px; font-size: 17px; }
+  .sheet p { margin: 0 0 6px; color: var(--ink-2); font-size: 13px; line-height: 1.5; }
+  .sheet .num { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 15px; font-weight: 600; background: var(--surface-3); padding: 8px; border-radius: 10px; margin: 12px 0 16px; }
+  .sheet .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .toast { width: 360px; background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(24px); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--sh-pop); padding: 12px 14px; display: flex; gap: 11px; font-size: 13px; }
+  .toast .ai { width: 34px; height: 34px; border-radius: 9px; background: var(--mod); color: #fff; display: grid; place-items: center; flex: none; }
+  .toast b { display: block; } .toast span { color: var(--ink-2); font-size: 12.5px; }
+  .toast small { margin-left: auto; color: var(--ink-3); font-size: 11px; }
+  .wdg { width: 340px; background: var(--surface); border-radius: 22px; box-shadow: var(--sh-card); border: 1px solid var(--line); padding: 16px; }
+  .wdg-h { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .wdg-h .ai { width: 26px; height: 26px; border-radius: 8px; background: var(--mod); color: #fff; display: grid; place-items: center; }
+  .wdg-h .ai svg { width: 14px; height: 14px; }
+  .wdg-h b { flex: 1; font-size: 14px; }
+  .wdg-n { display: flex; gap: 10px; margin-bottom: 12px; }
+  .wdg-n div { flex: 1; background: var(--surface-3); border-radius: 12px; padding: 9px 11px; }
+  .wdg-n b { font-size: 22px; font-weight: 700; display: block; line-height: 1.1; }
+  .wdg-n span { font-size: 11.5px; color: var(--ink-3); }
+  .wdg-n .w b { color: var(--warn); }
+  .wr { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
+  .wr .nm { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .empty { display: grid; place-items: center; text-align: center; height: 100%; color: var(--ink-2); padding: 40px; }
+  .empty .big { width: 64px; height: 64px; border-radius: 18px; background: color-mix(in srgb, var(--mod) 14%, transparent); color: var(--mod); display: grid; place-items: center; margin: 0 auto 14px; }
+  .empty .big svg { width: 30px; height: 30px; }
+  .empty h3 { margin: 0 0 6px; color: var(--ink); font-size: 17px; }
+  .empty p { margin: 0 0 16px; max-width: 320px; font-size: 13px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<nav class="mk-nav">
+  <b>Tickets</b>
+  <button data-s="s1" class="on">1 · My tickets + detail</button>
+  <button data-s="s2">2 · New ticket</button>
+  <button data-s="s3">3 · Hardware installation</button>
+  <button data-s="s4">4 · Sent / Sending / Failed</button>
+  <button data-s="s5">5 · Not in iDesk</button>
+  <button data-s="s6">6 · Dashboard, push, empty</button>
+  <span class="sp"></span>
+  <button id="theme">Light / dark</button>
+</nav>
+
+<!-- ============ 1. list + detail ============ -->
+<section class="stage on" id="s1">
+  <div class="win app">
+    <div class="rail" data-rail></div>
+    <div class="split">
+      <div class="lst">
+        <div class="lst-h">
+          <div class="row"><h1>Tickets</h1><button class="btn pri sm"><i data-lucide="plus"></i>New ticket</button></div>
+          <div class="sub"><i data-lucide="refresh-cw"></i>ICT · synced with iDesk just now</div>
+          <div class="seg"><button class="on">Open <small>4</small></button><button>All <small>11</small></button></div>
+          <div class="search"><i data-lucide="search"></i>Search number or title</div>
+        </div>
+        <div class="lst-b">
+          <div class="sec">Needs you</div>
+          <div class="tk sel"><span class="dot" style="background:#fff"></span><span class="t1">Printer lantai 3 tidak bisa scan ke email</span><time>09:42</time>
+            <div class="t2"><span class="pill s-res"><i data-lucide="hand"></i>Please confirm</span><span class="m">031026-HW-0014</span></div></div>
+          <div class="sec">In progress</div>
+          <div class="tk"><span class="dot" style="background:var(--info)"></span><span class="t1">Wifi lantai 2 mati</span><time>Yesterday</time>
+            <div class="t2"><span class="pill s-prog">In progress</span><span class="m">041026-NET-0003</span><span class="sp"></span><span class="pill" style="background:var(--danger-soft);color:var(--danger)">High</span></div></div>
+          <div class="tk"><span class="dot" style="background:var(--violet)"></span><span class="t1">Lisensi AutoCAD habis</span><time>2 Oct</time>
+            <div class="t2"><span class="pill s-vend">Waiting on vendor</span><span class="m">021026-SW-0021</span><span class="sp"></span><span class="src-tag">iDesk</span></div></div>
+          <div class="tk"><span class="dot" style="background:var(--ink-3)"></span><span class="t1">Akses Oracle K2 modul Purchasing</span><time>1 Oct</time>
+            <div class="t2"><span class="pill s-open">Open</span><span class="m">011026-ORA-0007</span></div></div>
+        </div>
+      </div>
+      <div class="det">
+        <div class="det-h">
+          <span class="pill s-res"><i data-lucide="hand"></i>Resolved — please confirm</span>
+          <span class="sp"></span>
+          <button class="btn sm ghost"><i data-lucide="copy"></i>Copy number</button>
+          <button class="btn sm"><i data-lucide="external-link"></i>Open in iDesk</button>
+        </div>
+        <div class="det-b">
+          <div class="crumb">031026-HW-0014 · IT Support · Hardware</div>
+          <h2>Printer lantai 3 tidak bisa scan ke email</h2>
+          <div class="callout">
+            <i data-lucide="hand"></i>
+            <div><b>ICT marked this as resolved</b>
+              <p>Check that it works, then confirm in iDesk to close the ticket — or reopen it there if it's still broken.</p>
+              <button class="btn pri sm"><i data-lucide="external-link"></i>Confirm in iDesk</button></div>
+          </div>
+          <div class="steps">
+            <div class="st done"><i></i>Submitted<small>3 Oct, 08:12</small></div>
+            <div class="st done"><i></i>In progress<small>3 Oct, 09:05</small></div>
+            <div class="st cur"><i></i>Resolved<small>Today, 09:42</small></div>
+            <div class="st"><i></i>Closed<small>after you confirm</small></div>
+          </div>
+          <div class="grp">
+            <div class="r"><span>Assigned to</span><span class="v"><span class="av" style="background:#2563eb">RA</span>Rizky Aditya</span></div>
+            <div class="r"><span>Priority</span><span class="v"><i style="width:8px;height:8px;border-radius:50%;background:var(--warn);display:inline-block"></i>Medium</span></div>
+            <div class="r"><span>Target</span><span class="v"><span class="sla-ok">Met</span> · due Fri 3 Oct, 17:00</span></div>
+            <div class="r"><span>Device</span><span class="v">Printer Canon iR-ADV C5535</span></div>
+          </div>
+          <h4 class="h">Description</h4>
+          <p class="desc">Scan to email error "Send failed" sejak kemarin sore. Copy dan print masih normal.
+Sudah coba restart printer.</p>
+          <div class="files"><div class="fchip"><span class="ic"><i data-lucide="image"></i></span><div>error-panel.jpg<small>1.2 MB</small></div></div></div>
+          <h4 class="h">Activity</h4>
+          <div class="tl">
+            <div class="ev hot"><span class="b"><i data-lucide="check"></i></span>Marked <b>resolved</b> by Rizky Aditya<small>Today, 09:42</small></div>
+            <div class="ev inf"><span class="b"><i data-lucide="play"></i></span>Status changed to <b>In progress</b><small>3 Oct, 09:05</small></div>
+            <div class="ev inf"><span class="b"><i data-lucide="user"></i></span>Assigned to <b>Rizky Aditya</b><small>3 Oct, 08:30</small></div>
+            <div class="ev ok"><span class="b"><i data-lucide="send"></i></span>Submitted from iPop<small>3 Oct, 08:12 · IPOP-ICT-2026-000041</small></div>
+          </div>
+          <div class="foot"><i data-lucide="message-square"></i>Chat with ICT, add files and reopen the ticket in iDesk.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="note"><span class="tag">List + detail</span><h3>Mail-style split</h3><ul>
+    <li><b>Needs you</b> floats RESOLVED tickets to the top — that's also the nav badge count.</li>
+    <li>Tickets filed directly in iDesk show a small <span class="src-tag">iDesk</span> tag; otherwise identical.</li>
+    <li>Status pill colours: Open grey · In progress blue · Waiting on vendor violet · Resolved amber · Closed green · Cancelled muted.</li>
+    <li>Detail is read-only: 4-step progress, SLA, assignee, description, files sent at creation, and an activity timeline built from webhooks.</li>
+    <li>Everything else (chat, more files, reopen) → <b>Open in iDesk</b>.</li>
+    <li>"All" tab adds Closed / Cancelled grouped by month.</li></ul></div>
+</section>
+
+<!-- ============ 2. new ticket ============ -->
+<section class="stage" id="s2">
+  <div class="win app">
+    <div class="rail" data-rail></div>
+    <div class="formwrap">
+      <div class="form-h"><button class="btn sm ghost"><i data-lucide="chevron-left"></i>Tickets</button><span class="sp"></span>
+        <span class="saved"><i data-lucide="check"></i>Draft saved</span></div>
+      <div class="form">
+        <h1>New ICT ticket</h1>
+        <p class="lead">Tell ICT what's wrong. You'll get a notification as it moves along.</p>
+
+        <div class="fs-t">Where should it go?</div>
+        <div class="modg">
+          <div class="mod on"><span class="ic" style="background:#0a84ff"><i data-lucide="life-buoy"></i></span><b>IT Support</b><span>PC, network, printer, apps</span></div>
+          <div class="mod"><span class="ic" style="background:#c2442e"><i data-lucide="database"></i></span><b>Oracle K2</b><span>Access & requests</span></div>
+          <div class="mod"><span class="ic" style="background:#7c4dd6"><i data-lucide="globe"></i></span><b>Web Developer</b><span>Websites & web apps</span></div>
+          <div class="mod"><span class="ic" style="background:#2e9d6b"><i data-lucide="smartphone"></i></span><b>Mobile Developer</b><span>Mobile apps</span></div>
+        </div>
+
+        <div class="fs-t">What's it about?</div>
+        <div class="card"><div class="f">
+          <div class="chips">
+            <span class="chip"><i data-lucide="circle-help"></i>General</span>
+            <span class="chip"><i data-lucide="monitor"></i>Hardware</span>
+            <span class="chip"><i data-lucide="app-window"></i>Software</span>
+            <span class="chip on"><i data-lucide="wifi"></i>Network</span>
+            <span class="chip"><i data-lucide="package-plus"></i>Hardware installation</span>
+          </div></div></div>
+
+        <div class="fs-t">Details</div>
+        <div class="card">
+          <div class="f"><label class="l">Title <em>*</em></label><input class="inp fo" value="Wifi lantai 2 mati"><div class="hint"><span>A short summary ICT will see first</span><span>18 / 200</span></div></div>
+          <div class="f"><label class="l">Description <em>*</em></label><textarea class="inp ta">Tidak bisa konek sejak pagi, sudah restart laptop. Teman satu ruangan juga sama.</textarea><div class="hint"><span>What happened, since when, what you've tried</span><span>82 / 5000</span></div></div>
+          <div class="f row2">
+            <div><label class="l">Device <span style="color:var(--ink-3)">(optional)</span></label><input class="inp" value="Laptop"></div>
+            <div><label class="l">Software <span style="color:var(--ink-3)">(optional)</span></label><input class="inp" placeholder="e.g. Outlook"></div>
+          </div>
+        </div>
+
+        <div class="fs-t">Priority</div>
+        <div class="card"><div class="f">
+          <div class="prio">
+            <button><i style="background:var(--ink-3)"></i>Low</button>
+            <button><i style="background:var(--warn)"></i>Medium</button>
+            <button><i style="background:#e8743b"></i>High</button>
+            <button class="on"><i style="background:var(--danger)"></i>Critical</button>
+          </div>
+          <div class="crit"><label class="l"><i data-lucide="siren"></i>Why is this critical? <em>*</em></label>
+            <input class="inp" value="Seluruh lantai 2 (±40 orang) tidak bisa kerja"><div class="hint"><span>Critical tickets page the on-call team. Use it only when work has stopped.</span></div></div>
+        </div></div>
+
+        <div class="fs-t">Attachments</div>
+        <div class="card"><div class="f">
+          <div class="drop"><i data-lucide="paperclip"></i>Drop files here or <b>browse</b><br>Up to 5 files, 10 MB each · images, PDF, Word, Excel, TXT, CSV</div>
+          <div class="att"><span class="ic"><i data-lucide="image"></i></span><span class="nm">screenshot.png<small>842 KB</small></span><button class="btn sm ghost"><i data-lucide="x"></i></button></div>
+          <div class="att bad"><span class="ic"><i data-lucide="file-x"></i></span><span class="nm">rekaman.mp4<small>iDesk doesn't accept this file type</small></span><button class="btn sm ghost"><i data-lucide="x"></i></button></div>
+        </div></div>
+
+        <div class="submitbar"><small>Filed as <b>Bagastyo</b> · NIK from your iPop account</small><span class="sp"></span>
+          <button class="btn">Discard draft</button><button class="btn pri"><i data-lucide="send"></i>Submit ticket</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="note"><span class="tag">/tickets/new</span><h3>One calm page</h3><ul>
+    <li>Queue tiles come live from iDesk <code>/modules</code> — a new queue appears without an iPop release.</li>
+    <li>Category chips change with the module; developer modules with one category skip this step.</li>
+    <li>Defaults: IT Support, Medium.</li>
+    <li>Choosing <b>Critical</b> slides in a required reason field.</li>
+    <li>Files are checked here against iDesk's own rules (type and 10 MB) before sending.</li>
+    <li>Draft autosaves per account; leaving and coming back restores it.</li></ul></div>
+</section>
+
+<!-- ============ 3. hardware installation ============ -->
+<section class="stage" id="s3">
+  <div class="win app">
+    <div class="rail" data-rail></div>
+    <div class="formwrap">
+      <div class="form-h"><button class="btn sm ghost"><i data-lucide="chevron-left"></i>Tickets</button><span class="sp"></span><span class="saved"><i data-lucide="check"></i>Draft saved</span></div>
+      <div class="form">
+        <h1>New ICT ticket</h1>
+        <p class="lead">Tell ICT what's wrong. You'll get a notification as it moves along.</p>
+        <div class="fs-t">What's it about?</div>
+        <div class="card"><div class="f"><div class="chips">
+          <span class="chip"><i data-lucide="circle-help"></i>General</span><span class="chip"><i data-lucide="monitor"></i>Hardware</span>
+          <span class="chip"><i data-lucide="app-window"></i>Software</span><span class="chip"><i data-lucide="wifi"></i>Network</span>
+          <span class="chip on"><i data-lucide="package-plus"></i>Hardware installation</span></div></div></div>
+
+        <div class="fs-t">Installation</div>
+        <div class="card">
+          <div class="f"><label class="l">What should be installed? <em>*</em></label>
+            <div class="chips"><span class="chip on"><i data-lucide="monitor"></i>PC / Laptop</span><span class="chip"><i data-lucide="printer"></i>Printer</span><span class="chip"><i data-lucide="monitor-smartphone"></i>Monitor</span><span class="chip"><i data-lucide="more-horizontal"></i>Other</span></div></div>
+          <div class="f row2" style="align-items:start">
+            <div><label class="l">Date <em>*</em></label>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-weight:600;font-size:13px">October 2026<span style="display:flex;gap:2px"><button class="btn sm ghost"><i data-lucide="chevron-left"></i></button><button class="btn sm ghost"><i data-lucide="chevron-right"></i></button></span></div>
+              <div class="cal" id="cal"></div></div>
+            <div><label class="l">Time <em>*</em></label>
+              <div class="slots-l">Morning</div>
+              <div class="slots"><span class="slot">08:00</span><span class="slot off">09:00</span><span class="slot on">10:00</span><span class="slot">11:00</span></div>
+              <div class="slots-l">Afternoon</div>
+              <div class="slots"><span class="slot">14:00</span><span class="slot">15:00</span></div>
+              <div class="hint" style="margin-top:12px"><span>Thu 9 Oct, 10:00 · ICT confirms the slot in iDesk</span></div></div>
+          </div>
+        </div>
+        <div class="fs-t">Details</div>
+        <div class="card"><div class="f"><label class="l">Title <em>*</em></label><input class="inp" value="Instalasi PC baru untuk staf Finance"></div></div>
+        <div class="submitbar"><span class="sp"></span><button class="btn">Discard draft</button><button class="btn pri"><i data-lucide="send"></i>Submit ticket</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="note"><span class="tag">Conditional</span><h3>Hardware installation</h3><ul>
+    <li>Only for queues that support it (iDesk flag <code>supportsHardwareInstallation</code>).</li>
+    <li>Weekends and past days are disabled; slots are iDesk's 08:00–11:00 and 14:00–15:00 on the hour.</li>
+    <li>Slot availability is shown only if iDesk exposes it later — for v1 all valid slots are pickable (struck-through slot is illustrative).</li></ul></div>
+</section>
+
+<!-- ============ 4. submitted states ============ -->
+<section class="stage" id="s4">
+  <div class="win app" style="position:relative">
+    <div class="rail" data-rail></div>
+    <div class="split">
+      <div class="lst">
+        <div class="lst-h"><div class="row"><h1>Tickets</h1><button class="btn pri sm"><i data-lucide="plus"></i>New ticket</button></div>
+          <div class="sub"><i data-lucide="cloud-off"></i>iDesk is unreachable · showing saved copy</div>
+          <div class="seg"><button class="on">Open <small>6</small></button><button>All <small>13</small></button></div></div>
+        <div class="lst-b">
+          <div class="sec">Not sent yet</div>
+          <div class="tk"><span class="dot" style="background:var(--ink-3)"></span><span class="t1">Monitor kedip-kedip</span><time>10:05</time>
+            <div class="t2"><span class="pill s-send"><i data-lucide="loader"></i>Sending…</span><span class="m">IPOP-ICT-2026-000044</span></div></div>
+          <div class="tk sel"><span class="dot" style="background:#fff"></span><span class="t1">Email tidak sinkron di HP</span><time>Yesterday</time>
+            <div class="t2"><span class="pill s-fail"><i data-lucide="alert-triangle"></i>Couldn't send</span><span class="m">IPOP-ICT-2026-000043</span></div></div>
+          <div class="sec">In progress</div>
+          <div class="tk"><span class="dot" style="background:var(--info)"></span><span class="t1">Wifi lantai 2 mati</span><time>Yesterday</time>
+            <div class="t2"><span class="pill s-prog">In progress</span><span class="m">041026-NET-0003</span></div></div>
+        </div>
+      </div>
+      <div class="det"><div class="det-b" style="padding-top:28px">
+        <div class="crumb">IPOP-ICT-2026-000043 · IT Support · Software</div>
+        <h2>Email tidak sinkron di HP</h2>
+        <div class="callout err"><i data-lucide="alert-triangle"></i><div><b>iDesk didn't accept this ticket yet</b>
+          <p>We kept trying for 24 hours while iDesk was unreachable. Nothing was lost — try again, or discard it.</p>
+          <div style="display:flex;gap:8px"><button class="btn pri sm"><i data-lucide="rotate-cw"></i>Try again</button><button class="btn sm">Edit</button><button class="btn sm ghost">Discard</button></div></div></div>
+        <div class="callout info"><i data-lucide="info"></i><div><b>"Sending…" tickets</b><p style="margin:0">When iDesk is slow or down, the ticket is kept in iPop and sent automatically as soon as iDesk answers — it can never be filed twice.</p></div></div>
+      </div></div>
+    </div>
+    <div class="scrim" style="left:210px"><div class="sheet">
+      <div class="big"><i data-lucide="check"></i></div>
+      <h3>Ticket sent to ICT</h3>
+      <p>You'll get a notification when someone picks it up.</p>
+      <div class="num">041026-NET-0003</div>
+      <div class="acts"><button class="btn">New ticket</button><button class="btn pri">View ticket</button></div>
+    </div></div>
+  </div>
+  <div class="note"><span class="tag">After submit</span><h3>Sent, sending, failed</h3><ul>
+    <li><b>Sheet</b> (overlay, shown right after Submit) confirms with the iDesk ticket number.</li>
+    <li><b>Sending…</b>: timeout or iDesk down. iPop retries with the same reference, so no duplicates.</li>
+    <li><b>Couldn't send</b>: after ~24 h of retries. Try again / Edit / Discard.</li>
+    <li>Validation errors (bad category, etc.) never reach the list — they stay on the form.</li></ul></div>
+</section>
+
+<!-- ============ 5. not registered ============ -->
+<section class="stage" id="s5">
+  <div class="win app">
+    <div class="rail" data-rail></div>
+    <div class="formwrap">
+      <div class="form-h"><button class="btn sm ghost"><i data-lucide="chevron-left"></i>Tickets</button><span class="sp"></span><span class="saved"><i data-lucide="check"></i>Draft saved</span></div>
+      <div class="form">
+        <div class="callout" style="margin-top:4px"><i data-lucide="user-x"></i><div>
+          <b>Your iDesk account isn't set up yet</b>
+          <p>ICT tickets are tracked in iDesk. Contact ICT to create your iDesk account so you can submit tickets and follow their progress. Your draft is saved — submit again once your account is ready.</p>
+          <div style="display:flex;gap:8px"><button class="btn pri sm"><i data-lucide="message-circle"></i>Chat with ICT</button><button class="btn sm"><i data-lucide="phone"></i>Call ICT · ext. 1234</button></div></div></div>
+        <h1>New ICT ticket</h1>
+        <p class="lead">Tell ICT what's wrong. You'll get a notification as it moves along.</p>
+        <div class="card"><div class="f"><label class="l">Title <em>*</em></label><input class="inp" value="Laptop tidak bisa booting"></div>
+          <div class="f"><label class="l">Description <em>*</em></label><textarea class="inp ta">Muncul layar biru setelah update semalam.</textarea></div></div>
+        <div class="submitbar"><span class="sp"></span><button class="btn">Discard draft</button><button class="btn pri"><i data-lucide="send"></i>Submit ticket</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="note"><span class="tag">422 from iDesk</span><h3>Not in iDesk</h3><ul>
+    <li>Shown when iDesk says your NIK isn't registered or is inactive.</li>
+    <li>The same banner sits on top of <b>/tickets</b> until a sync or submit succeeds.</li>
+    <li>"Chat with ICT" opens a chat with the ICT contact; ext. number is a placeholder — which contact/extension should it be?</li>
+    <li>The form keeps everything typed.</li></ul></div>
+</section>
+
+<!-- ============ 6. dashboard, push, empty ============ -->
+<section class="stage" id="s6">
+  <div style="display:flex;gap:24px;align-items:flex-start">
+    <div style="display:flex;flex-direction:column;gap:24px">
+      <div class="wdg">
+        <div class="wdg-h"><span class="ai"><i data-lucide="life-buoy"></i></span><b>My tickets</b><button class="btn sm ghost"><i data-lucide="plus"></i></button></div>
+        <div class="wdg-n"><div><b>3</b><span>Open</span></div><div class="w"><b>1</b><span>Please confirm</span></div></div>
+        <div class="wr"><span class="pill s-res">Confirm</span><span class="nm">Printer lantai 3 tidak bisa scan</span></div>
+        <div class="wr"><span class="pill s-prog">In progress</span><span class="nm">Wifi lantai 2 mati</span></div>
+        <div class="wr"><span class="pill s-vend">Vendor</span><span class="nm">Lisensi AutoCAD habis</span></div>
+      </div>
+      <div class="toast"><span class="ai"><i data-lucide="life-buoy"></i></span><div><b>Ticket resolved — please confirm</b><span>Printer lantai 3 tidak bisa scan ke email</span></div><small>now</small></div>
+      <div class="toast"><span class="ai"><i data-lucide="life-buoy"></i></span><div><b>Rizky Aditya picked up your ticket</b><span>Wifi lantai 2 mati</span></div><small>2m</small></div>
+    </div>
+    <div class="win" style="width:560px;height:420px"><div class="empty"><div>
+      <div class="big"><i data-lucide="life-buoy"></i></div>
+      <h3>No open tickets</h3>
+      <p>When something on your PC, network or apps isn't working, ICT can help.</p>
+      <button class="btn pri"><i data-lucide="plus"></i>New ticket</button></div></div></div>
+  </div>
+  <div class="note"><span class="tag">Around the app</span><h3>Widget, notifications, empty</h3><ul>
+    <li>Dashboard widget: open count, "please confirm" count, top 3 open tickets.</li>
+    <li>Push/in-app for: assigned, status change, resolved (please confirm), closed. Not for your own "created".</li>
+    <li>Own sound slot "Tickets" in notification sound settings.</li>
+    <li>Nav: <b>Tickets</b> in the Workspace group, badge = tickets waiting for your confirmation.</li></ul></div>
+</section>
+
+<script>
+  const rail = `<div class="brand"><i></i>iPop</div>
+    <h6>Workspace</h6>
+    <div class="ni"><i data-lucide="layout-grid"></i>Dashboard</div>
+    <div class="ni"><i data-lucide="users"></i>Directory</div>
+    <div class="ni"><i data-lucide="kanban"></i>Projects</div>
+    <div class="ni"><i data-lucide="notebook-pen"></i>Notes</div>
+    <div class="ni on"><i data-lucide="life-buoy"></i>Tickets<span class="bd">1</span></div>
+    <h6>Communication</h6>
+    <div class="ni"><i data-lucide="message-circle"></i>Chat</div>
+    <div class="ni"><i data-lucide="mail"></i>Mail</div>
+    <div class="ni"><i data-lucide="newspaper"></i>News &amp; Memos</div>
+    <div class="ni"><i data-lucide="phone"></i>Calls</div>
+    <h6>Resources</h6>
+    <div class="ni"><i data-lucide="folder"></i>Files</div>
+    <div class="ni"><i data-lucide="calendar"></i>Calendar</div>`;
+  document.querySelectorAll('[data-rail]').forEach(r => r.innerHTML = rail);
+
+  // October 2026 starts on Thursday; Mon-first grid. Today = 5 (Sun), selected = 9.
+  const cal = document.getElementById('cal');
+  let h = ['M','T','W','T','F','S','S'].map(d => `<span class="h">${d}</span>`).join('');
+  for (let i = 0; i < 3; i++) h += '<span></span>';
+  for (let d = 1; d <= 31; d++) {
+    const dow = (3 + d - 1) % 7; // 0 = Mon
+    const cls = d === 9 ? 's' : (dow >= 5 || d < 6) ? 'x' : '';
+    h += `<span class="${cls}">${d}</span>`;
+  }
+  cal.innerHTML = h;
+
+  lucide.createIcons();
+  document.querySelectorAll('.mk-nav [data-s]').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.mk-nav [data-s]').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.stage').forEach(s => s.classList.toggle('on', s.id === b.dataset.s));
+  });
+  document.getElementById('theme').onclick = () => {
+    const r = document.documentElement;
+    r.dataset.theme = r.dataset.theme === 'dark' ? '' : 'dark';
+  };
+</script>
+</body>
+</html>
