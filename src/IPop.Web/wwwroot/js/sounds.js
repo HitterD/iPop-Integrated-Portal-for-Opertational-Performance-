@@ -15,7 +15,11 @@
     ];
     const FILES = new Set([...CHOICES.map(c => c[0]), 'tick', 'ringtone', 'ringback', 'hangup']);
 
-    let ctx = null, master = null, loopSrc = null, loopName = null;
+    // loopGen identifies the current loop() call: a start that finishes loading after a newer
+    // loop()/stopLoop() must not play, even for the same sound (two "Ringing" updates in a row).
+    // Every looping source is tracked so a stop can never miss one.
+    let ctx = null, master = null, loopGen = 0;
+    const loops = new Set();
     const buffers = new Map();
 
     function prefs() {
@@ -49,13 +53,13 @@
         return buffers.get(name);
     }
 
-    async function play(name, { loop = false, volume } = {}) {
+    async function play(name, { loop = false, volume, gen } = {}) {
         if (!name || !FILES.has(name)) return;
         const c = audio();
         if (!c) return;
         try {
             const buf = await load(name);
-            if (loop && loopName !== name) return; // stopped (or replaced) while loading
+            if (loop && gen !== loopGen) return; // stopped (or replaced) while loading
             const src = c.createBufferSource();
             src.buffer = buf;
             src.loop = loop;
@@ -66,21 +70,26 @@
                 out.connect(c.destination);
             }
             src.connect(out);
+            if (loop) { stopSources(); loops.add(src); }
             src.start();
-            if (loop) loopSrc = src;
         } catch { /* blocked or missing — a sound is never essential */ }
     }
 
+    function stopSources() {
+        for (const src of loops) { try { src.stop(); } catch { } try { src.disconnect(); } catch { } }
+        loops.clear();
+    }
+
     function stopLoop() {
-        loopName = null;
-        if (loopSrc) { try { loopSrc.stop(); } catch { } loopSrc.disconnect(); loopSrc = null; }
+        loopGen++;
+        stopSources();
     }
 
     // Browsers keep audio locked until the first click or key press on the page; unlock early so a
     // notification arriving later is heard, and warm the cache for the common sounds.
     const unlock = () => {
         const c = audio();
-        if (c) ['dm', 'group', 'mail', 'ringtone'].forEach(n => load(n).catch(() => { }));
+        if (c) ['dm', 'group', 'mail', 'ringtone', 'ringback', 'hangup'].forEach(n => load(n).catch(() => { }));
         removeEventListener('pointerdown', unlock, true);
         removeEventListener('keydown', unlock, true);
     };
@@ -103,7 +112,7 @@
         /// Settings preview: plays at the volume on the slider, not the saved one.
         preview: (name, volume) => play(name, { volume }),
         /// Repeating call tone (ringtone / ringback); the files carry their own silence gap.
-        loop(name) { stopLoop(); loopName = name; play(name, { loop: true }); },
+        loop(name) { stopLoop(); play(name, { loop: true, gen: loopGen }); },
         stopLoop,
         getPrefs() {
             const p = prefs();

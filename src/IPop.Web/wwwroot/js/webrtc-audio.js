@@ -132,7 +132,7 @@
         if (window.ipopSound) window.ipopSound.loop('ringtone');
     }
 
-    /// Outgoing ringback: 425 Hz, 1 s on / 2 s off (Indonesian ringback cadence).
+    /// Outgoing ringback (sounds/ringback.mp3).
     function playDialTone() {
         stopAudioTones();
         if (window.ipopSound) window.ipopSound.loop('ringback');
