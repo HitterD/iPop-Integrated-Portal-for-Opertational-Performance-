@@ -1,444 +1,897 @@
 @namespace IPop.Web.Components.Projects
+@using System.Globalization
 @using IPop.Application.Projects
+@implements IDisposable
 @inject IPop.Web.Services.AuthState Auth
 @inject IPop.Web.Services.ToastService Toasts
+@inject IJSRuntime JS
 
-@* Rencana & Laporan Proyek (Fase 4) — template proyek, milestone, burndown, velocity.
-   Frontend wave: milestone & burndown dihitung dari tugas nyata; template memakai
-   data tiruan sampai endpoint template tersedia. *@
+@* Reports tab (approved mockup: docs/mockups/ipop-apple/project-reports.html, artboard 1).
+   One question: how is this project tracking? Tiles → milestones → burndown + velocity.
+   Everything except milestones is computed here from the project's tasks (ProjectReportMath). *@
 
-<div class="proj-reports">
-    @* ── Template proyek (data tiruan) ── *@
-    <div class="tray" style="margin-bottom:14px">
-        <div class="core" style="padding:0;overflow:hidden">
-            <div class="panel-head">
-                <i data-lucide="layout-template"></i> <span>Project Templates</span>
-                <span class="meta">ready-to-use task frameworks</span>
-                <span style="margin-left:auto">
-                    <button class="btn-sm surface" title="Save this project task structure as a new template" @onclick="SaveAsTemplate" disabled="@(Project is null)">
-                        <i data-lucide="save" style="width:12px;height:12px"></i> Save this project as template
-                    </button>
-                </span>
-            </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;padding:14px">
-                @foreach (var tpl in Templates)
-                {
-                    <div class="proj-tpl-card">
-                        <div style="font-size:13px;font-weight:700;color:var(--ink)">@tpl.Name</div>
-                        <div style="font-size:11.5px;color:var(--ink-3);margin-top:2px">@tpl.TaskCount framework tasks · @tpl.Description</div>
-                        <button class="btn-sm surface" style="margin-top:8px" title="Create a new project from this template"
-                                disabled="@creatingFromTemplate" @onclick="() => CreateFromTemplate(tpl)">
-                            <i data-lucide="copy" style="width:12px;height:12px"></i> Use
-                        </button>
-                    </div>
-                }
-            </div>
+<div class="rep" data-project="@Project?.Id">
+    <div class="rep-h">
+        <div>
+            <h2>Reports</h2>
+            <p>How this project is tracking: progress, deadlines and pace.</p>
         </div>
+        <span class="sp"></span>
+        <span class="upd"><i></i>@UpdatedLabel</span>
+        <button type="button" class="rep-btn sm rep-print" @onclick="PrintAsync"><i data-lucide="download"></i>Export PDF</button>
     </div>
 
-    @* ── Milestone ── *@
-    <div class="tray" style="margin-bottom:14px">
-        <div class="core" style="padding:0;overflow:hidden">
-            <div class="panel-head">
-                <i data-lucide="flag"></i> <span>Milestones</span>
-                <span class="meta">@Milestones.Count major targets</span>
-                <span style="margin-left:auto">
-                    <button class="btn-sm accent" @onclick="() => msFormOpen = !msFormOpen"><i data-lucide="plus" style="width:12px;height:12px"></i> New milestone</button>
-                </span>
+    @* ── Summary tiles ── *@
+    <div class="rep-tiles">
+        @{
+            var T = tiles;
+            var empty = T.Total == 0;
+            var key = Project?.Id.ToString("N") ?? "x";
+        }
+        <div class="rep-card rep-tile lift" style="animation-delay:0ms" data-tile="progress">
+            <div class="tl"><span class="ti c-acc"><i data-lucide="circle-dashed"></i></span>Progress</div>
+            <div class="big"><span data-mi-count="@T.Percent" data-mi-count-key="rep.@(key).pct" @key="@($"p{T.Percent}")">@T.Percent</span><small>%</small></div>
+            <div class="hint">
+                @if (empty) { <span>No tasks yet</span> }
+                else { <span>@T.Done of @T.Total tasks · <span class="@(T.DoneThisWeek > 0 ? "up" : "")">+@T.DoneThisWeek this week</span></span> }
             </div>
+            <svg class="rep-ring" viewBox="0 0 56 56" aria-hidden="true">
+                <circle class="tr" cx="28" cy="28" r="24" />
+                <circle class="fg" cx="28" cy="28" r="24" style="@RingStyle(T.Percent)" />
+            </svg>
+        </div>
 
-            @if (msFormOpen)
-            {
-                <div style="padding:12px 14px;border-bottom:1px solid var(--line-soft);display:grid;gap:8px">
-                    <input class="org-input" style="height:32px;font-size:12px" placeholder="Milestone name…" @bind="msName" />
-                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                        <label style="font-size:11.5px;color:var(--ink-3)">Target date</label>
-                        <AppDatePicker @bind-Value="msDate" Compact="true" AriaLabel="Target date" />
-                        <label style="font-size:11.5px;color:var(--ink-3)">Linked task</label>
-                        <AppSelect Value="@msTaskId" ValueChanged="v => msTaskId = v ?? string.Empty" Options="TaskLinkOptions" Label="Linked task" CssClass="proj-rep-sel" />
-                    </div>
-                    <div style="display:flex;gap:6px">
-                        <button class="btn-sm accent" disabled="@(string.IsNullOrWhiteSpace(msName))" @onclick="AddMilestone">Save</button>
-                        <button class="btn-sm surface" @onclick="() => msFormOpen = false">Cancel</button>
-                    </div>
-                </div>
-            }
+        <div class="rep-card rep-tile lift" style="animation-delay:50ms" data-tile="ontime">
+            <div class="tl"><span class="ti c-inf"><i data-lucide="calendar-check"></i></span>On time</div>
+            <div class="big">
+                @if (T.OnTimePercent is { } op) { <span data-mi-count="@op" data-mi-count-key="rep.@(key).ot" @key="@($"o{op}")">@op</span><small>%</small> }
+                else { <span>—</span> }
+            </div>
+            <div class="hint">
+                @if (empty || T.Done == 0) { <span>Shows once tasks are done</span> }
+                else if (T.DoneWithDue == 0) { <span>No finished task had a due date</span> }
+                else { <span>@T.OnTimeCount of @T.DoneWithDue done by their due date</span> }
+            </div>
+        </div>
 
-            <div style="padding:10px 14px;display:grid;gap:6px">
-                @if (Milestones.Count == 0 && customMilestones.Count == 0)
+        <div class="rep-card rep-tile lift @(T.Overdue > 0 ? "bad" : "")" style="animation-delay:100ms" data-tile="overdue">
+            <div class="tl"><span class="ti @(T.Overdue > 0 ? "c-dan" : "c-mut")"><i data-lucide="alarm-clock"></i></span>Overdue</div>
+            <div class="big"><span data-mi-count="@T.Overdue" data-mi-count-key="rep.@(key).od" @key="@($"d{T.Overdue}")">@T.Overdue</span></div>
+            <div class="hint">
+                @if (empty) { <span>Nothing to track</span> }
+                else if (T.Overdue > 0)
                 {
-                    <div class="meta" style="font-size:12px;color:var(--ink-3)">No milestones yet — mark important tasks with dates as milestones.</div>
+                    <span>Oldest @Days(T.OldestLateDays) late</span>
+                    <button type="button" class="rep-link" @onclick="OnViewOverdue">View<i data-lucide="chevron-right"></i></button>
                 }
+                else { <i data-lucide="check" class="up"></i><span>Nothing late — nice</span> }
+            </div>
+        </div>
+
+        <div class="rep-card rep-tile lift" style="animation-delay:150ms" data-tile="week">
+            <div class="tl"><span class="ti c-war"><i data-lucide="calendar-range"></i></span>Due this week</div>
+            <div class="big"><span data-mi-count="@T.DueThisWeek" data-mi-count-key="rep.@(key).wk" @key="@($"w{T.DueThisWeek}")">@T.DueThisWeek</span></div>
+            <div class="hint">
+                <span>@(empty ? "" : $"{T.DueTomorrow} due tomorrow · ")@WeekRange(T.WeekStart)</span>
+            </div>
+        </div>
+
+        <div class="rep-card rep-tile lift" style="animation-delay:200ms" data-tile="pace">
+            <div class="tl"><span class="ti c-vio"><i data-lucide="gauge"></i></span>Avg pace</div>
+            <div class="big">
+                @if (T.Pace is { } pace) { <span>@pace.ToString("0.0", Inv)</span><small>tasks/wk</small> }
+                else { <span>—</span> }
+            </div>
+            <div class="hint">
+                @if (T.Pace is null) { <span>Needs a week of activity</span> }
                 else
                 {
-                    @* Milestone buatan pengguna *@
-                    @foreach (var m in customMilestones)
-                    {
-                        <div class="proj-milestone">
-                            <i data-lucide="flag" style="width:14px;height:14px;color:var(--accent-ink)"></i>
-                            @if (editingMilestone?.Id == m.Id)
-                            {
-                                <input class="org-input" style="height:26px;font-size:12px;flex:1" @bind="editingMilestoneTitle" />
-                                <AppDatePicker @bind-Value="editingMilestoneDate" Compact="true" AriaLabel="Milestone date" />
-                                <AppSelect Value="@editingMilestoneTaskId" ValueChanged="v => editingMilestoneTaskId = v ?? string.Empty" Options="TaskLinkOptions" Label="Linked task" CssClass="proj-rep-sel sm" />
-                                <button class="btn-sm accent" style="padding:2px 8px" @onclick="SaveMilestoneEdit"><i data-lucide="check" style="width:11px;height:11px"></i></button>
-                                <button class="btn-sm surface" style="padding:2px 8px" @onclick="() => editingMilestone = null"><i data-lucide="x" style="width:11px;height:11px"></i></button>
-                            }
-                            else
-                            {
-                                <span style="flex:1;font-size:12.5px;font-weight:600">@m.Title</span>
-                                @if (m.TaskId is not null)
-                                {
-                                    var linked = AllTasks.FirstOrDefault(t => t.Id == m.TaskId);
-                                    <span style="font-size:10.5px;color:var(--ink-3)">@(linked?.Title ?? "task")</span>
-                                }
-                                <span style="font-size:11px;color:var(--ink-3)">@m.DueDate.ToString("dd MMM yyyy")</span>
-                                <span class="proj-ms-status">Planned</span>
-                                <button class="btn-sm surface" style="padding:2px 8px" title="Edit milestone" @onclick="() => StartMilestoneEdit(m)">
-                                    <i data-lucide="pencil" style="width:11px;height:11px"></i>
-                                </button>
-                                <button class="btn-sm surface danger" style="padding:2px 8px" title="Delete milestone" @onclick="() => DeleteMilestone(m)">
-                                    <i data-lucide="trash-2" style="width:11px;height:11px"></i>
-                                </button>
-                            }
-                        </div>
-                    }
-                    @* Milestone dari tugas bertanggal *@
-                    @foreach (var m in Milestones)
-                    {
-                        var cls = m.Done ? "done" : m.Overdue ? "overdue" : "";
-                        <div class="proj-milestone @cls">
-                            <i data-lucide="@(m.Done ? "check-circle-2" : m.Overdue ? "alert-circle" : "flag")" style="width:14px;height:14px"></i>
-                            <span style="flex:1;font-size:12.5px;font-weight:600">@m.Title</span>
-                            <span style="font-size:11px;color:var(--ink-3)">@m.DueDate.ToString("dd MMM yyyy")</span>
-                            <span class="proj-ms-status @cls">@(m.Done ? "Achieved" : m.Overdue ? "Delayed" : "In Progress")</span>
-                        </div>
-                    }
+                    var upPace = T.PaceDelta >= 0;
+                    <i data-lucide="@(upPace ? "trending-up" : "trending-down")" class="@(upPace ? "up" : "dn")"></i>
+                    <span><span class="@(upPace ? "up" : "dn")">@(upPace ? "+" : "−")@Math.Abs(T.PaceDelta).ToString("0.0", Inv)</span> vs prior 6 weeks</span>
                 }
             </div>
         </div>
     </div>
 
-    @* ── Burndown + Velocity ── *@
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div class="tray">
-            <div class="core" style="padding:0;overflow:hidden">
-                <div class="panel-head">
-                    <i data-lucide="trending-down"></i> <span>Burndown</span>
-                    <span class="meta">remaining tasks over time</span>
-                    <span style="margin-left:auto;display:flex;gap:4px;align-items:center">
-                        <label style="font-size:10.5px;color:var(--ink-3)">Milestone</label>
-                        <AppSelect Value="@burndownMilestoneId" ValueChanged="v => burndownMilestoneId = v ?? string.Empty" Options="BurndownMilestoneOptions" Label="Milestone" CssClass="proj-rep-sel sm" />
-                        <label style="font-size:10.5px;color:var(--ink-3)">Range</label>
-                        <AppSelect Value="@burndownWeeks.ToString()" ValueChanged="v => { if (int.TryParse(v, out var w)) burndownWeeks = w; }" Options="WeekOptions" Label="Burndown range" CssClass="proj-rep-sel sm" />
-                    </span>
+    @* ── Milestones ── *@
+    <div class="rep-card rep-ms-card">
+        <div class="sec-h">
+            <div>
+                <h3>Milestones</h3>
+                <div class="sub">@MilestoneSubtitle</div>
+            </div>
+            <span class="sp"></span>
+            @if (Milestones.Count > 0)
+            {
+                <button type="button" class="rep-btn sm" @onclick="OpenNewSheet"><i data-lucide="flag"></i>New milestone</button>
+            }
+        </div>
+        @if (!milestonesLoaded)
+        {
+            <div class="rep-ms-loading" aria-busy="true"><i></i><i></i><i></i></div>
+        }
+        else if (Milestones.Count == 0)
+        {
+            <div class="rep-empty mi-rise">
+                <span class="eic c-acc"><i data-lucide="flag"></i></span>
+                <b>No milestones yet</b>
+                <p>A milestone is a checkpoint with a date — like "UAT ready" or "Go-live Karawang". Link tasks to it and this page tracks whether you'll hit it.</p>
+                <div class="eg"><span>UAT ready · @Short(Today.AddDays(24))</span><span>Training users · @Short(Today.AddDays(31))</span><span>Go-live · @Short(Today.AddDays(38))</span></div>
+                <button type="button" class="rep-btn pri" @onclick="OpenNewSheet"><i data-lucide="plus"></i>New milestone</button>
+            </div>
+        }
+        else
+        {
+            <div class="ms-list">
+                @for (var i = 0; i < Milestones.Count; i++)
+                {
+                    var m = Milestones[i];
+                    var st = StatusKey(m.Status);
+                    var p = m.Status == MilestoneStatus.Achieved ? 100 : m.Linked == 0 ? 0 : (int)Math.Round(100.0 * m.Done / m.Linked);
+                    var n = (m.DueDate.Date - Today).Days;
+                    var popped = popId == m.Id;
+                    <div class="ms @st" data-id="@m.Id" data-status="@m.Status" @key="m.Id" style="animation-delay:@(i * 45)ms">
+                        <div class="rl">
+                            <button type="button" class="dot @(st == "done" ? "ok" : st) @(popped ? "burst" : "")"
+                                    title="@(st == "done" ? "Achieved" : "Mark achieved")" aria-label="@(st == "done" ? $"{m.Title}: achieved" : $"Mark {m.Title} achieved")"
+                                    disabled="@(st == "done" || busyId == m.Id)" @onclick="() => MarkAchievedAsync(m)"><i data-lucide="check"></i></button>
+                        </div>
+                        <div class="bd @(popped ? "mi-saved" : "")">
+                            <div style="min-width:0">
+                                <button type="button" class="nm" title="Edit milestone" @onclick="() => OpenEditSheet(m)">@m.Title</button>
+                                <div class="sm">@(m.Linked == 0 ? "No linked tasks" : $"{m.Linked} linked task{(m.Linked == 1 ? "" : "s")} · {m.Done} done")</div>
+                                <div class="pb"><div class="bar"><i style="width:@(p)%"></i></div><small>@p%</small></div>
+                            </div>
+                            <div class="dt">@Long(m.DueDate)<small>@(st == "done" ? "Done" : Rel(n))</small></div>
+                            <span class="pill @PillClass(st) @(popped ? "mi-pop" : "")"><i data-lucide="@PillIcon(st)"></i>@PillLabel(st)</span>
+                            <div class="act">
+                                @if (st == "done")
+                                {
+                                    <span class="when">@(m.AchievedAt is { } at ? $"Achieved {Short(ProjectReportMath.Local(at))}" : "Achieved")</span>
+                                }
+                                else
+                                {
+                                    <button type="button" class="rep-btn sm ghost" disabled="@(busyId == m.Id)" @onclick="() => MarkAchievedAsync(m)"><i data-lucide="circle-check"></i>Mark achieved</button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="ms-foot"><i data-lucide="info"></i>A milestone turns Achieved automatically when all its linked tasks are done — or mark it yourself.</div>
+        }
+    </div>
+
+    @* ── Charts ── *@
+    <div class="rep-charts">
+        <div class="rep-card rep-chart lift" data-chart="burndown">
+            <div class="sec-h">
+                <div><h3>Burndown</h3><div class="sub">Open tasks left at the end of each week</div></div>
+                <span class="sp"></span>
+                <div class="ctl">
+                    <div class="seg" role="radiogroup" aria-label="Burndown range">
+                        @foreach (var w in new[] { 4, 6, 12 })
+                        {
+                            var wk = w;
+                            <button type="button" role="radio" aria-checked="@(bdRange == wk ? "true" : "false")" class="@(bdRange == wk ? "on" : "")" @onclick="() => bdRange = wk">@wk wk</button>
+                        }
+                    </div>
+                    <div class="rep-menu-wrap">
+                        <button type="button" class="rep-btn sm mbtn" aria-expanded="@(filterOpen ? "true" : "false")" disabled="@(tiles.Total == 0)" @onclick="() => filterOpen = !filterOpen">
+                            <i data-lucide="flag"></i><span class="lbl">@FilterLabel</span><i class="chev" data-lucide="chevron-down"></i>
+                        </button>
+                        @if (filterOpen)
+                        {
+                            <div class="rep-catch" @onclick="() => filterOpen = false"></div>
+                            <div class="rep-menu pop" role="menu">
+                                <div class="mh">Burndown for</div>
+                                <button type="button" role="menuitemradio" aria-checked="@(filterId is null ? "true" : "false")" class="@(filterId is null ? "sel" : "")" @onclick="() => SetFilter(null)">
+                                    <i data-lucide="layers"></i>All tasks<small>@tiles.Total</small><i class="ck" data-lucide="check"></i>
+                                </button>
+                                @if (Milestones.Count > 0) { <hr /> }
+                                @foreach (var m in Milestones)
+                                {
+                                    var mid = m.Id;
+                                    <button type="button" role="menuitemradio" aria-checked="@(filterId == mid ? "true" : "false")" class="@(filterId == mid ? "sel" : "")" @onclick="() => SetFilter(mid)">
+                                        <span class="mdot" style="background:var(@DotVar(StatusKey(m.Status)))"></span><span class="mn">@m.Title</span><small>@m.Linked</small><i class="ck" data-lucide="check"></i>
+                                    </button>
+                                }
+                            </div>
+                        }
+                    </div>
                 </div>
-                <div style="padding:14px">
-                    @if (Burndown.Count == 0)
+            </div>
+            @if (tiles.Total == 0)
+            {
+                <div class="c-empty"><i data-lucide="trending-down"></i><b>Nothing to burn down yet</b><small>Once tasks are added, this line drops each week as work gets done. Flatter than the dashed line = behind plan.</small></div>
+            }
+            else
+            {
+                var bd = BurndownView();
+                <div class="legend"><span><i></i>Remaining</span><span><i class="id"></i>Ideal</span><span><i class="fc"></i>Forecast at current pace</span></div>
+                <div class="cw @(bdHover is not null ? "hov" : "")" @ref="bdEl" @onmouseleave="() => bdHover = null">
+                    <svg @key="@($"bd{bdRange}{filterId}")" viewBox="0 0 @F(bd.W) @F(ChartH)" width="@F(bd.W)" height="@F(ChartH)" aria-label="Burndown chart" role="img" data-series="@string.Join(",", bd.Rem)">
+                        <defs><linearGradient id="@($"bdg{uid}")" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".18" /><stop offset="1" stop-color="var(--accent)" stop-opacity="0" /></linearGradient></defs>
+                        <g class="gridl">
+                            @foreach (var t in bd.Ticks)
+                            {
+                                <line x1="@F(BdL)" x2="@F(bd.W - BdR)" y1="@F(bd.Y(t))" y2="@F(bd.Y(t))" />
+                                <g><text class="ax" x="@F(BdL - 8)" y="@F(bd.Y(t) + 4)" text-anchor="end">@t</text></g>
+                            }
+                        </g>
+                        @for (var i = 0; i < bd.K; i++)
+                        {
+                            if (i % bd.Step == (bd.K - 1) % bd.Step)
+                            {
+                                <g><text class="ax" x="@F(bd.X(i))" y="@F(ChartH - 6)" text-anchor="middle">@Short(bd.Weeks[i])</text></g>
+                            }
+                        }
+                        <g class="today"><line x1="@F(bd.X(bd.N - 1))" x2="@F(bd.X(bd.N - 1))" y1="@F(BdT - 6)" y2="@F(bd.Y(0))" /><text x="@F(bd.X(bd.N - 1) + 5)" y="@F(BdT - 2)">Today</text></g>
+                        <path d="@bd.Area" fill="url(#bdg@(uid))" class="mi-fade" style="animation-delay:.55s" />
+                        <path class="ideal mi-fade" d="@bd.Ideal" style="animation-delay:.15s" />
+                        <path class="fc mi-fade" d="@bd.Forecast" style="animation-delay:1s" />
+                        <path class="act-line draw" pathLength="1" d="@bd.Actual" />
+                        <circle class="end mi-fade" cx="@F(bd.X(bd.N - 1))" cy="@F(bd.Y(bd.Rem[^1]))" r="5.5" style="animation-delay:1s" />
+                        @if (bdHover is { } hi)
+                        {
+                            var hv = bd.ValueAt(hi);
+                            <line class="guide" x1="@F(bd.X(hi))" x2="@F(bd.X(hi))" y1="@F(BdT)" y2="@F(bd.Y(0))" />
+                            <circle class="hdot @(hi < bd.N ? "" : "fut")" cx="@F(bd.X(hi))" cy="@F(bd.Y(hv))" r="5" />
+                        }
+                    </svg>
+                    @for (var i = 0; i < bd.K; i++)
                     {
-                        <div class="meta" style="font-size:12px;color:var(--ink-3)">Not enough data — dated tasks are required.</div>
+                        var idx = i;
+                        <div class="hit" style="left:@F(bd.X(i) - bd.Col / 2)px;width:@F(bd.Col)px" @onmouseenter="() => bdHover = idx"></div>
                     }
-                    else
+                    @if (bdHover is { } h)
                     {
-                        <svg viewBox="0 0 300 120" style="width:100%;height:auto">
-                            <polyline fill="none" stroke="var(--accent)" stroke-width="2"
-                                      points="@BurndownPoints" />
-                            <polyline fill="none" stroke="var(--ink-3)" stroke-width="1" stroke-dasharray="4 3"
-                                      points="0,10 300,110" />
-                        </svg>
-                        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--ink-3);margin-top:4px">
-                            <span>@Burndown.First().Label</span>
-                            <span>@Burndown.Last().Remaining tasks remaining</span>
+                        var v = bd.ValueAt(h);
+                        var ideal = (int)Math.Round(bd.IdealAt(h));
+                        var diff = v - ideal;
+                        var past = h < bd.N;
+                        <div class="tip on" style="left:@F(bd.X(h))px;top:@F(bd.Y(v))px">
+                            <div class="w">Week of @Short(bd.Weeks[h])@(h == bd.N - 1 ? " · this week" : past ? "" : " · forecast")</div>
+                            <b>@v</b> @(past ? "remaining" : "expected left")
+                            <div class="r"><span>Ideal</span><span>@ideal</span></div>
+                            <div class="r"><span>@(diff > 0 ? "Behind by" : "Ahead by")</span><span style="color:var(@(diff > 0 ? "--danger" : "--accent"))">@Math.Abs(diff)</span></div>
                         </div>
                     }
                 </div>
-            </div>
+                <div class="insight @(bd.Late ? "warn" : "")"><i data-lucide="@(bd.Late ? "triangle-alert" : "sparkles")"></i><span>@bd.Insight</span></div>
+            }
         </div>
-        <div class="tray">
-            <div class="core" style="padding:0;overflow:hidden">
-                <div class="panel-head">
-                    <i data-lucide="gauge"></i> <span>Velocity</span>
-                    <span class="meta">tasks completed per week</span>
-                    <span style="margin-left:auto;display:flex;gap:4px;align-items:center">
-                        <label style="font-size:10.5px;color:var(--ink-3)">Period</label>
-                        <AppSelect Value="@velocityWeeks.ToString()" ValueChanged="v => { if (int.TryParse(v, out var w)) velocityWeeks = w; }" Options="WeekOptions" Label="Velocity range" CssClass="proj-rep-sel sm" />
-                    </span>
-                </div>
-                <div style="padding:14px">
-                    <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
-                        <span style="font-size:26px;font-weight:700;color:var(--ink)">@VelocityPerWeek</span>
-                        <span style="font-size:12px;color:var(--ink-3)">tasks / week (avg last @velocityWeeks weeks)</span>
-                        @if (EstimatedCompletion is not null)
+
+        <div class="rep-card rep-chart lift" data-chart="velocity">
+            <div class="sec-h">
+                <div><h3>Velocity</h3><div class="sub">Tasks completed per week</div></div>
+                <span class="sp"></span>
+                <div class="ctl">
+                    <div class="seg" role="radiogroup" aria-label="Velocity period">
+                        @foreach (var w in new[] { 6, 12 })
                         {
-                            <span class="proj-ms-status" style="font-size:10.5px">Estimated remaining @RemainingTasks tasks completion ≈ @EstimatedCompletion</span>
+                            var wk = w;
+                            <button type="button" role="radio" aria-checked="@(vlPeriod == wk ? "true" : "false")" class="@(vlPeriod == wk ? "on" : "")" @onclick="() => vlPeriod = wk">@wk wk</button>
                         }
-                    </div>
-                    <div style="display:flex;gap:4px;align-items:flex-end;height:56px;margin-top:10px">
-                        @foreach (var v in VelocityBars)
-                        {
-                            <div style="flex:1;background:var(--accent-soft);border-radius:4px 4px 0 0;height:@(v.Height)%" title="@($"{v.Label}: {v.Count} completed")"></div>
-                        }
-                    </div>
-                    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--ink-3);margin-top:4px">
-                        @foreach (var v in VelocityBars) { <span>@v.Label</span> }
                     </div>
                 </div>
             </div>
+            @if (tiles.Total == 0)
+            {
+                <div class="c-empty"><i data-lucide="chart-column"></i><b>No completed tasks yet</b><small>Each bar will show how many tasks the team finished that week, with the average as a guide.</small></div>
+            }
+            else
+            {
+                var vl = VelocityView();
+                <div class="legend"><span><i class="sq"></i>Completed</span><span><i class="sq cur"></i>This week (so far)</span><span><i class="av"></i>Average</span></div>
+                <div class="cw @(vlHover is not null ? "hov" : "")" @ref="vlEl" @onmouseleave="() => vlHover = null">
+                    <svg @key="@($"vl{vlPeriod}")" viewBox="0 0 @F(vl.W) @F(ChartH)" width="@F(vl.W)" height="@F(ChartH)" aria-label="Velocity chart" role="img" data-series="@string.Join(",", vl.V)">
+                        <g class="gridl">
+                            @foreach (var t in vl.Ticks)
+                            {
+                                <line x1="@F(BdL)" x2="@F(vl.W - BdR)" y1="@F(vl.Y(t))" y2="@F(vl.Y(t))" />
+                                <g><text class="ax" x="@F(BdL - 8)" y="@F(vl.Y(t) + 4)" text-anchor="end">@t</text></g>
+                            }
+                        </g>
+                        @for (var i = 0; i < vl.N; i++)
+                        {
+                            var n = vl.V[i];
+                            var hi = vlHover == i ? "hi" : "";
+                            <path class="vb grow @(i == vl.N - 1 ? "cur" : "") @hi" style="animation-delay:@(i * 55)ms" d="@vl.Bar(i)" />
+                            <g><text class="vv mi-fade @hi" x="@F(vl.X(i))" y="@F(vl.Y(n) - 7)" style="animation-delay:@(350 + i * 55)ms">@n</text></g>
+                            if (i % vl.Step == (vl.N - 1) % vl.Step)
+                            {
+                                <g><text class="ax" x="@F(vl.X(i))" y="@F(ChartH - 6)" text-anchor="middle">@Short(vl.Weeks[i])</text></g>
+                            }
+                        }
+                        <g class="avg mi-fade" style="animation-delay:@(vl.N * 55 + 350)ms">
+                            <line x1="@F(BdL)" x2="@F(vl.W - BdR)" y1="@F(vl.Y(vl.Avg))" y2="@F(vl.Y(vl.Avg))" />
+                            <rect x="@F(vl.W - BdR - 58)" y="@F(vl.Y(vl.Avg) - 9)" width="58" height="18" rx="9" />
+                            <text x="@F(vl.W - BdR - 29)" y="@F(vl.Y(vl.Avg) + 3.5)" text-anchor="middle">avg @vl.Avg.ToString("0.0", Inv)</text>
+                        </g>
+                    </svg>
+                    @for (var i = 0; i < vl.N; i++)
+                    {
+                        var idx = i;
+                        <div class="hit" style="left:@F(BdL + vl.Band * i)px;width:@F(vl.Band)px" @onmouseenter="() => vlHover = idx"></div>
+                    }
+                    @if (vlHover is { } h)
+                    {
+                        var n = vl.V[h];
+                        var df = n - vl.Avg;
+                        <div class="tip on" style="left:@F(vl.X(h))px;top:@F(vl.Y(n) - 16)px">
+                            <div class="w">Week of @Short(vl.Weeks[h])@(h == vl.N - 1 ? " · in progress" : "")</div>
+                            <b>@n</b> task@(n == 1 ? "" : "s") completed
+                            <div class="r"><span>vs average</span><span style="color:var(@(df >= 0 ? "--accent" : "--danger"))">@(df >= 0 ? "+" : "−")@Math.Abs(df).ToString("0.0", Inv)</span></div>
+                        </div>
+                    }
+                </div>
+                <div class="insight @(vl.Slowing ? "warn" : "")"><i data-lucide="@(vl.Slowing ? "trending-down" : "trending-up")"></i><span>@vl.Insight</span></div>
+            }
         </div>
     </div>
 </div>
 
+@* ── New / edit milestone sheet ── *@
+@if (sheetOpen)
+{
+    <div class="rep-scrim" @onclick="CloseSheet">
+        <div class="rep-sheet" role="dialog" aria-modal="true" aria-labelledby="rep-ms-title" @onclick:stopPropagation="true">
+            <header>
+                <span class="hi c-acc"><i data-lucide="flag"></i></span>
+                <div>
+                    <h3 id="rep-ms-title">@(editing is null ? "New milestone" : "Edit milestone")</h3>
+                    <p>A checkpoint that groups tasks — e.g. "UAT ready" or "Go-live Karawang". It's achieved when you mark it, or automatically when every linked task is done.</p>
+                </div>
+            </header>
+            <div class="bdy">
+                <div class="fld @(nameShake > 0 ? "mi-shake" : "")" @key="@($"nm{nameShake}")">
+                    <label for="rep-ms-name">Name</label>
+                    <input id="rep-ms-name" class="inp @(nameErr ? "err" : "")" placeholder="e.g. UAT ready" maxlength="300"
+                           value="@sheetName" @oninput="e => { sheetName = e.Value?.ToString() ?? string.Empty; nameErr = false; }" @ref="nameInput" />
+                </div>
+                <div class="fld">
+                    <label>Due date</label>
+                    <AppDatePicker @bind-Value="sheetDate" AriaLabel="Milestone due date" />
+                </div>
+                <div class="fld">
+                    <label>Link tasks <span>· they roll up into this milestone's progress</span></label>
+                    <div class="tlist">
+                        <div class="ts"><i data-lucide="search"></i><input placeholder="Search tasks in @(Project?.Name ?? "this project")" value="@taskQuery" @oninput="e => taskQuery = e.Value?.ToString() ?? string.Empty" aria-label="Search tasks" /></div>
+                        <div class="tb">
+                            @{ var shown = SheetTasks; }
+                            @if (shown.Count == 0)
+                            {
+                                <div class="tnone">@(TopTasks.Count == 0 ? "This project has no tasks yet." : "No tasks match.")</div>
+                            }
+                            @foreach (var t in shown)
+                            {
+                                var tid = t.Id;
+                                var a = t.Assignees.FirstOrDefault();
+                                <label class="tk" @key="tid">
+                                    <input type="checkbox" checked="@sheetSel.Contains(tid)" @onchange="e => ToggleTask(tid, e.Value is true)" />
+                                    <span class="tn @(t.Status == "done" ? "dn" : "")">@t.Title</span>
+                                    <span class="tm">
+                                        @if (t.DueDate is { } due) { <span>@Short(due)</span> }
+                                        @if (a is not null) { <PersonAvatar Nik="@a.Nik" Name="@a.Name" Size="20" Class="tav" Title="@a.Name" /> }
+                                    </span>
+                                </label>
+                            }
+                        </div>
+                    </div>
+                    <div class="lnk">@LinkSummary</div>
+                </div>
+            </div>
+            <footer>
+                @if (editing is not null)
+                {
+                    <button type="button" class="rep-btn ghost danger" disabled="@saving" @onclick="DeleteEditingAsync"><i data-lucide="trash-2"></i>Delete</button>
+                    <span class="sp"></span>
+                }
+                <button type="button" class="rep-btn" @onclick="CloseSheet">Cancel</button>
+                <button type="button" class="rep-btn pri" disabled="@saving" @onclick="SaveSheetAsync"><i data-lucide="flag"></i>@(editing is null ? "Create milestone" : "Save changes")</button>
+            </footer>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter] public ProjectDto? Project { get; set; }
     [Parameter] public IReadOnlyList<ProjectTaskDto> AllTasks { get; set; } = [];
+    /// "View" on the Overdue tile: the page shows the overdue tasks (List + Overdue filter).
+    [Parameter] public EventCallback OnViewOverdue { get; set; }
+    /// Test hook: the clock. Defaults to the browser's local time.
+    [Parameter] public DateTime? Now { get; set; }
 
-    // Template — dari server (GET /api/projects/templates); fallback lokal bila kosong.
-    private sealed record TemplateCard(Guid Id, string Name, string? Description, int TaskCount);
-    private List<TemplateCard> Templates = [];
-    private bool creatingFromTemplate;
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+    private const double ChartH = 250, BdL = 30, BdR = 12, BdT = 18, BdB = 26, VlT = 20;
+    private const int FutureWeeks = 4;
+    private readonly string uid = Guid.NewGuid().ToString("N")[..8];
 
-    protected override async Task OnInitializedAsync()
+    private DateTime Clock => Now ?? DateTime.Now;
+    private DateTime Today => Clock.Date;
+
+    // ── State ──
+    private Guid? loadedProjectId;
+    private bool milestonesLoaded;
+    private List<MilestoneDto> serverMilestones = [];
+    private int lastTasksSig;
+    private DateTime updatedAt = DateTime.Now;
+    private ReportTiles tiles = ProjectReportMath.Tiles([], DateTime.Now);
+    private List<MsView> Milestones = [];
+    private IReadOnlyList<ProjectTaskDto> TopTasks = [];
+
+    private int bdRange = 12, vlPeriod = 6;
+    private Guid? filterId;
+    private bool filterOpen;
+    private int? bdHover, vlHover;
+    private ElementReference bdEl, vlEl;
+    private double bdW = 560, vlW = 560;
+    private DotNetObjectReference<ProjectReportsPanel>? selfRef;
+    private bool observing;
+
+    private Guid? busyId, popId;
+
+    /// A milestone with progress recomputed from the live task list (falls back to the
+    /// server's counts when a linked task is not in view, e.g. filtered out by group).
+    public sealed record MsView(Guid Id, string Title, DateTime DueDate, DateTime? AchievedAt, bool Manual,
+        IReadOnlyList<Guid> TaskIds, int Linked, int Done, string Status);
+
+    protected override async Task OnParametersSetAsync()
     {
-        await LoadTemplatesAsync();
-    }
-
-    private async Task LoadTemplatesAsync()
-    {
-        try
+        // The page hands a fresh list on every render: recompute only when the tasks really changed.
+        var sig = Signature(AllTasks);
+        if (sig != lastTasksSig || Project?.Id != loadedProjectId)
         {
-            var rows = await Auth.GetAsync<List<TemplateRow>>("/api/projects/templates");
-            Templates = (rows ?? []).Select(r => new TemplateCard(r.Id, r.Name, r.Description, r.TaskCount)).ToList();
+            lastTasksSig = sig;
+            updatedAt = DateTime.Now;
+            Recompute();
         }
-        catch { Templates = []; }
-    }
-
-    private record TemplateRow(Guid Id, string Name, string? Description, int TaskCount);
-
-    private async Task SaveAsTemplate()
-    {
-        if (Project is null) return;
-        try
+        if (Project?.Id != loadedProjectId)
         {
-            await Auth.SendAsync(HttpMethod.Post, "/api/projects/templates",
-                new { name = Project.Name, description = $"from project {Project.Year}", sourceProjectId = Project.Id });
-            await LoadTemplatesAsync();
-            Toasts.Show("Template saved.", ToastKind.Success);
-        }
-        catch { Toasts.Show("Failed to save template.", ToastKind.Error); }
-    }
-
-    private async Task CreateFromTemplate(TemplateCard tpl)
-    {
-        if (creatingFromTemplate) return;
-        creatingFromTemplate = true;
-        try
-        {
-            var res = await Auth.SendAsync(HttpMethod.Post, "/api/projects/from-template",
-                new { templateId = tpl.Id, name = tpl.Name });
-            if (res.IsSuccessStatusCode)
-                Toasts.Show($"Project created from template \"{tpl.Name}\".", ToastKind.Success);
-            else
-                Toasts.Show("Failed to create project from template.", ToastKind.Error);
-        }
-        catch { Toasts.Show("Failed to create project from template.", ToastKind.Error); }
-        finally { creatingFromTemplate = false; }
-    }
-
-    // Milestone: tugas ber-DueDate dianggap target besar (sampai endpoint milestone tersedia).
-    private sealed record Milestone(string Title, DateTime DueDate, bool Done, bool Overdue);
-
-    // Milestone buatan pengguna (frontend wave — lokal sampai endpoint tersedia).
-    private sealed record CustomMilestone(Guid Id, string Title, DateTime DueDate, Guid? TaskId);
-    private List<CustomMilestone> customMilestones = [];
-    private bool msFormOpen;
-    private string msName = "";
-    private DateTime msDate = DateTime.Today.AddDays(14);
-    private string msTaskId = "";
-    private List<AppOption> TaskLinkOptions => [new("", "(no link)"), .. AllTasks.Where(t => t.ParentTaskId is null).OrderBy(t => t.Title).Select(t => new AppOption(t.Id.ToString(), t.Title))];
-    private List<AppOption> BurndownMilestoneOptions => [new("", "(all)"), .. customMilestones.Select(m => new AppOption(m.Id.ToString(), m.Title))];
-    private static List<AppOption>? weekOptions;
-    private static List<AppOption> WeekOptions => weekOptions ??= [new("4", "4 weeks"), new("6", "6 weeks"), new("12", "12 weeks")];
-
-    private void AddMilestone()
-    {
-        _ = AddMilestoneAsync();
-    }
-
-    private async Task AddMilestoneAsync()
-    {
-        if (Project is null || string.IsNullOrWhiteSpace(msName)) return;
-        try
-        {
-            await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{Project.Id}/milestones",
-                new { title = msName.Trim(), dueDate = msDate, taskId = Guid.TryParse(msTaskId, out var tid) ? tid : (Guid?)null });
-            msName = ""; msTaskId = ""; msFormOpen = false;
+            loadedProjectId = Project?.Id;
+            filterId = null; filterOpen = false; bdHover = vlHover = null; popId = null;
             await LoadMilestonesAsync();
-            Toasts.Show("Milestone saved.", ToastKind.Success);
         }
-        catch
+    }
+
+    private static int Signature(IReadOnlyList<ProjectTaskDto> tasks)
+    {
+        var h = new HashCode();
+        h.Add(tasks.Count);
+        foreach (var t in tasks) { h.Add(t.Id); h.Add(t.Status); h.Add(t.UpdatedAt); h.Add(t.DueDate); h.Add(t.CompletedAt); }
+        return h.ToHashCode();
+    }
+
+    private void Recompute()
+    {
+        TopTasks = ProjectReportMath.TopLevel(AllTasks);
+        tiles = ProjectReportMath.Tiles(TopTasks, Clock);
+        var byId = TopTasks.ToDictionary(t => t.Id);
+        Milestones = serverMilestones.Select(m =>
         {
-            Toasts.Show("Failed to save milestone.", ToastKind.Error);
-        }
+            var known = m.TaskIds.Where(byId.ContainsKey).ToList();
+            var (linked, done) = known.Count == m.TaskIds.Count
+                ? (known.Count, known.Count(id => byId[id].Status == "done"))
+                : (m.LinkedCount, m.DoneCount);
+            var status = MilestoneStatus.Of(m.DueDate, m.AchievedManually ? m.AchievedAt : null, linked, done, Today);
+            DateTime? at = m.AchievedManually ? m.AchievedAt
+                : status == MilestoneStatus.Achieved ? (known.Select(id => byId[id].CompletedAt).Max() ?? m.AchievedAt) : null;
+            return new MsView(m.Id, m.Title, m.DueDate, at, m.AchievedManually, m.TaskIds, linked, done, status);
+        }).OrderBy(m => m.DueDate).ToList();
+        if (filterId is { } f && Milestones.All(m => m.Id != f)) filterId = null;
     }
 
     private async Task LoadMilestonesAsync()
     {
-        if (Project is null) return;
+        var pid = Project?.Id;
+        milestonesLoaded = false;
+        serverMilestones = [];
+        Recompute();
+        if (pid is null) { milestonesLoaded = true; return; }
         try
         {
-            var rows = await Auth.GetAsync<List<MilestoneRow>>($"/api/projects/{Project.Id}/milestones");
-            if (rows is not null)
-                customMilestones = rows.Select(r => new CustomMilestone(r.Id, r.Title, r.DueDate, r.TaskId)).ToList();
+            var rows = await Auth.GetAsync<List<MilestoneDto>>($"/api/projects/{pid}/milestones?localToday={Today:yyyy-MM-dd}");
+            if (pid != Project?.Id) return;
+            serverMilestones = rows ?? [];
         }
+        catch { serverMilestones = []; }
+        milestonesLoaded = true;
+        Recompute();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("ipop.icons");
+            await JS.InvokeVoidAsync("ipopCount.scan");
+        }
+        catch (JSException) { }
+        catch (InvalidOperationException) { }
+        if (tiles.Total > 0 && !observing)
+        {
+            observing = true;
+            selfRef ??= DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("ipop.watchWidth", selfRef, nameof(OnChartWidth), bdEl, vlEl); }
+            catch (JSException) { }
+            catch (InvalidOperationException) { }
+        }
+        else if (tiles.Total == 0) observing = false;
+        if (popId is not null) popId = null; // the burst plays once; the next render drops the class
+    }
+
+    /// Chart containers report their width (ResizeObserver in ipop.js): the SVG is drawn in
+    /// real pixels so text and strokes never stretch.
+    [JSInvokable]
+    public void OnChartWidth(int index, double width)
+    {
+        if (width < 120) return;
+        if (index == 0 && Math.Abs(width - bdW) > 1) { bdW = width; StateHasChanged(); }
+        if (index == 1 && Math.Abs(width - vlW) > 1) { vlW = width; StateHasChanged(); }
+    }
+
+    public void Dispose()
+    {
+        if (selfRef is not null)
+        {
+            try { _ = JS.InvokeVoidAsync("ipop.unwatchWidth", selfRef); } catch { }
+            selfRef.Dispose();
+        }
+    }
+
+    // ── Header ──
+    private string UpdatedLabel
+    {
+        get
+        {
+            var mins = (int)(DateTime.Now - updatedAt).TotalMinutes;
+            return mins < 1 ? "Updated just now" : mins < 60 ? $"Updated {mins} min ago" : $"Updated {updatedAt:HH:mm}";
+        }
+    }
+
+    private async Task PrintAsync()
+    {
+        try { await JS.InvokeVoidAsync("print"); } catch (JSException) { }
+    }
+
+    // ── Milestones ──
+    private string MilestoneSubtitle
+    {
+        get
+        {
+            if (Milestones.Count == 0) return "Checkpoints that group tasks toward a goal";
+            var ach = Milestones.Count(m => m.Status == MilestoneStatus.Achieved);
+            var next = Milestones.FirstOrDefault(m => m.Status != MilestoneStatus.Achieved)?.Title ?? "—";
+            return $"{ach} of {Milestones.Count} achieved · next: {next}";
+        }
+    }
+
+    public static string StatusKey(string status) => status switch
+    {
+        MilestoneStatus.Achieved => "done",
+        MilestoneStatus.Overdue => "late",
+        MilestoneStatus.DueSoon => "soon",
+        _ => "plan",
+    };
+    private static string PillClass(string st) => st switch { "done" => "c-acc", "late" => "c-dan", "soon" => "c-war", _ => "c-mut" };
+    private static string PillIcon(string st) => st switch { "done" => "check", "late" => "alert-circle", "soon" => "clock", _ => "calendar" };
+    public static string PillLabel(string st) => st switch { "done" => "Achieved", "late" => "Overdue", "soon" => "Due soon", _ => "Planned" };
+    private static string DotVar(string st) => st switch { "done" => "--accent", "late" => "--danger", "soon" => "--warn", _ => "--ink-3" };
+
+    private static string Rel(int n) => n switch
+    {
+        0 => "today", 1 => "tomorrow", -1 => "yesterday",
+        > 0 => $"in {n} days",
+        _ => $"{-n} days late",
+    };
+
+    private async Task MarkAchievedAsync(MsView m)
+    {
+        if (Project is null || busyId is not null || m.Status == MilestoneStatus.Achieved) return;
+        busyId = m.Id;
+        var pid = Project.Id;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{pid}/milestones/{m.Id}/achieve?localToday={Today:yyyy-MM-dd}");
+            if (!res.IsSuccessStatusCode) { Toasts.Show($"Couldn't mark \"{m.Title}\" achieved: {await ErrorAsync(res)}", ToastKind.Error); return; }
+            var dto = await ReadAsync(res);
+            if (dto is not null) Replace(dto);
+            popId = m.Id;
+            Toasts.ShowUndo($"\"{m.Title}\" marked achieved", () => UndoAchievedAsync(pid, m.Id, m.Title));
+        }
+        catch { Toasts.Show($"Couldn't mark \"{m.Title}\" achieved. Check your connection.", ToastKind.Error); }
+        finally { busyId = null; }
+    }
+
+    private async Task UndoAchievedAsync(Guid pid, Guid id, string title)
+    {
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{pid}/milestones/{id}/unachieve?localToday={Today:yyyy-MM-dd}");
+            if (!res.IsSuccessStatusCode) { Toasts.Show($"Couldn't undo: {await ErrorAsync(res)}", ToastKind.Error); return; }
+            if (pid == Project?.Id && await ReadAsync(res) is { } dto) Replace(dto);
+        }
+        catch { Toasts.Show($"Couldn't undo \"{title}\".", ToastKind.Error); }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void Replace(MilestoneDto dto)
+    {
+        var i = serverMilestones.FindIndex(x => x.Id == dto.Id);
+        if (i >= 0) serverMilestones[i] = dto; else serverMilestones.Add(dto);
+        Recompute();
+    }
+
+    private static async Task<MilestoneDto?> ReadAsync(HttpResponseMessage res)
+    {
+        try { return await res.Content.ReadFromJsonAsync<MilestoneDto>(); }
+        catch { return null; }
+    }
+
+    private static async Task<string> ErrorAsync(HttpResponseMessage res)
+    {
+        if (res.StatusCode == System.Net.HttpStatusCode.Forbidden) return "you don't have permission.";
+        string? code = null;
+        try { code = (await res.Content.ReadFromJsonAsync<Dictionary<string, object>>())?.GetValueOrDefault("code")?.ToString(); }
         catch { }
+        return code switch
+        {
+            "invalid_title" => "a name is required (max 300 characters).",
+            "task_not_found" => "a linked task no longer exists.",
+            "milestone_not_found" => "the milestone no longer exists.",
+            "project_not_found" => "the project no longer exists.",
+            _ => (int)res.StatusCode >= 500 ? $"server error ({(int)res.StatusCode})." : $"request failed ({(int)res.StatusCode}).",
+        };
     }
 
-    private record MilestoneRow(Guid Id, string Title, DateTime DueDate, Guid? TaskId, string? TaskTitle, bool Achieved, bool Overdue);
+    // ── Sheet ──
+    private bool sheetOpen, nameErr, saving;
+    private int nameShake;
+    private MsView? editing;
+    private string sheetName = "";
+    private DateTime sheetDate;
+    private string taskQuery = "";
+    private HashSet<Guid> sheetSel = [];
+    private ElementReference nameInput;
 
-    private async Task DeleteMilestone(CustomMilestone m)
+    private void OpenNewSheet()
     {
-        if (Project is null) return;
+        editing = null;
+        sheetName = ""; nameErr = false; nameShake = 0; taskQuery = "";
+        sheetDate = Today.AddDays(14);
+        sheetSel = [];
+        sheetOpen = true;
+        _ = FocusNameAsync();
+    }
+
+    private void OpenEditSheet(MsView m)
+    {
+        editing = m;
+        sheetName = m.Title; nameErr = false; nameShake = 0; taskQuery = "";
+        sheetDate = m.DueDate.Date;
+        sheetSel = m.TaskIds.ToHashSet();
+        sheetOpen = true;
+    }
+
+    private async Task FocusNameAsync()
+    {
+        await Task.Delay(60);
+        try { await nameInput.FocusAsync(); } catch { }
+    }
+
+    private void CloseSheet() { if (!saving) sheetOpen = false; }
+
+    private void ToggleTask(Guid id, bool on) { if (on) sheetSel.Add(id); else sheetSel.Remove(id); }
+
+    private List<ProjectTaskDto> SheetTasks
+    {
+        get
+        {
+            var q = taskQuery.Trim();
+            return TopTasks
+                .Where(t => q.Length == 0 || t.Title.Contains(q, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(t => t.Status == "done").ThenBy(t => t.DueDate ?? DateTime.MaxValue).ThenBy(t => t.Title)
+                .ToList();
+        }
+    }
+
+    private string LinkSummary
+    {
+        get
+        {
+            var n = sheetSel.Count;
+            if (n == 0) return "No tasks linked yet — you can link them later by editing the milestone.";
+            var dn = TopTasks.Count(t => sheetSel.Contains(t.Id) && t.Status == "done");
+            return $"{n} task{(n > 1 ? "s" : "")} linked · {dn} already done → starts at {(int)Math.Round(100.0 * dn / n)}%";
+        }
+    }
+
+    private async Task SaveSheetAsync()
+    {
+        if (Project is null || saving) return;
+        var name = sheetName.Trim();
+        if (name.Length == 0)
+        {
+            nameErr = true; nameShake++;
+            _ = FocusNameAsync();
+            return;
+        }
+        saving = true;
+        var pid = Project.Id;
+        var ids = sheetSel.ToList();
+        var due = DateTime.SpecifyKind(sheetDate.Date, DateTimeKind.Utc);
         try
         {
-            await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/{Project.Id}/milestones/{m.Id}");
-            customMilestones.Remove(m);
-            Toasts.Show("Milestone deleted.", ToastKind.Success);
+            if (editing is null)
+            {
+                var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{pid}/milestones?localToday={Today:yyyy-MM-dd}",
+                    new { title = name, dueDate = due, taskIds = ids });
+                if (!res.IsSuccessStatusCode) { Toasts.Show($"Couldn't create the milestone: {await ErrorAsync(res)}", ToastKind.Error); return; }
+                var dto = await ReadAsync(res);
+                if (dto is not null)
+                {
+                    Replace(dto);
+                    popId = dto.Id;
+                    Toasts.ShowUndo($"Milestone \"{name}\" created", () => UndoCreateAsync(pid, dto.Id, name));
+                }
+                else await LoadMilestonesAsync();
+            }
+            else
+            {
+                var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/projects/{pid}/milestones/{editing.Id}?localToday={Today:yyyy-MM-dd}",
+                    new { title = name, dueDate = due, taskIds = ids });
+                if (!res.IsSuccessStatusCode) { Toasts.Show($"Couldn't save the milestone: {await ErrorAsync(res)}", ToastKind.Error); return; }
+                if (await ReadAsync(res) is { } dto) Replace(dto); else await LoadMilestonesAsync();
+                popId = editing.Id;
+                Toasts.Show("Milestone saved.", ToastKind.Success);
+            }
+            sheetOpen = false;
         }
-        catch { Toasts.Show("Failed to delete milestone.", ToastKind.Error); }
+        catch { Toasts.Show("Couldn't save the milestone. Check your connection.", ToastKind.Error); }
+        finally { saving = false; }
     }
 
-    // Ubah milestone (judul/tanggal/tautan tugas) — PUT ke server.
-    private CustomMilestone? editingMilestone;
-    private string editingMilestoneTitle = "";
-    private DateTime editingMilestoneDate;
-    private string editingMilestoneTaskId = "";
-
-    private void StartMilestoneEdit(CustomMilestone m)
+    private async Task UndoCreateAsync(Guid pid, Guid id, string name)
     {
-        editingMilestone = m;
-        editingMilestoneTitle = m.Title;
-        editingMilestoneDate = m.DueDate;
-        editingMilestoneTaskId = m.TaskId?.ToString() ?? "";
-    }
-
-    private async Task SaveMilestoneEdit()
-    {
-        if (Project is null || editingMilestone is null) return;
-        var newTaskId = Guid.TryParse(editingMilestoneTaskId, out var tid) ? tid : (Guid?)null;
         try
         {
-            await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{Project.Id}/milestones/{editingMilestone.Id}",
-                new { title = editingMilestoneTitle.Trim(), dueDate = editingMilestoneDate, taskId = newTaskId, clearTask = newTaskId is null });
-            editingMilestone = null;
-            await LoadMilestonesAsync();
-            Toasts.Show("Milestone updated.", ToastKind.Success);
+            var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/{pid}/milestones/{id}");
+            if (!res.IsSuccessStatusCode) { Toasts.Show($"Couldn't remove \"{name}\": {await ErrorAsync(res)}", ToastKind.Error); return; }
+            if (pid == Project?.Id) { serverMilestones.RemoveAll(m => m.Id == id); Recompute(); }
         }
-        catch { Toasts.Show("Failed to update milestone.", ToastKind.Error); }
+        catch { Toasts.Show($"Couldn't remove \"{name}\".", ToastKind.Error); }
+        await InvokeAsync(StateHasChanged);
     }
 
-    protected override async Task OnParametersSetAsync()
+    private async Task DeleteEditingAsync()
     {
-        await LoadMilestonesAsync();
-    }
-
-    private List<Milestone> Milestones => AllTasks
-        .Where(t => t.DueDate is not null && t.ParentTaskId is null)
-        .OrderBy(t => t.DueDate)
-        .Take(8)
-        .Select(t => new Milestone(t.Title, t.DueDate!.Value, t.Status == "done", t.Status != "done" && t.DueDate.Value < DateTime.UtcNow))
-        .ToList();
-
-    // Burndown: sisa tugas (bukan done) per minggu mundur sesuai rentang pilihan.
-    // Filter milestone: hanya tugas yang dikaitkan ke milestone terpilih (bila dipilih).
-    private sealed record BurndownPoint(string Label, int Remaining);
-    private int burndownWeeks = 6;
-    private string burndownMilestoneId = "";
-
-    private List<ProjectTaskDto> BurndownScope
-    {
-        get
+        if (Project is null || editing is null || saving) return;
+        saving = true;
+        var pid = Project.Id;
+        var m = editing;
+        try
         {
-            if (string.IsNullOrEmpty(burndownMilestoneId)) return AllTasks.Where(t => t.ParentTaskId is null).ToList();
-            var linkedTaskIds = customMilestones
-                .Where(m => m.Id.ToString() == burndownMilestoneId && m.TaskId is not null)
-                .Select(m => m.TaskId!.Value)
-                .ToHashSet();
-            return AllTasks.Where(t => t.ParentTaskId is null && linkedTaskIds.Contains(t.Id)).ToList();
+            var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/{pid}/milestones/{m.Id}");
+            if (!res.IsSuccessStatusCode) { Toasts.Show($"Couldn't delete the milestone: {await ErrorAsync(res)}", ToastKind.Error); return; }
+            serverMilestones.RemoveAll(x => x.Id == m.Id);
+            Recompute();
+            sheetOpen = false;
+            Toasts.Show($"Milestone \"{m.Title}\" deleted.", ToastKind.Success);
+        }
+        catch { Toasts.Show("Couldn't delete the milestone. Check your connection.", ToastKind.Error); }
+        finally { saving = false; }
+    }
+
+    // ── Burndown ──
+    private void SetFilter(Guid? id) { filterId = id; filterOpen = false; bdHover = null; }
+
+    private string FilterLabel => filterId is { } f ? Milestones.FirstOrDefault(m => m.Id == f)?.Title ?? "All milestones" : "All milestones";
+
+    private IReadOnlyList<ProjectTaskDto> ScopeTasks()
+    {
+        if (filterId is not { } f || Milestones.FirstOrDefault(m => m.Id == f) is not { } m) return TopTasks;
+        var ids = m.TaskIds.ToHashSet();
+        return TopTasks.Where(t => ids.Contains(t.Id)).ToList();
+    }
+
+    public sealed record BurndownGeom(double W, int N, int K, int[] Rem, DateTime[] Weeks, int YMax, double Vel, int Step,
+        string Actual, string Area, string Ideal, string Forecast, int[] Ticks, string Insight, bool Late)
+    {
+        public double X(int i) => BdL + i * (W - BdL - BdR) / Math.Max(1, K - 1);
+        public double Y(double v) => BdT + (ChartH - BdT - BdB) * (1 - v / YMax);
+        public double Col => (W - BdL - BdR) / Math.Max(1, K - 1);
+        public double IdealAt(int i) => Rem[0] * (1 - (double)i / Math.Max(1, K - 1));
+        public double ForecastAt(int i) => Math.Max(0, Rem[N - 1] - Vel * (i - (N - 1)));
+        public int ValueAt(int i) => i < N ? Rem[i] : (int)Math.Round(ForecastAt(i));
+    }
+
+    private BurndownGeom BurndownView()
+    {
+        var scope = ScopeTasks();
+        var now = Clock;
+        var n = bdRange;
+        var rem = ProjectReportMath.Burndown(scope, now, n);
+        var weeks = ProjectReportMath.Weeks(now, n, FutureWeeks);
+        var vel = ProjectReportMath.Average(ProjectReportMath.Velocity(scope, now, ProjectReportMath.PaceWeeks));
+        var k = weeks.Length;
+        var ymax = ProjectReportMath.NiceMax(Math.Max(rem.Max(), 1));
+        var g = new BurndownGeom(bdW, n, k, rem, weeks, ymax, vel, k > 10 ? 2 : 1, "", "", "", "", [], "", false);
+        var act = string.Concat(rem.Select((v, i) => $"{(i == 0 ? "M" : "L")}{F(g.X(i))},{F(g.Y(v))}"));
+        var area = act + $"L{F(g.X(n - 1))},{F(g.Y(0))}L{F(g.X(0))},{F(g.Y(0))}Z";
+        var ideal = $"M{F(g.X(0))},{F(g.Y(rem[0]))}L{F(g.X(k - 1))},{F(g.Y(0))}";
+        var fc = $"M{F(g.X(n - 1))},{F(g.Y(rem[n - 1]))}" + string.Concat(Enumerable.Range(n, FutureWeeks).Select(i => $"L{F(g.X(i))},{F(g.Y(g.ForecastAt(i)))}"));
+        var ticks = new[] { 0, .25, .5, .75, 1 }.Select(t => (int)Math.Round(ymax * t)).Distinct().ToArray();
+
+        // Insight: when will the open work be done at the current pace, and does that beat the target?
+        var left = rem[n - 1];
+        var target = filterId is { } f
+            ? Milestones.FirstOrDefault(m => m.Id == f)
+            : Milestones.Where(m => m.Status != MilestoneStatus.Achieved).OrderByDescending(m => m.DueDate).FirstOrDefault();
+        string insight;
+        var late = false;
+        if (left == 0) insight = "Nothing left to do here — every task is done.";
+        else if (vel <= 0) insight = $"{left} task{(left == 1 ? "" : "s")} left. Nothing was finished in the last 6 weeks, so there's no forecast yet.";
+        else
+        {
+            var fin = Today.AddDays(Math.Ceiling(left / vel) * 7);
+            late = target is not null && fin > target.DueDate.Date;
+            insight = $"{left} task{(left == 1 ? "" : "s")} left. At {vel.ToString("0.0", Inv)} a week you'll finish around {Short(fin)}"
+                + (target is null ? "." : $" — {(late ? "after" : "before")} \"{target.Title}\" ({Short(target.DueDate)}).");
+        }
+        return g with { Actual = act, Area = area, Ideal = ideal, Forecast = fc, Ticks = ticks, Insight = insight, Late = late };
+    }
+
+    // ── Velocity ──
+    public sealed record VelocityGeom(double W, int N, int[] V, DateTime[] Weeks, int YMax, double Avg, int Step, int[] Ticks, string Insight, bool Slowing)
+    {
+        public double Band => (W - BdL - BdR) / N;
+        public double Bw => Math.Min(38, Band * .56);
+        public double X(int i) => BdL + Band * i + Band / 2;
+        public double Y(double n) => VlT + (ChartH - VlT - BdB) * (1 - n / YMax);
+        public string Bar(int i)
+        {
+            var h0 = Y(0);
+            double x = X(i) - Bw / 2, y = Y(V[i]), w = Bw, h = h0 - y;
+            if (h < 2) { h = 2; y = h0 - 2; }
+            var r = Math.Min(Math.Min(7, w / 2), h);
+            return $"M{F(x)},{F(y + h)}V{F(y + r)}Q{F(x)},{F(y)} {F(x + r)},{F(y)}H{F(x + w - r)}Q{F(x + w)},{F(y)} {F(x + w)},{F(y + r)}V{F(y + h)}Z";
         }
     }
 
-    private List<BurndownPoint> Burndown
+    private VelocityGeom VelocityView()
     {
-        get
+        var now = Clock;
+        var n = vlPeriod;
+        var v = ProjectReportMath.Velocity(TopTasks, now, n);
+        var weeks = ProjectReportMath.Weeks(now, n);
+        var avg = ProjectReportMath.Average(v);
+        var ymax = ProjectReportMath.NiceMax(Math.Max(v.Max(), 1) + 1);
+        var ticks = new[] { 0, .5, 1 }.Select(t => (int)Math.Round(ymax * t)).Distinct().ToArray();
+        var half = n / 2;
+        var d2 = ProjectReportMath.Average(v[half..]) - ProjectReportMath.Average(v[..half]);
+        string insight;
+        if (v.Sum() == 0) insight = $"No tasks completed in the last {n} weeks.";
+        else
         {
-            var scope = BurndownScope;
-            if (scope.Count == 0) return [];
-            var points = new List<BurndownPoint>();
-            for (var w = burndownWeeks - 1; w >= 0; w--)
-            {
-                var weekEnd = DateTime.UtcNow.Date.AddDays(-7 * w);
-                // Sisa pada titik lampau = belum selesai kini + yang selesai SETELAH titik
-                // itu (UpdatedAt > weekEnd). Tugas overdue tetap terhitung sisa.
-                var remaining = scope.Count(t => t.Status != "done" || t.UpdatedAt.Date > weekEnd);
-                points.Add(new BurndownPoint(w == 0 ? "Now" : $"W-{w}", remaining));
-            }
-            return points;
+            var best = v.Max();
+            var bi = Array.LastIndexOf(v, best);
+            insight = $"Average {avg.ToString("0.0", Inv)} tasks/week over {n} weeks — {(d2 >= 0 ? "picking up" : "slowing down")} lately ({(d2 >= 0 ? "+" : "−")}{Math.Abs(d2).ToString("0.0", Inv)}). Best week: {Short(weeks[bi])} with {best}.";
         }
+        return new VelocityGeom(vlW, n, v, weeks, ymax, avg, n > 8 ? 2 : 1, ticks, insight, v.Sum() > 0 && d2 < 0);
     }
 
-    private string BurndownPoints
-    {
-        get
-        {
-            if (Burndown.Count == 0) return "";
-            var max = Math.Max(1, Burndown.Max(p => p.Remaining));
-            return string.Join(" ", Burndown.Select((p, i) =>
-                $"{(int)(i * (300.0 / (Burndown.Count - 1)))},{(int)(10 + (double)p.Remaining / max * 100)}"));
-        }
-    }
+    // ── Formatting ──
+    private static string F(double v) => v.ToString("0.#", Inv);
+    private static string Short(DateTime d) => d.ToString("d MMM", Inv);
+    private static string Long(DateTime d) => d.ToString("ddd, d MMM", Inv);
+    private static string Days(int n) => n == 1 ? "1 day" : $"{n} days";
+    private static string WeekRange(DateTime monday) => $"Mon {monday.Day} – Sun {monday.AddDays(6).ToString("d MMM", Inv)}";
 
-    // Velocity: tugas selesai (done) per minggu, sesuai periode pilihan.
-    private sealed record VelocityBar(string Label, int Count, int Height);
-    private int velocityWeeks = 6;
-    private List<VelocityBar> VelocityBars
+    private static string RingStyle(int pct)
     {
-        get
-        {
-            var counts = new List<int>();
-            for (var w = velocityWeeks - 1; w >= 0; w--)
-            {
-                var from = DateTime.UtcNow.Date.AddDays(-7 * (w + 1));
-                var to = DateTime.UtcNow.Date.AddDays(-7 * w);
-                var n = AllTasks.Count(t => t.ParentTaskId is null && t.Status == "done" && t.UpdatedAt >= from && t.UpdatedAt < to);
-                counts.Add(n);
-            }
-            var max = Math.Max(1, counts.Max());
-            var bars = new List<VelocityBar>();
-            for (var i = 0; i < counts.Count; i++)
-                bars.Add(new VelocityBar(i == counts.Count - 1 ? "Now" : $"W-{counts.Count - 1 - i}", counts[i], (int)(100.0 * counts[i] / max)));
-            return bars;
-        }
-    }
-    private string VelocityPerWeek
-    {
-        get
-        {
-            var total = VelocityBars.Sum(b => b.Count);
-            return (total / (double)velocityWeeks).ToString("0.#");
-        }
-    }
-
-    // Estimasi penyelesaian: sisa tugas ÷ rata-rata velocity per minggu → tanggal kira-kira.
-    private int RemainingTasks => AllTasks.Count(t => t.ParentTaskId is null && t.Status != "done");
-    private string? EstimatedCompletion
-    {
-        get
-        {
-            var total = VelocityBars.Sum(b => b.Count);
-            if (total <= 0 || RemainingTasks <= 0) return null;
-            var perWeek = total / (double)velocityWeeks;
-            var weeksLeft = (int)Math.Ceiling(RemainingTasks / perWeek);
-            return DateTime.Today.AddDays(weeksLeft * 7).ToString("dd MMM yyyy");
-        }
+        var c = 2 * Math.PI * 24;
+        return $"--c:{F(c)};stroke-dasharray:{F(c)};stroke-dashoffset:{F(c * (1 - Math.Clamp(pct, 0, 100) / 100.0))}";
     }
 }

@@ -97,8 +97,8 @@
                     <button class="proj-tab-btn @(tab == 3 ? "active" : "")" @onclick="() => SwitchTab(3)">
                         <i data-lucide="users"></i> Workload
                     </button>
-                    <button class="proj-tab-btn @(tab == 5 ? "active" : "")" @onclick="() => SwitchTab(5)" title="Plans & Reports: templates, milestones, burndown, velocity">
-                        <i data-lucide="clipboard-list"></i> Plans &amp; Reports
+                    <button class="proj-tab-btn @(tab == 5 ? "active" : "")" @onclick="() => SwitchTab(5)" title="Reports: progress, milestones, burndown, velocity">
+                        <i data-lucide="chart-no-axes-combined"></i> Reports
                     </button>
                 </div>
 
@@ -319,7 +319,7 @@
                             }
                             else if (tab == 5)
                             {
-                                <ProjectReportsPanel Project="selectedProject" AllTasks="AllCurrentTasks" />
+                                <ProjectReportsPanel Project="selectedProject" AllTasks="AllCurrentTasks" OnViewOverdue="ViewOverdueFromReports" />
                             }
                         </div>
                     </div>
@@ -383,6 +383,7 @@
 {
     <ProjectCreateModal
         OnClose="() => showCreateModal = false"
+        Busy="creatingProject"
         OnSubmit="HandleSubmitCreateProject" />
 }
 
@@ -945,6 +946,13 @@
         await LoadSavedViews();
 
         StateHasChanged();
+    }
+
+    /// Reports → Overdue tile → View: the List tab with the Overdue filter on.
+    private async Task ViewOverdueFromReports()
+    {
+        overdueOnly = true;
+        await SwitchTab(1);
     }
 
     private async Task SwitchTab(int newTab)
@@ -2032,8 +2040,15 @@
         }
     }
 
+    private bool creatingProject;
+
     private async Task HandleSubmitCreateProject(ProjectCreateModal.CreateProjectModel m)
     {
+        if (m.TemplateId is { } templateId)
+        {
+            await CreateProjectFromTemplate(m, templateId);
+            return;
+        }
         var create = new CreateProjectRequest(
             m.Name, m.Description, m.Year, Guid.Empty,
             null, m.Deadline, null, null, m.OwnerNik, m.Color
@@ -2049,6 +2064,41 @@
         {
             Toasts.Show($"Failed to create project: {await ProjectErrorAsync(r)}", ToastKind.Error);
         }
+    }
+
+    /// "Start from: Template" in New project: the server copies the template's tasks, then the
+    /// new project opens.
+    private async Task CreateProjectFromTemplate(ProjectCreateModal.CreateProjectModel m, Guid templateId)
+    {
+        if (creatingProject) return;
+        creatingProject = true;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/projects/from-template", new
+            {
+                templateId, name = m.Name, description = m.Description, year = m.Year,
+                deadline = m.Deadline is { } d ? DateTime.SpecifyKind(d.Date, DateTimeKind.Utc) : (DateTime?)null,
+                ownerNik = m.OwnerNik, color = m.Color,
+            });
+            if (!res.IsSuccessStatusCode)
+            {
+                Toasts.Show($"Failed to create project: {(res.StatusCode == System.Net.HttpStatusCode.NotFound ? "that template no longer exists." : await ProjectErrorAsync(res))}", ToastKind.Error);
+                return;
+            }
+            ProjectDto? created = null;
+            try { created = await res.Content.ReadFromJsonAsync<ProjectDto>(); } catch { }
+            showCreateModal = false;
+            await ReloadProjects();
+            Toasts.Show($"Project \"{m.Name}\" created from template.", ToastKind.Success);
+            if (created is not null)
+            {
+                // The route change selects and loads it (OnParametersSetAsync).
+                tab = 4;
+                Nav.NavigateTo($"/projects/{created.Id}");
+            }
+        }
+        catch { Toasts.Show("Failed to create project. Check your connection.", ToastKind.Error); }
+        finally { creatingProject = false; }
     }
 
     /// The server's own reason for a failed project write. "check permissions" is only

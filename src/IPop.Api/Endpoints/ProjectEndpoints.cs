@@ -1100,7 +1100,8 @@ public static class ProjectEndpoints
 
             var startDate = IPop.Application.UtcDates.AsUtcDate(req.StartDate ?? DateTime.UtcNow.Date);
             var createReq = new CreateProjectRequest(req.Name ?? tpl.Name, req.Description ?? tpl.Description,
-                req.Year ?? DateTime.UtcNow.Year, req.OwnerId ?? userId.Value, startDate, req.Deadline, null, null);
+                req.Year ?? DateTime.UtcNow.Year, req.OwnerId ?? userId.Value, startDate, req.Deadline, null, null,
+                string.IsNullOrWhiteSpace(req.OwnerNik) ? null : req.OwnerNik, req.Color);
             var result = await svc.CreateProjectAsync(userId.Value, createReq, ct);
             if (!result.Success || result.Project is null)
                 return Results.Json(new { code = result.Error ?? "create_failed", message = result.Error }, statusCode: 422);
@@ -1147,96 +1148,68 @@ public static class ProjectEndpoints
             return Results.Ok(rows);
         });
 
-        // GET /api/projects/{id}/milestones — daftar milestone proyek.
-        g.MapGet("/{id:guid}/milestones", async (Guid id, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        // ── Milestones: a dated checkpoint grouping several tasks (IMilestoneService) ──
+        // Status is computed per request: achieved | overdue | due_soon (≤ 7 days) | planned.
+        // `localToday` (yyyy-MM-dd) is the caller's calendar date; defaults to UTC today.
+
+        // GET /api/projects/{id}/milestones
+        g.MapGet("/{id:guid}/milestones", async (Guid id, DateTime? localToday, HttpContext http, IPopDbContext db, IMilestoneService ms, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == id && m.UserId == userId.Value, ct);
-            if (!isMember) return Results.Json(new { code = "forbidden", message = "Not a project member." }, statusCode: 403);
-
-            var rows = await db.ProjectMilestones.AsNoTracking()
-                .Where(m => m.ProjectId == id)
-                .OrderBy(m => m.DueDate)
-                .Select(m => new ProjectMilestoneDto(m.Id, m.Title, m.DueDate, m.TaskId,
-                    m.Task != null ? m.Task.Title : null, m.AchievedAt != null,
-                    m.AchievedAt == null && m.DueDate < DateTime.UtcNow))
-                .ToListAsync(ct);
-            return Results.Ok(rows);
+            var r = await ms.ListAsync(userId.Value, id, MilestoneToday(localToday), ct);
+            return r.Success ? Results.Ok(r.Value) : MilestoneError(r.Error);
         });
 
-        // POST /api/projects/{id}/milestones
-        g.MapPost("/{id:guid}/milestones", async (Guid id, CreateMilestoneRequest req, HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        // POST /api/projects/{id}/milestones  { title, dueDate, taskIds[] }
+        g.MapPost("/{id:guid}/milestones", async (Guid id, DateTime? localToday, CreateMilestoneRequest req, HttpContext http, IPopDbContext db, IMilestoneService ms, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == id && m.UserId == userId.Value, ct);
-            if (!isMember) return Results.Json(new { code = "forbidden", message = "Not a project member." }, statusCode: 403);
-            var title = req.Title?.Trim() ?? "";
-            if (title.Length == 0 || title.Length > 300)
-                return Results.Json(new { code = "invalid_title", message = "Milestone title is required." }, statusCode: 422);
-            if (req.TaskId is { } tid)
-            {
-                var taskOk = await db.ProjectTasks.AnyAsync(t => t.Id == tid && t.ProjectId == id, ct);
-                if (!taskOk) return Results.Json(new { code = "task_not_found", message = "Task not found in this project." }, statusCode: 404);
-            }
-
-            var m = new ProjectMilestone
-            {
-                Id = Guid.NewGuid(), ProjectId = id, Title = title,
-                DueDate = IPop.Application.UtcDates.AsUtcDate(req.DueDate), TaskId = req.TaskId, CreatedAt = DateTime.UtcNow
-            };
-            db.ProjectMilestones.Add(m);
-            await db.SaveChangesAsync(ct);
+            var r = await ms.CreateAsync(userId.Value, id, req, MilestoneToday(localToday), ct);
+            if (!r.Success) return MilestoneError(r.Error);
             await PushProjectChangedAsync(realtime, id);
-            return Results.Ok(new ProjectMilestoneDto(m.Id, m.Title, m.DueDate, m.TaskId, null, false, m.DueDate < DateTime.UtcNow));
+            return Results.Ok(r.Value);
         }).RequirePermission("projects.write");
 
-        // PUT /api/projects/{id}/milestones/{milestoneId}
-        g.MapPut("/{id:guid}/milestones/{milestoneId:guid}", async (Guid id, Guid milestoneId, UpdateMilestoneRequest req, HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        // PATCH /api/projects/{id}/milestones/{milestoneId}  { title?, dueDate?, taskIds? }
+        // PUT is the legacy verb for the same update (older clients send taskId/clearTask/achieved).
+        foreach (var verb in new[] { "PATCH", "PUT" })
         {
-            var userId = await GetUserIdAsync(http, db);
-            if (userId is null) return Results.Unauthorized();
-            var isMember = await db.ProjectMembers.AnyAsync(pm => pm.ProjectId == id && pm.UserId == userId.Value, ct);
-            if (!isMember) return Results.Json(new { code = "forbidden", message = "Not a project member." }, statusCode: 403);
-            var m = await db.ProjectMilestones.FirstOrDefaultAsync(x => x.Id == milestoneId && x.ProjectId == id, ct);
-            if (m is null) return Results.Json(new { code = "not_found", message = "Milestone not found." }, statusCode: 404);
+            g.MapMethods("/{id:guid}/milestones/{milestoneId:guid}", [verb], async (Guid id, Guid milestoneId, DateTime? localToday, UpdateMilestoneRequest req,
+                HttpContext http, IPopDbContext db, IMilestoneService ms, IRealtime realtime, CancellationToken ct) =>
+            {
+                var userId = await GetUserIdAsync(http, db);
+                if (userId is null) return Results.Unauthorized();
+                var r = await ms.UpdateAsync(userId.Value, id, milestoneId, req, MilestoneToday(localToday), ct);
+                if (!r.Success) return MilestoneError(r.Error);
+                await PushProjectChangedAsync(realtime, id);
+                return Results.Ok(r.Value);
+            }).RequirePermission("projects.write");
+        }
 
-            if (req.Title is not null)
+        // POST /api/projects/{id}/milestones/{milestoneId}/achieve | /unachieve (undo)
+        foreach (var (path, achieved) in new[] { ("achieve", true), ("unachieve", false) })
+        {
+            g.MapPost($"/{{id:guid}}/milestones/{{milestoneId:guid}}/{path}", async (Guid id, Guid milestoneId, DateTime? localToday,
+                HttpContext http, IPopDbContext db, IMilestoneService ms, IRealtime realtime, CancellationToken ct) =>
             {
-                var title = req.Title.Trim();
-                if (title.Length == 0 || title.Length > 300) return Results.Json(new { code = "invalid_title", message = "Invalid title." }, statusCode: 422);
-                m.Title = title;
-            }
-            if (req.DueDate is { } dd) m.DueDate = IPop.Application.UtcDates.AsUtcDate(dd);
-            if (req.TaskId is { } tid)
-            {
-                var taskOk = await db.ProjectTasks.AnyAsync(t => t.Id == tid && t.ProjectId == id, ct);
-                if (!taskOk) return Results.Json(new { code = "task_not_found", message = "Task not found." }, statusCode: 404);
-                m.TaskId = tid;
-            }
-            else if (req.ClearTask == true)
-            {
-                m.TaskId = null; // lepas kaitan tugas dari milestone
-            }
-            if (req.Achieved == true && m.AchievedAt is null) m.AchievedAt = DateTime.UtcNow;
-            if (req.Achieved == false) m.AchievedAt = null;
-            await db.SaveChangesAsync(ct);
-            await PushProjectChangedAsync(realtime, id);
-            return Results.Ok(new ProjectMilestoneDto(m.Id, m.Title, m.DueDate, m.TaskId, null, m.AchievedAt != null, m.AchievedAt == null && m.DueDate < DateTime.UtcNow));
-        }).RequirePermission("projects.write");
+                var userId = await GetUserIdAsync(http, db);
+                if (userId is null) return Results.Unauthorized();
+                var r = await ms.SetAchievedAsync(userId.Value, id, milestoneId, achieved, MilestoneToday(localToday), ct);
+                if (!r.Success) return MilestoneError(r.Error);
+                await PushProjectChangedAsync(realtime, id);
+                return Results.Ok(r.Value);
+            }).RequirePermission("projects.write");
+        }
 
         // DELETE /api/projects/{id}/milestones/{milestoneId}
-        g.MapDelete("/{id:guid}/milestones/{milestoneId:guid}", async (Guid id, Guid milestoneId, HttpContext http, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        g.MapDelete("/{id:guid}/milestones/{milestoneId:guid}", async (Guid id, Guid milestoneId, HttpContext http, IPopDbContext db, IMilestoneService ms, IRealtime realtime, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            var isMember = await db.ProjectMembers.AnyAsync(pm => pm.ProjectId == id && pm.UserId == userId.Value, ct);
-            if (!isMember) return Results.Json(new { code = "forbidden", message = "Not a project member." }, statusCode: 403);
-            var m = await db.ProjectMilestones.FirstOrDefaultAsync(x => x.Id == milestoneId && x.ProjectId == id, ct);
-            if (m is null) return Results.Json(new { code = "not_found", message = "Milestone not found." }, statusCode: 404);
-            db.ProjectMilestones.Remove(m);
-            await db.SaveChangesAsync(ct);
+            var r = await ms.DeleteAsync(userId.Value, id, milestoneId, ct);
+            if (!r.Success) return MilestoneError(r.Error);
             await PushProjectChangedAsync(realtime, id);
             return Results.Ok(new { success = true });
         }).RequirePermission("projects.write");
@@ -1255,15 +1228,10 @@ public static class ProjectEndpoints
 
             if (milestoneId.HasValue)
             {
-                var milestoneTaskId = await db.ProjectMilestones.AsNoTracking()
-                    .Where(m => m.Id == milestoneId.Value && m.ProjectId == id)
-                    .Select(m => m.TaskId)
-                    .FirstOrDefaultAsync(ct);
-
-                if (milestoneTaskId.HasValue)
-                {
-                    query = query.Where(t => t.Id == milestoneTaskId.Value);
-                }
+                var linked = db.ProjectMilestoneTasks.AsNoTracking()
+                    .Where(l => l.MilestoneId == milestoneId.Value && l.Milestone.ProjectId == id)
+                    .Select(l => l.TaskId);
+                query = query.Where(t => linked.Contains(t.Id));
             }
 
             var tasks = await query
@@ -1426,6 +1394,16 @@ public static class ProjectEndpoints
     /// One file (the store's 25 MB cap) plus multipart framing.
     private const long MaxTaskFileRequestBytes = 25L * 1024 * 1024 + 1024 * 1024;
 
+    private static IResult MilestoneError(string? code) => Results.Json(new { code, message = code },
+        statusCode: code switch
+        {
+            "forbidden" => 403,
+            "project_not_found" or "milestone_not_found" or "task_not_found" => 404,
+            _ => 422
+        });
+
+    private static DateTime MilestoneToday(DateTime? localToday) => (localToday ?? DateTime.UtcNow).Date;
+
     private static IResult TaskFileError(string? code) => Results.Json(new { code, message = code },
         statusCode: code switch
         {
@@ -1544,11 +1522,9 @@ public static class ProjectEndpoints
     public record ProjectTemplateDto(Guid Id, string Name, string? Description, int TaskCount, Guid? SourceProjectId);
     public record ProjectTemplateTaskDto(Guid Id, string Title, string? Description, string? Priority, int? DueOffsetDays, int SortOrder);
     public record ProjectTemplateDetailDto(Guid Id, string Name, string? Description, IReadOnlyList<ProjectTemplateTaskDto> Tasks);
-    public record CreateProjectFromTemplateRequest(Guid TemplateId, string? Name, string? Description, int? Year, Guid? OwnerId, DateTime? StartDate, DateTime? Deadline);
-    // Milestone (Fase 4)
-    public record CreateMilestoneRequest(string? Title, DateTime DueDate, Guid? TaskId);
-    public record UpdateMilestoneRequest(string? Title, DateTime? DueDate, Guid? TaskId, bool? Achieved, bool? ClearTask);
-    public record ProjectMilestoneDto(Guid Id, string Title, DateTime DueDate, Guid? TaskId, string? TaskTitle, bool Achieved, bool Overdue);
+    public record CreateProjectFromTemplateRequest(Guid TemplateId, string? Name, string? Description, int? Year, Guid? OwnerId, DateTime? StartDate, DateTime? Deadline,
+        string? OwnerNik = null, string? Color = null);
+    // Milestone DTOs live in IPop.Application.Projects (IMilestoneService).
     // Laporan (Fase 4)
     public record BurndownPointDto(DateTime WeekEnd, int Remaining);
     public record BurndownDto(IReadOnlyList<BurndownPointDto> Actual, IReadOnlyList<BurndownPointDto> Ideal, int TotalTasks);

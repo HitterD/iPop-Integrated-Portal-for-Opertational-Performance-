@@ -115,6 +115,28 @@ window.ipop = {
     return [r.width, r.height];
   },
   viewportWidth() { return window.innerWidth; },
+  // Projects → Reports: each chart box reports its width so the SVG is drawn in real pixels.
+  // dotNet.invokeMethodAsync(method, index, width) per element; unwatchWidth(dotNet) stops it.
+  _widthWatch: new Map(),
+  watchWidth(dotNet, method, ...els) {
+    const old = this._widthWatch.get(dotNet._id);
+    if (old) old.disconnect();
+    const list = els.filter(e => e instanceof Element);
+    if (!list.length || !("ResizeObserver" in window)) return;
+    let t;
+    const send = () => list.forEach(e => {
+      const i = els.indexOf(e);
+      if (e.isConnected) dotNet.invokeMethodAsync(method, i, Math.round(e.clientWidth)).catch(() => {});
+    });
+    const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(send, 60); });
+    list.forEach(e => ro.observe(e));
+    this._widthWatch.set(dotNet._id, ro);
+    send();
+  },
+  unwatchWidth(dotNet) {
+    const ro = this._widthWatch.get(dotNet && dotNet._id);
+    if (ro) { ro.disconnect(); this._widthWatch.delete(dotNet._id); }
+  },
   viewportHeight() { return window.innerHeight; },
   focus(el) {
     if (el) { el.focus(); el.select(); }

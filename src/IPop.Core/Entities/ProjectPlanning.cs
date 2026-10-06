@@ -44,4 +44,17 @@ public class ProjectMilestone
 
     public Project Project { get; set; } = default!;
     public ProjectTask? Task { get; set; }
+    /// Tasks that roll up into this milestone's progress (TaskId above is kept for old rows).
+    public ICollection<ProjectMilestoneTask> LinkedTasks { get; set; } = [];
+}
+
+/// Many-to-many link: a milestone groups several tasks; it is achieved automatically when
+/// every linked task is done (or when someone marks it).
+public class ProjectMilestoneTask
+{
+    public Guid MilestoneId { get; set; }
+    public Guid TaskId { get; set; }
+
+    public ProjectMilestone Milestone { get; set; } = default!;
+    public ProjectTask Task { get; set; } = default!;
 }

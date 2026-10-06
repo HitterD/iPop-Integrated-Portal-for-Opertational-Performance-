@@ -1,4 +1,6 @@
 @using IPop.Web.Services
+@inject AuthState Auth
+@inject IJSRuntime JS
 
 <div class="proj-modal-backdrop" @onclick="OnClose"></div>
 <div class="proj-modal v6-project-modal" role="dialog" aria-modal="true" aria-label="Create New Project">
@@ -9,6 +11,47 @@
     </div>
     <div class="proj-modal-body">
         <div class="field"><label>Project name <span class="vpm-required">*</span></label><input class="org-input" @bind="createName" placeholder="e.g. Attendance digitization" /></div>
+        <div class="field">
+            <label>Start from</label>
+            <div class="vpm-from" role="radiogroup" aria-label="Start from">
+                <button type="button" role="radio" aria-checked="@(!fromTemplate ? "true" : "false")" class="@(!fromTemplate ? "on" : "")" @onclick="() => fromTemplate = false">
+                    <span class="fi c-mut"><i data-lucide="file"></i></span><span><b>Blank project</b><small>Empty board, add your own</small></span>
+                </button>
+                <button type="button" role="radio" aria-checked="@(fromTemplate ? "true" : "false")" class="@(fromTemplate ? "on" : "")" @onclick="ChooseTemplate">
+                    <span class="fi c-acc"><i data-lucide="layout-template"></i></span><span><b>Template</b><small>Start with a saved task list</small></span>
+                </button>
+            </div>
+        </div>
+        <div class="vpm-collapse @(fromTemplate ? "open" : "")" aria-hidden="@(fromTemplate ? "false" : "true")"><div>
+            <div class="vpm-tpl-h">Saved by your team</div>
+            <div class="vpm-tpl-list" role="radiogroup" aria-label="Template">
+                @if (templates is null)
+                {
+                    <div class="vpm-tpl-none">Loading templates…</div>
+                }
+                else if (templates.Count == 0)
+                {
+                    <div class="vpm-tpl-none">No templates yet. Open a project and choose ⋯ → Save as template… to make one.</div>
+                }
+                else
+                {
+                    @foreach (var t in templates)
+                    {
+                        var tpl = t;
+                        var on = selectedTemplate?.Id == tpl.Id;
+                        <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="vpm-tpl @(on ? "on" : "")" tabindex="@(fromTemplate ? 0 : -1)" @onclick="() => PickTemplate(tpl)">
+                            <span class="ic"><i data-lucide="layout-template"></i></span>
+                            <span style="min-width:0"><b>@tpl.Name</b><small>@(string.IsNullOrWhiteSpace(tpl.Description) ? $"{tpl.TaskCount} {(tpl.TaskCount == 1 ? "task" : "tasks")}" : tpl.Description)</small></span>
+                            <span class="rd"></span>
+                        </button>
+                    }
+                }
+            </div>
+            @if (selectedTemplate is not null)
+            {
+                <div class="vpm-incl"><i data-lucide="info"></i><span>Includes @selectedTemplate.TaskCount starter @(selectedTemplate.TaskCount == 1 ? "task" : "tasks"), all in To Do.</span></div>
+            }
+        </div></div>
         <div class="field"><label>Description</label><textarea class="org-input" rows="2" @bind="createDescription" placeholder="What is this project about?"></textarea></div>
         <div class="vpm-grid">
             <div class="field"><label>Year <span class="vpm-required">*</span></label><input type="number" class="org-input" @bind="createYear" /></div>
@@ -30,12 +73,44 @@
             @if (createOwner is not null) { <span class="vpm-owner">@createOwner.Name · @createOwner.PositionLabel</span> }
         </div>
     </div>
-    <div class="proj-modal-foot"><button type="button" class="btn-sm surface" @onclick="OnClose">Cancel</button><button type="button" class="btn-sm accent" @onclick="HandleSubmit"><i data-lucide="plus"></i>Create project</button></div>
+    <div class="proj-modal-foot"><button type="button" class="btn-sm surface" @onclick="OnClose">Cancel</button><button type="button" class="btn-sm accent" disabled="@(Busy || (fromTemplate && selectedTemplate is null))" @onclick="HandleSubmit"><i data-lucide="plus"></i>Create project</button></div>
 </div>
 
 @code {
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback<CreateProjectModel> OnSubmit { get; set; }
+    /// The page is creating the project: the Create button stays disabled.
+    [Parameter] public bool Busy { get; set; }
+
+    /// GET /api/projects/templates row.
+    public sealed record TemplateRow(Guid Id, string Name, string? Description, int TaskCount, Guid? SourceProjectId);
+
+    private bool fromTemplate;
+
+    // Menus/sheets in here re-render without the page: draw their Lucide icons.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); }
+        catch (JSException) { }
+        catch (InvalidOperationException) { }
+    }
+    private List<TemplateRow>? templates;
+    private TemplateRow? selectedTemplate;
+
+    private async Task ChooseTemplate()
+    {
+        fromTemplate = true;
+        if (templates is not null) return;
+        try { templates = await Auth.GetAsync<List<TemplateRow>>("/api/projects/templates") ?? []; }
+        catch { templates = []; }
+        if (templates.Count == 1) PickTemplate(templates[0]);
+    }
+
+    private void PickTemplate(TemplateRow t)
+    {
+        selectedTemplate = t;
+        if (string.IsNullOrWhiteSpace(createName)) createName = t.Name;
+    }
 
     private string createName = "";
     private string selectedColor = "#2E9E5B";
@@ -48,14 +123,16 @@
 
     private async Task HandleSubmit()
     {
-        if (string.IsNullOrWhiteSpace(createName)) return;
+        if (string.IsNullOrWhiteSpace(createName) || Busy) return;
+        if (fromTemplate && selectedTemplate is null) return;
         var model = new CreateProjectModel(
             createName.Trim(),
             createYear,
             createDeadline,
             createDescription?.Trim(),
             createOwner?.Nik,
-            selectedColor
+            selectedColor,
+            fromTemplate ? selectedTemplate?.Id : null
         );
         await OnSubmit.InvokeAsync(model);
     }
@@ -66,6 +143,8 @@
         DateTime? Deadline,
         string? Description,
         string? OwnerNik,
-        string? Color = null
+        string? Color = null,
+        /// Set when "Start from: Template" is chosen: POST /api/projects/from-template.
+        Guid? TemplateId = null
     );
 }

@@ -1,6 +1,9 @@
 @using IPop.Application.Projects
 @inject IPop.Web.Services.CalendarLinks CalLinks
 @inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject IPop.Web.Services.AuthState Auth
+@inject IPop.Web.Services.ToastService Toasts
 
 <div class="proj-canvas-head">
     <div class="proj-title-box">
@@ -68,6 +71,7 @@
                     <button type="button" class="app-select-opt pm-only" @onclick="() => Run(OnOpenEditModal)"><i data-lucide="pencil" style="width:13px;height:13px"></i> Edit project</button>
                     <button type="button" class="app-select-opt pm-only" @onclick="() => Run(OnExport)"><i data-lucide="download" style="width:13px;height:13px"></i> Export snapshot</button>
                     <button type="button" class="app-select-opt" @onclick="CopyLink"><i data-lucide="link" style="width:13px;height:13px"></i> Copy link</button>
+                    <button type="button" class="app-select-opt" @onclick="OpenSaveTemplate"><i data-lucide="layout-template" style="width:13px;height:13px"></i> Save as template…</button>
                     <button type="button" class="app-select-opt" @onclick="MarkDone"><i data-lucide="check-circle" style="width:13px;height:13px"></i> Mark completed</button>
                     <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="Delete"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete project</button>
                 </div>
@@ -75,6 +79,38 @@
         </div>
     </div>
 </div>
+
+@if (saveTplOpen)
+{
+    <div class="rep-scrim" @onclick="CloseSaveTemplate">
+        <div class="rep-sheet sm" role="dialog" aria-modal="true" aria-labelledby="ph-tpl-title" @onclick:stopPropagation="true">
+            <header>
+                <span class="hi c-acc"><i data-lucide="layout-template"></i></span>
+                <div>
+                    <h3 id="ph-tpl-title">Save as template</h3>
+                    <p>Reuse this project's task list for new projects. Nothing in "@Project.Name" changes.</p>
+                </div>
+            </header>
+            <div class="bdy">
+                <div class="fld @(tplShake > 0 ? "mi-shake" : "")" @key="@($"tn{tplShake}")">
+                    <label for="ph-tpl-name">Template name</label>
+                    <input id="ph-tpl-name" class="inp @(tplNameErr ? "err" : "")" maxlength="200" value="@tplName"
+                           @oninput="e => { tplName = e.Value?.ToString() ?? string.Empty; tplNameErr = false; }" />
+                </div>
+                <div class="fld">
+                    <label for="ph-tpl-desc">Description <span>(optional)</span></label>
+                    <textarea id="ph-tpl-desc" class="inp" rows="2" maxlength="1000" placeholder="What is this template for?"
+                              @oninput="e => tplDesc = e.Value?.ToString() ?? string.Empty">@tplDesc</textarea>
+                </div>
+                <div class="note"><i data-lucide="info"></i><span>Includes the titles, descriptions and priorities of top-level tasks. Assignees, dates, comments and files are not copied. Find it in <b>New project → Template</b>.</span></div>
+            </div>
+            <footer>
+                <button type="button" class="rep-btn" @onclick="CloseSaveTemplate">Cancel</button>
+                <button type="button" class="rep-btn pri" disabled="@tplSaving" @onclick="SaveTemplateAsync"><i data-lucide="layout-template"></i>@(tplSaving ? "Saving…" : "Save template")</button>
+            </footer>
+        </div>
+    </div>
+}
 
 @code {
     [Parameter, EditorRequired] public ProjectDto Project { get; set; } = default!;
@@ -91,6 +127,14 @@
     [Parameter] public EventCallback OnBack { get; set; }
 
     private bool showMore;
+
+    // Menus/sheets in here re-render without the page: draw their Lucide icons.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); }
+        catch (JSException) { }
+        catch (InvalidOperationException) { }
+    }
 
     private void ScheduleTeam() => Nav.NavigateTo(CalLinks.NewMeeting($"{Project.Name} meeting", Members.Select(m => m.Nik), from: $"From project {Project.Name}"));
 
@@ -112,6 +156,52 @@
     {
         showMore = false;
         await OnCopyLink.InvokeAsync();
+    }
+
+    // ── Save as template (moved here from the old Plans & Reports tab) ──
+    private bool saveTplOpen, tplSaving, tplNameErr;
+    private int tplShake;
+    private string tplName = "", tplDesc = "";
+
+    private void OpenSaveTemplate()
+    {
+        showMore = false;
+        tplName = Project.Name;
+        tplDesc = string.IsNullOrWhiteSpace(Project.Description) ? "" : Project.Description!;
+        tplNameErr = false; tplShake = 0;
+        saveTplOpen = true;
+    }
+
+    private void CloseSaveTemplate() { if (!tplSaving) saveTplOpen = false; }
+
+    private async Task SaveTemplateAsync()
+    {
+        if (tplSaving) return;
+        var name = tplName.Trim();
+        if (name.Length == 0) { tplNameErr = true; tplShake++; return; }
+        tplSaving = true;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/projects/templates",
+                new { name, description = string.IsNullOrWhiteSpace(tplDesc) ? null : tplDesc.Trim(), sourceProjectId = Project.Id });
+            if (res.IsSuccessStatusCode)
+            {
+                saveTplOpen = false;
+                Toasts.Show($"Template \"{name}\" saved — find it in New project.", ToastKind.Success);
+            }
+            else
+            {
+                var why = res.StatusCode switch
+                {
+                    System.Net.HttpStatusCode.Forbidden => "you don't have permission.",
+                    System.Net.HttpStatusCode.UnprocessableEntity => "a name is required (max 200 characters).",
+                    _ => $"request failed ({(int)res.StatusCode}).",
+                };
+                Toasts.Show($"Couldn't save the template: {why}", ToastKind.Error);
+            }
+        }
+        catch { Toasts.Show("Couldn't save the template. Check your connection.", ToastKind.Error); }
+        finally { tplSaving = false; }
     }
 
     private async Task MarkDone()

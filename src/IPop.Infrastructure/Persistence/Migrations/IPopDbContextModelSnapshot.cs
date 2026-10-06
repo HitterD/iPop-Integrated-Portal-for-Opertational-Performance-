@@ -3474,6 +3474,21 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("ProjectMilestones");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectMilestoneTask", b =>
+                {
+                    b.Property<Guid>("MilestoneId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("MilestoneId", "TaskId");
+
+                    b.HasIndex("TaskId");
+
+                    b.ToTable("ProjectMilestoneTasks");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectRoom", b =>
                 {
                     b.Property<Guid>("ProjectId")
@@ -6188,6 +6203,25 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Task");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectMilestoneTask", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.ProjectMilestone", "Milestone")
+                        .WithMany("LinkedTasks")
+                        .HasForeignKey("MilestoneId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.ProjectTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Milestone");
+
+                    b.Navigation("Task");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectRoom", b =>
                 {
                     b.HasOne("IPop.Core.Entities.Project", "Project")
@@ -6894,6 +6928,11 @@ namespace IPop.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("IPop.Core.Entities.ProjectGroup", b =>
                 {
                     b.Navigation("Tasks");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectMilestone", b =>
+                {
+                    b.Navigation("LinkedTasks");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.ProjectTask", b =>

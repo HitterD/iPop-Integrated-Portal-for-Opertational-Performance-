@@ -111,6 +111,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<ProjectTemplate> ProjectTemplates => Set<ProjectTemplate>();
     public DbSet<ProjectTemplateTask> ProjectTemplateTasks => Set<ProjectTemplateTask>();
     public DbSet<ProjectMilestone> ProjectMilestones => Set<ProjectMilestone>();
+    public DbSet<ProjectMilestoneTask> ProjectMilestoneTasks => Set<ProjectMilestoneTask>();
     // Notes
     public DbSet<NotePage> NotePages => Set<NotePage>();
     public DbSet<NoteUpdate> NoteUpdates => Set<NoteUpdate>();
@@ -562,6 +563,15 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Title).HasMaxLength(300);
             e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<ProjectMilestoneTask>(e =>
+        {
+            e.HasKey(x => new { x.MilestoneId, x.TaskId });
+            e.HasIndex(x => x.TaskId);
+            e.HasOne(x => x.Milestone).WithMany(m => m.LinkedTasks).HasForeignKey(x => x.MilestoneId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+            // A soft-deleted task drops out of its milestones' progress.
+            e.HasQueryFilter(x => x.Task.DeletedAt == null);
         });
 
         b.Entity<ProjectMember>(e =>
