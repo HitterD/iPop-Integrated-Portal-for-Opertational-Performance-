@@ -231,7 +231,8 @@ public class DashboardAndSearchTests
         t.Db.Mails.Add(new Mail { Id = Guid.NewGuid(), SenderId = me.Id, Subject = "Send report", Body = "x",
             Status = "scheduled", ScheduledAt = from.AddHours(8) });
         t.Db.NewsPosts.Add(new NewsPost { Id = Guid.NewGuid(), AuthorId = me.Id, Title = "Read memo", Body = "x", Type = "memo",
-            Status = "published", PublishedAt = from.AddHours(1), RequiresAcknowledgement = true, AckDueAt = from.AddHours(12) });
+            // Published at the start of today (local), so it is never in the future whatever time the suite runs.
+            Status = "published", PublishedAt = from.AddMinutes(1), RequiresAcknowledgement = true, AckDueAt = from.AddHours(12) });
         t.Db.Tickets.Add(new Ticket { Id = Guid.NewGuid(), UserId = me.Id, Provider = "idesk", Origin = "IPOP", Status = "IN_PROGRESS",
             Priority = "HIGH", Module = "ict", ModuleName = "ICT", Category = "Printer", Title = "Fix printer", SlaTarget = from.AddHours(14) });
         await t.Db.SaveChangesAsync();
