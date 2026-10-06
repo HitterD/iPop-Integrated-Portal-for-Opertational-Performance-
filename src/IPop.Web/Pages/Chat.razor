@@ -43,7 +43,7 @@
                 <input type="text" placeholder="Search conversations..." value="@roomSearchQuery" @oninput="OnRoomSearchChanged" />
                 @if (!string.IsNullOrEmpty(roomSearchQuery))
                 {
-                    <button type="button" class="room-search-clear" @onclick='() => { roomSearchQuery = ""; searchPeople = []; _ = ChatSvc.SearchRoomsAsync(""); }' title="Clear search" aria-label="Clear search">
+                    <button type="button" class="room-search-clear" @onclick="LeaveRoomSearch" title="Clear search" aria-label="Clear search">
                         <i data-lucide="x"></i>
                     </button>
                 }
