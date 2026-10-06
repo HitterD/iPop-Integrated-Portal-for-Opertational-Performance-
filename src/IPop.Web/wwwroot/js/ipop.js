@@ -1496,17 +1496,28 @@ window.ipop = {
     this._viewerKeys = null;
   },
 
-  // Scroll a message into view inside the chat list and flash it (jump from
-  // search results / pinned panel).
+  // Scroll a message into view inside the chat list and highlight it (jump from a reply
+  // quote, search results, pins). The glow starts once the smooth scroll has settled: a long
+  // jump used to spend the whole flash still scrolling, so nobody saw which message it was.
   scrollToMessage(container, messageId) {
     if (!container) return false;
     const el = container.querySelector('[data-msg-id="' + messageId + '"]');
     if (!el) return false;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    clearTimeout(el._hlTimer);
     el.classList.remove("highlighted");
-    void el.offsetWidth;   // force reflow so the animation restarts
-    el.classList.add("highlighted");
-    setTimeout(() => el.classList.remove("highlighted"), 1800);
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const scroller = el.closest(".messages, .chat-messages, [data-scroll-root]") || container;
+    let last = -1, still = 0;
+    const settle = () => {
+      const top = scroller.scrollTop;
+      still = top === last ? still + 1 : 0;
+      last = top;
+      if (still < 3) { requestAnimationFrame(settle); return; }   // ~3 frames without movement
+      void el.offsetWidth;   // restart the animation if it was already running
+      el.classList.add("highlighted");
+      el._hlTimer = setTimeout(() => el.classList.remove("highlighted"), 2400);
+    };
+    requestAnimationFrame(settle);
     return true;
   },
 

@@ -1011,14 +1011,38 @@
   white-space: nowrap;
 }
 
-/* Highlight animation */
+/* Highlight after a jump (reply quote, search, pins): an accent ring plus a soft halo around the
+   bubble, held ~2 s with a small pulse on arrival. Box-shadow only: the bubble's own colour,
+   its tail (::before) and hover ring (::after) are untouched, so every bubble stays readable.
+   Stickers, photos and emoji-only messages (no bubble chrome) get a drop-shadow halo instead. */
 @keyframes highlight-flash {
   0% { background: var(--accent-soft); }
   100% { background: transparent; }
 }
-
-.msg.highlighted .bubble {
-  animation: highlight-flash 1.5s var(--ease-smooth);
+@keyframes msg-jump-ring {
+  0% { box-shadow: 0 0 0 0 transparent; transform: scale(1); }
+  12% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 75%, transparent), 0 0 0 12px color-mix(in srgb, var(--accent) 18%, transparent); transform: scale(1.025); }
+  26% { transform: scale(1); }
+  72% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 60%, transparent), 0 0 0 12px color-mix(in srgb, var(--accent) 12%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@keyframes msg-jump-glow {
+  0% { filter: drop-shadow(0 0 0 transparent); transform: scale(1); }
+  14% { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--accent) 85%, transparent)); transform: scale(1.06); }
+  30% { transform: scale(1); }
+  72% { filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 70%, transparent)); }
+  100% { filter: drop-shadow(0 0 0 transparent); }
+}
+.msg.highlighted .bubble:not(.sticker-only):not(.jumbo-emoji):not(.media-only) {
+  animation: msg-jump-ring 2.2s var(--ease-out) both !important;
+}
+.msg.highlighted .bubble.sticker-only, .msg.highlighted .bubble.jumbo-emoji, .msg.highlighted .bubble.media-only {
+  animation: msg-jump-glow 2.2s var(--ease-out) both !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* motion.css shortens every animation to ~0: keep a static ring for the same time instead. */
+  .msg.highlighted .bubble { animation: none !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 65%, transparent), 0 0 0 12px color-mix(in srgb, var(--accent) 14%, transparent) !important; }
+  .msg.highlighted .bubble.sticker-only, .msg.highlighted .bubble.jumbo-emoji, .msg.highlighted .bubble.media-only { box-shadow: none !important; filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 70%, transparent)); }
 }
 
 /* Pending state */
