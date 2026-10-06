@@ -44,11 +44,16 @@ public sealed class NotificationBadgeProvider(IPopDbContext db) : IBadgeProvider
 {
     public string Key => "notif";
 
-    public Task<int> CountAsync(Guid userId, CancellationToken ct) =>
-        db.NotificationDeliveries.AsNoTracking()
+    public Task<int> CountAsync(Guid userId, CancellationToken ct)
+    {
+        // Snoozed items come back (and count again) when the snooze ends.
+        var now = DateTime.UtcNow;
+        return db.NotificationDeliveries.AsNoTracking()
             .CountAsync(d => d.UserId == userId
                 && d.Status != NotificationStatus.Read
-                && d.Status != NotificationStatus.Acknowledged, ct);
+                && d.Status != NotificationStatus.Acknowledged
+                && (d.SnoozedUntil == null || d.SnoozedUntil <= now), ct);
+    }
 }
 
 /// Mandatory published memos requiring acknowledgement that the user has not acknowledged yet.

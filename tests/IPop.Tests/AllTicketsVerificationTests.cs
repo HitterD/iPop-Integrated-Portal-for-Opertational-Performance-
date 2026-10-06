@@ -151,10 +151,12 @@ public class AllTicketsVerificationTests
         Assert.NotNull(loaded.SnoozedUntil);
         Assert.Equal("/projects/123?task=456", loaded.Request.TargetUrl);
 
-        // 4. Topbar Badge Provider
+        // 4. Topbar Badge Provider: same count as the inbox, so a snoozed item waits until it is due.
         var badgeProvider = new NotificationBadgeProvider(t.Verify());
-        var badgeCount = await badgeProvider.CountAsync(user.Id, default);
-        Assert.Equal(1, badgeCount);
+        Assert.Equal(0, await badgeProvider.CountAsync(user.Id, default));
+        await t.Db.NotificationDeliveries.Where(d => d.RequestId == reqId)
+            .ExecuteUpdateAsync(u => u.SetProperty(d => d.SnoozedUntil, DateTime.UtcNow.AddMinutes(-1)));
+        Assert.Equal(1, await new NotificationBadgeProvider(t.Verify()).CountAsync(user.Id, default));
     }
 
     [Fact]

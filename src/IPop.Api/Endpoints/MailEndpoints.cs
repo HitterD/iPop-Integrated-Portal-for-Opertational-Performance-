@@ -1119,6 +1119,7 @@ public static class MailEndpoints
         "body_required" => "Write a message.",
         "schedule_in_past" => "The scheduled time has already passed. Pick a time in the future.",
         "schedule_too_far" => "Mail can be scheduled at most a year ahead.",
+        "already_sent" => "This mail was already sent at its scheduled time.",
         _ => result.Error ?? "Couldn't send the mail.",
     };
 
@@ -1132,6 +1133,7 @@ public static class MailEndpoints
         var e when e?.Contains("not_found") == true => 404,
         var e when e?.Contains("forbidden") == true => 403,
         var e when e?.Contains("trashed") == true => 409,
+        "already_sent" => 409,
         _ => 422
     };
 

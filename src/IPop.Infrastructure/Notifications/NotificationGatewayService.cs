@@ -21,7 +21,8 @@ public sealed class NotificationGatewayService(
     IPasswordHasher passwordHasher,
     ILogger<NotificationGatewayService> logger,
     INotificationRealtimeBroadcaster broadcaster,
-    Push.PushQueue? push = null) : INotificationGatewayService
+    Push.PushQueue? push = null,
+    IPop.Application.Realtime.IRealtime? realtime = null) : INotificationGatewayService
 {
     private const int MaxAttempts = 3;
 
@@ -356,6 +357,18 @@ public sealed class NotificationGatewayService(
             .ToList();
         if (states.Count > 0)
             await broadcaster.BroadcastAsync(states, ct);
+
+        // Quiet hours / muted type: no banner, sound or toast — but an open bell must still count
+        // it. A quiet "notificationsChanged" makes the client re-read its bell without any banner.
+        if (realtime is not null && silenced.Count > 0)
+        {
+            try
+            {
+                var niks = await db.Users.AsNoTracking().Where(u => silenced.Contains(u.Id)).Select(u => u.Nik).ToListAsync(ct);
+                await realtime.ToUsersAsync(niks, IPop.Application.Realtime.RealtimeEvents.NotificationsChanged, ct: ct);
+            }
+            catch (Exception ex) { logger.LogDebug(ex, "Quiet bell refresh failed (non-fatal)"); }
+        }
     }
 
     /// <summary>

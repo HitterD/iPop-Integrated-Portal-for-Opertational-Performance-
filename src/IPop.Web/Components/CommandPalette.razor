@@ -14,7 +14,7 @@
             <div class="cp-input @(loading ? "cp-searching" : "")">
                 <i data-lucide="search"></i>
                 <input @ref="inputRef" placeholder="Search people, projects, tasks, news, mail…"
-                       @oninput="OnInput" @onkeydown="OnKeyDown" @onkeydown:preventDefault="tabTrap" aria-label="Search" />
+                       @oninput="OnInput" @onkeydown="OnKeyDown" data-tab-trap="@(tabTrap ? "1" : "0")" aria-label="Search" />
                 @if (loading) { <span class="cp-spin" aria-hidden="true"></span> }
                 <span class="cp-hint">ESC</span>
             </div>
@@ -49,8 +49,10 @@
                                 </span>
                                 @if (r.Nik is not null)
                                 {
-                                    <span class="cp-cal @(activeIdx == idx && calFocus ? "on" : "")" role="link" title="View calendar (Tab)" @onclick="() => GoCalendar(r)" @onclick:stopPropagation="true"><i data-lucide="calendar-search"></i>Calendar</span>
-                                    <span class="cp-cal" role="link" title="Invite to meeting" @onclick="() => GoInvite(r)" @onclick:stopPropagation="true"><i data-lucide="calendar-plus"></i>Invite</span>
+                                    <span class="cp-acts">
+                                        <span class="cp-cal @(activeIdx == idx && calFocus ? "on" : "")" role="link" title="View calendar (Tab)" @onclick="() => GoCalendar(r)" @onclick:stopPropagation="true"><i data-lucide="calendar-search"></i>Calendar</span>
+                                        <span class="cp-cal" role="link" title="Invite to meeting" @onclick="() => GoInvite(r)" @onclick:stopPropagation="true"><i data-lucide="calendar-plus"></i>Invite</span>
+                                    </span>
                                 }
                                 else
                                 {
@@ -153,7 +155,13 @@
             closing = false;
         }
         StateHasChanged();
-        if (Palette.IsOpen) { await Task.Yield(); await JS.InvokeVoidAsync("ipop.focus", inputRef); await JS.InvokeVoidAsync("ipop.icons"); }
+        if (Palette.IsOpen)
+        {
+            await Task.Yield();
+            await JS.InvokeVoidAsync("ipop.cpBindInput", inputRef);
+            await JS.InvokeVoidAsync("ipop.focus", inputRef);
+            await JS.InvokeVoidAsync("ipop.icons");
+        }
     });
 
     private async Task LoadHistoryAsync()
@@ -269,6 +277,8 @@
     /// Tab on a person flips Enter between their profile and their calendar.
     private bool calFocus;
     /// Only swallow Tab while a person row is active, so Tab still leaves the box otherwise.
+    /// Applied in JS (ipop.cpBindInput) to Tab and the arrows only: a Blazor
+    /// @onkeydown:preventDefault would block every key, so the box froze once people appeared.
     private bool tabTrap => results.Count > 0 && results[Math.Clamp(activeIdx, 0, results.Count - 1)].Nik is not null;
 
     private static string? StatusText(string? status)

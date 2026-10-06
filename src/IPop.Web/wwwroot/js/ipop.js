@@ -119,6 +119,17 @@ window.ipop = {
   focus(el) {
     if (el) { el.focus(); el.select(); }
   },
+  // Ctrl+K box: arrows move the selection instead of the caret; Tab is swallowed only while a
+  // person row is active (data-tab-trap="1"). Every other key types normally.
+  cpBindInput(el) {
+    if (!el || el._cpBound) return;
+    el._cpBound = true;
+    el.addEventListener("keydown", e => {
+      if (e.isComposing) return;
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") e.preventDefault();
+      else if (e.key === "Tab" && el.getAttribute("data-tab-trap") === "1") e.preventDefault();
+    });
+  },
   shake(el) {
     if (!el) return;
     el.classList.remove("shake");

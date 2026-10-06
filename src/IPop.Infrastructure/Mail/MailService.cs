@@ -399,12 +399,13 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         var rows = await db.MailRecipients
             .AsNoTracking()
             .Where(r => r.UserId == userId)
-            .GroupBy(r => new { r.Folder, r.IsRead, r.IsStarred })
-            .Select(g => new { g.Key.Folder, g.Key.IsRead, g.Key.IsStarred, Count = g.Count() })
+            .GroupBy(r => new { r.Folder, r.IsRead, r.IsStarred, r.IsMuted })
+            .Select(g => new { g.Key.Folder, g.Key.IsRead, g.Key.IsStarred, g.Key.IsMuted, Count = g.Count() })
             .ToListAsync(ct);
 
         int Get(string folder) => rows.Where(r => r.Folder == folder).Sum(r => r.Count);
-        int GetUnread(string folder) => rows.Where(r => r.Folder == folder && !r.IsRead).Sum(r => r.Count);
+        // Muted threads don't count as unread (same rule as the Mail badge in the sidebar).
+        int GetUnread(string folder) => rows.Where(r => r.Folder == folder && !r.IsRead && !r.IsMuted).Sum(r => r.Count);
 
         return new FolderCountsDto(
             GetUnread("inbox"), Get("inbox"),
@@ -904,6 +905,8 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
 
         var mail = await db.Mails.Include(m => m.Recipients).FirstOrDefaultAsync(m => m.Id == mailId, ct);
         if (mail is null) return new SendMailResult(false, null, "mail_not_found");
+        // Too late if the scheduler (or Send now in another tab) already took it.
+        if (!await ClaimScheduledAsync(mailId, "draft", ct)) return new SendMailResult(false, null, "already_sent");
 
         mail.Status = "draft";
         mail.ScheduledAt = null;
@@ -950,6 +953,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
 
         var mail = await db.Mails.Include(m => m.Recipients).FirstOrDefaultAsync(m => m.Id == mailId, ct);
         if (mail is null) return new SendMailResult(false, null, "mail_not_found");
+        if (!await ClaimScheduledAsync(mailId, "sent", ct)) return new SendMailResult(false, null, "already_sent");
 
         var now = DateTime.UtcNow;
         mail.Status = "sent";
@@ -1092,8 +1096,12 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
 
         if (dueMails.Count == 0) return 0;
 
+        var delivered = new List<MailEntity>();
         foreach (var mail in dueMails)
         {
+            // Claim it: a Cancel or Send now that won the race leaves nothing to deliver.
+            if (!await ClaimScheduledAsync(mail.Id, "sent", ct)) { db.Entry(mail).State = EntityState.Detached; continue; }
+            delivered.Add(mail);
             mail.Status = "sent";
             mail.SentAt = now;
             await BumpThreadAsync(mail, now, ct);
@@ -1115,10 +1123,19 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         }
 
         await db.SaveChangesAsync(ct);
-        foreach (var senderId in dueMails.Select(m => m.SenderId).Distinct())
+        // Same follow-ups as an immediate send: recipients' auto-label rules and out-of-office replies.
+        foreach (var mail in delivered)
+        {
+            var ids = mail.Recipients.Where(r => r.RecipientType != "from").Select(r => r.UserId).Distinct().ToList();
+            var users = await db.Users.AsNoTracking().Where(u => ids.Contains(u.Id)).ToListAsync(ct);
+            await AfterDeliveryAsync("auto-label rules", mail.Id, () => ApplyAutoRulesAsync(mail, users, ct));
+            if (!mail.IsMass)
+                await AfterDeliveryAsync("auto-replies", mail.Id, () => SendAutoRepliesAsync(mail, users, ct));
+        }
+        foreach (var senderId in delivered.Select(m => m.SenderId).Distinct())
             await SyncUserAsync(senderId, ct);
         notifySignal?.Notify();
-        return dueMails.Count;
+        return delivered.Count;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -1258,6 +1275,12 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             root.LastThreadAt = now;
         }
     }
+
+    /// Moves a scheduled mail to <paramref name="status"/> only if it is still scheduled, in one
+    /// conditional UPDATE: of a Cancel, a Send now and the scheduler racing, exactly one wins.
+    private async Task<bool> ClaimScheduledAsync(Guid mailId, string status, CancellationToken ct) =>
+        await db.Mails.Where(m => m.Id == mailId && m.Status == "scheduled")
+            .ExecuteUpdateAsync(u => u.SetProperty(m => m.Status, status), ct) == 1;
 
     private async Task AfterDeliveryAsync(string step, Guid mailId, Func<Task> run)
     {

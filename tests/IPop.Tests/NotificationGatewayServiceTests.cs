@@ -500,6 +500,40 @@ public class NotificationGatewayServiceTests
         Assert.Empty(rec.Broadcasted);          // tidak ada fan-out real-time
     }
 
+    private sealed class RecordingRealtime : IPop.Application.Realtime.IRealtime
+    {
+        public List<(string Nik, string Evt)> Sent { get; } = [];
+        public Task ToAllAsync(string evt, object? payload = null, CancellationToken ct = default) => Task.CompletedTask;
+        public Task ToUserAsync(string nik, string evt, object? payload = null, CancellationToken ct = default) { Sent.Add((nik, evt)); return Task.CompletedTask; }
+        public Task ToUsersAsync(IEnumerable<string> niks, string evt, object? payload = null, CancellationToken ct = default) { foreach (var n in niks) Sent.Add((n, evt)); return Task.CompletedTask; }
+        public Task ToGroupAsync(string group, string evt, object? payload = null, CancellationToken ct = default) => Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task Enqueue_QuietHours_still_refreshes_the_open_bell_without_a_banner()
+    {
+        using var t = new TestDb();
+        var c = AddClient(t);
+        var u = t.AddUser("QB");
+        u.PresenceLastSeenAt = DateTime.UtcNow;
+        var wibNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, Wib);
+        t.Db.NotificationPreferences.Add(new NotificationPreference
+        {
+            Id = Guid.NewGuid(), UserId = u.Id, QuietHoursEnabled = true,
+            QuietStart = wibNow.AddHours(-1).ToString("HH:mm"), QuietEnd = wibNow.AddHours(1).ToString("HH:mm"),
+            QuietDays = "", AllowImportant = true, MutedTypes = "", UpdatedAt = DateTime.UtcNow,
+        });
+        t.Db.SaveChanges();
+        var rec = new RecordingBroadcaster();
+        var rt = new RecordingRealtime();
+        var svc = new NotificationGatewayService(t.Verify(), new FakeHasher(), NullLogger<NotificationGatewayService>.Instance, rec, realtime: rt);
+
+        await svc.EnqueueAsync(c.Id, BulkReq(target: new NotificationTarget(EmployeeNik: u.Nik)), default);
+
+        Assert.Empty(rec.Broadcasted);
+        Assert.Contains((u.Nik, IPop.Application.Realtime.RealtimeEvents.NotificationsChanged), rt.Sent);
+    }
+
     [Fact]
     public async Task Enqueue_QuietHours_HighPriority_BreaksThrough()
     {

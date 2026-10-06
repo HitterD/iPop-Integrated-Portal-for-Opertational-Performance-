@@ -1978,6 +1978,15 @@
             await ReloadAll();
             BackToList();
         }
+        else await ScheduleActionFailedAsync();
+    }
+
+    /// Send now / Cancel lost to the scheduler (or another tab): say so and show the real state.
+    private async Task ScheduleActionFailedAsync()
+    {
+        Toasts.Show("This mail was already sent at its scheduled time.", ToastKind.Info);
+        await ReloadAll();
+        BackToList();
     }
 
     private bool rescheduleOpen;
@@ -2021,6 +2030,7 @@
             BackToList();
             await ReloadAll();
         }
+        else await ScheduleActionFailedAsync();
     }
 
     // ── Bulk Actions ──
