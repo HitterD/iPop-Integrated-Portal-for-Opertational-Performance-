@@ -16,7 +16,8 @@
     let currentCallId = null;
     let isCallerSide = false;
     let connectTimer = null;
-    let restartedIce = false;
+    let restartAttempts = 0;
+    let restartTimer = null;
 
     let inputDeviceId = null;
     let outputDeviceId = null;
@@ -29,6 +30,9 @@
     let rtcConfig = { iceServers: defaultIceServers };
 
     const CONNECT_TIMEOUT_MS = 20000;
+    // A dropped network: either side restarts ICE, a few times, before calling it lost.
+    const MAX_ICE_RESTARTS = 4;
+    const DISCONNECT_RESTART_MS = 4000;
 
     function notify(method, ...args) {
         if (!dotNetRef) return;
@@ -361,32 +365,63 @@
         notify('OnOfferGenerated', currentCallId, JSON.stringify(offer));
     }
 
+    function clearRestartTimer() {
+        if (restartTimer) { clearTimeout(restartTimer); restartTimer = null; }
+    }
+
+    /// New ICE credentials over the same peer connection: recovers a changed network (Wi-Fi to
+    /// LAN, VPN, sleep). Either side may start it; the other answers like any offer.
+    function restartIce() {
+        if (!peerConnection || restartAttempts >= MAX_ICE_RESTARTS) return false;
+        if (peerConnection.signalingState !== 'stable') return true; // an offer is already in flight
+        restartAttempts++;
+        reportState('reconnecting');
+        try { if (peerConnection.restartIce) peerConnection.restartIce(); } catch { }
+        sendOffer({ iceRestart: true }).catch(e => console.warn('[IPop WebRTC] ICE restart offer failed:', e));
+        armConnectTimer();
+        return true;
+    }
+
     function onConnectionState() {
         if (!peerConnection) return;
         const s = peerConnection.connectionState;
         if (s === 'connected') {
             clearConnectTimer();
-            restartedIce = false;
+            clearRestartTimer();
+            restartAttempts = 0;
             reportState('connected');
         } else if (s === 'connecting' || s === 'new') {
             reportState('connecting');
         } else if (s === 'disconnected') {
-            // Usually a network blip; ICE recovers on its own within a few seconds.
+            // Usually a blip that ICE recovers from on its own; if it doesn't within a few
+            // seconds, restart ICE instead of waiting for "failed".
             reportState('reconnecting');
+            clearRestartTimer();
+            restartTimer = setTimeout(() => {
+                restartTimer = null;
+                if (peerConnection && peerConnection.connectionState === 'disconnected') restartIce();
+            }, DISCONNECT_RESTART_MS + (isCallerSide ? 0 : 1500)); // caller first: avoids two offers crossing
             armConnectTimer();
         } else if (s === 'failed') {
-            if (isCallerSide && !restartedIce && peerConnection.restartIce) {
-                restartedIce = true;
-                reportState('reconnecting');
-                peerConnection.restartIce();
-                sendOffer({ iceRestart: true }).catch(e => reportError('Couldn\'t reconnect: ' + e.message));
-                armConnectTimer();
-            } else {
+            clearRestartTimer();
+            if (!restartIce()) {
                 clearConnectTimer();
                 reportState('failed');
                 reportError('The audio connection dropped. Try calling again.');
             }
         }
+    }
+
+    /// The other side reloaded or reconnected and will send a fresh offer: drop our dead
+    /// peer connection (keep the mic) and answer as a new one.
+    async function resetPeer(callId) {
+        if (currentCallId && currentCallId !== callId) return;
+        clearConnectTimer();
+        clearRestartTimer();
+        candidateQueue = [];
+        if (peerConnection) { try { peerConnection.close(); } catch { } peerConnection = null; }
+        await initCall(callId, false, dotNetRef);
+        reportState('reconnecting');
     }
 
     async function initCall(callId, isCaller, helper, iceServers) {
@@ -401,7 +436,7 @@
         if (currentCallId !== callId) candidateQueue = [];
         currentCallId = callId;
         isCallerSide = !!isCaller;
-        restartedIce = false;
+        restartAttempts = 0;
 
         if (typeof RTCPeerConnection === 'undefined') {
             const err = 'This browser doesn\'t support voice calls (WebRTC).';
@@ -479,6 +514,10 @@
             if (!peerConnection || callId !== currentCallId) return;
 
             if (type === 'offer') {
+                // Both sides restarted ICE at once: roll ours back and take theirs.
+                if (peerConnection.signalingState === 'have-local-offer') {
+                    try { await peerConnection.setLocalDescription({ type: 'rollback' }); } catch { }
+                }
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(JSON.parse(payload)));
                 await drainCandidateQueue();
                 const answer = await peerConnection.createAnswer();
@@ -511,6 +550,8 @@
     function endCall() {
         stopAudioTones();
         clearConnectTimer();
+        clearRestartTimer();
+        restartAttempts = 0;
         candidateQueue = [];
         initPromise = null;
         if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
@@ -534,6 +575,7 @@
         stopAudioTones,
         initCall,
         handleSignal,
+        resetPeer,
         setMute,
         endCall,
         getLevels,

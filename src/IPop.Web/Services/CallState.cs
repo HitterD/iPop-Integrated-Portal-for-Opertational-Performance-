@@ -148,52 +148,79 @@ public partial class CallState : IAsyncDisposable
             if (Current is not null && Current.Id == signal.CallId && _ownedCallId == signal.CallId)
             {
                 if (_peerCallId != signal.CallId) { _peerCallId = signal.CallId; _peerConnection = null; }
+                _selfRef ??= DotNetObjectReference.Create(this);
+                if (signal.Type == "rejoin")
+                {
+                    // The peer reloaded or reconnected: whatever tab it is now is the peer, and
+                    // our old peer connection is dead. Rebuild ours and answer its next offer.
+                    _peerConnection = signal.From;
+                    WebRtcState = "reconnecting";
+                    StateChanged?.Invoke();
+                    await _js.InvokeVoidAsync("ipopAudio.resetPeer", signal.CallId);
+                    return;
+                }
                 if (signal.From is not null)
                 {
                     if (_peerConnection is null && signal.Type is "offer" or "answer") _peerConnection = signal.From;
                     else if (_peerConnection is not null && _peerConnection != signal.From) return;
                 }
-                _selfRef ??= DotNetObjectReference.Create(this);
                 await _js.InvokeVoidAsync("ipopAudio.handleSignal", signal.CallId, signal.Type, signal.Payload);
             }
         });
 
-        _hub.Reconnecting += ex => { StateChanged?.Invoke(); return Task.CompletedTask; };
-        _hub.Reconnected += connId => { _ = RefreshAsync(); return Task.CompletedTask; };
+        _hub.Reconnecting += ex =>
+        {
+            if (IsActiveCall) WebRtcState = "reconnecting";
+            StateChanged?.Invoke();
+            return Task.CompletedTask;
+        };
+        _hub.Reconnected += connId => { _ = RefreshAsync(rejoin: true); return Task.CompletedTask; };
         // Auto-reconnect gave up: keep retrying so incoming calls still ring without a refresh.
         var hub = _hub;
         _hub.Closed += ex =>
         {
             StateChanged?.Invoke();
-            _ = HubRetry.RunAsync(hub, () => _hub == hub && _auth.IsAuthenticated && !_auth.IsSuspended, () => _ = RefreshAsync());
+            _ = HubRetry.RunAsync(hub, () => _hub == hub && _auth.IsAuthenticated && !_auth.IsSuspended, () => _ = RefreshAsync(rejoin: true));
             return Task.CompletedTask;
         };
 
         try
         {
             await LoadConfigAsync();
+            _tabId ??= await LoadTabIdAsync();
             await _hub.StartAsync();
-            await RefreshAsync();
+            await RefreshAsync(rejoin: true);
         }
         catch
         {
             StateChanged?.Invoke();
             _ = HubRetry.RunAsync(hub, () => _hub == hub && _auth.IsAuthenticated && !_auth.IsSuspended,
-                () => _ = RefreshAsync());
+                () => _ = RefreshAsync(rejoin: true));
         }
     }
 
-    public async Task RefreshAsync()
+    public Task RefreshAsync() => RefreshAsync(rejoin: false);
+
+    /// rejoin: the hub (re)connected. A call this tab was in before a refresh or a network drop
+    /// is taken up again: the same LiveKit room with a fresh token, or a new P2P peer connection.
+    private async Task RefreshAsync(bool rejoin)
     {
         var ringing = await _auth.GetAsync<CallRoomDto?>("/api/calls/ringing");
         if (ringing is not null)
         {
             await HandleCallRoomChangedAsync(ringing);
         }
-        else if (Current is null || IsMeeting)
+        else if (IsMeeting)
         {
             // A meeting has no server call room to re-fetch; LiveKit reconnects on its own.
             StateChanged?.Invoke();
+        }
+        else if (Current is null)
+        {
+            if (rejoin && await _auth.GetAsync<CallRoomDto?>("/api/calls/active") is { } active)
+                await RejoinAsync(active);
+            else
+                StateChanged?.Invoke();
         }
         else
         {
@@ -205,7 +232,11 @@ public partial class CallState : IAsyncDisposable
                 if (res.IsSuccessStatusCode)
                 {
                     var room = await res.Content.ReadFromJsonAsync<CallRoomDto>();
-                    if (room is not null) await HandleCallRoomChangedAsync(room);
+                    // Same tab, new hub connection after a drop: renegotiate the media.
+                    if (room is not null && rejoin && room.Status == CallStatus.Active && Current?.Id == room.Id
+                        && (IsGroup ? _groupMediaCallId == room.Id : _ownedCallId == room.Id))
+                        await RejoinAsync(room);
+                    else if (room is not null) await HandleCallRoomChangedAsync(room);
                 }
                 else if (res.StatusCode == HttpStatusCode.NotFound)
                     await HandleCallEndedAsync();
@@ -364,6 +395,78 @@ public partial class CallState : IAsyncDisposable
     }
 
     private const string OwnedCallKey = "ipop.ownedCall";
+    private const string TabIdKey = "ipop.callTab";
+
+    /// This tab's id for P2P signaling, kept in sessionStorage so a refreshed tab is the same peer.
+    private string? _tabId;
+
+    private async Task<string> LoadTabIdAsync()
+    {
+        try
+        {
+            var id = await _js.InvokeAsync<string?>("sessionStorage.getItem", TabIdKey);
+            if (string.IsNullOrEmpty(id))
+            {
+                id = Guid.NewGuid().ToString("N");
+                await _js.InvokeVoidAsync("sessionStorage.setItem", TabIdKey, id);
+            }
+            return id;
+        }
+        catch (JSException) { return Guid.NewGuid().ToString("N"); }
+    }
+
+    /// Takes up a call this tab was in before a refresh or a dropped connection. Another device
+    /// of mine that owns the call keeps it: sessionStorage is per tab, so only the tab that held
+    /// the call before the refresh claims it back.
+    private async Task RejoinAsync(CallRoomDto room)
+    {
+        if (CallKind.IsLiveKit(room.Kind))
+        {
+            await RejoinGroupAsync(room);
+            return;
+        }
+        if (room.Status != CallStatus.Active)
+        {
+            await HandleCallRoomChangedAsync(room);   // my own outgoing ring: show it again
+            return;
+        }
+        string? saved = null;
+        try { saved = await _js.InvokeAsync<string?>("sessionStorage.getItem", OwnedCallKey); } catch (JSException) { }
+        if (_ownedCallId != room.Id && !(Guid.TryParse(saved, out var owned) && owned == room.Id))
+        {
+            await HandleCallRoomChangedAsync(room);   // another device's call: stand down as before
+            return;
+        }
+        _ownedCallId = room.Id;
+        _elsewhereCallId = null;
+        var wasMuted = room.Participants.FirstOrDefault(p => p.Nik == _auth.Me?.Nik)?.IsMuted == true;
+        Current = room;
+        LastError = null;
+        LastEndReason = null;
+        WebRtcState = "reconnecting";
+        StateChanged?.Invoke();
+        try
+        {
+            await _js.InvokeVoidAsync("ipopAudio.stopAudioTones");
+            await _js.InvokeVoidAsync("ipopAudio.endCall");   // a dead peer connection from before the drop
+            // Tell the peer first, so it drops its dead connection and waits for our offer.
+            if (_hub?.State == HubConnectionState.Connected)
+                await _hub.SendAsync("SendWebRtcSignal", new WebRtcSignalDto(room.Id, "rejoin", "", Tab: _tabId));
+            _peerCallId = room.Id;
+            _peerConnection = null;
+            _webRtcActiveCallId = room.Id;
+            _selfRef ??= DotNetObjectReference.Create(this);
+            // Whoever comes back makes the offer, whichever side placed the call.
+            await _js.InvokeVoidAsync("ipopAudio.initCall", room.Id, true, _selfRef, _iceServers);
+            if (wasMuted) await _js.InvokeVoidAsync("ipopAudio.setMute", true);
+        }
+        catch (JSException ex)
+        {
+            WebRtcState = "failed";
+            LastError = "Couldn't reconnect the call: " + ex.Message;
+        }
+        StateChanged?.Invoke();
+    }
 
     private async Task RememberOwnedCallAsync(Guid callId)
     {
@@ -591,7 +694,7 @@ public partial class CallState : IAsyncDisposable
     {
         if (_hub?.State == HubConnectionState.Connected)
         {
-            await _hub.SendAsync("SendWebRtcSignal", new WebRtcSignalDto(callId, "offer", sdp));
+            await _hub.SendAsync("SendWebRtcSignal", new WebRtcSignalDto(callId, "offer", sdp, Tab: _tabId));
         }
     }
 
@@ -600,7 +703,7 @@ public partial class CallState : IAsyncDisposable
     {
         if (_hub?.State == HubConnectionState.Connected)
         {
-            await _hub.SendAsync("SendWebRtcSignal", new WebRtcSignalDto(callId, "answer", sdp));
+            await _hub.SendAsync("SendWebRtcSignal", new WebRtcSignalDto(callId, "answer", sdp, Tab: _tabId));
         }
     }
 
@@ -609,7 +712,7 @@ public partial class CallState : IAsyncDisposable
     {
         if (_hub?.State == HubConnectionState.Connected)
         {
-            await _hub.SendAsync("SendWebRtcSignal", new WebRtcSignalDto(callId, "candidate", candidateJson));
+            await _hub.SendAsync("SendWebRtcSignal", new WebRtcSignalDto(callId, "candidate", candidateJson, Tab: _tabId));
         }
     }
 

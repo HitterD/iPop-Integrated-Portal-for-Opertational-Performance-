@@ -152,6 +152,51 @@ public partial class CallState
         StateChanged?.Invoke();
     }
 
+    /// After a refresh or a dropped connection: back into the same LiveKit room. /join hands out
+    /// a fresh token (and re-accepts me if the server already counted me as left); mute is kept.
+    private async Task RejoinGroupAsync(CallRoomDto room)
+    {
+        if (!await _groupGate.WaitAsync(0)) return;
+        try
+        {
+            var wasMuted = room.Participants.FirstOrDefault(p => p.Nik == _auth.Me?.Nik)?.IsMuted == true;
+            Current = room;
+            LastError = null;
+            LastEndReason = null;
+            WebRtcState = "reconnecting";
+            StateChanged?.Invoke();
+            using var res = await _auth.SendAsync(HttpMethod.Post, $"/api/calls/{room.Id}/join");
+            var joined = res.IsSuccessStatusCode ? await res.Content.ReadFromJsonAsync<CallRoomDto>() : null;
+            if (joined is null || string.IsNullOrEmpty(joined.LiveKitUrl) || string.IsNullOrEmpty(joined.LiveKitToken))
+            {
+                await HandleCallEndedAsync(room.Kind == CallKind.AdHoc ? "Call ended" : "Group call ended");
+                return;
+            }
+            Current = joined;
+            TrackGroupCall(joined);
+            _groupMediaCallId = joined.Id;
+            _selfRef ??= DotNetObjectReference.Create(this);
+            var ok = await _js.InvokeAsync<bool>("ipopGroupCall.join", joined.LiveKitUrl, joined.LiveKitToken, _selfRef, _groupInputDeviceId);
+            if (!ok) WebRtcState = "failed";
+            else if (wasMuted)
+            {
+                await _js.InvokeVoidAsync("ipopGroupCall.setMuted", true);
+                if (joined.Participants.FirstOrDefault(p => p.Nik == _auth.Me?.Nik)?.IsMuted != true)
+                    await SignalAsync(joined.Id, "update", muted: true);
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or JSException)
+        {
+            WebRtcState = "failed";
+            LastError = "Couldn't reconnect the call: " + ex.Message;
+        }
+        finally
+        {
+            _groupGate.Release();
+        }
+        StateChanged?.Invoke();
+    }
+
     /// I am connected (accepted) in the current group call.
     public bool IsInGroupCall =>
         IsGroup && HasLiveCall && ActiveMe?.Status == CallParticipantStatus.Accepted;
@@ -402,10 +447,53 @@ public partial class CallState
     public void OnGroupConnectionState(string state)
     {
         if (!IsGroup) return;
+        if (state == "disconnected" && !IsMeeting && Current is { } room && _groupMediaCallId == room.Id)
+        {
+            // LiveKit gave up on its own reconnect: go back in with a fresh token while the call lives.
+            WebRtcState = "reconnecting";
+            StateChanged?.Invoke();
+            _ = RetryGroupMediaAsync(room.Id);
+            return;
+        }
         WebRtcState = state switch { "disconnected" => "failed", _ => state };
         if (state == "connected") LastError = null;
         if (state == "disconnected") LastError = "Disconnected from the group call media server.";
         StateChanged?.Invoke();
+    }
+
+    private int _groupRetrying;
+
+    /// A few tries with backoff; stops as soon as the call ends or I leave.
+    private async Task RetryGroupMediaAsync(Guid callId)
+    {
+        if (Interlocked.Exchange(ref _groupRetrying, 1) == 1) return;
+        try
+        {
+            foreach (var wait in new[] { 1, 3, 5, 10, 20 })
+            {
+                await Task.Delay(TimeSpan.FromSeconds(wait));
+                if (Current?.Id != callId || _groupMediaCallId != callId) return;
+                CallRoomDto? room = null;
+                try
+                {
+                    using var res = await _auth.SendAsync(HttpMethod.Get, $"/api/calls/{callId}");
+                    if (res.StatusCode == HttpStatusCode.NotFound) { await HandleCallEndedAsync(); return; }
+                    if (res.IsSuccessStatusCode) room = await res.Content.ReadFromJsonAsync<CallRoomDto>();
+                }
+                catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException) { continue; }
+                if (room is null) continue;
+                if (room.Status is not (CallStatus.Ringing or CallStatus.Active)) { await HandleGroupRoomAsync(room); return; }
+                await RejoinGroupAsync(room);
+                if (WebRtcState == "connected" || await _js.InvokeAsync<bool>("ipopGroupCall.isConnected")) return;
+            }
+            if (Current?.Id == callId)
+            {
+                WebRtcState = "failed";
+                LastError = "Disconnected from the group call media server.";
+                StateChanged?.Invoke();
+            }
+        }
+        finally { Interlocked.Exchange(ref _groupRetrying, 0); }
     }
 
     [JSInvokable]

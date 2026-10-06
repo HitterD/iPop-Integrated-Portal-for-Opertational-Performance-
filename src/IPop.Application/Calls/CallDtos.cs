@@ -7,9 +7,11 @@ public record CreateCallRequest(string PeerNik, string? Quality = null);
 /// Signaling actions between UI + hub.
 public record CallSignalRequest(Guid CallId, string Action, bool? IsMuted = null, bool? IsScreenSharing = null);
 
-/// WebRTC peer-to-peer signaling packet (offer, answer, candidate) passed over SignalR.
-/// From is the sender's hub connection, stamped by the server so a callee can stick to one peer.
-public record WebRtcSignalDto(Guid CallId, string Type, string Payload, string? From = null);
+/// WebRTC peer-to-peer signaling packet (offer, answer, candidate, rejoin) passed over SignalR.
+/// From identifies the sending tab, stamped by the server so a callee can stick to one peer:
+/// the client's per-tab id (Tab, kept across a refresh) or else its hub connection id.
+/// "rejoin" = the sender reloaded or reconnected mid-call and needs a fresh peer connection.
+public record WebRtcSignalDto(Guid CallId, string Type, string Payload, string? From = null, string? Tab = null);
 
 /// A participant in a call (with name resolved for the UI).
 /// JoinedAt: when they joined — or, while "invited", when their ring started (per-invitee timeout).

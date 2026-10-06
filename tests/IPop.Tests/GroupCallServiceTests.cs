@@ -193,6 +193,23 @@ public class GroupCallServiceTests
     }
 
     [Fact]
+    public async Task ActiveCall_finds_the_group_call_I_joined_and_rejoin_keeps_my_mute()
+    {
+        var (t, a, b, _, g) = Group();
+        using var _t = t;
+        var call = (await Svc(t).StartGroupCallAsync(a.Id, g.Id, default)).Room!;
+        await Svc(t).JoinGroupCallAsync(b.Id, call.Id, default);
+        await Svc(t).SignalAsync(b.Id, new CallSignalRequest(call.Id, "update", IsMuted: true), default);
+
+        Assert.Equal(call.Id, (await Svc(t).GetActiveCallAsync(b.Id, default))!.Id);
+        // The reloaded tab asks for a fresh token: already in the call, nothing changes (mute stays).
+        var again = await Svc(t).JoinGroupCallAsync(b.Id, call.Id, default);
+        var me = again.Room!.Participants.Single(p => p.UserId == b.Id);
+        Assert.Equal(CallParticipantStatus.Accepted, me.Status);
+        Assert.True(me.IsMuted);
+    }
+
+    [Fact]
     public void LiveKitRoomName_UsesCallPrefixAndN()
     {
         var id = Guid.NewGuid();

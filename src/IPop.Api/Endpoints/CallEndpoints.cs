@@ -142,6 +142,16 @@ public static class CallEndpoints
             return room is null ? Results.Ok((CallRoomDto?)null) : Results.Ok(room);
         });
 
+        // The live call I am in (answered, or my outgoing ring): a reloaded tab rejoins it.
+        g.MapGet("/active", async (HttpContext http,
+            ICallService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var room = await svc.GetActiveCallAsync(userId.Value, ct);
+            return Results.Ok(room);
+        });
+
         // Call history (grouped by date on the UI).
         g.MapGet("/history", async (int? page, int? pageSize, HttpContext http,
             ICallService svc, IPopDbContext db, CancellationToken ct) =>

@@ -18,6 +18,10 @@ public interface ICallService
     /// The user's ringing call (incoming ringtone) — shows the incoming card.
     Task<CallRoomDto?> GetRingingCallAsync(Guid userId, CancellationToken ct);
 
+    /// The live call the user is in (answered, or their own outgoing ring), so a reloaded or
+    /// reconnected tab can take it up again. Null when none.
+    Task<CallRoomDto?> GetActiveCallAsync(Guid userId, CancellationToken ct);
+
     /// Call history grouped by date on the UI. Includes both sides (outgoing + incoming).
     Task<CallHistoryPage> GetHistoryAsync(Guid userId, int page, int pageSize, CancellationToken ct);
 

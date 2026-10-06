@@ -25,31 +25,57 @@ public static class CallBroadcast
     }
 }
 
-/// Counts open /hubs/calls connections per user. When the last one closes (tab closed,
-/// laptop asleep) and does not come back within the grace period, the user's calls end —
-/// otherwise the other side would stare at a frozen call and "ringing" rows would never clear.
-public class CallConnections(IServiceScopeFactory scopes, IHubContext<CallHub> hub, ILogger<CallConnections> log)
+/// Counts open /hubs/calls connections per user. When the last one closes (refresh, Wi-Fi blip,
+/// laptop asleep) the user keeps their place in their calls for the grace period: others see the
+/// call go on while the tab rejoins it. Coming back inside the grace cancels the pending end;
+/// staying away ends their calls (a 1:1 for both sides; a group/ad-hoc call marks them left).
+public class CallConnections
 {
-    /// Covers page refreshes and SignalR's automatic reconnect.
-    public static readonly TimeSpan Grace = TimeSpan.FromSeconds(10);
+    /// Default grace; "Calls:DisconnectGraceSeconds" overrides it.
+    public static readonly TimeSpan DefaultGrace = TimeSpan.FromSeconds(60);
 
+    private readonly TimeSpan grace;
+    private readonly Func<Guid, Task> endCalls;
     private readonly object gate = new();
     private readonly Dictionary<Guid, int> open = [];
+    private readonly Dictionary<Guid, CancellationTokenSource> pending = [];
+
+    public CallConnections(IServiceScopeFactory scopes, IHubContext<CallHub> hub, ILogger<CallConnections> log, IConfiguration config)
+        : this(GraceFrom(config), userId => EndCallsAsync(scopes, hub, log, userId)) { }
+
+    internal CallConnections(TimeSpan grace, Func<Guid, Task> endCalls)
+    {
+        this.grace = grace;
+        this.endCalls = endCalls;
+    }
+
+    public TimeSpan Grace => grace;
+
+    private static TimeSpan GraceFrom(IConfiguration config)
+        => config.GetValue<int?>("Calls:DisconnectGraceSeconds") is int s and > 0 ? TimeSpan.FromSeconds(s) : DefaultGrace;
 
     public void Connected(Guid userId)
     {
-        lock (gate) open[userId] = open.GetValueOrDefault(userId) + 1;
+        lock (gate)
+        {
+            open[userId] = open.GetValueOrDefault(userId) + 1;
+            // Back inside the grace (refresh / auto-reconnect): keep the call.
+            if (pending.Remove(userId, out var cts)) { cts.Cancel(); cts.Dispose(); }
+        }
     }
 
     public void Disconnected(Guid userId)
     {
+        CancellationTokenSource cts;
         lock (gate)
         {
             var left = open.GetValueOrDefault(userId) - 1;
             if (left > 0) { open[userId] = left; return; }
             open.Remove(userId);
+            if (pending.Remove(userId, out var old)) { old.Cancel(); old.Dispose(); }
+            cts = pending[userId] = new CancellationTokenSource();
         }
-        _ = EndAfterGraceAsync(userId);
+        _ = EndAfterGraceAsync(userId, cts);
     }
 
     public bool IsConnected(Guid userId)
@@ -57,13 +83,24 @@ public class CallConnections(IServiceScopeFactory scopes, IHubContext<CallHub> h
         lock (gate) return open.ContainsKey(userId);
     }
 
-    private async Task EndAfterGraceAsync(Guid userId)
+    private async Task EndAfterGraceAsync(Guid userId, CancellationTokenSource cts)
+    {
+        try { await Task.Delay(grace, cts.Token); }
+        catch (OperationCanceledException) { return; }
+        lock (gate)
+        {
+            if (!pending.TryGetValue(userId, out var current) || current != cts) return;
+            pending.Remove(userId);
+            cts.Dispose();
+            if (open.ContainsKey(userId)) return;
+        }
+        await endCalls(userId);
+    }
+
+    private static async Task EndCallsAsync(IServiceScopeFactory scopes, IHubContext<CallHub> hub, ILogger log, Guid userId)
     {
         try
         {
-            await Task.Delay(Grace);
-            if (IsConnected(userId)) return;
-
             using var scope = scopes.CreateScope();
             var calls = scope.ServiceProvider.GetRequiredService<ICallService>();
             var ended = await calls.EndForUserAsync(userId, CancellationToken.None);

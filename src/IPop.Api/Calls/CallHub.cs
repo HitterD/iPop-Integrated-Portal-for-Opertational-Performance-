@@ -54,9 +54,12 @@ public class CallHub(ICallService callService, IPopDbContext db, IPermissionEval
         static bool InCall(string status) => status is CallParticipantStatus.Accepted or CallParticipantStatus.Invited;
         if (!room.Participants.Any(p => p.UserId == userId.Value && InCall(p.Status))) return;
 
-        // Broadcast to other participants, stamped with the sending connection: the other
-        // user may have several tabs/devices, and the receiver must stick to one peer.
-        signal = signal with { From = Context.ConnectionId };
+        // Broadcast to other participants, stamped with the sending tab: the other user may have
+        // several tabs/devices, and the receiver must stick to one peer. The tab id survives a
+        // refresh (sessionStorage) so a reloaded peer is still the same peer; the connection id
+        // does not, and is only the fallback for clients that send no tab id.
+        var tab = signal.Tab is { Length: > 0 and <= 64 } t ? "tab:" + t : Context.ConnectionId;
+        signal = signal with { From = tab, Tab = null };
         var others = room.Participants.Where(p => p.UserId != userId.Value && InCall(p.Status));
         foreach (var p in others)
         {
