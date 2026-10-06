@@ -53,7 +53,18 @@
             }
             @if (Message.ReplyPreview is not null)
             {
-                <div class="reply-quote"><div class="rq-name">@IPop.Application.PersonName.Display(Message.ReplyPreview.SenderName)</div>@Message.ReplyPreview.Content</div>
+                @if (Message.ReplyToId is { } replyTo && OnReplyOpen.HasDelegate)
+                {
+                    @* stopPropagation: the row's own click toggles the mobile tools. *@
+                    <button type="button" class="reply-quote rq-link" title="Go to the original message"
+                            @onclick="() => OnReplyOpen.InvokeAsync(replyTo)" @onclick:stopPropagation="true">
+                        <span class="rq-name">@IPop.Application.PersonName.Display(Message.ReplyPreview.SenderName)</span>@Message.ReplyPreview.Content
+                    </button>
+                }
+                else
+                {
+                    <div class="reply-quote"><div class="rq-name">@IPop.Application.PersonName.Display(Message.ReplyPreview.SenderName)</div>@Message.ReplyPreview.Content</div>
+                }
             }
             @if (Message.IsDeleted) { <em class="deleted-text"><i data-lucide="ban"></i> @Message.Content</em>@Meta(true) }
             else if (Message.Type == "sticker")
@@ -162,6 +173,8 @@
     [Parameter] public EventCallback<Guid> OnEventOpen { get; set; }
     /// Click on "Forwarded · Name": the host looks up where it leads for this viewer.
     [Parameter] public EventCallback<Guid> OnForwardOpen { get; set; }
+    /// Click on the reply quote: the host scrolls to the replied-to message (by its id).
+    [Parameter] public EventCallback<Guid> OnReplyOpen { get; set; }
     /// Group rooms show a receipt on every own message: "Read by 2 of 5" / "Read by all".
     [Parameter] public bool IsGroup { get; set; }
 

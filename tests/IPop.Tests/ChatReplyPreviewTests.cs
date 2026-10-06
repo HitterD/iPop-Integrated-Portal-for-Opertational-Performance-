@@ -100,4 +100,32 @@ public class ChatReplyPreviewTests
         Assert.True(res.Success);
         Assert.Equal("ooo gitu siap", res.Message!.ReplyPreview?.Content);
     }
+    [Fact]
+    public async Task Reply_quote_shows_mentions_as_names_not_markup()
+    {
+        using var t = new TestDb();
+        var (sender, other, room, original) = Seed(t);
+        var msg = t.Db.ChatMessages.Single(m => m.Id == original);
+        msg.Content = $"coba lagi @[ALPHIN SANTOSO HERMANTHAN, S.T.](u:{other}) ya";
+        t.Db.SaveChanges();
+
+        var res = await new ChatService(t.Verify()).SendMessageAsync(sender, new SendMessageRequest(room, "ok", Guid.NewGuid(), original, null), default);
+
+        Assert.Equal("coba lagi @Alphin Santoso Hermanthan, S.T. ya", res.Message!.ReplyPreview!.Content);
+    }
+
+    [Fact]
+    public async Task Reply_quote_cut_never_leaves_half_a_mention()
+    {
+        using var t = new TestDb();
+        var (sender, other, room, original) = Seed(t);
+        var msg = t.Db.ChatMessages.Single(m => m.Id == original);
+        msg.Content = new string('x', 140) + $" @[BUDI](u:{other}) " + new string('y', 50);
+        t.Db.SaveChanges();
+
+        var res = await new ChatService(t.Verify()).SendMessageAsync(sender, new SendMessageRequest(room, "ok", Guid.NewGuid(), original, null), default);
+
+        Assert.DoesNotContain("(u:", res.Message!.ReplyPreview!.Content);
+        Assert.DoesNotContain("@[", res.Message.ReplyPreview.Content);
+    }
 }

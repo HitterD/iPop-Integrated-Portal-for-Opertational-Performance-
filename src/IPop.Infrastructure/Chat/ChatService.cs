@@ -68,10 +68,7 @@ public sealed partial class ChatService : IChatService
         ReplyPreviewDto? replyPreview = null;
         if (m.ReplyTo is not null)
         {
-            var previewContent = m.ReplyTo.IsDeleted
-                ? "Original message was deleted"
-                : m.ReplyTo.Type == "sticker" ? "🎨 Sticker"
-                : Truncate(m.ReplyTo.Content, 150);
+            var previewContent = ReplyQuote.Text(m.ReplyTo.Type, m.ReplyTo.Content, m.ReplyTo.IsDeleted);
             replyPreview = new ReplyPreviewDto(m.ReplyTo.Sender?.Name ?? "Unknown", previewContent);
         }
 

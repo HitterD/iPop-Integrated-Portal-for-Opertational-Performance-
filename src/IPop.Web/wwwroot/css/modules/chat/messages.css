@@ -621,6 +621,20 @@
   margin-bottom: 2px;
 }
 
+/* Clickable quote (jumps to the original): a real button, styled exactly like the quote. */
+.msg button.reply-quote {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: var(--text-sm);
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+.msg button.reply-quote .rq-name { display: block; }
+.msg button.reply-quote:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* Thread link */
 .msg .thread-link {
   display: inline-flex;

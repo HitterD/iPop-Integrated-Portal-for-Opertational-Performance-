@@ -4,6 +4,7 @@
 // ~1,500-line @code block; members were moved verbatim, never renamed or re-scoped.
 // _Imports.razor only reaches .razor files, so usings are restated in each part.
 using System.Net.Http.Json;
+using IPop.Application.Chat;
 using IPop.Application.Chat.Mentions;
 using IPop.Web.Services;
 using Microsoft.JSInterop;
@@ -192,19 +193,32 @@ public partial class Chat
 
     // ---- Jump to a message (search results / pinned panel) ----
 
-    private async Task JumpToMessage(Guid messageId)
+    private Task JumpToMessage(Guid messageId) => TryJumpToMessage(messageId);
+
+    /// Click on a reply quote. Says so when the original is gone or out of reach instead of
+    /// doing nothing.
+    private async Task OpenReplyOrigin(Guid originalId)
+    {
+        if (await TryJumpToMessage(originalId)) return;
+        var deleted = ChatSvc.ActiveMessages.FirstOrDefault(m => m.ReplyToId == originalId)?.ReplyPreview?.Content
+            == ReplyQuote.Text("text", "", isDeleted: true);
+        Toasts.Show(deleted ? "The original message was deleted." : "The original message is no longer available.", ToastKind.Info);
+    }
+
+    private async Task<bool> TryJumpToMessage(Guid messageId)
     {
         // The target may live on an older page; pull history in until we find it.
         var guard = 0;
         while (ChatSvc.ActiveMessages.All(m => m.Id != messageId) && ChatSvc.HasOlderMessages && guard++ < 20)
             await ChatSvc.LoadOlderMessagesAsync();
 
-        if (ChatSvc.ActiveMessages.All(m => m.Id != messageId)) return;
+        if (ChatSvc.ActiveMessages.All(m => m.Id != messageId)) return false;
         searchOpen = false;
         pinnedPanelOpen = false;
         StateHasChanged();
         await Task.Yield();
         await JS.InvokeVoidAsync("ipop.scrollToMessage", messagesRef, messageId);
+        return true;
     }
 
     // ---- Scroll position ----
