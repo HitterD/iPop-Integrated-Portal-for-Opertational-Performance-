@@ -1,3 +1,4 @@
+using IPop.Application.Attachments;
 using IPop.Application.Mail;
 using IPop.Application.Notifications;
 using IPop.Application.Realtime;
@@ -15,11 +16,12 @@ using MailEntity = IPop.Core.Entities.Mail;
 namespace IPop.Infrastructure.Mail;
 
 public sealed class MailService(IPopDbContext db, INotificationGatewayService? notificationGateway = null, IRealtime? realtime = null,
-    MailNotifySignal? notifySignal = null, ILogger<MailService>? log = null) : IMailService
+    MailNotifySignal? notifySignal = null, ILogger<MailService>? log = null, IAttachmentStore? attachments = null) : IMailService
 {
     private static readonly System.Text.Json.JsonSerializerOptions Json = new(System.Text.Json.JsonSerializerDefaults.Web);
     private const int MaxSubjectLength = 500;
     private ILogger Log => log ?? NullLogger<MailService>.Instance;
+    private MailInlineImages Inline => field ??= new MailInlineImages(db, attachments, Log);
 
     // ──────────────────────────────────────────────────────────────────────────
     // Compose & delivery
@@ -54,6 +56,9 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
                 return new SendMailResult(false, null, "reply_all_blocked");
         }
 
+        // Before the mail is tracked: storing an image saves its Attachment row on this context.
+        var inline = await Inline.ExtractAsync(req.Body, senderId, ct);
+
         var now = DateTime.UtcNow;
         var isScheduled = req.ScheduledAt.HasValue;
         var mail = new MailEntity
@@ -61,7 +66,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             Id = Guid.NewGuid(),
             SenderId = senderId,
             Subject = req.Subject.Trim(),
-            Body = req.Body,
+            Body = inline.Html,
             IsHtml = true,
             Signature = req.Signature,
             InReplyToId = req.InReplyToId,
@@ -92,6 +97,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         }
 
         mail.HasAttachment = await LinkAttachmentsAsync(mail.Id, senderId, req.AttachmentIds, ct);
+        await Inline.LinkAsync(mail.Id, senderId, inline.Ids, replace: false, ct);
         await ApplySenderLabelsAsync(mail.Id, senderId, req.LabelIds, now, ct);
         // Badges/banners/push go through a durable queue written with the inbox rows: the send
         // returns as soon as the mail is in everyone's inbox, and no notification is lost.
@@ -203,13 +209,14 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         var validation = ValidateDraft(req);
         if (validation is not null) return validation;
 
+        var inline = await Inline.ExtractAsync(req.Body, userId, ct);
         var now = DateTime.UtcNow;
         var mail = new MailEntity
         {
             Id = Guid.NewGuid(),
             SenderId = userId,
             Subject = req.Subject.Trim(),
-            Body = req.Body,
+            Body = inline.Html,
             IsHtml = true,
             Signature = req.Signature,
             InReplyToId = req.InReplyToId,
@@ -224,6 +231,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         // Drafts only have the author's row — recipients stay NIKs in DraftState until sent.
         db.MailRecipients.Add(MakeRecipient(mail.Id, userId, "from", "draft", now));
         mail.HasAttachment = await LinkAttachmentsAsync(mail.Id, userId, req.AttachmentIds, ct);
+        await Inline.LinkAsync(mail.Id, userId, inline.Ids, replace: false, ct);
         await ApplySenderLabelsAsync(mail.Id, userId, req.LabelIds, now, ct);
         await db.SaveChangesAsync(ct);
         await SyncUserAsync(userId, ct);
@@ -243,8 +251,10 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         var mail = await db.Mails.FindAsync([mailId], ct);
         if (mail is null) return new SendMailResult(false, null, "draft_not_found");
 
+        // Autosave sends the same pasted image again and again: the store step re-uses it by hash.
+        var inline = await Inline.ExtractAsync(req.Body, userId, ct);
         mail.Subject = req.Subject.Trim();
-        mail.Body = req.Body;
+        mail.Body = inline.Html;
         mail.Signature = req.Signature;
         mail.Importance = string.IsNullOrWhiteSpace(req.Importance) ? "normal" : req.Importance;
         mail.InReplyToId = req.InReplyToId;
@@ -252,6 +262,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         mail.DraftState = SerializeDraftState(req);
         mail.UpdatedAt = DateTime.UtcNow;
         mail.HasAttachment = await LinkAttachmentsAsync(mail.Id, userId, req.AttachmentIds, ct, syncDraft: true);
+        await Inline.LinkAsync(mail.Id, userId, inline.Ids, replace: true, ct);
         // The composer sends its full label set every save: replace the author's labels.
         db.MailLabelAssignments.RemoveRange(await db.MailLabelAssignments
             .Where(a => a.MailId == mailId && a.Label.UserId == userId).ToListAsync(ct));

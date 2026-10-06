@@ -781,10 +781,10 @@ public static class ChatEndpoints
             var url = $"/api/chat-avatars/{name}";
             var r = await svc.SetGroupAvatarAsync(userId.Value, roomId, url, ct);
             if (!r.Success) return Results.Json(new { code = r.Error ?? "forbidden", message = r.Error }, statusCode: r.Error == "forbidden" ? 403 : 422);
-            var dir = Path.Combine(env.ContentRootPath, "chat-files", "avatars");
-            Directory.CreateDirectory(dir);
-            await File.WriteAllBytesAsync(Path.Combine(dir, name), jpeg, ct);
-            DeleteGroupAvatarFile(env.ContentRootPath, r.Error);
+            // In the database (like profile photos) so it is part of every backup, not just this server's disk.
+            db.ChatGroupAvatars.Add(new ChatGroupAvatar { Name = name, Content = jpeg, CreatedAt = DateTime.UtcNow });
+            await db.SaveChangesAsync(ct);
+            await DeleteGroupAvatarAsync(db, env.ContentRootPath, r.Error, ct);
             var room = await db.ChatRooms.AsNoTracking().FirstAsync(x => x.Id == roomId, ct);
             await notifier.NotifyRoomUpdatedAsync(roomId, new RoomUpdateDto(roomId, room.Name, room.LastMessageAt), ct);
             return Results.Ok(new { avatarUrl = url });
@@ -796,7 +796,7 @@ public static class ChatEndpoints
             if (userId is null) return Results.Unauthorized();
             var r = await svc.SetGroupAvatarAsync(userId.Value, roomId, null, ct);
             if (!r.Success) return Results.Json(new { code = r.Error ?? "forbidden", message = r.Error }, statusCode: r.Error == "forbidden" ? 403 : 422);
-            DeleteGroupAvatarFile(env.ContentRootPath, r.Error);
+            await DeleteGroupAvatarAsync(db, env.ContentRootPath, r.Error, ct);
             var room = await db.ChatRooms.AsNoTracking().FirstAsync(x => x.Id == roomId, ct);
             await notifier.NotifyRoomUpdatedAsync(roomId, new RoomUpdateDto(roomId, room.Name, room.LastMessageAt), ct);
             return Results.NoContent();
@@ -1715,10 +1715,36 @@ public static class ChatEndpoints
         return Path.Combine(contentRoot, "chat-files", "avatars", name);
     }
 
-    private static void DeleteGroupAvatarFile(string contentRoot, string? previousUrl)
+    private static async Task DeleteGroupAvatarAsync(IPopDbContext db, string contentRoot, string? previousUrl, CancellationToken ct)
     {
+        if (GroupAvatarName(previousUrl) is { } name)
+            await db.ChatGroupAvatars.Where(a => a.Name == name).ExecuteDeleteAsync(ct);
         var path = GroupAvatarPath(contentRoot, previousUrl);
         try { if (path is not null && File.Exists(path)) File.Delete(path); } catch { /* orphan file is harmless */ }
+    }
+
+    /// "{guid:N}.jpg" from "/api/chat-avatars/{name}" or the bare name; null for anything else.
+    public static string? GroupAvatarName(string? urlOrName)
+    {
+        if (string.IsNullOrWhiteSpace(urlOrName)) return null;
+        var name = urlOrName.StartsWith("/api/chat-avatars/") ? urlOrName["/api/chat-avatars/".Length..] : urlOrName;
+        return System.Text.RegularExpressions.Regex.IsMatch(name, "^[0-9a-f]{32}\\.jpg$") ? name : null;
+    }
+
+    /// Group photos saved before they moved into the database live in chat-files/avatars:
+    /// copy them in once at startup (idempotent), so every photo is in the backups.
+    public static async Task ImportLocalGroupAvatarsAsync(IPopDbContext db, string contentRoot, CancellationToken ct)
+    {
+        var dir = Path.Combine(contentRoot, "chat-files", "avatars");
+        if (!Directory.Exists(dir)) return;
+        var known = (await db.ChatGroupAvatars.AsNoTracking().Select(a => a.Name).ToListAsync(ct)).ToHashSet();
+        foreach (var file in Directory.EnumerateFiles(dir, "*.jpg"))
+        {
+            var name = Path.GetFileName(file);
+            if (GroupAvatarName(name) is null || known.Contains(name)) continue;
+            db.ChatGroupAvatars.Add(new ChatGroupAvatar { Name = name, Content = await File.ReadAllBytesAsync(file, ct), CreatedAt = File.GetCreationTimeUtc(file) });
+        }
+        await db.SaveChangesAsync(ct);
     }
 
     // ponytail: real thumbnails only for raster images; fallback is the full file path

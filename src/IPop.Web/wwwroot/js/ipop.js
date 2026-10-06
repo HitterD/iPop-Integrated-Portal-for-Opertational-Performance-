@@ -833,6 +833,77 @@ window.ipop = {
     if (!res.ok) return null;
     return URL.createObjectURL(await res.blob());
   },
+  // ---- Mail inline images ----------------------------------------------------
+  // Pasted images in mail bodies are stored on the NAS and referenced as
+  // <img src="/api/attachments/{id}" data-ipop-att="{id}">. The API wants a bearer token, so
+  // the page fetches each one with it and swaps in a blob: URL (one fetch per id, shared by the
+  // reader, the thread stack and the composer). Failures are not cached: the next render retries.
+  mailImages: {
+    _urls: new Map(),   // id -> Promise<string|null>
+    _base: "",
+    _token: null,
+    setAuth(apiBase, token) {
+      if (apiBase != null) this._base = String(apiBase).replace(/\/+$/, "");
+      if (token !== undefined) this._token = token;
+    },
+    _get(id) {
+      let p = this._urls.get(id);
+      if (!p) {
+        p = (async () => {
+          try {
+            const res = await fetch(`${this._base}/api/attachments/${id}`,
+              { headers: this._token ? { Authorization: "Bearer " + this._token } : {} });
+            return res.ok ? URL.createObjectURL(await res.blob()) : null;
+          } catch { return null; }
+        })();
+        this._urls.set(id, p);
+        p.then(u => { if (!u && this._urls.get(id) === p) this._urls.delete(id); });
+      }
+      return p;
+    },
+    // root: element, selector or null (whole document). Returns once every image is settled.
+    async hydrate(root, apiBase, token) {
+      this.setAuth(apiBase, token);
+      const scope = typeof root === "string" ? document.querySelector(root) : (root || document);
+      if (!scope) return;
+      const imgs = Array.from(scope.querySelectorAll("img[data-ipop-att]"));
+      await Promise.all(imgs.map(async img => {
+        const id = img.getAttribute("data-ipop-att");
+        if (!/^[0-9a-f-]{36}$/i.test(id || "")) return;
+        if ((img.getAttribute("src") || "").startsWith("blob:") && img.dataset.ipopAttFor === id) return;
+        const url = await this._get(id);
+        if (url && img.getAttribute("data-ipop-att") === id) { img.dataset.ipopAttFor = id; img.setAttribute("src", url); }
+      }));
+    },
+    // Editor HTML going back to the server: blob: URLs only make sense in this tab.
+    restoreSrc(html) {
+      if (!html || html.indexOf("blob:") < 0 || html.indexOf("data-ipop-att") < 0) return html;
+      const t = document.createElement("template");
+      t.innerHTML = html;
+      t.content.querySelectorAll("img[data-ipop-att]").forEach(img => {
+        const id = img.getAttribute("data-ipop-att");
+        if (/^[0-9a-f-]{36}$/i.test(id || "")) img.setAttribute("src", `/api/attachments/${id}`);
+        img.removeAttribute("data-ipop-att-for");
+      });
+      return t.innerHTML;
+    },
+    // Revoke what is no longer on screen (page dispose). Images still shown elsewhere (an open
+    // composer) keep their URL.
+    async release() {
+      for (const [id, p] of Array.from(this._urls)) {
+        const url = await p;
+        if (url && document.querySelector(`img[src="${url}"]`)) continue;
+        if (url) URL.revokeObjectURL(url);
+        if (this._urls.get(id) === p) this._urls.delete(id);
+      }
+    },
+    // Sign-out / account switch: nothing fetched with the old token survives.
+    clear() {
+      for (const p of this._urls.values()) p.then(u => u && URL.revokeObjectURL(u));
+      this._urls.clear();
+      this._token = null;
+    },
+  },
   async authDownload(url, token, filename) {
     const res = await fetch(url, { headers: token ? { Authorization: "Bearer " + token } : {} });
     if (!res.ok) return;
@@ -1947,9 +2018,13 @@ window.ipop = {
       this._eds[id] = st;
       // #14: pasted screenshots show a placeholder, then fade in (size/format still checked on change).
       ipop.rteBindImagePaste(ed.editor, () => { try { ed.synchronizeValues(); ed.e.fire("change"); } catch { } });
+      // Stored images (drafts, reply/forward quotes) show through blob: URLs in this tab only;
+      // every value read from the editor carries the /api/attachments/{id} src again.
+      ed.e.on("afterGetValueFromEditor", d => { if (d && typeof d.value === "string") d.value = ipop.mailImages.restoreSrc(d.value); });
       ed.value = html || "";
       try { ed.history.clear(); } catch { }
       st.lastValue = ed.value;
+      ipop.mailImages.hydrate(ed.editor);
 
       // Same limits as the server sanitizer, so the author sees the drop instead of the recipient.
       const dropBadImages = () => {
@@ -2159,6 +2234,7 @@ window.ipop = {
       this._focus(st);
       st.ed.s.insertHTML(html || "");
       this._flush(id);
+      ipop.mailImages.hydrate(st.ed.editor);
     },
     // Replaces the whole document. Opening a draft/new message restarts history; applying a
     // template keeps it so Ctrl+Z brings the previous text back.
@@ -2169,6 +2245,7 @@ window.ipop = {
       st.lastValue = st.ed.value;
       if (!keepHistory) { try { st.ed.history.clear(); } catch { } }
       this._queueState(id);
+      ipop.mailImages.hydrate(st.ed.editor);
     },
     getHtml(id) {
       const st = this._eds[id];

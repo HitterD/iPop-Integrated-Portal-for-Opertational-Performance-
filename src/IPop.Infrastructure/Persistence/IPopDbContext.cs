@@ -52,6 +52,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<ChatMention> ChatMentions => Set<ChatMention>();
     public DbSet<ChatMembershipAudit> ChatMembershipAudits => Set<ChatMembershipAudit>();
     public DbSet<ChatSticker> ChatStickers => Set<ChatSticker>();
+    public DbSet<ChatGroupAvatar> ChatGroupAvatars => Set<ChatGroupAvatar>();
     public DbSet<UserSticker> UserStickers => Set<UserSticker>();
     public DbSet<StickerUsage> StickerUsages => Set<StickerUsage>();
 
@@ -81,6 +82,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<MailGroupMember> MailGroupMembers => Set<MailGroupMember>();
     public DbSet<MailNotifyJob> MailNotifyJobs => Set<MailNotifyJob>();
     public DbSet<MailAttachment> MailAttachments => Set<MailAttachment>();
+    public DbSet<MailInlineImage> MailInlineImages => Set<MailInlineImage>();
     // Surat Lanjutan (Fase 3)
     public DbSet<MailLabel> MailLabels => Set<MailLabel>();
     public DbSet<MailLabelAssignment> MailLabelAssignments => Set<MailLabelAssignment>();
@@ -405,6 +407,12 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasOne(x => x.BlockedUser).WithMany().HasForeignKey(x => x.BlockedUserId).OnDelete(DeleteBehavior.Cascade);
         });
 
+        b.Entity<ChatGroupAvatar>(e =>
+        {
+            e.HasKey(x => x.Name);
+            e.Property(x => x.Name).HasMaxLength(40);
+        });
+
         b.Entity<ChatRoomUserSettings>(e =>
         {
             e.HasKey(x => new { x.UserId, x.RoomId });
@@ -483,6 +491,13 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.HasIndex(x => x.MailId);
             e.HasIndex(x => new { x.MailId, x.SortOrder });
             e.HasOne(x => x.Mail).WithMany(m => m.Attachments).HasForeignKey(x => x.MailId).IsRequired(false).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<MailInlineImage>(e =>
+        {
+            e.HasKey(x => new { x.MailId, x.AttachmentId });
+            e.HasIndex(x => x.AttachmentId);
+            e.HasOne<IPop.Core.Entities.Mail>().WithMany().HasForeignKey(x => x.MailId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<Attachment>().WithMany().HasForeignKey(x => x.AttachmentId).OnDelete(DeleteBehavior.Cascade);
         });
 
         // Surat Lanjutan (Fase 3)

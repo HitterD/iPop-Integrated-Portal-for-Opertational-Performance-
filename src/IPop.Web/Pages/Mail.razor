@@ -1046,6 +1046,9 @@
             }
         }
         await JS.InvokeVoidAsync("ipop.icons");
+        // Pasted images stored on the NAS need the token: swap them to blob: URLs once rendered.
+        if (detail?.Body?.Contains("data-ipop-att", StringComparison.Ordinal) == true)
+            await JS.InvokeVoidAsync("ipop.mailImages.hydrate", null, Http.BaseAddress?.ToString() ?? "", Auth.AccessToken);
     }
 
     public async Task ReloadAll()
@@ -2484,6 +2487,7 @@
         if (_navSubscribed) Nav.LocationChanged -= OnLocationChanged;
         _ = ResetMobileAsync();
         _ = UnbindShortcutsAsync();
+        _ = JS.InvokeVoidAsync("ipop.mailImages.release").AsTask().ContinueWith(_ => { });
     }
 
     private async Task ResetMobileAsync()

@@ -575,6 +575,24 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("ChatAttachments");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ChatGroupAvatar", b =>
+                {
+                    b.Property<string>("Name")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Name");
+
+                    b.ToTable("ChatGroupAvatars");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ChatMembershipAudit", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1571,6 +1589,21 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("MailGroupMembers");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MailInlineImage", b =>
+                {
+                    b.Property<Guid>("MailId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AttachmentId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("MailId", "AttachmentId");
+
+                    b.HasIndex("AttachmentId");
+
+                    b.ToTable("MailInlineImages");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.MailLabel", b =>
@@ -5416,6 +5449,21 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Group");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MailInlineImage", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Attachment", null)
+                        .WithMany()
+                        .HasForeignKey("AttachmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.Mail", null)
+                        .WithMany()
+                        .HasForeignKey("MailId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.MailLabel", b =>

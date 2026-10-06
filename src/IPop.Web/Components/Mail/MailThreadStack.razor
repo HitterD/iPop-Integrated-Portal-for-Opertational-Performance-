@@ -1,6 +1,8 @@
 @using IPop.Web.Services
 @inject IPop.Web.Services.MailService MailSvc
 @inject IJSRuntime JS
+@inject IPop.Web.Services.AuthState Auth
+@inject HttpClient Http
 
 @*
     Conversation stack: every message in the thread, NEWEST first, so the latest reply is at the
@@ -195,7 +197,12 @@
             scrollTo = null;
             await JS.InvokeAsync<bool>("ipop.scrollIntoView", $".thr-msg[data-thr-id=\"{id}\"]");
         }
+        // Pasted images stored on the NAS are fetched with the token (see ipop.mailImages).
+        if (HasStoredImages(Detail) || bodies.Values.Any(HasStoredImages))
+            await JS.InvokeVoidAsync("ipop.mailImages.hydrate", ".thr-stack", Http.BaseAddress?.ToString() ?? "", Auth.AccessToken);
     }
+
+    private static bool HasStoredImages(MailDetail? d) => d?.Body?.Contains("data-ipop-att", StringComparison.Ordinal) == true;
 
     /// Appends the next (older) page. Returns false when the opened mail changed meanwhile.
     private async Task<bool> FetchNextPageAsync(Guid openedId)

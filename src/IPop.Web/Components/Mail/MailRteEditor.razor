@@ -1,4 +1,5 @@
 @inject IJSRuntime JS
+@inject IServiceProvider Services
 @implements IAsyncDisposable
 
 @* Office-grade editor (Jodit) behind an Apple-style toolbar. Jodit's own toolbar is off; every
@@ -285,12 +286,15 @@
         {
             selfRef = DotNetObjectReference.Create(this);
             lastSyncedValue = Value ?? "";
+            // Drafts and quoted replies can hold images stored on the NAS (loaded with the token).
+            await SetImageAuthAsync(withBase: true);
             created = await JS.InvokeAsync<bool>("ipop.rte.create", hostRef, id, lastSyncedValue, Placeholder, selfRef);
         }
         else if (pendingSet)
         {
             pendingSet = false;
             lastSyncedValue = Value ?? "";
+            await SetImageAuthAsync(withBase: false);
             await JS.InvokeVoidAsync("ipop.rte.setHtml", id, lastSyncedValue, false);
         }
         if (popJustOpened)
@@ -484,6 +488,15 @@
         await f.OpenReadStream(MaxImageBytes).CopyToAsync(ms);
         var mime = string.IsNullOrEmpty(f.ContentType) ? "image/png" : f.ContentType;
         await InsertImage($"data:{mime};base64,{Convert.ToBase64String(ms.ToArray())}");
+    }
+
+    /// Images stored on the NAS load with the token (ipop.mailImages). Resolved optionally: the
+    /// editor also renders where no session exists (component tests).
+    private async Task SetImageAuthAsync(bool withBase)
+    {
+        if (Services.GetService(typeof(IPop.Web.Services.AuthState)) is not IPop.Web.Services.AuthState auth) return;
+        var apiBase = withBase ? (Services.GetService(typeof(HttpClient)) as HttpClient)?.BaseAddress?.ToString() ?? "" : null;
+        await JS.InvokeVoidAsync("ipop.mailImages.setAuth", apiBase, auth.AccessToken);
     }
 
     public async Task InsertImage(string src) => await JS.InvokeVoidAsync("ipop.rte.insertImage", id, src);

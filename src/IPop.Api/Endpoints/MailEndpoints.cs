@@ -391,14 +391,14 @@ public static class MailEndpoints
         // POST /api/mail/{id}/export-pdf — mencatat permintaan ekspor (dipakai tombol Ekspor
         // di halaman baca) lalu mengembalikan PDF untuk diunduh.
         g.MapPost("/{id:guid}/export-pdf", async (Guid id,
-            HttpContext http, IMailService svc, IPopDbContext db, IPop.Infrastructure.Documents.MailPdfRenderer pdf, CancellationToken ct) =>
+            HttpContext http, IMailService svc, IPopDbContext db, IPop.Infrastructure.Documents.MailPdfRenderer pdf, IPop.Application.Attachments.IAttachmentStore store, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
             var result = await svc.RequestPdfExportAsync(userId.Value, id, ct);
             if (!result.Success) return ResultOrError(result);
 
-            var models = await LoadMailPdfModels(userId.Value, [id], db, ct);
+            var models = await LoadMailPdfModels(userId.Value, [id], db, store, ct);
             if (models.Count == 0) return Results.Json(new { code = "mail_not_found", message = "Mail not found." }, statusCode: 404);
             byte[] bytes;
             try
@@ -414,11 +414,11 @@ public static class MailEndpoints
 
         // GET /api/mail/{id}/export-pdf?mode=preview — pratinjau PDF inline untuk panel.
         g.MapGet("/{id:guid}/export-pdf", async (Guid id, string? mode,
-            HttpContext http, IPopDbContext db, IPop.Infrastructure.Documents.MailPdfRenderer pdf, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IPop.Infrastructure.Documents.MailPdfRenderer pdf, IPop.Application.Attachments.IAttachmentStore store, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            var models = await LoadMailPdfModels(userId.Value, [id], db, ct);
+            var models = await LoadMailPdfModels(userId.Value, [id], db, store, ct);
             if (models.Count == 0) return Results.Json(new { code = "mail_not_found", message = "Mail not found." }, statusCode: 404);
             byte[] bytes;
             try
@@ -439,7 +439,7 @@ public static class MailEndpoints
 
         // POST /api/mail/export-pdf { ids: [...] } — satu PDF gabungan dari banyak surat.
         g.MapPost("/export-pdf", async (BulkExportRequest req,
-            HttpContext http, IPopDbContext db, IPop.Infrastructure.Documents.MailPdfRenderer pdf, CancellationToken ct) =>
+            HttpContext http, IPopDbContext db, IPop.Infrastructure.Documents.MailPdfRenderer pdf, IPop.Application.Attachments.IAttachmentStore store, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -447,7 +447,7 @@ public static class MailEndpoints
             if (ids.Count == 0)
                 return Results.Json(new { code = "ids_required", message = "Select at least one email." }, statusCode: 422);
 
-            var models = await LoadMailPdfModels(userId.Value, ids, db, ct);
+            var models = await LoadMailPdfModels(userId.Value, ids, db, store, ct);
             if (models.Count == 0)
                 return Results.Json(new { code = "mail_not_found", message = "No emails accessible." }, statusCode: 404);
 
@@ -1200,9 +1200,10 @@ public static class MailEndpoints
 
     // ── PDF render helpers (Fase 2) ──
 
-    /// Muat surat yang bisa diakses pengguna dan petakan ke model render.
+    /// Muat surat yang bisa diakses pengguna dan petakan ke model render. Pasted images stored on
+    /// the NAS go back in as data: URIs — the renderer cannot fetch /api/attachments with a token.
     private static async Task<List<IPop.Infrastructure.Documents.MailPdfRenderer.MailPdfModel>> LoadMailPdfModels(
-        Guid userId, IReadOnlyList<Guid> ids, IPopDbContext db, CancellationToken ct)
+        Guid userId, IReadOnlyList<Guid> ids, IPopDbContext db, IPop.Application.Attachments.IAttachmentStore store, CancellationToken ct)
     {
         var rows = await db.Mails.AsNoTracking()
             .Where(m => ids.Contains(m.Id))
@@ -1211,6 +1212,9 @@ public static class MailEndpoints
             .Include(m => m.Recipients).ThenInclude(r => r.User)
             .OrderBy(m => m.SentAt ?? m.CreatedAt)
             .ToListAsync(ct);
+
+        foreach (var m in rows.Where(m => m.IsHtml))
+            m.Body = await IPop.Infrastructure.Mail.MailInlineImages.InlineForExportAsync(db, store, m.Id, m.Body, ct);
 
         return rows.Select(m => new IPop.Infrastructure.Documents.MailPdfRenderer.MailPdfModel(
             m.Subject,
@@ -1226,9 +1230,9 @@ public static class MailEndpoints
     }
 
     private static async Task<byte[]?> RenderMailPdf(Guid userId, Guid mailId,
-        IPop.Infrastructure.Documents.MailPdfRenderer pdf, IPopDbContext db, CancellationToken ct)
+        IPop.Infrastructure.Documents.MailPdfRenderer pdf, IPopDbContext db, IPop.Application.Attachments.IAttachmentStore store, CancellationToken ct)
     {
-        var models = await LoadMailPdfModels(userId, [mailId], db, ct);
+        var models = await LoadMailPdfModels(userId, [mailId], db, store, ct);
         if (models.Count == 0) return null;
         return await pdf.RenderMailAsync(models[0], ct);
     }

@@ -506,7 +506,11 @@ public class AuthState(HttpClient http, IJSRuntime js)
         // Stored page snapshots (PageCache): wiped here too, because PageCache only hears
         // SignedOut once a page has created it in this document (e.g. not after a reload on /chat).
         if (js is IJSInProcessRuntime sync)
+        {
             try { sync.InvokeVoid("ipop.cacheClear", PageCache.StoragePrefix); } catch { }
+            // Mail inline images fetched with this account's token (blob: URLs) go with it.
+            try { sync.InvokeVoid("ipop.mailImages.clear"); } catch { }
+        }
         // One by one: a subscriber that throws must not stop the others from dropping this
         // account's data (an exception used to skip every handler after it).
         foreach (var handler in SignedOut?.GetInvocationList() ?? [])

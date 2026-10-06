@@ -19,6 +19,7 @@ public static class MailHtml
         s.AllowedAttributes.Add("data-nik");     // @mention chips
         s.AllowedAttributes.Add("data-project"); // linked-project chips
         s.AllowedAttributes.Add("data-unc");     // linkified \\host\share paths (client opens them)
+        s.AllowedAttributes.Add(MailInlineImages.Attr); // pasted image stored on the NAS (client loads it with the token)
         s.AllowedAttributes.Add("target");
         s.AllowedAttributes.Add("rel");
 
@@ -33,6 +34,15 @@ public static class MailHtml
                 && DataImage.IsMatch(e.OriginalUrl)
                 && e.OriginalUrl.Length <= MaxDataImageChars;
             if (!ok) e.SanitizedUrl = null;
+        };
+
+        // Images moved to the attachment store keep their id only on <img>, and only as a GUID.
+        // Their src is a same-origin relative /api/attachments/{id}, which the default sanitizer keeps.
+        s.PostProcessNode += (_, e) =>
+        {
+            if (e.Node is not IElement el || el.GetAttribute(MailInlineImages.Attr) is not { } att) return;
+            if (!el.TagName.Equals("IMG", StringComparison.OrdinalIgnoreCase) || !Guid.TryParse(att, out Guid _))
+                el.RemoveAttribute(MailInlineImages.Attr);
         };
 
         // Office-grade formatting from the editor and from Word paste.

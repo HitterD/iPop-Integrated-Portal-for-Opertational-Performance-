@@ -202,6 +202,8 @@ builder.Services.AddHostedService<IPop.Infrastructure.Meetings.MeetingReminderWo
 
 // Mail module
 builder.Services.AddScoped<IMailService, MailService>();
+// Images pasted into mail bodies live in the attachment store (area "mail"); readable by the mail's participants.
+builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Infrastructure.Mail.MailAttachmentPolicy>();
 
 // Calls module (1:1 P2P WebRTC signaling; LiveKit tokens are for meetings only)
 builder.Services.AddSingleton<IPop.Application.Calls.ILiveKitTokenService, IPop.Infrastructure.Calls.LiveKitTokenService>();
@@ -270,6 +272,12 @@ builder.Services.AddHostedService<MailScheduledDeliveryWorker>();
 builder.Services.AddSingleton<MailNotifySignal>();
 builder.Services.AddHostedService<MailNotifyWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Notifications.NotificationRetentionWorker>();
+// Hourly: nightly DB backup still succeeding, data drives not filling up → alert admins.
+builder.Services.AddHostedService<IPop.Infrastructure.Ops.OpsHealthWorker>();
+// Every 5 min: files kept on the server while the NAS was down move to the NAS.
+builder.Services.AddHostedService(sp => new IPop.Infrastructure.Files.LocalToNasWorker(
+    sp.GetRequiredService<IServiceScopeFactory>(), sp.GetRequiredService<IConfiguration>(),
+    sp.GetRequiredService<ILogger<IPop.Infrastructure.Files.LocalToNasWorker>>(), builder.Environment.ContentRootPath));
 builder.Services.AddHostedService<IPop.Infrastructure.Notifications.NotificationLinkBackfill>();
 builder.Services.AddHostedService<IPop.Infrastructure.Files.FileOperationWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Files.FileOperationRetentionWorker>();
@@ -341,6 +349,12 @@ if (app.Environment.IsDevelopment())
     await db.Database.MigrateAsync();
     await DevSeed.EnsureSeededAsync(db, scope.ServiceProvider.GetRequiredService<IPop.Application.Auth.IPasswordHasher>());
 }
+{
+    // One-time move of group photos from chat-files/avatars into the database (no-op afterwards).
+    using var scope = app.Services.CreateScope();
+    try { await IPop.Api.Endpoints.ChatEndpoints.ImportLocalGroupAvatarsAsync(scope.ServiceProvider.GetRequiredService<IPopDbContext>(), app.Environment.ContentRootPath, CancellationToken.None); }
+    catch (Exception ex) { app.Logger.LogWarning(ex, "Group photo import skipped"); }
+}
 
 app.UseCors("web-dev");
 // Dev serves http and https side by side (http for LAN browsing, https for calls' microphone);
@@ -376,16 +390,20 @@ app.MapFiles();
 app.MapOnlyOffice();
 app.MapChat();
 // Group photos: random 128-bit file names, served without auth so <img> tags work.
-app.MapGet("/api/chat-avatars/{name}", (string name, IWebHostEnvironment env) =>
+app.MapGet("/api/chat-avatars/{name}", async (string name, IWebHostEnvironment env, IPopDbContext db, CancellationToken ct) =>
 {
+    if (IPop.Api.Endpoints.ChatEndpoints.GroupAvatarName(name) is not { } key) return Results.NotFound();
+    var bytes = await db.ChatGroupAvatars.AsNoTracking().Where(a => a.Name == key).Select(a => a.Content).FirstOrDefaultAsync(ct);
+    if (bytes is not null) return Results.File(bytes, "image/jpeg");
+    // Older photos not imported yet: still on local disk.
     var path = IPop.Api.Endpoints.ChatEndpoints.GroupAvatarPath(env.ContentRootPath, name);
-    if (path is null || !File.Exists(path)) return Results.NotFound();
-    return Results.File(path, "image/jpeg", enableRangeProcessing: false);
+    return path is not null && File.Exists(path) ? Results.File(path, "image/jpeg", enableRangeProcessing: false) : Results.NotFound();
 }).AllowAnonymous();
 app.MapStickers();
 app.MapCalls();
 app.MapMail();
 app.MapMailGroups();
+app.MapMailInlineImages();
 app.MapProjects();
 app.MapProjectFields();
 app.MapProjectTime();
