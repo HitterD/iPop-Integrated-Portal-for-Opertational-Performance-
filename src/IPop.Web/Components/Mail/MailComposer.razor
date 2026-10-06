@@ -1253,6 +1253,8 @@
         CancelAutosave();
         sending = true;
         StateHasChanged();
+        // The last keystrokes may still be in the editor's debounce: take its current content.
+        if (rteRef is not null) body = await rteRef.CurrentHtmlAsync();
         await WaitForSaveAsync();
         try
         {

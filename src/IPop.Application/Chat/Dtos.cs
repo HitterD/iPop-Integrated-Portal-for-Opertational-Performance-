@@ -95,7 +95,9 @@ public record PinnedChangeDto(Guid RoomId, Guid MessageId, bool IsPinned, string
 public record MembershipAuditDto(Guid Id, string Action, string ActorName, string? TargetName, string? OldValue, string? NewValue, DateTime CreatedAt);
 
 // Result wrappers
-public record MessageResultDto(bool Success, MessageDto? Message, string? Error);
+/// Replayed = the idempotency key matched a message that was already saved (client retry):
+/// return it to the caller, but never fan it out or notify again.
+public record MessageResultDto(bool Success, MessageDto? Message, string? Error, bool Replayed = false);
 public record MemberResultDto(bool Success, string? Error);
 /// Changed is false for a no-op (already pinned / already unpinned, or a concurrent unpin won the
 /// race); only a real change carries a SystemMessage and is broadcast.

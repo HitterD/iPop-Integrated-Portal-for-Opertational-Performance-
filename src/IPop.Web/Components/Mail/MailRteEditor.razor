@@ -501,6 +501,24 @@
 
     public async Task FocusAsync() => await JS.InvokeVoidAsync("ipop.rte.focus", id);
 
+    /// The editor's HTML right now. Typing reaches Value only after a short debounce, so Send
+    /// (button or Ctrl+Enter straight after the last key) reads the editor itself instead.
+    public async Task<string> CurrentHtmlAsync()
+    {
+        try
+        {
+            var html = await JS.InvokeAsync<string>("ipop.rte.getHtml", id) ?? "";
+            if (html != lastSyncedValue)
+            {
+                lastSyncedValue = html;
+                await ValueChanged.InvokeAsync(html);
+            }
+            return html;
+        }
+        catch (JSDisconnectedException) { return lastSyncedValue; }
+        catch (InvalidOperationException) { return lastSyncedValue; }
+    }
+
     public async ValueTask DisposeAsync()
     {
         try { await JS.InvokeVoidAsync("ipop.rte.destroy", id); } catch (JSDisconnectedException) { } catch (ObjectDisposedException) { }

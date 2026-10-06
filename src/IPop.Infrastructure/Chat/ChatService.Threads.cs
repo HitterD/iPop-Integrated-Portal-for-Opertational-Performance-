@@ -26,6 +26,8 @@ public sealed partial class ChatService
 
         if (!isMember)
             return new MessageResultDto(false, null, "room_not_found");
+        if (await IsBlockedInDmAsync(parent.RoomId, senderId, ct))
+            return new MessageResultDto(false, null, "blocked");
         if (!ChatLimits.SenderTypes.Contains(req.Type ?? "text"))
             return new MessageResultDto(false, null, "invalid_type");
 
@@ -52,7 +54,7 @@ public sealed partial class ChatService
         if (existing is not null)
         {
             if (existing.Content == req.Content)
-                return new MessageResultDto(true, MapToMessageDto(existing, senderId), null);
+                return new MessageResultDto(true, MapToMessageDto(existing, senderId), null, Replayed: true);
             else
                 return new MessageResultDto(false, null, "idempotency_conflict");
         }
@@ -73,6 +75,15 @@ public sealed partial class ChatService
         };
 
         db.ChatMessages.Add(reply);
+
+        // "@Budi" in a thread is a mention like anywhere else: bell row, marker and toast.
+        foreach (var r in await BuildMentionRecipientsAsync(parent.RoomId, senderId, req.Content, ct))
+            db.ChatMentions.Add(new ChatMention
+            {
+                Id = Guid.NewGuid(), MessageId = reply.Id, UserId = r.UserId,
+                IsAllMention = r.ViaAllOnly, CreatedAt = now,
+                SuppressNotification = r.SuppressNotification
+            });
 
         if (req.AttachmentIds is { Count: > 0 })
         {

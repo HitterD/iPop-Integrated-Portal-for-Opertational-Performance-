@@ -101,13 +101,15 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         var recipientUsers = recipients.Select(r => r.User).ToList();
         // Fase 3 — aturan label otomatis: untuk tiap penerima non-pengirim, tempel label
         // dari aturan aktif yang cocok dengan pengirim (nama/NIK/email).
+        // The mail is already in every inbox: a rule or auto-reply problem is logged, never
+        // reported as a failed send (the sender would retry and everyone would get it twice).
         if (!isScheduled)
-            await ApplyAutoRulesAsync(mail, recipientUsers, ct);
+            await AfterDeliveryAsync("auto-label rules", mail.Id, () => ApplyAutoRulesAsync(mail, recipientUsers, ct));
 
         // Fase 3 — balasan otomatis (OOO): tiap penerima yang sedang OOO membalas sekali
         // per hari per pengirim. Not for mass mail: a broadcast would flood the sender.
         if (!isScheduled && !mail.IsMass)
-            await SendAutoRepliesAsync(mail, recipientUsers, ct);
+            await AfterDeliveryAsync("auto-replies", mail.Id, () => SendAutoRepliesAsync(mail, recipientUsers, ct));
 
         await SyncUserAsync(senderId, ct);
         if (!isScheduled) notifySignal?.Notify();
@@ -1257,6 +1259,16 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
         }
     }
 
+    private async Task AfterDeliveryAsync(string step, Guid mailId, Func<Task> run)
+    {
+        try { await run(); }
+        catch (Exception ex)
+        {
+            db.ChangeTracker.Clear();
+            Log.LogError(ex, "Mail {MailId}: {Step} failed after delivery; the mail itself was sent.", mailId, step);
+        }
+    }
+
     private static MailRecipient MakeRecipient(Guid mailId, Guid userId, string type, string folder, DateTime now) => new()
     {
         Id = Guid.NewGuid(), MailId = mailId, UserId = userId,
@@ -1283,6 +1295,8 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             var needle = rule.SenderContains.Trim();
             var match = haystacks.Any(h => h?.Contains(needle, StringComparison.OrdinalIgnoreCase) == true);
             if (!match) continue;
+            // Two rules can point at the same label: add each label once.
+            if (toAdd.Any(t => t.LabelId == rule.LabelId)) continue;
             var already = await db.MailLabelAssignments.AnyAsync(a => a.LabelId == rule.LabelId && a.MailId == mail.Id, ct);
             if (!already)
                 toAdd.Add(new IPop.Core.Entities.MailLabelAssignment
@@ -1311,6 +1325,7 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
             .ToListAsync(ct);
         if (settings.Count == 0) return;
 
+        var queued = false;
         foreach (var s in settings)
         {
             try
@@ -1341,11 +1356,17 @@ public sealed class MailService(IPopDbContext db, INotificationGatewayService? n
                 };
                 db.Mails.Add(reply);
                 db.MailRecipients.Add(MakeRecipient(reply.Id, s.UserId, "from", "sent", DateTime.UtcNow));
-                db.MailRecipients.Add(MakeRecipient(reply.Id, original.SenderId, "to", "inbox", DateTime.UtcNow));
+                var inboxRow = MakeRecipient(reply.Id, original.SenderId, "to", "inbox", DateTime.UtcNow);
+                inboxRow.DeliveredAt = DateTime.UtcNow;
+                db.MailRecipients.Add(inboxRow);
+                // Same durable notification as any other mail: badge, banner and toast for the sender.
+                QueueNotify(reply.Id, DateTime.UtcNow);
+                queued = true;
             }
             catch { /* satu penerima gagal tidak menghentikan yang lain */ }
         }
         await db.SaveChangesAsync(ct);
+        if (queued) notifySignal?.Notify();
     }
 
     private static MailSummaryDto ToSummary(MailRecipient r)

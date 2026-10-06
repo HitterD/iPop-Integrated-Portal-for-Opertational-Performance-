@@ -127,7 +127,7 @@ public sealed class NotificationGateway(
         }
     }
 
-    public async Task SendEmergencyNotificationAsync(IReadOnlyList<Guid> recipientIds, string senderName, string roomName, string content, CancellationToken ct)
+    public async Task SendEmergencyNotificationAsync(IReadOnlyList<Guid> recipientIds, string senderName, string roomName, string content, CancellationToken ct, Guid? roomId = null)
     {
         logger.LogWarning("EMERGENCY Notification: {Sender} in {Room} to {Count} recipients: {Content}", senderName, roomName, recipientIds.Count, content);
 
@@ -152,8 +152,8 @@ public sealed class NotificationGateway(
             await db.SaveChangesAsync(ct);
         }
 
-        var room = await db.ChatRooms.AsNoTracking().FirstOrDefaultAsync(r => r.Name == roomName, ct);
-        var targetUrl = room != null ? $"/chat/{room.Id}" : "/chat";
+        roomId ??= await db.ChatRooms.AsNoTracking().Where(r => r.Name == roomName).Select(r => (Guid?)r.Id).FirstOrDefaultAsync(ct);
+        var targetUrl = roomId is { } rid ? $"/chat/{rid}" : "/chat";
 
         var request = new NotificationRequest
         {
@@ -188,11 +188,10 @@ public sealed class NotificationGateway(
         }).ToList();
 
         db.NotificationDeliveries.AddRange(deliveries);
-        // Emergency toasts bypass quiet hours and mutes by design; the intent commits with the request.
-        if (push is not null)
-            IPop.Infrastructure.Notifications.Push.PushQueue.Add(db, "notif", request.Id, recipientIds, "chat.emergency", "high");
+        // This is the in-app alert (bell row + banner). The Windows toast comes from the chat
+        // message's own push job, which already ignores mutes for emergencies; queueing one here
+        // too would toast every recipient twice.
         await db.SaveChangesAsync(ct);
-        push?.Notify();
 
         try
         {

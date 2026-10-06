@@ -392,16 +392,23 @@ public sealed partial class ChatService
         if (existingMember is not null)
             return new MemberResultDto(true, null);
 
+        var now2 = DateTime.UtcNow;
         db.ChatRoomMembers.Add(new ChatRoomMember
         {
             Id = Guid.NewGuid(),
             RoomId = roomId,
             UserId = userId,
             Role = "member",
-            JoinedAt = DateTime.UtcNow
+            JoinedAt = now2
         });
+        // Unread starts at the moment they join: the history before it is not "new" to them
+        // (otherwise someone added to an old group gets a badge of every message ever sent).
+        var settings = await db.ChatRoomUserSettings.FirstOrDefaultAsync(x => x.UserId == userId && x.RoomId == roomId, ct);
+        if (settings is null)
+            db.ChatRoomUserSettings.Add(new ChatRoomUserSettings { UserId = userId, RoomId = roomId, LastReadMessageAt = now2 });
+        else if (settings.LastReadMessageAt is null || settings.LastReadMessageAt < now2)
+            settings.LastReadMessageAt = now2;
 
-        var now2 = DateTime.UtcNow;
         var actorName = await GetUserNameAsync(actorId, ct);
         var targetName = await GetUserNameAsync(userId, ct);
         db.ChatMessages.Add(new ChatMessage

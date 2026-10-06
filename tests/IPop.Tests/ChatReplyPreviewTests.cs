@@ -62,6 +62,21 @@ public class ChatReplyPreviewTests
     }
 
     [Fact]
+    public async Task A_resend_is_marked_as_a_replay_so_nobody_is_notified_twice()
+    {
+        using var t = new TestDb();
+        var (sender, _, room, _) = Seed(t);
+        var key = Guid.NewGuid();
+
+        var first = await new ChatService(t.Verify()).SendMessageAsync(sender, new SendMessageRequest(room, "hello", key, null, null), default);
+        var again = await new ChatService(t.Verify()).SendMessageAsync(sender, new SendMessageRequest(room, "hello", key, null, null), default);
+
+        Assert.False(first.Replayed);
+        Assert.True(again.Replayed);
+        Assert.Equal(first.Message!.Id, again.Message!.Id);
+    }
+
+    [Fact]
     public async Task Plain_message_has_no_quote()
     {
         using var t = new TestDb();

@@ -38,10 +38,20 @@ public sealed class ChatMentionNotifyWorker(IServiceScopeFactory scopeFactory, I
                     var settingsByKey = await db.ChatRoomUserSettings
                         .Where(s => pending.Select(m => m.UserId).Distinct().Contains(s.UserId))
                         .ToDictionaryAsync(s => (s.UserId, s.RoomId), stoppingToken);
+                    // Someone who blocked the sender gets no "@you" from them either (the room toast already skips them).
+                    var blocked = (await db.UserBlocks.AsNoTracking()
+                        .Where(b => pending.Select(m => m.UserId).Contains(b.UserId))
+                        .Select(b => new { b.UserId, b.BlockedUserId }).ToListAsync(stoppingToken))
+                        .Select(b => (b.UserId, b.BlockedUserId)).ToHashSet();
                     foreach (var mention in pending)
                     {
                         try
                         {
+                            if (blocked.Contains((mention.UserId, mention.Message.SenderId)))
+                            {
+                                mention.NotifiedAt = now;
+                                continue;
+                            }
                             if (settingsByKey.TryGetValue((mention.UserId, mention.Message.RoomId), out var st)
                                 && (st.IsArchived || (st.IsMuted && (st.MuteExpiresAt == null || st.MuteExpiresAt > now))))
                             {

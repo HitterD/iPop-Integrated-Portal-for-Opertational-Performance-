@@ -33,21 +33,8 @@ public sealed partial class ChatService
             return new MessageResultDto(false, null, projErr);
 
         // Check if recipient in direct chat room has blocked the sender
-        var chatRoom = await db.ChatRooms.AsNoTracking().FirstOrDefaultAsync(r => r.Id == req.RoomId, ct);
-        if (chatRoom?.Type is "direct" or "dm")
-        {
-            var otherMemberId = await db.ChatRoomMembers.AsNoTracking()
-                .Where(m => m.RoomId == req.RoomId && m.UserId != senderId && m.LeftAt == null)
-                .Select(m => m.UserId)
-                .FirstOrDefaultAsync(ct);
-            if (otherMemberId != Guid.Empty)
-            {
-                var isBlocked = await db.UserBlocks.AsNoTracking()
-                    .AnyAsync(b => b.UserId == otherMemberId && b.BlockedUserId == senderId, ct);
-                if (isBlocked)
-                    return new MessageResultDto(false, null, "blocked");
-            }
-        }
+        if (await IsBlockedInDmAsync(req.RoomId, senderId, ct))
+            return new MessageResultDto(false, null, "blocked");
 
         // Validate ReplyToId belongs to same room + exists + not deleted (H2)
         if (req.ReplyToId is not null)
@@ -71,7 +58,7 @@ public sealed partial class ChatService
             if (existing.Content == req.Content)
             {
                 // Same content → return existing message as success
-                return new MessageResultDto(true, await MapWithMentionsAsync(existing, senderId, ct), null);
+                return new MessageResultDto(true, await MapWithMentionsAsync(existing, senderId, ct), null, Replayed: true);
             }
             else
             {
@@ -151,7 +138,7 @@ public sealed partial class ChatService
                 .FirstOrDefaultAsync(m => m.RoomId == req.RoomId && m.IdempotencyKey == req.IdempotencyKey, ct);
 
             if (raceExisting is not null && raceExisting.Content == req.Content)
-                return new MessageResultDto(true, await MapWithMentionsAsync(raceExisting, senderId, ct), null);
+                return new MessageResultDto(true, await MapWithMentionsAsync(raceExisting, senderId, ct), null, Replayed: true);
 
             return new MessageResultDto(false, null, "idempotency_conflict");
         }
@@ -314,6 +301,20 @@ public sealed partial class ChatService
         return new MessageResultDto(true, MapToMessageDto(message, userId), null);
     }
 
+    /// A DM whose other member blocked the sender takes nothing from them: plain sends,
+    /// forwards and thread replies all go through this.
+    private async Task<bool> IsBlockedInDmAsync(Guid roomId, Guid senderId, CancellationToken ct)
+    {
+        var roomType = await db.ChatRooms.AsNoTracking().Where(r => r.Id == roomId).Select(r => r.Type).FirstOrDefaultAsync(ct);
+        if (roomType is not ("direct" or "dm")) return false;
+        var otherMemberId = await db.ChatRoomMembers.AsNoTracking()
+            .Where(m => m.RoomId == roomId && m.UserId != senderId && m.LeftAt == null)
+            .Select(m => m.UserId)
+            .FirstOrDefaultAsync(ct);
+        return otherMemberId != Guid.Empty && await db.UserBlocks.AsNoTracking()
+            .AnyAsync(b => b.UserId == otherMemberId && b.BlockedUserId == senderId, ct);
+    }
+
     public async Task<MessageResultDto> ForwardMessageAsync(Guid userId, Guid messageId, Guid targetRoomId, CancellationToken ct)
     {
         var original = await db.ChatMessages
@@ -334,6 +335,8 @@ public sealed partial class ChatService
         var isMemberOfSource = await db.ChatRoomMembers.AnyAsync(m => m.RoomId == original.RoomId && m.UserId == userId && m.LeftAt == null, ct);
         if (!isMemberOfSource)
             return new MessageResultDto(false, null, "forbidden");
+        if (await IsBlockedInDmAsync(targetRoomId, userId, ct))
+            return new MessageResultDto(false, null, "blocked");
 
         var now = DateTime.UtcNow;
         // Konten bersih: lepas prefix legacy "[forwarded]" — metadata terusan kini

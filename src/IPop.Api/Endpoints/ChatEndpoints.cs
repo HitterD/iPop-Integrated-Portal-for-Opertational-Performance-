@@ -160,7 +160,7 @@ public static class ChatEndpoints
                 return Results.Json(new { code = ErrorCode(result.Error), message = result.Error }, statusCode: statusCode);
             }
 
-            if (result.Message is not null)
+            if (result.Message is not null && !result.Replayed)
                 await notifier.NotifyNewMessageAsync(roomId, result.Message, ct);
 
             return Results.Ok(result);
@@ -299,7 +299,7 @@ public static class ChatEndpoints
                 return Results.Json(new { code, message = result.Error }, statusCode: statusCode);
             }
 
-            if (result.Message is not null)
+            if (result.Message is not null && !result.Replayed)
                 await notifier.NotifyNewMessageAsync(result.Message.RoomId, result.Message, ct);
 
             return Results.Ok(result);
@@ -950,7 +950,8 @@ public static class ChatEndpoints
 
         // POST /api/chat/rooms/{roomId}/emergency — { content }
         g.MapPost("/rooms/{roomId:guid}/emergency", async (Guid roomId, EmergencyRequest req,
-            HttpContext http, IChatService svc, IChatNotifier notifier, IPopDbContext db, CancellationToken ct) =>
+            HttpContext http, IChatService svc, IChatNotifier notifier, INotificationGateway gateway, IPopDbContext db,
+            ILogger<IPop.Api.Chat.ChatHub> log, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
@@ -970,7 +971,20 @@ public static class ChatEndpoints
             }
 
             if (result.Message is not null)
+            {
                 await notifier.NotifyNewMessageAsync(roomId, result.Message, ct);
+                // In-app alert for every other member (bell + banner), even if they are on another page.
+                try
+                {
+                    var room = await db.ChatRooms.AsNoTracking().Where(r => r.Id == roomId).Select(r => r.Name).FirstOrDefaultAsync(ct);
+                    var others = await db.ChatRoomMembers.AsNoTracking()
+                        .Where(m => m.RoomId == roomId && m.LeftAt == null && m.UserId != userId.Value && m.User.IsActive)
+                        .Select(m => m.UserId).ToListAsync(ct);
+                    if (others.Count > 0)
+                        await gateway.SendEmergencyNotificationAsync(others, result.Message.SenderName, room ?? "Chat", result.Message.Content, CancellationToken.None, roomId);
+                }
+                catch (Exception ex) { log.LogError(ex, "Emergency alert for room {RoomId} was not recorded", roomId); }
+            }
 
             return Results.Ok(result);
         }).RequirePermission("chat.admin");

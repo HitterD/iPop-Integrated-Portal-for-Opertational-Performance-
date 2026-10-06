@@ -104,8 +104,10 @@ public class ChatHub(IChatService chatService, IChatNotifier notifier, IPopDbCon
         var ack = new MessageAckDto(result.Message!.Id, result.Message.CreatedAt, request.IdempotencyKey);
         await Clients.Caller.SendAsync("messageAck", ack);
 
-        // Broadcast to room group via IChatNotifier (which routes through IHubContext)
-        await notifier.NotifyNewMessageAsync(request.RoomId, result.Message, Context.ConnectionAborted);
+        // Broadcast to room group via IChatNotifier (which routes through IHubContext).
+        // A retry of an already-saved message only needs the ack above: the room has it already.
+        if (!result.Replayed)
+            await notifier.NotifyNewMessageAsync(request.RoomId, result.Message, Context.ConnectionAborted);
 
         return new SendMessageResultDto(true, request.RoomId, request.IdempotencyKey, result.Message.Id, result.Message.CreatedAt);
     }
