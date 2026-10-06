@@ -155,6 +155,18 @@ public sealed partial class CallService(IPopDbContext db) : ICallService
         return room is null ? null : ToRoom(room);
     }
 
+    public async Task<CallRoomDto?> GetActiveCallAsync(Guid userId, CancellationToken ct)
+    {
+        var room = await db.CallRooms.AsNoTracking()
+            .Include(r => r.ChatRoom)
+            .Include(r => r.Participants).ThenInclude(p => p.User)
+            .Where(r => (r.Status == CallStatus.Ringing || r.Status == CallStatus.Active)
+                     && r.Participants.Any(p => p.UserId == userId && p.Status == CallParticipantStatus.Accepted))
+            .OrderByDescending(r => r.StartedAt)
+            .FirstOrDefaultAsync(ct);
+        return room is null ? null : ToRoom(room);
+    }
+
     public async Task<CallHistoryPage> GetHistoryAsync(Guid userId, int page, int pageSize, CancellationToken ct)
     {
         var p = Math.Max(1, page);

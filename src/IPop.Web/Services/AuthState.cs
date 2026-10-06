@@ -88,6 +88,12 @@ public class AuthState(HttpClient http, IJSRuntime js)
         try { return await js.InvokeAsync<string?>("ipopUserStore.get", nik, key); } catch { return null; }
     }
 
+    public async Task RemoveUserSettingAsync(string key)
+    {
+        if (Me?.Nik is not { Length: > 0 } nik) return;
+        try { await js.InvokeVoidAsync("ipopUserStore.remove", nik, key); } catch { }
+    }
+
     public async Task SetUserSettingAsync(string key, string value)
     {
         if (Me?.Nik is not { Length: > 0 } nik) return;

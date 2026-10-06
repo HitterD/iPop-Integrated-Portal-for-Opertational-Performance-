@@ -26,6 +26,10 @@ public record MessageDto(Guid Id, Guid RoomId, Guid SenderId, string SenderName,
     IReadOnlyList<SeenByDto>? ReadPreview = null,
     /// True when the sender removed the link preview card; clients then show no preview.
     bool LinkPreviewOff = false);
+/// Where a forwarded message's "Forwarded · Name" label leads for this viewer. Kind: "original"
+/// (open RoomId and jump to MessageId), "deleted" (open RoomId; the original is gone),
+/// "dm" (the origin chat is closed to the viewer: open a DM with the original sender) or "none".
+public record ForwardOriginDto(string Kind, Guid? RoomId, Guid? MessageId, string? RoomName, Guid? SenderId);
 public record MessageAckDto(Guid MessageId, DateTime ServerTimestamp, Guid IdempotencyKey);
 /// SendMessage's hub return value on every exit path. RoomId + IdempotencyKey echo the request so
 /// the client settles exactly that message; Error is a stable code (e.g. "rate_limited").

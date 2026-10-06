@@ -544,7 +544,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
             Tags = req.Tags?.Trim(),
             CreatedById = actorId,
             CreatedAt = now,
-            UpdatedAt = now
+            UpdatedAt = now,
+            CompletedAt = status == "done" ? now : null
         };
 
         db.ProjectTasks.Add(task);
@@ -599,7 +600,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                 t.Tags,
                 t.CreatedById, t.CreatedBy?.Name ?? "Unknown",
                 assignees, subCount, subDone, t.CreatedAt, t.UpdatedAt,
-                commentCounts.GetValueOrDefault(t.Id), attachmentCounts.GetValueOrDefault(t.Id), reminderTaskIds.Contains(t.Id), t.GroupId));
+                commentCounts.GetValueOrDefault(t.Id), attachmentCounts.GetValueOrDefault(t.Id), reminderTaskIds.Contains(t.Id), t.GroupId,
+                CompletedAt: t.CompletedAt));
         }
         return await WithDependenciesAsync(result, ct);
     }
@@ -677,7 +679,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                     .MaxAsync(ct) ?? 0;
                 task.SortOrder = maxSort + 100;
             }
-            task.Status = req.Status;
+            SetStatus(task, req.Status, DateTime.UtcNow);
         }
 
         task.UpdatedAt = DateTime.UtcNow;
@@ -804,7 +806,8 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                 t.Dependencies, t.IsRecurring, t.RecurrenceRule, t.IsTemplate,
                 t.Tags,
                 t.CreatedById, t.CreatedBy?.Name ?? "Unknown", ass, subCount, subDone, t.CreatedAt, t.UpdatedAt,
-                boardCommentCounts.GetValueOrDefault(t.Id), boardAttachmentCounts.GetValueOrDefault(t.Id), boardReminderTaskIds.Contains(t.Id), t.GroupId);
+                boardCommentCounts.GetValueOrDefault(t.Id), boardAttachmentCounts.GetValueOrDefault(t.Id), boardReminderTaskIds.Contains(t.Id), t.GroupId,
+                CompletedAt: t.CompletedAt);
         }
 
         var mapped = await WithDependenciesAsync(all.Select(Map).ToList(), ct);
@@ -847,7 +850,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                 .MaxAsync(ct) ?? 0;
             task.SortOrder = req.SortOrder ?? (maxSort + 100);
             if (req.Status == "done") nextRecurringId = await QueueNextRecurrenceAsync(task, actorId, ct);
-            task.Status = req.Status;
+            SetStatus(task, req.Status, DateTime.UtcNow);
         }
         else if (req.SortOrder.HasValue)
         {
@@ -895,7 +898,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                 t.Dependencies, t.IsRecurring, t.RecurrenceRule, t.IsTemplate,
                 t.Tags,
                 t.CreatedById, t.CreatedBy?.Name ?? "Unknown", ass, subCount, subDone, t.CreatedAt, t.UpdatedAt,
-                GroupId: t.GroupId);
+                GroupId: t.GroupId, CompletedAt: t.CompletedAt);
         }).ToList();
 
         return new PagedResult<ProjectTaskDto>(await WithDependenciesAsync(dtos, ct), total, page, pageSize);
@@ -1011,7 +1014,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                 t.Dependencies, t.IsRecurring, t.RecurrenceRule, t.IsTemplate,
                 t.Tags,
                 t.CreatedById, t.CreatedBy?.Name ?? "Unknown",
-                ass, subCount, subDone, t.CreatedAt, t.UpdatedAt, GroupId: t.GroupId);
+                ass, subCount, subDone, t.CreatedAt, t.UpdatedAt, GroupId: t.GroupId, CompletedAt: t.CompletedAt);
         }).ToList();
         taskDtos = await WithDependenciesAsync(taskDtos, ct);
 
@@ -1238,6 +1241,15 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
             p.CreatedAt, p.UpdatedAt, p.Color);
     }
 
+    /// The only way a task's status changes: CompletedAt follows the "done" lane (set on entering,
+    /// kept while staying, cleared on leaving) so reports read a real completion date.
+    internal static void SetStatus(ProjectTask task, string status, DateTime now)
+    {
+        if (status == "done") { if (task.Status != "done" || task.CompletedAt is null) task.CompletedAt = now; }
+        else task.CompletedAt = null;
+        task.Status = status;
+    }
+
     private async Task<ProjectTaskDto?> MapToTaskDtoAsync(Guid taskId, CancellationToken ct)
     {
         var t = await db.ProjectTasks
@@ -1267,7 +1279,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
             t.CreatedById, t.CreatedBy?.Name ?? "Unknown",
             ass, subCount, subDone, t.CreatedAt, t.UpdatedAt,
             commentCount, attachmentCount, hasReminder, t.GroupId,
-            deps, t.Status != "done" && deps.Any(d => d.Status != "done"));
+            deps, t.Status != "done" && deps.Any(d => d.Status != "done"), CompletedAt: t.CompletedAt);
     }
 
     // ──────────────────────────────────────────────────────────────────────────

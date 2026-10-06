@@ -56,6 +56,8 @@ public class ProjectTask
     public Guid CreatedById { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    /// When the task last entered "done"; cleared when it leaves "done".
+    public DateTime? CompletedAt { get; set; }
 
     public Project Project { get; set; } = default!;
     public ProjectTask? ParentTask { get; set; }

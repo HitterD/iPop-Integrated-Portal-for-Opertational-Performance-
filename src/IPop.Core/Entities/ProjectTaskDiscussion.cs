@@ -64,3 +64,28 @@ public class ProjectTaskReminder
 
     public ProjectTask Task { get; set; } = default!;
 }
+
+/// A file uploaded to a task through the shared attachment store (area "projects", NAS via the
+/// service account), so every project member sees the same bytes. Kind separates field photos
+/// and completion deliverables (the evidence flow) from plain task attachments.
+public class ProjectTaskFile
+{
+    public const string KindField = "field";
+    public const string KindDeliverable = "deliverable";
+    public const string KindAttachment = "attachment";
+    public static readonly IReadOnlySet<string> Kinds = new HashSet<string> { KindField, KindDeliverable, KindAttachment };
+
+    public Guid Id { get; set; }
+    public Guid TaskId { get; set; }
+    public Guid AttachmentId { get; set; }
+    /// "field" | "deliverable" | "attachment"
+    public required string Kind { get; set; }
+    public Guid UploadedById { get; set; }
+    public DateTime CreatedAt { get; set; }
+    /// Soft delete: the link disappears from the task and the file stops being downloadable.
+    public DateTime? DeletedAt { get; set; }
+
+    public ProjectTask Task { get; set; } = default!;
+    public Attachment Attachment { get; set; } = default!;
+    public User UploadedBy { get; set; } = default!;
+}

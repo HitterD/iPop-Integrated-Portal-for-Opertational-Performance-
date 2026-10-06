@@ -221,6 +221,40 @@ public class ChatComponentsRenderTests
     }
 
     [Fact]
+    public void MessageBubble_ReplyQuote_JumpsToTheOriginal()
+    {
+        using var ctx = CreateContext();
+        var originalId = Guid.NewGuid();
+        var message = new MessageDto(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Alice", "U1", "text", "ok",
+            DateTime.UtcNow, null, false, null, originalId, new ReplyPreviewDto("BOB", "earlier"), null, 0, null, [], [], [], false, Guid.NewGuid());
+        Guid? opened = null;
+
+        var cut = ctx.Render<MessageBubble>(p => p
+            .Add(m => m.Message, message)
+            .Add(m => m.OnReplyOpen, (Guid id) => opened = id));
+
+        var quote = cut.Find("button.reply-quote");
+        Assert.Contains("earlier", quote.TextContent);
+        quote.Click();
+        Assert.Equal(originalId, opened);
+    }
+
+    [Fact]
+    public void MessageBubble_ReplyQuote_StaysPlainWithoutAHandler()
+    {
+        using var ctx = CreateContext();
+        var message = new MessageDto(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Alice", "U1", "text", "ok",
+            DateTime.UtcNow, null, false, null, Guid.NewGuid(), new ReplyPreviewDto("BOB", "earlier"), null, 0, null, [], [], [], false, Guid.NewGuid());
+
+        var cut = ctx.Render<MessageBubble>(p => p.Add(m => m.Message, message));
+
+        Assert.Empty(cut.FindAll("button.reply-quote"));
+        Assert.Single(cut.FindAll("div.reply-quote"));
+    }
+
+    [Fact]
     public void MessageBubble_RendersMarkdownFormatting()
     {
         using var ctx = CreateContext();

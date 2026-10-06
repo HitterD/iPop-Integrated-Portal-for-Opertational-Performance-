@@ -353,7 +353,7 @@ public sealed partial class ProjectService
                         t.Description = description;
                     }
                     Track(t.Id, "status_changed", t.Status, value);
-                    t.Status = value;
+                    SetStatus(t, value, now);
                     t.SortOrder = nextSort;
                     nextSort += 100;
                     t.UpdatedAt = now;

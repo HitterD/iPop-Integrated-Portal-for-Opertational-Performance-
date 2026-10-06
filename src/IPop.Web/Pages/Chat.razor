@@ -43,7 +43,7 @@
                 <input type="text" placeholder="Search conversations..." value="@roomSearchQuery" @oninput="OnRoomSearchChanged" />
                 @if (!string.IsNullOrEmpty(roomSearchQuery))
                 {
-                    <button type="button" class="room-search-clear" @onclick='() => { roomSearchQuery = ""; searchPeople = []; _ = ChatSvc.SearchRoomsAsync(""); }' title="Clear search" aria-label="Clear search">
+                    <button type="button" class="room-search-clear" @onclick="LeaveRoomSearch" title="Clear search" aria-label="Clear search">
                         <i data-lucide="x"></i>
                     </button>
                 }
@@ -707,6 +707,8 @@
                                                    OnProfile="OpenUserProfile"
                                                    OnReact="t => QuickReact(t.Item1, t.Item2)"
                                                    OnThread="ToggleThread"
+                                                   OnForwardOpen="OpenForwardOrigin"
+                                                   OnReplyOpen="OpenReplyOrigin"
                                                    OnAttachmentOpen="a => OpenAttachment(a, currentMsg.Attachments)" />
 
                                     @if (isSent && !isPending && !isFailed && !currentMsg.IsDeleted
@@ -853,7 +855,7 @@
                         {
                             <div class="reply-bar">
                                 <i data-lucide="reply" class="reply-bar-ic"></i>
-                                <div class="rq"><div class="rq-name">Replying to @replyToMsg.SenderName</div><div class="rq-text">@TruncateStr(replyToMsg.Content, 100)</div></div>
+                                <div class="rq"><div class="rq-name">Replying to @IPop.Application.PersonName.Display(replyToMsg.SenderName)</div><div class="rq-text">@IPop.Application.Chat.ReplyQuote.Text(replyToMsg.Type, replyToMsg.Content, replyToMsg.IsDeleted, 100)</div></div>
                                 <button class="close-reply" title="Cancel reply" aria-label="Cancel reply" @onclick="CancelReply"><i data-lucide="x"></i></button>
                             </div>
                         }

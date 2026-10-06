@@ -945,6 +945,8 @@ public partial class Chat
     {
         DisposeDraftLifecycle();
         CancelComposerUpload();
+        // ChatState outlives the page: a search left in the box must not stay applied.
+        LeaveRoomSearch();
         if (isRecordingVoice) MicroVoiceStopped();
         _disposed = true;
         A11yDispose();

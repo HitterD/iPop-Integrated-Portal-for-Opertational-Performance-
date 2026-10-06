@@ -115,6 +115,28 @@ window.ipop = {
     return [r.width, r.height];
   },
   viewportWidth() { return window.innerWidth; },
+  // Projects → Reports: each chart box reports its width so the SVG is drawn in real pixels.
+  // dotNet.invokeMethodAsync(method, index, width) per element; unwatchWidth(dotNet) stops it.
+  _widthWatch: new Map(),
+  watchWidth(dotNet, method, ...els) {
+    const old = this._widthWatch.get(dotNet._id);
+    if (old) old.disconnect();
+    const list = els.filter(e => e instanceof Element);
+    if (!list.length || !("ResizeObserver" in window)) return;
+    let t;
+    const send = () => list.forEach(e => {
+      const i = els.indexOf(e);
+      if (e.isConnected) dotNet.invokeMethodAsync(method, i, Math.round(e.clientWidth)).catch(() => {});
+    });
+    const ro = new ResizeObserver(() => { clearTimeout(t); t = setTimeout(send, 60); });
+    list.forEach(e => ro.observe(e));
+    this._widthWatch.set(dotNet._id, ro);
+    send();
+  },
+  unwatchWidth(dotNet) {
+    const ro = this._widthWatch.get(dotNet && dotNet._id);
+    if (ro) { ro.disconnect(); this._widthWatch.delete(dotNet._id); }
+  },
   viewportHeight() { return window.innerHeight; },
   focus(el) {
     if (el) { el.focus(); el.select(); }
@@ -1567,17 +1589,28 @@ window.ipop = {
     this._viewerKeys = null;
   },
 
-  // Scroll a message into view inside the chat list and flash it (jump from
-  // search results / pinned panel).
+  // Scroll a message into view inside the chat list and highlight it (jump from a reply
+  // quote, search results, pins). The glow starts once the smooth scroll has settled: a long
+  // jump used to spend the whole flash still scrolling, so nobody saw which message it was.
   scrollToMessage(container, messageId) {
     if (!container) return false;
     const el = container.querySelector('[data-msg-id="' + messageId + '"]');
     if (!el) return false;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    clearTimeout(el._hlTimer);
     el.classList.remove("highlighted");
-    void el.offsetWidth;   // force reflow so the animation restarts
-    el.classList.add("highlighted");
-    setTimeout(() => el.classList.remove("highlighted"), 1800);
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const scroller = el.closest(".messages, .chat-messages, [data-scroll-root]") || container;
+    let last = -1, still = 0;
+    const settle = () => {
+      const top = scroller.scrollTop;
+      still = top === last ? still + 1 : 0;
+      last = top;
+      if (still < 3) { requestAnimationFrame(settle); return; }   // ~3 frames without movement
+      void el.offsetWidth;   // restart the animation if it was already running
+      el.classList.add("highlighted");
+      el._hlTimer = setTimeout(() => el.classList.remove("highlighted"), 2400);
+    };
+    requestAnimationFrame(settle);
     return true;
   },
 

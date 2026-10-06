@@ -2,6 +2,7 @@
 @using IPop.Web.Services
 @inject IJSRuntime JS
 @inject AuthState Auth
+@inject ChatAttachments Att
 
 <div class="ov-grid">
     @* 1. Progress ring *@
@@ -111,44 +112,49 @@
     </div>
 </div>
 
-@* Evidence stream is not part of the mockup's Overview grid, but it is live field data —
-   kept as a full-width card so no working feature is lost. *@
-@if (RecentEvidenceList.Count > 0)
+@* Recent evidence: real files from the shared project store, the newest first. A thumbnail
+   opens the viewer; the task line opens the task. *@
+@if (recentFiles.Count > 0)
 {
     <div class="ov-card ov-evidence">
         <div class="ov-attention-head">
-            <span class="ov-card-title">Recent evidence &amp; field deliverables</span>
-            <span class="ov-attention-sub">Stream</span>
+            <span class="ov-card-title">Recent evidence &amp; deliverables</span>
+            <span class="ov-attention-sub">@recentFiles.Count latest</span>
         </div>
         <div class="exec-evidence-stream">
-            @foreach (var ev in RecentEvidenceList.Take(8))
+            @foreach (var f in recentFiles)
             {
-                <div class="exec-evidence-item" @onclick="() => OnInspectTask.InvokeAsync(ev.Task)">
-                    <div class="exec-evidence-thumb">
-                        @if (!string.IsNullOrEmpty(ev.Item.DataUrl))
+                var file = f;
+                var dto = new IPop.Application.Chat.AttachmentDto(file.AttachmentId, file.FileName, file.Size, file.ContentType, null);
+                var isImage = ChatAttachments.Kind(dto) == AttachmentKind.Image;
+                <div class="exec-evidence-item" @key="file.Id">
+                    <button type="button" class="ev-file @(isImage ? "" : "doc")" style="width:56px;height:56px;flex:none"
+                            title="Open @file.FileName" aria-label="Open @file.FileName" @onclick="() => OpenFile(file)">
+                        @if (isImage)
                         {
-                            <img src="@ev.Item.DataUrl" alt="@ev.Item.Name" />
+                            var url = Att.UrlFor(file.AttachmentId, thumb: true);
+                            @if (url is not null) { <img src="@url" alt="@file.FileName" loading="lazy" /> }
+                            else { <span class="skel" style="display:block;width:100%;height:100%"></span> }
                         }
-                        else
-                        {
-                            <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--ink-3)">
-                                <i data-lucide="@(ev.Item.Type == "photo" ? "image" : "file-text")" style="width:18px;height:18px"></i>
-                            </div>
-                        }
-                    </div>
-                    <div class="exec-evidence-info">
-                        <div class="task-name">@ev.Task.Title</div>
-                        <div class="file-name">@ev.Item.Name</div>
+                        else { <i data-lucide="@ChatAttachments.Icon(dto)" style="color:@ChatAttachments.Accent(dto)"></i> }
+                    </button>
+                    <button type="button" class="exec-evidence-info" style="border:0;background:none;text-align:left;padding:0;cursor:pointer;font:inherit;color:inherit"
+                            @onclick="() => OpenTask(file.TaskId)">
+                        <div class="task-name">@file.TaskTitle</div>
+                        <div class="file-name">@file.FileName</div>
                         <div class="meta">
-                            <span class="badge-type @ev.Context">@(ev.Context == "progress" ? "Progress Evidence" : "Completed Deliverable")</span>
-                            <span>• @ev.Item.UploadedAt.ToString("dd MMM HH:mm")</span>
+                            <span class="badge-type @(file.Kind == "field" ? "progress" : "done")">@(file.Kind == "field" ? "Field photo" : file.Kind == "deliverable" ? "Deliverable" : "Attachment")</span>
+                            <span>· @IPop.Application.PersonName.Short(file.UploadedByName) · @file.CreatedAt.ToLocalTime().ToString("dd MMM HH:mm")</span>
                         </div>
-                    </div>
+                    </button>
                 </div>
             }
         </div>
     </div>
 }
+
+<IPop.Web.Components.AttachmentViewer Attachment="viewerFile" Siblings="viewerSiblings"
+                                      OnClose="() => viewerFile = null" OnNavigate="a => viewerFile = a" />
 
 @code {
     [Parameter] public ProjectDto? Project { get; set; }
@@ -160,7 +166,6 @@
     [Parameter] public EventCallback OnOpenBoard { get; set; }
     [Parameter] public EventCallback OnOpenTeamModal { get; set; }
 
-    public record EvidenceStreamItem(ProjectTaskDto Task, TaskEvidenceItem Item, string Context);
     private record ActivityRow(Guid Id, string TaskTitle, string ActorName, string Action, string? OldValue, string? NewValue, DateTime CreatedAt, string? ActorNik = null);
     private record StatusRow(string Name, string Color, int Count, double Width);
     private record AttentionRow(ProjectTaskDto Task, string Note, string Color, string Bg);
@@ -273,32 +278,53 @@
         return l.ToString("dd MMM");
     }
 
+
+    public sealed record RecentFile(Guid Id, Guid AttachmentId, string Kind, string FileName, string ContentType, long Size,
+        string UploadedByName, Guid UploadedById, DateTime CreatedAt, string Url, string? ThumbUrl, Guid TaskId, string TaskTitle);
+
+    private List<RecentFile> recentFiles = [];
+    private Guid? loadedFilesFor;
+    private int loadedFilesVersion;
+    private IPop.Application.Chat.AttachmentDto? viewerFile;
+    private IReadOnlyList<IPop.Application.Chat.AttachmentDto>? viewerSiblings;
+
     protected override async Task OnParametersSetAsync()
     {
         if (Project is null) { activity = []; return; }
         activity = await Auth.GetAsync<List<ActivityRow>>($"/api/projects/{Project.Id}/activity?limit=8") ?? [];
+        await LoadRecentFilesAsync();
     }
 
-    private List<EvidenceStreamItem> RecentEvidenceList
+    private async Task LoadRecentFilesAsync()
     {
-        get
-        {
-            var list = new List<EvidenceStreamItem>();
-            foreach (var t in AllTasks)
-            {
-                var parsed = TaskEvidenceHelper.Parse(t.Description);
-                foreach (var p in parsed.Evidence.FieldPhotos)
-                {
-                    list.Add(new EvidenceStreamItem(t, p, "progress"));
-                }
-                foreach (var d in parsed.Evidence.CompletionDeliverables)
-                {
-                    list.Add(new EvidenceStreamItem(t, d, "done"));
-                }
-            }
-            return list.OrderByDescending(x => x.Item.UploadedAt).ToList();
-        }
+        // Reload when the project changes or its task list was refreshed (a new upload pushes a project change).
+        var version = (int)(AllTasks.Count + AllTasks.Sum(t => t.UpdatedAt.Ticks % 100_003) % 1_000_000_007);
+        if (Project is null || (loadedFilesFor == Project.Id && loadedFilesVersion == version)) return;
+        loadedFilesFor = Project.Id;
+        loadedFilesVersion = version;
+        var id = Project.Id;
+        var rows = await Auth.GetAsync<List<RecentFile>>($"/api/projects/{id}/files/recent?take=12");
+        if (Project?.Id != id) return;
+        recentFiles = rows ?? [];
+        Att.UseSharedStore(recentFiles.Select(f => f.AttachmentId));
+        foreach (var f in recentFiles.Where(f => f.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)))
+            _ = LoadThumb(f.AttachmentId);
     }
+
+    private async Task LoadThumb(Guid id)
+    {
+        await Att.GetAsync(id, thumb: true);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenFile(RecentFile f)
+    {
+        viewerSiblings = recentFiles.Select(x => new IPop.Application.Chat.AttachmentDto(x.AttachmentId, x.FileName, x.Size, x.ContentType, null)).ToList();
+        viewerFile = viewerSiblings.First(x => x.Id == f.AttachmentId);
+    }
+
+    private Task OpenTask(Guid taskId) =>
+        AllTasks.FirstOrDefault(t => t.Id == taskId) is { } t ? OnInspectTask.InvokeAsync(t) : Task.CompletedTask;
 
     protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
 }

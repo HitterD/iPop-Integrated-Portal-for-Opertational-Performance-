@@ -319,6 +319,39 @@ public partial class Chat
         OpenRoom(card.RoomId);
     }
 
+    private sealed record ForwardOrigin(string Kind, Guid? RoomId, Guid? MessageId, string? RoomName, Guid? SenderId);
+
+    /// "Forwarded · Name" clicked: open the chat the message came from at the original message
+    /// (members only — the server decides), else a DM with the person who wrote it.
+    private async Task OpenForwardOrigin(Guid messageId)
+    {
+        ForwardOrigin? o;
+        try { o = await Auth.GetAsync<ForwardOrigin>($"/api/chat/messages/{messageId}/forward-origin"); }
+        catch { o = null; }
+        switch (o?.Kind)
+        {
+            case "original" when o.RoomId is { } room && o.MessageId is { } original:
+                if (room == ChatSvc.ActiveRoomId || room == openedRoomId) { await JumpToMessage(original); return; }
+                jumpAfterOpen = original;
+                OpenRoom(room);
+                return;
+            case "deleted" when o.RoomId is { } room:
+                Toasts.Show("The original message was deleted.", ToastKind.Info);
+                if (room != ChatSvc.ActiveRoomId) OpenRoom(room);
+                return;
+            case "dm" when o.SenderId is { } sender:
+                var res = await Auth.SendAsync(HttpMethod.Post, "/api/chat/rooms/dm", new { recipientId = sender });
+                var dm = res.IsSuccessStatusCode ? await System.Net.Http.Json.HttpContentJsonExtensions.ReadFromJsonAsync<IPop.Application.Chat.ChatRoomDto>(res.Content) : null;
+                if (dm is null) { Toasts.Show("Could not open that conversation.", ToastKind.Error); return; }
+                await ChatSvc.LoadRoomsAsync();
+                OpenRoom(dm.Id);
+                return;
+            default:
+                Toasts.Show("The original message is no longer available.", ToastKind.Info);
+                return;
+        }
+    }
+
     /// The message to scroll to once the pending room switch completes; consumed by
     /// OpenRoomCore, which owns the ?jump= path.
     private Guid? jumpAfterOpen;

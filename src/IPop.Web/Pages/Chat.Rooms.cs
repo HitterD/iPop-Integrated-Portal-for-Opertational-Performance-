@@ -23,7 +23,21 @@ public partial class Chat
     private CancellationTokenSource? roomSearchCts;
 
     private IReadOnlyList<IPop.Application.Chat.RoomListDto> FilteredRooms
-        => activeTab == RoomTab.Direct ? ChatSvc.DirectRooms : ChatSvc.GroupRooms;
+        => searchActive && ChatSvc.RoomSearchResults is { } found
+            ? found.Where(r => r.Type == (activeTab == RoomTab.Direct ? "dm" : "group")).ToList()
+            : activeTab == RoomTab.Direct ? ChatSvc.DirectRooms : ChatSvc.GroupRooms;
+
+    /// Leaves search everywhere the box empties (X, tab switch, "Chat now", leaving /chat):
+    /// a pending debounce must not re-apply it, and ChatState must forget the query.
+    private void LeaveRoomSearch()
+    {
+        roomSearchCts?.Cancel();
+        roomSearchCts?.Dispose();
+        roomSearchCts = null;
+        roomSearchQuery = "";
+        searchPeople = [];
+        ChatSvc.ClearRoomSearch();
+    }
 
     /// ipop-52: debounced (250ms, Mail/Admin pattern) server search. The old client-side
     /// filter could only see the loaded 50-room window, so conversations at position 51+
@@ -67,7 +81,7 @@ public partial class Chat
         get
         {
             if (!searchActive || searchPeople.Count == 0) return [];
-            var dmNiks = ChatSvc.DirectRooms.Concat(ChatSvc.ArchivedRooms)
+            var dmNiks = ChatSvc.DirectRooms.Concat(ChatSvc.RoomSearchResults ?? []).Concat(ChatSvc.ArchivedRooms)
                 .Where(r => r.Type == "dm" && r.RecipientNik is not null)
                 .Select(r => r.RecipientNik!)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -82,8 +96,7 @@ public partial class Chat
         startingSearchDm = p.Id;
         try
         {
-            roomSearchQuery = "";
-            searchPeople = [];
+            LeaveRoomSearch();
             await CreateDmWith(new UserSearchResult(p.Id, p.Nik, p.Name, p.Email));
         }
         finally { startingSearchDm = null; }
@@ -97,8 +110,7 @@ public partial class Chat
     private void SetTab(RoomTab tab)
     {
         activeTab = tab;
-        roomSearchQuery = "";
-        searchPeople = [];
+        LeaveRoomSearch();
     }
 
     private void ToggleCreateDropdown() => createDropdownOpen = !createDropdownOpen;

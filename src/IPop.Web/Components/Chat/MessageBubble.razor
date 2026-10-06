@@ -36,13 +36,35 @@
             @if (Message.Type == "system") { <i data-lucide="@SystemIcon" class="sys-icon"></i> }
             @if (IsForwarded)
             {
-                <div class="forwarded-tag" title="@(string.IsNullOrEmpty(Message.ForwardedFromSenderName) ? "This message was forwarded from another conversation" : $"Forwarded from {Message.ForwardedFromSenderName}")">
-                    <i data-lucide="forward"></i> Forwarded@(string.IsNullOrEmpty(Message.ForwardedFromSenderName) ? "" : $" · {Message.ForwardedFromSenderName}")
-                </div>
+                @if (OnForwardOpen.HasDelegate && !Message.IsDeleted)
+                {
+                    @* Opens the chat the message came from and jumps to the original (server decides what this viewer may open). *@
+                    <button type="button" class="forwarded-tag fwd-link" title="View the original message"
+                            @onclick="() => OnForwardOpen.InvokeAsync(Message.Id)" @onclick:stopPropagation="true">
+                        <i data-lucide="forward"></i> Forwarded@(string.IsNullOrEmpty(Message.ForwardedFromSenderName) ? "" : $" · {Message.ForwardedFromSenderName}")
+                    </button>
+                }
+                else
+                {
+                    <div class="forwarded-tag" title="@(string.IsNullOrEmpty(Message.ForwardedFromSenderName) ? "This message was forwarded from another conversation" : $"Forwarded from {Message.ForwardedFromSenderName}")">
+                        <i data-lucide="forward"></i> Forwarded@(string.IsNullOrEmpty(Message.ForwardedFromSenderName) ? "" : $" · {Message.ForwardedFromSenderName}")
+                    </div>
+                }
             }
             @if (Message.ReplyPreview is not null)
             {
-                <div class="reply-quote"><div class="rq-name">@IPop.Application.PersonName.Display(Message.ReplyPreview.SenderName)</div>@Message.ReplyPreview.Content</div>
+                @if (Message.ReplyToId is { } replyTo && OnReplyOpen.HasDelegate)
+                {
+                    @* stopPropagation: the row's own click toggles the mobile tools. *@
+                    <button type="button" class="reply-quote rq-link" title="Go to the original message"
+                            @onclick="() => OnReplyOpen.InvokeAsync(replyTo)" @onclick:stopPropagation="true">
+                        <span class="rq-name">@IPop.Application.PersonName.Display(Message.ReplyPreview.SenderName)</span>@Message.ReplyPreview.Content
+                    </button>
+                }
+                else
+                {
+                    <div class="reply-quote"><div class="rq-name">@IPop.Application.PersonName.Display(Message.ReplyPreview.SenderName)</div>@Message.ReplyPreview.Content</div>
+                }
             }
             @if (Message.IsDeleted) { <em class="deleted-text"><i data-lucide="ban"></i> @Message.Content</em>@Meta(true) }
             else if (Message.Type == "sticker")
@@ -149,6 +171,10 @@
     [Parameter] public EventCallback<Guid> OnThread { get; set; }
     [Parameter] public EventCallback<AttachmentDto> OnAttachmentOpen { get; set; }
     [Parameter] public EventCallback<Guid> OnEventOpen { get; set; }
+    /// Click on "Forwarded · Name": the host looks up where it leads for this viewer.
+    [Parameter] public EventCallback<Guid> OnForwardOpen { get; set; }
+    /// Click on the reply quote: the host scrolls to the replied-to message (by its id).
+    [Parameter] public EventCallback<Guid> OnReplyOpen { get; set; }
     /// Group rooms show a receipt on every own message: "Read by 2 of 5" / "Read by all".
     [Parameter] public bool IsGroup { get; set; }
 

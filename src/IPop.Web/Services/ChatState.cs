@@ -393,20 +393,26 @@ public partial class ChatState : IAsyncDisposable
     }
 
     /// ipop-52: server-backed search over ALL the user's rooms (name OR member name),
-    /// replacing the client-side filter that could only see the loaded 50. Populates
-    /// DirectRooms/GroupRooms from the one flat result so FilteredRooms keeps working
-    /// unchanged while a query is active; empty query restores the normal lists.
+    /// replacing the client-side filter that could only see the loaded 50. Results live in
+    /// RoomSearchResults, never in DirectRooms/GroupRooms: those once held a search's results
+    /// and a later background reload kept re-applying a cleared search, collapsing the
+    /// sidebar to one conversation until a page refresh.
+    public IReadOnlyList<RoomListDto>? RoomSearchResults { get; private set; }
+
+    /// Empty or 1-character query = no search: drops the results and reloads the full lists.
     public async Task SearchRoomsAsync(string query)
     {
-        _roomSearch = query;
         if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 2)
         {
+            var hadSearch = ClearRoomSearchCore();
+            if (hadSearch) { RoomListChanged?.Invoke(); StateChanged?.Invoke(); }
             await LoadRoomsAsync();
             return;
         }
-        var gen = ++_roomsGen;
+        _roomSearch = query;
+        var gen = ++_searchGen;
         var res = await _auth.GetResultAsync<PagedResult<RoomListDto>>($"/api/chat/rooms/search?q={Uri.EscapeDataString(query.Trim())}");
-        if (gen != _roomsGen) return; // superseded by a newer query
+        if (gen != _searchGen || _roomSearch != query) return; // superseded by a newer query, or cleared
         if (res is not { IsOk: true, Value: { } r })
         {
             // Keep the previous results rather than a false "No conversations match".
@@ -416,11 +422,26 @@ public partial class ChatState : IAsyncDisposable
         }
         RoomsError = ChatLoadError.None;
         var flat = r.Items.ToList();
-        DirectRooms = flat.Where(x => x.Type == "dm").ToList();
-        GroupRooms = flat.Where(x => x.Type == "group").ToList();
+        RoomSearchResults = flat;
         foreach (var room in flat.Where(room => room.HasUnreadMention)) _mentionFlags[room.Id] = true;
         RoomListChanged?.Invoke();
         StateChanged?.Invoke();
+    }
+
+    /// The sidebar left search (box cleared, tab switched, "Chat now", page left): forget the
+    /// query so no later reload replays it. The full lists were never replaced, so nothing to load.
+    public void ClearRoomSearch()
+    {
+        if (ClearRoomSearchCore()) { RoomListChanged?.Invoke(); StateChanged?.Invoke(); }
+    }
+
+    private bool ClearRoomSearchCore()
+    {
+        var had = RoomSearchResults is not null || _roomSearch.Length > 0;
+        _roomSearch = "";
+        RoomSearchResults = null;
+        _searchGen++;   // a search still in flight must not land after the clear
+        return had;
     }
 
     /// The room an OpenRoomAsync call is currently working on. Guards against re-entry from
@@ -1243,8 +1264,9 @@ public partial class ChatState : IAsyncDisposable
             if (t.IsCanceled || !_auth.IsAuthenticated) return Task.CompletedTask;
             return SafeAsync(async () =>
             {
-                // An active sidebar search stays applied rather than snapping back to the full list.
-                await SearchRoomsAsync(_roomSearch);
+                await LoadRoomsAsync();
+                // An active sidebar search stays applied (its unread counts / previews refresh too).
+                if (RoomSearchResults is not null && _roomSearch.Length > 0) await SearchRoomsAsync(_roomSearch);
                 if (ArchivedRooms.Count > 0 || ArchivedTotal > 0) await LoadArchivedRoomsAsync();
             });
         }, TaskScheduler.Default);
@@ -1338,7 +1360,7 @@ public partial class ChatState : IAsyncDisposable
         ArchivedTotal = 0;
         _archivedPage = 1;
         _directTotal = _groupTotal = 0;
-        _roomSearch = "";
+        ClearRoomSearchCore();
         ActiveRoomId = null;
         ActiveRoom = null;
         ActiveMessages = [];

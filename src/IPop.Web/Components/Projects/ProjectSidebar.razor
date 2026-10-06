@@ -72,16 +72,25 @@
                                 <span class="proj-nav-sub">@p.TaskCount @(p.TaskCount == 1 ? "task" : "tasks") · @p.MemberCount @(p.MemberCount == 1 ? "member" : "members")</span>
                             </span>
                         </div>
-                        <div class="proj-nav-prog">
-                            <div class="proj-nav-bar">
-                                <div class="proj-nav-bar-fill @(p.Progress >= 100 ? "done" : "")" style="width:@(Math.Clamp(p.Progress, 0, 100))%"></div>
+                        @* Only what tells this project apart: no "0%" bar, "Planning" pill or "No deadline"
+                           on every card — those are the defaults, and repeating them hid what mattered. *@
+                        @{ var pct = Math.Clamp(p.Progress, 0, 100); var due = pct >= 100 ? null : DueLabel(p.Deadline, p.Status); var showStatus = !p.Status.Equals("planning", StringComparison.OrdinalIgnoreCase); }
+                        @if (pct > 0)
+                        {
+                            <div class="proj-nav-prog">
+                                <div class="proj-nav-bar">
+                                    <div class="proj-nav-bar-fill @(pct >= 100 ? "done" : "")" style="width:@(pct)%"></div>
+                                </div>
+                                <span>@(pct)%</span>
                             </div>
-                            <span>@(Math.Clamp(p.Progress, 0, 100))%</span>
-                        </div>
-                        <div class="proj-nav-foot">
-                            <span class="proj-st @p.Status.ToLower()">@StatusLabel(p.Status)</span>
-                            <span class="due">@(p.Deadline is { } d ? $"Due {d.ToLocalTime():MMM d}" : "No deadline")</span>
-                        </div>
+                        }
+                        @if (showStatus || due is not null)
+                        {
+                            <div class="proj-nav-foot">
+                                @if (showStatus) { <span class="proj-st @p.Status.ToLower()">@StatusLabel(p.Status)</span> }
+                                @if (due is not null) { <span class="due @due.Value.Css">@due.Value.Text</span> }
+                            </div>
+                        }
                     </div>
                 </div>
             }
@@ -105,6 +114,20 @@
     [Parameter] public EventCallback<int?> OnYearChanged { get; set; }
     [Parameter] public EventCallback<string> OnSearchChanged { get; set; }
     [Parameter] public EventCallback OnCreateClick { get; set; }
+
+    /// "Due Oct 9", "Due today", "3 days late"; null when there is no deadline or the project is done.
+    private static (string Text, string Css)? DueLabel(DateTime? deadline, string status)
+    {
+        if (deadline is not { } d || status.Equals("completed", StringComparison.OrdinalIgnoreCase)) return null;
+        var days = (d.ToLocalTime().Date - DateTime.Now.Date).Days;
+        return days switch
+        {
+            < 0 => ($"{-days} {(days == -1 ? "day" : "days")} late", "late"),
+            0 => ("Due today", "soon"),
+            <= 7 => ($"Due {d.ToLocalTime():ddd, MMM d}", "soon"),
+            _ => ($"Due {d.ToLocalTime():MMM d}", ""),
+        };
+    }
 
     private static string StatusLabel(string s) => s.ToLowerInvariant() switch
     {

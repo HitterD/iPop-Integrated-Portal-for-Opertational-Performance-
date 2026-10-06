@@ -20,6 +20,11 @@
         } catch { return null; }
     }
 
+    function remove(nik, key) {
+        if (!nik) return;
+        try { localStorage.removeItem(scoped(nik, key)); localStorage.removeItem(key); } catch { }
+    }
+
     function set(nik, key, value) {
         if (!nik) return;
         try { localStorage.setItem(scoped(nik, key), value); } catch { /* quota or blocked */ }
@@ -31,6 +36,7 @@
         get user() { return current; },
         get,
         set,
+        remove,
         getMine: key => get(current, key),
         setMine: (key, value) => set(current, key, value),
     };

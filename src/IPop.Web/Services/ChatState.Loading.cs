@@ -38,8 +38,14 @@ public partial class ChatState
 
     /// Same idea for the room lists: the newest LoadRooms/Search call wins.
     private int _roomsGen;
+    /// Separate from _roomsGen: a search and a full-list load no longer write the same lists.
+    private int _searchGen;
 
-    public Task RetryRoomsAsync() => SearchRoomsAsync(_roomSearch);
+    public async Task RetryRoomsAsync()
+    {
+        await LoadRoomsAsync();
+        if (RoomSearchResults is not null && _roomSearch.Length > 0) await SearchRoomsAsync(_roomSearch);
+    }
 
     /// Re-runs the active room's details + page 1. OpenRoomAsync returns early for the room that
     /// is already open, so retry has its own entry point with a fresh CancellationTokenSource.

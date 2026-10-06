@@ -154,6 +154,47 @@ public class CallServiceTests
         Assert.Equal("completed", (await Svc(t).GetHistoryAsync(peer.Id, 1, 50, default)).Items.Single().Result);
     }
 
+    // ── Rejoin after a refresh: the reloaded tab finds the call it is still in ──
+
+    [Fact]
+    public async Task ActiveCall_is_the_answered_call_I_am_still_in()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("A");
+        var peer = t.AddUser("B");
+        var call = (await Svc(t).CreateCallAsync(me.Id, new CreateCallRequest(peer.Nik), default)).Room!;
+        await Svc(t).SignalAsync(peer.Id, new CallSignalRequest(call.Id, "accept"), default);
+
+        Assert.Equal(call.Id, (await Svc(t).GetActiveCallAsync(me.Id, default))!.Id);
+        Assert.Equal(call.Id, (await Svc(t).GetActiveCallAsync(peer.Id, default))!.Id);
+    }
+
+    [Fact]
+    public async Task ActiveCall_includes_my_own_outgoing_ring_but_not_a_ring_to_me()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("A");
+        var peer = t.AddUser("B");
+        var call = (await Svc(t).CreateCallAsync(me.Id, new CreateCallRequest(peer.Nik), default)).Room!;
+
+        Assert.Equal(call.Id, (await Svc(t).GetActiveCallAsync(me.Id, default))!.Id);
+        Assert.Null(await Svc(t).GetActiveCallAsync(peer.Id, default)); // /ringing covers that
+    }
+
+    [Fact]
+    public async Task ActiveCall_is_null_once_the_call_ended_or_I_left()
+    {
+        using var t = new TestDb();
+        var me = t.AddUser("A");
+        var peer = t.AddUser("B");
+        var call = (await Svc(t).CreateCallAsync(me.Id, new CreateCallRequest(peer.Nik), default)).Room!;
+        await Svc(t).SignalAsync(peer.Id, new CallSignalRequest(call.Id, "accept"), default);
+        await Svc(t).SignalAsync(peer.Id, new CallSignalRequest(call.Id, "end"), default);
+
+        Assert.Null(await Svc(t).GetActiveCallAsync(me.Id, default));
+        Assert.Null(await Svc(t).GetActiveCallAsync(peer.Id, default));
+    }
+
     [Fact]
     public async Task Duration_CountsFromPickup_NotFromRinging()
     {

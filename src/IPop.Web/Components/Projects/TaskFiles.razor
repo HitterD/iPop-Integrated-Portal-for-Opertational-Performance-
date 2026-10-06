@@ -1,0 +1,187 @@
+@using IPop.Application.Chat
+@using IPop.Web.Services
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Net.Http.Json
+@inject AuthState Auth
+@inject ChatAttachments Att
+@inject ToastService Toasts
+@inject IJSRuntime JS
+
+@* One kind of task file (field photo, deliverable, attachment): uploads go straight to the shared
+   project store (NAS), so every project member sees them. Images show as thumbnails, other files as
+   cards; a click opens the full-screen viewer (photos, PDF, Word, Excel, video). *@
+<label class="td-upload">
+    <i data-lucide="@UploadIcon"></i>@UploadLabel
+    <InputFile OnChange="OnPicked" multiple accept="@Accept" style="display:none" />
+</label>
+@if (!string.IsNullOrEmpty(hint)) { <div class="ev-hint @(hintIsError ? "err" : "")">@hint</div> }
+
+@if (Files.Count > 0 || uploads.Count > 0 || Legacy.Count > 0)
+{
+    <div class="ev-files">
+        @foreach (var f in Files)
+        {
+            var file = f;
+            var dto = ToDto(file);
+            var isImage = ChatAttachments.Kind(dto) == AttachmentKind.Image;
+            <button type="button" @key="file.Id" class="ev-file @(isImage ? "" : "doc")" title="@file.FileName · @ChatAttachments.FormatSize(file.Size) · @file.UploadedByName"
+                    aria-label="Open @file.FileName" @onclick="() => Open(file)">
+                @if (isImage)
+                {
+                    var url = Att.UrlFor(file.AttachmentId, thumb: true);
+                    @if (url is not null) { <img src="@url" alt="@file.FileName" loading="lazy" /> }
+                    else { <span class="skel ev-skel" style="display:block;width:100%;height:100%"></span> }
+                    <span class="ev-who">@IPop.Application.PersonName.Short(file.UploadedByName)</span>
+                }
+                else
+                {
+                    <i data-lucide="@ChatAttachments.Icon(dto)" style="color:@ChatAttachments.Accent(dto)"></i>
+                    <span class="ev-name">@file.FileName</span>
+                }
+                @if (CanDelete(file))
+                {
+                    <span class="ev-x" role="button" tabindex="0" title="Remove" aria-label="Remove @file.FileName"
+                          @onclick="() => Remove(file)" @onclick:stopPropagation="true"
+                          @onkeydown="e => RemoveByKey(e, file)" @onkeydown:stopPropagation="true"><i data-lucide="x"></i></span>
+                }
+            </button>
+        }
+        @foreach (var u in uploads)
+        {
+            <div class="ev-file uploading @(u.IsImage ? "" : "doc")" @key="u.Key" title="Uploading @u.Name…">
+                @if (u.Preview is not null) { <img src="@u.Preview" alt="" /> }
+                else { <i data-lucide="file"></i><span class="ev-name">@u.Name</span> }
+                <span class="ev-bar"></span>
+            </div>
+        }
+        @foreach (var l in Legacy)
+        {
+            @* Saved before evidence moved to the server: only this browser still has it. *@
+            <button type="button" @key="l.Id" class="ev-file local @(l.DataUrl is null ? "doc" : "")"
+                    title="@l.Name — only on the device it was added from" @onclick="() => OpenLegacy(l)">
+                @if (l.DataUrl is not null) { <img src="@l.DataUrl" alt="@l.Name" /> }
+                else { <i data-lucide="file-question"></i><span class="ev-name">@l.Name</span> }
+            </button>
+        }
+    </div>
+}
+
+@code {
+    public sealed record TaskFileDto(Guid Id, Guid AttachmentId, string Kind, string FileName, string ContentType, long Size,
+        string UploadedByName, Guid UploadedById, DateTime CreatedAt, string Url, string? ThumbUrl);
+
+    private sealed record Upload(string Key, string Name, bool IsImage, string? Preview);
+
+    [Parameter, EditorRequired] public Guid TaskId { get; set; }
+    /// "field" | "deliverable" | "attachment"
+    [Parameter, EditorRequired] public string Kind { get; set; } = "deliverable";
+    [Parameter] public IReadOnlyList<TaskFileDto> Files { get; set; } = [];
+    /// Evidence from before the server move that this browser still holds (shown dashed, not shared).
+    [Parameter] public IReadOnlyList<TaskEvidenceItem> Legacy { get; set; } = [];
+    [Parameter] public string UploadLabel { get; set; } = "Attach photo or document";
+    [Parameter] public string UploadIcon { get; set; } = "paperclip";
+    [Parameter] public string? Accept { get; set; }
+    [Parameter] public Guid? MyUserId { get; set; }
+    [Parameter] public bool IsOwner { get; set; }
+    /// The list changed (upload, delete): the drawer reloads its files.
+    [Parameter] public EventCallback OnChanged { get; set; }
+    /// Opens the shared viewer with this kind's files as siblings.
+    [Parameter] public EventCallback<(AttachmentDto Open, IReadOnlyList<AttachmentDto> All)> OnOpen { get; set; }
+
+    public const long MaxBytes = 25L * 1024 * 1024;
+    private const int MaxFiles = 10;
+
+    private readonly List<Upload> uploads = [];
+    private string? hint;
+    private bool hintIsError;
+
+    public static AttachmentDto ToDto(TaskFileDto f) => new(f.AttachmentId, f.FileName, f.Size, f.ContentType, null);
+
+    private bool CanDelete(TaskFileDto f) => IsOwner || (MyUserId is { } me && me == f.UploadedById);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Att.UseSharedStore(Files.Select(f => f.AttachmentId));
+        foreach (var f in Files.Where(f => ChatAttachments.Kind(ToDto(f)) == AttachmentKind.Image && Att.UrlFor(f.AttachmentId, true) is null))
+            _ = LoadThumb(f.AttachmentId);
+        await Task.CompletedTask;
+    }
+
+    private async Task LoadThumb(Guid id)
+    {
+        await Att.GetAsync(id, thumb: true);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) => await JS.InvokeVoidAsync("ipop.icons");
+
+    private async Task OnPicked(InputFileChangeEventArgs e)
+    {
+        hint = null;
+        var picked = e.GetMultipleFiles(MaxFiles);
+        var tooBig = picked.Where(f => f.Size > MaxBytes).Select(f => f.Name).ToList();
+        if (tooBig.Count > 0) { hint = $"Too large (max 25 MB): {string.Join(", ", tooBig)}"; hintIsError = true; }
+        if (e.FileCount > MaxFiles) { hint = (hint is null ? "" : hint + " · ") + $"Only the first {MaxFiles} files were added."; hintIsError = true; }
+
+        var ok = picked.Where(f => f.Size <= MaxBytes).ToList();
+        var failed = new List<string>();
+        await Task.WhenAll(ok.Select(async file =>
+        {
+            var isImage = file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+            var up = new Upload(Guid.NewGuid().ToString("N"), file.Name, isImage, null);
+            uploads.Add(up);
+            StateHasChanged();
+            try
+            {
+                var content = new MultipartFormDataContent();
+                var stream = new StreamContent(file.OpenReadStream(MaxBytes));
+                stream.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                    string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType);
+                content.Add(stream, "file", file.Name);
+                using var res = await Auth.SendMultipartAsync($"/api/projects/tasks/{TaskId}/files?kind={Kind}", content);
+                if (!res.IsSuccessStatusCode) failed.Add($"{file.Name} ({await ErrorText(res)})");
+            }
+            catch (Exception ex) { failed.Add($"{file.Name} ({ex.Message})"); }
+            finally { uploads.Remove(up); }
+        }));
+        if (failed.Count > 0) { hint = "Couldn't upload: " + string.Join(", ", failed); hintIsError = true; }
+        else if (hint is null && ok.Count > 0) Toasts.Show(ok.Count == 1 ? "File added." : $"{ok.Count} files added.", ToastKind.Success);
+        await OnChanged.InvokeAsync();
+    }
+
+    private static async Task<string> ErrorText(HttpResponseMessage res)
+    {
+        try
+        {
+            var err = await res.Content.ReadFromJsonAsync<ApiError>();
+            if (!string.IsNullOrWhiteSpace(err?.Message)) return err.Message;
+        }
+        catch { }
+        return $"error {(int)res.StatusCode}";
+    }
+
+    private sealed record ApiError(string? Code, string? Message);
+
+    private async Task Remove(TaskFileDto f)
+    {
+        try
+        {
+            using var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/tasks/{TaskId}/files/{f.Id}");
+            if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't remove the file.", ToastKind.Error); return; }
+            Toasts.Show("File removed.", ToastKind.Info);
+        }
+        catch { Toasts.Show("Couldn't remove the file.", ToastKind.Error); return; }
+        await OnChanged.InvokeAsync();
+    }
+
+    private Task RemoveByKey(KeyboardEventArgs e, TaskFileDto f) => e.Key is "Enter" or " " ? Remove(f) : Task.CompletedTask;
+
+    private Task Open(TaskFileDto f)
+        => OnOpen.InvokeAsync((ToDto(f), Files.Select(ToDto).ToList()));
+
+    private async Task OpenLegacy(TaskEvidenceItem l)
+    {
+        if (l.DataUrl is not null) await JS.InvokeVoidAsync("ipop.mailOpenLightbox", l.DataUrl, l.Name);
+        else Toasts.Show("This file was only kept on the device it was added from.", ToastKind.Info);
+    }
+}

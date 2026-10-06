@@ -32,7 +32,7 @@ public class ProjectsFilesLiveRefreshTests
     {
         var src = RepoFile("src/IPop.Api/Endpoints/ProjectEndpoints.cs");
         // Templates are not tied to a project; nothing on screen shows them live.
-        var exempt = new HashSet<string> { "Post /templates" };
+        var exempt = new HashSet<string> { "Post /templates", "Delete /templates/{id:guid}" };
         var missing = Routes(src)
             .Where(r => r.Verb != "Get" && !exempt.Contains($"{r.Verb} {r.Route}"))
             .Where(r => !r.Body.Contains("PushProjectChangedAsync("))

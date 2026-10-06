@@ -1,6 +1,9 @@
 @using IPop.Application.Projects
 @inject IPop.Web.Services.CalendarLinks CalLinks
 @inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject IPop.Web.Services.AuthState Auth
+@inject IPop.Web.Services.ToastService Toasts
 
 <div class="proj-canvas-head">
     <div class="proj-title-box">
@@ -68,6 +71,7 @@
                     <button type="button" class="app-select-opt pm-only" @onclick="() => Run(OnOpenEditModal)"><i data-lucide="pencil" style="width:13px;height:13px"></i> Edit project</button>
                     <button type="button" class="app-select-opt pm-only" @onclick="() => Run(OnExport)"><i data-lucide="download" style="width:13px;height:13px"></i> Export snapshot</button>
                     <button type="button" class="app-select-opt" @onclick="CopyLink"><i data-lucide="link" style="width:13px;height:13px"></i> Copy link</button>
+                    <button type="button" class="app-select-opt" @onclick="OpenSaveTemplate"><i data-lucide="layout-template" style="width:13px;height:13px"></i> Save as template…</button>
                     <button type="button" class="app-select-opt" @onclick="MarkDone"><i data-lucide="check-circle" style="width:13px;height:13px"></i> Mark completed</button>
                     <button type="button" class="app-select-opt" style="color:var(--danger)" @onclick="Delete"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete project</button>
                 </div>
@@ -75,6 +79,57 @@
         </div>
     </div>
 </div>
+
+@if (saveTplOpen)
+{
+    <div class="rep-scrim" @onclick="CloseSaveTemplate">
+        <div class="rep-sheet sm" role="dialog" aria-modal="true" aria-labelledby="ph-tpl-title" @onclick:stopPropagation="true">
+            <header>
+                <span class="hi c-acc"><i data-lucide="layout-template"></i></span>
+                <div>
+                    <h3 id="ph-tpl-title">Save as template</h3>
+                    <p>Reuse this project's structure for new projects. Nothing in "@Project.Name" changes.</p>
+                </div>
+            </header>
+            <div class="bdy">
+                <div class="fld @(tplShake > 0 ? "mi-shake" : "")" @key="@($"tn{tplShake}")">
+                    <label for="ph-tpl-name">Template name</label>
+                    <input id="ph-tpl-name" class="inp @(tplNameErr ? "err" : "")" maxlength="200" value="@tplName"
+                           @oninput="e => { tplName = e.Value?.ToString() ?? string.Empty; tplNameErr = false; }" />
+                </div>
+                <div class="fld">
+                    <label for="ph-tpl-desc">Description <span>(optional)</span></label>
+                    <textarea id="ph-tpl-desc" class="inp" rows="2" maxlength="1000" placeholder="What is this template for?"
+                              @oninput="e => tplDesc = e.Value?.ToString() ?? string.Empty">@tplDesc</textarea>
+                </div>
+                <div class="fld">
+                    <label>Include</label>
+                    <div class="rep-checks">
+                        <label class="on-always"><input type="checkbox" checked disabled /><span>Tasks<small>Titles, descriptions and priorities of top-level tasks · due dates become relative to the new start date</small></span></label>
+                        <label><input type="checkbox" checked="@tplSections" @onchange="e => tplSections = e.Value is true" /><span>Sections<small>Section names, colours and order</small></span></label>
+                        <label><input type="checkbox" checked="@tplMilestones" @onchange="e => tplMilestones = e.Value is true" /><span>Milestones<small>Dates become relative to the new start date</small></span></label>
+                        <label><input type="checkbox" checked="@tplAssignees" @onchange="e => tplAssignees = e.Value is true" /><span>Assignees<small>Otherwise tasks start unassigned</small></span></label>
+                        <label class="off"><input type="checkbox" disabled /><span>Comments &amp; attachments<small>Not copied — they belong to this project's history</small></span></label>
+                    </div>
+                </div>
+                <div class="fld">
+                    <label>Who can use it</label>
+                    <div class="rep-seg" role="radiogroup" aria-label="Who can use it">
+                        <button type="button" role="radio" aria-checked="@(tplWho == "private" ? "true" : "false")" class="@(tplWho == "private" ? "on" : "")" @onclick="@(() => tplWho = "private")">Only me</button>
+                        <button type="button" role="radio" aria-checked="@(tplWho == "department" ? "true" : "false")" class="@(tplWho == "department" ? "on" : "")"
+                                disabled="@(tplScope is not null && tplScope.DepartmentId is null)" title="@(tplScope is not null && tplScope.DepartmentId is null ? "You are not in a department" : null)"
+                                @onclick="@(() => tplWho = "department")">@DepartmentLabel</button>
+                        <button type="button" role="radio" aria-checked="@(tplWho == "everyone" ? "true" : "false")" class="@(tplWho == "everyone" ? "on" : "")" @onclick="@(() => tplWho = "everyone")">Everyone</button>
+                    </div>
+                </div>
+            </div>
+            <footer>
+                <button type="button" class="rep-btn" @onclick="CloseSaveTemplate">Cancel</button>
+                <button type="button" class="rep-btn pri" disabled="@tplSaving" @onclick="SaveTemplateAsync"><i data-lucide="layout-template"></i>@(tplSaving ? "Saving…" : "Save template")</button>
+            </footer>
+        </div>
+    </div>
+}
 
 @code {
     [Parameter, EditorRequired] public ProjectDto Project { get; set; } = default!;
@@ -91,6 +146,14 @@
     [Parameter] public EventCallback OnBack { get; set; }
 
     private bool showMore;
+
+    // Menus/sheets in here re-render without the page: draw their Lucide icons.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try { await JS.InvokeVoidAsync("ipop.icons"); }
+        catch (JSException) { }
+        catch (InvalidOperationException) { }
+    }
 
     private void ScheduleTeam() => Nav.NavigateTo(CalLinks.NewMeeting($"{Project.Name} meeting", Members.Select(m => m.Nik), from: $"From project {Project.Name}"));
 
@@ -112,6 +175,89 @@
     {
         showMore = false;
         await OnCopyLink.InvokeAsync();
+    }
+
+    // ── Save as template (moved here from the old Plans & Reports tab) ──
+    private bool saveTplOpen, tplSaving, tplNameErr;
+    private int tplShake;
+    private string tplName = "", tplDesc = "";
+    private bool tplSections = true, tplMilestones = true, tplAssignees;
+    private string tplWho = "department";
+    private TemplateScope? tplScope;
+
+    /// GET /api/projects/templates/scope: the caller's department for "Who can use it".
+    public sealed record TemplateScope(Guid? DepartmentId, string? DepartmentName);
+
+    private string DepartmentLabel => tplScope?.DepartmentName is { Length: > 0 } d
+        ? (d.Contains("department", StringComparison.OrdinalIgnoreCase) ? d : $"{d} department")
+        : "My department";
+
+    private async Task LoadScopeAsync()
+    {
+        try { tplScope = await Auth.GetAsync<TemplateScope>("/api/projects/templates/scope"); }
+        catch { tplScope = null; }
+        if (tplScope is not null && tplScope.DepartmentId is null && tplWho == "department") tplWho = "private";
+        StateHasChanged();
+    }
+
+    private void OpenSaveTemplate()
+    {
+        showMore = false;
+        tplSections = true; tplMilestones = true; tplAssignees = false;
+        tplWho = tplScope is not null && tplScope.DepartmentId is null ? "private" : "department";
+        if (tplScope is null) _ = LoadScopeAsync();
+        tplName = Project.Name;
+        tplDesc = string.IsNullOrWhiteSpace(Project.Description) ? "" : Project.Description!;
+        tplNameErr = false; tplShake = 0;
+        saveTplOpen = true;
+    }
+
+    private void CloseSaveTemplate() { if (!tplSaving) saveTplOpen = false; }
+
+    private async Task SaveTemplateAsync()
+    {
+        if (tplSaving) return;
+        var name = tplName.Trim();
+        if (name.Length == 0) { tplNameErr = true; tplShake++; return; }
+        tplSaving = true;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Post, "/api/projects/templates",
+                new
+                {
+                    name, description = string.IsNullOrWhiteSpace(tplDesc) ? null : tplDesc.Trim(), sourceProjectId = Project.Id,
+                    includeSections = tplSections, includeMilestones = tplMilestones, includeAssignees = tplAssignees, visibility = tplWho,
+                });
+            if (res.IsSuccessStatusCode)
+            {
+                saveTplOpen = false;
+                Toasts.Show($"Template \"{name}\" saved — find it in New project.", ToastKind.Success);
+            }
+            else
+            {
+                var why = res.StatusCode switch
+                {
+                    System.Net.HttpStatusCode.Forbidden => "you don't have permission.",
+                    System.Net.HttpStatusCode.UnprocessableEntity => await TemplateErrorAsync(res),
+                    _ => $"request failed ({(int)res.StatusCode}).",
+                };
+                Toasts.Show($"Couldn't save the template: {why}", ToastKind.Error);
+            }
+        }
+        catch { Toasts.Show("Couldn't save the template. Check your connection.", ToastKind.Error); }
+        finally { tplSaving = false; }
+    }
+
+    private static async Task<string> TemplateErrorAsync(HttpResponseMessage res)
+    {
+        string? code = null;
+        try { code = (await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("code").GetString(); } catch { }
+        return code switch
+        {
+            "no_department" => "you are not in a department — choose Only me or Everyone.",
+            "invalid_visibility" => "choose who can use it.",
+            _ => "a name is required (max 200 characters).",
+        };
     }
 
     private async Task MarkDone()

@@ -286,8 +286,47 @@ public class ChatRoomLoadingTests
         rig.Http.On("/api/chat/rooms/search", Status(HttpStatusCode.InternalServerError));
         await rig.Chat.SearchRoomsAsync("alic");
 
-        Assert.Equal(id, Assert.Single(rig.Chat.DirectRooms).Id);
+        Assert.Equal(id, Assert.Single(rig.Chat.RoomSearchResults!).Id);
         Assert.Equal(ChatLoadError.Unavailable, rig.Chat.RoomsError);
+    }
+
+    /// The sidebar search once wrote its results into DirectRooms/GroupRooms and remembered the
+    /// query after the box was cleared; the next chatRoomsChanged reload (sent on every mark-read)
+    /// replayed it, so the list collapsed to one conversation with "Load more" until a refresh.
+    [Fact]
+    public async Task A_search_never_replaces_the_room_lists()
+    {
+        using var rig = new Rig();
+        var a = Guid.NewGuid(); var b = Guid.NewGuid(); var c = Guid.NewGuid();
+        rig.Http.On("/api/chat/rooms?tab=direct", () => Json(new PagedResult<RoomListDto>([Row(a), Row(b), Row(c)], 80, 1, 50)));
+        rig.Http.On("/api/chat/rooms?tab=groups", () => Json(new PagedResult<RoomListDto>([Row(Guid.NewGuid(), "group")], 1, 1, 50)));
+        rig.Http.On("/api/chat/rooms/search", () => Json(new PagedResult<RoomListDto>([Row(b)], 1, 1, 50)));
+        await rig.Chat.LoadRoomsAsync();
+
+        await rig.Chat.SearchRoomsAsync("afel");
+
+        Assert.Equal(3, rig.Chat.DirectRooms.Count);
+        Assert.Single(rig.Chat.GroupRooms);
+        Assert.Equal(b, Assert.Single(rig.Chat.RoomSearchResults!).Id);
+    }
+
+    [Fact]
+    public async Task Clearing_the_search_forgets_it_so_a_background_reload_loads_the_full_list()
+    {
+        using var rig = new Rig();
+        var a = Guid.NewGuid(); var b = Guid.NewGuid();
+        rig.Http.On("/api/chat/rooms?tab=direct", () => Json(new PagedResult<RoomListDto>([Row(a), Row(b)], 2, 1, 50)));
+        rig.Http.On("/api/chat/rooms?tab=groups", () => Json(new PagedResult<RoomListDto>([], 0, 1, 50)));
+        rig.Http.On("/api/chat/rooms/search", () => Json(new PagedResult<RoomListDto>([Row(b)], 1, 1, 50)));
+        await rig.Chat.LoadRoomsAsync();
+        await rig.Chat.SearchRoomsAsync("afel");
+
+        rig.Chat.ClearRoomSearch();
+        await rig.Chat.RetryRoomsAsync();   // what a rooms-changed reload / retry runs
+
+        Assert.Null(rig.Chat.RoomSearchResults);
+        Assert.Equal(2, rig.Chat.DirectRooms.Count);
+        Assert.Equal(1, rig.Http.Count("/api/chat/rooms/search"));
     }
 
     // ── Opening a room ──
