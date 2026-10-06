@@ -36,9 +36,20 @@
             @if (Message.Type == "system") { <i data-lucide="@SystemIcon" class="sys-icon"></i> }
             @if (IsForwarded)
             {
-                <div class="forwarded-tag" title="@(string.IsNullOrEmpty(Message.ForwardedFromSenderName) ? "This message was forwarded from another conversation" : $"Forwarded from {Message.ForwardedFromSenderName}")">
-                    <i data-lucide="forward"></i> Forwarded@(string.IsNullOrEmpty(Message.ForwardedFromSenderName) ? "" : $" · {Message.ForwardedFromSenderName}")
-                </div>
+                @if (OnForwardOpen.HasDelegate && !Message.IsDeleted)
+                {
+                    @* Opens the chat the message came from and jumps to the original (server decides what this viewer may open). *@
+                    <button type="button" class="forwarded-tag fwd-link" title="View the original message"
+                            @onclick="() => OnForwardOpen.InvokeAsync(Message.Id)" @onclick:stopPropagation="true">
+                        <i data-lucide="forward"></i> Forwarded@(string.IsNullOrEmpty(Message.ForwardedFromSenderName) ? "" : $" · {Message.ForwardedFromSenderName}")
+                    </button>
+                }
+                else
+                {
+                    <div class="forwarded-tag" title="@(string.IsNullOrEmpty(Message.ForwardedFromSenderName) ? "This message was forwarded from another conversation" : $"Forwarded from {Message.ForwardedFromSenderName}")">
+                        <i data-lucide="forward"></i> Forwarded@(string.IsNullOrEmpty(Message.ForwardedFromSenderName) ? "" : $" · {Message.ForwardedFromSenderName}")
+                    </div>
+                }
             }
             @if (Message.ReplyPreview is not null)
             {
@@ -149,6 +160,8 @@
     [Parameter] public EventCallback<Guid> OnThread { get; set; }
     [Parameter] public EventCallback<AttachmentDto> OnAttachmentOpen { get; set; }
     [Parameter] public EventCallback<Guid> OnEventOpen { get; set; }
+    /// Click on "Forwarded · Name": the host looks up where it leads for this viewer.
+    [Parameter] public EventCallback<Guid> OnForwardOpen { get; set; }
     /// Group rooms show a receipt on every own message: "Read by 2 of 5" / "Read by all".
     [Parameter] public bool IsGroup { get; set; }
 

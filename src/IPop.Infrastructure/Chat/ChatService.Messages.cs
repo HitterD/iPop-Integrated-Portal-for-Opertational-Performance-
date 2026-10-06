@@ -315,6 +315,33 @@ public sealed partial class ChatService
             .AnyAsync(b => b.UserId == otherMemberId && b.BlockedUserId == senderId, ct);
     }
 
+    public async Task<ForwardOriginDto?> GetForwardOriginAsync(Guid userId, Guid messageId, CancellationToken ct)
+    {
+        // The viewer must be able to see the forwarded copy itself.
+        var copy = await db.ChatMessages.AsNoTracking().Where(m => m.Id == messageId)
+            .Select(m => new { m.RoomId, m.ForwardedFromMessageId }).FirstOrDefaultAsync(ct);
+        if (copy?.ForwardedFromMessageId is not { } originId) return null;
+        if (!await db.ChatRoomMembers.AnyAsync(m => m.RoomId == copy.RoomId && m.UserId == userId && m.LeftAt == null, ct)) return null;
+
+        var origin = await db.ChatMessages.AsNoTracking().Where(m => m.Id == originId)
+            .Select(m => new { m.RoomId, m.SenderId, m.IsDeleted, RoomName = m.Room.Name, RoomType = m.Room.Type, RoomActive = m.Room.IsActive })
+            .FirstOrDefaultAsync(ct);
+        if (origin is null) return new ForwardOriginDto("none", null, null, null, null);
+
+        // Only a current member of the origin chat may open it; nobody else learns what is in there.
+        var member = origin.RoomActive && await db.ChatRoomMembers.AnyAsync(m => m.RoomId == origin.RoomId && m.UserId == userId && m.LeftAt == null, ct);
+        if (member)
+        {
+            var name = origin.RoomType == "group" ? origin.RoomName : await db.ChatRoomMembers.AsNoTracking()
+                .Where(m => m.RoomId == origin.RoomId && m.UserId != userId).Select(m => m.User.Name).FirstOrDefaultAsync(ct);
+            return new ForwardOriginDto(origin.IsDeleted ? "deleted" : "original", origin.RoomId, origin.IsDeleted ? null : originId, name, origin.SenderId);
+        }
+        // Not in the origin chat: a DM with whoever wrote it (never with yourself).
+        return origin.SenderId != userId
+            ? new ForwardOriginDto("dm", null, null, null, origin.SenderId)
+            : new ForwardOriginDto("none", null, null, null, null);
+    }
+
     public async Task<MessageResultDto> ForwardMessageAsync(Guid userId, Guid messageId, Guid targetRoomId, CancellationToken ct)
     {
         var original = await db.ChatMessages

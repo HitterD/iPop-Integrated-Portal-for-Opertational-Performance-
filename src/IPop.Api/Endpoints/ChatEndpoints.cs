@@ -238,6 +238,15 @@ public static class ChatEndpoints
             return Results.Ok(result);
         }).RequirePermission("chat.send");
 
+        // GET /api/chat/messages/{id}/forward-origin — where the "Forwarded" label leads for me
+        g.MapGet("/messages/{id:guid}/forward-origin", async (Guid id, HttpContext http, IChatService svc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var origin = await svc.GetForwardOriginAsync(userId.Value, id, ct);
+            return origin is null ? Results.NotFound() : Results.Ok(origin);
+        });
+
         // POST /api/chat/rooms/{roomId}/messages/{id}/forward — forward
         g.MapPost("/rooms/{roomId:guid}/messages/{id:guid}/forward", async (Guid roomId, Guid id, ForwardRequest req,
             HttpContext http, IChatService svc, IChatNotifier notifier, IPopDbContext db, CancellationToken ct) =>
