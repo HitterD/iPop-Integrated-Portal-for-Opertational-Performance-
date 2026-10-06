@@ -899,6 +899,71 @@ public static class ProjectEndpoints
             return Results.Ok(new { success = true });
         });
 
+        // ── Task files on the NAS (shared attachment store, area "projects") ──
+        // Field photos / deliverables / attachments every member reads from the same place;
+        // download is GET /api/attachments/{attachmentId} gated by ProjectsAttachmentPolicy.
+
+        // POST /api/projects/tasks/{taskId}/files?kind=field|deliverable|attachment — multipart "file".
+        g.MapPost("/tasks/{taskId:guid}/files", async Task<IResult> (Guid taskId, string? kind, IFormFile file,
+            HttpContext http, IPopDbContext db, ITaskFileService files, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            try
+            {
+                await using var stream = file.OpenReadStream();
+                var result = await files.UploadAsync(userId.Value, taskId, kind ?? ProjectTaskFile.KindAttachment,
+                    file.FileName, file.ContentType, stream, ct);
+                if (!result.Success) return TaskFileError(result.Error);
+                await PushProjectChangedAsync(realtime, await TaskProjectIdAsync(db, taskId, ct));
+                return Results.Ok(result.Value);
+            }
+            catch (IPop.Application.Attachments.AttachmentRejectedException ex)
+            {
+                return Results.Json(new { code = ex.Code, message = ex.Message }, statusCode: 422);
+            }
+            catch (IPop.Application.Files.SynoException ex)
+            {
+                return Results.Json(new { code = "synology_error", message = ex.Message }, statusCode: 502);
+            }
+        })
+        .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MaxTaskFileRequestBytes))
+        .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestFormLimitsAttribute { MultipartBodyLengthLimit = MaxTaskFileRequestBytes })
+        .DisableAntiforgery()
+        .RequirePermission("projects.write");
+
+        // GET /api/projects/tasks/{taskId}/files — all kinds, newest first.
+        g.MapGet("/tasks/{taskId:guid}/files", async (Guid taskId,
+            HttpContext http, IPopDbContext db, ITaskFileService files, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await files.ListAsync(userId.Value, taskId, ct);
+            return result.Success ? Results.Ok(result.Value) : TaskFileError(result.Error);
+        });
+
+        // DELETE /api/projects/tasks/{taskId}/files/{fileId} — soft delete (uploader or project owner).
+        g.MapDelete("/tasks/{taskId:guid}/files/{fileId:guid}", async (Guid taskId, Guid fileId,
+            HttpContext http, IPopDbContext db, ITaskFileService files, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await files.DeleteAsync(userId.Value, taskId, fileId, ct);
+            if (!result.Success) return TaskFileError(result.Error);
+            await PushProjectChangedAsync(realtime, await TaskProjectIdAsync(db, taskId, ct));
+            return Results.Ok(new { success = true });
+        }).RequirePermission("projects.write");
+
+        // GET /api/projects/{id}/files/recent?take=12 — newest field photos + deliverables across the project.
+        g.MapGet("/{id:guid}/files/recent", async (Guid id, int? take,
+            HttpContext http, IPopDbContext db, ITaskFileService files, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var result = await files.RecentAsync(userId.Value, id, take ?? 12, ct);
+            return result.Success ? Results.Ok(result.Value) : TaskFileError(result.Error);
+        });
+
         // GET /api/projects/tasks/{taskId}/reminders — preferensi pengingat tenggat tugas.
         g.MapGet("/tasks/{taskId:guid}/reminders", async (Guid taskId,
             HttpContext http, IPopDbContext db, CancellationToken ct) =>
@@ -1355,6 +1420,17 @@ public static class ProjectEndpoints
         {
             "forbidden" => 403,
             not null when code.EndsWith("_not_found") => 404,
+            _ => 422
+        });
+
+    /// One file (the store's 25 MB cap) plus multipart framing.
+    private const long MaxTaskFileRequestBytes = 25L * 1024 * 1024 + 1024 * 1024;
+
+    private static IResult TaskFileError(string? code) => Results.Json(new { code, message = code },
+        statusCode: code switch
+        {
+            "forbidden" => 403,
+            "task_not_found" or "project_not_found" or "file_not_found" => 404,
             _ => 422
         });
 

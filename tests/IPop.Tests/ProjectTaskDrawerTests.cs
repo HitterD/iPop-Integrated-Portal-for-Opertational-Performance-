@@ -36,6 +36,8 @@ public class ProjectTaskDrawerTests
         ctx.Services.AddScoped<OverlayStack>();
         ctx.Services.AddScoped<IPop.Web.Services.PeopleLinks>();
         ctx.Services.AddScoped<IPop.Web.Services.CalendarLinks>();
+        // The drawer's TaskFiles section loads NAS-backed task files through ChatAttachments.
+        ctx.Services.AddSingleton(new IPop.Web.Services.ChatAttachments(auth, http, ctx.JSInterop.JSRuntime));
         confirm = new ConfirmService();
         ctx.Services.AddSingleton(confirm);
         return ctx;
@@ -164,7 +166,8 @@ public class ProjectTaskDrawerTests
         var cut = ctx.Render<ProjectTaskDrawer>(p => p.Add(x => x.Task, MakeTask("E")));
 
         var section = cut.Find("section.td-evidence");
-        Assert.Equal(2, section.QuerySelectorAll(".task-evidence-section").Length);
+        // Field photos + deliverables; the NAS task-files list (td-files-section) sits beside them.
+        Assert.Equal(2, section.QuerySelectorAll(".task-evidence-section:not(.td-files-section)").Length);
         Assert.Null(section.Closest("details"));
         var extra = cut.Find("details.td-extra");
         Assert.NotNull(extra.QuerySelector(".td-hours"));

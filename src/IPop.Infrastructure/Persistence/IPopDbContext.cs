@@ -105,6 +105,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<ProjectTaskComment> ProjectTaskComments => Set<ProjectTaskComment>();
     public DbSet<ProjectTaskActivity> ProjectTaskActivities => Set<ProjectTaskActivity>();
     public DbSet<ProjectTaskAttachment> ProjectTaskAttachments => Set<ProjectTaskAttachment>();
+    public DbSet<ProjectTaskFile> ProjectTaskFiles => Set<ProjectTaskFile>();
     public DbSet<ProjectTaskReminder> ProjectTaskReminders => Set<ProjectTaskReminder>();
     // Rencana & Laporan (Fase 4)
     public DbSet<ProjectTemplate> ProjectTemplates => Set<ProjectTemplate>();
@@ -680,6 +681,18 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.SynologyPath).HasMaxLength(1024);
             e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.UploadedBy).WithMany().HasForeignKey(x => x.UploadedById).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        b.Entity<ProjectTaskFile>(e =>
+        {
+            e.HasIndex(x => new { x.TaskId, x.CreatedAt });
+            e.HasIndex(x => x.AttachmentId).IsUnique();
+            e.Property(x => x.Kind).HasMaxLength(16);
+            e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Attachment).WithMany().HasForeignKey(x => x.AttachmentId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.UploadedBy).WithMany().HasForeignKey(x => x.UploadedById).OnDelete(DeleteBehavior.Restrict);
+            // Files of a soft-deleted task stay hidden with it (same as time entries).
+            e.HasQueryFilter(x => x.Task.DeletedAt == null);
         });
 
         b.Entity<ProjectTaskReminder>(e =>

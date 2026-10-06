@@ -81,6 +81,21 @@ public class ChatAttachments
 
     private static string Key(Guid id, bool thumb) => (thumb ? "t:" : "f:") + id;
 
+    /// Attachments that live in the shared store (/api/attachments/{id}: projects, notes, news)
+    /// rather than chat. The viewer and thumbnails work the same; only the URLs differ.
+    private readonly HashSet<Guid> _shared = [];
+
+    /// Marks ids served by /api/attachments/{id}; call before GetAsync / the viewer opens them.
+    public void UseSharedStore(IEnumerable<Guid> ids) { foreach (var id in ids) _shared.Add(id); }
+
+    private string DownloadPath(Guid id, bool inline) => _shared.Contains(id)
+        ? $"/api/attachments/{id}"
+        : $"/api/chat/attachments/{id}/download{(inline ? "?inline=true" : "")}";
+
+    private string ThumbPath(Guid id) => _shared.Contains(id)
+        ? $"/api/attachments/{id}"   // no separate thumbnail: the browser scales the image
+        : $"/api/chat/attachments/{id}/thumbnail";
+
     /// Cached object URL, or null when it has not been fetched yet.
     public string? UrlFor(Guid id, bool thumb)
     {
@@ -127,9 +142,7 @@ public class ChatAttachments
     {
         try
         {
-            var path = thumb
-                ? $"/api/chat/attachments/{id}/thumbnail"
-                : $"/api/chat/attachments/{id}/download?inline=true";
+            var path = thumb ? ThumbPath(id) : DownloadPath(id, inline: true);
             var url = new Uri(http.BaseAddress!, path).ToString();
 
             var res = await js.InvokeAsync<BlobResult?>("ipop.authBlob2", url, auth.AccessToken);
@@ -163,7 +176,7 @@ public class ChatAttachments
     {
         try
         {
-            var res = await auth.SendAsync(HttpMethod.Get, $"/api/chat/attachments/{id}/download");
+            var res = await auth.SendAsync(HttpMethod.Get, DownloadPath(id, inline: false));
             if (!res.IsSuccessStatusCode) return null;
             return await res.Content.ReadAsByteArrayAsync();
         }
@@ -182,7 +195,7 @@ public class ChatAttachments
     /// Saves the attachment to the user's downloads with its original filename.
     public async Task DownloadAsync(AttachmentDto att)
     {
-        var url = new Uri(http.BaseAddress!, $"/api/chat/attachments/{att.Id}/download").ToString();
+        var url = new Uri(http.BaseAddress!, DownloadPath(att.Id, inline: false)).ToString();
         await js.InvokeVoidAsync("ipop.authDownload", url, auth.AccessToken, att.FileName);
     }
 

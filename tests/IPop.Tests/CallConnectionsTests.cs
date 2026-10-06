@@ -43,16 +43,17 @@ public class CallConnectionsTests
     public async Task A_quick_drop_and_return_then_a_real_drop_still_ends_after_a_full_grace()
     {
         var probe = new Probe();
-        var c = new CallConnections(TimeSpan.FromMilliseconds(250), probe.End);
+        // Generous margins: under a busy full-suite run timers fire late.
+        var c = new CallConnections(TimeSpan.FromMilliseconds(800), probe.End);
         var u = Guid.NewGuid();
         c.Connected(u);
         c.Disconnected(u);          // refresh…
-        await Task.Delay(150);
+        await Task.Delay(500);
         c.Connected(u);             // …back
         c.Disconnected(u);          // then really gone
-        await Task.Delay(150);      // the first timer would have fired here
+        await Task.Delay(500);      // the first timer would have fired here (1000 > 800)
         Assert.Empty(probe.Ended);
-        await Task.Delay(300);
+        for (var i = 0; i < 40 && probe.Ended.Count == 0; i++) await Task.Delay(100);
         Assert.Equal([u], probe.Ended);
     }
 

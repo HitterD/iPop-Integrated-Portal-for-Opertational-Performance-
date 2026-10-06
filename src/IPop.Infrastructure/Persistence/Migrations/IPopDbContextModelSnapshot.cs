@@ -3542,6 +3542,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<decimal?>("ActualHours")
                         .HasColumnType("numeric");
 
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -3823,6 +3826,44 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("ProjectTaskFieldValues");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTaskFile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AttachmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UploadedById")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AttachmentId")
+                        .IsUnique();
+
+                    b.HasIndex("UploadedById");
+
+                    b.HasIndex("TaskId", "CreatedAt");
+
+                    b.ToTable("ProjectTaskFiles");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.ProjectTaskReminder", b =>
@@ -6339,6 +6380,33 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("Field");
 
                     b.Navigation("Task");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTaskFile", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.Attachment", "Attachment")
+                        .WithMany()
+                        .HasForeignKey("AttachmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.ProjectTask", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("IPop.Core.Entities.User", "UploadedBy")
+                        .WithMany()
+                        .HasForeignKey("UploadedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Attachment");
+
+                    b.Navigation("Task");
+
+                    b.Navigation("UploadedBy");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.ProjectTaskReminder", b =>

@@ -244,21 +244,38 @@
                     <TaskTimeSection TaskId="Task.Id" Estimated="editEstH" Version="Task" />
                     <section class="td-section td-evidence">
                         <span class="td-section-title">EVIDENCE</span>
-                        <div class="task-evidence-section" data-attach-zone data-attach-title="Drop field photos" data-attach-hint="Images up to 4 MB">
-                            <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="activity"></i>Progress Breakdown & Field Evidence</div><span class="task-evidence-badge doing">In Progress</span></div>
-                            <div class="td-sub-add"><input placeholder="Add active progress activity..." @bind="newStepText" @onkeydown="@(e => { if (e.Key == "Enter") AddProgressStep(); })" /><button type="button" @onclick="AddProgressStep"><i data-lucide="plus"></i></button></div>
+                        <div class="task-evidence-section" data-attach-zone data-attach-title="Drop field photos" data-attach-hint="Photos up to 25 MB">
+                            <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="activity"></i>Progress Breakdown & Field Evidence</div>@EvidenceBadge(false)</div>
+                            <div class="td-sub-add"><input placeholder="Add a progress step and press Enter" @bind="newStepText" @onkeydown="@(e => { if (e.Key == "Enter") AddProgressStep(); })" /><button type="button" aria-label="Add step" @onclick="AddProgressStep"><i data-lucide="plus"></i></button></div>
                             @foreach (var step in evidence.ProgressSteps)
                             {
-                                <div class="td-subtask"><input type="checkbox" checked="@step.IsDone" @onchange="() => step.IsDone = !step.IsDone" /><span>@step.Text</span><button type="button" @onclick="() => evidence.ProgressSteps.Remove(step)"><i data-lucide="x"></i></button></div>
+                                var st = step;
+                                <div class="td-step" @key="st.Id">
+                                    <button type="button" class="td-check @(st.IsDone ? "on" : "")" role="checkbox" aria-checked="@(st.IsDone ? "true" : "false")" aria-label="@st.Text"
+                                            @onclick="() => st.IsDone = !st.IsDone">@if (st.IsDone) { <i data-lucide="check"></i> }</button>
+                                    <span>@st.Text</span>
+                                    <button type="button" class="td-step-x" title="Remove step" aria-label="Remove @st.Text" @onclick="() => evidence.ProgressSteps.Remove(st)"><i data-lucide="x"></i></button>
+                                </div>
                             }
-                            <label class="td-upload"><i data-lucide="camera"></i>Upload Field Photos<InputFile OnChange="HandleUploadFieldPhoto" accept="image/*" multiple style="display:none" /></label>
-                            @if (evidence.FieldPhotos.Count > 0) { <div class="evidence-photo-grid">@foreach (var photo in evidence.FieldPhotos) { <div class="evidence-photo-thumb" @key="photo" title="@photo.Name">@if (!string.IsNullOrEmpty(photo.DataUrl)) { <img src="@photo.DataUrl" alt="@photo.Name" /> } else { <i data-lucide="image"></i> }<button type="button" class="remove-thumb" @onclick="() => evidence.FieldPhotos.Remove(photo)" title="Remove photo">×</button></div> }</div> }
+                            <TaskFiles TaskId="Task.Id" Kind="field" Files="@FilesOf("field")" Legacy="@LegacyOf(evidence.FieldPhotos)"
+                                       UploadLabel="Upload field photos" UploadIcon="camera" Accept="image/*"
+                                       MyUserId="MyUserId" IsOwner="IsProjectOwner" OnChanged="LoadFilesAsync" OnOpen="OpenViewer" />
                         </div>
-                        <div class="task-evidence-section" data-attach-zone data-attach-default data-attach-title="Drop to attach" data-attach-hint="Photos or documents up to 10 MB · Ctrl+V pastes">
-                            <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="file-check"></i>Completion Evidence & Deliverables</div><span class="task-evidence-badge done">Done</span></div>
-                            <label class="td-upload"><i data-lucide="paperclip"></i>Attach photo or document<InputFile OnChange="HandleUploadDeliverable" multiple style="display:none" /></label>
-                            @foreach (var item in evidence.CompletionDeliverables) { <div class="td-subtask td-deliverable" @key="item"><i data-lucide="@(item.Type == "photo" ? "image" : "file-text")"></i><span>@item.Name (@FormatSize(item.Size))</span><button type="button" @onclick="() => evidence.CompletionDeliverables.Remove(item)"><i data-lucide="x"></i></button></div> }
+                        <div class="task-evidence-section" data-attach-zone data-attach-default data-attach-title="Drop to attach" data-attach-hint="Photos or documents up to 25 MB">
+                            <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="file-check"></i>Completion Evidence & Deliverables</div>@EvidenceBadge(true)</div>
+                            <TaskFiles TaskId="Task.Id" Kind="deliverable" Files="@FilesOf("deliverable")" Legacy="@LegacyOf(evidence.CompletionDeliverables)"
+                                       MyUserId="MyUserId" IsOwner="IsProjectOwner" OnChanged="LoadFilesAsync" OnOpen="OpenViewer" />
                             <textarea rows="2" placeholder="Completion notes..." @bind="evidence.CompletionNotes"></textarea>
+                        </div>
+                        <div class="task-evidence-section td-files-section">
+                            <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="paperclip"></i>Attachments</div>
+                                <button type="button" class="td-link-btn" @onclick="() => nasPickerOpen = true" title="Link a file that is already on the NAS"><i data-lucide="hard-drive"></i>From NAS</button></div>
+                            <TaskFiles TaskId="Task.Id" Kind="attachment" Files="@FilesOf("attachment")" UploadLabel="Upload a file"
+                                       MyUserId="MyUserId" IsOwner="IsProjectOwner" OnChanged="LoadFilesAsync" OnOpen="OpenViewer" />
+                            @if (attachmentItems.Count > 0)
+                            {
+                                <TaskAttachments Items="attachmentItems" CanEdit="true" OnAdd="() => nasPickerOpen = true" OnDownload="DownloadAttachment" OnDelete="DeleteAttachment" />
+                            }
                         </div>
                     </section>
                     <section class="td-section td-comments">
@@ -267,7 +284,6 @@
                     </section>
                     <details class="td-extra"><summary>Additional details</summary>
                         <div class="td-hours"><label>Estimated hours<input type="number" step="0.5" @bind="editEstH" placeholder="0" /></label></div>
-                        <TaskAttachments Items="attachmentItems" CanEdit="true" OnAdd="() => nasPickerOpen = true" OnDownload="DownloadAttachment" OnDelete="DeleteAttachment" />
                         <div class="task-reminder-section">
                             <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="bell-ring"></i>Due Date Reminders</div><label class="syno-toggle"><input type="checkbox" checked="@reminderEnabled" @onchange="ToggleReminderEnabled" /><span>@(reminderEnabled ? "Enabled" : "Disabled")</span></label></div>
                             @if (reminderEnabled)
@@ -285,6 +301,9 @@
 }
 
 @* Pemilih berkas NAS untuk lampiran tugas (Fase 2) *@
+<IPop.Web.Components.AttachmentViewer Attachment="viewerFile" Siblings="viewerSiblings"
+                                      OnClose="() => viewerFile = null" OnNavigate="a => viewerFile = a" />
+
 <IPop.Web.Components.NasFilePickerDialog IsOpen="nasPickerOpen"
                                          IsOpenChanged="v => nasPickerOpen = v"
                                          OnPicked="OnNasPicked" />
@@ -318,6 +337,8 @@
     [Parameter] public List<ProjectTaskDto> AllTasks { get; set; } = [];
     /// Raised after the drawer saved dependencies or recurrence itself; the page reloads the task.
     [Parameter] public EventCallback<ProjectTaskDto?> OnTaskChanged { get; set; }
+    /// Saves only the description's evidence block (after legacy files moved to the server).
+    [Parameter] public EventCallback<(Guid TaskId, string Description)> OnSaveEvidenceOnly { get; set; }
 
     private string editTitle = "";
     private string? editDesc;
@@ -493,6 +514,7 @@
 
             var atts = await Auth.GetAsync<List<AttachmentRow>>($"/api/projects/tasks/{Task.Id}/attachments") ?? [];
             attachmentItems = atts.Select(a => new TaskAttachments.TaskAttachmentItem(a.Id, a.FileName, a.FileSize, a.UploadedByName, a.CreatedAt, $"{a.Server}:{a.Path}")).ToList();
+            await LoadFilesAsync();
         }
         catch { /* endpoint belum tersedia — biarkan kosong */ }
     }
@@ -505,6 +527,8 @@
         "comment_replied" => "replied to a comment",
         "comment_deleted" => "deleted a comment",
         "attachment_added" => "added an attachment",
+        "file_added" => "added a file",
+        "file_removed" => "removed a file",
         "attachment_removed" => "removed an attachment",
         "status_changed" => "changed status",
         "title_changed" => "changed title",
@@ -669,6 +693,8 @@
             newTag = "";
             editTitle = Task.Title;
             drawerTab = "detail";
+            files = [];
+            viewerFile = null;
             await LoadDiscussionAsync();
             await LoadRemindersAsync();
             var parsed = TaskEvidenceHelper.Parse(Task.Description);
@@ -709,6 +735,87 @@
         }
     }
 
+    // ── Evidence files on the shared project store (all members see them) ──
+
+    private List<TaskFiles.TaskFileDto> files = [];
+    private IPop.Application.Chat.AttachmentDto? viewerFile;
+    private IReadOnlyList<IPop.Application.Chat.AttachmentDto>? viewerSiblings;
+
+    private IReadOnlyList<TaskFiles.TaskFileDto> FilesOf(string kind) => files.Where(f => f.Kind == kind).ToList();
+
+    private Guid? MyUserId => Auth.Me?.Nik is { } nik ? Members.FirstOrDefault(m => m.Nik == nik)?.UserId : null;
+    private bool IsProjectOwner => Auth.Me?.Nik is { } nik && Members.Any(m => m.Nik == nik && m.Role == "owner");
+
+    private async Task LoadFilesAsync()
+    {
+        if (Task is null) return;
+        var id = Task.Id;
+        var rows = await Auth.GetAsync<List<TaskFiles.TaskFileDto>>($"/api/projects/tasks/{id}/files");
+        if (Task?.Id != id) return;
+        files = rows ?? [];
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenViewer((IPop.Application.Chat.AttachmentDto Open, IReadOnlyList<IPop.Application.Chat.AttachmentDto> All) pick)
+    {
+        viewerSiblings = pick.All;
+        viewerFile = pick.Open;
+    }
+
+    /// Evidence saved before files moved to the server, still held in this browser.
+    private static IReadOnlyList<TaskEvidenceItem> LegacyOf(List<TaskEvidenceItem> items) =>
+        items.Where(i => !string.IsNullOrEmpty(i.DataUrl)).ToList();
+
+    /// Header badge: what the task's real status says about this evidence block.
+    private RenderFragment EvidenceBadge(bool completion) => __builder =>
+    {
+        var (css, text) = (editStatus, completion) switch
+        {
+            ("done", _) => ("done", "Done"),
+            (_, true) when editStatus == "review" => ("doing", "In review"),
+            (_, true) => ("todo", "When finished"),
+            ("todo", false) => ("todo", "Not started"),
+            _ => ("doing", "In progress"),
+        };
+        <span class="task-evidence-badge @css">@text</span>
+    };
+
+    /// Evidence that only ever lived in this browser goes to the server the first time its
+    /// uploader opens the task again; after that every member sees it.
+    private async Task MigrateLegacyEvidenceAsync()
+    {
+        if (Task is null) return;
+        var taskId = Task.Id;
+        var moved = 0;
+        foreach (var (list, kind) in new[] { (evidence.FieldPhotos, "field"), (evidence.CompletionDeliverables, "deliverable") })
+        {
+            foreach (var item in list.Where(i => !string.IsNullOrEmpty(i.DataUrl)).ToList())
+            {
+                var comma = item.DataUrl!.IndexOf(',');
+                var semi = item.DataUrl.IndexOf(';');
+                if (comma < 0 || semi < 5) continue;
+                try
+                {
+                    var bytes = Convert.FromBase64String(item.DataUrl[(comma + 1)..]);
+                    var body = new ByteArrayContent(bytes);
+                    body.Headers.ContentType = new(item.DataUrl[5..semi]);
+                    var form = new MultipartFormDataContent { { body, "file", item.Name } };
+                    using var res = await Auth.SendMultipartAsync($"/api/projects/tasks/{taskId}/files?kind={kind}", form);
+                    if (!res.IsSuccessStatusCode) continue;
+                    list.Remove(item);
+                    await Auth.RemoveUserSettingAsync($"ipop_evidence_{item.Id}");
+                    moved++;
+                }
+                catch { /* stays local; retried next time */ }
+                if (Task?.Id != taskId) return;
+            }
+        }
+        if (moved == 0) return;
+        // The JSON block no longer lists the moved items; save it so other members stop seeing ghosts.
+        await OnSaveEvidenceOnly.InvokeAsync((taskId, TaskEvidenceHelper.Serialize(editDesc, evidence)));
+        await LoadFilesAsync();
+    }
+
     private async Task RestoreEvidencePhotosAsync()
     {
         {
@@ -736,6 +843,7 @@
                 }
             }
         }
+        await MigrateLegacyEvidenceAsync();
     }
 
     private void AddProgressStep()
@@ -747,65 +855,6 @@
             IsDone = false
         });
         newStepText = "";
-    }
-
-    private async Task HandleUploadFieldPhoto(InputFileChangeEventArgs e)
-    {
-        foreach (var file in e.GetMultipleFiles(5))
-        {
-            if (file.Size > 4 * 1024 * 1024) continue;
-            try
-            {
-                var buffer = new byte[file.Size];
-                await file.OpenReadStream(4 * 1024 * 1024).ReadExactlyAsync(buffer);
-                var dataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(buffer)}";
-                var item = new TaskEvidenceItem
-                {
-                    Name = file.Name,
-                    Size = file.Size,
-                    Type = "photo",
-                    DataUrl = dataUrl
-                };
-                evidence.FieldPhotos.Add(item);
-                await Auth.SetUserSettingAsync($"ipop_evidence_{item.Id}", dataUrl);
-            }
-            catch {}
-        }
-        await JS.InvokeVoidAsync("ipop.icons");
-    }
-
-    private async Task HandleUploadDeliverable(InputFileChangeEventArgs e)
-    {
-        foreach (var file in e.GetMultipleFiles(5))
-        {
-            if (file.Size > 10 * 1024 * 1024) continue;
-            try
-            {
-                var isImage = file.ContentType.StartsWith("image/");
-                string? dataUrl = null;
-                if (isImage && file.Size <= 3 * 1024 * 1024)
-                {
-                    var buffer = new byte[file.Size];
-                    await file.OpenReadStream(3 * 1024 * 1024).ReadExactlyAsync(buffer);
-                    dataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(buffer)}";
-                }
-
-                var item = new TaskEvidenceItem
-                {
-                    Name = file.Name,
-                    Size = file.Size,
-                    Type = isImage ? "photo" : "file",
-                    DataUrl = dataUrl
-                };
-                evidence.CompletionDeliverables.Add(item);
-                if (!string.IsNullOrEmpty(dataUrl))
-                {
-                    await Auth.SetUserSettingAsync($"ipop_evidence_{item.Id}", dataUrl);
-                }
-            }
-            catch {}
-        }
-        await JS.InvokeVoidAsync("ipop.icons");
     }
 
     private static string FormatSize(long bytes)

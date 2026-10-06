@@ -60,41 +60,14 @@
                         }
                     </div>
 
-                    @* Field Photo Evidence *@
+                    @* Field Photo Evidence: uploaded straight to the project store, shared with every member *@
                     <div class="field" style="margin:0">
                         <label style="font-size:11.5px;font-weight:700;color:var(--ink-2);display:flex;align-items:center;justify-content:space-between">
-                            <span>Attach Field Photos</span>
-                            <span style="font-size:10.5px;color:var(--ink-3)">@(evidence.FieldPhotos.Count) photos</span>
+                            <span>Field photos</span>
+                            <span style="font-size:10.5px;color:var(--ink-3)">@FilesOf("field").Count photos</span>
                         </label>
-                        <div style="margin-top:4px">
-                            <label class="btn-sm surface" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;font-size:11.5px;border-radius:999px">
-                                <i data-lucide="camera" style="width:13px;height:13px"></i>
-                                <span>Select Field Photos</span>
-                                <InputFile OnChange="HandleUploadFieldPhoto" accept="image/*" multiple style="display:none" />
-                            </label>
-                        </div>
-
-                        @if (evidence.FieldPhotos.Count > 0)
-                        {
-                            <div class="evidence-photo-grid">
-                                @foreach (var photo in evidence.FieldPhotos)
-                                {
-                                    <div class="evidence-photo-thumb" title="@photo.Name">
-                                        @if (!string.IsNullOrEmpty(photo.DataUrl))
-                                        {
-                                            <img src="@photo.DataUrl" alt="@photo.Name" />
-                                        }
-                                        else
-                                        {
-                                            <div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:10px;color:var(--ink-3)">
-                                                <i data-lucide="image" style="width:16px;height:16px"></i>
-                                            </div>
-                                        }
-                                        <button type="button" class="remove-thumb" @onclick="() => evidence.FieldPhotos.Remove(photo)" title="Remove photo">×</button>
-                                    </div>
-                                }
-                            </div>
-                        }
+                        <TaskFiles TaskId="Task.Id" Kind="field" Files="@FilesOf("field")" UploadLabel="Select field photos" UploadIcon="camera" Accept="image/*"
+                                   MyUserId="MyUserId" IsOwner="false" OnChanged="LoadFilesAsync" OnOpen="OpenViewer" />
                     </div>
                 }
                 else
@@ -102,33 +75,11 @@
                     @* Done Deliverables & Completion Proof *@
                     <div class="field" style="margin:0">
                         <label style="font-size:11.5px;font-weight:700;color:var(--ink-2);display:flex;align-items:center;justify-content:space-between">
-                            <span>Deliverables & Documents / Completion Photos</span>
-                            <span style="font-size:10.5px;color:var(--ink-3)">@(evidence.CompletionDeliverables.Count) files/photos</span>
+                            <span>Deliverables & completion photos</span>
+                            <span style="font-size:10.5px;color:var(--ink-3)">@FilesOf("deliverable").Count files</span>
                         </label>
-                        <div style="margin-top:4px">
-                            <label class="btn-sm surface" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;font-size:11.5px;border-radius:999px">
-                                <i data-lucide="paperclip" style="width:13px;height:13px"></i>
-                                <span>Upload Deliverables (Photos / PDF / Documents)</span>
-                                <InputFile OnChange="HandleUploadDeliverable" multiple style="display:none" />
-                            </label>
-                        </div>
-
-                        @if (evidence.CompletionDeliverables.Count > 0)
-                        {
-                            <div style="display:flex;flex-direction:column;gap:5px;margin-top:8px;max-height:140px;overflow-y:auto">
-                                @foreach (var item in evidence.CompletionDeliverables)
-                                {
-                                    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border:1px solid var(--line-soft);border-radius:8px">
-                                        <i data-lucide="@(item.Type == "photo" ? "image" : "file-text")" style="width:14px;height:14px;color:var(--accent)"></i>
-                                        <span style="flex:1;font-size:12px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@item.Name</span>
-                                        <span style="font-size:10px;color:var(--ink-3)">@FormatSize(item.Size)</span>
-                                        <button type="button" style="background:none;border:none;cursor:pointer;color:var(--ink-3);padding:2px" @onclick="() => evidence.CompletionDeliverables.Remove(item)">
-                                            <i data-lucide="x" style="width:12px;height:12px"></i>
-                                        </button>
-                                    </div>
-                                }
-                            </div>
-                        }
+                        <TaskFiles TaskId="Task.Id" Kind="deliverable" Files="@FilesOf("deliverable")" UploadLabel="Upload photos, PDF or documents"
+                                   MyUserId="MyUserId" IsOwner="false" OnChanged="LoadFilesAsync" OnOpen="OpenViewer" />
                     </div>
 
                     @* Completion Notes *@
@@ -157,6 +108,8 @@
             </div>
         </div>
     </div>
+    <IPop.Web.Components.AttachmentViewer Attachment="viewerFile" Siblings="viewerSiblings"
+                                          OnClose="() => viewerFile = null" OnNavigate="a => viewerFile = a" />
 }
 
 @code {
@@ -183,6 +136,8 @@
             cleanDescription = parsed.CleanDescription;
             evidence = parsed.Evidence;
             newStepText = "";
+            files = [];
+            _ = LoadFilesAsync();
         }
     }
 
@@ -197,71 +152,29 @@
         newStepText = "";
     }
 
-    private async Task HandleUploadFieldPhoto(InputFileChangeEventArgs e)
+    [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
+
+    private List<TaskFiles.TaskFileDto> files = [];
+    private IPop.Application.Chat.AttachmentDto? viewerFile;
+    private IReadOnlyList<IPop.Application.Chat.AttachmentDto>? viewerSiblings;
+
+    private IReadOnlyList<TaskFiles.TaskFileDto> FilesOf(string kind) => files.Where(f => f.Kind == kind).ToList();
+    private Guid? MyUserId => Auth.Me?.Nik is { } nik ? Members.FirstOrDefault(m => m.Nik == nik)?.UserId : null;
+
+    private async Task LoadFilesAsync()
     {
-        foreach (var file in e.GetMultipleFiles(5))
-        {
-            if (file.Size > 4 * 1024 * 1024) continue; // max 4MB
-            try
-            {
-                var buffer = new byte[file.Size];
-                await file.OpenReadStream(4 * 1024 * 1024).ReadExactlyAsync(buffer);
-                var base64 = Convert.ToBase64String(buffer);
-                var dataUrl = $"data:{file.ContentType};base64,{base64}";
-                var item = new TaskEvidenceItem
-                {
-                    Name = file.Name,
-                    Size = file.Size,
-                    Type = "photo",
-                    DataUrl = dataUrl
-                };
-                evidence.FieldPhotos.Add(item);
-                await Auth.SetUserSettingAsync($"ipop_evidence_{item.Id}", dataUrl);
-            }
-            catch {}
-        }
-        await JS.InvokeVoidAsync("ipop.icons");
+        if (Task is null) return;
+        var id = Task.Id;
+        var rows = await Auth.GetAsync<List<TaskFiles.TaskFileDto>>($"/api/projects/tasks/{id}/files");
+        if (Task?.Id != id) return;
+        files = rows ?? [];
+        await InvokeAsync(StateHasChanged);
     }
 
-    private async Task HandleUploadDeliverable(InputFileChangeEventArgs e)
+    private void OpenViewer((IPop.Application.Chat.AttachmentDto Open, IReadOnlyList<IPop.Application.Chat.AttachmentDto> All) pick)
     {
-        foreach (var file in e.GetMultipleFiles(5))
-        {
-            if (file.Size > 10 * 1024 * 1024) continue; // max 10MB
-            try
-            {
-                var isImage = file.ContentType.StartsWith("image/");
-                string? dataUrl = null;
-                if (isImage && file.Size <= 3 * 1024 * 1024)
-                {
-                    var buffer = new byte[file.Size];
-                    await file.OpenReadStream(3 * 1024 * 1024).ReadExactlyAsync(buffer);
-                    dataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(buffer)}";
-                }
-
-                var item = new TaskEvidenceItem
-                {
-                    Name = file.Name,
-                    Size = file.Size,
-                    Type = isImage ? "photo" : "file",
-                    DataUrl = dataUrl
-                };
-                evidence.CompletionDeliverables.Add(item);
-                if (!string.IsNullOrEmpty(dataUrl))
-                {
-                    await Auth.SetUserSettingAsync($"ipop_evidence_{item.Id}", dataUrl);
-                }
-            }
-            catch {}
-        }
-        await JS.InvokeVoidAsync("ipop.icons");
-    }
-
-    private static string FormatSize(long bytes)
-    {
-        if (bytes < 1024) return $"{bytes} B";
-        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
-        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+        viewerSiblings = pick.All;
+        viewerFile = pick.Open;
     }
 
     private async Task HandleConfirm()

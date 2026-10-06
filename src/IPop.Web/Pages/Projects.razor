@@ -336,6 +336,7 @@
         IsOpen="showEvidenceModal"
         Task="evidenceTask"
         TargetStatus="@evidenceTargetStatus"
+        Members="projectMembers"
         OnConfirm="HandleEvidenceConfirm"
         OnCancel="() => { showEvidenceModal = false; evidenceTask = null; bulkEvidenceStatus = null; }" />
 }
@@ -374,7 +375,8 @@
         OnNavigate="OpenTaskEditor"
         OnStatusChange="HandleStatusChangeDirect"
         AllTasks="AllCurrentTasks"
-        OnTaskChanged="HandleDrawerTaskChanged" />
+        OnTaskChanged="HandleDrawerTaskChanged"
+        OnSaveEvidenceOnly="SaveEvidenceOnly" />
 }
 
 @if (showCreateModal)
@@ -1941,6 +1943,16 @@
         {
             Toasts.Show("Failed to save task.", ToastKind.Error);
         }
+    }
+
+    /// Legacy evidence moved to the server: rewrite only the description's evidence block, quietly.
+    private async Task SaveEvidenceOnly((Guid TaskId, string Description) arg)
+    {
+        var t = AllCurrentTasks.FirstOrDefault(x => x.Id == arg.TaskId) ?? editingTask;
+        if (t is null || t.Id != arg.TaskId) return;
+        var req = new UpdateTaskRequest(t.Title, arg.Description, t.Status, t.Priority, t.StartDate, t.DueDate,
+            t.EstimatedHours, t.ActualHours, null, null, null, null, null, t.Tags);
+        try { using var _ = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{t.Id}", req); } catch { }
     }
 
     private void OpenExtensionModal(ProjectTaskDto t)

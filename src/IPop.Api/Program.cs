@@ -213,6 +213,8 @@ builder.Services.AddHostedService<IPop.Api.Calls.CallRingTimeoutWorker>();
 builder.Services.AddScoped<IPop.Application.Projects.IProjectService, IPop.Infrastructure.Projects.ProjectService>();
 builder.Services.AddScoped<IPop.Application.Projects.IProjectFieldService, IPop.Infrastructure.Projects.ProjectFieldService>();
 builder.Services.AddScoped<IPop.Application.Projects.IPortfolioService, IPop.Infrastructure.Projects.PortfolioService>();
+builder.Services.AddScoped<IPop.Application.Projects.ITaskFileService, IPop.Infrastructure.Projects.TaskFileService>();
+builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Infrastructure.Projects.ProjectsAttachmentPolicy>();
 builder.Services.AddScoped<IPop.Application.Projects.IProjectTimeService, IPop.Infrastructure.Projects.ProjectTimeService>();
 
 builder.Services.AddScoped<INotificationGatewayService, NotificationGatewayService>();

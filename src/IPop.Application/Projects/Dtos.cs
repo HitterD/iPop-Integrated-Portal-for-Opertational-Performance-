@@ -56,7 +56,9 @@ public record ProjectTaskDto(Guid Id, Guid ProjectId, Guid? ParentTaskId, string
     /// Phase 2: tasks this one waits on; blocked while any of them is not done.
     IReadOnlyList<DependencyRefDto>? DependsOn = null, bool IsBlocked = false,
     /// Set only on the response that completed a recurring task: the next instance it created.
-    Guid? NextRecurringTaskId = null);
+    Guid? NextRecurringTaskId = null,
+    /// When the task last entered "done" (null while not done).
+    DateTime? CompletedAt = null);
 
 public record DependencyRefDto(Guid Id, string Title, string Status);
 public record SetTaskDependenciesRequest(IReadOnlyList<Guid> DependsOn);
