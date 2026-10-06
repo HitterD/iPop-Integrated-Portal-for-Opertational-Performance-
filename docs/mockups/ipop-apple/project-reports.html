@@ -1,0 +1,1034 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iPop — Projects · Reports tab (interactive mockup)</title>
+<style>
+  :root { --canvas:#e9e7e2; --surface:#fff; --surface-2:#faf9f7; --surface-3:#f4f2ef; --line:#edebe7; --line-2:#e2dfd9;
+    --ink:#191816; --ink-2:#5d5a54; --ink-3:#8f8c85; --accent:#2e9d6b; --accent-soft:#e7f4ed; --danger:#c2442e; --danger-soft:#fbeeea;
+    --warn:#a8760c; --warn-soft:#fdf6e7; --info:#2563eb; --info-soft:#eef4ff; --violet:#7c4dd6; --violet-soft:#f2ecfd;
+    --sh-pop:0 16px 40px -12px rgba(25,24,22,.22); --sh-card:0 1px 2px rgba(25,24,22,.05), 0 4px 14px -6px rgba(25,24,22,.08);
+    --mod:#7c4dd6;
+    /* same tokens as src/IPop.Web/wwwroot/css/core/tokens.css */
+    --ease-out:cubic-bezier(0.16,1,0.3,1); --ease-spring:cubic-bezier(0.34,1.56,0.64,1); --ease-smooth:cubic-bezier(0.32,0.72,0,1);
+    /* local to this mockup: report canvas + card surface */
+    --rep-bg:#f5f4f1; --card:#fff; --sh-lift:0 2px 4px rgba(25,24,22,.05), 0 14px 30px -12px rgba(25,24,22,.16); }
+  [data-theme="dark"] { --canvas:#131211; --surface:#1c1b19; --surface-2:#232220; --surface-3:#201f1d; --line:#2c2a27; --line-2:#36342f;
+    --ink:#f2f0ec; --ink-2:#b5b1a9; --ink-3:#85817a; --accent:#4cd787; --accent-soft:#1d3428; --danger:#ff7a63; --danger-soft:#3a1f1a;
+    --warn:#e0b44a; --warn-soft:#3a2f17; --info:#7aa7ff; --info-soft:#1a2540; --violet:#b69cff; --violet-soft:#2a2240;
+    --sh-pop:0 16px 40px -12px rgba(0,0,0,.6); --sh-card:0 1px 2px rgba(0,0,0,.3); --mod:#b69cff;
+    --rep-bg:#171614; --card:#21201e; --sh-lift:0 2px 4px rgba(0,0,0,.3), 0 14px 30px -12px rgba(0,0,0,.6); }
+</style>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  * { box-sizing: border-box; }
+  html { color-scheme: light; } [data-theme="dark"] { color-scheme: dark; }
+  body { background: var(--canvas); color: var(--ink); font-family: -apple-system, "SF Pro Text", "Segoe UI", system-ui, sans-serif; margin: 0; font-size: 13.5px; -webkit-font-smoothing: antialiased; }
+  button, input, textarea { font: inherit; color: inherit; }
+  svg.lucide { width: 16px; height: 16px; stroke-width: 1.9; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  .mk-nav { position: sticky; top: 0; z-index: 50; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 10px 18px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .mk-nav b { margin-right: 8px; font-size: 14px; }
+  .mk-nav button { border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; transition: transform .12s var(--ease-out); }
+  .mk-nav button:active { transform: scale(.96); }
+  .mk-nav button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .mk-nav .sp { flex: 1; }
+  .mk-nav .lbl { font-size: 11px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; margin: 0 2px 0 10px; }
+  .stage { display: none; padding: 28px; flex-direction: column; align-items: center; gap: 22px; }
+  .stage.on { display: flex; }
+  .notes { width: min(1384px, 100%); display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+  .notes > div { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .notes h3 { font-size: 13.5px; color: var(--ink); margin: 0 0 6px; }
+  .notes ul { padding-left: 18px; margin: 0; } .notes li { margin-bottom: 4px; }
+  .notes .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); margin-bottom: 8px; }
+
+  .win { position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh-pop); overflow: hidden; width: min(1384px, 100%); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font-size: 13px; cursor: pointer; white-space: nowrap;
+    transition: transform .12s var(--ease-out), background-color .2s, border-color .2s, box-shadow .2s, filter .2s, color .2s; }
+  .btn:hover { background: var(--surface-3); }
+  .btn:active { transform: scale(.96); }
+  .btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  [data-theme="dark"] .btn.pri { color: #0c1a12; }
+  .btn.pri:hover { filter: brightness(1.06); }
+  .btn.ghost { border-color: transparent; background: none; color: var(--ink-2); }
+  .btn.ghost:hover { background: var(--surface-3); color: var(--ink); }
+  .btn.sm { height: 28px; padding: 0 10px; font-size: 12.5px; border-radius: 8px; }
+  .btn.icon { width: 32px; padding: 0; }
+  .btn.sm.icon { width: 28px; }
+  .btn.sm svg { width: 14px; height: 14px; }
+
+  /* ── motion primitives (mirrors css/core/micro.css) ── */
+  @keyframes mi-pop { 0% { transform: scale(1); } 30% { transform: scale(.72); } 65% { transform: scale(1.28); } 100% { transform: scale(1); } }
+  @keyframes mi-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes mi-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes mi-dialog-in { from { opacity: 0; transform: translateY(10px) scale(.95); } to { opacity: 1; transform: none; } }
+  @keyframes mi-shake { 20% { transform: translateX(-5px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(2px); } }
+  @keyframes mi-saved { from { background-color: var(--accent-soft); } }
+  @keyframes mi-draw { to { stroke-dashoffset: 0; } }
+  @keyframes mi-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+  @keyframes pop-in { from { opacity: 0; transform: translateY(-6px) scale(.92); } to { opacity: 1; transform: none; } }
+  @keyframes bar-grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+  @keyframes ring-burst { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } to { box-shadow: 0 0 0 10px transparent; } }
+  .mi-pop { animation: mi-pop .45s var(--ease-spring); }
+  .mi-shake { animation: mi-shake .4s; }
+  .mi-rise { animation: mi-rise .34s var(--ease-out) backwards; }
+  .mi-fade { animation: mi-fade .4s var(--ease-out) backwards; }
+  .mi-saved { animation: mi-saved 1.4s var(--ease-smooth); }
+  .pop { animation: pop-in .34s var(--ease-spring); transform-origin: top right; }
+  [data-slide] { position: relative; isolation: isolate; }
+  [data-slide] > .mi-ind { position: absolute; z-index: -1; pointer-events: none; border-radius: 8px; background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 1px 6px -2px rgba(0,0,0,.08);
+    transition: left .32s var(--ease-smooth), top .32s var(--ease-smooth), width .32s var(--ease-smooth), height .32s var(--ease-smooth), opacity .2s; }
+  [data-theme="dark"] [data-slide] > .mi-ind { background: rgba(255,255,255,.13); box-shadow: none; }
+  [data-slide].live > .on { background: transparent !important; box-shadow: none !important; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; } }
+
+  .seg { display: inline-flex; padding: 2px; gap: 2px; background: var(--surface-3); border-radius: 9px; border: 1px solid var(--line); }
+  [data-theme="dark"] .seg { background: rgba(255,255,255,.04); }
+  .seg button { border: 0; background: none; padding: 4px 10px; border-radius: 7px; font-size: 12px; color: var(--ink-2); cursor: pointer; white-space: nowrap; transition: color .2s, transform .12s var(--ease-out); }
+  .seg button:active { transform: scale(.94); }
+  .seg button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+
+  /* ── app shell ── */
+  .app { display: grid; grid-template-columns: 216px minmax(0, 1fr); min-height: 900px; }
+  .rail { background: var(--surface-2); border-right: 1px solid var(--line); padding: 14px 10px; display: flex; flex-direction: column; gap: 1px; }
+  .rail .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; padding: 2px 8px 12px; }
+  .rail .brand i { width: 24px; height: 24px; border-radius: 7px; background: linear-gradient(135deg,#34c77b,#1f8a5b); display: inline-block; }
+  .rail h6 { margin: 12px 8px 4px; font-size: 10.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
+  .ni { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 8px; border-radius: 8px; color: var(--ink-2); font-size: 13px; transition: background-color .15s; }
+  .ni:hover { background: var(--surface-3); }
+  .ni.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: var(--sh-card); }
+  .ni.on svg { color: var(--mod); }
+  .ni .bd { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--danger); color: #fff; font-size: 10.5px; font-weight: 700; display: grid; place-items: center; }
+
+  .main { min-width: 0; display: flex; flex-direction: column; background: var(--rep-bg); }
+  .ph { background: var(--surface); padding: 16px 32px 0; border-bottom: 1px solid var(--line); position: relative; }
+  .crumb { font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+  .crumb svg { width: 12px; height: 12px; }
+  .ph-row { display: flex; align-items: center; gap: 12px; }
+  .pico { width: 32px; height: 32px; border-radius: 9px; background: var(--violet-soft); color: var(--violet); display: grid; place-items: center; flex: none; }
+  .pico svg { width: 17px; height: 17px; }
+  .ph h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -.015em; }
+  .ph .star { color: var(--warn); }
+  .ph .star svg { width: 15px; height: 15px; fill: currentColor; }
+  .ph .sp { flex: 1; }
+  .avs { display: flex; }
+  .av { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-size: 10.5px; font-weight: 700; color: #fff; border: 2px solid var(--surface); margin-left: -6px; }
+  .avs .av:first-child { margin-left: 0; }
+  .av.more { background: var(--surface-3); color: var(--ink-2); }
+  .tabs { display: flex; gap: 22px; margin-top: 14px; position: relative; }
+  .tabs button { border: 0; background: none; padding: 9px 0 12px; font-size: 13px; color: var(--ink-2); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: color .2s; }
+  .tabs button svg { width: 14px; height: 14px; }
+  .tabs button:hover { color: var(--ink); }
+  .tabs button.on { color: var(--ink); font-weight: 600; }
+  .tabs .ul { position: absolute; bottom: -1px; height: 2px; border-radius: 2px; background: var(--ink); transition: left .32s var(--ease-smooth), width .32s var(--ease-smooth); }
+
+  /* ── reports body ── */
+  .rep { padding: 28px 32px 44px; display: flex; flex-direction: column; gap: 22px; }
+  .rep-h { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+  .rep-h h2 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+  .rep-h p { margin: 4px 0 0; color: var(--ink-2); font-size: 14px; }
+  .rep-h .sp { flex: 1; }
+  .rep-h .upd { font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+  .rep-h .upd i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); display: inline-block; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--sh-card); transition: transform .3s var(--ease-out), box-shadow .3s var(--ease-out); }
+  .card.lift:hover { transform: translateY(-2px); box-shadow: var(--sh-lift); }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+  .tile { padding: 16px 18px 15px; display: flex; flex-direction: column; gap: 2px; min-height: 132px; position: relative; }
+  .tile .tl { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); font-weight: 500; }
+  .tile .ti { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; flex: none; }
+  .tile .ti svg { width: 14px; height: 14px; }
+  .tile .big { font-size: 32px; font-weight: 650; letter-spacing: -.03em; line-height: 1.1; margin-top: 12px; font-variant-numeric: tabular-nums; transition: color .3s; }
+  .tile .big small { font-size: 14px; font-weight: 500; color: var(--ink-3); letter-spacing: 0; margin-left: 3px; }
+  .tile .hint { font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 4px; margin-top: auto; padding-top: 6px; }
+  .tile .hint svg { width: 13px; height: 13px; flex: none; }
+  .tile .hint .up { color: var(--accent); } .tile .hint .dn { color: var(--danger); }
+  .tile .ring { position: absolute; right: 16px; top: 46px; width: 56px; height: 56px; }
+  .tile .ring circle { fill: none; stroke-width: 6; }
+  .tile .ring .tr { stroke: var(--surface-3); }
+  [data-theme="dark"] .tile .ring .tr { stroke: rgba(255,255,255,.07); }
+  .tile .ring .fg { stroke: var(--accent); stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-dashoffset 1.1s var(--ease-out); }
+  .tile.bad { border-color: color-mix(in srgb, var(--danger) 30%, var(--line)); }
+  .tile.bad .big { color: var(--danger); }
+  .tile.bad .hint a { color: var(--danger); font-weight: 600; text-decoration: none; margin-left: auto; display: inline-flex; align-items: center; gap: 2px; }
+  .c-acc { background: var(--accent-soft); color: var(--accent); } .c-dan { background: var(--danger-soft); color: var(--danger); }
+  .c-war { background: var(--warn-soft); color: var(--warn); } .c-inf { background: var(--info-soft); color: var(--info); } .c-vio { background: var(--violet-soft); color: var(--violet); }
+  .c-mut { background: var(--surface-3); color: var(--ink-3); }
+
+  /* section card header */
+  .sec-h { display: flex; align-items: center; gap: 12px; padding: 18px 22px 0; flex-wrap: wrap; }
+  .sec-h h3 { margin: 0; font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
+  .sec-h .sub { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
+  .sec-h .sp { flex: 1; }
+  .sec-h .ctl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  /* milestones */
+  .ms-list { padding: 8px 22px 10px; }
+  .ms { display: grid; grid-template-columns: 26px minmax(0, 1fr); column-gap: 14px; }
+  .ms .rl { position: relative; display: flex; align-items: center; justify-content: center; }
+  .ms .rl::before { content: ""; position: absolute; left: 50%; width: 2px; margin-left: -1px; top: 0; bottom: 0; background: var(--line-2); }
+  .ms:first-child .rl::before { top: 50%; } .ms:last-child .rl::before { bottom: 50%; }
+  .ms:only-child .rl::before { display: none; }
+  .ms.done + .ms .rl::before, .ms.done .rl::before { background: color-mix(in srgb, var(--accent) 45%, var(--line-2)); }
+  .dot { position: relative; z-index: 1; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line-2); background: var(--card); display: grid; place-items: center; color: transparent; cursor: pointer; padding: 0;
+    transition: border-color .2s, background-color .2s, color .2s, transform .12s var(--ease-out); }
+  .dot svg { width: 13px; height: 13px; stroke-width: 3; }
+  .dot:hover { border-color: var(--accent); color: var(--accent); }
+  .dot:active { transform: scale(.88); }
+  .dot.ok { background: var(--accent); border-color: var(--accent); color: #fff; cursor: default; }
+  [data-theme="dark"] .dot.ok { color: #0c1a12; }
+  .dot.ok.burst { animation: mi-pop .5s var(--ease-spring), ring-burst .7s var(--ease-out); }
+  .dot.late { border-color: var(--danger); } .dot.soon { border-color: var(--warn); }
+  .ms .bd { display: grid; grid-template-columns: minmax(0, 1fr) 150px 96px 140px; align-items: center; gap: 18px; padding: 15px 0; border-radius: 10px; }
+  @media (max-width: 1100px) { .ms .bd { grid-template-columns: minmax(0, 1fr) 110px 92px auto; gap: 12px; } }
+  .ms + .ms .bd { border-top: 1px solid var(--line); }
+  .ms .nm { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ms .sm { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+  .ms .pb { display: flex; align-items: center; gap: 10px; margin-top: 8px; max-width: 360px; }
+  .bar { flex: 1; height: 5px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+  [data-theme="dark"] .bar { background: rgba(255,255,255,.07); }
+  .bar > i { display: block; height: 100%; border-radius: 3px; background: var(--accent); transform-origin: left; transition: width .9s var(--ease-out); }
+  .ms.late .bar > i { background: var(--danger); } .ms.soon .bar > i { background: var(--warn); } .ms.plan .bar > i { background: var(--ink-3); }
+  .pb small { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; width: 32px; text-align: right; }
+  .ms .dt { font-size: 13px; font-weight: 500; }
+  .ms .dt small { display: block; font-size: 12px; color: var(--ink-3); font-weight: 400; margin-top: 1px; }
+  .ms.late .dt small { color: var(--danger); } .ms.soon .dt small { color: var(--warn); }
+  .pill { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; justify-self: start; white-space: nowrap; }
+  .pill svg { width: 12px; height: 12px; stroke-width: 2.4; }
+  .ms .act { justify-self: end; }
+  .ms .act .when { font-size: 12px; color: var(--ink-3); }
+  .ms-foot { padding: 0 22px 16px 62px; font-size: 12px; color: var(--ink-3); display: flex; align-items: center; gap: 6px; }
+  .ms-foot svg { width: 13px; height: 13px; }
+
+  .empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 30px 24px 34px; gap: 6px; }
+  .empty .eic { width: 52px; height: 52px; border-radius: 15px; display: grid; place-items: center; margin-bottom: 8px; }
+  .empty .eic svg { width: 24px; height: 24px; }
+  .empty b { font-size: 15px; }
+  .empty p { margin: 0; max-width: 440px; color: var(--ink-2); line-height: 1.5; font-size: 13px; }
+  .empty .eg { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin: 10px 0 12px; }
+  .empty .eg span { font-size: 12px; padding: 4px 10px; border-radius: 999px; background: var(--surface-3); color: var(--ink-2); border: 1px dashed var(--line-2); }
+
+  /* charts */
+  .charts { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 1100px) { .charts { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+  .chart { display: flex; flex-direction: column; min-width: 0; }
+  .legend { display: flex; gap: 14px; padding: 12px 22px 0; font-size: 11.5px; color: var(--ink-3); flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 16px; height: 0; border-top: 2.5px solid var(--accent); display: inline-block; border-radius: 2px; }
+  .legend i.id { border-top: 2px dashed var(--ink-3); } .legend i.fc { border-top: 2.5px dotted var(--accent); opacity: .7; }
+  .legend i.av { border-top: 2px dashed var(--ink-2); }
+  .legend i.sq { width: 10px; height: 10px; border: 0; border-radius: 3px; background: var(--accent); }
+  .cw { position: relative; height: 250px; margin: 6px 14px 0 10px; }
+  .cw svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .cw .grid line { stroke: var(--line); }
+  .cw .ax { font-size: 11px; fill: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .cw .act-line { fill: none; stroke: var(--accent); stroke-width: 2.6; stroke-linejoin: round; stroke-linecap: round; }
+  .cw .ideal { fill: none; stroke: var(--ink-3); stroke-width: 1.6; stroke-dasharray: 5 5; opacity: .9; }
+  .cw .fc { fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-dasharray: 1 5; stroke-linecap: round; opacity: .75; }
+  .cw .today line { stroke: var(--ink-3); stroke-dasharray: 2 3; opacity: .7; }
+  .cw .today text { font-size: 10.5px; fill: var(--ink-3); font-weight: 600; }
+  .cw .pt { fill: var(--card); stroke: var(--accent); stroke-width: 2.4; }
+  .cw .end { fill: var(--accent); stroke: var(--card); stroke-width: 3; }
+  .cw .guide { stroke: var(--ink-3); stroke-width: 1; opacity: 0; transition: opacity .15s; }
+  .cw .hdot { fill: var(--card); stroke: var(--accent); stroke-width: 2.6; opacity: 0; transition: opacity .15s; }
+  .cw.hov .guide, .cw.hov .hdot { opacity: 1; }
+  .cw .draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: mi-draw 1.1s var(--ease-out) forwards; }
+  .cw .vb { fill: var(--accent); transform-box: fill-box; transform-origin: 50% 100%; transition: opacity .2s, fill .2s; }
+  .cw .vb.cur { fill: color-mix(in srgb, var(--accent) 45%, var(--card)); }
+  .cw .vb.grow { animation: bar-grow .7s var(--ease-out) backwards; }
+  .cw.hov .vb:not(.hi) { opacity: .35; }
+  .cw .vv { font-size: 11px; font-weight: 600; fill: var(--ink-2); text-anchor: middle; font-variant-numeric: tabular-nums; transition: opacity .2s; }
+  .cw.hov .vv:not(.hi) { opacity: .3; }
+  .cw .avg line { stroke: var(--ink-2); stroke-width: 1.4; stroke-dasharray: 4 4; }
+  .cw .avg rect { fill: var(--ink); } .cw .avg text { fill: var(--card); font-size: 10.5px; font-weight: 700; }
+  .tip { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 5; opacity: 0; transform: translate(-50%, calc(-100% - 12px)) scale(.96);
+    background: color-mix(in srgb, var(--card) 92%, transparent); backdrop-filter: blur(16px); border: 1px solid var(--line-2); box-shadow: var(--sh-pop);
+    border-radius: 11px; padding: 8px 11px; font-size: 12px; white-space: nowrap; transition: opacity .16s var(--ease-out), transform .2s var(--ease-out); }
+  .tip.on { opacity: 1; transform: translate(-50%, calc(-100% - 12px)); }
+  .tip .w { color: var(--ink-3); font-size: 11px; margin-bottom: 3px; }
+  .tip b { font-size: 15px; font-variant-numeric: tabular-nums; }
+  .tip .r { display: flex; justify-content: space-between; gap: 14px; color: var(--ink-2); margin-top: 2px; }
+  .insight { margin: 10px 22px 18px; padding: 10px 12px; border-radius: 11px; background: var(--surface-2); border: 1px solid var(--line); font-size: 12.5px; color: var(--ink-2); display: flex; gap: 9px; align-items: flex-start; line-height: 1.45; }
+  [data-theme="dark"] .insight { background: rgba(255,255,255,.03); }
+  .insight svg { width: 15px; height: 15px; color: var(--accent); flex: none; margin-top: 1px; }
+  .insight b { color: var(--ink); font-weight: 600; }
+  .insight.warn svg { color: var(--warn); }
+  .c-empty { height: 250px; margin: 6px 22px 18px; border: 1px dashed var(--line-2); border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; color: var(--ink-2); padding: 20px; font-size: 13px; }
+  .c-empty svg.lucide { width: 22px; height: 22px; color: var(--ink-3); }
+  .c-empty small { color: var(--ink-3); max-width: 320px; line-height: 1.45; }
+
+  /* menu popover */
+  .mbtn { gap: 6px; }
+  .mbtn .chev { width: 13px; height: 13px; color: var(--ink-3); transition: transform .25s var(--ease-out); }
+  .mbtn[aria-expanded="true"] .chev { transform: rotate(180deg); }
+  .menu { position: absolute; z-index: 40; min-width: 230px; padding: 5px; border-radius: 13px; background: color-mix(in srgb, var(--card) 94%, transparent); backdrop-filter: blur(24px);
+    border: 1px solid var(--line-2); box-shadow: var(--sh-pop); }
+  .menu[hidden] { display: none; }
+  .menu .mh { font-size: 11px; color: var(--ink-3); padding: 6px 9px 4px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .menu button { display: flex; width: 100%; align-items: center; gap: 9px; border: 0; background: none; text-align: left; padding: 7px 9px; border-radius: 8px; font-size: 13px; cursor: pointer; transition: background-color .12s; }
+  .menu button:hover, .menu button.kb { background: var(--surface-3); }
+  [data-theme="dark"] .menu button:hover { background: rgba(255,255,255,.07); }
+  .menu button svg { width: 15px; height: 15px; color: var(--ink-2); flex: none; }
+  .menu button .ck { margin-left: auto; color: var(--accent); opacity: 0; }
+  .menu button.sel .ck { opacity: 1; }
+  .menu button small { margin-left: auto; color: var(--ink-3); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .menu button .mdot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .menu hr { border: 0; border-top: 1px solid var(--line); margin: 5px 4px; }
+  .menu button.red, .menu button.red svg { color: var(--danger); }
+  .menu .new { font-size: 10px; font-weight: 700; background: var(--accent-soft); color: var(--accent); padding: 1px 6px; border-radius: 5px; margin-left: auto; }
+
+  /* sheet */
+  .scrim { position: fixed; inset: 0; z-index: 80; background: rgba(20,19,17,.28); backdrop-filter: blur(3px); display: grid; place-items: center; padding: 20px; animation: mi-fade .2s var(--ease-out); }
+  .scrim[hidden] { display: none; }
+  [data-theme="dark"] .scrim { background: rgba(0,0,0,.5); }
+  .sheet { width: 520px; max-width: 100%; max-height: calc(100vh - 40px); overflow: auto; background: var(--card); border: 1px solid var(--line-2); border-radius: 20px; box-shadow: var(--sh-pop); animation: mi-dialog-in .42s var(--ease-spring); }
+  .sheet header { display: flex; align-items: flex-start; gap: 12px; padding: 20px 22px 4px; }
+  .sheet header .hi { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex: none; }
+  .sheet header h3 { margin: 0; font-size: 17px; font-weight: 650; }
+  .sheet header p { margin: 3px 0 0; color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+  .sheet .bdy { padding: 14px 22px 6px; display: flex; flex-direction: column; gap: 14px; }
+  .fld label { display: block; font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 6px; }
+  .fld label span { font-weight: 400; color: var(--ink-3); }
+  .inp { width: 100%; height: 36px; border-radius: 10px; border: 1px solid var(--line-2); background: var(--surface); padding: 0 11px; font-size: 13.5px; outline: none; transition: border-color .2s, box-shadow .2s; }
+  .inp:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+  .inp.err { border-color: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 18%, transparent); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .tlist { border: 1px solid var(--line-2); border-radius: 12px; overflow: hidden; }
+  .tlist .ts { display: flex; align-items: center; gap: 7px; padding: 0 11px; height: 36px; border-bottom: 1px solid var(--line); color: var(--ink-3); }
+  .tlist .ts svg { width: 14px; height: 14px; }
+  .tlist .ts input { border: 0; background: none; outline: none; flex: 1; font-size: 13px; color: var(--ink); }
+  .tlist .tb { max-height: 196px; overflow: auto; padding: 4px; }
+  .tk { display: grid; grid-template-columns: 18px minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; cursor: pointer; transition: background-color .12s; }
+  .tk:hover { background: var(--surface-3); }
+  .fld label.tk { display: grid; margin: 0; font-size: 13px; font-weight: 400; color: var(--ink); }
+  .fld .checks label { display: flex; margin: 0; font-size: 13px; font-weight: 400; color: var(--ink); }
+  .tk input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; cursor: pointer; }
+  .tk .tn { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tk .tn.dn { color: var(--ink-3); text-decoration: line-through; }
+  .tk .tm { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ink-3); }
+  .tk .av { width: 20px; height: 20px; border-radius: 6px; font-size: 9px; border: 0; margin: 0; }
+  .lnk { font-size: 12px; color: var(--ink-3); margin-top: 6px; }
+  .lnk b { color: var(--accent); }
+  .whatis { display: flex; gap: 9px; padding: 10px 12px; border-radius: 11px; background: var(--info-soft); color: var(--ink-2); font-size: 12.5px; line-height: 1.45; }
+  .whatis svg { width: 15px; height: 15px; color: var(--info); flex: none; margin-top: 1px; }
+  .sheet footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 14px 22px 18px; }
+
+  /* snack */
+  #snack { position: fixed; left: 50%; bottom: 24px; z-index: 100; transform: translate(-50%, 140%); opacity: 0; display: flex; align-items: center; gap: 14px; padding: 10px 10px 10px 14px; border-radius: 14px;
+    background: var(--ink); color: var(--surface); box-shadow: var(--sh-pop); font-size: 13px; overflow: hidden; transition: transform .38s var(--ease-spring), opacity .2s; }
+  #snack.on { transform: translate(-50%, 0); opacity: 1; }
+  #snack svg { width: 16px; height: 16px; color: var(--accent); }
+  #snack button { border: 0; background: rgba(255,255,255,.14); color: inherit; font-weight: 600; height: 28px; padding: 0 12px; border-radius: 8px; cursor: pointer; transition: transform .12s var(--ease-out); }
+  #snack button:active { transform: scale(.95); }
+  [data-theme="dark"] #snack button { background: rgba(0,0,0,.12); }
+  #snack i.drain { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent); transform-origin: left; }
+  #snack.on i.drain { animation: mi-drain 5s linear forwards; }
+
+  /* ── artboard 2: templates ── */
+  .boards { width: min(1384px, 100%); display: grid; grid-template-columns: repeat(auto-fit, minmax(560px, 1fr)); gap: 22px; }
+  .board { position: relative; border-radius: 18px; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--sh-pop); background: var(--rep-bg); min-height: 720px; }
+  .board .cap { position: absolute; left: 18px; top: 14px; z-index: 3; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--ink-3); }
+  .board .dim { position: absolute; inset: 0; background: rgba(20,19,17,.22); }
+  [data-theme="dark"] .board .dim { background: rgba(0,0,0,.45); }
+  .board .bg-rows { position: absolute; inset: 44px 18px auto; display: flex; flex-direction: column; gap: 10px; opacity: .55; }
+  .board .bg-rows i { display: block; height: 56px; border-radius: 12px; background: var(--card); border: 1px solid var(--line); }
+  .dlg { position: relative; z-index: 2; margin: 52px auto 24px; width: 500px; max-width: calc(100% - 32px); background: var(--card); border: 1px solid var(--line-2); border-radius: 20px; box-shadow: var(--sh-pop); }
+  .dlg header { display: flex; align-items: center; padding: 18px 20px 6px; }
+  .dlg header h3 { margin: 0; font-size: 17px; font-weight: 650; flex: 1; }
+  .dlg .bdy { padding: 10px 20px 4px; display: flex; flex-direction: column; gap: 14px; }
+  .from { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .from button { display: flex; gap: 10px; align-items: center; text-align: left; padding: 11px 12px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--surface); cursor: pointer;
+    transition: border-color .2s, box-shadow .2s, transform .12s var(--ease-out), background-color .2s; }
+  .from button:active { transform: scale(.97); }
+  .from button.on { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+  .from button .fi { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex: none; }
+  .from button b { display: block; font-size: 13px; } .from button small { color: var(--ink-3); font-size: 11.5px; }
+  .collapse { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .36s var(--ease-smooth), opacity .22s var(--ease-out); }
+  .collapse > div { overflow: hidden; min-height: 0; }
+  .collapse.open { grid-template-rows: 1fr; opacity: 1; }
+  .tpl-h { font-size: 11px; font-weight: 600; color: var(--ink-3); text-transform: uppercase; letter-spacing: .05em; margin: 4px 2px 6px; }
+  .tpl { display: grid; grid-template-columns: 30px minmax(0,1fr) 18px; gap: 11px; align-items: center; padding: 9px 10px; border-radius: 11px; cursor: pointer; transition: background-color .15s; }
+  .tpl:hover { background: var(--surface-3); }
+  .tpl.on { background: var(--accent-soft); }
+  .tpl .ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; }
+  .tpl .ic svg { width: 15px; height: 15px; }
+  .tpl b { font-size: 13px; display: block; } .tpl small { font-size: 11.5px; color: var(--ink-3); }
+  .tpl .rd { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line-2); display: grid; place-items: center; transition: border-color .2s; }
+  .tpl.on .rd { border-color: var(--accent); }
+  .tpl.on .rd::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: mi-pop .4s var(--ease-spring); }
+  .incl { font-size: 12px; color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 9px 11px; margin-top: 8px; display: flex; gap: 8px; }
+  [data-theme="dark"] .incl { background: rgba(255,255,255,.03); }
+  .incl svg { width: 14px; height: 14px; color: var(--accent); flex: none; margin-top: 1px; }
+  .dlg footer { display: flex; align-items: center; gap: 8px; padding: 14px 20px 18px; }
+  .dlg footer .sp { flex: 1; }
+  .swatches { display: flex; gap: 6px; }
+  .swatches i { width: 16px; height: 16px; border-radius: 50%; display: block; cursor: pointer; transition: transform .15s var(--ease-spring); }
+  .swatches i:hover { transform: scale(1.15); }
+  .swatches i.on { box-shadow: 0 0 0 2px var(--card), 0 0 0 4px var(--ink-3); }
+  .mini-ph { background: var(--surface); border-bottom: 1px solid var(--line); padding: 44px 22px 0; }
+  .mini-ph .tabs { gap: 18px; }
+  .checks { display: flex; flex-direction: column; gap: 2px; }
+  .checks label { display: flex; gap: 10px; align-items: flex-start; padding: 8px 6px; border-radius: 9px; cursor: pointer; font-size: 13px; }
+  .checks label:hover { background: var(--surface-3); }
+  .checks input { margin-top: 2px; accent-color: var(--accent); width: 15px; height: 15px; }
+  .checks small { display: block; color: var(--ink-3); font-size: 11.5px; }
+</style>
+</head>
+<body>
+<nav class="mk-nav">
+  <b>Projects · Reports</b>
+  <button data-s="s1" class="on">1 · Reports tab</button>
+  <button data-s="s2">2 · Templates moved out</button>
+  <span class="sp"></span>
+  <span class="lbl">Data</span>
+  <button data-scen="active" class="on">Active project</button>
+  <button data-scen="overdue">Has overdue</button>
+  <button data-scen="empty">Empty project</button>
+  <span class="lbl"></span>
+  <button id="theme"><i data-lucide="moon"></i></button>
+</nav>
+
+<!-- ═════════════ 1 · Reports tab ═════════════ -->
+<section class="stage on" id="s1">
+  <div class="win">
+    <div class="app">
+      <aside class="rail">
+        <div class="brand"><i></i>iPop</div>
+        <div class="ni"><i data-lucide="layout-dashboard"></i>Dashboard</div>
+        <h6>Communicate</h6>
+        <div class="ni"><i data-lucide="message-circle"></i>Chat<span class="bd">3</span></div>
+        <div class="ni"><i data-lucide="mail"></i>Mail</div>
+        <div class="ni"><i data-lucide="calendar"></i>Calendar</div>
+        <h6>Work</h6>
+        <div class="ni on"><i data-lucide="folder-kanban"></i>Projects</div>
+        <div class="ni"><i data-lucide="notebook-pen"></i>Notes</div>
+        <div class="ni"><i data-lucide="folder"></i>Files</div>
+        <div class="ni"><i data-lucide="life-buoy"></i>Tickets</div>
+        <h6>Company</h6>
+        <div class="ni"><i data-lucide="newspaper"></i>News</div>
+        <div class="ni"><i data-lucide="users"></i>Directory</div>
+      </aside>
+      <div class="main">
+        <div class="ph">
+          <div class="crumb">Projects <i data-lucide="chevron-right"></i> ICT</div>
+          <div class="ph-row">
+            <span class="pico"><i data-lucide="bug"></i></span>
+            <h1>Bug/Fitur iPop</h1>
+            <span class="star"><i data-lucide="star"></i></span>
+            <span class="sp"></span>
+            <div class="avs">
+              <span class="av" style="background:#2e9d6b">BG</span><span class="av" style="background:#0a84ff">DS</span><span class="av" style="background:#c2442e">RA</span><span class="av" style="background:#a8760c">SW</span><span class="av more">+3</span>
+            </div>
+            <button class="btn sm"><i data-lucide="user-plus"></i>Share</button>
+            <button class="btn sm icon" id="moreBtn" aria-expanded="false" title="Project options"><i data-lucide="ellipsis"></i></button>
+          </div>
+          <div class="tabs" id="tabs">
+            <button><i data-lucide="layout-grid"></i>Overview</button>
+            <button><i data-lucide="square-kanban"></i>Board</button>
+            <button><i data-lucide="list"></i>List</button>
+            <button><i data-lucide="gantt-chart"></i>Timeline</button>
+            <button><i data-lucide="calendar-days"></i>Calendar</button>
+            <button><i data-lucide="users-round"></i>Workload</button>
+            <button class="on"><i data-lucide="chart-no-axes-combined"></i>Reports</button>
+            <span class="ul"></span>
+          </div>
+          <div class="menu" id="projMenu" hidden style="right:32px;top:92px"></div>
+        </div>
+
+        <div class="rep" id="rep">
+          <div class="rep-h">
+            <div>
+              <h2>Reports</h2>
+              <p>How this project is tracking: progress, deadlines and pace.</p>
+            </div>
+            <span class="sp"></span>
+            <span class="upd"><i></i>Updated just now</span>
+            <button class="btn sm"><i data-lucide="download"></i>Export PDF</button>
+          </div>
+
+          <div class="tiles" id="tiles"></div>
+
+          <div class="card" id="msCard">
+            <div class="sec-h">
+              <div><h3>Milestones</h3><div class="sub" id="msSub"></div></div>
+              <span class="sp"></span>
+              <button class="btn sm" data-new-ms id="msNewTop"><i data-lucide="flag"></i>New milestone</button>
+            </div>
+            <div id="msBody"></div>
+          </div>
+
+          <div class="charts">
+            <div class="card chart lift" id="bdCard">
+              <div class="sec-h">
+                <div><h3>Burndown</h3><div class="sub">Open tasks left at the start of each week</div></div>
+                <span class="sp"></span>
+                <div class="ctl">
+                  <div class="seg" data-slide id="bdRange"><button data-v="4">4 wk</button><button data-v="6">6 wk</button><button data-v="12" class="on">12 wk</button></div>
+                  <div style="position:relative">
+                    <button class="btn sm mbtn" id="msFilterBtn" aria-expanded="false"><i data-lucide="flag"></i><span id="msFilterLbl">All milestones</span><i class="chev" data-lucide="chevron-down"></i></button>
+                    <div class="menu" id="msFilterMenu" hidden style="right:0;top:34px"></div>
+                  </div>
+                </div>
+              </div>
+              <div id="bdBody"></div>
+            </div>
+            <div class="card chart lift" id="vlCard">
+              <div class="sec-h">
+                <div><h3>Velocity</h3><div class="sub">Tasks completed per week</div></div>
+                <span class="sp"></span>
+                <div class="ctl">
+                  <div class="seg" data-slide id="vlRange"><button data-v="6" class="on">6 wk</button><button data-v="12">12 wk</button></div>
+                </div>
+              </div>
+              <div id="vlBody"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div><span class="tag">What is Reports for?</span><h3>One question: how is this project tracking?</h3>
+      <ul><li>Tiles answer "how far, how late, how fast" at a glance.</li><li>Milestones are real checkpoints a PM creates — no auto-generated filler.</li><li>Burndown shows if we will finish in time; Velocity shows team pace.</li></ul></div>
+    <div><span class="tag">Try it</span><h3>Interactions</h3>
+      <ul><li>Click a hollow milestone circle or <b>Mark achieved</b> → check pops, Undo in the snackbar.</li><li><b>New milestone</b> opens the sheet; link tasks, Create.</li><li>Hover the charts; switch ranges (sliding thumb); filter burndown by milestone; ⋯ in the header.</li></ul></div>
+    <div><span class="tag">Removed</span><h3>No "Project Templates" card</h3>
+      <ul><li>Templates aren't a report. They now live in <b>New project → Start from template</b> and the project <b>⋯ → Save as template…</b> (artboard 2).</li><li>Tab renamed "Plans &amp; Reports" → <b>Reports</b>.</li></ul></div>
+  </div>
+</section>
+
+<!-- ═════════════ 2 · Templates moved out ═════════════ -->
+<section class="stage" id="s2">
+  <div class="boards">
+    <div class="board" id="bNew">
+      <span class="cap">Projects → New project</span>
+      <div class="bg-rows"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="dim"></div>
+      <div class="dlg">
+        <header><h3>New project</h3><button class="btn ghost sm icon"><i data-lucide="x"></i></button></header>
+        <div class="bdy">
+          <div class="fld"><label>Name</label><input class="inp" value="Audit ISO 9001 — Karawang"></div>
+          <div class="fld"><label>Start from</label>
+            <div class="from" id="fromSeg">
+              <button data-f="blank"><span class="fi c-mut"><i data-lucide="file"></i></span><span><b>Blank project</b><small>Empty board, add your own</small></span></button>
+              <button data-f="tpl" class="on"><span class="fi c-acc"><i data-lucide="layout-template"></i></span><span><b>Template</b><small>Sections, tasks, milestones</small></span></button>
+            </div>
+          </div>
+          <div class="collapse open" id="tplWrap"><div>
+            <div class="tpl-h">Built-in</div>
+            <div class="tpl" data-t="sprint" data-inc="4 sections · 12 starter tasks · 2-week milestones"><span class="ic c-inf"><i data-lucide="zap"></i></span><span><b>Software sprint</b><small>Backlog → In progress → Review → Done</small></span><span class="rd"></span></div>
+            <div class="tpl" data-t="proc" data-inc="5 sections · 9 tasks · 1 milestone (Installed)"><span class="ic c-war"><i data-lucide="package"></i></span><span><b>IT procurement</b><small>Request → Quotation → PO → Delivery → Install</small></span><span class="rd"></span></div>
+            <div class="tpl" data-t="event" data-inc="3 sections · 14 checklist tasks · Event day milestone"><span class="ic c-vio"><i data-lucide="party-popper"></i></span><span><b>Event planning</b><small>Timeline, vendors, run-down checklist</small></span><span class="rd"></span></div>
+            <div class="tpl-h" style="margin-top:10px">Saved by your team</div>
+            <div class="tpl on" data-t="audit" data-inc="6 sections · 18 tasks · 3 milestones · dates shift to your start date"><span class="ic c-acc"><i data-lucide="clipboard-check"></i></span><span><b>Audit ISO 9001 site visit</b><small>Sari Wulandari · QA · used 4×</small></span><span class="rd"></span></div>
+            <div class="tpl" data-t="bug" data-inc="5 sections · 0 tasks · labels Bug/Feature · no milestones"><span class="ic c-vio"><i data-lucide="bug"></i></span><span><b>Bug/Fitur tracker</b><small>Bagastyo · ICT · saved from "Bug/Fitur iPop"</small></span><span class="rd"></span></div>
+            <div class="incl" id="incl"><i data-lucide="info"></i><span id="inclTx"></span></div>
+          </div></div>
+          <div class="row2">
+            <div class="fld"><label>Start date</label><input class="inp" type="date" value="2026-10-12"></div>
+            <div class="fld"><label>Team</label><input class="inp" value="QA · SJA Karawang"></div>
+          </div>
+        </div>
+        <footer><div class="swatches"><i style="background:#2e9d6b" class="on"></i><i style="background:#0a84ff"></i><i style="background:#7c4dd6"></i><i style="background:#c2442e"></i><i style="background:#a8760c"></i></div><span class="sp"></span><button class="btn">Cancel</button><button class="btn pri" id="createProj">Create project</button></footer>
+      </div>
+    </div>
+
+    <div class="board" id="bMenu">
+      <span class="cap">Project header → ⋯</span>
+      <div class="mini-ph">
+        <div class="ph-row">
+          <span class="pico"><i data-lucide="bug"></i></span>
+          <h1 style="font-size:20px;margin:0;font-weight:700">Bug/Fitur iPop</h1>
+          <span class="sp" style="flex:1"></span>
+          <button class="btn sm"><i data-lucide="user-plus"></i>Share</button>
+          <button class="btn sm icon" id="moreBtn2" aria-expanded="true" style="background:var(--surface-3)"><i data-lucide="ellipsis"></i></button>
+        </div>
+        <div class="tabs" style="margin-top:12px"><button>Overview</button><button>Board</button><button>List</button><button>Timeline</button><button class="on" style="box-shadow:inset 0 -2px var(--ink)">Reports</button></div>
+      </div>
+      <div class="menu pop" id="projMenu2" style="right:22px;top:92px"></div>
+      <div class="scrim" id="saveTplScrim" hidden style="position:absolute"></div>
+    </div>
+  </div>
+  <div class="notes">
+    <div><span class="tag">Use a template</span><h3>Templates live where projects begin</h3><ul><li>"Start from" toggles Blank / Template; the list collapses smoothly.</li><li>Built-in first, then templates saved by your team. A summary line shows exactly what will be created.</li><li>Milestone dates are relative and shift to the chosen start date.</li></ul></div>
+    <div><span class="tag">Make a template</span><h3>⋯ → Save as template…</h3><ul><li>Click the menu item: a sheet lets you choose what to include (tasks, milestones, assignees, comments) and who can use it.</li><li>The same ⋯ menu appears on the Reports artboard header.</li></ul></div>
+  </div>
+</section>
+
+<!-- New milestone sheet -->
+<div class="scrim" id="msScrim" hidden>
+  <div class="sheet" role="dialog" aria-labelledby="msTitle">
+    <header><span class="hi c-acc"><i data-lucide="flag"></i></span><div><h3 id="msTitle">New milestone</h3><p>A checkpoint that groups tasks — e.g. "UAT ready" or "Go-live Karawang". It's achieved when you mark it, or automatically when every linked task is done.</p></div></header>
+    <div class="bdy">
+      <div class="fld"><label>Name</label><input class="inp" id="msName" placeholder="e.g. UAT ready"></div>
+      <div class="row2">
+        <div class="fld"><label>Due date</label><input class="inp" id="msDate" type="date" value="2026-10-30"></div>
+        <div class="fld"><label>Owner <span>(optional)</span></label><input class="inp" value="Bagastyo"></div>
+      </div>
+      <div class="fld"><label>Link tasks <span>· they roll up into this milestone's progress</span></label>
+        <div class="tlist"><div class="ts"><i data-lucide="search"></i><input id="tSearch" placeholder="Search tasks in Bug/Fitur iPop"></div><div class="tb" id="tBody"></div></div>
+        <div class="lnk" id="lnk"></div>
+      </div>
+    </div>
+    <footer><button class="btn" data-close>Cancel</button><button class="btn pri" id="msCreate"><i data-lucide="flag"></i>Create milestone</button></footer>
+  </div>
+</div>
+
+<div id="snack"><i data-lucide="circle-check"></i><span class="tx"></span><button>Undo</button><i class="drain"></i></div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const RM = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+const icons = () => lucide.createIcons();
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const clone = o => JSON.parse(JSON.stringify(o));
+function replay(el, cls) {
+  if (!el || RM()) return;
+  el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+  el.addEventListener('animationend', () => el.classList.remove(cls), { once: true });
+}
+function slide(root, instant) {
+  if (!root || !root.offsetParent) return;
+  let ind = root.querySelector(':scope > .mi-ind');
+  const on = [...root.children].find(c => c.classList.contains('on'));
+  if (!on) return;
+  if (!ind) { ind = document.createElement('span'); ind.className = 'mi-ind'; root.prepend(ind); instant = true; }
+  if (instant) ind.style.transition = 'none';
+  Object.assign(ind.style, { opacity: '1', left: on.offsetLeft + 'px', top: on.offsetTop + 'px', width: on.offsetWidth + 'px', height: on.offsetHeight + 'px' });
+  if (instant) { void ind.offsetWidth; ind.style.transition = ''; }
+  root.classList.add('live');
+}
+const slideAll = (scope, instant) => $$('[data-slide]', scope).forEach(r => slide(r, instant));
+function countUp(el, to, dec = 0, ms = 900) {
+  const f = v => v.toFixed(dec);
+  if (RM()) { el.textContent = f(to); return; }
+  const t0 = performance.now();
+  const step = t => { const p = Math.min(1, (t - t0) / ms); el.textContent = f(to * (1 - Math.pow(1 - p, 3))); if (p < 1) requestAnimationFrame(step); };
+  el.textContent = f(0); requestAnimationFrame(step);
+}
+
+/* ── dates ── */
+const TODAY = new Date(2026, 9, 6);
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const d = s => { const [y, m, dd] = s.split('-').map(Number); return new Date(y, m - 1, dd); };
+const fmt = dt => `${dt.getDate()} ${MON[dt.getMonth()]}`;
+const fmtL = dt => `${DOW[dt.getDay()]}, ${dt.getDate()} ${MON[dt.getMonth()]}`;
+const days = dt => Math.round((dt - TODAY) / 864e5);
+const WEEKS = Array.from({ length: 16 }, (_, i) => new Date(2026, 6, 20 + i * 7)); // 12 past (Jul 20 … Oct 5) + 4 future (… Nov 2)
+const PAST = 12, FUT = 4;
+
+/* ── sample data ── */
+const TASKS = [
+  ['Fix read receipt race on reconnect', 'BG', '#2e9d6b', '2026-09-08', 1],
+  ['Chat outbox: persist unsent messages', 'DS', '#0a84ff', '2026-09-10', 1],
+  ['Notion zip import with attachments', 'RA', '#c2442e', '2026-10-01', 1],
+  ['Notes export to PDF', 'SW', '#a8760c', '2026-10-02', 1],
+  ['Reports: summary tiles', 'BG', '#2e9d6b', '2026-10-07', 1],
+  ['Burndown chart with ideal line', 'DS', '#0a84ff', '2026-10-08', 0],
+  ['Velocity chart + average', 'DS', '#0a84ff', '2026-10-09', 0],
+  ['Move templates to New project dialog', 'RA', '#c2442e', '2026-10-09', 0],
+  ['Calendar: free/busy for every user', 'SW', '#a8760c', '2026-10-16', 0],
+  ['Calendar: delegate "Editor" level', 'BG', '#2e9d6b', '2026-10-21', 0],
+  ['Mail: draft autosave every 5 s', 'RA', '#c2442e', '2026-10-24', 0],
+  ['Mobile web: bottom tab bar', 'DS', '#0a84ff', '2026-10-28', 0],
+  ['Mobile web: swipe to archive mail', 'SW', '#a8760c', '2026-11-04', 0],
+  ['Directory: edit Ext. number inline', 'BG', '#2e9d6b', '2026-11-06', 0],
+].map(([name, av, col, due, done], i) => ({ id: 't' + i, name, av, col, due, done: !!done }));
+
+const SCEN = {
+  active: {
+    total: 42, onTime: 23, dueWeek: 5, dueTomorrow: 2, overdue: 0, oldestLate: 0, doneThisWeek: 3,
+    remaining: [38, 37, 35, 36, 33, 31, 30, 27, 24, 21, 18, 15],
+    velocity:  [3, 4, 3, 2, 5, 4, 3, 5, 6, 5, 4, 2],
+    ms: [
+      { id: 'm1', name: 'Chat reliability pack', date: '2026-09-12', tasks: 9, done: 9, achieved: true, on: '2026-09-11' },
+      { id: 'm2', name: 'Notes import & export', date: '2026-10-03', tasks: 7, done: 7, achieved: true, on: '2026-10-02' },
+      { id: 'm3', name: 'Reports tab redesign', date: '2026-10-09', tasks: 6, done: 4 },
+      { id: 'm4', name: 'Calendar access v3', date: '2026-10-23', tasks: 8, done: 2 },
+      { id: 'm5', name: 'Mobile web pass', date: '2026-11-13', tasks: 10, done: 0 },
+    ],
+  },
+  overdue: {
+    total: 42, onTime: 12, dueWeek: 6, dueTomorrow: 3, overdue: 3, oldestLate: 6, doneThisWeek: 1,
+    remaining: [38, 37, 36, 36, 35, 34, 33, 32, 30, 29, 27, 25],
+    velocity:  [3, 1, 2, 0, 1, 1, 1, 1, 2, 1, 2, 1],
+    ms: [
+      { id: 'm1', name: 'Chat reliability pack', date: '2026-09-12', tasks: 9, done: 9, achieved: true, on: '2026-09-12' },
+      { id: 'm2', name: 'Notes import & export', date: '2026-10-02', tasks: 7, done: 5 },
+      { id: 'm3', name: 'Reports tab redesign', date: '2026-10-09', tasks: 6, done: 2 },
+      { id: 'm4', name: 'Calendar access v3', date: '2026-10-23', tasks: 8, done: 1 },
+      { id: 'm5', name: 'Mobile web pass', date: '2026-11-13', tasks: 10, done: 0 },
+    ],
+  },
+  empty: { total: 0, onTime: 0, dueWeek: 0, dueTomorrow: 0, overdue: 0, oldestLate: 0, doneThisWeek: 0, remaining: [], velocity: [], ms: [] },
+};
+const S = { scen: 'active', range: 12, period: 6, filter: 'all', data: clone(SCEN.active) };
+
+function msStatus(m) {
+  if (m.achieved) return 'done';
+  const n = days(d(m.date));
+  if (n < 0) return 'late';
+  if (n <= 7) return 'soon';
+  return 'plan';
+}
+const PILL = {
+  done: ['c-acc', 'check', 'Achieved'], late: ['c-dan', 'alert-circle', 'Overdue'],
+  soon: ['c-war', 'clock', 'Due soon'], plan: ['c-mut', 'calendar', 'Planned'],
+};
+const rel = n => n === 0 ? 'today' : n === 1 ? 'tomorrow' : n === -1 ? 'yesterday' : n > 0 ? `in ${n} days` : `${-n} days late`;
+const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+
+/* ── tiles ── */
+function renderTiles(anim) {
+  const D = S.data, empty = !D.total;
+  const done = empty ? 0 : D.total - D.remaining[D.remaining.length - 1];
+  const pct = empty ? 0 : Math.round(done / D.total * 100);
+  const onPct = done ? Math.round(D.onTime / done * 100) : 0;
+  const last = D.velocity.slice(-6), prev = D.velocity.slice(-12, -6);
+  const pace = avg(last), dPace = pace - avg(prev);
+  const T = [
+    { k: 'prog', ic: 'circle-dashed', c: 'c-acc', lbl: 'Progress', val: pct, unit: '%', ring: pct,
+      hint: empty ? 'No tasks yet' : `${done} of ${D.total} tasks · <span class="up">+${D.doneThisWeek} this week</span>` },
+    { k: 'ontime', ic: 'calendar-check', c: 'c-inf', lbl: 'On time', val: empty ? null : onPct, unit: '%',
+      hint: empty ? 'Shows once tasks are done' : `${D.onTime} of ${done} done by their due date` },
+    { k: 'over', ic: 'alarm-clock', c: D.overdue ? 'c-dan' : 'c-mut', lbl: 'Overdue', val: D.overdue, bad: D.overdue > 0,
+      hint: empty ? 'Nothing to track' : D.overdue ? `Oldest ${D.oldestLate} days late <a href="#">View<i data-lucide="chevron-right"></i></a>` : '<i data-lucide="check" class="up"></i>Nothing late — nice' },
+    { k: 'week', ic: 'calendar-range', c: 'c-war', lbl: 'Due this week', val: D.dueWeek,
+      hint: empty ? 'Mon 5 – Sun 11 Oct' : `${D.dueTomorrow} due tomorrow · Mon 5 – Sun 11 Oct` },
+    { k: 'pace', ic: 'gauge', c: 'c-vio', lbl: 'Avg pace', val: empty ? null : pace, dec: 1, unit: 'tasks/wk',
+      hint: empty ? 'Needs a week of activity' : `<i data-lucide="${dPace >= 0 ? 'trending-up' : 'trending-down'}" class="${dPace >= 0 ? 'up' : 'dn'}"></i><span class="${dPace >= 0 ? 'up' : 'dn'}">${dPace >= 0 ? '+' : '−'}${Math.abs(dPace).toFixed(1)}</span> vs prior 6 weeks` },
+  ];
+  const C = 2 * Math.PI * 24;
+  $('#tiles').innerHTML = T.map((t, i) => `
+    <div class="card tile lift ${t.bad ? 'bad' : ''}" style="animation-delay:${i * 50}ms">
+      <div class="tl"><span class="ti ${t.c}"><i data-lucide="${t.ic}"></i></span>${t.lbl}</div>
+      <div class="big">${t.val == null ? '—' : `<span data-v="${t.val}" data-d="${t.dec || 0}">${(t.val).toFixed(t.dec || 0)}</span>`}${t.val != null && t.unit ? `<small>${t.unit}</small>` : ''}</div>
+      <div class="hint">${t.hint}</div>
+      ${t.ring != null ? `<svg class="ring" viewBox="0 0 56 56"><circle class="tr" cx="28" cy="28" r="24"/><circle class="fg" cx="28" cy="28" r="24" stroke-dasharray="${C}" stroke-dashoffset="${C}" data-to="${C * (1 - t.ring / 100)}"/></svg>` : ''}
+    </div>`).join('');
+  icons();
+  $$('#tiles [data-v]').forEach(el => anim ? countUp(el, +el.dataset.v, +el.dataset.d) : null);
+  if (anim) $$('#tiles .tile').forEach(t => replay(t, 'mi-rise'));
+  const fg = $('#tiles .ring .fg');
+  if (fg) { if (!anim || RM()) { fg.style.transition = 'none'; } requestAnimationFrame(() => requestAnimationFrame(() => fg.style.strokeDashoffset = fg.dataset.to)); }
+}
+
+/* ── milestones ── */
+function renderMs(anim, popId) {
+  const list = S.data.ms.slice().sort((a, b) => d(a.date) - d(b.date));
+  const ach = list.filter(m => m.achieved).length;
+  $('#msSub').textContent = list.length ? `${ach} of ${list.length} achieved · next: ${(list.find(m => !m.achieved) || {}).name || '—'}` : 'Checkpoints that group tasks toward a goal';
+  $('#msNewTop').hidden = !list.length;
+  if (!list.length) {
+    $('#msBody').innerHTML = `<div class="empty">
+      <span class="eic c-acc"><i data-lucide="flag"></i></span>
+      <b>No milestones yet</b>
+      <p>A milestone is a checkpoint with a date — like "UAT ready" or "Go-live Karawang". Link tasks to it and this page tracks whether you'll hit it.</p>
+      <div class="eg"><span>UAT ready · 30 Oct</span><span>Training users · 6 Nov</span><span>Go-live · 13 Nov</span></div>
+      <button class="btn pri" data-new-ms><i data-lucide="plus"></i>New milestone</button></div>`;
+    icons(); if (anim) replay($('#msBody .empty'), 'mi-rise'); return;
+  }
+  $('#msBody').innerHTML = `<div class="ms-list">${list.map((m, i) => {
+    const st = msStatus(m), [pc, pi, pl] = PILL[st], n = days(d(m.date));
+    const p = m.achieved ? 100 : Math.round(m.done / m.tasks * 100);
+    return `<div class="ms ${st}" data-id="${m.id}" style="animation-delay:${i * 45}ms">
+      <div class="rl"><button class="dot ${st === 'done' ? 'ok' : st}" data-ach="${m.id}" title="${st === 'done' ? 'Achieved' : 'Mark achieved'}"><i data-lucide="check"></i></button></div>
+      <div class="bd">
+        <div style="min-width:0"><div class="nm">${esc(m.name)}</div><div class="sm">${m.tasks} linked task${m.tasks === 1 ? '' : 's'} · ${m.achieved ? m.tasks : m.done} done</div>
+          <div class="pb"><div class="bar"><i style="width:${anim && !RM() ? 0 : p}%" data-w="${p}"></i></div><small>${p}%</small></div></div>
+        <div class="dt">${fmtL(d(m.date))}<small>${st === 'done' ? 'Done' : rel(n)}</small></div>
+        <span class="pill ${pc}"><i data-lucide="${pi}"></i>${pl}</span>
+        <div class="act">${st === 'done' ? `<span class="when">Achieved ${fmt(d(m.on))}</span>` : `<button class="btn sm ghost" data-ach="${m.id}"><i data-lucide="circle-check"></i>Mark achieved</button>`}</div>
+      </div></div>`;
+  }).join('')}</div>
+  <div class="ms-foot"><i data-lucide="info"></i>A milestone turns Achieved automatically when all its linked tasks are done — or mark it yourself.</div>`;
+  icons();
+  if (anim) { $$('#msBody .ms').forEach(r => replay(r, 'mi-rise')); requestAnimationFrame(() => requestAnimationFrame(() => $$('#msBody .bar > i').forEach(b => b.style.width = b.dataset.w + '%'))); }
+  if (popId) {
+    const row = $(`#msBody .ms[data-id="${popId}"]`);
+    if (row) { if (!RM()) $('.dot', row).classList.add('burst'); replay($('.bd', row), 'mi-saved'); replay($('.pill', row), 'mi-pop'); }
+  }
+}
+
+/* ── chart helpers ── */
+const svgNS = 'http://www.w3.org/2000/svg';
+const niceMax = v => { const s = v <= 10 ? 2 : v <= 25 ? 5 : 10; return Math.max(s * 2, Math.ceil(v / s) * s); };
+function tipAt(cw, x, y, html) { const t = $('.tip', cw); t.innerHTML = html; t.style.left = x + 'px'; t.style.top = y + 'px'; t.classList.add('on'); cw.classList.add('hov'); }
+function tipOff(cw) { $('.tip', cw).classList.remove('on'); cw.classList.remove('hov'); }
+
+function emptyChart(id, ic, title, sub) {
+  $(id).innerHTML = `<div class="c-empty"><i data-lucide="${ic}"></i><b>${title}</b><small>${sub}</small></div>`; icons();
+}
+
+/* ── burndown ── */
+function burndownSeries() {
+  const D = S.data; let f = 1;
+  if (S.filter !== 'all') { const m = D.ms.find(x => x.id === S.filter); f = m ? m.tasks / D.total : 1; }
+  return D.remaining.map(v => Math.round(v * f));
+}
+function drawBurndown(anim) {
+  const D = S.data;
+  if (!D.total) { emptyChart('#bdBody', 'trending-down', 'Nothing to burn down yet', 'Once tasks are added, this line drops each week as work gets done. Flatter than the dashed line = behind plan.'); return; }
+  const all = burndownSeries(), N = S.range, rem = all.slice(-N);
+  const weeks = WEEKS.slice(PAST - N, PAST + FUT), K = weeks.length;
+  const vel = avg(D.velocity.slice(-6)) * (S.filter === 'all' ? 1 : rem[0] / D.remaining[PAST - N] || 1);
+  const ideal = i => rem[0] * (1 - i / (K - 1));
+  const fc = i => Math.max(0, rem[N - 1] - vel * (i - (N - 1)));
+  let body = $('#bdBody .cw');
+  if (!body) {
+    $('#bdBody').innerHTML = `<div class="legend"><span><i></i>Remaining</span><span><i class="id"></i>Ideal</span><span><i class="fc"></i>Forecast at current pace</span></div>
+      <div class="cw"><svg></svg><div class="tip"></div></div><div class="insight" id="bdIns"></div>`;
+    body = $('#bdBody .cw');
+  }
+  const W = body.clientWidth, H = body.clientHeight, pl = 30, pr = 12, pt = 18, pb = 26;
+  const ymax = niceMax(Math.max(...rem, 1));
+  const X = i => pl + i * (W - pl - pr) / (K - 1), Y = v => pt + (H - pt - pb) * (1 - v / ymax);
+  const ticks = [0, .25, .5, .75, 1].map(t => Math.round(ymax * t));
+  const step = K > 10 ? 2 : 1;
+  const act = rem.map((v, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join('');
+  const area = act + `L${X(N - 1)},${Y(0)}L${X(0)},${Y(0)}Z`;
+  const fcPath = `M${X(N - 1)},${Y(rem[N - 1])}` + Array.from({ length: FUT }, (_, j) => `L${X(N + j)},${Y(fc(N + j))}`).join('');
+  const A = anim && !RM();
+  $('svg', body).innerHTML = `
+    <defs><linearGradient id="bdg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".18"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+    <g class="grid">${ticks.map(t => `<line x1="${pl}" x2="${W - pr}" y1="${Y(t)}" y2="${Y(t)}"/><text class="ax" x="${pl - 8}" y="${Y(t) + 4}" text-anchor="end">${t}</text>`).join('')}</g>
+    ${weeks.map((w, i) => i % step === (K - 1) % step ? `<text class="ax" x="${X(i)}" y="${H - 6}" text-anchor="middle">${fmt(w)}</text>` : '').join('')}
+    <g class="today"><line x1="${X(N - 1)}" x2="${X(N - 1)}" y1="${pt - 6}" y2="${Y(0)}"/><text x="${X(N - 1) + 5}" y="${pt - 2}">Today</text></g>
+    <path d="${area}" fill="url(#bdg)" class="${A ? 'mi-fade' : ''}" style="animation-delay:.55s"/>
+    <path class="ideal ${A ? 'mi-fade' : ''}" d="M${X(0)},${Y(rem[0])}L${X(K - 1)},${Y(0)}" style="animation-delay:.15s"/>
+    <path class="fc ${A ? 'mi-fade' : ''}" d="${fcPath}" style="animation-delay:1s"/>
+    <path class="act-line ${A ? 'draw' : ''}" pathLength="1" d="${act}"/>
+    <circle class="end ${A ? 'mi-fade' : ''}" cx="${X(N - 1)}" cy="${Y(rem[N - 1])}" r="5.5" style="animation-delay:1s"/>
+    <line class="guide" y1="${pt}" y2="${Y(0)}"/><circle class="hdot" r="5"/>
+    <rect x="${pl}" y="0" width="${W - pl - pr}" height="${H}" fill="transparent" class="hit"/>`;
+  const hit = $('.hit', body);
+  hit.onmousemove = e => {
+    const r = body.getBoundingClientRect(); const i = Math.max(0, Math.min(K - 1, Math.round((e.clientX - r.left - pl) / ((W - pl - pr) / (K - 1)))));
+    const past = i < N, v = past ? rem[i] : Math.round(fc(i));
+    $('.guide', body).setAttribute('x1', X(i)); $('.guide', body).setAttribute('x2', X(i));
+    const hd = $('.hdot', body); hd.setAttribute('cx', X(i)); hd.setAttribute('cy', Y(v)); hd.style.strokeDasharray = past ? '' : '2 2';
+    const diff = v - Math.round(ideal(i));
+    tipAt(body, X(i), Y(v), `<div class="w">Week of ${fmt(weeks[i])}${i === N - 1 ? ' · this week' : past ? '' : ' · forecast'}</div>
+      <b>${v}</b> ${past ? 'remaining' : 'expected left'}
+      <div class="r"><span>Ideal</span><span>${Math.round(ideal(i))}</span></div>
+      <div class="r"><span>${diff > 0 ? 'Behind by' : 'Ahead by'}</span><span style="color:var(${diff > 0 ? '--danger' : '--accent'})">${Math.abs(diff)}</span></div>`);
+  };
+  hit.onmouseleave = () => tipOff(body);
+  // insight
+  const left = rem[N - 1], wk = vel ? Math.ceil(left / vel) : Infinity;
+  const fin = new Date(TODAY); fin.setDate(fin.getDate() + wk * 7);
+  const tgt = S.filter === 'all' ? D.ms.filter(m => !m.achieved).sort((a, b) => d(b.date) - d(a.date))[0] : D.ms.find(m => m.id === S.filter);
+  const late = tgt && fin > d(tgt.date);
+  const ins = $('#bdIns'); ins.classList.toggle('warn', !!late);
+  ins.innerHTML = `<i data-lucide="${late ? 'triangle-alert' : 'sparkles'}"></i><span><b>${left} tasks left.</b> At ${vel.toFixed(1)} a week you'll finish around <b>${fmt(fin)}</b>${tgt ? ` — ${late ? '<b style="color:var(--danger)">after</b>' : 'before'} "${esc(tgt.name)}" (${fmt(d(tgt.date))}).` : '.'}</span>`;
+  icons();
+}
+
+/* ── velocity ── */
+function drawVelocity(anim) {
+  const D = S.data;
+  if (!D.total) { emptyChart('#vlBody', 'chart-column', 'No completed tasks yet', 'Each bar will show how many tasks the team finished that week, with the average as a guide.'); return; }
+  const N = S.period, v = D.velocity.slice(-N), weeks = WEEKS.slice(PAST - N, PAST), a = avg(v.slice(0, -1).length ? v : v);
+  let body = $('#vlBody .cw');
+  if (!body) {
+    $('#vlBody').innerHTML = `<div class="legend"><span><i class="sq"></i>Completed</span><span><i class="sq" style="background:color-mix(in srgb, var(--accent) 45%, var(--card))"></i>This week (so far)</span><span><i class="av"></i>Average</span></div>
+      <div class="cw"><svg></svg><div class="tip"></div></div><div class="insight" id="vlIns"></div>`;
+    body = $('#vlBody .cw');
+  }
+  const W = body.clientWidth, H = body.clientHeight, pl = 30, pr = 12, pt = 20, pb = 26;
+  const ymax = niceMax(Math.max(...v, 1) + 1);
+  const band = (W - pl - pr) / N, bw = Math.min(38, band * .56);
+  const X = i => pl + band * i + band / 2, Y = n => pt + (H - pt - pb) * (1 - n / ymax), h0 = Y(0);
+  const ticks = [0, .5, 1].map(t => Math.round(ymax * t));
+  const step = N > 8 ? 2 : 1;
+  const bar = (x, y, w, h, r) => { if (h < 2) { h = 2; y = h0 - 2; } r = Math.min(r, w / 2, h); return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`; };
+  const A = anim && !RM();
+  $('svg', body).innerHTML = `
+    <g class="grid">${ticks.map(t => `<line x1="${pl}" x2="${W - pr}" y1="${Y(t)}" y2="${Y(t)}"/><text class="ax" x="${pl - 8}" y="${Y(t) + 4}" text-anchor="end">${t}</text>`).join('')}</g>
+    ${v.map((n, i) => `<path class="vb ${i === N - 1 ? 'cur' : ''} ${A ? 'grow' : ''}" data-i="${i}" style="animation-delay:${i * 55}ms" d="${bar(X(i) - bw / 2, Y(n), bw, h0 - Y(n), 7)}"/>
+      <text class="vv ${A ? 'mi-fade' : ''}" data-i="${i}" x="${X(i)}" y="${Y(n) - 7}" style="animation-delay:${350 + i * 55}ms">${n}</text>
+      ${i % step === (N - 1) % step ? `<text class="ax" x="${X(i)}" y="${H - 6}" text-anchor="middle">${fmt(weeks[i])}</text>` : ''}`).join('')}
+    <g class="avg ${A ? 'mi-fade' : ''}" style="animation-delay:${N * 55 + 350}ms"><line x1="${pl}" x2="${W - pr}" y1="${Y(a)}" y2="${Y(a)}"/>
+      <rect x="${W - pr - 58}" y="${Y(a) - 9}" width="58" height="18" rx="9"/><text x="${W - pr - 29}" y="${Y(a) + 3.5}" text-anchor="middle">avg ${a.toFixed(1)}</text></g>
+    ${v.map((n, i) => `<rect x="${pl + band * i}" y="0" width="${band}" height="${H}" fill="transparent" data-hit="${i}"/>`).join('')}`;
+  $$('[data-hit]', body).forEach(r => {
+    r.onmouseenter = () => {
+      const i = +r.dataset.hit, n = v[i], df = n - a;
+      $$('.vb, .vv', body).forEach(b => b.classList.toggle('hi', +b.dataset.i === i));
+      tipAt(body, X(i), Y(n) - 16, `<div class="w">Week of ${fmt(weeks[i])}${i === N - 1 ? ' · in progress' : ''}</div><b>${n}</b> task${n === 1 ? '' : 's'} completed
+        <div class="r"><span>vs average</span><span style="color:var(${df >= 0 ? '--accent' : '--danger'})">${df >= 0 ? '+' : '−'}${Math.abs(df).toFixed(1)}</span></div>`);
+    };
+    r.onmouseleave = () => tipOff(body);
+  });
+  const best = Math.max(...v), bi = v.lastIndexOf(best);
+  const half = Math.floor(N / 2), d2 = avg(v.slice(half)) - avg(v.slice(0, half));
+  $('#vlIns').innerHTML = `<i data-lucide="${d2 >= 0 ? 'trending-up' : 'trending-down'}"></i><span>Average <b>${a.toFixed(1)} tasks/week</b> over ${N} weeks — ${d2 >= 0 ? 'picking up' : 'slowing down'} lately (${d2 >= 0 ? '+' : '−'}${Math.abs(d2).toFixed(1)}). Best week: <b>${fmt(weeks[bi])}</b> with ${best}.</span>`;
+  $('#vlIns').classList.toggle('warn', d2 < 0);
+  icons();
+}
+
+/* ── milestone filter menu ── */
+function renderFilterMenu() {
+  const ms = S.data.ms;
+  $('#msFilterBtn').disabled = !S.data.total;
+  $('#msFilterMenu').innerHTML = `<div class="mh">Burndown for</div>
+    <button data-f="all" class="${S.filter === 'all' ? 'sel' : ''}"><i data-lucide="layers"></i>All tasks<small>${S.data.total}</small><i class="ck" data-lucide="check"></i></button>
+    ${ms.length ? '<hr>' : ''}${ms.map(m => { const st = msStatus(m); const col = { done: '--accent', late: '--danger', soon: '--warn', plan: '--ink-3' }[st];
+      return `<button data-f="${m.id}" class="${S.filter === m.id ? 'sel' : ''}"><span class="mdot" style="background:var(${col})"></span>${esc(m.name)}<small>${m.tasks}</small><i class="ck" data-lucide="check" style="margin-left:6px"></i></button>`; }).join('')}`;
+  icons();
+}
+function openMenu(btn, menu) {
+  const open = menu.hidden;
+  closeMenus();
+  if (!open) return;
+  menu.hidden = false; btn.setAttribute('aria-expanded', 'true'); replay(menu, 'pop');
+}
+function closeMenus() { $$('#s1 .menu').forEach(m => m.hidden = true); $$('#msFilterBtn, #moreBtn').forEach(b => b.setAttribute('aria-expanded', 'false')); }
+$('#msFilterBtn').onclick = e => { e.stopPropagation(); renderFilterMenu(); openMenu($('#msFilterBtn'), $('#msFilterMenu')); };
+$('#msFilterMenu').onclick = e => {
+  const b = e.target.closest('[data-f]'); if (!b) return;
+  S.filter = b.dataset.f;
+  $('#msFilterLbl').textContent = S.filter === 'all' ? 'All milestones' : S.data.ms.find(m => m.id === S.filter).name;
+  closeMenus(); drawBurndown(true);
+};
+const PROJ_MENU = `<button><i data-lucide="pencil"></i>Rename</button><button><i data-lucide="palette"></i>Colour &amp; icon</button><button><i data-lucide="users"></i>Members…</button>
+  <hr><button data-savetpl class="kb"><i data-lucide="layout-template"></i>Save as template…<span class="new">New</span></button><button><i data-lucide="copy"></i>Duplicate project</button>
+  <hr><button><i data-lucide="archive"></i>Archive</button><button class="red"><i data-lucide="trash-2"></i>Delete project…</button>`;
+$('#projMenu').innerHTML = PROJ_MENU; $('#projMenu2').innerHTML = PROJ_MENU;
+$('#moreBtn').onclick = e => { e.stopPropagation(); openMenu($('#moreBtn'), $('#projMenu')); };
+$('#projMenu').onclick = e => { if (e.target.closest('[data-savetpl]')) { closeMenus(); go('s2'); setTimeout(openSaveTpl, 250); } };
+document.addEventListener('click', e => { if (!e.target.closest('.menu')) closeMenus(); });
+
+/* ── segmented controls ── */
+function bindSeg(id, key, draw) {
+  $(id).onclick = e => {
+    const b = e.target.closest('button'); if (!b) return;
+    $$('button', $(id)).forEach(x => x.classList.toggle('on', x === b)); slide($(id));
+    S[key] = +b.dataset.v; draw(true);
+  };
+}
+bindSeg('#bdRange', 'range', drawBurndown);
+bindSeg('#vlRange', 'period', drawVelocity);
+
+/* ── tabs underline ── */
+function tabUL(instant) { const on = $('#tabs .on'), ul = $('#tabs .ul'); if (!on) return; if (instant) ul.style.transition = 'none'; ul.style.left = on.offsetLeft + 'px'; ul.style.width = on.offsetWidth + 'px'; if (instant) { void ul.offsetWidth; ul.style.transition = ''; } }
+$('#tabs').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  $$('#tabs button').forEach(x => x.classList.toggle('on', x === b)); tabUL();
+  if (!/Reports/.test(b.textContent)) setTimeout(() => { $$('#tabs button').forEach(x => x.classList.toggle('on', /Reports/.test(x.textContent))); tabUL(); }, 700);
+};
+
+/* ── mark achieved + undo ── */
+let snackT, undoFn;
+function snack(text, undo) {
+  const s = $('#snack'); $('.tx', s).textContent = text; undoFn = undo;
+  s.classList.remove('on'); void s.offsetWidth; s.classList.add('on');
+  clearTimeout(snackT); snackT = setTimeout(() => s.classList.remove('on'), 5000);
+}
+$('#snack button').onclick = () => { undoFn?.(); $('#snack').classList.remove('on'); };
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-ach]');
+  if (b) {
+    const m = S.data.ms.find(x => x.id === b.dataset.ach); if (!m || m.achieved) return;
+    const prev = clone(m);
+    Object.assign(m, { achieved: true, on: '2026-10-06' });
+    renderMs(false, m.id); renderFilterMenu();
+    snack(`"${m.name}" marked achieved`, () => { Object.assign(m, prev); delete m.on; if (prev.on) m.on = prev.on; m.achieved = false; renderMs(false); });
+    return;
+  }
+  if (e.target.closest('[data-new-ms]')) openSheet();
+});
+
+/* ── new milestone sheet ── */
+const sel = new Set();
+function renderTasks() {
+  const q = $('#tSearch').value.trim().toLowerCase();
+  $('#tBody').innerHTML = TASKS.filter(t => !q || t.name.toLowerCase().includes(q)).map(t => `
+    <label class="tk"><input type="checkbox" data-t="${t.id}" ${sel.has(t.id) ? 'checked' : ''}><span class="tn ${t.done ? 'dn' : ''}">${esc(t.name)}</span>
+      <span class="tm">${fmt(d(t.due))}<span class="av" style="background:${t.col}">${t.av}</span></span></label>`).join('') || '<div style="padding:14px;color:var(--ink-3);font-size:12.5px">No tasks match.</div>';
+  const n = sel.size, dn = TASKS.filter(t => sel.has(t.id) && t.done).length;
+  $('#lnk').innerHTML = n ? `<b>${n} task${n > 1 ? 's' : ''} linked</b> · ${dn} already done → starts at ${Math.round(dn / n * 100)}%` : 'No tasks linked yet — you can link them later from any task.';
+}
+function openSheet() {
+  sel.clear(); ['t5', 't6', 't7'].forEach(x => sel.add(x));
+  $('#msName').value = ''; $('#msName').classList.remove('err'); $('#tSearch').value = '';
+  renderTasks(); $('#msScrim').hidden = false; replay($('#msScrim .sheet'), 'mi-dialog-in-x');
+  setTimeout(() => $('#msName').focus(), 60);
+}
+function closeSheet() { $('#msScrim').hidden = true; }
+$('#tSearch').oninput = renderTasks;
+$('#tBody').onchange = e => { const id = e.target.dataset.t; e.target.checked ? sel.add(id) : sel.delete(id); renderTasks(); };
+$('#msScrim').onclick = e => { if (e.target.id === 'msScrim' || e.target.closest('[data-close]')) closeSheet(); };
+$('#msName').oninput = () => $('#msName').classList.remove('err');
+$('#msCreate').onclick = () => {
+  const name = $('#msName').value.trim();
+  if (!name) { $('#msName').classList.add('err'); replay($('#msName').closest('.fld'), 'mi-shake'); $('#msName').focus(); return; }
+  const n = sel.size, dn = TASKS.filter(t => sel.has(t.id) && t.done).length;
+  const m = { id: 'n' + Date.now(), name, date: $('#msDate').value || '2026-10-30', tasks: Math.max(n, 1), done: dn };
+  S.data.ms.push(m); closeSheet(); renderMs(false);
+  const row = $(`#msBody .ms[data-id="${m.id}"]`); if (row) { replay(row, 'mi-rise'); replay($('.bd', row), 'mi-saved'); }
+  snack(`Milestone "${name}" created`, () => { S.data.ms = S.data.ms.filter(x => x !== m); renderMs(false); });
+};
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeMenus(); closeSheet(); closeSaveTpl(); } });
+
+/* ── scenario / theme / stages ── */
+function renderAll(anim) {
+  S.data = clone(SCEN[S.scen]); S.filter = 'all'; $('#msFilterLbl').textContent = 'All milestones';
+  $('#bdBody').innerHTML = ''; $('#vlBody').innerHTML = '';
+  renderTiles(anim); renderMs(anim); drawBurndown(anim); drawVelocity(anim); renderFilterMenu();
+  slideAll($('#s1'), true);
+}
+$$('[data-scen]').forEach(b => b.onclick = () => {
+  $$('[data-scen]').forEach(x => x.classList.toggle('on', x === b));
+  S.scen = b.dataset.scen; go('s1', true); renderAll(true);
+});
+function setThemeIcon() { $('#theme').innerHTML = `<i data-lucide="${document.documentElement.dataset.theme === 'dark' ? 'sun' : 'moon'}"></i>${document.documentElement.dataset.theme === 'dark' ? 'Light' : 'Dark'}`; icons(); }
+$('#theme').onclick = () => { const r = document.documentElement; r.dataset.theme = r.dataset.theme === 'dark' ? '' : 'dark'; setThemeIcon(); };
+function go(id, quiet) {
+  $$('.mk-nav [data-s]').forEach(x => x.classList.toggle('on', x.dataset.s === id));
+  $$('.stage').forEach(s => s.classList.toggle('on', s.id === id));
+  if (id === 's1') { tabUL(true); slideAll($('#s1'), true); if (!quiet) { drawBurndown(false); drawVelocity(false); } }
+  if (!quiet) { $$('#' + id + ' .win, #' + id + ' .board').forEach(w => replay(w, 'mi-rise')); window.scrollTo(0, 0); }
+}
+$$('.mk-nav [data-s]').forEach(b => b.onclick = () => go(b.dataset.s));
+
+/* ── artboard 2 ── */
+function setTpl(el) { $$('#bNew .tpl').forEach(t => t.classList.toggle('on', t === el)); $('#inclTx').textContent = 'Includes ' + el.dataset.inc + '.'; }
+$$('#bNew .tpl').forEach(t => t.onclick = () => setTpl(t));
+setTpl($('#bNew .tpl.on'));
+$('#fromSeg').onclick = e => { const b = e.target.closest('button'); if (!b) return; $$('#fromSeg button').forEach(x => x.classList.toggle('on', x === b)); $('#tplWrap').classList.toggle('open', b.dataset.f === 'tpl'); };
+$$('#bNew .swatches i').forEach(s => s.onclick = () => { $$('#bNew .swatches i').forEach(x => x.classList.toggle('on', x === s)); replay(s, 'mi-pop'); });
+$('#createProj').onclick = () => snack('Project created from "' + $('#bNew .tpl.on b').textContent + '"', () => {});
+function openSaveTpl() {
+  const sc = $('#saveTplScrim');
+  sc.innerHTML = `<div class="sheet" style="width:440px">
+    <header><span class="hi c-acc"><i data-lucide="layout-template"></i></span><div><h3>Save as template</h3><p>Reuse this project's structure for new projects. Nothing in "Bug/Fitur iPop" changes.</p></div></header>
+    <div class="bdy"><div class="fld"><label>Template name</label><input class="inp" value="Bug/Fitur tracker"></div>
+      <div class="fld"><label>Include</label><div class="checks">
+        <label><input type="checkbox" checked><span>Sections &amp; tasks<small>Titles, descriptions, checklists, labels</small></span></label>
+        <label><input type="checkbox" checked><span>Milestones<small>Dates become relative to the new start date</small></span></label>
+        <label><input type="checkbox"><span>Assignees<small>Otherwise tasks start unassigned</small></span></label>
+        <label><input type="checkbox"><span>Comments &amp; attachments</span></label></div></div>
+      <div class="fld"><label>Who can use it</label><div class="seg" data-slide id="tplWho"><button>Only me</button><button class="on">ICT department</button><button>Everyone</button></div></div></div>
+    <footer><button class="btn" data-x>Cancel</button><button class="btn pri" data-sv>Save template</button></footer></div>`;
+  sc.hidden = false; icons(); slide($('#tplWho'), true);
+  $('#tplWho').onclick = e => { const b = e.target.closest('button'); if (!b) return; $$('#tplWho button').forEach(x => x.classList.toggle('on', x === b)); slide($('#tplWho')); };
+  sc.onclick = e => { if (e.target === sc || e.target.closest('[data-x]')) closeSaveTpl(); if (e.target.closest('[data-sv]')) { closeSaveTpl(); snack('Template saved — find it in New project', () => {}); } };
+}
+function closeSaveTpl() { $('#saveTplScrim').hidden = true; }
+$('#projMenu2').onclick = e => { if (e.target.closest('[data-savetpl]')) openSaveTpl(); };
+$('#moreBtn2').onclick = () => { const m = $('#projMenu2'); m.hidden = !m.hidden; if (!m.hidden) replay(m, 'pop'); };
+
+/* ── boot ── */
+let rT, lastW = 0; new ResizeObserver(([en]) => { const w = Math.round(en.contentRect.width); if (w === lastW) return; const first = !lastW; lastW = w; if (first) return; clearTimeout(rT); rT = setTimeout(() => { if ($('#s1').classList.contains('on')) { drawBurndown(false); drawVelocity(false); slideAll($('#s1'), true); tabUL(true); } }, 80); }).observe($('#rep'));
+icons(); setThemeIcon(); tabUL(true);
+renderAll(true);
+</script>
+</body>
+</html>
