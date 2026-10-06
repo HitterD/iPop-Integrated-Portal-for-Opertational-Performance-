@@ -88,7 +88,7 @@
                 <span class="hi c-acc"><i data-lucide="layout-template"></i></span>
                 <div>
                     <h3 id="ph-tpl-title">Save as template</h3>
-                    <p>Reuse this project's task list for new projects. Nothing in "@Project.Name" changes.</p>
+                    <p>Reuse this project's structure for new projects. Nothing in "@Project.Name" changes.</p>
                 </div>
             </header>
             <div class="bdy">
@@ -102,7 +102,26 @@
                     <textarea id="ph-tpl-desc" class="inp" rows="2" maxlength="1000" placeholder="What is this template for?"
                               @oninput="e => tplDesc = e.Value?.ToString() ?? string.Empty">@tplDesc</textarea>
                 </div>
-                <div class="note"><i data-lucide="info"></i><span>Includes the titles, descriptions and priorities of top-level tasks. Assignees, dates, comments and files are not copied. Find it in <b>New project → Template</b>.</span></div>
+                <div class="fld">
+                    <label>Include</label>
+                    <div class="rep-checks">
+                        <label class="on-always"><input type="checkbox" checked disabled /><span>Tasks<small>Titles, descriptions and priorities of top-level tasks · due dates become relative to the new start date</small></span></label>
+                        <label><input type="checkbox" checked="@tplSections" @onchange="e => tplSections = e.Value is true" /><span>Sections<small>Section names, colours and order</small></span></label>
+                        <label><input type="checkbox" checked="@tplMilestones" @onchange="e => tplMilestones = e.Value is true" /><span>Milestones<small>Dates become relative to the new start date</small></span></label>
+                        <label><input type="checkbox" checked="@tplAssignees" @onchange="e => tplAssignees = e.Value is true" /><span>Assignees<small>Otherwise tasks start unassigned</small></span></label>
+                        <label class="off"><input type="checkbox" disabled /><span>Comments &amp; attachments<small>Not copied — they belong to this project's history</small></span></label>
+                    </div>
+                </div>
+                <div class="fld">
+                    <label>Who can use it</label>
+                    <div class="rep-seg" role="radiogroup" aria-label="Who can use it">
+                        <button type="button" role="radio" aria-checked="@(tplWho == "private" ? "true" : "false")" class="@(tplWho == "private" ? "on" : "")" @onclick="@(() => tplWho = "private")">Only me</button>
+                        <button type="button" role="radio" aria-checked="@(tplWho == "department" ? "true" : "false")" class="@(tplWho == "department" ? "on" : "")"
+                                disabled="@(tplScope is not null && tplScope.DepartmentId is null)" title="@(tplScope is not null && tplScope.DepartmentId is null ? "You are not in a department" : null)"
+                                @onclick="@(() => tplWho = "department")">@DepartmentLabel</button>
+                        <button type="button" role="radio" aria-checked="@(tplWho == "everyone" ? "true" : "false")" class="@(tplWho == "everyone" ? "on" : "")" @onclick="@(() => tplWho = "everyone")">Everyone</button>
+                    </div>
+                </div>
             </div>
             <footer>
                 <button type="button" class="rep-btn" @onclick="CloseSaveTemplate">Cancel</button>
@@ -162,10 +181,31 @@
     private bool saveTplOpen, tplSaving, tplNameErr;
     private int tplShake;
     private string tplName = "", tplDesc = "";
+    private bool tplSections = true, tplMilestones = true, tplAssignees;
+    private string tplWho = "department";
+    private TemplateScope? tplScope;
+
+    /// GET /api/projects/templates/scope: the caller's department for "Who can use it".
+    public sealed record TemplateScope(Guid? DepartmentId, string? DepartmentName);
+
+    private string DepartmentLabel => tplScope?.DepartmentName is { Length: > 0 } d
+        ? (d.Contains("department", StringComparison.OrdinalIgnoreCase) ? d : $"{d} department")
+        : "My department";
+
+    private async Task LoadScopeAsync()
+    {
+        try { tplScope = await Auth.GetAsync<TemplateScope>("/api/projects/templates/scope"); }
+        catch { tplScope = null; }
+        if (tplScope is not null && tplScope.DepartmentId is null && tplWho == "department") tplWho = "private";
+        StateHasChanged();
+    }
 
     private void OpenSaveTemplate()
     {
         showMore = false;
+        tplSections = true; tplMilestones = true; tplAssignees = false;
+        tplWho = tplScope is not null && tplScope.DepartmentId is null ? "private" : "department";
+        if (tplScope is null) _ = LoadScopeAsync();
         tplName = Project.Name;
         tplDesc = string.IsNullOrWhiteSpace(Project.Description) ? "" : Project.Description!;
         tplNameErr = false; tplShake = 0;
@@ -183,7 +223,11 @@
         try
         {
             var res = await Auth.SendAsync(HttpMethod.Post, "/api/projects/templates",
-                new { name, description = string.IsNullOrWhiteSpace(tplDesc) ? null : tplDesc.Trim(), sourceProjectId = Project.Id });
+                new
+                {
+                    name, description = string.IsNullOrWhiteSpace(tplDesc) ? null : tplDesc.Trim(), sourceProjectId = Project.Id,
+                    includeSections = tplSections, includeMilestones = tplMilestones, includeAssignees = tplAssignees, visibility = tplWho,
+                });
             if (res.IsSuccessStatusCode)
             {
                 saveTplOpen = false;
@@ -194,7 +238,7 @@
                 var why = res.StatusCode switch
                 {
                     System.Net.HttpStatusCode.Forbidden => "you don't have permission.",
-                    System.Net.HttpStatusCode.UnprocessableEntity => "a name is required (max 200 characters).",
+                    System.Net.HttpStatusCode.UnprocessableEntity => await TemplateErrorAsync(res),
                     _ => $"request failed ({(int)res.StatusCode}).",
                 };
                 Toasts.Show($"Couldn't save the template: {why}", ToastKind.Error);
@@ -202,6 +246,18 @@
         }
         catch { Toasts.Show("Couldn't save the template. Check your connection.", ToastKind.Error); }
         finally { tplSaving = false; }
+    }
+
+    private static async Task<string> TemplateErrorAsync(HttpResponseMessage res)
+    {
+        string? code = null;
+        try { code = (await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("code").GetString(); } catch { }
+        return code switch
+        {
+            "no_department" => "you are not in a department — choose Only me or Everyone.",
+            "invalid_visibility" => "choose who can use it.",
+            _ => "a name is required (max 200 characters).",
+        };
     }
 
     private async Task MarkDone()

@@ -1,15 +1,11 @@
 /* Projects polish (2026-10-06): same layout, friendlier details. Loaded after v6/projects*.css.
    Sidebar cards, sidebar collapse, list view width, task drawer evidence, micro-interactions. */
 
-/* ── Sidebar: lighter cards, collapse toggle ───────────────────────────── */
-.proj-sidebar-toggle {
-  display: inline-grid; place-items: center; cursor: pointer;
-  transition: background-color .15s, color .15s, transform .12s var(--ease-out);
-}
-.proj-sidebar-toggle:hover { background: var(--fill); color: var(--ink); }
-.proj-sidebar-toggle:active { transform: scale(.92); }
-.proj-sidebar-toggle .lucide { width: 17px; height: 17px; }
-
+/* ── Sidebar: lighter cards ─────────────────────────────────────────────── */
+/* Cards fit the column: no sideways scroll, long names end in "…". */
+.proj-sidebar .proj-list { overflow-x: hidden; }
+.proj-sidebar .proj-nav-item, .proj-sidebar .proj-nav-body, .proj-sidebar .proj-nav-head { min-width: 0; max-width: 100%; }
+.proj-sidebar .proj-nav-id { min-width: 0; overflow: hidden; }
 .proj-nav-item { gap: 0; padding: 10px 12px; cursor: pointer;
   transition: background-color .18s var(--ease-out), box-shadow .2s var(--ease-out), transform .12s var(--ease-out); }
 .proj-nav-item:active { transform: scale(.985); }

@@ -140,7 +140,13 @@
                         <div class="bd @(popped ? "mi-saved" : "")">
                             <div style="min-width:0">
                                 <button type="button" class="nm" title="Edit milestone" @onclick="() => OpenEditSheet(m)">@m.Title</button>
-                                <div class="sm">@(m.Linked == 0 ? "No linked tasks" : $"{m.Linked} linked task{(m.Linked == 1 ? "" : "s")} · {m.Done} done")</div>
+                                <div class="sm">
+                                    @if (m.OwnerId is not null && !string.IsNullOrWhiteSpace(m.OwnerName))
+                                    {
+                                        <span class="ms-own" title="Owner: @m.OwnerName"><PersonAvatar Nik="@m.OwnerNik" Name="@m.OwnerName" Size="16" Class="oav" Decorative="true" />@m.OwnerName</span><span class="ms-sep">·</span>
+                                    }
+                                    @(m.Linked == 0 ? "No linked tasks" : $"{m.Linked} linked task{(m.Linked == 1 ? "" : "s")} · {m.Done} done")
+                                </div>
                                 <div class="pb"><div class="bar"><i style="width:@(p)%"></i></div><small>@p%</small></div>
                             </div>
                             <div class="dt">@Long(m.DueDate)<small>@(st == "done" ? "Done" : Rel(n))</small></div>
@@ -351,9 +357,16 @@
                     <input id="rep-ms-name" class="inp @(nameErr ? "err" : "")" placeholder="e.g. UAT ready" maxlength="300"
                            value="@sheetName" @oninput="e => { sheetName = e.Value?.ToString() ?? string.Empty; nameErr = false; }" @ref="nameInput" />
                 </div>
-                <div class="fld">
-                    <label>Due date</label>
-                    <AppDatePicker @bind-Value="sheetDate" AriaLabel="Milestone due date" />
+                <div class="rep-row2">
+                    <div class="fld">
+                        <label>Due date</label>
+                        <AppDatePicker @bind-Value="sheetDate" AriaLabel="Milestone due date" />
+                    </div>
+                    <div class="fld">
+                        <label>Owner <span>(optional)</span></label>
+                        <AppSelect Value="@(sheetOwner?.ToString() ?? "")" ValueChanged="v => sheetOwner = Guid.TryParse(v, out var g) ? g : null"
+                                   Options="OwnerOptions" Label="Milestone owner" Block="true" />
+                    </div>
                 </div>
                 <div class="fld">
                     <label>Link tasks <span>· they roll up into this milestone's progress</span></label>
@@ -399,6 +412,8 @@
 @code {
     [Parameter] public ProjectDto? Project { get; set; }
     [Parameter] public IReadOnlyList<ProjectTaskDto> AllTasks { get; set; } = [];
+    /// Project members: the milestone Owner picker.
+    [Parameter] public IReadOnlyList<ProjectMemberDto> Members { get; set; } = [];
     /// "View" on the Overdue tile: the page shows the overdue tasks (List + Overdue filter).
     [Parameter] public EventCallback OnViewOverdue { get; set; }
     /// Test hook: the clock. Defaults to the browser's local time.
@@ -436,7 +451,8 @@
     /// A milestone with progress recomputed from the live task list (falls back to the
     /// server's counts when a linked task is not in view, e.g. filtered out by group).
     public sealed record MsView(Guid Id, string Title, DateTime DueDate, DateTime? AchievedAt, bool Manual,
-        IReadOnlyList<Guid> TaskIds, int Linked, int Done, string Status);
+        IReadOnlyList<Guid> TaskIds, int Linked, int Done, string Status,
+        Guid? OwnerId = null, string? OwnerName = null, string? OwnerNik = null);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -478,7 +494,8 @@
             var status = MilestoneStatus.Of(m.DueDate, m.AchievedManually ? m.AchievedAt : null, linked, done, Today);
             DateTime? at = m.AchievedManually ? m.AchievedAt
                 : status == MilestoneStatus.Achieved ? (known.Select(id => byId[id].CompletedAt).Max() ?? m.AchievedAt) : null;
-            return new MsView(m.Id, m.Title, m.DueDate, at, m.AchievedManually, m.TaskIds, linked, done, status);
+            return new MsView(m.Id, m.Title, m.DueDate, at, m.AchievedManually, m.TaskIds, linked, done, status,
+                m.OwnerId, m.OwnerName, m.OwnerNik);
         }).OrderBy(m => m.DueDate).ToList();
         if (filterId is { } f && Milestones.All(m => m.Id != f)) filterId = null;
     }
@@ -640,6 +657,7 @@
         {
             "invalid_title" => "a name is required (max 300 characters).",
             "task_not_found" => "a linked task no longer exists.",
+            "invalid_owner" => "the owner must be a member of this project.",
             "milestone_not_found" => "the milestone no longer exists.",
             "project_not_found" => "the project no longer exists.",
             _ => (int)res.StatusCode >= 500 ? $"server error ({(int)res.StatusCode})." : $"request failed ({(int)res.StatusCode}).",
@@ -654,7 +672,21 @@
     private DateTime sheetDate;
     private string taskQuery = "";
     private HashSet<Guid> sheetSel = [];
+    private Guid? sheetOwner;
     private ElementReference nameInput;
+
+    /// "No owner" plus every project member (a former member who still owns a milestone stays listed).
+    private List<AppOption> OwnerOptions
+    {
+        get
+        {
+            var opts = new List<AppOption> { new("", "No owner") };
+            opts.AddRange(Members.OrderBy(m => m.Name).Select(m => new AppOption(m.UserId.ToString(), m.Name)));
+            if (editing?.OwnerId is { } o && Members.All(m => m.UserId != o))
+                opts.Add(new AppOption(o.ToString(), editing.OwnerName ?? "Former member", Disabled: true));
+            return opts;
+        }
+    }
 
     private void OpenNewSheet()
     {
@@ -662,6 +694,7 @@
         sheetName = ""; nameErr = false; nameShake = 0; taskQuery = "";
         sheetDate = Today.AddDays(14);
         sheetSel = [];
+        sheetOwner = null;
         sheetOpen = true;
         _ = FocusNameAsync();
     }
@@ -672,6 +705,7 @@
         sheetName = m.Title; nameErr = false; nameShake = 0; taskQuery = "";
         sheetDate = m.DueDate.Date;
         sheetSel = m.TaskIds.ToHashSet();
+        sheetOwner = m.OwnerId;
         sheetOpen = true;
     }
 
@@ -727,7 +761,7 @@
             if (editing is null)
             {
                 var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{pid}/milestones?localToday={Today:yyyy-MM-dd}",
-                    new { title = name, dueDate = due, taskIds = ids });
+                    new { title = name, dueDate = due, taskIds = ids, ownerId = sheetOwner });
                 if (!res.IsSuccessStatusCode) { Toasts.Show($"Couldn't create the milestone: {await ErrorAsync(res)}", ToastKind.Error); return; }
                 var dto = await ReadAsync(res);
                 if (dto is not null)
@@ -741,7 +775,7 @@
             else
             {
                 var res = await Auth.SendAsync(HttpMethod.Patch, $"/api/projects/{pid}/milestones/{editing.Id}?localToday={Today:yyyy-MM-dd}",
-                    new { title = name, dueDate = due, taskIds = ids });
+                    new { title = name, dueDate = due, taskIds = ids, ownerId = sheetOwner, clearOwner = sheetOwner is null });
                 if (!res.IsSuccessStatusCode) { Toasts.Show($"Couldn't save the milestone: {await ErrorAsync(res)}", ToastKind.Error); return; }
                 if (await ReadAsync(res) is { } dto) Replace(dto); else await LoadMilestonesAsync();
                 popId = editing.Id;

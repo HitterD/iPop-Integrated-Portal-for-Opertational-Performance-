@@ -1,6 +1,7 @@
 @using IPop.Web.Services
 @inject AuthState Auth
 @inject IJSRuntime JS
+@inject ToastService Toasts
 
 <div class="proj-modal-backdrop" @onclick="OnClose"></div>
 <div class="proj-modal v6-project-modal" role="dialog" aria-modal="true" aria-label="Create New Project">
@@ -18,39 +19,56 @@
                     <span class="fi c-mut"><i data-lucide="file"></i></span><span><b>Blank project</b><small>Empty board, add your own</small></span>
                 </button>
                 <button type="button" role="radio" aria-checked="@(fromTemplate ? "true" : "false")" class="@(fromTemplate ? "on" : "")" @onclick="ChooseTemplate">
-                    <span class="fi c-acc"><i data-lucide="layout-template"></i></span><span><b>Template</b><small>Start with a saved task list</small></span>
+                    <span class="fi c-acc"><i data-lucide="layout-template"></i></span><span><b>Template</b><small>Sections, tasks, milestones</small></span>
                 </button>
             </div>
         </div>
         <div class="vpm-collapse @(fromTemplate ? "open" : "")" aria-hidden="@(fromTemplate ? "false" : "true")"><div>
-            <div class="vpm-tpl-h">Saved by your team</div>
-            <div class="vpm-tpl-list" role="radiogroup" aria-label="Template">
-                @if (templates is null)
-                {
-                    <div class="vpm-tpl-none">Loading templates…</div>
-                }
-                else if (templates.Count == 0)
-                {
-                    <div class="vpm-tpl-none">No templates yet. Open a project and choose ⋯ → Save as template… to make one.</div>
-                }
-                else
-                {
-                    @foreach (var t in templates)
+            @if (templates is null)
+            {
+                <div class="vpm-tpl-none">Loading templates…</div>
+            }
+            else if (templates.Count == 0)
+            {
+                <div class="vpm-tpl-none">No templates yet. Open a project and choose ⋯ → Save as template… to make one.</div>
+            }
+            else
+            {
+                <div class="vpm-tpl-list" role="radiogroup" aria-label="Template">
+                    @foreach (var (heading, rows) in TemplateSections)
                     {
-                        var tpl = t;
-                        var on = selectedTemplate?.Id == tpl.Id;
-                        <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="vpm-tpl @(on ? "on" : "")" tabindex="@(fromTemplate ? 0 : -1)" @onclick="() => PickTemplate(tpl)">
-                            <span class="ic"><i data-lucide="layout-template"></i></span>
-                            <span style="min-width:0"><b>@tpl.Name</b><small>@(string.IsNullOrWhiteSpace(tpl.Description) ? $"{tpl.TaskCount} {(tpl.TaskCount == 1 ? "task" : "tasks")}" : tpl.Description)</small></span>
-                            <span class="rd"></span>
-                        </button>
+                        <div class="vpm-tpl-h">@heading</div>
+                        @foreach (var t in rows)
+                        {
+                            var tpl = t;
+                            var on = selectedTemplate?.Id == tpl.Id;
+                            <div class="vpm-tpl-row @(tpl.CanDelete ? "has-more" : "")" @key="tpl.Id">
+                                <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="vpm-tpl @(on ? "on" : "")" tabindex="@(fromTemplate ? 0 : -1)" @onclick="() => PickTemplate(tpl)">
+                                    <span class="ic @ToneClass(tpl)"><i data-lucide="@(string.IsNullOrWhiteSpace(tpl.Icon) ? "layout-template" : tpl.Icon)"></i></span>
+                                    <span style="min-width:0"><b>@tpl.Name</b><small>@Subline(tpl)</small></span>
+                                    <span class="rd"></span>
+                                </button>
+                                @if (tpl.CanDelete)
+                                {
+                                    <button type="button" class="vpm-tpl-more" title="More" aria-label="More actions for @tpl.Name" aria-expanded="@(menuFor == tpl.Id ? "true" : "false")"
+                                            tabindex="@(fromTemplate ? 0 : -1)" @onclick="() => menuFor = menuFor == tpl.Id ? null : tpl.Id"><i data-lucide="ellipsis"></i></button>
+                                    @if (menuFor == tpl.Id)
+                                    {
+                                        <div class="app-select-pop on vpm-tpl-menu" role="menu">
+                                            <button type="button" role="menuitem" class="app-select-opt" style="color:var(--danger)" disabled="@deleting" @onclick="() => DeleteTemplateAsync(tpl)"><i data-lucide="trash-2" style="width:13px;height:13px"></i> Delete template</button>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
                     }
-                }
-            </div>
+                </div>
+            }
             @if (selectedTemplate is not null)
             {
-                <div class="vpm-incl"><i data-lucide="info"></i><span>Includes @selectedTemplate.TaskCount starter @(selectedTemplate.TaskCount == 1 ? "task" : "tasks"), all in To Do.</span></div>
+                <div class="vpm-incl"><i data-lucide="info"></i><span>@SummaryLine</span></div>
             }
+            <div class="field vpm-start"><label>Start date</label><AppDatePicker @bind-Value="createStart" AriaLabel="Start date" /></div>
         </div></div>
         <div class="field"><label>Description</label><textarea class="org-input" rows="2" @bind="createDescription" placeholder="What is this project about?"></textarea></div>
         <div class="vpm-grid">
@@ -83,7 +101,13 @@
     [Parameter] public bool Busy { get; set; }
 
     /// GET /api/projects/templates row.
-    public sealed record TemplateRow(Guid Id, string Name, string? Description, int TaskCount, Guid? SourceProjectId);
+    public sealed record TemplateRow(Guid Id, string Name, string? Description, int TaskCount, Guid? SourceProjectId,
+        int GroupCount = 0, int MilestoneCount = 0, int UsedCount = 0, bool IsBuiltIn = false, string Visibility = "everyone",
+        string? CreatedByName = null, string? DepartmentName = null, string? Icon = null, string? Color = null,
+        bool CanDelete = false, string? SourceProjectName = null);
+
+    /// Test hook: today's date (defaults to the browser's local date).
+    [Parameter] public DateTime? Today { get; set; }
 
     private bool fromTemplate;
 
@@ -96,6 +120,83 @@
     }
     private List<TemplateRow>? templates;
     private TemplateRow? selectedTemplate;
+    private Guid? menuFor;
+    private bool deleting;
+    private DateTime createStart;
+
+    protected override void OnInitialized() => createStart = (Today ?? DateTime.Today).Date;
+
+    /// Built-in first, then templates saved by the caller's team (mockup artboard 2).
+    private IEnumerable<(string Heading, List<TemplateRow> Rows)> TemplateSections
+    {
+        get
+        {
+            var builtIn = (templates ?? []).Where(t => t.IsBuiltIn).ToList();
+            var team = (templates ?? []).Where(t => !t.IsBuiltIn).ToList();
+            if (builtIn.Count > 0) yield return ("Built-in", builtIn);
+            if (team.Count > 0) yield return ("Saved by your team", team);
+        }
+    }
+
+    private static string ToneClass(TemplateRow t) => t.Color switch
+    {
+        "inf" => "c-inf", "war" => "c-war", "vio" => "c-vio", "dan" => "c-dan", _ => "c-acc",
+    };
+
+    internal static string Plural(int n, string one, string many) => $"{n} {(n == 1 ? one : many)}";
+
+    /// Built-in: its stage line. Team: who saved it · their department · counts · how often it was used.
+    private static string Subline(TemplateRow t)
+    {
+        var counts = $"{Plural(t.TaskCount, "task", "tasks")} · {Plural(t.GroupCount, "section", "sections")} · {Plural(t.MilestoneCount, "milestone", "milestones")}";
+        if (t.IsBuiltIn) return string.IsNullOrWhiteSpace(t.Description) ? counts : t.Description!;
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(t.CreatedByName)) parts.Add(t.CreatedByName!);
+        if (t.Visibility == "department" && !string.IsNullOrWhiteSpace(t.DepartmentName)) parts.Add(t.DepartmentName!);
+        else if (t.Visibility == "private") parts.Add("Only you");
+        parts.Add(counts);
+        if (t.UsedCount > 0) parts.Add($"used {t.UsedCount}×");
+        return string.Join(" · ", parts);
+    }
+
+    /// "Creates 12 tasks in 4 sections · 2 milestones, dates from 12 Oct 2026."
+    internal string SummaryLine
+    {
+        get
+        {
+            var t = selectedTemplate;
+            if (t is null) return "";
+            var tasks = Plural(t.TaskCount, "task", "tasks");
+            var where = t.GroupCount > 0 ? $" in {Plural(t.GroupCount, "section", "sections")}" : "";
+            var ms = t.MilestoneCount > 0 ? Plural(t.MilestoneCount, "milestone", "milestones") : "no milestones";
+            return $"Creates {tasks}{where} · {ms}, dates from {createStart.ToString("d MMM yyyy", System.Globalization.CultureInfo.InvariantCulture)}.";
+        }
+    }
+
+    private async Task DeleteTemplateAsync(TemplateRow t)
+    {
+        if (deleting) return;
+        deleting = true;
+        try
+        {
+            var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/templates/{t.Id}");
+            if (res.IsSuccessStatusCode)
+            {
+                templates?.RemoveAll(x => x.Id == t.Id);
+                if (selectedTemplate?.Id == t.Id) selectedTemplate = null;
+                menuFor = null;
+                Toasts.Show($"Template \"{t.Name}\" deleted.", ToastKind.Success);
+            }
+            else
+            {
+                Toasts.Show(res.StatusCode == System.Net.HttpStatusCode.Forbidden
+                    ? "Couldn't delete the template: only the person who saved it (or an admin) can."
+                    : $"Couldn't delete the template: request failed ({(int)res.StatusCode}).", ToastKind.Error);
+            }
+        }
+        catch { Toasts.Show("Couldn't delete the template. Check your connection.", ToastKind.Error); }
+        finally { deleting = false; }
+    }
 
     private async Task ChooseTemplate()
     {
@@ -103,12 +204,13 @@
         if (templates is not null) return;
         try { templates = await Auth.GetAsync<List<TemplateRow>>("/api/projects/templates") ?? []; }
         catch { templates = []; }
-        if (templates.Count == 1) PickTemplate(templates[0]);
+        if (selectedTemplate is null && templates.Count > 0) PickTemplate(templates.FirstOrDefault(t => !t.IsBuiltIn) ?? templates[0]);
     }
 
     private void PickTemplate(TemplateRow t)
     {
         selectedTemplate = t;
+        menuFor = null;
         if (string.IsNullOrWhiteSpace(createName)) createName = t.Name;
     }
 
@@ -132,7 +234,8 @@
             createDescription?.Trim(),
             createOwner?.Nik,
             selectedColor,
-            fromTemplate ? selectedTemplate?.Id : null
+            fromTemplate ? selectedTemplate?.Id : null,
+            fromTemplate ? DateTime.SpecifyKind(createStart.Date, DateTimeKind.Utc) : null
         );
         await OnSubmit.InvokeAsync(model);
     }
@@ -145,6 +248,8 @@
         string? OwnerNik,
         string? Color = null,
         /// Set when "Start from: Template" is chosen: POST /api/projects/from-template.
-        Guid? TemplateId = null
+        Guid? TemplateId = null,
+        /// Template only: task and milestone dates are offsets from this day.
+        DateTime? StartDate = null
     );
 }

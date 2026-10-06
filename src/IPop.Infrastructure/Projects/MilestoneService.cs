@@ -31,12 +31,14 @@ public sealed class MilestoneService(IPopDbContext db) : IMilestoneService
 
         var taskIds = Merge(req.TaskIds, req.TaskId);
         if (!await TasksBelongAsync(projectId, taskIds, ct)) return Fail<MilestoneDto>("task_not_found");
+        var ownerId = req.OwnerId is { } o && o != Guid.Empty ? o : (Guid?)null;
+        if (ownerId is { } oid && !await IsMemberAsync(projectId, oid, ct)) return Fail<MilestoneDto>("invalid_owner");
 
         var m = new ProjectMilestone
         {
             Id = Guid.NewGuid(), ProjectId = projectId, Title = title,
             DueDate = UtcDates.AsUtcDate(req.DueDate), TaskId = taskIds.Count > 0 ? taskIds[0] : null,
-            CreatedAt = DateTime.UtcNow
+            OwnerId = ownerId, CreatedAt = DateTime.UtcNow
         };
         db.ProjectMilestones.Add(m);
         foreach (var tid in taskIds) db.ProjectMilestoneTasks.Add(new ProjectMilestoneTask { MilestoneId = m.Id, TaskId = tid });
@@ -57,6 +59,12 @@ public sealed class MilestoneService(IPopDbContext db) : IMilestoneService
             m.Title = title;
         }
         if (req.DueDate is { } dd) m.DueDate = UtcDates.AsUtcDate(dd);
+        if (req.ClearOwner == true) m.OwnerId = null;
+        else if (req.OwnerId is { } oid && oid != Guid.Empty)
+        {
+            if (!await IsMemberAsync(projectId, oid, ct)) return Fail<MilestoneDto>("invalid_owner");
+            m.OwnerId = oid;
+        }
 
         // TaskIds replaces the set; the legacy TaskId / ClearTask pair maps onto it.
         IReadOnlyList<Guid>? newSet = req.TaskIds is not null ? Merge(req.TaskIds, null)
@@ -99,7 +107,9 @@ public sealed class MilestoneService(IPopDbContext db) : IMilestoneService
     {
         if (ids.Count == 0) return [];
         var heads = await db.ProjectMilestones.AsNoTracking().Where(m => ids.Contains(m.Id))
-            .Select(m => new { m.Id, m.Title, m.DueDate, m.AchievedAt }).ToListAsync(ct);
+            .Select(m => new { m.Id, m.Title, m.DueDate, m.AchievedAt, m.OwnerId,
+                OwnerName = m.Owner != null ? m.Owner.Name : null, OwnerNik = m.Owner != null ? m.Owner.Nik : null })
+            .ToListAsync(ct);
         // The query filter drops links to soft-deleted tasks.
         var links = await db.ProjectMilestoneTasks.AsNoTracking().Where(l => ids.Contains(l.MilestoneId))
             .Select(l => new { l.MilestoneId, l.TaskId, l.Task.Status, l.Task.CompletedAt, l.Task.SortOrder })
@@ -115,7 +125,7 @@ public sealed class MilestoneService(IPopDbContext db) : IMilestoneService
             if (achievedAt is null && status == MilestoneStatus.Achieved)
                 achievedAt = mine.Select(l => l.CompletedAt).Max();
             return new MilestoneDto(h.Id, h.Title, Utc(h.DueDate), Utc(achievedAt), mine.Select(l => l.TaskId).ToList(),
-                mine.Count, done, status, h.AchievedAt is not null);
+                mine.Count, done, status, h.AchievedAt is not null, h.OwnerId, h.OwnerName, h.OwnerNik);
         }).ToList();
     }
 
@@ -125,6 +135,9 @@ public sealed class MilestoneService(IPopDbContext db) : IMilestoneService
         return await db.ProjectMembers.AsNoTracking().AnyAsync(m => m.ProjectId == projectId && m.UserId == actorId, ct)
             ? null : "forbidden";
     }
+
+    private Task<bool> IsMemberAsync(Guid projectId, Guid userId, CancellationToken ct) =>
+        db.ProjectMembers.AsNoTracking().AnyAsync(m => m.ProjectId == projectId && m.UserId == userId, ct);
 
     private async Task<bool> TasksBelongAsync(Guid projectId, IReadOnlyList<Guid> taskIds, CancellationToken ct)
     {

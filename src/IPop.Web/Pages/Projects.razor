@@ -319,7 +319,7 @@
                             }
                             else if (tab == 5)
                             {
-                                <ProjectReportsPanel Project="selectedProject" AllTasks="AllCurrentTasks" OnViewOverdue="ViewOverdueFromReports" />
+                                <ProjectReportsPanel Project="selectedProject" AllTasks="AllCurrentTasks" Members="projectMembers" OnViewOverdue="ViewOverdueFromReports" />
                             }
                         </div>
                     </div>
@@ -2076,7 +2076,7 @@
         {
             var res = await Auth.SendAsync(HttpMethod.Post, "/api/projects/from-template", new
             {
-                templateId, name = m.Name, description = m.Description, year = m.Year,
+                templateId, name = m.Name, description = m.Description, year = m.Year, startDate = m.StartDate,
                 deadline = m.Deadline is { } d ? DateTime.SpecifyKind(d.Date, DateTimeKind.Utc) : (DateTime?)null,
                 ownerNik = m.OwnerNik, color = m.Color,
             });

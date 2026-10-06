@@ -26,17 +26,20 @@ public static class MilestoneStatus
 /// linked task is done, the completion time of the last linked task. AchievedManually tells
 /// the two apart (only a manual mark can be undone).
 public record MilestoneDto(Guid Id, string Title, DateTime DueDate, DateTime? AchievedAt,
-    IReadOnlyList<Guid> TaskIds, int LinkedCount, int DoneCount, string Status, bool AchievedManually);
+    IReadOnlyList<Guid> TaskIds, int LinkedCount, int DoneCount, string Status, bool AchievedManually,
+    Guid? OwnerId = null, string? OwnerName = null, string? OwnerNik = null);
 
 /// TaskId is the legacy single-task link from older clients; it is merged into TaskIds.
-public record CreateMilestoneRequest(string? Title, DateTime DueDate, IReadOnlyList<Guid>? TaskIds = null, Guid? TaskId = null);
+/// OwnerId is optional and must be a project member.
+public record CreateMilestoneRequest(string? Title, DateTime DueDate, IReadOnlyList<Guid>? TaskIds = null, Guid? TaskId = null, Guid? OwnerId = null);
 
 /// Null fields are left alone; TaskIds replaces the whole link set (empty list = unlink all).
+/// OwnerId sets the owner (a project member); ClearOwner = true removes it.
 /// TaskId / ClearTask / Achieved are the legacy PUT fields.
 public record UpdateMilestoneRequest(string? Title = null, DateTime? DueDate = null, IReadOnlyList<Guid>? TaskIds = null,
-    Guid? TaskId = null, bool? ClearTask = null, bool? Achieved = null);
+    Guid? TaskId = null, bool? ClearTask = null, bool? Achieved = null, Guid? OwnerId = null, bool? ClearOwner = null);
 
-/// Error codes: "forbidden", "project_not_found", "milestone_not_found", "task_not_found", "invalid_title".
+/// Error codes: "forbidden", "project_not_found", "milestone_not_found", "task_not_found", "invalid_title", "invalid_owner".
 public record MilestoneResult<T>(T? Value, string? Error)
 {
     public bool Success => Error is null;

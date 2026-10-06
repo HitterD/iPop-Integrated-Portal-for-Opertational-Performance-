@@ -215,6 +215,7 @@ builder.Services.AddScoped<IPop.Application.Projects.IProjectFieldService, IPop.
 builder.Services.AddScoped<IPop.Application.Projects.IPortfolioService, IPop.Infrastructure.Projects.PortfolioService>();
 builder.Services.AddScoped<IPop.Application.Projects.ITaskFileService, IPop.Infrastructure.Projects.TaskFileService>();
 builder.Services.AddScoped<IPop.Application.Projects.IMilestoneService, IPop.Infrastructure.Projects.MilestoneService>();
+builder.Services.AddScoped<IPop.Application.Projects.IProjectTemplateService, IPop.Infrastructure.Projects.ProjectTemplateService>();
 builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Infrastructure.Projects.ProjectsAttachmentPolicy>();
 builder.Services.AddScoped<IPop.Application.Projects.IProjectTimeService, IPop.Infrastructure.Projects.ProjectTimeService>();
 
@@ -343,6 +344,8 @@ if (app.Environment.IsDevelopment())
     var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
     await db.Database.MigrateAsync();
     await DevSeed.EnsureSeededAsync(db, scope.ServiceProvider.GetRequiredService<IPop.Application.Auth.IPasswordHasher>());
+    // Reference data: built-in project templates (idempotent, by fixed id).
+    await IPop.Infrastructure.Projects.BuiltInProjectTemplates.EnsureSeededAsync(db);
 }
 
 app.UseCors("web-dev");

@@ -1017,112 +1017,64 @@ public static class ProjectEndpoints
         // Rencana & Laporan (Fase 4) — template proyek, milestone
         // ──────────────────────────────────────────────────────────────────────
 
-        // GET /api/projects/templates — daftar template aktif.
-        g.MapGet("/templates", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        // GET /api/projects/templates — templates the caller may use (built-in, everyone, own,
+        // own department), with section/task/milestone counts and how often each was used.
+        g.MapGet("/templates", async (HttpContext http, IPopDbContext db, IProjectTemplateService templates, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            var rows = await db.ProjectTemplates.AsNoTracking()
-                .Where(t => t.IsActive)
-                .OrderBy(t => t.Name)
-                .Select(t => new ProjectTemplateDto(t.Id, t.Name, t.Description, t.Tasks.Count, t.SourceProjectId))
-                .ToListAsync(ct);
-            return Results.Ok(rows);
+            return Results.Ok(await templates.ListAsync(userId.Value, http.User.IsInRole("Admin"), ct));
         });
 
-        // GET /api/projects/templates/{id} — detail template + tugas kerangka.
-        g.MapGet("/templates/{id:guid}", async (Guid id, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        // GET /api/projects/templates/scope — the caller's department for "Who can use it".
+        g.MapGet("/templates/scope", async (HttpContext http, IPopDbContext db, IProjectTemplateService templates, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            var tpl = await db.ProjectTemplates.AsNoTracking()
-                .Include(t => t.Tasks.OrderBy(x => x.SortOrder))
-                .FirstOrDefaultAsync(t => t.Id == id && t.IsActive, ct);
-            if (tpl is null) return Results.Json(new { code = "not_found", message = "Template not found." }, statusCode: 404);
-            return Results.Ok(new ProjectTemplateDetailDto(
-                tpl.Id, tpl.Name, tpl.Description,
-                tpl.Tasks.Select(t => new ProjectTemplateTaskDto(t.Id, t.Title, t.Description, t.Priority, t.DueOffsetDays, t.SortOrder)).ToList()));
+            return Results.Ok(await templates.ScopeAsync(userId.Value, ct));
         });
 
-        // POST /api/projects/templates — simpan template baru (manual atau dari proyek).
-        g.MapPost("/templates", async (CreateProjectTemplateRequest req, HttpContext http, IPopDbContext db, CancellationToken ct) =>
+        // GET /api/projects/templates/{id} — detail: sections, tasks, milestones.
+        g.MapGet("/templates/{id:guid}", async (Guid id, HttpContext http, IPopDbContext db, IProjectTemplateService templates, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            var name = req.Name?.Trim() ?? "";
-            if (name.Length == 0 || name.Length > 200)
-                return Results.Json(new { code = "invalid_name", message = "Template name is required." }, statusCode: 422);
+            var r = await templates.GetAsync(userId.Value, id, ct);
+            return r.Success ? Results.Ok(r.Value) : TemplateError(r.Error);
+        });
 
-            // Copying a project into a template exposes its task list: only its members may.
-            if (req.SourceProjectId is { } source && !await db.ProjectMembers.AnyAsync(pm => pm.ProjectId == source && pm.UserId == userId.Value, ct))
-                return Results.Json(new { code = "forbidden", message = "Not a project member." }, statusCode: 403);
-
-            var tpl = new ProjectTemplate
-            {
-                Id = Guid.NewGuid(), Name = name, Description = req.Description?.Trim(),
-                SourceProjectId = req.SourceProjectId, IsActive = true, CreatedAt = DateTime.UtcNow
-            };
-            db.ProjectTemplates.Add(tpl);
-
-            // Salin tugas kerangka dari proyek sumber (bila ada).
-            if (req.SourceProjectId is { } srcId)
-            {
-                var srcTasks = await db.ProjectTasks.AsNoTracking()
-                    .Where(t => t.ProjectId == srcId && t.ParentTaskId == null)
-                    .OrderBy(t => t.SortOrder)
-                    .ToListAsync(ct);
-                var i = 0;
-                foreach (var t in srcTasks)
-                {
-                    db.ProjectTemplateTasks.Add(new ProjectTemplateTask
-                    {
-                        Id = Guid.NewGuid(), TemplateId = tpl.Id, Title = t.Title, Description = t.Description,
-                        Priority = t.Priority, DueOffsetDays = null, SortOrder = i++ * 100
-                    });
-                }
-            }
-            await db.SaveChangesAsync(ct);
-            var count = await db.ProjectTemplateTasks.CountAsync(t => t.TemplateId == tpl.Id, ct);
-            return Results.Ok(new ProjectTemplateDto(tpl.Id, tpl.Name, tpl.Description, count, tpl.SourceProjectId));
+        // POST /api/projects/templates — Save as template { name, description, sourceProjectId,
+        // includeSections, includeMilestones, includeAssignees, visibility }.
+        g.MapPost("/templates", async (CreateProjectTemplateRequest req, HttpContext http, IPopDbContext db, IProjectTemplateService templates, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await templates.CreateAsync(userId.Value, req, ct);
+            return r.Success ? Results.Ok(r.Value) : TemplateError(r.Error);
         }).RequirePermission("projects.write");
 
-        // POST /api/projects/from-template — buat proyek baru dari template.
-        g.MapPost("/from-template", async (CreateProjectFromTemplateRequest req,
-            HttpContext http, IProjectService svc, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        // DELETE /api/projects/templates/{id} — soft delete; creator or Admin, never a built-in.
+        g.MapDelete("/templates/{id:guid}", async (Guid id, HttpContext http, IPopDbContext db, IProjectTemplateService templates, CancellationToken ct) =>
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
+            var r = await templates.DeleteAsync(userId.Value, id, http.User.IsInRole("Admin"), ct);
+            return r.Success ? Results.Ok(new { success = true }) : TemplateError(r.Error);
+        }).RequirePermission("projects.write");
 
-            var tpl = await db.ProjectTemplates.AsNoTracking()
-                .Include(t => t.Tasks.OrderBy(x => x.SortOrder))
-                .FirstOrDefaultAsync(t => t.Id == req.TemplateId && t.IsActive, ct);
-            if (tpl is null) return Results.Json(new { code = "template_not_found", message = "Template not found." }, statusCode: 404);
-
-            var startDate = IPop.Application.UtcDates.AsUtcDate(req.StartDate ?? DateTime.UtcNow.Date);
-            var createReq = new CreateProjectRequest(req.Name ?? tpl.Name, req.Description ?? tpl.Description,
-                req.Year ?? DateTime.UtcNow.Year, req.OwnerId ?? userId.Value, startDate, req.Deadline, null, null,
-                string.IsNullOrWhiteSpace(req.OwnerNik) ? null : req.OwnerNik, req.Color);
-            var result = await svc.CreateProjectAsync(userId.Value, createReq, ct);
-            if (!result.Success || result.Project is null)
-                return Results.Json(new { code = result.Error ?? "create_failed", message = result.Error }, statusCode: 422);
-
-            // Materialkan tugas kerangka sebagai tugas nyata.
-            foreach (var tt in tpl.Tasks)
-            {
-                db.ProjectTasks.Add(new ProjectTask
-                {
-                    Id = Guid.NewGuid(), ProjectId = result.Project.Id, Title = tt.Title, Description = tt.Description,
-                    Status = "todo", Priority = tt.Priority,
-                    GroupId = await db.ProjectGroups.Where(g => g.ProjectId == result.Project.Id)
-                        .OrderBy(g => g.SortOrder).Select(g => g.Id).FirstAsync(ct),
-                    DueDate = tt.DueOffsetDays is { } d ? startDate.AddDays(d) : null,
-                    SortOrder = tt.SortOrder,
-                    CreatedById = userId.Value, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow
-                });
-            }
-            await db.SaveChangesAsync(ct);
-            await PushProjectChangedAsync(realtime, result.Project.Id);
-            return Results.Ok(result.Project);
+        // POST /api/projects/from-template — new project from a template; dates shift to startDate.
+        g.MapPost("/from-template", async (CreateProjectFromTemplateRequest req,
+            HttpContext http, IProjectTemplateService templates, IPopDbContext db, IRealtime realtime, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db);
+            if (userId is null) return Results.Unauthorized();
+            var r = await templates.CreateProjectAsync(userId.Value, req, ct);
+            if (!r.Success || r.Value is null)
+                return r.Error == "not_found"
+                    ? Results.Json(new { code = "template_not_found", message = "Template not found." }, statusCode: 404)
+                    : Results.Json(new { code = r.Error ?? "create_failed", message = r.Error }, statusCode: 422);
+            await PushProjectChangedAsync(realtime, r.Value.Id);
+            return Results.Ok(r.Value);
         }).RequirePermission("projects.write");
 
         // ── Milestone (Fase 4) ──
@@ -1402,6 +1354,14 @@ public static class ProjectEndpoints
             _ => 422
         });
 
+    private static IResult TemplateError(string? code) => Results.Json(new { code, message = code },
+        statusCode: code switch
+        {
+            "forbidden" or "built_in" => 403,
+            "not_found" => 404,
+            _ => 422
+        });
+
     private static DateTime MilestoneToday(DateTime? localToday) => (localToday ?? DateTime.UtcNow).Date;
 
     private static IResult TaskFileError(string? code) => Results.Json(new { code, message = code },
@@ -1518,12 +1478,7 @@ public static class ProjectEndpoints
     public record SetTaskRemindersRequest(IReadOnlyList<int>? OffsetHours);
     public record TaskReminderDto(Guid Id, int OffsetHours, DateTime? SentAt);
     // Rencana & Laporan (Fase 4)
-    public record CreateProjectTemplateRequest(string? Name, string? Description, Guid? SourceProjectId);
-    public record ProjectTemplateDto(Guid Id, string Name, string? Description, int TaskCount, Guid? SourceProjectId);
-    public record ProjectTemplateTaskDto(Guid Id, string Title, string? Description, string? Priority, int? DueOffsetDays, int SortOrder);
-    public record ProjectTemplateDetailDto(Guid Id, string Name, string? Description, IReadOnlyList<ProjectTemplateTaskDto> Tasks);
-    public record CreateProjectFromTemplateRequest(Guid TemplateId, string? Name, string? Description, int? Year, Guid? OwnerId, DateTime? StartDate, DateTime? Deadline,
-        string? OwnerNik = null, string? Color = null);
+    // Template DTOs live in IPop.Application.Projects (IProjectTemplateService).
     // Milestone DTOs live in IPop.Application.Projects (IMilestoneService).
     // Laporan (Fase 4)
     public record BurndownPointDto(DateTime WeekEnd, int Remaining);

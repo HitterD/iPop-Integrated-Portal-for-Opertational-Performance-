@@ -110,6 +110,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     // Rencana & Laporan (Fase 4)
     public DbSet<ProjectTemplate> ProjectTemplates => Set<ProjectTemplate>();
     public DbSet<ProjectTemplateTask> ProjectTemplateTasks => Set<ProjectTemplateTask>();
+    public DbSet<ProjectTemplateGroup> ProjectTemplateGroups => Set<ProjectTemplateGroup>();
+    public DbSet<ProjectTemplateMilestone> ProjectTemplateMilestones => Set<ProjectTemplateMilestone>();
     public DbSet<ProjectMilestone> ProjectMilestones => Set<ProjectMilestone>();
     public DbSet<ProjectMilestoneTask> ProjectMilestoneTasks => Set<ProjectMilestoneTask>();
     // Notes
@@ -548,6 +550,26 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.Description).HasMaxLength(1000);
             e.HasOne(x => x.SourceProject).WithMany().HasForeignKey(x => x.SourceProjectId).OnDelete(DeleteBehavior.SetNull);
+            // Rows from before visibility existed were listed to everyone; the default keeps that.
+            e.Property(x => x.Visibility).HasMaxLength(16).HasDefaultValue(ProjectTemplateVisibility.Everyone);
+            e.Property(x => x.Icon).HasMaxLength(40);
+            e.Property(x => x.Color).HasMaxLength(16);
+            e.HasIndex(x => x.CreatedById);
+            e.HasOne(x => x.CreatedBy).WithMany().HasForeignKey(x => x.CreatedById).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.Department).WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.SetNull);
+        });
+        b.Entity<ProjectTemplateGroup>(e =>
+        {
+            e.HasIndex(x => new { x.TemplateId, x.SortOrder });
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Color).HasMaxLength(16);
+            e.HasOne(x => x.Template).WithMany(t => t.Groups).HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<ProjectTemplateMilestone>(e =>
+        {
+            e.HasIndex(x => new { x.TemplateId, x.SortOrder });
+            e.Property(x => x.Title).HasMaxLength(300);
+            e.HasOne(x => x.Template).WithMany(t => t.Milestones).HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<ProjectTemplateTask>(e =>
         {
@@ -555,6 +577,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Title).HasMaxLength(300);
             e.Property(x => x.Description).HasMaxLength(2000);
             e.Property(x => x.Priority).HasMaxLength(32);
+            e.Property(x => x.AssigneeNiks).HasMaxLength(2000);
             e.HasOne(x => x.Template).WithMany(t => t.Tasks).HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<ProjectMilestone>(e =>
@@ -563,6 +586,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Title).HasMaxLength(300);
             e.HasOne(x => x.Project).WithMany().HasForeignKey(x => x.ProjectId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Task).WithMany().HasForeignKey(x => x.TaskId).OnDelete(DeleteBehavior.SetNull);
+            e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.SetNull);
         });
         b.Entity<ProjectMilestoneTask>(e =>
         {

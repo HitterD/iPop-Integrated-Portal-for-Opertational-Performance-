@@ -3454,6 +3454,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("DueDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("OwnerId")
+                        .HasColumnType("uuid");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
 
@@ -3466,6 +3469,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(300)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OwnerId");
 
                     b.HasIndex("TaskId");
 
@@ -3912,14 +3917,31 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Color")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("DepartmentId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Description")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<string>("Icon")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
                     b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsBuiltIn")
                         .HasColumnType("boolean");
 
                     b.Property<string>("Name")
@@ -3930,7 +3952,21 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("SourceProjectId")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("UsedCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Visibility")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("everyone");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("DepartmentId");
 
                     b.HasIndex("SourceProjectId");
 
@@ -3939,11 +3975,74 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("ProjectTemplates");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTemplateGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TemplateId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TemplateId", "SortOrder");
+
+                    b.ToTable("ProjectTemplateGroups");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTemplateMilestone", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("DueOffsetDays")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TaskIds")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TemplateId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TemplateId", "SortOrder");
+
+                    b.ToTable("ProjectTemplateMilestones");
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.ProjectTemplateTask", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<string>("AssigneeNiks")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<string>("Description")
                         .HasMaxLength(2000)
@@ -3951,6 +4050,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.Property<int?>("DueOffsetDays")
                         .HasColumnType("integer");
+
+                    b.Property<Guid?>("GroupId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Priority")
                         .HasMaxLength(32)
@@ -6187,6 +6289,11 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("IPop.Core.Entities.ProjectMilestone", b =>
                 {
+                    b.HasOne("IPop.Core.Entities.User", "Owner")
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("IPop.Core.Entities.Project", "Project")
                         .WithMany()
                         .HasForeignKey("ProjectId")
@@ -6197,6 +6304,8 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("TaskId")
                         .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Owner");
 
                     b.Navigation("Project");
 
@@ -6456,12 +6565,48 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("IPop.Core.Entities.ProjectTemplate", b =>
                 {
+                    b.HasOne("IPop.Core.Entities.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("IPop.Core.Entities.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("IPop.Core.Entities.Project", "SourceProject")
                         .WithMany()
                         .HasForeignKey("SourceProjectId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Department");
+
                     b.Navigation("SourceProject");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTemplateGroup", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.ProjectTemplate", "Template")
+                        .WithMany("Groups")
+                        .HasForeignKey("TemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Template");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.ProjectTemplateMilestone", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.ProjectTemplate", "Template")
+                        .WithMany("Milestones")
+                        .HasForeignKey("TemplateId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Template");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.ProjectTemplateTask", b =>
@@ -6944,6 +7089,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("IPop.Core.Entities.ProjectTemplate", b =>
                 {
+                    b.Navigation("Groups");
+
+                    b.Navigation("Milestones");
+
                     b.Navigation("Tasks");
                 });
 
