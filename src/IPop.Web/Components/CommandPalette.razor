@@ -1,4 +1,4 @@
-@* ⌘K / Ctrl+K. Global search across people, projects, tasks, news, and mail. *@
+@* ⌘K / Ctrl+K. Global search across every module: one request per module, rendered as each answers. *@
 @implements IDisposable
 @inject AuthState Auth
 @inject NavigationManager Nav
@@ -11,24 +11,52 @@
 {
     <div class="cp-backdrop @(closing ? "mi-closing" : "")" @onclick="Palette.Close">
         <div class="cp-card" role="dialog" aria-modal="true" aria-label="Search iPop" @onclick:stopPropagation>
-            <div class="cp-input @(loading ? "cp-searching" : "")">
+            <div class="cp-input @(AnySearching ? "cp-searching" : "")">
                 <i data-lucide="search"></i>
-                <input @ref="inputRef" placeholder="Search people, projects, tasks, news, mail…"
+                <input @ref="inputRef" placeholder="Search people, notes, chat, mail, projects, files…"
                        @oninput="OnInput" @onkeydown="OnKeyDown" data-tab-trap="@(tabTrap ? "1" : "0")" aria-label="Search" />
-                @if (loading) { <span class="cp-spin" aria-hidden="true"></span> }
+                @if (AnySearching) { <span class="cp-spin" aria-hidden="true"></span> }
                 <span class="cp-hint">ESC</span>
             </div>
-            @if (results.Count > 0)
+            @if (HasQuery)
+            {
+                <div class="cp-chips" role="tablist" aria-label="Filter by module">
+                    <button type="button" class="cp-chip @(filter is null ? "on" : "")" role="tab" aria-selected="@(filter is null)" @onclick="() => SetFilter(null)">
+                        All @if (TotalReady > 0) { <span class="cp-chip-n">@TotalReady</span> }
+                    </button>
+                    @foreach (var m in modules)
+                    {
+                        var key = m.Key;
+                        var st = states.GetValueOrDefault(key);
+                        <button type="button" class="cp-chip @(filter == key ? "on" : "") @(st?.Status ?? "")" role="tab" aria-selected="@(filter == key)"
+                                title="@ChipTitle(st)" @onclick="() => SetFilter(key)">
+                            @m.Label
+                            @if (st is { Status: "ready" } && st.Page is not null) { <span class="cp-chip-n">@st.Page.Total</span> }
+                            else if (st is { Status: "searching" }) { <span class="cp-chip-dot" aria-label="Searching"></span> }
+                            else if (st is { Status: "error" }) { <span class="cp-chip-dot err" aria-label="Error"></span> }
+                        </button>
+                    }
+                </div>
+            }
+            @if (HasQuery)
             {
                 <div class="cp-results" @key="resultsVersion">
                     <span class="cp-sel" aria-hidden="true"></span>
-                    @foreach (var g in results.GroupBy(x => x.Group))
+                    @foreach (var m in VisibleModules)
                     {
-                        <div class="cp-group">@g.Key</div>
-                        @foreach (var r in g)
+                        var st = states.GetValueOrDefault(m.Key);
+                        if (st is null) continue;
+                        var rows = Rows(st);
+                        if (st.Status == "ready" && rows.Count == 0) continue;
+                        <div class="cp-group cp-group-h">
+                            <span>@m.Label</span>
+                            @if (st.Status == "searching") { <span class="cp-group-s">Searching…</span> }
+                            else if (st.Page is { Status: "ready" } p && p.Total > 0) { <span class="cp-group-s">@p.Total</span> }
+                        </div>
+                        @foreach (var r in rows)
                         {
-                            var idx = results.IndexOf(r);
-                            <button type="button" class="cp-row @(activeIdx == idx ? "active" : "") @(pickedIdx == idx ? "cp-picked" : "")" style="--i:@Math.Min(idx, 8)"
+                            var idx = flat.IndexOf(r);
+                            <button type="button" class="cp-row @(activeIdx == idx ? "active" : "") @(pickedIdx == idx ? "cp-picked" : "")" style="--i:@Math.Min(Math.Max(idx, 0), 8)"
                                     @onmousemove="() => activeIdx = idx" @onclick="() => Go(r)">
                                 @if (!string.IsNullOrEmpty(r.AvatarColor) && !string.IsNullOrEmpty(r.Initials))
                                 {
@@ -41,10 +69,14 @@
                                     </span>
                                 }
                                 <span class="txt">
-                                    <span class="n">@IPop.Web.Components.Chat.SearchHighlight.Mark(r.Title, query)</span>
+                                    <span class="n">@IPop.Web.Components.Chat.SearchHighlight.Mark(r.Title, query)@if (r.Draft) { <span class="cp-tag">Draft</span> }</span>
+                                    @if (!string.IsNullOrEmpty(r.Snippet))
+                                    {
+                                        <span class="s cp-snip">@IPop.Web.Components.Chat.SearchHighlight.Mark(r.Snippet, query)</span>
+                                    }
                                     @if (!string.IsNullOrEmpty(r.Subtitle))
                                     {
-                                        <span class="s">@IPop.Web.Components.Chat.SearchHighlight.Mark(r.Subtitle, query)@if (StatusText(r.Status) is { } st) { <span class="cp-free @(r.Status == "free" ? "free" : "busy")"> · @st</span> }</span>
+                                        <span class="s">@IPop.Web.Components.Chat.SearchHighlight.Mark(r.Subtitle, query)@if (StatusText(r.Status) is { } stt) { <span class="cp-free @(r.Status == "free" ? "free" : "busy")"> · @stt</span> }</span>
                                     }
                                 </span>
                                 @if (r.Nik is not null)
@@ -56,54 +88,77 @@
                                 }
                                 else
                                 {
-                                    <span class="cp-kind">@r.Group</span>
+                                    <span class="cp-kind">@m.Label</span>
                                 }
                             </button>
                         }
+                        @if (st.Status == "error" || st.Status == "unavailable" || st.Status == "forbidden")
+                        {
+                            <div class="cp-note cp-@st.Status" role="status">
+                                <i data-lucide="@(st.Status == "error" ? "alert-triangle" : "info")"></i>
+                                <span>@(st.Page?.Message ?? st.Error ?? "Could not search this module.")</span>
+                                @if (st.Status == "error")
+                                {
+                                    <button type="button" class="cp-link" @onclick="() => Retry(m.Key)">Retry</button>
+                                }
+                                else if (st.Page?.ActionUrl is { } act)
+                                {
+                                    <button type="button" class="cp-link" @onclick="() => GoUrl(act)">Connect</button>
+                                }
+                            </div>
+                        }
+                        else if (st.Status == "ready" && st.Page is { } pg)
+                        {
+                            if (!string.IsNullOrEmpty(pg.Message))
+                            {
+                                <div class="cp-note cp-hintline" role="note"><i data-lucide="info"></i><span>@pg.Message</span></div>
+                            }
+                            if (filter != m.Key && pg.Total > rows.Count)
+                            {
+                                <button type="button" class="cp-more" @onclick="() => SetFilter(m.Key)">View all @pg.Total in @m.Label</button>
+                            }
+                            else if (filter == m.Key && pg.HasMore)
+                            {
+                                <button type="button" class="cp-more" disabled="@st.LoadingMore" @onclick="() => LoadMore(m.Key)">@(st.LoadingMore ? "Loading…" : $"Show more ({rows.Count} of {pg.Total})")</button>
+                            }
+                        }
+                    }
+                    @if (flat.Count == 0 && !AnySearching && !AnyNote)
+                    {
+                        <div class="cp-empty cp-none" @key="query"><i data-lucide="search-x"></i><span>No results for "@query"@(filter is not null ? $" in {ModuleLabel(filter)}" : "").</span></div>
                     }
                 </div>
             }
-            else if (string.IsNullOrWhiteSpace(query))
+            else if (historyList.Count > 0)
             {
-                if (historyList.Count > 0)
-                {
-                    <div class="cp-results @(clearingHistory ? "cp-clearing" : "")">
-                        <div class="cp-group" style="display:flex;align-items:center;justify-content:space-between">
-                            <span>Recent searches</span>
-                            <button type="button" style="border:none;background:transparent;color:var(--accent-ink);font-size:11px;font-weight:600;cursor:pointer;padding:0" @onclick="ClearAllHistory">Clear all</button>
-                        </div>
-                        @foreach (var h in historyList)
-                        {
-                            var item = h;
-                            <div @key="item.Id" class="cp-row @(leavingHistory == item.Id ? "mi-leaving" : "")" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" @onclick="() => SelectHistory(item.Query)">
-                                <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
-                                    <span class="avatar" style="background:var(--tray);color:var(--ink-3);width:28px;height:28px">
-                                        <i data-lucide="history" style="width:14px;height:14px"></i>
-                                    </span>
-                                    <span class="txt">
-                                        <span class="n">@item.Query</span>
-                                        <span class="s">@item.SearchedAt.ToLocalTime().ToString("MMM d, HH:mm")</span>
-                                    </span>
-                                </div>
-                                <button type="button" style="border:none;background:transparent;color:var(--ink-4);cursor:pointer;padding:4px;border-radius:6px;display:flex;align-items:center" @onclick="() => DeleteHistoryItem(item.Id)" @onclick:stopPropagation="true" title="Remove from history">
-                                    <i data-lucide="x" style="width:13px;height:13px"></i>
-                                </button>
-                            </div>
-                        }
+                <div class="cp-results @(clearingHistory ? "cp-clearing" : "")">
+                    <div class="cp-group" style="display:flex;align-items:center;justify-content:space-between">
+                        <span>Recent searches</span>
+                        <button type="button" style="border:none;background:transparent;color:var(--accent-ink);font-size:11px;font-weight:600;cursor:pointer;padding:0" @onclick="ClearAllHistory">Clear all</button>
                     </div>
-                }
-                else
-                {
-                    <div class="cp-empty">Type at least two characters to search everywhere in iPop.</div>
-                }
+                    @foreach (var h in historyList)
+                    {
+                        var item = h;
+                        <div @key="item.Id" class="cp-row @(leavingHistory == item.Id ? "mi-leaving" : "")" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between" @onclick="() => SelectHistory(item.Query)">
+                            <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">
+                                <span class="avatar" style="background:var(--tray);color:var(--ink-3);width:28px;height:28px">
+                                    <i data-lucide="history" style="width:14px;height:14px"></i>
+                                </span>
+                                <span class="txt">
+                                    <span class="n">@item.Query</span>
+                                    <span class="s">@item.SearchedAt.ToLocalTime().ToString("MMM d, HH:mm")</span>
+                                </span>
+                            </div>
+                            <button type="button" style="border:none;background:transparent;color:var(--ink-4);cursor:pointer;padding:4px;border-radius:6px;display:flex;align-items:center" @onclick="() => DeleteHistoryItem(item.Id)" @onclick:stopPropagation="true" title="Remove from history">
+                                <i data-lucide="x" style="width:13px;height:13px"></i>
+                            </button>
+                        </div>
+                    }
+                </div>
             }
-            else if (query.Trim().Length >= 2 && !loading)
+            else
             {
-                <div class="cp-empty cp-none" @key="query"><i data-lucide="search-x"></i><span>No results for "@query".</span></div>
-            }
-            else if (query.Trim().Length < 2)
-            {
-                <div class="cp-empty">Type at least two characters to search everywhere in iPop.</div>
+                <div class="cp-empty">Type at least two characters to search people, notes, chat, mail, projects, tasks, news, calendar, tickets, file names, calls and notifications.</div>
             }
         </div>
     </div>
@@ -111,18 +166,45 @@
 
 @code {
     private string query = "";
-    private List<SearchResultItemDto> results = [];
-    private bool loading;
+    private string? filter;
+    private List<SearchModuleInfoDto> modules = [];
+    private readonly Dictionary<string, ModuleState> states = [];
+    private List<SearchHitDto> flat = [];
     private int activeIdx;
     private ElementReference inputRef;
+    /// Bumped on every input/filter/history/close; a response for an older generation is dropped.
+    private int generation;
     private CancellationTokenSource? cts;
     private IDisposable? _reg;
     private List<SearchHistoryItemDto> historyList = [];
-    // Micro-interactions: exit animation, staggered results, picked flash, history row exit.
     private bool closing, clearingHistory;
     private int pickedIdx = -1, resultsVersion;
     private Guid? leavingHistory;
     private CancellationTokenSource? _exitCts;
+    private const int PageSize = 5;
+    private const int FilteredPageSize = 20;
+
+    private sealed class ModuleState
+    {
+        public string Status = "idle";   // idle | searching | ready | error | unavailable | forbidden
+        public SearchPageDto? Page;
+        public List<SearchHitDto> Items = [];
+        public string? Error;
+        public bool LoadingMore;
+    }
+
+    private bool HasQuery => query.Trim().Length >= 2;
+    private bool AnySearching => states.Values.Any(s => s.Status == "searching");
+    private bool AnyNote => VisibleModules.Any(m => states.GetValueOrDefault(m.Key)?.Status is "error" or "unavailable" or "forbidden");
+    private int TotalReady => states.Values.Where(s => s.Status == "ready" && s.Page is not null).Sum(s => s.Page!.Total);
+    private IEnumerable<SearchModuleInfoDto> VisibleModules => filter is null ? modules : modules.Where(m => m.Key == filter);
+    private List<SearchHitDto> Rows(ModuleState st) => filter is null ? st.Items.Take(PageSize).ToList() : st.Items;
+    private string ModuleLabel(string key) => modules.FirstOrDefault(m => m.Key == key)?.Label ?? key;
+    private static string ChipTitle(ModuleState? st) => st?.Status switch
+    {
+        "searching" => "Searching…", "error" => "Could not search — click to retry", "unavailable" => st.Page?.Message ?? "Not available",
+        "forbidden" => "No access", _ => "",
+    };
 
     protected override void OnInitialized()
     {
@@ -140,14 +222,15 @@
         if (Palette.IsOpen)
         {
             _exitCts?.Cancel(); closing = false;
+            Reset();
             query = "";
-            results = [];
-            activeIdx = 0; pickedIdx = -1;
             await LoadHistoryAsync();
+            if (modules.Count == 0) await LoadModulesAsync();
         }
         else
         {
-            // Keep the card for its exit animation (core/micro.css .mi-closing).
+            // Cancel everything in flight; a late answer must not resurface in the next session.
+            Reset();
             var exit = _exitCts = new CancellationTokenSource();
             closing = true;
             StateHasChanged();
@@ -163,6 +246,26 @@
             await JS.InvokeVoidAsync("ipop.icons");
         }
     });
+
+    /// Drops in-flight requests and every result (new generation).
+    private void Reset()
+    {
+        generation++;
+        cts?.Cancel(); cts?.Dispose(); cts = null;
+        states.Clear();
+        flat = [];
+        filter = null;
+        activeIdx = 0; pickedIdx = -1; calFocus = false;
+    }
+
+    private async Task LoadModulesAsync()
+    {
+        try
+        {
+            modules = await Auth.GetAsync<List<SearchModuleInfoDto>>("/api/search/modules") ?? [];
+        }
+        catch { modules = []; }
+    }
 
     private async Task LoadHistoryAsync()
     {
@@ -188,7 +291,8 @@
     {
         query = q;
         await RecordHistoryAsync(q);
-        await RunSearchAsync(q);
+        await JS.InvokeVoidAsync("ipop.cpSetValue", inputRef, q);
+        StartSearch(immediate: true);
     }
 
     private async Task DeleteHistoryItem(Guid id)
@@ -227,59 +331,152 @@
         await Task.CompletedTask;
     }
 
-    private async Task RunSearchAsync(string q)
-    {
-        loading = true;
-        StateHasChanged();
-        var res = await Auth.GetAsync<List<SearchResultItemDto>>($"/api/search?q={Uri.EscapeDataString(q)}");
-        results = res ?? [];
-        activeIdx = 0; resultsVersion++;
-        loading = false;
-        StateHasChanged();
-        await JS.InvokeVoidAsync("ipop.icons");
-    }
-
-    private async Task OnInput(ChangeEventArgs e)
+    private void OnInput(ChangeEventArgs e)
     {
         query = e.Value?.ToString() ?? "";
-        cts?.Cancel(); cts?.Dispose();
-        var token = new CancellationTokenSource();
-        cts = token;
-        var q = query.Trim();
-        if (q.Length < 2) { results = []; loading = false; StateHasChanged(); return; }
-        loading = true;
-        StateHasChanged();
-        try { await Task.Delay(160, token.Token); } catch (TaskCanceledException) { return; }
-        if (token.IsCancellationRequested) return;
-
-        var res = await Auth.GetAsync<List<SearchResultItemDto>>($"/api/search?q={Uri.EscapeDataString(q)}");
-        if (token.IsCancellationRequested) return;
-        results = res ?? [];
-        activeIdx = 0; loading = false; resultsVersion++;
-        StateHasChanged();
-        await JS.InvokeVoidAsync("ipop.icons");
+        StartSearch(immediate: false);
     }
 
-    private async Task Go(SearchResultItemDto r)
+    /// Debounces, then fires one independent request per module; each renders as it lands.
+    private void StartSearch(bool immediate)
+    {
+        var gen = ++generation;
+        cts?.Cancel(); cts?.Dispose();
+        var token = cts = new CancellationTokenSource();
+        var q = query.Trim();
+        states.Clear(); flat = []; activeIdx = 0; pickedIdx = -1; calFocus = false;
+        if (q.Length < 2) { StateHasChanged(); return; }
+        foreach (var m in VisibleModules) states[m.Key] = new ModuleState { Status = "searching" };
+        StateHasChanged();
+        _ = RunAsync(gen, q, token.Token, immediate);
+    }
+
+    private async Task RunAsync(int gen, string q, CancellationToken token, bool immediate)
+    {
+        if (!immediate)
+        {
+            try { await Task.Delay(160, token); } catch (TaskCanceledException) { return; }
+        }
+        if (token.IsCancellationRequested || gen != generation) return;
+        if (modules.Count == 0)
+        {
+            await LoadModulesAsync();
+            if (gen != generation) return;
+            foreach (var m in VisibleModules) states[m.Key] = new ModuleState { Status = "searching" };
+            await InvokeAsync(StateHasChanged);
+        }
+        // Independent requests: a slow NAS never holds up Notes or Chat.
+        var tasks = VisibleModules.Select(m => FetchAsync(gen, m.Key, q, 1, token)).ToList();
+        await Task.WhenAll(tasks);
+    }
+
+    private async Task FetchAsync(int gen, string module, string q, int page, CancellationToken token)
+    {
+        var size = filter == module ? FilteredPageSize : PageSize;
+        SearchPageDto? dto = null;
+        string? error = null;
+        try
+        {
+            var r = await Auth.GetResultAsync<SearchPageDto>($"/api/search/modules/{module}?q={Uri.EscapeDataString(q)}&page={page}&pageSize={size}", token);
+            if (r.IsOk) dto = r.Value;
+            else error = r.Status switch
+            {
+                GetStatus.Unreachable => "Couldn't reach the server.",
+                GetStatus.Forbidden => "No access.",
+                _ => "Could not search this module.",
+            };
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception) { error = "Could not search this module."; }
+        if (token.IsCancellationRequested || gen != generation) return;
+        if (!states.TryGetValue(module, out var st)) return;
+        st.LoadingMore = false;
+        if (dto is null)
+        {
+            st.Status = "error"; st.Error = error; st.Page = null;
+        }
+        else
+        {
+            st.Page = dto;
+            st.Status = dto.Status == "ready" ? "ready" : dto.Status;
+            if (page == 1) st.Items = dto.Items.ToList();
+            else st.Items.AddRange(dto.Items.Where(i => st.Items.All(x => x.Id != i.Id)));
+        }
+        Rebuild();
+        await InvokeAsync(async () =>
+        {
+            StateHasChanged();
+            try { await JS.InvokeVoidAsync("ipop.icons"); } catch { }
+        });
+    }
+
+    private void Rebuild()
+    {
+        flat = VisibleModules.Select(m => states.GetValueOrDefault(m.Key)).Where(s => s is not null)
+            .SelectMany(s => Rows(s!)).ToList();
+        if (activeIdx >= flat.Count) activeIdx = 0;
+        resultsVersion++;
+    }
+
+    private void SetFilter(string? key)
+    {
+        if (filter == key) return;
+        filter = key;
+        if (!HasQuery) { StateHasChanged(); return; }
+        if (key is null)
+        {
+            // Back to All: modules we already have stay; the ones hidden by the filter are fetched again.
+            var gen = ++generation;
+            cts?.Cancel(); cts?.Dispose();
+            var token = cts = new CancellationTokenSource();
+            var missing = modules.Where(m => !states.ContainsKey(m.Key) || states[m.Key].Status == "idle").ToList();
+            foreach (var m in missing) states[m.Key] = new ModuleState { Status = "searching" };
+            Rebuild(); StateHasChanged();
+            foreach (var m in missing) _ = FetchAsync(gen, m.Key, query.Trim(), 1, token.Token);
+            return;
+        }
+        StartSearch(immediate: true);
+    }
+
+    private void Retry(string module)
+    {
+        if (!HasQuery) return;
+        var gen = ++generation;
+        cts?.Cancel(); cts?.Dispose();
+        var token = cts = new CancellationTokenSource();
+        states[module] = new ModuleState { Status = "searching" };
+        Rebuild(); StateHasChanged();
+        _ = FetchAsync(gen, module, query.Trim(), 1, token.Token);
+    }
+
+    private void LoadMore(string module)
+    {
+        if (!states.TryGetValue(module, out var st) || st.Page is null || !st.Page.HasMore || st.LoadingMore) return;
+        st.LoadingMore = true;
+        StateHasChanged();
+        var token = cts ??= new CancellationTokenSource();
+        _ = FetchAsync(generation, module, query.Trim(), st.Page.Page + 1, token.Token);
+    }
+
+    private async Task Go(SearchHitDto r)
     {
         if (!string.IsNullOrWhiteSpace(query))
         {
             _ = RecordHistoryAsync(query);
         }
-        // A short flash on the chosen row confirms the pick before the page changes.
-        pickedIdx = results.IndexOf(r);
+        pickedIdx = flat.IndexOf(r);
         StateHasChanged();
         await Task.Delay(140);
         Palette.Close();
         Nav.NavigateTo(r.Url);
     }
 
+    private void GoUrl(string url) { Palette.Close(); Nav.NavigateTo(url); }
+
     /// Tab on a person flips Enter between their profile and their calendar.
     private bool calFocus;
-    /// Only swallow Tab while a person row is active, so Tab still leaves the box otherwise.
-    /// Applied in JS (ipop.cpBindInput) to Tab and the arrows only: a Blazor
-    /// @onkeydown:preventDefault would block every key, so the box froze once people appeared.
-    private bool tabTrap => results.Count > 0 && results[Math.Clamp(activeIdx, 0, results.Count - 1)].Nik is not null;
+    /// Only swallow Tab while a person row is active (applied in JS, ipop.cpBindInput).
+    private bool tabTrap => flat.Count > 0 && flat[Math.Clamp(activeIdx, 0, flat.Count - 1)].Nik is not null;
 
     private static string? StatusText(string? status)
     {
@@ -289,12 +486,12 @@
         return null;
     }
 
-    private void GoInvite(SearchResultItemDto r) { Palette.Close(); Nav.NavigateTo(PLinks.Invite(r.Nik!)); }
+    private void GoInvite(SearchHitDto r) { Palette.Close(); Nav.NavigateTo(PLinks.Invite(r.Nik!)); }
 
-    private async Task GoCalendar(SearchResultItemDto r)
+    private async Task GoCalendar(SearchHitDto r)
     {
         if (!string.IsNullOrWhiteSpace(query)) _ = RecordHistoryAsync(query);
-        pickedIdx = results.IndexOf(r);
+        pickedIdx = flat.IndexOf(r);
         StateHasChanged();
         await Task.Delay(140);
         Palette.Close();
@@ -305,19 +502,19 @@
     {
         switch (e.Key)
         {
-            case "ArrowDown": if (results.Count > 0) { activeIdx = (activeIdx + 1) % results.Count; calFocus = false; StateHasChanged(); } break;
-            case "ArrowUp": if (results.Count > 0) { activeIdx = (activeIdx - 1 + results.Count) % results.Count; calFocus = false; StateHasChanged(); } break;
+            case "ArrowDown": if (flat.Count > 0) { activeIdx = (activeIdx + 1) % flat.Count; calFocus = false; StateHasChanged(); } break;
+            case "ArrowUp": if (flat.Count > 0) { activeIdx = (activeIdx - 1 + flat.Count) % flat.Count; calFocus = false; StateHasChanged(); } break;
             case "Tab":
-                if (results.Count > 0 && results[Math.Clamp(activeIdx, 0, results.Count - 1)].Nik is not null) { calFocus = !calFocus; StateHasChanged(); }
+                if (flat.Count > 0 && flat[Math.Clamp(activeIdx, 0, flat.Count - 1)].Nik is not null) { calFocus = !calFocus; StateHasChanged(); }
                 break;
             case "Enter":
                 if (!string.IsNullOrWhiteSpace(query))
                 {
                     _ = RecordHistoryAsync(query);
                 }
-                if (results.Count > 0)
+                if (flat.Count > 0)
                 {
-                    var pick = results[Math.Clamp(activeIdx, 0, results.Count - 1)];
+                    var pick = flat[Math.Clamp(activeIdx, 0, flat.Count - 1)];
                     if (calFocus && pick.Nik is not null) await GoCalendar(pick); else await Go(pick);
                 }
                 break;
@@ -329,11 +526,14 @@
     {
         Palette.Changed -= OnPaletteChanged;
         _reg?.Dispose();
-        cts?.Dispose();
+        cts?.Cancel(); cts?.Dispose();
         _exitCts?.Cancel();
     }
 
-    public record SearchResultItemDto(string Group, string Title, string? Subtitle, string Url, string Icon, string? AvatarColor = null, string? Initials = null,
-        string? Nik = null, string? Status = null);
+    public record SearchModuleInfoDto(string Key, string Label, string Icon, int Order);
+    public record SearchHitDto(string Id, string Module, string Title, string? Subtitle, string? Snippet, string Url, string Icon,
+        DateTime? UpdatedAt, string Match, bool Draft = false, string? AvatarColor = null, string? Initials = null, string? Nik = null, string? Status = null);
+    public record SearchPageDto(string Module, string Status, List<SearchHitDto> Items, int Total, int Page, int PageSize, bool HasMore,
+        string? Message = null, bool Partial = false, string? ActionUrl = null);
     public record SearchHistoryItemDto(Guid Id, string Query, DateTime SearchedAt);
 }

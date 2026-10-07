@@ -67,7 +67,7 @@ public sealed partial class NoteService
         await db.Entry(page).ReloadAsync(ct);
         page.YState = state;
         var text = req.PlainText ?? "";
-        page.PlainText = text.Length > 20000 ? text[..20000] : text;
+        page.PlainText = text; // Search indexes the complete editor text, not just its preview.
         var flat = string.Join(' ', text.Split((char[])['\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries)).Trim();
         page.Excerpt = flat.Length > 300 ? flat[..299] + "…" : flat;
         page.TodoDone = Math.Clamp(req.TodoDone, 0, 10000);

@@ -29,6 +29,25 @@ public static class DashboardAndSearchEndpoints
             return Results.Ok(results);
         }).RequireAuthorization();
 
+        // GET /api/search/modules — the modules this user may search, in display order
+        app.MapGet("/api/search/modules", async (HttpContext http, ISearchService searchSvc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            return Results.Ok(await searchSvc.ModulesAsync(userId.Value, ct));
+        }).RequireAuthorization();
+
+        // GET /api/search/modules/{module}?q=&page=&pageSize= — one module, one page; access is enforced
+        // inside the provider. Failures come back as status "error" (never as an empty list).
+        app.MapGet("/api/search/modules/{module}", async (string module, string? q, int? page, int? pageSize,
+            HttpContext http, ISearchService searchSvc, IPopDbContext db, CancellationToken ct) =>
+        {
+            var userId = await GetUserIdAsync(http, db, ct);
+            if (userId is null) return Results.Unauthorized();
+            var result = await searchSvc.SearchModuleAsync(userId.Value, module, q ?? "", page ?? 1, pageSize ?? SearchModules.DefaultPageSize, ct);
+            return result is null ? Results.NotFound(new { code = "unknown_module" }) : Results.Ok(result);
+        }).RequireAuthorization();
+
         // GET /api/search/history — recent queries for current user
         app.MapGet("/api/search/history", async (HttpContext http, IPopDbContext db, CancellationToken ct) =>
         {

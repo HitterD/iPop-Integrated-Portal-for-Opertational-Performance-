@@ -128,6 +128,12 @@ public record NoteCommentResult(NoteThreadDto Thread, IReadOnlyList<Guid> Notify
 
 public record NoteSearchHitDto(Guid Id, string Title, string? Emoji, string? Snippet);
 
+/// One row of the paged search. TitleExact/TitleMatch tell the caller how it matched (body otherwise).
+public record NoteSearchRowDto(Guid Id, string Title, string? Emoji, string? Snippet, DateTime UpdatedAt, bool TitleExact, bool TitleMatch);
+
+/// Truncated: at least one visible page's indexed text hit the PlainText cap, so a match beyond it would be missed.
+public record NoteSearchPageDto(IReadOnlyList<NoteSearchRowDto> Items, int Total, bool Truncated);
+
 /// Chat card payload, stored as "[note]" + json in ChatMessage.Content.
 public record NoteCardDto(Guid Id, string Title, string? Emoji, string? Cover, string Accent, string Level, string? Excerpt);
 
@@ -141,6 +147,9 @@ public interface INoteService
     Task<Guid> EnsureGuideAsync(Guid userId, CancellationToken ct);
     Task<NoteSidebarDto> GetSidebarAsync(Guid userId, CancellationToken ct);
     Task<IReadOnlyList<NoteSearchHitDto>> SearchAsync(Guid userId, string query, CancellationToken ct);
+    /// Title + indexed plain text of every page the user can open, ranked exact title › title › body, newest first.
+    /// Only the stored PlainText is searched — never the binary Yjs state.
+    Task<NoteSearchPageDto> SearchPagedAsync(Guid userId, string query, int page, int pageSize, CancellationToken ct);
     Task<IReadOnlyList<NoteListItemDto>> GetTrashAsync(Guid userId, CancellationToken ct);
 
     Task<NoteResult<NotePageDto>> GetPageAsync(Guid userId, Guid pageId, CancellationToken ct);

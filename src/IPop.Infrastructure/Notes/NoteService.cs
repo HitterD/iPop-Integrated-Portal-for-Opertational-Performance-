@@ -195,6 +195,51 @@ public sealed partial class NoteService(IPopDbContext db) : INoteService
         return rows.Select(r => new NoteSearchHitDto(r.Id, r.Title, r.Emoji, Snippet(r.PlainText, q))).ToList();
     }
 
+    /// Snapshot keeps this many characters of the editor's plain text (NoteService.Collab); the body search
+    /// can only see that much, so callers say so when a visible page is that long.
+    public const int PlainTextLimit = 20000;
+
+    public async Task<NoteSearchPageDto> SearchPagedAsync(Guid userId, string query, int page, int pageSize, CancellationToken ct)
+    {
+        var q = query.Trim().ToLowerInvariant();
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        if (q.Length == 0) return new NoteSearchPageDto([], 0, false);
+        var ids = (await VisibleAsync(userId, ct)).Keys.ToList();
+        if (ids.Count == 0) return new NoteSearchPageDto([], 0, false);
+
+        var live = db.NotePages.AsNoTracking().Where(p => ids.Contains(p.Id));
+        // Three ranked tiers, each newest first; the page is cut across them in order.
+        var exact = live.Where(p => p.Title.ToLower() == q);
+        var title = live.Where(p => p.Title.ToLower() != q && p.Title.ToLower().Contains(q));
+        var body = live.Where(p => !p.Title.ToLower().Contains(q) && p.PlainText != null && p.PlainText.ToLower().Contains(q));
+        var tiers = new[] { exact, title, body };
+        var skip = (page - 1) * pageSize;
+        var take = pageSize;
+        var total = 0;
+        var rows = new List<NoteSearchRowDto>();
+        foreach (var tier in tiers)
+        {
+            var count = await tier.CountAsync(ct);
+            if (take > 0)
+            {
+                if (skip >= count) skip -= count;
+                else
+                {
+                    var slice = await tier.OrderByDescending(p => p.UpdatedAt).Skip(skip).Take(take)
+                        .Select(p => new { p.Id, p.Title, p.Emoji, p.PlainText, p.UpdatedAt }).ToListAsync(ct);
+                    rows.AddRange(slice.Select(r => new NoteSearchRowDto(r.Id, r.Title, r.Emoji, Snippet(r.PlainText, q), r.UpdatedAt,
+                        r.Title.Trim().Equals(q, StringComparison.OrdinalIgnoreCase), r.Title.Contains(q, StringComparison.OrdinalIgnoreCase))));
+                    take -= slice.Count;
+                    skip = 0;
+                }
+            }
+            total += count;
+        }
+        var truncated = await live.AnyAsync(p => p.PlainText != null && p.PlainText.Length == PlainTextLimit, ct);
+        return new NoteSearchPageDto(rows, total, truncated);
+    }
+
     private static string? Snippet(string? text, string q)
     {
         if (string.IsNullOrEmpty(text)) return null;

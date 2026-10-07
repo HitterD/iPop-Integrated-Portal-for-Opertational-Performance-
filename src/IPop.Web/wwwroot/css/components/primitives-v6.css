@@ -98,6 +98,38 @@
   .cp-cal:hover, .cp-cal.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
   .cp-cal.on { transform: scale(1.04); }
   .cp-empty { padding: 22px 18px; color: var(--ink-3); font-size: 12.5px; text-align: center; }
+  /* Global search: module filter chips with count/status, snippets, per-module notes and paging. */
+  .cp-chips { display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; padding: 8px 12px 6px; border-bottom: 1px solid var(--line-soft); scrollbar-width: none; }
+  .cp-chips::-webkit-scrollbar { display: none; }
+  .cp-chip {
+    display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; height: 24px; padding: 0 9px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); font: inherit; font-size: 11.5px; font-weight: 600;
+    cursor: pointer; transition: border-color .15s var(--ease), background-color .15s, color .15s;
+  }
+  .cp-chip:hover { border-color: var(--accent); color: var(--accent-ink); }
+  .cp-chip.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
+  .cp-chip-n { font-size: 10px; font-weight: 700; color: var(--ink-3); background: var(--tray); border-radius: 999px; padding: 0 5px; min-width: 16px; text-align: center; }
+  .cp-chip.on .cp-chip-n { background: var(--surface); }
+  .cp-chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: cp-pulse 1s ease-in-out infinite; }
+  .cp-chip-dot.err { background: #d9534f; animation: none; }
+  .cp-chip.unavailable, .cp-chip.forbidden { color: var(--ink-3); border-style: dashed; }
+  @keyframes cp-pulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+  .cp-group-h { display: flex; align-items: center; justify-content: space-between; }
+  .cp-group-s { font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ink-3); }
+  .cp-row .s.cp-snip { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .cp-tag { display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 5px; font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; background: var(--tray); color: var(--ink-3); vertical-align: middle; }
+  .cp-note { display: flex; align-items: center; gap: 8px; margin: 2px 6px 6px; padding: 8px 10px; border-radius: 9px; font-size: 12px; color: var(--ink-2); background: var(--tray); }
+  .cp-note .lucide { width: 14px; height: 14px; flex-shrink: 0; color: var(--ink-3); }
+  .cp-note.cp-error { background: color-mix(in srgb, #d9534f 10%, transparent); }
+  .cp-note.cp-error .lucide { color: #d9534f; }
+  .cp-note.cp-hintline { background: transparent; padding: 2px 10px 6px; font-size: 11.5px; color: var(--ink-3); }
+  .cp-link { margin-left: auto; border: none; background: transparent; color: var(--accent-ink); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; padding: 0; }
+  .cp-more {
+    display: block; width: calc(100% - 12px); margin: 0 6px 6px; padding: 7px 10px; border-radius: 9px; border: 1px dashed var(--line);
+    background: transparent; color: var(--accent-ink); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; text-align: left;
+  }
+  .cp-more:hover { background: var(--accent-soft); border-color: var(--accent); }
+  .cp-more:disabled { opacity: .6; cursor: default; }
 
   /* ============ PEOPLE PICKER (multi-select extras) ============ */
   .pp-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }

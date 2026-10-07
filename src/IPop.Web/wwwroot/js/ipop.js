@@ -152,6 +152,13 @@ window.ipop = {
       else if (e.key === "Tab" && el.getAttribute("data-tab-trap") === "1") e.preventDefault();
     });
   },
+  // Ctrl+K: a recent search fills the box without waiting for Blazor's next input event.
+  cpSetValue(el, value) {
+    if (!el) return;
+    el.value = value ?? "";
+    el.focus();
+    try { el.setSelectionRange(el.value.length, el.value.length); } catch { }
+  },
   shake(el) {
     if (!el) return;
     el.classList.remove("shake");

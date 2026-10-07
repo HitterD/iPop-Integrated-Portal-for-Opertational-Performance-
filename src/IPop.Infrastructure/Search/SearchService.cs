@@ -4,8 +4,42 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IPop.Infrastructure.Search;
 
-public class SearchService(IPopDbContext db) : ISearchService
+/// Global search. The per-module API (ModulesAsync / SearchModuleAsync) runs one provider per request so
+/// every module answers on its own and a slow or failing source never holds the others; the legacy
+/// SearchAsync keeps the old one-shot shape for GET /api/search.
+public class SearchService(IPopDbContext db, IEnumerable<ISearchModuleProvider>? providers = null) : ISearchService
 {
+    private readonly IReadOnlyList<ISearchModuleProvider> _providers = (providers ?? []).OrderBy(p => p.Info.Order).ToList();
+
+    public async Task<IReadOnlyList<SearchModuleInfo>> ModulesAsync(Guid userId, CancellationToken ct = default)
+    {
+        var list = new List<SearchModuleInfo>();
+        // Sequential on purpose: providers share this request's DbContext.
+        foreach (var p in _providers)
+            if (await p.CanSearchAsync(userId, ct)) list.Add(p.Info);
+        return list;
+    }
+
+    public async Task<SearchPage?> SearchModuleAsync(Guid userId, string module, string query, int page, int pageSize, CancellationToken ct = default)
+    {
+        var provider = _providers.FirstOrDefault(p => p.Info.Key.Equals(module?.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (provider is null) return null;
+        var (p, size) = SearchText.Clamp(page, pageSize);
+        var text = (query ?? "").Trim();
+        if (text.Length < SearchModules.MinQueryLength) return SearchPage.Empty(provider.Info.Key, p, size);
+        if (!await provider.CanSearchAsync(userId, ct)) return SearchPage.Forbidden(provider.Info.Key, p, size);
+        try
+        {
+            return await provider.SearchAsync(new SearchQuery(userId, text, p, size), ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception)
+        {
+            // The reason stays in the server log; the client gets an honest "error" rather than an empty list.
+            return SearchPage.Error(provider.Info.Key, "This module could not be searched right now.", p, size);
+        }
+    }
+
     public async Task<IReadOnlyList<SearchResultItem>> SearchAsync(Guid userId, string query, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 2) return [];
@@ -31,16 +65,14 @@ public class SearchService(IPopDbContext db) : ISearchService
 
         foreach (var u in users)
         {
-            var initials = string.Concat(u.Name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(w => w[0])).ToUpperInvariant();
-            if (initials.Length > 2) initials = initials[..2];
             results.Add(new SearchResultItem(
                 Group: "People",
                 Title: u.Name,
                 Subtitle: u.Department?.Name ?? "Employee",
                 Url: $"/directory/person/{u.Id}",
                 Icon: "user",
-                AvatarColor: AvatarColorFor(u.Nik),
-                Initials: initials,
+                AvatarColor: SearchPaging.AvatarColorFor(u.Nik),
+                Initials: SearchPaging.Initials(u.Name),
                 Nik: u.Nik,
                 Status: busyUntil.TryGetValue(u.Id, out var until) ? $"busy:{until:o}" : "free"));
         }
@@ -51,9 +83,7 @@ public class SearchService(IPopDbContext db) : ISearchService
             .Select(pm => pm.ProjectId)
             .ToListAsync(ct);
 
-        var isAdmin = await db.UserRoles.AsNoTracking()
-            .Include(ur => ur.Role)
-            .AnyAsync(ur => ur.UserId == userId && ur.Role.Name == "Admin", ct);
+        var isAdmin = await SearchPaging.IsAdminAsync(db, userId, ct);
 
         var projects = await db.Projects.AsNoTracking()
             .Where(p => p.IsActive && (isAdmin || isMemberProjectIds.Contains(p.Id)) && p.Name.ToLower().Contains(q))
@@ -125,7 +155,4 @@ public class SearchService(IPopDbContext db) : ISearchService
 
         return results;
     }
-
-    private static readonly string[] Palette = ["#e06c75", "#98c379", "#e5c07b", "#61afef", "#c678dd", "#56b6c2"];
-    private static string AvatarColorFor(string nik) => Palette[Math.Abs(nik.GetHashCode()) % Palette.Length];
 }

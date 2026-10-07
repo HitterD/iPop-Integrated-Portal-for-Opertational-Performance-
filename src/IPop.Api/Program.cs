@@ -293,6 +293,20 @@ builder.Services.AddHttpClient<ISjaGateway, HttpSjaGateway>();
 builder.Services.AddDevExpressDocumentServices();
 
 builder.Services.AddScoped<IPop.Application.Search.ISearchService, IPop.Infrastructure.Search.SearchService>();
+// Global search (Ctrl+K): one provider per module, each with its own access rules; searched one request at a time.
+builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.NavigationSearchProvider>();
+builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.DirectorySearchProvider>();
+builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.ProjectSearchProvider>();
+builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.TaskSearchProvider>();
+builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.NotesSearchProvider>();
+builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.ChatSearchProvider>();
+builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.MailSearchProvider>();
+builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.NewsSearchProvider>();
+builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.CalendarSearchProvider>();
+builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.TicketSearchProvider>();
+builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.FilesSearchProvider>();
+builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.CallsSearchProvider>();
+builder.Services.AddScoped<IPop.Application.Search.ISearchModuleProvider, IPop.Infrastructure.Search.Providers.NotificationsSearchProvider>();
 builder.Services.AddScoped<IPop.Application.Dashboard.IDashboardService, IPop.Infrastructure.Dashboard.DashboardService>();
 
 // Link previews: server-side OpenGraph fetch behind an SSRF guard, signed image proxy.
