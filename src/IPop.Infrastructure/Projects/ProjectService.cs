@@ -9,6 +9,10 @@ namespace IPop.Infrastructure.Projects;
 
 public sealed partial class ProjectService(IPopDbContext db, INotificationGatewayService? notificationGateway = null) : IProjectService
 {
+    private Task<bool> CanMutateTasksAsync(Guid actorId, Guid projectId, CancellationToken ct) =>
+        db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == actorId
+            && (m.Role == "owner" || m.Role == "manager" || m.Role == "member"), ct);
+
     // ──────────────────────────────────────────────────────────────────────────
     // Projects
     // ──────────────────────────────────────────────────────────────────────────
@@ -176,6 +180,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
                 return new ProjectResultDto(false, null, "invalid_year");
             project.Year = req.Year.Value;
         }
+        var previousOwnerId = project.OwnerId;
         if (!string.IsNullOrWhiteSpace(req.OwnerNik))
         {
             var owner = await db.Users.AsNoTracking()
@@ -206,6 +211,25 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
             if (match is not null) project.Color = match;
         }
 
+        if (project.OwnerId != previousOwnerId)
+        {
+            var former = await db.ProjectMembers.FirstOrDefaultAsync(m => m.ProjectId == projectId && m.UserId == previousOwnerId, ct);
+            if (former is not null) former.Role = "member";
+            var successor = await db.ProjectMembers.FirstOrDefaultAsync(m => m.ProjectId == projectId && m.UserId == project.OwnerId, ct);
+            if (successor is null)
+                db.ProjectMembers.Add(new ProjectMember { ProjectId = projectId, UserId = project.OwnerId, Role = "owner", JoinedAt = DateTime.UtcNow });
+            else successor.Role = "owner";
+            var linked = await db.ProjectRooms.FirstOrDefaultAsync(r => r.ProjectId == projectId, ct);
+            if (linked is not null)
+            {
+                var oldChat = await db.ChatRoomMembers.FirstOrDefaultAsync(m => m.RoomId == linked.RoomId && m.UserId == previousOwnerId && m.LeftAt == null, ct);
+                var successorChatRole = oldChat?.Role == "owner" ? "owner" : "admin";
+                if (oldChat is not null) oldChat.Role = "member";
+                var newChat = await db.ChatRoomMembers.FirstOrDefaultAsync(m => m.RoomId == linked.RoomId && m.UserId == project.OwnerId && m.LeftAt == null, ct);
+                if (newChat is not null) newChat.Role = successorChatRole;
+                else db.ChatRoomMembers.Add(new ChatRoomMember { Id = Guid.NewGuid(), RoomId = linked.RoomId, UserId = project.OwnerId, Role = successorChatRole, JoinedAt = DateTime.UtcNow });
+            }
+        }
         project.UpdatedAt = DateTime.UtcNow;
 
         // ipop-21 PERFECTION: sync room name when project is renamed
@@ -369,7 +393,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
     {
         var task = await db.ProjectTasks.FirstOrDefaultAsync(t => t.Id == taskId, ct);
         if (task is null) return new(false, null, "task_not_found");
-        if (!await db.ProjectMembers.AnyAsync(m => m.ProjectId == task.ProjectId && m.UserId == actorId, ct))
+        if (!await CanMutateTasksAsync(actorId, task.ProjectId, ct))
             return new(false, null, "forbidden");
         if (!await db.ProjectGroups.AnyAsync(g => g.Id == req.GroupId && g.ProjectId == task.ProjectId, ct))
             return new(false, null, "invalid_group");
@@ -497,7 +521,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
 
     public async Task<TaskResultDto> CreateTaskAsync(Guid actorId, CreateTaskRequest req, CancellationToken ct)
     {
-        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == req.ProjectId && m.UserId == actorId, ct);
+        var isMember = await CanMutateTasksAsync(actorId, req.ProjectId, ct);
         if (!isMember) return new TaskResultDto(false, null, "forbidden");
 
         if (string.IsNullOrWhiteSpace(req.Title) || req.Title.Length > 300)
@@ -611,7 +635,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         var task = await db.ProjectTasks.FirstOrDefaultAsync(t => t.Id == taskId, ct);
         if (task is null) return new TaskResultDto(false, null, "task_not_found");
 
-        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == task.ProjectId && m.UserId == actorId, ct);
+        var isMember = await CanMutateTasksAsync(actorId, task.ProjectId, ct);
         if (!isMember) return new TaskResultDto(false, null, "forbidden");
 
         // Diskusi Tugas (Fase 2): catat perubahan penting ke riwayat aktivitas.
@@ -637,14 +661,21 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
             if (task.Priority != req.Priority.Trim()) Track("priority_changed", task.Priority, req.Priority.Trim());
             task.Priority = req.Priority.Trim();
         }
-        if (req.StartDate.HasValue) task.StartDate = AsUtcDate(req.StartDate);
-        if (req.DueDate.HasValue)
+        if (req.ClearStartDate) task.StartDate = null;
+        else if (req.StartDate.HasValue) task.StartDate = AsUtcDate(req.StartDate);
+        if (req.ClearDueDate)
+        {
+            if (task.DueDate is not null) Track("due_changed", task.DueDate.Value.ToString("yyyy-MM-dd"), null);
+            task.DueDate = null;
+        }
+        else if (req.DueDate.HasValue)
         {
             var due = AsUtcDate(req.DueDate.Value);
             if (task.DueDate != due) Track("due_changed", task.DueDate?.ToString("yyyy-MM-dd"), due.ToString("yyyy-MM-dd"));
             task.DueDate = due;
         }
-        if (req.EstimatedHours.HasValue) task.EstimatedHours = req.EstimatedHours;
+        if (req.ClearEstimatedHours) task.EstimatedHours = null;
+        else if (req.EstimatedHours.HasValue) task.EstimatedHours = req.EstimatedHours;
         // ActualHours is the sum of time entries (Phase 3); a typed value is ignored.
         if (req.SortOrder.HasValue) task.SortOrder = req.SortOrder.Value;
         // Dependencies are rows now (PUT /tasks/{id}/dependencies); the legacy string is ignored.
@@ -700,8 +731,12 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         var task = await db.ProjectTasks.AsNoTracking().FirstOrDefaultAsync(t => t.Id == taskId, ct);
         if (task is null) return new MemberResultDto(false, "task_not_found");
 
-        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == task.ProjectId && m.UserId == actorId, ct);
+        var isMember = await CanMutateTasksAsync(actorId, task.ProjectId, ct);
         if (!isMember) return new MemberResultDto(false, "forbidden");
+
+        if (!await db.ProjectMembers.AnyAsync(m => m.ProjectId == task.ProjectId && m.UserId == userId
+            && (m.Role == "owner" || m.Role == "manager" || m.Role == "member") && m.User.IsActive, ct))
+            return new MemberResultDto(false, "invalid_assignee");
 
         var already = await db.ProjectTaskAssignees.AnyAsync(a => a.TaskId == taskId && a.UserId == userId, ct);
         if (already) return new MemberResultDto(true, null);
@@ -753,7 +788,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         var task = await db.ProjectTasks.AsNoTracking().FirstOrDefaultAsync(t => t.Id == taskId, ct);
         if (task is null) return new MemberResultDto(false, "task_not_found");
 
-        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == task.ProjectId && m.UserId == actorId, ct);
+        var isMember = await CanMutateTasksAsync(actorId, task.ProjectId, ct);
         if (!isMember) return new MemberResultDto(false, "forbidden");
 
         var link = await db.ProjectTaskAssignees.FirstOrDefaultAsync(a => a.TaskId == taskId && a.UserId == userId, ct);
@@ -825,7 +860,7 @@ public sealed partial class ProjectService(IPopDbContext db, INotificationGatewa
         var task = await db.ProjectTasks.FirstOrDefaultAsync(t => t.Id == taskId, ct);
         if (task is null) return new TaskResultDto(false, null, "task_not_found");
 
-        var isMember = await db.ProjectMembers.AnyAsync(m => m.ProjectId == task.ProjectId && m.UserId == actorId, ct);
+        var isMember = await CanMutateTasksAsync(actorId, task.ProjectId, ct);
         if (!isMember) return new TaskResultDto(false, null, "forbidden");
 
         var valid = new[] { "todo", "doing", "review", "done" };

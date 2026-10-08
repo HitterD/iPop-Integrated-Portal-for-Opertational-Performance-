@@ -20,7 +20,7 @@ public sealed class TaskFileService(IPopDbContext db, IAttachmentStore store) : 
         if (!ProjectTaskFile.Kinds.Contains(normalizedKind)) return Fail<TaskFileDto>("invalid_kind");
         var projectId = await TaskProjectIdAsync(taskId, ct);
         if (projectId is null) return Fail<TaskFileDto>("task_not_found");
-        if (!await IsMemberAsync(projectId.Value, actorId, ct)) return Fail<TaskFileDto>("forbidden");
+        if (!await IsWriterAsync(projectId.Value, actorId, ct)) return Fail<TaskFileDto>("forbidden");
 
         var stored = await store.PutAsync(AttachmentAreas.Projects, fileName,
             string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType, content, actorId, ct);
@@ -70,6 +70,7 @@ public sealed class TaskFileService(IPopDbContext db, IAttachmentStore store) : 
         if (link is null) return Fail<bool>("file_not_found");
         var projectId = await TaskProjectIdAsync(taskId, ct);
         if (projectId is null) return Fail<bool>("task_not_found");
+        if (!await IsWriterAsync(projectId.Value, actorId, ct)) return Fail<bool>("forbidden");
         if (link.UploadedById != actorId
             && !await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == actorId && m.Role == "owner", ct))
             return Fail<bool>("forbidden");
@@ -127,6 +128,10 @@ public sealed class TaskFileService(IPopDbContext db, IAttachmentStore store) : 
 
     private Task<bool> IsMemberAsync(Guid projectId, Guid userId, CancellationToken ct) =>
         db.ProjectMembers.AsNoTracking().AnyAsync(m => m.ProjectId == projectId && m.UserId == userId, ct);
+
+    private Task<bool> IsWriterAsync(Guid projectId, Guid userId, CancellationToken ct) =>
+        db.ProjectMembers.AsNoTracking().AnyAsync(m => m.ProjectId == projectId && m.UserId == userId
+            && (m.Role == "owner" || m.Role == "manager" || m.Role == "member"), ct);
 
     private static string Truncate(string s) => s.Length <= 500 ? s : s[..500];
 

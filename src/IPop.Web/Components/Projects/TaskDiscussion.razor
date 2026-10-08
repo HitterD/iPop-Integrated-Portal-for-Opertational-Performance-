@@ -22,6 +22,8 @@
             }
         </div>
     }
+    @if (!ReadOnly)
+    {
     <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-end">
         <textarea class="org-input" style="flex:1;min-height:38px;resize:vertical;font-size:12.5px"
                   placeholder="@(replyTo is null ? "Write a comment…" : $"Reply to @{replyTo.Author}…")"
@@ -30,7 +32,8 @@
             <i data-lucide="send" style="width:12px;height:12px"></i>
         </button>
     </div>
-    @if (replyTo is not null)
+    }
+    @if (!ReadOnly && replyTo is not null)
     {
         <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink-3);margin-top:2px">
             <i data-lucide="reply" style="width:11px;height:11px"></i> Replying to <b>@replyTo.Author</b>
@@ -40,6 +43,7 @@
 </div>
 
 @code {
+    [Parameter] public bool ReadOnly { get; set; }
     /// Satu komentar (atau balasan) pada tugas.
     public sealed record TaskCommentItem(Guid Id, string Author, string Text, DateTime At,
         IReadOnlyList<string> Attachments, Guid? ParentCommentId, string? AuthorNik = null);
@@ -59,7 +63,7 @@
 
     private async Task Submit()
     {
-        if (string.IsNullOrWhiteSpace(newText)) return;
+        if (ReadOnly || string.IsNullOrWhiteSpace(newText)) return;
         await OnSubmit.InvokeAsync((newText.Trim(), replyTo?.Id));
         newText = "";
         replyTo = null;
@@ -81,9 +85,9 @@
                         }
                     </div>
                 }
-                @if (!isReply)
+                @if (!ReadOnly && !isReply)
                 {
-                    <button type="button" class="task-comment-reply" @onclick="() => replyTo = c">
+                    <button type="button" class="task-comment-reply" @onclick="() => { if (!ReadOnly) replyTo = c; }">
                         <i data-lucide="reply"></i> Reply
                     </button>
                 }

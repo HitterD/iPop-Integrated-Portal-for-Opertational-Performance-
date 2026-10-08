@@ -1,7 +1,7 @@
 @using IPop.Application.Projects
 
 <div class="project-field-cell" @onclick:stopPropagation="true">
-    @if (editing)
+    @if (editing && !ReadOnly)
     {
         @if (Field.Type == "Dropdown")
         {
@@ -21,12 +21,13 @@
     }
     else
     {
-        <button type="button" class="project-field-value" title="Edit @Field.Name" @onclick="BeginEdit">@DisplayValue</button>
+        <button type="button" disabled="@ReadOnly" class="project-field-value" title="Edit @Field.Name" @onclick="BeginEdit">@DisplayValue</button>
     }
 </div>
 
 @code {
     [Parameter, EditorRequired] public ProjectFieldDto Field { get; set; } = default!;
+    [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public string? Value { get; set; }
     [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
@@ -39,10 +40,11 @@
     private List<AppOption> DropdownOptions => [new("", "—"), .. Field.Options.Select(o => new AppOption(o, o))];
     private List<AppOption> PersonOptions => [new("", "—"), .. Members.Select(m => new AppOption(m.UserId.ToString(), m.Name))];
 
-    private void BeginEdit() { current = Value; editing = true; }
+    private void BeginEdit() { if (ReadOnly) return; current = Value; editing = true; }
     private void Cancel() { editing = false; current = Value; }
     private async Task Save(string? value)
     {
+        if (ReadOnly) return;
         editing = false;
         await ValueChanged.InvokeAsync(string.IsNullOrWhiteSpace(value) ? null : value.Trim());
     }

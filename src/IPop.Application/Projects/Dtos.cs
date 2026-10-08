@@ -40,7 +40,7 @@ public record CreateTaskRequest(Guid ProjectId, Guid? ParentTaskId, string Title
 public record UpdateTaskRequest(string? Title, string? Description, string? Status, string? Priority,
     DateTime? StartDate, DateTime? DueDate, decimal? EstimatedHours, decimal? ActualHours,
     int? SortOrder, string? Dependencies, bool? IsRecurring, string? RecurrenceRule, bool? IsTemplate,
-    string? Tags);
+    string? Tags, bool ClearStartDate = false, bool ClearDueDate = false, bool ClearEstimatedHours = false);
 
 public record ProjectTaskDto(Guid Id, Guid ProjectId, Guid? ParentTaskId, string Title, string? Description,
     string Status, string? Priority, DateTime? StartDate, DateTime? DueDate,

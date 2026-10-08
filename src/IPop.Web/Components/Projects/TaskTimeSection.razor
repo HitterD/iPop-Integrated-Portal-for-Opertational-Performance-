@@ -20,7 +20,7 @@
     else
     {
         <div class="td-time-actions">
-            @if (data.CanTrack)
+            @if (!ReadOnly && data.CanTrack)
             {
                 var running = Timer.IsRunning(TaskId);
                 <button type="button" class="td-timer-btn @(running ? "running" : "")" disabled="@busy"
@@ -45,7 +45,7 @@
             }
         </div>
 
-        @if (addOpen)
+        @if (!ReadOnly && addOpen)
         {
             <form class="td-time-form" @onsubmit="SubmitManual" @onsubmit:preventDefault>
                 <label class="td-time-dur">Duration
@@ -81,7 +81,7 @@
                                 <div class="td-time-warn"><i data-lucide="alert-triangle"></i>Auto-stopped at 10 hours — correct the duration.</div>
                             }
                         </div>
-                        @if (entry.CanEdit)
+                        @if (!ReadOnly && entry.CanEdit)
                         {
                             <div class="td-time-tools">
                                 @if (entry.EndedAt is not null)
@@ -103,6 +103,7 @@
 </section>
 
 @code {
+    [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public Guid TaskId { get; set; }
     [Parameter] public decimal? Estimated { get; set; }
     /// Changes whenever the parent receives a fresh task (live refresh) so the entries reload.
@@ -133,6 +134,7 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        if (ReadOnly) CloseForm();
         if (TaskId == loadedFor && ReferenceEquals(Version, loadedVersion)) return;
         if (TaskId != loadedFor) { data = null; CloseForm(); }
         loadedFor = TaskId;
@@ -164,6 +166,7 @@
 
     private async Task ToggleTimer()
     {
+        if (ReadOnly) return;
         busy = true;
         try
         {
@@ -177,6 +180,7 @@
 
     private void ToggleAdd()
     {
+        if (ReadOnly) return;
         if (addOpen && editingId is null) { CloseForm(); return; }
         editingId = null;
         formHours = null; formMinutes = null; formNote = null; formError = null;
@@ -186,6 +190,7 @@
 
     private void StartEdit(TimeEntryDto e)
     {
+        if (ReadOnly) return;
         editingId = e.Id;
         formHours = e.Minutes / 60;
         formMinutes = e.Minutes % 60;
@@ -204,6 +209,7 @@
 
     private async Task SubmitManual()
     {
+        if (ReadOnly) return;
         var minutes = ProjectTimeFormat.ToMinutes(formHours, formMinutes);
         if (minutes is null) { formError = "Duration must be 1 minute to 24 hours (minutes 0–59)."; return; }
         if (formDate is null) { formError = "Choose a date."; return; }
@@ -245,8 +251,9 @@
 
     private async Task DeleteEntry(TimeEntryDto e)
     {
+        if (ReadOnly) return;
         var ok = await Confirm.AskAsync("Delete time entry?", $"{ProjectTimeFormat.Minutes(e.Minutes)} by {e.UserName} will be removed from the total.", "Delete", danger: true);
-        if (!ok) return;
+        if (!ok || ReadOnly) return;
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/time/{e.Id}");
         if (!res.IsSuccessStatusCode) { Toasts.Show(ErrorText(await CodeAsync(res)), IPop.Web.Services.ToastKind.Error); return; }
         if (e.EndedAt is null) await Timer.RefreshAsync();

@@ -29,7 +29,7 @@ public sealed partial class ProjectService
     {
         var task = await db.ProjectTasks.AsNoTracking().FirstOrDefaultAsync(t => t.Id == taskId, ct);
         if (task is null) return new(false, null, "task_not_found");
-        if (!await db.ProjectMembers.AnyAsync(m => m.ProjectId == task.ProjectId && m.UserId == actorId, ct))
+        if (!await CanMutateTasksAsync(actorId, task.ProjectId, ct))
             return new(false, null, "forbidden");
 
         var ids = (req.DependsOn ?? []).Distinct().ToList();
@@ -222,7 +222,7 @@ public sealed partial class ProjectService
     {
         var task = await db.ProjectTasks.FirstOrDefaultAsync(t => t.Id == taskId, ct);
         if (task is null) return new(false, null, [], "task_not_found");
-        if (!await db.ProjectMembers.AnyAsync(m => m.ProjectId == task.ProjectId && m.UserId == actorId, ct))
+        if (!await CanMutateTasksAsync(actorId, task.ProjectId, ct))
             return new(false, null, [], "forbidden");
 
         var batchId = Guid.NewGuid();
@@ -260,7 +260,7 @@ public sealed partial class ProjectService
 
     public async Task<MemberResultDto> RestoreTasksAsync(Guid actorId, Guid projectId, Guid batchId, CancellationToken ct)
     {
-        if (!await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == actorId, ct))
+        if (!await CanMutateTasksAsync(actorId, projectId, ct))
             return new(false, "forbidden");
         var since = DateTime.UtcNow - RestoreWindow;
         var tasks = await db.ProjectTasks.IgnoreQueryFilters()
@@ -315,7 +315,7 @@ public sealed partial class ProjectService
     public async Task<BulkTaskResultDto> BulkUpdateTasksAsync(Guid actorId, Guid projectId, BulkTaskRequest req, CancellationToken ct)
     {
         BulkTaskResultDto Fail(string code) => new(false, 0, [], null, code);
-        if (!await db.ProjectMembers.AnyAsync(m => m.ProjectId == projectId && m.UserId == actorId, ct)) return Fail("forbidden");
+        if (!await CanMutateTasksAsync(actorId, projectId, ct)) return Fail("forbidden");
         var ids = (req.TaskIds ?? []).Distinct().ToList();
         if (ids.Count is 0 or > MaxBulkTasks) return Fail("invalid_tasks");
         var tasks = await db.ProjectTasks.Where(t => ids.Contains(t.Id) && t.ProjectId == projectId).ToListAsync(ct);
@@ -365,7 +365,8 @@ public sealed partial class ProjectService
             case "assign" or "unassign":
             {
                 if (!Guid.TryParse(value, out var userId)) return Fail("invalid_value");
-                var userName = await db.ProjectMembers.Where(m => m.ProjectId == projectId && m.UserId == userId)
+                var userName = await db.ProjectMembers.Where(m => m.ProjectId == projectId && m.UserId == userId
+                    && (action == "unassign" || ((m.Role == "owner" || m.Role == "manager" || m.Role == "member") && m.User.IsActive)))
                     .Select(m => m.User.Name).FirstOrDefaultAsync(ct);
                 if (userName is null) return Fail("invalid_value");
                 var links = await db.ProjectTaskAssignees.Where(a => ids.Contains(a.TaskId) && a.UserId == userId).ToListAsync(ct);
@@ -484,7 +485,7 @@ public sealed partial class ProjectService
 
     public async Task<SavedViewResultDto> CreateSavedViewAsync(Guid actorId, Guid projectId, SaveProjectViewRequest req, CancellationToken ct)
     {
-        if (!await CanViewAsync(projectId, actorId, ct)) return new(false, null, "forbidden");
+        if (!await CanMutateTasksAsync(actorId, projectId, ct)) return new(false, null, "forbidden");
         var name = req.Name?.Trim();
         if (string.IsNullOrEmpty(name) || name.Length > 40) return new(false, null, "invalid_name");
         if (SanitizeViewState(req.StateJson) is not { } state) return new(false, null, "invalid_state");
@@ -507,6 +508,7 @@ public sealed partial class ProjectService
     {
         var view = await db.ProjectSavedViews.FirstOrDefaultAsync(v => v.Id == viewId, ct);
         if (view is null) return new(false, null, "view_not_found");
+        if (!await CanMutateTasksAsync(actorId, view.ProjectId, ct)) return new(false, null, "forbidden");
         if (view.OwnerId != actorId) return new(false, null, "forbidden");
         var name = req.Name?.Trim();
         if (string.IsNullOrEmpty(name) || name.Length > 40) return new(false, null, "invalid_name");
@@ -524,6 +526,7 @@ public sealed partial class ProjectService
     {
         var view = await db.ProjectSavedViews.FirstOrDefaultAsync(v => v.Id == viewId, ct);
         if (view is null) return new(false, "view_not_found");
+        if (!await CanMutateTasksAsync(actorId, view.ProjectId, ct)) return new(false, "forbidden");
         if (view.OwnerId != actorId && !(view.IsShared && await CanManageGroupsAsync(actorId, view.ProjectId, ct)))
             return new(false, "forbidden");
         db.ProjectSavedViews.Remove(view);

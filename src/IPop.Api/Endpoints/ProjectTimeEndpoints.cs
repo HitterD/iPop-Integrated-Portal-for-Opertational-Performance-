@@ -38,6 +38,7 @@ public static class ProjectTimeEndpoints
             if (actor is null) return Results.Unauthorized();
             var previous = await svc.GetRunningAsync(actor.Value.Id, ct);
             var result = await svc.StopAsync(actor.Value.Id, ct);
+            if (!result.Success) return Response(result);
             if (previous is not null) await PushAsync(realtime, actor.Value.Nik, previous.ProjectId);
             return result.Data is null ? Results.NoContent() : Results.Ok(result.Data);
         }).RequirePermission("projects.write");

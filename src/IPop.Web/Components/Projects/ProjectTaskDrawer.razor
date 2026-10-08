@@ -10,7 +10,7 @@
 @if (Task is not null)
 {
     <div class="task-drawer-backdrop" @onclick="OnClose"></div>
-    <div class="task-drawer v6-task-drawer" data-attach-scope role="dialog" aria-modal="true" aria-label="Task Detail">
+    <div class="task-drawer v6-task-drawer" data-attach-scope="@(ReadOnly ? null : "")" role="dialog" aria-modal="true" aria-label="Task Detail">
         <div class="task-drawer-inner">
             <div class="task-drawer-head">
                 <span class="td-project-dot" style="background:@(!string.IsNullOrWhiteSpace(ProjectColor) ? ProjectColor : ProjectUiHelpers.GetAvatarBg(ProjectName))"></span>
@@ -32,7 +32,7 @@
                         <div class="td-more-menu" role="menu" aria-label="Task options" @ref="menuRef">
                             <button type="button" role="menuitem" @onclick="ShowActivity"><i data-lucide="history"></i>Activity</button>
                             <button type="button" role="menuitem" @onclick="ShowDiscussion"><i data-lucide="messages-square"></i>Discussion</button>
-                            <button type="button" role="menuitem" class="danger" @onclick="DeleteFromMenu"><i data-lucide="trash-2"></i>Delete task</button>
+                            <button disabled="@ReadOnly" type="button" role="menuitem" class="danger" @onclick="DeleteFromMenu"><i data-lucide="trash-2"></i>Delete task</button>
                         </div>
                     }
                 </div>
@@ -52,19 +52,19 @@
                 <div class="task-drawer-body td-body">
                     <button type="button" class="td-back" @onclick="ShowDetails"><i data-lucide="arrow-left"></i> Back to details</button>
                     <div class="td-section-title">DISCUSSION</div>
-                    <TaskDiscussion Items="commentItems" OnSubmit="SubmitComment" />
+                    <TaskDiscussion ReadOnly="ReadOnly" Items="commentItems" OnSubmit="SubmitComment" />
                 </div>
             }
             else
             {
                 <div class="task-drawer-body td-body">
-                    <input class="td-title" aria-label="Task title" @bind="editTitle" placeholder="Task title..." />
+                    <input disabled="@ReadOnly" class="td-title" aria-label="Task title" @bind="editTitle" placeholder="Task title..." />
                     @* One click moves the task through the page's move flow (evidence modal + dependency guard). *@
                     <div class="td-status-pills" role="radiogroup" aria-label="Status">
                         @foreach (var (key, label) in StatusOptions)
                         {
                             var on = Task.Status == key;
-                            <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="td-status-pill @key @(on ? "on" : "")" disabled="@statusBusy" @onclick="() => ChangeStatus(key)">
+                            <button type="button" role="radio" aria-checked="@(on ? "true" : "false")" class="td-status-pill @key @(on ? "on" : "")" disabled="@(ReadOnly || statusBusy)" @onclick="() => ChangeStatus(key)">
                                 <span class="col-dot @key"></span>@label
                             </button>
                         }
@@ -80,35 +80,35 @@
                                     <span>Extended @(evidence.ExtensionHistory.Count)x. Reason: @evidence.LatestExtension?.Reason</span>
                                 }
                             </div>
-                            <button type="button" class="td-overdue-btn" @onclick="RequestExtension"><i data-lucide="calendar-plus"></i>Extend deadline</button>
+                            <button disabled="@ReadOnly" type="button" class="td-overdue-btn" @onclick="RequestExtension"><i data-lucide="calendar-plus"></i>Extend deadline</button>
                         </div>
                     }
                     <div class="td-properties">
                         @if (Groups.Count > 1)
                         {
                             <span class="td-label"><i data-lucide="layers"></i>Group</span>
-                            <AppSelect Value="@Task.GroupId.ToString()" ValueChanged="ChangeGroup" Options="GroupOptions" Label="Task group" CssClass="td-select" />
+                            <AppSelect Disabled="ReadOnly" Value="@Task.GroupId.ToString()" ValueChanged="ChangeGroup" Options="GroupOptions" Label="Task group" CssClass="td-select" />
                         }
                         <span class="td-label"><i data-lucide="flag"></i>Priority</span>
-                        <AppSelect Value="@(editPriority ?? "")" ValueChanged="v => editPriority = v" Options="PriorityOptions" Label="Priority" CssClass="@($"td-select td-priority {ProjectUiHelpers.GetPriorityPill(editPriority).Key}")" />
+                        <AppSelect Disabled="ReadOnly" Value="@(editPriority ?? "")" ValueChanged="v => editPriority = v" Options="PriorityOptions" Label="Priority" CssClass="@($"td-select td-priority {ProjectUiHelpers.GetPriorityPill(editPriority).Key}")" />
                         <span class="td-label"><i data-lucide="users"></i>Assignees</span>
                         <div class="td-assign-list">
                             @foreach (var a in Task.Assignees)
                             {
                                 <span class="td-assign-pill">
                                     <PersonAvatar Nik="@a.Nik" Name="@a.Name" Size="20" Class="td-avatar" Decorative="true" />@a.Name
-                                    <button type="button" title="Remove assignee" @onclick="() => OnToggleAssignee.InvokeAsync((Task.Id, a.UserId, true))"><i data-lucide="x"></i></button>
+                                    <button disabled="@ReadOnly" type="button" title="Remove assignee" @onclick="() => OnToggleAssignee.InvokeAsync((Task.Id, a.UserId, true))"><i data-lucide="x"></i></button>
                                 </span>
                             }
-                            @if (Members.Any(m => !Task.Assignees.Any(a => a.UserId == m.UserId)))
+                            @if (!ReadOnly && Members.Any(m => m.Role != "viewer" && !Task.Assignees.Any(a => a.UserId == m.UserId)))
                             {
                                 <div class="td-assign-picker">
-                                    <button type="button" class="td-add-assignee" data-menu-trigger aria-haspopup="menu" aria-expanded="@(assignOpen ? "true" : "false")" @onclick="ToggleAssignMenu"><i data-lucide="plus"></i>Assign</button>
+                                    <button disabled="@ReadOnly" type="button" class="td-add-assignee" data-menu-trigger aria-haspopup="menu" aria-expanded="@(assignOpen ? "true" : "false")" @onclick="ToggleAssignMenu"><i data-lucide="plus"></i>Assign</button>
                                     @if (assignOpen)
                                     {
                                         <div class="td-menu-backdrop" @onclick="() => assignOpen = false"></div>
                                         <div class="td-assign-menu" role="menu" aria-label="Assign member" @ref="menuRef">
-                                            @foreach (var m in Members.Where(m => !Task.Assignees.Any(a => a.UserId == m.UserId)))
+                                            @foreach (var m in Members.Where(m => m.Role != "viewer" && !Task.Assignees.Any(a => a.UserId == m.UserId)))
                                             {
                                                 <button type="button" role="menuitem" @onclick="async () => { assignOpen = false; await OnToggleAssignee.InvokeAsync((Task.Id, m.UserId, false)); }">
                                                     <PersonAvatar Nik="@m.Nik" Name="@m.Name" Size="20" Class="td-avatar" Decorative="true" />
@@ -121,13 +121,13 @@
                             }
                         </div>
                         <span class="td-label"><i data-lucide="calendar-arrow-up"></i>Start</span>
-                        <AppDatePicker @bind-Value="editStartDate" AllowClear="true" Compact="true" AriaLabel="Start date" />
+                        <AppDatePicker Disabled="ReadOnly" @bind-Value="editStartDate" AllowClear="true" Compact="true" AriaLabel="Start date" />
                         <span class="td-label"><i data-lucide="calendar"></i>Due</span>
                         <div class="td-due-row">
-                            <AppDatePicker @bind-Value="editDue" AllowClear="true" Compact="true" Class="@ProjectUiHelpers.GetDueState(Task)" AriaLabel="Due date" />
+                            <AppDatePicker Disabled="ReadOnly" @bind-Value="editDue" AllowClear="true" Compact="true" Class="@ProjectUiHelpers.GetDueState(Task)" AriaLabel="Due date" />
                             @* When overdue, the banner above carries the flag and the Extend button. *@
                             @if (evidence.IsExtended) { <span class="td-date-flag extended" title="@evidence.LatestExtension?.Reason">Extended</span> }
-                            @if (!IsOverdue && Task.DueDate.HasValue && Task.Status != "done") { <button type="button" class="td-extend" @onclick="RequestExtension" title="Request a deadline extension"><i data-lucide="calendar-plus"></i>Extend</button> }
+                            @if (!IsOverdue && Task.DueDate.HasValue && Task.Status != "done") { <button disabled="@ReadOnly" type="button" class="td-extend" @onclick="RequestExtension" title="Request a deadline extension"><i data-lucide="calendar-plus"></i>Extend</button> }
                         </div>
                         <span class="td-label"><i data-lucide="calendar-clock"></i>Calendar</span>
                         <div class="td-due-row td-cal-row">
@@ -156,7 +156,7 @@
                                 </span>
                             }
                             <div class="td-dep-picker">
-                                <button type="button" class="td-add-assignee" data-menu-trigger aria-haspopup="menu" aria-expanded="@(depOpen ? "true" : "false")" @onclick="ToggleDepMenu"><i data-lucide="plus"></i>Add</button>
+                                <button disabled="@ReadOnly" type="button" class="td-add-assignee" data-menu-trigger aria-haspopup="menu" aria-expanded="@(depOpen ? "true" : "false")" @onclick="ToggleDepMenu"><i data-lucide="plus"></i>Add</button>
                                 @if (depOpen)
                                 {
                                     <div class="td-menu-backdrop" @onclick="() => depOpen = false"></div>
@@ -198,7 +198,7 @@
                             else if (recurFreq == "MONTHLY")
                             {
                                 <label class="td-monthday">Day
-                                    <input type="number" min="1" max="31" aria-label="Day of the month" value="@recurMonthDay" disabled="@recurBusy" @onchange="SetRecurMonthDay" />
+                                    <input type="number" min="1" max="31" aria-label="Day of the month" value="@recurMonthDay" disabled="@(ReadOnly || recurBusy)" @onchange="SetRecurMonthDay" />
                                 </label>
                             }
                             @if (RecurNextPreview is { } next)
@@ -217,7 +217,7 @@
                             {
                                 var value = FieldValues.GetValueOrDefault(field.Id);
                                 <div class="td-field-row"><label>@field.Name</label>
-                                    <ProjectFieldCell Field="field" Value="value" Members="Members"
+                                    <ProjectFieldCell ReadOnly="ReadOnly" Field="field" Value="value" Members="Members"
                                                       ValueChanged="v => OnSetFieldValue.InvokeAsync((Task.Id, field.Id, v))" />
                                 </div>
                             }
@@ -225,7 +225,7 @@
                     }
                     <section class="td-section">
                         <span class="td-section-title">DESCRIPTION</span>
-                        <textarea rows="3" @bind="editDesc" placeholder="Add more detail…"></textarea>
+                        <textarea disabled="@ReadOnly" rows="3" @bind="editDesc" placeholder="Add more detail…"></textarea>
                     </section>
                     <section class="td-section td-subtasks">
                         <div class="td-section-head"><span class="td-section-title">SUBTASKS</span><span>@Subtasks.Count(s => s.Status == "done")/@Subtasks.Count</span></div>
@@ -241,10 +241,10 @@
                         }
                         <div class="td-sub-add"><i data-lucide="plus"></i><input placeholder="Add a subtask and press Enter" @bind="newSubtaskTitle" @onkeydown="@(async e => { if (e.Key == "Enter") await HandleAddSubtask(); })" /><button type="button" aria-label="Add subtask" @onclick="HandleAddSubtask"><i data-lucide="arrow-up"></i></button></div>
                     </section>
-                    <TaskTimeSection TaskId="Task.Id" Estimated="editEstH" Version="Task" />
+                    <TaskTimeSection ReadOnly="ReadOnly" TaskId="Task.Id" Estimated="editEstH" Version="Task" />
                     <section class="td-section td-evidence">
                         <span class="td-section-title">EVIDENCE</span>
-                        <div class="task-evidence-section" data-attach-zone data-attach-title="Drop field photos" data-attach-hint="Photos up to 25 MB">
+                        <div class="task-evidence-section" data-attach-zone="@(ReadOnly ? null : "")" data-attach-title="Drop field photos" data-attach-hint="Photos up to 25 MB">
                             <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="activity"></i>Progress Breakdown & Field Evidence</div>@EvidenceBadge(false)</div>
                             <div class="td-sub-add"><input placeholder="Add a progress step and press Enter" @bind="newStepText" @onkeydown="@(e => { if (e.Key == "Enter") AddProgressStep(); })" /><button type="button" aria-label="Add step" @onclick="AddProgressStep"><i data-lucide="plus"></i></button></div>
                             @foreach (var step in evidence.ProgressSteps)
@@ -257,35 +257,35 @@
                                     <button type="button" class="td-step-x" title="Remove step" aria-label="Remove @st.Text" @onclick="() => evidence.ProgressSteps.Remove(st)"><i data-lucide="x"></i></button>
                                 </div>
                             }
-                            <TaskFiles TaskId="Task.Id" Kind="field" Files="@FilesOf("field")" Legacy="@LegacyOf(evidence.FieldPhotos)"
+                            <TaskFiles ReadOnly="ReadOnly" TaskId="Task.Id" Kind="field" Files="@FilesOf("field")" Legacy="@LegacyOf(evidence.FieldPhotos)"
                                        UploadLabel="Upload field photos" UploadIcon="camera" Accept="image/*"
                                        MyUserId="MyUserId" IsOwner="IsProjectOwner" OnChanged="LoadFilesAsync" OnOpen="OpenViewer" />
                         </div>
-                        <div class="task-evidence-section" data-attach-zone data-attach-default data-attach-title="Drop to attach" data-attach-hint="Photos or documents up to 25 MB">
+                        <div class="task-evidence-section" data-attach-zone="@(ReadOnly ? null : "")" data-attach-default data-attach-title="Drop to attach" data-attach-hint="Photos or documents up to 25 MB">
                             <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="file-check"></i>Completion Evidence & Deliverables</div>@EvidenceBadge(true)</div>
-                            <TaskFiles TaskId="Task.Id" Kind="deliverable" Files="@FilesOf("deliverable")" Legacy="@LegacyOf(evidence.CompletionDeliverables)"
+                            <TaskFiles ReadOnly="ReadOnly" TaskId="Task.Id" Kind="deliverable" Files="@FilesOf("deliverable")" Legacy="@LegacyOf(evidence.CompletionDeliverables)"
                                        MyUserId="MyUserId" IsOwner="IsProjectOwner" OnChanged="LoadFilesAsync" OnOpen="OpenViewer" />
-                            <textarea rows="2" placeholder="Completion notes..." @bind="evidence.CompletionNotes"></textarea>
+                            <textarea disabled="@ReadOnly" rows="2" placeholder="Completion notes..." @bind="evidence.CompletionNotes"></textarea>
                         </div>
                         <div class="task-evidence-section td-files-section">
                             <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="paperclip"></i>Attachments</div>
                                 <button type="button" class="td-link-btn" @onclick="() => nasPickerOpen = true" title="Link a file that is already on the NAS"><i data-lucide="hard-drive"></i>From NAS</button></div>
-                            <TaskFiles TaskId="Task.Id" Kind="attachment" Files="@FilesOf("attachment")" UploadLabel="Upload a file"
+                            <TaskFiles ReadOnly="ReadOnly" TaskId="Task.Id" Kind="attachment" Files="@FilesOf("attachment")" UploadLabel="Upload a file"
                                        MyUserId="MyUserId" IsOwner="IsProjectOwner" OnChanged="LoadFilesAsync" OnOpen="OpenViewer" />
                             @if (attachmentItems.Count > 0)
                             {
-                                <TaskAttachments Items="attachmentItems" CanEdit="true" OnAdd="() => nasPickerOpen = true" OnDownload="DownloadAttachment" OnDelete="DeleteAttachment" />
+                                <TaskAttachments Items="attachmentItems" CanEdit="@(!ReadOnly)" OnAdd="() => nasPickerOpen = true" OnDownload="DownloadAttachment" OnDelete="DeleteAttachment" />
                             }
                         </div>
                     </section>
                     <section class="td-section td-comments">
                         <span class="td-section-title">COMMENTS</span>
-                        <TaskDiscussion Items="commentItems" OnSubmit="SubmitComment" />
+                        <TaskDiscussion ReadOnly="ReadOnly" Items="commentItems" OnSubmit="SubmitComment" />
                     </section>
                     <details class="td-extra"><summary>Additional details</summary>
-                        <div class="td-hours"><label>Estimated hours<input type="number" step="0.5" @bind="editEstH" placeholder="0" /></label></div>
+                        <div class="td-hours"><label>Estimated hours<input disabled="@ReadOnly" type="number" step="0.5" @bind="editEstH" placeholder="0" /></label></div>
                         <div class="task-reminder-section">
-                            <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="bell-ring"></i>Due Date Reminders</div><label class="syno-toggle"><input type="checkbox" checked="@reminderEnabled" @onchange="ToggleReminderEnabled" /><span>@(reminderEnabled ? "Enabled" : "Disabled")</span></label></div>
+                            <div class="task-evidence-head"><div class="task-evidence-title"><i data-lucide="bell-ring"></i>Due Date Reminders</div><label class="syno-toggle"><input type="checkbox" disabled="@ReadOnly" checked="@reminderEnabled" @onchange="ToggleReminderEnabled" /><span>@(reminderEnabled ? "Enabled" : "Disabled")</span></label></div>
                             @if (reminderEnabled)
                             {
                                 @if (editDue is null) { <div class="td-hint">Set a due date first so reminders can be scheduled.</div> }
@@ -294,7 +294,7 @@
                         </div>
                     </details>
                 </div>
-                <div class="task-drawer-foot td-foot">@if (IsDirty) { <span class="td-dirty">Unsaved changes</span> }<button type="button" @onclick="OnClose">Cancel</button><button type="button" class="primary" @onclick="HandleSave"><i data-lucide="check"></i>Save changes</button></div>
+                <div class="task-drawer-foot td-foot">@if (IsDirty) { <span class="td-dirty">Unsaved changes</span> }<button type="button" @onclick="OnClose">Cancel</button><button disabled="@ReadOnly" type="button" class="primary" @onclick="HandleSave"><i data-lucide="check"></i>Save changes</button></div>
             }
         </div>
     </div>
@@ -309,6 +309,7 @@
                                          OnPicked="OnNasPicked" />
 
 @code {
+    [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public ProjectTaskDto? Task { get; set; }
     [Parameter] public string ProjectName { get; set; } = "Project";
     [Parameter] public string? ProjectColor { get; set; }
@@ -377,6 +378,7 @@
 
     private async Task ChangeStatus(string status)
     {
+        if (ReadOnly) return;
         if (Task is null || statusBusy || Task.Status == status) return;
         statusBusy = true;
         try { await OnStatusChange.InvokeAsync((Task, status)); }
@@ -430,9 +432,9 @@
     private DotNetObjectReference<ProjectTaskDrawer>? selfRef;
 
     private void ToggleMoreMenu() { assignOpen = depOpen = false; moreOpen = !moreOpen; }
-    private void ToggleAssignMenu() { moreOpen = depOpen = false; assignOpen = !assignOpen; }
+    private void ToggleAssignMenu() { if (ReadOnly) return; moreOpen = depOpen = false; assignOpen = !assignOpen; }
     private void ToggleDepMenu() { moreOpen = assignOpen = false; depQuery = ""; depOpen = !depOpen; }
-    private Task DeleteFromMenu() { moreOpen = false; return Task is null ? System.Threading.Tasks.Task.CompletedTask : OnDelete.InvokeAsync(Task.Id); }
+    private Task DeleteFromMenu() { if (ReadOnly) return System.Threading.Tasks.Task.CompletedTask; moreOpen = false; return Task is null ? System.Threading.Tasks.Task.CompletedTask : OnDelete.InvokeAsync(Task.Id); }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -474,6 +476,7 @@
     }
     private async Task RequestExtension()
     {
+        if (ReadOnly) return;
         if (Task is null) return;
         await OnRequestExtension.InvokeAsync(Task);
     }
@@ -541,6 +544,7 @@
 
     private async void SubmitComment((string Text, Guid? ParentId) input)
     {
+        if (ReadOnly) return;
         if (Task is null) return;
         try
         {
@@ -561,6 +565,7 @@
 
     private async Task ToggleReminderOffset(int hours)
     {
+        if (ReadOnly) return;
         if (Task is null || reminderSaving) return;
         if (!reminderOffsets.Remove(hours)) reminderOffsets.Add(hours);
         reminderSaving = true;
@@ -593,6 +598,7 @@
     // Nonaktif = kosongkan himpunan pengingat di server (riwayat terkirim dipertahankan).
     private async Task ToggleReminderEnabled()
     {
+        if (ReadOnly) return;
         if (Task is null || reminderSaving) return;
         reminderEnabled = !reminderEnabled;
         reminderSaving = true;
@@ -615,6 +621,7 @@
 
     private async void OnNasPicked(List<IPop.Web.Components.NasFilePickerDialog.NasFileRef> refs)
     {
+        if (ReadOnly) return;
         if (Task is null) return;
         foreach (var r in refs)
         {
@@ -650,6 +657,7 @@
 
     private async void DeleteAttachment(TaskAttachments.TaskAttachmentItem att)
     {
+        if (ReadOnly) return;
         if (Task is null) return;
         try
         {
@@ -784,6 +792,7 @@
     /// uploader opens the task again; after that every member sees it.
     private async Task MigrateLegacyEvidenceAsync()
     {
+        if (ReadOnly) return;
         if (Task is null) return;
         var taskId = Task.Id;
         var moved = 0;
@@ -848,6 +857,7 @@
 
     private void AddProgressStep()
     {
+        if (ReadOnly) return;
         if (string.IsNullOrWhiteSpace(newStepText)) return;
         evidence.ProgressSteps.Add(new TaskProgressStep
         {
@@ -866,6 +876,7 @@
 
     private async Task HandleSave()
     {
+        if (ReadOnly) return;
         if (Task is null || string.IsNullOrWhiteSpace(editTitle)) return;
         var finalDesc = TaskEvidenceHelper.Serialize(editDesc, evidence);
         var model = new TaskSaveModel(
@@ -885,6 +896,7 @@
 
     private async Task HandleAddSubtask()
     {
+        if (ReadOnly) return;
         if (string.IsNullOrWhiteSpace(newSubtaskTitle)) return;
         var title = newSubtaskTitle.Trim();
         newSubtaskTitle = "";
@@ -893,6 +905,7 @@
 
     private async Task OnAssignDropdownChanged(ChangeEventArgs e)
     {
+        if (ReadOnly) return;
         if (Task == null || e.Value == null) return;
         var valStr = e.Value.ToString();
         if (Guid.TryParse(valStr, out var uid) && uid != Guid.Empty)
@@ -931,6 +944,7 @@
 
     private async Task SaveDependencies(List<Guid> ids)
     {
+        if (ReadOnly) return;
         if (Task is null || depBusy) return;
         depBusy = true;
         depError = null;
@@ -1010,6 +1024,7 @@
 
     private async Task SaveRecurrence()
     {
+        if (ReadOnly) return;
         if (Task is null) return;
         recurBusy = true;
         recurError = null;

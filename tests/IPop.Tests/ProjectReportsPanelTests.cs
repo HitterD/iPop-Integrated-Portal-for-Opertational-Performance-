@@ -64,6 +64,54 @@ public class ProjectReportsPanelTests
         cut.Find($"[data-chart='{chart}'] svg").GetAttribute("data-series")!.Split(',').Select(int.Parse).ToArray();
 
     [Fact]
+    public void October_8_fixture_has_exact_tiles_and_weekly_series_at_fixed_asof()
+    {
+        var created = new DateTime(2026, 10, 8, 0, 0, 0, DateTimeKind.Utc);
+        var completed = created.AddHours(1);
+        // Reports consume viewer-local "now", while persisted timestamps are UTC.
+        var asof = new DateTime(2026, 10, 8, 12, 0, 0, DateTimeKind.Local);
+        var start = new DateTime(2026, 10, 8);
+        ProjectTaskDto Fixture(string title, string status, int dueDay, decimal hours) =>
+            T(title, created, due: new DateTime(2026, 10, dueDay)) with
+            {
+                Status = status, StartDate = start, EstimatedHours = hours,
+                CreatedAt = created, UpdatedAt = created.AddHours(2),
+                CompletedAt = status == "done" ? completed : null
+            };
+        var tasks = new[] { Fixture("A", "todo", 9, 4), Fixture("B", "doing", 11, 6), Fixture("C", "done", 13, 2) };
+
+        var tiles = ProjectReportMath.Tiles(tasks, asof);
+        Assert.Equal(3, tiles.Total);
+        Assert.Equal(1, tiles.Done);
+        Assert.Equal(33, tiles.Percent);
+        Assert.Equal(1, tiles.DoneThisWeek);
+        Assert.Equal(1, tiles.OnTimeCount);
+        Assert.Equal(1, tiles.DoneWithDue);
+        Assert.Equal(100, tiles.OnTimePercent);
+        Assert.Equal(0, tiles.Overdue);
+        Assert.Equal(0, tiles.OldestLateDays);
+        Assert.Equal(2, tiles.DueThisWeek);
+        Assert.Equal(1, tiles.DueTomorrow);
+        Assert.Equal(new DateTime(2026, 10, 5), tiles.WeekStart);
+        Assert.Equal(1d / 6, tiles.Pace);
+        Assert.Equal(1d / 6, tiles.PaceDelta);
+        Assert.Equal(new[] { new DateTime(2026, 9, 14), new DateTime(2026, 9, 21), new DateTime(2026, 9, 28), new DateTime(2026, 10, 5) },
+            ProjectReportMath.Weeks(asof, 4));
+        Assert.Equal(new[] { 0, 0, 0, 2 }, ProjectReportMath.Burndown(tasks, asof, 4));
+        Assert.Equal(new[] { 0, 0, 0, 1 }, ProjectReportMath.Velocity(tasks, asof, 4));
+        Assert.Equal(Enumerable.Repeat(0, 11).Append(2), ProjectReportMath.Burndown(tasks, asof, 12));
+        Assert.Equal(Enumerable.Repeat(0, 11).Append(1), ProjectReportMath.Velocity(tasks, asof, 12));
+
+        using var ctx = NewContext(new Api([]), out _);
+        var cut = ctx.Render<ProjectReportsPanel>(p => p.Add(x => x.Project, Project())
+            .Add(x => x.AllTasks, tasks.ToList()).Add(x => x.Now, asof));
+        Assert.Contains("33", cut.Find("[data-tile='progress'] .big").TextContent);
+        Assert.Contains("1 of 1 done by their due date", cut.Find("[data-tile='ontime']").TextContent);
+        Assert.Equal(Enumerable.Repeat(0, 11).Append(2), Series(cut, "burndown"));
+        Assert.Equal(new[] { 0, 0, 0, 0, 0, 1 }, Series(cut, "velocity")); // panel defaults to 6 velocity weeks
+    }
+
+    [Fact]
     public void Burndown_never_rises_when_tasks_only_get_completed()
     {
         // 10 tasks created 13 weeks ago; one finished each week for the last 8 weeks.

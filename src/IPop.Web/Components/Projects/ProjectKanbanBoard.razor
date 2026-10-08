@@ -10,6 +10,7 @@
 </div>
 
 @code {
+    [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public KanbanBoardDto? Kanban { get; set; }
     [Parameter] public List<ProjectMemberDto> Members { get; set; } = [];
     [Parameter] public List<ProjectGroupDto> Groups { get; set; } = [];
@@ -95,6 +96,7 @@
 
     private void OnDragStart(Guid taskId, DragEventArgs e)
     {
+        if (ReadOnly) return;
         draggingTaskId = taskId;
         try
         {
@@ -109,6 +111,7 @@
 
     private async Task OnDrop(string targetStatus, DragEventArgs e)
     {
+        if (ReadOnly) return;
         if (draggingTaskId is null) return;
         var id = draggingTaskId.Value;
         draggingTaskId = null;
@@ -131,12 +134,14 @@
 
     private void StartQuickAdd(string status)
     {
+        if (ReadOnly) return;
         quickAddColumn = status;
         quickColumnTitle = "";
     }
 
     private async Task SubmitQuickAdd(string status)
     {
+        if (ReadOnly) return;
         if (string.IsNullOrWhiteSpace(quickColumnTitle))
         {
             quickAddColumn = null;
@@ -167,6 +172,7 @@
 
     private void ToggleQuickAssign(Guid taskId)
     {
+        if (ReadOnly) return;
         quickAssignTaskId = quickAssignTaskId == taskId ? null : taskId;
         moreTaskId = null;
     }
@@ -237,14 +243,14 @@
 
                     <div id="task-card-@t.Id" @key="t.Id"
                          class="kanban-task-card @(t.Status == "done" ? "is-done" : "") @(isJustArrived ? "task-just-arrived" : "") @(isJustCreated ? "task-just-created" : "") @(HighlightTaskId == t.Id ? "task-highlight" : "")"
-                         draggable="true"
+                         draggable="@(ReadOnly ? "false" : "true")"
                          @onclick="() => OnTaskClick.InvokeAsync(t)"
                          @ondragstart="e => OnDragStart(t.Id, e)"
                          @ondragover:preventDefault="true"
                          @ondragend="() => draggingTaskId = null">
                         @{ var pp = ProjectUiHelpers.GetPriorityPill(t.Priority); var dueState = ProjectUiHelpers.GetDueState(t); }
                         <div class="kc-top">
-                            <button type="button" class="task-card-check @(t.Status == "done" ? "done" : "")"
+                            <button disabled="@ReadOnly" type="button" class="task-card-check @(t.Status == "done" ? "done" : "")"
                                     @onclick="() => OnToggleComplete.InvokeAsync(t)"
                                     @onclick:stopPropagation="true"
                                     aria-label="@(t.Status == "done" ? "Mark incomplete" : "Mark completed")"
@@ -272,7 +278,7 @@
                             }
                             <div class="kc-spacer"></div>
                             <div class="kc-more-wrap" @onclick:stopPropagation="true">
-                                <button type="button" class="kc-more" data-menu-trigger title="More" aria-label="More actions" aria-haspopup="menu" aria-expanded="@(moreTaskId == t.Id ? "true" : "false")" @onclick="() => ToggleMore(t.Id)">
+                                <button disabled="@ReadOnly" type="button" class="kc-more" data-menu-trigger title="More" aria-label="More actions" aria-haspopup="menu" aria-expanded="@(moreTaskId == t.Id ? "true" : "false")" @onclick="() => ToggleMore(t.Id)">
                                     <i data-lucide="ellipsis"></i>
                                 </button>
                                 @if (moreTaskId == t.Id)
@@ -363,7 +369,7 @@
                                 }
                                 else
                                 {
-                                    <button type="button" class="kc-assign" data-menu-trigger aria-haspopup="dialog" aria-expanded="@(quickAssignTaskId == t.Id ? "true" : "false")"
+                                    <button disabled="@ReadOnly" type="button" class="kc-assign" data-menu-trigger aria-haspopup="dialog" aria-expanded="@(quickAssignTaskId == t.Id ? "true" : "false")"
                                             @onclick="() => ToggleQuickAssign(t.Id)"
                                             @onclick:stopPropagation="true"
                                             title="Assign team member">
@@ -389,7 +395,7 @@
                                             }
                                             else
                                             {
-                                                @foreach (var m in Members)
+                                                @foreach (var m in Members.Where(m => m.Role != "viewer"))
                                                 {
                                                     var isAssigned = t.Assignees.Any(a => a.UserId == m.UserId);
                                                     <div class="quick-assign-item @(isAssigned ? "assigned" : "")" role="menuitemcheckbox" tabindex="-1" aria-checked="@(isAssigned ? "true" : "false")"
@@ -420,7 +426,7 @@
             @if (quickAddColumn != statusKey)
             {
                 <div class="kanban-col-quick-add">
-                    <button type="button" class="col-quick-btn" @onclick="() => StartQuickAdd(statusKey)">
+                    <button disabled="@ReadOnly" type="button" class="col-quick-btn" @onclick="() => StartQuickAdd(statusKey)">
                         <i data-lucide="plus" style="width:13px;height:13px"></i> Add task
                     </button>
                 </div>

@@ -252,4 +252,24 @@ public sealed class ProjectTaskFileTests
 
         public Task DeleteAsync(Guid id, CancellationToken ct) => Task.CompletedTask;
     }
+
+    [Fact]
+    public async Task Demoted_uploader_can_read_but_cannot_upload_or_delete_evidence()
+    {
+        using var c = await SetupAsync();
+        var db = c.T.Verify();
+        var files = new TaskFileService(db, new FakeStore(db));
+        var original = await files.UploadAsync(c.Member, c.TaskId, "deliverable", "proof.txt", "text/plain", Bytes(), default);
+        Assert.True(original.Success);
+        var member = await db.ProjectMembers.SingleAsync(m => m.ProjectId == c.ProjectId && m.UserId == c.Member);
+        member.Role = "viewer";
+        await db.SaveChangesAsync();
+        Assert.True((await files.ListAsync(c.Member, c.TaskId, default)).Success);
+        Assert.False((await files.UploadAsync(c.Member, c.TaskId, "deliverable", "no.txt", "text/plain", Bytes(), default)).Success);
+        Assert.False((await files.DeleteAsync(c.Member, c.TaskId, original.Value!.Id, default)).Success);
+        db.ProjectMembers.Remove(member);
+        await db.SaveChangesAsync();
+        Assert.False((await files.ListAsync(c.Member, c.TaskId, default)).Success);
+        Assert.False((await files.DeleteAsync(c.Member, c.TaskId, original.Value!.Id, default)).Success);
+    }
 }

@@ -25,7 +25,7 @@ public sealed class MilestoneService(IPopDbContext db) : IMilestoneService
 
     public async Task<MilestoneResult<MilestoneDto>> CreateAsync(Guid actorId, Guid projectId, CreateMilestoneRequest req, DateTime today, CancellationToken ct)
     {
-        if (await AccessErrorAsync(actorId, projectId, ct) is { } err) return Fail<MilestoneDto>(err);
+        if (await AccessErrorAsync(actorId, projectId, ct, write: true) is { } err) return Fail<MilestoneDto>(err);
         var title = req.Title?.Trim() ?? "";
         if (title.Length == 0 || title.Length > MaxTitle) return Fail<MilestoneDto>("invalid_title");
 
@@ -48,7 +48,7 @@ public sealed class MilestoneService(IPopDbContext db) : IMilestoneService
 
     public async Task<MilestoneResult<MilestoneDto>> UpdateAsync(Guid actorId, Guid projectId, Guid milestoneId, UpdateMilestoneRequest req, DateTime today, CancellationToken ct)
     {
-        if (await AccessErrorAsync(actorId, projectId, ct) is { } err) return Fail<MilestoneDto>(err);
+        if (await AccessErrorAsync(actorId, projectId, ct, write: true) is { } err) return Fail<MilestoneDto>(err);
         var m = await db.ProjectMilestones.FirstOrDefaultAsync(x => x.Id == milestoneId && x.ProjectId == projectId, ct);
         if (m is null) return Fail<MilestoneDto>("milestone_not_found");
 
@@ -91,7 +91,7 @@ public sealed class MilestoneService(IPopDbContext db) : IMilestoneService
 
     public async Task<MilestoneResult<bool>> DeleteAsync(Guid actorId, Guid projectId, Guid milestoneId, CancellationToken ct)
     {
-        if (await AccessErrorAsync(actorId, projectId, ct) is { } err) return Fail<bool>(err);
+        if (await AccessErrorAsync(actorId, projectId, ct, write: true) is { } err) return Fail<bool>(err);
         var m = await db.ProjectMilestones.FirstOrDefaultAsync(x => x.Id == milestoneId && x.ProjectId == projectId, ct);
         if (m is null) return Fail<bool>("milestone_not_found");
         var links = await db.ProjectMilestoneTasks.IgnoreQueryFilters().Where(x => x.MilestoneId == m.Id).ToListAsync(ct);
@@ -129,10 +129,10 @@ public sealed class MilestoneService(IPopDbContext db) : IMilestoneService
         }).ToList();
     }
 
-    private async Task<string?> AccessErrorAsync(Guid actorId, Guid projectId, CancellationToken ct)
+    private async Task<string?> AccessErrorAsync(Guid actorId, Guid projectId, CancellationToken ct, bool write = false)
     {
         if (!await db.Projects.AsNoTracking().AnyAsync(p => p.Id == projectId, ct)) return "project_not_found";
-        return await db.ProjectMembers.AsNoTracking().AnyAsync(m => m.ProjectId == projectId && m.UserId == actorId, ct)
+        return await db.ProjectMembers.AsNoTracking().AnyAsync(m => m.ProjectId == projectId && m.UserId == actorId && (!write || m.Role == "owner" || m.Role == "manager" || m.Role == "member"), ct)
             ? null : "forbidden";
     }
 

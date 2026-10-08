@@ -10,10 +10,13 @@
 @* One kind of task file (field photo, deliverable, attachment): uploads go straight to the shared
    project store (NAS), so every project member sees them. Images show as thumbnails, other files as
    cards; a click opens the full-screen viewer (photos, PDF, Word, Excel, video). *@
+@if (!ReadOnly)
+{
 <label class="td-upload">
     <i data-lucide="@UploadIcon"></i>@UploadLabel
     <InputFile OnChange="OnPicked" multiple accept="@Accept" style="display:none" />
 </label>
+}
 @if (!string.IsNullOrEmpty(hint)) { <div class="ev-hint @(hintIsError ? "err" : "")">@hint</div> }
 
 @if (Files.Count > 0 || uploads.Count > 0 || Legacy.Count > 0)
@@ -82,6 +85,7 @@
     [Parameter] public string UploadIcon { get; set; } = "paperclip";
     [Parameter] public string? Accept { get; set; }
     [Parameter] public Guid? MyUserId { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public bool IsOwner { get; set; }
     /// The list changed (upload, delete): the drawer reloads its files.
     [Parameter] public EventCallback OnChanged { get; set; }
@@ -97,7 +101,7 @@
 
     public static AttachmentDto ToDto(TaskFileDto f) => new(f.AttachmentId, f.FileName, f.Size, f.ContentType, null);
 
-    private bool CanDelete(TaskFileDto f) => IsOwner || (MyUserId is { } me && me == f.UploadedById);
+    private bool CanDelete(TaskFileDto f) => !ReadOnly && (IsOwner || (MyUserId is { } me && me == f.UploadedById));
 
     protected override async Task OnParametersSetAsync()
     {
@@ -117,8 +121,9 @@
 
     private async Task OnPicked(InputFileChangeEventArgs e)
     {
+        if (ReadOnly) return;
         hint = null;
-        var picked = e.GetMultipleFiles(MaxFiles);
+        var picked = e.GetMultipleFiles(Math.Max(MaxFiles, e.FileCount)).Take(MaxFiles).ToList();
         var tooBig = picked.Where(f => f.Size > MaxBytes).Select(f => f.Name).ToList();
         if (tooBig.Count > 0) { hint = $"Too large (max 25 MB): {string.Join(", ", tooBig)}"; hintIsError = true; }
         if (e.FileCount > MaxFiles) { hint = (hint is null ? "" : hint + " · ") + $"Only the first {MaxFiles} files were added."; hintIsError = true; }

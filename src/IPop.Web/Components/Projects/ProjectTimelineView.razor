@@ -53,7 +53,7 @@
         <div class="gantt-empty">
             <i data-lucide="calendar-x" aria-hidden="true"></i>
             <p>No tasks on this project timeline yet.</p>
-            <button type="button" class="btn-sm accent" @onclick="() => OnAddTask.InvokeAsync()">Add First Task</button>
+            @if (!ReadOnly) { <button type="button" class="btn-sm accent" @onclick="AddTask">Add First Task</button> }
         </div>
     }
     else if (displayedTasks.Count == 0)
@@ -115,7 +115,7 @@
                         @if (placement.NeedsDates)
                         {
                             <button type="button" class="gantt-set-dates" @onclick="() => OnTaskClick.InvokeAsync(task)"
-                                    aria-label="Set dates for @task.Title">Set dates</button>
+                                    aria-label="@(ReadOnly ? $"Open {task.Title}" : $"Set dates for {task.Title}")">@(ReadOnly ? "No dates" : "Set dates")</button>
                         }
                         else if (placement.OutsideNote is not null)
                         {
@@ -167,6 +167,7 @@
 </section>
 
 @code {
+    [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public ProjectTimelineDto? Timeline { get; set; }
     [Parameter] public List<ProjectTaskDto> AllTasks { get; set; } = [];
     [Parameter] public HashSet<Guid> CriticalPathTaskIds { get; set; } = [];
@@ -177,6 +178,8 @@
     [Parameter] public string? CurrentUserNik { get; set; }
     [Parameter] public EventCallback<TimelineTaskDto> OnTaskClick { get; set; }
     [Parameter] public EventCallback OnAddTask { get; set; }
+
+    private Task AddTask() => ReadOnly ? Task.CompletedTask : OnAddTask.InvokeAsync();
 
     private const string ScaleStorageKey = "ipop_projects_timeline_scale";
     private string timelineScale = "monthly";

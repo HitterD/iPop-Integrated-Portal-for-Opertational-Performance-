@@ -104,7 +104,7 @@
             <span class="sp"></span>
             @if (Milestones.Count > 0)
             {
-                <button type="button" class="rep-btn sm" @onclick="OpenNewSheet"><i data-lucide="flag"></i>New milestone</button>
+                <button type="button" class="rep-btn sm" disabled="@ReadOnly" @onclick="OpenNewSheet"><i data-lucide="flag"></i>New milestone</button>
             }
         </div>
         @if (!milestonesLoaded)
@@ -118,7 +118,7 @@
                 <b>No milestones yet</b>
                 <p>A milestone is a checkpoint with a date — like "UAT ready" or "Go-live Karawang". Link tasks to it and this page tracks whether you'll hit it.</p>
                 <div class="eg"><span>UAT ready · @Short(Today.AddDays(24))</span><span>Training users · @Short(Today.AddDays(31))</span><span>Go-live · @Short(Today.AddDays(38))</span></div>
-                <button type="button" class="rep-btn pri" @onclick="OpenNewSheet"><i data-lucide="plus"></i>New milestone</button>
+                <button type="button" class="rep-btn pri" disabled="@ReadOnly" @onclick="OpenNewSheet"><i data-lucide="plus"></i>New milestone</button>
             </div>
         }
         else
@@ -135,11 +135,11 @@
                         <div class="rl">
                             <button type="button" class="dot @(st == "done" ? "ok" : st) @(popped ? "burst" : "")"
                                     title="@(st == "done" ? "Achieved" : "Mark achieved")" aria-label="@(st == "done" ? $"{m.Title}: achieved" : $"Mark {m.Title} achieved")"
-                                    disabled="@(st == "done" || busyId == m.Id)" @onclick="() => MarkAchievedAsync(m)"><i data-lucide="check"></i></button>
+                                    disabled="@(ReadOnly || st == "done" || busyId == m.Id)" @onclick="() => MarkAchievedAsync(m)"><i data-lucide="check"></i></button>
                         </div>
                         <div class="bd @(popped ? "mi-saved" : "")">
                             <div style="min-width:0">
-                                <button type="button" class="nm" title="Edit milestone" @onclick="() => OpenEditSheet(m)">@m.Title</button>
+                                <button type="button" class="nm" title="Edit milestone" disabled="@ReadOnly" @onclick="() => OpenEditSheet(m)">@m.Title</button>
                                 <div class="sm">
                                     @if (m.OwnerId is not null && !string.IsNullOrWhiteSpace(m.OwnerName))
                                     {
@@ -158,7 +158,7 @@
                                 }
                                 else
                                 {
-                                    <button type="button" class="rep-btn sm ghost" disabled="@(busyId == m.Id)" @onclick="() => MarkAchievedAsync(m)"><i data-lucide="circle-check"></i>Mark achieved</button>
+                                    <button type="button" class="rep-btn sm ghost" disabled="@(ReadOnly || busyId == m.Id)" @onclick="() => MarkAchievedAsync(m)"><i data-lucide="circle-check"></i>Mark achieved</button>
                                 }
                             </div>
                         </div>
@@ -410,6 +410,7 @@
 }
 
 @code {
+    [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public ProjectDto? Project { get; set; }
     [Parameter] public IReadOnlyList<ProjectTaskDto> AllTasks { get; set; } = [];
     /// Project members: the milestone Owner picker.
@@ -606,6 +607,7 @@
 
     private async Task MarkAchievedAsync(MsView m)
     {
+        if (ReadOnly) return;
         if (Project is null || busyId is not null || m.Status == MilestoneStatus.Achieved) return;
         busyId = m.Id;
         var pid = Project.Id;
@@ -624,6 +626,7 @@
 
     private async Task UndoAchievedAsync(Guid pid, Guid id, string title)
     {
+        if (ReadOnly) return;
         try
         {
             var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{pid}/milestones/{id}/unachieve?localToday={Today:yyyy-MM-dd}");
@@ -744,6 +747,7 @@
 
     private async Task SaveSheetAsync()
     {
+        if (ReadOnly) return;
         if (Project is null || saving) return;
         var name = sheetName.Trim();
         if (name.Length == 0)
@@ -789,6 +793,7 @@
 
     private async Task UndoCreateAsync(Guid pid, Guid id, string name)
     {
+        if (ReadOnly) return;
         try
         {
             var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/{pid}/milestones/{id}");
@@ -801,6 +806,7 @@
 
     private async Task DeleteEditingAsync()
     {
+        if (ReadOnly) return;
         if (Project is null || editing is null || saving) return;
         saving = true;
         var pid = Project.Id;

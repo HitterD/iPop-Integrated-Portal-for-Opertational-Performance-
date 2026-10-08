@@ -66,8 +66,12 @@
                             <span>Field photos</span>
                             <span style="font-size:10.5px;color:var(--ink-3)">@FilesOf("field").Count photos</span>
                         </label>
+                        @if (Task.Id != Guid.Empty)
+                        {
                         <TaskFiles TaskId="Task.Id" Kind="field" Files="@FilesOf("field")" UploadLabel="Select field photos" UploadIcon="camera" Accept="image/*"
                                    MyUserId="MyUserId" IsOwner="false" OnChanged="LoadFilesAsync" OnOpen="OpenViewer" />
+                        }
+                        else { <small class="cal-hint">Upload field photos from each task after the bulk update.</small> }
                     </div>
                 }
                 else
@@ -78,8 +82,12 @@
                             <span>Deliverables & completion photos</span>
                             <span style="font-size:10.5px;color:var(--ink-3)">@FilesOf("deliverable").Count files</span>
                         </label>
+                        @if (Task.Id != Guid.Empty)
+                        {
                         <TaskFiles TaskId="Task.Id" Kind="deliverable" Files="@FilesOf("deliverable")" UploadLabel="Upload photos, PDF or documents"
                                    MyUserId="MyUserId" IsOwner="false" OnChanged="LoadFilesAsync" OnOpen="OpenViewer" />
+                        }
+                        else { <small class="cal-hint">Upload deliverables from each task after the bulk update.</small> }
                     </div>
 
                     @* Completion Notes *@
@@ -163,7 +171,7 @@
 
     private async Task LoadFilesAsync()
     {
-        if (Task is null) return;
+        if (Task is null || Task.Id == Guid.Empty) return;
         var id = Task.Id;
         var rows = await Auth.GetAsync<List<TaskFiles.TaskFileDto>>($"/api/projects/tasks/{id}/files");
         if (Task?.Id != id) return;

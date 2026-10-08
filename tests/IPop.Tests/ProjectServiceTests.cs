@@ -108,6 +108,7 @@ public class ProjectServiceTests
         var p = (await svc.CreateProjectAsync(owner.Id, new CreateProjectRequest("P1", null, 2026, owner.Id, null, null, null, null), default)).Project!;
         var task = (await svc.CreateTaskAsync(owner.Id, new CreateTaskRequest(p.Id, null, "T1", null, "todo", null, null, null, null, null, null), default)).Task!;
 
+        await svc.AddMemberAsync(owner.Id, p.Id, new AddProjectMemberRequest(pic.Id, "member"), default);
         await svc.AssignUserAsync(owner.Id, task.Id, pic.Id, "lead", default);
         await svc.UnassignUserAsync(owner.Id, task.Id, pic.Id, default);
 
@@ -198,6 +199,7 @@ public class ProjectServiceTests
         Assert.Equal(parent.Id, child.ParentTaskId);
 
         // Assign/unassign on parent
+        await svc.AddMemberAsync(owner.Id, p.Id, new AddProjectMemberRequest(pic.Id, "member"), default);
         await svc.AssignUserAsync(creator.Id, parent.Id, pic.Id, "lead", default);
         var loaded = await svc.GetTaskAsync(parent.Id, creator.Id, default);
         Assert.NotNull(loaded);
@@ -405,6 +407,7 @@ public class ProjectServiceTests
             new CreateProjectRequest("Filter", null, 2026, owner.Id, null, null, null, null), default)).Project!;
         var assigned = (await svc.CreateTaskAsync(owner.Id,
             new CreateTaskRequest(project.Id, null, "Assigned", null, "todo", null, null, null, 4, null, null), default)).Task!;
+        await svc.AddMemberAsync(owner.Id, project.Id, new AddProjectMemberRequest(teammate.Id, "member"), default);
         await svc.AssignUserAsync(owner.Id, assigned.Id, teammate.Id, null, default);
         await svc.CreateTaskAsync(owner.Id,
             new CreateTaskRequest(project.Id, null, "Unassigned", null, "todo", null, null, null, 1, null, null), default);
@@ -657,6 +660,64 @@ public class ProjectServiceTests
     // ──────────────────────────────────────────────────────────────────────
     // ipop-21 PERFECTION: Gantt date-mapping + critical path
     // ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task October_8_fixture_has_inclusive_durations_and_full_multiassignee_workload()
+    {
+        using var t = new TestDb(); // SQLite :memory: only; no application database.
+        var owner = t.AddUser("QA-OWNER");
+        var teammate = t.AddUser("QA-TEAM");
+        var svc = new ProjectService(t.Verify());
+        var start = new DateTime(2026, 10, 8, 0, 0, 0, DateTimeKind.Utc);
+        var project = (await svc.CreateProjectAsync(owner.Id,
+            new CreateProjectRequest("Fixed Oct 8", null, 2026, owner.Id, start, start.AddDays(5), null, null), default)).Project!;
+        await svc.AddMemberAsync(owner.Id, project.Id, new AddProjectMemberRequest(teammate.Id, "member"), default);
+        async Task<ProjectTaskDto> Create(string title, string status, int dueOffset, decimal estimate) =>
+            (await svc.CreateTaskAsync(owner.Id, new CreateTaskRequest(project.Id, null, title, null, status,
+                null, start, start.AddDays(dueOffset), estimate, null, null), default)).Task!;
+        var a = await Create("A", "todo", 1, 4);
+        var b = await Create("B", "doing", 3, 6);
+        var c = await Create("C", "done", 5, 2);
+        foreach (var task in await t.Db.ProjectTasks.Where(x => x.ProjectId == project.Id).ToListAsync())
+        {
+            task.CreatedAt = start;
+            task.UpdatedAt = start.AddHours(2);
+            task.CompletedAt = task.Status == "done" ? start.AddHours(1) : null;
+        }
+        await t.Db.SaveChangesAsync();
+        await svc.AssignUserAsync(owner.Id, a.Id, owner.Id, null, default);
+        await svc.AssignUserAsync(owner.Id, b.Id, owner.Id, null, default);
+        await svc.AssignUserAsync(owner.Id, b.Id, teammate.Id, null, default);
+        // C stays unassigned; B's full 6h belongs to both people, not 3h each.
+        var workload = (await svc.GetProjectWorkloadAsync(project.Id, owner.Id, default, start))!;
+        Assert.Equal(3, workload.TotalTasks);
+        Assert.Equal((1, 1, 1, 0), (workload.TodoTasks, workload.DoingTasks, workload.DoneTasks, workload.ReviewTasks));
+        Assert.Equal((12m, 4m, 6m, 2m), (workload.TotalEstimatedHours, workload.TodoEstimatedHours, workload.DoingEstimatedHours, workload.DoneEstimatedHours));
+        var own = Assert.Single(workload.ByAssignee, x => x.UserId == owner.Id);
+        var team = Assert.Single(workload.ByAssignee, x => x.UserId == teammate.Id);
+        var unassigned = Assert.Single(workload.ByAssignee, x => x.IsUnassigned);
+        Assert.Equal((2, 10m, 1, 1, 0), (own.TaskCount, own.EstimatedHours, own.TodoCount, own.DoingCount, own.OverdueCount));
+        Assert.Equal((1, 6m, 1, 0), (team.TaskCount, team.EstimatedHours, team.DoingCount, team.OverdueCount));
+        Assert.Equal((1, 2m, 1, 0), (unassigned.TaskCount, unassigned.EstimatedHours, unassigned.DoneCount, unassigned.OverdueCount));
+        Assert.Equal(18m, workload.ByAssignee.Sum(x => x.EstimatedHours));
+        Assert.Equal(4, workload.ByAssignee.Sum(x => x.TaskCount));
+        Assert.Equal(33, await svc.RecalculateProgressAsync(project.Id, default));
+
+        var gantt = (await svc.GetGanttAsync(project.Id, owner.Id, default))!;
+        Assert.Equal(start, gantt.ProjectStart);
+        Assert.Equal(start.AddDays(5), gantt.ProjectDeadline);
+        Assert.Equal(6, gantt.TotalDays);
+        Assert.Equal(new int?[] { 2, 4, 6 }, new[] { a, b, c }.Select(x => gantt.Tasks.Single(y => y.Id == x.Id).DurationDays));
+        Assert.All(gantt.Tasks, x => Assert.Equal(0, x.DayIndexStart));
+        Assert.Equal(new[] { c.Id }, gantt.CriticalPathTaskIds); // longest independent chain: C, even though done.
+
+        await svc.SetTaskDependenciesAsync(owner.Id, b.Id, new SetTaskDependenciesRequest([a.Id]), default);
+        await svc.SetTaskDependenciesAsync(owner.Id, c.Id, new SetTaskDependenciesRequest([b.Id]), default);
+        var chain = (await svc.GetGanttAsync(project.Id, owner.Id, default))!;
+        Assert.Equal(new[] { a.Id, b.Id, c.Id }, chain.CriticalPathTaskIds); // 2 + 4 + 6 = 12 dependency days.
+        Assert.All(chain.Tasks, x => Assert.True(x.IsCritical));
+        Assert.Equal(6, chain.TotalDays); // saved calendar window does not reschedule to the dependency finish.
+    }
 
     [Fact]
     public async Task Gantt_maps_day_indexes_and_detects_critical_path()

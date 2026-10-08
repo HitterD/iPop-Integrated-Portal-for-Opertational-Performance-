@@ -65,6 +65,8 @@ public sealed class ProjectTimeService(IPopDbContext db) : IProjectTimeService
         var running = await db.TaskTimeEntries.IgnoreQueryFilters()
             .FirstOrDefaultAsync(e => e.UserId == actorId && e.EndedAt == null, ct);
         if (running is null) return new(null, null);
+        var projectId = await ProjectOfTaskAsync(running.TaskId, ct);
+        if (projectId is null || !await CanTrackAsync(actorId, projectId.Value, ct)) return Fail<TimeEntryDto?>("forbidden");
         // Under a minute is a misclick, not work: drop it rather than bill 0 minutes.
         if (!Close(running, now ?? DateTime.UtcNow))
         {

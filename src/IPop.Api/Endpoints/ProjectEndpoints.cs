@@ -726,7 +726,7 @@ public static class ProjectEndpoints
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            if (!await IsTaskMember(db, taskId, userId.Value, ct))
+            if (!await IsTaskWriter(db, taskId, userId.Value, ct))
                 return Results.Json(new { code = "forbidden", message = "Not a project member." }, statusCode: 403);
             if (string.IsNullOrWhiteSpace(req.Content) || req.Content.Trim().Length > 4000)
                 return Results.Json(new { code = "content_invalid", message = "Comment is required (max 4000 characters)." }, statusCode: 422);
@@ -754,7 +754,7 @@ public static class ProjectEndpoints
             var author = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
             await PushProjectChangedAsync(realtime, await TaskProjectIdAsync(db, taskId, ct));
             return Results.Ok(new TaskCommentDto(comment.Id, author?.Name ?? "Unknown", author?.Nik ?? "", comment.Content, comment.ParentCommentId, comment.CreatedAt));
-        });
+        }).RequirePermission("projects.write");
 
         // DELETE /api/projects/tasks/{taskId}/comments/{id} — hapus (penulis atau pemilik proyek).
         g.MapDelete("/tasks/{taskId:guid}/comments/{commentId:guid}", async (Guid taskId, Guid commentId,
@@ -762,6 +762,8 @@ public static class ProjectEndpoints
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
+            if (!await IsTaskWriter(db, taskId, userId.Value, ct))
+                return Results.Json(new { code = "forbidden", message = "Read-only project access." }, statusCode: 403);
             var comment = await db.ProjectTaskComments.FirstOrDefaultAsync(c => c.Id == commentId && c.TaskId == taskId, ct);
             if (comment is null || comment.IsDeleted)
                 return Results.Json(new { code = "not_found", message = "Comment not found." }, statusCode: 404);
@@ -782,7 +784,7 @@ public static class ProjectEndpoints
             await db.SaveChangesAsync(ct);
             await PushProjectChangedAsync(realtime, taskProjectId);
             return Results.Ok(new { success = true });
-        });
+        }).RequirePermission("projects.write");
 
         // GET /api/projects/tasks/{taskId}/activity — riwayat aktivitas kronologis.
         g.MapGet("/tasks/{taskId:guid}/activity", async (Guid taskId, int? page, int? pageSize,
@@ -830,7 +832,7 @@ public static class ProjectEndpoints
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            if (!await IsTaskMember(db, taskId, userId.Value, ct))
+            if (!await IsTaskWriter(db, taskId, userId.Value, ct))
                 return Results.Json(new { code = "forbidden", message = "Not a project member." }, statusCode: 403);
             if (string.IsNullOrWhiteSpace(req.FileName) || string.IsNullOrWhiteSpace(req.Server) || string.IsNullOrWhiteSpace(req.Path))
                 return Results.Json(new { code = "invalid_attachment", message = "Name, server, and path are required." }, statusCode: 422);
@@ -855,7 +857,7 @@ public static class ProjectEndpoints
             var uploader = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId.Value, ct);
             await PushProjectChangedAsync(realtime, await TaskProjectIdAsync(db, taskId, ct));
             return Results.Ok(new TaskAttachmentDto(att.Id, att.FileName, att.FileSize, uploader?.Name ?? "Unknown", att.SynologyServer, att.SynologyPath, att.CreatedAt));
-        });
+        }).RequirePermission("projects.write");
 
         // GET /api/projects/tasks/{taskId}/attachments/{id}/download — unduh via proxy NAS.
         g.MapGet("/tasks/{taskId:guid}/attachments/{attachmentId:guid}/download", async (Guid taskId, Guid attachmentId,
@@ -881,6 +883,8 @@ public static class ProjectEndpoints
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
+            if (!await IsTaskWriter(db, taskId, userId.Value, ct))
+                return Results.Json(new { code = "forbidden", message = "Read-only project access." }, statusCode: 403);
             var att = await db.ProjectTaskAttachments
                 .FirstOrDefaultAsync(a => a.Id == attachmentId && a.TaskId == taskId && !a.IsDeleted, ct);
             if (att is null)
@@ -897,7 +901,7 @@ public static class ProjectEndpoints
             await db.SaveChangesAsync(ct);
             await PushProjectChangedAsync(realtime, await TaskProjectIdAsync(db, taskId, ct));
             return Results.Ok(new { success = true });
-        });
+        }).RequirePermission("projects.write");
 
         // ── Task files on the NAS (shared attachment store, area "projects") ──
         // Field photos / deliverables / attachments every member reads from the same place;
@@ -986,7 +990,7 @@ public static class ProjectEndpoints
         {
             var userId = await GetUserIdAsync(http, db);
             if (userId is null) return Results.Unauthorized();
-            if (!await IsTaskMember(db, taskId, userId.Value, ct))
+            if (!await IsTaskWriter(db, taskId, userId.Value, ct))
                 return Results.Json(new { code = "forbidden", message = "Not a project member." }, statusCode: 403);
 
             var offsets = (req.OffsetHours ?? []).Where(h => h > 0 && h <= 24 * 90).Distinct().ToList();
@@ -1011,7 +1015,7 @@ public static class ProjectEndpoints
             var rows = await db.ProjectTaskReminders.AsNoTracking().Where(r => r.TaskId == taskId).OrderByDescending(r => r.OffsetHours).ToListAsync(ct);
             await PushProjectChangedAsync(realtime, await TaskProjectIdAsync(db, taskId, ct));
             return Results.Ok(rows.Select(r => new TaskReminderDto(r.Id, r.OffsetHours, r.SentAt)));
-        });
+        }).RequirePermission("projects.write");
 
         // ──────────────────────────────────────────────────────────────────────
         // Rencana & Laporan (Fase 4) — template proyek, milestone
@@ -1388,6 +1392,13 @@ public static class ProjectEndpoints
         if (projectId is null) return false;
         return await db.ProjectMembers.AsNoTracking()
             .AnyAsync(m => m.ProjectId == projectId && m.UserId == userId, ct);
+    }
+
+    private static async Task<bool> IsTaskWriter(IPopDbContext db, Guid taskId, Guid userId, CancellationToken ct)
+    {
+        var projectId = await db.ProjectTasks.AsNoTracking().Where(t => t.Id == taskId).Select(t => (Guid?)t.ProjectId).FirstOrDefaultAsync(ct);
+        return projectId is not null && await db.ProjectMembers.AsNoTracking().AnyAsync(m => m.ProjectId == projectId && m.UserId == userId
+            && (m.Role == "owner" || m.Role == "manager" || m.Role == "member"), ct);
     }
 
     private static async Task<bool> IsTaskOwner(IPopDbContext db, Guid taskId, Guid userId, CancellationToken ct)

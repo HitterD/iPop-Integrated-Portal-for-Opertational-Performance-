@@ -236,4 +236,17 @@ public class ProjectTaskDrawerTests
         Assert.Equal("true", cut.Find(".kc-more").GetAttribute("aria-expanded"));
         Assert.Contains(ctx.JSInterop.Invocations, i => i.Identifier == "ipop.menuSync");
     }
+
+    [Fact]
+    public void Viewer_drawer_preserves_reading_but_has_no_upload_comment_or_timer_writes()
+    {
+        using var ctx = NewContext(out _);
+        var cut = ctx.Render<ProjectTaskDrawer>(p => p.Add(x => x.Task, MakeTask("Read only")).Add(x => x.ReadOnly, true));
+        Assert.True(cut.Find(".td-title").HasAttribute("disabled"));
+        Assert.Empty(cut.FindAll(".td-upload"));
+        Assert.Empty(cut.FindAll(".task-discussion textarea"));
+        Assert.Empty(cut.FindAll(".td-time-add-toggle"));
+        Assert.False(cut.Find(".task-drawer").HasAttribute("data-attach-scope"));
+        Assert.True(cut.Find(".task-drawer-foot .primary").HasAttribute("disabled"));
+    }
 }

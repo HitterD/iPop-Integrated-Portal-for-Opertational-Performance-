@@ -44,18 +44,18 @@
                     var outside = mode == "month" && day.Month != anchor.Month;
                     <div role="gridcell" class="pcal-day @(outside ? "outside" : "") @(day == Today ? "today" : "") @(dropDay == day ? "drop" : "")"
                          style="grid-column:@(i + 1); grid-row:1 / -1"
-                         @ondragover:preventDefault="true" @ondragover="() => dropDay = day"
+                         @ondragover:preventDefault="@(!ReadOnly)" @ondragover="() => { if (!ReadOnly) dropDay = day; }"
                          @ondragleave="() => { if (dropDay == day) dropDay = null; }"
                          @ondrop="() => DropOn(day)">
                         <div class="pcal-day-head">
                             <span class="pcal-num" aria-label="@DatePickerMath.FormatLong(day)">@day.Day</span>
-                            <button type="button" class="pcal-add" aria-label="Add task @DatePickerMath.FormatDateCompact(day)" title="Add task" @onclick="() => StartAdd(day)"><i data-lucide="plus"></i></button>
+                            @if (!ReadOnly) { <button type="button" class="pcal-add" aria-label="Add task @DatePickerMath.FormatDateCompact(day)" title="Add task" @onclick="() => StartAdd(day)"><i data-lucide="plus"></i></button> }
                         </div>
                         @if (hidden > 0)
                         {
                             <button type="button" class="pcal-more" style="--lanes:@lanes" @onclick="() => OpenDay(day)">+@hidden more</button>
                         }
-                        @if (addDay == day)
+                        @if (!ReadOnly && addDay == day)
                         {
                             <input class="pcal-add-input" placeholder="Task title, Enter" aria-label="New task title" maxlength="300"
                                    @bind="addTitle" @bind:event="oninput" @onkeydown="OnAddKey" @onblur="CancelAddSoon" autofocus />
@@ -67,8 +67,8 @@
                     var t = seg.Task;
                     <button type="button" class="pcal-bar-item @t.Status @(seg.ContinuesBefore ? "cont-before" : "") @(seg.ContinuesAfter ? "cont-after" : "") @(IsOverdue(t) ? "overdue" : "")"
                             style="grid-column:@(seg.StartCol + 1) / span @seg.Span; grid-row:@(seg.Lane + 2)"
-                            draggable="true" title="@BarTitle(t)"
-                            @ondragstart="() => dragTask = t" @ondragend="() => { dragTask = null; dropDay = null; }"
+                            draggable="@(ReadOnly ? "false" : "true")" title="@BarTitle(t)"
+                            @ondragstart="() => { if (!ReadOnly) dragTask = t; }" @ondragend="() => { dragTask = null; dropDay = null; }"
                             @onclick="() => OnTaskClick.InvokeAsync(t.Id)">
                         <span class="col-dot @t.Status"></span>
                         @if (t.IsBlocked) { <i data-lucide="lock" class="pcal-ico" aria-label="Waiting on another task"></i> }
@@ -90,9 +90,9 @@
             anyAgenda = true;
             <section class="pcal-agenda-day @(day == Today ? "today" : "")">
                 <h4>@DatePickerMath.FormatLong(day)
-                    <button type="button" class="pcal-add" aria-label="Add task @DatePickerMath.FormatDateCompact(day)" @onclick="() => StartAdd(day)"><i data-lucide="plus"></i></button>
+                            @if (!ReadOnly) { <button type="button" class="pcal-add" aria-label="Add task @DatePickerMath.FormatDateCompact(day)" @onclick="() => StartAdd(day)"><i data-lucide="plus"></i></button> }
                 </h4>
-                @if (addDay == day)
+                @if (!ReadOnly && addDay == day)
                 {
                     <input class="pcal-add-input" placeholder="Task title, Enter" aria-label="New task title" maxlength="300"
                            @bind="addTitle" @bind:event="oninput" @onkeydown="OnAddKey" @onblur="CancelAddSoon" />
@@ -132,6 +132,7 @@
 </div>
 
 @code {
+    [Parameter] public bool ReadOnly { get; set; }
     private const int MaxLanes = 3;
 
     [Parameter] public Guid ProjectId { get; set; }
@@ -239,6 +240,7 @@
 
     private async Task DropOn(DateOnly day)
     {
+        if (ReadOnly) return;
         var t = dragTask;
         dragTask = null;
         dropDay = null;
@@ -248,10 +250,11 @@
         await OnMoveTask.InvokeAsync((t, day));
     }
 
-    private void StartAdd(DateOnly day) { addDay = day; addTitle = ""; }
+    private void StartAdd(DateOnly day) { if (ReadOnly) return; addDay = day; addTitle = ""; }
 
     private async Task OnAddKey(KeyboardEventArgs e)
     {
+        if (ReadOnly) return;
         if (e.Key == "Escape") { addDay = null; return; }
         if (e.Key != "Enter" || addDay is not { } day || string.IsNullOrWhiteSpace(addTitle)) return;
         var title = addTitle.Trim();

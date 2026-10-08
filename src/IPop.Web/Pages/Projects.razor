@@ -127,9 +127,12 @@
                             </div>
                         }
                     </div>
+                    @if (CanWriteTasks)
+                    {
                     <button type="button" class="btn-primary proj-add-task" @onclick='() => HandleQuickAdd(("todo", "New Task"))'>
                         <i data-lucide="plus"></i>Add task
                     </button>
+                    }
                 </div>
             </div>
 
@@ -203,7 +206,7 @@
                         <div class="proj-canvas-split-main">
                             @if (tab == 0)
                             {
-                                <ProjectKanbanBoard
+                                <ProjectKanbanBoard ReadOnly="@(!CanWriteTasks)"
                                     Kanban="kanban"
                                     Members="projectMembers"
                                     Groups="projectGroups"
@@ -242,7 +245,7 @@
                                         </div>
                                     }
                                 </div>
-                                <ProjectTableView
+                                <ProjectTableView ReadOnly="@(!CanWriteTasks)"
                                     Tasks="taskList.Items.ToList()"
                                     Members="projectMembers"
                                     Groups="projectGroups"
@@ -284,7 +287,7 @@
                             }
                             else if (tab == 2)
                             {
-                                <ProjectTimelineView
+                                <ProjectTimelineView ReadOnly="@(!CanWriteTasks)"
                                     Timeline="timeline"
                                     AllTasks="AllCurrentTasks"
                                     CriticalPathTaskIds="criticalPathIds"
@@ -298,7 +301,7 @@
                             }
                             else if (tab == 6)
                             {
-                                <ProjectCalendarView @ref="calendarView"
+                                <ProjectCalendarView ReadOnly="@(!CanWriteTasks)" @ref="calendarView"
                                     ProjectId="selectedProjectId"
                                     GroupId="selectedGroupId"
                                     Filter="CalendarFilter"
@@ -319,7 +322,7 @@
                             }
                             else if (tab == 5)
                             {
-                                <ProjectReportsPanel Project="selectedProject" AllTasks="AllCurrentTasks" Members="projectMembers" OnViewOverdue="ViewOverdueFromReports" />
+                                <ProjectReportsPanel ReadOnly="@(!CanWriteTasks)" Project="selectedProject" AllTasks="AllCurrentTasks" Members="projectMembers" OnViewOverdue="ViewOverdueFromReports" />
                             }
                         </div>
                     </div>
@@ -353,6 +356,7 @@
 @if (showTaskEditor && editingTask is not null)
 {
     <ProjectTaskDrawer
+        ReadOnly="@(!CanWriteTasks)"
         Task="editingTask"
         ProjectName="@(selectedProject?.Name ?? "Project")"
         ProjectColor="@selectedProject?.Color"
@@ -577,6 +581,7 @@
         if (fresh is not null) editingTask = fresh;
     }
 
+    private bool CanWriteTasks => projectMembers.Any(m => m.Nik == currentUserNik && m.Role is "owner" or "manager" or "member");
     private bool CanManageMembers => projectMembers.Any(m => m.Nik == currentUserNik && (m.Role == "owner" || m.Role == "manager"));
     private IReadOnlySet<Guid> OwnerMemberIds => projectMembers.Where(m => m.Role == "owner").Select(m => m.UserId).ToHashSet();
 
@@ -1154,6 +1159,7 @@
 
     private async Task DeleteField(Guid fieldId)
     {
+        if (!CanWriteTasks) return;
         if (selectedProjectId == Guid.Empty || !CanManageMembers) return;
         var field = projectFields.FirstOrDefault(f => f.Id == fieldId);
         if (field is null || !await Confirm.AskAsync("Delete field", $"Delete {field.Name} and all its task values? This cannot be undone.", "Delete", danger: true)) return;
@@ -1172,6 +1178,7 @@
 
     private async Task SetFieldValue((Guid TaskId, Guid FieldId, string? Value) update)
     {
+        if (!CanWriteTasks) return;
         if (selectedProjectId == Guid.Empty) return;
         var result = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/{selectedProjectId}/tasks/{update.TaskId}/fields/{update.FieldId}", new SetProjectFieldValueRequest(update.Value));
         if (!result.IsSuccessStatusCode) { Toasts.Show("Couldn't save the field value.", ToastKind.Error); return; }
@@ -1232,6 +1239,7 @@
 
     private async Task HandleMoveTaskToGroup((Guid TaskId, Guid GroupId) move)
     {
+        if (!CanWriteTasks) return;
         var result = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{move.TaskId}/group", new MoveTaskToGroupRequest(move.GroupId));
         if (!result.IsSuccessStatusCode) { Toasts.Show("Couldn't move the task.", ToastKind.Error); return; }
         await ReloadCurrentView();
@@ -1294,6 +1302,7 @@
 
     private async Task HandleTaskMove((Guid TaskId, string TargetStatus) arg)
     {
+        if (!CanWriteTasks) return;
         var task = AllCurrentTasks.FirstOrDefault(t => t.Id == arg.TaskId);
         if (task != null && (arg.TargetStatus == "doing" || arg.TargetStatus == "review" || arg.TargetStatus == "done") && task.Status != arg.TargetStatus)
         {
@@ -1308,7 +1317,7 @@
         await ExecuteTaskMove(arg.TaskId, arg.TargetStatus);
     }
 
-    private async Task ExecuteTaskMove(Guid taskId, string targetStatus)
+    private async Task<bool> ExecuteTaskMove(Guid taskId, string targetStatus)
     {
         // #37: completing from the List remembers row positions so the row can pop, strike, then glide.
         var animateDone = tab == 1 && targetStatus == "done";
@@ -1328,6 +1337,7 @@
             await JS.InvokeVoidAsync("ipop.icons");
             if (animateDone) { try { await JS.InvokeVoidAsync("ipopTaskMotion.completed", taskId.ToString()); } catch { } }
             NotifyRecurringSpawn(moved);
+            return true;
         }
         else
         {
@@ -1336,6 +1346,7 @@
                 Toasts.Show("Cannot move to Done — task dependencies are incomplete.", ToastKind.Error);
             else
                 Toasts.Show("Failed to move task.", ToastKind.Error);
+            return false;
         }
     }
 
@@ -1358,8 +1369,14 @@
             arg.Task.Title, newDesc, arg.Task.Status, arg.Task.Priority, arg.Task.StartDate, arg.Task.DueDate,
             arg.Task.EstimatedHours, arg.Task.ActualHours, null, null, null, null, null, arg.Task.Tags
         );
-        await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{arg.Task.Id}", updateReq);
-        await ExecuteTaskMove(arg.Task.Id, arg.TargetStatus);
+        using var saved = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{arg.Task.Id}", updateReq);
+        if (!saved.IsSuccessStatusCode)
+        {
+            Toasts.Show("Could not save progress notes. The task status was not changed.", ToastKind.Error);
+            showEvidenceModal = true;
+            return;
+        }
+        if (!await ExecuteTaskMove(arg.Task.Id, arg.TargetStatus)) return;
         evidenceTask = null;
         Toasts.Show(arg.TargetStatus switch
         {
@@ -1377,6 +1394,7 @@
 
     private async Task HandleStatusChangeDirect((ProjectTaskDto Task, string NewStatus) arg)
     {
+        if (!CanWriteTasks) return;
         if (arg.Task.Status == arg.NewStatus) return;
         if (arg.NewStatus == "doing" || arg.NewStatus == "review" || arg.NewStatus == "done")
         {
@@ -1392,6 +1410,7 @@
 
     private async Task HandlePriorityChangeDirect((ProjectTaskDto Task, string? Priority) arg)
     {
+        if (!CanWriteTasks) return;
         var req = new UpdateTaskRequest(
             arg.Task.Title, arg.Task.Description, arg.Task.Status, arg.Priority, arg.Task.StartDate, arg.Task.DueDate,
             arg.Task.EstimatedHours, arg.Task.ActualHours, null, null, null, null, null, arg.Task.Tags
@@ -1409,9 +1428,10 @@
 
     private async Task HandleDueDateChangeDirect((ProjectTaskDto Task, DateTime? DueDate) arg)
     {
+        if (!CanWriteTasks) return;
         var req = new UpdateTaskRequest(
             arg.Task.Title, arg.Task.Description, arg.Task.Status, arg.Task.Priority, arg.Task.StartDate, arg.DueDate,
-            arg.Task.EstimatedHours, arg.Task.ActualHours, null, null, null, null, null, arg.Task.Tags
+            arg.Task.EstimatedHours, arg.Task.ActualHours, null, null, null, null, null, arg.Task.Tags, ClearDueDate: arg.DueDate is null
         );
         var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{arg.Task.Id}", req);
         if (res.IsSuccessStatusCode)
@@ -1426,9 +1446,10 @@
 
     private async Task HandleEstimateChangeDirect((ProjectTaskDto Task, decimal? EstimatedHours) arg)
     {
+        if (!CanWriteTasks) return;
         var req = new UpdateTaskRequest(
             arg.Task.Title, arg.Task.Description, arg.Task.Status, arg.Task.Priority, arg.Task.StartDate, arg.Task.DueDate,
-            arg.EstimatedHours, arg.Task.ActualHours, null, null, null, null, null, arg.Task.Tags
+            arg.EstimatedHours, arg.Task.ActualHours, null, null, null, null, null, arg.Task.Tags, ClearEstimatedHours: arg.EstimatedHours is null
         );
         var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{arg.Task.Id}", req);
         if (res.IsSuccessStatusCode)
@@ -1468,6 +1489,7 @@
 
     private async Task HandleQuickAdd((string Status, string Title) arg)
     {
+        if (!CanWriteTasks) return;
         if (selectedProjectId == Guid.Empty || string.IsNullOrWhiteSpace(arg.Title)) return;
         var req = new CreateTaskRequest(selectedProjectId, null, arg.Title.Trim(), null, arg.Status, null, null, null, null, null, null);
         var r = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/tasks", req);
@@ -1487,6 +1509,7 @@
 
     private async Task HandleToggleAssignee((Guid TaskId, Guid UserId, bool IsAssigned) arg)
     {
+        if (!CanWriteTasks) return;
         if (selectedProjectId == Guid.Empty) return;
         HttpResponseMessage res = arg.IsAssigned
             ? await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/tasks/{arg.TaskId}/assignees/{arg.UserId}")
@@ -1548,6 +1571,7 @@
 
     private async Task HandleAddSubtask(string title)
     {
+        if (!CanWriteTasks) return;
         if (editingTask is null || string.IsNullOrWhiteSpace(title) || selectedProjectId == Guid.Empty) return;
         var req = new CreateTaskRequest(selectedProjectId, editingTask.Id, title, null, "todo", null, null, null, null, null, null);
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/{selectedProjectId}/tasks", req);
@@ -1566,6 +1590,7 @@
 
     private async Task HandleToggleSubtask(ProjectTaskDto st)
     {
+        if (!CanWriteTasks) return;
         var newSt = st.Status == "done" ? "todo" : "done";
         var res = await Auth.SendAsync(HttpMethod.Post, $"/api/projects/tasks/{st.Id}/move", new TaskMoveRequest(newSt, null));
         if (res.IsSuccessStatusCode)
@@ -1583,6 +1608,7 @@
 
     private async Task HandleDeleteSubtask(Guid subtaskId)
     {
+        if (!CanWriteTasks) return;
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/tasks/{subtaskId}");
         if (res.IsSuccessStatusCode)
         {
@@ -1661,6 +1687,7 @@
 
     private async Task RunBulk(string action, string? value, string? evidence)
     {
+        if (!CanWriteTasks) return;
         if (bulkBusy || selectedProjectId == Guid.Empty || selectedTaskIds.Count == 0) return;
         bulkBusy = true;
         var projectId = selectedProjectId;
@@ -1890,7 +1917,7 @@
 
     private async Task<bool> SaveTaskDates(Guid taskId, DateTime? start, DateTime? due)
     {
-        var req = new UpdateTaskRequest(null, null, null, null, start, due, null, null, null, null, null, null, null, null);
+        var req = new UpdateTaskRequest(null, null, null, null, start, due, null, null, null, null, null, null, null, null, ClearStartDate: start is null, ClearDueDate: due is null);
         var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{taskId}", req);
         if (!res.IsSuccessStatusCode) return false;
         await ReloadCalendar();
@@ -1923,11 +1950,12 @@
 
     private async Task HandleSaveTask(ProjectTaskDrawer.TaskSaveModel m)
     {
+        if (!CanWriteTasks) return;
         var targetTask = editingTask ?? AllCurrentTasks.FirstOrDefault(t => t.Id == m.Id);
         if (targetTask is null) return;
         var req = new UpdateTaskRequest(
             m.Title, m.Description, m.Status, m.Priority, m.StartDate, m.DueDate,
-            m.EstimatedHours, m.ActualHours, null, null, null, null, null, m.Tags
+            m.EstimatedHours, m.ActualHours, null, null, null, null, null, m.Tags, ClearStartDate: m.StartDate is null, ClearDueDate: m.DueDate is null, ClearEstimatedHours: m.EstimatedHours is null
         );
         var res = await Auth.SendAsync(HttpMethod.Put, $"/api/projects/tasks/{m.Id}", req);
         if (res.IsSuccessStatusCode)
@@ -1956,6 +1984,7 @@
     /// Legacy evidence moved to the server: rewrite only the description's evidence block, quietly.
     private async Task SaveEvidenceOnly((Guid TaskId, string Description) arg)
     {
+        if (!CanWriteTasks) return;
         var t = AllCurrentTasks.FirstOrDefault(x => x.Id == arg.TaskId) ?? editingTask;
         if (t is null || t.Id != arg.TaskId) return;
         var req = new UpdateTaskRequest(t.Title, arg.Description, t.Status, t.Priority, t.StartDate, t.DueDate,
@@ -1965,6 +1994,7 @@
 
     private void OpenExtensionModal(ProjectTaskDto t)
     {
+        if (!CanWriteTasks) return;
         extensionTask = t;
         showExtensionModal = true;
         StateHasChanged();
@@ -1972,6 +2002,7 @@
 
     private async Task HandleExtensionConfirm((ProjectTaskDto Task, DateTime NewDueDate, string Reason, string? AttachmentName, string? AttachmentDataUrl) arg)
     {
+        if (!CanWriteTasks) return;
         showExtensionModal = false;
         var (task, newDue, reason, attName, attDataUrl) = arg;
         var parsed = TaskEvidenceHelper.Parse(task.Description);
@@ -2022,6 +2053,7 @@
 
     private async Task HandleDeleteTask(Guid taskId)
     {
+        if (!CanWriteTasks) return;
         var res = await Auth.SendAsync(HttpMethod.Delete, $"/api/projects/tasks/{taskId}");
         if (res.IsSuccessStatusCode)
         {
