@@ -235,14 +235,14 @@
   .shell.collapsed .sidebar-foot .me-card { padding: 4px; border: none; justify-content: center; }
 
   /* ---------- Batik kopi accent ----------
-     Gold coffee-bean batik (img/brand/batik-kopi-lattice.svg), only as a faint texture: a band in the topbar
+     Gold coffee-bean batik (img/brand/batik-kopi-natural.svg), only as a faint texture: a band in the topbar
      between the search box and the status button, and the top of the sidebar (logo → first menu
      items), where it drifts slowly from right to left. Painted on z-index -1 inside each bar's own
      stacking context, so it sits on the green but under every control. */
   .topbar.v6-topbar, .shell .sidebar { isolation: isolate; }
   .topbar.v6-topbar::before, .shell .sidebar::after {
     content: ""; position: absolute; pointer-events: none; z-index: -1;
-    background: url("../../img/brand/batik-kopi-lattice.svg") 0 0 / 64px 64px repeat;
+    background: url("../../img/brand/batik-kopi-natural.svg") 0 0 / 64px 64px repeat;
   }
   .topbar.v6-topbar::before {
     inset: 0; opacity: .22;
@@ -265,7 +265,7 @@
   .shell .sidebar .nav-glide {
     background:
       linear-gradient(90deg, var(--panel) 45%, color-mix(in srgb, var(--panel) 86%, transparent) 100%),
-      url("../../img/brand/batik-kopi-lattice.svg") 0 50% / 44px 44px repeat,
+      url("../../img/brand/batik-kopi-natural.svg") 0 50% / 44px 44px repeat,
       var(--panel);
   }
   .shell.collapsed .sidebar::after { height: 150px; }
