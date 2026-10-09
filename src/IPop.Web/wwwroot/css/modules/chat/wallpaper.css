@@ -1,0 +1,17 @@
+/* Approved coffee-world doodles; only the conversation canvas is decorated. */
+.chat-area .messages {
+  background-color: #f4f6f2;
+  background-image: url('../../../images/chat/coffee-light.svg');
+  background-repeat: repeat;
+  background-size: 1120px 1190px;
+}
+[data-theme="dark"] .chat-area .messages {
+  background-color: #16231b;
+  background-image: url('../../../images/chat/coffee-dark.svg');
+}
+@media (max-width: 700px) {
+  .chat-area .messages { background-size: 1008px 1071px; }
+}
+@media (forced-colors: active) {
+  .chat-area .messages { background-image: none; background-color: Canvas; }
+}
