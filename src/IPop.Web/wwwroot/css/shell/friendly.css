@@ -49,20 +49,6 @@
     border-top-left-radius: 26px;
   }
 
-  .page-head {
-    flex: none; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
-    padding: 22px 28px 4px;
-  }
-  .page-head h1 {
-    margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.4px; line-height: 1.2; color: var(--ink);
-  }
-  .page-head .ph-sub { font-size: 14.5px; color: var(--ink-2); }
-  .page-head .tb-live {
-    align-self: center; display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px;
-    border-radius: 12px; background: var(--accent-soft); color: var(--accent-ink); font-size: 12px; font-weight: 600;
-  }
-  .page-head .tb-live .d { width: 6px; height: 6px; border-radius: 50%; background: var(--v6-status-on); }
-
   /* ---------- Sidebar ---------- */
   .sidebar {
     background: var(--frame); border-right: none; color: var(--frame-ink);
@@ -240,15 +226,16 @@
      fade at the foot of the sidebar, and a trace at the far end of the open-page tab. Painted on
      z-index -1 inside each bar's own stacking context, so it sits on the green but under every
      control. Chosen by the user 2026-10-09 after trying bean, lattice and shirt variants. */
-  .topbar.v6-topbar, .shell .sidebar { isolation: isolate; }
-  .topbar.v6-topbar::before, .shell .sidebar::after {
+  .v6-topbar .tb-spacer, .shell .sidebar { isolation: isolate; }
+  .v6-topbar .tb-spacer::before, .shell .sidebar::after {
     content: ""; position: absolute; pointer-events: none; z-index: -1;
     background: url("../../img/brand/batik-kopi-oval.svg") 0 0 / 54px 54px repeat;
   }
-  .topbar.v6-topbar::before {
-    inset: 0; opacity: .16;
-    -webkit-mask-image: linear-gradient(90deg, transparent 0, transparent 44%, #000 58%, #000 70%, transparent 86%);
-            mask-image: linear-gradient(90deg, transparent 0, transparent 44%, #000 58%, #000 70%, transparent 86%);
+  /* Fills the gap between the page title and the search box, fading in and out at both ends. */
+  .v6-topbar .tb-spacer::before {
+    inset: 0; opacity: .18;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 18%, #000 82%, transparent 100%);
+            mask-image: linear-gradient(90deg, transparent 0, #000 18%, #000 82%, transparent 100%);
   }
   .shell .sidebar::after {
     /* Only around the account card, fading out before the menu so labels stay clean. */
@@ -256,7 +243,7 @@
     -webkit-mask-image: linear-gradient(to top, #000 0, #000 35%, transparent 100%);
             mask-image: linear-gradient(to top, #000 0, #000 35%, transparent 100%);
   }
-  [data-theme="dark"] .topbar.v6-topbar::before { opacity: .12; }
+  [data-theme="dark"] .v6-topbar .tb-spacer::before { opacity: .13; }
   [data-theme="dark"] .shell .sidebar::after { opacity: .1; }
   /* The open-page tab: a panel-coloured wash over the tile leaves a soft trace of gold at the end
      that runs into the content panel; the label side stays plain. */
@@ -272,10 +259,21 @@
     height: var(--topbar-height); gap: 14px; padding: 0 26px 0 22px;
     background: var(--frame); border-bottom: none; color: var(--frame-ink);
   }
-  .v6-topbar .tb-title, .v6-topbar .tb-mark { display: none; }
+  .v6-topbar .tb-mark { display: none; }
+  /* Page title on the left of the bar, as before the redesign, in light ink on the green. */
+  .v6-topbar .tb-title { flex: none; max-width: 34vw; }
+  .v6-topbar .tb-title h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.4px; color: #fff; }
+  .v6-topbar .tb-sub { font-size: 13px; color: var(--frame-ink-2); }
+  .v6-topbar .tb-live {
+    display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; flex: none;
+    border-radius: 12px; background: rgba(255, 255, 255, .12); color: var(--frame-ink); font-size: 12px; font-weight: 600;
+  }
+  .v6-topbar .tb-live .d { width: 6px; height: 6px; border-radius: 50%; background: var(--v6-status-on); }
+  .v6-topbar .tb-spacer { flex: 1 1 auto; align-self: stretch; min-width: 24px; position: relative; }
 
   .v6-topbar .search-trigger {
-    width: 560px; max-width: 46vw; height: 46px; gap: 11px; padding: 0 14px 0 16px;
+    /* Wide on large screens, narrower on laptops so the batik keeps a real gap after the title. */
+    width: clamp(300px, 26vw, 520px); max-width: none; height: 46px; gap: 11px; padding: 0 14px 0 16px; flex: none;
     border-radius: 14px; border: 1px solid var(--frame-line);
     background: rgba(255, 255, 255, 0.11); color: #c5dbcf; font-size: 15px;
     transition: background 0.15s;
@@ -314,6 +312,5 @@
 /* Phones: the panel is just a column; the title stays in the compact topbar. */
 @media (max-width: 767px) {
   .main-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .page-head { display: none; }
   .v6-topbar .tb-tools { display: contents; }
 }

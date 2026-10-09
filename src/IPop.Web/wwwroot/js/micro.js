@@ -206,10 +206,10 @@ window.ipopMicro = (() => {
     if (seg === lastPath) return;
     lastPath = seg;
     const main = document.querySelector('.main-panel') || document.querySelector('.main');
-    const page = main && [...main.children].find(c => !c.matches('header, .topbar, .page-head, .float-stack, .push-banner, .offline-banner, script'));
+    const page = main && [...main.children].find(c => !c.matches('header, .topbar, .float-stack, .push-banner, .offline-banner, script'));
     hideTip();
     if (page) replay(page, 'mi-page-enter');
-    const head = main && main.querySelector(':scope > .page-head');
+    const head = document.querySelector('.v6-topbar .tb-title');
     if (head) replay(head, 'mi-head-enter');
     const icon = document.querySelector('.sidebar.nav-tab .nav-item.active .lucide');
     if (icon) replay(icon, 'mi-tab-pop');

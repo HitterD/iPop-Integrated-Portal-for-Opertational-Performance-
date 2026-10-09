@@ -71,7 +71,6 @@
         <header class="topbar v6-topbar">
             @* v6 header: stacked title + subtitle, spacer, global search, presence, theme, bell. *@
             <img class="tb-mark" src="img/brand/ipop-mark.webp" alt="iPop" width="28" height="28" />
-            @* Phones keep the title in the bar; on desktop it sits in .page-head inside the content. *@
             <div class="tb-title">
                 <h1>@PageTitle</h1>
                 @if (!string.IsNullOrEmpty(Subtitle))
@@ -79,11 +78,16 @@
                     <div class="tb-sub">@Subtitle</div>
                 }
             </div>
+            @if (IsProjectsPage && Auth.ConnectionState == DirectoryConnectionState.Live)
+            {
+                <span class="tb-live"><span class="d"></span>Live</span>
+            }
+            @* The open space between the title and the search carries the batik kopi accent. *@
+            <div class="tb-spacer"></div>
+            <SectionOutlet SectionName="topbar-actions" />
             <button class="search-trigger" @onclick="Palette.Open" title="Search iPop (@SearchShortcut)" aria-label="Search iPop">
                 <i data-lucide="search"></i><span>Search people, chat, notes, mail…</span><kbd>@SearchShortcut</kbd>
             </button>
-            <div class="tb-spacer"></div>
-            <SectionOutlet SectionName="topbar-actions" />
             <div class="topbar-right">
                 @if (Auth.Me is not null)
                 {
@@ -219,17 +223,6 @@
         </header>
         @* Light content panel inside the navy frame (desktop). Pages render as its children. *@
         <div class="main-panel">
-        <div class="page-head">
-            <h1>@PageTitle</h1>
-            @if (!string.IsNullOrEmpty(Subtitle))
-            {
-                <span class="ph-sub">@Subtitle</span>
-            }
-            @if (IsProjectsPage && Auth.ConnectionState == DirectoryConnectionState.Live)
-            {
-                <span class="tb-live"><span class="d"></span>Live</span>
-            }
-        </div>
         <IPop.Web.Components.Tutorial.PracticeBar />
         @if (loadFailed)
         {
