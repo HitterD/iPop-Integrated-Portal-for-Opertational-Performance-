@@ -135,7 +135,11 @@
   .shell .sidebar.nav-tab .nav-item.mi-tab-to:hover,
   .shell .sidebar.nav-tab .nav-item.mi-tab-to:active {
     background: transparent; transform: none; color: var(--ink); font-weight: 700;
+    /* Hover fill and nudge vanish at once (a fade would sit over the arriving tab as a dark rim);
+       the label darkens only as the tab slides under it. */
+    transition: background 0s, transform 0s, color .16s ease .14s;
   }
+  .shell .sidebar.nav-tab .nav-item.mi-tab-to .lucide { transition: color .16s ease .14s; }
   [data-theme="dark"] .shell .sidebar.nav-tab .nav-item.mi-tab-to { color: #fff; }
   .shell .sidebar.nav-tab .nav-item.mi-tab-to .lucide { color: var(--accent) !important; }
   /* …and the page being left goes back to a normal row at once, so its text never sits dark on navy. */
@@ -147,7 +151,8 @@
   /* Rows the tab is not on: a light press feedback only. */
   .shell .sidebar .nav-item:active:not(.active):not(.mi-tab-to) { transform: translateX(2px) scale(.98); }
   /* The row under the tab never shows the hover fill or the hover slide. */
-  .shell .sidebar.nav-tab .nav-item.active:hover { transform: none; }
+  .shell .sidebar.nav-tab .nav-item.active,
+  .shell .sidebar.nav-tab .nav-item.active:hover { transform: none; transition: background 0s, transform 0s, color .2s ease; }
   .mi-tab-pop { animation: mi-tab-pop .42s cubic-bezier(.34, 1.56, .64, 1); }
   @keyframes mi-tab-pop { 0% { transform: scale(.8); } 60% { transform: scale(1.12); } 100% { transform: none; } }
   .mi-head-enter { animation: mi-head-enter .3s cubic-bezier(.2, .8, .2, 1); }
