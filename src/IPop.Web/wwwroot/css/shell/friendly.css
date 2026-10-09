@@ -230,6 +230,30 @@
   .shell.collapsed .sidebar-foot { margin-right: 12px; padding-top: 12px; display: flex; justify-content: center; }
   .shell.collapsed .sidebar-foot .me-card { padding: 4px; border: none; justify-content: center; }
 
+  /* ---------- Batik kopi accent ----------
+     Gold coffee-bean batik, only as a faint texture: one band in the topbar between the search box
+     and the status button, and a fade at the foot of the sidebar. Painted on z-index -1 inside the
+     bar's own stacking context, so it sits on the green but under every control. */
+  .topbar.v6-topbar { isolation: isolate; }
+  .topbar.v6-topbar::before, .shell .sidebar::after {
+    content: ""; position: absolute; pointer-events: none; z-index: -1;
+    background: url("../../img/brand/batik-kopi.svg") 0 0 / 54px 54px repeat;
+  }
+  .topbar.v6-topbar::before {
+    inset: 0; opacity: .16;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, transparent 44%, #000 58%, #000 70%, transparent 86%);
+            mask-image: linear-gradient(90deg, transparent 0, transparent 44%, #000 58%, #000 70%, transparent 86%);
+  }
+  .shell .sidebar { isolation: isolate; }
+  .shell .sidebar::after {
+    /* Only around the account card, fading out before the menu so labels stay clean. */
+    left: 0; right: 0; bottom: 0; height: 120px; opacity: .14;
+    -webkit-mask-image: linear-gradient(to top, #000 0, #000 35%, transparent 100%);
+            mask-image: linear-gradient(to top, #000 0, #000 35%, transparent 100%);
+  }
+  [data-theme="dark"] .topbar.v6-topbar::before { opacity: .12; }
+  [data-theme="dark"] .shell .sidebar::after { opacity: .1; }
+
   /* ---------- Topbar ---------- */
   .topbar.v6-topbar {
     height: var(--topbar-height); gap: 14px; padding: 0 26px 0 22px;
