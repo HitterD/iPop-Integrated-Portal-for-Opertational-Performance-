@@ -5,7 +5,7 @@
 
 @media (max-width: 767px) {
   /* ---------- Frame: one screen at a time ---------- */
-  .main > .chat-area { flex: 1 1 0; height: auto; min-height: 0; }
+  .main-panel > .chat-area { flex: 1 1 0; height: auto; min-height: 0; }
   .chat-area, .chat-area.with-global-drawer, .chat-area.with-drawer { grid-template-columns: minmax(0, 1fr); }
   /* The old <=768 slide-in drawer for the room list is replaced by the list/detail pattern. */
   .chat-area .room-pane {
@@ -18,7 +18,7 @@
   .chat-area.m-detail .conv-pane { display: flex; }
   .chat-area .conv-back, .chat-area .room-pane-close, .empty-state.chat-empty .empty-acts .mobile-only { display: none; }
   /* Open room: no topbar either (tab bar is hidden by ipop.mobile.hideTabbar). */
-  body.m-hide-tabbar .main:has(> .chat-area.m-detail) > .topbar { display: none; }
+  body.m-hide-tabbar .main:has(> .main-panel > .chat-area.m-detail) > .topbar { display: none; }
 
   /* ---------- Screen 1: room list ---------- */
   /* The pane itself scrolls, so its flex children keep their natural height. */

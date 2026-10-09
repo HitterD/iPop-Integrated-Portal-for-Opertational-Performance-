@@ -140,8 +140,8 @@ window.ipopMicro = (() => {
     const seg = location.pathname.split('/')[1];
     if (seg === lastPath) return;
     lastPath = seg;
-    const main = document.querySelector('.main');
-    const page = main && [...main.children].find(c => !c.matches('header, .topbar, .float-stack, .push-banner, .offline-banner, script'));
+    const main = document.querySelector('.main-panel') || document.querySelector('.main');
+    const page = main && [...main.children].find(c => !c.matches('header, .topbar, .page-head, .float-stack, .push-banner, .offline-banner, script'));
     hideTip();
     if (page) replay(page, 'mi-page-enter');
   }

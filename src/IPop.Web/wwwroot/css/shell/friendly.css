@@ -1,0 +1,199 @@
+/* ============ FRIENDLY SHELL (desktop, >= 768px) ============
+   Mockup: docs/mockups/ipop-apple/shell-friendly.html (approved 2026-10-09).
+   Navy frame (sidebar + topbar) around a light rounded content panel; the open page is a
+   light tab joined to that panel; the four menu categories carry their own colour.
+   Loaded after shell/v6.css and before css/mobile/*, so phones keep their own shell. */
+
+:root {
+  --frame: #13293d;
+  --frame-2: #1b3550;
+  --frame-line: rgba(255, 255, 255, 0.10);
+  --frame-ink: #e8eef4;
+  --frame-ink-2: #a9b8c7;
+  /* Same tone the pages paint, so the panel, its header and the active tab read as one sheet. */
+  --panel: var(--bg);
+  --cat-work: #2e9d6b;   --cat-work-ic: #6fd3a3;
+  --cat-comm: #3b7fe0;   --cat-comm-ic: #8ab6f5;
+  --cat-res: #e08a2e;    --cat-res-ic: #f2b56b;
+  --cat-admin: #6b7a8c;  --cat-admin-ic: #b4c0cd;
+  --sidebar-width: 272px;
+  --sidebar-collapsed: 84px;
+  --topbar-height: 72px;
+}
+[data-theme="dark"] {
+  --frame: #08111a;
+  --frame-2: #142433;
+  --frame-line: rgba(255, 255, 255, 0.08);
+  --frame-ink: #e6ecf1;
+  --frame-ink-2: #93a3b3;
+}
+
+@media (min-width: 768px) {
+  .shell, .main { background: var(--frame); }
+
+  /* ---------- Content panel ---------- */
+  .main-panel {
+    flex: 1; min-height: 0; min-width: 0;
+    display: flex; flex-direction: column; overflow: hidden;
+    background: var(--panel);
+    border-top-left-radius: 26px;
+  }
+
+  .page-head {
+    flex: none; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+    padding: 22px 28px 4px;
+  }
+  .page-head h1 {
+    margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.4px; line-height: 1.2; color: var(--ink);
+  }
+  .page-head .ph-sub { font-size: 14.5px; color: var(--ink-2); }
+  .page-head .tb-live {
+    align-self: center; display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px;
+    border-radius: 12px; background: var(--accent-soft); color: var(--accent-ink); font-size: 12px; font-weight: 600;
+  }
+  .page-head .tb-live .d { width: 6px; height: 6px; border-radius: 50%; background: var(--v6-status-on); }
+
+  /* ---------- Sidebar ---------- */
+  .sidebar {
+    background: var(--frame); border-right: none; color: var(--frame-ink);
+    padding: 18px 0 14px 14px;
+  }
+  .side-head { border-bottom: none; padding: 2px 12px 8px; margin-bottom: 0; }
+  /* Navy behind the logo in both themes: always the light-on-dark wordmark. brand.css loads later at (0,4,0). */
+  .shell .sidebar .side-head .brand .word.lg-light { display: none; }
+  .shell .sidebar .side-head .brand .word.lg-dark { display: block; }
+  .side-head .collapse-btn { margin-right: 10px; color: var(--frame-ink-2); width: 34px; height: 34px; border-radius: 10px; }
+  .side-head .collapse-btn:hover { background: var(--frame-2); color: var(--frame-ink); }
+  .side-head .collapse-btn .lucide { width: 18px; height: 18px; }
+
+  .sidebar .nav-group { gap: 0; margin: 0; padding: 8px 0 2px; }
+  .sidebar .nav-group + .nav-group { border-top: 1px solid var(--frame-line); margin-right: 14px; }
+  .sidebar .nav-group + .nav-group .nav-item:not(.active) { margin-right: 0; }
+
+  .nav-label {
+    display: flex; align-items: center; gap: 9px;
+    padding: 0 12px 4px; font-size: 13px; font-weight: 700; letter-spacing: 0.01em; color: #fff;
+  }
+  .nav-chip {
+    width: 22px; height: 22px; border-radius: 7px; flex: none;
+    display: grid; place-items: center; color: #fff;
+  }
+  .nav-chip .lucide { width: 14px; height: 14px; }
+  .nav-g-work .nav-chip { background: var(--cat-work); }
+  .nav-g-comm .nav-chip { background: var(--cat-comm); }
+  .nav-g-res .nav-chip { background: var(--cat-res); }
+  .nav-g-admin .nav-chip { background: var(--cat-admin); }
+
+  .nav-item {
+    position: relative; height: 40px; gap: 13px; padding: 0 14px; margin: 0 14px 1px 0;
+    border-radius: 12px; font-size: 15px; font-weight: 550; color: var(--frame-ink);
+    transition: background 0.15s, transform 0.15s, color 0.15s;
+  }
+  .sidebar .nav-group + .nav-group .nav-item { margin-right: 0; }
+  .nav-item .lucide { width: 20px; height: 20px; }
+  .nav-g-work .nav-item .lucide { color: var(--cat-work-ic); }
+  .nav-g-comm .nav-item .lucide { color: var(--cat-comm-ic); }
+  .nav-g-res .nav-item .lucide { color: var(--cat-res-ic); }
+  .nav-g-admin .nav-item .lucide { color: var(--cat-admin-ic); }
+  .nav-item:hover, [data-theme="dark"] .nav-item:hover { background: var(--frame-2); color: var(--frame-ink); transform: translateX(2px); }
+
+  /* The open page: a light tab that runs into the content panel. */
+  /* micro.css (loaded later) clears the active background for its sliding pill at (0,3,0). */
+  .shell .sidebar .nav-item.active, .shell .sidebar .nav-item.active:hover,
+  .shell .sidebar.mi-glide .nav-item.active, .shell .sidebar.mi-glide .nav-item.active:hover {
+    margin-right: 0 !important; border-radius: 14px 0 0 14px;
+    background: var(--panel); color: var(--ink); font-weight: 700; transform: none;
+  }
+  .nav-item.active .lucide, [data-theme="dark"] .nav-item.active .lucide { color: var(--accent) !important; }
+  [data-theme="dark"] .shell .sidebar .nav-item.active { color: #fff; }
+  .nav-item.active::before, .nav-item.active::after {
+    content: ""; display: block; position: absolute; right: 0; width: 18px; height: 18px;
+    background: transparent; pointer-events: none;
+  }
+  .nav-item.active::before { top: -18px; border-bottom-right-radius: 14px; box-shadow: 6px 6px 0 6px var(--panel); }
+  .nav-item.active::after { bottom: -18px; border-top-right-radius: 14px; box-shadow: 6px -6px 0 6px var(--panel); }
+  /* The sliding pill would sit behind the tab; the tab itself is the indicator. */
+  .sidebar .nav-glide { display: none; }
+
+  .nav-count, .nav-item.active .nav-count {
+    min-width: 24px; height: 22px; padding: 0 7px; border: none; border-radius: 11px;
+    background: #e5484d; color: #fff; font-size: 12.5px; font-weight: 700;
+  }
+
+  /* Account card stays at the bottom of the sidebar. */
+  .sidebar-foot {
+    margin-right: 14px; padding: 10px 0 0; border-top: 1px solid var(--frame-line);
+  }
+  .sidebar-foot .me-card {
+    margin: 0; padding: 9px 10px; border-radius: 14px; border: 1px solid var(--frame-line); color: var(--frame-ink);
+  }
+  .sidebar-foot .me-card:hover, .sidebar-foot .me-card[aria-expanded="true"] { background: var(--frame-2); }
+  .sidebar-foot .avatar { width: 40px; height: 40px; border-radius: 11px; font-size: 14px; }
+  .sidebar-foot .avatar .sdot { border-color: var(--frame); width: 11px; height: 11px; }
+  .sidebar-foot .n { font-size: 14.5px; color: var(--frame-ink); }
+  .sidebar-foot .r { font-size: 12.5px; color: var(--frame-ink-2); }
+  .sidebar-foot .me-card .chev { width: 18px; height: 18px; color: var(--frame-ink-2); }
+  .sidebar-foot .me-menu { color: var(--ink); }
+
+  /* ---------- Collapsed rail ---------- */
+  .shell.collapsed .sidebar { padding: 16px 0 14px 12px; }
+  .shell.collapsed .side-head { padding: 0 12px 8px 0; }
+  .shell.collapsed .side-head .collapse-btn { margin: 0; }
+  .shell.collapsed .nav-label { display: none; }
+  .shell.collapsed .sidebar .nav-group + .nav-group { margin-right: 12px; }
+  .shell.collapsed .nav-item { justify-content: center; padding: 0; gap: 0; margin-right: 12px; }
+  .shell.collapsed .sidebar .nav-group + .nav-group .nav-item { margin-right: 0; }
+  .shell.collapsed .nav-item.active { margin-right: 0 !important; }
+  .shell.collapsed .sidebar-foot { margin-right: 12px; }
+  .shell.collapsed .sidebar-foot .me-card { padding: 6px; border: none; justify-content: center; }
+
+  /* ---------- Topbar ---------- */
+  .topbar.v6-topbar {
+    height: var(--topbar-height); gap: 14px; padding: 0 26px 0 22px;
+    background: var(--frame); border-bottom: none; color: var(--frame-ink);
+  }
+  .v6-topbar .tb-title, .v6-topbar .tb-mark { display: none; }
+
+  .v6-topbar .search-trigger {
+    width: 560px; max-width: 46vw; height: 46px; gap: 11px; padding: 0 14px 0 16px;
+    border-radius: 14px; border: 1px solid var(--frame-line);
+    background: rgba(255, 255, 255, 0.12); color: #c9d5e1; font-size: 15px;
+    transition: background 0.15s;
+  }
+  .v6-topbar .search-trigger:hover { background: rgba(255, 255, 255, 0.16); color: #dfe7ef; }
+  .v6-topbar .search-trigger .lucide { width: 20px; height: 20px; }
+  .v6-topbar .search-trigger span { flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .v6-topbar .search-trigger kbd { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 7px; background: rgba(255, 255, 255, 0.12); color: var(--frame-ink); }
+
+  .v6-topbar .topbar-right { gap: 10px; color: var(--frame-ink); }
+  .v6-topbar .topbar-right .status-wrap .presence-toggle {
+    height: 42px; padding: 0 14px; gap: 9px; border: none; border-radius: 12px;
+    background: var(--frame-2); color: var(--frame-ink);
+  }
+  .v6-topbar .topbar-right .status-wrap .presence-toggle:hover { background: #23415f; }
+  .v6-topbar .topbar-right .presence-toggle .status-lbl { font-size: 14.5px; font-weight: 600; color: var(--frame-ink); }
+  .v6-topbar .presence-toggle .sdot { width: 10px; height: 10px; }
+  .v6-topbar .presence-toggle .chev { width: 16px; height: 16px; color: var(--frame-ink-2); }
+  .v6-topbar .status-menu { top: 50px; color: var(--ink); }
+
+  /* Help, theme and bell as one group. topbar.css sets these with !important. */
+  .v6-topbar .tb-tools { display: flex; align-items: center; gap: 4px; padding: 4px; border-radius: 14px; background: var(--frame-2); }
+  .v6-topbar .tb-tools .theme-btn, .v6-topbar .tb-tools .bell-btn {
+    width: 40px !important; height: 40px !important; border-radius: 11px !important;
+    border: none !important; background: transparent !important; color: var(--frame-ink) !important;
+    font-size: 18px; font-weight: 600;
+  }
+  .v6-topbar .tb-tools .theme-btn:hover, .v6-topbar .tb-tools .bell-btn:hover { background: rgba(255, 255, 255, 0.10) !important; color: #fff !important; }
+  .v6-topbar .tb-tools .theme-btn .lucide, .v6-topbar .tb-tools .bell-btn .lucide { width: 21px !important; height: 21px !important; }
+  .v6-topbar .tb-tools .bell-btn .badge {
+    top: 3px; right: 3px; min-width: 19px; height: 19px; font-size: 11px; border-color: var(--frame-2);
+  }
+  .v6-topbar .tb-tools .notif-pop { color: var(--ink); }
+}
+
+/* Phones: the panel is just a column; the title stays in the compact topbar. */
+@media (max-width: 767px) {
+  .main-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .page-head { display: none; }
+  .v6-topbar .tb-tools { display: contents; }
+}

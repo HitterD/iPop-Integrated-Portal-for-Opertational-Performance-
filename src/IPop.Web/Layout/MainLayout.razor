@@ -30,8 +30,8 @@
             var items = group.Items.Where(i => !i.AdminOnly || Auth.IsAdmin).ToList();
             @if (items.Count > 0)
             {
-                <div class="nav-group">
-                    <div class="nav-label">@group.Label</div>
+                <div class="nav-group nav-g-@group.Key">
+                    <div class="nav-label"><span class="nav-chip" aria-hidden="true"><i data-lucide="@group.Icon"></i></span>@group.Label</div>
                     @foreach (var item in items)
                     {
                         <NavLink class="nav-item" href="@item.Href" data-tip="@item.Tip"
@@ -69,6 +69,7 @@
         <header class="topbar v6-topbar">
             @* v6 header: stacked title + subtitle, spacer, global search, presence, theme, bell. *@
             <img class="tb-mark" src="img/brand/ipop-mark.webp" alt="iPop" width="28" height="28" />
+            @* Phones keep the title in the bar; on desktop it sits in .page-head inside the content. *@
             <div class="tb-title">
                 <h1>@PageTitle</h1>
                 @if (!string.IsNullOrEmpty(Subtitle))
@@ -76,15 +77,11 @@
                     <div class="tb-sub">@Subtitle</div>
                 }
             </div>
-            @if (IsProjectsPage && Auth.ConnectionState == DirectoryConnectionState.Live)
-            {
-                <span class="tb-live"><span class="d"></span>Live</span>
-            }
+            <button class="search-trigger" @onclick="Palette.Open" title="Search iPop (@SearchShortcut)" aria-label="Search iPop">
+                <i data-lucide="search"></i><span>Search people, chat, notes, mail…</span><kbd>@SearchShortcut</kbd>
+            </button>
             <div class="tb-spacer"></div>
             <SectionOutlet SectionName="topbar-actions" />
-            <button class="search-trigger" @onclick="Palette.Open" title="Search iPop (Ctrl+K)" aria-label="Search iPop">
-                <i data-lucide="search"></i><span>Search iPop</span><kbd>@SearchShortcut</kbd>
-            </button>
             <div class="topbar-right">
                 @if (Auth.Me is not null)
                 {
@@ -127,12 +124,13 @@
                         }
                     </div>
                 }
+                <div class="tb-tools">
                 <button class="theme-btn tut-help-btn @(TutorialPulse ? "pulse" : "")" title="Help for this page" aria-label="Help" @onclick="Tutorials.ToggleHelp">?</button>
-                <button class="theme-btn" title="@(IsDark ? "Switch to light mode" : "Switch to dark mode")" @onclick="ToggleTheme">
+                <button class="theme-btn" title="@(IsDark ? "Light mode" : "Dark mode")" aria-label="@(IsDark ? "Switch to light mode" : "Switch to dark mode")" @onclick="ToggleTheme">
                     <i data-lucide="@(IsDark ? "sun" : "moon")"></i>
                 </button>
                 <div class="bell-wrap">
-                    <button class="bell-btn" title="Notifications" @onclick="ToggleNotif" @onclick:stopPropagation>
+                    <button class="bell-btn" title="Notifications" aria-label="Notifications" @onclick="ToggleNotif" @onclick:stopPropagation>
                         <i data-lucide="bell"></i>
                         @if (NotifUnread > 0 && NotifPrefs.ShowBadge)
                         {
@@ -214,8 +212,22 @@
                         </div>
                     </div>
                 </div>
+                </div>
             </div>
         </header>
+        @* Light content panel inside the navy frame (desktop). Pages render as its children. *@
+        <div class="main-panel">
+        <div class="page-head">
+            <h1>@PageTitle</h1>
+            @if (!string.IsNullOrEmpty(Subtitle))
+            {
+                <span class="ph-sub">@Subtitle</span>
+            }
+            @if (IsProjectsPage && Auth.ConnectionState == DirectoryConnectionState.Live)
+            {
+                <span class="tb-live"><span class="d"></span>Live</span>
+            }
+        </div>
         <IPop.Web.Components.Tutorial.PracticeBar />
         @if (loadFailed)
         {
@@ -261,6 +273,7 @@
                 </ErrorContent>
             </ErrorBoundary>
         </CascadingValue>
+        </div>
         <CommandPalette />
         <IPop.Web.Components.Tutorial.TutorialHost />
         <IPop.Web.Components.News.AnnouncementPopup />
@@ -354,29 +367,29 @@
     {
         public string Tip { get; init; } = Tip ?? Label;
     }
-    private record NavGroup(string Label, NavItem[] Items);
+    private record NavGroup(string Label, string Key, string Icon, NavItem[] Items);
 
     /// One table drives the sidebar (v6 grouped nav). Devices stays hidden until it has a design.
     private static readonly NavGroup[] NavGroups =
     [
-        new("Workspace", [
+        new("Workspace", "work", "briefcase", [
             new("Dashboard", "layout-grid", "/dashboard"),
             new("Directory", "users", "/directory"),
             new("Projects", "kanban", "/projects"),
             new("Notes", "notebook-pen", "/notes"),
             new("Tickets", "life-buoy", "/tickets", BadgeKey: "tickets"),
         ]),
-        new("Communication", [
+        new("Communication", "comm", "message-circle", [
             new("Chat", "message-circle", "/chat", BadgeKey: "chat"),
             new("Mail", "mail", "/mail", BadgeKey: "mail"),
             new("News & Memos", "newspaper", "/news", BadgeKey: "news"),
             new("Calls", "phone", "/calls", BadgeKey: "calls"),
         ]),
-        new("Resources", [
+        new("Resources", "res", "folder", [
             new("Files", "folder", "/files"),
             new("Calendar", "calendar", "/calendar"),
         ]),
-        new("Administration", [
+        new("Administration", "admin", "shield", [
             new("Administration", "sliders-horizontal", "/admin", AdminOnly: true),
             new("Notifications", "bell", "/notifications", BadgeKey: "notif"),
         ]),
@@ -548,7 +561,14 @@
         catch { }
     });
 
-    private void ToggleSidebar() => collapsed = !collapsed;
+    private void ToggleSidebar() => SetCollapsed(!collapsed);
+
+    /// Open by default; the choice is remembered per account (Auth user settings are keyed by NIK).
+    private void SetCollapsed(bool value)
+    {
+        collapsed = value;
+        _ = Auth.SetUserSettingAsync("sidebar-collapsed", value ? "1" : "0");
+    }
 
     private async Task ToggleNotif()
     {
@@ -705,7 +725,7 @@
     public void OnCommandPalette() { Palette.Toggle(); StateHasChanged(); }
 
     [JSInvokable]
-    public void OnToggleSidebar() { collapsed = !collapsed; StateHasChanged(); }
+    public void OnToggleSidebar() { SetCollapsed(!collapsed); StateHasChanged(); }
 
     [JSInvokable]
     public void OnClickAway()
@@ -738,6 +758,8 @@
         // Me first: roles gate the nav and most of what follows reads it. Everything after it
         // is independent and runs side by side; one slow call used to hold up all the rest.
         await Auth.LoadMeAsync();
+        // Per-account (keyed by NIK), so it can only be read once Me is known.
+        collapsed = await Auth.GetUserSettingAsync("sidebar-collapsed") == "1";
         // Another tab in a call keeps the session: this one shows the yield prompt and the
         // hub connects below all no-op (Auth.IsSuspended) until "Tetap gunakan di sini".
         await SessionLock.StartAsync();

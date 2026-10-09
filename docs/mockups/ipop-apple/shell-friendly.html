@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>iPop — friendlier sidebar + topbar (mockup)</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: -apple-system, "Segoe UI", Inter, system-ui, sans-serif; background: #d9d6d0; padding: 32px; color: #1c1f23; }
+  h1.doc { font-size: 22px; margin-bottom: 6px; }
+  p.doc { color: #555; margin-bottom: 26px; font-size: 14px; max-width: 900px; line-height: 1.5; }
+  .art-label { font-size: 13px; font-weight: 700; color: #444; margin: 0 0 10px; letter-spacing: .02em; }
+  .art { width: 1366px; height: 820px; margin-bottom: 44px; border-radius: 14px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,.25); }
+
+  /* ===== Theme tokens ===== */
+  .light {
+    --frame: #13293d; --frame-2: #1b3550; --frame-line: rgba(255,255,255,.10);
+    --frame-ink: #e8eef4; --frame-ink-2: #a9b8c7;
+    --content: #f3f2ee; --card: #ffffff; --line: #e4e1db; --ink: #1c1f23; --ink-2: #5d646c;
+    --accent: #2e9d6b; --accent-soft: #dcf2e5; --search: rgba(255,255,255,.12);
+  }
+  .dark {
+    --frame: #08111a; --frame-2: #142433; --frame-line: rgba(255,255,255,.08);
+    --frame-ink: #e6ecf1; --frame-ink-2: #93a3b3;
+    --content: #181b1f; --card: #22262b; --line: #30353b; --ink: #eceef0; --ink-2: #a2a9b1;
+    --accent: #3fb97f; --accent-soft: rgba(63,185,127,.16); --search: rgba(255,255,255,.08);
+  }
+
+  .shell { display: grid; grid-template-columns: 272px 1fr; grid-template-rows: 72px 1fr; height: 100%; background: var(--frame); }
+
+  /* ===== Sidebar ===== */
+  .side { grid-row: 1 / span 2; display: flex; flex-direction: column; padding: 18px 0 14px 14px; color: var(--frame-ink); }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 2px 12px 8px; }
+  .brand img { width: 34px; height: 34px; }
+  .brand b { font-size: 22px; letter-spacing: -.01em; }
+  .brand .collapse { margin-left: auto; margin-right: 10px; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--frame-ink-2); }
+  .brand .collapse:hover { background: var(--frame-2); }
+
+  .nav { flex: 1; overflow: auto; padding-right: 0; scrollbar-width: none; }
+  .grp { padding: 8px 0 2px; }
+  .grp + .grp { border-top: 1px solid var(--frame-line); margin-right: 14px; }
+  .grp-h { display: flex; align-items: center; gap: 9px; padding: 0 12px 4px; font-size: 13px; font-weight: 700; color: #fff; letter-spacing: .01em; }
+  .grp-h .chip { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; color: #fff; }
+  .grp-h .chip svg { width: 14px; height: 14px; }
+  .g-work .chip { background: #2e9d6b; } .g-comm .chip { background: #3b7fe0; }
+  .g-res .chip  { background: #e08a2e; } .g-admin .chip { background: #6b7a8c; }
+
+  .item { position: relative; display: flex; align-items: center; gap: 13px; height: 40px; padding: 0 14px; margin: 0 14px 1px 0;
+          border-radius: 12px; font-size: 15px; font-weight: 550; color: var(--frame-ink); cursor: pointer; transition: background .15s, transform .15s; }
+  .item svg { width: 20px; height: 20px; flex-shrink: 0; }
+  .g-work .item svg { color: #6fd3a3; } .g-comm .item svg { color: #8ab6f5; }
+  .g-res .item svg { color: #f2b56b; } .g-admin .item svg { color: #b4c0cd; }
+  .item:hover { background: var(--frame-2); transform: translateX(2px); }
+  .badge { margin-left: auto; min-width: 24px; height: 22px; padding: 0 7px; border-radius: 11px; background: #e5484d; color: #fff;
+           font-size: 12.5px; font-weight: 750; display: grid; place-items: center; }
+
+  /* Active item: a tab that merges into the content panel */
+  .item.active { margin-right: 0; border-radius: 14px 0 0 14px; background: var(--content); color: var(--ink); font-weight: 700; }
+  .item.active svg { color: var(--accent) !important; }
+  .item.active::before, .item.active::after { content: ""; position: absolute; right: 0; width: 18px; height: 18px; background: transparent; pointer-events: none; }
+  .item.active::before { top: -18px; border-bottom-right-radius: 14px; box-shadow: 6px 6px 0 6px var(--content); }
+  .item.active::after { bottom: -18px; border-top-right-radius: 14px; box-shadow: 6px -6px 0 6px var(--content); }
+  .item.active:hover { transform: none; }
+
+  .side-foot { padding: 8px 0 0; border-top: 1px solid var(--frame-line); margin-right: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .help { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 14px; border-radius: 12px; background: var(--frame-2); color: var(--frame-ink); font-size: 14px; font-weight: 600; }
+  .help svg { width: 19px; height: 19px; color: #f5d06b; }
+  .me { display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 14px; border: 1px solid var(--frame-line); }
+  .me:hover { background: var(--frame-2); }
+  .me .av { width: 40px; height: 40px; border-radius: 11px; background: linear-gradient(135deg,#2e9d6b,#1d6646); display: grid; place-items: center; font-weight: 750; color: #fff; position: relative; }
+  .me .av::after { content: ""; position: absolute; right: -3px; bottom: -3px; width: 12px; height: 12px; border-radius: 50%; background: #34c759; border: 2.5px solid var(--frame); }
+  .me b { display: block; font-size: 14.5px; } .me small { color: var(--frame-ink-2); font-size: 12.5px; }
+  .me svg { margin-left: auto; width: 18px; color: var(--frame-ink-2); }
+
+  /* ===== Topbar ===== */
+  .top { display: flex; align-items: center; gap: 14px; padding: 0 26px 0 22px; }
+  .search { flex: 0 1 560px; height: 46px; display: flex; align-items: center; gap: 11px; padding: 0 14px 0 16px; border-radius: 14px;
+            background: var(--search); border: 1px solid rgba(255,255,255,.16); color: #c9d5e1; font-size: 15px; transition: border-color .15s, background .15s; }
+  .search:hover { background: rgba(255,255,255,.16); }
+  .search svg { width: 20px; height: 20px; }
+  .search kbd { margin-left: auto; font: 600 12px inherit; font-family: inherit; padding: 3px 8px; border-radius: 7px; background: rgba(255,255,255,.12); color: var(--frame-ink); }
+  .top-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .status { height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 14px; border-radius: 12px; background: var(--frame-2); color: var(--frame-ink); font-size: 14.5px; font-weight: 600; }
+  .status i { width: 10px; height: 10px; border-radius: 50%; background: #34c759; box-shadow: 0 0 0 3px rgba(52,199,89,.25); }
+  .status svg { width: 16px; color: var(--frame-ink-2); }
+  .tools { display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--frame-2); }
+  .tool { position: relative; width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; color: var(--frame-ink); }
+  .tool:hover { background: rgba(255,255,255,.1); }
+  .tool svg { width: 21px; height: 21px; }
+  .tool .dot { position: absolute; top: 4px; right: 4px; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 10px; background: #e5484d; color: #fff; font-size: 11px; font-weight: 750; display: grid; place-items: center; border: 2px solid var(--frame-2); }
+  .tip { position: absolute; top: 48px; right: 0; white-space: nowrap; background: #000; color: #fff; font-size: 12.5px; padding: 5px 9px; border-radius: 7px; }
+
+  /* ===== Content panel ===== */
+  .content { background: var(--content); border-top-left-radius: 26px; padding: 26px 30px; overflow: hidden; color: var(--ink); }
+  .page-h { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 18px; }
+  .page-h h2 { font-size: 26px; letter-spacing: -.01em; }
+  .page-h span { color: var(--ink-2); font-size: 14.5px; padding-bottom: 4px; }
+  .filters { display: flex; gap: 8px; margin-bottom: 18px; }
+  .pill { padding: 8px 14px; border-radius: 11px; background: var(--card); border: 1px solid var(--line); font-size: 14px; font-weight: 600; color: var(--ink-2); }
+  .pill.on { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+  .grid2 { display: grid; grid-template-columns: 260px 1fr; gap: 18px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; }
+  .card h3 { font-size: 15.5px; margin-bottom: 12px; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 11px 6px; border-bottom: 1px solid var(--line); font-size: 14.5px; }
+  .row:last-child { border-bottom: 0; }
+  .row .a { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 12.5px; }
+  .row .st { margin-left: auto; font-size: 12.5px; color: var(--ink-2); padding: 3px 9px; border-radius: 8px; background: var(--content); }
+  .tree div { padding: 9px 10px; border-radius: 10px; font-size: 14.5px; }
+  .tree .on { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+
+  /* Collapsed preview */
+  .mini { display: flex; gap: 28px; align-items: flex-start; }
+  .collapsed { width: 84px; height: 560px; border-radius: 14px; background: var(--frame); padding: 16px 0 0 12px; box-shadow: 0 12px 30px rgba(0,0,0,.2); }
+  .collapsed .ci { position: relative; width: 58px; height: 46px; display: grid; place-items: center; color: var(--frame-ink); margin-bottom: 4px; border-radius: 12px 0 0 12px; }
+  .collapsed .ci svg { width: 21px; height: 21px; }
+  .collapsed .sep { height: 1px; background: var(--frame-line); margin: 8px 12px 8px 0; }
+  .collapsed .ci.active { background: var(--content); color: var(--accent); width: 72px; }
+  .note { font-size: 14px; line-height: 1.6; color: #333; max-width: 640px; }
+  .note li { margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<h1 class="doc">iPop — friendlier sidebar + topbar</h1>
+<p class="doc">Navy frame around a light content panel, the open page as a tab that merges into the content, bigger text and click targets, and the four categories clearly marked with their own colour. Your name and photo stay at the bottom of the sidebar. Hover any menu item to see the motion.</p>
+
+<template id="shell">
+  <div class="shell">
+    <aside class="side">
+      <div class="brand"><img src="../../../src/IPop.Web/wwwroot/img/logo.png" alt=""><b>iPop</b><span class="collapse" title="Collapse sidebar"><i data-lucide="panel-left-close"></i></span></div>
+      <nav class="nav">
+        <div class="grp g-work">
+          <div class="grp-h"><span class="chip"><i data-lucide="briefcase"></i></span>Workspace</div>
+          <div class="item"><i data-lucide="layout-grid"></i>Dashboard</div>
+          <div class="item active"><i data-lucide="users"></i>Directory</div>
+          <div class="item"><i data-lucide="kanban"></i>Projects</div>
+          <div class="item"><i data-lucide="notebook-pen"></i>Notes</div>
+          <div class="item"><i data-lucide="life-buoy"></i>Tickets</div>
+        </div>
+        <div class="grp g-comm">
+          <div class="grp-h"><span class="chip"><i data-lucide="message-circle"></i></span>Communication</div>
+          <div class="item"><i data-lucide="message-circle"></i>Chat<span class="badge">3</span></div>
+          <div class="item"><i data-lucide="mail"></i>Mail<span class="badge">12</span></div>
+          <div class="item"><i data-lucide="newspaper"></i>News &amp; Memos</div>
+          <div class="item"><i data-lucide="phone"></i>Calls</div>
+        </div>
+        <div class="grp g-res">
+          <div class="grp-h"><span class="chip"><i data-lucide="folder"></i></span>Resources</div>
+          <div class="item"><i data-lucide="folder"></i>Files</div>
+          <div class="item"><i data-lucide="calendar"></i>Calendar</div>
+        </div>
+        <div class="grp g-admin">
+          <div class="grp-h"><span class="chip"><i data-lucide="shield"></i></span>Administration</div>
+          <div class="item"><i data-lucide="sliders-horizontal"></i>Administration</div>
+          <div class="item"><i data-lucide="bell"></i>Notifications<span class="badge">1</span></div>
+        </div>
+      </nav>
+      <div class="side-foot">
+                <div class="me"><span class="av">IA</span><div><b>iPop Administrator</b><small>Super admin · Online</small></div><i data-lucide="chevrons-up-down"></i></div>
+      </div>
+    </aside>
+    <header class="top">
+      <div class="search"><i data-lucide="search"></i>Search people, chat, notes, mail…<kbd>Ctrl K</kbd></div>
+      <div class="top-right">
+        <div class="status"><i></i>Online<i data-lucide="chevron-down" style="width:auto;height:auto;background:none;box-shadow:none"></i></div>
+        <div class="tools">
+          <span class="tool"><i data-lucide="circle-help"></i></span>
+          <span class="tool"><i data-lucide="moon"></i></span>
+          <span class="tool"><i data-lucide="bell"></i><span class="dot">1</span><span class="tip">Notifications</span></span>
+        </div>
+      </div>
+    </header>
+    <main class="content">
+      <div class="page-h"><h2>Directory</h2><span>4,911 people · 23 online</span></div>
+      <div class="filters"><span class="pill on">All 4,911</span><span class="pill">● Online 23</span><span class="pill">Busy 0</span><span class="pill">Away 12</span><span class="pill">Offline 4,876</span></div>
+      <div class="grid2">
+        <div class="card"><h3>Organization</h3><div class="tree"><div class="on">All people</div><div>SJA Jakarta</div><div>SJA Karawang</div><div>SJA Semarang</div><div>SJA Sepanjang</div><div>SJA Sukodono</div></div></div>
+        <div class="card"><h3>All people</h3>
+          <div class="row"><span class="a" style="background:#2e7d5b">IU</span>'IZZUDDIN 'ULWAN<span class="st">Offline</span></div>
+          <div class="row"><span class="a" style="background:#3b6fb6">AM</span>A. MALIK MUSLIK<span class="st">Offline</span></div>
+          <div class="row"><span class="a" style="background:#2e7d5b">AD</span>A.R DIMAS BUDI S<span class="st">Offline</span></div>
+          <div class="row"><span class="a" style="background:#c0563a">AA</span>A'AN ARDIAN<span class="st">Offline</span></div>
+          <div class="row"><span class="a" style="background:#3b6fb6">AR</span>A'INUR ROHMAH<span class="st">Offline</span></div>
+          <div class="row"><span class="a" style="background:#3b6fb6">AI</span>AAM IMAM AMARULAH<span class="st">Offline</span></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</template>
+
+<div class="art-label">LIGHT · laptop 1366 × 820</div>
+<div class="art light" data-shell></div>
+<div class="art-label">LIGHT · small laptop 1366 × 680 (browser window on a 768 px screen)</div>
+<div class="art light" data-shell style="height:680px"></div>
+<div class="art-label">DARK · laptop 1366 × 820</div>
+<div class="art dark" data-shell></div>
+
+<div class="art-label">COLLAPSED SIDEBAR (optional, remembered per account) + what changes</div>
+<div class="mini">
+  <div class="collapsed light">
+    <div class="ci"><img src="../../../src/IPop.Web/wwwroot/img/logo.png" style="width:30px"></div><div class="sep"></div>
+    <div class="ci" style="color:#6fd3a3"><i data-lucide="layout-grid"></i></div>
+    <div class="ci active"><i data-lucide="users"></i></div>
+    <div class="ci" style="color:#6fd3a3"><i data-lucide="kanban"></i></div><div class="sep"></div>
+    <div class="ci" style="color:#8ab6f5"><i data-lucide="message-circle"></i></div>
+    <div class="ci" style="color:#8ab6f5"><i data-lucide="mail"></i></div><div class="sep"></div>
+    <div class="ci" style="color:#f2b56b"><i data-lucide="folder"></i></div>
+    <div class="ci" style="color:#f2b56b"><i data-lucide="calendar"></i></div>
+  </div>
+  <ul class="note">
+    <li><b>Categories</b> — bold white heading, coloured badge, divider line: Workspace green, Communication blue, Resources orange, Administration slate grey. Item icons share the category colour.</li>
+    <li><b>Readable</b> — menu text 15 px, rows 40 px tall; all 13 menus fit on a normal laptop screen, on small screens only the menu list scrolls, your name stays fixed at the bottom, icons 20 px, unread counts as larger red badges.</li>
+    <li><b>Open page</b> — shown as a light tab joined to the content, so it is obvious where you are.</li>
+    <li><b>Topbar</b> — one large search box, status button, and Help / Theme / Notifications grouped with text tooltips. Page title moves into the content area.</li>
+    <li><b>Sidebar bottom</b> — your name and photo (unchanged place). Help &amp; tutorial stays as the labelled ? button in the topbar, so it is not shown twice.</li>
+    <li><b>Sidebar</b> open by default; collapsing keeps coloured icons with tooltips, remembered per account.</li>
+  </ul>
+</div>
+
+<script>
+  const tpl = document.getElementById('shell').innerHTML;
+  document.querySelectorAll('[data-shell]').forEach(el => el.innerHTML = tpl);
+  lucide.createIcons();
+</script>
+</body>
+</html>
