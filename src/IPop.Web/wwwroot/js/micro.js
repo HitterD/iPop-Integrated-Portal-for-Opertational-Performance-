@@ -66,7 +66,12 @@ window.ipopMicro = (() => {
     if (!side) return;
     const active = side.querySelector('.nav-item.active');
     let glide = side.querySelector(':scope > .nav-glide');
-    if (!active) { if (glide) glide.style.opacity = '0'; return; }
+    if (!active) {
+      if (glide) glide.style.opacity = '0';
+      document.documentElement.style.removeProperty('--tab-curve');
+      document.documentElement.style.removeProperty('--panel-corner');
+      return;
+    }
     if (!glide) {
       glide = document.createElement('span');
       glide.className = 'nav-glide';
@@ -77,13 +82,36 @@ window.ipopMicro = (() => {
       side.classList.add('mi-glide');
       requestAnimationFrame(() => { glide.style.transition = ''; });
     }
+    // A pressed item that has now become active (or a press that led nowhere) drops its marker.
+    side.querySelectorAll('.nav-item.mi-tab-to').forEach(n => {
+      if (n === active || Date.now() - (+n.dataset.miTabAt || 0) > 1500) { n.classList.remove('mi-tab-to'); delete n.dataset.miTabAt; }
+    });
+    const pending = side.querySelector('.nav-item.mi-tab-to');
+    if (pending) return; // keep the tab where the press put it until the page arrives
     const s = side.getBoundingClientRect(), a = active.getBoundingClientRect();
     glide.style.opacity = '1';
     glide.style.left = (a.left - s.left) + 'px';
     glide.style.right = 'auto';
-    glide.style.width = a.width + 'px';
+    // Navy shell (css/shell/friendly.css): the pill is the open-page tab, so it always runs to the
+    // sidebar's right edge where the content panel starts, whatever the item's own margin.
+    const tab = side.classList.contains('nav-tab') && matchMedia('(min-width: 768px)').matches;
+    glide.style.width = (tab ? s.right - a.left : a.width) + 'px';
     glide.style.height = a.height + 'px';
     glide.style.transform = `translateY(${a.top - s.top + side.scrollTop}px)`;
+    if (tab) shapePanelCorner(a);
+  }
+
+  // The panel's rounded top-left corner and the tab's upper curve compete for the same spot when
+  // the open page is the first menu item: shrink the corner and the curve to the room between them.
+  function shapePanelCorner(a) {
+    const panel = document.querySelector('.main-panel');
+    if (!panel) return;
+    const gap = a.top - panel.getBoundingClientRect().top;
+    const curve = Math.max(0, Math.min(18, gap));
+    const corner = Math.max(0, Math.min(26, gap - curve));
+    const root = document.documentElement.style;
+    root.setProperty('--tab-curve', curve + 'px');
+    root.setProperty('--panel-corner', corner + 'px');
   }
 
   // ── 2. Badge bump when the number changes ──
@@ -144,6 +172,28 @@ window.ipopMicro = (() => {
     const page = main && [...main.children].find(c => !c.matches('header, .topbar, .page-head, .float-stack, .push-banner, .offline-banner, script'));
     hideTip();
     if (page) replay(page, 'mi-page-enter');
+    const head = main && main.querySelector(':scope > .page-head');
+    if (head) replay(head, 'mi-head-enter');
+    const icon = document.querySelector('.sidebar.nav-tab .nav-item.active .lucide');
+    if (icon) replay(icon, 'mi-tab-pop');
+  }
+
+  // Navy shell: move the tab the moment a menu item is pressed, not after the page has loaded,
+  // so the sidebar answers instantly even when the next page takes a moment.
+  function onNavPress(e) {
+    const item = e.target.closest && e.target.closest('.sidebar.nav-tab .nav-item');
+    if (!item || e.button !== 0 || item.classList.contains('active')) return;
+    const side = item.closest('.sidebar');
+    const glide = side.querySelector(':scope > .nav-glide');
+    if (!glide || !matchMedia('(min-width: 768px)').matches) return;
+    const s = side.getBoundingClientRect(), a = item.getBoundingClientRect();
+    glide.style.transform = `translateY(${a.top - s.top + side.scrollTop}px)`;
+    glide.style.width = (s.right - a.left) + 'px';
+    shapePanelCorner(a);
+    side.querySelectorAll('.nav-item.mi-tab-to').forEach(n => n.classList.remove('mi-tab-to'));
+    item.classList.add('mi-tab-to');
+    item.dataset.miTabAt = Date.now();
+    setTimeout(schedule, 1600); // falls back to the real active item if the press went nowhere
   }
 
   // ── 29. Presence: ripple when a person turns online ──
@@ -314,6 +364,7 @@ window.ipopMicro = (() => {
     const mo = new MutationObserver(schedule);
     mo.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'aria-selected', 'aria-checked'], characterData: true });
     addEventListener('resize', schedule);
+    document.addEventListener('pointerdown', onNavPress, true);
     document.addEventListener('mouseover', onOver, true);
     document.addEventListener('focusin', e => { const b = tipTarget(e.target); if (b && b.matches(':focus-visible')) { hideTip(); tipFor = b; showTip(b); } }, true);
     document.addEventListener('focusout', hideTip, true);

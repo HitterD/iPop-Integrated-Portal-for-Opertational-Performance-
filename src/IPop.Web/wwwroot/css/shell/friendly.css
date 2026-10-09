@@ -97,23 +97,50 @@
   .nav-g-admin .nav-item .lucide { color: var(--cat-admin-ic); }
   .nav-item:hover, [data-theme="dark"] .nav-item:hover { background: var(--frame-2); color: var(--frame-ink); transform: translateX(2px); }
 
-  /* The open page: a light tab that runs into the content panel. */
-  /* micro.css (loaded later) clears the active background for its sliding pill at (0,3,0). */
+  /* The open page: micro.js slides one tab (.nav-glide) to the active item and stretches it to
+     the panel, so every group lines up and the tab glides when you change page. */
   .shell .sidebar .nav-item.active, .shell .sidebar .nav-item.active:hover,
   .shell .sidebar.mi-glide .nav-item.active, .shell .sidebar.mi-glide .nav-item.active:hover {
-    margin-right: 0 !important; border-radius: 14px 0 0 14px;
-    background: var(--panel); color: var(--ink); font-weight: 700; transform: none;
+    background: transparent; color: var(--ink); font-weight: 700; transform: none;
   }
   .nav-item.active .lucide, [data-theme="dark"] .nav-item.active .lucide { color: var(--accent) !important; }
   [data-theme="dark"] .shell .sidebar .nav-item.active { color: #fff; }
-  .nav-item.active::before, .nav-item.active::after {
-    content: ""; display: block; position: absolute; right: 0; width: 18px; height: 18px;
-    background: transparent; pointer-events: none;
+  .shell .sidebar .nav-glide {
+    display: block; border-radius: 14px 0 0 14px; background: var(--panel);
+    overflow: visible;
+    transition: transform .32s cubic-bezier(.2, .8, .2, 1), opacity .2s;
   }
-  .nav-item.active::before { top: -18px; border-bottom-right-radius: 14px; box-shadow: 6px 6px 0 6px var(--panel); }
-  .nav-item.active::after { bottom: -18px; border-top-right-radius: 14px; box-shadow: 6px -6px 0 6px var(--panel); }
-  /* The sliding pill would sit behind the tab; the tab itself is the indicator. */
-  .sidebar .nav-glide { display: none; }
+  /* Concave curves where the tab meets the panel, drawn as a quarter-circle cut-out so nothing
+     spills past the tab. The upper one shrinks when the panel's own corner is close (first item). */
+  .shell .sidebar .nav-glide::before, .shell .sidebar .nav-glide::after {
+    content: ""; position: absolute; right: 0; pointer-events: none;
+  }
+  .shell .sidebar .nav-glide::before {
+    --c: var(--tab-curve, 18px);
+    width: var(--c); height: var(--c); top: calc(-1 * var(--c));
+    background: radial-gradient(circle at 0 0, transparent calc(var(--c) - 0.5px), var(--panel) var(--c));
+  }
+  .shell .sidebar .nav-glide::after {
+    width: 18px; height: 18px; bottom: -18px;
+    background: radial-gradient(circle at 0 100%, transparent 17.5px, var(--panel) 18px);
+  }
+  .main-panel { transition: border-top-left-radius .32s cubic-bezier(.2, .8, .2, 1); }
+
+  /* Tab change: label colour follows the tab as it slides in; the arriving icon gives a small pop,
+     the title and page rise together. Pressing a row nudges it like a button. */
+  .shell .sidebar .nav-item { transition: background .15s, transform .15s, color .25s ease .05s; }
+  .shell .sidebar .nav-item.mi-tab-to:not(.active) { color: var(--ink); }
+  .shell .sidebar .nav-item.mi-tab-to:not(.active) .lucide { color: var(--accent) !important; }
+  .shell .sidebar .nav-item:active:not(.active) { transform: translateX(2px) scale(.98); }
+  .mi-tab-pop { animation: mi-tab-pop .42s cubic-bezier(.34, 1.56, .64, 1); }
+  @keyframes mi-tab-pop { 0% { transform: scale(.8); } 60% { transform: scale(1.12); } 100% { transform: none; } }
+  .mi-head-enter { animation: mi-head-enter .3s cubic-bezier(.2, .8, .2, 1); }
+  @keyframes mi-head-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .shell .main-panel { border-top-left-radius: var(--panel-corner, 26px); }
+  @media (prefers-reduced-motion: reduce) {
+    .shell .sidebar .nav-glide, .main-panel { transition: none; }
+    .mi-tab-pop, .mi-head-enter { animation: none; }
+  }
 
   .nav-count, .nav-item.active .nav-count {
     min-width: 24px; height: 22px; padding: 0 7px; border: none; border-radius: 11px;
