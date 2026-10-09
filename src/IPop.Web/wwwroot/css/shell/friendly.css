@@ -5,17 +5,20 @@
    Loaded after shell/v6.css and before css/mobile/*, so phones keep their own shell. */
 
 :root {
-  --frame: #13293d;
-  --frame-2: #1b3550;
+  /* Forest green, from the iPop logo (approved 2026-10-09; replaced navy). */
+  --frame: #123528;
+  --frame-2: #1a4535;
+  --frame-3: #22533f;
   --frame-line: rgba(255, 255, 255, 0.10);
-  --frame-ink: #e8eef4;
-  --frame-ink-2: #a9b8c7;
+  --frame-ink: #e7f2ec;
+  --frame-ink-2: #a3c2b3;
   /* Same tone the pages paint, so the panel, its header and the active tab read as one sheet. */
   --panel: var(--bg);
-  --cat-work: #2e9d6b;   --cat-work-ic: #6fd3a3;
-  --cat-comm: #3b7fe0;   --cat-comm-ic: #8ab6f5;
-  --cat-res: #e08a2e;    --cat-res-ic: #f2b56b;
-  --cat-admin: #6b7a8c;  --cat-admin-ic: #b4c0cd;
+  /* Category tones chosen to sit on the green frame: none green (frame) and none purple. */
+  --cat-work: #3a86c8;   --cat-work-ic: #8cc3f0;
+  --cat-comm: #cf6a4c;   --cat-comm-ic: #f2a58b;
+  --cat-res: #d19a2a;    --cat-res-ic: #f0c76a;
+  --cat-admin: #6f8290;  --cat-admin-ic: #b9c6cf;
   --sidebar-width: clamp(264px, 15vw, 288px);
   --sidebar-collapsed: 80px;
   /* The menu fills the column. Fixed: sidebar padding 32 + logo 44 + account card 72 + 4 headings
@@ -27,11 +30,12 @@
   --topbar-height: 72px;
 }
 [data-theme="dark"] {
-  --frame: #08111a;
-  --frame-2: #142433;
+  --frame: #0b2219;
+  --frame-2: #133126;
+  --frame-3: #1b3f31;
   --frame-line: rgba(255, 255, 255, 0.08);
-  --frame-ink: #e6ecf1;
-  --frame-ink-2: #93a3b3;
+  --frame-ink: #e3efe8;
+  --frame-ink-2: #93b3a4;
 }
 
 @media (min-width: 768px) {
@@ -236,10 +240,10 @@
   .v6-topbar .search-trigger {
     width: 560px; max-width: 46vw; height: 46px; gap: 11px; padding: 0 14px 0 16px;
     border-radius: 14px; border: 1px solid var(--frame-line);
-    background: rgba(255, 255, 255, 0.12); color: #c9d5e1; font-size: 15px;
+    background: rgba(255, 255, 255, 0.11); color: #c5dbcf; font-size: 15px;
     transition: background 0.15s;
   }
-  .v6-topbar .search-trigger:hover { background: rgba(255, 255, 255, 0.16); color: #dfe7ef; }
+  .v6-topbar .search-trigger:hover { background: rgba(255, 255, 255, 0.16); color: #dcebe3; }
   .v6-topbar .search-trigger .lucide { width: 20px; height: 20px; }
   .v6-topbar .search-trigger span { flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .v6-topbar .search-trigger kbd { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 7px; background: rgba(255, 255, 255, 0.12); color: var(--frame-ink); }
@@ -249,7 +253,7 @@
     height: 42px; padding: 0 14px; gap: 9px; border: none; border-radius: 12px;
     background: var(--frame-2); color: var(--frame-ink);
   }
-  .v6-topbar .topbar-right .status-wrap .presence-toggle:hover { background: #23415f; }
+  .v6-topbar .topbar-right .status-wrap .presence-toggle:hover { background: var(--frame-3); }
   .v6-topbar .topbar-right .presence-toggle .status-lbl { font-size: 14.5px; font-weight: 600; color: var(--frame-ink); }
   .v6-topbar .presence-toggle .sdot { width: 10px; height: 10px; }
   .v6-topbar .presence-toggle .chev { width: 16px; height: 16px; color: var(--frame-ink-2); }
