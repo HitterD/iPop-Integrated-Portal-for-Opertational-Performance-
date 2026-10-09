@@ -168,6 +168,10 @@
   .shell .sidebar.nav-tab.tab-pending .nav-g-comm .nav-item.active .lucide { color: var(--cat-comm-ic) !important; }
   .shell .sidebar.nav-tab.tab-pending .nav-g-res .nav-item.active .lucide { color: var(--cat-res-ic) !important; }
   .shell .sidebar.nav-tab.tab-pending .nav-g-admin .nav-item.active .lucide { color: var(--cat-admin-ic) !important; }
+  /* Keyboard focus: an inset ring that follows the row's shape instead of the global outline
+     (which drew a box around the tab). The open page is already marked by the tab itself. */
+  .shell .sidebar .nav-item:focus-visible { outline: none; box-shadow: inset 0 0 0 2px rgba(143, 227, 187, .7); }
+  .shell .sidebar .nav-item.active:focus-visible, .shell .sidebar .nav-item.mi-tab-to:focus-visible { box-shadow: none; }
   /* Rows the tab is not on: a light press feedback only. */
   .shell .sidebar .nav-item:active:not(.active):not(.mi-tab-to) { transform: translateX(2px) scale(.98); }
   /* The row under the tab never shows the hover fill or the hover slide. */
@@ -231,31 +235,39 @@
   .shell.collapsed .sidebar-foot .me-card { padding: 4px; border: none; justify-content: center; }
 
   /* ---------- Batik kopi accent ----------
-     Gold coffee-bean batik (img/brand/batik-kopi.svg), only as a faint texture: a band in the topbar
+     Gold coffee-bean batik (img/brand/batik-kopi-lattice.svg), only as a faint texture: a band in the topbar
      between the search box and the status button, and the top of the sidebar (logo → first menu
      items), where it drifts slowly from right to left. Painted on z-index -1 inside each bar's own
      stacking context, so it sits on the green but under every control. */
   .topbar.v6-topbar, .shell .sidebar { isolation: isolate; }
   .topbar.v6-topbar::before, .shell .sidebar::after {
     content: ""; position: absolute; pointer-events: none; z-index: -1;
-    background: url("../../img/brand/batik-kopi.svg") 0 0 / 56px 56px repeat;
+    background: url("../../img/brand/batik-kopi-lattice.svg") 0 0 / 64px 64px repeat;
   }
   .topbar.v6-topbar::before {
-    inset: 0; opacity: .16;
+    inset: 0; opacity: .22;
     -webkit-mask-image: linear-gradient(90deg, transparent 0, transparent 44%, #000 58%, #000 70%, transparent 86%);
             mask-image: linear-gradient(90deg, transparent 0, transparent 44%, #000 58%, #000 70%, transparent 86%);
   }
   .shell .sidebar::after {
-    left: 0; right: 0; top: 0; height: 230px; opacity: .2;
+    left: 0; right: 0; top: 0; height: 230px; opacity: .26;
     /* Strongest at the top-right, fading out towards the menu and the left edge. */
     -webkit-mask-image: radial-gradient(130% 100% at 100% 0, #000 0, rgba(0, 0, 0, .55) 45%, transparent 85%);
             mask-image: radial-gradient(130% 100% at 100% 0, #000 0, rgba(0, 0, 0, .55) 45%, transparent 85%);
-    animation: batik-drift 48s linear infinite;
+    animation: batik-drift 56s linear infinite;
   }
   /* One tile per cycle, so the loop is seamless. */
-  @keyframes batik-drift { from { background-position: 0 0; } to { background-position: -56px 0; } }
-  [data-theme="dark"] .topbar.v6-topbar::before { opacity: .12; }
-  [data-theme="dark"] .shell .sidebar::after { opacity: .14; }
+  @keyframes batik-drift { from { background-position: 0 0; } to { background-position: -64px 0; } }
+  [data-theme="dark"] .topbar.v6-topbar::before { opacity: .16; }
+  [data-theme="dark"] .shell .sidebar::after { opacity: .18; }
+  /* The open-page tab carries a whisper of the same beans at its far end, where it meets the
+     panel: an opaque panel-coloured wash over the tile leaves ~12% of the gold showing. */
+  .shell .sidebar .nav-glide {
+    background:
+      linear-gradient(90deg, var(--panel) 45%, color-mix(in srgb, var(--panel) 86%, transparent) 100%),
+      url("../../img/brand/batik-kopi-lattice.svg") 0 50% / 44px 44px repeat,
+      var(--panel);
+  }
   .shell.collapsed .sidebar::after { height: 150px; }
   @media (prefers-reduced-motion: reduce) { .shell .sidebar::after { animation: none; } }
 
