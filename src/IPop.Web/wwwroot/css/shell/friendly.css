@@ -235,14 +235,15 @@
   .shell.collapsed .sidebar-foot .me-card { padding: 4px; border: none; justify-content: center; }
 
   /* ---------- Batik kopi accent ----------
-     Gold batik kopi (img/brand/batik-kopi-classic.svg), only as a faint texture: a band in the
-     topbar between the search box and the status button, and a fade at the foot of the sidebar.
-     Painted on z-index -1 inside each bar's own stacking context, so it sits on the green but
-     under every control. (Chosen 2026-10-09 over later bean/lattice variants.) */
+     Gold batik kopi (img/brand/batik-kopi-oval.svg: oval links round a dot, creased beans between),
+     only as a faint texture: a band in the topbar between the search box and the status button, a
+     fade at the foot of the sidebar, and a trace at the far end of the open-page tab. Painted on
+     z-index -1 inside each bar's own stacking context, so it sits on the green but under every
+     control. Chosen by the user 2026-10-09 after trying bean, lattice and shirt variants. */
   .topbar.v6-topbar, .shell .sidebar { isolation: isolate; }
   .topbar.v6-topbar::before, .shell .sidebar::after {
     content: ""; position: absolute; pointer-events: none; z-index: -1;
-    background: url("../../img/brand/batik-kopi-classic.svg") 0 0 / 54px 54px repeat;
+    background: url("../../img/brand/batik-kopi-oval.svg") 0 0 / 54px 54px repeat;
   }
   .topbar.v6-topbar::before {
     inset: 0; opacity: .16;
@@ -257,6 +258,14 @@
   }
   [data-theme="dark"] .topbar.v6-topbar::before { opacity: .12; }
   [data-theme="dark"] .shell .sidebar::after { opacity: .1; }
+  /* The open-page tab: a panel-coloured wash over the tile leaves a soft trace of gold at the end
+     that runs into the content panel; the label side stays plain. */
+  .shell .sidebar .nav-glide {
+    background:
+      linear-gradient(90deg, var(--panel) 42%, color-mix(in srgb, var(--panel) 84%, transparent) 100%),
+      url("../../img/brand/batik-kopi-oval.svg") 0 50% / 44px 44px repeat,
+      var(--panel);
+  }
 
   /* ---------- Topbar ---------- */
   .topbar.v6-topbar {
