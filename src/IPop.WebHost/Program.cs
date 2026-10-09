@@ -16,7 +16,7 @@ var csp = app.Configuration["Security:ContentSecurityPolicy"] ?? string.Join("; 
     "font-src 'self' data: https://cdn.jsdelivr.net",
     "img-src 'self' data: blob: https: http:",
     "media-src 'self' data: blob: https: http:",
-    "connect-src 'self' https: wss: ws: http:",
+    "connect-src 'self' blob: https: wss: ws: http:",
     "worker-src 'self' blob:",
     "frame-src 'self' blob: data: https:",
     "frame-ancestors 'self'",
