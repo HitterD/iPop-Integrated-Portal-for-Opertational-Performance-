@@ -88,6 +88,7 @@ window.ipopMicro = (() => {
     });
     const pending = side.querySelector('.nav-item.mi-tab-to');
     if (pending) return; // keep the tab where the press put it until the page arrives
+    side.classList.remove('tab-pending');
     const s = side.getBoundingClientRect(), a = active.getBoundingClientRect();
     glide.style.opacity = '1';
     glide.style.left = (a.left - s.left) + 'px';
@@ -192,6 +193,7 @@ window.ipopMicro = (() => {
     shapePanelCorner(a);
     side.querySelectorAll('.nav-item.mi-tab-to').forEach(n => n.classList.remove('mi-tab-to'));
     item.classList.add('mi-tab-to');
+    side.classList.add('tab-pending');
     item.dataset.miTabAt = Date.now();
     setTimeout(schedule, 1600); // falls back to the real active item if the press went nowhere
   }

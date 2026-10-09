@@ -128,10 +128,26 @@
 
   /* Tab change: label colour follows the tab as it slides in; the arriving icon gives a small pop,
      the title and page rise together. Pressing a row nudges it like a button. */
-  .shell .sidebar .nav-item { transition: background .15s, transform .15s, color .25s ease .05s; }
-  .shell .sidebar .nav-item.mi-tab-to:not(.active) { color: var(--ink); }
-  .shell .sidebar .nav-item.mi-tab-to:not(.active) .lucide { color: var(--accent) !important; }
-  .shell .sidebar .nav-item:active:not(.active) { transform: translateX(2px) scale(.98); }
+  .shell .sidebar .nav-item { transition: background .15s, transform .15s, color .2s ease; }
+  /* While the next page loads, the pressed row is already "the tab": no hover fill, no press
+     nudge (either would sit on top of the light tab and leave a rim), and tab-coloured text. */
+  .shell .sidebar.nav-tab .nav-item.mi-tab-to,
+  .shell .sidebar.nav-tab .nav-item.mi-tab-to:hover,
+  .shell .sidebar.nav-tab .nav-item.mi-tab-to:active {
+    background: transparent; transform: none; color: var(--ink); font-weight: 700;
+  }
+  [data-theme="dark"] .shell .sidebar.nav-tab .nav-item.mi-tab-to { color: #fff; }
+  .shell .sidebar.nav-tab .nav-item.mi-tab-to .lucide { color: var(--accent) !important; }
+  /* …and the page being left goes back to a normal row at once, so its text never sits dark on navy. */
+  .shell .sidebar.nav-tab.tab-pending .nav-item.active { color: var(--frame-ink); font-weight: 550; }
+  .shell .sidebar.nav-tab.tab-pending .nav-g-work .nav-item.active .lucide { color: var(--cat-work-ic) !important; }
+  .shell .sidebar.nav-tab.tab-pending .nav-g-comm .nav-item.active .lucide { color: var(--cat-comm-ic) !important; }
+  .shell .sidebar.nav-tab.tab-pending .nav-g-res .nav-item.active .lucide { color: var(--cat-res-ic) !important; }
+  .shell .sidebar.nav-tab.tab-pending .nav-g-admin .nav-item.active .lucide { color: var(--cat-admin-ic) !important; }
+  /* Rows the tab is not on: a light press feedback only. */
+  .shell .sidebar .nav-item:active:not(.active):not(.mi-tab-to) { transform: translateX(2px) scale(.98); }
+  /* The row under the tab never shows the hover fill or the hover slide. */
+  .shell .sidebar.nav-tab .nav-item.active:hover { transform: none; }
   .mi-tab-pop { animation: mi-tab-pop .42s cubic-bezier(.34, 1.56, .64, 1); }
   @keyframes mi-tab-pop { 0% { transform: scale(.8); } 60% { transform: scale(1.12); } 100% { transform: none; } }
   .mi-head-enter { animation: mi-head-enter .3s cubic-bezier(.2, .8, .2, 1); }
