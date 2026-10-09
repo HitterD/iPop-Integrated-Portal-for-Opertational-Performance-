@@ -65,7 +65,7 @@ window.ipopMicro = (() => {
     const side = document.querySelector('.sidebar');
     if (!side) return;
     const active = side.querySelector('.nav-item.active');
-    let glide = side.querySelector(':scope > .nav-glide');
+    let glide = side.querySelector('.nav-glide:not(.out)');
     if (!active) {
       if (glide) glide.style.opacity = '0';
       document.documentElement.style.removeProperty('--tab-curve');
@@ -77,8 +77,10 @@ window.ipopMicro = (() => {
       glide.className = 'nav-glide';
       glide.setAttribute('aria-hidden', 'true');
       glide.style.transition = 'none';
-      side.style.position = side.style.position || 'relative';
-      side.prepend(glide);
+      // Navy shell: inside the scrolling menu (.nav-scroll) so the tab scrolls with its row.
+      const host = side.querySelector(':scope > .nav-scroll') || side;
+      host.style.position = host.style.position || 'relative';
+      host.prepend(glide);
       side.classList.add('mi-glide');
       requestAnimationFrame(() => { glide.style.transition = ''; });
     }
@@ -89,25 +91,59 @@ window.ipopMicro = (() => {
     const pending = side.querySelector('.nav-item.mi-tab-to');
     if (pending) return; // keep the tab where the press put it until the page arrives
     side.classList.remove('tab-pending');
+    // Navy shell (css/shell/friendly.css): the pill is the open-page tab.
+    if (side.classList.contains('nav-tab') && matchMedia('(min-width: 768px)').matches) {
+      moveTab(side, glide, active);
+      return;
+    }
     const s = side.getBoundingClientRect(), a = active.getBoundingClientRect();
     glide.style.opacity = '1';
     glide.style.left = (a.left - s.left) + 'px';
     glide.style.right = 'auto';
-    // Navy shell (css/shell/friendly.css): the pill is the open-page tab, so it always runs to the
-    // sidebar's right edge where the content panel starts, whatever the item's own margin.
-    const tab = side.classList.contains('nav-tab') && matchMedia('(min-width: 768px)').matches;
-    glide.style.width = (tab ? s.right - a.left : a.width) + 'px';
+    glide.style.width = a.width + 'px';
     glide.style.height = a.height + 'px';
     glide.style.transform = `translateY(${a.top - s.top + side.scrollTop}px)`;
-    if (tab) shapePanelCorner(a);
   }
+
+  // The tab is measured from layout offsets, not the on-screen box, so a row that is mid hover-slide
+  // can't leave a gap between the tab and the content panel. It always runs to the sidebar's edge.
+  // Changing page: the old tab withdraws into the content panel and the new one grows out of it.
+  function moveTab(side, glide, item) {
+    const host = glide.parentElement;
+    const top = item.offsetTop, left = item.offsetLeft;
+    const width = host.clientWidth - left, height = item.offsetHeight;
+    const from = glide.dataset.top;
+    const animate = from !== undefined && +from !== top && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (animate) {
+      // The whole shape (rounded end and both curves) moves, so it is never cut square. The host
+      // clips at the sidebar edge, which is where the content panel begins.
+      const ghost = glide.cloneNode(false);
+      ghost.classList.add('out');
+      glide.after(ghost);
+      const base = ghost.style.transform;
+      ghost.animate([{ transform: base }, { transform: `${base} translateX(${width + 20}px)` }],
+        { duration: 200, easing: 'cubic-bezier(.4, 0, 1, 1)', fill: 'forwards' }).onfinish = () => ghost.remove();
+      const to = `translateY(${top}px)`;
+      glide.animate([{ transform: `${to} translateX(${width + 20}px)` }, { transform: to }],
+        { duration: 340, delay: 70, easing: 'cubic-bezier(.16, 1, .3, 1)', fill: 'backwards' });
+    }
+    glide.dataset.top = top;
+    glide.style.opacity = '1';
+    glide.style.left = left + 'px';
+    glide.style.right = 'auto';
+    glide.style.width = width + 'px';
+    glide.style.height = height + 'px';
+    glide.style.transform = `translateY(${top}px)`;
+    shapePanelCorner(item);
+  }
+
 
   // The panel's rounded top-left corner and the tab's upper curve compete for the same spot when
   // the open page is the first menu item: shrink the corner and the curve to the room between them.
-  function shapePanelCorner(a) {
+  function shapePanelCorner(item) {
     const panel = document.querySelector('.main-panel');
     if (!panel) return;
-    const gap = a.top - panel.getBoundingClientRect().top;
+    const gap = item.getBoundingClientRect().top - panel.getBoundingClientRect().top;
     const curve = Math.max(0, Math.min(18, gap));
     const corner = Math.max(0, Math.min(26, gap - curve));
     const root = document.documentElement.style;
@@ -185,12 +221,9 @@ window.ipopMicro = (() => {
     const item = e.target.closest && e.target.closest('.sidebar.nav-tab .nav-item');
     if (!item || e.button !== 0 || item.classList.contains('active')) return;
     const side = item.closest('.sidebar');
-    const glide = side.querySelector(':scope > .nav-glide');
+    const glide = side.querySelector('.nav-glide:not(.out)');
     if (!glide || !matchMedia('(min-width: 768px)').matches) return;
-    const s = side.getBoundingClientRect(), a = item.getBoundingClientRect();
-    glide.style.transform = `translateY(${a.top - s.top + side.scrollTop}px)`;
-    glide.style.width = (s.right - a.left) + 'px';
-    shapePanelCorner(a);
+    moveTab(side, glide, item);
     side.querySelectorAll('.nav-item.mi-tab-to').forEach(n => n.classList.remove('mi-tab-to'));
     item.classList.add('mi-tab-to');
     side.classList.add('tab-pending');

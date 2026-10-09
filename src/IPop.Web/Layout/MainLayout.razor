@@ -25,6 +25,7 @@
             </a>
             <button class="collapse-btn" title="Collapse sidebar ( [ )" @onclick="ToggleSidebar"><i data-lucide="panel-left"></i></button>
         </div>
+        <nav class="nav-scroll" aria-label="Main">
         @foreach (var group in NavGroups)
         {
             var items = group.Items.Where(i => !i.AdminOnly || Auth.IsAdmin).ToList();
@@ -46,6 +47,7 @@
                 </div>
             }
         }
+        </nav>
         <div class="sidebar-foot">
             <button type="button" class="me-card" title="Your account" aria-haspopup="menu" aria-expanded="@(meMenuOpen ? "true" : "false")"
                     @onclick="ToggleMeMenu" @onclick:stopPropagation>

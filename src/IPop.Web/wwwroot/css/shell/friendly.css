@@ -16,8 +16,14 @@
   --cat-comm: #3b7fe0;   --cat-comm-ic: #8ab6f5;
   --cat-res: #e08a2e;    --cat-res-ic: #f2b56b;
   --cat-admin: #6b7a8c;  --cat-admin-ic: #b4c0cd;
-  --sidebar-width: 272px;
-  --sidebar-collapsed: 84px;
+  --sidebar-width: clamp(264px, 15vw, 288px);
+  --sidebar-collapsed: 80px;
+  /* The menu fills the column. Fixed: sidebar padding 32 + logo 44 + account card 72 + 4 headings
+     (28) + group bottoms/dividers (3 each) + 1px under each of the 13 rows = 285px.
+     The 13 rows and 4 group gaps share the rest; rows stop at 48px, after that the gaps grow. */
+  --nav-room: calc(100dvh - 293px);
+  --nav-row: clamp(36px, calc((var(--nav-room) - 4 * 8px) / 13), 48px);
+  --nav-gap: clamp(4px, calc((var(--nav-room) - 13 * var(--nav-row)) / 4), 26px);
   --topbar-height: 72px;
 }
 [data-theme="dark"] {
@@ -58,7 +64,15 @@
     background: var(--frame); border-right: none; color: var(--frame-ink);
     padding: 18px 0 14px 14px;
   }
-  .side-head { border-bottom: none; padding: 2px 12px 8px; margin-bottom: 0; }
+  .side-head { border-bottom: none; padding: 2px 12px 8px; margin-bottom: 0; flex: none; }
+  /* Logo and account card stay put; only the menu scrolls if a short screen can't hold it. The
+     right padding is 0 so the tab still reaches the panel; the scrollbar stays hidden. */
+  .sidebar .nav-scroll {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden;
+    scrollbar-width: none; display: flex; flex-direction: column;
+  }
+  .sidebar .nav-scroll::-webkit-scrollbar { display: none; }
+  .sidebar-foot { flex: none; }
   /* Navy behind the logo in both themes: always the light-on-dark wordmark. brand.css loads later at (0,4,0). */
   .shell .sidebar .side-head .brand .word.lg-light { display: none; }
   .shell .sidebar .side-head .brand .word.lg-dark { display: block; }
@@ -66,13 +80,13 @@
   .side-head .collapse-btn:hover { background: var(--frame-2); color: var(--frame-ink); }
   .side-head .collapse-btn .lucide { width: 18px; height: 18px; }
 
-  .sidebar .nav-group { gap: 0; margin: 0; padding: 8px 0 2px; }
+  .sidebar .nav-group { gap: 0; margin: 0; padding: var(--nav-gap) 0 2px; flex: none; }
   .sidebar .nav-group + .nav-group { border-top: 1px solid var(--frame-line); margin-right: 14px; }
   .sidebar .nav-group + .nav-group .nav-item:not(.active) { margin-right: 0; }
 
   .nav-label {
     display: flex; align-items: center; gap: 9px;
-    padding: 0 12px 4px; font-size: 13px; font-weight: 700; letter-spacing: 0.01em; color: #fff;
+    padding: 0 12px 6px; font-size: 13px; font-weight: 700; letter-spacing: 0.01em; color: #fff;
   }
   .nav-chip {
     width: 22px; height: 22px; border-radius: 7px; flex: none;
@@ -85,7 +99,7 @@
   .nav-g-admin .nav-chip { background: var(--cat-admin); }
 
   .nav-item {
-    position: relative; height: 40px; gap: 13px; padding: 0 14px; margin: 0 14px 1px 0;
+    position: relative; height: var(--nav-row); gap: 13px; padding: 0 14px; margin: 0 14px 1px 0;
     border-radius: 12px; font-size: 15px; font-weight: 550; color: var(--frame-ink);
     transition: background 0.15s, transform 0.15s, color 0.15s;
   }
@@ -105,11 +119,13 @@
   }
   .nav-item.active .lucide, [data-theme="dark"] .nav-item.active .lucide { color: var(--accent) !important; }
   [data-theme="dark"] .shell .sidebar .nav-item.active { color: #fff; }
+  /* Positioned instantly; micro.js animates the switch (old tab withdraws into the content
+     panel, new one grows out of it towards the menu). */
   .shell .sidebar .nav-glide {
     display: block; border-radius: 14px 0 0 14px; background: var(--panel);
-    overflow: visible;
-    transition: transform .32s cubic-bezier(.2, .8, .2, 1), opacity .2s;
+    overflow: visible; transition: opacity .2s;
   }
+  .shell .sidebar .nav-glide.out { pointer-events: none; }
   /* Concave curves where the tab meets the panel, drawn as a quarter-circle cut-out so nothing
      spills past the tab. The upper one shrinks when the panel's own corner is close (first item). */
   .shell .sidebar .nav-glide::before, .shell .sidebar .nav-glide::after {
@@ -124,9 +140,9 @@
     width: 18px; height: 18px; bottom: -18px;
     background: radial-gradient(circle at 0 100%, transparent 17.5px, var(--panel) 18px);
   }
-  .main-panel { transition: border-top-left-radius .32s cubic-bezier(.2, .8, .2, 1); }
+  .main-panel { transition: border-top-left-radius .25s cubic-bezier(.2, .8, .2, 1); }
 
-  /* Tab change: label colour follows the tab as it slides in; the arriving icon gives a small pop,
+  /* Tab change: label colour follows the tab as it grows in; the arriving icon gives a small pop,
      the title and page rise together. Pressing a row nudges it like a button. */
   .shell .sidebar .nav-item { transition: background .15s, transform .15s, color .2s ease; }
   /* While the next page loads, the pressed row is already "the tab": no hover fill, no press
@@ -184,16 +200,31 @@
   .sidebar-foot .me-menu { color: var(--ink); }
 
   /* ---------- Collapsed rail ---------- */
-  .shell.collapsed .sidebar { padding: 16px 0 14px 12px; }
-  .shell.collapsed .side-head { padding: 0 12px 8px 0; }
+  .shell.collapsed .sidebar { padding: 14px 0 14px 12px; }
+  .shell.collapsed .side-head {
+    flex-direction: column; align-items: center; gap: 10px;
+    padding: 0 12px 6px 0; min-height: 0;
+  }
+  .shell.collapsed .side-head .brand { margin: 0; }
   .shell.collapsed .side-head .collapse-btn { margin: 0; }
   .shell.collapsed .nav-label { display: none; }
+  /* Headings are hidden (4 × 26px freed): the rail spreads its groups over the same height. */
+  .shell.collapsed .sidebar .nav-group {
+    /* vs the open sidebar: no headings (+104), stacked logo + button (-44), avatar-only card (+24). */
+    padding-top: clamp(6px, calc((var(--nav-room) + 84px - 13 * (var(--nav-row) + 2px)) / 4), 40px);
+  }
   .shell.collapsed .sidebar .nav-group + .nav-group { margin-right: 12px; }
-  .shell.collapsed .nav-item { justify-content: center; padding: 0; gap: 0; margin-right: 12px; }
+  /* Every icon sits on the rail's centre line (80px rail → x = 40px), whatever width the row has:
+     rows start at x = 12px, so 18px of padding + half the 20px icon = 40px. */
+  .shell.collapsed .nav-item {
+    justify-content: flex-start; padding: 0 0 0 18px; gap: 0; margin-right: 12px;
+    width: auto; height: calc(var(--nav-row) + 2px);
+  }
   .shell.collapsed .sidebar .nav-group + .nav-group .nav-item { margin-right: 0; }
   .shell.collapsed .nav-item.active { margin-right: 0 !important; }
-  .shell.collapsed .sidebar-foot { margin-right: 12px; }
-  .shell.collapsed .sidebar-foot .me-card { padding: 6px; border: none; justify-content: center; }
+  .shell.collapsed .nav-item:hover { transform: none; }
+  .shell.collapsed .sidebar-foot { margin-right: 12px; padding-top: 12px; display: flex; justify-content: center; }
+  .shell.collapsed .sidebar-foot .me-card { padding: 4px; border: none; justify-content: center; }
 
   /* ---------- Topbar ---------- */
   .topbar.v6-topbar {
