@@ -1,0 +1,236 @@
+/* ============================================================
+   Meeting Rooms — in-room view (FaceTime-like) + minimized pill.
+   Ported from docs/mockups/meeting-rooms.html ("In room · grid", "Sharing + Record",
+   "Recording · video off"). Always dark, independent of the app theme.
+   Tiles inside #mr-strip and the shared <video> are created by js/meeting-rooms.js.
+   ============================================================ */
+.mr-meet, .mr-pill {
+  --mr-ease: cubic-bezier(.32,.72,0,1);
+  --mr-red: #ff3b30; --mr-green: #30d158; --mr-blue: #0a84ff;
+  --mr-pop: 0 24px 60px -18px rgba(0,0,0,.35), 0 0 0 .5px rgba(0,0,0,.08);
+  --a: #e2a965; --b: #8e5228;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, "Segoe UI", system-ui, sans-serif;
+  letter-spacing: -.011em; -webkit-font-smoothing: antialiased;
+}
+/* Room roast tones (same hue as the SJA Hall rooms). */
+.mr-r-robusta { --a: #9a6849; --b: #3d251a; }
+.mr-r-arabika { --a: #e2a965; --b: #8e5228; }
+.mr-r-kalosi { --a: #86bf8b; --b: #255a3e; }
+.mr-r-kapal-api { --a: #f37758; --b: #9c2318; }
+.mr-r-toraja { --a: #8b98ea; --b: #2b3683; }
+
+.mr-meet {
+  position: fixed; inset: 0; z-index: 1100; overflow: hidden;
+  background: #0b0b0c; color: #f5f5f7; font-size: 14px; line-height: 1.45;
+}
+/* Minimized: keep the <video> elements alive (display:none would pause nothing, but
+   visibility keeps layout so tracks stay attached and the PC recorder keeps drawing). */
+.mr-meet.mr-hidden { visibility: hidden; pointer-events: none; }
+.mr-meet button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+.mr-meet svg.lucide { width: 18px; height: 18px; stroke-width: 1.8; flex: none; }
+.mr-meet :focus-visible { outline: 3px solid rgba(10,132,255,.55); outline-offset: 2px; border-radius: 10px; }
+
+.mr-bg {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(60% 60% at 15% 0%, color-mix(in srgb, var(--a) 22%, transparent), transparent 60%),
+    radial-gradient(50% 50% at 100% 100%, rgba(48,209,88,.08), transparent 60%);
+}
+
+/* ---------- top bar ---------- */
+.mr-top { position: absolute; top: 0; left: 0; right: 0; height: 72px; display: flex; align-items: center; gap: 12px; padding: 0 22px; z-index: 5; }
+.mr-room { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.mr-sw { width: 34px; height: 34px; border-radius: 10px; flex: none; background: radial-gradient(120% 120% at 0% 0%, var(--a), var(--b)); }
+.mr-room b { display: block; font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+.mr-room small { display: block; color: #a1a1a6; font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mr-right { margin-left: auto; display: flex; gap: 8px; }
+.mr-gbtn {
+  height: 36px; padding: 0 13px; border-radius: 999px; display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: #f5f5f7;
+  background: rgba(255,255,255,.1) !important; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: .5px solid rgba(255,255,255,.12) !important;
+}
+.mr-gbtn:hover { background: rgba(255,255,255,.16) !important; }
+.mr-meet .mr-gbtn svg.lucide { width: 16px; height: 16px; }
+
+/* recording capsule */
+.mr-reccap {
+  display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 10px; border-radius: 999px; white-space: nowrap;
+  background: rgba(255,59,48,.16); border: .5px solid rgba(255,59,48,.5); color: #ff8a80; font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.mr-reccap::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--mr-red); animation: mr-pulse 1.4s ease-in-out infinite; }
+@keyframes mr-pulse { 50% { opacity: .35; } }
+
+/* ---------- island notice ---------- */
+.mr-island {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 9; display: flex; align-items: center; gap: 12px;
+  padding: 10px 18px 10px 10px; border-radius: 999px; background: #000; color: #fff; white-space: nowrap;
+  box-shadow: 0 16px 40px rgba(0,0,0,.6), 0 0 0 .5px rgba(255,255,255,.1); animation: mr-island .55s var(--mr-ease);
+}
+@keyframes mr-island { from { opacity: 0; transform: translateX(-50%) scale(.6); } }
+.mr-island-ic { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,159,10,.22); color: #ffb340; flex: none; }
+@media (max-width: 1279px) { .mr-island { top: 80px; } }
+.mr-island b { display: block; font-size: 13.5px; font-weight: 600; }
+.mr-island span { display: block; font-size: 12px; color: #a1a1a6; }
+
+/* ---------- stage: shared screen + right filmstrip, or grid ---------- */
+#mr-stage.mr-stage { position: absolute; top: 72px; left: 22px; right: 22px; bottom: 118px; display: grid; grid-template-columns: 1fr 228px; gap: 14px; min-height: 0; }
+#mr-stage .mr-share { width: 100%; height: 100%; min-height: 0; object-fit: contain; border-radius: 18px; background: #1c1c1e; }
+#mr-stage .mr-strip { display: flex; flex-direction: column; gap: 10px; overflow: auto; padding-right: 2px; min-height: 0; scrollbar-width: thin; }
+.mr-who-shares {
+  position: absolute; left: 12px; top: 12px; z-index: 2; display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 6px; border-radius: 999px;
+  background: rgba(0,0,0,.55); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); font-size: 12.5px; font-weight: 600;
+}
+.mr-mono {
+  width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 9px; font-weight: 600; color: #fff;
+  background: linear-gradient(180deg, #a1a1a6, #7c7c80);
+}
+/* Nobody shares: the strip becomes a FaceTime grid. */
+#mr-stage.mr-stage.grid { grid-template-columns: 1fr; }
+#mr-stage.grid .mr-share, #mr-stage.grid .mr-who-shares { display: none; }
+#mr-stage.grid .mr-strip {
+  --mr-cols: 1;
+  display: grid; grid-template-columns: repeat(var(--mr-cols), minmax(0, 1fr)); grid-auto-rows: minmax(120px, 1fr); gap: 12px;
+  flex-direction: unset; padding-right: 0; height: 100%;
+}
+/* Balanced FaceTime grid by head count (2 → 2 cols, 5–9 → 3, 10–16 → 4, 17–20 → 5). */
+#mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(2)) { --mr-cols: 2; }
+#mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(5)) { --mr-cols: 3; }
+#mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(10)) { --mr-cols: 4; }
+#mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(17)) { --mr-cols: 5; }
+#mr-stage.grid .mr-strip:has(> .mr-tile:only-child) { grid-template-columns: minmax(0, 960px); justify-content: center; }
+#mr-stage.sharing:not(.grid) .mr-share { display: block; }
+
+/* tiles (created by js/meeting-rooms.js) */
+.mr-tile {
+  position: relative; flex: none; aspect-ratio: 16 / 10; border-radius: 14px; overflow: hidden; background: #2c2c2e;
+  display: grid; place-items: center; box-shadow: inset 0 0 0 .5px rgba(255,255,255,.08);
+}
+#mr-stage.grid .mr-tile { aspect-ratio: auto; min-height: 0; }
+.mr-tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: none; }
+.mr-tile.cam video { display: block; }
+.mr-tile.cam .mr-tile-av { display: none; }
+.mr-tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 3; box-shadow: inset 0 0 0 0 var(--mr-green); transition: box-shadow .2s; }
+.mr-tile.speaking::after { box-shadow: inset 0 0 0 2.5px var(--mr-green, #30d158); }
+.mr-tile-av {
+  width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; font-weight: 600; font-size: 18px; color: #fff;
+  background: linear-gradient(180deg, #a1a1a6, #7c7c80);
+}
+#mr-stage.grid .mr-tile-av { width: 84px; height: 84px; font-size: 30px; }
+.mr-tile-nm {
+  z-index: 2; position: absolute; left: 8px; bottom: 8px; display: flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px;
+  max-width: calc(100% - 16px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #fff;
+  background: rgba(0,0,0,.45); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); font-size: 12px; font-weight: 600;
+}
+
+/* ---------- people sheet ---------- */
+.mr-people {
+  position: absolute; top: 72px; right: 22px; bottom: 118px; width: 300px; border-radius: 18px; padding: 14px; z-index: 7; overflow: auto;
+  background: rgba(44,44,46,.8); backdrop-filter: blur(30px) saturate(1.6); -webkit-backdrop-filter: blur(30px) saturate(1.6); border: .5px solid rgba(255,255,255,.12);
+  animation: mr-fade .2s ease;
+}
+.mr-people h4 { display: flex; justify-content: space-between; font-size: 15px; font-weight: 700; margin: 2px 4px 10px; }
+.mr-people h4 span { color: #a1a1a6; font-weight: 500; font-variant-numeric: tabular-nums; }
+.mr-p { display: flex; align-items: center; gap: 10px; padding: 8px 6px; border-radius: 10px; font-size: 14px; }
+.mr-p-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mr-p small { display: block; color: #a1a1a6; font-size: 12px; }
+.mr-p.speaking small { color: var(--mr-green); }
+.mr-st { margin-left: auto; display: flex; gap: 8px; color: #a1a1a6; }
+.mr-meet .mr-st svg.lucide { width: 15px; height: 15px; }
+.mr-st .off, .mr-st .off svg { color: #ff6961; }
+
+/* ---------- control dock ---------- */
+.mr-dock {
+  position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 6; display: flex; align-items: flex-start; gap: 6px; padding: 10px 14px 8px; border-radius: 26px;
+  background: rgba(44,44,46,.72); backdrop-filter: blur(30px) saturate(1.6); -webkit-backdrop-filter: blur(30px) saturate(1.6); border: .5px solid rgba(255,255,255,.14);
+  box-shadow: 0 20px 50px rgba(0,0,0,.5);
+}
+.mr-ctl { width: 64px; display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 11px; font-weight: 550; color: #d1d1d6 !important; white-space: nowrap; }
+.mr-ci { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,.14); color: #fff; transition: background .2s, transform .2s var(--mr-ease); }
+.mr-ctl:hover .mr-ci { background: rgba(255,255,255,.22); }
+.mr-ctl:active .mr-ci { transform: scale(.94); }
+.mr-meet .mr-ci svg.lucide { width: 22px; height: 22px; }
+.mr-ctl.on .mr-ci { background: #fff; color: #1d1d1f; }
+.mr-ctl.muted .mr-ci svg { color: #ff6961; }
+.mr-ctl.recording .mr-ci, .mr-ctl.mr-leave .mr-ci { background: var(--mr-red); }
+.mr-ctl.recording:hover .mr-ci, .mr-ctl.mr-leave:hover .mr-ci { background: #ff5147; }
+.mr-ctl:disabled { opacity: .38; cursor: not-allowed; }
+.mr-ctl:disabled .mr-ci { transform: none; background: rgba(255,255,255,.14); }
+.mr-div { width: .5px; align-self: stretch; margin: 6px 6px 20px; background: rgba(255,255,255,.18); }
+.mr-recwrap { position: relative; display: flex; }
+
+/* record popover */
+.mr-menu {
+  position: absolute; bottom: calc(100% + 22px); left: -20px; width: 340px; padding: 6px; border-radius: 16px; color: #1d1d1f; z-index: 8;
+  background: rgba(246,246,248,.98); box-shadow: var(--mr-pop);
+  animation: mr-pop .3s var(--mr-ease); transform-origin: 44px 100%;
+}
+.mr-menu::after { content: ""; position: absolute; bottom: -7px; left: 44px; width: 14px; height: 14px; background: rgba(246,246,248,.98); transform: rotate(45deg); border-radius: 2px; }
+.mr-menu h4 { margin: 0; font-size: 13px; font-weight: 600; color: #6e6e73; padding: 8px 10px 6px; }
+.mr-opt { width: 100%; display: flex; gap: 12px; align-items: flex-start; text-align: left; padding: 10px; border-radius: 11px; color: #1d1d1f !important; }
+.mr-opt:hover { background: rgba(0,0,0,.05) !important; }
+.mr-opt:disabled { opacity: .45; cursor: not-allowed; }
+.mr-opt:disabled:hover { background: none !important; }
+.mr-ico { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; color: #fff; flex: none; }
+.mr-ico-pc { background: linear-gradient(180deg, #5ac8fa, #0a84ff); }
+.mr-ico-srv { background: linear-gradient(180deg, #5ed688, #248a3d); }
+.mr-meet .mr-ico svg.lucide { width: 19px; height: 19px; }
+.mr-opt b { display: block; font-size: 14.5px; font-weight: 600; letter-spacing: -.015em; }
+.mr-opt span span { display: block; font-size: 12.5px; color: #6e6e73; line-height: 1.4; margin-top: 1px; }
+.mr-pop-note { display: flex; gap: 8px; align-items: center; font-size: 12px; color: #6e6e73; padding: 8px 10px 6px; border-top: .5px solid rgba(60,60,67,.18); margin-top: 4px; }
+.mr-meet .mr-pop-note svg.lucide { width: 14px; height: 14px; }
+@keyframes mr-pop { from { transform: scale(1.08); opacity: 0; } }
+@keyframes mr-fade { from { opacity: 0; } }
+
+/* ---------- share take-over alert (macOS) ---------- */
+.mr-scrim { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(0,0,0,.28); animation: mr-fade .2s ease; }
+.mr-alert {
+  width: 300px; padding: 20px 18px 16px; border-radius: 14px; text-align: center; color: #1d1d1f;
+  background: rgba(236,236,238,.92); backdrop-filter: blur(30px) saturate(1.8); -webkit-backdrop-filter: blur(30px) saturate(1.8); box-shadow: var(--mr-pop);
+  animation: mr-pop .3s var(--mr-ease);
+}
+.mr-appicon { width: 56px; height: 56px; margin: 0 auto 12px; border-radius: 14px; display: grid; place-items: center; color: #fff; background: linear-gradient(180deg, #34c759, #248a3d); }
+.mr-meet .mr-appicon svg.lucide { width: 30px; height: 30px; }
+.mr-alert h3 { margin: 0; font-size: 14px; font-weight: 700; }
+.mr-alert p { font-size: 12px; color: #3c3c43; margin: 6px 4px 16px; line-height: 1.45; }
+.mr-row { display: flex; gap: 8px; }
+.mr-row button { flex: 1; height: 30px; border-radius: 7px; font-size: 13px; font-weight: 500; color: #1d1d1f !important; background: #fff !important; box-shadow: 0 .5px 1.5px rgba(0,0,0,.2); }
+.mr-row .mr-def { background: #2e9e5b !important; color: #fff !important; font-weight: 600; }
+
+/* ---------- minimized pill ---------- */
+.mr-pill {
+  position: fixed; right: 20px; bottom: 20px; z-index: 1101; display: flex; align-items: center; gap: 10px; padding: 8px 14px 8px 8px; border-radius: 999px;
+  border: .5px solid rgba(255,255,255,.14); color: #f5f5f7; cursor: pointer; font: inherit; text-align: left;
+  background: rgba(28,28,30,.82); backdrop-filter: blur(30px) saturate(1.6); -webkit-backdrop-filter: blur(30px) saturate(1.6);
+  box-shadow: 0 16px 40px rgba(0,0,0,.35); animation: mr-pop .3s var(--mr-ease); transition: transform .2s var(--mr-ease);
+}
+.mr-pill:hover { transform: translateY(-2px); }
+.mr-pill .mr-sw { width: 30px; height: 30px; border-radius: 9px; }
+.mr-pill-t b { display: block; font-size: 13.5px; font-weight: 700; line-height: 1.2; }
+.mr-pill-t small { display: block; font-size: 11.5px; color: #a1a1a6; }
+.mr-pill-rec { display: inline-flex; align-items: center; gap: 5px; background: var(--mr-red); color: #fff; border-radius: 999px; padding: 2px 8px; font-size: 10.5px; font-weight: 700; letter-spacing: .02em; }
+.mr-pill-rec::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: mr-pulse 1.4s ease-in-out infinite; }
+.mr-pill svg.lucide { width: 16px; height: 16px; color: #a1a1a6; }
+
+/* ---------- small screens ---------- */
+@media (max-width: 767px) {
+  .mr-top { padding: 0 12px; height: 64px; }
+  .mr-gbtn.mr-copy { display: none; }
+  .mr-reccap { position: absolute; top: 64px; left: 12px; }
+  #mr-stage.mr-stage { top: 64px; left: 10px; right: 10px; bottom: 112px; grid-template-columns: 1fr; grid-template-rows: 1fr 96px; }
+  #mr-stage.grid.mr-stage { grid-template-rows: 1fr; }
+  #mr-stage:not(.grid) .mr-strip { flex-direction: row; }
+  #mr-stage:not(.grid) .mr-tile { height: 100%; }
+  #mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(2)) { --mr-cols: 2; }
+  #mr-stage.grid .mr-strip:has(> .mr-tile:nth-child(5)) { --mr-cols: 2; }
+  .mr-people { left: 10px; right: 10px; width: auto; top: 64px; bottom: 112px; }
+  .mr-dock { bottom: 14px; gap: 0; padding: 8px 8px 6px; max-width: calc(100vw - 16px); }
+  .mr-ctl { width: 52px; font-size: 10px; }
+  .mr-ci { width: 42px; height: 42px; }
+  .mr-div { margin: 6px 2px 18px; }
+  .mr-menu { position: fixed; left: 12px; right: 12px; bottom: 104px; width: auto; transform-origin: 50% 100%; }
+  .mr-menu::after { display: none; }
+  .mr-pill { right: 10px; bottom: calc(var(--m-safe-b, 0px) + 76px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mr-meet *, .mr-meet *::before, .mr-meet *::after, .mr-pill, .mr-pill * , .mr-pill *::before { animation: none !important; transition: none !important; }
+}

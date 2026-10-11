@@ -16,6 +16,8 @@ public partial class CallState
 {
     private Guid? _groupMediaCallId;
     private string? _groupInputDeviceId;
+    /// The microphone picked in a call (device picker); meeting rooms open the same one.
+    public string? InputDeviceId => _groupInputDeviceId;
     private readonly SemaphoreSlim _groupGate = new(1, 1);
     private CancellationTokenSource? _groupRingCts;
 

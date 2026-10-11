@@ -35,6 +35,7 @@ builder.Services.AddScoped(sp => new IPop.Web.Services.ChatState(sp.GetRequiredS
 builder.Services.AddScoped<IPop.Web.Services.ChatAttachments>();
 builder.Services.AddScoped<IPop.Web.Services.ToastService>();
 builder.Services.AddScoped<IPop.Web.Services.CallState>();
+builder.Services.AddScoped<IPop.Web.Services.MeetingRoomState>();
 builder.Services.AddScoped<IPop.Web.Services.PushState>();
 builder.Services.AddScoped(sp => new IPop.Web.Services.DraftStore(sp.GetRequiredService<Microsoft.JSInterop.IJSRuntime>(), sp.GetRequiredService<IPop.Web.Services.AuthState>()));
 builder.Services.AddScoped<IPop.Web.Services.OverlayStack>();

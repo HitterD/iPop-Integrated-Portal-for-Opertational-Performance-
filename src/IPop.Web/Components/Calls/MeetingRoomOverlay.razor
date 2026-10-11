@@ -1,0 +1,301 @@
+@* Meeting Rooms: the FaceTime-style in-room view and its minimized pill. Mounted once in MainLayout so a
+   meeting keeps running while the user moves between modules. js/meeting-rooms.js owns #mr-stage's video
+   and every tile inside #mr-strip; Blazor never renders children into #mr-strip and keeps #mr-stage's class
+   constant, so the JS-set "sharing"/"grid" classes survive re-renders. *@
+@implements IDisposable
+@inject MeetingRoomState Rooms
+@inject ToastService Toasts
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+@if (Rooms.Room is { } room)
+{
+    <div class="mr-meet mr-r-@room.Key @(Rooms.Minimized ? "mr-hidden" : "")" role="dialog" aria-label="Meeting room @room.Name"
+         aria-hidden="@(Rooms.Minimized ? "true" : null)">
+        <div class="mr-bg" aria-hidden="true"></div>
+        <header class="mr-top">
+            <div class="mr-room">
+                <span class="mr-sw" aria-hidden="true"></span>
+                <div><b>@room.Name</b><small class="mr-sub">@Subtitle</small></div>
+            </div>
+            @if (Rooms.RecordingServer is { } srv)
+            {
+                <span class="mr-recbar mr-reccap" role="status" title="Recording to server">Recording · started by @srv.By · @Clock(DateTime.UtcNow - ToUtc(srv.StartedAt))</span>
+            }
+            else if (Rooms.People.FirstOrDefault(p => p.RecPc) is { } pc)
+            {
+                <span class="mr-recbar mr-reccap" role="status" title="Recording to their PC">Recording · started by @(pc.IsLocal ? "you" : pc.Name)</span>
+            }
+            <div class="mr-right">
+                <button type="button" class="mr-gbtn mr-copy" @onclick="CopyLinkAsync"><i data-lucide="link"></i>Copy link</button>
+                <button type="button" class="mr-gbtn mr-minimize" @onclick="Minimize"><i data-lucide="minimize-2"></i>Minimize</button>
+            </div>
+        </header>
+
+        @if (island is { } isl)
+        {
+            <div class="mr-island" role="status">
+                <i class="mr-island-ic" data-lucide="@isl.Icon"></i>
+                <div><b>@isl.Title</b><span>@isl.Text</span></div>
+            </div>
+        }
+
+        <section id="mr-stage" class="mr-stage grid">
+            <video class="mr-share" autoplay playsinline muted></video>
+            @if (Sharer is { } sh)
+            {
+                <div class="mr-who-shares"><span class="mr-mono">@Initials(sh.Name)</span>@(sh.IsLocal ? "Your screen" : $"{FirstName(sh.Name)}'s screen")</div>
+            }
+            <div id="mr-strip" class="mr-strip"></div>
+        </section>
+
+        @if (peopleOpen)
+        {
+            <aside class="mr-people" aria-label="People in this room">
+                <h4>In this room <span>@Rooms.People.Count of 20</span></h4>
+                @foreach (var p in Rooms.People)
+                {
+                    <div class="mr-p @(p.Speaking ? "speaking" : "")">
+                        <PersonAvatar Name="@p.Name" Size="32" Decorative="true" />
+                        <div class="mr-p-t">@p.Name<small>@PersonLine(p)</small></div>
+                        <span class="mr-st">
+                            @if (p.Sharing) { <i data-lucide="monitor-up"></i> }
+                            <i data-lucide="@(p.MicOn ? "mic" : "mic-off")" class="@(p.MicOn ? "" : "off")"></i>
+                            @if (p.CamOn) { <i data-lucide="video"></i> }
+                        </span>
+                    </div>
+                }
+            </aside>
+        }
+
+        <nav class="mr-dock mr-controls" aria-label="Meeting controls">
+            <button type="button" class="mr-ctl mr-mic @(Rooms.MicOn ? "" : "muted")" @onclick="Rooms.ToggleMicAsync"
+                    aria-pressed="@(Rooms.MicOn ? "false" : "true")">
+                <span class="mr-ci"><i data-lucide="@(Rooms.MicOn ? "mic" : "mic-off")"></i></span>@(Rooms.MicOn ? "Mute" : "Unmute")
+            </button>
+            <button type="button" class="mr-ctl mr-cam @(Rooms.CamOn ? "on" : "")" disabled="@(!Rooms.VideoAllowed)"
+                    title="@(Rooms.VideoAllowed ? null : "An admin turned video off for this room")" @onclick="Rooms.ToggleCameraAsync"
+                    aria-pressed="@(Rooms.CamOn ? "true" : "false")">
+                <span class="mr-ci"><i data-lucide="@(Rooms.CamOn ? "video" : "video-off")"></i></span>@(Rooms.VideoAllowed ? "Camera" : "Video off")
+            </button>
+            <button type="button" class="mr-ctl mr-share-btn @(Rooms.Sharing ? "on" : "")" @onclick="() => ShareAsync(false)"
+                    aria-pressed="@(Rooms.Sharing ? "true" : "false")">
+                <span class="mr-ci"><i data-lucide="monitor-up"></i></span>@(Rooms.Sharing ? "Stop share" : "Share")
+            </button>
+            <span class="mr-recwrap">
+                <button type="button" class="mr-ctl mr-rec @(Recording ? "recording" : "")" @onclick="RecordClick"
+                        aria-haspopup="menu" aria-expanded="@(menuOpen ? "true" : "false")">
+                    <span class="mr-ci"><i data-lucide="@(Recording ? "square" : "circle-dot")"></i></span>@(Recording ? "Stop" : "Record")
+                </button>
+                @if (menuOpen)
+                {
+                    <div class="mr-menu" role="menu" aria-label="Record this meeting">
+                        <h4>Record this meeting</h4>
+                        <button type="button" class="mr-opt" role="menuitem" @onclick="RecordPcAsync">
+                            <span class="mr-ico mr-ico-pc"><i data-lucide="laptop"></i></span>
+                            <span><b>Record to this PC</b><span>The whole meeting with everyone's voice. Saved to Downloads as a video when you stop.</span></span>
+                        </button>
+                        <button type="button" class="mr-opt" role="menuitem" disabled="@(Rooms.RecordingServer is not null)" @onclick="RecordServerAsync">
+                            <span class="mr-ico mr-ico-srv"><i data-lucide="server"></i></span>
+                            <span><b>Record to server</b><span>@(Rooms.RecordingServer is null ? "Saved for 90 days. Everyone in the room can watch it later in Recordings." : "This room is already being recorded to the server.")</span></span>
+                        </button>
+                        <div class="mr-pop-note"><i data-lucide="eye"></i>Everyone here will see that you're recording.</div>
+                    </div>
+                }
+            </span>
+            <span class="mr-div" aria-hidden="true"></span>
+            <button type="button" class="mr-ctl mr-people-btn @(peopleOpen ? "on" : "")" @onclick="() => peopleOpen = !peopleOpen"
+                    aria-pressed="@(peopleOpen ? "true" : "false")">
+                <span class="mr-ci"><i data-lucide="users"></i></span>People
+            </button>
+            <button type="button" class="mr-ctl mr-leave" @onclick="LeaveAsync">
+                <span class="mr-ci"><i data-lucide="phone-off"></i></span>Leave
+            </button>
+        </nav>
+
+        @if (takeoverName is not null)
+        {
+            <div class="mr-scrim">
+                <div class="mr-alert" role="alertdialog" aria-label="@takeoverName is sharing a screen">
+                    <div class="mr-appicon"><i data-lucide="monitor-up"></i></div>
+                    <h3>@takeoverName is sharing a screen</h3>
+                    <p>Only one screen can be shared at a time. If you share, @takeoverName's screen stops and @takeoverName is told you took over.</p>
+                    <div class="mr-row">
+                        <button type="button" @onclick="() => takeoverName = null">Cancel</button>
+                        <button type="button" class="mr-def" @onclick="() => ShareAsync(true)">Share My Screen</button>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+    @if (Rooms.Minimized)
+    {
+        <button type="button" class="mr-pill mr-r-@room.Key" @onclick="Restore" aria-label="Back to @room.Name">
+            <span class="mr-sw" aria-hidden="true"></span>
+            <span class="mr-pill-t"><b>@room.Name</b><small>@PeopleCount(Rooms.People.Count)</small></span>
+            @if (Rooms.RecordingPc || Rooms.RecordingServer is not null || Rooms.People.Any(p => p.RecPc)) { <span class="mr-pill-rec">REC</span> }
+            <i data-lucide="maximize-2"></i>
+        </button>
+    }
+}
+
+@code {
+    private sealed record Island(string Icon, string Title, string Text);
+
+    private bool menuOpen;
+    private bool peopleOpen;
+    private string? takeoverName;
+    private Island? island;
+    private CancellationTokenSource? islandCts;
+    private System.Threading.Timer? tick;
+
+    private bool Recording => Rooms.RecordingPc || (Rooms.RecordingServer is not null && Rooms.People.Any(p => p.IsLocal));
+    private MeetingRoomState.Person? Sharer => Rooms.People.FirstOrDefault(p => p.Sharing);
+
+    private string Subtitle
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(Rooms.MeetingTitle)) parts.Add(Rooms.MeetingTitle!);
+            parts.Add(PeopleCount(Rooms.People.Count));
+            parts.Add(Clock(DateTime.UtcNow - Rooms.JoinedAt));
+            return string.Join(", ", parts);
+        }
+    }
+
+    private static string PeopleCount(int n) => n == 1 ? "1 person" : $"{n} people";
+
+    internal static string Clock(TimeSpan t)
+    {
+        if (t < TimeSpan.Zero) t = TimeSpan.Zero;
+        return t.TotalHours >= 1 ? $"{(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}" : $"{t.Minutes:00}:{t.Seconds:00}";
+    }
+
+    private static DateTime ToUtc(DateTime d) => d.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : d.ToUniversalTime();
+
+    private static string FirstName(string name) => name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+
+    private static string Initials(string name) =>
+        string.Concat(name.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Take(2).Select(s => char.ToUpperInvariant(s[0])));
+
+    private static string? PersonLine(MeetingRoomState.Person p) =>
+        p.IsLocal ? "You" : p.Sharing ? "Sharing screen" : p.Speaking ? "Speaking" : p.RecPc ? "Recording to PC" : null;
+
+    protected override void OnInitialized()
+    {
+        Rooms.Changed += OnChanged;
+        Rooms.Notice += OnNotice;
+        tick = new(_ => { if (Rooms.Room is not null && !Rooms.Minimized) _ = InvokeAsync(StateHasChanged); }, null, 1000, 1000);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Rooms.Room is null) return;
+        try { await JS.InvokeVoidAsync("ipop.icons"); }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+    }
+
+    private void OnChanged()
+    {
+        if (Rooms.Room is null) { menuOpen = peopleOpen = false; takeoverName = null; }
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnNotice(string code, string? name) => _ = InvokeAsync(() =>
+    {
+        var room = Rooms.Room?.Name ?? "this room";
+        Island? next = code switch
+        {
+            "video_off" => new("video-off", $"Video turned off for {room}", "An admin turned cameras off. Voice and screen share still work."),
+            "video_on" => new("video", $"Video is back on in {room}", "You can turn your camera on again."),
+            "share_taken" => new("monitor-up", $"{name ?? "Someone"} took over the screen", "Only one screen can be shared at a time."),
+            "muted_by_server" => new("mic-off", "You were muted", "Unmute when you want to talk."),
+            _ => null,
+        };
+        if (next is null) return;
+        if (Rooms.Minimized) { Toasts.Show(next.Title, ToastKind.Info); return; }
+        ShowIsland(next);
+    });
+
+    private void ShowIsland(Island next)
+    {
+        islandCts?.Cancel();
+        var cts = islandCts = new CancellationTokenSource();
+        island = next;
+        StateHasChanged();
+        _ = Task.Delay(6000, cts.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            _ = InvokeAsync(() => { if (ReferenceEquals(islandCts, cts)) { island = null; StateHasChanged(); } });
+        }, TaskScheduler.Default);
+    }
+
+    private void Minimize() { menuOpen = false; Rooms.Minimized = true; }
+    private void Restore() => Rooms.Minimized = false;
+
+    private async Task LeaveAsync()
+    {
+        menuOpen = peopleOpen = false;
+        takeoverName = null;
+        if (Rooms.RecordingPc) await Rooms.StopPcRecordingAsync();
+        await Rooms.LeaveAsync();
+    }
+
+    private async Task CopyLinkAsync()
+    {
+        if (Rooms.Room is not { } room) return;
+        var link = new Uri(new Uri(Nav.BaseUri), $"calls?tab=rooms&join={Uri.EscapeDataString(room.Key)}").ToString();
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", link);
+            Toasts.Show($"Link to {room.Name} copied", ToastKind.Success);
+        }
+        catch (JSException) { Toasts.Show("Could not copy to the clipboard.", ToastKind.Error); }
+    }
+
+    private async Task ShareAsync(bool takeover)
+    {
+        takeoverName = null;
+        var r = await Rooms.ToggleShareAsync(takeover);
+        if (r == "busy") takeoverName = Rooms.People.FirstOrDefault(p => p.Sharing && !p.IsLocal) is { } other ? FirstName(other.Name) : "Someone";
+        else if (r == "denied") Toasts.Show("Screen sharing was blocked or cancelled.", ToastKind.Warning);
+    }
+
+    private async Task RecordClick()
+    {
+        if (Rooms.RecordingPc) { await Rooms.StopPcRecordingAsync(); return; }
+        if (Rooms.RecordingServer is not null && Recording) { await Rooms.StopServerRecordingAsync(); return; }
+        menuOpen = !menuOpen;
+    }
+
+    private async Task RecordPcAsync()
+    {
+        menuOpen = false;
+        await Rooms.StartPcRecordingAsync();
+        if (!Rooms.RecordingPc) Toasts.Show("Recording to this PC isn't available in this browser.", ToastKind.Error);
+    }
+
+    private async Task RecordServerAsync()
+    {
+        menuOpen = false;
+        var err = await Rooms.StartServerRecordingAsync();
+        if (err is not null)
+            Toasts.Show(err switch
+            {
+                "already_recording" => "This room is already being recorded to the server.",
+                "egress_unavailable" => "Server recording is not available right now. Try Record to this PC.",
+                _ => "Could not start the recording.",
+            }, ToastKind.Error);
+    }
+
+    public void Dispose()
+    {
+        Rooms.Changed -= OnChanged;
+        Rooms.Notice -= OnNotice;
+        islandCts?.Cancel();
+        tick?.Dispose();
+    }
+}
