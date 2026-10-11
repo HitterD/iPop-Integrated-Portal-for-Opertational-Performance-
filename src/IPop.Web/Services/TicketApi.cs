@@ -50,6 +50,10 @@ public sealed class TicketApi(AuthState auth)
     public Task<TicketCall<TicketDetailDto>> GetAsync(Guid id, CancellationToken ct = default)
         => GetAsync<TicketDetailDto>($"/api/tickets/{id}", ct);
 
+    /// The ticket's public chat from iDesk; opening it clears the unread reply count.
+    public Task<TicketCall<TicketMessagesDto>> GetMessagesAsync(Guid id, CancellationToken ct = default)
+        => GetAsync<TicketMessagesDto>($"/api/tickets/{id}/messages", ct);
+
     public Task<TicketCall<CreateTicketResultDto>> CreateAsync(CreateTicketRequest req, CancellationToken ct = default)
         => SendAsync<CreateTicketResultDto>(HttpMethod.Post, "/api/tickets", req, ct);
 

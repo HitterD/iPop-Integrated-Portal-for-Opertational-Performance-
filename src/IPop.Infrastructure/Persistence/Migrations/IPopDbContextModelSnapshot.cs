@@ -226,6 +226,18 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("EndAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ExternalId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ExternalPeople")
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)");
+
+                    b.Property<string>("ExternalUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("Link")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
@@ -259,6 +271,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("SeriesId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<DateTime>("StartAt")
                         .HasColumnType("timestamp with time zone");
@@ -294,6 +310,10 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.HasIndex("SeriesId");
 
                     b.HasIndex("StartAt");
+
+                    b.HasIndex("Source", "ExternalId", "OwnerId")
+                        .IsUnique()
+                        .HasFilter("\"Source\" IS NOT NULL");
 
                     b.ToTable("CalendarEvents");
                 });
@@ -1363,6 +1383,22 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         {
                             Id = 1
                         });
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.IdeskWebhookReceipt", b =>
+                {
+                    b.Property<string>("EventId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("EventId");
+
+                    b.HasIndex("ReceivedAt");
+
+                    b.ToTable("IdeskWebhookReceipts");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.Mail", b =>
@@ -4528,6 +4564,17 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<DateTime?>("LastMessageAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastMessagePreview")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("LastMessageSender")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("Module")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -4600,6 +4647,9 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<int>("UnreadMessages")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -4609,6 +4659,12 @@ namespace IPop.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("VisitEnd")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("VisitStart")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 

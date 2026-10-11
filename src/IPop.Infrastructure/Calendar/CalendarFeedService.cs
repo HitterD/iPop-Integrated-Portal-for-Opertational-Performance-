@@ -19,9 +19,16 @@ public static class CalendarFeedService
         var personal = await db.CalendarEvents.AsNoTracking()
             .Where(e => e.OwnerId == userId && e.MeetingId == null && e.StartAt < to && e.EndAt > from)
             .ToListAsync(ct);
-        items.AddRange(personal.Select(e => new CalendarFeedItem(
-            $"event:{e.Id}", "personal", e.Type == "rapat" ? "meeting" : "event", e.Title, e.StartAt, e.EndAt, e.AllDay,
-            null, null, e.Id, null, null, true, e.Location, e.Link, e.Visibility)));
+        items.AddRange(personal.Select(e => e.Source switch
+        {
+            // Mirrored from iDesk: read-only here, managed there.
+            CalendarSources.IdeskZoom => new CalendarFeedItem($"event:{e.Id}", "idesk", "idesk-zoom", e.Title, e.StartAt, e.EndAt, e.AllDay,
+                null, e.Location, e.Id, null, null, false, e.Location, e.Link, e.Visibility),
+            CalendarSources.IdeskVisit => new CalendarFeedItem($"event:{e.Id}", "idesk", "idesk-visit", e.Title, e.StartAt, e.EndAt, e.AllDay,
+                null, "ICT visit", e.Id, null, null, false, e.Location, null, e.Visibility),
+            _ => new CalendarFeedItem($"event:{e.Id}", "personal", e.Type == "rapat" ? "meeting" : "event", e.Title, e.StartAt, e.EndAt, e.AllDay,
+                null, null, e.Id, null, null, true, e.Location, e.Link, e.Visibility),
+        }));
 
         // 2) Rapat yang saya ikuti/selenggarakan (termasuk event ruang chat), kecuali dibatalkan.
         var meetings = await db.Meetings.AsNoTracking()

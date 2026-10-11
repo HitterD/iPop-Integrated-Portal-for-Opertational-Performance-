@@ -33,6 +33,14 @@ public class Ticket
     public string? ScheduledTime { get; set; }
     public string? AssigneeName { get; set; }
     public DateTime? SlaTarget { get; set; }
+    /// ICT visit of a hardware installation as iDesk reports it (UTC); mirrored onto the requester's calendar.
+    public DateTime? VisitStart { get; set; }
+    public DateTime? VisitEnd { get; set; }
+    /// Replies from ICT since the requester last opened the ticket in iPop, and the latest one's preview.
+    public int UnreadMessages { get; set; }
+    public string? LastMessagePreview { get; set; }
+    public string? LastMessageSender { get; set; }
+    public DateTime? LastMessageAt { get; set; }
     public string? Url { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
@@ -59,13 +67,21 @@ public class TicketEvent
 {
     public Guid Id { get; set; }
     public Guid TicketId { get; set; }
-    /// created | assigned | status_changed | resolved | closed | sent | send_failed
+    /// created | assigned | status_changed | resolved | closed | message_created | visit_changed | sent | send_failed
     public required string Kind { get; set; }
     public string? FromStatus { get; set; }
     public string? ToStatus { get; set; }
     public string? Assignee { get; set; }
     public DateTime OccurredAt { get; set; }
     public string? WebhookEventId { get; set; }
+}
+
+/// Ids of iDesk webhook events that have no ticket timeline to live on (Zoom bookings), so an
+/// at-least-once redelivery is applied once.
+public class IdeskWebhookReceipt
+{
+    public required string EventId { get; set; }
+    public DateTime ReceivedAt { get; set; }
 }
 
 /// Per-user outcome of the last iDesk sync, shown as banners on /tickets.

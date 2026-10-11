@@ -164,6 +164,44 @@ public sealed class HttpIdeskClient : IIdeskClient
         }
     }
 
+    public async Task<IdeskResult<IdeskMessages>> GetMessagesAsync(string ticketNumber, CancellationToken ct = default)
+    {
+        var (outcome, json, msg) = await SendAsync(HttpMethod.Get, "tickets/" + Uri.EscapeDataString(ticketNumber) + "/messages", null, ct);
+        if (outcome != IdeskOutcome.Ok) return new(outcome, null, msg);
+        try
+        {
+            using var doc = JsonDocument.Parse(json!);
+            var root = doc.RootElement;
+            var list = root.TryGetProperty("messages", out var arr) && arr.ValueKind == JsonValueKind.Array
+                ? arr.EnumerateArray().Select(ParseMessage).OfType<IdeskMessage>().ToList()
+                : [];
+            return new(IdeskOutcome.Ok, new IdeskMessages(Str(root, "url"), list));
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            _logger.LogError(ex, "iDesk ticket messages could not be parsed");
+            return new(IdeskOutcome.Unreachable, null, "Unexpected answer from iDesk.");
+        }
+    }
+
+    public async Task<IdeskResult<IReadOnlyList<IdeskBooking>>> ListZoomBookingsAsync(string nik, DateOnly from, DateOnly to, CancellationToken ct = default)
+    {
+        var path = $"zoom-bookings?nik={Uri.EscapeDataString(nik)}&from={from:yyyy-MM-dd}&to={to:yyyy-MM-dd}";
+        var (outcome, json, msg) = await SendAsync(HttpMethod.Get, path, null, ct);
+        if (outcome != IdeskOutcome.Ok) return new(outcome, null, msg);
+        try
+        {
+            using var doc = JsonDocument.Parse(json!);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) throw new JsonException("not an array");
+            return new(IdeskOutcome.Ok, doc.RootElement.EnumerateArray().Select(ParseBooking).OfType<IdeskBooking>().ToList());
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            _logger.LogError(ex, "iDesk zoom bookings could not be parsed");
+            return new(IdeskOutcome.Unreachable, null, "Unexpected answer from iDesk.");
+        }
+    }
+
     private async Task<(IdeskOutcome, string?, string?)> SendAsync(HttpMethod method, string path, string? body, CancellationToken ct)
     {
         if (!_options.IsConfigured)
@@ -254,7 +292,44 @@ public sealed class HttpIdeskClient : IIdeskClient
             Date(t, "updatedAt") ?? created,
             Date(t, "resolvedAt"),
             Date(t, "closedAt"),
-            Str(t, "url"));
+            Str(t, "url"),
+            ParseVisit(t));
+    }
+
+    private static IdeskVisit? ParseVisit(JsonElement t)
+    {
+        if (!t.TryGetProperty("visit", out var v) || v.ValueKind != JsonValueKind.Object) return null;
+        return Date(v, "start") is { } start && Date(v, "end") is { } end && end > start
+            ? new IdeskVisit(start, end, Str(v, "hardwareType")) : null;
+    }
+
+    private static IdeskMessage? ParseMessage(JsonElement m)
+    {
+        if (m.ValueKind != JsonValueKind.Object || Str(m, "id") is not { Length: > 0 } id) return null;
+        var sender = m.TryGetProperty("sender", out var s) && s.ValueKind == JsonValueKind.Object ? Str(s, "name") : null;
+        var files = m.TryGetProperty("attachments", out var a) && a.ValueKind == JsonValueKind.Array
+            ? a.EnumerateArray().Select(x => x.ValueKind == JsonValueKind.Object ? Str(x, "name") : null).OfType<string>().ToList()
+            : [];
+        return new IdeskMessage(id, sender, m.TryGetProperty("fromRequester", out var f) && f.ValueKind == JsonValueKind.True,
+            Str(m, "content") ?? "", files, Date(m, "createdAt") ?? DateTime.UtcNow);
+    }
+
+    /// Section 7.1 shape; also the webhook "booking" payload. A cancelled event carries only the ids.
+    public static IdeskBooking? ParseBooking(JsonElement b)
+    {
+        if (b.ValueKind != JsonValueKind.Object || Str(b, "bookingId") is not { Length: > 0 } id) return null;
+        if (Date(b, "start") is not { } start || Date(b, "end") is not { } end) return null;
+        var zoom = b.TryGetProperty("zoom", out var z) && z.ValueKind == JsonValueKind.Object ? z : default;
+        var account = b.TryGetProperty("account", out var acc) && acc.ValueKind == JsonValueKind.Object ? Str(acc, "name") : null;
+        var people = b.TryGetProperty("attendees", out var at) && at.ValueKind == JsonValueKind.Array
+            ? at.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.Object)
+                .Select(x => new IdeskBookingAttendee(Str(x, "nik"), Str(x, "name") ?? "", Str(x, "role") ?? "PARTICIPANT")).ToList()
+            : [];
+        return new IdeskBooking(id, Str(b, "seriesId"), Str(b, "title") ?? "Zoom meeting", Str(b, "description"), start, end, account,
+            zoom.ValueKind == JsonValueKind.Object ? Str(zoom, "joinUrl") : null,
+            zoom.ValueKind == JsonValueKind.Object ? Str(zoom, "meetingId") : null,
+            zoom.ValueKind == JsonValueKind.Object ? Str(zoom, "passcode") : null,
+            people, Str(b, "url"));
     }
 
     private static string? Str(JsonElement e, string name) =>

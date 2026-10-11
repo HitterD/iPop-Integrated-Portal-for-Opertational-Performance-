@@ -22,7 +22,8 @@ public sealed class TicketService(
     TicketModuleCache modules,
     INotificationGatewayService notify,
     IRealtime realtime,
-    ILogger<TicketService>? logger = null) : ITicketService
+    ILogger<TicketService>? logger = null,
+    IdeskCalendarSync? calendar = null) : ITicketService
 {
     public const string Provider = "idesk";
     public const string OriginIpop = "IPOP";
@@ -68,6 +69,31 @@ public sealed class TicketService(
     {
         var t = await db.Tickets.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId && x.RemovedAt == null, ct);
         return t is null ? null : await ToDetailAsync(t, ct);
+    }
+
+    /// The ticket's public chat from iDesk, read-only. Opening it clears the unread counter. When iDesk
+    /// can't be reached the last preview we received comes back with Offline set.
+    public async Task<TicketMessagesDto?> GetMessagesAsync(Guid userId, Guid id, CancellationToken ct = default)
+    {
+        var t = await db.Tickets.FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId && x.RemovedAt == null, ct);
+        if (t is null) return null;
+        var unread = t.UnreadMessages;
+        if (unread > 0)
+        {
+            t.UnreadMessages = 0;
+            await db.SaveChangesAsync(ct);
+            await ChangedAsync(userId, null, null, ct);
+        }
+        if (t.TicketNumber is null || IsPending(t.Status)) return new TicketMessagesDto([], unread, t.Url, false, null);
+
+        var r = await idesk.GetMessagesAsync(t.TicketNumber, ct);
+        if (r.Ok)
+            return new TicketMessagesDto(r.Value!.Messages.Select(m => new TicketMessageDto(m.Id,
+                m.FromRequester ? null : m.SenderName, m.FromRequester, m.Content, m.Attachments, m.CreatedAt)).ToList(),
+                unread, r.Value.Url ?? t.Url, false, null);
+        var last = t.LastMessagePreview is null ? null
+            : new TicketMessageDto("last", t.LastMessageSender, false, t.LastMessagePreview, [], t.LastMessageAt ?? t.UpdatedAt);
+        return new TicketMessagesDto([], unread, t.Url, true, last);
     }
 
     // ── Sync / reconcile (silent: realtime only, no notifications) ──────
@@ -135,6 +161,7 @@ public sealed class TicketService(
             }
             else changed |= Apply(row, it);
             seen.Add(row.Id);
+            if (calendar is not null) await calendar.SyncVisitAsync(row, ct);
         }
 
         var windowStart = remote.Count >= 100 ? remote.Min(x => x.CreatedAt) : DateTime.MinValue;
@@ -142,6 +169,7 @@ public sealed class TicketService(
                      && !seen.Contains(t.Id) && t.CreatedAt >= windowStart))
         {
             gone.RemovedAt = DateTime.UtcNow; changed = true;
+            if (calendar is not null) await calendar.SyncVisitAsync(gone, ct);
         }
         return changed;
     }
@@ -162,7 +190,9 @@ public sealed class TicketService(
         else if (r.Outcome == IdeskOutcome.NotFound) { row.RemovedAt = now; changed = true; }
         else return false;   // unreachable: try again next time
         row.RefreshedAt = now;
+        var visitMoved = calendar is not null && await calendar.SyncVisitAsync(row, ct);
         await db.SaveChangesAsync(ct);
+        if (visitMoved) await CalendarChangedAsync(row.UserId, null, ct);
         if (changed) await ChangedAsync(row.UserId, null, row.Id, ct);
         return changed;
     }
@@ -221,6 +251,7 @@ public sealed class TicketService(
             attachments = v.Attachments.Count == 0 ? null : v.Attachments.Select(a => new { fileName = a.FileName, contentBase64 = a.Base64 }),
         }, Json);
         db.Tickets.Add(row);
+        if (calendar is not null) await calendar.SyncVisitAsync(row, ct);   // the picked slot shows at once
         await db.SaveChangesAsync(ct);
 
         var r = await idesk.CreateTicketAsync(row.PendingPayload, ct);
@@ -230,12 +261,15 @@ public sealed class TicketService(
                 Land(row, r.Value!);
                 AddEvent(row, "created", null, row.Status, row.AssigneeName, now);
                 await SetRegisteredAsync(userId, ct);
+                if (calendar is not null) await calendar.SyncVisitAsync(row, ct);
                 await db.SaveChangesAsync(ct);
                 await ChangedAsync(userId, user.Nik, row.Id, ct);
                 return new(TicketCreateKind.Created, await ToDetailAsync(row, ct));
 
             case IdeskOutcome.Rejected or IdeskOutcome.NotRegistered or IdeskOutcome.NotFound:
                 // Nothing is kept: the form shows the error and the user fixes or abandons it.
+                row.RemovedAt = now;
+                if (calendar is not null) await calendar.SyncVisitAsync(row, ct);
                 db.Tickets.Remove(row);
                 if (r.Outcome == IdeskOutcome.NotRegistered) await MarkNotRegisteredAsync(userId, ct);
                 await db.SaveChangesAsync(ct);
@@ -303,6 +337,8 @@ public sealed class TicketService(
         var row = await db.Tickets.FirstOrDefaultAsync(t => t.Id == id && t.UserId == userId && t.RemovedAt == null, ct);
         if (row is null) return TicketDiscardKind.NotFound;
         if (!IsPending(row.Status)) return TicketDiscardKind.NotPending;
+        row.RemovedAt = DateTime.UtcNow;
+        if (calendar is not null) await calendar.SyncVisitAsync(row, ct);
         db.Tickets.Remove(row);   // never reached iDesk as far as we know; nothing worth keeping
         await db.SaveChangesAsync(ct);
         await ChangedAsync(userId, null, id, ct);
@@ -381,6 +417,7 @@ public sealed class TicketService(
     public async Task<TicketWebhookKind> ApplyWebhookAsync(string body, CancellationToken ct = default)
     {
         string? eventId, evt; DateTime occurredAt; string? previousStatus; IdeskTicket? it;
+        IdeskBooking? booking = null; string? cancelledBooking = null; WebhookMessage? message = null;
         try
         {
             using var doc = JsonDocument.Parse(body);
@@ -391,10 +428,23 @@ public sealed class TicketService(
             occurredAt = Prop(root, "occurredAt") is { } s && DateTime.TryParse(s, CultureInfo.InvariantCulture,
                 DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var d) ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : DateTime.UtcNow;
             it = root.TryGetProperty("ticket", out var t) ? HttpIdeskClient.ParseTicket(t) : null;
+            if (root.TryGetProperty("booking", out var b) && b.ValueKind == JsonValueKind.Object)
+            {
+                booking = HttpIdeskClient.ParseBooking(b);
+                cancelledBooking = Prop(b, "bookingId");
+            }
+            if (root.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.Object)
+                message = new WebhookMessage(
+                    m.TryGetProperty("sender", out var snd) && snd.ValueKind == JsonValueKind.Object ? Prop(snd, "name") : null,
+                    Prop(m, "preview") ?? "");
         }
         catch (JsonException) { return TicketWebhookKind.Invalid; }
-        if (string.IsNullOrEmpty(eventId) || string.IsNullOrEmpty(evt) || it is null) return TicketWebhookKind.Invalid;
+        if (string.IsNullOrEmpty(eventId) || string.IsNullOrEmpty(evt)) return TicketWebhookKind.Invalid;
         if (eventId.Length > 100) eventId = eventId[..100];
+
+        if (evt.StartsWith("zoom_booking.", StringComparison.Ordinal))
+            return await ApplyBookingWebhookAsync(eventId, evt, booking, cancelledBooking, ct);
+        if (it is null) return TicketWebhookKind.Invalid;
 
         if (await db.TicketEvents.AnyAsync(e => e.WebhookEventId == eventId, ct)) return TicketWebhookKind.Duplicate;
 
@@ -426,6 +476,14 @@ public sealed class TicketService(
         row.RemovedAt = null;
 
         var kind = evt.StartsWith("ticket.", StringComparison.Ordinal) ? evt["ticket.".Length..] : evt;
+        if (kind == "message_created" && message is not null)
+        {
+            row.UnreadMessages++;
+            row.LastMessagePreview = message.Preview.Length > 200 ? message.Preview[..200] : message.Preview;
+            row.LastMessageSender = message.Sender is { Length: > 200 } sender ? sender[..200] : message.Sender;
+            row.LastMessageAt = occurredAt;
+        }
+        var visitMoved = calendar is not null && await calendar.SyncVisitAsync(row, ct);
         // ticket.created for a ticket we filed ourselves: the timeline already says so; just
         // stamp the event id on that line so a redelivery is still recognised.
         var own = kind == "created" && db.Entry(row).State != EntityState.Added
@@ -436,8 +494,8 @@ public sealed class TicketService(
         else db.TicketEvents.Add(new TicketEvent
         {
             Id = Guid.NewGuid(), TicketId = row.Id, Kind = kind.Length > 32 ? kind[..32] : kind,
-            FromStatus = kind == "assigned" ? null : previousStatus, ToStatus = it.Status,
-            Assignee = it.AssigneeName, OccurredAt = occurredAt, WebhookEventId = eventId,
+            FromStatus = kind is "assigned" or "message_created" or "visit_changed" ? null : previousStatus, ToStatus = it.Status,
+            Assignee = kind == "message_created" ? message?.Sender : it.AssigneeName, OccurredAt = occurredAt, WebhookEventId = eventId,
         });
         try { await db.SaveChangesAsync(ct); }
         catch (DbUpdateException)
@@ -448,6 +506,13 @@ public sealed class TicketService(
         }
 
         if (notifyQueuedLanding) await NotifyAsync(row, "ticket.sent", "Ticket sent to ICT", ct);
+        if (visitMoved) await CalendarChangedAsync(row.UserId, nik, ct);
+        if (kind == "message_created")
+        {
+            await NotifyReplyAsync(row, ct);
+            await ChangedAsync(row.UserId, nik, row.Id, ct);
+            return TicketWebhookKind.Applied;
+        }
         var title = kind switch
         {
             "assigned" when it.AssigneeName is { Length: > 0 } a => $"{a} picked up your ticket",
@@ -455,6 +520,7 @@ public sealed class TicketService(
             "resolved" => "Ticket resolved — please confirm",
             "closed" => "Ticket closed",
             "status_changed" => $"Ticket status: {HumanizeStatus(it.Status)}",
+            "visit_changed" when VisitLabel(row) is { } v => $"ICT visit moved to {v}",
             _ => null,   // ticket.created and anything unknown stay silent
         };
         if (title is not null) await NotifyAsync(row, evt, title, ct);
@@ -496,7 +562,7 @@ public sealed class TicketService(
     private bool Apply(Ticket row, IdeskTicket it)
     {
         var before = (row.Status, row.AssigneeName, row.TicketNumber, row.Title, row.Priority, row.Category, row.SlaTarget,
-            row.ResolvedAt, row.ClosedAt, row.Url, row.IdeskTicketId, row.RemovedAt);
+            row.ResolvedAt, row.ClosedAt, row.Url, row.IdeskTicketId, row.RemovedAt, row.VisitStart, row.VisitEnd);
         row.IdeskTicketId = it.TicketId;
         row.TicketNumber = it.TicketNumber ?? row.TicketNumber;
         row.Status = it.Status;
@@ -506,20 +572,22 @@ public sealed class TicketService(
         if (it.Title.Length > 0) row.Title = it.Title.Length > 200 ? it.Title[..200] : it.Title;
         row.AssigneeName = it.AssigneeName;
         row.SlaTarget = it.SlaTarget;
+        if (it.Visit is { } visit) { row.VisitStart = visit.Start; row.VisitEnd = visit.End; }
+        else if (it.Origin == OriginIdesk || row.VisitStart is not null) { row.VisitStart = null; row.VisitEnd = null; }
         row.ResolvedAt = it.ResolvedAt;
         row.ClosedAt = it.ClosedAt;
         row.Url = it.Url;
         row.UpdatedAt = it.UpdatedAt > row.UpdatedAt ? it.UpdatedAt : row.UpdatedAt;
         row.RemovedAt = null;
         return before != (row.Status, row.AssigneeName, row.TicketNumber, row.Title, row.Priority, row.Category, row.SlaTarget,
-            row.ResolvedAt, row.ClosedAt, row.Url, row.IdeskTicketId, row.RemovedAt);
+            row.ResolvedAt, row.ClosedAt, row.Url, row.IdeskTicketId, row.RemovedAt, row.VisitStart, row.VisitEnd);
     }
 
     private void AddEvent(Ticket row, string kind, string? from, string? to, string? assignee, DateTime at) =>
         db.TicketEvents.Add(new TicketEvent { Id = Guid.NewGuid(), TicketId = row.Id, Kind = kind, FromStatus = from, ToStatus = to, Assignee = assignee, OccurredAt = at });
 
     private static TicketListItemDto ToListItem(Ticket t) => new(t.Id, t.TicketNumber, t.ExternalRef, t.Origin, t.Status, t.Priority,
-        t.Module, t.ModuleName, t.Category, t.Title, t.CreatedAt, t.UpdatedAt);
+        t.Module, t.ModuleName, t.Category, t.Title, t.CreatedAt, t.UpdatedAt, t.UnreadMessages);
 
     private async Task<TicketDetailDto> ToDetailAsync(Ticket t, CancellationToken ct)
     {
@@ -530,7 +598,8 @@ public sealed class TicketService(
             t.Category, t.Title, t.Description, t.Device, t.Software, t.CriticalReason, t.HardwareType, t.ScheduledDate, t.ScheduledTime,
             t.AssigneeName is null ? null : new TicketPersonDto(t.AssigneeName), t.SlaTarget, t.CreatedAt, t.UpdatedAt,
             t.ResolvedAt, t.ClosedAt, t.Url, t.LastError, attachments,
-            events.OrderBy(e => e.OccurredAt).Select(e => new TicketEventDto(e.Kind, e.FromStatus, e.ToStatus, e.Assignee, e.OccurredAt)).ToList());
+            events.OrderBy(e => e.OccurredAt).Select(e => new TicketEventDto(e.Kind, e.FromStatus, e.ToStatus, e.Assignee, e.OccurredAt)).ToList(),
+            IdeskCalendarSync.VisitOf(t) is { } v ? new TicketVisitDto(v.Start, v.End) : null, t.UnreadMessages);
     }
 
     /// "IN_PROGRESS" → "In progress", "WAITING_VENDOR" → "Waiting vendor".
@@ -659,6 +728,75 @@ public sealed class TicketService(
         var s = await db.TicketUserStates.FirstOrDefaultAsync(x => x.UserId == userId, ct);
         if (s is null) db.TicketUserStates.Add(new TicketUserState { UserId = userId, NotRegistered = true });
         else s.NotRegistered = true;
+    }
+
+    private sealed record WebhookMessage(string? Sender, string Preview);
+
+    /// "Tue 13 Oct, 09:00" (WIB) of the ticket's visit, for notifications.
+    private static string? VisitLabel(Ticket row) =>
+        IdeskCalendarSync.VisitOf(row) is { } v ? (v.Start + TimeSpan.FromHours(7)).ToString("ddd d MMM, HH:mm", CultureInfo.InvariantCulture) : null;
+
+    /// One notification per ticket: earlier unread reply notifications for this ticket are cleared first,
+    /// so the bell keeps only the newest (with the running count) and the toast replaces itself.
+    private async Task NotifyReplyAsync(Ticket row, CancellationToken ct)
+    {
+        var url = $"/tickets/{row.Id}#messages";
+        try
+        {
+            var stale = await db.NotificationDeliveries
+                .Where(d => d.UserId == row.UserId && d.ReadAt == null && d.Request.TargetUrl == url && d.Request.EventType == ReplyEvent)
+                .ToListAsync(ct);
+            var now = DateTime.UtcNow;
+            foreach (var d in stale) { d.Status = NotificationStatus.Read; d.ReadAt = now; d.UpdatedAt = now; }
+            if (stale.Count > 0) await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) { _log.LogDebug(ex, "Clearing older reply notifications failed (non-fatal)"); }
+
+        var number = row.TicketNumber ?? row.ExternalRef ?? "your ticket";
+        var title = row.UnreadMessages > 1 ? $"{row.UnreadMessages} new replies on {number}" : $"New reply on {number}";
+        var who = string.IsNullOrWhiteSpace(row.LastMessageSender) ? "ICT" : row.LastMessageSender;
+        var body = $"{row.Title}\n{who}: “{row.LastMessagePreview}”";
+        try
+        {
+            await notify.PublishInternalAsync(clientSlug: "tickets", eventType: ReplyEvent, title: title,
+                message: body, target: new NotificationTarget(UserId: row.UserId),
+                priority: "normal", targetUrl: url, ct: ct);
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Ticket reply notification failed"); }
+    }
+
+    public const string ReplyEvent = "ticket.message_created";
+
+    private async Task<TicketWebhookKind> ApplyBookingWebhookAsync(string eventId, string evt, IdeskBooking? booking, string? bookingId, CancellationToken ct)
+    {
+        if (calendar is null) return TicketWebhookKind.Applied;   // accepted, nothing to mirror into
+        // Booking events have no ticket timeline to hold their id; the processed-id table dedupes them.
+        if (await db.IdeskWebhookReceipts.AnyAsync(r => r.EventId == eventId, ct)) return TicketWebhookKind.Duplicate;
+        db.IdeskWebhookReceipts.Add(new IdeskWebhookReceipt { EventId = eventId, ReceivedAt = DateTime.UtcNow });
+        try { await db.SaveChangesAsync(ct); }
+        catch (DbUpdateException) { db.ChangeTracker.Clear(); return TicketWebhookKind.Duplicate; }
+
+        switch (evt)
+        {
+            case "zoom_booking.created" or "zoom_booking.updated" when booking is not null:
+                await calendar.ApplyBookingAsync(booking, evt == "zoom_booking.updated", ct);
+                return TicketWebhookKind.Applied;
+            case "zoom_booking.cancelled" when !string.IsNullOrEmpty(bookingId):
+                await calendar.CancelBookingAsync(bookingId, ct);
+                return TicketWebhookKind.Applied;
+            default:
+                return TicketWebhookKind.Invalid;
+        }
+    }
+
+    private async Task CalendarChangedAsync(Guid userId, string? nik, CancellationToken ct)
+    {
+        try
+        {
+            nik ??= await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Nik).FirstOrDefaultAsync(ct);
+            if (nik is not null) await realtime.ToUserAsync(nik, RealtimeEvents.CalendarChanged, null, ct);
+        }
+        catch (Exception ex) { _log.LogDebug(ex, "Calendar realtime hint failed"); }
     }
 
     private async Task NotifyAsync(Ticket row, string eventType, string title, CancellationToken ct)

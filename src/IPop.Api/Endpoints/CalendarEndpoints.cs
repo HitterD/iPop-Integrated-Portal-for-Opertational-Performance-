@@ -79,6 +79,7 @@ public static partial class CalendarEndpoints
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
+            if (scope is "following" or "all" && await ExternalOwnerAsync(db, id, ct) is not null) return Error(SaveResult.External);
             if (scope is "following" or "all")
             {
                 var (sOwner, sActed) = await CalendarDelegateEndpoints.ActorForEventAsync(db, id, userId.Value, ct);
@@ -96,6 +97,15 @@ public static partial class CalendarEndpoints
                 var changed = await db.CalendarEvents.AsNoTracking().FirstAsync(e => e.Id == firstId, ct);
                 if (sActed is { } seriesActor) await CalendarDelegateEndpoints.NotifyOwnerOfChangeAsync(db, notifs, seriesLog, sOwner, seriesActor, "changed", changed.Title, ct);
                 return Results.Ok(await LoadDetailAsync(db, firstId, userId.Value, ct));
+            }
+            if (await ExternalOwnerAsync(db, id, ct) is { } ext)
+            {
+                // Booked in iDesk: times and details come from there; only Normal/Private is the owner's to pick.
+                if (ext != userId.Value) return Error(SaveResult.Forbidden);
+                if (!CalendarVisibility.IsEventLevel(req.Visibility)) return Error(SaveResult.External);
+                await db.CalendarEvents.Where(e => e.Id == id).ExecuteUpdateAsync(s => s.SetProperty(e => e.Visibility, req.Visibility!), ct);
+                await MeetingEndpoints.NotifyCalendarChangedAsync(db, realtime, [userId.Value], ct);
+                return Results.Ok(await LoadDetailAsync(db, id, userId.Value, ct));
             }
             // Attendees an edit removes must also drop the event from their calendar.
             var beforeMeeting = await db.CalendarEvents.AsNoTracking().Where(e => e.Id == id).Select(e => e.MeetingId).FirstOrDefaultAsync(ct);
@@ -117,6 +127,7 @@ public static partial class CalendarEndpoints
         {
             var userId = await GetUserIdAsync(http, db, ct);
             if (userId is null) return Results.Unauthorized();
+            if (await ExternalOwnerAsync(db, id, ct) is not null) return Error(SaveResult.External);
             if (scope is "following" or "all")
             {
                 var (sOwner, sActed) = await CalendarDelegateEndpoints.ActorForEventAsync(db, id, userId.Value, ct);
@@ -176,7 +187,11 @@ public static partial class CalendarEndpoints
 
     // ── Event CRUD ────────────────────────────────────────────────────────────
 
-    public enum SaveResult { Ok, NotFound, Forbidden, InvalidTitle, InvalidRange, NotRoomMember, Cancelled }
+    public enum SaveResult { Ok, NotFound, Forbidden, InvalidTitle, InvalidRange, NotRoomMember, Cancelled, External }
+
+    /// The owner of an event mirrored from another system (iDesk), or null for events made in iPop.
+    private static Task<Guid?> ExternalOwnerAsync(IPopDbContext db, Guid id, CancellationToken ct) =>
+        db.CalendarEvents.AsNoTracking().Where(e => e.Id == id && e.Source != null).Select(e => (Guid?)e.OwnerId).FirstOrDefaultAsync(ct);
 
     private static IResult Error(SaveResult r) => r switch
     {
@@ -186,6 +201,7 @@ public static partial class CalendarEndpoints
         SaveResult.InvalidTitle => Results.Json(new { code = "invalid_title", message = "Title is required (max 200 characters)." }, statusCode: 422),
         SaveResult.InvalidRange => Results.Json(new { code = "invalid_range", message = "End must be after start." }, statusCode: 422),
         SaveResult.Cancelled => Results.Json(new { code = "cancelled", message = "This meeting was cancelled." }, statusCode: 409),
+        SaveResult.External => Results.Json(new { code = "external", message = "This was booked in iDesk. Change or cancel it there." }, statusCode: 409),
         _ => Results.StatusCode(500),
     };
 
@@ -438,12 +454,16 @@ public static partial class CalendarEndpoints
         var nameIds = new[] { ev.OwnerId, ev.CreatedById, ev.UpdatedById, sentById, delegateFor }.OfType<Guid>().Distinct().ToList();
         var names = await db.Users.AsNoTracking().Where(u => nameIds.Contains(u.Id)).ToDictionaryAsync(u => u.Id, u => new { u.Name, u.Nik }, ct);
         string? NameOf(Guid? id) => id is { } x ? names.GetValueOrDefault(x)?.Name : null;
-        var canEdit = ev.OwnerId == viewerId || (delegateFor == ev.OwnerId && DelegateLevel.CanEdit(delegateLevel));
+        var canEdit = ev.Source is null && (ev.OwnerId == viewerId || (delegateFor == ev.OwnerId && DelegateLevel.CanEdit(delegateLevel)));
+        var external = ev.Source is null ? null : new ExternalDto(ev.Source, ev.ExternalUrl,
+            IPop.Infrastructure.Tickets.IdeskCalendarSync.People(ev.ExternalPeople)
+                .Select(p => new ExternalPersonDto(p.Name, p.UserId, p.Booker, p.UserId == viewerId)).ToList(),
+            ev.OwnerId == viewerId);
         return new CalendarEventDetailDto(ev.Id, ev.Title, ev.StartAt, ev.EndAt, ev.AllDay, ev.Location, ev.Link, ev.Notes,
             ev.ReminderMinutes, ev.RoomId, roomName, ev.MeetingId, status, NameOf(ev.OwnerId) ?? "", canEdit, people, visibility,
             names.GetValueOrDefault(ev.OwnerId)?.Nik, NameOf(ev.CreatedById), NameOf(sentById), NameOf(ev.UpdatedById), delegateLevel,
             delegateFor is { } df ? names.GetValueOrDefault(df)?.Nik : null, NameOf(delegateFor),
-            ev.SeriesId, ev.Recurrence, CalendarRecurrence.Parse(ev.Recurrence)?.Describe(ev.StartAt.ToLocalTime()));
+            ev.SeriesId, ev.Recurrence, CalendarRecurrence.Parse(ev.Recurrence)?.Describe(ev.StartAt.ToLocalTime()), external);
     }
 
     private static DateTime AsUtc(DateTime dt) => dt.Kind switch
@@ -478,5 +498,10 @@ public static partial class CalendarEndpoints
         string? Link, string? Notes, int? ReminderMinutes, Guid? RoomId, string? RoomName, Guid? MeetingId, string? MeetingStatus,
         string OwnerName, bool CanEdit, IReadOnlyList<CalendarPersonDto> Attendees, string Visibility = CalendarVisibility.Busy,
         string? OwnerNik = null, string? CreatedBy = null, string? SentBy = null, string? UpdatedBy = null, string? DelegateLevel = null,
-        string? DelegateForNik = null, string? DelegateForName = null, Guid? SeriesId = null, string? Recurrence = null, string? RecurrenceText = null);
+        string? DelegateForNik = null, string? DelegateForName = null, Guid? SeriesId = null, string? Recurrence = null, string? RecurrenceText = null,
+        ExternalDto? External = null);
+    /// An entry mirrored from iDesk: where to manage it and who is in it (names; user id when they use iPop).
+    /// CanSetPrivacy = the owner may still switch it between Normal and Private.
+    public record ExternalDto(string Source, string? Url, IReadOnlyList<ExternalPersonDto> People, bool CanSetPrivacy);
+    public record ExternalPersonDto(string Name, Guid? UserId, bool Booker, bool Me);
 }

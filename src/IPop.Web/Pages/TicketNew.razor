@@ -260,13 +260,25 @@
                 }
                 else
                 {
-                    <h3 id="tk-sheet-h">Ticket sent to ICT</h3>
-                    <p>You'll get a notification when someone picks it up.</p>
+                    <h3 id="tk-sheet-h">@(done.Ticket.Visit is null ? "Ticket sent to ICT" : "Installation booked")</h3>
+                    <p>@(done.Ticket.Visit is null ? "You'll get a notification when ICT picks it up or replies." : "ICT will come by at the slot you picked.")</p>
                     <div class="num">@TicketUi.Number(done.Ticket)</div>
+                    @if (done.Ticket.Visit is { } v)
+                    {
+                        <div class="tk-visit-cal"><i data-lucide="calendar-check"></i><div><b>Added to your calendar</b><br>@TicketUi.Local(v.Start).ToString("ddd d MMM · HH:mm") – @TicketUi.Local(v.End).ToString("HH:mm")@(string.IsNullOrEmpty(done.Ticket.HardwareType) ? "" : $" · {done.Ticket.HardwareType}")</div></div>
+                    }
                 }
                 <div class="acts">
+                    @if (!done.Queued && !string.IsNullOrEmpty(done.Ticket.Url))
+                    {
+                        <a class="tk-btn pri" href="@done.Ticket.Url" target="_blank" rel="noopener noreferrer"><i data-lucide="messages-square"></i>Open chat in iDesk</a>
+                    }
                     <button type="button" class="tk-btn" @onclick="() => CloseSheetAsync(null)">New ticket</button>
-                    <button type="button" class="tk-btn pri" @onclick="() => CloseSheetAsync(done.Ticket.Id)">View ticket</button>
+                    @if (!done.Queued && done.Ticket.Visit is { } dv)
+                    {
+                        <a class="tk-btn" href="@($"/calendar?date={TicketUi.Local(dv.Start):yyyy-MM-dd}")">View in calendar</a>
+                    }
+                    <button type="button" class="tk-btn @(done.Queued || string.IsNullOrEmpty(done.Ticket.Url) ? "pri" : "")" @onclick="() => CloseSheetAsync(done.Ticket.Id)">View ticket</button>
                 </div>
             </div>
         </div>

@@ -40,7 +40,35 @@ public sealed record IdeskTicket(
     DateTime UpdatedAt,
     DateTime? ResolvedAt,
     DateTime? ClosedAt,
+    string? Url,
+    IdeskVisit? Visit = null);
+
+/// The ICT visit of a hardware-installation ticket (UTC).
+public sealed record IdeskVisit(DateTime Start, DateTime End, string? HardwareType);
+
+/// One public chat message of a ticket (GET /tickets/{no}/messages). Senders by name only.
+public sealed record IdeskMessage(string Id, string? SenderName, bool FromRequester, string Content,
+    IReadOnlyList<string> Attachments, DateTime CreatedAt);
+
+public sealed record IdeskMessages(string? Url, IReadOnlyList<IdeskMessage> Messages);
+
+/// A Zoom meeting booked in iDesk, as a calendar entry (section 7 of the iDesk contract).
+public sealed record IdeskBooking(
+    string BookingId,
+    string? SeriesId,
+    string Title,
+    string? Description,
+    DateTime Start,
+    DateTime End,
+    string? AccountName,
+    string? JoinUrl,
+    string? MeetingId,
+    string? Passcode,
+    IReadOnlyList<IdeskBookingAttendee> Attendees,
     string? Url);
+
+/// Role = BOOKER | PARTICIPANT. Nik is only used server-side to find the iPop user.
+public sealed record IdeskBookingAttendee(string? Nik, string Name, string Role);
 
 /// The iDesk "ipop" integration API (docs/integrations/ipop-api.md in iDesk). Every request is
 /// HMAC-signed; implementations never throw to callers.
@@ -54,4 +82,8 @@ public interface IIdeskClient
     Task<IdeskResult<IdeskTicket>> GetTicketAsync(string ticketNumber, CancellationToken ct = default);
     /// Newest first, at most 100 (iDesk's cap). state = "open" | "all".
     Task<IdeskResult<IReadOnlyList<IdeskTicket>>> ListByNikAsync(string nik, string state, CancellationToken ct = default);
+    /// The public conversation, oldest first; internal notes never included.
+    Task<IdeskResult<IdeskMessages>> GetMessagesAsync(string ticketNumber, CancellationToken ct = default);
+    /// Zoom bookings the user booked or is invited to, dates inclusive in WIB, at most 92 days.
+    Task<IdeskResult<IReadOnlyList<IdeskBooking>>> ListZoomBookingsAsync(string nik, DateOnly from, DateOnly to, CancellationToken ct = default);
 }

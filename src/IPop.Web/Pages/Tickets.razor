@@ -77,6 +77,7 @@
                                 <span class="sp"></span>
                                 @if (TicketUi.IsHot(t.Priority)) { <span class="tk-pill hot">@TicketUi.PriorityLabel(t.Priority)</span> }
                                 @if (t.Origin == "IDESK") { <span class="src-tag">iDesk</span> }
+                                @if (t.UnreadMessages > 0) { <span class="tk-unread" title="New replies from ICT">@t.UnreadMessages</span> }
                             </div>
                         </div>
                     }
@@ -255,6 +256,51 @@
                     </div>
                 }
 
+                @if (!pending)
+                {
+                    <h4 class="tk-h tk-msgs-h" id="messages"><i data-lucide="messages-square"></i>Messages
+                        @if (msgsUnread > 0) { <span class="tk-new">@msgsUnread new</span> }
+                        <span class="sp"></span><span class="ro">from iDesk · read-only</span></h4>
+                    <div class="tk-msgs">
+                        @if (msgs is null)
+                        {
+                            <div class="skel l"></div><div class="skel r"></div>
+                        }
+                        else
+                        {
+                            @if (msgs.Offline)
+                            {
+                                <div class="tk-msgs-off"><i data-lucide="wifi-off"></i><div><b>iDesk can't be reached right now.</b>
+                                    @if (msgs.Last is { } last) { <span> Latest reply — @(last.Sender ?? "ICT"): “@last.Content”</span> }
+                                    <button type="button" class="tk-btn ghost sm" @onclick="() => LoadMessagesAsync(t.Id)">Retry</button></div></div>
+                            }
+                            else if (msgs.Messages.Count == 0)
+                            {
+                                <div class="tk-msgs-empty">No messages yet. ICT's replies show up here.</div>
+                            }
+                            @for (var i = 0; i < msgs.Messages.Count; i++)
+                            {
+                                var m = msgs.Messages[i];
+                                var isNew = !m.Mine && i >= msgs.Messages.Count - msgsUnread;
+                                var who = m.Mine ? "You" : m.Sender ?? "ICT";
+                                <div class="tk-msg @(m.Mine ? "mine" : "") @(isNew ? "new" : "")" @key="m.Id">
+                                    <span class="av" style="background:@(m.Mine ? "var(--accent)" : AvatarPalette.For(who))">@TicketUi.Initials(who)</span>
+                                    <div class="bub"><span class="who">@who</span>@m.Content<time>@TicketUi.Stamp(m.CreatedAt)</time>
+                                        @foreach (var f in m.Attachments)
+                                        {
+                                            <div class="file"><i data-lucide="@TicketUi.FileIcon(f)"></i>@f
+                                                @if (!string.IsNullOrEmpty(msgs.Url ?? t.Url)) { <a href="@(msgs.Url ?? t.Url)" target="_blank" rel="noopener noreferrer">Open in iDesk</a> }</div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                        <div class="tk-replybar"><i data-lucide="corner-down-left"></i>Replies and attachments are sent from iDesk.<span class="sp"></span>
+                            @if (!string.IsNullOrEmpty(t.Url)) { <a class="tk-btn pri sm" href="@t.Url" target="_blank" rel="noopener noreferrer"><i data-lucide="external-link"></i>Reply in iDesk</a> }
+                        </div>
+                    </div>
+                }
+
                 <h4 class="tk-h">Activity</h4>
                 <div class="tk-tl">
                     @foreach (var ev in TicketUi.Activity(t))
@@ -264,7 +310,6 @@
                         </div>
                     }
                 </div>
-                <div class="tk-foot"><i data-lucide="message-square"></i>Chat with ICT, add files and reopen the ticket in iDesk.</div>
             </div>
         }
     </section>

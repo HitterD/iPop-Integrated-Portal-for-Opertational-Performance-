@@ -399,7 +399,11 @@
         @if (!editing && detail is not null)
         {
             <div class="cal-drawer-body">
-                <div class="cal-detail-title"><span class="cal-dot src-@(detail.RoomId is not null ? "chat" : detail.MeetingId is not null ? "meetings" : "personal")"></span>@detail.Title</div>
+                @if (detail.External is { } ext)
+                {
+                    <span class="cal-idesk-badge"><i data-lucide="life-buoy"></i>iDesk · @(ext.Source == "idesk-visit" ? "ICT visit" : "Zoom")</span>
+                }
+                <div class="cal-detail-title"><span class="cal-dot src-@(detail.External is not null ? "idesk" : detail.RoomId is not null ? "chat" : detail.MeetingId is not null ? "meetings" : "personal")"></span>@detail.Title</div>
                 <div class="cal-detail-row"><i data-lucide="clock"></i><span>@DetailWhen(detail)</span></div>
                 @if (detail.RecurrenceText is { } rt) { <div class="cal-detail-row"><i data-lucide="repeat"></i><span>@rt</span></div> }
                 @if (detail.MeetingStatus is "cancelled") { <div class="cal-detail-row warn"><i data-lucide="ban"></i><span>This meeting was cancelled.</span></div> }
@@ -410,11 +414,19 @@
                         else { <span>@(DateTime.UtcNow >= detail.EndAt ? "Meeting has ended" : CallsSchedule.JoinTooltip)</span> }
                     </div>
                 }
-                @if (detail.Location is not null) { <div class="cal-detail-row"><i data-lucide="map-pin"></i><span>@detail.Location</span></div> }
-                @if (detail.Link is not null) { <div class="cal-detail-row"><i data-lucide="video"></i><a href="@detail.Link" target="_blank" rel="noopener">@detail.Link</a></div> }
+                @if (detail.External is { Source: "idesk-zoom" } && detail.Link is not null)
+                {
+                    <div class="cal-detail-row"><i data-lucide="video"></i><a class="cal-btn primary" href="@detail.Link" target="_blank" rel="noopener noreferrer">Join Zoom meeting</a></div>
+                    @if (detail.Location is not null) { <div class="cal-detail-row"><i data-lucide="building-2"></i><span>@detail.Location</span></div> }
+                }
+                else
+                {
+                    @if (detail.Location is not null) { <div class="cal-detail-row"><i data-lucide="map-pin"></i><span>@detail.Location</span></div> }
+                    @if (detail.Link is not null) { <div class="cal-detail-row"><i data-lucide="video"></i><a href="@detail.Link" target="_blank" rel="noopener">@detail.Link</a></div> }
+                }
                 @if (detail.RoomName is not null) { <div class="cal-detail-row"><i data-lucide="users"></i><a href="/chat/@detail.RoomId">@detail.RoomName</a></div> }
                 @if (detail.ReminderMinutes is > 0) { <div class="cal-detail-row"><i data-lucide="bell"></i><span>@ReminderLabel(detail.ReminderMinutes.Value) before</span></div> }
-                <div class="cal-detail-row"><i data-lucide="user"></i><span>Organizer: @detail.OwnerName</span></div>
+                @if (detail.External is null) { <div class="cal-detail-row"><i data-lucide="user"></i><span>Organizer: @detail.OwnerName</span></div> }
                 @if (detail.SentBy is not null)
                 {
                     <div class="cal-detail-row behalf"><i data-lucide="user-cog"></i><span>Sent by <b>@detail.SentBy</b> on behalf of <b>@detail.OwnerName</b></span></div>
@@ -429,6 +441,34 @@
                 }
                 @if (detail.CanEdit) { <div class="cal-detail-row"><i data-lucide="@VisIcon(detail.Visibility)"></i><span>@VisLabel(detail.Visibility)</span></div> }
                 @if (detail.Notes is not null) { <div class="cal-detail-notes">@detail.Notes</div> }
+                @if (detail.External is { } ex)
+                {
+                    @if (ex.People.Count > 0)
+                    {
+                        <div class="cal-rail-title">People · @ex.People.Count</div>
+                        <ul class="cal-people">
+                            @foreach (var p in ex.People)
+                            {
+                                <li><span class="cal-ext-av" style="background:@AvatarPalette.For(p.Name)">@Initials(p.Name)</span><span>@(p.Me ? "You" : p.Name)@if (p.UserId is null) { <small class="cal-set-by">not on iPop</small> }</span>@if (p.Booker) { <span class="cal-rsvp-tag rsvp-accept">Booker</span> }</li>
+                            }
+                        </ul>
+                    }
+                    <div class="cal-ext-hint">@(ex.Source == "idesk-visit"
+                        ? "ICT comes to your desk at this time. To change the slot, ask in the ticket chat."
+                        : "Booked in iDesk. Move or cancel it there and your calendar follows automatically.")</div>
+                    <div class="cal-ext-acts">
+                        @if (ex.Url is { } u)
+                        {
+                            @if (u.StartsWith('/')) { <a class="cal-btn" href="@u"><i data-lucide="ticket"></i> View ticket</a> }
+                            else { <a class="cal-btn" href="@u" target="_blank" rel="noopener noreferrer"><i data-lucide="external-link"></i> Manage in iDesk</a> }
+                        }
+                        @if (ex.CanSetPrivacy)
+                        {
+                            <button class="cal-btn ghost" @onclick="ToggleExternalPrivacyAsync"><i data-lucide="@(detail.Visibility == "private" ? "eye" : "lock")"></i> @(detail.Visibility == "private" ? "Make normal" : "Make private")</button>
+                        }
+                    </div>
+                    @if (ex.CanSetPrivacy && detail.Visibility == "private") { <div class="cal-detail-row"><i data-lucide="lock"></i><span>Private — others only see Busy</span></div> }
+                }
 
                 @if (detail.MeetingId is not null && detail.MeetingStatus is not "cancelled" && MyRsvp is not null && !detail.CanEdit)
                 {

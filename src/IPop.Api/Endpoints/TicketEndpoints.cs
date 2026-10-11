@@ -51,6 +51,10 @@ public static class TicketEndpoints
                 return Results.Ok(detail);
             }));
 
+        // The ticket's public chat from iDesk (read-only); opening it clears the reply counter.
+        g.MapGet("/{id:guid}/messages", (Guid id, HttpContext http, ITicketService svc, CancellationToken ct) =>
+            Run(http, async me => await svc.GetMessagesAsync(me, id, ct) is { } m ? Results.Ok(m) : NotFound()));
+
         g.MapPost("", (CreateTicketRequest req, HttpContext http, ITicketService svc, CancellationToken ct) =>
             Run(http, async me =>
             {

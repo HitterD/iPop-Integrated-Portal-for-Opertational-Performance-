@@ -58,6 +58,14 @@ public class TicketTests
 
         public Task<IdeskResult<IReadOnlyList<IdeskTicket>>> ListByNikAsync(string nik, string state, CancellationToken ct = default) =>
             Task.FromResult(ListResult);
+
+        public IdeskResult<IdeskMessages> MessagesResult { get; set; } = new(IdeskOutcome.Ok, new IdeskMessages(null, []));
+        public Task<IdeskResult<IdeskMessages>> GetMessagesAsync(string ticketNumber, CancellationToken ct = default) =>
+            Task.FromResult(MessagesResult);
+
+        public Dictionary<string, IReadOnlyList<IdeskBooking>> Bookings { get; } = [];
+        public Task<IdeskResult<IReadOnlyList<IdeskBooking>>> ListZoomBookingsAsync(string nik, DateOnly from, DateOnly to, CancellationToken ct = default) =>
+            Task.FromResult(new IdeskResult<IReadOnlyList<IdeskBooking>>(IdeskOutcome.Ok, Bookings.GetValueOrDefault(nik) ?? []));
     }
 
     private sealed class RecordingGateway : INotificationGatewayService
@@ -67,7 +75,7 @@ public class TicketTests
         public Task<NotificationEnqueueResult> PublishInternalAsync(string clientSlug, string eventType, string title, string message,
             NotificationTarget target, string priority = "normal", string? targetUrl = null, CancellationToken ct = default)
         {
-            Assert.Equal("tickets", clientSlug);
+            Assert.Contains(clientSlug, new[] { "tickets", "meetings" });   // Zoom invitations go out as meetings
             Sent.Add((eventType, title, message, target.UserId, targetUrl));
             return Task.FromResult(new NotificationEnqueueResult(true, null, null, Guid.NewGuid(), "delivered", 1, DateTime.UtcNow));
         }
@@ -89,7 +97,7 @@ public class TicketTests
         public Task ToGroupAsync(string group, string evt, object? payload = null, CancellationToken ct = default) => Task.CompletedTask;
     }
 
-    private sealed record Rig(TestDb T, FakeIdesk Idesk, RecordingGateway Gw, RecordingRealtime Rt, TicketService Svc);
+    private sealed record Rig(TestDb T, FakeIdesk Idesk, RecordingGateway Gw, RecordingRealtime Rt, TicketService Svc, IdeskCalendarSync Cal);
 
     private static Rig Setup()
     {
@@ -97,7 +105,8 @@ public class TicketTests
         var idesk = new FakeIdesk();
         var gw = new RecordingGateway();
         var rt = new RecordingRealtime();
-        return new Rig(t, idesk, gw, rt, new TicketService(t.Db, idesk, new TicketModuleCache(), gw, rt, NullLogger<TicketService>.Instance));
+        var cal = new IdeskCalendarSync(t.Db, idesk, gw, rt);
+        return new Rig(t, idesk, gw, rt, new TicketService(t.Db, idesk, new TicketModuleCache(), gw, rt, NullLogger<TicketService>.Instance, cal), cal);
     }
 
     private static int _seq;
@@ -117,10 +126,11 @@ public class TicketTests
         string? hardwareType = null, string? date = null, string? time = null) =>
         new(module, category, priority, title, "Tidak bisa konek sejak pagi.", criticalReason, "Laptop", null, hardwareType, date, time, attachments);
 
-    private static string Webhook(string id, string evt, IdeskTicket t, string? previousStatus = null) =>
+    private static string Webhook(string id, string evt, IdeskTicket t, string? previousStatus = null, object? message = null,
+        object? visit = null) =>
         JsonSerializer.Serialize(new
         {
-            id, @event = evt, occurredAt = DateTime.UtcNow.ToString("O"), previousStatus,
+            id, @event = evt, occurredAt = DateTime.UtcNow.ToString("O"), previousStatus, message,
             ticket = new
             {
                 ticketId = t.TicketId, ticketNumber = t.TicketNumber, externalRef = t.ExternalRef, origin = t.Origin,
@@ -128,7 +138,7 @@ public class TicketTests
                 module = t.Module, category = t.Category, title = t.Title,
                 assignee = t.AssigneeName is null ? null : new { name = t.AssigneeName },
                 slaTarget = (string?)null, createdAt = t.CreatedAt.ToString("O"), updatedAt = t.UpdatedAt.ToString("O"),
-                resolvedAt = (string?)null, closedAt = (string?)null, url = t.Url,
+                resolvedAt = (string?)null, closedAt = (string?)null, url = t.Url, visit,
             },
         });
 
@@ -543,5 +553,197 @@ public class TicketTests
         await x.Svc.SyncAsync(u.Id, false);
         Assert.Single((await x.Svc.ListAsync(u.Id, true)).Tickets);
         Assert.Equal(2, (await x.Svc.ListAsync(u.Id, false)).Tickets.Count);
+    }
+
+    // ── Chat replies ──────────────────────────────────────────────────────
+
+    private static object Msg(string preview, string sender = "Rizky Aditya") =>
+        new { id = Guid.NewGuid().ToString(), sender = new { name = sender }, preview, attachmentCount = 0, createdAt = DateTime.UtcNow.ToString("O") };
+
+    [Fact]
+    public async Task Reply_webhook_notifies_once_per_ticket_with_a_running_count()
+    {
+        var x = Setup(); using var _ = x.T;
+        x.T.AddUser("U1");
+        var remote = Remote(null, "U1", TicketStatus.InProgress, number: "041026-INS-0001");
+
+        await x.Svc.ApplyWebhookAsync(Webhook("m1", "ticket.message_created", remote, message: Msg("Sudah saya cek")));
+        await x.Svc.ApplyWebhookAsync(Webhook("m2", "ticket.message_created", remote, message: Msg("Mohon restart laptop")));
+
+        var row = await x.T.Verify().Tickets.SingleAsync();
+        Assert.Equal(2, row.UnreadMessages);
+        Assert.Equal("Mohon restart laptop", row.LastMessagePreview);
+        Assert.Equal(2, x.Gw.Sent.Count);
+        var last = x.Gw.Sent[^1];
+        Assert.Equal(TicketService.ReplyEvent, last.Type);
+        Assert.Equal("2 new replies on 041026-INS-0001", last.Title);
+        Assert.Contains("Rizky Aditya: “Mohon restart laptop”", last.Message);
+        Assert.Equal($"/tickets/{row.Id}#messages", last.Url);
+        Assert.Equal("New reply on 041026-INS-0001", x.Gw.Sent[0].Title);
+    }
+
+    [Fact]
+    public async Task Opening_messages_clears_the_count_and_never_returns_a_nik()
+    {
+        var x = Setup(); using var _ = x.T;
+        var u = x.T.AddUser("00000024");
+        var remote = Remote(null, "00000024", TicketStatus.InProgress);
+        await x.Svc.ApplyWebhookAsync(Webhook("m1", "ticket.message_created", remote, message: Msg("Sudah saya cek")));
+        var id = (await x.T.Verify().Tickets.SingleAsync()).Id;
+        x.Idesk.MessagesResult = new(IdeskOutcome.Ok, new IdeskMessages("https://idesk.example/t", [
+            new IdeskMessage("a", "Budi", true, "Wifi mati", [], DateTime.UtcNow.AddHours(-1)),
+            new IdeskMessage("b", "Rizky Aditya", false, "Sudah saya cek", ["reset.pdf"], DateTime.UtcNow),
+        ]));
+
+        var m = await x.Svc.GetMessagesAsync(u.Id, id);
+
+        Assert.NotNull(m);
+        Assert.Equal(1, m!.Unread);
+        Assert.Equal(2, m.Messages.Count);
+        Assert.True(m.Messages[0].Mine);
+        Assert.Null(m.Messages[0].Sender);
+        Assert.Equal("Rizky Aditya", m.Messages[1].Sender);
+        Assert.Equal(0, (await x.T.Verify().Tickets.SingleAsync()).UnreadMessages);
+        Assert.DoesNotContain("00000024", JsonSerializer.Serialize(m));
+        Assert.DoesNotContain("00000024", JsonSerializer.Serialize(await x.Svc.GetAsync(u.Id, id)));
+    }
+
+    [Fact]
+    public async Task Messages_fall_back_to_the_last_preview_when_idesk_is_down()
+    {
+        var x = Setup(); using var _ = x.T;
+        var u = x.T.AddUser("U1");
+        await x.Svc.ApplyWebhookAsync(Webhook("m1", "ticket.message_created", Remote(null, "U1"), message: Msg("Ini panduannya")));
+        var id = (await x.T.Verify().Tickets.SingleAsync()).Id;
+        x.Idesk.MessagesResult = new(IdeskOutcome.Unreachable);
+
+        var m = await x.Svc.GetMessagesAsync(u.Id, id);
+
+        Assert.True(m!.Offline);
+        Assert.Equal("Ini panduannya", m.Last!.Content);
+        Assert.Null(await x.Svc.GetMessagesAsync(x.T.AddUser("U2").Id, id));
+    }
+
+    // ── Visits on the calendar ────────────────────────────────────────────
+
+    [Fact]
+    public async Task Installation_visit_lands_on_the_requesters_calendar_and_follows_moves()
+    {
+        var x = Setup(); using var _ = x.T;
+        var u = x.T.AddUser("U1");
+        var remote = Remote(null, "U1", TicketStatus.Todo) with { Category = "HARDWARE_INSTALLATION" };
+        var visit = new { start = "2026-10-13T02:00:00.000Z", end = "2026-10-13T03:00:00.000Z", hardwareType = "PRINTER" };
+        await x.Svc.ApplyWebhookAsync(Webhook("v1", "ticket.created", remote, visit: visit));
+
+        var ev = await x.T.Verify().CalendarEvents.SingleAsync();
+        Assert.Equal(u.Id, ev.OwnerId);
+        Assert.Equal(CalendarSources.IdeskVisit, ev.Source);
+        Assert.Equal(new DateTime(2026, 10, 13, 2, 0, 0, DateTimeKind.Utc), ev.StartAt);
+        Assert.Equal(CalendarVisibility.Busy, ev.Visibility);
+
+        var moved = new { start = "2026-10-14T07:00:00.000Z", end = "2026-10-14T08:00:00.000Z", hardwareType = "PRINTER" };
+        await x.Svc.ApplyWebhookAsync(Webhook("v2", "ticket.visit_changed", remote with { UpdatedAt = DateTime.UtcNow }, visit: moved));
+        ev = await x.T.Verify().CalendarEvents.SingleAsync();
+        Assert.Equal(new DateTime(2026, 10, 14, 7, 0, 0, DateTimeKind.Utc), ev.StartAt);
+        Assert.Contains(x.Gw.Sent, n => n.Title == "ICT visit moved to Wed 14 Oct, 14:00");
+
+        await x.Svc.ApplyWebhookAsync(Webhook("v3", "ticket.status_changed",
+            remote with { Status = TicketStatus.Cancelled, UpdatedAt = DateTime.UtcNow.AddSeconds(1) }, visit: moved));
+        Assert.Empty(await x.T.Verify().CalendarEvents.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Picked_installation_slot_shows_on_the_calendar_right_after_submit()
+    {
+        var x = Setup(); using var _ = x.T;
+        var u = x.T.AddUser("U1");
+        var day = DateOnly.FromDateTime(DateTime.Today.AddDays(1));
+        while (day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday) day = day.AddDays(1);
+        await x.Svc.CreateAsync(u.Id, Req(category: "HARDWARE_INSTALLATION", hardwareType: "PC", date: day.ToString("yyyy-MM-dd"), time: "09:00"));
+
+        var ev = await x.T.Verify().CalendarEvents.SingleAsync();
+        Assert.Equal(day.ToDateTime(new TimeOnly(2, 0), DateTimeKind.Utc), ev.StartAt);   // 09:00 WIB
+        Assert.Equal(TimeSpan.FromHours(1), ev.EndAt - ev.StartAt);
+    }
+
+    // ── Zoom bookings ─────────────────────────────────────────────────────
+
+    private static object Booking(string id, string start, string end, params (string? Nik, string Name, string Role)[] people) => new
+    {
+        bookingId = id, seriesId = (string?)null, title = "Weekly sync", description = "Agenda Q4", start, end, timezone = "Asia/Jakarta",
+        account = new { name = "Zoom 1" }, zoom = new { meetingId = "81234567890", joinUrl = "https://zoom.us/j/1?pwd=x", passcode = "abc123" },
+        attendees = people.Select(p => new { nik = p.Nik, name = p.Name, role = p.Role }).ToArray(),
+        updatedAt = DateTime.UtcNow.ToString("O"), url = "https://idesk.example/zoom-booking/" + id,
+    };
+
+    private static string BookingHook(string eventId, string evt, object booking) =>
+        JsonSerializer.Serialize(new { id = eventId, @event = evt, occurredAt = DateTime.UtcNow.ToString("O"), booking });
+
+    [Fact]
+    public async Task Zoom_booking_goes_on_every_attendees_calendar_and_only_invitees_are_notified()
+    {
+        var x = Setup(); using var _ = x.T;
+        x.T.AddUser("00000024"); x.T.AddUser("00000031");
+        var b = Booking("bk-1", "2026-10-12T02:00:00.000Z", "2026-10-12T03:30:00.000Z",
+            ("00000024", "Budi", "BOOKER"), ("00000031", "Sari Dewi", "PARTICIPANT"), (null, "Guest", "PARTICIPANT"));
+
+        Assert.Equal(TicketWebhookKind.Applied, await x.Svc.ApplyWebhookAsync(BookingHook("z1", "zoom_booking.created", b)));
+        Assert.Equal(TicketWebhookKind.Duplicate, await x.Svc.ApplyWebhookAsync(BookingHook("z1", "zoom_booking.created", b)));
+
+        var rows = await x.T.Verify().CalendarEvents.ToListAsync();
+        Assert.Equal(2, rows.Count);
+        Assert.All(rows, r => Assert.Equal(CalendarSources.IdeskZoom, r.Source));
+        Assert.Equal("https://zoom.us/j/1?pwd=x", rows[0].Link);
+        Assert.Contains("Passcode abc123", rows[0].Notes);
+        Assert.DoesNotContain("00000024", rows[0].ExternalPeople);
+        var invite = Assert.Single(x.Gw.Sent);
+        Assert.Equal("Budi invited you to a Zoom meeting", invite.Title);
+    }
+
+    [Fact]
+    public async Task Zoom_booking_update_moves_and_drops_attendees_and_cancel_removes_it()
+    {
+        var x = Setup(); using var _ = x.T;
+        x.T.AddUser("B"); x.T.AddUser("P"); var q = x.T.AddUser("Q");
+        await x.Svc.ApplyWebhookAsync(BookingHook("z1", "zoom_booking.created",
+            Booking("bk", "2026-10-12T02:00:00Z", "2026-10-12T03:00:00Z", ("B", "B", "BOOKER"), ("P", "P", "PARTICIPANT"), ("Q", "Q", "PARTICIPANT"))));
+        await x.Svc.ApplyWebhookAsync(BookingHook("z2", "zoom_booking.updated",
+            Booking("bk", "2026-10-13T02:00:00Z", "2026-10-13T03:00:00Z", ("B", "B", "BOOKER"), ("P", "P", "PARTICIPANT"))));
+
+        var rows = await x.T.Verify().CalendarEvents.ToListAsync();
+        Assert.Equal(2, rows.Count);
+        Assert.DoesNotContain(rows, r => r.OwnerId == q.Id);
+        Assert.All(rows, r => Assert.Equal(new DateTime(2026, 10, 13, 2, 0, 0, DateTimeKind.Utc), r.StartAt));
+
+        await x.Svc.ApplyWebhookAsync(JsonSerializer.Serialize(new { id = "z3", @event = "zoom_booking.cancelled", booking = new { bookingId = "bk", seriesId = (string?)null } }));
+        Assert.Empty(await x.T.Verify().CalendarEvents.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Resync_replaces_a_users_idesk_bookings_in_the_window()
+    {
+        var x = Setup(); using var _ = x.T;
+        var u = x.T.AddUser("U1");
+        var soon = DateTime.UtcNow.Date.AddDays(2).AddHours(2);
+        await x.Svc.ApplyWebhookAsync(BookingHook("z1", "zoom_booking.created",
+            Booking("old", soon.ToString("O"), soon.AddHours(1).ToString("O"), ("U1", "U", "BOOKER"))));
+        var parsed = HttpIdeskClient.ParseBooking(JsonDocument.Parse(JsonSerializer.Serialize(
+            Booking("new", soon.AddDays(1).ToString("O"), soon.AddDays(1).AddHours(1).ToString("O"), ("U1", "U", "BOOKER")))).RootElement)!;
+        x.Idesk.Bookings["U1"] = [parsed];
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        Assert.True(await x.Cal.ResyncUserAsync(u.Id, "U1", today.AddDays(-7), today.AddDays(85)));
+
+        var row = await x.T.Verify().CalendarEvents.SingleAsync();
+        Assert.Equal("new", row.ExternalId);
+    }
+
+    [Fact]
+    public async Task Booking_webhook_without_a_ticket_is_accepted()
+    {
+        var x = Setup(); using var _ = x.T;
+        var body = BookingHook("z9", "zoom_booking.created", Booking("bk", "2026-10-12T02:00:00Z", "2026-10-12T03:00:00Z", ("NOBODY", "X", "BOOKER")));
+        Assert.Equal(TicketWebhookKind.Applied, await x.Svc.ApplyWebhookAsync(body));
+        Assert.Empty(await x.T.Verify().CalendarEvents.ToListAsync());
     }
 }

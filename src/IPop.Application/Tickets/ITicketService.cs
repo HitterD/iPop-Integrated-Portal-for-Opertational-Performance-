@@ -29,6 +29,8 @@ public interface ITicketService
     /// Pulls ?nik=&state=all from iDesk into the mirror, then lists like ListAsync.
     Task<TicketListDto> SyncAsync(Guid userId, bool openOnly, CancellationToken ct = default);
     Task<TicketDetailDto?> GetAsync(Guid userId, Guid id, CancellationToken ct = default);
+    /// The ticket's public chat (read from iDesk); clears its unread reply count. Null = not my ticket.
+    Task<TicketMessagesDto?> GetMessagesAsync(Guid userId, Guid id, CancellationToken ct = default);
     /// Re-reads one ticket from iDesk into the mirror (no notifications). True when something changed.
     Task<bool> RefreshAsync(Guid id, CancellationToken ct = default);
     Task<TicketCreateOutcome> CreateAsync(Guid userId, CreateTicketRequest req, CancellationToken ct = default);

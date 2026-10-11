@@ -159,6 +159,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<TicketEvent> TicketEvents => Set<TicketEvent>();
     public DbSet<TicketUserState> TicketUserStates => Set<TicketUserState>();
     public DbSet<TicketRefCounter> TicketRefCounters => Set<TicketRefCounter>();
+    public DbSet<IdeskWebhookReceipt> IdeskWebhookReceipts => Set<IdeskWebhookReceipt>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -896,6 +897,11 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.Visibility).HasMaxLength(8).HasDefaultValue(CalendarVisibility.Busy);
             e.Property(x => x.Recurrence).HasMaxLength(120);
             e.HasIndex(x => x.SeriesId);
+            e.Property(x => x.Source).HasMaxLength(16);
+            e.Property(x => x.ExternalId).HasMaxLength(64);
+            e.Property(x => x.ExternalUrl).HasMaxLength(500);
+            e.Property(x => x.ExternalPeople).HasMaxLength(8000);
+            e.HasIndex(x => new { x.Source, x.ExternalId, x.OwnerId }).IsUnique().HasFilter("\"Source\" IS NOT NULL");
             e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne(x => x.Meeting).WithMany().HasForeignKey(x => x.MeetingId).OnDelete(DeleteBehavior.SetNull);
         });
@@ -1253,6 +1259,8 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
             e.Property(x => x.ScheduledDate).HasMaxLength(10);
             e.Property(x => x.ScheduledTime).HasMaxLength(5);
             e.Property(x => x.AssigneeName).HasMaxLength(200);
+            e.Property(x => x.LastMessagePreview).HasMaxLength(200);
+            e.Property(x => x.LastMessageSender).HasMaxLength(200);
             e.Property(x => x.Url).HasMaxLength(500);
             e.Property(x => x.LastError).HasMaxLength(1000);
             e.HasIndex(x => x.ExternalRef).IsUnique();
@@ -1281,6 +1289,12 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
         {
             e.HasKey(x => x.Year);
             e.Property(x => x.Year).ValueGeneratedNever();
+        });
+        b.Entity<IdeskWebhookReceipt>(e =>
+        {
+            e.HasKey(x => x.EventId);
+            e.Property(x => x.EventId).HasMaxLength(100);
+            e.HasIndex(x => x.ReceivedAt);
         });
     }
 }

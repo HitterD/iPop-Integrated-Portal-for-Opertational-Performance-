@@ -32,6 +32,9 @@ public partial class Tickets
 
     private TicketListDto? list;
     private TicketDetailDto? detail;
+    private TicketMessagesDto? msgs;
+    private int msgsUnread;
+    private Guid? msgsFor;
     private bool detailMissing;
     private bool showAll, syncing, syncFailedOnce, copied, retrying;
     private string q = "";
@@ -177,9 +180,28 @@ public partial class Tickets
             detail = d;
             detailMissing = false;
             ClearMotionLater();
+            if (msgsFor != id || (live && d.UnreadMessages > 0)) _ = InvokeAsync(() => LoadMessagesAsync(id));
         }
         else if (r.Status == TicketCallStatus.NotFound) { detail = null; detailMissing = true; }
         else if (!live && detail?.Id != id) Toasts.Show("Couldn't load the ticket.", ToastKind.Error);
+    }
+
+    /// The public chat from iDesk. Opening it clears the reply counter (server side); the "new" marks stay
+    /// on the replies that were unread when it opened.
+    private async Task LoadMessagesAsync(Guid id)
+    {
+        if (msgsFor != id) { msgs = null; msgsUnread = 0; }
+        msgsFor = id;
+        StateHasChanged();
+        var r = await Api.GetMessagesAsync(id);
+        if (msgsFor != id || r.Value is not { } m) return;
+        msgsUnread = Math.Max(m.Unread, msgs is null ? 0 : msgsUnread);
+        msgs = m;
+        if (m.Unread > 0 && list is not null)
+            list = list with { Tickets = list.Tickets.Select(t => t.Id == id ? t with { UnreadMessages = 0 } : t).ToList() };
+        StateHasChanged();
+        if (Nav.Uri.EndsWith("#messages", StringComparison.Ordinal))
+            try { await JS.InvokeVoidAsync("ipop.scrollIntoView", "#messages"); } catch (JSException) { } catch (InvalidOperationException) { }
     }
 
     /// Re-reads the list after a change; rows that changed section slide there (FLIP).

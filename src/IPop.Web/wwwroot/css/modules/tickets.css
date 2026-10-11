@@ -344,3 +344,36 @@
   transition: color .15s, background-color .15s, border-color .15s; }
 .tk-sugg button:hover { color: var(--ink); background: var(--surface-3); }
 .tk-sugg button.on { color: var(--surface); background: var(--ink); border-color: var(--ink); }
+
+/* Messages: the ticket's public chat from iDesk, read-only. */
+.tk-msgs-h { display: flex; align-items: center; gap: 8px; scroll-margin-top: 70px; }
+.tk-msgs-h .sp { flex: 1; }
+.tk-msgs-h .ro { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--ink-3); font-size: 12px; }
+.tk-new { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 6px; border-radius: 9px; background: #0f7cc4; color: #fff; font-size: 10.5px; font-weight: 700; text-transform: none; letter-spacing: 0; }
+.tk-msgs { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: var(--surface-2, var(--fill)); display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+.tk-msg { display: flex; gap: 9px; max-width: 86%; }
+.tk-msg.mine { align-self: flex-end; flex-direction: row-reverse; }
+.tk-msg .av { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; color: #fff; font-size: 10.5px; font-weight: 600; flex: none; }
+.tk-msg .bub { background: var(--surface); border: 1px solid var(--line); border-radius: 14px 14px 14px 4px; padding: 8px 11px; font-size: 13px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.tk-msg.mine .bub { background: var(--accent-soft); border-color: transparent; border-radius: 14px 14px 4px 14px; }
+.tk-msg .who { display: block; font-size: 11.5px; font-weight: 600; color: #0f7cc4; margin-bottom: 2px; white-space: normal; }
+:root[data-theme="dark"] .tk-msg .who { color: #5db3ec; }
+.tk-msg.mine .who { color: var(--accent); }
+.tk-msg time { font-size: 10.5px; color: var(--ink-3); margin-left: 8px; }
+.tk-msg.new .bub { animation: tk-msg-in .4s var(--ease-smooth, ease-out) both; box-shadow: 0 0 0 2px color-mix(in srgb, #0f7cc4 22%, transparent); }
+@keyframes tk-msg-in { from { opacity: 0; transform: translateY(8px); } }
+.tk-msg .file { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 6px 9px; border-radius: 9px; background: var(--fill); font-size: 12px; color: var(--ink-2); white-space: normal; }
+.tk-msg .file svg { width: 14px; height: 14px; }
+.tk-msg .file a { margin-left: auto; color: #0f7cc4; font-weight: 600; text-decoration: none; }
+.tk-replybar { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--line); background: var(--surface); color: var(--ink-2); font-size: 12.5px; }
+.tk-replybar .sp { flex: 1; }
+.tk-msgs-empty { color: var(--ink-3); font-size: 13px; padding: 4px 2px; }
+.tk-msgs .skel { height: 38px; border-radius: 12px; }
+.tk-msgs .skel.r { align-self: flex-end; width: 55%; }
+.tk-msgs .skel.l { width: 70%; }
+.tk-msgs-off { display: flex; gap: 8px; align-items: flex-start; padding: 9px 11px; border-radius: 10px; background: var(--warn-soft); font-size: 12.5px; color: var(--ink); }
+.tk-msgs-off svg { width: 16px; height: 16px; flex: none; margin-top: 1px; }
+.tk-unread { display: inline-grid; place-items: center; min-width: 16px; height: 16px; padding: 0 5px; border-radius: 8px; background: #0f7cc4; color: #fff; font-size: 10px; font-weight: 700; margin-left: 6px; }
+.tk-visit-cal { display: flex; gap: 10px; align-items: flex-start; text-align: left; margin: 0 0 16px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, #0f7cc4 11%, transparent); font-size: 12.5px; }
+.tk-visit-cal svg { width: 18px; height: 18px; color: #0f7cc4; flex: none; margin-top: 1px; }
+@media (prefers-reduced-motion: reduce) { .tk-msg.new .bub { animation: none; } }

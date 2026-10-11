@@ -89,10 +89,29 @@ public class CalendarEvent
     /// SeriesId; <see cref="Recurrence"/> keeps the rule (e.g. "W:1,4;U:2026-12-31") for the form.
     public Guid? SeriesId { get; set; }
     public string? Recurrence { get; set; }
+    /// Set for entries mirrored from another system (<see cref="CalendarSources"/>); those are read-only
+    /// in iPop and keyed per owner by <see cref="ExternalId"/>. Null = made in iPop.
+    public string? Source { get; set; }
+    public string? ExternalId { get; set; }
+    /// Where the entry is managed (opens the other system).
+    public string? ExternalUrl { get; set; }
+    /// Attendee names of a mirrored entry (JSON array of { name, userId? }); names only, never NIKs.
+    public string? ExternalPeople { get; set; }
     public DateTime CreatedAt { get; set; }
 
     public User Owner { get; set; } = default!;
     public Meeting? Meeting { get; set; }
+}
+
+/// Systems whose bookings iPop mirrors onto calendars.
+public static class CalendarSources
+{
+    /// A Zoom meeting booked in iDesk; ExternalId = bookingId.
+    public const string IdeskZoom = "idesk-zoom";
+    /// An ICT installation visit of an iDesk ticket; ExternalId = iDesk ticketId.
+    public const string IdeskVisit = "idesk-visit";
+
+    public static bool IsExternal(string? source) => !string.IsNullOrEmpty(source);
 }
 
 /// A national or company holiday, set by admins: shown on everyone's calendar and avoided by Find a time.

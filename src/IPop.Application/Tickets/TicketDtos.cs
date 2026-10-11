@@ -41,10 +41,11 @@ public record TicketListItemDto(
     string Category,
     string Title,
     DateTime CreatedAt,
-    DateTime UpdatedAt);
+    DateTime UpdatedAt,
+    int UnreadMessages = 0);
 
 public record TicketEventDto(
-    string Kind,            // created | assigned | status_changed | resolved | closed | sent | send_failed
+    string Kind,            // created | assigned | status_changed | resolved | closed | message_created | visit_changed | sent | send_failed
     string? FromStatus,
     string? ToStatus,
     string? Assignee,
@@ -79,7 +80,17 @@ public record TicketDetailDto(
     string? Url,            // open in iDesk
     string? LastError,      // why sending failed
     IReadOnlyList<TicketAttachmentDto> Attachments,
-    IReadOnlyList<TicketEventDto> Events);
+    IReadOnlyList<TicketEventDto> Events,
+    TicketVisitDto? Visit = null,   // ICT visit of a hardware installation (UTC); also on the calendar
+    int UnreadMessages = 0);
+
+public record TicketVisitDto(DateTime Start, DateTime End);
+
+/// One message of the ticket's public chat in iDesk. Sender is null for the requester's own messages.
+public record TicketMessageDto(string Id, string? Sender, bool Mine, string Content, IReadOnlyList<string> Attachments, DateTime CreatedAt);
+
+/// Offline = iDesk couldn't be reached; Last then holds the latest preview the webhook brought.
+public record TicketMessagesDto(IReadOnlyList<TicketMessageDto> Messages, int Unread, string? Url, bool Offline, TicketMessageDto? Last);
 
 public record TicketListDto(
     IReadOnlyList<TicketListItemDto> Tickets,

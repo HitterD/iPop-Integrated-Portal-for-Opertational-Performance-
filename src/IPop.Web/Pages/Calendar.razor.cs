@@ -32,7 +32,11 @@ public partial class Calendar
         string? Notes, int? ReminderMinutes, Guid? RoomId, string? RoomName, Guid? MeetingId, string? MeetingStatus,
         string OwnerName, bool CanEdit, List<Person> Attendees, string Visibility = "busy",
         string? OwnerNik = null, string? CreatedBy = null, string? SentBy = null, string? UpdatedBy = null, string? DelegateLevel = null,
-        string? DelegateForNik = null, string? DelegateForName = null, Guid? SeriesId = null, string? Recurrence = null, string? RecurrenceText = null);
+        string? DelegateForNik = null, string? DelegateForName = null, Guid? SeriesId = null, string? Recurrence = null, string? RecurrenceText = null,
+        ExternalInfo? External = null);
+    /// Booked in iDesk (Zoom or an ICT visit): read-only here; Url manages it there. People by name only.
+    public record ExternalInfo(string Source, string? Url, List<ExternalPerson> People, bool CanSetPrivacy);
+    public record ExternalPerson(string Name, Guid? UserId, bool Booker, bool Me);
 
     private sealed record SourceDef(string Key, string Label, string Icon);
     private static readonly SourceDef[] Sources =
@@ -44,6 +48,7 @@ public partial class Calendar
         new("mail", "Scheduled mail", "mail"),
         new("news", "News & Memos", "newspaper"),
         new("tickets", "Tickets", "life-buoy"),
+        new("idesk", "iDesk bookings", "video"),
         new("holidays", "Holidays", "party-popper"),
     ];
     private static readonly (string, string)[] Views = [("day", "Day"), ("week", "Week"), ("month", "Month"), ("agenda", "Agenda")];
@@ -559,6 +564,25 @@ public partial class Calendar
         // Own/invited events open in the drawer; everything else deep-links into its module.
         if (item.EventId is { } eid) { await OpenEventAsync(eid); return; }
         if (item.Url is not null) Nav.NavigateTo(item.Url);
+    }
+
+    /// iDesk entries keep their times and details from iDesk; only Normal/Private is the owner's choice.
+    private async Task ToggleExternalPrivacyAsync()
+    {
+        if (detail is not { External: not null } d) return;
+        var next = d.Visibility == "private" ? "busy" : "private";
+        var res = await Auth.SendAsync(HttpMethod.Put, $"/api/calendar/events/{d.Id}",
+            new { title = d.Title, startAt = d.StartAt, endAt = d.EndAt, visibility = next });
+        if (!res.IsSuccessStatusCode) { Toasts.Show("Couldn't change the privacy. Try again.", ToastKind.Error); return; }
+        detail = await res.Content.ReadFromJsonAsync<EventDetail>() ?? d;
+        Toasts.Show(next == "private" ? "Now private — others only see Busy" : "Back to normal", ToastKind.Success);
+        await LoadAsync();
+    }
+
+    private static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 0 ? "?" : parts.Length == 1 ? parts[0][..1].ToUpperInvariant() : $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}";
     }
 
     private async Task OpenEventAsync(Guid id)

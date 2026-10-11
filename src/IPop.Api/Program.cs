@@ -261,9 +261,15 @@ builder.Services.AddScoped<IAttachmentAccessPolicy, IPop.Infrastructure.Notes.No
 builder.Services.AddSingleton(IPop.Infrastructure.Tickets.IdeskOptions.Bind(builder.Configuration));
 builder.Services.AddSingleton<IPop.Infrastructure.Tickets.TicketModuleCache>();
 builder.Services.AddHttpClient<IPop.Application.Tickets.IIdeskClient, IPop.Infrastructure.Tickets.HttpIdeskClient>();
-builder.Services.AddScoped<IPop.Application.Tickets.ITicketService, IPop.Infrastructure.Tickets.TicketService>();
+builder.Services.AddScoped<IPop.Infrastructure.Tickets.IdeskCalendarSync>();
+builder.Services.AddScoped<IPop.Application.Tickets.ITicketService>(sp => new IPop.Infrastructure.Tickets.TicketService(
+    sp.GetRequiredService<IPop.Infrastructure.Persistence.IPopDbContext>(), sp.GetRequiredService<IPop.Application.Tickets.IIdeskClient>(),
+    sp.GetRequiredService<IPop.Infrastructure.Tickets.TicketModuleCache>(), sp.GetRequiredService<IPop.Application.Notifications.INotificationGatewayService>(),
+    sp.GetRequiredService<IPop.Application.Realtime.IRealtime>(), sp.GetRequiredService<ILogger<IPop.Infrastructure.Tickets.TicketService>>(),
+    sp.GetRequiredService<IPop.Infrastructure.Tickets.IdeskCalendarSync>()));
 builder.Services.AddHostedService<IPop.Infrastructure.Tickets.TicketOutboxWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Tickets.TicketReconcileWorker>();
+builder.Services.AddHostedService<IPop.Infrastructure.Tickets.IdeskCalendarWorker>();
 
 builder.Services.AddScoped<IHrisSyncService, HrisSyncService>();
 // Adapter by config (spec §4): Production → HttpHrisGateway (Polly), otherwise JSON file.
