@@ -292,6 +292,8 @@ public static class TicketUi
                 "assigned" => ("inf", "user", "Assigned", when),
                 "resolved" => ("hot", "check", string.IsNullOrWhiteSpace(e.Assignee) ? "Marked <b>resolved</b>" : $"Marked <b>resolved</b> by {E(e.Assignee)}", when),
                 "closed" => ("ok", "check-check", "<b>Closed</b>", when),
+                "message_created" => ("inf", "message-square", string.IsNullOrWhiteSpace(e.Assignee) ? "ICT replied" : $"<b>{E(e.Assignee)}</b> replied", when),
+                "visit_changed" => ("inf", "calendar-clock", "ICT visit <b>rescheduled</b>", when),
                 _ => StatusChange(e.ToStatus, when),
             };
             rows.Add(new(key, css, icon, new MarkupString(html), sub));
