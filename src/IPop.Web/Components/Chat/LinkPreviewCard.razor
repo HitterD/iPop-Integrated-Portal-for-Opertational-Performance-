@@ -9,7 +9,7 @@
    viewport (ipopLinks.observe), the whole card is a link handled by links.js. Composer mode:
    loads at once, is not a link, and carries the "Remove link preview" button.
    204 / error → renders nothing; never blocks the bubble. *@
-<div class="lp-slot @(Composer ? "lp-compose" : "")" @ref="_el">
+<div class="lp-slot @(Composer ? "lp-compose" : "") @(InBubble ? "lp-in-bubble" : "")" @ref="_el">
     @if (_preview is { } p)
     {
         var ip = p.Internal;
@@ -40,6 +40,8 @@
 @code {
     [Parameter, EditorRequired] public string Url { get; set; } = "";
     [Parameter] public bool Composer { get; set; }
+    /// Inside a message bubble, above its text: large image on top, domain + title under it.
+    [Parameter] public bool InBubble { get; set; }
     [Parameter] public EventCallback<string> OnRemove { get; set; }
 
     private ElementReference _el;
@@ -56,10 +58,11 @@
         }
         else if (img is not null)
         {
-            <span class="lp-thumb" aria-hidden="true"><img src="@img" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" onerror="this.parentElement.style.display='none'" /></span>
+            <span class="lp-thumb @(InBubble ? "lp-hero" : "")" aria-hidden="true"><img src="@img" alt="" loading="lazy" referrerpolicy="no-referrer" draggable="false" onerror="this.parentElement.style.display='none'" /></span>
         }
         <span class="lp-text">
-            @if (!string.IsNullOrWhiteSpace(site)) { <span class="lp-site">@site</span> }
+            @if (InBubble) { <span class="lp-site lp-host">@HostOf(Url)</span> }
+            else if (!string.IsNullOrWhiteSpace(site)) { <span class="lp-site">@site</span> }
             <span class="lp-title">@title</span>
             @if (!string.IsNullOrWhiteSpace(sub)) { <span class="lp-desc">@sub</span> }
         </span>

@@ -123,6 +123,11 @@
                         }
                     </div>
                 }
+                @if (PreviewUrl is { } previewUrl)
+                {
+                    @* One bubble: preview on top, the message (with its link) underneath. *@
+                    <LinkPreviewCard @key="previewUrl" Url="@previewUrl" InBubble="true" />
+                }
                 @if (!string.IsNullOrWhiteSpace(Message.Content) && !IsAttachmentPlaceholder(Message))
                 {
                     <div class="message-text">
@@ -132,10 +137,6 @@
             }
             @if (Message.Type != "system") { @Meta(false) }
         </div>
-        @if (PreviewUrl is { } previewUrl)
-        {
-            <LinkPreviewCard @key="previewUrl" Url="@previewUrl" />
-        }
         @if (Reactions.Count > 0)
         {
             <div class="reactions">
@@ -291,7 +292,9 @@
                 return hasOnlyImages ? "media-only media-image-only" : "media-only media-card-only";
             if (JumboCount > 0) return $"jumbo-emoji jumbo-{JumboCount}";
             if (IsImageSticker) return "sticker-only";
-            return (Attachments.Count > 0 && !string.IsNullOrWhiteSpace(Message.Content) && !IsAttachmentPlaceholder(Message)) ? "has-media-and-text" : "";
+            if (Attachments.Count > 0 && !string.IsNullOrWhiteSpace(Message.Content) && !IsAttachmentPlaceholder(Message))
+                return hasOnlyImages ? "has-media-and-text media-captioned" : "has-media-and-text";
+            return PreviewUrl is not null ? "has-link-preview" : "";
         }
     }
 

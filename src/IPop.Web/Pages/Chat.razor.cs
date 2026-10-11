@@ -33,7 +33,10 @@ public partial class Chat
     private string messageText = "";
     private string roomSearchQuery = "";
     private bool createDropdownOpen;
-    private RoomTab activeTab = RoomTab.Direct;
+    private RoomFilter roomFilter = RoomFilter.All;
+    private bool roomMoreOpen;
+    /// Which pin the pinned bar shows: 0 = newest. A tap jumps to it and moves to the next older one.
+    private int pinCursor;
 
     // ---- Message grouping / unread divider / read receipts ----
 
@@ -410,6 +413,7 @@ public partial class Chat
     {
         if (ChatSvc.ActiveRoomId is null) return;
         pinnedMessages = (await Auth.GetAsync<List<IPop.Application.Chat.PinnedMessageDto>>($"/api/chat/rooms/{ChatSvc.ActiveRoomId}/pins")) ?? [];
+        pinCursor = 0;
         StateHasChanged();
     }
 
@@ -510,7 +514,7 @@ public partial class Chat
 
     private record UserSearchResult(Guid Id, string Nik, string Name, string? Email);
 
-    private enum RoomTab { Direct, Groups }
+    private enum RoomFilter { All, Unread, Groups }
 
     // ---- Lifecycle ----
 

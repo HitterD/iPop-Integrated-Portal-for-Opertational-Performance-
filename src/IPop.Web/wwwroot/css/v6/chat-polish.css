@@ -1,0 +1,163 @@
+/* ============ Chat polish (approved 2026-10-11) ============
+   Mockup: docs/mockups/ipop-apple/chat-apple-polish.html.
+   Loaded after css/v6/chat.css and css/components/link-preview.css, before css/mobile/chat.css.
+   - Room pane: search + ⋯ menu + compose, one row of filter chips.
+   - Header: Search · Call · Info only, larger icons and name.
+   - Pinned bar: neutral glass card over the wallpaper; a rail shows which pin is on screen.
+   - Image + caption: the bubble is as wide as the image, the caption wraps under it.
+   - Link preview: inside the bubble, above the text, large image on top. */
+
+/* ---------- Room pane ---------- */
+.chat-area .room-top-bar { gap: 6px; padding: 0 2px 10px; }
+.chat-area .room-search-box input { height: 36px; font-size: 14px; }
+.chat-area .compose-btn { width: 36px; height: 36px; }
+.chat-area .room-more-wrap { position: relative; flex: none; }
+.chat-area .room-more-menu-btn {
+  width: 36px; height: 36px; border: none; border-radius: 10px; background: transparent; color: var(--ink-2);
+  display: grid; place-items: center; cursor: pointer;
+}
+.chat-area .room-more-menu-btn:hover, .chat-area .room-more-menu-btn.on { background: var(--fill); color: var(--ink); }
+.chat-area .room-more-menu-btn .lucide { width: 19px; height: 19px; }
+.chat-area .room-more-pop {
+  position: absolute; top: 42px; right: -42px; z-index: 50; min-width: 220px; padding: 6px;
+  border-radius: 14px; border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .18);
+  animation: mi-pop-in .16s cubic-bezier(.2, .8, .2, 1); transform-origin: top right;
+}
+.chat-area .room-more-pop button {
+  display: flex; align-items: center; gap: 10px; width: 100%; height: 38px; padding: 0 10px;
+  border: 0; border-radius: 9px; background: none; color: var(--ink); font-size: 14px; text-align: left; cursor: pointer;
+}
+.chat-area .room-more-pop button:hover { background: var(--fill); }
+.chat-area .room-more-pop .lucide { width: 17px; height: 17px; color: var(--ink-3); }
+.chat-area .room-more-sep { height: 1px; margin: 5px 8px; background: var(--line-soft); }
+
+.chat-area .room-chips { display: flex; gap: 6px; padding: 0 2px 10px; flex-wrap: wrap; }
+.chat-area .room-chip {
+  height: 30px; padding: 0 12px; border: 0; border-radius: 99px; background: var(--fill);
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--ink-2); transition: background .15s, color .15s;
+}
+.chat-area .room-chip:hover { background: color-mix(in srgb, var(--fill) 70%, var(--ink) 8%); }
+.chat-area .room-chip .n { font-size: 11.5px; font-weight: 700; color: var(--accent-ink, var(--accent)); }
+.chat-area .room-chip.on { background: var(--ink); color: var(--surface); }
+.chat-area .room-chip.on .n { color: inherit; opacity: .8; }
+.chat-area .room-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.chat-area .room-search-messages {
+  display: flex; align-items: center; gap: 10px; width: calc(100% - 4px); margin: 4px 2px 6px; padding: 10px 12px;
+  border: 0; border-radius: 12px; background: var(--surface); color: var(--ink); font-size: 13.5px; text-align: left; cursor: pointer;
+}
+.chat-area .room-search-messages:hover { background: var(--accent-soft); }
+.chat-area .room-search-messages span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-area .room-search-messages .lucide { width: 17px; height: 17px; color: var(--accent); flex: none; }
+.chat-area .room-search-messages .chev { color: var(--ink-4); width: 15px; height: 15px; }
+
+/* Room rows: a little larger for 40+ readers. */
+.chat-area .room-name { font-size: 14.5px; }
+.chat-area .room-preview { font-size: 13px; }
+.chat-area .room-time { font-size: 12px; }
+
+/* ---------- Conversation header ---------- */
+.chat-area .conv-header .header-info { cursor: pointer; border-radius: 10px; }
+.chat-area .conv-header .header-name { font-size: 16px; font-weight: 650; }
+.chat-area .conv-header .status-txt { font-size: 12.5px; }
+.chat-area .header-actions { gap: 4px; }
+.chat-area .header-actions .header-icon-btn { width: 38px; height: 38px; border-radius: 10px; color: var(--ink-2); }
+.chat-area .header-actions .header-icon-btn .lucide { width: 20px; height: 20px; }
+.chat-area .header-actions .header-icon-btn:disabled { opacity: .4; cursor: default; }
+
+/* ---------- Pinned bar ---------- */
+.chat-area .sticky-pinned-bar.glass {
+  position: absolute; z-index: 4; top: 10px; left: 16px; right: 16px; display: flex; align-items: center; gap: 12px;
+  margin: 0; padding: 8px 8px 8px 12px; min-height: 52px;
+  border: 1px solid var(--line-soft); border-left: 1px solid var(--line-soft); border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .08); font-size: 14px; cursor: pointer;
+  transition: background .15s, box-shadow .15s;
+}
+/* The card floats over the top of the list (wallpaper shows through); the list starts below it.
+   With in-room search open the card would cover the results, so it steps aside. */
+.chat-area .conv-body-flex.has-pins .messages { padding-top: 76px; }
+.chat-area .conv-chat-flow:has(.conv-search-bar) .sticky-pinned-bar.glass { display: none; }
+.chat-area .conv-body-flex.has-pins .conv-chat-flow:has(.conv-search-bar) .messages { padding-top: 16px; }
+.chat-area .sticky-pinned-bar.glass:hover { background: color-mix(in srgb, var(--surface) 92%, transparent); box-shadow: 0 6px 20px rgba(0, 0, 0, .11); }
+.chat-area .sticky-pinned-bar.glass:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-area .sticky-pinned-bar .pin-rail { display: flex; flex-direction: column; gap: 3px; align-self: stretch; padding: 3px 0; flex: none; }
+.chat-area .sticky-pinned-bar .pin-rail i { width: 3px; flex: 1; border-radius: 3px; background: var(--ink-4); opacity: .45; transition: background .2s, opacity .2s; }
+.chat-area .sticky-pinned-bar .pin-rail i.on { background: var(--accent); opacity: 1; }
+.chat-area .sticky-pinned-bar.glass .pin-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: 1px; }
+.chat-area .sticky-pinned-bar.glass .pin-tag {
+  display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 650; color: var(--accent-ink, var(--accent));
+  white-space: nowrap; overflow: hidden;
+}
+.chat-area .sticky-pinned-bar.glass .pin-tag .lucide { width: 13px; height: 13px; flex: none; }
+.chat-area .sticky-pinned-bar .pin-count { color: var(--ink-3); font-weight: 600; }
+.chat-area .sticky-pinned-bar.glass .pin-text {
+  font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  animation: pin-text-in .2s ease;
+}
+@keyframes pin-text-in { from { opacity: 0; transform: translateY(3px); } }
+.chat-area .sticky-pinned-bar.glass .pin-all-btn {
+  width: 34px; height: 34px; padding: 0; margin: 0; border-radius: 10px; display: grid; place-items: center; color: var(--ink-3); flex: none;
+}
+.chat-area .sticky-pinned-bar.glass .pin-all-btn:hover { background: var(--fill); color: var(--ink); }
+.chat-area .sticky-pinned-bar.glass .pin-all-btn .lucide { width: 18px; height: 18px; }
+[data-theme="dark"] .chat-area .sticky-pinned-bar.glass { background: color-mix(in srgb, var(--surface) 80%, transparent); }
+[data-theme="dark"] .chat-area .sticky-pinned-bar.glass .pin-text { color: var(--ink); }
+[data-theme="dark"] .chat-area .sticky-pinned-bar.glass .pin-tag { color: var(--accent-ink); }
+
+/* ---------- Image + caption: bubble = image width ---------- */
+.chat-area .msg .bubble.media-captioned {
+  width: clamp(240px, 100%, 340px); max-width: 100%; padding: 4px;
+}
+.chat-area .msg .bubble.media-captioned .msg-attachments { display: block; }
+.chat-area .msg .bubble.media-captioned .att-image { max-width: none; width: 100%; border: 0; border-radius: 13px; }
+.chat-area .msg .bubble.media-captioned .att-list { margin-top: 0; }
+.chat-area .msg .bubble.media-captioned .message-text { padding: 6px 9px 3px; }
+.chat-area .msg .bubble.media-captioned .bmeta.text { right: 12px; bottom: 7px; }
+
+/* ---------- Link preview inside the bubble ---------- */
+.chat-area .msg .bubble.has-link-preview { width: min(340px, 100%); padding: 4px; }
+.chat-area .msg .bubble.has-link-preview .message-text { padding: 6px 9px 3px; }
+.chat-area .msg .bubble.has-link-preview .bmeta.text { right: 12px; bottom: 7px; }
+.chat-area .msg .bubble .lp-slot.lp-in-bubble { width: 100%; margin: 0; }
+/* A URL in the text stays on one line, shortened with … (full address on hover via title),
+   whether or not a preview card loaded. */
+.chat-area .msg .bubble .message-text a.msg-link:not(.unc-link) {
+  display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom;
+  overflow-wrap: normal; word-break: normal;
+}
+.chat-area .msg .lp-in-bubble .lp-card {
+  flex-direction: column; min-height: 0; border: 0; border-radius: 13px; box-shadow: none;
+  background: rgba(0, 0, 0, .05);
+}
+.chat-area .msg .lp-in-bubble .lp-card::before { display: none; }
+.chat-area .msg.sent .lp-in-bubble .lp-card { background: rgba(255, 255, 255, .16); color: #fff; }
+.chat-area .msg .lp-in-bubble a.lp-card:hover { background: rgba(0, 0, 0, .08); border: 0; }
+.chat-area .msg.sent .lp-in-bubble a.lp-card:hover { background: rgba(255, 255, 255, .24); }
+.chat-area .msg .lp-in-bubble .lp-thumb.lp-hero { flex: none; width: 100%; height: 160px; background: rgba(0, 0, 0, .06); }
+.chat-area .msg .lp-in-bubble .lp-thumb.lp-hero img { height: 100%; min-height: 0; }
+.chat-area .msg .lp-in-bubble .lp-icon { margin: 10px 10px 0; }
+.chat-area .msg .lp-in-bubble .lp-text { padding: 8px 10px 9px; }
+.chat-area .msg .lp-in-bubble .lp-site.lp-host { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 12px; }
+.chat-area .msg .lp-in-bubble .lp-title { font-size: 14px; font-weight: 650; }
+.chat-area .msg.sent .lp-in-bubble .lp-site, .chat-area .msg.sent .lp-in-bubble .lp-desc { color: rgba(255, 255, 255, .85); }
+.chat-area .msg.sent .lp-in-bubble .lp-title { color: #fff; }
+[data-theme="dark"] .chat-area .msg .lp-in-bubble .lp-card { background: rgba(255, 255, 255, .07); }
+[data-theme="dark"] .chat-area .msg.sent .lp-in-bubble .lp-card { background: rgba(0, 0, 0, .16); }
+[data-theme="dark"] .chat-area .msg .lp-in-bubble .lp-thumb.lp-hero { background: rgba(255, 255, 255, .06); }
+/* Until the preview loads, the slot is empty and the bubble falls back to its text size. */
+.chat-area .msg .bubble.has-link-preview:has(.lp-slot:empty) { width: auto; max-width: min(420px, 100%); padding: 10px 14px; }
+.chat-area .msg .bubble.has-link-preview:has(.lp-slot:empty) .message-text { padding: 0; }
+.chat-area .msg .bubble.has-link-preview:has(.lp-slot:empty) .bmeta.text { right: 11px; bottom: 7px; }
+
+@media (max-width: 767px) {
+  .chat-area .sticky-pinned-bar.glass { top: 6px; left: 8px; right: 8px; }
+  .chat-area .conv-body-flex.has-pins .messages { padding-top: 68px; }
+  .chat-area .msg .bubble.media-captioned, .chat-area .msg .bubble.has-link-preview { width: min(300px, 100%); }
+  .chat-area .room-more-pop { right: -40px; }
+}

@@ -36,16 +36,31 @@
             <NewChatPanel @key="newChatKey" @ref="newChatPanel" GroupMode="newChatGroupMode" Preselected="newChatPreselected"
                           OnClose="CloseNewChat" OnStartDm="StartDmFromPanel" OnCreateGroup="CreateGroupFromPanel" />
         }
-        @* Top bar: search field + compose button *@
+        @* Top bar: search field, a ⋯ menu for the global lists, compose button. *@
         <div class="room-top-bar">
             <div class="room-search-box">
                 <i data-lucide="search"></i>
-                <input type="text" placeholder="Search conversations..." value="@roomSearchQuery" @oninput="OnRoomSearchChanged" />
+                <input type="text" placeholder="Search chats and messages" value="@roomSearchQuery" @oninput="OnRoomSearchChanged" />
                 @if (!string.IsNullOrEmpty(roomSearchQuery))
                 {
                     <button type="button" class="room-search-clear" @onclick="LeaveRoomSearch" title="Clear search" aria-label="Clear search">
                         <i data-lucide="x"></i>
                     </button>
+                }
+            </div>
+            <div class="room-more-wrap">
+                <button type="button" class="room-more-menu-btn @(roomMoreOpen || globalDrawerView is GlobalDrawerView.Pinned or GlobalDrawerView.Saved ? "on" : "")" title="More" aria-label="More"
+                        aria-haspopup="menu" aria-expanded="@(roomMoreOpen ? "true" : "false")" @onclick="() => roomMoreOpen = !roomMoreOpen" @onclick:stopPropagation>
+                    <i data-lucide="ellipsis"></i>
+                </button>
+                @if (roomMoreOpen)
+                {
+                    <div class="room-more-pop" role="menu" @onclick:stopPropagation>
+                        <button type="button" role="menuitem" @onclick="() => OpenFromRoomMenu(GlobalDrawerView.Pinned)"><i data-lucide="pin"></i><span>Pinned messages</span></button>
+                        <button type="button" role="menuitem" @onclick="() => OpenFromRoomMenu(GlobalDrawerView.Saved)"><i data-lucide="bookmark"></i><span>Saved messages</span></button>
+                        <div class="room-more-sep"></div>
+                        <button type="button" role="menuitem" @onclick="() => { roomMoreOpen = false; StartNewGroup(); }"><i data-lucide="users"></i><span>New group</span></button>
+                    </div>
                 }
             </div>
             @* Opens the New chat panel; "New group" is its first row. *@
@@ -54,49 +69,15 @@
             </button>
         </div>
 
-        @* Compact navigation rows *@
-        <div class="room-nav-links">
-            <button type="button" class="room-nav-btn @(globalDrawerView == GlobalDrawerView.Pinned ? "active" : "")" @onclick="() => ToggleGlobalDrawer(GlobalDrawerView.Pinned)">
-                <div class="rnb-icon"><i data-lucide="pin"></i></div>
-                <span class="rnb-label">Pinned messages</span>
-                <i data-lucide="chevron-right" class="rnb-chev"></i>
+        @* One row of filters replaces the Direct/Groups tabs and the shortcut rows. *@
+        <div class="room-chips" role="tablist" aria-label="Filter conversations">
+            <button type="button" role="tab" aria-selected="@(roomFilter == RoomFilter.All ? "true" : "false")" class="room-chip @(roomFilter == RoomFilter.All ? "on" : "")" @onclick="() => SetFilter(RoomFilter.All)">All</button>
+            <button type="button" role="tab" aria-selected="@(roomFilter == RoomFilter.Unread ? "true" : "false")" class="room-chip @(roomFilter == RoomFilter.Unread ? "on" : "")" @onclick="() => SetFilter(RoomFilter.Unread)">
+                Unread @if (UnreadRoomCount > 0) { <span class="n">@UnreadRoomCount</span> }
             </button>
-            <button type="button" class="room-nav-btn @(globalDrawerView == GlobalDrawerView.Saved ? "active" : "")" @onclick="() => ToggleGlobalDrawer(GlobalDrawerView.Saved)">
-                <div class="rnb-icon"><i data-lucide="bookmark"></i></div>
-                <span class="rnb-label">Saved messages</span>
-                <i data-lucide="chevron-right" class="rnb-chev"></i>
-            </button>
-            <button type="button" class="room-nav-btn @(globalDrawerView == GlobalDrawerView.Search ? "active" : "")" @onclick="() => ToggleGlobalDrawer(GlobalDrawerView.Search)">
-                <div class="rnb-icon"><i data-lucide="text-search"></i></div>
-                <span class="rnb-label">Search all conversations</span>
-                <i data-lucide="chevron-right" class="rnb-chev"></i>
-            </button>
-            <button type="button" class="room-nav-btn @(globalDrawerView == GlobalDrawerView.Mentions ? "active" : "")" @onclick="() => ToggleGlobalDrawer(GlobalDrawerView.Mentions)">
-                <div class="rnb-icon"><i data-lucide="at-sign"></i></div>
-                <span class="rnb-label">Unread mentions</span>
-                @if (GlobalMentionCount > 0)
-                {
-                    <span class="rnb-badge">@GlobalMentionCount</span>
-                }
-                <i data-lucide="chevron-right" class="rnb-chev"></i>
-            </button>
-        </div>
-
-        @* Segmented control: Direct / Groups *@
-        <div class="room-segmented">
-            <button type="button" class="seg-item @(activeTab == RoomTab.Direct ? "active" : "")" @onclick="() => SetTab(RoomTab.Direct)">
-                <span>Direct</span>
-                @if (DirectUnread > 0)
-                {
-                    <span class="seg-badge">@DirectUnread</span>
-                }
-            </button>
-            <button type="button" class="seg-item @(activeTab == RoomTab.Groups ? "active" : "")" @onclick="() => SetTab(RoomTab.Groups)">
-                <span>Groups</span>
-                @if (GroupUnread > 0)
-                {
-                    <span class="seg-badge">@GroupUnread</span>
-                }
+            <button type="button" role="tab" aria-selected="@(roomFilter == RoomFilter.Groups ? "true" : "false")" class="room-chip @(roomFilter == RoomFilter.Groups ? "on" : "")" @onclick="() => SetFilter(RoomFilter.Groups)">Groups</button>
+            <button type="button" role="tab" aria-selected="@(globalDrawerView == GlobalDrawerView.Mentions ? "true" : "false")" class="room-chip @(globalDrawerView == GlobalDrawerView.Mentions ? "on" : "")" @onclick="() => ToggleGlobalDrawer(GlobalDrawerView.Mentions)">
+                Mentions @if (GlobalMentionCount > 0) { <span class="n">@GlobalMentionCount</span> }
             </button>
         </div>
 
@@ -143,7 +124,7 @@
 
             @* Groups tab: the count + "New group" header always leads the list, even when
                every group is pinned (it used to ride on the unpinned section's label). *@
-            @if (activeTab == RoomTab.Groups)
+            @if (roomFilter == RoomFilter.Groups)
             {
                 <div class="room-section-label room-groups-head">
                     <span>Groups · @rooms.Count</span>
@@ -220,7 +201,7 @@
             {
                 @* Groups: the header above already names the list, so the unpinned block
                    only needs a plain label to split it from the pinned ones. *@
-                @if (activeTab != RoomTab.Groups)
+                @if (roomFilter != RoomFilter.Groups)
                 {
                     <div class="room-section-label @(pinned.Any() ? "has-pinned-above" : "")"><span>Recent</span></div>
                 }
@@ -317,8 +298,16 @@
             {
                 <div class="empty-state">
                     <i data-lucide="message-circle"></i>
-                    <div class="sub">@(searchActive ? "No conversations match your search." : "No conversations yet")</div>
+                    <div class="sub">@(searchActive ? "No conversations match your search." : roomFilter == RoomFilter.Unread ? "You're all caught up." : "No conversations yet")</div>
                 </div>
+            }
+
+            @* Searching: the same words across every message, one tap away. *@
+            @if (searchActive && roomSearchQuery.Trim().Length >= 2)
+            {
+                <button type="button" class="room-search-messages" @onclick="SearchMessagesFromRoomSearch">
+                    <i data-lucide="text-search"></i><span>Search messages for “@roomSearchQuery.Trim()”</span><i data-lucide="chevron-right" class="chev"></i>
+                </button>
             }
 
             @* Searching: colleagues you have no DM with yet, one click from a new conversation. *@
@@ -346,11 +335,11 @@
 
             @if (!searchActive)
             {
-                @if (activeTab == RoomTab.Direct && ChatSvc.HasMoreDirectRooms)
+                @if (roomFilter != RoomFilter.Groups && ChatSvc.HasMoreDirectRooms)
                 {
                     <button type="button" class="room-load-more" @onclick="LoadMoreDirectRooms"><i data-lucide="chevron-down"></i> Load more conversations</button>
                 }
-                @if (activeTab == RoomTab.Groups && ChatSvc.HasMoreGroupRooms)
+                @if (roomFilter != RoomFilter.Unread && ChatSvc.HasMoreGroupRooms && (roomFilter == RoomFilter.Groups || !ChatSvc.HasMoreDirectRooms))
                 {
                     <button type="button" class="room-load-more" @onclick="LoadMoreGroupRooms"><i data-lucide="chevron-down"></i> Load more groups</button>
                 }
@@ -384,7 +373,7 @@
                         @if (ChatSvc.ActiveRoom?.AvatarUrl is not null) { <img class="room-photo" src="@PhotoUrl(ChatSvc.ActiveRoom.AvatarUrl)" alt="" style="width:100%;height:100%;border-radius:inherit" /> } else { @GetActiveRoomInitials() }
                     </button>
                 }
-                <div class="header-info">
+                <div class="header-info" role="button" tabindex="0" title="@(ChatSvc.ActiveRoom.Type == "dm" ? "Contact info" : "Group info")" @onclick="ToggleDetailPanel">
                     <div class="header-name-row">
                         <span class="header-name">@GetActiveRoomName()</span>
                         @if (IsActiveRoomMuted)
@@ -408,8 +397,13 @@
                         }
                     </div>
                 </div>
+                @{
+                    var activeRoomList = ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms).FirstOrDefault(r => r.Id == ChatSvc.ActiveRoom.Id);
+                    var isActPinned = activeRoomList?.IsPinned ?? false;
+                }
+                @* Search · Call · Info. Calendar, meeting, pins, files, members and settings live in Info. *@
                 <div class="header-actions">
-                    <button type="button" class="header-icon-btn m-opt @(searchOpen ? "on" : "")" title="Search messages" aria-label="Search messages" @onclick="() => searchOpen = !searchOpen">
+                    <button type="button" class="header-icon-btn m-opt @(searchOpen ? "on" : "")" title="Search in chat" aria-label="Search in chat" @onclick="() => searchOpen = !searchOpen">
                         <i data-lucide="search"></i>
                     </button>
                     @if (ChatSvc.ActiveRoom.Type == "dm")
@@ -420,41 +414,16 @@
                             <button type="button" class="header-icon-btn" title="Call" aria-label="Start call" @onclick="() => StartCallWith(dmMember.Nik)">
                                 <i data-lucide="phone"></i>
                             </button>
-                            <a class="header-icon-btn" href="@PLinks.Calendar(dmMember.Nik)" title="View calendar" aria-label="View @dmMember.Name's calendar">
-                                <i data-lucide="calendar-search"></i>
-                            </a>
                         }
                     }
-                    <a class="header-icon-btn" href="@MeetingFromRoom()" title="Schedule meeting" aria-label="@(ChatSvc.ActiveRoom.Type == "dm" ? "Schedule a meeting with this person" : "Schedule a meeting with this group")">
-                        <i data-lucide="calendar-plus"></i>
-                    </a>
-                    @{
-                        var activeRoomList = ChatSvc.GroupRooms.Concat(ChatSvc.DirectRooms).FirstOrDefault(r => r.Id == ChatSvc.ActiveRoom.Id);
-                        var isActPinned = activeRoomList?.IsPinned ?? false;
-                    }
-                    <button type="button" class="header-icon-btn m-opt @(isActPinned ? "on" : "")" title="@(isActPinned ? "Unpin conversation" : "Pin conversation")" aria-label="Pin conversation" @onclick="() => { if (activeRoomList != null) TogglePin(activeRoomList); }">
-                        <i data-lucide="arrow-up-to-line"></i>
-                    </button>
-                    <button type="button" class="header-icon-btn m-opt @(drawerOpen && panelView == DetailPanelView.Pinned ? "on" : "")" title="Pinned messages" aria-label="Pinned messages" @onclick="OpenPinnedSection">
-                        <i data-lucide="pin"></i>
-                    </button>
-                    <button type="button" class="header-icon-btn m-opt @(drawerOpen && panelView == DetailPanelView.Media ? "on" : "")" title="Shared files & media" aria-label="Shared files & media" @onclick="OpenMediaSection">
-                        <i data-lucide="paperclip"></i>
-                    </button>
-                    @if (ChatSvc.ActiveRoom.Type == "group")
+                    else
                     {
                         <button type="button" class="header-icon-btn" title="Group call" aria-label="Start group call" disabled="@(groupCallBusy || CallStateSvc.IsInGroupCall)" @onclick="StartGroupCall">
                             <i data-lucide="phone"></i>
                         </button>
-                        <button type="button" class="header-icon-btn @(drawerOpen && panelView == DetailPanelView.Members ? "on" : "")" title="Members" aria-label="Members" @onclick="OpenMembersSection">
-                            <i data-lucide="users"></i>
-                        </button>
-                        <button type="button" class="header-icon-btn m-opt @(drawerOpen && panelView == DetailPanelView.GroupSettings ? "on" : "")" title="Group settings" aria-label="Group settings" @onclick="OpenGroupSettings">
-                            <i data-lucide="settings"></i>
-                        </button>
                     }
-                    <button type="button" class="header-icon-btn m-opt @(drawerOpen && panelView == DetailPanelView.Main ? "on" : "")" title="Conversation details" aria-label="Conversation details" @onclick="ToggleDetailPanel">
-                        <i data-lucide="panel-right"></i>
+                    <button type="button" class="header-icon-btn m-opt @(drawerOpen ? "on" : "")" title="@(ChatSvc.ActiveRoom.Type == "dm" ? "Contact info" : "Group info")" aria-label="@(ChatSvc.ActiveRoom.Type == "dm" ? "Contact info" : "Group info")" @onclick="ToggleDetailPanel">
+                        <i data-lucide="info"></i>
                     </button>
                     @* Phone only (hidden on desktop by chat.css): the m-opt buttons above collapse into this menu. *@
                     <button type="button" class="header-icon-btn m-hdr-more @(mHeaderMenuOpen ? "on" : "")" title="More" aria-label="More conversation actions" aria-haspopup="menu" aria-expanded="@(mHeaderMenuOpen ? "true" : "false")"
@@ -479,22 +448,6 @@
                 }
             </div>
 
-            @* ---- Slim Sticky Pinned Announcement Bar ---- *@
-            @if (pinnedMessages.Count > 0)
-            {
-                var latestPin = pinnedMessages.OrderByDescending(p => p.PinnedAt).First();
-                <div class="sticky-pinned-bar" @onclick="() => JumpToMessage(latestPin.MessageId)">
-                    <div class="pin-ic"><i data-lucide="pin"></i></div>
-                    <div class="pin-body">
-                        <span class="pin-tag">Pinned message @(pinnedMessages.Count > 1 ? $"({pinnedMessages.Count})" : "") · By @latestPin.SenderName</span>
-                        <span class="pin-text">@(!string.IsNullOrEmpty(latestPin.Content) ? TruncateStr(latestPin.Content, 90) : "Pinned announcement")</span>
-                    </div>
-                    <button type="button" class="pin-all-btn" @onclick="OpenPinnedSection" @onclick:stopPropagation>
-                        View all
-                    </button>
-                </div>
-            }
-
             @* ---- Live group call banner (Chat.GroupCall.cs) ---- *@
             @if (ActiveGroupCallBanner is { } liveGroupCall)
             {
@@ -515,7 +468,7 @@
                 </div>
             }
 
-            <div class="conv-body-flex">
+            <div class="conv-body-flex @(pinnedMessages.Count > 0 ? "has-pins" : "")">
                 <div class="conv-chat-flow">
                     @* ---- In-conversation Search ---- *@
                     @if (searchOpen)
@@ -547,6 +500,36 @@
                         {
                             <div class="search-results empty">No messages match “@searchQuery”.</div>
                         }
+                    }
+
+                    @* ---- Pinned bar: one pin at a time; a tap jumps to it and shows the next older one ---- *@
+                    @if (pinnedMessages.Count > 0)
+                    {
+                        var pins = PinsNewestFirst;
+                        var shownPin = pins[Math.Clamp(pinCursor, 0, pins.Count - 1)];
+                        var shownIndex = Math.Clamp(pinCursor, 0, pins.Count - 1);
+                        <div class="sticky-pinned-bar glass" role="button" tabindex="0" title="Show pinned message" @onclick="ShowPinnedAndAdvance">
+                            @if (pins.Count > 1)
+                            {
+                                <div class="pin-rail" aria-hidden="true">
+                                    @for (var i = 0; i < Math.Min(pins.Count, 4); i++)
+                                    {
+                                        <i class="@(RailSlot(shownIndex, pins.Count) == i ? "on" : "")"></i>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="pin-rail" aria-hidden="true"><i class="on"></i></div>
+                            }
+                            <div class="pin-body">
+                                <span class="pin-tag"><i data-lucide="pin"></i>Pinned · @shownPin.SenderName @if (pins.Count > 1) { <span class="pin-count">@(shownIndex + 1)/@pins.Count</span> }</span>
+                                <span class="pin-text" @key="shownPin.MessageId">@(!string.IsNullOrEmpty(shownPin.Content) ? TruncateStr(shownPin.Content, 140) : "Pinned message")</span>
+                            </div>
+                            <button type="button" class="pin-all-btn" title="All pinned messages" aria-label="All pinned messages" @onclick="OpenPinnedSection" @onclick:stopPropagation>
+                                <i data-lucide="list"></i>
+                            </button>
+                        </div>
                     }
 
                     @* ---- Messages ---- *@
@@ -1392,6 +1375,23 @@
                                                         <i data-lucide="chevron-right" class="inset-action-chev"></i>
                                                     </button>
                                                 }
+                                            </div>
+                                        </div>
+
+                                        <!-- Plan: calendar + meeting (moved out of the header) -->
+                                        <div class="inset-group">
+                                            <div class="inset-box">
+                                                @if (ChatSvc.ActiveRoom?.Type == "dm" && ChatSvc.ActiveRoom.Members.FirstOrDefault(m => m.Nik != GetCurrentUserNik()) is { } calPeer)
+                                                {
+                                                    <a class="inset-action-row" href="@PLinks.Calendar(calPeer.Nik)">
+                                                        <div class="inset-action-left"><i data-lucide="calendar-search"></i><span>View calendar</span></div>
+                                                        <i data-lucide="chevron-right" class="inset-action-chev"></i>
+                                                    </a>
+                                                }
+                                                <a class="inset-action-row" href="@MeetingFromRoom()">
+                                                    <div class="inset-action-left"><i data-lucide="calendar-plus"></i><span>Schedule meeting</span></div>
+                                                    <i data-lucide="chevron-right" class="inset-action-chev"></i>
+                                                </a>
                                             </div>
                                         </div>
 

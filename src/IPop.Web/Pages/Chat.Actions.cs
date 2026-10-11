@@ -28,6 +28,7 @@ public partial class Chat
 
     private void CloseCtx()
     {
+        roomMoreOpen = false;
         ctxMsgId = null;
         plusMenuOpen = false;
         pickerOpen = false;
@@ -422,7 +423,7 @@ public partial class Chat
             {
                 newChatOpen = false;
                 await ChatSvc.LoadRoomsAsync();
-                activeTab = RoomTab.Direct;
+                if (roomFilter == RoomFilter.Groups) roomFilter = RoomFilter.All;
                 OpenRoom(room.Id);
                 return;
             }
@@ -471,7 +472,7 @@ public partial class Chat
 
         newChatOpen = false;
         await ChatSvc.LoadRoomsAsync();
-        activeTab = RoomTab.Groups;
+        if (roomFilter == RoomFilter.Unread) roomFilter = RoomFilter.All;
         OpenRoom(room.Id);
         return true;
     }

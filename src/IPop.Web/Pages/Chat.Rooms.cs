@@ -13,8 +13,8 @@ public partial class Chat
 {
     // ---- Room Pane ----
 
-    private int DirectUnread => ChatSvc.DirectRooms.Sum(r => r.UnreadCount);
-    private int GroupUnread => ChatSvc.GroupRooms.Sum(r => r.UnreadCount);
+    /// Conversations with something unread (the chip counts chats, not messages).
+    private int UnreadRoomCount => ChatSvc.DirectRooms.Concat(ChatSvc.GroupRooms).Count(r => r.UnreadCount > 0);
 
     // ipop-52: search runs server-side (/rooms/search — name OR member name over ALL the
     // user's rooms); its results land in DirectRooms/GroupRooms so the render path is the
@@ -22,10 +22,25 @@ public partial class Chat
     private bool searchActive => !string.IsNullOrWhiteSpace(roomSearchQuery);
     private CancellationTokenSource? roomSearchCts;
 
+    /// All = direct and group chats together, newest activity first (pinned ones are split
+    /// out by the markup). Unread and Groups narrow that same list.
     private IReadOnlyList<IPop.Application.Chat.RoomListDto> FilteredRooms
-        => searchActive && ChatSvc.RoomSearchResults is { } found
-            ? found.Where(r => r.Type == (activeTab == RoomTab.Direct ? "dm" : "group")).ToList()
-            : activeTab == RoomTab.Direct ? ChatSvc.DirectRooms : ChatSvc.GroupRooms;
+    {
+        get
+        {
+            IEnumerable<IPop.Application.Chat.RoomListDto> rooms = searchActive && ChatSvc.RoomSearchResults is { } found
+                ? found
+                : ChatSvc.DirectRooms.Concat(ChatSvc.GroupRooms);
+            rooms = roomFilter switch
+            {
+                RoomFilter.Unread => rooms.Where(r => r.UnreadCount > 0 || r.HasUnreadMention),
+                RoomFilter.Groups => rooms.Where(r => r.Type == "group"),
+                _ => rooms
+            };
+            return rooms.GroupBy(r => r.Id).Select(g => g.First())
+                .OrderByDescending(r => r.LastMessageAt ?? DateTime.MinValue).ToList();
+        }
+    }
 
     /// Leaves search everywhere the box empties (X, tab switch, "Chat now", leaving /chat):
     /// a pending debounce must not re-apply it, and ChatState must forget the query.
@@ -107,10 +122,46 @@ public partial class Chat
     private Task LoadMoreDirectRooms() => ChatSvc.LoadMoreDirectRoomsAsync();
     private Task LoadMoreGroupRooms() => ChatSvc.LoadMoreGroupRoomsAsync();
 
-    private void SetTab(RoomTab tab)
+    /// Chips: All / Unread / Groups filter the list; Mentions opens its own drawer, so
+    /// picking a list filter closes it again.
+    private void SetFilter(RoomFilter filter)
     {
-        activeTab = tab;
-        LeaveRoomSearch();
+        roomFilter = filter;
+        if (globalDrawerView == GlobalDrawerView.Mentions) CloseGlobalDrawer();
+    }
+
+    private async Task OpenFromRoomMenu(GlobalDrawerView view)
+    {
+        roomMoreOpen = false;
+        if (globalDrawerView != view) await ToggleGlobalDrawer(view);
+    }
+
+    /// "Search messages for …" under the room results: the old "Search all conversations"
+    /// drawer, pre-filled with what was typed in the room search.
+    private async Task SearchMessagesFromRoomSearch()
+    {
+        var q = roomSearchQuery.Trim();
+        if (globalDrawerView != GlobalDrawerView.Search) await ToggleGlobalDrawer(GlobalDrawerView.Search);
+        globalSearchQuery = q;
+        await OnGlobalSearchInput();
+    }
+
+    // ---- Pinned bar ----
+
+    private IReadOnlyList<IPop.Application.Chat.PinnedMessageDto> PinsNewestFirst
+        => pinnedMessages.OrderByDescending(p => p.PinnedAt).ToList();
+
+    /// Up to four rail segments; with more pins the lit one shows roughly where you are.
+    private static int RailSlot(int index, int count)
+        => count <= 4 ? index : (int)Math.Round(index * 3.0 / (count - 1));
+
+    private async Task ShowPinnedAndAdvance()
+    {
+        var pins = PinsNewestFirst;
+        if (pins.Count == 0) return;
+        var i = Math.Clamp(pinCursor, 0, pins.Count - 1);
+        pinCursor = (i + 1) % pins.Count;
+        await JumpToMessage(pins[i].MessageId);
     }
 
     private void ToggleCreateDropdown() => createDropdownOpen = !createDropdownOpen;
