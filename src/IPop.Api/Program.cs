@@ -199,6 +199,10 @@ builder.Services.AddHostedService<IPop.Infrastructure.Projects.TaskReminderWorke
 builder.Services.AddHostedService<IPop.Infrastructure.Projects.DeletedTaskPurgeWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Projects.TimerAutoStopWorker>();
 builder.Services.AddHostedService<IPop.Infrastructure.Meetings.MeetingReminderWorker>();
+builder.Services.AddScoped<IPop.Application.MeetingRooms.IMeetingRoomService, IPop.Infrastructure.MeetingRooms.MeetingRoomService>();
+builder.Services.AddScoped<IPop.Application.MeetingRooms.IMeetingRecordingService, IPop.Infrastructure.MeetingRooms.MeetingRecordingService>();
+builder.Services.AddScoped<IPop.Infrastructure.MeetingRooms.RecordingFileCache>();
+builder.Services.AddHostedService<IPop.Infrastructure.MeetingRooms.MeetingRecordingWorker>();
 
 // Mail module
 builder.Services.AddScoped<IMailService, MailService>();
