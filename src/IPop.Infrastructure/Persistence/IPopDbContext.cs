@@ -151,6 +151,7 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<CallParticipant> CallParticipants => Set<CallParticipant>();
     public DbSet<CallHistory> CallHistories => Set<CallHistory>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+    public DbSet<HallRoom> HallRooms => Set<HallRoom>();
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<EmailOutboxMessage> EmailOutbox => Set<EmailOutboxMessage>();
     public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
@@ -161,8 +162,24 @@ public class IPopDbContext(DbContextOptions<IPopDbContext> options) : DbContext(
     public DbSet<TicketRefCounter> TicketRefCounters => Set<TicketRefCounter>();
     public DbSet<IdeskWebhookReceipt> IdeskWebhookReceipts => Set<IdeskWebhookReceipt>();
 
+    private static readonly HallRoom[] HallRooms_Seed =
+    [
+        new() { Id = Guid.Parse("5a11a000-0000-4000-8000-000000000001"), Key = "robusta", Name = "Robusta", Capacity = 20, SortOrder = 1 },
+        new() { Id = Guid.Parse("5a11a000-0000-4000-8000-000000000002"), Key = "arabika", Name = "Arabika", Capacity = 20, SortOrder = 2 },
+        new() { Id = Guid.Parse("5a11a000-0000-4000-8000-000000000003"), Key = "kalosi", Name = "Kalosi", Capacity = 20, SortOrder = 3 },
+        new() { Id = Guid.Parse("5a11a000-0000-4000-8000-000000000004"), Key = "kapal-api", Name = "Kapal Api", Capacity = 20, SortOrder = 4 },
+        new() { Id = Guid.Parse("5a11a000-0000-4000-8000-000000000005"), Key = "toraja", Name = "Toraja", Capacity = 20, SortOrder = 5 },
+    ];
+
     protected override void OnModelCreating(ModelBuilder b)
     {
+        b.Entity<HallRoom>(e =>
+        {
+            e.HasIndex(x => x.Key).IsUnique();
+            e.Property(x => x.Key).HasMaxLength(32);
+            e.Property(x => x.Name).HasMaxLength(64);
+            e.HasData(HallRooms_Seed);
+        });
         b.Entity<Department>(e =>
         {
             e.HasIndex(x => x.Code).IsUnique();

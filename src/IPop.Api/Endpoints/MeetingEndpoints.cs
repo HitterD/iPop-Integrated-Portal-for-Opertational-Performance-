@@ -27,6 +27,7 @@ public static class MeetingEndpoints
                 case CreateResult.InvalidTitle: return Results.Json(new { code = "invalid_title", message = "Meeting title is required (max 200 characters)." }, statusCode: 422);
                 case CreateResult.InvalidRange: return Results.Json(new { code = "invalid_range", message = "End time must be after start time." }, statusCode: 422);
                 case CreateResult.NotRoomMember: return Results.Json(new { code = "forbidden", message = "Not a member of that group." }, statusCode: 403);
+                case CreateResult.RoomBooked: return Results.Json(new { code = "room_booked", message = "That meeting room is already booked at this time." }, statusCode: 409);
             }
             await NotifyMeetingChangedAsync(db, realtime, meetingId!.Value, [], ct);
             var dto = await LoadMeetingDto(meetingId!.Value, userId.Value, db, ct);
@@ -227,6 +228,7 @@ public static class MeetingEndpoints
                 case UpdateResult.Cancelled: return Results.Json(new { code = "cancelled", message = "This meeting was cancelled." }, statusCode: 409);
                 case UpdateResult.InvalidTitle: return Results.Json(new { code = "invalid_title", message = "Meeting title is required." }, statusCode: 422);
                 case UpdateResult.InvalidRange: return Results.Json(new { code = "invalid_range", message = "End time must be after start time." }, statusCode: 422);
+                case UpdateResult.RoomBooked: return Results.Json(new { code = "room_booked", message = "That meeting room is already booked at this time." }, statusCode: 409);
             }
             await NotifyMeetingChangedAsync(db, realtime, id, before, ct);
             var dto = await LoadMeetingDto(id, userId.Value, db, ct);
@@ -322,7 +324,7 @@ public static class MeetingEndpoints
             m.Agenda, RoomNameFor(m.Id), m.RoomId, m.ReminderMinutes)).ToList();
     }
 
-    public enum CreateResult { Created, InvalidTitle, InvalidRange, NotRoomMember }
+    public enum CreateResult { Created, InvalidTitle, InvalidRange, NotRoomMember, RoomBooked }
 
     /// Create a meeting: attendees (ids and/or NIKs, organizer always in and accepted), the
     /// organizer's calendar row and one reminder per attendee when ReminderMinutes > 0
@@ -338,6 +340,9 @@ public static class MeetingEndpoints
         if (req.RoomId is { } roomId
             && !await db.ChatRoomMembers.AnyAsync(m => m.RoomId == roomId && m.UserId == userId && m.LeftAt == null, ct))
             return (CreateResult.NotRoomMember, null, []);
+        // SJA Hall meeting rooms ("SJA Hall · Robusta") can only be booked once at a time.
+        if (await IPop.Infrastructure.Hall.HallBookings.ConflictAsync(db, req.Location, AsUtc(req.StartAt), AsUtc(req.EndAt), null, ct) is not null)
+            return (CreateResult.RoomBooked, null, []);
 
         var reminder = req.ReminderMinutes is > 0 and <= 10080 ? req.ReminderMinutes : null;
         var meeting = new Meeting
@@ -345,7 +350,7 @@ public static class MeetingEndpoints
             Id = Guid.NewGuid(), Title = title,
             StartAt = start, EndAt = end,
             TimeZone = req.TimeZone,
-            Location = string.IsNullOrWhiteSpace(req.Location) ? null : req.Location.Trim(),
+            Location = string.IsNullOrWhiteSpace(req.Location) ? null : IPop.Application.Hall.HallBooking.Normalize(req.Location.Trim()),
             Link = string.IsNullOrWhiteSpace(req.Link) ? null : req.Link.Trim(),
             Agenda = string.IsNullOrWhiteSpace(req.Agenda) ? null : req.Agenda.Trim(),
             OrganizerId = userId, Status = MeetingStatus.Active, RoomId = req.RoomId,
@@ -496,7 +501,7 @@ public static class MeetingEndpoints
         roomName is not null && roomName.StartsWith("meeting-", StringComparison.Ordinal)
             && Guid.TryParseExact(roomName["meeting-".Length..], "N", out var id) ? id : null;
 
-    public enum UpdateResult { Applied, NotFound, Forbidden, InvalidTitle, InvalidRange, Cancelled }
+    public enum UpdateResult { Applied, NotFound, Forbidden, InvalidTitle, InvalidRange, Cancelled, RoomBooked }
 
     /// Organizer-only edit: fields, attendee list (by NIK; organizer always stays), calendar
     /// row and unsent reminders follow the new time. Returns newly invited + all other attendees.
@@ -510,12 +515,14 @@ public static class MeetingEndpoints
         var title = req.Title?.Trim() ?? "";
         if (title.Length == 0) return (UpdateResult.InvalidTitle, [], []);
         if (req.EndAt <= req.StartAt) return (UpdateResult.InvalidRange, [], []);
+        if (await IPop.Infrastructure.Hall.HallBookings.ConflictAsync(db, req.Location, AsUtc(req.StartAt), AsUtc(req.EndAt), m.Id, ct) is not null)
+            return (UpdateResult.RoomBooked, [], []);
 
         var timeChanged = AsUtc(req.StartAt) != m.StartAt || AsUtc(req.EndAt) != m.EndAt;
         m.Title = title;
         m.StartAt = AsUtc(req.StartAt);
         m.EndAt = AsUtc(req.EndAt);
-        m.Location = string.IsNullOrWhiteSpace(req.Location) ? null : req.Location.Trim();
+        m.Location = string.IsNullOrWhiteSpace(req.Location) ? null : IPop.Application.Hall.HallBooking.Normalize(req.Location.Trim());
         m.Link = string.IsNullOrWhiteSpace(req.Link) ? null : req.Link.Trim();
         m.Agenda = string.IsNullOrWhiteSpace(req.Agenda) ? null : req.Agenda.Trim();
         if (req.ReminderMinutes is not null) m.ReminderMinutes = req.ReminderMinutes > 0 ? req.ReminderMinutes : null;
