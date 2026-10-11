@@ -262,6 +262,7 @@ builder.Services.AddSingleton(IPop.Infrastructure.Tickets.IdeskOptions.Bind(buil
 builder.Services.AddSingleton<IPop.Infrastructure.Tickets.TicketModuleCache>();
 builder.Services.AddHttpClient<IPop.Application.Tickets.IIdeskClient, IPop.Infrastructure.Tickets.HttpIdeskClient>();
 builder.Services.AddHttpClient<IPop.Infrastructure.Calls.ILiveKitRoomAdmin, IPop.Infrastructure.Calls.LiveKitRoomAdmin>(c => c.Timeout = TimeSpan.FromSeconds(5));
+builder.Services.AddHttpClient<IPop.Infrastructure.Calls.ILiveKitEgress, IPop.Infrastructure.Calls.LiveKitEgress>(c => c.Timeout = TimeSpan.FromSeconds(10));
 builder.Services.AddScoped<IPop.Infrastructure.Tickets.IdeskCalendarSync>();
 builder.Services.AddScoped<IPop.Application.Tickets.ITicketService>(sp => new IPop.Infrastructure.Tickets.TicketService(
     sp.GetRequiredService<IPop.Infrastructure.Persistence.IPopDbContext>(), sp.GetRequiredService<IPop.Application.Tickets.IIdeskClient>(),

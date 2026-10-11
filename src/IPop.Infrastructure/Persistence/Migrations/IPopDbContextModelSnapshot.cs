@@ -1313,6 +1313,78 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.ToTable("FileOperations");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.HallRoom", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Capacity")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Key")
+                        .IsUnique();
+
+                    b.ToTable("HallRooms");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("5a11a000-0000-4000-8000-000000000001"),
+                            Capacity = 20,
+                            Key = "robusta",
+                            Name = "Robusta",
+                            SortOrder = 1
+                        },
+                        new
+                        {
+                            Id = new Guid("5a11a000-0000-4000-8000-000000000002"),
+                            Capacity = 20,
+                            Key = "arabika",
+                            Name = "Arabika",
+                            SortOrder = 2
+                        },
+                        new
+                        {
+                            Id = new Guid("5a11a000-0000-4000-8000-000000000003"),
+                            Capacity = 20,
+                            Key = "kalosi",
+                            Name = "Kalosi",
+                            SortOrder = 3
+                        },
+                        new
+                        {
+                            Id = new Guid("5a11a000-0000-4000-8000-000000000004"),
+                            Capacity = 20,
+                            Key = "kapal-api",
+                            Name = "Kapal Api",
+                            SortOrder = 4
+                        },
+                        new
+                        {
+                            Id = new Guid("5a11a000-0000-4000-8000-000000000005"),
+                            Capacity = 20,
+                            Key = "toraja",
+                            Name = "Toraja",
+                            SortOrder = 5
+                        });
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.HrisSyncRun", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1970,6 +2042,83 @@ namespace IPop.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("MeetingAttendees");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MeetingRecording", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("DurationSeconds")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("EgressId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime?>("EndedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Error")
+                        .HasColumnType("text");
+
+                    b.Property<string>("NasPath")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("RoomKey")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<long?>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SpoolPath")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("StartedById")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoomKey")
+                        .IsUnique()
+                        .HasDatabaseName("IX_MeetingRecordings_OneLivePerRoom")
+                        .HasFilter("\"Status\" = 0");
+
+                    b.HasIndex("RoomKey", "Status");
+
+                    b.ToTable("MeetingRecordings");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MeetingRecordingViewer", b =>
+                {
+                    b.Property<Guid>("RecordingId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("RecordingId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("MeetingRecordingViewers");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.MeetingReminder", b =>
@@ -5789,6 +5938,15 @@ namespace IPop.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("IPop.Core.Entities.MeetingRecordingViewer", b =>
+                {
+                    b.HasOne("IPop.Core.Entities.MeetingRecording", null)
+                        .WithMany("Viewers")
+                        .HasForeignKey("RecordingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("IPop.Core.Entities.MeetingReminder", b =>
                 {
                     b.HasOne("IPop.Core.Entities.Meeting", "Meeting")
@@ -7101,6 +7259,11 @@ namespace IPop.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("IPop.Core.Entities.Meeting", b =>
                 {
                     b.Navigation("Attendees");
+                });
+
+            modelBuilder.Entity("IPop.Core.Entities.MeetingRecording", b =>
+                {
+                    b.Navigation("Viewers");
                 });
 
             modelBuilder.Entity("IPop.Core.Entities.NewsComposerDraft", b =>
