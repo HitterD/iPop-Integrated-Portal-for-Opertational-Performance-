@@ -222,7 +222,7 @@
 
     private void ShowIsland(Island next)
     {
-        islandCts?.Cancel();
+        CancelIsland();
         var cts = islandCts = new CancellationTokenSource();
         island = next;
         StateHasChanged();
@@ -231,6 +231,15 @@
             if (t.IsCanceled) return;
             _ = InvokeAsync(() => { if (ReferenceEquals(islandCts, cts)) { island = null; StateHasChanged(); } });
         }, TaskScheduler.Default);
+    }
+
+    /// Cancels and disposes the pending auto-hide (a replaced notice or the component going away).
+    private void CancelIsland()
+    {
+        if (islandCts is not { } old) return;
+        islandCts = null;
+        old.Cancel();
+        old.Dispose();
     }
 
     private void Minimize() { menuOpen = false; Rooms.Minimized = true; }
@@ -267,7 +276,12 @@
     private async Task RecordClick()
     {
         if (Rooms.RecordingPc) { await Rooms.StopPcRecordingAsync(); return; }
-        if (Rooms.RecordingServer is not null && Recording) { await Rooms.StopServerRecordingAsync(); return; }
+        if (Rooms.RecordingServer is not null && Recording)
+        {
+            // The banner follows the room metadata; only a failed request needs telling.
+            if (await Rooms.StopServerRecordingAsync() is not null) Toasts.Show("Could not stop the recording. Try again.", ToastKind.Error);
+            return;
+        }
         menuOpen = !menuOpen;
     }
 
@@ -295,7 +309,7 @@
     {
         Rooms.Changed -= OnChanged;
         Rooms.Notice -= OnNotice;
-        islandCts?.Cancel();
+        CancelIsland();
         tick?.Dispose();
     }
 }

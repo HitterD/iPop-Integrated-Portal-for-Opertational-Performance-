@@ -4,6 +4,7 @@ using IPop.Application.Calls;
 using IPop.Web.Components.Calls;
 using IPop.Web.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using Xunit;
 
 namespace IPop.Tests;
@@ -122,13 +123,92 @@ public class MeetingRoomOverlayTests
         Assert.Null(state.Room);
     }
 
+    [Fact]
+    public async Task Join_failing_in_the_browser_leaves_no_room_and_a_retry_really_connects()
+    {
+        using var ctx = Context(out var state, out _, JoinOk);
+        ctx.JSInterop.Setup<bool>("ipopRooms.join", _ => true).SetException(new JSException("getUserMedia blew up"));
+
+        var (error, _) = await state.JoinAsync("arabika");
+
+        Assert.Equal("connect_failed", error);
+        Assert.Null(state.Room);
+        Assert.Empty(state.People);
+        Assert.Single(ctx.JSInterop.Invocations["ipopRooms.leave"]);
+
+        await state.JoinAsync("arabika");      // not a phantom "already in this room" success
+        Assert.Equal(2, ctx.JSInterop.Invocations["ipopRooms.join"].Count);
+    }
+
+    [Fact]
+    public async Task Join_network_failure_returns_an_error_instead_of_throwing()
+    {
+        using var ctx = Context(out var state, out _, new Throwing());
+        var (error, _) = await state.JoinAsync("arabika");
+        Assert.Equal("media_unavailable", error);
+        Assert.Null(state.Room);
+        Assert.Empty(ctx.JSInterop.Invocations["ipopRooms.join"]);
+    }
+
+    [Fact]
+    public async Task Share_result_applies_the_requested_state_even_if_people_updated_meanwhile()
+    {
+        using var ctx = Context(out var state);
+        state.SetForTest(new("arabika", "Arabika", "hall-arabika", "wss://x", "t", true, "me"));
+        var share = ctx.JSInterop.Setup<string>("ipopRooms.setShare", inv => (bool)inv.Arguments[0]! == true);
+
+        var toggle = state.ToggleShareAsync();
+        // The browser publishes the share before setShare resolves; OnRoomPeople already reports it.
+        state.OnRoomPeople([new("me", "Bagastyo", false, false, false, true, false, true)]);
+        Assert.True(state.Sharing);
+        share.SetResult("ok");
+        Assert.Equal("ok", await toggle);
+
+        Assert.True(state.Sharing);
+        Assert.True((bool)ctx.JSInterop.Invocations["ipopRooms.setShare"].Single().Arguments[0]!);
+    }
+
+    [Fact]
+    public async Task Stopping_a_server_recording_that_fails_shows_a_toast()
+    {
+        using var ctx = Context(out var state, out _, new Status(HttpStatusCode.ServiceUnavailable));
+        var toasts = ctx.Services.GetRequiredService<ToastService>();
+        state.SetForTest(new("arabika", "Arabika", "hall-arabika", "wss://x", "t", true, "me"));
+        state.OnRoomPeople([new("me", "Bagastyo", false, false, false, false, false, true)]);
+        state.OnRoomMetadata("""{"recording":{"id":"7f1c0a4e-0000-4000-8000-000000000001","by":"Budi","startedAt":"2026-10-11T03:00:00Z"}}""");
+        var cut = ctx.Render<MeetingRoomOverlay>();
+
+        cut.Find("button.mr-rec").Click();     // shows "Stop" while the room records
+
+        cut.WaitForAssertion(() => Assert.Contains(toasts.Active, t => t.Message == "Could not stop the recording. Try again." && t.Kind == ToastKind.Error));
+        Assert.NotNull(state.RecordingServer); // metadata stays the source of truth for the banner
+        Assert.NotEmpty(cut.FindAll(".mr-recbar"));
+    }
+
+    [Fact]
+    public async Task Stop_server_recording_reports_ok_and_network_errors()
+    {
+        using var ok = Context(out var okState, out _, new Status(HttpStatusCode.OK));
+        Assert.Equal("not_found", await okState.StopServerRecordingAsync());   // nothing recording
+        okState.OnRoomMetadata("""{"recording":{"id":"7f1c0a4e-0000-4000-8000-000000000001","by":"Budi","startedAt":"2026-10-11T03:00:00Z"}}""");
+        Assert.Null(await okState.StopServerRecordingAsync());
+
+        using var down = Context(out var downState, out _, new Throwing());
+        downState.OnRoomMetadata("""{"recording":{"id":"7f1c0a4e-0000-4000-8000-000000000001","by":"Budi","startedAt":"2026-10-11T03:00:00Z"}}""");
+        Assert.Equal("egress_unavailable", await downState.StopServerRecordingAsync());
+    }
+
+    private static readonly HttpMessageHandler JoinOk = new Json("""
+        {"key":"arabika","name":"Arabika","liveKitRoom":"hall-arabika","url":"wss://x","token":"t","videoAllowed":true,"identity":"me"}
+        """);
+
     private static BunitContext Context(out MeetingRoomState state) => Context(out state, out _);
 
-    private static BunitContext Context(out MeetingRoomState state, out CallState calls)
+    private static BunitContext Context(out MeetingRoomState state, out CallState calls, HttpMessageHandler? handler = null)
     {
         var ctx = new BunitContext();
         ctx.JSInterop.Mode = JSRuntimeMode.Loose;
-        var http = new HttpClient(new NotFound()) { BaseAddress = new Uri("http://localhost/") };
+        var http = new HttpClient(handler ?? new NotFound(), disposeHandler: false) { BaseAddress = new Uri("http://localhost/") };
         var js = ctx.JSInterop.JSRuntime;
         var auth = new AuthState(http, js);
         calls = new CallState(auth, http, js);
@@ -147,5 +227,26 @@ public class MeetingRoomOverlayTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
             Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+    }
+
+    private sealed class Status(HttpStatusCode code) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            Task.FromResult(new HttpResponseMessage(code));
+    }
+
+    private sealed class Throwing : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            throw new HttpRequestException("network down");
+    }
+
+    /// POST …/join answers with the given body; every other request 404s.
+    private sealed class Json(string body) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            Task.FromResult(request.Method == HttpMethod.Post && request.RequestUri!.AbsolutePath.EndsWith("/join")
+                ? new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json") }
+                : new HttpResponseMessage(HttpStatusCode.NotFound));
     }
 }

@@ -35,6 +35,8 @@ public sealed class MeetingRoomState(AuthState auth, IJSRuntime js, CallState ca
     private void Raise() => Changed?.Invoke();
 
     /// null = joined; else an error code ("room_full" with suggestions, "in_call", "media_unavailable", "connect_failed", …).
+    /// Never throws: HTTP/JSON failures return "media_unavailable"; a media failure after the room was set returns
+    /// "connect_failed" and leaves no half-joined room behind, so a retry of the same key really connects.
     public async Task<(string? Error, IReadOnlyList<string> Suggestions)> JoinAsync(string key)
     {
         if (Room?.Key == key) { Minimized = false; Raise(); return (null, []); }
@@ -44,37 +46,64 @@ public sealed class MeetingRoomState(AuthState auth, IJSRuntime js, CallState ca
         try
         {
             if (Room is not null) await LeaveAsync();
-            var res = await auth.SendAsync(HttpMethod.Post, $"/api/meeting-rooms/{key}/join");
-            if (!res.IsSuccessStatusCode)
+            MeetingRoomJoinDto? dto;
+            try
             {
-                string code = "media_unavailable";
-                List<string> sug = [];
-                try
-                {
-                    var err = await res.Content.ReadFromJsonAsync<JsonElement>();
-                    if (err.ValueKind == JsonValueKind.Object)
-                    {
-                        if (err.TryGetProperty("code", out var c) && c.GetString() is { } s) code = s;
-                        if (err.TryGetProperty("suggestions", out var arr) && arr.ValueKind == JsonValueKind.Array)
-                            sug = arr.EnumerateArray().Select(x => x.GetString()).OfType<string>().ToList();
-                    }
-                }
-                catch (JsonException) { }
-                return (code, sug);
+                var res = await auth.SendAsync(HttpMethod.Post, $"/api/meeting-rooms/{key}/join");
+                if (!res.IsSuccessStatusCode) return await ReadJoinErrorAsync(res);
+                dto = await res.Content.ReadFromJsonAsync<MeetingRoomJoinDto>();
             }
-            var dto = (await res.Content.ReadFromJsonAsync<MeetingRoomJoinDto>())!;
+            catch (Exception e) when (e is HttpRequestException or JsonException or TaskCanceledException or NotSupportedException)
+            {
+                return ("media_unavailable", []);
+            }
+            if (dto is null) return ("media_unavailable", []);
+
             selfRef ??= DotNetObjectReference.Create(this);
             Room = dto; VideoAllowed = dto.VideoAllowed; Minimized = false; JoinedAt = DateTime.UtcNow;
             MicOn = CamOn = Sharing = RecordingPc = false; RecordingServer = null; People = []; ConnectionState = "connecting";
             MeetingTitle = null;
             Raise();
-            var ok = await js.InvokeAsync<bool>("ipopRooms.join", dto.Url, dto.Token, selfRef,
-                new { stageId = "mr-stage", stripId = "mr-strip", inputDeviceId = calls.InputDeviceId });
-            if (!ok) { Room = null; Raise(); return ("connect_failed", []); }
+            bool ok;
+            try
+            {
+                ok = await js.InvokeAsync<bool>("ipopRooms.join", dto.Url, dto.Token, selfRef,
+                    new { stageId = "mr-stage", stripId = "mr-strip", inputDeviceId = calls.InputDeviceId });
+            }
+            catch (Exception e) when (e is JSException or TaskCanceledException or InvalidOperationException)
+            {
+                ok = false;
+            }
+            if (!ok)
+            {
+                try { await js.InvokeVoidAsync("ipopRooms.leave"); }
+                catch (Exception e) when (e is JSException or TaskCanceledException or InvalidOperationException) { }
+                Clear();
+                Raise();
+                return ("connect_failed", []);
+            }
             _ = LoadTitleAsync(dto.Key);
             return (null, []);
         }
         finally { joining = false; }
+    }
+
+    private static async Task<(string? Error, IReadOnlyList<string> Suggestions)> ReadJoinErrorAsync(HttpResponseMessage res)
+    {
+        var code = "media_unavailable";
+        List<string> sug = [];
+        try
+        {
+            var err = await res.Content.ReadFromJsonAsync<JsonElement>();
+            if (err.ValueKind == JsonValueKind.Object)
+            {
+                if (err.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String && c.GetString() is { } s) code = s;
+                if (err.TryGetProperty("suggestions", out var arr) && arr.ValueKind == JsonValueKind.Array)
+                    sug = arr.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToList();
+            }
+        }
+        catch (Exception e) when (e is JsonException or NotSupportedException) { }
+        return (code, sug);
     }
 
     private async Task LoadTitleAsync(string key)
@@ -121,8 +150,10 @@ public sealed class MeetingRoomState(AuthState auth, IJSRuntime js, CallState ca
     public async Task<string> ToggleShareAsync(bool takeover = false)
     {
         if (Room is null) return "denied";
-        var r = await js.InvokeAsync<string>("ipopRooms.setShare", !Sharing, takeover);
-        if (r == "ok") Sharing = !Sharing;
+        // Capture the intent: OnRoomPeople may already flip Sharing while the browser picker is open.
+        var target = !Sharing;
+        var r = await js.InvokeAsync<string>("ipopRooms.setShare", target, takeover);
+        if (r == "ok") Sharing = target;
         Raise();
         return r;
     }
@@ -139,20 +170,32 @@ public sealed class MeetingRoomState(AuthState auth, IJSRuntime js, CallState ca
     public async Task<string?> StartServerRecordingAsync()
     {
         if (Room is null) return "not_in_room";
-        var res = await auth.SendAsync(HttpMethod.Post, $"/api/meeting-rooms/{Room.Key}/recordings");
-        if (res.IsSuccessStatusCode) return null;
-        try
-        {
-            var err = await res.Content.ReadFromJsonAsync<JsonElement>();
-            return err.ValueKind == JsonValueKind.Object && err.TryGetProperty("code", out var c) ? c.GetString() : "egress_unavailable";
-        }
-        catch (JsonException) { return "egress_unavailable"; }
+        return await PostForErrorAsync($"/api/meeting-rooms/{Room.Key}/recordings");
     }
 
-    public async Task StopServerRecordingAsync()
+    /// null = stop requested (the banner clears when the room metadata changes); else an error code
+    /// ("not_found", "not_in_room", "egress_unavailable", …).
+    public async Task<string?> StopServerRecordingAsync()
     {
-        if (RecordingServer is null) return;
-        await auth.SendAsync(HttpMethod.Post, $"/api/meeting-rooms/recordings/{RecordingServer.Id}/stop");
+        if (RecordingServer is not { } rec) return "not_found";
+        return await PostForErrorAsync($"/api/meeting-rooms/recordings/{rec.Id}/stop");
+    }
+
+    private async Task<string?> PostForErrorAsync(string url)
+    {
+        try
+        {
+            var res = await auth.SendAsync(HttpMethod.Post, url);
+            if (res.IsSuccessStatusCode) return null;
+            try
+            {
+                var err = await res.Content.ReadFromJsonAsync<JsonElement>();
+                return err.ValueKind == JsonValueKind.Object && err.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String
+                    ? c.GetString() : "egress_unavailable";
+            }
+            catch (Exception e) when (e is JsonException or NotSupportedException) { return "egress_unavailable"; }
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException) { return "egress_unavailable"; }
     }
 
     [JSInvokable]
@@ -177,7 +220,8 @@ public sealed class MeetingRoomState(AuthState auth, IJSRuntime js, CallState ca
     {
         try
         {
-            var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json).RootElement;
+            using var parsed = JsonDocument.Parse(string.IsNullOrWhiteSpace(json) ? "{}" : json);
+            var doc = parsed.RootElement;
             RecordingServer = doc.ValueKind == JsonValueKind.Object && doc.TryGetProperty("recording", out var r) && r.ValueKind == JsonValueKind.Object
                 ? new ServerRecording(r.GetProperty("id").GetGuid(), r.GetProperty("by").GetString() ?? "", r.GetProperty("startedAt").GetDateTime())
                 : null;
