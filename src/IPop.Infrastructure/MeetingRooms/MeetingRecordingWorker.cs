@@ -1,5 +1,6 @@
 using IPop.Application.Files;
 using IPop.Application.Hall;
+using IPop.Application.MeetingRooms;
 using IPop.Application.Notifications;
 using IPop.Application.Settings;
 using IPop.Core.Entities;
@@ -48,6 +49,7 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
         using var scope = sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IPopDbContext>();
         var egress = scope.ServiceProvider.GetRequiredService<ILiveKitEgress>();
+        var rooms = scope.ServiceProvider.GetRequiredService<ILiveKitRoomAdmin>();
         var nas = scope.ServiceProvider.GetRequiredService<IFileAccessService>();
         var notify = scope.ServiceProvider.GetRequiredService<INotificationGatewayService>();
         var config = scope.ServiceProvider.GetRequiredService<IConfiguration>();
@@ -63,6 +65,18 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
             ct.ThrowIfCancellationRequested();
             try
             {
+                if (row.Status == MeetingRecordingStatus.Recording)
+                {
+                    var participants = await rooms.ListAsync(MeetingRoomKeys.LiveKitRoom(row.RoomKey), ct);
+                    var viewers = row.Viewers.Select(v => v.UserId).ToHashSet();
+                    foreach (var participant in participants)
+                    {
+                        if (participant.Identity.StartsWith("EG_", StringComparison.Ordinal)
+                            || !Guid.TryParse(participant.Identity, out var userId) || !viewers.Add(userId)) continue;
+                        row.Viewers.Add(new MeetingRecordingViewer { RecordingId = row.Id, UserId = userId });
+                    }
+                    await db.SaveChangesAsync(ct);
+                }
                 if (string.IsNullOrEmpty(row.EgressId)) continue;
                 var info = await egress.GetAsync(row.EgressId, ct);
                 if (info is null) continue;
@@ -103,6 +117,9 @@ public sealed class MeetingRecordingWorker(IServiceProvider services, ILogger<Me
                 logger?.LogWarning(e, "Meeting recording {RecordingId} finish failed", row.Id);
                 // Do not let unsaved changes from this row leak into another row's save.
                 db.Entry(row).State = EntityState.Unchanged;
+                foreach (var viewer in db.ChangeTracker.Entries<MeetingRecordingViewer>()
+                    .Where(e => e.Entity.RecordingId == row.Id && e.State == EntityState.Added).ToList())
+                    viewer.State = EntityState.Detached;
             }
         }
         return done;

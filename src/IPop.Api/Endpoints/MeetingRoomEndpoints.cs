@@ -21,12 +21,10 @@ public static class MeetingRoomEndpoints
         g.MapGet("", async (IMeetingRoomService rooms, CancellationToken ct) => Results.Ok(await rooms.ListAsync(ct)));
 
         g.MapPost("/{key}/join", async (string key, HttpContext http, IPopDbContext db, IMeetingRoomService rooms,
-            IMeetingRecordingService recs, CancellationToken ct) =>
+            CancellationToken ct) =>
         {
             if (await UserIdAsync(http, db, ct) is not { } me) return Results.Unauthorized();
-            var r = await rooms.JoinAsync(me, key, ct);
-            if (r.Join is not null) await recs.NoteJoinAsync(me, key, ct);
-            return JoinResponse(r);
+            return JoinResponse(await rooms.JoinAsync(me, key, ct));
         });
 
         g.MapPost("/{key}/recordings", async (string key, HttpContext http, IPopDbContext db, IMeetingRecordingService recs, CancellationToken ct) =>

@@ -74,7 +74,8 @@ public class MeetingRecordingWorkerTests : IDisposable
         public Task<NotificationDeliveryState?> RetryDeliveryAsync(Guid requestId, Guid userId, CancellationToken ct) => throw new NotImplementedException();
     }
 
-    private (ServiceProvider Sp, string Spool) Services(TestDb t, ILiveKitEgress eg, Nas nas, Gateway gw)
+    private (ServiceProvider Sp, string Spool) Services(TestDb t, ILiveKitEgress eg, Nas nas, Gateway gw,
+        MeetingRoomServiceTests.FakeRoomAdmin? rooms = null)
     {
         var spool = Path.Combine(Path.GetTempPath(), "ipop-rec-" + Guid.NewGuid().ToString("N"));
         _dirs.Add(spool);
@@ -85,6 +86,7 @@ public class MeetingRecordingWorkerTests : IDisposable
         sc.AddScoped(_ => t.Verify());
         sc.AddScoped<ISettings>(p => new DbSettings(p.GetRequiredService<IPopDbContext>()));
         sc.AddSingleton<ILiveKitEgress>(eg);
+        sc.AddSingleton<ILiveKitRoomAdmin>(rooms ?? new MeetingRoomServiceTests.FakeRoomAdmin());
         sc.AddSingleton<IFileAccessService>(nas);
         sc.AddSingleton<INotificationGatewayService>(gw);
         return (sc.BuildServiceProvider(), spool);
@@ -101,6 +103,34 @@ public class MeetingRecordingWorkerTests : IDisposable
         };
         t.Db.MeetingRecordings.Add(r); t.Db.SaveChanges();
         return r;
+    }
+
+    [Fact]
+    public async Task Recording_pass_adds_actual_participants_without_duplicates_or_egress_viewers()
+    {
+        using var t = new TestDb();
+        var a = t.AddUser("VIEW_EXISTING"); var b = t.AddUser("VIEW_JOINED");
+        var absent = t.AddUser("VIEW_TOKEN_ONLY");
+        var row = Row(t, MeetingRecordingStatus.Recording, a.Id, a.Id);
+        var rooms = new MeetingRoomServiceTests.FakeRoomAdmin();
+        rooms.Rooms["hall-kalosi"] = [
+            new(a.Id.ToString(), "Existing", [], new Dictionary<string, string>()),
+            new(b.Id.ToString(), "Joined", [], new Dictionary<string, string>()),
+            new(b.Id.ToString(), "Repeated", [], new Dictionary<string, string>()),
+            new("EG_x", "Recorder", [], new Dictionary<string, string>()),
+        ];
+        var eg = new MeetingRecordingServiceTests.FakeEgress();
+        eg.Infos["EG_1"] = new("EGRESS_ACTIVE", null, null, null, null);
+        var (sp, _) = Services(t, eg, new Nas(), new Gateway(), rooms);
+        using var provider = sp;
+
+        Assert.Equal(0, await MeetingRecordingWorker.FinishAsync(sp, default));
+        Assert.Equal(0, await MeetingRecordingWorker.FinishAsync(sp, default));
+
+        using var db = t.Verify();
+        var viewers = await db.MeetingRecordingViewers.Where(v => v.RecordingId == row.Id).Select(v => v.UserId).ToListAsync();
+        Assert.Equal(new[] { a.Id, b.Id }.Order(), viewers.Order());
+        Assert.DoesNotContain(absent.Id, viewers);
     }
 
     [Theory]
